@@ -434,7 +434,7 @@ git commit -m "Add ACP Content-Length framing."
 - Modify: `src/optimus/acp/framing.py`
 - Test: `tests/unit/acp/test_framing.py`
 
-- [ ] **Step 1: Add failing async read tests**
+- [x] **Step 1: Add failing async read tests**
 
 Append to `tests/unit/acp/test_framing.py`:
 
@@ -505,7 +505,7 @@ async def test_read_message_leaves_next_framed_message_available():
     assert second_message["id"] == "b"
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -515,7 +515,7 @@ pytest tests/unit/acp/test_framing.py -v
 
 Expected: FAIL with missing `read_message`.
 
-- [ ] **Step 3: Implement async read support**
+- [x] **Step 3: Implement async read support**
 
 Update `src/optimus/acp/framing.py`:
 
@@ -591,7 +591,7 @@ async def read_message(reader: AsyncByteReader, header_limit: int = 8192) -> dic
     return decoded
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run:
 
@@ -601,7 +601,7 @@ pytest tests/unit/acp/test_framing.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/acp/framing.py tests/unit/acp/test_framing.py
