@@ -40,14 +40,33 @@ OPTIMUS_API_KEY=your-optimus-api-key
 
 ### 3. Create a virtual environment
 
+Using `uv` (recommended):
+
+```bash
+uv sync --all-extras
+# Source the environment if not using `uv run`:
+# source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate     # Windows
+```
+
+Using `pip`:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate   # Linux/macOS/Git Bash
 # .venv\Scripts\activate    # Windows PowerShell
-pip install -e .
+pip install -e ".[dev]"
 ```
 
 ### 4. Run tests
+
+Using `uv`:
+
+```bash
+uv run pytest
+```
+
+Using `pytest` directly (after activating venv):
 
 ```bash
 pytest
