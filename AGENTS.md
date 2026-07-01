@@ -9,6 +9,7 @@
 
 ## Work Intake
 - At task start, explicitly ask whether to create a new Git worktree and/or new branch.
+- Follow branch and worktree naming in `CONTRIBUTING.md` (`<actor>/<id>/<slug>`; one worktree per actor per task).
 - Never fork a branch from a feature branch; branch from the latest `main`.
 - Use Spec Driven Development for features and architectural changes: requirements, design, tasks, then implementation.
 - Before implementation, present a clean implementation plan and wait for user approval.
