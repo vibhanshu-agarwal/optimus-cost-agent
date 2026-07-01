@@ -1,5 +1,38 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "optimus-cost-agent"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "coverage>=7.6",
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=5.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+addopts = [
+  "--strict-config",
+  "--strict-markers",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src/optimus"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 80
+
+[tool.setuptools.packages.find]
+where = ["src"]
