@@ -88,6 +88,27 @@ git worktree prune
 - Agents must ask at task start whether to create a new worktree and branch (see
   `AGENTS.md`).
 
+## Test-Driven Development and Commits
+
+### Agents
+
+- **TDD is required.** Write or update failing tests before production code, then implement until the suite passes.
+- **Commit only when tests pass** on your dedicated branch. Do not commit broken or untested changes.
+- Use the branch naming convention from the examples above, for example:
+  - `agent/cursor/cost-persistence-store`
+  - `agent/claude/mutation-guard-tests`
+
+### Humans
+
+- **TDD is preferred** but not mandatory. When skipping TDD, document the rationale in the PR.
+- **Commit only when tests pass** on your dedicated branch before pushing or opening a PR.
+- Use the branch naming convention from the examples above, for example:
+  - `human/vibhanshu/phase-1-acp-server`
+  - `human/alice/gateway-usage-parser`
+
+Run the narrowest relevant test set for your change (for example `pytest tests/unit/test_foo.py`).
+Use `pytest`, `pytest-asyncio`, and `pytest-cov` as defined in `pyproject.toml` and `AGENTS.md`.
+
 ## Development Workflow
 
 1. **Spec first** — For features and architectural changes: requirements, design,
@@ -95,7 +116,7 @@ git worktree prune
 2. **Plan before code** — Present an implementation plan and get approval before
    mutating the tree (especially for agents in Agent mode).
 3. **Small PRs** — Prefer focused changesets that are easy to review and revert.
-4. **Tests** — Use `pytest`, `pytest-asyncio`, and `pytest-cov`. Maintain at least 80%
+4. **Tests** — See [Test-Driven Development and Commits](#test-driven-development-and-commits). Maintain at least 80%
    aggregate Python production-code coverage; do not regress safety-critical modules.
 5. **No `--no-verify`** — Unless explicitly approved with a documented reason.
 

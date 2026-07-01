@@ -10,6 +10,7 @@
 ## Work Intake
 - At task start, explicitly ask whether to create a new Git worktree and/or new branch.
 - Follow branch and worktree naming in `CONTRIBUTING.md` (`<actor>/<id>/<slug>`; one worktree per actor per task).
+- Use **superpowers** when available: read the skill instructions first and follow their constraints and workflows.
 - Never fork a branch from a feature branch; branch from the latest `main`.
 - Use Spec Driven Development for features and architectural changes: requirements, design, tasks, then implementation.
 - Before implementation, present a clean implementation plan and wait for user approval.
@@ -55,6 +56,7 @@
 - Never log secret values; redact credentials while preserving field names and redaction reason.
 
 ## Testing Gates
+- Use **test-driven development (TDD)**: write or update a failing test first, implement the minimum code to pass, then refactor while keeping tests green.
 - Every major design claim needs an executable unit, integration, E2E, eval, or release-gate check.
 - Unit tests should dominate and avoid I/O/network unless the test category requires it.
 - Integration tests should mock gateway/provider behavior unless validating the staging gateway path.
