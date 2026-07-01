@@ -614,7 +614,7 @@ git commit -m "Read fragmented ACP messages."
 - Create: `src/optimus/acp/request_ids.py`
 - Test: `tests/unit/acp/test_request_ids.py`
 
-- [ ] **Step 1: Write failing duplicate ID tests**
+- [x] **Step 1: Write failing duplicate ID tests**
 
 Create `tests/unit/acp/test_request_ids.py`:
 
@@ -644,7 +644,7 @@ def test_tracker_rejects_duplicate_request_id_with_app_code():
     assert exc_info.value.request_id == 42
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -654,7 +654,7 @@ pytest tests/unit/acp/test_request_ids.py -v
 
 Expected: FAIL with missing `optimus.acp.request_ids`.
 
-- [ ] **Step 3: Implement the tracker**
+- [x] **Step 3: Implement the tracker**
 
 Create `src/optimus/acp/request_ids.py`:
 
@@ -690,7 +690,7 @@ class RequestIdTracker:
         return request_id in self._seen
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run:
 
@@ -700,7 +700,7 @@ pytest tests/unit/acp/test_request_ids.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/acp/request_ids.py tests/unit/acp/test_request_ids.py
@@ -713,7 +713,7 @@ git commit -m "Reject duplicate ACP request IDs."
 - Create: `src/optimus/acp/dispatcher.py`
 - Test: `tests/unit/acp/test_dispatcher.py`
 
-- [ ] **Step 1: Write failing dispatcher tests**
+- [x] **Step 1: Write failing dispatcher tests**
 
 Create `tests/unit/acp/test_dispatcher.py`:
 
@@ -749,7 +749,7 @@ def test_dispatcher_rejects_duplicate_id():
     assert response["error"]["code"] == DUPLICATE_REQUEST_ID
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -759,7 +759,7 @@ pytest tests/unit/acp/test_dispatcher.py -v
 
 Expected: FAIL with missing `optimus.acp.dispatcher`.
 
-- [ ] **Step 3: Implement dispatcher**
+- [x] **Step 3: Implement dispatcher**
 
 Create `src/optimus/acp/dispatcher.py`:
 
@@ -813,7 +813,7 @@ class JsonRpcDispatcher:
         )
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run:
 
