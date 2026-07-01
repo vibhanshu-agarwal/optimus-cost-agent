@@ -983,7 +983,7 @@ git commit -m "Handle one framed ACP request over streams."
 - Modify: `README.md`
 - Verify: all files from Tasks 1-7
 
-- [ ] **Step 1: Run the narrow ACP suite**
+- [x] **Step 1: Run the narrow ACP suite**
 
 Run:
 
@@ -993,7 +993,7 @@ pytest tests/unit/acp tests/integration/acp -v
 
 Expected: PASS.
 
-- [ ] **Step 2: Run coverage for production package**
+- [x] **Step 2: Run coverage for production package**
 
 Run:
 
@@ -1003,7 +1003,7 @@ pytest --cov=optimus --cov-branch --cov-report=term-missing
 
 Expected: PASS with aggregate production-code coverage at or above 80%.
 
-- [ ] **Step 3: Add README transport note**
+- [x] **Step 3: Add README transport note**
 
 Append this under the README Documentation or Features area:
 
@@ -1018,7 +1018,7 @@ stdio loop, 50-burst fragmented-header simulation, and full release-gate
 transport coverage.
 ```
 
-- [ ] **Step 4: Run the full test suite**
+- [x] **Step 4: Run the full test suite**
 
 Run:
 
@@ -1028,7 +1028,7 @@ pytest -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Check working tree**
+- [x] **Step 5: Check working tree**
 
 Run:
 
@@ -1038,7 +1038,7 @@ git status --short
 
 Expected: only intentional Plan 1 implementation files are modified or added.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add README.md pyproject.toml src tests
