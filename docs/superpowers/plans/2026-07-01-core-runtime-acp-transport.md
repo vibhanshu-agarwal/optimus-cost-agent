@@ -823,7 +823,7 @@ pytest tests/unit/acp/test_dispatcher.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/acp/dispatcher.py tests/unit/acp/test_dispatcher.py
@@ -836,7 +836,7 @@ git commit -m "Dispatch minimal JSON-RPC requests."
 - Create: `src/optimus/acp/server.py`
 - Test: `tests/integration/acp/test_server_stream.py`
 
-- [ ] **Step 1: Write failing single-message handler tests**
+- [x] **Step 1: Write failing single-message handler tests**
 
 Create `tests/integration/acp/test_server_stream.py`:
 
@@ -906,7 +906,7 @@ async def test_stream_handler_maps_framing_error_to_json_rpc_error():
     assert response["error"]["message"] == "invalid JSON body"
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run:
 
@@ -916,7 +916,7 @@ pytest tests/integration/acp/test_server_stream.py -v
 
 Expected: FAIL with missing `optimus.acp.server`.
 
-- [ ] **Step 3: Implement single-message stream handler**
+- [x] **Step 3: Implement single-message stream handler**
 
 Create `src/optimus/acp/server.py`:
 
@@ -960,7 +960,7 @@ class AcpStreamServer:
         await writer.drain()
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run:
 
@@ -970,7 +970,7 @@ pytest tests/integration/acp/test_server_stream.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/acp/server.py tests/integration/acp/test_server_stream.py
