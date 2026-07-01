@@ -12,6 +12,15 @@ Local-first Python ACP (Agent Client Protocol) server for building **cost-aware 
 - **Structured telemetry** — JSON Lines logging tied by `session_id` / `run_id`
 - **Spec-driven development** — HLD, LLD, and Test Strategy in `docs/` are authoritative
 
+### Phase 1 Transport Foundation
+
+The initial runtime foundation implements ACP-style `Content-Length` framing,
+JSON-RPC response helpers, duplicate request ID rejection, and a minimal
+`optimus.ping` dispatch path. This is the first transport foundation slice for
+the authoritative Phase 1 Test Strategy; later hardening adds the continuous
+stdio loop, 50-burst fragmented-header simulation, and full release-gate
+transport coverage.
+
 ## Prerequisites
 
 - **Python** ≥ 3.14
@@ -40,14 +49,33 @@ OPTIMUS_API_KEY=your-optimus-api-key
 
 ### 3. Create a virtual environment
 
+Using `uv` (recommended):
+
+```bash
+uv sync --all-extras
+# Source the environment if not using `uv run`:
+# source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate     # Windows
+```
+
+Using `pip`:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate   # Linux/macOS/Git Bash
 # .venv\Scripts\activate    # Windows PowerShell
-pip install -e .
+pip install -e ".[dev]"
 ```
 
 ### 4. Run tests
+
+Using `uv`:
+
+```bash
+uv run pytest
+```
+
+Using `pytest` directly (after activating venv):
 
 ```bash
 pytest

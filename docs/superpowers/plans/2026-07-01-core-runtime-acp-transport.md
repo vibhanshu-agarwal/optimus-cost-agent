@@ -74,7 +74,7 @@ This plan is sized for roughly 2 weeks of human development effort:
 - Create: `src/optimus/__init__.py`
 - Create: `tests/unit/test_package_imports.py`
 
-- [ ] **Step 1: Write the failing package import test**
+- [x] **Step 1: Write the failing package import test**
 
 Create `tests/unit/test_package_imports.py`:
 
@@ -85,7 +85,7 @@ def test_optimus_package_exports_version():
     assert optimus.__version__ == "0.1.0"
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run:
 
@@ -95,7 +95,7 @@ pytest tests/unit/test_package_imports.py -v
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'optimus'`.
 
-- [ ] **Step 3: Add project test configuration**
+- [x] **Step 3: Add project test configuration**
 
 Modify `pyproject.toml` to:
 
@@ -140,7 +140,7 @@ fail_under = 80
 where = ["src"]
 ```
 
-- [ ] **Step 4: Add the minimal package**
+- [x] **Step 4: Add the minimal package**
 
 Create `src/optimus/__init__.py`:
 
@@ -148,7 +148,7 @@ Create `src/optimus/__init__.py`:
 __version__ = "0.1.0"
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run:
 
@@ -158,7 +158,7 @@ pytest tests/unit/test_package_imports.py -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pyproject.toml src/optimus/__init__.py tests/unit/test_package_imports.py
@@ -172,7 +172,7 @@ git commit -m "Add Python package and pytest configuration."
 - Create: `src/optimus/acp/errors.py`
 - Test: `tests/unit/acp/test_errors.py`
 
-- [ ] **Step 1: Write failing tests for JSON-RPC error helpers**
+- [x] **Step 1: Write failing tests for JSON-RPC error helpers**
 
 Create `tests/unit/acp/test_errors.py`:
 
@@ -222,7 +222,7 @@ def test_error_response_includes_optional_data():
     assert response["error"]["data"] == {"id": "abc"}
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run:
 
@@ -232,7 +232,7 @@ pytest tests/unit/acp/test_errors.py -v
 
 Expected: FAIL with `ModuleNotFoundError` or missing symbols.
 
-- [ ] **Step 3: Implement JSON-RPC helpers**
+- [x] **Step 3: Implement JSON-RPC helpers**
 
 Create `src/optimus/acp/__init__.py`:
 
@@ -281,7 +281,7 @@ def error_response(
     return payload
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run:
 
@@ -291,7 +291,7 @@ pytest tests/unit/acp/test_errors.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/acp/__init__.py src/optimus/acp/errors.py tests/unit/acp/test_errors.py
@@ -304,7 +304,7 @@ git commit -m "Add JSON-RPC response helpers."
 - Create: `src/optimus/acp/framing.py`
 - Test: `tests/unit/acp/test_framing.py`
 
-- [ ] **Step 1: Write failing tests for encoding and header parsing**
+- [x] **Step 1: Write failing tests for encoding and header parsing**
 
 Create `tests/unit/acp/test_framing.py`:
 
@@ -358,7 +358,7 @@ def test_header_too_large_error_uses_invalid_request_code():
     assert error.code == INVALID_REQUEST
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -368,7 +368,7 @@ pytest tests/unit/acp/test_framing.py -v
 
 Expected: FAIL with missing `optimus.acp.framing`.
 
-- [ ] **Step 3: Implement encoding and header parsing**
+- [x] **Step 3: Implement encoding and header parsing**
 
 Create `src/optimus/acp/framing.py`:
 
@@ -411,7 +411,7 @@ def parse_content_length(header_bytes: bytes) -> int:
     raise FramingError("missing Content-Length")
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run:
 
@@ -421,7 +421,7 @@ pytest tests/unit/acp/test_framing.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/acp/framing.py tests/unit/acp/test_framing.py
@@ -434,7 +434,7 @@ git commit -m "Add ACP Content-Length framing."
 - Modify: `src/optimus/acp/framing.py`
 - Test: `tests/unit/acp/test_framing.py`
 
-- [ ] **Step 1: Add failing async read tests**
+- [x] **Step 1: Add failing async read tests**
 
 Append to `tests/unit/acp/test_framing.py`:
 
@@ -505,7 +505,7 @@ async def test_read_message_leaves_next_framed_message_available():
     assert second_message["id"] == "b"
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -515,7 +515,7 @@ pytest tests/unit/acp/test_framing.py -v
 
 Expected: FAIL with missing `read_message`.
 
-- [ ] **Step 3: Implement async read support**
+- [x] **Step 3: Implement async read support**
 
 Update `src/optimus/acp/framing.py`:
 
@@ -591,7 +591,7 @@ async def read_message(reader: AsyncByteReader, header_limit: int = 8192) -> dic
     return decoded
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run:
 
@@ -601,7 +601,7 @@ pytest tests/unit/acp/test_framing.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/acp/framing.py tests/unit/acp/test_framing.py
@@ -614,7 +614,7 @@ git commit -m "Read fragmented ACP messages."
 - Create: `src/optimus/acp/request_ids.py`
 - Test: `tests/unit/acp/test_request_ids.py`
 
-- [ ] **Step 1: Write failing duplicate ID tests**
+- [x] **Step 1: Write failing duplicate ID tests**
 
 Create `tests/unit/acp/test_request_ids.py`:
 
@@ -644,7 +644,7 @@ def test_tracker_rejects_duplicate_request_id_with_app_code():
     assert exc_info.value.request_id == 42
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -654,7 +654,7 @@ pytest tests/unit/acp/test_request_ids.py -v
 
 Expected: FAIL with missing `optimus.acp.request_ids`.
 
-- [ ] **Step 3: Implement the tracker**
+- [x] **Step 3: Implement the tracker**
 
 Create `src/optimus/acp/request_ids.py`:
 
@@ -690,7 +690,7 @@ class RequestIdTracker:
         return request_id in self._seen
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run:
 
@@ -700,7 +700,7 @@ pytest tests/unit/acp/test_request_ids.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/acp/request_ids.py tests/unit/acp/test_request_ids.py
@@ -713,7 +713,7 @@ git commit -m "Reject duplicate ACP request IDs."
 - Create: `src/optimus/acp/dispatcher.py`
 - Test: `tests/unit/acp/test_dispatcher.py`
 
-- [ ] **Step 1: Write failing dispatcher tests**
+- [x] **Step 1: Write failing dispatcher tests**
 
 Create `tests/unit/acp/test_dispatcher.py`:
 
@@ -749,7 +749,7 @@ def test_dispatcher_rejects_duplicate_id():
     assert response["error"]["code"] == DUPLICATE_REQUEST_ID
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -759,7 +759,7 @@ pytest tests/unit/acp/test_dispatcher.py -v
 
 Expected: FAIL with missing `optimus.acp.dispatcher`.
 
-- [ ] **Step 3: Implement dispatcher**
+- [x] **Step 3: Implement dispatcher**
 
 Create `src/optimus/acp/dispatcher.py`:
 
@@ -813,7 +813,7 @@ class JsonRpcDispatcher:
         )
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run:
 
@@ -823,7 +823,7 @@ pytest tests/unit/acp/test_dispatcher.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/acp/dispatcher.py tests/unit/acp/test_dispatcher.py
@@ -836,7 +836,7 @@ git commit -m "Dispatch minimal JSON-RPC requests."
 - Create: `src/optimus/acp/server.py`
 - Test: `tests/integration/acp/test_server_stream.py`
 
-- [ ] **Step 1: Write failing single-message handler tests**
+- [x] **Step 1: Write failing single-message handler tests**
 
 Create `tests/integration/acp/test_server_stream.py`:
 
@@ -906,7 +906,7 @@ async def test_stream_handler_maps_framing_error_to_json_rpc_error():
     assert response["error"]["message"] == "invalid JSON body"
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run:
 
@@ -916,7 +916,7 @@ pytest tests/integration/acp/test_server_stream.py -v
 
 Expected: FAIL with missing `optimus.acp.server`.
 
-- [ ] **Step 3: Implement single-message stream handler**
+- [x] **Step 3: Implement single-message stream handler**
 
 Create `src/optimus/acp/server.py`:
 
@@ -960,7 +960,7 @@ class AcpStreamServer:
         await writer.drain()
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run:
 
@@ -970,7 +970,7 @@ pytest tests/integration/acp/test_server_stream.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/acp/server.py tests/integration/acp/test_server_stream.py
@@ -983,7 +983,7 @@ git commit -m "Handle one framed ACP request over streams."
 - Modify: `README.md`
 - Verify: all files from Tasks 1-7
 
-- [ ] **Step 1: Run the narrow ACP suite**
+- [x] **Step 1: Run the narrow ACP suite**
 
 Run:
 
@@ -993,7 +993,7 @@ pytest tests/unit/acp tests/integration/acp -v
 
 Expected: PASS.
 
-- [ ] **Step 2: Run coverage for production package**
+- [x] **Step 2: Run coverage for production package**
 
 Run:
 
@@ -1003,7 +1003,7 @@ pytest --cov=optimus --cov-branch --cov-report=term-missing
 
 Expected: PASS with aggregate production-code coverage at or above 80%.
 
-- [ ] **Step 3: Add README transport note**
+- [x] **Step 3: Add README transport note**
 
 Append this under the README Documentation or Features area:
 
@@ -1018,7 +1018,7 @@ stdio loop, 50-burst fragmented-header simulation, and full release-gate
 transport coverage.
 ```
 
-- [ ] **Step 4: Run the full test suite**
+- [x] **Step 4: Run the full test suite**
 
 Run:
 
@@ -1028,7 +1028,7 @@ pytest -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Check working tree**
+- [x] **Step 5: Check working tree**
 
 Run:
 
@@ -1038,7 +1038,7 @@ git status --short
 
 Expected: only intentional Plan 1 implementation files are modified or added.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add README.md pyproject.toml src tests
