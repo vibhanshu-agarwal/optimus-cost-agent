@@ -40,16 +40,28 @@ branches on other feature branches.
 ### Worktree path
 
 Create worktrees as **sibling directories** next to the main clone (never inside the
-repository working tree):
+repository working tree). Name the directory after the contributor id:
 
 ```
-../optimus-cost-agent-wt/<actor>-<id>-<slug>
+../optimus-cost-agent-wt-<id>
 ```
 
-**Examples**
+| Contributor | `id` example | Worktree path |
+|-------------|--------------|---------------|
+| Human developer | GitHub username | `../optimus-cost-agent-wt-vibhanshu` |
+| Coding agent | Agent name | `../optimus-cost-agent-wt-cursor` |
 
-- `../optimus-cost-agent-wt/human-vibhanshu-phase-1-acp-server`
-- `../optimus-cost-agent-wt/agent-cursor-cost-persistence-store`
+**Multiple worktrees** — If you need more than one checkout at a time (e.g. two tasks
+in parallel), add a disambiguating suffix:
+
+```
+../optimus-cost-agent-wt-<id>-<suffix>
+```
+
+Examples: `../optimus-cost-agent-wt-vibhanshu-phase-1`, `../optimus-cost-agent-wt-cursor-2`
+
+Each worktree still uses its own branch (`<actor>/<id>/<slug>`). Do not share a
+worktree across people or agents.
 
 ### Create a worktree
 
@@ -61,20 +73,28 @@ git switch main
 git pull --ff-only origin main
 
 git worktree add -b <actor>/<id>/<slug> \
-  ../optimus-cost-agent-wt/<actor>-<id>-<slug> \
+  ../optimus-cost-agent-wt-<id> \
   main
 ```
 
-### One branch, one worktree
+For an additional parallel checkout:
 
-- **One active branch per actor per task.** If scope changes materially, open a new
-  branch and worktree rather than reusing a stale branch.
+```bash
+git worktree add -b <actor>/<id>/<other-slug> \
+  ../optimus-cost-agent-wt-<id>-<suffix> \
+  main
+```
+
+### One branch per task
+
+- **One active branch per task** in a given worktree. If scope changes materially, open a new
+  branch (and worktree if you need a parallel checkout).
 - **Do not** check out someone else's branch in your primary clone while they are
   actively using its worktree.
 - **Remove** worktrees when the branch is merged or abandoned:
 
 ```bash
-git worktree remove ../optimus-cost-agent-wt/<actor>-<id>-<slug>
+git worktree remove ../optimus-cost-agent-wt-<id>
 git branch -d <actor>/<id>/<slug>    # after merge
 git worktree prune
 ```
