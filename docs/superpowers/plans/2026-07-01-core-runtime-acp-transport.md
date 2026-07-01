@@ -74,7 +74,7 @@ This plan is sized for roughly 2 weeks of human development effort:
 - Create: `src/optimus/__init__.py`
 - Create: `tests/unit/test_package_imports.py`
 
-- [ ] **Step 1: Write the failing package import test**
+- [x] **Step 1: Write the failing package import test**
 
 Create `tests/unit/test_package_imports.py`:
 
@@ -85,7 +85,7 @@ def test_optimus_package_exports_version():
     assert optimus.__version__ == "0.1.0"
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run:
 
@@ -95,7 +95,7 @@ pytest tests/unit/test_package_imports.py -v
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'optimus'`.
 
-- [ ] **Step 3: Add project test configuration**
+- [x] **Step 3: Add project test configuration**
 
 Modify `pyproject.toml` to:
 
@@ -140,7 +140,7 @@ fail_under = 80
 where = ["src"]
 ```
 
-- [ ] **Step 4: Add the minimal package**
+- [x] **Step 4: Add the minimal package**
 
 Create `src/optimus/__init__.py`:
 
@@ -148,7 +148,7 @@ Create `src/optimus/__init__.py`:
 __version__ = "0.1.0"
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run:
 
@@ -158,7 +158,7 @@ pytest tests/unit/test_package_imports.py -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pyproject.toml src/optimus/__init__.py tests/unit/test_package_imports.py
@@ -172,7 +172,7 @@ git commit -m "Add Python package and pytest configuration."
 - Create: `src/optimus/acp/errors.py`
 - Test: `tests/unit/acp/test_errors.py`
 
-- [ ] **Step 1: Write failing tests for JSON-RPC error helpers**
+- [x] **Step 1: Write failing tests for JSON-RPC error helpers**
 
 Create `tests/unit/acp/test_errors.py`:
 
@@ -222,7 +222,7 @@ def test_error_response_includes_optional_data():
     assert response["error"]["data"] == {"id": "abc"}
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run:
 
@@ -232,7 +232,7 @@ pytest tests/unit/acp/test_errors.py -v
 
 Expected: FAIL with `ModuleNotFoundError` or missing symbols.
 
-- [ ] **Step 3: Implement JSON-RPC helpers**
+- [x] **Step 3: Implement JSON-RPC helpers**
 
 Create `src/optimus/acp/__init__.py`:
 
@@ -281,7 +281,7 @@ def error_response(
     return payload
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run:
 
@@ -291,7 +291,7 @@ pytest tests/unit/acp/test_errors.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/acp/__init__.py src/optimus/acp/errors.py tests/unit/acp/test_errors.py
@@ -304,7 +304,7 @@ git commit -m "Add JSON-RPC response helpers."
 - Create: `src/optimus/acp/framing.py`
 - Test: `tests/unit/acp/test_framing.py`
 
-- [ ] **Step 1: Write failing tests for encoding and header parsing**
+- [x] **Step 1: Write failing tests for encoding and header parsing**
 
 Create `tests/unit/acp/test_framing.py`:
 
@@ -358,7 +358,7 @@ def test_header_too_large_error_uses_invalid_request_code():
     assert error.code == INVALID_REQUEST
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -368,7 +368,7 @@ pytest tests/unit/acp/test_framing.py -v
 
 Expected: FAIL with missing `optimus.acp.framing`.
 
-- [ ] **Step 3: Implement encoding and header parsing**
+- [x] **Step 3: Implement encoding and header parsing**
 
 Create `src/optimus/acp/framing.py`:
 
@@ -411,7 +411,7 @@ def parse_content_length(header_bytes: bytes) -> int:
     raise FramingError("missing Content-Length")
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run:
 
@@ -421,7 +421,7 @@ pytest tests/unit/acp/test_framing.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/acp/framing.py tests/unit/acp/test_framing.py
