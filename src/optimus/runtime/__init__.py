@@ -8,6 +8,7 @@ from optimus.runtime.modes import (
 from optimus.runtime.mutation import MUTATION_FORBIDDEN_CODE, MutationForbidden
 from optimus.runtime.state import (
     AgentState,
+    AwaitingApproval,
     RuntimeContext,
     StateTransition,
     TransitionValidator,
@@ -15,6 +16,7 @@ from optimus.runtime.state import (
 
 __all__ = [
     "AgentState",
+    "AwaitingApproval",
     "ExecutionMode",
     "GenerationScope",
     "MUTATION_FORBIDDEN_CODE",

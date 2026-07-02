@@ -39,6 +39,47 @@ class StateTransition:
     reason: str
 
 
+@dataclass(frozen=True)
+class AwaitingApproval:
+    approval_id: str
+    requested_at_ms: int
+    timeout_ms: int
+
+    def grant(self, context: RuntimeContext) -> RuntimeContext:
+        self._require_awaiting(context)
+        return replace(
+            context,
+            approval_granted=True,
+            user_approval_id=self.approval_id,
+        )
+
+    def deny(self, context: RuntimeContext) -> RuntimeContext:
+        self._require_awaiting(context)
+        # Denial and timeout are the sanctioned Agent-mode fallback to advisory output.
+        return replace(
+            context,
+            state=AgentState.CHAT_ONLY,
+            approval_granted=False,
+            user_approval_id=self.approval_id,
+        )
+
+    def timeout_if_expired(self, context: RuntimeContext, *, now_ms: int) -> RuntimeContext:
+        self._require_awaiting(context)
+        if now_ms - self.requested_at_ms <= self.timeout_ms:
+            return context
+        # Timeout follows the same sanctioned fallback path as explicit denial.
+        return replace(
+            context,
+            state=AgentState.CHAT_ONLY,
+            approval_granted=False,
+            user_approval_id=self.approval_id,
+        )
+
+    def _require_awaiting(self, context: RuntimeContext) -> None:
+        if context.state is not AgentState.AWAITING_APPROVAL:
+            raise MutationForbidden("approval record can be used only in AwaitingApproval state")
+
+
 class TransitionValidator:
     def transition(
         self,

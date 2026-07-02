@@ -4,6 +4,7 @@ from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.mutation import MutationForbidden
 from optimus.runtime.state import (
     AgentState,
+    AwaitingApproval,
     RuntimeContext,
     StateTransition,
     TransitionValidator,
@@ -172,3 +173,54 @@ def test_validation_pass_requires_existing_approval():
             context,
             StateTransition(target=AgentState.EXECUTING, reason="all gates passed"),
         )
+
+
+def test_awaiting_approval_grants_context_with_approval_id():
+    context = RuntimeContext(
+        execution_mode=ExecutionMode.AGENT,
+        state=AgentState.AWAITING_APPROVAL,
+    )
+    approval = AwaitingApproval(approval_id="approval-123", requested_at_ms=1000, timeout_ms=5000)
+
+    updated = approval.grant(context)
+
+    assert updated.approval_granted is True
+    assert updated.user_approval_id == "approval-123"
+
+
+def test_awaiting_approval_denial_falls_back_to_chat_only():
+    context = RuntimeContext(
+        execution_mode=ExecutionMode.AGENT,
+        state=AgentState.AWAITING_APPROVAL,
+    )
+    approval = AwaitingApproval(approval_id="approval-123", requested_at_ms=1000, timeout_ms=5000)
+
+    updated = approval.deny(context)
+
+    assert updated.state is AgentState.CHAT_ONLY
+    assert updated.approval_granted is False
+
+
+def test_awaiting_approval_timeout_falls_back_to_chat_only():
+    context = RuntimeContext(
+        execution_mode=ExecutionMode.AGENT,
+        state=AgentState.AWAITING_APPROVAL,
+    )
+    approval = AwaitingApproval(approval_id="approval-123", requested_at_ms=1000, timeout_ms=5000)
+
+    updated = approval.timeout_if_expired(context, now_ms=6001)
+
+    assert updated.state is AgentState.CHAT_ONLY
+    assert updated.approval_granted is False
+
+
+def test_awaiting_approval_before_timeout_keeps_context_unchanged():
+    context = RuntimeContext(
+        execution_mode=ExecutionMode.AGENT,
+        state=AgentState.AWAITING_APPROVAL,
+    )
+    approval = AwaitingApproval(approval_id="approval-123", requested_at_ms=1000, timeout_ms=5000)
+
+    updated = approval.timeout_if_expired(context, now_ms=5999)
+
+    assert updated == context
