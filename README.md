@@ -21,6 +21,15 @@ the authoritative Phase 1 Test Strategy; later hardening adds the continuous
 stdio loop, 50-burst fragmented-header simulation, and full release-gate
 transport coverage.
 
+### Phase 1 Mode Boundary Foundation
+
+The runtime governance foundation implements execution modes, generation-scope
+classification, lifecycle transition validation, AwaitingApproval handling, and
+the `assert_mutation_allowed()` primitive. Mutation wrappers for file writes,
+shell execution, and shadow patch application call the primitive before any
+side effect, and ACP callers receive JSON-RPC code `-32002` when the boundary is
+violated.
+
 ## Prerequisites
 
 - **Python** ≥ 3.14
