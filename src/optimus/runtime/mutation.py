@@ -15,6 +15,8 @@ MUTATION_FORBIDDEN_CODE = -32002
 class MutationKind(StrEnum):
     WRITE_FILE = "write_file"
     SHELL_EXEC = "shell_exec"
+    # Shadow application of a candidate patch or diff without committing it
+    # to the working tree; still treated as a mutation for guard purposes.
     SHADOW_APPLY = "shadow_apply"
 
 

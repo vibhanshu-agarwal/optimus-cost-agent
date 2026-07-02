@@ -7,6 +7,8 @@ from optimus.tools.mutation_tools import shell_exec, shadow_apply, write_file
 
 
 class ProbeRunner:
+    """Test double for shell_exec runner; records whether execution reached I/O."""
+
     def __init__(self) -> None:
         self.called = False
 
@@ -16,6 +18,8 @@ class ProbeRunner:
 
 
 class ProbeApplier:
+    """Test double for shadow_apply applier; records whether patch apply was attempted."""
+
     def __init__(self) -> None:
         self.called = False
 
