@@ -1682,7 +1682,7 @@ git commit -m "Route ACP gateway response calls."
 - Create: `tests/integration/gateway/test_one_key_mocked_run.py`
 - Verify: `src/optimus/config/*`, `src/optimus/gateway/*`, `src/optimus/acp/dispatcher.py`
 
-- [ ] **Step 1: Write the mocked full-run integration test**
+- [x] **Step 1: Write the mocked full-run integration test**
 
 Create `tests/integration/gateway/test_one_key_mocked_run.py`:
 
@@ -1760,7 +1760,7 @@ def test_mocked_full_gateway_run_uses_only_optimus_credentials(monkeypatch):
     assert "messages" not in request.payload
 ```
 
-- [ ] **Step 2: Run the integration test to verify it passes**
+- [x] **Step 2: Run the integration test to verify it passes**
 
 Run:
 
@@ -1770,7 +1770,7 @@ pytest tests/integration/gateway/test_one_key_mocked_run.py -v
 
 Expected: PASS with no provider key configured in the test environment.
 
-- [ ] **Step 3: Run the full gateway/config/ACP focused suite**
+- [x] **Step 3: Run the full gateway/config/ACP focused suite**
 
 Run:
 
@@ -1780,7 +1780,7 @@ pytest tests/unit/config tests/unit/gateway tests/unit/acp/test_dispatcher.py te
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/integration/gateway/test_one_key_mocked_run.py
