@@ -1446,7 +1446,7 @@ git commit -m "Add Optimus Gateway client."
 
 **Design decision:** `optimus.gateway.responses` is intentionally callable from `PLAN` / `CHAT_ONLY` context because model generation is required to produce advisory plans and chat answers. This is not a local file, shell, patch, or repository mutation. Gateway-side budget, wallet, provider-key injection, usage recording, and policy revalidation remain mandatory for the billed external call.
 
-- [ ] **Step 1: Add failing ACP gateway dispatch tests**
+- [x] **Step 1: Add failing ACP gateway dispatch tests**
 
 Append to `tests/unit/acp/test_dispatcher.py`:
 
@@ -1553,7 +1553,7 @@ def test_dispatcher_rejects_gateway_responses_messages_shape():
     assert response["error"]["message"] == "invalid request"
 ```
 
-- [ ] **Step 2: Run dispatcher tests to verify they fail**
+- [x] **Step 2: Run dispatcher tests to verify they fail**
 
 Run:
 
@@ -1563,7 +1563,7 @@ pytest tests/unit/acp/test_dispatcher.py -v
 
 Expected: FAIL with unexpected `gateway_client` argument or method not found.
 
-- [ ] **Step 3: Add optional gateway client and dispatch method**
+- [x] **Step 3: Add optional gateway client and dispatch method**
 
 Update `src/optimus/acp/dispatcher.py` imports:
 
@@ -1659,7 +1659,7 @@ def _gateway_response_payload(response: GatewayResponse) -> dict[str, Any]:
 
 If `INTERNAL_ERROR` is not already imported from `optimus.acp.errors`, add it to the existing import list.
 
-- [ ] **Step 4: Run dispatcher and ACP integration tests**
+- [x] **Step 4: Run dispatcher and ACP integration tests**
 
 Run:
 
@@ -1669,7 +1669,7 @@ pytest tests/unit/acp/test_dispatcher.py tests/integration/acp/test_server_strea
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/acp/dispatcher.py tests/unit/acp/test_dispatcher.py
