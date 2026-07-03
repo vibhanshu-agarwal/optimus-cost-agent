@@ -111,7 +111,7 @@ def test_parse_web_extract_response_marks_content_untrusted():
 
 
 def test_parse_web_search_response_wraps_malformed_result_as_gateway_response_error():
-    with pytest.raises(GatewayResponseError, match="url"):
+    with pytest.raises(GatewayResponseError, match="url") as exc_info:
         parse_web_search_response(
             {
                 "results": [{"title": "Bad", "url": "not-a-url", "snippet": "bad"}],
@@ -123,6 +123,10 @@ def test_parse_web_search_response_wraps_malformed_result_as_gateway_response_er
                 },
             }
         )
+
+    assert exc_info.value.gateway_usage is not None
+    assert exc_info.value.gateway_usage.gateway_request_id == "gw-1"
+    assert exc_info.value.credits_used == 0
 
 
 def test_http_url_round_trip_preserves_provenance_string_for_path_urls():

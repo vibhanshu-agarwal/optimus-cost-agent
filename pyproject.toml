@@ -25,6 +25,7 @@ asyncio_mode = "auto"
 addopts = [
   "--strict-config",
   "--strict-markers",
+  "--import-mode=importlib",
 ]
 
 [tool.coverage.run]

@@ -9,7 +9,7 @@ from optimus.evidence.models import (
     EvidenceExtractRequest,
     EvidenceRequest,
 )
-from optimus.gateway.errors import GatewayHttpError
+from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
 from optimus.runtime.modes import ExecutionMode
 from optimus.tools.policy import EvidenceReasonCode, ToolClass, ToolPolicySignal
 from optimus.tools.registry import ToolCallRejected, ToolRegistry
@@ -69,6 +69,24 @@ class FailingGatewayClient(FakeGatewayClient):
     def post_tool_json(self, *, path: str, payload: dict[str, object]) -> dict[str, object]:
         self.calls.append({"path": path, "payload": payload})
         raise GatewayHttpError(502, "gateway unavailable")
+
+
+class MalformedBodyGatewayClient(FakeGatewayClient):
+    def post_tool_json(self, *, path: str, payload: dict[str, object]) -> dict[str, object]:
+        self.calls.append({"path": path, "payload": payload})
+        if path == "/v1/tools/web/search":
+            return {
+                "results": [{"title": "Bad", "url": "not-a-url", "snippet": "bad"}],
+                "credits_used": 2,
+                "gateway_usage": {
+                    "gateway_request_id": "gw-search-bad",
+                    "provider": "tavily",
+                    "cache_hit": False,
+                    "billing_units": 2,
+                    "cost_usd": "0.002",
+                },
+            }
+        raise AssertionError(f"unexpected path: {path}")
 
 
 def test_search_authorizes_gateway_call_and_records_ledger_entry():
@@ -188,6 +206,32 @@ def test_gateway_failure_consumes_authorized_attempt_without_ledger_entry():
 
     assert service.registry.call_count("run-1") == 1
     assert service.ledger.entries == ()
+
+
+def test_malformed_gateway_body_records_usage_before_error():
+    gateway = MalformedBodyGatewayClient()
+    service = EvidenceAcquisitionService(
+        gateway_client=gateway,
+        domain_policy=domain_policy(),
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+    )
+    request = EvidenceRequest(
+        run_id="run-1",
+        query="latest pytest release",
+        reason=EvidenceReasonCode.USER_REQUESTED,
+        policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT,
+        allowed_domains=("docs.example.com",),
+    )
+
+    with pytest.raises(GatewayResponseError, match="url"):
+        service.search(request, execution_mode=ExecutionMode.PLAN)
+
+    assert service.registry.call_count("run-1") == 1
+    assert len(service.ledger.entries) == 1
+    assert service.ledger.entries[0].gateway_request_id == "gw-search-bad"
+    assert service.ledger.entries[0].cost_usd == Decimal("0.002")
+    assert service.registry.search_result_urls("run-1") == frozenset()
 
 
 def test_search_rejects_without_policy_trigger_before_gateway_call():

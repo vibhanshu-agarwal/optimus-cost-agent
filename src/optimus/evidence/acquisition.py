@@ -18,6 +18,7 @@ from optimus.evidence.models import (
     EvidenceSearchResponse,
 )
 from optimus.gateway.client import GatewayClient
+from optimus.gateway.errors import GatewayResponseError
 from optimus.runtime.modes import ExecutionMode
 from optimus.tools.policy import ToolClass, ToolInvocationRequest
 from optimus.tools.registry import ToolRegistry
@@ -28,8 +29,11 @@ class EvidenceAcquisitionService:
 
     Wires together policy checks, domain allowlisting, gateway I/O, provenance
     tracking, and cost/usage auditing into two operations: ``search`` and
-    ``extract``. Authorization consumes per-run caps before transport; gateway
-    failures keep the cap record but do not append a ledger entry.
+    ``extract``. Authorization consumes per-run caps before transport; transport
+    failures and malformed response bodies without usage keep the cap record but
+    do not append a ledger entry. When the gateway returns usage but the
+    evidence payload is malformed, usage is still recorded before the error
+    propagates.
     """
 
     def __init__(
@@ -79,7 +83,16 @@ class EvidenceAcquisitionService:
                 },
             ),
         )
-        response = parse_web_search_response(body)
+        try:
+            response = parse_web_search_response(body)
+        except GatewayResponseError as exc:
+            self._record_parse_failure_usage(
+                request=request,
+                tool_class=ToolClass.WEB_SEARCH,
+                sources=(),
+                exc=exc,
+            )
+            raise
         urls = tuple(result.url_text for result in response.results)
         for url in urls:
             self.domain_policy.assert_url_allowed(url, effective_allowed_domains)
@@ -133,7 +146,16 @@ class EvidenceAcquisitionService:
                 },
             ),
         )
-        response = parse_web_extract_response(body)
+        try:
+            response = parse_web_extract_response(body)
+        except GatewayResponseError as exc:
+            self._record_parse_failure_usage(
+                request=request,
+                tool_class=ToolClass.WEB_EXTRACT,
+                sources=(target_url,),
+                exc=exc,
+            )
+            raise
         ledger = self._record_ledger_entry(
             EvidenceLedgerEntry.from_gateway_usage(
                 run_id=request.run_id,
@@ -153,6 +175,30 @@ class EvidenceAcquisitionService:
         with self._ledger_lock:
             self.ledger = self.ledger.record(entry)
             return self.ledger
+
+    def _record_parse_failure_usage(
+        self,
+        *,
+        request: EvidenceRequest | EvidenceExtractRequest,
+        tool_class: ToolClass,
+        sources: tuple[str, ...],
+        exc: GatewayResponseError,
+    ) -> None:
+        if exc.gateway_usage is None:
+            return
+        self._record_ledger_entry(
+            EvidenceLedgerEntry.from_gateway_usage(
+                run_id=request.run_id,
+                session_id=request.session_id,
+                reason=request.reason,
+                policy_signal=request.policy_signal.value,
+                tool_class=tool_class,
+                sources=sources,
+                gateway_usage=exc.gateway_usage,
+                credits_used=exc.credits_used or 0,
+                queried_at=_utc_now(),
+            )
+        )
 
 
 def _utc_now() -> datetime:

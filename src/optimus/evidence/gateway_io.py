@@ -56,7 +56,7 @@ def parse_web_search_response(body: dict[str, Any]) -> EvidenceSearchResponse:
     usage = _parse_gateway_usage(body)
     results_body = body.get("results")
     if not isinstance(results_body, list):
-        raise GatewayResponseError("results missing")
+        raise _response_error("results missing", body=body, usage=usage)
     try:
         return EvidenceSearchResponse(
             results=tuple(EvidenceSearchResult.model_validate(item) for item in results_body),
@@ -64,7 +64,7 @@ def parse_web_search_response(body: dict[str, Any]) -> EvidenceSearchResponse:
             credits_used=int(body.get("credits_used", 0)),
         )
     except (TypeError, ValueError, ValidationError) as exc:
-        raise GatewayResponseError(str(exc)) from exc
+        raise _response_error(str(exc), body=body, usage=usage) from exc
 
 
 def parse_web_extract_response(body: dict[str, Any]) -> EvidenceExtractResponse:
@@ -79,9 +79,9 @@ def parse_web_extract_response(body: dict[str, Any]) -> EvidenceExtractResponse:
             credits_used=int(body.get("credits_used", 0)),
         )
     except KeyError as exc:
-        raise GatewayResponseError(f"{exc.args[0]} missing") from exc
+        raise _response_error(f"{exc.args[0]} missing", body=body, usage=usage) from exc
     except (TypeError, ValueError, ValidationError) as exc:
-        raise GatewayResponseError(str(exc)) from exc
+        raise _response_error(str(exc), body=body, usage=usage) from exc
 
 
 def _parse_gateway_usage(body: dict[str, Any]) -> GatewayUsage:
@@ -92,3 +92,11 @@ def _parse_gateway_usage(body: dict[str, Any]) -> GatewayUsage:
         return GatewayUsage.model_validate(usage_body)
     except ValidationError as exc:
         raise GatewayResponseError(str(exc)) from exc
+
+
+def _response_error(message: str, *, body: dict[str, Any], usage: GatewayUsage) -> GatewayResponseError:
+    return GatewayResponseError(
+        message,
+        gateway_usage=usage,
+        credits_used=int(body.get("credits_used", 0)),
+    )

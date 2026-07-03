@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from optimus.net.https import https_hostname
 from optimus.runtime.modes import ExecutionMode
 
 
@@ -103,7 +104,8 @@ class ToolInvocationPolicy:
             return _reject(request, "web extract requires approved search-result provenance")
         if request.target_url is None:
             return _reject(request, "target_url required for web extract")
-        if _origin(request.target_url) == "":
+        # Guards direct registry/policy callers; service-layer domain policy checks HTTPS first.
+        if https_hostname(request.target_url) is None:
             return _reject(request, "https URL required for web extract")
         if request.target_url not in request.prior_search_result_urls:
             return _reject(request, "URL not in approved search-result set")
@@ -130,10 +132,4 @@ def _reject(request: ToolInvocationRequest, reason: str) -> ToolInvocationDecisi
     )
 
 
-def _origin(url: str) -> str:
-    from urllib.parse import urlparse
-
-    parsed = urlparse(url)
-    if parsed.scheme != "https" or not parsed.netloc:
-        return ""
-    return f"{parsed.scheme}://{parsed.netloc.lower()}"
+from optimus.net.https import https_hostname

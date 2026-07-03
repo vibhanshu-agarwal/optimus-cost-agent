@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
+from optimus.net.https import https_hostname
+
 
 class EvidenceDomainRejected(ValueError):
     """Raised when caller-requested or gateway-returned domains fail local policy."""
@@ -33,7 +35,7 @@ class EvidenceDomainPolicy:
         return effective
 
     def url_allowed(self, url: str, effective_allowed_domains: tuple[str, ...]) -> bool:
-        host = _normalize_url_host(url)
+        host = https_hostname(url) or ""
         return bool(host) and any(_host_matches_domain(host, domain) for domain in effective_allowed_domains)
 
     def assert_url_allowed(self, url: str, effective_allowed_domains: tuple[str, ...]) -> None:
@@ -49,15 +51,17 @@ def _host_matches_domain(host: str, domain: str) -> bool:
     return host == domain or host.endswith(f".{domain}")
 
 
-def _normalize_url_host(url: str) -> str:
-    parsed = urlparse(url)
-    if parsed.scheme != "https" or parsed.hostname is None:
-        return ""
-    return parsed.hostname.lower().rstrip(".")
-
-
 def _normalize_domain(value: str) -> str:
     parsed = urlparse(value)
-    host = parsed.hostname if parsed.scheme and parsed.netloc else value.split("/", 1)[0]
-    host = host.split(":", 1)[0]
+    if parsed.scheme and parsed.netloc:
+        if parsed.hostname is None:
+            return ""
+        return parsed.hostname.lower().rstrip(".")
+    bare = value.split("/", 1)[0].strip()
+    if bare.startswith("["):
+        end = bare.find("]")
+        if end == -1:
+            return ""
+        return bare[1:end].lower()
+    host = bare.rsplit(":", 1)[0] if ":" in bare else bare
     return host.lower().strip().rstrip(".")
