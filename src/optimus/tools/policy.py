@@ -131,5 +131,3 @@ def _reject(request: ToolInvocationRequest, reason: str) -> ToolInvocationDecisi
         reason_code=request.reason,
     )
 
-
-from optimus.net.https import https_hostname
