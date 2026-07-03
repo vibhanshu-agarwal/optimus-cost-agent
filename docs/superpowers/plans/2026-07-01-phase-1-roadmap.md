@@ -13,6 +13,21 @@ The PDFs under `docs/*.pdf` remain authoritative. This file is a planning compan
 - Do not introduce local Tavily, OpenAI, OpenRouter, GLM, LangSmith, or provider keys.
 - If HLD, LLD, and Test Strategy conflict, stop and resolve the conflict before coding.
 
+## Cross-Cutting: Context Window Optimization & Intelligent Selection
+
+Context Window Optimization - with Intelligent Selection as the primary control plane and Intelligent Pruning as one named strategy inside it - is core Phase 1 architecture, not an optional later-phase optimization. It governs how evidence, tool output, and conversation state get selected, packed, compacted, and evicted across the plans below, and it is tracked here so it stays visible even though it is not yet scheduled as its own plan.
+
+**Canonical source:** `docs/context-window-optimization-strategy.md` is the standalone, senior-architect-approved canonical design note for this initiative. It stays standalone - intentionally separate from the HLD, LLD, and Test Strategy PDFs - until gates, traces, and ablations are defined and calibrated. See "PDF fold-in" below.
+
+**Placeholder targets stay placeholders.** Values such as the >= 15% fully-loaded cost savings target, the "no material regression" threshold, latency/cache-hit baselines, and cooldown windows are calibration items, not release gates. Do not wire them into Test Strategy or the release-gate runner as pass/fail thresholds until they are calibrated on Optimus eval runs.
+
+**How the existing plans carry this initiative:**
+- Plan 7 owns the cost-attribution prerequisite: every prompt block, retrieval/compression/summarization/reranking step, and model call must be attributable by strategy, stage, `run_id`/`session_id`, token count, `cost_usd`, `cache_hit`, model, and provider. Without this, the selection layer's cost gates are not measurable.
+- Plan 8 owns leaving room in the fitness-gate and release-gate machinery for the offline promotion gates, the baseline/ablation plan, and context-regret checks defined in the design note - without binding them in as enforced gates yet.
+- Plans 4, 5, 6, and 9 supply the context-selection inputs this initiative packs and scores, but do not implement selection themselves: Plan 4 provides evidence-ledger and tool-output-trust signals, Plan 5 and Plan 6 provide the guardrail, MCP, and config-trust signals that feed freshness/trust gating, and Plan 9 provides loop state and skill-selection signals for on-demand procedural context.
+
+**PDF fold-in:** the HLD, LLD, and Test Strategy PDFs remain authoritative and untouched by this initiative for now. Only the accepted policy folds into those PDFs, and only after calibration baselines, trace fields, ablation criteria, and promotion gates are accepted.
+
 ## Plan 1: Core Runtime, ACP Transport, and Test Harness
 
 **Plan file:** `docs/superpowers/plans/2026-07-01-core-runtime-acp-transport.md`
@@ -133,6 +148,28 @@ The PDFs under `docs/*.pdf` remain authoritative. This file is a planning compan
 - `GoalLoopController`, `IterationState`, `CompletionEvaluator`, `ProgressLedger`, `LoopBudgetPolicy`, `SkillRegistry`, `SkillManifest`, `SkillTrustPolicy`, and `SkillInvocationPolicy`.
 - Tests proving loop stops on completion, max iterations, budget exhaustion, wall-clock limit, repeated failure, and human halt; skill loading only occurs for matched trusted skills and cannot widen the tool surface or override deny rules.
 
+## Plan 10 (Tracked, Not Yet Scheduled): Context Window Optimization and Intelligent Selection
+
+**Design source:** `docs/context-window-optimization-strategy.md` (standalone canonical design note; no HLD/LLD/Test Strategy anchors yet - see the Cross-Cutting section above)
+
+**Future implementation plan:** create `docs/superpowers/plans/YYYY-MM-DD-context-window-optimization-intelligent-selection.md` after the prerequisite plans (7, 8, and the input-supplying Plans 4, 5, 6, 9) are stable.
+
+**User story:** As the agent runtime, I select, pack, summarize, invalidate, evict, and measure context under a cost- and freshness-aware policy, so the agent gets smarter while fully-loaded cost goes down, without ever silently dropping required evidence to fit a budget.
+
+**Status:** Tracked, not yet scheduled. This plan comes after the release skeleton (Plans 1, 2, 3, 7, 8) and the guardrail/input surface (Plans 4, 5, 6, 9) are stable, since selection policy depends on the cost-attribution, evidence, trust, freshness, and loop/skill signals those plans establish. Do not start this plan early just because it is architecturally core - its inputs need to exist first.
+
+**Source anchors:**
+- `docs/context-window-optimization-strategy.md` - Context Type x Mechanism Matrix, Selection Pipeline, Selection Model, Freshness and Dependency Precedence, Prompt Packing and Cost Controls, Compaction, Offline Promotion Gates, Online Guardrails, Context Regret, Baseline and Ablation Plan, Calibration Items.
+- Depends on: Plan 7's cost-attribution ledger, Plan 4's evidence/tool-output trust, Plan 5/6's guardrail and MCP/config trust signals, Plan 9's loop/skill state.
+
+**Expected deliverables:**
+- Selection/scoring engine implementing the utility function (weighted relevance, dependency-coverage gain, authority, recency, user pin, failure recurrence, evidence-diversity gain, minus redundancy penalty), dependency-closure resolution, and budget-constrained packing.
+- Two-phase trust/freshness gating, cache-stable prompt packing, and compaction triggered by the defined high-water marks (context usage threshold, iteration boundary, tool-output budget, repeated-failure pollution, model-tier downgrade, scope/approval change).
+- Offline promotion-gate harness (patch correctness, fully-loaded cost, stale-context rejection, context regret, coverage@line-budget, injection safety) and the null-baseline / single-mechanism / combination ablation suite.
+- Online guardrail circuit breakers (missing attribution, budget overshoot, incomplete dependency closure, low freshness confidence, cache-hit degradation) with anti-thrash cooldown.
+
+**Explicit non-goal for this plan's initial scope:** promoting any calibration placeholder (15% savings target, regression thresholds, latency/cache baselines) to a binding release gate, and folding this content into the HLD/LLD/Test Strategy PDFs. Both happen later, and only after Optimus eval runs calibrate the placeholders and the promotion gates are accepted.
+
 ## Recommended Sequence
 
 1. Plan 1: Core runtime and ACP transport.
@@ -144,5 +181,6 @@ The PDFs under `docs/*.pdf` remain authoritative. This file is a planning compan
 7. Plan 5: Permission/pre-tool/shell guardrails.
 8. Plan 6: Prompt-injection/MCP/CI parity.
 9. Plan 9: Bounded loops and curated workflow skills.
+10. Plan 10: Context window optimization and intelligent selection - tracked, not yet scheduled; starts only once the release skeleton and guardrail/input surface above are stable.
 
-The recommended sequence builds the executable release skeleton before expanding the higher-risk guardrail surface. If the project goal shifts toward safety certification before gateway functionality, move Plans 5 and 6 immediately after Plan 2.
+The recommended sequence builds the executable release skeleton before expanding the higher-risk guardrail surface. If the project goal shifts toward safety certification before gateway functionality, move Plans 5 and 6 immediately after Plan 2. Plan 10 stays last regardless: it depends on inputs from Plans 4, 5, 6, 7, and 9, and its PDF fold-in is explicitly deferred until calibration is accepted.
