@@ -1,6 +1,6 @@
 # Gateway-Only Configuration and Gateway Client Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build the Phase 1 gateway-only configuration model and typed Optimus Gateway client so local runtime needs only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY`.
 
@@ -96,7 +96,7 @@ This plan is sized for roughly 2 weeks of human development effort:
 - Modify: `pyproject.toml`
 - Modify: `uv.lock`
 
-- [ ] **Step 1: Write the dependency expectation test**
+- [x] **Step 1: Write the dependency expectation test**
 
 Append to `tests/unit/test_package_imports.py`:
 
@@ -107,7 +107,7 @@ def test_pydantic_is_available_for_gateway_settings():
     assert pydantic.VERSION.split(".")[0] == "2"
 ```
 
-- [ ] **Step 2: Run the test to verify it fails or confirms the missing declared dependency**
+- [x] **Step 2: Run the test to verify it fails or confirms the missing declared dependency**
 
 Run:
 
@@ -117,7 +117,7 @@ pytest tests/unit/test_package_imports.py::test_pydantic_is_available_for_gatewa
 
 Expected before dependency update: FAIL with `ModuleNotFoundError: No module named 'pydantic'` if the local environment is clean. If it passes because another package installed Pydantic transitively, still continue because `pyproject.toml` must declare the runtime dependency explicitly.
 
-- [ ] **Step 3: Add Pydantic to runtime dependencies**
+- [x] **Step 3: Add Pydantic to runtime dependencies**
 
 Update `pyproject.toml`:
 
@@ -131,7 +131,7 @@ dependencies = [
 ]
 ```
 
-- [ ] **Step 4: Refresh the lockfile**
+- [x] **Step 4: Refresh the lockfile**
 
 Run:
 
@@ -141,7 +141,7 @@ uv lock
 
 Expected: `uv.lock` updates with Pydantic and its transitive dependencies.
 
-- [ ] **Step 5: Sync the local environment**
+- [x] **Step 5: Sync the local environment**
 
 Run:
 
@@ -151,7 +151,7 @@ uv sync --all-extras
 
 Expected: the active project environment installs the locked Pydantic dependency and dev test dependencies.
 
-- [ ] **Step 6: Run the dependency test**
+- [x] **Step 6: Run the dependency test**
 
 Run:
 
@@ -161,7 +161,7 @@ pytest tests/unit/test_package_imports.py::test_pydantic_is_available_for_gatewa
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add pyproject.toml uv.lock tests/unit/test_package_imports.py
@@ -175,7 +175,7 @@ git commit -m "Declare Pydantic for gateway settings."
 - Create: `src/optimus/config/gateway.py`
 - Test: `tests/unit/config/test_gateway_settings.py`
 
-- [ ] **Step 1: Write failing settings and masking tests**
+- [x] **Step 1: Write failing settings and masking tests**
 
 Create `tests/unit/config/test_gateway_settings.py`:
 
@@ -234,7 +234,7 @@ def test_builtin_origin_constant_is_exact_phase_1_origin():
     assert BUILT_IN_TRUSTED_GATEWAY_ORIGINS == frozenset({"https://gateway.optimus.ai"})
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -244,7 +244,7 @@ pytest tests/unit/config/test_gateway_settings.py -v
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'optimus.config'`.
 
-- [ ] **Step 3: Implement settings model and auth headers**
+- [x] **Step 3: Implement settings model and auth headers**
 
 Create `src/optimus/config/__init__.py`:
 
@@ -380,7 +380,7 @@ def _origin(url: str) -> str:
     return _normalize_origin(url)
 ```
 
-- [ ] **Step 4: Run settings tests**
+- [x] **Step 4: Run settings tests**
 
 Run:
 
@@ -390,7 +390,7 @@ pytest tests/unit/config/test_gateway_settings.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/config tests/unit/config/test_gateway_settings.py
@@ -403,7 +403,7 @@ git commit -m "Add gateway settings and auth headers."
 - Modify: `src/optimus/config/gateway.py`
 - Test: `tests/unit/config/test_gateway_settings.py`
 
-- [ ] **Step 1: Add failing origin and provider-key policy tests**
+- [x] **Step 1: Add failing origin and provider-key policy tests**
 
 Append to `tests/unit/config/test_gateway_settings.py`:
 
@@ -559,7 +559,7 @@ def test_ignore_policy_cannot_be_used_in_production():
         )
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -569,7 +569,7 @@ pytest tests/unit/config/test_gateway_settings.py -v
 
 Expected: FAIL with missing `validate_no_local_provider_keys`, missing bootstrap validation, and ignore-policy production validation.
 
-- [ ] **Step 3: Implement provider-key policy**
+- [x] **Step 3: Implement provider-key policy**
 
 Update `src/optimus/config/gateway.py`:
 
@@ -652,7 +652,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: Run settings tests**
+- [x] **Step 4: Run settings tests**
 
 Run:
 
@@ -662,7 +662,7 @@ pytest tests/unit/config/test_gateway_settings.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/config tests/unit/config/test_gateway_settings.py
@@ -677,7 +677,7 @@ git commit -m "Validate gateway origins and local provider keys."
 - Create: `src/optimus/gateway/models.py`
 - Test: `tests/unit/gateway/test_models.py`
 
-- [ ] **Step 1: Write failing payload and parser tests**
+- [x] **Step 1: Write failing payload and parser tests**
 
 Create `tests/unit/gateway/test_models.py`:
 
@@ -850,7 +850,7 @@ def test_parse_gateway_response_fails_closed_for_malformed_usage(body, message):
         parse_gateway_response(body)
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -860,7 +860,7 @@ pytest tests/unit/gateway/test_models.py -v
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'optimus.gateway'`.
 
-- [ ] **Step 3: Implement gateway errors**
+- [x] **Step 3: Implement gateway errors**
 
 Create `src/optimus/gateway/errors.py`:
 
@@ -882,7 +882,7 @@ class GatewayResponseError(GatewayError):
     """Raised when a gateway response is malformed or missing required usage."""
 ```
 
-- [ ] **Step 4: Implement gateway models, payload builders, and parser**
+- [x] **Step 4: Implement gateway models, payload builders, and parser**
 
 Create `src/optimus/gateway/models.py`:
 
@@ -984,7 +984,7 @@ def _extract_text_from_output(output: object) -> str | None:
     return "".join(chunks)
 ```
 
-- [ ] **Step 5: Export gateway models**
+- [x] **Step 5: Export gateway models**
 
 Create `src/optimus/gateway/__init__.py`:
 
@@ -1012,7 +1012,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 6: Run gateway model tests**
+- [x] **Step 6: Run gateway model tests**
 
 Run:
 
@@ -1022,7 +1022,7 @@ pytest tests/unit/gateway/test_models.py -v
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/optimus/gateway tests/unit/gateway/test_models.py
@@ -1036,7 +1036,7 @@ git commit -m "Add gateway wire models and usage parsing."
 - Modify: `src/optimus/gateway/__init__.py`
 - Test: `tests/unit/gateway/test_client.py`
 
-- [ ] **Step 1: Write failing client tests**
+- [x] **Step 1: Write failing client tests**
 
 Create `tests/unit/gateway/test_client.py`:
 
@@ -1273,7 +1273,7 @@ def test_urllib_transport_rejects_malformed_json_response(monkeypatch, body, mes
         )
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -1283,7 +1283,7 @@ pytest tests/unit/gateway/test_client.py -v
 
 Expected: FAIL with missing `optimus.gateway.client`.
 
-- [ ] **Step 3: Implement gateway client**
+- [x] **Step 3: Implement gateway client**
 
 Create `src/optimus/gateway/client.py`:
 
@@ -1404,7 +1404,7 @@ def _decode_gateway_json(body: str) -> dict[str, Any]:
     return decoded
 ```
 
-- [ ] **Step 4: Export gateway client**
+- [x] **Step 4: Export gateway client**
 
 Update `src/optimus/gateway/__init__.py`:
 
@@ -1421,7 +1421,7 @@ Add to `__all__`:
 "UrllibGatewayTransport",
 ```
 
-- [ ] **Step 5: Run client tests**
+- [x] **Step 5: Run client tests**
 
 Run:
 
@@ -1431,7 +1431,7 @@ pytest tests/unit/gateway/test_client.py -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/optimus/gateway tests/unit/gateway/test_client.py
@@ -1446,7 +1446,7 @@ git commit -m "Add Optimus Gateway client."
 
 **Design decision:** `optimus.gateway.responses` is intentionally callable from `PLAN` / `CHAT_ONLY` context because model generation is required to produce advisory plans and chat answers. This is not a local file, shell, patch, or repository mutation. Gateway-side budget, wallet, provider-key injection, usage recording, and policy revalidation remain mandatory for the billed external call.
 
-- [ ] **Step 1: Add failing ACP gateway dispatch tests**
+- [x] **Step 1: Add failing ACP gateway dispatch tests**
 
 Append to `tests/unit/acp/test_dispatcher.py`:
 
@@ -1553,7 +1553,7 @@ def test_dispatcher_rejects_gateway_responses_messages_shape():
     assert response["error"]["message"] == "invalid request"
 ```
 
-- [ ] **Step 2: Run dispatcher tests to verify they fail**
+- [x] **Step 2: Run dispatcher tests to verify they fail**
 
 Run:
 
@@ -1563,7 +1563,7 @@ pytest tests/unit/acp/test_dispatcher.py -v
 
 Expected: FAIL with unexpected `gateway_client` argument or method not found.
 
-- [ ] **Step 3: Add optional gateway client and dispatch method**
+- [x] **Step 3: Add optional gateway client and dispatch method**
 
 Update `src/optimus/acp/dispatcher.py` imports:
 
@@ -1659,7 +1659,7 @@ def _gateway_response_payload(response: GatewayResponse) -> dict[str, Any]:
 
 If `INTERNAL_ERROR` is not already imported from `optimus.acp.errors`, add it to the existing import list.
 
-- [ ] **Step 4: Run dispatcher and ACP integration tests**
+- [x] **Step 4: Run dispatcher and ACP integration tests**
 
 Run:
 
@@ -1669,7 +1669,7 @@ pytest tests/unit/acp/test_dispatcher.py tests/integration/acp/test_server_strea
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/acp/dispatcher.py tests/unit/acp/test_dispatcher.py
@@ -1682,7 +1682,7 @@ git commit -m "Route ACP gateway response calls."
 - Create: `tests/integration/gateway/test_one_key_mocked_run.py`
 - Verify: `src/optimus/config/*`, `src/optimus/gateway/*`, `src/optimus/acp/dispatcher.py`
 
-- [ ] **Step 1: Write the mocked full-run integration test**
+- [x] **Step 1: Write the mocked full-run integration test**
 
 Create `tests/integration/gateway/test_one_key_mocked_run.py`:
 
@@ -1760,7 +1760,7 @@ def test_mocked_full_gateway_run_uses_only_optimus_credentials(monkeypatch):
     assert "messages" not in request.payload
 ```
 
-- [ ] **Step 2: Run the integration test to verify it passes**
+- [x] **Step 2: Run the integration test to verify it passes**
 
 Run:
 
@@ -1770,7 +1770,7 @@ pytest tests/integration/gateway/test_one_key_mocked_run.py -v
 
 Expected: PASS with no provider key configured in the test environment.
 
-- [ ] **Step 3: Run the full gateway/config/ACP focused suite**
+- [x] **Step 3: Run the full gateway/config/ACP focused suite**
 
 Run:
 
@@ -1780,7 +1780,7 @@ pytest tests/unit/config tests/unit/gateway tests/unit/acp/test_dispatcher.py te
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/integration/gateway/test_one_key_mocked_run.py
@@ -1792,7 +1792,7 @@ git commit -m "Verify mocked one-key gateway run."
 **Files:**
 - Modify: `README.md`
 
-- [ ] **Step 1: Add the README gateway foundation note**
+- [x] **Step 1: Add the README gateway foundation note**
 
 Append under the existing Phase 1 Mode Boundary Foundation section:
 
@@ -1808,7 +1808,7 @@ to `/v1/responses` using the Responses API `input` shape and parses the
 GatewayUsage envelope before returning generated text.
 ```
 
-- [ ] **Step 2: Run focused smoke tests**
+- [x] **Step 2: Run focused smoke tests**
 
 Run:
 
@@ -1818,7 +1818,7 @@ pytest tests/unit/config tests/unit/gateway tests/integration/gateway -v
 
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add README.md
@@ -1830,7 +1830,7 @@ git commit -m "Document gateway configuration foundation."
 **Files:**
 - Verify: all files from Tasks 1-8
 
-- [ ] **Step 1: Run focused test suite with scoped coverage**
+- [x] **Step 1: Run focused test suite with scoped coverage**
 
 Run:
 
@@ -1840,7 +1840,7 @@ pytest tests/unit/config tests/unit/gateway tests/unit/acp/test_dispatcher.py te
 
 Expected: PASS with focused coverage at or above 80% for the Plan 3 slice. Safety-critical `optimus.config.gateway`, `optimus.gateway.models`, and `optimus.gateway.client` should have high branch coverage for origin validation, provider-key handling, malformed responses, Decimal cost parsing, and auth header construction.
 
-- [ ] **Step 2: Run the full package coverage gate**
+- [x] **Step 2: Run the full package coverage gate**
 
 Run:
 
@@ -1850,7 +1850,7 @@ pytest --cov=optimus --cov-branch --cov-report=term-missing -v
 
 Expected: PASS with aggregate Python production-code coverage at or above the `pyproject.toml` `fail_under = 80` gate.
 
-- [ ] **Step 3: Run the full test suite without coverage instrumentation**
+- [x] **Step 3: Run the full test suite without coverage instrumentation**
 
 Run:
 
@@ -1860,7 +1860,7 @@ pytest -v
 
 Expected: PASS.
 
-- [ ] **Step 4: Check provider key absence in the implementation test environment**
+- [x] **Step 4: Check provider key absence in the implementation test environment**
 
 Run:
 
@@ -1870,7 +1870,7 @@ python -c "import os; keys=['ANTHROPIC_API_KEY','GLM_API_KEY','LANGSMITH_API_KEY
 
 Expected: PASS with output `FOUND=`. If this fails on a developer workstation, unset the provider key variables before running the release-gate subset. Do not add those keys to local config.
 
-- [ ] **Step 5: Check working tree**
+- [x] **Step 5: Check working tree**
 
 Run:
 
@@ -1880,7 +1880,7 @@ git status --short
 
 Expected: only intentional Plan 3 implementation files are modified or added. Pre-existing unrelated IDE, extracted-doc, generated cache, or Plan 2 artifacts must not be staged.
 
-- [ ] **Step 6: Commit final verification adjustments if needed**
+- [x] **Step 6: Commit final verification adjustments if needed**
 
 If Task 9 required code or docs adjustments after verification, commit only those intentional files:
 

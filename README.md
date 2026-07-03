@@ -30,6 +30,16 @@ shell execution, and shadow patch application call the primitive before any
 side effect, and ACP callers receive JSON-RPC code `-32002` when the boundary is
 violated.
 
+### Phase 1 Gateway Configuration Foundation
+
+The gateway configuration foundation keeps the local runtime on the one-key
+model: `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY`. `OptimusGatewaySettings`
+validates trusted gateway origins, masks the Optimus API key in safe dumps and
+representations, rejects local provider keys in strict mode, and supports
+development-only extra trusted origins. The gateway client posts model requests
+to `/v1/responses` using the Responses API `input` shape and parses the
+GatewayUsage envelope before returning generated text.
+
 ## Prerequisites
 
 - **Python** ≥ 3.14
