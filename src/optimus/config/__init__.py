@@ -2,6 +2,7 @@
 
 from optimus.config.gateway import (
     BUILT_IN_TRUSTED_GATEWAY_ORIGINS,
+    LOCAL_PROVIDER_KEY_NAMES,
     OptimusGatewaySettings,
     ProviderKeyPolicy,
     ProviderKeyViolation,
@@ -9,6 +10,7 @@ from optimus.config.gateway import (
 
 __all__ = [
     "BUILT_IN_TRUSTED_GATEWAY_ORIGINS",
+    "LOCAL_PROVIDER_KEY_NAMES",
     "OptimusGatewaySettings",
     "ProviderKeyPolicy",
     "ProviderKeyViolation",

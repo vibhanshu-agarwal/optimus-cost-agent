@@ -9,6 +9,19 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, m
 
 BUILT_IN_TRUSTED_GATEWAY_ORIGINS = frozenset({"https://gateway.optimus.ai"})
 
+LOCAL_PROVIDER_KEY_NAMES = frozenset(
+    {
+        "ANTHROPIC_API_KEY",
+        "GLM_API_KEY",
+        "LANGCHAIN_API_KEY",
+        "LANGSMITH_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENROUTER_API_KEY",
+        "TAVILY_API_KEY",
+        "ZHIPUAI_API_KEY",
+    }
+)
+
 
 class ProviderKeyPolicy(StrEnum):
     REJECT = "reject"
@@ -53,9 +66,11 @@ class OptimusGatewaySettings(BaseModel):
         return tuple(_normalize_origin(str(part)) for part in value)
 
     @model_validator(mode="after")
-    def validate_production_extra_origins(self) -> OptimusGatewaySettings:
+    def validate_production_constraints(self) -> OptimusGatewaySettings:
         if self.production_mode and self.extra_trusted_origins:
             raise ValueError("extra_trusted_origins must not be set in production_mode")
+        if self.production_mode and self.provider_key_policy is ProviderKeyPolicy.IGNORE:
+            raise ValueError("provider_key_policy=ignore is valid only outside production_mode")
         return self
 
     @classmethod
@@ -63,12 +78,15 @@ class OptimusGatewaySettings(BaseModel):
         env = os.environ if environ is None else environ
         production_mode = _env_bool(env.get("OPTIMUS_PRODUCTION_MODE"), default=True)
         extra_origins = "" if production_mode else env.get("OPTIMUS_EXTRA_GATEWAY_ORIGINS", "")
-        return cls(
+        settings = cls(
             gateway_url=_required_env(env, "OPTIMUS_GATEWAY_URL"),
             optimus_api_key=_required_env(env, "OPTIMUS_API_KEY"),
             production_mode=production_mode,
             extra_trusted_origins=extra_origins,
         )
+        settings.validate_trusted_gateway()
+        settings.validate_no_local_provider_keys(env)
+        return settings
 
     def auth_headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.optimus_api_key.get_secret_value()}"}
@@ -81,6 +99,15 @@ class OptimusGatewaySettings(BaseModel):
             trusted.update(self.extra_trusted_origins)
         if origin not in trusted:
             raise ValueError(f"gateway origin not in trusted set: {origin}")
+
+    def validate_no_local_provider_keys(self, environ: Mapping[str, str] | None = None) -> tuple[str, ...]:
+        env = os.environ if environ is None else environ
+        found = sorted(name for name in LOCAL_PROVIDER_KEY_NAMES if env.get(name))
+        if not found:
+            return ()
+        if self.provider_key_policy is ProviderKeyPolicy.IGNORE and not self.production_mode:
+            return tuple(found)
+        raise ProviderKeyViolation(found)
 
     def safe_model_dump(self) -> dict[str, object]:
         data = self.model_dump()
