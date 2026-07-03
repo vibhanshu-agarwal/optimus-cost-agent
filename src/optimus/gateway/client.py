@@ -96,6 +96,20 @@ class GatewayClient:
         )
         return parse_gateway_response(body)
 
+    def post_tool_json(self, *, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if not path.startswith("/v1/tools/"):
+            raise ValueError("tool path must start with /v1/tools/")
+        self._settings.validate_trusted_gateway()
+        return self._transport.post_json(
+            GatewayRequest(
+                method="POST",
+                url=self._url(path),
+                headers=self._json_headers(),
+                payload=payload,
+                timeout_seconds=self._timeout_seconds,
+            )
+        )
+
     def _url(self, path: str) -> str:
         return f"{self._settings.gateway_url.rstrip('/')}{path}"
 

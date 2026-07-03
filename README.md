@@ -40,6 +40,19 @@ development-only extra trusted origins. The gateway client posts model requests
 to `/v1/responses` using the Responses API `input` shape and parses the
 GatewayUsage envelope before returning generated text.
 
+### Phase 1 Tool Policy and Evidence Foundation
+
+Tool calls are authorized by `ToolInvocationPolicy` before execution and are
+recorded through `ToolRegistry.authorize_and_record_call()` so per-run caps are
+enforced atomically. Web search and extract have local defense-in-depth checks
+and remote gateway policy enforcement: the local runtime intersects requested
+domains with the configured evidence allowlist, validates returned URLs before
+they become provenance, sends only authenticated Optimus Gateway requests, keeps
+URL provenance per run, and records `GatewayUsage` fields into
+`EvidenceLedgerEntry` objects without estimating cost locally. Extracted web
+content is untrusted evidence text and must not be executed or promoted to
+policy without a separate harness decision.
+
 ## Prerequisites
 
 - **Python** ≥ 3.14
