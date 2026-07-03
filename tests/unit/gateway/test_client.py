@@ -229,3 +229,47 @@ def test_urllib_transport_rejects_malformed_json_response(monkeypatch, body, mes
                 payload={"model": "glm-5.2", "input": "hello"},
             )
         )
+
+
+def test_post_tool_json_posts_to_gateway_tool_endpoint():
+    transport = FakeTransport(response={"ok": True})
+    client = GatewayClient(settings=settings(), transport=transport)
+
+    response = client.post_tool_json(
+        path="/v1/tools/web/search",
+        payload={"query": "latest pytest release"},
+    )
+
+    assert response == {"ok": True}
+    request = transport.requests[0]
+    assert request.method == "POST"
+    assert request.url == "https://gateway.optimus.ai/v1/tools/web/search"
+    assert request.headers == {
+        "Authorization": "Bearer opt_live_abc",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    assert request.payload == {"query": "latest pytest release"}
+
+
+def test_post_tool_json_validates_trusted_gateway_before_transport():
+    transport = FakeTransport()
+    client = GatewayClient(
+        settings=OptimusGatewaySettings(
+            gateway_url="https://rogue.attacker.com",
+            optimus_api_key="opt_live_abc",
+        ),
+        transport=transport,
+    )
+
+    with pytest.raises(ValueError, match="gateway origin not in trusted set"):
+        client.post_tool_json(path="/v1/tools/web/search", payload={"query": "current fact"})
+
+    assert transport.requests == []
+
+
+def test_post_tool_json_rejects_non_tool_path():
+    client = GatewayClient(settings=settings(), transport=FakeTransport())
+
+    with pytest.raises(ValueError, match="tool path must start with /v1/tools/"):
+        client.post_tool_json(path="/v1/responses", payload={})
