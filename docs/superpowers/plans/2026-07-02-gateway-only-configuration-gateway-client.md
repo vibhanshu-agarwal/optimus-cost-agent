@@ -1830,7 +1830,7 @@ git commit -m "Document gateway configuration foundation."
 **Files:**
 - Verify: all files from Tasks 1-8
 
-- [ ] **Step 1: Run focused test suite with scoped coverage**
+- [x] **Step 1: Run focused test suite with scoped coverage**
 
 Run:
 
@@ -1840,7 +1840,7 @@ pytest tests/unit/config tests/unit/gateway tests/unit/acp/test_dispatcher.py te
 
 Expected: PASS with focused coverage at or above 80% for the Plan 3 slice. Safety-critical `optimus.config.gateway`, `optimus.gateway.models`, and `optimus.gateway.client` should have high branch coverage for origin validation, provider-key handling, malformed responses, Decimal cost parsing, and auth header construction.
 
-- [ ] **Step 2: Run the full package coverage gate**
+- [x] **Step 2: Run the full package coverage gate**
 
 Run:
 
@@ -1850,7 +1850,7 @@ pytest --cov=optimus --cov-branch --cov-report=term-missing -v
 
 Expected: PASS with aggregate Python production-code coverage at or above the `pyproject.toml` `fail_under = 80` gate.
 
-- [ ] **Step 3: Run the full test suite without coverage instrumentation**
+- [x] **Step 3: Run the full test suite without coverage instrumentation**
 
 Run:
 
@@ -1860,7 +1860,7 @@ pytest -v
 
 Expected: PASS.
 
-- [ ] **Step 4: Check provider key absence in the implementation test environment**
+- [x] **Step 4: Check provider key absence in the implementation test environment**
 
 Run:
 
@@ -1870,7 +1870,7 @@ python -c "import os; keys=['ANTHROPIC_API_KEY','GLM_API_KEY','LANGSMITH_API_KEY
 
 Expected: PASS with output `FOUND=`. If this fails on a developer workstation, unset the provider key variables before running the release-gate subset. Do not add those keys to local config.
 
-- [ ] **Step 5: Check working tree**
+- [x] **Step 5: Check working tree**
 
 Run:
 
@@ -1880,7 +1880,7 @@ git status --short
 
 Expected: only intentional Plan 3 implementation files are modified or added. Pre-existing unrelated IDE, extracted-doc, generated cache, or Plan 2 artifacts must not be staged.
 
-- [ ] **Step 6: Commit final verification adjustments if needed**
+- [x] **Step 6: Commit final verification adjustments if needed**
 
 If Task 9 required code or docs adjustments after verification, commit only those intentional files:
 
