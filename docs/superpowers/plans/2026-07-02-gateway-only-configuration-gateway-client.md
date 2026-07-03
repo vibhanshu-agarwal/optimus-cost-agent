@@ -1792,7 +1792,7 @@ git commit -m "Verify mocked one-key gateway run."
 **Files:**
 - Modify: `README.md`
 
-- [ ] **Step 1: Add the README gateway foundation note**
+- [x] **Step 1: Add the README gateway foundation note**
 
 Append under the existing Phase 1 Mode Boundary Foundation section:
 
@@ -1808,7 +1808,7 @@ to `/v1/responses` using the Responses API `input` shape and parses the
 GatewayUsage envelope before returning generated text.
 ```
 
-- [ ] **Step 2: Run focused smoke tests**
+- [x] **Step 2: Run focused smoke tests**
 
 Run:
 
@@ -1818,7 +1818,7 @@ pytest tests/unit/config tests/unit/gateway tests/integration/gateway -v
 
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add README.md
