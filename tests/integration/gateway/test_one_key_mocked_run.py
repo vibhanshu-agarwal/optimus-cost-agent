@@ -5,6 +5,9 @@ from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.client import GatewayClient, GatewayRequest
 
 
+# Not production logic: mock transport for gateway-only, no-network integration testing.
+# Captures outbound requests and returns canned gateway JSON so the test can prove
+# end-to-end dispatcher → client → transport behavior without real HTTP.
 class CapturingGatewayTransport:
     def __init__(self) -> None:
         self.requests: list[GatewayRequest] = []
