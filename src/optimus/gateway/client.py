@@ -43,6 +43,8 @@ class GatewayTransport(Protocol):
         """Send JSON to the gateway and return a decoded JSON object."""
 
 
+# Production transport seam: stdlib urllib keeps Phase 1 free of HTTP client deps.
+# Tests inject a fake transport instead; release-gate E2E can add outbound intercept later.
 class UrllibGatewayTransport:
     def post_json(self, request: GatewayRequest) -> dict[str, Any]:
         urllib_request = Request(

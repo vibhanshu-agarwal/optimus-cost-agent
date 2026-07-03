@@ -10,6 +10,7 @@ from optimus.gateway.client import GatewayClient, GatewayRequest, UrllibGatewayT
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
 
 
+# Test double for GatewayTransport: records requests and returns canned JSON without I/O.
 class FakeTransport:
     def __init__(self, response: dict[str, object] | None = None, error: Exception | None = None) -> None:
         self.response = response or {
