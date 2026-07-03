@@ -1,5 +1,7 @@
 """Evidence acquisition and ledger models."""
 
+from optimus.evidence.acquisition import EvidenceAcquisitionService
+from optimus.evidence.domain_policy import EvidenceDomainPolicy, EvidenceDomainRejected
 from optimus.evidence.gateway_io import (
     build_web_extract_payload,
     build_web_search_payload,
@@ -18,6 +20,9 @@ from optimus.evidence.models import (
 __all__ = [
     "build_web_extract_payload",
     "build_web_search_payload",
+    "EvidenceAcquisitionService",
+    "EvidenceDomainPolicy",
+    "EvidenceDomainRejected",
     "EvidenceExtractRequest",
     "EvidenceExtractResponse",
     "EvidenceLedger",
