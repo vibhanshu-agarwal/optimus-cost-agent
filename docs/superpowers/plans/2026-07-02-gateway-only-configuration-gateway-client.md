@@ -1,6 +1,6 @@
 # Gateway-Only Configuration and Gateway Client Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build the Phase 1 gateway-only configuration model and typed Optimus Gateway client so local runtime needs only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY`.
 
@@ -96,7 +96,7 @@ This plan is sized for roughly 2 weeks of human development effort:
 - Modify: `pyproject.toml`
 - Modify: `uv.lock`
 
-- [ ] **Step 1: Write the dependency expectation test**
+- [x] **Step 1: Write the dependency expectation test**
 
 Append to `tests/unit/test_package_imports.py`:
 
@@ -107,7 +107,7 @@ def test_pydantic_is_available_for_gateway_settings():
     assert pydantic.VERSION.split(".")[0] == "2"
 ```
 
-- [ ] **Step 2: Run the test to verify it fails or confirms the missing declared dependency**
+- [x] **Step 2: Run the test to verify it fails or confirms the missing declared dependency**
 
 Run:
 
@@ -117,7 +117,7 @@ pytest tests/unit/test_package_imports.py::test_pydantic_is_available_for_gatewa
 
 Expected before dependency update: FAIL with `ModuleNotFoundError: No module named 'pydantic'` if the local environment is clean. If it passes because another package installed Pydantic transitively, still continue because `pyproject.toml` must declare the runtime dependency explicitly.
 
-- [ ] **Step 3: Add Pydantic to runtime dependencies**
+- [x] **Step 3: Add Pydantic to runtime dependencies**
 
 Update `pyproject.toml`:
 
@@ -131,7 +131,7 @@ dependencies = [
 ]
 ```
 
-- [ ] **Step 4: Refresh the lockfile**
+- [x] **Step 4: Refresh the lockfile**
 
 Run:
 
@@ -141,7 +141,7 @@ uv lock
 
 Expected: `uv.lock` updates with Pydantic and its transitive dependencies.
 
-- [ ] **Step 5: Sync the local environment**
+- [x] **Step 5: Sync the local environment**
 
 Run:
 
@@ -151,7 +151,7 @@ uv sync --all-extras
 
 Expected: the active project environment installs the locked Pydantic dependency and dev test dependencies.
 
-- [ ] **Step 6: Run the dependency test**
+- [x] **Step 6: Run the dependency test**
 
 Run:
 
@@ -161,7 +161,7 @@ pytest tests/unit/test_package_imports.py::test_pydantic_is_available_for_gatewa
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add pyproject.toml uv.lock tests/unit/test_package_imports.py
@@ -175,7 +175,7 @@ git commit -m "Declare Pydantic for gateway settings."
 - Create: `src/optimus/config/gateway.py`
 - Test: `tests/unit/config/test_gateway_settings.py`
 
-- [ ] **Step 1: Write failing settings and masking tests**
+- [x] **Step 1: Write failing settings and masking tests**
 
 Create `tests/unit/config/test_gateway_settings.py`:
 
@@ -234,7 +234,7 @@ def test_builtin_origin_constant_is_exact_phase_1_origin():
     assert BUILT_IN_TRUSTED_GATEWAY_ORIGINS == frozenset({"https://gateway.optimus.ai"})
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -244,7 +244,7 @@ pytest tests/unit/config/test_gateway_settings.py -v
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'optimus.config'`.
 
-- [ ] **Step 3: Implement settings model and auth headers**
+- [x] **Step 3: Implement settings model and auth headers**
 
 Create `src/optimus/config/__init__.py`:
 
@@ -380,7 +380,7 @@ def _origin(url: str) -> str:
     return _normalize_origin(url)
 ```
 
-- [ ] **Step 4: Run settings tests**
+- [x] **Step 4: Run settings tests**
 
 Run:
 
@@ -390,7 +390,7 @@ pytest tests/unit/config/test_gateway_settings.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/config tests/unit/config/test_gateway_settings.py
@@ -403,7 +403,7 @@ git commit -m "Add gateway settings and auth headers."
 - Modify: `src/optimus/config/gateway.py`
 - Test: `tests/unit/config/test_gateway_settings.py`
 
-- [ ] **Step 1: Add failing origin and provider-key policy tests**
+- [x] **Step 1: Add failing origin and provider-key policy tests**
 
 Append to `tests/unit/config/test_gateway_settings.py`:
 
@@ -559,7 +559,7 @@ def test_ignore_policy_cannot_be_used_in_production():
         )
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -569,7 +569,7 @@ pytest tests/unit/config/test_gateway_settings.py -v
 
 Expected: FAIL with missing `validate_no_local_provider_keys`, missing bootstrap validation, and ignore-policy production validation.
 
-- [ ] **Step 3: Implement provider-key policy**
+- [x] **Step 3: Implement provider-key policy**
 
 Update `src/optimus/config/gateway.py`:
 
@@ -652,7 +652,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: Run settings tests**
+- [x] **Step 4: Run settings tests**
 
 Run:
 
@@ -662,7 +662,7 @@ pytest tests/unit/config/test_gateway_settings.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/config tests/unit/config/test_gateway_settings.py
@@ -677,7 +677,7 @@ git commit -m "Validate gateway origins and local provider keys."
 - Create: `src/optimus/gateway/models.py`
 - Test: `tests/unit/gateway/test_models.py`
 
-- [ ] **Step 1: Write failing payload and parser tests**
+- [x] **Step 1: Write failing payload and parser tests**
 
 Create `tests/unit/gateway/test_models.py`:
 
@@ -850,7 +850,7 @@ def test_parse_gateway_response_fails_closed_for_malformed_usage(body, message):
         parse_gateway_response(body)
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -860,7 +860,7 @@ pytest tests/unit/gateway/test_models.py -v
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'optimus.gateway'`.
 
-- [ ] **Step 3: Implement gateway errors**
+- [x] **Step 3: Implement gateway errors**
 
 Create `src/optimus/gateway/errors.py`:
 
@@ -882,7 +882,7 @@ class GatewayResponseError(GatewayError):
     """Raised when a gateway response is malformed or missing required usage."""
 ```
 
-- [ ] **Step 4: Implement gateway models, payload builders, and parser**
+- [x] **Step 4: Implement gateway models, payload builders, and parser**
 
 Create `src/optimus/gateway/models.py`:
 
@@ -984,7 +984,7 @@ def _extract_text_from_output(output: object) -> str | None:
     return "".join(chunks)
 ```
 
-- [ ] **Step 5: Export gateway models**
+- [x] **Step 5: Export gateway models**
 
 Create `src/optimus/gateway/__init__.py`:
 
@@ -1012,7 +1012,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 6: Run gateway model tests**
+- [x] **Step 6: Run gateway model tests**
 
 Run:
 
@@ -1022,7 +1022,7 @@ pytest tests/unit/gateway/test_models.py -v
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/optimus/gateway tests/unit/gateway/test_models.py
@@ -1036,7 +1036,7 @@ git commit -m "Add gateway wire models and usage parsing."
 - Modify: `src/optimus/gateway/__init__.py`
 - Test: `tests/unit/gateway/test_client.py`
 
-- [ ] **Step 1: Write failing client tests**
+- [x] **Step 1: Write failing client tests**
 
 Create `tests/unit/gateway/test_client.py`:
 
@@ -1273,7 +1273,7 @@ def test_urllib_transport_rejects_malformed_json_response(monkeypatch, body, mes
         )
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -1283,7 +1283,7 @@ pytest tests/unit/gateway/test_client.py -v
 
 Expected: FAIL with missing `optimus.gateway.client`.
 
-- [ ] **Step 3: Implement gateway client**
+- [x] **Step 3: Implement gateway client**
 
 Create `src/optimus/gateway/client.py`:
 
@@ -1404,7 +1404,7 @@ def _decode_gateway_json(body: str) -> dict[str, Any]:
     return decoded
 ```
 
-- [ ] **Step 4: Export gateway client**
+- [x] **Step 4: Export gateway client**
 
 Update `src/optimus/gateway/__init__.py`:
 
@@ -1421,7 +1421,7 @@ Add to `__all__`:
 "UrllibGatewayTransport",
 ```
 
-- [ ] **Step 5: Run client tests**
+- [x] **Step 5: Run client tests**
 
 Run:
 
@@ -1431,7 +1431,7 @@ pytest tests/unit/gateway/test_client.py -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/optimus/gateway tests/unit/gateway/test_client.py
