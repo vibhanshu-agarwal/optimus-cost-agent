@@ -53,6 +53,7 @@
 - Direct `subprocess`, `Path.write_text()`, external MCP autoload, or gateway calls outside the guarded wrappers remain out of scope for this plan and must not be represented as covered.
 - Human approval is intentionally coarse in Plan 5. Follow-up work should bind approvals to normalized command hashes, target path scopes, tool surface, approver, run/session ids, and expiration before treating approval as replay-resistant.
 - MCP calls are held by default until Plan 6 adds the MCP trust registry, autoload denial, and per-server/tool policy.
+- Path containment is validated at pre-tool check time via `PathSafetyValidator._inside_workspace()`, which resolves symlinks when the check runs; the actual write in `mutation_tools.write_file()` happens afterward. A symlink swapped in that window could bypass containment. This is an accepted Phase 1 risk for a single-user local agent; closing it requires re-checking the resolved path immediately before I/O (for example open-with-no-follow semantics) and belongs in follow-up hardening, not Plan 5's scope.
 
 ## File Structure
 

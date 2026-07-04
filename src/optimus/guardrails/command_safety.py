@@ -35,6 +35,12 @@ class CommandSafetyValidator:
         lowered = text.lower()
         if _contains_control_sequence(text):
             return ValidationResult(ValidationVerdict.BLOCK, "shell.ansi_control", "ANSI or control sequence detected")
+        if _contains_bidi_or_format_control(text):
+            return ValidationResult(
+                ValidationVerdict.BLOCK,
+                "shell.unicode_bidi_control",
+                "Unicode bidi or format control character detected",
+            )
         if _contains_confusable(text) or _contains_punycode_host(text):
             return ValidationResult(ValidationVerdict.BLOCK, "shell.unicode_confusable", "Unicode confusable detected")
         if _is_recursive_force_delete(command, lowered):
@@ -95,6 +101,10 @@ class CommandSafetyValidator:
 
 def _contains_control_sequence(text: str) -> bool:
     return any((ord(char) < 32 and char not in "\t\r\n") or ord(char) == 127 for char in text)
+
+
+def _contains_bidi_or_format_control(text: str) -> bool:
+    return any(unicodedata.category(char) == "Cf" for char in text)
 
 
 def _contains_confusable(text: str) -> bool:

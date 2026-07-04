@@ -111,6 +111,20 @@ def test_cyrillic_i_homoglyph_in_hostname_blocks(tmp_path):
     assert result.rule_id == "shell.unicode_confusable"
 
 
+def test_rtl_override_in_argument_blocks(tmp_path):
+    result = validator(tmp_path).validate(("printf", "\u202e", "safe-looking"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "shell.unicode_bidi_control"
+
+
+def test_zero_width_space_obfuscation_blocks(tmp_path):
+    result = validator(tmp_path).validate(("echo", "rm\u200b-rf"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "shell.unicode_bidi_control"
+
+
 def test_pytest_command_allows(tmp_path):
     result = validator(tmp_path).validate(("pytest", "tests/unit", "-q"))
 
