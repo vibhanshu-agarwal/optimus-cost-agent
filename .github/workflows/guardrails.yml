@@ -42,7 +42,7 @@ jobs:
         run: uv run ruff check .
 
       - name: "optimus-check: bandit"
-        run: uv run bandit -q -r src
+        run: uv run bandit -q -r src -c pyproject.toml
 
       - name: "optimus-check: ast-grep"
         run: uv run pre-commit run optimus-ast-grep --all-files

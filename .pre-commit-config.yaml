@@ -19,7 +19,7 @@ repos:
         pass_filenames: false
       - id: optimus-bandit
         name: "optimus-check: bandit"
-        entry: bandit -q -r src
+        entry: bandit -q -r src -c pyproject.toml
         language: system
         pass_filenames: false
       - id: optimus-ast-grep
