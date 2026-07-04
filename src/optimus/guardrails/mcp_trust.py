@@ -221,7 +221,10 @@ class MCPConfigIngestionGuard:
                 f"MCP config path is not a readable file: {path.as_posix()}",
             )
         text = path.read_text(encoding="utf-8", errors="replace")
-        scan = self._scanner.scan_text(text, subject=TrustScanSubject.CONFIG_FILE, source_path=str(path))
+        return self.scan_manifest_text(text, source_path=str(path))
+
+    def scan_manifest_text(self, text: str, *, source_path: str) -> MCPTrustDecision:
+        scan = self._scanner.scan_text(text, subject=TrustScanSubject.CONFIG_FILE, source_path=source_path)
         if not scan.allowed:
             rules = ",".join(finding.rule_id for finding in scan.findings)
             return MCPTrustDecision(False, "mcp.config_injection", f"MCP config rejected: {rules}")
