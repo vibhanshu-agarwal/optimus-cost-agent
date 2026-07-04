@@ -1,6 +1,6 @@
 # Permission Engine, Pre-Tool Guard, and Shell Safety Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build the Phase 1 permission engine, pre-tool guard, and deterministic shell/file/network safety validators so unsafe tool calls are denied or held before execution.
 
@@ -98,7 +98,7 @@ Each task includes a commit step because the Superpowers workflow favors small r
 - Create: `src/optimus/guardrails/__init__.py`
 - Test: `tests/unit/guardrails/test_permissions.py`
 
-- [ ] **Step 1: Write failing permission-policy tests**
+- [x] **Step 1: Write failing permission-policy tests**
 
 Create `tests/unit/guardrails/test_permissions.py`:
 
@@ -339,7 +339,7 @@ def test_classifier_cannot_overturn_user_deny():
     assert decision.rule_id == "deny.path.secret"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -349,7 +349,7 @@ pytest tests/unit/guardrails/test_permissions.py -v
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'optimus.guardrails'`.
 
-- [ ] **Step 3: Implement permission policy**
+- [x] **Step 3: Implement permission policy**
 
 Create `src/optimus/guardrails/permissions.py`:
 
@@ -613,7 +613,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: Run permission tests**
+- [x] **Step 4: Run permission tests**
 
 Run:
 
@@ -623,7 +623,7 @@ pytest tests/unit/guardrails/test_permissions.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/guardrails/__init__.py src/optimus/guardrails/permissions.py tests/unit/guardrails/test_permissions.py
@@ -637,7 +637,7 @@ git commit -m "Add deny-before-allow permission policy."
 - Create: `src/optimus/guardrails/path_safety.py`
 - Test: `tests/unit/guardrails/test_path_safety.py`
 
-- [ ] **Step 1: Write failing path safety tests**
+- [x] **Step 1: Write failing path safety tests**
 
 Create `tests/unit/guardrails/test_path_safety.py`:
 
@@ -682,7 +682,7 @@ def test_normal_workspace_write_allows(tmp_path):
     assert result.verdict is ValidationVerdict.ALLOW
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -692,7 +692,7 @@ pytest tests/unit/guardrails/test_path_safety.py -v
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'optimus.guardrails.path_safety'`.
 
-- [ ] **Step 3: Implement path safety**
+- [x] **Step 3: Implement path safety**
 
 Create `src/optimus/guardrails/validation.py`:
 
@@ -773,7 +773,7 @@ def _is_secret_path(path: Path) -> bool:
     return any(part.endswith(".pem") or part.endswith(".key") for part in parts)
 ```
 
-- [ ] **Step 4: Run path safety tests**
+- [x] **Step 4: Run path safety tests**
 
 Run:
 
@@ -783,7 +783,7 @@ pytest tests/unit/guardrails/test_path_safety.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/guardrails/validation.py src/optimus/guardrails/path_safety.py tests/unit/guardrails/test_path_safety.py
@@ -796,7 +796,7 @@ git commit -m "Add workspace path safety validator."
 - Create: `src/optimus/guardrails/network_safety.py`
 - Test: `tests/unit/guardrails/test_network_safety.py`
 
-- [ ] **Step 1: Write failing network safety tests**
+- [x] **Step 1: Write failing network safety tests**
 
 Create `tests/unit/guardrails/test_network_safety.py`:
 
@@ -830,7 +830,7 @@ def test_unexpected_host_is_held():
     assert result.rule_id == "network.unexpected_egress"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -840,7 +840,7 @@ pytest tests/unit/guardrails/test_network_safety.py -v
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'optimus.guardrails.network_safety'`.
 
-- [ ] **Step 3: Implement network safety**
+- [x] **Step 3: Implement network safety**
 
 Create `src/optimus/guardrails/network_safety.py`:
 
@@ -868,7 +868,7 @@ class NetworkSafetyValidator:
         return ValidationResult(ValidationVerdict.HOLD, "network.unexpected_egress", "unexpected network egress requires approval")
 ```
 
-- [ ] **Step 4: Run network safety tests**
+- [x] **Step 4: Run network safety tests**
 
 Run:
 
@@ -878,7 +878,7 @@ pytest tests/unit/guardrails/test_network_safety.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/guardrails/network_safety.py tests/unit/guardrails/test_network_safety.py
@@ -891,7 +891,7 @@ git commit -m "Add network egress safety validator."
 - Create: `src/optimus/guardrails/command_safety.py`
 - Test: `tests/unit/guardrails/test_command_safety.py`
 
-- [ ] **Step 1: Write failing command safety tests**
+- [x] **Step 1: Write failing command safety tests**
 
 Create `tests/unit/guardrails/test_command_safety.py`:
 
@@ -1022,7 +1022,7 @@ def test_unknown_command_holds_by_default(tmp_path):
     assert result.rule_id == "shell.unclassified_command"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1032,7 +1032,7 @@ pytest tests/unit/guardrails/test_command_safety.py -v
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'optimus.guardrails.command_safety'`.
 
-- [ ] **Step 3: Implement command safety**
+- [x] **Step 3: Implement command safety**
 
 Create `src/optimus/guardrails/command_safety.py`:
 
@@ -1210,7 +1210,7 @@ def _is_allowed_command(command: tuple[str, ...]) -> bool:
     return lowered[:2] in {("git", "status"), ("git", "diff"), ("git", "log"), ("git", "show")}
 ```
 
-- [ ] **Step 4: Run command safety tests**
+- [x] **Step 4: Run command safety tests**
 
 Run:
 
@@ -1220,7 +1220,7 @@ pytest tests/unit/guardrails/test_command_safety.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/guardrails/command_safety.py tests/unit/guardrails/test_command_safety.py
@@ -1235,7 +1235,7 @@ git commit -m "Add deterministic command safety validator."
 - Modify: `src/optimus/guardrails/__init__.py`
 - Test: `tests/unit/guardrails/test_pre_tool_guard.py`
 
-- [ ] **Step 1: Write failing pre-tool guard tests**
+- [x] **Step 1: Write failing pre-tool guard tests**
 
 Create `tests/unit/guardrails/test_pre_tool_guard.py`:
 
@@ -1432,7 +1432,7 @@ def test_pre_tool_guard_redacts_url_userinfo_from_audit_subject(tmp_path):
     assert "https://**********@gateway.optimus.ai/status" in subject
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1442,7 +1442,7 @@ pytest tests/unit/guardrails/test_pre_tool_guard.py -v
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'optimus.guardrails.pre_tool'`.
 
-- [ ] **Step 3: Implement audit and pre-tool guard**
+- [x] **Step 3: Implement audit and pre-tool guard**
 
 Create `src/optimus/guardrails/audit.py`:
 
@@ -1689,7 +1689,7 @@ Add these names to `__all__`:
     "ToolInvocationAuditEvent",
 ```
 
-- [ ] **Step 4: Run pre-tool guard tests**
+- [x] **Step 4: Run pre-tool guard tests**
 
 Run:
 
@@ -1699,7 +1699,7 @@ pytest tests/unit/guardrails/test_pre_tool_guard.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Run all guardrail unit tests**
+- [x] **Step 5: Run all guardrail unit tests**
 
 Run:
 
@@ -1709,7 +1709,7 @@ pytest tests/unit/guardrails -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/optimus/guardrails tests/unit/guardrails
@@ -1722,7 +1722,7 @@ git commit -m "Add pre-tool guard with audit events."
 - Modify: `src/optimus/tools/mutation_tools.py`
 - Modify: `tests/unit/tools/test_mutation_tools.py`
 
-- [ ] **Step 1: Write failing mutation-tool guard tests and update the existing approved-write test**
+- [x] **Step 1: Write failing mutation-tool guard tests and update the existing approved-write test**
 
 Add the guard imports near the top of `tests/unit/tools/test_mutation_tools.py`:
 
@@ -1778,7 +1778,7 @@ def test_write_file_checks_pre_tool_guard_before_write(tmp_path):
     assert guard.requests[-1].target_path == str(target)
 ```
 
-- [ ] **Step 2: Run mutation-tool tests to verify they fail**
+- [x] **Step 2: Run mutation-tool tests to verify they fail**
 
 Run:
 
@@ -1788,7 +1788,7 @@ pytest tests/unit/tools/test_mutation_tools.py -v
 
 Expected: FAIL with unexpected keyword argument `guard`.
 
-- [ ] **Step 3: Wire guard into mutation tools**
+- [x] **Step 3: Wire guard into mutation tools**
 
 Modify `src/optimus/tools/mutation_tools.py`:
 
@@ -1908,7 +1908,7 @@ def shadow_apply(
     return applier(patch_text)
 ```
 
-- [ ] **Step 4: Run mutation-tool tests**
+- [x] **Step 4: Run mutation-tool tests**
 
 Run:
 
@@ -1918,7 +1918,7 @@ pytest tests/unit/tools/test_mutation_tools.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/tools/mutation_tools.py tests/unit/tools/test_mutation_tools.py
@@ -1931,7 +1931,7 @@ git commit -m "Guard mutation tools before side effects."
 - Modify: `src/optimus/evidence/acquisition.py`
 - Modify: `tests/unit/evidence/test_acquisition.py`
 
-- [ ] **Step 1: Write failing evidence guard test**
+- [x] **Step 1: Write failing evidence guard test**
 
 Append to `tests/unit/evidence/test_acquisition.py`:
 
@@ -1969,7 +1969,7 @@ def test_search_pre_tool_guard_blocks_before_gateway_transport():
     assert gateway.calls == []
 ```
 
-- [ ] **Step 2: Run acquisition tests to verify they fail**
+- [x] **Step 2: Run acquisition tests to verify they fail**
 
 Run:
 
@@ -1979,7 +1979,7 @@ pytest tests/unit/evidence/test_acquisition.py -v
 
 Expected: FAIL with unexpected keyword argument `pre_tool_guard`.
 
-- [ ] **Step 3: Wire optional pre-tool guard into evidence service**
+- [x] **Step 3: Wire optional pre-tool guard into evidence service**
 
 Modify `src/optimus/evidence/acquisition.py` imports. Add the guardrail imports, replace the current `from optimus.tools.policy import ToolClass, ToolInvocationRequest` line with the expanded import, and replace the current `from optimus.tools.registry import ToolRegistry` line with the expanded registry import:
 
@@ -2091,7 +2091,7 @@ Call the helper before the extract gateway call in `extract()`:
         )
 ```
 
-- [ ] **Step 4: Run evidence acquisition tests**
+- [x] **Step 4: Run evidence acquisition tests**
 
 Run:
 
@@ -2101,7 +2101,7 @@ pytest tests/unit/evidence/test_acquisition.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/evidence/acquisition.py tests/unit/evidence/test_acquisition.py
@@ -2114,7 +2114,7 @@ git commit -m "Guard evidence gateway calls before transport."
 - Create: `tests/integration/guardrails/test_pre_tool_guard_blocks_side_effects.py`
 - Verify: `src/optimus/guardrails/*`, `src/optimus/tools/mutation_tools.py`, `src/optimus/evidence/acquisition.py`
 
-- [ ] **Step 1: Write integration tests**
+- [x] **Step 1: Write integration tests**
 
 Create `tests/integration/guardrails/test_pre_tool_guard_blocks_side_effects.py`:
 
@@ -2168,7 +2168,7 @@ def test_blocked_secret_write_never_creates_file(tmp_path):
     assert guard.audit_events()[-1].rule_id == "path.secret.write"
 ```
 
-- [ ] **Step 2: Run integration tests**
+- [x] **Step 2: Run integration tests**
 
 Run:
 
@@ -2178,7 +2178,7 @@ pytest tests/integration/guardrails/test_pre_tool_guard_blocks_side_effects.py -
 
 Expected: PASS.
 
-- [ ] **Step 3: Run focused guardrail and affected seam tests**
+- [x] **Step 3: Run focused guardrail and affected seam tests**
 
 Run:
 
@@ -2188,7 +2188,7 @@ pytest tests/unit/guardrails tests/unit/tools/test_mutation_tools.py tests/unit/
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/integration/guardrails/test_pre_tool_guard_blocks_side_effects.py
@@ -2200,7 +2200,7 @@ git commit -m "Verify pre-tool guard blocks side effects."
 **Files:**
 - Modify: `README.md`
 
-- [ ] **Step 1: Add the README guardrail note**
+- [x] **Step 1: Add the README guardrail note**
 
 Append under the existing Phase 1 evidence/tool policy note:
 
@@ -2223,7 +2223,7 @@ entries with sanitized subjects. Durable tamper-evident audit persistence is
 owned by Plan 7.
 ```
 
-- [ ] **Step 2: Run documentation-adjacent smoke tests**
+- [x] **Step 2: Run documentation-adjacent smoke tests**
 
 Run:
 
@@ -2233,7 +2233,7 @@ pytest tests/unit/guardrails tests/unit/tools/test_mutation_tools.py -v
 
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add README.md
@@ -2245,7 +2245,7 @@ git commit -m "Document permission and pre-tool guardrails."
 **Files:**
 - Verify: all files from Tasks 1-9
 
-- [ ] **Step 1: Run focused coverage for safety-critical guardrails**
+- [x] **Step 1: Run focused coverage for safety-critical guardrails**
 
 Run:
 
@@ -2255,7 +2255,7 @@ pytest tests/unit/guardrails tests/unit/tools/test_mutation_tools.py tests/unit/
 
 Expected: PASS with focused coverage at or above 80%. `optimus.guardrails.permissions`, `optimus.guardrails.command_safety`, and `optimus.guardrails.pre_tool` should trend higher because they are safety-critical.
 
-- [ ] **Step 2: Run the full package coverage gate**
+- [x] **Step 2: Run the full package coverage gate**
 
 Run:
 
@@ -2265,7 +2265,7 @@ pytest --cov=optimus --cov-branch --cov-report=term-missing -v
 
 Expected: PASS with aggregate Python production-code coverage at or above the `pyproject.toml` `fail_under = 80` gate.
 
-- [ ] **Step 3: Run the full test suite without coverage instrumentation**
+- [x] **Step 3: Run the full test suite without coverage instrumentation**
 
 Run:
 
@@ -2275,7 +2275,7 @@ pytest -v
 
 Expected: PASS.
 
-- [ ] **Step 4: Verify local provider keys are absent**
+- [x] **Step 4: Verify local provider keys are absent**
 
 Run:
 
@@ -2285,7 +2285,7 @@ python -c "import os; from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAME
 
 Expected: PASS with output `FOUND=`. If this fails on a developer workstation, unset provider key variables before running the release-gate subset. Do not add those keys to local config.
 
-- [ ] **Step 5: Check working tree**
+- [x] **Step 5: Check working tree**
 
 Run:
 
@@ -2295,7 +2295,7 @@ git status --short
 
 Expected: only intentional Plan 5 implementation files are modified or added. Pre-existing unrelated IDE files, caches, extracted docs, or prior plan artifacts must not be staged.
 
-- [ ] **Step 6: Check whitespace**
+- [x] **Step 6: Check whitespace**
 
 Run:
 
@@ -2305,7 +2305,7 @@ git diff --check
 
 Expected: no whitespace errors.
 
-- [ ] **Step 7: Commit final verification adjustments if needed**
+- [x] **Step 7: Commit final verification adjustments if needed**
 
 If Task 10 required code or docs adjustments after verification, commit only those intentional files:
 
