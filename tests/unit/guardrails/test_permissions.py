@@ -232,3 +232,23 @@ def test_classifier_cannot_overturn_user_deny():
     assert decision.verdict is PermissionVerdict.DENY
     assert decision.layer is PermissionLayer.USER_DENY
     assert decision.rule_id == "deny.path.secret"
+
+
+def test_force_push_to_main_bypass_still_denied():
+    policy = PermissionPolicy()
+
+    decision = policy.decide(
+        PermissionRequest(
+            run_id="run-1",
+            session_id="session-1",
+            execution_mode=ExecutionMode.AGENT,
+            tool_surface=ToolSurface.SHELL,
+            action="git push --force origin main",
+            command=("git", "push", "--force", "origin", "main"),
+            generation_scope=GenerationScope.INLINE_SNIPPET,
+            approval_granted=True,
+        )
+    )
+
+    assert decision.verdict is PermissionVerdict.DENY
+    assert decision.rule_id == "deny.git.force_push_main"
