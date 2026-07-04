@@ -26,11 +26,11 @@ Both deviations are consistent with the plan's stated intent (deny-before-allow,
 
 ## Gaps (found by tracing control flow and reproducing behavior directly, independent of what either document claims)
 
-**A. The audit trail didn't actually persist anywhere in the one real call site. — RESOLVED (applied directly, out-of-band from this review).** `src/optimus/acp/dispatcher.py` was the only production code that invoked a guarded mutation tool (`optimus.mutation.writeFile` → `write_file(...)`), and it called `write_file` without passing `guard=`. Every real call fell back to `guard or PreToolGuard.for_workspace(workspace_root=Path.cwd(), allowed_network_hosts=())` — a brand-new `PreToolGuard` with a brand-new `InMemoryAuditSink`, constructed and discarded within the function call. This has since been fixed: `JsonRpcDispatcher.__init__` now builds one `PreToolGuard` for the dispatcher's lifetime and threads it into every `write_file` call, with a new `dispatcher.audit_events()` accessor to retrieve the accumulated trail. Covered by two new tests in `tests/unit/acp/test_dispatcher.py`. These edits are sitting uncommitted in the working tree — no branch or commit was created (git isn't reachable from the review sandbox), so they still need to go through normal review/commit.
+**A. The audit trail didn't actually persist anywhere in the one real call site. — RESOLVED.** Landed as commit `a8659d73` on the PR branch. `JsonRpcDispatcher.__init__` now builds one `PreToolGuard` for the dispatcher's lifetime and threads it into every `write_file` call, with a `dispatcher.audit_events()` accessor to retrieve the accumulated trail. Covered by two new tests in `tests/unit/acp/test_dispatcher.py`. Independently re-verified against the pushed commit: diff matches byte-for-byte, 204/204 suite passing, coverage unaffected elsewhere.
 
-**B. `workspace_root=Path.cwd()` was a fragile security boundary. — PARTIALLY RESOLVED (same change as A).** The dispatcher now takes an explicit `workspace_root` constructor argument, so the containment boundary is a caller-supplied value at the composition root rather than an implicit `Path.cwd()` buried in a leaf function. It still *defaults* to `Path.cwd()` if the caller doesn't supply one — closing this fully requires whatever process actually starts the ACP server (no such startup/bootstrap module exists yet in this codebase) to pass a real, validated project root through to the dispatcher. Flagging this as the one piece of B still open.
+**B. `workspace_root=Path.cwd()` was a fragile security boundary. — PARTIALLY RESOLVED (same commit as A).** The dispatcher now takes an explicit `workspace_root` constructor argument, so the containment boundary is a caller-supplied value at the composition root rather than an implicit `Path.cwd()` buried in a leaf function. It still *defaults* to `Path.cwd()` if the caller doesn't supply one — closing this fully requires whatever process actually starts the ACP server (no such startup/bootstrap module exists yet in this codebase) to pass a real, validated project root through to the dispatcher. This piece is **deferred by agreement**, not forgotten, until that bootstrap exists.
 
-The remaining items (C–H) are unchanged from the original review and are written up as a punch list below.
+Items C–H below are now all resolved as of commit `c2ace2c` (with H resolved as a documentation note, per its own recommendation). The punch list is kept in place, unedited, as the historical record of what was asked for; closure notes and independent verification for each item are in the "Closure verification" section that follows it.
 
 ## Punch list — remaining items for hand-off
 
@@ -96,20 +96,31 @@ Each item lists the affected file(s), the exact function/class involved, what's 
 - **What's missing:** a symlink swapped in the window between validation and the real write would bypass containment. Low severity for a single-user local agent today; not really unit-testable as a race, so the recommended action is a documentation addition rather than a test.
 - **Suggested action:** add an explicit "accepted risk" note to the plan's Security Boundary Notes section (or open a design discussion if the team wants to close it, e.g. by opening with `O_NOFOLLOW`-equivalent semantics and re-checking the resolved path immediately before writing).
 
+## Closure verification (commits `5d7efa4`, `c2ace2c`)
+
+Independently re-verified against the pushed commits (fresh `git fetch` + `reset --hard` in the review clone, then re-run):
+
+- **C, F** (commit `5d7efa4`): diff matched claimed byte-for-byte (3 files, +156/-0, test-only). 44/44 targeted tests and 214/214 full suite confirmed. Confirmed the two new `extract()` tests in D actually reach the new guard call rather than being rejected earlier for an unrelated reason — they pre-seed `registry.record_search_results(...)` so Plan 4's provenance check passes, and the `match=` assertions use reason strings (`"blocked network egress"`, `"human approval required: unexpected network egress requires approval"`) that are unique to the test-double guards and don't appear anywhere else `ToolCallRejected` is raised in this service.
+- **D**: covered above; `acquisition.py` coverage 93%, confirmed.
+- **E, G** (commit `c2ace2c`): diff matched claimed byte-for-byte (5 files, +63/-0). 28/28 targeted, 218/218 full suite confirmed. Independently probed edge cases beyond the checked-in tests: `0.0.0.0`, bracketed IPv6 loopback `[::1]`, IPv6 link-local `[fe80::1]`, and an IPv4-mapped-IPv6 metadata address (`::ffff:169.254.169.254`, a known SSRF bypass trick) are all correctly `BLOCK`ed — the fix generalizes beyond the two literal test cases because it delegates to stdlib `ipaddress` rather than string-matching. One residual, minor gap found: RFC 6598 carrier-grade-NAT space (`100.64.0.0/10`) is not covered by Python's `ipaddress.is_private`/`is_link_local`/`is_reserved` on this interpreter, so it falls through to the ordinary `HOLD` path rather than a hard `BLOCK`. Low severity (still fail-safe, just approvable rather than not) — flagging for awareness, not as a new must-fix item.
+- **H**: the Security Boundary Notes addition in the plan doc accurately describes the risk and correctly scopes the fix to follow-up hardening rather than claiming it's closed.
+- **B remainder**: confirmed still open and correctly left alone, as agreed.
+
 ## What's solid
 
 The core design — deny-before-allow, mode short-circuiting before allow-list evaluation, HOLD-by-default for anything unclassified or ambiguous, MCP held pending Plan 6's trust registry, and blocking before any runner/writer/applier/transport call — is implemented exactly as specified and is properly fail-closed everywhere I probed it. The three "hot" modules (`permissions.py`, `command_safety.py`, `pre_tool.py`) that the plan calls out as safety-critical do carry the heaviest test weight. The self-review section in the plan doc is accurate about what's *not* covered (durable audit persistence, replay-resistant approvals, MCP trust, CI parity) — those are correctly deferred to Plans 6/7, not silently dropped.
 
 ## Status summary
 
-| Item | Status |
-|---|---|
-| A — dispatcher default guard / ephemeral audit sink | Resolved (uncommitted working-tree edit) |
-| B — `Path.cwd()` workspace boundary | Partially resolved (explicit param added; still defaults to cwd absent real server bootstrap) |
-| C — `shadow_apply` guard test coverage | Open — see punch list |
-| D — `extract()` guard + HOLD branch coverage | Open — see punch list |
-| E — Unicode bidi/zero-width detection | Open — see punch list |
-| F — destructive-command HOLD test coverage | Open — see punch list |
-| G — DNS/SSRF pinning | Open — see punch list |
-| H — TOCTOU on path containment | Open — documentation note recommended |
-| Plan doc's `command_safety.py`/Task 8 inconsistencies | Resolved (uncommitted working-tree edit) |
+| Item | Status | Commit |
+|---|---|---|
+| A — dispatcher default guard / ephemeral audit sink | Resolved | `a8659d73` |
+| B — `Path.cwd()` workspace boundary | Partially resolved; remainder deferred by agreement pending ACP server bootstrap | `a8659d73` |
+| C — `shadow_apply` guard test coverage | Resolved | `5d7efa4` |
+| D — `extract()` guard + HOLD branch coverage | Resolved | `5d7efa4` |
+| E — Unicode bidi/zero-width detection | Resolved | `c2ace2c` |
+| F — destructive-command HOLD test coverage | Resolved | `5d7efa4` |
+| G — DNS/SSRF pinning (literal IP targets) | Resolved (literal-IP scope only; DNS rebinding at connect time remains a transport-layer follow-up, by design) | `c2ace2c` |
+| H — TOCTOU on path containment | Resolved (documentation note, as recommended) | `c2ace2c` |
+| Plan doc's `command_safety.py`/Task 8 inconsistencies | Resolved | `a8659d73` |
+| Residual — RFC 6598 CGNAT range not hard-blocked in G | New, minor, informational only | — |
