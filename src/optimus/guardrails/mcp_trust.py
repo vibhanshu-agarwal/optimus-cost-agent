@@ -213,8 +213,15 @@ class MCPConfigIngestionGuard:
         return self._autoload.evaluate_autoload_path(manifest_path)
 
     def scan_manifest_path(self, manifest_path: str | Path) -> MCPTrustDecision:
-        text = Path(manifest_path).read_text(encoding="utf-8", errors="replace")
-        scan = self._scanner.scan_text(text, subject=TrustScanSubject.CONFIG_FILE, source_path=str(manifest_path))
+        path = Path(manifest_path)
+        if not path.is_file():
+            return MCPTrustDecision(
+                False,
+                "injection.unscannable_path",
+                f"MCP config path is not a readable file: {path.as_posix()}",
+            )
+        text = path.read_text(encoding="utf-8", errors="replace")
+        scan = self._scanner.scan_text(text, subject=TrustScanSubject.CONFIG_FILE, source_path=str(path))
         if not scan.allowed:
             rules = ",".join(finding.rule_id for finding in scan.findings)
             return MCPTrustDecision(False, "mcp.config_injection", f"MCP config rejected: {rules}")

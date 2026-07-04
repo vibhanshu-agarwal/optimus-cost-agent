@@ -224,3 +224,14 @@ def test_descriptor_exposure_guard_returns_only_trusted_descriptors():
     descriptors = exposure.expose_trusted_descriptors(server_id="packages", manifest=current)
 
     assert [descriptor.name for descriptor in descriptors] == ["search"]
+
+
+def test_config_ingestion_scan_blocks_missing_manifest_path(tmp_path):
+    guard = MCPConfigIngestionGuard(workspace_root=tmp_path, scanner=ConfigTrustScanner())
+    missing_manifest = tmp_path / ".cursor" / "missing-mcp.json"
+
+    decision = guard.scan_manifest_path(missing_manifest)
+
+    assert decision.allowed is False
+    assert decision.rule_id == "injection.unscannable_path"
+    assert "not a readable file" in decision.reason
