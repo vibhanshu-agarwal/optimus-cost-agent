@@ -70,6 +70,23 @@ recorded in an in-memory append-only audit sink as `ToolInvocationAuditEvent`
 entries with sanitized subjects. Durable tamper-evident audit persistence is
 owned by Plan 7.
 
+### Phase 1 Prompt-Injection, MCP Trust, and CI Parity
+
+Agent config files, repo rule files, MCP manifests, launch parameters, and MCP
+tool descriptors are treated as untrusted input. `ConfigTrustScanner` blocks an
+enumerated set of embedded instruction override attempts, exfiltration
+endpoints, secret-read instructions, fetch-and-execute instructions,
+ANSI/control text, and Unicode spoofing before guarded content can influence
+planner or tool behavior. MCP servers are never auto-loaded from cloned
+repositories. `MCPTrustRegistry` requires explicit approval, records manifest
+hashes, launch-parameter digests, allowed tools, permission scopes, and derived
+tool side-effect classes, and forces reapproval when a manifest changes.
+Planner descriptor exposure and MCP tool execution both go through the
+registry. Local pre-commit configuration and CI use the same named guardrail
+checks so skipped hooks and clean-checkout drift are caught by CI; a generated
+detect-secrets baseline keeps the real secret scan separate from the
+config-trust scan.
+
 ## Prerequisites
 
 - **Python** ≥ 3.14
