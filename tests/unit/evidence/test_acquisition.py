@@ -10,6 +10,7 @@ from optimus.evidence.models import (
     EvidenceRequest,
 )
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
+from optimus.guardrails.pre_tool import PreToolResult, PreToolVerdict
 from optimus.runtime.modes import ExecutionMode
 from optimus.tools.policy import EvidenceReasonCode, ToolClass, ToolPolicySignal
 from optimus.tools.registry import ToolCallRejected, ToolRegistry
@@ -332,5 +333,35 @@ def test_extract_rejects_unapproved_url_before_gateway_call():
 
     with pytest.raises(ToolCallRejected, match="URL not in approved search-result set"):
         service.extract(request, execution_mode=ExecutionMode.PLAN)
+
+    assert gateway.calls == []
+
+
+class BlockingPreToolGuard:
+    def check(self, request):
+        return PreToolResult(PreToolVerdict.BLOCK, "network.unexpected_egress", "blocked network egress")
+
+
+def test_search_pre_tool_guard_blocks_before_gateway_transport():
+    gateway = FakeGatewayClient()
+    service = EvidenceAcquisitionService(
+        gateway_client=gateway,
+        domain_policy=domain_policy(),
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+        pre_tool_guard=BlockingPreToolGuard(),
+    )
+
+    with pytest.raises(ToolCallRejected, match="blocked network egress"):
+        service.search(
+            EvidenceRequest(
+                run_id="run-1",
+                query="current docs",
+                reason=EvidenceReasonCode.USER_REQUESTED,
+                policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT,
+                allowed_domains=("docs.example.com",),
+            ),
+            execution_mode=ExecutionMode.AGENT,
+        )
 
     assert gateway.calls == []
