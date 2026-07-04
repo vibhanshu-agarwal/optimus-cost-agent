@@ -3,17 +3,18 @@ from __future__ import annotations
 import re
 import shlex
 import unicodedata
+from collections.abc import Mapping
 from pathlib import Path
 
 from optimus.guardrails.network_safety import NetworkSafetyValidator
 from optimus.guardrails.path_safety import PathSafetyValidator
+from optimus.guardrails.unicode_confusables import contains_dangerous_confusable
 from optimus.guardrails.validation import ValidationResult, ValidationVerdict
 
 _PIPE_TO_SHELL = re.compile(r"(curl|wget|irm|iwr|Invoke-WebRequest|Invoke-RestMethod)\b.*\|\s*(sh|bash|zsh|pwsh|powershell|iex|Invoke-Expression)\b", re.IGNORECASE)
 _FETCH_THEN_EXEC = re.compile(r"(curl|wget|irm|iwr|Invoke-WebRequest|Invoke-RestMethod)\b.*(&&|;)\s*(sh|bash|zsh|pwsh|powershell|iex|Invoke-Expression)\b", re.IGNORECASE)
 _ENV_ACCESS = re.compile(r"\b(printenv|env|set)\b|\bos\.environ\b|\$env:|%[A-Za-z_][A-Za-z0-9_]*%", re.IGNORECASE)
 _URL = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
-_CONFUSABLES = frozenset({"\u0430", "\u0435", "\u043e", "\u0440", "\u0441", "\u0445", "\u0443", "\u0456", "\uff41", "\uff45", "\uff49", "\uff4f"})
 _INTERPRETERS = {"bash", "sh", "zsh", "dash", "pwsh", "powershell", "python", "python3", "node", "ruby", "perl"}
 _INTERPRETER_PAYLOAD_FLAGS = {"-c", "-lc", "/c", "-command", "-e"}
 _NON_HTTP_EGRESS = {"scp", "sftp", "ssh", "ftp", "nc", "ncat", "netcat", "telnet"}
@@ -24,12 +25,17 @@ class CommandSafetyValidator:
         self._paths = PathSafetyValidator(workspace_root=workspace_root)
         self._network = NetworkSafetyValidator(allowed_hosts=allowed_network_hosts)
 
-    def validate(self, command: tuple[str, ...]) -> ValidationResult:
-        return self._validate_command(command, depth=0)
+    def validate(self, command: tuple[str, ...], *, env: Mapping[str, str] | None = None) -> ValidationResult:
+        inline_env, effective_command = _extract_inline_env(command)
+        merged_env = {**inline_env, **dict(env or {})}
+        return self._validate_command(effective_command, env=merged_env, depth=0)
 
-    def _validate_command(self, command: tuple[str, ...], *, depth: int) -> ValidationResult:
+    def _validate_command(self, command: tuple[str, ...], *, env: Mapping[str, str], depth: int) -> ValidationResult:
         if not command:
             return ValidationResult(ValidationVerdict.HOLD, "shell.empty_command", "empty command requires review")
+        git_config_result = _git_config_env_bypass(command, env)
+        if git_config_result is not None:
+            return git_config_result
         raw_text = " ".join(command)
         text = unicodedata.normalize("NFKC", raw_text)
         lowered = text.lower()
@@ -41,7 +47,7 @@ class CommandSafetyValidator:
                 "shell.unicode_bidi_control",
                 "Unicode bidi or format control character detected",
             )
-        if _contains_confusable(raw_text) or _contains_punycode_host(raw_text):
+        if contains_dangerous_confusable(raw_text):
             return ValidationResult(ValidationVerdict.BLOCK, "shell.unicode_confusable", "Unicode confusable detected")
         if _is_recursive_force_delete(command, lowered):
             return ValidationResult(ValidationVerdict.BLOCK, "shell.destructive.rm_rf", "recursive force delete denied")
@@ -66,7 +72,7 @@ class CommandSafetyValidator:
         if payload is not None:
             parsed = _split_payload(payload)
             if parsed:
-                payload_result = self._validate_command(tuple(parsed), depth=depth + 1)
+                payload_result = self._validate_command(tuple(parsed), env=env, depth=depth + 1)
                 if payload_result.verdict is not ValidationVerdict.HOLD:
                     return payload_result
             return ValidationResult(
@@ -109,14 +115,6 @@ def _contains_control_sequence(text: str) -> bool:
 
 def _contains_bidi_or_format_control(text: str) -> bool:
     return any(unicodedata.category(char) == "Cf" for char in text)
-
-
-def _contains_confusable(text: str) -> bool:
-    return any(char in _CONFUSABLES for char in text)
-
-
-def _contains_punycode_host(text: str) -> bool:
-    return "xn--" in text.lower()
 
 
 def _is_recursive_force_delete(command: tuple[str, ...], lowered: str) -> bool:
@@ -221,3 +219,38 @@ def _is_git_command(tokens: tuple[str, ...]) -> bool:
         return False
     executable = Path(tokens[0]).name.lower()
     return executable in {"git", "git.exe"}
+
+
+def _extract_inline_env(command: tuple[str, ...]) -> tuple[dict[str, str], tuple[str, ...]]:
+    if not command:
+        return {}, command
+    executable = Path(command[0]).name.lower()
+    if executable != "env":
+        return {}, command
+    env: dict[str, str] = {}
+    index = 1
+    while index < len(command) and "=" in command[index] and not command[index].startswith("-"):
+        key, value = command[index].split("=", 1)
+        if key:
+            env[key] = value
+        index += 1
+    return env, command[index:]
+
+
+def _git_config_env_bypass(command: tuple[str, ...], env: Mapping[str, str]) -> ValidationResult | None:
+    lowered_command = tuple(token.lower() for token in command)
+    if not _is_git_command(lowered_command):
+        return None
+    lowered_env = {key.lower(): value for key, value in env.items()}
+    git_config_keys = {key for key in lowered_env if key.startswith("git_config_")}
+    if not git_config_keys:
+        return None
+    joined_values = "\n".join(str(value).lower() for value in lowered_env.values())
+    joined_keys = "\n".join(git_config_keys)
+    if "alias." in joined_values or "alias." in joined_keys:
+        return ValidationResult(ValidationVerdict.BLOCK, "shell.git_config_env_bypass", "git alias injection through environment is denied")
+    if "core.hookspath" in joined_values or "core.hookspath" in joined_keys:
+        return ValidationResult(ValidationVerdict.BLOCK, "shell.git_config_env_bypass", "git hooksPath injection through environment is denied")
+    if "--no-verify" in joined_values or "\n-n\n" in f"\n{joined_values}\n":
+        return ValidationResult(ValidationVerdict.BLOCK, "shell.git_config_env_bypass", "git no-verify injection through environment is denied")
+    return ValidationResult(ValidationVerdict.BLOCK, "shell.git_config_env_bypass", "git config injection through environment is denied")

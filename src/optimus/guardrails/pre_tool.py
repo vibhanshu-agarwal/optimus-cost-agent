@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
@@ -37,6 +38,7 @@ class PreToolRequest:
     mcp_server_id: str | None = None
     mcp_tool_name: str | None = None
     mcp_manifest: MCPServerManifest | None = None
+    environment: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -127,7 +129,7 @@ class PreToolGuard:
 
     def _validate_surface(self, request: PreToolRequest) -> PreToolResult | None:
         if request.tool_surface is ToolSurface.SHELL:
-            validation = self._command_validator.validate(request.command)
+            validation = self._command_validator.validate(request.command, env=request.environment)
             return _pre_tool_result(validation.verdict, validation.rule_id, validation.reason)
         if request.tool_surface is ToolSurface.FILE_WRITE and request.target_path:
             validation = self._path_validator.validate_write(request.target_path)

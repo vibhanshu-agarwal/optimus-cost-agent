@@ -87,6 +87,18 @@ checks so skipped hooks and clean-checkout drift are caught by CI; a generated
 detect-secrets baseline keeps the real secret scan separate from the
 config-trust scan.
 
+### Phase 1 Plan 6.5 Guardrail Hardening
+
+Plan 6.5 closes review and CI follow-ups from prompt-injection, MCP trust, and
+CI parity work. MCP manifest ingestion now fails closed for unreadable paths,
+shell validation inspects both argv and explicit environment mappings for git
+config bypasses, Unicode spoofing uses maintained confusable detection, and MCP
+runtime calls use a default trust context that wires manifest scanning,
+workspace-bundled autoload denial, descriptor exposure, explicit per-call
+approval, and pre-tool execution through the same registry. Usage accounting
+and observability remain in Plan 7; Plan 6.5 only emits guardrail events for
+that later telemetry layer to persist or export.
+
 ## Prerequisites
 
 - **Python** ≥ 3.14

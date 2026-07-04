@@ -30,6 +30,7 @@ from optimus.guardrails.prompt_injection import (
     TrustScanSubject,
     TrustScanVerdict,
 )
+from optimus.guardrails.unicode_confusables import contains_dangerous_confusable
 
 __all__ = [
     "ImpactClass",
@@ -47,6 +48,7 @@ __all__ = [
     "ToolSurface",
     "classify_impact",
     "ConfigTrustScanner",
+    "contains_dangerous_confusable",
     "MCPAutoloadGuard",
     "MCPConfigIngestionGuard",
     "MCPDescriptorExposureGuard",

@@ -203,6 +203,14 @@ class MCPAutoloadGuard:
             return MCPTrustDecision(False, "mcp.autoload.outside_workspace", "external MCP manifests require explicit approval", True)
         return MCPTrustDecision(False, "mcp.autoload.cloned_repo_denied", "MCP servers bundled in cloned repositories never auto-load", True)
 
+    def is_workspace_bundled_path(self, manifest_path: str | Path) -> bool:
+        candidate = Path(manifest_path).resolve(strict=False)
+        try:
+            candidate.relative_to(self._workspace_root)
+        except ValueError:
+            return False
+        return True
+
 
 class MCPConfigIngestionGuard:
     def __init__(self, *, workspace_root: str | Path, scanner: ConfigTrustScanner) -> None:
@@ -212,9 +220,22 @@ class MCPConfigIngestionGuard:
     def deny_autoload_path(self, manifest_path: str | Path) -> MCPTrustDecision:
         return self._autoload.evaluate_autoload_path(manifest_path)
 
+    def is_workspace_bundled_path(self, manifest_path: str | Path) -> bool:
+        return self._autoload.is_workspace_bundled_path(manifest_path)
+
     def scan_manifest_path(self, manifest_path: str | Path) -> MCPTrustDecision:
-        text = Path(manifest_path).read_text(encoding="utf-8", errors="replace")
-        scan = self._scanner.scan_text(text, subject=TrustScanSubject.CONFIG_FILE, source_path=str(manifest_path))
+        path = Path(manifest_path)
+        if not path.is_file():
+            return MCPTrustDecision(
+                False,
+                "injection.unscannable_path",
+                f"MCP config path is not a readable file: {path.as_posix()}",
+            )
+        text = path.read_text(encoding="utf-8", errors="replace")
+        return self.scan_manifest_text(text, source_path=str(path))
+
+    def scan_manifest_text(self, text: str, *, source_path: str) -> MCPTrustDecision:
+        scan = self._scanner.scan_text(text, subject=TrustScanSubject.CONFIG_FILE, source_path=source_path)
         if not scan.allowed:
             rules = ",".join(finding.rule_id for finding in scan.findings)
             return MCPTrustDecision(False, "mcp.config_injection", f"MCP config rejected: {rules}")

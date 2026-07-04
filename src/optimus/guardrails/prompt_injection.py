@@ -7,6 +7,8 @@ from enum import StrEnum
 from pathlib import Path
 from sys import argv
 
+from optimus.guardrails.unicode_confusables import contains_dangerous_confusable
+
 
 class TrustScanSubject(StrEnum):
     CONFIG_FILE = "config_file"
@@ -65,8 +67,6 @@ _TEXT_RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ),
 )
 
-_CONFUSABLES = frozenset({"\u0430", "\u0435", "\u043e", "\u0440", "\u0441", "\u0445", "\u0443", "\u0456", "\uff41", "\uff45", "\uff49", "\uff4f"})
-
 
 class ConfigTrustScanner:
     def scan_text(self, text: str, *, subject: TrustScanSubject, source_path: str) -> TrustScanResult:
@@ -83,7 +83,7 @@ class ConfigTrustScanner:
             findings.append(TrustScanFinding("injection.control_character", "ANSI or control character detected", "<control>"))
         if _contains_format_control(normalized):
             findings.append(TrustScanFinding("injection.unicode_format_control", "Unicode format or bidi control detected", "<format-control>"))
-        if any(char in _CONFUSABLES for char in raw_text) or "xn--" in raw_text.lower():
+        if contains_dangerous_confusable(raw_text):
             findings.append(TrustScanFinding("injection.unicode_confusable", "Unicode confusable or punycode detected", "<confusable>"))
 
         return TrustScanResult(

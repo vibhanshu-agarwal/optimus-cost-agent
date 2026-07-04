@@ -239,3 +239,55 @@ def test_fullwidth_confusable_command_blocks_before_nfkc_folding(tmp_path):
 
     assert result.verdict is ValidationVerdict.BLOCK
     assert result.rule_id == "shell.unicode_confusable"
+
+
+def test_inline_env_git_config_alias_bypass_is_blocked(tmp_path):
+    validator = CommandSafetyValidator(workspace_root=tmp_path, allowed_network_hosts=())
+
+    result = validator.validate(
+        (
+            "env",
+            "GIT_CONFIG_COUNT=1",
+            "GIT_CONFIG_KEY_0=alias.ci",
+            "GIT_CONFIG_VALUE_0=commit --no-verify",
+            "git",
+            "ci",
+        )
+    )
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "shell.git_config_env_bypass"
+
+
+def test_explicit_env_git_config_hooks_path_bypass_is_blocked(tmp_path):
+    validator = CommandSafetyValidator(workspace_root=tmp_path, allowed_network_hosts=())
+
+    result = validator.validate(
+        ("git", "commit", "-m", "message"),
+        env={
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "core.hooksPath",
+            "GIT_CONFIG_VALUE_0": "NUL",
+        },
+    )
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "shell.git_config_env_bypass"
+
+
+def test_unrelated_env_does_not_change_allowed_git_status(tmp_path):
+    validator = CommandSafetyValidator(workspace_root=tmp_path, allowed_network_hosts=())
+
+    result = validator.validate(("git", "status"), env={"CI": "true"})
+
+    assert result.verdict is ValidationVerdict.ALLOW
+    assert result.rule_id == "shell.allowed"
+
+
+def test_greek_confusable_command_is_blocked(tmp_path):
+    validator = CommandSafetyValidator(workspace_root=tmp_path, allowed_network_hosts=())
+
+    result = validator.validate(("echo", "\u03b1gent"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "shell.unicode_confusable"
