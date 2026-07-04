@@ -24,7 +24,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 **How the existing plans carry this initiative:**
 - Plan 7 owns the cost-attribution prerequisite: every prompt block, retrieval/compression/summarization/reranking step, and model call must be attributable by strategy, stage, `run_id`/`session_id`, token count, `cost_usd`, `cache_hit`, model, and provider. Without this, the selection layer's cost gates are not measurable.
 - Plan 8 owns leaving room in the fitness-gate and release-gate machinery for the offline promotion gates, the baseline/ablation plan, and context-regret checks defined in the design note - without binding them in as enforced gates yet.
-- Plans 4, 5, 6, and 9 supply the context-selection inputs this initiative packs and scores, but do not implement selection themselves: Plan 4 provides evidence-ledger and tool-output-trust signals, Plan 5 and Plan 6 provide the guardrail, MCP, and config-trust signals that feed freshness/trust gating, and Plan 9 provides loop state and skill-selection signals for on-demand procedural context.
+- Plans 4, 5, 6, 6.5, and 9 supply the context-selection inputs this initiative packs and scores, but do not implement selection themselves: Plan 4 provides evidence-ledger and tool-output-trust signals, Plans 5, 6, and 6.5 provide the guardrail, MCP, runtime-trust, and config-trust signals that feed freshness/trust gating, and Plan 9 provides loop state and skill-selection signals for on-demand procedural context.
 
 **PDF fold-in:** the HLD, LLD, and Test Strategy PDFs remain authoritative and untouched by this initiative for now. Only the accepted policy folds into those PDFs, and only after calibration baselines, trace fields, ablation criteria, and promotion gates are accepted.
 
@@ -107,7 +107,25 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 - Prompt-injection fixture handling, MCP autoload denial, trusted MCP registration flow, pre-commit rule parity, CI clean-environment re-checks, and bypass tests.
 - Tests proving poisoned config cannot escalate permissions, cloned repo MCP servers do not auto-load, `--no-verify`/unsafe env/network patterns are caught by gates, and local/CI checks exercise the same rule set.
 
+## Plan 6.5: Guardrail Hardening and MCP Runtime Trust Wiring
+
+**Plan file:** `docs/superpowers/plans/2026-07-04-plan-6-5-guardrail-hardening-mcp-runtime-trust.md`
+
+**User story:** As a maintainer, I can close Plan 6 review/CI gaps before usage accounting depends on stable guardrail and MCP trust events.
+
+**Source anchors:**
+- Plan 6 review follow-ups and CI findings.
+- Guardrails Strategy sections 5-6.
+- LLD sections 12A and 12B.
+- Test Strategy sections 14.1-14.7.
+
+**Expected deliverables:**
+- Missing-path fail-closed handling for MCP manifest scans, env-aware git bypass hardening, maintained Unicode confusable detection, and runtime MCP trust wiring.
+- Tests proving unreadable MCP manifests block cleanly, `GIT_CONFIG_*` and alias/hook bypasses are caught at the shell/pre-tool boundary, Unicode spoofing detection is shared by config and command scanners, and MCP runtime calls cannot bypass the trust registry.
+
 ## Plan 7: Usage Accounting, Evidence Ledger, and Observability
+
+**Plan file:** `docs/superpowers/plans/2026-07-04-usage-accounting-evidence-ledger-observability.md`
 
 **User story:** As a FinOps reviewer, I can reconcile every billable call from gateway response to persisted usage and evidence records.
 
@@ -152,15 +170,15 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 **Design source:** `docs/context-window-optimization-strategy.md` (standalone canonical design note; no HLD/LLD/Test Strategy anchors yet - see the Cross-Cutting section above)
 
-**Future implementation plan:** create `docs/superpowers/plans/YYYY-MM-DD-context-window-optimization-intelligent-selection.md` after the prerequisite plans (7, 8, and the input-supplying Plans 4, 5, 6, 9) are stable.
+**Future implementation plan:** create `docs/superpowers/plans/YYYY-MM-DD-context-window-optimization-intelligent-selection.md` after the prerequisite plans (7, 8, and the input-supplying Plans 4, 5, 6, 6.5, 9) are stable.
 
 **User story:** As the agent runtime, I select, pack, summarize, invalidate, evict, and measure context under a cost- and freshness-aware policy, so the agent gets smarter while fully-loaded cost goes down, without ever silently dropping required evidence to fit a budget.
 
-**Status:** Tracked, not yet scheduled. This plan comes after the release skeleton (Plans 1, 2, 3, 7, 8) and the guardrail/input surface (Plans 4, 5, 6, 9) are stable, since selection policy depends on the cost-attribution, evidence, trust, freshness, and loop/skill signals those plans establish. Do not start this plan early just because it is architecturally core - its inputs need to exist first.
+**Status:** Tracked, not yet scheduled. This plan comes after the release skeleton (Plans 1, 2, 3, 7, 8) and the guardrail/input surface (Plans 4, 5, 6, 6.5, 9) are stable, since selection policy depends on the cost-attribution, evidence, trust, freshness, and loop/skill signals those plans establish. Do not start this plan early just because it is architecturally core - its inputs need to exist first.
 
 **Source anchors:**
 - `docs/context-window-optimization-strategy.md` - Context Type x Mechanism Matrix, Selection Pipeline, Selection Model, Freshness and Dependency Precedence, Prompt Packing and Cost Controls, Compaction, Offline Promotion Gates, Online Guardrails, Context Regret, Baseline and Ablation Plan, Calibration Items.
-- Depends on: Plan 7's cost-attribution ledger, Plan 4's evidence/tool-output trust, Plan 5/6's guardrail and MCP/config trust signals, Plan 9's loop/skill state.
+- Depends on: Plan 7's cost-attribution ledger, Plan 4's evidence/tool-output trust, Plans 5/6/6.5's guardrail and MCP/config/runtime trust signals, Plan 9's loop/skill state.
 
 **Expected deliverables:**
 - Selection/scoring engine implementing the utility function (weighted relevance, dependency-coverage gain, authority, recency, user pin, failure recurrence, evidence-diversity gain, minus redundancy penalty), dependency-closure resolution, and budget-constrained packing.
@@ -176,11 +194,12 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 2. Plan 2: Mode/state/mutation boundary.
 3. Plan 3: Gateway-only configuration and gateway client.
 4. Plan 4: Tool policy and evidence acquisition.
-5. Plan 7: Usage accounting and observability.
-6. Plan 8: Retry, fitness gates, and release gates.
-7. Plan 5: Permission/pre-tool/shell guardrails.
-8. Plan 6: Prompt-injection/MCP/CI parity.
-9. Plan 9: Bounded loops and curated workflow skills.
-10. Plan 10: Context window optimization and intelligent selection - tracked, not yet scheduled; starts only once the release skeleton and guardrail/input surface above are stable.
+5. Plan 5: Permission/pre-tool/shell guardrails.
+6. Plan 6: Prompt-injection/MCP/CI parity.
+7. Plan 6.5: Guardrail hardening and MCP runtime trust wiring.
+8. Plan 7: Usage accounting and observability.
+9. Plan 8: Retry, fitness gates, and release gates.
+10. Plan 9: Bounded loops and curated workflow skills.
+11. Plan 10: Context window optimization and intelligent selection - tracked, not yet scheduled; starts only once the release skeleton and guardrail/input surface above are stable.
 
-The recommended sequence builds the executable release skeleton before expanding the higher-risk guardrail surface. If the project goal shifts toward safety certification before gateway functionality, move Plans 5 and 6 immediately after Plan 2. Plan 10 stays last regardless: it depends on inputs from Plans 4, 5, 6, 7, and 9, and its PDF fold-in is explicitly deferred until calibration is accepted.
+The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 10 stays last regardless: it depends on inputs from Plans 4, 5, 6, 6.5, 7, and 9, and its PDF fold-in is explicitly deferred until calibration is accepted.
