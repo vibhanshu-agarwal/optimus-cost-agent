@@ -365,3 +365,98 @@ def test_search_pre_tool_guard_blocks_before_gateway_transport():
         )
 
     assert gateway.calls == []
+
+
+class HoldingPreToolGuard:
+    def check(self, request):
+        return PreToolResult(
+            PreToolVerdict.HOLD,
+            "network.unexpected_egress",
+            "unexpected network egress requires approval",
+            True,
+        )
+
+
+def test_extract_pre_tool_guard_blocks_before_gateway_transport():
+    gateway = FakeGatewayClient()
+    registry = ToolRegistry(max_calls_per_run=10)
+    registry.record_search_results(run_id="run-1", urls=("https://docs.example.com/a",))
+    service = EvidenceAcquisitionService(
+        gateway_client=gateway,
+        domain_policy=domain_policy(),
+        registry=registry,
+        ledger=EvidenceLedger(),
+        pre_tool_guard=BlockingPreToolGuard(),
+    )
+
+    with pytest.raises(ToolCallRejected, match="blocked network egress"):
+        service.extract(
+            EvidenceExtractRequest(
+                run_id="run-1",
+                url="https://docs.example.com/a",
+                reason=EvidenceReasonCode.USER_REQUESTED,
+                policy_signal=ToolPolicySignal.APPROVED_SEARCH_RESULT_PROVENANCE,
+                allowed_domains=("docs.example.com",),
+            ),
+            execution_mode=ExecutionMode.AGENT,
+        )
+
+    assert gateway.calls == []
+
+
+def test_search_pre_tool_guard_hold_rejects_before_gateway_transport():
+    gateway = FakeGatewayClient()
+    service = EvidenceAcquisitionService(
+        gateway_client=gateway,
+        domain_policy=domain_policy(),
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+        pre_tool_guard=HoldingPreToolGuard(),
+    )
+
+    with pytest.raises(
+        ToolCallRejected,
+        match="human approval required: unexpected network egress requires approval",
+    ):
+        service.search(
+            EvidenceRequest(
+                run_id="run-1",
+                query="current docs",
+                reason=EvidenceReasonCode.USER_REQUESTED,
+                policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT,
+                allowed_domains=("docs.example.com",),
+            ),
+            execution_mode=ExecutionMode.AGENT,
+        )
+
+    assert gateway.calls == []
+
+
+def test_extract_pre_tool_guard_hold_rejects_before_gateway_transport():
+    gateway = FakeGatewayClient()
+    registry = ToolRegistry(max_calls_per_run=10)
+    registry.record_search_results(run_id="run-1", urls=("https://docs.example.com/a",))
+    service = EvidenceAcquisitionService(
+        gateway_client=gateway,
+        domain_policy=domain_policy(),
+        registry=registry,
+        ledger=EvidenceLedger(),
+        pre_tool_guard=HoldingPreToolGuard(),
+    )
+
+    with pytest.raises(
+        ToolCallRejected,
+        match="human approval required: unexpected network egress requires approval",
+    ):
+        service.extract(
+            EvidenceExtractRequest(
+                run_id="run-1",
+                url="https://docs.example.com/a",
+                reason=EvidenceReasonCode.USER_REQUESTED,
+                policy_signal=ToolPolicySignal.APPROVED_SEARCH_RESULT_PROVENANCE,
+                allowed_domains=("docs.example.com",),
+            ),
+            execution_mode=ExecutionMode.AGENT,
+        )
+
+    assert gateway.calls == []

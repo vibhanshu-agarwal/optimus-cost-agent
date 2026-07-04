@@ -122,3 +122,38 @@ def test_unknown_command_holds_by_default(tmp_path):
 
     assert result.verdict is ValidationVerdict.HOLD
     assert result.rule_id == "shell.unclassified_command"
+
+
+def test_dd_command_holds_for_review(tmp_path):
+    result = validator(tmp_path).validate(("dd", "if=/dev/zero", "of=/dev/sda"))
+
+    assert result.verdict is ValidationVerdict.HOLD
+    assert result.rule_id == "shell.destructive.review"
+
+
+def test_shred_command_holds_for_review(tmp_path):
+    result = validator(tmp_path).validate(("shred", "-u", "secret.txt"))
+
+    assert result.verdict is ValidationVerdict.HOLD
+    assert result.rule_id == "shell.destructive.review"
+
+
+def test_find_delete_holds_for_review(tmp_path):
+    result = validator(tmp_path).validate(("find", ".", "-delete"))
+
+    assert result.verdict is ValidationVerdict.HOLD
+    assert result.rule_id == "shell.destructive.review"
+
+
+def test_git_reset_hard_holds_for_review(tmp_path):
+    result = validator(tmp_path).validate(("git", "reset", "--hard"))
+
+    assert result.verdict is ValidationVerdict.HOLD
+    assert result.rule_id == "shell.destructive.review"
+
+
+def test_git_clean_fdx_holds_for_review(tmp_path):
+    result = validator(tmp_path).validate(("git", "clean", "-fdx"))
+
+    assert result.verdict is ValidationVerdict.HOLD
+    assert result.rule_id == "shell.destructive.review"
