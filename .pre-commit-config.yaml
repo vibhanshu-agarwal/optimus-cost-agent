@@ -1,0 +1,46 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        name: "optimus-check: hygiene trailing whitespace"
+      - id: check-yaml
+        name: "optimus-check: hygiene yaml"
+      - id: check-toml
+        name: "optimus-check: hygiene toml"
+      - id: check-added-large-files
+        name: "optimus-check: hygiene file size"
+  - repo: local
+    hooks:
+      - id: optimus-ruff
+        name: "optimus-check: ruff"
+        entry: ruff check .
+        language: system
+        pass_filenames: false
+      - id: optimus-bandit
+        name: "optimus-check: bandit"
+        entry: bandit -q -r src -c pyproject.toml
+        language: system
+        pass_filenames: false
+      - id: optimus-ast-grep
+        name: "optimus-check: ast-grep"
+        entry: ast-grep scan --config sgconfig.yml
+        language: node
+        additional_dependencies:
+          - "@ast-grep/cli@0.36.2"
+        pass_filenames: false
+      - id: optimus-config-trust-scan
+        name: "optimus-check: config-trust-scan"
+        entry: python -m optimus.guardrails.prompt_injection
+        language: system
+        pass_filenames: false
+      - id: optimus-secret-scan
+        name: "optimus-check: secret-scan"
+        entry: detect-secrets-hook --baseline .secrets.baseline src
+        language: system
+        types: [text]
+      - id: optimus-pytest-coverage
+        name: "optimus-check: pytest-coverage"
+        entry: pytest --cov=optimus --cov-branch --cov-report=term-missing
+        language: system
+        pass_filenames: false

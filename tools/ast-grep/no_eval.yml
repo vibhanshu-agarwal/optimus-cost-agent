@@ -1,0 +1,8 @@
+id: no-eval
+language: Python
+message: Do not use eval in Optimus production code.
+severity: error
+rule:
+  pattern: eval($$$ARGS)
+files:
+  - src/**/*.py

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from optimus.guardrails.audit import InMemoryAuditSink, ToolInvocationAuditEvent
 from optimus.guardrails.command_safety import CommandSafetyValidator
+from optimus.guardrails.mcp_trust import MCPServerManifest, MCPTrustRegistry
 from optimus.guardrails.network_safety import NetworkSafetyValidator
 from optimus.guardrails.path_safety import PathSafetyValidator
 from optimus.guardrails.permissions import PermissionPolicy, PermissionRequest, PermissionVerdict, ToolSurface
@@ -33,6 +34,9 @@ class PreToolRequest:
     approval_granted: bool = False
     first_time_tool: bool = False
     approver: str | None = None
+    mcp_server_id: str | None = None
+    mcp_tool_name: str | None = None
+    mcp_manifest: MCPServerManifest | None = None
 
 
 @dataclass(frozen=True)
@@ -57,6 +61,7 @@ class PreToolGuard:
         network_validator: NetworkSafetyValidator,
         workspace_root: str | Path | None = None,
         audit_sink: InMemoryAuditSink | None = None,
+        mcp_trust_registry: MCPTrustRegistry | None = None,
     ) -> None:
         self._permission_policy = permission_policy
         self._command_validator = command_validator
@@ -64,15 +69,23 @@ class PreToolGuard:
         self._network_validator = network_validator
         self._workspace_root = Path(workspace_root).resolve() if workspace_root is not None else None
         self._audit_sink = audit_sink or InMemoryAuditSink()
+        self._mcp_trust_registry = mcp_trust_registry
 
     @classmethod
-    def for_workspace(cls, *, workspace_root: str | Path, allowed_network_hosts: tuple[str, ...]) -> "PreToolGuard":
+    def for_workspace(
+        cls,
+        *,
+        workspace_root: str | Path,
+        allowed_network_hosts: tuple[str, ...],
+        mcp_trust_registry: MCPTrustRegistry | None = None,
+    ) -> "PreToolGuard":
         return cls(
             permission_policy=PermissionPolicy(),
             command_validator=CommandSafetyValidator(workspace_root=workspace_root, allowed_network_hosts=allowed_network_hosts),
             path_validator=PathSafetyValidator(workspace_root=workspace_root),
             network_validator=NetworkSafetyValidator(allowed_hosts=allowed_network_hosts),
             workspace_root=workspace_root,
+            mcp_trust_registry=mcp_trust_registry,
         )
 
     def check(self, request: PreToolRequest) -> PreToolResult:
@@ -101,7 +114,8 @@ class PreToolGuard:
 
         validation_result = self._validate_surface(request)
         if validation_result is not None:
-            self._audit(request, validation_result, "pre_tool", (validation_result.rule_id,))
+            failed_checks = () if validation_result.verdict is PreToolVerdict.ALLOW else (validation_result.rule_id,)
+            self._audit(request, validation_result, "pre_tool", failed_checks)
             return validation_result
 
         result = PreToolResult(PreToolVerdict.ALLOW, permission.rule_id, permission.reason)
@@ -125,11 +139,32 @@ class PreToolGuard:
             validation = self._network_validator.validate_url(request.target_path)
             return _pre_tool_result(validation.verdict, validation.rule_id, validation.reason)
         if request.tool_surface is ToolSurface.MCP:
+            if self._mcp_trust_registry is None:
+                return PreToolResult(
+                    PreToolVerdict.HOLD,
+                    "mcp.requires_plan6_trust_registry",
+                    "MCP calls require the Plan 6 trust registry",
+                    True,
+                )
+            if request.mcp_server_id is None or request.mcp_tool_name is None or request.mcp_manifest is None:
+                return PreToolResult(
+                    PreToolVerdict.HOLD,
+                    "mcp.missing_trust_metadata",
+                    "MCP calls require server id, tool name, and manifest metadata",
+                    True,
+                )
+            decision = self._mcp_trust_registry.validate_tool_call(
+                server_id=request.mcp_server_id,
+                manifest=request.mcp_manifest,
+                tool_name=request.mcp_tool_name,
+            )
+            if decision.allowed:
+                return PreToolResult(PreToolVerdict.ALLOW, decision.rule_id, decision.reason)
             return PreToolResult(
-                PreToolVerdict.HOLD,
-                "mcp.requires_plan6_trust_registry",
-                "MCP calls require the Plan 6 trust registry",
-                True,
+                PreToolVerdict.HOLD if decision.requires_human_approval else PreToolVerdict.BLOCK,
+                decision.rule_id,
+                decision.reason,
+                decision.requires_human_approval,
             )
         return None
 

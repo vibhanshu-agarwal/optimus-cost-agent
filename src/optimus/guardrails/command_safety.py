@@ -9,7 +9,6 @@ from optimus.guardrails.network_safety import NetworkSafetyValidator
 from optimus.guardrails.path_safety import PathSafetyValidator
 from optimus.guardrails.validation import ValidationResult, ValidationVerdict
 
-
 _PIPE_TO_SHELL = re.compile(r"(curl|wget|irm|iwr|Invoke-WebRequest|Invoke-RestMethod)\b.*\|\s*(sh|bash|zsh|pwsh|powershell|iex|Invoke-Expression)\b", re.IGNORECASE)
 _FETCH_THEN_EXEC = re.compile(r"(curl|wget|irm|iwr|Invoke-WebRequest|Invoke-RestMethod)\b.*(&&|;)\s*(sh|bash|zsh|pwsh|powershell|iex|Invoke-Expression)\b", re.IGNORECASE)
 _ENV_ACCESS = re.compile(r"\b(printenv|env|set)\b|\bos\.environ\b|\$env:|%[A-Za-z_][A-Za-z0-9_]*%", re.IGNORECASE)
@@ -31,7 +30,8 @@ class CommandSafetyValidator:
     def _validate_command(self, command: tuple[str, ...], *, depth: int) -> ValidationResult:
         if not command:
             return ValidationResult(ValidationVerdict.HOLD, "shell.empty_command", "empty command requires review")
-        text = unicodedata.normalize("NFKC", " ".join(command))
+        raw_text = " ".join(command)
+        text = unicodedata.normalize("NFKC", raw_text)
         lowered = text.lower()
         if _contains_control_sequence(text):
             return ValidationResult(ValidationVerdict.BLOCK, "shell.ansi_control", "ANSI or control sequence detected")
@@ -41,7 +41,7 @@ class CommandSafetyValidator:
                 "shell.unicode_bidi_control",
                 "Unicode bidi or format control character detected",
             )
-        if _contains_confusable(text) or _contains_punycode_host(text):
+        if _contains_confusable(raw_text) or _contains_punycode_host(raw_text):
             return ValidationResult(ValidationVerdict.BLOCK, "shell.unicode_confusable", "Unicode confusable detected")
         if _is_recursive_force_delete(command, lowered):
             return ValidationResult(ValidationVerdict.BLOCK, "shell.destructive.rm_rf", "recursive force delete denied")
@@ -74,6 +74,10 @@ class CommandSafetyValidator:
                 "shell.opaque_interpreter",
                 "interpreter payload is ambiguous and requires review",
             )
+        if _is_git_no_verify_bypass(command):
+            return ValidationResult(ValidationVerdict.BLOCK, "shell.git_no_verify", "git --no-verify bypass is denied")
+        if _is_git_hooks_path_bypass(command):
+            return ValidationResult(ValidationVerdict.BLOCK, "shell.git_hooks_path_bypass", "git hooksPath bypass is denied")
         if _is_allowed_command(command):
             return ValidationResult(ValidationVerdict.ALLOW, "shell.allowed", "command matched deterministic allowlist")
         return ValidationResult(
@@ -179,3 +183,41 @@ def _is_allowed_command(command: tuple[str, ...]) -> bool:
         return True
     lowered = tuple(token.lower() for token in command)
     return lowered[:2] in {("git", "status"), ("git", "diff"), ("git", "log"), ("git", "show")}
+
+
+def _is_git_no_verify_bypass(command: tuple[str, ...]) -> bool:
+    lowered = tuple(token.lower() for token in command)
+    subcommand = _git_subcommand(lowered)
+    if subcommand == "commit":
+        return "--no-verify" in lowered or "-n" in lowered
+    if subcommand == "push":
+        return "--no-verify" in lowered
+    return False
+
+
+def _is_git_hooks_path_bypass(command: tuple[str, ...]) -> bool:
+    lowered = tuple(token.lower() for token in command)
+    return _is_git_command(lowered) and any(token.startswith("core.hookspath=") for token in lowered)
+
+
+def _git_subcommand(tokens: tuple[str, ...]) -> str | None:
+    if not _is_git_command(tokens):
+        return None
+    index = 1
+    while index < len(tokens):
+        token = tokens[index]
+        if token in {"-c", "-C"} and index + 1 < len(tokens):
+            index += 2
+            continue
+        if token.startswith("-"):
+            index += 1
+            continue
+        return token
+    return None
+
+
+def _is_git_command(tokens: tuple[str, ...]) -> bool:
+    if not tokens:
+        return False
+    executable = Path(tokens[0]).name.lower()
+    return executable in {"git", "git.exe"}

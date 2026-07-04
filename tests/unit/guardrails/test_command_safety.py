@@ -1,4 +1,3 @@
-from pathlib import Path
 
 from optimus.guardrails.command_safety import CommandSafetyValidator
 from optimus.guardrails.path_safety import ValidationVerdict
@@ -171,3 +170,72 @@ def test_git_clean_fdx_holds_for_review(tmp_path):
 
     assert result.verdict is ValidationVerdict.HOLD
     assert result.rule_id == "shell.destructive.review"
+
+
+def test_git_commit_no_verify_blocks(tmp_path):
+    result = validator(tmp_path).validate(("git", "commit", "--no-verify", "-m", "skip hooks"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "shell.git_no_verify"
+
+
+def test_git_push_no_verify_blocks(tmp_path):
+    result = validator(tmp_path).validate(("git", "push", "--no-verify", "origin", "HEAD"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "shell.git_no_verify"
+
+
+def test_git_commit_short_no_verify_blocks(tmp_path):
+    result = validator(tmp_path).validate(("git", "commit", "-n", "-m", "skip hooks"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "shell.git_no_verify"
+
+
+def test_absolute_git_path_no_verify_blocks(tmp_path):
+    result = validator(tmp_path).validate(("/usr/bin/git", "commit", "--no-verify", "-m", "skip hooks"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "shell.git_no_verify"
+
+
+def test_git_exe_hooks_path_bypass_blocks(tmp_path):
+    result = validator(tmp_path).validate(("git.exe", "-c", "core.hooksPath=/dev/null", "commit", "-m", "skip hooks"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "shell.git_hooks_path_bypass"
+
+
+def test_git_push_dry_run_short_flag_is_not_treated_as_no_verify(tmp_path):
+    result = validator(tmp_path).validate(("git", "push", "-n", "origin", "HEAD"))
+
+    assert result.rule_id != "shell.git_no_verify"
+
+
+def test_git_global_option_hooks_path_bypass_blocks(tmp_path):
+    result = validator(tmp_path).validate(("git", "-c", "core.hooksPath=/dev/null", "commit", "-m", "skip hooks"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "shell.git_hooks_path_bypass"
+
+
+def test_unsafe_env_read_still_blocks(tmp_path):
+    result = validator(tmp_path).validate(("python", "-c", "import os; print(os.environ)"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "shell.env_access"
+
+
+def test_plain_http_network_command_still_blocks(tmp_path):
+    result = validator(tmp_path).validate(("curl", "http://gateway.optimus.ai/status"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "network.insecure_transport"
+
+
+def test_fullwidth_confusable_command_blocks_before_nfkc_folding(tmp_path):
+    result = validator(tmp_path).validate(("p\uff49p", "install", "package"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "shell.unicode_confusable"

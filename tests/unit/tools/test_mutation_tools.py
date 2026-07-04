@@ -4,7 +4,7 @@ from optimus.guardrails.pre_tool import PreToolGuard, PreToolResult, PreToolVerd
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.mutation import MutationForbidden
 from optimus.runtime.state import AgentState, RuntimeContext
-from optimus.tools.mutation_tools import shell_exec, shadow_apply, write_file
+from optimus.tools.mutation_tools import shadow_apply, shell_exec, write_file
 
 
 class ProbeRunner:
