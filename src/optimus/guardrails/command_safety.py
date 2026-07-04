@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import shlex
 import unicodedata
+from collections.abc import Mapping
 from pathlib import Path
 
 from optimus.guardrails.network_safety import NetworkSafetyValidator
@@ -24,12 +25,17 @@ class CommandSafetyValidator:
         self._paths = PathSafetyValidator(workspace_root=workspace_root)
         self._network = NetworkSafetyValidator(allowed_hosts=allowed_network_hosts)
 
-    def validate(self, command: tuple[str, ...]) -> ValidationResult:
-        return self._validate_command(command, depth=0)
+    def validate(self, command: tuple[str, ...], *, env: Mapping[str, str] | None = None) -> ValidationResult:
+        inline_env, effective_command = _extract_inline_env(command)
+        merged_env = {**inline_env, **dict(env or {})}
+        return self._validate_command(effective_command, env=merged_env, depth=0)
 
-    def _validate_command(self, command: tuple[str, ...], *, depth: int) -> ValidationResult:
+    def _validate_command(self, command: tuple[str, ...], *, env: Mapping[str, str], depth: int) -> ValidationResult:
         if not command:
             return ValidationResult(ValidationVerdict.HOLD, "shell.empty_command", "empty command requires review")
+        git_config_result = _git_config_env_bypass(command, env)
+        if git_config_result is not None:
+            return git_config_result
         raw_text = " ".join(command)
         text = unicodedata.normalize("NFKC", raw_text)
         lowered = text.lower()
@@ -66,7 +72,7 @@ class CommandSafetyValidator:
         if payload is not None:
             parsed = _split_payload(payload)
             if parsed:
-                payload_result = self._validate_command(tuple(parsed), depth=depth + 1)
+                payload_result = self._validate_command(tuple(parsed), env=env, depth=depth + 1)
                 if payload_result.verdict is not ValidationVerdict.HOLD:
                     return payload_result
             return ValidationResult(
@@ -221,3 +227,38 @@ def _is_git_command(tokens: tuple[str, ...]) -> bool:
         return False
     executable = Path(tokens[0]).name.lower()
     return executable in {"git", "git.exe"}
+
+
+def _extract_inline_env(command: tuple[str, ...]) -> tuple[dict[str, str], tuple[str, ...]]:
+    if not command:
+        return {}, command
+    executable = Path(command[0]).name.lower()
+    if executable != "env":
+        return {}, command
+    env: dict[str, str] = {}
+    index = 1
+    while index < len(command) and "=" in command[index] and not command[index].startswith("-"):
+        key, value = command[index].split("=", 1)
+        if key:
+            env[key] = value
+        index += 1
+    return env, command[index:]
+
+
+def _git_config_env_bypass(command: tuple[str, ...], env: Mapping[str, str]) -> ValidationResult | None:
+    lowered_command = tuple(token.lower() for token in command)
+    if not _is_git_command(lowered_command):
+        return None
+    lowered_env = {key.lower(): value for key, value in env.items()}
+    git_config_keys = {key for key in lowered_env if key.startswith("git_config_")}
+    if not git_config_keys:
+        return None
+    joined_values = "\n".join(str(value).lower() for value in lowered_env.values())
+    joined_keys = "\n".join(git_config_keys)
+    if "alias." in joined_values or "alias." in joined_keys:
+        return ValidationResult(ValidationVerdict.BLOCK, "shell.git_config_env_bypass", "git alias injection through environment is denied")
+    if "core.hookspath" in joined_values or "core.hookspath" in joined_keys:
+        return ValidationResult(ValidationVerdict.BLOCK, "shell.git_config_env_bypass", "git hooksPath injection through environment is denied")
+    if "--no-verify" in joined_values or "\n-n\n" in f"\n{joined_values}\n":
+        return ValidationResult(ValidationVerdict.BLOCK, "shell.git_config_env_bypass", "git no-verify injection through environment is denied")
+    return ValidationResult(ValidationVerdict.BLOCK, "shell.git_config_env_bypass", "git config injection through environment is denied")

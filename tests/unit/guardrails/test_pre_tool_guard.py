@@ -255,3 +255,27 @@ def test_mcp_surface_blocks_unregistered_server(tmp_path):
 
     assert result.verdict is PreToolVerdict.HOLD
     assert result.rule_id == "mcp.server_not_registered"
+
+
+def test_pre_tool_guard_passes_shell_environment_to_command_validator(tmp_path):
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=())
+
+    result = guard.check(
+        PreToolRequest(
+            run_id="run-1",
+            session_id="session-1",
+            execution_mode=ExecutionMode.AGENT,
+            tool_surface=ToolSurface.SHELL,
+            action="git commit",
+            command=("git", "commit", "-m", "message"),
+            approval_granted=True,
+            environment={
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "alias.safe",
+                "GIT_CONFIG_VALUE_0": "commit --no-verify",
+            },
+        )
+    )
+
+    assert result.verdict is PreToolVerdict.BLOCK
+    assert result.rule_id == "shell.git_config_env_bypass"
