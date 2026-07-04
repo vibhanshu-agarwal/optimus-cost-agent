@@ -32,3 +32,7 @@ def test_non_spoofing_nfkc_compatibility_text_is_not_dangerous():
     )
 
     assert [contains_dangerous_confusable(text) for text in benign] == [False, False, False]
+
+
+def test_cjk_fullwidth_punctuation_without_latin_is_not_dangerous():
+    assert contains_dangerous_confusable("中文：测试（０１２）") is False

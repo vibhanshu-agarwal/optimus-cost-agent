@@ -2,6 +2,7 @@ import pytest
 
 from optimus.guardrails.mcp_trust import MCPServerManifest, MCPToolDescriptor
 from optimus.mcp.runtime import MCPRuntimeBlocked, MCPRuntimeTrustContext
+from optimus.runtime.modes import ExecutionMode
 
 
 def manifest() -> MCPServerManifest:
@@ -102,6 +103,7 @@ def test_runtime_registered_mcp_call_requires_per_call_approval(tmp_path):
             manifest=current,
             tool_name="search",
             arguments={"query": "pytest"},
+            execution_mode=ExecutionMode.AGENT,
             approval_granted=False,
             runner=runner,
         )
@@ -132,6 +134,7 @@ def test_runtime_registered_mcp_call_runs_after_explicit_per_call_approval(tmp_p
         manifest=current,
         tool_name="search",
         arguments={"query": "pytest"},
+        execution_mode=ExecutionMode.AGENT,
         approval_granted=True,
         runner=runner,
     )
@@ -156,6 +159,42 @@ def test_runtime_blocks_unregistered_mcp_call_before_runner(tmp_path):
             manifest=manifest(),
             tool_name="search",
             arguments={"query": "pytest"},
+            execution_mode=ExecutionMode.AGENT,
+            approval_granted=True,
+            runner=runner,
+        )
+
+    assert runner_called is False
+
+
+def test_runtime_rejects_mcp_call_in_plan_mode_before_runner(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    context = MCPRuntimeTrustContext.for_workspace(workspace_root=workspace, allowed_network_hosts=())
+    current = manifest()
+    context.register_explicit_manifest(
+        current,
+        manifest_path=tmp_path / "approved" / "packages.mcp.json",
+        allowed_tools=("search",),
+        permission_scope="read_only_metadata",
+        approved_by="maintainer",
+        manifest_text='{"mcpServers": {"packages": {"command": "uvx"}}}',
+    )
+    runner_called = False
+
+    def runner(server_id: str, tool_name: str, arguments: dict[str, object]) -> dict[str, object]:
+        nonlocal runner_called
+        runner_called = True
+        return {"ok": True}
+
+    with pytest.raises(MCPRuntimeBlocked, match="mode.plan_chat.no_side_effects"):
+        context.execute_tool(
+            run_id="run-1",
+            session_id="session-1",
+            manifest=current,
+            tool_name="search",
+            arguments={"query": "pytest"},
+            execution_mode=ExecutionMode.PLAN,
             approval_granted=True,
             runner=runner,
         )

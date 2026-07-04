@@ -8,6 +8,9 @@ from optimus.guardrails.mcp_trust import (
     MCPConfigIngestionGuard,
     MCPDescriptorExposureGuard,
     MCPServerManifest,
+    MCPServerTrustRecord,
+    MCPToolDescriptor,
+    MCPTrustDecision,
     MCPTrustRegistry,
 )
 from optimus.guardrails.permissions import ToolSurface
@@ -51,7 +54,7 @@ class MCPRuntimeTrustContext:
             ),
         )
 
-    def deny_autoload_manifest(self, manifest_path: str | Path):
+    def deny_autoload_manifest(self, manifest_path: str | Path) -> MCPTrustDecision:
         return self.ingestion_guard.deny_autoload_path(manifest_path)
 
     def register_explicit_manifest(
@@ -63,10 +66,10 @@ class MCPRuntimeTrustContext:
         permission_scope: str,
         approved_by: str,
         manifest_text: str | None = None,
-    ):
+    ) -> MCPServerTrustRecord:
         path = Path(manifest_path)
-        autoload_decision = self.ingestion_guard.deny_autoload_path(path)
-        if autoload_decision.rule_id == "mcp.autoload.cloned_repo_denied":
+        if self.ingestion_guard.is_workspace_bundled_path(path):
+            autoload_decision = self.ingestion_guard.deny_autoload_path(path)
             raise MCPRuntimeBlocked(f"{autoload_decision.rule_id}: {autoload_decision.reason}")
         if manifest_text is not None:
             decision = self.ingestion_guard.scan_manifest_text(manifest_text, source_path=path.as_posix())
@@ -83,7 +86,7 @@ class MCPRuntimeTrustContext:
             approved_by=approved_by,
         )
 
-    def expose_descriptors(self, *, server_id: str, manifest: MCPServerManifest):
+    def expose_descriptors(self, *, server_id: str, manifest: MCPServerManifest) -> tuple[MCPToolDescriptor, ...]:
         return self.exposure_guard.expose_trusted_descriptors(server_id=server_id, manifest=manifest)
 
     def execute_tool(
@@ -94,9 +97,9 @@ class MCPRuntimeTrustContext:
         manifest: MCPServerManifest,
         tool_name: str,
         arguments: dict[str, Any],
+        execution_mode: ExecutionMode,
         approval_granted: bool,
         runner: MCPToolRunner,
-        execution_mode: ExecutionMode = ExecutionMode.AGENT,
     ) -> dict[str, Any]:
         result = self.pre_tool_guard.check(
             PreToolRequest(

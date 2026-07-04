@@ -203,6 +203,14 @@ class MCPAutoloadGuard:
             return MCPTrustDecision(False, "mcp.autoload.outside_workspace", "external MCP manifests require explicit approval", True)
         return MCPTrustDecision(False, "mcp.autoload.cloned_repo_denied", "MCP servers bundled in cloned repositories never auto-load", True)
 
+    def is_workspace_bundled_path(self, manifest_path: str | Path) -> bool:
+        candidate = Path(manifest_path).resolve(strict=False)
+        try:
+            candidate.relative_to(self._workspace_root)
+        except ValueError:
+            return False
+        return True
+
 
 class MCPConfigIngestionGuard:
     def __init__(self, *, workspace_root: str | Path, scanner: ConfigTrustScanner) -> None:
@@ -211,6 +219,9 @@ class MCPConfigIngestionGuard:
 
     def deny_autoload_path(self, manifest_path: str | Path) -> MCPTrustDecision:
         return self._autoload.evaluate_autoload_path(manifest_path)
+
+    def is_workspace_bundled_path(self, manifest_path: str | Path) -> bool:
+        return self._autoload.is_workspace_bundled_path(manifest_path)
 
     def scan_manifest_path(self, manifest_path: str | Path) -> MCPTrustDecision:
         path = Path(manifest_path)
