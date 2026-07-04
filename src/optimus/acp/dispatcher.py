@@ -28,6 +28,8 @@ from optimus.evidence.models import (
 from optimus.gateway.client import GatewayClient
 from optimus.gateway.errors import GatewayError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
+from optimus.guardrails.audit import ToolInvocationAuditEvent
+from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.mutation import MutationForbidden
 from optimus.runtime.state import AgentState, RuntimeContext
@@ -42,6 +44,9 @@ class JsonRpcDispatcher:
         runtime_context: RuntimeContext | None = None,
         gateway_client: GatewayClient | None = None,
         evidence_service: EvidenceAcquisitionService | None = None,
+        pre_tool_guard: PreToolGuard | None = None,
+        workspace_root: str | Path | None = None,
+        allowed_network_hosts: tuple[str, ...] = (),
     ) -> None:
         self._request_ids = request_ids or RequestIdTracker()
         self._runtime_context = runtime_context or RuntimeContext(
@@ -50,6 +55,25 @@ class JsonRpcDispatcher:
         )
         self._gateway_client = gateway_client
         self._evidence_service = evidence_service
+        # One guard (and one audit sink) is built here, at the dispatcher's own
+        # lifetime, and threaded into every guarded tool call below. This is
+        # deliberate: if each handler built its own default guard instead (as
+        # optimus.tools.mutation_tools does when no guard is supplied), every
+        # call would get a throwaway PreToolGuard/InMemoryAuditSink pair that
+        # is discarded on return, and ToolInvocationAuditEvent records would
+        # never actually accumulate anywhere reachable. workspace_root is an
+        # explicit constructor argument rather than an implicit Path.cwd() so
+        # the workspace-containment boundary is a real, caller-supplied
+        # configuration value instead of "wherever this process happened to
+        # be launched from."
+        self._pre_tool_guard = pre_tool_guard or PreToolGuard.for_workspace(
+            workspace_root=workspace_root or Path.cwd(),
+            allowed_network_hosts=allowed_network_hosts,
+        )
+
+    def audit_events(self) -> tuple[ToolInvocationAuditEvent, ...]:
+        """Return every guard decision recorded across this dispatcher's lifetime."""
+        return self._pre_tool_guard.audit_events()
 
     def dispatch(self, request: dict[str, Any]) -> dict[str, Any]:
         request_id = request.get("id")
@@ -160,6 +184,7 @@ class JsonRpcDispatcher:
                     Path(params["path"]),
                     str(params.get("content", "")),
                     context=self._runtime_context,
+                    guard=self._pre_tool_guard,
                 )
                 return success_response(request_id=request_id, result={"written": params["path"]})
         except MutationForbidden as exc:

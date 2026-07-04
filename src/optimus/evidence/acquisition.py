@@ -19,9 +19,18 @@ from optimus.evidence.models import (
 )
 from optimus.gateway.client import GatewayClient
 from optimus.gateway.errors import GatewayResponseError
+from optimus.guardrails.permissions import ToolSurface
+from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolResult, PreToolVerdict
 from optimus.runtime.modes import ExecutionMode
-from optimus.tools.policy import ToolClass, ToolInvocationRequest
-from optimus.tools.registry import ToolRegistry
+from optimus.tools.policy import (
+    EvidenceReasonCode,
+    PolicyDecision,
+    ToolClass,
+    ToolInvocationDecision,
+    ToolInvocationRequest,
+    ToolPolicySignal,
+)
+from optimus.tools.registry import ToolCallRejected, ToolRegistry
 
 
 class EvidenceAcquisitionService:
@@ -43,12 +52,14 @@ class EvidenceAcquisitionService:
         domain_policy: EvidenceDomainPolicy,
         registry: ToolRegistry | None = None,
         ledger: EvidenceLedger | None = None,
+        pre_tool_guard: PreToolGuard | None = None,
     ) -> None:
         self.gateway_client = gateway_client
         self.domain_policy = domain_policy
         self.registry = registry or ToolRegistry()
         self.ledger = ledger or EvidenceLedger()
         self._ledger_lock = Lock()
+        self._pre_tool_guard = pre_tool_guard
 
     def search(
         self,
@@ -67,6 +78,11 @@ class EvidenceAcquisitionService:
                 reason=request.reason,
                 allowed_domains=effective_allowed_domains,
             )
+        )
+        self._assert_pre_tool_web_allowed(
+            run_id=request.run_id,
+            execution_mode=execution_mode,
+            action=f"web_search:{request.query}",
         )
         body = self.gateway_client.post_tool_json(
             path="/v1/tools/web/search",
@@ -133,6 +149,12 @@ class EvidenceAcquisitionService:
                 prior_search_result_urls=self.registry.search_result_urls(request.run_id),
             )
         )
+        self._assert_pre_tool_web_allowed(
+            run_id=request.run_id,
+            execution_mode=execution_mode,
+            action=f"web_extract:{request.url_text}",
+            target_url=request.url_text,
+        )
         body = self.gateway_client.post_tool_json(
             path="/v1/tools/web/extract",
             payload=build_web_extract_payload(
@@ -171,6 +193,42 @@ class EvidenceAcquisitionService:
         )
         return response, ledger
 
+    def _assert_pre_tool_web_allowed(
+        self,
+        *,
+        run_id: str,
+        execution_mode: ExecutionMode,
+        action: str,
+        target_url: str | None = None,
+    ) -> None:
+        if self._pre_tool_guard is None:
+            return
+        result = self._pre_tool_guard.check(
+            PreToolRequest(
+                run_id=run_id,
+                session_id=None,
+                execution_mode=execution_mode,
+                tool_surface=ToolSurface.WEB,
+                action=action,
+                target_path=target_url,
+                approval_granted=execution_mode is ExecutionMode.AGENT,
+            )
+        )
+        if result.verdict is PreToolVerdict.BLOCK:
+            raise ToolCallRejected(
+                _rejected_web_decision(
+                    reason=result.reason,
+                    tool_class=ToolClass.WEB_EXTRACT if target_url else ToolClass.WEB_SEARCH,
+                )
+            )
+        if result.verdict is PreToolVerdict.HOLD:
+            raise ToolCallRejected(
+                _rejected_web_decision(
+                    reason=f"human approval required: {result.reason}",
+                    tool_class=ToolClass.WEB_EXTRACT if target_url else ToolClass.WEB_SEARCH,
+                )
+            )
+
     def _record_ledger_entry(self, entry: EvidenceLedgerEntry) -> EvidenceLedger:
         with self._ledger_lock:
             self.ledger = self.ledger.record(entry)
@@ -199,6 +257,16 @@ class EvidenceAcquisitionService:
                 queried_at=_utc_now(),
             )
         )
+
+
+def _rejected_web_decision(*, reason: str, tool_class: ToolClass) -> ToolInvocationDecision:
+    return ToolInvocationDecision(
+        decision=PolicyDecision.REJECT,
+        reason=reason,
+        tool_class=tool_class,
+        policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT,
+        reason_code=EvidenceReasonCode.USER_REQUESTED,
+    )
 
 
 def _utc_now() -> datetime:

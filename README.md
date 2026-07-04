@@ -53,6 +53,23 @@ URL provenance per run, and records `GatewayUsage` fields into
 content is untrusted evidence text and must not be executed or promoted to
 policy without a separate harness decision.
 
+### Phase 1 Permission and Pre-Tool Guardrails
+
+Tool calls pass through a deny-before-allow permission policy and `PreToolGuard`
+before side effects. Plan/Chat mode blocks shell, file-write, web, MCP, and
+external side-effect surfaces before allow-list evaluation. Agent mode still
+requires the existing mutation approval boundary, then pre-tool validation for
+shell commands, file paths, and web/network calls. The local
+`CommandSafetyValidator` explicitly allows only deterministic safe command
+families, blocks enumerated destructive/fetch-execute/credential/env/control
+sequence/insecure-transport/confusable patterns, and holds opaque or
+unclassified shell commands for review. Web and shell network checks hold
+unexpected or non-HTTP egress and block plain HTTP before wrapped subprocess,
+writer, applier, transport, or gateway calls are invoked. Guard decisions are
+recorded in an in-memory append-only audit sink as `ToolInvocationAuditEvent`
+entries with sanitized subjects. Durable tamper-evident audit persistence is
+owned by Plan 7.
+
 ## Prerequisites
 
 - **Python** ≥ 3.14

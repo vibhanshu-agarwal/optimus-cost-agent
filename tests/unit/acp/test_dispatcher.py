@@ -56,6 +56,69 @@ def test_dispatcher_maps_forbidden_runtime_mutation_to_32002():
     assert response["error"]["message"] == "mutation forbidden in Plan/Chat mode"
 
 
+def approved_agent_context() -> RuntimeContext:
+    return RuntimeContext(
+        execution_mode=ExecutionMode.AGENT,
+        state=AgentState.EXECUTING,
+        approval_granted=True,
+        user_approval_id="approval-dispatcher",
+    )
+
+
+def test_dispatcher_shares_one_pre_tool_guard_and_accumulates_audit_events_across_writes(tmp_path):
+    dispatcher = JsonRpcDispatcher(
+        runtime_context=approved_agent_context(),
+        workspace_root=tmp_path,
+    )
+
+    first = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "write-a",
+            "method": "optimus.mutation.writeFile",
+            "params": {"path": str(tmp_path / "a.txt"), "content": "a"},
+        }
+    )
+    second = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "write-b",
+            "method": "optimus.mutation.writeFile",
+            "params": {"path": str(tmp_path / "b.txt"), "content": "b"},
+        }
+    )
+
+    assert first["result"] == {"written": str(tmp_path / "a.txt")}
+    assert second["result"] == {"written": str(tmp_path / "b.txt")}
+    # Both calls went through the same guard instance, so their audit events
+    # accumulate on one dispatcher rather than being built and discarded per call.
+    events = dispatcher.audit_events()
+    assert len(events) == 2
+    assert [event.verdict for event in events] == ["ALLOW", "ALLOW"]
+
+
+def test_dispatcher_maps_pre_tool_guard_block_to_mutation_forbidden_and_records_audit(tmp_path):
+    dispatcher = JsonRpcDispatcher(
+        runtime_context=approved_agent_context(),
+        workspace_root=tmp_path,
+    )
+    secret_path = tmp_path / ".env"
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "write-secret",
+            "method": "optimus.mutation.writeFile",
+            "params": {"path": str(secret_path), "content": "OPTIMUS_API_KEY=secret"},
+        }
+    )
+
+    assert response["error"]["code"] == MUTATION_FORBIDDEN
+    assert not secret_path.exists()
+    assert dispatcher.audit_events()[-1].verdict == "BLOCK"
+    assert dispatcher.audit_events()[-1].rule_id == "deny.path.secret"
+
+
 class FakeGatewayClient:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []

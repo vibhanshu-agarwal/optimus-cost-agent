@@ -1,5 +1,6 @@
 import pytest
 
+from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.mutation import MutationForbidden
 from optimus.runtime.state import (
@@ -54,6 +55,7 @@ def test_agent_mode_after_approval_can_write_file(tmp_path):
     context = validator.transition(context, StateTransition(AgentState.EXECUTING, "approval granted"))
 
     target = tmp_path / "allowed.txt"
-    write_file(target, "allowed", context=context)
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
+    write_file(target, "allowed", context=context, guard=guard)
 
     assert target.read_text(encoding="utf-8") == "allowed"

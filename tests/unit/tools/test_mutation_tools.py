@@ -1,5 +1,6 @@
 import pytest
 
+from optimus.guardrails.pre_tool import PreToolGuard, PreToolResult, PreToolVerdict
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.mutation import MutationForbidden
 from optimus.runtime.state import AgentState, RuntimeContext
@@ -70,8 +71,9 @@ def test_shadow_apply_checks_guard_before_applier_call():
 
 def test_write_file_allowed_after_agent_approval(tmp_path):
     target = tmp_path / "allowed.txt"
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
 
-    write_file(target, "allowed", context=approved_agent_context())
+    write_file(target, "allowed", context=approved_agent_context(), guard=guard)
 
     assert target.read_text(encoding="utf-8") == "allowed"
 
@@ -83,3 +85,60 @@ def test_shell_exec_allowed_after_agent_approval():
 
     assert runner.called is True
     assert result == {"returncode": 0, "command": ["pytest", "-q"]}
+
+
+class DenyGuard:
+    def __init__(self) -> None:
+        self.requests = []
+
+    def check(self, request):
+        self.requests.append(request)
+        return PreToolResult(PreToolVerdict.BLOCK, "test.block", "blocked by test guard")
+
+
+def test_shell_exec_checks_pre_tool_guard_before_runner_call():
+    runner = ProbeRunner()
+    guard = DenyGuard()
+
+    with pytest.raises(MutationForbidden, match="blocked by test guard"):
+        shell_exec(["pytest", "-q"], context=approved_agent_context(), runner=runner, guard=guard)
+
+    assert runner.called is False
+    assert guard.requests[-1].command == ("pytest", "-q")
+
+
+def test_write_file_checks_pre_tool_guard_before_write(tmp_path):
+    guard = DenyGuard()
+    target = tmp_path / "blocked.txt"
+
+    with pytest.raises(MutationForbidden, match="blocked by test guard"):
+        write_file(target, "blocked", context=approved_agent_context(), guard=guard)
+
+    assert not target.exists()
+    assert guard.requests[-1].target_path == str(target)
+
+
+def test_shadow_apply_allowed_after_agent_approval(tmp_path):
+    applier = ProbeApplier()
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
+
+    result = shadow_apply(
+        "diff --git a/x b/x",
+        context=approved_agent_context(),
+        applier=applier,
+        guard=guard,
+    )
+
+    assert applier.called is True
+    assert result == {"applied": True, "patch_text": "diff --git a/x b/x"}
+
+
+def test_shadow_apply_checks_pre_tool_guard_before_applier_call():
+    applier = ProbeApplier()
+    guard = DenyGuard()
+
+    with pytest.raises(MutationForbidden, match="blocked by test guard"):
+        shadow_apply("diff --git a/x b/x", context=approved_agent_context(), applier=applier, guard=guard)
+
+    assert applier.called is False
+    assert guard.requests[-1].action == "shadow_apply"
