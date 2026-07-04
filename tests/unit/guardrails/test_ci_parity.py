@@ -4,7 +4,6 @@ from pathlib import Path
 from optimus.guardrails.ci_parity import GuardrailRuleSet, load_ci_check_names, load_pre_commit_check_names
 from optimus.guardrails.prompt_injection import TrustScanVerdict, default_agent_config_paths, scan_paths
 
-
 ROOT = Path(__file__).resolve().parents[3]
 
 

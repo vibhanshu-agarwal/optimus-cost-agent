@@ -1,5 +1,6 @@
 """Tool wrappers that enforce runtime guardrails before side effects."""
 
+from optimus.tools.mutation_tools import shadow_apply, shell_exec, write_file
 from optimus.tools.policy import (
     EvidenceReasonCode,
     PolicyDecision,
@@ -9,7 +10,6 @@ from optimus.tools.policy import (
     ToolInvocationRequest,
     ToolPolicySignal,
 )
-from optimus.tools.mutation_tools import shell_exec, shadow_apply, write_file
 from optimus.tools.registry import ToolCallRecord, ToolCallRejected, ToolRegistry
 
 __all__ = [

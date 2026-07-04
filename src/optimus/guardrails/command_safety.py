@@ -9,7 +9,6 @@ from optimus.guardrails.network_safety import NetworkSafetyValidator
 from optimus.guardrails.path_safety import PathSafetyValidator
 from optimus.guardrails.validation import ValidationResult, ValidationVerdict
 
-
 _PIPE_TO_SHELL = re.compile(r"(curl|wget|irm|iwr|Invoke-WebRequest|Invoke-RestMethod)\b.*\|\s*(sh|bash|zsh|pwsh|powershell|iex|Invoke-Expression)\b", re.IGNORECASE)
 _FETCH_THEN_EXEC = re.compile(r"(curl|wget|irm|iwr|Invoke-WebRequest|Invoke-RestMethod)\b.*(&&|;)\s*(sh|bash|zsh|pwsh|powershell|iex|Invoke-Expression)\b", re.IGNORECASE)
 _ENV_ACCESS = re.compile(r"\b(printenv|env|set)\b|\bos\.environ\b|\$env:|%[A-Za-z_][A-Za-z0-9_]*%", re.IGNORECASE)

@@ -20,7 +20,7 @@ from optimus.evidence.models import (
 from optimus.gateway.client import GatewayClient
 from optimus.gateway.errors import GatewayResponseError
 from optimus.guardrails.permissions import ToolSurface
-from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolResult, PreToolVerdict
+from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolVerdict
 from optimus.runtime.modes import ExecutionMode
 from optimus.tools.policy import (
     EvidenceReasonCode,

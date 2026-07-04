@@ -1,16 +1,6 @@
 """Pre-tool permission and safety guardrails."""
 
 from optimus.guardrails.audit import InMemoryAuditSink, ToolInvocationAuditEvent
-from optimus.guardrails.permissions import (
-    ImpactClass,
-    PermissionDecision,
-    PermissionLayer,
-    PermissionPolicy,
-    PermissionRequest,
-    PermissionVerdict,
-    ToolSurface,
-    classify_impact,
-)
 from optimus.guardrails.mcp_trust import (
     MCPAutoloadGuard,
     MCPConfigIngestionGuard,
@@ -21,6 +11,16 @@ from optimus.guardrails.mcp_trust import (
     MCPTrustDecision,
     MCPTrustError,
     MCPTrustRegistry,
+)
+from optimus.guardrails.permissions import (
+    ImpactClass,
+    PermissionDecision,
+    PermissionLayer,
+    PermissionPolicy,
+    PermissionRequest,
+    PermissionVerdict,
+    ToolSurface,
+    classify_impact,
 )
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolResult, PreToolVerdict
 from optimus.guardrails.prompt_injection import (

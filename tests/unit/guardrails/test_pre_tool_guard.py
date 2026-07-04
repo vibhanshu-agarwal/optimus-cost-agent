@@ -1,9 +1,8 @@
-from pathlib import Path
 
 from optimus.guardrails.mcp_trust import MCPServerManifest, MCPToolDescriptor, MCPTrustRegistry
+from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolVerdict
 from optimus.guardrails.prompt_injection import ConfigTrustScanner
-from optimus.guardrails.permissions import ToolSurface
 from optimus.runtime.modes import ExecutionMode, GenerationScope
 
 

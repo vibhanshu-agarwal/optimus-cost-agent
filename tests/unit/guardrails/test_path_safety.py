@@ -1,4 +1,3 @@
-from pathlib import Path
 
 from optimus.guardrails.path_safety import PathSafetyValidator, ValidationVerdict
 
