@@ -11,6 +11,17 @@ from optimus.guardrails.permissions import (
     ToolSurface,
     classify_impact,
 )
+from optimus.guardrails.mcp_trust import (
+    MCPAutoloadGuard,
+    MCPConfigIngestionGuard,
+    MCPDescriptorExposureGuard,
+    MCPServerManifest,
+    MCPServerTrustRecord,
+    MCPToolDescriptor,
+    MCPTrustDecision,
+    MCPTrustError,
+    MCPTrustRegistry,
+)
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolResult, PreToolVerdict
 from optimus.guardrails.prompt_injection import (
     ConfigTrustScanner,
@@ -36,6 +47,15 @@ __all__ = [
     "ToolSurface",
     "classify_impact",
     "ConfigTrustScanner",
+    "MCPAutoloadGuard",
+    "MCPConfigIngestionGuard",
+    "MCPDescriptorExposureGuard",
+    "MCPServerManifest",
+    "MCPServerTrustRecord",
+    "MCPToolDescriptor",
+    "MCPTrustDecision",
+    "MCPTrustError",
+    "MCPTrustRegistry",
     "TrustScanFinding",
     "TrustScanResult",
     "TrustScanSubject",
