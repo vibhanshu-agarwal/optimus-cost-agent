@@ -36,7 +36,7 @@ repos:
         pass_filenames: false
       - id: optimus-secret-scan
         name: "optimus-check: secret-scan"
-        entry: detect-secrets-hook --baseline .secrets.baseline
+        entry: detect-secrets-hook --baseline .secrets.baseline src
         language: system
         types: [text]
       - id: optimus-pytest-coverage

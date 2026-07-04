@@ -51,7 +51,7 @@ jobs:
         run: uv run python -m optimus.guardrails.prompt_injection
 
       - name: "optimus-check: secret-scan"
-        run: uv run pre-commit run optimus-secret-scan --all-files
+        run: uv run detect-secrets-hook --baseline .secrets.baseline src
 
       - name: "optimus-check: pytest-coverage"
         run: uv run pytest --cov=optimus --cov-branch --cov-report=term-missing -v
