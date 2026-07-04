@@ -1,6 +1,8 @@
 from pathlib import Path
 
+from optimus.guardrails.mcp_trust import MCPServerManifest, MCPToolDescriptor, MCPTrustRegistry
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolVerdict
+from optimus.guardrails.prompt_injection import ConfigTrustScanner
 from optimus.guardrails.permissions import ToolSurface
 from optimus.runtime.modes import ExecutionMode, GenerationScope
 
@@ -188,3 +190,69 @@ def test_pre_tool_guard_redacts_url_userinfo_from_audit_subject(tmp_path):
     subject = guard.audit_events()[-1].sanitized_subject
     assert "secret-pass" not in subject
     assert "https://**********@gateway.optimus.ai/status" in subject
+
+
+def trusted_registry_and_manifest():
+    manifest = MCPServerManifest(
+        server_id="packages",
+        command=("uvx", "packages-mcp"),
+        tools=(MCPToolDescriptor(name="search", description="Search approved package metadata.", input_schema={"type": "object"}),),
+    )
+    registry = MCPTrustRegistry(scanner=ConfigTrustScanner())
+    registry.register(manifest, allowed_tools=("search",), permission_scope="read_only_metadata", approved_by="maintainer")
+    return registry, manifest
+
+
+def test_mcp_surface_allows_registered_tool_after_approval(tmp_path):
+    registry, manifest = trusted_registry_and_manifest()
+    guard = PreToolGuard.for_workspace(
+        workspace_root=tmp_path,
+        allowed_network_hosts=(),
+        mcp_trust_registry=registry,
+    )
+
+    result = guard.check(
+        PreToolRequest(
+            run_id="run-1",
+            session_id="session-1",
+            execution_mode=ExecutionMode.AGENT,
+            tool_surface=ToolSurface.MCP,
+            action="packages.search",
+            generation_scope=GenerationScope.INLINE_SNIPPET,
+            approval_granted=True,
+            mcp_server_id="packages",
+            mcp_tool_name="search",
+            mcp_manifest=manifest,
+        )
+    )
+
+    assert result.verdict is PreToolVerdict.ALLOW
+    assert result.rule_id == "mcp.trusted_tool_allowed"
+    assert guard.audit_events()[-1].failed_checks == ()
+
+
+def test_mcp_surface_blocks_unregistered_server(tmp_path):
+    _, manifest = trusted_registry_and_manifest()
+    guard = PreToolGuard.for_workspace(
+        workspace_root=tmp_path,
+        allowed_network_hosts=(),
+        mcp_trust_registry=MCPTrustRegistry(scanner=ConfigTrustScanner()),
+    )
+
+    result = guard.check(
+        PreToolRequest(
+            run_id="run-1",
+            session_id="session-1",
+            execution_mode=ExecutionMode.AGENT,
+            tool_surface=ToolSurface.MCP,
+            action="packages.search",
+            generation_scope=GenerationScope.INLINE_SNIPPET,
+            approval_granted=True,
+            mcp_server_id="packages",
+            mcp_tool_name="search",
+            mcp_manifest=manifest,
+        )
+    )
+
+    assert result.verdict is PreToolVerdict.HOLD
+    assert result.rule_id == "mcp.server_not_registered"
