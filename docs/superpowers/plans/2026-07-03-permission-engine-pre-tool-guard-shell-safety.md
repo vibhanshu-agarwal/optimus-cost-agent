@@ -1084,11 +1084,17 @@ class CommandSafetyValidator:
             return ValidationResult(ValidationVerdict.BLOCK, "shell.pipe_to_shell", "fetch-and-execute pattern denied")
         if _FETCH_THEN_EXEC.search(text):
             return ValidationResult(ValidationVerdict.BLOCK, "shell.fetch_then_exec", "fetch-then-execute pattern denied")
-        if _ENV_ACCESS.search(text):
-            return ValidationResult(ValidationVerdict.BLOCK, "shell.env_access", "environment access denied")
+        # Credential-path detection must run before the ENV_ACCESS regex, not after it.
+        # `\b(printenv|env|set)\b` matches "env" as a bare word wherever it is bounded by
+        # non-word characters, which includes inside a path like ".env" (the "." and "/"
+        # around it count as boundaries). Checking ENV_ACCESS first would classify a read
+        # of a `.env` file as "shell.env_access" instead of "shell.credential_read", which
+        # contradicts the assertions in the tests below.
         credential_result = self._credential_read(command)
         if credential_result is not None:
             return credential_result
+        if _ENV_ACCESS.search(text):
+            return ValidationResult(ValidationVerdict.BLOCK, "shell.env_access", "environment access denied")
         non_http_egress = _non_http_egress(command)
         if non_http_egress is not None:
             return non_http_egress
@@ -2161,11 +2167,14 @@ def test_blocked_secret_write_never_creates_file(tmp_path):
     guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
     target = tmp_path / ".env"
 
-    with pytest.raises(MutationForbidden, match="secret path writes are denied"):
+    # PreToolGuard.check() runs PermissionPolicy.decide() before PathSafetyValidator, so a
+    # secret-looking target_path is denied at the USER_DENY layer ("deny.path.secret") and
+    # PathSafetyValidator's own "path.secret.write" rule is never reached for this case.
+    with pytest.raises(MutationForbidden, match="secret or credential path access is denied"):
         write_file(target, "OPTIMUS_API_KEY=secret", context=approved_context(), guard=guard)
 
     assert not target.exists()
-    assert guard.audit_events()[-1].rule_id == "path.secret.write"
+    assert guard.audit_events()[-1].rule_id == "deny.path.secret"
 ```
 
 - [x] **Step 2: Run integration tests**
