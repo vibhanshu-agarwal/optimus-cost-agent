@@ -1,0 +1,53 @@
+name: guardrails
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: guardrails-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clean-environment-recheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Python
+        run: uv python install 3.14
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: "optimus-check: hygiene"
+        run: uv run pre-commit run trailing-whitespace check-yaml check-toml check-added-large-files --all-files
+
+      - name: "optimus-check: ruff"
+        run: uv run ruff check .
+
+      - name: "optimus-check: bandit"
+        run: uv run bandit -q -r src
+
+      - name: "optimus-check: ast-grep"
+        run: uv run pre-commit run optimus-ast-grep --all-files
+
+      - name: "optimus-check: config-trust-scan"
+        run: uv run python -m optimus.guardrails.prompt_injection
+
+      - name: "optimus-check: secret-scan"
+        run: uv run pre-commit run optimus-secret-scan --all-files
+
+      - name: "optimus-check: pytest-coverage"
+        run: uv run pytest --cov=optimus --cov-branch --cov-report=term-missing -v

@@ -86,7 +86,7 @@ def test_launch_env_change_forces_reapproval_without_logging_secret_values():
         command=("uvx", "packages-mcp"),
         launch_args=("--stdio",),
         cwd=None,
-        env={"PACKAGES_MCP_MODE": "readonly", "OPENAI_API_KEY": "sk-not-logged"},
+        env={"PACKAGES_MCP_MODE": "readonly", "PRIVATE_GATEWAY_TOKEN": "tok-not-logged"},
         tools=original.tools,
     )
 
@@ -94,7 +94,7 @@ def test_launch_env_change_forces_reapproval_without_logging_secret_values():
 
     assert decision.allowed is False
     assert decision.rule_id == "mcp.manifest_hash_changed"
-    assert "sk-not-logged" not in changed.descriptor_text()
+    assert "tok-not-logged" not in changed.descriptor_text()
 
 
 def test_allowed_tools_are_enforced():
