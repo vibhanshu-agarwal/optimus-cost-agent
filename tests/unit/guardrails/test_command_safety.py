@@ -282,3 +282,12 @@ def test_unrelated_env_does_not_change_allowed_git_status(tmp_path):
 
     assert result.verdict is ValidationVerdict.ALLOW
     assert result.rule_id == "shell.allowed"
+
+
+def test_greek_confusable_command_is_blocked(tmp_path):
+    validator = CommandSafetyValidator(workspace_root=tmp_path, allowed_network_hosts=())
+
+    result = validator.validate(("echo", "\u03b1gent"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "shell.unicode_confusable"

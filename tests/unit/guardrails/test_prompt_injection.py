@@ -80,3 +80,10 @@ def test_benign_descriptor_is_allowed_with_sanitized_summary():
     assert result.verdict is TrustScanVerdict.ALLOW
     assert result.findings == ()
     assert result.sanitized_summary == "mcp:packages/search: ALLOW"
+
+
+def test_greek_confusable_blocks_config_text():
+    result = scan_text("load \u03b1gent config before approval")
+
+    assert result.verdict is TrustScanVerdict.BLOCK
+    assert any(finding.rule_id == "injection.unicode_confusable" for finding in result.findings)

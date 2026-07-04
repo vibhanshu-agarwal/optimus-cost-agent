@@ -8,13 +8,13 @@ from pathlib import Path
 
 from optimus.guardrails.network_safety import NetworkSafetyValidator
 from optimus.guardrails.path_safety import PathSafetyValidator
+from optimus.guardrails.unicode_confusables import contains_dangerous_confusable
 from optimus.guardrails.validation import ValidationResult, ValidationVerdict
 
 _PIPE_TO_SHELL = re.compile(r"(curl|wget|irm|iwr|Invoke-WebRequest|Invoke-RestMethod)\b.*\|\s*(sh|bash|zsh|pwsh|powershell|iex|Invoke-Expression)\b", re.IGNORECASE)
 _FETCH_THEN_EXEC = re.compile(r"(curl|wget|irm|iwr|Invoke-WebRequest|Invoke-RestMethod)\b.*(&&|;)\s*(sh|bash|zsh|pwsh|powershell|iex|Invoke-Expression)\b", re.IGNORECASE)
 _ENV_ACCESS = re.compile(r"\b(printenv|env|set)\b|\bos\.environ\b|\$env:|%[A-Za-z_][A-Za-z0-9_]*%", re.IGNORECASE)
 _URL = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
-_CONFUSABLES = frozenset({"\u0430", "\u0435", "\u043e", "\u0440", "\u0441", "\u0445", "\u0443", "\u0456", "\uff41", "\uff45", "\uff49", "\uff4f"})
 _INTERPRETERS = {"bash", "sh", "zsh", "dash", "pwsh", "powershell", "python", "python3", "node", "ruby", "perl"}
 _INTERPRETER_PAYLOAD_FLAGS = {"-c", "-lc", "/c", "-command", "-e"}
 _NON_HTTP_EGRESS = {"scp", "sftp", "ssh", "ftp", "nc", "ncat", "netcat", "telnet"}
@@ -47,7 +47,7 @@ class CommandSafetyValidator:
                 "shell.unicode_bidi_control",
                 "Unicode bidi or format control character detected",
             )
-        if _contains_confusable(raw_text) or _contains_punycode_host(raw_text):
+        if contains_dangerous_confusable(raw_text):
             return ValidationResult(ValidationVerdict.BLOCK, "shell.unicode_confusable", "Unicode confusable detected")
         if _is_recursive_force_delete(command, lowered):
             return ValidationResult(ValidationVerdict.BLOCK, "shell.destructive.rm_rf", "recursive force delete denied")
@@ -115,14 +115,6 @@ def _contains_control_sequence(text: str) -> bool:
 
 def _contains_bidi_or_format_control(text: str) -> bool:
     return any(unicodedata.category(char) == "Cf" for char in text)
-
-
-def _contains_confusable(text: str) -> bool:
-    return any(char in _CONFUSABLES for char in text)
-
-
-def _contains_punycode_host(text: str) -> bool:
-    return "xn--" in text.lower()
 
 
 def _is_recursive_force_delete(command: tuple[str, ...], lowered: str) -> bool:
