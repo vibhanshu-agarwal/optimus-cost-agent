@@ -12,6 +12,13 @@ from optimus.guardrails.permissions import (
     classify_impact,
 )
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolResult, PreToolVerdict
+from optimus.guardrails.prompt_injection import (
+    ConfigTrustScanner,
+    TrustScanFinding,
+    TrustScanResult,
+    TrustScanSubject,
+    TrustScanVerdict,
+)
 
 __all__ = [
     "ImpactClass",
@@ -28,4 +35,9 @@ __all__ = [
     "ToolInvocationAuditEvent",
     "ToolSurface",
     "classify_impact",
+    "ConfigTrustScanner",
+    "TrustScanFinding",
+    "TrustScanResult",
+    "TrustScanSubject",
+    "TrustScanVerdict",
 ]
