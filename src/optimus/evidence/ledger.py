@@ -94,3 +94,7 @@ class EvidenceLedger(BaseModel):
 
     def total_cost_usd(self, *, run_id: str | None = None) -> Decimal:
         return sum((entry.cost_usd for entry in self._matching_entries(run_id)), Decimal("0"))
+
+    def gateway_request_ids(self, *, run_id: str | None = None) -> frozenset[str]:
+        entries = self.entries if run_id is None else self.entries_for_run(run_id)
+        return frozenset(entry.gateway_request_id for entry in entries if entry.gateway_request_id)
