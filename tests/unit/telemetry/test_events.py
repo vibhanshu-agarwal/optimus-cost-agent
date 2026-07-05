@@ -4,7 +4,7 @@ from decimal import Decimal
 from optimus.telemetry.events import TelemetryEvent, TelemetryEventKind
 
 
-def test_model_call_event_contains_required_usage_fields():
+def test_model_call_event_contains_required_audit_fields():
     event = TelemetryEvent.model_call(
         run_id="run-1",
         session_id="session-1",
@@ -18,7 +18,9 @@ def test_model_call_event_contains_required_usage_fields():
         cost_usd=Decimal("0.0123"),
         latency_ms=250,
         prompt="hello",
-        response_summary="done",
+        response="done with full model output",
+        input_tokens=10,
+        output_tokens=5,
     )
 
     payload = event.to_json_dict()
@@ -32,7 +34,12 @@ def test_model_call_event_contains_required_usage_fields():
     assert payload["cache_hit"] is True
     assert payload["billing_units"] == 123
     assert payload["cost_usd"] == "0.0123"
+    assert payload["latency_ms"] == 250
     assert payload["prompt"] == "hello"
+    assert payload["response"] == "done with full model output"
+    assert payload["input_tokens"] == 10
+    assert payload["output_tokens"] == 5
+    assert "response_summary" not in payload
 
 
 def test_gateway_reconciliation_and_pricing_fallback_events_have_json_payloads():
@@ -109,3 +116,24 @@ def test_secret_values_are_redacted_from_event_payload():
     assert "result-token" not in event.to_json_line()
     assert "**********" in event.to_json_line()
     assert event.to_json_dict()["authorization_outcome"] == "ALLOW"
+
+
+def test_error_event_redacts_secrets_embedded_in_message_text():
+    event = TelemetryEvent.error(
+        run_id="run-1",
+        session_id=None,
+        request_id="req-1",
+        occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
+        error_type="GatewayHttpError",
+        message="OPTIMUS_API_KEY=opt-secret OPENAI_API_KEY=sk-secret api-key: abc123",
+        disposition="fail_closed",
+    )
+
+    line = event.to_json_line()
+
+    assert "opt-secret" not in line
+    assert "sk-secret" not in line
+    assert "abc123" not in line
+    assert "OPTIMUS_API_KEY=**********" in line
+    assert "OPENAI_API_KEY=**********" in line
+    assert "api-key: **********" in line

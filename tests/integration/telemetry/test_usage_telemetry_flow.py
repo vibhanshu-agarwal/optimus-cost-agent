@@ -33,7 +33,9 @@ def test_usage_event_is_written_to_jsonl_and_exported_to_gateway(tmp_path, monke
         cost_usd=Decimal("0.001"),
         latency_ms=30,
         prompt="hello",
-        response_summary="done",
+        response="done",
+        input_tokens=3,
+        output_tokens=2,
     )
     writer = JsonlTelemetryWriter(tmp_path / "telemetry.jsonl")
     writer.append(event)

@@ -9,6 +9,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES
+
 
 class TelemetryEventKind(StrEnum):
     MODEL_CALL = "model_call"
@@ -46,7 +48,9 @@ class TelemetryEvent(BaseModel):
         cost_usd: Decimal,
         latency_ms: int,
         prompt: str,
-        response_summary: str,
+        response: str,
+        input_tokens: int,
+        output_tokens: int,
     ) -> TelemetryEvent:
         return cls(
             kind=TelemetryEventKind.MODEL_CALL,
@@ -63,7 +67,9 @@ class TelemetryEvent(BaseModel):
                 "cost_usd": cost_usd,
                 "latency_ms": latency_ms,
                 "prompt": prompt,
-                "response_summary": response_summary,
+                "response": response,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
             },
         )
 
@@ -288,13 +294,40 @@ _SECRET_KEY_PARTS = (
     "optimus_api_key",
 )
 
+_REDACT_ENV_KEY_NAMES = frozenset({*LOCAL_PROVIDER_KEY_NAMES, "OPTIMUS_API_KEY"})
+_ENV_ASSIGNMENT_PATTERN = re.compile(
+    rf"\b({'|'.join(sorted(_REDACT_ENV_KEY_NAMES, key=len, reverse=True))})\s*=\s*\S+",
+    re.IGNORECASE,
+)
+_API_KEY_HEADER_PATTERN = re.compile(r"(?i)(api[_-]?key)\s*:\s*\S+")
+_X_API_KEY_HEADER_PATTERN = re.compile(r"(?i)x-api-key:\s*\S+")
+_BEARER_TOKEN_PATTERN = re.compile(r"(?i)(authorization:\s*bearer\s+|bearer\s+)[^\s]+")
+
+
+def _redact_free_text(text: str) -> str:
+    redacted = _BEARER_TOKEN_PATTERN.sub(r"\1**********", text)
+    redacted = _ENV_ASSIGNMENT_PATTERN.sub(r"\1=**********", redacted)
+    redacted = _API_KEY_HEADER_PATTERN.sub(r"\1: **********", redacted)
+    redacted = _X_API_KEY_HEADER_PATTERN.sub("x-api-key: **********", redacted)
+    return redacted
+
+
+def _is_secret_dict_key(key_text: str) -> bool:
+    if key_text in _EXACT_SECRET_KEYS:
+        return True
+    normalized = key_text.replace("-", "_")
+    if normalized in _SECRET_KEY_PARTS:
+        return True
+    segments = normalized.split("_")
+    return any(segment in _SECRET_KEY_PARTS for segment in segments)
+
 
 def _redact(value: Any) -> Any:
     if isinstance(value, dict):
         redacted: dict[str, Any] = {}
         for key, child in value.items():
             key_text = str(key).lower()
-            if key_text in _EXACT_SECRET_KEYS or any(part in key_text for part in _SECRET_KEY_PARTS):
+            if _is_secret_dict_key(key_text):
                 redacted[key] = "**********"
             else:
                 redacted[key] = _redact(child)
@@ -302,7 +335,7 @@ def _redact(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_redact(child) for child in value]
     if isinstance(value, str):
-        return re.sub(r"(?i)(authorization:\s*bearer\s+|bearer\s+)[^\s]+", r"\1**********", value)
+        return _redact_free_text(value)
     return value
 
 

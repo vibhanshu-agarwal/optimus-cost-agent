@@ -35,7 +35,9 @@ def test_observability_export_posts_to_gateway_trace_endpoint(monkeypatch):
         cost_usd=Decimal("0.001"),
         latency_ms=20,
         prompt="hello",
-        response_summary="done",
+        response="done",
+        input_tokens=3,
+        output_tokens=2,
     )
 
     response = exporter.export((event,))
