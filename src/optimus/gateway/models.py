@@ -9,6 +9,14 @@ from optimus.gateway.errors import GatewayResponseError
 
 
 class GatewayUsage(BaseModel):
+    """Wire-level usage envelope copied from an Optimus Gateway response.
+
+    Normalized fields (service, native_unit, optimus_credits_debited, model,
+    model_version, price_snapshot_id) are optional here. ProviderUsage
+    persistence requires service, native_unit, optimus_credits_debited, and
+    price_snapshot_id; model and model_version are copied when present only.
+    """
+
     model_config = ConfigDict(frozen=True)
 
     gateway_request_id: str = Field(min_length=1)
@@ -17,6 +25,13 @@ class GatewayUsage(BaseModel):
     cache_hit: bool = False
     billing_units: int = Field(ge=0)
     cost_usd: Decimal = Field(ge=Decimal("0"))
+    # Normalized gateway extensions (all optional at parse time; see class docstring).
+    service: str | None = None
+    native_unit: str | None = None
+    optimus_credits_debited: Decimal | None = Field(default=None, ge=Decimal("0"))
+    model: str | None = None
+    model_version: str | None = None
+    price_snapshot_id: str | None = None
 
 
 class GatewayResponse(BaseModel):
