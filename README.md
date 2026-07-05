@@ -99,6 +99,18 @@ approval, and pre-tool execution through the same registry. Usage accounting
 and observability remain in Plan 7; Plan 6.5 only emits guardrail events for
 that later telemetry layer to persist or export.
 
+### Phase 1 Usage Accounting and Observability
+
+Gateway response usage remains the source of truth for billable calls.
+`GatewayUsage` captures the response envelope returned by the Optimus Gateway,
+while `ProviderUsage` persists the normalized provider/native-unit cost record
+joined by `gateway_request_id`. `EvidenceLedger` remains the audit trail for
+external evidence and reconciles against the provider usage ledger by cost,
+billing units, and request IDs. Local telemetry is append-only JSONL and Redis
+adapter writes are isolated behind TimeSeries/HASH boundaries. Trace export
+uses the Optimus Gateway `/v1/observability/traces` endpoint; LangSmith and
+provider credentials stay server-side and are never required locally.
+
 ## Prerequisites
 
 - **Python** ≥ 3.14
