@@ -295,6 +295,7 @@ _SECRET_KEY_PARTS = (
 )
 
 _REDACT_ENV_KEY_NAMES = frozenset({*LOCAL_PROVIDER_KEY_NAMES, "OPTIMUS_API_KEY"})
+_REDACT_ENV_KEY_NAMES_LOWER = frozenset(name.lower().replace("-", "_") for name in _REDACT_ENV_KEY_NAMES)
 _ENV_ASSIGNMENT_PATTERN = re.compile(
     rf"\b({'|'.join(sorted(_REDACT_ENV_KEY_NAMES, key=len, reverse=True))})\s*=\s*\S+",
     re.IGNORECASE,
@@ -316,6 +317,8 @@ def _is_secret_dict_key(key_text: str) -> bool:
     if key_text in _EXACT_SECRET_KEYS:
         return True
     normalized = key_text.replace("-", "_")
+    if normalized in _REDACT_ENV_KEY_NAMES_LOWER:
+        return True
     if normalized in _SECRET_KEY_PARTS:
         return True
     segments = normalized.split("_")

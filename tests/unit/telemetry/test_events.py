@@ -137,3 +137,33 @@ def test_error_event_redacts_secrets_embedded_in_message_text():
     assert "OPTIMUS_API_KEY=**********" in line
     assert "OPENAI_API_KEY=**********" in line
     assert "api-key: **********" in line
+
+
+def test_structured_provider_env_key_names_are_redacted_from_payload():
+    event = TelemetryEvent.tool_call(
+        run_id="run-1",
+        session_id=None,
+        request_id="req-1",
+        occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
+        tool_name="web.search",
+        parameters={
+            "OPENAI_API_KEY": "sk-structured",
+            "OPTIMUS_API_KEY": "opt-structured",
+            "api_key": "plain-secret",
+            "input_tokens": 12,
+        },
+        result_summary="ok",
+        latency_ms=10,
+        policy_reason="USER_REQUESTED",
+        authorization_outcome="ALLOW",
+    )
+
+    parameters = event.to_json_dict()["parameters"]
+
+    assert parameters["OPENAI_API_KEY"] == "**********"
+    assert parameters["OPTIMUS_API_KEY"] == "**********"
+    assert parameters["api_key"] == "**********"
+    assert parameters["input_tokens"] == 12
+    assert "sk-structured" not in event.to_json_line()
+    assert "opt-structured" not in event.to_json_line()
+    assert "plain-secret" not in event.to_json_line()
