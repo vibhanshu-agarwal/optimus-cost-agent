@@ -1959,7 +1959,7 @@ git commit -m "Retry gated candidates without partial writes."
 - Test: `tests/unit/golden/test_tasks.py`
 - Test: `tests/unit/golden/test_runner.py`
 
-- [ ] **Step 1: Write failing golden task tests**
+- [x] **Step 1: Write failing golden task tests**
 
 Create `tests/unit/golden/test_tasks.py`:
 
@@ -2039,7 +2039,7 @@ def test_release_gate_task_fails_when_provider_key_is_resolvable():
     assert "provider keys resolvable: OPENAI_API_KEY" in evaluation.failures
 ```
 
-- [ ] **Step 2: Add failing fixture**
+- [x] **Step 2: Add failing fixture**
 
 Create `tests/fixtures/golden_tasks/phase1_golden_tasks.json`:
 
@@ -2153,7 +2153,7 @@ Create `tests/fixtures/golden_tasks/phase1_golden_tasks.json`:
 }
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run:
 
@@ -2163,7 +2163,7 @@ pytest tests/unit/golden/test_tasks.py -v
 
 Expected: FAIL because `optimus.golden.tasks` does not exist.
 
-- [ ] **Step 4: Implement golden task evaluator**
+- [x] **Step 4: Implement golden task evaluator**
 
 Create `src/optimus/golden/tasks.py`:
 
@@ -2273,7 +2273,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 5: Write failing golden suite runner tests**
+- [x] **Step 5: Write failing golden suite runner tests**
 
 Create `tests/unit/golden/test_runner.py`:
 
@@ -2337,7 +2337,7 @@ def test_evaluate_golden_task_suite_fails_when_release_gate_result_leaks_provide
     assert any("provider keys resolvable" in failure for evaluation in report.evaluations for failure in evaluation.failures)
 ```
 
-- [ ] **Step 6: Implement golden suite runner**
+- [x] **Step 6: Implement golden suite runner**
 
 Create `src/optimus/golden/runner.py`:
 
@@ -2426,7 +2426,7 @@ Append to `__all__`:
     "evaluate_golden_task_suite",
 ```
 
-- [ ] **Step 7: Run golden task tests**
+- [x] **Step 7: Run golden task tests**
 
 Run:
 
@@ -2436,7 +2436,7 @@ pytest tests/unit/golden/test_tasks.py tests/unit/golden/test_runner.py -v
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/optimus/golden/__init__.py src/optimus/golden/tasks.py src/optimus/golden/runner.py tests/fixtures/golden_tasks/phase1_golden_tasks.json tests/unit/golden/test_tasks.py tests/unit/golden/test_runner.py
