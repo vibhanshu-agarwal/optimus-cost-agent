@@ -2670,7 +2670,7 @@ git commit -m "Add one-key credential scanner."
 - Test: `tests/unit/release/test_defaults.py`
 - Test: `tests/integration/release/test_phase1_release_runner.py`
 
-- [ ] **Step 1: Write failing release runner tests**
+- [x] **Step 1: Write failing release runner tests**
 
 Create `tests/unit/release/test_runner.py`:
 
@@ -2779,7 +2779,7 @@ def test_injected_phase1_release_runner_reports_golden_and_one_key_results():
     assert [result.name for result in report.results] == ["golden-task-suite", "one-key-credential-scan"]
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -2789,7 +2789,7 @@ pytest tests/unit/release/test_runner.py tests/unit/release/test_defaults.py tes
 
 Expected: FAIL because `optimus.release.runner` and defaults do not exist.
 
-- [ ] **Step 3: Implement release runner**
+- [x] **Step 3: Implement release runner**
 
 Create `src/optimus/release/runner.py`:
 
@@ -2931,7 +2931,7 @@ def _safe_summary(summary: str) -> str:
     return str(redacted)
 ```
 
-- [ ] **Step 4: Implement default gate list**
+- [x] **Step 4: Implement default gate list**
 
 Create `src/optimus/release/defaults.py`:
 
@@ -3015,7 +3015,7 @@ Append to `__all__`:
     "build_phase1_release_gates",
 ```
 
-- [ ] **Step 5: Run release runner tests**
+- [x] **Step 5: Run release runner tests**
 
 Run:
 
@@ -3025,7 +3025,7 @@ pytest tests/unit/release/test_runner.py tests/unit/release/test_defaults.py tes
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/optimus/release/__init__.py src/optimus/release/runner.py src/optimus/release/defaults.py tests/unit/release/test_runner.py tests/unit/release/test_defaults.py tests/integration/release/test_phase1_release_runner.py
