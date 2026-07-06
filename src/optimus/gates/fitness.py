@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
+from optimus.gates.exceptions import CompositeGateError
+
 
 class GateStatus(StrEnum):
     PASS = "pass"
@@ -76,12 +78,6 @@ class CompositeGateResult:
     def raise_for_failure(self) -> None:
         if not self.passed:
             raise CompositeGateError(self)
-
-
-class CompositeGateError(Exception):
-    def __init__(self, result: CompositeGateResult) -> None:
-        self.result = result
-        super().__init__(f"required fitness gates failed: {', '.join(result.failed_gate_names)}")
 
 
 class FitnessGateRunner:

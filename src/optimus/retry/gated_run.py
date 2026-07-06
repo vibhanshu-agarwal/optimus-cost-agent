@@ -7,7 +7,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Generic, TypeVar
 
-from optimus.gates.fitness import CompositeGateError, CompositeGateResult, FitnessCheck
+from optimus.gates.exceptions import CompositeGateError
+from optimus.gates.fitness import CompositeGateResult, FitnessCheck
 from optimus.gates.mutation_flow import ShadowWorkspaceMutationRunner
 from optimus.retry.policy import RetryAction, RetryDecision, RetryPolicy, classify_failure
 from optimus.runtime.state import RuntimeContext

@@ -1,5 +1,5 @@
+from optimus.gates.exceptions import CompositeGateError
 from optimus.gates.fitness import (
-    CompositeGateError,
     CompositeGateResult,
     FitnessCheck,
     FitnessGateRunner,
