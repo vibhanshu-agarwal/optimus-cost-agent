@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -22,6 +23,18 @@ PROVIDER_CREDENTIAL_NAMES = frozenset(
     }
 )
 
+DEFAULT_RELEASE_CREDENTIAL_SCAN_PATHS = (
+    Path(".env"),
+    Path(".env.local"),
+    Path("pyproject.toml"),
+    Path("reports/phase1-release-gate.json"),
+    Path("reports/phase1-golden-results.json"),
+    Path("reports/process-state.json"),
+)
+
+JSON_NAMES_AS_DATA_KEYS = frozenset({"provider_keys_resolvable"})
+# Report fields that may list provider key *names* as audit metadata without carrying secrets.
+
 
 @dataclass(frozen=True)
 class CredentialScanResult:
@@ -38,6 +51,11 @@ class CredentialScanResult:
         if self.passed:
             return f"allowed Optimus credentials present: {', '.join(self.allowed_present)}"
         return f"provider credentials resolvable: {', '.join(self.provider_keys_resolvable)}"
+
+
+def default_release_credential_scan_paths(*, root: str | Path = ".") -> tuple[Path, ...]:
+    base = Path(root).resolve()
+    return tuple((base / path).resolve() for path in DEFAULT_RELEASE_CREDENTIAL_SCAN_PATHS)
 
 
 def scan_local_credentials(
@@ -59,16 +77,43 @@ def scan_local_credentials(
 
 def _scan_config_files(config_paths: tuple[str | Path, ...]) -> set[str]:
     hits: set[str] = set()
-    names_pattern = "|".join(re.escape(name) for name in sorted(PROVIDER_CREDENTIAL_NAMES, key=len, reverse=True))
-    pattern = re.compile(rf'["\']?\b({names_pattern})\b["\']?\s*[:=]', re.IGNORECASE)
     for config_path in config_paths:
         path = Path(config_path)
         if not path.exists() or not path.is_file():
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        for match in pattern.finditer(text):
-            canonical = _canonical_name(match.group(1))
-            hits.add(canonical)
+        if path.suffix.lower() == ".json":
+            try:
+                hits.update(_scan_json_value(json.loads(text)))
+                continue
+            except json.JSONDecodeError:
+                pass
+        hits.update(_scan_text_for_provider_assignments(text))
+    return hits
+
+
+def _scan_json_value(value: object, *, parent_key: str | None = None) -> set[str]:
+    hits: set[str] = set()
+    if isinstance(value, dict):
+        for key, child in value.items():
+            canonical = _canonical_name(key)
+            if canonical in PROVIDER_CREDENTIAL_NAMES and child not in (None, "", [], {}):
+                hits.add(canonical)
+            hits.update(_scan_json_value(child, parent_key=key))
+    elif isinstance(value, list) and parent_key not in JSON_NAMES_AS_DATA_KEYS:
+        for child in value:
+            hits.update(_scan_json_value(child, parent_key=parent_key))
+    elif isinstance(value, str) and parent_key not in JSON_NAMES_AS_DATA_KEYS:
+        hits.update(_scan_text_for_provider_assignments(value))
+    return hits
+
+
+def _scan_text_for_provider_assignments(text: str) -> set[str]:
+    hits: set[str] = set()
+    names_pattern = "|".join(re.escape(name) for name in sorted(PROVIDER_CREDENTIAL_NAMES, key=len, reverse=True))
+    pattern = re.compile(rf'["\']?\b({names_pattern})\b["\']?\s*[:=]', re.IGNORECASE)
+    for match in pattern.finditer(text):
+        hits.add(_canonical_name(match.group(1)))
     return hits
 
 

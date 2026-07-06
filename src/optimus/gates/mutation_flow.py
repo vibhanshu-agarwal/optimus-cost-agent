@@ -14,10 +14,10 @@ class ShadowWorkspaceMutationRunner:
         self,
         *,
         checks_factory: Callable[[Path], tuple[FitnessCheck, ...]],
-        fail_after_promoted_paths: int | None = None,
+        ignore_patterns: tuple[str, ...] = (),
     ) -> None:
         self._checks_factory = checks_factory
-        self._fail_after_promoted_paths = fail_after_promoted_paths
+        self._ignore_patterns = ignore_patterns
 
     def run(
         self,
@@ -27,15 +27,12 @@ class ShadowWorkspaceMutationRunner:
         apply_candidate: Callable[[Path], object],
     ) -> CompositeGateResult:
         assert_mutation_allowed(context, MutationKind.WRITE_FILE)
-        shadow = ShadowWorkspace(workspace_root=Path(workspace_root))
+        shadow = ShadowWorkspace(workspace_root=Path(workspace_root), ignore_patterns=self._ignore_patterns)
         try:
             apply_candidate(shadow.shadow_root)
             result = FitnessGateRunner(checks=self._checks_factory(shadow.shadow_root)).run()
             if result.passed:
-                promote_shadow_changes(
-                    shadow.promotion_plan(),
-                    fail_after_promoted_paths=self._fail_after_promoted_paths,
-                )
+                promote_shadow_changes(shadow.promotion_plan())
             return result
         finally:
             shadow.cleanup()

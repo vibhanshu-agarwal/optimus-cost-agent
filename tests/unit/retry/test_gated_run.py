@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from optimus.gates.fitness import GateResult
 from optimus.retry.gated_run import GatedAttempt, GatedRetryRunner
 from optimus.retry.policy import RetryPolicy
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import AgentState, RuntimeContext
+from optimus.telemetry.events import TelemetryEventKind
 
 
 class SequenceGate:
@@ -55,9 +58,8 @@ def test_gate_failures_replan_with_prior_failure_summaries(tmp_path):
         checks_factory=lambda candidate, shadow_root: (gate,),
         plan_candidate=plan_candidate,
         apply_candidate=lambda candidate, shadow_root: (shadow_root / "candidate.txt").write_text(candidate, encoding="utf-8"),
+        candidate_cost_usd=lambda candidate: Decimal("0"),
     )
-
-    assert result.succeeded is True
     assert result.retry_count == 2
     assert result.runtime_context.retry_count == 2
     assert result.runtime_context.user_escalation is False
@@ -90,6 +92,7 @@ def test_retry_runner_returns_failed_attempt_without_promoting_when_budget_exhau
         checks_factory=lambda candidate, shadow_root: (AlwaysFailingGate(),),
         plan_candidate=lambda attempt, prior_failures: f"candidate-{attempt}",
         apply_candidate=lambda candidate, shadow_root: (shadow_root / "candidate.txt").write_text(candidate, encoding="utf-8"),
+        candidate_cost_usd=lambda candidate: Decimal("0"),
     )
 
     assert result.succeeded is False
@@ -99,3 +102,34 @@ def test_retry_runner_returns_failed_attempt_without_promoting_when_budget_exhau
     assert result.runtime_context.failure_context == "required fitness gates failed: fitness"
     assert isinstance(result.final_attempt, GatedAttempt)
     assert not target.exists()
+
+
+def test_fitness_gate_telemetry_uses_candidate_cost(tmp_path):
+    events = []
+
+    class PassingGate:
+        name = "fitness"
+        required = True
+
+        def run(self) -> GateResult:
+            return GateResult.pass_(name=self.name, summary="passed")
+
+    runner = GatedRetryRunner(
+        policy=RetryPolicy(max_retries=1, base_delay_ms=1, jitter_ms=(0,)),
+        sleep_ms=lambda delay_ms: None,
+        event_sink=events.append,
+    )
+
+    result = runner.run(
+        context=approved_context(),
+        workspace_root=tmp_path,
+        checks_factory=lambda candidate, shadow_root: (PassingGate(),),
+        plan_candidate=lambda attempt, prior_failures: "candidate",
+        apply_candidate=lambda candidate, shadow_root: (shadow_root / "candidate.txt").write_text(candidate, encoding="utf-8"),
+        candidate_cost_usd=lambda candidate: Decimal("0.019"),
+    )
+
+    assert result.succeeded is True
+    fitness_events = [event for event in events if event.kind is TelemetryEventKind.FITNESS_GATE]
+    assert fitness_events
+    assert fitness_events[0].payload["cost_usd"] == Decimal("0.019")

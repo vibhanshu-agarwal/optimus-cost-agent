@@ -125,6 +125,12 @@ pass, and roll back on partial promotion failure so failed fitness gates never
 leave partial writes in the real working tree. `GatedRetryRunner` replans after
 gate failures and mutates only after validation succeeds.
 
+Plan 8.5 hardens the release runner. Shadow promotion now carries both writes
+and deletions, rolls back partial promotion failures, and skips common large
+local directories such as `.venv`, `node_modules`, build outputs, and caches.
+Release command gates have a per-command timeout; timeout is reported as a
+failed gate and the runner continues to collect the remaining gate results.
+
 Golden tasks provide deterministic, keyless regression checks. Versioned
 fixtures in `tests/fixtures/golden_tasks/phase1_golden_tasks.json` load into
 `GoldenTask` models; a `GoldenTaskHarness` produces `GoldenTaskResult` records
@@ -135,24 +141,30 @@ remains a Gateway-routed extension and is not required locally.
 The Phase 1 release runner composes ordered unit, integration, coverage,
 golden-task-suite, diff-hygiene, and one-key credential gates into a single
 `ReleaseGateReport`. `scan_local_credentials()` enforces the one-key model by
-rejecting resolvable provider keys from the local environment, selected config
-files, and serialized process-state snapshots. Run the default CLI with:
+rejecting resolvable provider keys from the local environment and configured
+release scan artifacts. The default one-key gate scans the local process
+environment plus `.env`, `.env.local`, `pyproject.toml`,
+`reports/phase1-release-gate.json`, `reports/phase1-golden-results.json`, and
+`reports/process-state.json`. These report paths are scanned because the release
+runner reads or produces them during Sprint 1 sign-off. Add any future
+release-runner local artifact to `DEFAULT_RELEASE_CREDENTIAL_SCAN_PATHS` before
+it can carry credentials.
+
+Golden tasks are wired through actual result JSON:
 
 ```bash
-python tools/run_phase1_release_gate.py
+python tools/run_phase1_release_gate.py --golden-results reports/phase1-golden-results.json
 ```
 
-The default CLI is fail-closed until a golden-task harness is configured. A
-run with no harness exits non-zero with `golden task harness not configured`;
-the Sprint 1 PASS state requires wiring a deterministic local or staging
-harness that produces `GoldenTaskResult` records for every fixture. The final
-go/no-go rule is strict: a Plan-mode and Agent-mode release run must complete
-with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` available locally.
+When `--golden-results` is omitted, `golden-task-suite` fails closed. A
+synthetic result file may be used for CLI wiring tests only. Sprint 1 sign-off
+requires result JSON captured from a real Optimus-only Plan-mode and Agent-mode
+run, or the release evidence must state that staging Gateway E2E was not run.
+The final go/no-go rule is strict: a Plan-mode and Agent-mode release run must
+complete with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` available locally.
 Provider keys such as Tavily, OpenAI, OpenRouter, GLM, Anthropic, and LangSmith
 must remain Gateway-side. Plan 9 bounded loops and skill loading, and Plan 10
-context-window optimization gates, are out of scope; shadow deletion
-propagation, golden-harness default wiring, and related hardening are tracked
-in Plan 8.5.
+context-window optimization gates, are out of scope.
 
 ## Prerequisites
 

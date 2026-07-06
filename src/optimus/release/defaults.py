@@ -4,7 +4,7 @@ from pathlib import Path
 
 from optimus.golden.runner import GoldenTaskHarness, evaluate_golden_task_suite
 from optimus.golden.tasks import load_golden_tasks
-from optimus.release.credentials import scan_local_credentials
+from optimus.release.credentials import default_release_credential_scan_paths, scan_local_credentials
 from optimus.release.runner import CallableGate, CommandGate, ReleaseGate
 
 
@@ -12,31 +12,42 @@ def build_phase1_release_gates(
     *,
     python_executable: str = "python",
     golden_harness: GoldenTaskHarness | None = None,
+    include_command_gates: bool = True,
+    credential_scan_root: str | Path = ".",
+    command_timeout_seconds: float = 600.0,
 ) -> tuple[ReleaseGate, ...]:
-    return (
-        CommandGate(
-            name="unit-and-integration-tests",
-            command=(python_executable, "-m", "pytest", "tests/unit", "tests/integration", "-q"),
-        ),
-        CommandGate(
-            name="coverage-80",
-            command=(
-                python_executable,
-                "-m",
-                "pytest",
-                "--cov=optimus",
-                "--cov-branch",
-                "--cov-report=term-missing",
-                "--cov-fail-under=80",
-                "-q",
+    command_gates: tuple[ReleaseGate, ...] = ()
+    if include_command_gates:
+        command_gates = (
+            CommandGate(
+                name="unit-and-integration-tests",
+                command=(python_executable, "-m", "pytest", "tests/unit", "tests/integration", "-q"),
+                timeout_seconds=command_timeout_seconds,
             ),
-        ),
-        CommandGate(
-            name="diff-whitespace-check",
-            command=("git", "diff", "--check"),
-        ),
+            CommandGate(
+                name="coverage-80",
+                command=(
+                    python_executable,
+                    "-m",
+                    "pytest",
+                    "--cov=optimus",
+                    "--cov-branch",
+                    "--cov-report=term-missing",
+                    "--cov-fail-under=80",
+                    "-q",
+                ),
+                timeout_seconds=command_timeout_seconds,
+            ),
+            CommandGate(
+                name="diff-whitespace-check",
+                command=("git", "diff", "--check"),
+                timeout_seconds=command_timeout_seconds,
+            ),
+        )
+    return (
+        *command_gates,
         CallableGate(name="golden-task-suite", run=lambda: _golden_task_suite_gate(golden_harness)),
-        CallableGate(name="one-key-credential-scan", run=_one_key_credential_gate),
+        CallableGate(name="one-key-credential-scan", run=lambda: _one_key_credential_gate(credential_scan_root)),
     )
 
 
@@ -48,12 +59,6 @@ def _golden_task_suite_gate(golden_harness: GoldenTaskHarness | None) -> tuple[b
     return report.passed, report.failure_summary
 
 
-def _one_key_credential_gate() -> tuple[bool, str]:
-    result = scan_local_credentials(
-        config_paths=(
-            Path(".env"),
-            Path(".env.local"),
-            Path("pyproject.toml"),
-        )
-    )
+def _one_key_credential_gate(credential_scan_root: str | Path) -> tuple[bool, str]:
+    result = scan_local_credentials(config_paths=default_release_credential_scan_paths(root=credential_scan_root))
     return result.passed, result.summary

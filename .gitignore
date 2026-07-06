@@ -65,12 +65,7 @@ logs/
 .local/
 
 # --- IDE / editors ---
-.idea/workspace.xml
-.idea/shelf/
-.idea/httpRequests/
-.idea/dataSources/
-.idea/dataSources.local.xml
-.idea/queries/
+.idea/
 *.swp
 *.swo
 *~

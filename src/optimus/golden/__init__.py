@@ -1,3 +1,4 @@
+from optimus.golden.json_harness import JsonGoldenTaskHarness, load_golden_results
 from optimus.golden.runner import GoldenTaskHarness, GoldenTaskSuiteReport, evaluate_golden_task_suite
 from optimus.golden.tasks import (
     GoldenTask,
@@ -13,7 +14,9 @@ __all__ = [
     "GoldenTaskHarness",
     "GoldenTaskResult",
     "GoldenTaskSuiteReport",
+    "JsonGoldenTaskHarness",
     "evaluate_golden_task",
     "evaluate_golden_task_suite",
     "load_golden_tasks",
+    "load_golden_results",
 ]

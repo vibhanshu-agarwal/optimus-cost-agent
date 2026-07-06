@@ -6,6 +6,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Generic, TypeVar
 
+from optimus.gates.exceptions import CompositeGateError
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
 
 T = TypeVar("T")
@@ -104,8 +105,6 @@ PERMANENT_HTTP_STATUS_CODES = frozenset({400, 401, 403, 404, 422})
 
 
 def classify_failure(error: BaseException) -> FailureClassification:
-    from optimus.gates.fitness import CompositeGateError
-
     if isinstance(error, CompositeGateError):
         return _classification(FailureKind.FITNESS_GATE, FailureSeverity.RETRYABLE, error)
     if isinstance(error, TransientGatewayError):
