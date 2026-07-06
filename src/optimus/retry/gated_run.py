@@ -67,11 +67,11 @@ class GatedRetryRunner:
         while True:
             candidate = plan_candidate(attempt, tuple(prior_failure_summaries))
             gate_result = ShadowWorkspaceMutationRunner(
-                checks_factory=lambda shadow_root: checks_factory(candidate, shadow_root)
+                checks_factory=lambda shadow_root, bound_candidate=candidate: checks_factory(bound_candidate, shadow_root)
             ).run(
                 context=context,
                 workspace_root=workspace_root,
-                apply_candidate=lambda shadow_root: apply_candidate(candidate, shadow_root),
+                apply_candidate=lambda shadow_root, bound_candidate=candidate: apply_candidate(bound_candidate, shadow_root),
             )
             self._emit_fitness_gate(gate_result=gate_result, attempt=attempt)
             failure_summary = None

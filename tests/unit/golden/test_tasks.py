@@ -5,7 +5,6 @@ from pathlib import Path
 
 from optimus.golden.tasks import GoldenTaskResult, evaluate_golden_task, load_golden_tasks
 
-
 FIXTURE_PATH = Path("tests/fixtures/golden_tasks/phase1_golden_tasks.json")
 
 
