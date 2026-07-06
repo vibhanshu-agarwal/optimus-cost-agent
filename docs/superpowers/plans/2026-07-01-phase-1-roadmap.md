@@ -23,7 +23,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 **How the existing plans carry this initiative:**
 - Plan 7 owns the cost-attribution prerequisite: every prompt block, retrieval/compression/summarization/reranking step, and model call must be attributable by strategy, stage, `run_id`/`session_id`, token count, `cost_usd`, `cache_hit`, model, and provider. Without this, the selection layer's cost gates are not measurable.
-- Plan 8 owns leaving room in the fitness-gate and release-gate machinery for the offline promotion gates, the baseline/ablation plan, and context-regret checks defined in the design note - without binding them in as enforced gates yet.
+- Plan 8 (extended by Plan 8.5) owns leaving room in the fitness-gate and release-gate machinery for the offline promotion gates, the baseline/ablation plan, and context-regret checks defined in the design note - without binding them in as enforced gates yet.
 - Plans 4, 5, 6, 6.5, and 9 supply the context-selection inputs this initiative packs and scores, but do not implement selection themselves: Plan 4 provides evidence-ledger and tool-output-trust signals, Plans 5, 6, and 6.5 provide the guardrail, MCP, runtime-trust, and config-trust signals that feed freshness/trust gating, and Plan 9 provides loop state and skill-selection signals for on-demand procedural context.
 
 **PDF fold-in:** the HLD, LLD, and Test Strategy PDFs remain authoritative and untouched by this initiative for now. Only the accepted policy folds into those PDFs, and only after calibration baselines, trace fields, ablation criteria, and promotion gates are accepted.
@@ -140,6 +140,8 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 ## Plan 8: Retry, Fitness Gates, Golden Tasks, and Release Gate
 
+**Plan file:** `docs/superpowers/plans/2026-07-05-retry-fitness-gates-golden-tasks-release-gate.md`
+
 **User story:** As a release owner, I can prove the system fails closed, retries boundedly, passes coverage, and completes one-key release gates.
 
 **Source anchors:**
@@ -150,6 +152,36 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 **Expected deliverables:**
 - Failure classification, retry/backoff policy, max 3 transient retries, composite gate results, golden task fixtures, and release-gate runner.
 - Tests proving permanent failures do not retry, transient failures cap at 3 attempts, gate failures leave no partial writes, golden tasks validate expected mode/tools/cost band/final state, and full release gate runs with only Optimus credentials.
+
+## Plan 8.5: Release-Gate Hardening and Golden-Harness Wiring
+
+**Plan file:** `docs/superpowers/plans/2026-07-06-plan-8-5-release-gate-hardening.md`
+
+**User story:** As a release owner, I can trust that shadow-workspace promotion matches exactly what the fitness gates evaluated, that the one-key scanner covers every local artifact that could leak a provider key, and that the Phase 1 release-gate CLI can actually reach a real PASS end-to-end.
+
+**Source anchors:**
+- PR #21 code review (2026-07-06).
+- Plan 8 plan file "Notes for reviewers" and Deferred Follow-Ups (P8-FU-1 deletion propagation, unchecked golden-harness CLI and staging Gateway E2E items).
+- Test Strategy sections 9, 12, and 13 (same anchors as Plan 8 — this closes gaps against existing requirements, it does not add new ones).
+
+**Expected deliverables** (each maps to a review finding; keep traceability during implementation):
+
+1. **Shadow-workspace deletion propagation** — `changed_paths()` / `promote_shadow_changes()` must detect and promote file deletions (present in `workspace_root`, absent from `shadow_root`), preserving rollback-on-partial-promotion-failure. Closes P8-FU-1 and Critical Issue #1: gates can evaluate a shadow tree missing a file while promotion never removes it from the real workspace, so promoted state can diverge from what passed.
+2. **One-key scanner default wiring** — the one-key gate in `build_phase1_release_gates()` currently scans only `.env`, `.env.local`, and `pyproject.toml`, while `scan_local_credentials()` supports arbitrary `config_paths`. Either extend the default scan surface to every local artifact the release runner produces or reads, or explicitly document and test the accepted scan boundary so the gap is a reviewed decision, not an implicit one.
+3. **Golden-harness wiring for the default CLI** — `tools/run_phase1_release_gate.py` fails by default (`golden task harness not configured`) because no harness is injected. Provide either a deterministic local harness that runs `phase1_golden_tasks.json` against the real runtime with only Optimus credentials, or a documented CLI flag/config path to supply one, plus an explicit decision on whether staging Gateway E2E is required for Sprint 1 sign-off or stays a documented manual step. Closes Plan 8 PR unchecked test-plan items.
+4. **Release-gate command timeout** — `CommandGate` / `_run_command` has no `subprocess` timeout; a hung test run would hang the release gate indefinitely. Add a bounded timeout with a failed-gate result on expiry.
+5. **Shadow-workspace copy cost** — `ShadowWorkspace` recreates a full `copytree` on every gated-retry attempt, ignoring only `.git`, `__pycache__`, `.pytest_cache`. Add a broader/configurable ignore list (`.venv`, `node_modules`, build/dist output, etc.) and/or reuse one shadow copy across retry attempts instead of recopying from scratch each time.
+6. **Fitness-gate telemetry cost accuracy** — `GatedRetryRunner._emit_fitness_gate` hardcodes `cost_usd=Decimal("0")` instead of the candidate's actual cost, misreporting gate-attempt cost in telemetry used for Plan 7 reconciliation.
+7. **Promotion failure test-hook removal** — `fail_after_promoted_paths` on `ShadowWorkspaceMutationRunner` is a test-only fault-injection parameter on a production-callable signature. Remove it from the runtime API and retain deterministic mid-promotion rollback coverage through a test-only seam (injected copier, promotion strategy, or private test helper). Closes P8-FU-3.
+8. **(Optional, lower priority)** Refactor `classify_failure`'s in-function deferred import of `CompositeGateError` into a shared low-level exceptions module, removing the `retry`↔`gates` circular-import workaround.
+
+**Tests proving:**
+- A shadow candidate that deletes a file promotes the deletion and still rolls back cleanly on a later promotion failure.
+- The one-key gate fails when a provider key is resolvable from any in-scope local artifact, not only the three hardcoded paths.
+- The default `tools/run_phase1_release_gate.py` run reaches a real PASS/FAIL against golden-task fixtures without manual harness injection.
+- A release-gate command exceeding its timeout is reported as a failed gate rather than hanging.
+- Fitness-gate telemetry events carry non-placeholder cost figures.
+- Rollback-on-partial-promotion-failure tests remain equivalent or stronger without `fail_after_promoted_paths` on production APIs.
 
 ## Plan 9: Bounded Goal Loops and Curated Workflow Skills
 
@@ -170,11 +202,11 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 **Design source:** `docs/context-window-optimization-strategy.md` (standalone canonical design note; no HLD/LLD/Test Strategy anchors yet - see the Cross-Cutting section above)
 
-**Future implementation plan:** create `docs/superpowers/plans/YYYY-MM-DD-context-window-optimization-intelligent-selection.md` after the prerequisite plans (7, 8, and the input-supplying Plans 4, 5, 6, 6.5, 9) are stable.
+**Future implementation plan:** create `docs/superpowers/plans/YYYY-MM-DD-context-window-optimization-intelligent-selection.md` after the prerequisite plans (7, 8, 8.5, and the input-supplying Plans 4, 5, 6, 6.5, 9) are stable.
 
 **User story:** As the agent runtime, I select, pack, summarize, invalidate, evict, and measure context under a cost- and freshness-aware policy, so the agent gets smarter while fully-loaded cost goes down, without ever silently dropping required evidence to fit a budget.
 
-**Status:** Tracked, not yet scheduled. This plan comes after the release skeleton (Plans 1, 2, 3, 7, 8) and the guardrail/input surface (Plans 4, 5, 6, 6.5, 9) are stable, since selection policy depends on the cost-attribution, evidence, trust, freshness, and loop/skill signals those plans establish. Do not start this plan early just because it is architecturally core - its inputs need to exist first.
+**Status:** Tracked, not yet scheduled. This plan comes after the release skeleton (Plans 1, 2, 3, 7, 8, 8.5) and the guardrail/input surface (Plans 4, 5, 6, 6.5, 9) are stable, since selection policy depends on the cost-attribution, evidence, trust, freshness, and loop/skill signals those plans establish. Do not start this plan early just because it is architecturally core - its inputs need to exist first.
 
 **Source anchors:**
 - `docs/context-window-optimization-strategy.md` - Context Type x Mechanism Matrix, Selection Pipeline, Selection Model, Freshness and Dependency Precedence, Prompt Packing and Cost Controls, Compaction, Offline Promotion Gates, Online Guardrails, Context Regret, Baseline and Ablation Plan, Calibration Items.
@@ -199,7 +231,8 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 7. Plan 6.5: Guardrail hardening and MCP runtime trust wiring.
 8. Plan 7: Usage accounting and observability.
 9. Plan 8: Retry, fitness gates, and release gates.
-10. Plan 9: Bounded loops and curated workflow skills.
-11. Plan 10: Context window optimization and intelligent selection - tracked, not yet scheduled; starts only once the release skeleton and guardrail/input surface above are stable.
+10. Plan 8.5: Release-gate hardening and golden-harness wiring.
+11. Plan 9: Bounded loops and curated workflow skills.
+12. Plan 10: Context window optimization and intelligent selection - tracked, not yet scheduled; starts only once the release skeleton and guardrail/input surface above are stable.
 
-The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 10 stays last regardless: it depends on inputs from Plans 4, 5, 6, 6.5, 7, and 9, and its PDF fold-in is explicitly deferred until calibration is accepted.
+The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, one-key scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 10 stays last regardless: it depends on inputs from Plans 4, 5, 6, 6.5, 7, and 9, and its PDF fold-in is explicitly deferred until calibration is accepted.

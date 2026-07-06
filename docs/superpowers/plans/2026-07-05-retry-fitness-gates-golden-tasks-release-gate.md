@@ -3233,7 +3233,7 @@ These items are accepted Plan 8 limitations. They should be tracked with the sta
 - Rollback restores deleted files when promotion fails midway.
 - Tests cover delete-only, modify-and-delete, and rollback-after-delete scenarios.
 
-**Target:** Plan 9 or the mutation-flow hardening backlog.
+**Target:** Plan 8.5 (`docs/superpowers/plans/2026-07-06-plan-8-5-release-gate-hardening.md`).
 
 ### P8-FU-2: Make shadow copy ignore rules configurable
 
@@ -3247,7 +3247,7 @@ These items are accepted Plan 8 limitations. They should be tracked with the sta
 - Tests verify that configured large directories are skipped and that source files remain copied into the shadow workspace.
 - README or developer docs describe how to add local ignore patterns for heavy directories.
 
-**Target:** Plan 9 or the local-runtime performance backlog.
+**Target:** Plan 8.5 (`docs/superpowers/plans/2026-07-06-plan-8-5-release-gate-hardening.md`).
 
 ### P8-FU-3: Remove promotion failure test hook from production API surface
 
@@ -3261,7 +3261,7 @@ These items are accepted Plan 8 limitations. They should be tracked with the sta
 - Production runtime code cannot trigger artificial promotion failure through public parameters.
 - Existing rollback coverage remains equivalent or stronger.
 
-**Target:** Plan 9 or the mutation-flow API cleanup backlog.
+**Target:** Plan 8.5 (`docs/superpowers/plans/2026-07-06-plan-8-5-release-gate-hardening.md`).
 
 ## Self-Review
 
