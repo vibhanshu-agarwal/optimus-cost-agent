@@ -6,8 +6,8 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Generic, TypeVar
 
-from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
 from optimus.gates.exceptions import CompositeGateError
+from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
 
 T = TypeVar("T")
 

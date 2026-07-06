@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-
 DEFAULT_SHADOW_IGNORE_PATTERNS = (
     ".git",
     "__pycache__",
