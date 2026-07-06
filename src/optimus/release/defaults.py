@@ -12,30 +12,36 @@ def build_phase1_release_gates(
     *,
     python_executable: str = "python",
     golden_harness: GoldenTaskHarness | None = None,
+    include_command_gates: bool = True,
     credential_scan_root: str | Path = ".",
 ) -> tuple[ReleaseGate, ...]:
-    return (
-        CommandGate(
-            name="unit-and-integration-tests",
-            command=(python_executable, "-m", "pytest", "tests/unit", "tests/integration", "-q"),
-        ),
-        CommandGate(
-            name="coverage-80",
-            command=(
-                python_executable,
-                "-m",
-                "pytest",
-                "--cov=optimus",
-                "--cov-branch",
-                "--cov-report=term-missing",
-                "--cov-fail-under=80",
-                "-q",
+    command_gates: tuple[ReleaseGate, ...] = ()
+    if include_command_gates:
+        command_gates = (
+            CommandGate(
+                name="unit-and-integration-tests",
+                command=(python_executable, "-m", "pytest", "tests/unit", "tests/integration", "-q"),
             ),
-        ),
-        CommandGate(
-            name="diff-whitespace-check",
-            command=("git", "diff", "--check"),
-        ),
+            CommandGate(
+                name="coverage-80",
+                command=(
+                    python_executable,
+                    "-m",
+                    "pytest",
+                    "--cov=optimus",
+                    "--cov-branch",
+                    "--cov-report=term-missing",
+                    "--cov-fail-under=80",
+                    "-q",
+                ),
+            ),
+            CommandGate(
+                name="diff-whitespace-check",
+                command=("git", "diff", "--check"),
+            ),
+        )
+    return (
+        *command_gates,
         CallableGate(name="golden-task-suite", run=lambda: _golden_task_suite_gate(golden_harness)),
         CallableGate(name="one-key-credential-scan", run=lambda: _one_key_credential_gate(credential_scan_root)),
     )

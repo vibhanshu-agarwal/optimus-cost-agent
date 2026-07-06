@@ -148,10 +148,21 @@ it can carry credentials. Run the default CLI with:
 python tools/run_phase1_release_gate.py
 ```
 
-The default CLI is fail-closed until a golden-task harness is configured. A
-run with no harness exits non-zero with `golden task harness not configured`;
-the Sprint 1 PASS state requires wiring a deterministic local or staging
-harness that produces `GoldenTaskResult` records for every fixture. The final
+Golden tasks are executable through a JSON harness path. First capture actual
+`GoldenTaskResult` records from an Optimus-only Plan-mode and Agent-mode run,
+then run:
+
+```bash
+python tools/run_phase1_release_gate.py --golden-results reports/phase1-golden-results.json
+```
+
+When `--golden-results` is omitted, the `golden-task-suite` gate fails closed
+with `golden task harness not configured`. A synthetic JSON file may be used to
+test release-runner wiring, but Sprint 1 sign-off requires the JSON results to
+come from a real Optimus Gateway-backed run with only `OPTIMUS_GATEWAY_URL` and
+`OPTIMUS_API_KEY` present locally. If staging Gateway E2E is unavailable, record
+that as "not run" in the release evidence instead of marking Sprint 1 complete.
+The final
 go/no-go rule is strict: a Plan-mode and Agent-mode release run must complete
 with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` available locally.
 Provider keys such as Tavily, OpenAI, OpenRouter, GLM, Anthropic, and LangSmith

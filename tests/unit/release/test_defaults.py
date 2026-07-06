@@ -63,3 +63,10 @@ def test_default_one_key_gate_uses_release_scan_paths(monkeypatch, tmp_path):
     assert result.passed is True
     assert (tmp_path / "reports" / "phase1-golden-results.json").resolve() in captured_paths
     assert (tmp_path / "reports" / "process-state.json").resolve() in captured_paths
+
+
+def test_phase1_release_gate_script_accepts_golden_results_argument():
+    text = Path("tools/run_phase1_release_gate.py").read_text(encoding="utf-8")
+
+    assert "--golden-results" in text
+    assert "JsonGoldenTaskHarness.from_path" in text
