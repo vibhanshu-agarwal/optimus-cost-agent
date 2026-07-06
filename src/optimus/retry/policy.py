@@ -104,6 +104,10 @@ PERMANENT_HTTP_STATUS_CODES = frozenset({400, 401, 403, 404, 422})
 
 
 def classify_failure(error: BaseException) -> FailureClassification:
+    from optimus.gates.fitness import CompositeGateError
+
+    if isinstance(error, CompositeGateError):
+        return _classification(FailureKind.FITNESS_GATE, FailureSeverity.RETRYABLE, error)
     if isinstance(error, TransientGatewayError):
         return _classification(FailureKind.TRANSIENT, FailureSeverity.RETRYABLE, error)
     if isinstance(error, ProviderRateLimitError):

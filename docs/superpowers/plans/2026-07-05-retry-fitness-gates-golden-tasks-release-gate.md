@@ -1589,7 +1589,7 @@ git commit -m "Block mutation until fitness gates pass."
 - Test: `tests/unit/retry/test_gated_run.py`
 - Test: `tests/integration/retry/test_gateway_retry_flow.py`
 
-- [ ] **Step 1: Write failing gated retry tests**
+- [x] **Step 1: Write failing gated retry tests**
 
 Create `tests/unit/retry/test_gated_run.py`:
 
@@ -1730,7 +1730,7 @@ def test_gateway_503_twice_then_success_does_not_write_until_success(tmp_path):
     assert Path(target).read_text(encoding="utf-8") == "success"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1740,7 +1740,7 @@ pytest tests/unit/retry/test_gated_run.py tests/integration/retry/test_gateway_r
 
 Expected: FAIL because `optimus.retry.gated_run` does not exist.
 
-- [ ] **Step 3: Implement gated retry runner**
+- [x] **Step 3: Implement gated retry runner**
 
 Create `src/optimus/retry/gated_run.py`:
 
@@ -1932,7 +1932,7 @@ Append to `__all__`:
     "GatedRetryRunner",
 ```
 
-- [ ] **Step 4: Run retry integration tests**
+- [x] **Step 4: Run retry integration tests**
 
 Run:
 
@@ -1942,7 +1942,7 @@ pytest tests/unit/retry/test_policy.py tests/unit/retry/test_gated_run.py tests/
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/retry/__init__.py src/optimus/retry/gated_run.py src/optimus/retry/policy.py tests/unit/retry/test_policy.py tests/unit/retry/test_gated_run.py tests/integration/retry/test_gateway_retry_flow.py
