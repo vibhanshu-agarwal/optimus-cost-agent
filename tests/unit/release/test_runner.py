@@ -83,3 +83,22 @@ def test_release_runner_continues_after_command_timeout():
 
     assert report.passed is False
     assert [(result.name, result.passed) for result in report.results] == [("slow", False), ("after", True)]
+
+
+def test_release_runner_continues_after_gate_raises():
+    class RaisingGate:
+        name = "broken"
+
+        def run(self) -> None:
+            raise FileNotFoundError("no such executable")
+
+    report = ReleaseGateRunner(
+        gates=(
+            RaisingGate(),
+            CallableGate(name="after", run=lambda: (True, "ok")),
+        )
+    ).run()
+
+    assert report.passed is False
+    assert [(result.name, result.passed) for result in report.results] == [("broken", False), ("after", True)]
+    assert "FileNotFoundError" in report.results[0].output_summary

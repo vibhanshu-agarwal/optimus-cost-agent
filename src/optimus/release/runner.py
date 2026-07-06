@@ -113,7 +113,16 @@ class ReleaseGateRunner:
     def run(self) -> ReleaseGateReport:
         results: list[ReleaseGateResult] = []
         for gate in self._gates:
-            result = gate.run()
+            started = datetime.now(tz=UTC)
+            try:
+                result = gate.run()
+            except Exception as exc:
+                result = ReleaseGateResult(
+                    name=gate.name,
+                    passed=False,
+                    output_summary=_safe_summary(f"{type(exc).__name__}: {exc}"),
+                    duration_ms=_duration_ms(started),
+                )
             results.append(result)
             if self._event_sink is not None:
                 self._event_sink(

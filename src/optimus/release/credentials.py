@@ -33,6 +33,7 @@ DEFAULT_RELEASE_CREDENTIAL_SCAN_PATHS = (
 )
 
 JSON_NAMES_AS_DATA_KEYS = frozenset({"provider_keys_resolvable"})
+# Report fields that may list provider key *names* as audit metadata without carrying secrets.
 
 
 @dataclass(frozen=True)
