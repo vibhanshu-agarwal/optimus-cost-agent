@@ -125,6 +125,12 @@ pass, and roll back on partial promotion failure so failed fitness gates never
 leave partial writes in the real working tree. `GatedRetryRunner` replans after
 gate failures and mutates only after validation succeeds.
 
+Plan 8.5 hardens the release runner. Shadow promotion now carries both writes
+and deletions, rolls back partial promotion failures, and skips common large
+local directories such as `.venv`, `node_modules`, build outputs, and caches.
+Release command gates have a per-command timeout; timeout is reported as a
+failed gate and the runner continues to collect the remaining gate results.
+
 Golden tasks provide deterministic, keyless regression checks. Versioned
 fixtures in `tests/fixtures/golden_tasks/phase1_golden_tasks.json` load into
 `GoldenTask` models; a `GoldenTaskHarness` produces `GoldenTaskResult` records
@@ -142,34 +148,23 @@ environment plus `.env`, `.env.local`, `pyproject.toml`,
 `reports/process-state.json`. These report paths are scanned because the release
 runner reads or produces them during Sprint 1 sign-off. Add any future
 release-runner local artifact to `DEFAULT_RELEASE_CREDENTIAL_SCAN_PATHS` before
-it can carry credentials. Run the default CLI with:
+it can carry credentials.
 
-```bash
-python tools/run_phase1_release_gate.py
-```
-
-Golden tasks are executable through a JSON harness path. First capture actual
-`GoldenTaskResult` records from an Optimus-only Plan-mode and Agent-mode run,
-then run:
+Golden tasks are wired through actual result JSON:
 
 ```bash
 python tools/run_phase1_release_gate.py --golden-results reports/phase1-golden-results.json
 ```
 
-When `--golden-results` is omitted, the `golden-task-suite` gate fails closed
-with `golden task harness not configured`. A synthetic JSON file may be used to
-test release-runner wiring, but Sprint 1 sign-off requires the JSON results to
-come from a real Optimus Gateway-backed run with only `OPTIMUS_GATEWAY_URL` and
-`OPTIMUS_API_KEY` present locally. If staging Gateway E2E is unavailable, record
-that as "not run" in the release evidence instead of marking Sprint 1 complete.
-The final
-go/no-go rule is strict: a Plan-mode and Agent-mode release run must complete
-with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` available locally.
+When `--golden-results` is omitted, `golden-task-suite` fails closed. A
+synthetic result file may be used for CLI wiring tests only. Sprint 1 sign-off
+requires result JSON captured from a real Optimus-only Plan-mode and Agent-mode
+run, or the release evidence must state that staging Gateway E2E was not run.
+The final go/no-go rule is strict: a Plan-mode and Agent-mode release run must
+complete with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` available locally.
 Provider keys such as Tavily, OpenAI, OpenRouter, GLM, Anthropic, and LangSmith
 must remain Gateway-side. Plan 9 bounded loops and skill loading, and Plan 10
-context-window optimization gates, are out of scope; shadow deletion
-propagation, golden-harness default wiring, and related hardening are tracked
-in Plan 8.5.
+context-window optimization gates, are out of scope.
 
 ## Prerequisites
 
