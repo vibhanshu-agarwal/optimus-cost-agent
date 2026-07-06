@@ -83,25 +83,27 @@ class ShadowWorkspace:
         self._temporary_directory.cleanup()
 
 
-def promote_shadow_changes(plan: ShadowPromotionPlan, *, fail_after_promoted_paths: int | None = None) -> None:
+def promote_shadow_changes(plan: ShadowPromotionPlan) -> None:
     backups: list[tuple[Path, bytes | None]] = []
-    promoted_count = 0
     try:
         for change in plan.changes:
-            source = plan.shadow_root / change.relative_path
+            source = None if change.kind is ShadowChangeKind.DELETE else plan.shadow_root / change.relative_path
             target = plan.workspace_root / change.relative_path
             backups.append((target, target.read_bytes() if target.exists() else None))
-            if change.kind is ShadowChangeKind.DELETE:
-                target.unlink(missing_ok=True)
-            else:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(source.read_bytes())
-            promoted_count += 1
-            if fail_after_promoted_paths is not None and promoted_count >= fail_after_promoted_paths:
-                raise RuntimeError("simulated promotion failure")
+            _apply_shadow_change(change, source, target)
     except Exception:
         _restore_backups(backups)
         raise
+
+
+def _apply_shadow_change(change: ShadowChange, source: Path | None, target: Path) -> None:
+    if change.kind is ShadowChangeKind.DELETE:
+        target.unlink(missing_ok=True)
+        return
+    if source is None:
+        raise ValueError("write promotion requires a source path")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(source.read_bytes())
 
 
 def _file_digests_by_relative_path(root: Path) -> dict[Path, str]:

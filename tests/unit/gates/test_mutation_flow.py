@@ -66,15 +66,27 @@ def test_gate_failure_discards_shadow_changes(tmp_path):
     assert target.read_text(encoding="utf-8") == "value = 1\n"
 
 
-def test_promote_failure_rolls_back_previous_file(tmp_path):
+def test_promote_failure_rolls_back_write_and_delete(tmp_path, monkeypatch):
+    from optimus.gates import shadow_workspace as shadow_workspace_module
+
     first = tmp_path / "first.py"
     second = tmp_path / "second.py"
+    delete_me = tmp_path / "delete_me.py"
     first.write_text("value = 1\n", encoding="utf-8")
     second.write_text("value = 1\n", encoding="utf-8")
-    runner = ShadowWorkspaceMutationRunner(
-        checks_factory=lambda shadow_root: (PassingCheck(),),
-        fail_after_promoted_paths=1,
-    )
+    delete_me.write_text("delete me\n", encoding="utf-8")
+
+    promoted: list[Path] = []
+    original_apply_shadow_change = shadow_workspace_module._apply_shadow_change
+
+    def fail_after_first_change(change, source: Path | None, target: Path) -> None:
+        promoted.append(target.name)
+        if len(promoted) > 1:
+            raise RuntimeError("simulated promotion failure")
+        original_apply_shadow_change(change, source, target)
+
+    monkeypatch.setattr(shadow_workspace_module, "_apply_shadow_change", fail_after_first_change)
+    runner = ShadowWorkspaceMutationRunner(checks_factory=lambda shadow_root: (PassingCheck(),))
 
     with pytest.raises(RuntimeError, match="simulated promotion failure"):
         runner.run(
@@ -83,11 +95,22 @@ def test_promote_failure_rolls_back_previous_file(tmp_path):
             apply_candidate=lambda shadow_root: (
                 (shadow_root / "first.py").write_text("value = 2\n", encoding="utf-8"),
                 (shadow_root / "second.py").write_text("value = 2\n", encoding="utf-8"),
+                (shadow_root / "delete_me.py").unlink(),
             ),
         )
 
     assert first.read_text(encoding="utf-8") == "value = 1\n"
     assert second.read_text(encoding="utf-8") == "value = 1\n"
+    assert delete_me.read_text(encoding="utf-8") == "delete me\n"
+
+
+def test_mutation_runner_public_api_has_no_fail_after_promoted_paths_hook():
+    import inspect
+
+    signature = inspect.signature(ShadowWorkspaceMutationRunner)
+
+    assert "fail_after_promoted_paths" not in signature.parameters
+    assert "_promote_change" not in signature.parameters
 
 
 def test_plan_mode_blocks_before_gates_and_mutation(tmp_path):
