@@ -1,0 +1,11 @@
+{
+  "sprint": 1,
+  "plan": "8.5-release-gate-hardening",
+  "branch": "agent/cursor/plan-8-5-release-gate-hardening",
+  "staging_gateway_e2e": "not run",
+  "golden_task_capture": "not run",
+  "notes": "Plan 8.5 wires JsonGoldenTaskHarness for ingesting captured GoldenTaskResult JSON but does not include a staging runner that executes the 10 phase1 golden tasks against a live Optimus Gateway agent loop. Capturing real evidence requires that runner plus Plan-mode and Agent-mode E2E execution and is deferred.",
+  "cli_wiring_evidence": "tests/integration/release/test_phase1_release_gate_cli.py",
+  "verification_date": "2026-07-06",
+  "provider_keys_resolvable": []
+}
