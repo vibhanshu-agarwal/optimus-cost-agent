@@ -111,6 +111,49 @@ adapter writes are isolated behind TimeSeries/HASH boundaries. Trace export
 uses the Optimus Gateway `/v1/observability/traces` endpoint; LangSmith and
 provider credentials stay server-side and are never required locally.
 
+### Phase 1 Retry, Fitness Gates, Golden Tasks, and Release Gate
+
+Plan 8 adds the Sprint 1 validation and release skeleton. `RetryController`
+classifies gateway, policy, budget, and fitness-gate failures into transient,
+permanent, and escalate paths, caps transient retries at three with bounded
+backoff, and records retry metadata for telemetry. `CompositeFitnessGateRunner`
+runs required and optional checks, fails closed on exceptions, and blocks
+mutation unless every required gate passes. `ShadowWorkspace` and
+`ShadowWorkspaceMutationRunner` apply candidate changes to an isolated copy of
+the workspace, promote only after `assert_mutation_allowed()` and composite gates
+pass, and roll back on partial promotion failure so failed fitness gates never
+leave partial writes in the real working tree. `GatedRetryRunner` replans after
+gate failures and mutates only after validation succeeds.
+
+Golden tasks provide deterministic, keyless regression checks. Versioned
+fixtures in `tests/fixtures/golden_tasks/phase1_golden_tasks.json` load into
+`GoldenTask` models; a `GoldenTaskHarness` produces `GoldenTaskResult` records
+that `evaluate_golden_task_suite()` compares against expected mode, tool
+trajectory, cost band, final state, and mutation count. LLM-judged evaluation
+remains a Gateway-routed extension and is not required locally.
+
+The Phase 1 release runner composes ordered unit, integration, coverage,
+golden-task-suite, diff-hygiene, and one-key credential gates into a single
+`ReleaseGateReport`. `scan_local_credentials()` enforces the one-key model by
+rejecting resolvable provider keys from the local environment, selected config
+files, and serialized process-state snapshots. Run the default CLI with:
+
+```bash
+python tools/run_phase1_release_gate.py
+```
+
+The default CLI is fail-closed until a golden-task harness is configured. A
+run with no harness exits non-zero with `golden task harness not configured`;
+the Sprint 1 PASS state requires wiring a deterministic local or staging
+harness that produces `GoldenTaskResult` records for every fixture. The final
+go/no-go rule is strict: a Plan-mode and Agent-mode release run must complete
+with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` available locally.
+Provider keys such as Tavily, OpenAI, OpenRouter, GLM, Anthropic, and LangSmith
+must remain Gateway-side. Plan 9 bounded loops and skill loading, and Plan 10
+context-window optimization gates, are out of scope; shadow deletion
+propagation, golden-harness default wiring, and related hardening are tracked
+in Plan 8.5.
+
 ## Prerequisites
 
 - **Python** ≥ 3.14
@@ -195,27 +238,6 @@ git worktree add -b human/vibhanshu/phase-1-acp-server \
 Need a second checkout? Use a suffixed path such as `../optimus-cost-agent-wt-vibhanshu-phase-2`.
 
 **Commits:** only push from your branch when tests pass (TDD required for agents; preferred for humans).
-
-### Phase 1 Release Gate
-
-Plan 8 adds a local release-gate runner for Sprint 1 sign-off. The runner
-executes the ordered unit, integration, coverage, golden-task-suite, and one-key
-credential checks and emits a JSON report.
-
-```bash
-python tools/run_phase1_release_gate.py
-```
-
-The default CLI is fail-closed until a golden-task harness is configured. A
-run with no harness exits non-zero with `golden task harness not configured`;
-the Sprint 1 PASS state requires wiring a deterministic local/staging harness
-that produces `GoldenTaskResult` records for every fixture.
-
-The final go/no-go rule is strict: a Plan-mode and Agent-mode release run must
-complete with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` available
-locally. Provider keys such as Tavily, OpenAI, OpenRouter, GLM, Anthropic, and
-LangSmith must remain Gateway-side and must not be resolvable from the local
-environment, selected local config files, or serialized process-state snapshots.
 
 ## Repository layout
 
