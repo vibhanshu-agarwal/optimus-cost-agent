@@ -2450,7 +2450,7 @@ git commit -m "Add deterministic golden task evaluator."
 - Create: `src/optimus/release/credentials.py`
 - Test: `tests/unit/release/test_credentials.py`
 
-- [ ] **Step 1: Write failing credential scanner tests**
+- [x] **Step 1: Write failing credential scanner tests**
 
 Create `tests/unit/release/test_credentials.py`:
 
@@ -2528,7 +2528,7 @@ def test_scanner_detects_json_and_yaml_process_snapshot_keys(tmp_path, monkeypat
     assert "tvly-test" not in result.summary
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -2538,7 +2538,7 @@ pytest tests/unit/release/test_credentials.py -v
 
 Expected: FAIL because `optimus.release.credentials` does not exist.
 
-- [ ] **Step 3: Implement credential scanner**
+- [x] **Step 3: Implement credential scanner**
 
 Create `src/optimus/release/credentials.py`:
 
@@ -2643,7 +2643,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: Run credential tests**
+- [x] **Step 4: Run credential tests**
 
 Run:
 
@@ -2653,7 +2653,7 @@ pytest tests/unit/release/test_credentials.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/release/__init__.py src/optimus/release/credentials.py tests/unit/release/test_credentials.py
