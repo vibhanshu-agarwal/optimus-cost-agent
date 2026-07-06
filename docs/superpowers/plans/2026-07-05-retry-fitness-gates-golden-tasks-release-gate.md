@@ -3141,7 +3141,7 @@ git commit -m "Document Phase 1 release gate runner."
 - Verify: `src/optimus/release`
 - Verify: `src/optimus/telemetry/events.py`
 
-- [ ] **Step 1: Run focused Plan 8 tests**
+- [x] **Step 1: Run focused Plan 8 tests**
 
 Run:
 
@@ -3151,7 +3151,7 @@ pytest tests/unit/retry tests/unit/gates tests/unit/golden tests/unit/release te
 
 Expected: PASS.
 
-- [ ] **Step 2: Run telemetry regression tests**
+- [x] **Step 2: Run telemetry regression tests**
 
 Run:
 
@@ -3161,7 +3161,7 @@ pytest tests/unit/telemetry tests/integration/telemetry -v
 
 Expected: PASS.
 
-- [ ] **Step 3: Run safety-critical coverage for Plan 8 modules**
+- [x] **Step 3: Run safety-critical coverage for Plan 8 modules**
 
 Run:
 
@@ -3171,7 +3171,7 @@ pytest tests/unit/retry tests/unit/gates tests/unit/golden tests/unit/release te
 
 Expected: PASS with no Plan 8 module below the project aggregate threshold.
 
-- [ ] **Step 4: Run full package coverage gate**
+- [x] **Step 4: Run full package coverage gate**
 
 Run:
 
@@ -3181,7 +3181,7 @@ pytest --cov=optimus --cov-branch --cov-report=term-missing -v
 
 Expected: PASS with aggregate Python production-code coverage at or above 80%.
 
-- [ ] **Step 5: Run local release-gate script with injected Optimus-only environment**
+- [x] **Step 5: Run local release-gate script with injected Optimus-only environment**
 
 Run after clearing provider keys from the shell, before a golden-task harness is configured:
 
@@ -3199,7 +3199,7 @@ python tools/run_phase1_release_gate.py
 
 Expected: PASS when `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` are present, no provider keys are resolvable, all golden fixtures produce passing `GoldenTaskResult` records, and the normal unit/integration/coverage/diff gates pass. If staging Gateway E2E credentials are not available, report that the real Gateway portion was not run and include the injected/mock release-runner integration result instead.
 
-- [ ] **Step 6: Check diff hygiene**
+- [x] **Step 6: Check diff hygiene**
 
 Run:
 
@@ -3210,7 +3210,7 @@ git diff --check
 
 Expected: only intentional Plan 8 files are modified or added, with no whitespace errors. Pre-existing unrelated IDE or agent metadata remains untouched.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/optimus/retry src/optimus/gates src/optimus/golden src/optimus/release src/optimus/telemetry/events.py src/optimus/telemetry/redaction.py src/optimus/telemetry/__init__.py tests/unit/retry tests/unit/gates tests/unit/golden tests/unit/release tests/integration/retry tests/integration/gates tests/integration/release tests/fixtures/golden_tasks tools/run_phase1_release_gate.py README.md
