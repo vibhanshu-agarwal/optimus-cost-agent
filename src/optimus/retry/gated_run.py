@@ -22,6 +22,7 @@ class GatedAttempt(Generic[T]):
     candidate: T
     gate_result: CompositeGateResult
     failure_summary: str | None
+    cost_usd: Decimal = Decimal("0")
 
 
 @dataclass(frozen=True)
@@ -60,12 +61,14 @@ class GatedRetryRunner:
         checks_factory: Callable[[T, Path], tuple[FitnessCheck, ...]],
         plan_candidate: Callable[[int, tuple[str, ...]], T],
         apply_candidate: Callable[[T, Path], object],
+        candidate_cost_usd: Callable[[T], Decimal],
     ) -> GatedRetryResult[T]:
         attempts: list[GatedAttempt[T]] = []
         prior_failure_summaries: list[str] = []
         attempt = 1
         while True:
             candidate = plan_candidate(attempt, tuple(prior_failure_summaries))
+            cost_usd = candidate_cost_usd(candidate)
             gate_result = ShadowWorkspaceMutationRunner(
                 checks_factory=lambda shadow_root, bound_candidate=candidate: checks_factory(bound_candidate, shadow_root)
             ).run(
@@ -73,10 +76,18 @@ class GatedRetryRunner:
                 workspace_root=workspace_root,
                 apply_candidate=lambda shadow_root, bound_candidate=candidate: apply_candidate(bound_candidate, shadow_root),
             )
-            self._emit_fitness_gate(gate_result=gate_result, attempt=attempt)
+            self._emit_fitness_gate(gate_result=gate_result, attempt=attempt, cost_usd=cost_usd)
             failure_summary = None
             if gate_result.passed:
-                attempts.append(GatedAttempt(attempt=attempt, candidate=candidate, gate_result=gate_result, failure_summary=None))
+                attempts.append(
+                    GatedAttempt(
+                        attempt=attempt,
+                        candidate=candidate,
+                        gate_result=gate_result,
+                        failure_summary=None,
+                        cost_usd=cost_usd,
+                    )
+                )
                 return GatedRetryResult(
                     succeeded=True,
                     retry_count=attempt - 1,
@@ -98,6 +109,7 @@ class GatedRetryRunner:
                     candidate=candidate,
                     gate_result=gate_result,
                     failure_summary=failure_summary,
+                    cost_usd=cost_usd,
                 )
             )
             decision = self._policy.decide(classify_failure(failure_error), attempt=attempt)
@@ -135,7 +147,7 @@ class GatedRetryRunner:
             )
         )
 
-    def _emit_fitness_gate(self, *, gate_result: CompositeGateResult, attempt: int) -> None:
+    def _emit_fitness_gate(self, *, gate_result: CompositeGateResult, attempt: int, cost_usd: Decimal) -> None:
         if self._event_sink is None:
             return
         self._event_sink(
@@ -148,7 +160,7 @@ class GatedRetryRunner:
                 required_gate_names=gate_result.required_gate_names,
                 failed_gate_names=gate_result.failed_gate_names,
                 duration_ms=gate_result.duration_ms,
-                cost_usd=Decimal("0"),
+                cost_usd=cost_usd,
             )
         )
 
