@@ -107,7 +107,7 @@ Each task includes a commit step because the Superpowers workflow favors small r
 - Create: `src/optimus/retry/policy.py`
 - Test: `tests/unit/retry/test_policy.py`
 
-- [ ] **Step 1: Write failing retry policy tests**
+- [x] **Step 1: Write failing retry policy tests**
 
 Create `tests/unit/retry/test_policy.py`:
 
@@ -253,7 +253,7 @@ def test_retry_controller_escalates_after_retry_budget_exhausted():
     assert operation.calls == 4
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -263,7 +263,7 @@ pytest tests/unit/retry/test_policy.py -v
 
 Expected: FAIL because `optimus.retry.policy` does not exist.
 
-- [ ] **Step 3: Implement retry policy**
+- [x] **Step 3: Implement retry policy**
 
 Create `src/optimus/retry/policy.py`:
 
@@ -555,7 +555,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: Run retry policy tests**
+- [x] **Step 4: Run retry policy tests**
 
 Run:
 
@@ -565,7 +565,7 @@ pytest tests/unit/retry/test_policy.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/retry/__init__.py src/optimus/retry/policy.py tests/unit/retry/test_policy.py
@@ -580,7 +580,7 @@ git commit -m "Add bounded retry failure classification."
 - Modify: `src/optimus/telemetry/__init__.py`
 - Test: `tests/unit/telemetry/test_events.py`
 
-- [ ] **Step 1: Write failing telemetry event tests**
+- [x] **Step 1: Write failing telemetry event tests**
 
 Append to `tests/unit/telemetry/test_events.py`:
 
@@ -686,7 +686,7 @@ def test_public_redaction_helper_masks_provider_key_assignments():
     assert payload == {"stdout": "OPENAI_API_KEY=**********"}
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -696,7 +696,7 @@ pytest tests/unit/telemetry/test_events.py -v
 
 Expected: FAIL because the new event kinds, constructors, and public redaction helper do not exist.
 
-- [ ] **Step 3: Add public telemetry redaction helper**
+- [x] **Step 3: Add public telemetry redaction helper**
 
 Create `src/optimus/telemetry/redaction.py` by moving the existing private redaction helpers out of `events.py`:
 
@@ -772,7 +772,7 @@ def _is_secret_dict_key(key_text: str) -> bool:
     return any(segment in _SECRET_KEY_PARTS for segment in segments)
 ```
 
-- [ ] **Step 4: Extend telemetry events**
+- [x] **Step 4: Extend telemetry events**
 
 Modify `TelemetryEventKind` in `src/optimus/telemetry/events.py`:
 
@@ -944,7 +944,7 @@ Add these classmethods to `TelemetryEvent`:
         )
 ```
 
-- [ ] **Step 5: Export redaction helper**
+- [x] **Step 5: Export redaction helper**
 
 Update `src/optimus/telemetry/__init__.py`:
 
@@ -958,7 +958,7 @@ Append to `__all__`:
     "redact_for_telemetry",
 ```
 
-- [ ] **Step 6: Run telemetry tests**
+- [x] **Step 6: Run telemetry tests**
 
 Run:
 
@@ -968,7 +968,7 @@ pytest tests/unit/telemetry/test_events.py -v
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/optimus/telemetry/__init__.py src/optimus/telemetry/events.py src/optimus/telemetry/redaction.py tests/unit/telemetry/test_events.py
@@ -982,7 +982,7 @@ git commit -m "Record retry and release gate telemetry."
 - Create: `src/optimus/gates/fitness.py`
 - Test: `tests/unit/gates/test_fitness.py`
 
-- [ ] **Step 1: Write failing composite gate tests**
+- [x] **Step 1: Write failing composite gate tests**
 
 Create `tests/unit/gates/test_fitness.py`:
 
@@ -1082,7 +1082,7 @@ def test_protocol_accepts_fitness_check_instances():
     assert check.required is True
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1092,7 +1092,7 @@ pytest tests/unit/gates/test_fitness.py -v
 
 Expected: FAIL because `optimus.gates.fitness` does not exist.
 
-- [ ] **Step 3: Implement composite fitness gates**
+- [x] **Step 3: Implement composite fitness gates**
 
 Create `src/optimus/gates/fitness.py`:
 
@@ -1232,7 +1232,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: Run gate tests**
+- [x] **Step 4: Run gate tests**
 
 Run:
 
@@ -1242,7 +1242,7 @@ pytest tests/unit/gates/test_fitness.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/gates/__init__.py src/optimus/gates/fitness.py tests/unit/gates/test_fitness.py
