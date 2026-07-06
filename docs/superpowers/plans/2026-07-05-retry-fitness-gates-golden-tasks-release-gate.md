@@ -1258,7 +1258,7 @@ git commit -m "Add composite fitness gate results."
 - Test: `tests/unit/gates/test_mutation_flow.py`
 - Test: `tests/integration/gates/test_composite_gate_failure_flow.py`
 
-- [ ] **Step 1: Write failing mutation flow tests**
+- [x] **Step 1: Write failing mutation flow tests**
 
 Create `tests/unit/gates/test_mutation_flow.py`:
 
@@ -1411,7 +1411,7 @@ def test_composite_gate_failure_leaves_working_file_untouched(tmp_path):
     assert target.read_text(encoding="utf-8") == original
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1421,7 +1421,7 @@ pytest tests/unit/gates/test_mutation_flow.py tests/integration/gates/test_compo
 
 Expected: FAIL because `optimus.gates.shadow_workspace` and `optimus.gates.mutation_flow` do not exist.
 
-- [ ] **Step 3: Implement shadow workspace helpers**
+- [x] **Step 3: Implement shadow workspace helpers**
 
 Create `src/optimus/gates/shadow_workspace.py`:
 
@@ -1497,7 +1497,7 @@ def _restore_backups(backups: Iterable[tuple[Path, bytes | None]]) -> None:
             target.write_bytes(content)
 ```
 
-- [ ] **Step 4: Implement validated mutation runner**
+- [x] **Step 4: Implement validated mutation runner**
 
 Create `src/optimus/gates/mutation_flow.py`:
 
@@ -1564,7 +1564,7 @@ Append to `__all__`:
     "promote_shadow_changes",
 ```
 
-- [ ] **Step 5: Run mutation flow tests**
+- [x] **Step 5: Run mutation flow tests**
 
 Run:
 
@@ -1574,7 +1574,7 @@ pytest tests/unit/gates/test_mutation_flow.py tests/integration/gates/test_compo
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/optimus/gates/__init__.py src/optimus/gates/mutation_flow.py src/optimus/gates/shadow_workspace.py tests/unit/gates/test_mutation_flow.py tests/integration/gates/test_composite_gate_failure_flow.py
