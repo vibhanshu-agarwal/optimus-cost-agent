@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+from optimus.release.runner import CallableGate, CommandGate, ReleaseGateRunner
+
+
+def test_release_runner_executes_gates_in_order_and_reports_pass():
+    seen: list[str] = []
+    gates = (
+        CallableGate(name="first", run=lambda: seen.append("first") or (True, "ok")),
+        CallableGate(name="second", run=lambda: seen.append("second") or (True, "ok")),
+    )
+
+    report = ReleaseGateRunner(gates=gates).run()
+
+    assert report.passed is True
+    assert seen == ["first", "second"]
+    assert [result.name for result in report.results] == ["first", "second"]
+
+
+def test_release_runner_continues_after_failure_to_collect_full_report():
+    gates = (
+        CallableGate(name="first", run=lambda: (False, "failed")),
+        CallableGate(name="second", run=lambda: (True, "ok")),
+    )
+
+    report = ReleaseGateRunner(gates=gates).run()
+
+    assert report.passed is False
+    assert [(result.name, result.passed) for result in report.results] == [("first", False), ("second", True)]
+
+
+def test_command_gate_uses_injected_executor_and_redacts_output():
+    commands: list[tuple[str, ...]] = []
+
+    def executor(command: tuple[str, ...]) -> tuple[int, str, str]:
+        commands.append(command)
+        return (1, "OPENAI_API_KEY=sk-test", "")
+
+    gate = CommandGate(name="provider-key-check", command=("python", "-c", "print('x')"), executor=executor)
+
+    result = gate.run()
+
+    assert result.passed is False
+    assert commands == [("python", "-c", "print('x')")]
+    assert "sk-test" not in result.output_summary
+    assert "**********" in result.output_summary
+
+
+def test_release_report_serializes_to_json_dict():
+    report = ReleaseGateRunner(gates=(CallableGate(name="gate", run=lambda: (True, "ok")),)).run()
+
+    assert report.to_json_dict()["passed"] is True
+    assert report.to_json_dict()["results"][0]["name"] == "gate"

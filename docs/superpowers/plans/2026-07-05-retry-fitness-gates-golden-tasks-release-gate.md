@@ -107,7 +107,7 @@ Each task includes a commit step because the Superpowers workflow favors small r
 - Create: `src/optimus/retry/policy.py`
 - Test: `tests/unit/retry/test_policy.py`
 
-- [ ] **Step 1: Write failing retry policy tests**
+- [x] **Step 1: Write failing retry policy tests**
 
 Create `tests/unit/retry/test_policy.py`:
 
@@ -253,7 +253,7 @@ def test_retry_controller_escalates_after_retry_budget_exhausted():
     assert operation.calls == 4
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -263,7 +263,7 @@ pytest tests/unit/retry/test_policy.py -v
 
 Expected: FAIL because `optimus.retry.policy` does not exist.
 
-- [ ] **Step 3: Implement retry policy**
+- [x] **Step 3: Implement retry policy**
 
 Create `src/optimus/retry/policy.py`:
 
@@ -555,7 +555,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: Run retry policy tests**
+- [x] **Step 4: Run retry policy tests**
 
 Run:
 
@@ -565,7 +565,7 @@ pytest tests/unit/retry/test_policy.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/retry/__init__.py src/optimus/retry/policy.py tests/unit/retry/test_policy.py
@@ -580,7 +580,7 @@ git commit -m "Add bounded retry failure classification."
 - Modify: `src/optimus/telemetry/__init__.py`
 - Test: `tests/unit/telemetry/test_events.py`
 
-- [ ] **Step 1: Write failing telemetry event tests**
+- [x] **Step 1: Write failing telemetry event tests**
 
 Append to `tests/unit/telemetry/test_events.py`:
 
@@ -686,7 +686,7 @@ def test_public_redaction_helper_masks_provider_key_assignments():
     assert payload == {"stdout": "OPENAI_API_KEY=**********"}
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -696,7 +696,7 @@ pytest tests/unit/telemetry/test_events.py -v
 
 Expected: FAIL because the new event kinds, constructors, and public redaction helper do not exist.
 
-- [ ] **Step 3: Add public telemetry redaction helper**
+- [x] **Step 3: Add public telemetry redaction helper**
 
 Create `src/optimus/telemetry/redaction.py` by moving the existing private redaction helpers out of `events.py`:
 
@@ -772,7 +772,7 @@ def _is_secret_dict_key(key_text: str) -> bool:
     return any(segment in _SECRET_KEY_PARTS for segment in segments)
 ```
 
-- [ ] **Step 4: Extend telemetry events**
+- [x] **Step 4: Extend telemetry events**
 
 Modify `TelemetryEventKind` in `src/optimus/telemetry/events.py`:
 
@@ -944,7 +944,7 @@ Add these classmethods to `TelemetryEvent`:
         )
 ```
 
-- [ ] **Step 5: Export redaction helper**
+- [x] **Step 5: Export redaction helper**
 
 Update `src/optimus/telemetry/__init__.py`:
 
@@ -958,7 +958,7 @@ Append to `__all__`:
     "redact_for_telemetry",
 ```
 
-- [ ] **Step 6: Run telemetry tests**
+- [x] **Step 6: Run telemetry tests**
 
 Run:
 
@@ -968,7 +968,7 @@ pytest tests/unit/telemetry/test_events.py -v
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/optimus/telemetry/__init__.py src/optimus/telemetry/events.py src/optimus/telemetry/redaction.py tests/unit/telemetry/test_events.py
@@ -982,7 +982,7 @@ git commit -m "Record retry and release gate telemetry."
 - Create: `src/optimus/gates/fitness.py`
 - Test: `tests/unit/gates/test_fitness.py`
 
-- [ ] **Step 1: Write failing composite gate tests**
+- [x] **Step 1: Write failing composite gate tests**
 
 Create `tests/unit/gates/test_fitness.py`:
 
@@ -1082,7 +1082,7 @@ def test_protocol_accepts_fitness_check_instances():
     assert check.required is True
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1092,7 +1092,7 @@ pytest tests/unit/gates/test_fitness.py -v
 
 Expected: FAIL because `optimus.gates.fitness` does not exist.
 
-- [ ] **Step 3: Implement composite fitness gates**
+- [x] **Step 3: Implement composite fitness gates**
 
 Create `src/optimus/gates/fitness.py`:
 
@@ -1232,7 +1232,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: Run gate tests**
+- [x] **Step 4: Run gate tests**
 
 Run:
 
@@ -1242,7 +1242,7 @@ pytest tests/unit/gates/test_fitness.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/gates/__init__.py src/optimus/gates/fitness.py tests/unit/gates/test_fitness.py
@@ -1258,7 +1258,7 @@ git commit -m "Add composite fitness gate results."
 - Test: `tests/unit/gates/test_mutation_flow.py`
 - Test: `tests/integration/gates/test_composite_gate_failure_flow.py`
 
-- [ ] **Step 1: Write failing mutation flow tests**
+- [x] **Step 1: Write failing mutation flow tests**
 
 Create `tests/unit/gates/test_mutation_flow.py`:
 
@@ -1411,7 +1411,7 @@ def test_composite_gate_failure_leaves_working_file_untouched(tmp_path):
     assert target.read_text(encoding="utf-8") == original
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1421,7 +1421,7 @@ pytest tests/unit/gates/test_mutation_flow.py tests/integration/gates/test_compo
 
 Expected: FAIL because `optimus.gates.shadow_workspace` and `optimus.gates.mutation_flow` do not exist.
 
-- [ ] **Step 3: Implement shadow workspace helpers**
+- [x] **Step 3: Implement shadow workspace helpers**
 
 Create `src/optimus/gates/shadow_workspace.py`:
 
@@ -1497,7 +1497,7 @@ def _restore_backups(backups: Iterable[tuple[Path, bytes | None]]) -> None:
             target.write_bytes(content)
 ```
 
-- [ ] **Step 4: Implement validated mutation runner**
+- [x] **Step 4: Implement validated mutation runner**
 
 Create `src/optimus/gates/mutation_flow.py`:
 
@@ -1564,7 +1564,7 @@ Append to `__all__`:
     "promote_shadow_changes",
 ```
 
-- [ ] **Step 5: Run mutation flow tests**
+- [x] **Step 5: Run mutation flow tests**
 
 Run:
 
@@ -1574,7 +1574,7 @@ pytest tests/unit/gates/test_mutation_flow.py tests/integration/gates/test_compo
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/optimus/gates/__init__.py src/optimus/gates/mutation_flow.py src/optimus/gates/shadow_workspace.py tests/unit/gates/test_mutation_flow.py tests/integration/gates/test_composite_gate_failure_flow.py
@@ -1589,7 +1589,7 @@ git commit -m "Block mutation until fitness gates pass."
 - Test: `tests/unit/retry/test_gated_run.py`
 - Test: `tests/integration/retry/test_gateway_retry_flow.py`
 
-- [ ] **Step 1: Write failing gated retry tests**
+- [x] **Step 1: Write failing gated retry tests**
 
 Create `tests/unit/retry/test_gated_run.py`:
 
@@ -1730,7 +1730,7 @@ def test_gateway_503_twice_then_success_does_not_write_until_success(tmp_path):
     assert Path(target).read_text(encoding="utf-8") == "success"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1740,7 +1740,7 @@ pytest tests/unit/retry/test_gated_run.py tests/integration/retry/test_gateway_r
 
 Expected: FAIL because `optimus.retry.gated_run` does not exist.
 
-- [ ] **Step 3: Implement gated retry runner**
+- [x] **Step 3: Implement gated retry runner**
 
 Create `src/optimus/retry/gated_run.py`:
 
@@ -1932,7 +1932,7 @@ Append to `__all__`:
     "GatedRetryRunner",
 ```
 
-- [ ] **Step 4: Run retry integration tests**
+- [x] **Step 4: Run retry integration tests**
 
 Run:
 
@@ -1942,7 +1942,7 @@ pytest tests/unit/retry/test_policy.py tests/unit/retry/test_gated_run.py tests/
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/retry/__init__.py src/optimus/retry/gated_run.py src/optimus/retry/policy.py tests/unit/retry/test_policy.py tests/unit/retry/test_gated_run.py tests/integration/retry/test_gateway_retry_flow.py
@@ -1959,7 +1959,7 @@ git commit -m "Retry gated candidates without partial writes."
 - Test: `tests/unit/golden/test_tasks.py`
 - Test: `tests/unit/golden/test_runner.py`
 
-- [ ] **Step 1: Write failing golden task tests**
+- [x] **Step 1: Write failing golden task tests**
 
 Create `tests/unit/golden/test_tasks.py`:
 
@@ -2039,7 +2039,7 @@ def test_release_gate_task_fails_when_provider_key_is_resolvable():
     assert "provider keys resolvable: OPENAI_API_KEY" in evaluation.failures
 ```
 
-- [ ] **Step 2: Add failing fixture**
+- [x] **Step 2: Add failing fixture**
 
 Create `tests/fixtures/golden_tasks/phase1_golden_tasks.json`:
 
@@ -2153,7 +2153,7 @@ Create `tests/fixtures/golden_tasks/phase1_golden_tasks.json`:
 }
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run:
 
@@ -2163,7 +2163,7 @@ pytest tests/unit/golden/test_tasks.py -v
 
 Expected: FAIL because `optimus.golden.tasks` does not exist.
 
-- [ ] **Step 4: Implement golden task evaluator**
+- [x] **Step 4: Implement golden task evaluator**
 
 Create `src/optimus/golden/tasks.py`:
 
@@ -2273,7 +2273,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 5: Write failing golden suite runner tests**
+- [x] **Step 5: Write failing golden suite runner tests**
 
 Create `tests/unit/golden/test_runner.py`:
 
@@ -2337,7 +2337,7 @@ def test_evaluate_golden_task_suite_fails_when_release_gate_result_leaks_provide
     assert any("provider keys resolvable" in failure for evaluation in report.evaluations for failure in evaluation.failures)
 ```
 
-- [ ] **Step 6: Implement golden suite runner**
+- [x] **Step 6: Implement golden suite runner**
 
 Create `src/optimus/golden/runner.py`:
 
@@ -2426,7 +2426,7 @@ Append to `__all__`:
     "evaluate_golden_task_suite",
 ```
 
-- [ ] **Step 7: Run golden task tests**
+- [x] **Step 7: Run golden task tests**
 
 Run:
 
@@ -2436,7 +2436,7 @@ pytest tests/unit/golden/test_tasks.py tests/unit/golden/test_runner.py -v
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/optimus/golden/__init__.py src/optimus/golden/tasks.py src/optimus/golden/runner.py tests/fixtures/golden_tasks/phase1_golden_tasks.json tests/unit/golden/test_tasks.py tests/unit/golden/test_runner.py
@@ -2450,7 +2450,7 @@ git commit -m "Add deterministic golden task evaluator."
 - Create: `src/optimus/release/credentials.py`
 - Test: `tests/unit/release/test_credentials.py`
 
-- [ ] **Step 1: Write failing credential scanner tests**
+- [x] **Step 1: Write failing credential scanner tests**
 
 Create `tests/unit/release/test_credentials.py`:
 
@@ -2528,7 +2528,7 @@ def test_scanner_detects_json_and_yaml_process_snapshot_keys(tmp_path, monkeypat
     assert "tvly-test" not in result.summary
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -2538,7 +2538,7 @@ pytest tests/unit/release/test_credentials.py -v
 
 Expected: FAIL because `optimus.release.credentials` does not exist.
 
-- [ ] **Step 3: Implement credential scanner**
+- [x] **Step 3: Implement credential scanner**
 
 Create `src/optimus/release/credentials.py`:
 
@@ -2643,7 +2643,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: Run credential tests**
+- [x] **Step 4: Run credential tests**
 
 Run:
 
@@ -2653,7 +2653,7 @@ pytest tests/unit/release/test_credentials.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/release/__init__.py src/optimus/release/credentials.py tests/unit/release/test_credentials.py
@@ -2670,7 +2670,7 @@ git commit -m "Add one-key credential scanner."
 - Test: `tests/unit/release/test_defaults.py`
 - Test: `tests/integration/release/test_phase1_release_runner.py`
 
-- [ ] **Step 1: Write failing release runner tests**
+- [x] **Step 1: Write failing release runner tests**
 
 Create `tests/unit/release/test_runner.py`:
 
@@ -2779,7 +2779,7 @@ def test_injected_phase1_release_runner_reports_golden_and_one_key_results():
     assert [result.name for result in report.results] == ["golden-task-suite", "one-key-credential-scan"]
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -2789,7 +2789,7 @@ pytest tests/unit/release/test_runner.py tests/unit/release/test_defaults.py tes
 
 Expected: FAIL because `optimus.release.runner` and defaults do not exist.
 
-- [ ] **Step 3: Implement release runner**
+- [x] **Step 3: Implement release runner**
 
 Create `src/optimus/release/runner.py`:
 
@@ -2931,7 +2931,7 @@ def _safe_summary(summary: str) -> str:
     return str(redacted)
 ```
 
-- [ ] **Step 4: Implement default gate list**
+- [x] **Step 4: Implement default gate list**
 
 Create `src/optimus/release/defaults.py`:
 
@@ -3015,7 +3015,7 @@ Append to `__all__`:
     "build_phase1_release_gates",
 ```
 
-- [ ] **Step 5: Run release runner tests**
+- [x] **Step 5: Run release runner tests**
 
 Run:
 
@@ -3025,7 +3025,7 @@ pytest tests/unit/release/test_runner.py tests/unit/release/test_defaults.py tes
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/optimus/release/__init__.py src/optimus/release/runner.py src/optimus/release/defaults.py tests/unit/release/test_runner.py tests/unit/release/test_defaults.py tests/integration/release/test_phase1_release_runner.py
@@ -3039,7 +3039,7 @@ git commit -m "Add ordered Phase 1 release gate runner."
 - Modify: `README.md`
 - Test: `tests/unit/release/test_defaults.py`
 
-- [ ] **Step 1: Write failing CLI smoke test**
+- [x] **Step 1: Write failing CLI smoke test**
 
 Append to `tests/unit/release/test_defaults.py`:
 
@@ -3057,7 +3057,7 @@ def test_phase1_release_gate_script_exists_and_uses_default_builder():
     assert "raise SystemExit(main())" in text
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -3067,7 +3067,7 @@ pytest tests/unit/release/test_defaults.py -v
 
 Expected: FAIL because the script does not exist.
 
-- [ ] **Step 3: Add release gate script**
+- [x] **Step 3: Add release gate script**
 
 Create `tools/run_phase1_release_gate.py`:
 
@@ -3088,7 +3088,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: Add README release-gate note**
+- [x] **Step 4: Add README release-gate note**
 
 Append to `README.md`:
 
@@ -3115,7 +3115,7 @@ LangSmith must remain Gateway-side and must not be resolvable from the local
 environment, selected local config files, or serialized process-state snapshots.
 ```
 
-- [ ] **Step 5: Run README/script tests**
+- [x] **Step 5: Run README/script tests**
 
 Run:
 
@@ -3125,7 +3125,7 @@ pytest tests/unit/release/test_defaults.py -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add README.md tools/run_phase1_release_gate.py tests/unit/release/test_defaults.py
@@ -3141,7 +3141,7 @@ git commit -m "Document Phase 1 release gate runner."
 - Verify: `src/optimus/release`
 - Verify: `src/optimus/telemetry/events.py`
 
-- [ ] **Step 1: Run focused Plan 8 tests**
+- [x] **Step 1: Run focused Plan 8 tests**
 
 Run:
 
@@ -3151,7 +3151,7 @@ pytest tests/unit/retry tests/unit/gates tests/unit/golden tests/unit/release te
 
 Expected: PASS.
 
-- [ ] **Step 2: Run telemetry regression tests**
+- [x] **Step 2: Run telemetry regression tests**
 
 Run:
 
@@ -3161,7 +3161,7 @@ pytest tests/unit/telemetry tests/integration/telemetry -v
 
 Expected: PASS.
 
-- [ ] **Step 3: Run safety-critical coverage for Plan 8 modules**
+- [x] **Step 3: Run safety-critical coverage for Plan 8 modules**
 
 Run:
 
@@ -3171,7 +3171,7 @@ pytest tests/unit/retry tests/unit/gates tests/unit/golden tests/unit/release te
 
 Expected: PASS with no Plan 8 module below the project aggregate threshold.
 
-- [ ] **Step 4: Run full package coverage gate**
+- [x] **Step 4: Run full package coverage gate**
 
 Run:
 
@@ -3181,7 +3181,7 @@ pytest --cov=optimus --cov-branch --cov-report=term-missing -v
 
 Expected: PASS with aggregate Python production-code coverage at or above 80%.
 
-- [ ] **Step 5: Run local release-gate script with injected Optimus-only environment**
+- [x] **Step 5: Run local release-gate script with injected Optimus-only environment**
 
 Run after clearing provider keys from the shell, before a golden-task harness is configured:
 
@@ -3199,7 +3199,7 @@ python tools/run_phase1_release_gate.py
 
 Expected: PASS when `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` are present, no provider keys are resolvable, all golden fixtures produce passing `GoldenTaskResult` records, and the normal unit/integration/coverage/diff gates pass. If staging Gateway E2E credentials are not available, report that the real Gateway portion was not run and include the injected/mock release-runner integration result instead.
 
-- [ ] **Step 6: Check diff hygiene**
+- [x] **Step 6: Check diff hygiene**
 
 Run:
 
@@ -3210,7 +3210,7 @@ git diff --check
 
 Expected: only intentional Plan 8 files are modified or added, with no whitespace errors. Pre-existing unrelated IDE or agent metadata remains untouched.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/optimus/retry src/optimus/gates src/optimus/golden src/optimus/release src/optimus/telemetry/events.py src/optimus/telemetry/redaction.py src/optimus/telemetry/__init__.py tests/unit/retry tests/unit/gates tests/unit/golden tests/unit/release tests/integration/retry tests/integration/gates tests/integration/release tests/fixtures/golden_tasks tools/run_phase1_release_gate.py README.md

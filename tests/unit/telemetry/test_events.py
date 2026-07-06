@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from optimus.telemetry.events import TelemetryEvent, TelemetryEventKind
+from optimus.telemetry.redaction import redact_for_telemetry
 
 
 def test_model_call_event_contains_required_audit_fields():
@@ -167,3 +168,97 @@ def test_structured_provider_env_key_names_are_redacted_from_payload():
     assert "sk-structured" not in event.to_json_line()
     assert "opt-structured" not in event.to_json_line()
     assert "plain-secret" not in event.to_json_line()
+
+
+def test_retry_decision_event_serializes_failure_classification():
+    event = TelemetryEvent.retry_decision(
+        run_id="run-1",
+        session_id="session-1",
+        request_id="req-1",
+        occurred_at=datetime(2026, 7, 5, tzinfo=UTC),
+        attempt=2,
+        retry_count=1,
+        failure_kind="transient",
+        action="retry",
+        delay_ms=1000,
+        disposition="retrying",
+    )
+
+    payload = event.to_json_dict()
+
+    assert event.kind is TelemetryEventKind.RETRY_DECISION
+    assert payload["attempt"] == 2
+    assert payload["failure_kind"] == "transient"
+    assert payload["action"] == "retry"
+
+
+def test_fitness_gate_event_serializes_gate_names_and_cost():
+    event = TelemetryEvent.fitness_gate(
+        run_id="run-1",
+        session_id=None,
+        request_id="req-1",
+        occurred_at=datetime(2026, 7, 5, tzinfo=UTC),
+        passed=False,
+        required_gate_names=("tests", "coverage"),
+        failed_gate_names=("coverage",),
+        duration_ms=125,
+        cost_usd=Decimal("0.000"),
+    )
+
+    payload = event.to_json_dict()
+
+    assert event.kind is TelemetryEventKind.FITNESS_GATE
+    assert payload["passed"] is False
+    assert payload["failed_gate_names"] == ["coverage"]
+    assert payload["cost_usd"] == "0.000"
+
+
+def test_golden_task_event_serializes_expected_and_actual_outcome():
+    event = TelemetryEvent.golden_task(
+        run_id="run-1",
+        session_id=None,
+        request_id="golden-docstring",
+        occurred_at=datetime(2026, 7, 5, tzinfo=UTC),
+        task_id="docstring-single-function",
+        passed=True,
+        expected_mode="agent",
+        actual_mode="agent",
+        expected_tools=("file_reader", "write_file"),
+        actual_tools=("file_reader", "write_file"),
+        max_cost_usd=Decimal("0.012"),
+        actual_cost_usd=Decimal("0.009"),
+        expected_final_state="completed",
+        actual_final_state="completed",
+    )
+
+    payload = event.to_json_dict()
+
+    assert event.kind is TelemetryEventKind.GOLDEN_TASK
+    assert payload["task_id"] == "docstring-single-function"
+    assert payload["passed"] is True
+
+
+def test_release_gate_event_redacts_secret_environment_details():
+    event = TelemetryEvent.release_gate(
+        run_id="run-1",
+        session_id=None,
+        request_id="release",
+        occurred_at=datetime(2026, 7, 5, tzinfo=UTC),
+        gate_name="one-key",
+        passed=False,
+        duration_ms=10,
+        output_summary="OPENAI_API_KEY=sk-live leaked",
+    )
+
+    payload = event.to_json_dict()
+
+    assert event.kind is TelemetryEventKind.RELEASE_GATE
+    assert payload["gate_name"] == "one-key"
+    assert "sk-live" not in payload["output_summary"]
+    assert "**********" in payload["output_summary"]
+
+
+def test_public_redaction_helper_masks_provider_key_assignments():
+    payload = redact_for_telemetry({"stdout": "OPENAI_API_KEY=sk-live"})
+
+    assert payload == {"stdout": "OPENAI_API_KEY=**********"}

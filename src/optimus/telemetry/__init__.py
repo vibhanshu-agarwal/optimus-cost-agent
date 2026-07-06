@@ -1,6 +1,7 @@
 from optimus.telemetry.events import TelemetryEvent, TelemetryEventKind
 from optimus.telemetry.jsonl import JsonlTelemetryWriter
 from optimus.telemetry.observability import GatewayObservabilityExporter
+from optimus.telemetry.redaction import redact_for_telemetry
 from optimus.telemetry.redis_adapter import RedisTelemetryAdapter, RunMetadata
 
 __all__ = [
@@ -10,4 +11,5 @@ __all__ = [
     "RunMetadata",
     "TelemetryEvent",
     "TelemetryEventKind",
+    "redact_for_telemetry",
 ]

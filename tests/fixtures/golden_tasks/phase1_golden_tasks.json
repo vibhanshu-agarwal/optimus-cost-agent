@@ -1,0 +1,107 @@
+{
+  "version": "2026-07-05",
+  "pricing_snapshot_id": "phase1-golden-2026-07-05",
+  "cache_policy": "cold-cache-per-scenario",
+  "tasks": [
+    {
+      "task_id": "explain-small-function",
+      "description": "Explain a function under 15 lines.",
+      "expected_mode": "plan_chat",
+      "expected_tools": ["file_reader"],
+      "max_cost_usd": "0.005",
+      "expected_final_state": "chat_only",
+      "mutation_expected": false,
+      "release_gate": false
+    },
+    {
+      "task_id": "docstring-single-function",
+      "description": "Add a docstring to one function.",
+      "expected_mode": "agent",
+      "expected_tools": ["file_reader", "write_file"],
+      "max_cost_usd": "0.012",
+      "expected_final_state": "completed",
+      "mutation_expected": true,
+      "release_gate": false
+    },
+    {
+      "task_id": "single-file-bugfix",
+      "description": "Fix a known bug in a single file.",
+      "expected_mode": "agent",
+      "expected_tools": ["file_reader", "shadow_apply", "write_file"],
+      "max_cost_usd": "0.018",
+      "expected_final_state": "completed",
+      "mutation_expected": true,
+      "release_gate": false
+    },
+    {
+      "task_id": "two-file-refactor",
+      "description": "Refactor across two files.",
+      "expected_mode": "agent",
+      "expected_tools": ["file_reader", "shadow_apply", "write_file", "write_file", "test_runner"],
+      "max_cost_usd": "0.035",
+      "expected_final_state": "completed",
+      "mutation_expected": true,
+      "release_gate": false
+    },
+    {
+      "task_id": "dependency-version-lookup",
+      "description": "Lookup a dependency version with PACKAGE_VERSION reason.",
+      "expected_mode": "plan_chat",
+      "expected_tools": ["file_reader", "web_search"],
+      "max_cost_usd": "0.008",
+      "expected_final_state": "chat_only",
+      "mutation_expected": false,
+      "release_gate": false
+    },
+    {
+      "task_id": "security-advisory-check",
+      "description": "Check a security advisory with SECURITY_ADVISORY reason.",
+      "expected_mode": "plan_chat",
+      "expected_tools": ["web_search"],
+      "max_cost_usd": "0.010",
+      "expected_final_state": "chat_only",
+      "mutation_expected": false,
+      "release_gate": false
+    },
+    {
+      "task_id": "multi-file-changeset",
+      "description": "Execute a multi-file changeset with reflection bounds.",
+      "expected_mode": "agent",
+      "expected_tools": ["file_reader", "shadow_apply", "write_file", "write_file", "write_file", "test_runner", "reflection"],
+      "max_cost_usd": "0.055",
+      "expected_final_state": "completed",
+      "mutation_expected": true,
+      "release_gate": false
+    },
+    {
+      "task_id": "plan-then-approve-agent",
+      "description": "Produce plan text, receive approval, then mutate.",
+      "expected_mode": "agent",
+      "expected_tools": ["file_reader", "write_file"],
+      "max_cost_usd": "0.020",
+      "expected_final_state": "completed",
+      "mutation_expected": true,
+      "release_gate": false
+    },
+    {
+      "task_id": "budget-exhausted",
+      "description": "Terminate cleanly when budget is exhausted.",
+      "expected_mode": "agent",
+      "expected_tools": ["file_reader"],
+      "max_cost_usd": "0.001",
+      "expected_final_state": "terminated",
+      "mutation_expected": false,
+      "release_gate": false
+    },
+    {
+      "task_id": "one-key-release-gate",
+      "description": "Run release gate with only Optimus credentials.",
+      "expected_mode": "agent",
+      "expected_tools": ["file_reader", "shadow_apply", "write_file", "test_runner", "release_gate"],
+      "max_cost_usd": "0.050",
+      "expected_final_state": "completed",
+      "mutation_expected": true,
+      "release_gate": true
+    }
+  ]
+}

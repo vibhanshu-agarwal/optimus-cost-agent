@@ -196,6 +196,27 @@ Need a second checkout? Use a suffixed path such as `../optimus-cost-agent-wt-vi
 
 **Commits:** only push from your branch when tests pass (TDD required for agents; preferred for humans).
 
+### Phase 1 Release Gate
+
+Plan 8 adds a local release-gate runner for Sprint 1 sign-off. The runner
+executes the ordered unit, integration, coverage, golden-task-suite, and one-key
+credential checks and emits a JSON report.
+
+```bash
+python tools/run_phase1_release_gate.py
+```
+
+The default CLI is fail-closed until a golden-task harness is configured. A
+run with no harness exits non-zero with `golden task harness not configured`;
+the Sprint 1 PASS state requires wiring a deterministic local/staging harness
+that produces `GoldenTaskResult` records for every fixture.
+
+The final go/no-go rule is strict: a Plan-mode and Agent-mode release run must
+complete with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` available
+locally. Provider keys such as Tavily, OpenAI, OpenRouter, GLM, Anthropic, and
+LangSmith must remain Gateway-side and must not be resolvable from the local
+environment, selected local config files, or serialized process-state snapshots.
+
 ## Repository layout
 
 ```
