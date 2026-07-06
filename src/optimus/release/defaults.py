@@ -4,7 +4,7 @@ from pathlib import Path
 
 from optimus.golden.runner import GoldenTaskHarness, evaluate_golden_task_suite
 from optimus.golden.tasks import load_golden_tasks
-from optimus.release.credentials import scan_local_credentials
+from optimus.release.credentials import default_release_credential_scan_paths, scan_local_credentials
 from optimus.release.runner import CallableGate, CommandGate, ReleaseGate
 
 
@@ -12,6 +12,7 @@ def build_phase1_release_gates(
     *,
     python_executable: str = "python",
     golden_harness: GoldenTaskHarness | None = None,
+    credential_scan_root: str | Path = ".",
 ) -> tuple[ReleaseGate, ...]:
     return (
         CommandGate(
@@ -36,7 +37,7 @@ def build_phase1_release_gates(
             command=("git", "diff", "--check"),
         ),
         CallableGate(name="golden-task-suite", run=lambda: _golden_task_suite_gate(golden_harness)),
-        CallableGate(name="one-key-credential-scan", run=_one_key_credential_gate),
+        CallableGate(name="one-key-credential-scan", run=lambda: _one_key_credential_gate(credential_scan_root)),
     )
 
 
@@ -48,12 +49,6 @@ def _golden_task_suite_gate(golden_harness: GoldenTaskHarness | None) -> tuple[b
     return report.passed, report.failure_summary
 
 
-def _one_key_credential_gate() -> tuple[bool, str]:
-    result = scan_local_credentials(
-        config_paths=(
-            Path(".env"),
-            Path(".env.local"),
-            Path("pyproject.toml"),
-        )
-    )
+def _one_key_credential_gate(credential_scan_root: str | Path) -> tuple[bool, str]:
+    result = scan_local_credentials(config_paths=default_release_credential_scan_paths(root=credential_scan_root))
     return result.passed, result.summary

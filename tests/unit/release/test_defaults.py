@@ -35,3 +35,31 @@ def test_phase1_release_gate_script_exists_and_uses_default_builder():
     assert "ReleaseGateRunner" in text
     assert "return 0 if report.passed else 1" in text
     assert "raise SystemExit(main())" in text
+
+
+def test_default_one_key_gate_uses_release_scan_paths(monkeypatch, tmp_path):
+    from optimus.release import defaults
+
+    captured_paths: list[Path] = []
+
+    class ScanResult:
+        passed = True
+        summary = "ok"
+
+    def fake_scan_local_credentials(*, config_paths=(), environ=None):
+        captured_paths.extend(Path(path) for path in config_paths)
+        return ScanResult()
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(defaults, "scan_local_credentials", fake_scan_local_credentials)
+
+    gate = next(
+        gate
+        for gate in build_phase1_release_gates(credential_scan_root=tmp_path)
+        if gate.name == "one-key-credential-scan"
+    )
+    result = gate.run()
+
+    assert result.passed is True
+    assert (tmp_path / "reports" / "phase1-golden-results.json").resolve() in captured_paths
+    assert (tmp_path / "reports" / "process-state.json").resolve() in captured_paths

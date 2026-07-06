@@ -135,8 +135,14 @@ remains a Gateway-routed extension and is not required locally.
 The Phase 1 release runner composes ordered unit, integration, coverage,
 golden-task-suite, diff-hygiene, and one-key credential gates into a single
 `ReleaseGateReport`. `scan_local_credentials()` enforces the one-key model by
-rejecting resolvable provider keys from the local environment, selected config
-files, and serialized process-state snapshots. Run the default CLI with:
+rejecting resolvable provider keys from the local environment and configured
+release scan artifacts. The default one-key gate scans the local process
+environment plus `.env`, `.env.local`, `pyproject.toml`,
+`reports/phase1-release-gate.json`, `reports/phase1-golden-results.json`, and
+`reports/process-state.json`. These report paths are scanned because the release
+runner reads or produces them during Sprint 1 sign-off. Add any future
+release-runner local artifact to `DEFAULT_RELEASE_CREDENTIAL_SCAN_PATHS` before
+it can carry credentials. Run the default CLI with:
 
 ```bash
 python tools/run_phase1_release_gate.py
