@@ -9,6 +9,20 @@ from enum import StrEnum
 from pathlib import Path
 
 
+DEFAULT_SHADOW_IGNORE_PATTERNS = (
+    ".git",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".venv",
+    "node_modules",
+    "build",
+    "dist",
+    "*.egg-info",
+)
+
+
 class ShadowChangeKind(StrEnum):
     WRITE = "write"
     DELETE = "delete"
@@ -32,11 +46,16 @@ class ShadowPromotionPlan:
 
 
 class ShadowWorkspace:
-    def __init__(self, *, workspace_root: Path) -> None:
+    def __init__(self, *, workspace_root: Path, ignore_patterns: tuple[str, ...] = ()) -> None:
         self.workspace_root = workspace_root.resolve()
+        self.ignore_patterns = tuple(dict.fromkeys((*DEFAULT_SHADOW_IGNORE_PATTERNS, *ignore_patterns)))
         self._temporary_directory = tempfile.TemporaryDirectory()
         self.shadow_root = Path(self._temporary_directory.name) / self.workspace_root.name
-        shutil.copytree(self.workspace_root, self.shadow_root, ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache"))
+        shutil.copytree(
+            self.workspace_root,
+            self.shadow_root,
+            ignore=shutil.ignore_patterns(*self.ignore_patterns),
+        )
         self._baseline_digests = _file_digests_by_relative_path(self.shadow_root)
 
     def changes(self) -> tuple[ShadowChange, ...]:

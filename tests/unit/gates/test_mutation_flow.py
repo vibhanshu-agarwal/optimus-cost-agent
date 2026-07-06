@@ -161,3 +161,53 @@ def test_shadow_deletion_diff_does_not_delete_ignored_workspace_content(tmp_path
     assert not obsolete.exists()
     assert (tmp_path / ".git" / "config").read_text(encoding="utf-8") == "[core]\n"
     assert (tmp_path / ".venv" / "pyvenv.cfg").read_text(encoding="utf-8") == "home = python\n"
+
+
+def test_shadow_workspace_skips_large_default_ignored_directories(tmp_path):
+    (tmp_path / ".venv").mkdir()
+    (tmp_path / ".venv" / "secret_provider.py").write_text("OPENAI_API_KEY='sk-test'\n", encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "module.py").write_text("value = 1\n", encoding="utf-8")
+
+    runner = ShadowWorkspaceMutationRunner(checks_factory=lambda shadow_root: (PassingCheck(),))
+
+    seen_shadow_paths: list[Path] = []
+
+    def apply_candidate(shadow_root: Path) -> None:
+        seen_shadow_paths.extend(path.relative_to(shadow_root) for path in shadow_root.rglob("*"))
+        (shadow_root / "src" / "module.py").write_text("value = 2\n", encoding="utf-8")
+
+    result = runner.run(
+        context=approved_context(),
+        workspace_root=tmp_path,
+        apply_candidate=apply_candidate,
+    )
+
+    assert result.passed is True
+    assert Path(".venv") not in seen_shadow_paths
+    assert Path(".venv/secret_provider.py") not in seen_shadow_paths
+    assert (tmp_path / "src" / "module.py").read_text(encoding="utf-8") == "value = 2\n"
+
+
+def test_shadow_workspace_accepts_extra_ignore_patterns(tmp_path):
+    (tmp_path / ".local-cache").mkdir()
+    (tmp_path / ".local-cache" / "large.bin").write_text("skip\n", encoding="utf-8")
+    (tmp_path / "module.py").write_text("value = 1\n", encoding="utf-8")
+
+    runner = ShadowWorkspaceMutationRunner(
+        checks_factory=lambda shadow_root: (PassingCheck(),),
+        ignore_patterns=(".local-cache",),
+    )
+
+    def apply_candidate(shadow_root: Path) -> None:
+        assert not (shadow_root / ".local-cache").exists()
+        (shadow_root / "module.py").write_text("value = 2\n", encoding="utf-8")
+
+    result = runner.run(
+        context=approved_context(),
+        workspace_root=tmp_path,
+        apply_candidate=apply_candidate,
+    )
+
+    assert result.passed is True
+    assert (tmp_path / "module.py").read_text(encoding="utf-8") == "value = 2\n"
