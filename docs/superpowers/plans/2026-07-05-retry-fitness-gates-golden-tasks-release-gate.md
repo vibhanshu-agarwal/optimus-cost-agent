@@ -3039,7 +3039,7 @@ git commit -m "Add ordered Phase 1 release gate runner."
 - Modify: `README.md`
 - Test: `tests/unit/release/test_defaults.py`
 
-- [ ] **Step 1: Write failing CLI smoke test**
+- [x] **Step 1: Write failing CLI smoke test**
 
 Append to `tests/unit/release/test_defaults.py`:
 
@@ -3057,7 +3057,7 @@ def test_phase1_release_gate_script_exists_and_uses_default_builder():
     assert "raise SystemExit(main())" in text
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -3067,7 +3067,7 @@ pytest tests/unit/release/test_defaults.py -v
 
 Expected: FAIL because the script does not exist.
 
-- [ ] **Step 3: Add release gate script**
+- [x] **Step 3: Add release gate script**
 
 Create `tools/run_phase1_release_gate.py`:
 
@@ -3088,7 +3088,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: Add README release-gate note**
+- [x] **Step 4: Add README release-gate note**
 
 Append to `README.md`:
 
@@ -3115,7 +3115,7 @@ LangSmith must remain Gateway-side and must not be resolvable from the local
 environment, selected local config files, or serialized process-state snapshots.
 ```
 
-- [ ] **Step 5: Run README/script tests**
+- [x] **Step 5: Run README/script tests**
 
 Run:
 
@@ -3125,7 +3125,7 @@ pytest tests/unit/release/test_defaults.py -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add README.md tools/run_phase1_release_gate.py tests/unit/release/test_defaults.py
