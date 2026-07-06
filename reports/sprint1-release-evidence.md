@@ -1,6 +1,6 @@
 # Sprint 1 Release Evidence — Plan 8.5
 
-**Branch:** `agent/cursor/plan-8-5-release-gate-hardening`  
+**Branch:** `agent/cursor/plan-8-5-release-gate-hardening`
 **Date:** 2026-07-06
 
 ## Staging Gateway E2E
