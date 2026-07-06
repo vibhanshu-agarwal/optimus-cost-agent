@@ -50,20 +50,30 @@ class CallableGate:
         )
 
 
+CommandExecutor = Callable[[tuple[str, ...], float | None], tuple[int, str, str]]
+
+
 @dataclass(frozen=True)
 class CommandGate:
     name: str
     command: tuple[str, ...]
-    executor: Callable[[tuple[str, ...]], tuple[int, str, str]] | None = None
+    timeout_seconds: float | None = 600.0
+    executor: CommandExecutor | None = None
 
     def run(self) -> ReleaseGateResult:
         started = datetime.now(tz=UTC)
-        exit_code, stdout, stderr = (self.executor or _run_command)(self.command)
-        output = "\n".join(part for part in (stdout.strip(), stderr.strip()) if part)
+        try:
+            exit_code, stdout, stderr = (self.executor or _run_command)(self.command, self.timeout_seconds)
+            output = "\n".join(part for part in (stdout.strip(), stderr.strip()) if part)
+            passed = exit_code == 0
+            summary = output or f"exit_code={exit_code}"
+        except TimeoutError as exc:
+            passed = False
+            summary = str(exc)
         return ReleaseGateResult(
             name=self.name,
-            passed=exit_code == 0,
-            output_summary=_safe_summary(output or f"exit_code={exit_code}"),
+            passed=passed,
+            output_summary=_safe_summary(summary),
             duration_ms=_duration_ms(started),
         )
 
@@ -121,8 +131,17 @@ class ReleaseGateRunner:
         return ReleaseGateReport(results=tuple(results))
 
 
-def _run_command(command: tuple[str, ...]) -> tuple[int, str, str]:
-    completed = subprocess.run(command, check=False, text=True, capture_output=True)
+def _run_command(command: tuple[str, ...], timeout_seconds: float | None) -> tuple[int, str, str]:
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            text=True,
+            capture_output=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError(f"command {' '.join(command)} timed out after {timeout_seconds} seconds") from exc
     return completed.returncode, completed.stdout, completed.stderr
 
 

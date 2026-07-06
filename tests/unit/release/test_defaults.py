@@ -70,3 +70,19 @@ def test_phase1_release_gate_script_accepts_golden_results_argument():
 
     assert "--golden-results" in text
     assert "JsonGoldenTaskHarness.from_path" in text
+
+
+def test_default_command_gates_receive_timeout():
+    gates = build_phase1_release_gates(command_timeout_seconds=123.0)
+
+    command_gates = [gate for gate in gates if getattr(gate, "command", None)]
+
+    assert command_gates
+    assert all(gate.timeout_seconds == 123.0 for gate in command_gates)
+
+
+def test_phase1_release_gate_script_accepts_command_timeout_argument():
+    text = Path("tools/run_phase1_release_gate.py").read_text(encoding="utf-8")
+
+    assert "--command-timeout-seconds" in text
+    assert "command_timeout_seconds=args.command_timeout_seconds" in text

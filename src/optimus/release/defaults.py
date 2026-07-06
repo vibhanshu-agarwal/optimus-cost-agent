@@ -14,6 +14,7 @@ def build_phase1_release_gates(
     golden_harness: GoldenTaskHarness | None = None,
     include_command_gates: bool = True,
     credential_scan_root: str | Path = ".",
+    command_timeout_seconds: float = 600.0,
 ) -> tuple[ReleaseGate, ...]:
     command_gates: tuple[ReleaseGate, ...] = ()
     if include_command_gates:
@@ -21,6 +22,7 @@ def build_phase1_release_gates(
             CommandGate(
                 name="unit-and-integration-tests",
                 command=(python_executable, "-m", "pytest", "tests/unit", "tests/integration", "-q"),
+                timeout_seconds=command_timeout_seconds,
             ),
             CommandGate(
                 name="coverage-80",
@@ -34,10 +36,12 @@ def build_phase1_release_gates(
                     "--cov-fail-under=80",
                     "-q",
                 ),
+                timeout_seconds=command_timeout_seconds,
             ),
             CommandGate(
                 name="diff-whitespace-check",
                 command=("git", "diff", "--check"),
+                timeout_seconds=command_timeout_seconds,
             ),
         )
     return (

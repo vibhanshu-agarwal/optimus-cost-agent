@@ -13,6 +13,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--golden-results", type=Path, help="Path to actual GoldenTaskResult JSON captured from a real Optimus-only run.")
     parser.add_argument("--python-executable", default="python", help="Python executable used for command gates.")
     parser.add_argument("--credential-scan-root", type=Path, default=Path("."), help="Root used for default release credential artifact scans.")
+    parser.add_argument("--command-timeout-seconds", type=float, default=600.0, help="Timeout for each subprocess-backed release gate.")
     parser.add_argument("--skip-command-gates-for-test", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args()
 
@@ -25,6 +26,7 @@ def main() -> int:
         golden_harness=golden_harness,
         include_command_gates=not args.skip_command_gates_for_test,
         credential_scan_root=args.credential_scan_root,
+        command_timeout_seconds=args.command_timeout_seconds,
     )
     report = ReleaseGateRunner(gates=gates).run()
     print(report.to_json())
