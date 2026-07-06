@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
@@ -9,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES
+from optimus.telemetry.redaction import redact_for_telemetry
 
 
 class TelemetryEventKind(StrEnum):
@@ -20,6 +19,10 @@ class TelemetryEventKind(StrEnum):
     RECONCILIATION = "reconciliation"
     ERROR = "error"
     PRICING_FALLBACK = "pricing_fallback"
+    RETRY_DECISION = "retry_decision"
+    FITNESS_GATE = "fitness_gate"
+    GOLDEN_TASK = "golden_task"
+    RELEASE_GATE = "release_gate"
 
 
 class TelemetryEvent(BaseModel):
@@ -257,6 +260,132 @@ class TelemetryEvent(BaseModel):
             payload={"error_type": error_type, "message": message, "disposition": disposition},
         )
 
+    @classmethod
+    def retry_decision(
+        cls,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        occurred_at: datetime,
+        attempt: int,
+        retry_count: int,
+        failure_kind: str,
+        action: str,
+        delay_ms: int,
+        disposition: str,
+    ) -> TelemetryEvent:
+        return cls(
+            kind=TelemetryEventKind.RETRY_DECISION,
+            run_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=occurred_at,
+            payload={
+                "attempt": attempt,
+                "retry_count": retry_count,
+                "failure_kind": failure_kind,
+                "action": action,
+                "delay_ms": delay_ms,
+                "disposition": disposition,
+            },
+        )
+
+    @classmethod
+    def fitness_gate(
+        cls,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        occurred_at: datetime,
+        passed: bool,
+        required_gate_names: tuple[str, ...],
+        failed_gate_names: tuple[str, ...],
+        duration_ms: int,
+        cost_usd: Decimal,
+    ) -> TelemetryEvent:
+        return cls(
+            kind=TelemetryEventKind.FITNESS_GATE,
+            run_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=occurred_at,
+            payload={
+                "passed": passed,
+                "required_gate_names": required_gate_names,
+                "failed_gate_names": failed_gate_names,
+                "duration_ms": duration_ms,
+                "cost_usd": cost_usd,
+            },
+        )
+
+    @classmethod
+    def golden_task(
+        cls,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        occurred_at: datetime,
+        task_id: str,
+        passed: bool,
+        expected_mode: str,
+        actual_mode: str,
+        expected_tools: tuple[str, ...],
+        actual_tools: tuple[str, ...],
+        max_cost_usd: Decimal,
+        actual_cost_usd: Decimal,
+        expected_final_state: str,
+        actual_final_state: str,
+    ) -> TelemetryEvent:
+        return cls(
+            kind=TelemetryEventKind.GOLDEN_TASK,
+            run_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=occurred_at,
+            payload={
+                "task_id": task_id,
+                "passed": passed,
+                "expected_mode": expected_mode,
+                "actual_mode": actual_mode,
+                "expected_tools": expected_tools,
+                "actual_tools": actual_tools,
+                "max_cost_usd": max_cost_usd,
+                "actual_cost_usd": actual_cost_usd,
+                "expected_final_state": expected_final_state,
+                "actual_final_state": actual_final_state,
+            },
+        )
+
+    @classmethod
+    def release_gate(
+        cls,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        occurred_at: datetime,
+        gate_name: str,
+        passed: bool,
+        duration_ms: int,
+        output_summary: str,
+    ) -> TelemetryEvent:
+        return cls(
+            kind=TelemetryEventKind.RELEASE_GATE,
+            run_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=occurred_at,
+            payload={
+                "gate_name": gate_name,
+                "passed": passed,
+                "duration_ms": duration_ms,
+                "output_summary": output_summary,
+            },
+        )
+
     def to_json_dict(self) -> dict[str, Any]:
         encoded = {
             "kind": self.kind.value,
@@ -266,7 +395,7 @@ class TelemetryEvent(BaseModel):
             "occurred_at": self.occurred_at.isoformat(),
             **self.payload,
         }
-        return _json_safe(_redact(encoded))
+        return _json_safe(redact_for_telemetry(encoded))
 
     def to_json_line(self) -> str:
         return json.dumps(self.to_json_dict(), sort_keys=True, separators=(",", ":"), default=_json_default)
@@ -276,70 +405,6 @@ def _json_default(value: object) -> str:
     if isinstance(value, Decimal):
         return str(value)
     raise TypeError(f"{type(value).__name__} is not JSON serializable")
-
-
-_EXACT_SECRET_KEYS = {
-    "authorization",
-    "auth_header",
-    "x-api-key",
-}
-
-_SECRET_KEY_PARTS = (
-    "api_key",
-    "apikey",
-    "token",
-    "secret",
-    "password",
-    "credential",
-    "optimus_api_key",
-)
-
-_REDACT_ENV_KEY_NAMES = frozenset({*LOCAL_PROVIDER_KEY_NAMES, "OPTIMUS_API_KEY"})
-_REDACT_ENV_KEY_NAMES_LOWER = frozenset(name.lower().replace("-", "_") for name in _REDACT_ENV_KEY_NAMES)
-_ENV_ASSIGNMENT_PATTERN = re.compile(
-    rf"\b({'|'.join(sorted(_REDACT_ENV_KEY_NAMES, key=len, reverse=True))})\s*=\s*\S+",
-    re.IGNORECASE,
-)
-_API_KEY_HEADER_PATTERN = re.compile(r"(?i)(api[_-]?key)\s*:\s*\S+")
-_X_API_KEY_HEADER_PATTERN = re.compile(r"(?i)x-api-key:\s*\S+")
-_BEARER_TOKEN_PATTERN = re.compile(r"(?i)(authorization:\s*bearer\s+|bearer\s+)[^\s]+")
-
-
-def _redact_free_text(text: str) -> str:
-    redacted = _BEARER_TOKEN_PATTERN.sub(r"\1**********", text)
-    redacted = _ENV_ASSIGNMENT_PATTERN.sub(r"\1=**********", redacted)
-    redacted = _API_KEY_HEADER_PATTERN.sub(r"\1: **********", redacted)
-    redacted = _X_API_KEY_HEADER_PATTERN.sub("x-api-key: **********", redacted)
-    return redacted
-
-
-def _is_secret_dict_key(key_text: str) -> bool:
-    if key_text in _EXACT_SECRET_KEYS:
-        return True
-    normalized = key_text.replace("-", "_")
-    if normalized in _REDACT_ENV_KEY_NAMES_LOWER:
-        return True
-    if normalized in _SECRET_KEY_PARTS:
-        return True
-    segments = normalized.split("_")
-    return any(segment in _SECRET_KEY_PARTS for segment in segments)
-
-
-def _redact(value: Any) -> Any:
-    if isinstance(value, dict):
-        redacted: dict[str, Any] = {}
-        for key, child in value.items():
-            key_text = str(key).lower()
-            if _is_secret_dict_key(key_text):
-                redacted[key] = "**********"
-            else:
-                redacted[key] = _redact(child)
-        return redacted
-    if isinstance(value, (list, tuple)):
-        return [_redact(child) for child in value]
-    if isinstance(value, str):
-        return _redact_free_text(value)
-    return value
 
 
 def _json_safe(value: Any) -> Any:
