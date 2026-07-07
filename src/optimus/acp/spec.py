@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -252,9 +252,8 @@ class AcpDuplexAdapter:
         request_task = asyncio.create_task(self._outbound.request("session/request_permission", params))
         await asyncio.sleep(0)
         if self._active_turns.get(turn.session_id) is turn and hasattr(self._outbound, "requests"):
-            requests = getattr(self._outbound, "requests")
-            if requests:
-                turn.pending_permission_request_id = requests[-1]["id"]
+            if self._outbound.requests:
+                turn.pending_permission_request_id = self._outbound.requests[-1]["id"]
         return await request_task
 
     async def _emit_result_updates(self, *, session_id: str, result: AgentRunResult, planning: bool) -> None:
