@@ -20,10 +20,11 @@ class AgentGoldenTaskHarness(GoldenTaskHarness):
         mode = ExecutionMode.AGENT if task.expected_mode == "agent" else ExecutionMode.PLAN
         approval = AgentApproval()
         plan_cost = Decimal("0")
+        run_id = f"golden:{task.task_id}"
         if mode is ExecutionMode.AGENT:
             plan_result = self._runner.run(
                 AgentRunRequest(
-                    run_id=f"golden:{task.task_id}:plan",
+                    run_id=run_id,
                     session_id=None,
                     task=task.description,
                     execution_mode=mode,
@@ -40,7 +41,7 @@ class AgentGoldenTaskHarness(GoldenTaskHarness):
                 plan_hash=plan_result.plan_hash,
             )
         request = AgentRunRequest(
-            run_id=f"golden:{task.task_id}",
+            run_id=run_id,
             session_id=None,
             task=task.description,
             execution_mode=mode,
