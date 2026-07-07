@@ -14,6 +14,7 @@ dependencies = [
 
 [project.scripts]
 optimus-agent = "optimus.acp.__main__:main"
+optimus-local-gateway = "optimus_gateway.__main__:main"
 
 [project.optional-dependencies]
 dev = [
@@ -36,17 +37,18 @@ addopts = [
   "--strict-markers",
   "--import-mode=importlib",
   "-m",
-  "not requires_redis and not requires_gateway and not e2e",
+  "not requires_redis and not requires_gateway and not e2e and not requires_live_gateway",
 ]
 markers = [
   "requires_redis: integration test that needs a live TimeSeries-capable Redis server",
   "requires_gateway: integration test that needs real Optimus Gateway credentials",
   "e2e: end-to-end test that spawns the real ACP stdio process",
+  "requires_live_gateway: integration test that needs the local Optimus Gateway service process and Anthropic API key on that process only",
 ]
 
 [tool.coverage.run]
 branch = true
-source = ["src/optimus"]
+source = ["src/optimus", "src/optimus_gateway"]
 
 [tool.coverage.report]
 show_missing = true

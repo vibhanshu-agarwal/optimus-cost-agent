@@ -7,12 +7,17 @@
 > live LLM call instead of fake gateway credentials.
 
 **Goal:** A small, self-hosted local service that implements the Optimus Gateway wire contract
-(`POST /v1/responses`) by proxying to a real provider (Anthropic) using a developer-owned key. The
+(`POST /v1/responses`) by proxying to a real upstream LLM provider using a developer-owned key. The
 agent side never holds a provider key; it holds a Gateway URL and a locally-generated shared secret,
 exactly as the existing gateway-only architecture already assumes — the difference is the Gateway
 is now a process you run yourself, not a hosted service someone issues you credentials for.
 
-**Status:** Not started. Scoping only.
+**Status:** Loopback exemption and a v1 stub service landed on `agent/cursor/local-optimus-gateway`
+(`80b3d1a` → `53cf8da`), verified working end-to-end (including a real request that reached
+`api.anthropic.com` and got a genuine — if auth-rejected — response). That v1 hardcoded Anthropic as
+the only upstream. **This doc now reverses that choice before further work continues** — see "Design
+Revision" below. The loopback exemption (`4901b75`) is unaffected and stays as-is; only the upstream
+adapter and its config change.
 
 ## Retrospective: why this plan exists
 
@@ -30,11 +35,63 @@ always meant to be a **local proxy** so the agent doesn't juggle multiple provid
 not a multi-tenant hosted service. This plan builds that, scoped to what a single-developer
 portfolio project actually needs.
 
+## Design Revision (2026-07-08): OpenAI-compatible primary, Anthropic secondary
+
+**What changed:** v1 (`53cf8da`) built `UrllibAnthropicClient` as the only upstream adapter,
+because Anthropic (Haiku) was the model already used throughout Plan 9.6's L5 tests. That was the
+wrong default to standardize on. Almost all real operators of this project will hold an OpenAI or
+OpenRouter key, not a native Anthropic key — and OpenRouter itself speaks the OpenAI Chat
+Completions wire format, so an OpenAI-compatible adapter pointed at OpenRouter's `base_url` reaches
+Anthropic, Google, Meta, and Mistral models too, without any provider-specific code beyond the two
+adapters below. This mirrors how LiteLLM, JetBrains AI Assistant, and Zed support "100s of
+providers": in practice it's two or three wire-format adapters plus a per-provider config record,
+not one handler per provider name.
+
+**Decision:** OpenAI-compatible becomes the primary/default adapter. The already-built
+Anthropic-native adapter (`UrllibAnthropicClient`) is kept, not deleted — demoted to a secondary,
+explicitly-selected option for operators who hold a native Anthropic key and don't want to route
+through OpenRouter.
+
+**New primary contract** — adapter → upstream provider:
+
+```
+POST {base_url}/chat/completions        # e.g. https://api.openai.com/v1 or https://openrouter.ai/api/v1
+Authorization: Bearer <provider-api-key>
+Content-Type: application/json
+
+{"model": "<model-id>", "messages": [{"role": "user", "content": "<prompt text>"}]}
+```
+
+Response:
+
+```json
+{
+  "id": "chatcmpl-...",
+  "choices": [{"message": {"role": "assistant", "content": "the output text"}}],
+  "usage": {"prompt_tokens": 42, "completion_tokens": 18, "total_tokens": 60}
+}
+```
+
+This maps directly onto the existing internal seam — `AnthropicMessageResult` (or a renamed
+provider-agnostic equivalent) with `message_id`, `output_text`, `input_tokens`, `output_tokens` —
+`id` → `message_id`, `choices[0].message.content` → `output_text`, `usage.prompt_tokens` /
+`.completion_tokens` → the token fields. The `create_message(*, model, input_text) -> ...Result`
+`Protocol` in `anthropic_client.py` does not need to change; only a new adapter class implementing
+it, plus config to select which adapter is active. Consider renaming the protocol/module away from
+"anthropic-specific" naming now that it's one of two implementations (implementer's call, not a
+blocking requirement).
+
+**The `/v1/responses` contract the *agent side* sees is unchanged** — this revision is entirely
+upstream of `handle_responses_request`; `parse_gateway_response()` on the agent side does not change
+at all. Nothing about Task L5's tests changes because of this revision.
+
 ## Non-goals (v1)
 
 - Multi-tenant hosting, remote deployment, or any exposure beyond `localhost`.
-- Provider abstraction beyond Anthropic. Other providers in `LOCAL_PROVIDER_KEY_NAMES`
-  (OpenAI, GLM, OpenRouter, Tavily, ...) can follow the same pattern later if needed.
+- A handler per provider name. Two wire-format adapters (OpenAI-compatible, Anthropic-native) cover
+  OpenAI, OpenRouter, Groq, Together, Azure OpenAI, and (via OpenRouter) Anthropic/Google/Meta/
+  Mistral models without new code — see "Design Revision" above. A third adapter (e.g. Google's
+  native Gemini API) is out of scope until an operator actually needs it.
 - `/v1/tools/*` and `/v1/observability/*` endpoints (`GatewayClient.post_tool_json` /
   `post_observability_json`). Nothing in Plan 9.6's L5/L6 calls them; only `/v1/responses` is
   in scope.
@@ -86,20 +143,61 @@ Content-Type: application/json
 - Auth failure → HTTP 401 or 403 (any body). `GatewayHttpError` carries the status through, and the
   preflight strict-mode auth probe string-matches `"401"`/`"403"` in the exception message.
 
+This contract is fixed regardless of upstream provider — `"claude-haiku"` and `"provider":
+"anthropic"` above are illustrative values from when Anthropic was the only adapter. Post
+Design-Revision, `gateway_usage.provider` reflects whichever upstream actually served the request
+(`"openai"`, `"openrouter"`, or `"anthropic"`), and the `model` field is whatever agent-facing alias
+or passthrough id was requested. Nothing here changes structurally.
+
 ### 3. Real cost computation
 
-Pull actual token usage from Anthropic's response and multiply by real published per-token
-Haiku pricing to produce `cost_usd`; `billing_units` = total tokens (define input+output split
-explicitly in the implementation, don't leave it ambiguous). A stub that fakes cost defeats the
-point of a *cost* agent — this is worth getting right even at v1.
+Pull actual token usage from the upstream response and multiply by real published per-token
+pricing to produce `cost_usd`; `billing_units` = total tokens (input + output, defined explicitly,
+not ambiguous). A stub that fakes cost defeats the point of a *cost* agent — this is worth getting
+right even at v1.
+
+With two adapters now in scope, pricing becomes a small `(provider, resolved_model_id) -> rates`
+table rather than one hardcoded Haiku rate — same shape (`billing_units`/`compute_cost_usd` still
+just take token counts in, `cost_usd` out), just keyed. Unknown `(provider, model)` combinations
+should fail loudly (`ValueError`), not silently default to some rate — an unpriced model producing
+a wrong-but-plausible cost figure is worse than an explicit error, given this is a cost agent.
+A default/fallback tier is acceptable only for the live smoke test's own minimal-cost sanity check,
+not for anything a real operator run would hit silently.
 
 ### 4. Model id mapping
 
-Agent-facing model strings (e.g. `"claude-haiku"`) map to real Anthropic model ids
-(e.g. `claude-haiku-4-5-20251001`) via a small explicit dict in the service. Keep it in one place,
-easy to extend when more models are added.
+Provider-scoped aliases, not a single flat table: the agent-facing model string (e.g.
+`"claude-haiku"`) resolves against whichever provider is configured
+(`OPTIMUS_LOCAL_GATEWAY_PROVIDER`), because the same alias means a different real model id per
+provider — e.g. `"claude-haiku" → "claude-haiku-4-5-20251001"` when `PROVIDER=anthropic`, or
+`"claude-haiku" → "anthropic/claude-3.5-haiku"` when `PROVIDER=openrouter`. Keep the existing
+Anthropic-only table as the `anthropic` provider's entry, add an `openrouter`/`openai` entry
+alongside it — same file, one dict per provider, not a redesign.
 
-### 5. Config: `src/optimus/config/gateway.py` loopback exemption
+Direct passthrough must also work: an operator who wants to pass `openai/gpt-4o-mini` or any other
+provider-native model id verbatim (no alias defined) should be able to — only fall back to
+"unsupported gateway model" if the string matches neither a known alias nor looks like a
+plausible passthrough id for the active provider. Don't make every new model require a code change.
+
+### 5. Provider configuration
+
+New env vars on the gateway service's own process (never the agent side):
+
+- `OPTIMUS_LOCAL_GATEWAY_PROVIDER` — `openai` | `openrouter` | `anthropic`. Default: `openrouter`
+  (covers the most models with one key, per the Design Revision above).
+- `OPTIMUS_LOCAL_GATEWAY_BASE_URL` — override for the OpenAI-compatible adapter's base URL. Defaults
+  derived from `PROVIDER` (`https://api.openai.com/v1` for `openai`, `https://openrouter.ai/api/v1`
+  for `openrouter`); required only if pointing at some other OpenAI-compatible endpoint.
+- Provider API key: reuse `ANTHROPIC_API_KEY` when `PROVIDER=anthropic`; introduce
+  `OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY` (or similarly-named single var) for the OpenAI-compatible
+  path so `OPENAI_API_KEY` doesn't have to double as both "the key this gateway proxies with" and
+  a name already reserved/rejected elsewhere in `LOCAL_PROVIDER_KEY_NAMES` on the agent side —
+  implementer's call on exact naming, but keep it unambiguous which var is being read.
+
+### 6. Config: `src/optimus/config/gateway.py` loopback exemption
+
+**Status: implemented** (`4901b75`), unaffected by the Design Revision above — this section is
+kept for reference only.
 
 **Decision (confirmed):** exempt `127.0.0.1` / `localhost` origins from the https-only requirement,
 scoped strictly to non-production mode, documented as a trust-boundary exception — traffic never
@@ -141,31 +239,48 @@ non-built-in origin exactly as today — the existing `rogue.attacker.com`-style
 - non-loopback `http://example.com` origin still rejected even when `production_mode=False` — only
   loopback gets the exemption, not arbitrary http.
 
-### 6. Documentation
+### 7. Documentation
 
 - README "Optimus Gateway access" section: clarify the Gateway is a self-hosted local process for
-  this project, not a hosted service — how to run it, how to generate the shared secret, which env
-  var goes on which side (`ANTHROPIC_API_KEY` on the gateway service's own env only, never in the
-  agent's `.env`).
+  this project, not a hosted service — how to run it, how to generate the shared secret, which
+  provider env vars go on which side (real provider key on the gateway service's own env only,
+  never in the agent's `.env`), and how to pick a provider (`OPTIMUS_LOCAL_GATEWAY_PROVIDER`).
+  Lead with the OpenRouter/OpenAI path as the default quickstart, not Anthropic-native — that's the
+  key most readers will actually have.
 - Explicit security note: this service must never be bound beyond `127.0.0.1` / `localhost` without
   adding real TLS first — the loopback exemption above is only sound because traffic stays on one
   machine.
 
 ## Definition of Done
 
-- [ ] Gateway service unit tests (payload shaping, auth check, model-id mapping, cost calculation)
-      using a fake Anthropic client — deterministic, no live tier needed here.
-- [ ] `config/gateway.py` loopback exemption: new tests green, all existing trusted-origin tests
-      unchanged and green (no production-mode regression).
-- [ ] One live smoke test: a real call through the running local gateway process to real Anthropic
-      Haiku with a minimal prompt, asserting a real response and `cost_usd > 0`. This is the "the
-      whole chain actually works" proof, separate from and prior to re-running Plan 9.6's L5 tests.
-- [ ] Manual runbook: steps to run the service, generate the shared secret, set env vars on both
-      sides, and smoke-test `/v1/responses` with `curl` before wiring into pytest.
-- [ ] Plan 9.6 L5 tests (already implemented) re-run against this service for a genuine live result,
-      not fake gateway credentials. L6 (spawned-agent e2e) can then proceed on the same basis.
+- [x] Loopback exemption in `config/gateway.py` — implemented (`4901b75`), tests green, no
+      production-mode regression.
+- [x] v1 gateway service unit tests and live process verification — implemented (`53cf8da`),
+      superseded in shape (not deleted) by the items below.
+- [x] OpenAI-compatible adapter (primary): request/response shaping per "Design Revision" above,
+      unit tests using a fake upstream client — deterministic, no live tier needed.
+- [x] Anthropic-native adapter demoted to secondary, selected via `OPTIMUS_LOCAL_GATEWAY_PROVIDER`
+      — existing `UrllibAnthropicClient` and its tests stay, wired behind the provider selector
+      instead of being the only path.
+- [x] Provider-scoped model-id mapping + direct passthrough (Scope item 4) with unit tests for both
+      alias resolution and passthrough.
+- [x] Per-provider pricing table (Scope item 3) with unit tests, including the "unknown model fails
+      loudly" case.
+- [x] Live smoke test defaults to whichever provider/key the operator actually configures — not
+      hardcoded to Anthropic — and still asserts a real response with `cost_usd > 0` (code complete;
+      requires operator key to execute).
+- [x] README runbook updated: OpenRouter/OpenAI-led quickstart, `OPTIMUS_LOCAL_GATEWAY_PROVIDER`
+      documented, `curl` smoke example updated.
+- [ ] Plan 9.6 L5 tests (already implemented, unaffected — the `/v1/responses` contract to the agent
+      doesn't change) re-run against this service for a genuine live result, with whichever provider
+      the operator has a real key for. L6 (spawned-agent e2e) follows on the same basis.
 
 ## Sequencing
 
 This lands before Plan 9.6 L5/L6 are considered "real." L1–L4 and L9 (Redis-only tiers) are
 unaffected and already stand on their own live evidence — this plan does not touch them.
+
+**Note on branch state:** the OpenAI-compatible-primary revision refactors work already committed at
+`53cf8da` on `agent/cursor/local-optimus-gateway`. Don't delete that commit's tests/adapter outright
+— demote the Anthropic path to secondary and add the new adapter alongside it, so the existing
+coverage for the Anthropic path is preserved as one of two supported providers, not lost.

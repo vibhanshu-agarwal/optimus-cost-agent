@@ -220,12 +220,61 @@ Keep this clone on `main` for docs, releases, and merging. Do day-to-day feature
 
 ### 2. Configure environment
 
-Create a local `.env` (never commit this file):
+For this project the Optimus Gateway is a **local process you run yourself**, not a hosted
+service that issues credentials. The agent keeps the one-key model: only
+`OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` in the agent environment.
+
+Create a local `.env` for the agent (never commit this file):
 
 ```bash
-OPTIMUS_GATEWAY_URL=https://your-gateway.example
-OPTIMUS_API_KEY=your-optimus-api-key
+OPTIMUS_PRODUCTION_MODE=false
+OPTIMUS_GATEWAY_URL=http://127.0.0.1:8765
+OPTIMUS_API_KEY=<shared-secret-you-generate>
 ```
+
+Run the local gateway stub in a **separate shell** with the real provider key on the gateway
+process only. **OpenRouter is the default** (`OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter`); OpenAI
+direct and Anthropic-native are also supported.
+
+```bash
+export OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter
+export OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=<your-openrouter-key>
+export OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=<same shared secret as OPTIMUS_API_KEY above>
+python -m optimus_gateway
+```
+
+OpenAI direct:
+
+```bash
+export OPTIMUS_LOCAL_GATEWAY_PROVIDER=openai
+export OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=<your-openai-key>
+export OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=<shared-secret>
+python -m optimus_gateway
+```
+
+Anthropic-native (secondary path):
+
+```bash
+export OPTIMUS_LOCAL_GATEWAY_PROVIDER=anthropic
+export ANTHROPIC_API_KEY=<your-anthropic-key>
+export OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=<shared-secret>
+python -m optimus_gateway
+```
+
+Security: bind stays on loopback (`127.0.0.1` by default). Do not expose this service beyond
+localhost without adding real TLS first.
+
+Smoke-test the wire contract before pytest live tiers:
+
+```bash
+curl -sS http://127.0.0.1:8765/v1/responses \
+  -H "Authorization: Bearer <shared-secret>" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"claude-haiku","input":"Reply with one short word."}'
+```
+
+Hosted/staging gateways still work when `OPTIMUS_PRODUCTION_MODE=true` (default) and
+`OPTIMUS_GATEWAY_URL` points at an `https://` trusted origin.
 
 ### 3. Create a virtual environment
 

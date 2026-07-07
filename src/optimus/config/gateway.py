@@ -9,6 +9,12 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, m
 
 BUILT_IN_TRUSTED_GATEWAY_ORIGINS = frozenset({"https://gateway.optimus.ai"})
 
+# Non-production trust-boundary exception for the local Optimus Gateway stub
+# (see docs/superpowers/plans/2026-07-07-local-optimus-gateway-service.md).
+# Traffic stays on-loopback; TLS adds no protection for that shape. Production
+# mode continues to require https for every origin.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
 LOCAL_PROVIDER_KEY_NAMES = frozenset(
     {
         "ANTHROPIC_API_KEY",
@@ -92,11 +98,14 @@ class OptimusGatewaySettings(BaseModel):
         return {"Authorization": f"Bearer {self.optimus_api_key.get_secret_value()}"}
 
     def validate_trusted_gateway(self) -> None:
-        origin = _origin(self.gateway_url)
+        allow_insecure_http = not self.production_mode
+        origin = _origin(self.gateway_url, allow_insecure_http=allow_insecure_http)
         trusted = set(BUILT_IN_TRUSTED_GATEWAY_ORIGINS)
         trusted.update(self.signed_tenant_profile_origins)
         if not self.production_mode:
             trusted.update(self.extra_trusted_origins)
+            if _is_loopback_host(urlparse(self.gateway_url).hostname):
+                trusted.add(origin)
         if origin not in trusted:
             raise ValueError(f"gateway origin not in trusted set: {origin}")
 
@@ -128,12 +137,17 @@ def _env_bool(value: str | None, *, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _normalize_origin(value: str) -> str:
+def _is_loopback_host(hostname: str | None) -> bool:
+    return (hostname or "").lower() in _LOOPBACK_HOSTS
+
+
+def _normalize_origin(value: str, *, allow_insecure_http: bool = False) -> str:
     parsed = urlparse(value.strip().rstrip("/"))
-    if parsed.scheme != "https" or not parsed.netloc:
+    scheme_ok = parsed.scheme == "https" or (allow_insecure_http and parsed.scheme == "http")
+    if not scheme_ok or not parsed.netloc:
         raise ValueError(f"gateway origin must be an https origin: {value}")
     return f"{parsed.scheme}://{parsed.netloc.lower()}"
 
 
-def _origin(url: str) -> str:
-    return _normalize_origin(url)
+def _origin(url: str, *, allow_insecure_http: bool = False) -> str:
+    return _normalize_origin(url, allow_insecure_http=allow_insecure_http)
