@@ -8,10 +8,19 @@ from optimus.release.credentials import default_release_credential_scan_paths, s
 from optimus.release.runner import CallableGate, CommandGate, ReleaseGate
 
 
+PLAN_9_5_REAL_AGENT_TASK_IDS = (
+    "explain-small-function",
+    "docstring-single-function",
+    "plan-then-approve-agent",
+    "budget-exhausted",
+)
+
+
 def build_phase1_release_gates(
     *,
     python_executable: str = "python",
     golden_harness: GoldenTaskHarness | None = None,
+    golden_task_ids: tuple[str, ...] | None = None,
     include_command_gates: bool = True,
     credential_scan_root: str | Path = ".",
     command_timeout_seconds: float = 600.0,
@@ -46,15 +55,21 @@ def build_phase1_release_gates(
         )
     return (
         *command_gates,
-        CallableGate(name="golden-task-suite", run=lambda: _golden_task_suite_gate(golden_harness)),
+        CallableGate(name="golden-task-suite", run=lambda: _golden_task_suite_gate(golden_harness, golden_task_ids)),
         CallableGate(name="one-key-credential-scan", run=lambda: _one_key_credential_gate(credential_scan_root)),
     )
 
 
-def _golden_task_suite_gate(golden_harness: GoldenTaskHarness | None) -> tuple[bool, str]:
+def _golden_task_suite_gate(
+    golden_harness: GoldenTaskHarness | None,
+    golden_task_ids: tuple[str, ...] | None,
+) -> tuple[bool, str]:
     if golden_harness is None:
         return False, "golden task harness not configured"
     tasks = load_golden_tasks(Path("tests/fixtures/golden_tasks/phase1_golden_tasks.json"))
+    if golden_task_ids is not None:
+        requested = set(golden_task_ids)
+        tasks = tuple(task for task in tasks if task.task_id in requested)
     report = evaluate_golden_task_suite(tasks, harness=golden_harness)
     return report.passed, report.failure_summary
 
