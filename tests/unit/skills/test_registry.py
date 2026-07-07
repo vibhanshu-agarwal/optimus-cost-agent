@@ -6,7 +6,6 @@ from optimus.runtime.modes import ExecutionMode
 from optimus.skills.models import SkillTrustLevel
 from optimus.skills.registry import SkillManifestError, SkillRegistry, parse_skill_markdown
 
-
 SKILL_TEXT = """---
 name: pytest-debugging
 description: Debug failing pytest tests with a red-green loop.
