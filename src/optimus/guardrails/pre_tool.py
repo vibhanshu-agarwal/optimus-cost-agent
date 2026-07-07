@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -14,6 +13,7 @@ from optimus.guardrails.path_safety import PathSafetyValidator
 from optimus.guardrails.permissions import PermissionPolicy, PermissionRequest, PermissionVerdict, ToolSurface
 from optimus.guardrails.validation import ValidationVerdict
 from optimus.runtime.modes import ExecutionMode, GenerationScope
+from optimus.telemetry.subjects import sanitize_workspace_text
 
 
 class PreToolVerdict(StrEnum):
@@ -200,22 +200,4 @@ def _sanitize_subject(request: PreToolRequest, *, workspace_root: Path | None) -
     subject = " ".join(request.command) if request.command else request.target_path or request.action
     if subject is None:
         return ""
-    subject = subject.replace("\\", "/")
-    if workspace_root is not None:
-        workspace_text = workspace_root.as_posix().rstrip("/")
-        subject = subject.replace(workspace_text, "<workspace>")
-    return _redact_secret_values(subject)
-
-
-def _redact_secret_values(subject: str) -> str:
-    subject = re.sub(r"(?i)(https?://)[^/\s:@]+:[^@\s/]+@", r"\1**********@", subject)
-    redactions = (
-        re.compile(r"(?i)(authorization:\s*bearer\s+)[^\s]+"),
-        re.compile(r"(?i)(bearer\s+)[^\s]+"),
-        re.compile(r"(?i)(--password(?:=|\s+))[^\s]+"),
-        re.compile(r"(?i)(api[_-]?key(?:=|\s+))[^\s]+"),
-        re.compile(r"(?i)(token(?:=|\s+))[^\s]+"),
-    )
-    for pattern in redactions:
-        subject = pattern.sub(r"\1**********", subject)
-    return subject
+    return sanitize_workspace_text(subject, workspace_root=workspace_root)

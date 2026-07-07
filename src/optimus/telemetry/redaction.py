@@ -30,6 +30,10 @@ _ENV_ASSIGNMENT_PATTERN = re.compile(
 _API_KEY_HEADER_PATTERN = re.compile(r"(?i)(api[_-]?key)\s*:\s*\S+")
 _X_API_KEY_HEADER_PATTERN = re.compile(r"(?i)x-api-key:\s*\S+")
 _BEARER_TOKEN_PATTERN = re.compile(r"(?i)(authorization:\s*bearer\s+|bearer\s+)[^\s]+")
+_URL_USERINFO_PATTERN = re.compile(r"(?i)(https?://)[^/\s:@]+:[^@\s/]+@")
+_GENERIC_SECRET_ASSIGNMENT_PATTERN = re.compile(
+    r"(?i)\b(token|password|secret|credential|api[_-]?key)((?:=|:)\s*)\S+"
+)
 
 
 def redact_for_telemetry(value: Any) -> Any:
@@ -50,8 +54,10 @@ def redact_for_telemetry(value: Any) -> Any:
 
 
 def _redact_free_text(text: str) -> str:
-    redacted = _BEARER_TOKEN_PATTERN.sub(r"\1**********", text)
+    redacted = _URL_USERINFO_PATTERN.sub(r"\1**********@", text)
+    redacted = _BEARER_TOKEN_PATTERN.sub(r"\1**********", redacted)
     redacted = _ENV_ASSIGNMENT_PATTERN.sub(r"\1=**********", redacted)
+    redacted = _GENERIC_SECRET_ASSIGNMENT_PATTERN.sub(r"\1\2**********", redacted)
     redacted = _API_KEY_HEADER_PATTERN.sub(r"\1: **********", redacted)
     redacted = _X_API_KEY_HEADER_PATTERN.sub("x-api-key: **********", redacted)
     return redacted

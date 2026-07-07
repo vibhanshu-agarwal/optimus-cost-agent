@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from optimus.telemetry.redaction import redact_for_telemetry
+from optimus.telemetry.serialization import json_safe
 
 
 class TelemetryEventKind(StrEnum):
@@ -395,7 +396,7 @@ class TelemetryEvent(BaseModel):
             "occurred_at": self.occurred_at.isoformat(),
             **self.payload,
         }
-        return _json_safe(redact_for_telemetry(encoded))
+        return json_safe(redact_for_telemetry(encoded))
 
     def to_json_line(self) -> str:
         return json.dumps(self.to_json_dict(), sort_keys=True, separators=(",", ":"), default=_json_default)
@@ -405,13 +406,3 @@ def _json_default(value: object) -> str:
     if isinstance(value, Decimal):
         return str(value)
     raise TypeError(f"{type(value).__name__} is not JSON serializable")
-
-
-def _json_safe(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {key: _json_safe(child) for key, child in value.items()}
-    if isinstance(value, list):
-        return [_json_safe(child) for child in value]
-    if isinstance(value, Decimal):
-        return str(value)
-    return value
