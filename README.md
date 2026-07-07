@@ -263,6 +263,106 @@ pytest
 
 See `pyproject.toml` and `AGENTS.md` for the expected stack: `pytest`, `pytest-asyncio`, `pytest-cov`, and `coverage.py`.
 
+## Run The ACP Agent From An IDE
+
+The Optimus ACP agent is a stdio JSON-RPC server. IDEs such as Zed spawn it as an
+`agent_servers` child process, exchange Agent Client Protocol messages over
+newline-delimited JSON, and keep `session/prompt` pending while the agent emits
+`session/update` notifications and outbound `session/request_permission` requests.
+
+### Required environment
+
+```bash
+export OPTIMUS_GATEWAY_URL=https://gateway.optimus.ai
+export OPTIMUS_API_KEY=...
+export OPTIMUS_REDIS_URL=redis://localhost:6379/0
+```
+
+Redis stores approved plans for replay.
+
+- plan approval expires after 3600 seconds
+
+If approval arrives after expiry, the runtime returns `PLAN_NOT_FOUND_OR_EXPIRED`
+and the IDE must ask the user to re-run planning and approve the new plan.
+
+### Config check
+
+Validate credentials and Redis reachability before the IDE spawns the agent:
+
+```bash
+python -m optimus.acp --workspace-root . --check-config
+```
+
+### Launch commands
+
+```bash
+python -m optimus.acp --workspace-root .
+```
+
+Console script equivalent:
+
+```bash
+optimus-agent --workspace-root .
+```
+
+If `OPTIMUS_GATEWAY_URL` or `OPTIMUS_API_KEY` is missing, startup fails with:
+
+```text
+Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP agent.
+```
+
+### Zed `agent_servers` example
+
+```json
+{
+  "agent_servers": {
+    "optimus": {
+      "command": "optimus-agent",
+      "args": ["--workspace-root", "."],
+      "env": {
+        "OPTIMUS_GATEWAY_URL": "https://gateway.optimus.ai",
+        "OPTIMUS_API_KEY": "set-in-your-local-environment",
+        "OPTIMUS_REDIS_URL": "redis://localhost:6379/0"
+      }
+    }
+  }
+}
+```
+
+### Approval handshake
+
+1. The IDE sends `initialize`, creates a workspace session with `session/new`, and
+   submits work through `session/prompt`.
+2. While planning runs, `session/prompt` stays pending and the agent emits
+   `session/update` notifications (for example plan and tool-call updates).
+3. When Agent-mode mutation requires approval, the agent sends
+   `session/request_permission` to the IDE with plan text and `plan_hash`.
+4. The IDE shows the plan to the user and replies to the agent's outbound JSON-RPC
+   request with approval metadata containing `approval_id` and the same `plan_hash`.
+5. The runtime replays the stored plan from Redis and does not call the Gateway
+   again for a new plan.
+6. If the user cancels the turn, the IDE sends `session/cancel`; the runtime
+   resolves the pending `session/prompt` with `stopReason="cancelled"`.
+
+Framed Content-Length JSON-RPC methods such as `optimus.agent.run` remain available
+for harnesses and integration tests. IDE integrations should use the ndjson Agent
+Client Protocol flow above.
+
+### Verify with real Redis
+
+Unit and default integration tests use in-memory fakes. To prove Redis-backed plan
+replay works on your machine, start Redis and run the live checks:
+
+```bash
+docker run --rm -p 6379:6379 redis:7-alpine
+export OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0
+pytest -m requires_redis tests/integration/agent/test_redis_live_agent.py tests/integration/acp/test_bootstrap_live_redis.py tests/integration/acp/test_server_stream_live_redis.py -v
+python tools/verify_live_agent.py --workspace-root .
+```
+
+Without Redis, `requires_redis` tests skip instead of passing silently against fakes.
+The smoke script exits non-zero when Redis is unreachable or approval replay fails.
+
 ## Development worktrees
 
 Multiple humans and coding agents may work in parallel. Each contributor uses a **dedicated worktree** and **named branch**—see [CONTRIBUTING.md](CONTRIBUTING.md) for full rules.

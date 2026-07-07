@@ -126,3 +126,20 @@ def test_release_cli_accepts_agent_harness_task_filter_text():
     assert "--task-id" in text
     assert "AgentGoldenTaskHarness" in text
     assert "golden_task_ids=golden_task_ids" in text
+
+
+def test_readme_documents_spawnable_acp_agent_contract():
+    text = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "python -m optimus.acp --workspace-root" in text
+    assert "optimus-agent --workspace-root" in text
+    assert "OPTIMUS_REDIS_URL=redis://localhost:6379/0" in text
+    assert "initialize" in text
+    assert "session/new" in text
+    assert "session/prompt" in text
+    assert "session/request_permission" in text
+    assert "agent_servers" in text
+    assert "session/cancel" in text
+    assert "approval_id" in text
+    assert "plan_hash" in text
+    assert "plan approval expires after 3600 seconds" in text
