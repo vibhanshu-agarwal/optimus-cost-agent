@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import re
+import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
+from optimus.agent.directives import AgentDirectiveParseError, parse_agent_plan
 from optimus.agent.models import AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
+from optimus.agent.prompts import build_agent_planner_input
 from optimus.agent.state_store import AgentPlanRecord, AgentStateStore, InMemoryAgentStateStore
 from optimus.agent.tools import AgentToolbox
 from optimus.gateway.client import GatewayClient
@@ -54,6 +57,7 @@ class AgentRunner:
         loop_evaluator: CompletionEvaluatorProtocol | None = None,
         state_store: AgentStateStore | None = None,
         clock_ms: Callable[[], int] | None = None,
+        shell_runner: Callable[[list[str]], subprocess.CompletedProcess[str]] | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -63,6 +67,7 @@ class AgentRunner:
         self._loop_evaluator = loop_evaluator
         self._state_store = state_store or InMemoryAgentStateStore(clock_ms=clock_ms)
         self._clock_ms = clock_ms or _epoch_ms
+        self._shell_runner = shell_runner
         self._transition_validator = TransitionValidator()
 
     def run(self, request: AgentRunRequest) -> AgentRunResult:
@@ -140,6 +145,7 @@ class AgentRunner:
             run_id=request.run_id,
             session_id=request.session_id,
             guard=self._guard,
+            shell_runner=self._shell_runner,
         )
         tool_calls: list[AgentToolCall] = []
         total_cost_usd = Decimal("0")
@@ -148,17 +154,32 @@ class AgentRunner:
             return self._run_approved_from_store(request=request, context=context, toolbox=toolbox)
 
         context = self._transition(context, AgentState.PLANNING)
+        planner_input = build_agent_planner_input(request.task)
         response = self._gateway_client.create_response(
             model=self._model,
-            input_text=request.task,
+            input_text=planner_input,
             metadata={
                 "run_id": request.run_id,
                 "session_id": request.session_id,
                 "purpose": "agent_plan",
+                "task": request.task,
             },
         )
         total_cost_usd += response.gateway_usage.cost_usd
         output_text = response.output_text
+        if request.execution_mode is ExecutionMode.AGENT:
+            try:
+                parse_agent_plan(output_text)
+            except AgentDirectiveParseError:
+                return self._build_result(
+                    request=request,
+                    status=AgentRunStatus.FAILED,
+                    final_state="FAILED",
+                    output_text=output_text,
+                    tool_calls=(),
+                    total_cost_usd=total_cost_usd,
+                    stop_reason="UNPARSEABLE_PLAN",
+                )
         plan_hash = hashlib.sha256(output_text.encode("utf-8")).hexdigest()
         created_at_ms = self._clock_ms()
 
@@ -232,11 +253,18 @@ class AgentRunner:
             run_id=request.run_id,
             session_id=request.session_id,
             guard=self._guard,
+            shell_runner=self._shell_runner,
         )
 
         write_calls = self._execute_write_directives(output_text, workspace_root=request.workspace_root, toolbox=toolbox)
         tool_calls.extend(write_calls)
         mutation_count = sum(1 for call in write_calls if call.tool_name == "write_file")
+        try:
+            tool_calls.extend(self._execute_test_directives(output_text, toolbox=toolbox))
+        except AgentDirectiveParseError as exc:
+            if "unsafe TEST directive" in str(exc):
+                return self._unsafe_test_directive_result(request)
+            raise
         self._transition(context, AgentState.COMPLETED)
 
         return self._build_result(
@@ -293,10 +321,17 @@ class AgentRunner:
             run_id=request.run_id,
             session_id=request.session_id,
             guard=self._guard,
+            shell_runner=self._shell_runner,
         )
         write_calls = self._execute_write_directives(record.plan_text, workspace_root=request.workspace_root, toolbox=approved_toolbox)
         tool_calls.extend(write_calls)
         mutation_count = sum(1 for call in write_calls if call.tool_name == "write_file")
+        try:
+            tool_calls.extend(self._execute_test_directives(record.plan_text, toolbox=approved_toolbox))
+        except AgentDirectiveParseError as exc:
+            if "unsafe TEST directive" in str(exc):
+                return self._unsafe_test_directive_result(request)
+            raise
         self._transition(context, AgentState.COMPLETED)
         return self._build_result(
             request=request,
@@ -318,6 +353,17 @@ class AgentRunner:
             tool_calls=(),
             total_cost_usd=Decimal("0"),
             stop_reason="PLAN_NOT_FOUND_OR_EXPIRED",
+        )
+
+    def _unsafe_test_directive_result(self, request: AgentRunRequest) -> AgentRunResult:
+        return self._build_result(
+            request=request,
+            status=AgentRunStatus.FAILED,
+            final_state="FAILED",
+            output_text="Unsafe TEST directive rejected.",
+            tool_calls=(),
+            total_cost_usd=Decimal("0"),
+            stop_reason="UNSAFE_TEST_DIRECTIVE",
         )
 
     def _emit_agent_run(
@@ -388,6 +434,10 @@ class AgentRunner:
             calls.append(read_call)
         calls.append(toolbox.write_file(target, content))
         return calls
+
+    def _execute_test_directives(self, plan_text: str, *, toolbox: AgentToolbox) -> list[AgentToolCall]:
+        directives = parse_agent_plan(plan_text)
+        return [toolbox.run_tests(command) for command in directives.tests]
 
     @staticmethod
     def _is_safe_relative_path(path_text: str) -> bool:

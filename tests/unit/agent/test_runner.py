@@ -1,4 +1,5 @@
 from decimal import Decimal
+from subprocess import CompletedProcess
 
 from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunStatus
 from optimus.agent.runner import AgentRunner
@@ -52,8 +53,31 @@ def test_plan_mode_returns_plan_without_mutation(tmp_path):
     assert gateway.calls[0]["metadata"]["run_id"] == "run-1"
 
 
+def test_runner_sends_versioned_directive_prompt_to_gateway(tmp_path):
+    gateway = FakeGatewayClient("READ src/example.py\nExplain the function.")
+    target = tmp_path / "src" / "example.py"
+    target.parent.mkdir()
+    target.write_text("def f():\n    return 1\n", encoding="utf-8")
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2")
+
+    runner.run(AgentRunRequest(run_id="run-1", task="Explain", execution_mode=ExecutionMode.PLAN, workspace_root=tmp_path))
+
+    assert "AGENT_PLANNER_PROMPT_VERSION" in gateway.calls[0]["input_text"]
+    assert "READ <relative-path>" in gateway.calls[0]["input_text"]
+
+
+def test_unparseable_agent_plan_fails_typed_without_silent_success(tmp_path):
+    runner = AgentRunner(gateway_client=FakeGatewayClient("Here is prose, not directives."), model="glm-5.2")
+
+    result = runner.run(AgentRunRequest(run_id="run-1", task="Do work", execution_mode=ExecutionMode.AGENT, workspace_root=tmp_path))
+
+    assert result.status is AgentRunStatus.FAILED
+    assert result.stop_reason == "UNPARSEABLE_PLAN"
+    assert result.mutation_count == 0
+
+
 def test_agent_mode_without_approval_returns_awaiting_approval(tmp_path):
-    runner = AgentRunner(gateway_client=FakeGatewayClient("Plan: write the file."), model="glm-5.2")
+    runner = AgentRunner(gateway_client=FakeGatewayClient("WRITE example.py\ncontent"), model="glm-5.2")
 
     result = runner.run(
         AgentRunRequest(
@@ -68,6 +92,32 @@ def test_agent_mode_without_approval_returns_awaiting_approval(tmp_path):
     assert result.final_state == "AWAITING_APPROVAL"
     assert result.mutation_count == 0
     assert result.plan_hash is not None
+
+
+def test_agent_runner_executes_test_directive_after_approval(tmp_path):
+    gateway = FakeGatewayClient("TEST pytest tests/unit/agent -q")
+    store = InMemoryAgentStateStore()
+    shell_calls = []
+    runner = AgentRunner(
+        gateway_client=gateway,
+        model="glm-5.2",
+        state_store=store,
+        shell_runner=lambda command: shell_calls.append(command) or CompletedProcess(command, 0, "ok", ""),
+    )
+    plan_result = runner.run(AgentRunRequest(run_id="run-1", task="Run tests", execution_mode=ExecutionMode.AGENT, workspace_root=tmp_path))
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Run tests",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+            approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan_result.plan_hash),
+        )
+    )
+
+    assert shell_calls == [["pytest", "tests/unit/agent", "-q"]]
+    assert tuple(call.tool_name for call in result.tool_calls) == ("test_runner",)
 
 
 def test_agent_mode_with_approval_can_write_single_file(tmp_path):
