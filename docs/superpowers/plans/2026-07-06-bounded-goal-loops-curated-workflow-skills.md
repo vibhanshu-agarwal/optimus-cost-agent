@@ -2153,7 +2153,7 @@ git commit -m "Add curated workflow skill registry."
 - Create: `tests/unit/skills/test_invocation.py`
 - Create: `tests/integration/skills/test_skill_guardrail_flow.py`
 
-- [ ] **Step 1: Write failing invocation tests**
+- [x] **Step 1: Write failing invocation tests**
 
 Create `tests/unit/skills/test_invocation.py`:
 
@@ -2268,7 +2268,7 @@ def test_skill_cannot_override_user_deny_rules(tmp_path):
     assert result.rule_id == "shell.destructive.rm_rf"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -2278,7 +2278,7 @@ pytest tests/unit/skills/test_invocation.py tests/integration/skills/test_skill_
 
 Expected: FAIL because `optimus.skills.invocation` does not exist.
 
-- [ ] **Step 3: Add skill invocation policy**
+- [x] **Step 3: Add skill invocation policy**
 
 Create `src/optimus/skills/invocation.py`:
 
@@ -2400,7 +2400,7 @@ class SkillInvocationPolicy:
         )
 ```
 
-- [ ] **Step 4: Export invocation types and run tests**
+- [x] **Step 4: Export invocation types and run tests**
 
 Update `src/optimus/skills/__init__.py`:
 
@@ -2431,7 +2431,7 @@ pytest tests/unit/skills/test_invocation.py tests/integration/skills/test_skill_
 
 Expected: PASS.
 
-- [ ] **Step 5: Local checkpoint**
+- [x] **Step 5: Local checkpoint**
 
 Run:
 
