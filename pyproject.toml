@@ -24,6 +24,9 @@ dev = [
   "ruff>=0.5",
 ]
 
+[project.scripts]
+optimus-local-gateway = "optimus_gateway.__main__:main"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
@@ -32,11 +35,16 @@ addopts = [
   "--strict-config",
   "--strict-markers",
   "--import-mode=importlib",
+  "-m",
+  "not requires_live_gateway",
+]
+markers = [
+  "requires_live_gateway: integration test that needs the local Optimus Gateway service process and Anthropic API key on that process only",
 ]
 
 [tool.coverage.run]
 branch = true
-source = ["src/optimus"]
+source = ["src/optimus", "src/optimus_gateway"]
 
 [tool.coverage.report]
 show_missing = true
