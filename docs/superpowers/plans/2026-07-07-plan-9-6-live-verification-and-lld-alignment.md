@@ -132,10 +132,6 @@ Surfaces that must all share this one implementation (`src/optimus/acp/preflight
 **Files:** `pyproject.toml`, `tests/conftest.py`, `src/optimus/acp/preflight.py`,
 `tests/unit/acp/test_preflight.py`
 
-**Adopted draft live tests (regularized from Plan 9.5 lane-crossing, pending L4 alignment):**
-
-- `tests/integration/acp/test_server_stream_live_redis.py` — draft for Task L4
-
 These files now use `tests/conftest.py` fail-loud fixtures (`pytest.fail()`, not
 `skip_unless_redis()`). They are deselected by default until `pytest -m requires_redis`.
 
@@ -217,6 +213,11 @@ spec (live sentinel round-trip, unreachable port fail-fast, password URL rejecti
 - Password URL rejected before any connection attempt.
 
 ## Task L4: Live Redis ACP Server Stream Tests
+
+**Status:** Implemented (2026-07-07). `tests/integration/acp/test_server_stream_live_redis.py`
+covers ndjson duplex approval flow with Redis `HGETALL` persistence checks and second-server
+replay. Verify with
+`pytest tests/integration/acp/test_server_stream_live_redis.py -m requires_redis -v`.
 
 **File:** `tests/integration/acp/test_server_stream_live_redis.py` (marker: `requires_redis`)
 
