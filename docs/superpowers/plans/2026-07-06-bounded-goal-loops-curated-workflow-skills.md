@@ -152,7 +152,7 @@ Each task includes a commit step because the Superpowers workflow favors small r
 - Modify: `tests/unit/telemetry/test_events.py`
 - Modify: `tests/unit/guardrails/test_pre_tool_guard.py`
 
-- [ ] **Step 1: Write failing model and ledger tests**
+- [x] **Step 1: Write failing model and ledger tests**
 
 Create `tests/unit/loops/test_models.py`:
 
@@ -303,7 +303,7 @@ def test_jsonl_progress_ledger_rejects_path_outside_workspace(tmp_path):
         JsonlProgressLedger(outside, workspace_root=tmp_path)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -313,7 +313,7 @@ pytest tests/unit/loops/test_models.py tests/unit/loops/test_ledger.py -v
 
 Expected: FAIL because `optimus.loops` does not exist.
 
-- [ ] **Step 3: Add loop models**
+- [x] **Step 3: Add loop models**
 
 Create `src/optimus/loops/models.py`:
 
@@ -451,7 +451,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: Add progress ledgers**
+- [x] **Step 4: Add progress ledgers**
 
 Create `src/optimus/loops/ledger.py`:
 
@@ -675,7 +675,7 @@ pytest tests/unit/telemetry/test_serialization.py tests/unit/telemetry/test_even
 
 Expected: PASS after the serialization, subject-sanitization, redaction, guardrail audit-subject, and `TelemetryEvent` updates are complete.
 
-- [ ] **Step 5: Export ledger types and run tests**
+- [x] **Step 5: Export ledger types and run tests**
 
 Update `src/optimus/loops/__init__.py`:
 
@@ -714,7 +714,7 @@ pytest tests/unit/loops/test_models.py tests/unit/loops/test_ledger.py tests/uni
 
 Expected: PASS.
 
-- [ ] **Step 6: Local checkpoint**
+- [x] **Step 6: Local checkpoint**
 
 Run:
 
@@ -747,7 +747,7 @@ git commit -m "Add bounded loop state and progress ledger."
 - Modify: `src/optimus/loops/__init__.py`
 - Create: `tests/unit/loops/test_controller.py`
 
-- [ ] **Step 1: Write failing controller tests**
+- [x] **Step 1: Write failing controller tests**
 
 Create `tests/unit/loops/test_controller.py`:
 
@@ -957,7 +957,7 @@ def test_mid_loop_human_halt_is_checked_between_iterations(tmp_path):
     assert runner.calls == 1
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -967,7 +967,7 @@ pytest tests/unit/loops/test_controller.py -v
 
 Expected: FAIL because `optimus.loops.controller` does not exist.
 
-- [ ] **Step 3: Add controller**
+- [x] **Step 3: Add controller**
 
 Create `src/optimus/loops/controller.py`:
 
@@ -1109,7 +1109,7 @@ class GoalLoopController:
         )
 ```
 
-- [ ] **Step 4: Export controller and run tests**
+- [x] **Step 4: Export controller and run tests**
 
 Update `src/optimus/loops/__init__.py`:
 
@@ -1152,7 +1152,7 @@ pytest tests/unit/loops/test_controller.py tests/unit/loops/test_models.py tests
 
 Expected: PASS.
 
-- [ ] **Step 5: Local checkpoint**
+- [x] **Step 5: Local checkpoint**
 
 Run:
 
@@ -1178,7 +1178,7 @@ git commit -m "Add bounded goal loop controller."
 - Modify: `src/optimus/loops/__init__.py`
 - Create: `tests/unit/loops/test_completion.py`
 
-- [ ] **Step 1: Write failing completion evaluator tests**
+- [x] **Step 1: Write failing completion evaluator tests**
 
 Create `tests/unit/loops/test_completion.py`:
 
@@ -1355,7 +1355,7 @@ def test_gateway_completion_evaluator_fails_closed_on_non_json_output():
         evaluator.evaluate(state(), InMemoryProgressLedger())
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1365,7 +1365,7 @@ pytest tests/unit/loops/test_completion.py -v
 
 Expected: FAIL because `optimus.loops.completion` does not exist.
 
-- [ ] **Step 3: Add completion evaluators**
+- [x] **Step 3: Add completion evaluators**
 
 Create `src/optimus/loops/completion.py`:
 
@@ -1461,7 +1461,7 @@ def _completion_prompt(state: IterationState, ledger: ProgressLedger) -> str:
     )
 ```
 
-- [ ] **Step 4: Export evaluator and run tests**
+- [x] **Step 4: Export evaluator and run tests**
 
 Update `src/optimus/loops/__init__.py` to export the concrete evaluators while keeping `CompletionEvaluatorProtocol` imported from `optimus.loops.models`:
 
@@ -1480,7 +1480,7 @@ pytest tests/unit/loops/test_completion.py tests/unit/gateway/test_client.py tes
 
 Expected: PASS.
 
-- [ ] **Step 5: Local checkpoint**
+- [x] **Step 5: Local checkpoint**
 
 Run:
 
@@ -1507,7 +1507,7 @@ git commit -m "Route loop completion evaluation through the gateway."
 - Create: `tests/unit/loops/test_tools.py`
 - Create: `tests/integration/loops/test_goal_loop_guardrail_flow.py`
 
-- [ ] **Step 1: Write failing guarded tool tests**
+- [x] **Step 1: Write failing guarded tool tests**
 
 Create `tests/unit/loops/test_tools.py`:
 
@@ -1643,7 +1643,7 @@ def test_goal_loop_never_bypasses_pre_tool_guard(tmp_path):
     assert guard.audit_events()[0].rule_id == "shell.destructive.rm_rf"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1653,7 +1653,7 @@ pytest tests/unit/loops/test_tools.py tests/integration/loops/test_goal_loop_gua
 
 Expected: FAIL because `optimus.loops.tools` does not exist.
 
-- [ ] **Step 3: Add guarded loop tool executor**
+- [x] **Step 3: Add guarded loop tool executor**
 
 Create `src/optimus/loops/tools.py`:
 
@@ -1710,7 +1710,7 @@ class GuardedLoopToolExecutor:
         return result
 ```
 
-- [ ] **Step 4: Export executor and run tests**
+- [x] **Step 4: Export executor and run tests**
 
 Update `src/optimus/loops/__init__.py`:
 
@@ -1728,7 +1728,7 @@ pytest tests/unit/loops/test_tools.py tests/integration/loops/test_goal_loop_gua
 
 Expected: PASS.
 
-- [ ] **Step 5: Local checkpoint**
+- [x] **Step 5: Local checkpoint**
 
 Run:
 
@@ -1755,7 +1755,7 @@ git commit -m "Enforce pre-tool guard inside goal loops."
 - Create: `src/optimus/skills/registry.py`
 - Create: `tests/unit/skills/test_registry.py`
 
-- [ ] **Step 1: Write failing registry tests**
+- [x] **Step 1: Write failing registry tests**
 
 Create `tests/unit/skills/test_registry.py`:
 
@@ -1904,7 +1904,7 @@ def test_skill_manifest_rejects_unknown_allowed_tool():
         parse_skill_markdown(text, source_path=Path("skills/pytest/SKILL.md"))
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1914,7 +1914,7 @@ pytest tests/unit/skills/test_registry.py -v
 
 Expected: FAIL because `optimus.skills` does not exist.
 
-- [ ] **Step 3: Add skill models**
+- [x] **Step 3: Add skill models**
 
 Create `src/optimus/skills/models.py`:
 
@@ -1954,7 +1954,7 @@ class SkillMatch(BaseModel):
     matched_reasons: tuple[str, ...]
 ```
 
-- [ ] **Step 4: Add stdlib frontmatter parser and registry**
+- [x] **Step 4: Add stdlib frontmatter parser and registry**
 
 Create `src/optimus/skills/registry.py`:
 
@@ -2116,7 +2116,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 5: Run registry tests**
+- [x] **Step 5: Run registry tests**
 
 Run:
 
@@ -2126,7 +2126,7 @@ pytest tests/unit/skills/test_registry.py -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Local checkpoint**
+- [x] **Step 6: Local checkpoint**
 
 Run:
 
