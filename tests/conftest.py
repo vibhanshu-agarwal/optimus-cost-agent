@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import os
 import uuid
 from collections.abc import Iterator
 from decimal import Decimal
 
 import pytest
 
-from optimus.acp.preflight import require_redis_url_for_tests
+from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.agent.state_store import RedisAgentStateStore
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 
@@ -19,7 +20,10 @@ def redis_key_namespace() -> Iterator[str]:
 
 @pytest.fixture
 def live_redis_store(redis_key_namespace: str) -> Iterator[tuple[RedisAgentStateStore, str]]:
-    redis_url = require_redis_url_for_tests()
+    try:
+        redis_url = run_preflight(os.environ, require_timeseries=True)
+    except PreflightFailure as exc:
+        pytest.fail(exc.user_message)
     store = RedisAgentStateStore.from_url(redis_url)
     yield store, redis_key_namespace
     client = store._client

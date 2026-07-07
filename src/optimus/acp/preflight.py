@@ -42,15 +42,6 @@ def run_preflight(
     return redis_url
 
 
-def require_redis_url_for_tests(environ: Mapping[str, str] | None = None) -> str:
-    """Fail-loud helper for pytest live tiers (no silent skip)."""
-    env = os.environ if environ is None else environ
-    try:
-        return run_preflight(env, require_timeseries=True)
-    except PreflightFailure as exc:
-        raise AssertionError(exc.user_message) from exc
-
-
 def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
     missing = tuple(name for name in ("OPTIMUS_GATEWAY_URL", "OPTIMUS_API_KEY") if not environ.get(name, "").strip())
     if missing:
