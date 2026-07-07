@@ -435,6 +435,11 @@ class TelemetryEvent(BaseModel):
         mutation_count: int,
         stop_reason: str | None,
         matched_skills: tuple[str, ...] = (),
+        execution_mode: str = "AGENT",
+        generation_scope: str = "FILE_MUTATION",
+        rigor_level: str = "MEDIUM",
+        user_approval_id: str = "unauthorized_direct_run",
+        assumption_count: int = 0,
     ) -> TelemetryEvent:
         return cls(
             kind=TelemetryEventKind.AGENT_RUN,
@@ -450,6 +455,11 @@ class TelemetryEvent(BaseModel):
                 "mutation_count": mutation_count,
                 "stop_reason": stop_reason,
                 "matched_skills": matched_skills,
+                "execution_mode": execution_mode,
+                "generation_scope": generation_scope,
+                "rigor_level": rigor_level,
+                "user_approval_id": user_approval_id,
+                "assumption_count": assumption_count,
             },
         )
 

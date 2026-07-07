@@ -27,8 +27,17 @@ def test_bootstrap_builds_agent_configured_server(tmp_path, monkeypatch):
         def ping(self):
             return None
 
-    fake_store = FakeStore()
-    monkeypatch.setattr("optimus.acp.bootstrap.RedisAgentStateStore.from_url", lambda url, ttl_seconds=3600: fake_store)
+    class FakeRuntime:
+        def ping(self):
+            return None
+
+        def sync_state_store(self):
+            return FakeStore()
+
+        def telemetry_adapter(self):
+            return object()
+
+    monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: FakeRuntime())
     server = build_configured_server(
         environ={
             "OPTIMUS_GATEWAY_URL": "https://gateway.optimus.ai",
@@ -43,11 +52,11 @@ def test_bootstrap_builds_agent_configured_server(tmp_path, monkeypatch):
 
 
 def test_bootstrap_reports_unreachable_redis(tmp_path, monkeypatch):
-    class DownRedisStore:
+    class DownRedisRuntime:
         def ping(self):
             raise ConnectionError("redis unavailable")
 
-    monkeypatch.setattr("optimus.acp.bootstrap.RedisAgentStateStore.from_url", lambda url, ttl_seconds=3600: DownRedisStore())
+    monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: DownRedisRuntime())
 
     with pytest.raises(StartupConfigurationError) as exc_info:
         build_configured_server(

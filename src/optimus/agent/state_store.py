@@ -86,18 +86,39 @@ class InMemoryAgentStateStore:
 
 
 class RedisAgentStateStore:
-    def __init__(self, *, client: object, ttl_seconds: int = DEFAULT_PLAN_TTL_SECONDS) -> None:
+    def __init__(
+        self,
+        *,
+        client: object | None = None,
+        async_store: "AsyncRedisAgentStateStore | None" = None,
+        ttl_seconds: int = DEFAULT_PLAN_TTL_SECONDS,
+    ) -> None:
+        if async_store is not None and client is not None:
+            raise ValueError("Specify either async_store or client, not both")
+        self._async_store = async_store
         self._client = client
         self._ttl_seconds = ttl_seconds
 
     @classmethod
     def from_url(cls, url: str, ttl_seconds: int = DEFAULT_PLAN_TTL_SECONDS) -> "RedisAgentStateStore":
-        validated = validate_redis_url(url)
-        from redis import Redis
+        from optimus.redis.runtime import RedisRuntime
 
-        return cls(client=Redis.from_url(validated, decode_responses=True, socket_connect_timeout=2), ttl_seconds=ttl_seconds)
+        return RedisRuntime.from_url(url, ttl_seconds=ttl_seconds).sync_state_store()
+
+    @property
+    def redis_client(self) -> object:
+        if self._async_store is not None:
+            return self._async_store._client
+        if self._client is None:
+            raise RuntimeError("redis client is not configured")
+        return self._client
 
     def save_plan(self, record: AgentPlanRecord) -> None:
+        if self._async_store is not None:
+            from optimus.redis.async_bridge import sync_await
+
+            sync_await(self._async_store.save_plan(record))
+            return
         key = _plan_key(run_id=record.run_id, plan_hash=record.plan_hash)
         mapping = _record_to_mapping(record)
         try:
@@ -113,6 +134,10 @@ class RedisAgentStateStore:
         self._client.expire(latest_key, self._ttl_seconds)
 
     def load_plan(self, *, run_id: str, plan_hash: str) -> AgentPlanRecord:
+        if self._async_store is not None:
+            from optimus.redis.async_bridge import sync_await
+
+            return sync_await(self._async_store.load_plan(run_id=run_id, plan_hash=plan_hash))
         key = _plan_key(run_id=run_id, plan_hash=plan_hash)
         raw = self._client.hgetall(key)
         if not raw:
@@ -120,6 +145,10 @@ class RedisAgentStateStore:
         return _record_from_mapping(_decode_mapping(raw))
 
     def latest_plan_for_run(self, *, run_id: str) -> AgentPlanRecord | None:
+        if self._async_store is not None:
+            from optimus.redis.async_bridge import sync_await
+
+            return sync_await(self._async_store.latest_plan_for_run(run_id=run_id))
         raw = self._client.hgetall(_latest_plan_key(run_id=run_id))
         if not raw:
             return None
@@ -133,8 +162,69 @@ class RedisAgentStateStore:
             return None
 
     def ping(self) -> None:
+        if self._async_store is not None:
+            from optimus.redis.async_bridge import sync_await
+
+            sync_await(self._async_store.ping())
+            return
         try:
             self._client.ping()
+        except ConnectionError:
+            raise
+        except OSError as exc:
+            raise ConnectionError(str(exc)) from exc
+        except Exception as exc:
+            if type(exc).__module__.startswith("redis") and type(exc).__name__ in {
+                "ConnectionError",
+                "TimeoutError",
+            }:
+                raise ConnectionError(str(exc)) from exc
+            raise
+
+
+class AsyncRedisAgentStateStore:
+    def __init__(self, *, client: object, ttl_seconds: int = DEFAULT_PLAN_TTL_SECONDS) -> None:
+        self._client = client
+        self._ttl_seconds = ttl_seconds
+
+    async def save_plan(self, record: AgentPlanRecord) -> None:
+        key = _plan_key(run_id=record.run_id, plan_hash=record.plan_hash)
+        mapping = _record_to_mapping(record)
+        try:
+            await self._client.hset(key, mapping=mapping)
+        except TypeError:
+            await self._client.hset(key, mapping)
+        await self._client.expire(key, self._ttl_seconds)
+        latest_key = _latest_plan_key(run_id=record.run_id)
+        try:
+            await self._client.hset(latest_key, mapping={"plan_hash": record.plan_hash})
+        except TypeError:
+            await self._client.hset(latest_key, {"plan_hash": record.plan_hash})
+        await self._client.expire(latest_key, self._ttl_seconds)
+
+    async def load_plan(self, *, run_id: str, plan_hash: str) -> AgentPlanRecord:
+        key = _plan_key(run_id=run_id, plan_hash=plan_hash)
+        raw = await self._client.hgetall(key)
+        if not raw:
+            raise KeyError("stored plan not found")
+        return _record_from_mapping(_decode_mapping(raw))
+
+    async def latest_plan_for_run(self, *, run_id: str) -> AgentPlanRecord | None:
+        raw = await self._client.hgetall(_latest_plan_key(run_id=run_id))
+        if not raw:
+            return None
+        latest = _decode_mapping(raw)
+        plan_hash = latest.get("plan_hash")
+        if not plan_hash:
+            return None
+        try:
+            return await self.load_plan(run_id=run_id, plan_hash=plan_hash)
+        except KeyError:
+            return None
+
+    async def ping(self) -> None:
+        try:
+            await self._client.ping()
         except ConnectionError:
             raise
         except OSError as exc:

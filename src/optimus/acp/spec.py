@@ -197,7 +197,7 @@ class AcpDuplexAdapter:
                 execution_mode=session.execution_mode,
                 workspace_root=session.cwd,
             )
-            planning_result = self._runner.run(planning_request)
+            planning_result = await asyncio.to_thread(self._runner.run, planning_request)
             await self._emit_result_updates(session_id=session_id, result=planning_result, planning=True)
             if turn.cancelled:
                 return success_response(request_id=request.get("id"), result={"stopReason": "cancelled"})
@@ -220,7 +220,7 @@ class AcpDuplexAdapter:
                     )
                 }
             )
-            approved_result = self._runner.run(approved_request)
+            approved_result = await asyncio.to_thread(self._runner.run, approved_request)
             await self._emit_result_updates(session_id=session_id, result=approved_result, planning=False)
             return success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(approved_result)})
         finally:

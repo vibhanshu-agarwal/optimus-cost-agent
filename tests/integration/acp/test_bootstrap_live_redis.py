@@ -7,6 +7,7 @@ import pytest
 
 from optimus.acp.bootstrap import StartupConfigurationError, build_configured_server
 from optimus.agent.state_store import RedisAgentStateStore
+from optimus.redis.async_bridge import sync_await
 
 pytestmark = pytest.mark.requires_redis
 
@@ -38,10 +39,14 @@ def test_live_bootstrap_builds_server_with_real_redis_ping(tmp_path, live_redis_
 
     runner_store = server._dispatcher.agent_runner._state_store
     assert isinstance(runner_store, RedisAgentStateStore)
-    client = runner_store._client
-    client.set(sentinel_key, "ping-ok")
-    assert client.get(sentinel_key) == "ping-ok"
-    client.delete(sentinel_key)
+
+    async def _sentinel_roundtrip() -> None:
+        client = runner_store.redis_client
+        await client.set(sentinel_key, "ping-ok")
+        assert await client.get(sentinel_key) == "ping-ok"
+        await client.delete(sentinel_key)
+
+    sync_await(_sentinel_roundtrip())
 
 
 def test_live_bootstrap_fails_fast_when_redis_unreachable(tmp_path):

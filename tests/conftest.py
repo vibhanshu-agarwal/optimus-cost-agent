@@ -10,6 +10,7 @@ import pytest
 from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.agent.state_store import RedisAgentStateStore
 from optimus.gateway.models import GatewayResponse, GatewayUsage
+from optimus.redis.async_bridge import sync_await
 from optimus.telemetry.redis_adapter import RedisTelemetryAdapter
 
 
@@ -27,9 +28,13 @@ def live_redis_store(redis_key_namespace: str) -> Iterator[tuple[RedisAgentState
         pytest.fail(exc.user_message)
     store = RedisAgentStateStore.from_url(redis_url)
     yield store, redis_key_namespace
-    client = store._client
-    for key in client.scan_iter(match=f"agent:plan:{redis_key_namespace}*"):
-        client.delete(key)
+
+    async def _cleanup() -> None:
+        client = store.redis_client
+        async for key in client.scan_iter(match=f"agent:plan:{redis_key_namespace}*"):
+            await client.delete(key)
+
+    sync_await(_cleanup())
 
 
 @pytest.fixture

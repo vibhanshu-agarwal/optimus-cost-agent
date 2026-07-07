@@ -295,7 +295,15 @@ replay. Verify with
 
 ## Task L9: Async Redis Alignment (LLD §10 Contract)
 
-**Files:** `src/optimus/agent/state_store.py`, `src/optimus/acp/bootstrap.py`
+**Status:** Implemented (2026-07-07). Chose remediation **(a)**: `RedisRuntime` builds one
+`redis.asyncio.ConnectionPool` in bootstrap, `AsyncRedisAgentStateStore` backs the sync
+`RedisAgentStateStore` facade, and `RedisTelemetryEventSink` wires `RedisTelemetryAdapter` into
+production `AgentRunner`. `spec.py` runs `AgentRunner.run` via `asyncio.to_thread` to avoid
+blocking the ndjson event loop. Verify with `pytest -q`, live tiers L2/L2A/L4, and
+`pytest tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_sink.py -v`.
+
+**Files:** `src/optimus/agent/state_store.py`, `src/optimus/acp/bootstrap.py`,
+`src/optimus/redis/runtime.py`, `src/optimus/telemetry/redis_sink.py`, `src/optimus/acp/spec.py`
 
 - LLD §10 specifies `redis.asyncio` with one shared `ConnectionPool`. The current
   `RedisAgentStateStore` is synchronous inside an asyncio server — a blocked event loop stalls

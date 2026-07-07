@@ -11,6 +11,7 @@ from optimus.acp.server import AcpStreamServer
 from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import RedisAgentStateStore
 from optimus.guardrails.pre_tool import PreToolGuard
+from optimus.redis.async_bridge import sync_await
 from tests.conftest import FakeGatewayClient
 from tests.integration.acp.test_server_stream import (
     InteractiveLineReader,
@@ -57,8 +58,11 @@ async def _roundtrip(server: AcpStreamServer, request: dict) -> dict:
 
 
 def _delete_plan_keys(client: object, run_id: str) -> None:
-    for key in client.scan_iter(match=f"agent:plan:{run_id}*"):
-        client.delete(key)
+    async def _delete() -> None:
+        async for key in client.scan_iter(match=f"agent:plan:{run_id}*"):
+            await client.delete(key)
+
+    sync_await(_delete())
 
 
 @pytest.fixture
@@ -70,7 +74,7 @@ def live_redis_acp_server(tmp_path, live_redis_store):
     tracked_run_ids: set[str] = set()
     yield server, gateway, tmp_path, store, tracked_run_ids
     for run_id in tracked_run_ids:
-        _delete_plan_keys(store._client, run_id)
+        _delete_plan_keys(store.redis_client, run_id)
 
 
 async def test_live_ndjson_session_prompt_permission_flow_persists_plan_to_redis(live_redis_acp_server):
@@ -121,9 +125,9 @@ async def test_live_ndjson_session_prompt_permission_flow_persists_plan_to_redis
     run_id = permission_request["params"]["metadata"]["runId"]
     tracked_run_ids.add(run_id)
 
-    stored = store._client.hgetall(_plan_record_key(run_id=run_id, plan_hash=plan_hash))
-    assert stored["plan_hash"] == plan_hash
-    assert "Return one" in stored["plan_text"]
+    loaded = store.load_plan(run_id=run_id, plan_hash=plan_hash)
+    assert loaded.plan_hash == plan_hash
+    assert "Return one" in loaded.plan_text
 
     await reader.send(
         {

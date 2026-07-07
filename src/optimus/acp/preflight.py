@@ -78,10 +78,15 @@ def _require_redis_ping(store: RedisAgentStateStore) -> None:
 
 
 def _require_redis_timeseries(store: RedisAgentStateStore) -> None:
-    client = store._client
+    from optimus.redis.async_bridge import sync_await
+
+    async def _probe() -> None:
+        client = store.redis_client
+        await client.execute_command("TS.ADD", _REDIS_TS_PROBE_KEY, "*", 1)
+        await client.delete(_REDIS_TS_PROBE_KEY)
+
     try:
-        client.execute_command("TS.ADD", _REDIS_TS_PROBE_KEY, "*", 1)
-        client.delete(_REDIS_TS_PROBE_KEY)
+        sync_await(_probe())
     except Exception as exc:
         raise PreflightFailure(
             exit_code=2,

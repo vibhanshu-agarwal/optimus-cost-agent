@@ -7,10 +7,12 @@ from pathlib import Path
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.server import AcpStreamServer
 from optimus.agent.runner import AgentRunner
-from optimus.agent.state_store import RedisAgentStateStore, validate_redis_url
+from optimus.agent.state_store import validate_redis_url
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.client import GatewayClient
 from optimus.guardrails.pre_tool import PreToolGuard
+from optimus.redis.runtime import RedisRuntime
+from optimus.telemetry.redis_sink import RedisTelemetryEventSink
 
 _DEFAULT_MODEL = "glm-5.2"
 _DEFAULT_REDIS_URL_HINT = "redis://localhost:6379/0"
@@ -58,14 +60,16 @@ def build_agent_runner_for_harness(
     resolved_workspace = workspace_root.resolve()
     guard = PreToolGuard.for_workspace(workspace_root=resolved_workspace, allowed_network_hosts=())
     gateway_client = GatewayClient(settings=settings)
-    state_store = RedisAgentStateStore.from_url(redis_url)
+    redis_runtime = RedisRuntime.from_url(redis_url)
     try:
-        state_store.ping()
+        redis_runtime.ping()
     except ConnectionError as exc:
         raise StartupConfigurationError(
             exit_code=2,
             user_message=f"Redis is not reachable. Start Redis or set OPTIMUS_REDIS_URL={_DEFAULT_REDIS_URL_HINT}.",
         ) from exc
+    state_store = redis_runtime.sync_state_store()
+    telemetry_sink = RedisTelemetryEventSink(redis_runtime.telemetry_adapter())
 
     agent_model = model or environ.get("OPTIMUS_AGENT_MODEL", _DEFAULT_MODEL)
     return AgentRunner(
@@ -73,6 +77,7 @@ def build_agent_runner_for_harness(
         model=agent_model,
         guard=guard,
         state_store=state_store,
+        event_sink=telemetry_sink,
     )
 
 

@@ -388,6 +388,8 @@ class AgentRunner:
                 mutation_count=result.mutation_count,
                 stop_reason=result.stop_reason,
                 matched_skills=matched_skills,
+                execution_mode=request.execution_mode.value,
+                user_approval_id=request.approval.approval_id or "unauthorized_direct_run",
             )
         )
 

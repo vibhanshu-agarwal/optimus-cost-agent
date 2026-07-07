@@ -11,6 +11,7 @@ from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunStatus
 from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import AgentPlanRecord, RedisAgentStateStore
 from optimus.guardrails.pre_tool import PreToolGuard
+from optimus.redis.async_bridge import sync_await
 from optimus.runtime.modes import ExecutionMode
 from tests.conftest import FakeGatewayClient
 
@@ -29,7 +30,21 @@ _MULTILINE_PLAN_TEXT = (
 
 
 def _plan_keys_for_run(client: object, run_id: str) -> set[str]:
-    return set(client.scan_iter(match=f"agent:plan:{run_id}*"))
+    async def _collect() -> set[str]:
+        keys: set[str] = set()
+        async for key in client.scan_iter(match=f"agent:plan:{run_id}*"):
+            keys.add(key)
+        return keys
+
+    return sync_await(_collect())
+
+
+def _delete_plan_keys(client: object, run_id: str) -> None:
+    async def _delete() -> None:
+        async for key in client.scan_iter(match=f"agent:plan:{run_id}*"):
+            await client.delete(key)
+
+    sync_await(_delete())
 
 
 def test_live_redis_store_roundtrips_plan_record_with_full_fidelity(live_redis_store):
@@ -166,14 +181,13 @@ def test_live_redis_keys_are_namespaced_and_teardown_clears_them(live_redis_stor
     )
 
     store.save_plan(record)
-    keys = _plan_keys_for_run(store._client, run_id)
+    keys = _plan_keys_for_run(store.redis_client, run_id)
     assert keys
     assert all(key.startswith(f"agent:plan:{run_id}") for key in keys)
 
-    for key in store._client.scan_iter(match=f"agent:plan:{run_id}*"):
-        store._client.delete(key)
+    _delete_plan_keys(store.redis_client, run_id)
 
-    assert _plan_keys_for_run(store._client, run_id) == set()
+    assert _plan_keys_for_run(store.redis_client, run_id) == set()
 
 
 def test_live_agent_runner_rejects_approval_when_redis_plan_missing(tmp_path, live_redis_store):
@@ -239,6 +253,4 @@ def test_live_two_run_ids_do_not_collide_in_redis(tmp_path, live_redis_store):
         assert store.latest_plan_for_run(run_id=run_id).task == "Task A"
         assert store.latest_plan_for_run(run_id=other_run_id).task == "Task B"
     finally:
-        client = store._client
-        for key in client.scan_iter(match=f"agent:plan:{other_run_id}*"):
-            client.delete(key)
+        _delete_plan_keys(store.redis_client, other_run_id)

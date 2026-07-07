@@ -163,10 +163,20 @@ def test_release_cli_agent_harness_pings_redis_before_golden_tasks(tmp_path, mon
         def ping(self):
             ping_calls.append(True)
 
+    class FakeRuntime:
+        def ping(self):
+            ping_calls.append(True)
+
+        def sync_state_store(self):
+            return FakeStore()
+
+        def telemetry_adapter(self):
+            return object()
+
     monkeypatch.setenv("OPTIMUS_GATEWAY_URL", "https://gateway.optimus.ai")
     monkeypatch.setenv("OPTIMUS_API_KEY", "opt-test")
     monkeypatch.setenv("OPTIMUS_REDIS_URL", "redis://127.0.0.1:6379/0")
-    monkeypatch.setattr("optimus.agent.state_store.RedisAgentStateStore.from_url", lambda url, ttl_seconds=3600: FakeStore())
+    monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: FakeRuntime())
 
     class FakeGatewayClient:
         def create_response(self, *, model: str, input_text: str, metadata=None):
