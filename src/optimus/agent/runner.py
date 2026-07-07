@@ -8,6 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from optimus.agent.models import AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
+from optimus.agent.state_store import AgentPlanRecord, AgentStateStore, InMemoryAgentStateStore
 from optimus.agent.tools import AgentToolbox
 from optimus.gateway.client import GatewayClient
 from optimus.guardrails.pre_tool import PreToolGuard
@@ -51,6 +52,8 @@ class AgentRunner:
         event_sink: Callable[[TelemetryEvent], None] | None = None,
         loop_iteration_runner: IterationRunner | None = None,
         loop_evaluator: CompletionEvaluatorProtocol | None = None,
+        state_store: AgentStateStore | None = None,
+        clock_ms: Callable[[], int] | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -58,6 +61,8 @@ class AgentRunner:
         self._event_sink = event_sink
         self._loop_iteration_runner = loop_iteration_runner
         self._loop_evaluator = loop_evaluator
+        self._state_store = state_store or InMemoryAgentStateStore(clock_ms=clock_ms)
+        self._clock_ms = clock_ms or _epoch_ms
         self._transition_validator = TransitionValidator()
 
     def run(self, request: AgentRunRequest) -> AgentRunResult:
@@ -139,6 +144,9 @@ class AgentRunner:
         tool_calls: list[AgentToolCall] = []
         total_cost_usd = Decimal("0")
 
+        if request.execution_mode is ExecutionMode.AGENT and request.approval.approved:
+            return self._run_approved_from_store(request=request, context=context, toolbox=toolbox)
+
         context = self._transition(context, AgentState.PLANNING)
         response = self._gateway_client.create_response(
             model=self._model,
@@ -152,6 +160,7 @@ class AgentRunner:
         total_cost_usd += response.gateway_usage.cost_usd
         output_text = response.output_text
         plan_hash = hashlib.sha256(output_text.encode("utf-8")).hexdigest()
+        created_at_ms = self._clock_ms()
 
         context = self._transition(context, AgentState.PLAN_READY)
         tool_calls.extend(self._execute_read_directives(output_text, workspace_root=request.workspace_root, toolbox=toolbox))
@@ -180,6 +189,24 @@ class AgentRunner:
             )
 
         if not request.approval.approved or request.approval.plan_hash != plan_hash:
+            if request.execution_mode is ExecutionMode.AGENT:
+                self._state_store.save_plan(
+                    AgentPlanRecord(
+                        run_id=request.run_id,
+                        session_id=request.session_id,
+                        task=request.task,
+                        execution_mode=request.execution_mode,
+                        workspace_root=str(request.workspace_root),
+                        plan_hash=plan_hash,
+                        plan_text=output_text,
+                        gateway_request_id=response.gateway_usage.gateway_request_id,
+                        model=self._model,
+                        provider=response.gateway_usage.provider,
+                        cost_usd=response.gateway_usage.cost_usd,
+                        created_at_ms=created_at_ms,
+                        expires_at_ms=created_at_ms + 3_600_000,
+                    )
+                )
             self._transition(context, AgentState.AWAITING_APPROVAL)
             return self._build_result(
                 request=request,
@@ -221,6 +248,76 @@ class AgentRunner:
             total_cost_usd=total_cost_usd,
             mutation_count=mutation_count,
             plan_hash=plan_hash,
+        )
+
+    def _run_approved_from_store(
+        self,
+        *,
+        request: AgentRunRequest,
+        context: RuntimeContext,
+        toolbox: AgentToolbox,
+    ) -> AgentRunResult:
+        try:
+            record = self._state_store.load_plan(run_id=request.run_id, plan_hash=request.approval.plan_hash or "")
+        except KeyError:
+            latest = self._state_store.latest_plan_for_run(run_id=request.run_id)
+            if latest is not None and _record_matches_request(latest, request):
+                return self._build_result(
+                    request=request,
+                    status=AgentRunStatus.AWAITING_APPROVAL,
+                    final_state="AWAITING_APPROVAL",
+                    output_text=latest.plan_text,
+                    tool_calls=(),
+                    total_cost_usd=latest.cost_usd,
+                    plan_hash=latest.plan_hash,
+                )
+            return self._missing_plan_result(request)
+
+        if not _record_matches_request(record, request):
+            return self._missing_plan_result(request)
+
+        context = self._transition(context, AgentState.PLANNING)
+        context = self._transition(context, AgentState.PLAN_READY)
+        tool_calls = self._execute_read_directives(record.plan_text, workspace_root=request.workspace_root, toolbox=toolbox)
+        context = self._transition(context, AgentState.AWAITING_APPROVAL)
+        awaiting = AwaitingApproval(
+            approval_id=request.approval.approval_id or "unknown-approval",
+            requested_at_ms=0,
+            timeout_ms=3_600_000,
+        )
+        context = awaiting.grant(context)
+        context = self._transition(context, AgentState.EXECUTING)
+        approved_toolbox = AgentToolbox.for_workspace(
+            workspace_root=request.workspace_root,
+            context=context,
+            run_id=request.run_id,
+            session_id=request.session_id,
+            guard=self._guard,
+        )
+        write_calls = self._execute_write_directives(record.plan_text, workspace_root=request.workspace_root, toolbox=approved_toolbox)
+        tool_calls.extend(write_calls)
+        mutation_count = sum(1 for call in write_calls if call.tool_name == "write_file")
+        self._transition(context, AgentState.COMPLETED)
+        return self._build_result(
+            request=request,
+            status=AgentRunStatus.COMPLETED,
+            final_state="COMPLETED",
+            output_text=record.plan_text,
+            tool_calls=tuple(tool_calls),
+            total_cost_usd=record.cost_usd,
+            mutation_count=mutation_count,
+            plan_hash=record.plan_hash,
+        )
+
+    def _missing_plan_result(self, request: AgentRunRequest) -> AgentRunResult:
+        return self._build_result(
+            request=request,
+            status=AgentRunStatus.FAILED,
+            final_state="FAILED",
+            output_text="Plan approval expired or was not found. Re-run planning and approve the new plan.",
+            tool_calls=(),
+            total_cost_usd=Decimal("0"),
+            stop_reason="PLAN_NOT_FOUND_OR_EXPIRED",
         )
 
     def _emit_agent_run(
@@ -326,3 +423,15 @@ class AgentRunner:
             plan_hash=plan_hash,
             stop_reason=stop_reason,
         )
+
+
+def _epoch_ms() -> int:
+    return int(datetime.now(tz=UTC).timestamp() * 1000)
+
+
+def _record_matches_request(record: AgentPlanRecord, request: AgentRunRequest) -> bool:
+    return (
+        record.task == request.task
+        and record.execution_mode is request.execution_mode
+        and Path(record.workspace_root).resolve() == request.workspace_root
+    )
