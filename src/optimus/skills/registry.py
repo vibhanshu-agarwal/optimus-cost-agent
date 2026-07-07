@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 from optimus.guardrails.permissions import ToolSurface
 from optimus.runtime.modes import ExecutionMode
 from optimus.skills.models import SkillManifest, SkillMatch, SkillTrustLevel
+from optimus.telemetry.events import TelemetryEvent
 
 
 class SkillManifestError(ValueError):
@@ -13,13 +16,31 @@ class SkillManifestError(ValueError):
 
 
 class SkillRegistry:
-    def __init__(self, manifests: tuple[SkillManifest, ...]) -> None:
+    def __init__(
+        self,
+        manifests: tuple[SkillManifest, ...],
+        *,
+        event_sink: Callable[[TelemetryEvent], None] | None = None,
+        now: Callable[[], datetime] | None = None,
+    ) -> None:
         self._manifests = manifests
         self._loaded_body_paths: list[str] = []
+        self._event_sink = event_sink
+        self._now = now or (lambda: datetime.now(tz=UTC))
 
     @classmethod
-    def from_paths(cls, paths: tuple[Path, ...]) -> "SkillRegistry":
-        return cls(tuple(parse_skill_markdown(path.read_text(encoding="utf-8"), source_path=path) for path in paths))
+    def from_paths(
+        cls,
+        paths: tuple[Path, ...],
+        *,
+        event_sink: Callable[[TelemetryEvent], None] | None = None,
+        now: Callable[[], datetime] | None = None,
+    ) -> "SkillRegistry":
+        return cls(
+            tuple(parse_skill_markdown(path.read_text(encoding="utf-8"), source_path=path) for path in paths),
+            event_sink=event_sink,
+            now=now,
+        )
 
     def match(
         self,
@@ -30,15 +51,15 @@ class SkillRegistry:
         changed_paths: tuple[str, ...],
         execution_mode: ExecutionMode,
     ) -> tuple[SkillMatch, ...]:
-        # Task 7 attaches telemetry to these identifiers; keep the public API stable from the start.
-        _ = (run_id, session_id)
         matches: list[SkillMatch] = []
         for manifest in self._manifests:
             if execution_mode is ExecutionMode.AGENT and manifest.trust_level is SkillTrustLevel.DRAFT:
                 continue
             reasons = _match_reasons(manifest, task_text=task_text, changed_paths=changed_paths)
             if reasons:
-                matches.append(SkillMatch(manifest=manifest, matched_reasons=reasons))
+                match = SkillMatch(manifest=manifest, matched_reasons=reasons)
+                matches.append(match)
+                self._emit_selection(run_id=run_id, session_id=session_id, match=match)
         return tuple(matches)
 
     def load_body(self, manifest: SkillManifest) -> str:
@@ -51,6 +72,21 @@ class SkillRegistry:
 
     def loaded_body_paths(self) -> tuple[str, ...]:
         return tuple(self._loaded_body_paths)
+
+    def _emit_selection(self, *, run_id: str, session_id: str | None, match: SkillMatch) -> None:
+        if self._event_sink is None:
+            return
+        self._event_sink(
+            TelemetryEvent.skill_selection(
+                run_id=run_id,
+                session_id=session_id,
+                request_id=f"{run_id}:skill-selection:{match.manifest.name}",
+                occurred_at=self._now(),
+                skill_name=match.manifest.name,
+                manifest_hash=match.manifest.manifest_hash,
+                matched_reasons=match.matched_reasons,
+            )
+        )
 
 
 def parse_skill_markdown(text: str, *, source_path: Path) -> SkillManifest:

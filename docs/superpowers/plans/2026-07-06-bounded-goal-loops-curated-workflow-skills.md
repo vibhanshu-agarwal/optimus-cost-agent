@@ -2461,7 +2461,7 @@ git commit -m "Enforce skill trust and tool invocation policy."
 - Modify: `tests/unit/loops/test_controller.py`
 - Modify: `tests/unit/skills/test_invocation.py`
 
-- [ ] **Step 1: Write failing telemetry tests**
+- [x] **Step 1: Write failing telemetry tests**
 
 Append to `tests/unit/telemetry/test_events.py`:
 
@@ -2527,7 +2527,7 @@ def test_skill_selection_event_serializes_match_reasons():
     assert encoded["matched_reasons"] == ["description", "glob:tests/**/*.py"]
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -2537,7 +2537,7 @@ pytest tests/unit/telemetry/test_events.py::test_goal_loop_event_serializes_stop
 
 Expected: FAIL because telemetry event kinds/factories do not exist.
 
-- [ ] **Step 3: Add telemetry event factories**
+- [x] **Step 3: Add telemetry event factories**
 
 In `src/optimus/telemetry/events.py`, update `TelemetryEventKind`:
 
@@ -2634,7 +2634,7 @@ Add factories to `TelemetryEvent`:
         )
 ```
 
-- [ ] **Step 4: Thread optional event sinks**
+- [x] **Step 4: Thread optional event sinks**
 
 Update `GoalLoopController.__init__()` in `src/optimus/loops/controller.py`:
 
@@ -2776,7 +2776,7 @@ matches = registry.match(
 )
 ```
 
-- [ ] **Step 5: Run telemetry and integration tests**
+- [x] **Step 5: Run telemetry and integration tests**
 
 Run:
 
@@ -2786,7 +2786,7 @@ pytest tests/unit/telemetry/test_events.py tests/unit/loops/test_controller.py t
 
 Expected: PASS.
 
-- [ ] **Step 6: Local checkpoint**
+- [x] **Step 6: Local checkpoint**
 
 Run:
 

@@ -262,3 +262,60 @@ def test_public_redaction_helper_masks_provider_key_assignments():
     payload = redact_for_telemetry({"stdout": "OPENAI_API_KEY=sk-live"})
 
     assert payload == {"stdout": "OPENAI_API_KEY=**********"}
+
+
+def test_goal_loop_event_serializes_stop_reason_and_budget():
+    event = TelemetryEvent.goal_loop(
+        run_id="run-1",
+        session_id="session-1",
+        request_id="loop-1",
+        occurred_at=datetime(2026, 7, 6, tzinfo=UTC),
+        iteration=3,
+        stop_reason="REPEATED_FAILURE",
+        credits_spent=Decimal("0.25"),
+        max_budget_credits=Decimal("1.00"),
+        summary="same failure repeated",
+    )
+
+    encoded = event.to_json_dict()
+
+    assert encoded["kind"] == "goal_loop"
+    assert encoded["stop_reason"] == "REPEATED_FAILURE"
+    assert encoded["credits_spent"] == "0.25"
+
+
+def test_skill_invocation_event_serializes_manifest_hash_without_body():
+    event = TelemetryEvent.skill_invocation(
+        run_id="run-1",
+        session_id=None,
+        request_id="skill-1",
+        occurred_at=datetime(2026, 7, 6, tzinfo=UTC),
+        skill_name="pytest-debugging",
+        manifest_hash="a" * 64,
+        verdict="ALLOW",
+        rule_id="skill.declared_tool_allowed",
+        requested_tool="shell",
+    )
+
+    encoded = event.to_json_dict()
+
+    assert encoded["kind"] == "skill_invocation"
+    assert encoded["manifest_hash"] == "a" * 64
+    assert "Run the narrow failing test" not in str(encoded)
+
+
+def test_skill_selection_event_serializes_match_reasons():
+    event = TelemetryEvent.skill_selection(
+        run_id="run-1",
+        session_id=None,
+        request_id="run-1:skill-selection:pytest-debugging",
+        occurred_at=datetime(2026, 7, 6, tzinfo=UTC),
+        skill_name="pytest-debugging",
+        manifest_hash="a" * 64,
+        matched_reasons=("description", "glob:tests/**/*.py"),
+    )
+
+    encoded = event.to_json_dict()
+
+    assert encoded["kind"] == "skill_selection"
+    assert encoded["matched_reasons"] == ["description", "glob:tests/**/*.py"]

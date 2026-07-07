@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
@@ -8,6 +10,7 @@ from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolResult, PreToolVerdict
 from optimus.runtime.modes import ExecutionMode, GenerationScope
 from optimus.skills.models import SkillManifest, SkillTrustLevel
+from optimus.telemetry.events import TelemetryEvent
 
 
 class SkillInvocationVerdict(StrEnum):
@@ -52,8 +55,16 @@ class SkillTrustPolicy:
 
 
 class SkillInvocationPolicy:
-    def __init__(self, *, trust_policy: SkillTrustPolicy | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        trust_policy: SkillTrustPolicy | None = None,
+        event_sink: Callable[[TelemetryEvent], None] | None = None,
+        now: Callable[[], datetime] | None = None,
+    ) -> None:
         self._trust_policy = trust_policy or SkillTrustPolicy()
+        self._event_sink = event_sink
+        self._now = now or (lambda: datetime.now(tz=UTC))
 
     def authorize_tool(
         self,
@@ -93,6 +104,13 @@ class SkillInvocationPolicy:
         approval_granted: bool = False,
     ) -> PreToolResult:
         decision = self.authorize_tool(manifest=manifest, requested_tool=requested_tool, execution_mode=execution_mode)
+        self._emit(
+            manifest=manifest,
+            run_id=run_id,
+            session_id=session_id,
+            requested_tool=requested_tool,
+            decision=decision,
+        )
         if not decision.allowed:
             return PreToolResult(
                 verdict=PreToolVerdict.BLOCK if decision.verdict is SkillInvocationVerdict.BLOCK else PreToolVerdict.HOLD,
@@ -111,5 +129,30 @@ class SkillInvocationPolicy:
                 target_path=target_path,
                 generation_scope=generation_scope,
                 approval_granted=approval_granted,
+            )
+        )
+
+    def _emit(
+        self,
+        *,
+        manifest: SkillManifest,
+        run_id: str,
+        session_id: str | None,
+        requested_tool: ToolSurface,
+        decision: SkillInvocationDecision,
+    ) -> None:
+        if self._event_sink is None:
+            return
+        self._event_sink(
+            TelemetryEvent.skill_invocation(
+                run_id=run_id,
+                session_id=session_id,
+                request_id=f"{run_id}:skill-invocation:{manifest.name}",
+                occurred_at=self._now(),
+                skill_name=manifest.name,
+                manifest_hash=manifest.manifest_hash,
+                verdict=decision.verdict.value,
+                rule_id=decision.rule_id,
+                requested_tool=requested_tool.value,
             )
         )

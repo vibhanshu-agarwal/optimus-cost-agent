@@ -16,6 +16,7 @@ from optimus.loops.models import (
     LoopStopReason,
     LoopToolExecutorProtocol,
 )
+from optimus.telemetry.events import TelemetryEvent
 
 
 class IterationRunner(Protocol):
@@ -42,6 +43,7 @@ class GoalLoopController:
         ledger: ProgressLedger,
         halt_requested: Callable[[], bool] | None = None,
         now: Callable[[], datetime] | None = None,
+        event_sink: Callable[[TelemetryEvent], None] | None = None,
     ) -> None:
         self._policy = policy
         self._runner = runner
@@ -50,6 +52,7 @@ class GoalLoopController:
         self._ledger = ledger
         self._halt_requested = halt_requested or (lambda: False)
         self._now = now or (lambda: datetime.now(tz=UTC))
+        self._event_sink = event_sink
 
     def run(self, initial_state: IterationState) -> GoalLoopResult:
         state = initial_state
@@ -58,6 +61,7 @@ class GoalLoopController:
             pre_stop = self._stop_reason(state)
             if pre_stop is not None:
                 self._record(state=state, summary=f"stopped before iteration: {pre_stop.value}", stop_reason=pre_stop)
+                self._emit_stop(state=state, stop_reason=pre_stop, summary=pre_stop.value)
                 return GoalLoopResult(state=state, stop_reason=pre_stop, summary=pre_stop.value)
 
             outcome = self._runner.run_iteration(state.with_runtime_limits(policy=self._policy), self._tools)
@@ -78,11 +82,13 @@ class GoalLoopController:
                     stop_reason=LoopStopReason.COMPLETED,
                     evidence=outcome.evidence,
                 )
+                self._emit_stop(state=state, stop_reason=LoopStopReason.COMPLETED, summary=outcome.summary)
                 return GoalLoopResult(state=state, stop_reason=LoopStopReason.COMPLETED, summary=outcome.summary)
 
             post_stop = self._stop_reason(state)
             if post_stop is not None:
                 self._record(state=state, summary=f"stopped after iteration: {post_stop.value}", stop_reason=post_stop)
+                self._emit_stop(state=state, stop_reason=post_stop, summary=post_stop.value)
                 return GoalLoopResult(state=state, stop_reason=post_stop, summary=post_stop.value)
 
             evaluation = self._evaluator.evaluate(state, self._ledger)
@@ -95,7 +101,25 @@ class GoalLoopController:
             )
             if evaluation.completed:
                 self._record(state=state, summary=evaluation.reason, stop_reason=LoopStopReason.COMPLETED)
+                self._emit_stop(state=state, stop_reason=LoopStopReason.COMPLETED, summary=evaluation.reason)
                 return GoalLoopResult(state=state, stop_reason=LoopStopReason.COMPLETED, summary=evaluation.reason)
+
+    def _emit_stop(self, *, state: IterationState, stop_reason: LoopStopReason, summary: str) -> None:
+        if self._event_sink is None:
+            return
+        self._event_sink(
+            TelemetryEvent.goal_loop(
+                run_id=state.run_id,
+                session_id=state.session_id,
+                request_id=f"{state.run_id}:loop:{state.iteration}",
+                occurred_at=self._now(),
+                iteration=state.iteration,
+                stop_reason=stop_reason.value,
+                credits_spent=state.credits_spent,
+                max_budget_credits=self._policy.max_budget_credits,
+                summary=summary,
+            )
+        )
 
     def _stop_reason(self, state: IterationState) -> LoopStopReason | None:
         """Evaluates termination conditions against policy and state constraints"""

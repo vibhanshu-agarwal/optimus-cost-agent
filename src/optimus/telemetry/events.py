@@ -24,6 +24,9 @@ class TelemetryEventKind(StrEnum):
     FITNESS_GATE = "fitness_gate"
     GOLDEN_TASK = "golden_task"
     RELEASE_GATE = "release_gate"
+    GOAL_LOOP = "goal_loop"
+    SKILL_SELECTION = "skill_selection"
+    SKILL_INVOCATION = "skill_invocation"
 
 
 class TelemetryEvent(BaseModel):
@@ -384,6 +387,89 @@ class TelemetryEvent(BaseModel):
                 "passed": passed,
                 "duration_ms": duration_ms,
                 "output_summary": output_summary,
+            },
+        )
+
+    @classmethod
+    def goal_loop(
+        cls,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        occurred_at: datetime,
+        iteration: int,
+        stop_reason: str,
+        credits_spent: Decimal,
+        max_budget_credits: Decimal,
+        summary: str,
+    ) -> TelemetryEvent:
+        return cls(
+            kind=TelemetryEventKind.GOAL_LOOP,
+            run_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=occurred_at,
+            payload={
+                "iteration": iteration,
+                "stop_reason": stop_reason,
+                "credits_spent": credits_spent,
+                "max_budget_credits": max_budget_credits,
+                "summary": summary,
+            },
+        )
+
+    @classmethod
+    def skill_invocation(
+        cls,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        occurred_at: datetime,
+        skill_name: str,
+        manifest_hash: str,
+        verdict: str,
+        rule_id: str,
+        requested_tool: str,
+    ) -> TelemetryEvent:
+        return cls(
+            kind=TelemetryEventKind.SKILL_INVOCATION,
+            run_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=occurred_at,
+            payload={
+                "skill_name": skill_name,
+                "manifest_hash": manifest_hash,
+                "verdict": verdict,
+                "rule_id": rule_id,
+                "requested_tool": requested_tool,
+            },
+        )
+
+    @classmethod
+    def skill_selection(
+        cls,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        occurred_at: datetime,
+        skill_name: str,
+        manifest_hash: str,
+        matched_reasons: tuple[str, ...],
+    ) -> TelemetryEvent:
+        return cls(
+            kind=TelemetryEventKind.SKILL_SELECTION,
+            run_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=occurred_at,
+            payload={
+                "skill_name": skill_name,
+                "manifest_hash": manifest_hash,
+                "matched_reasons": matched_reasons,
             },
         )
 
