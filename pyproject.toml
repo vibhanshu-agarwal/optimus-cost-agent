@@ -12,6 +12,9 @@ dependencies = [
   "redis>=5",
 ]
 
+[project.scripts]
+optimus-agent = "optimus.acp.__main__:main"
+
 [project.optional-dependencies]
 dev = [
   "bandit>=1.7",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Protocol
 
 from optimus.acp.dispatcher import JsonRpcDispatcher
@@ -27,6 +28,25 @@ class AsyncByteWriter(Protocol):
         ...
 
 
+class StdioByteReader:
+    def __init__(self, stream: object) -> None:
+        self._stream = stream
+
+    async def read(self, size: int) -> bytes:
+        return await asyncio.to_thread(self._stream.read, size)
+
+
+class StdioByteWriter:
+    def __init__(self, stream: object) -> None:
+        self._stream = stream
+
+    def write(self, data: bytes) -> None:
+        self._stream.write(data)
+
+    async def drain(self) -> None:
+        await asyncio.to_thread(self._stream.flush)
+
+
 class AcpStreamServer:
     def __init__(self, dispatcher: JsonRpcDispatcher | None = None) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
@@ -43,3 +63,21 @@ class AcpStreamServer:
             )
         writer.write(encode_message(response))
         await writer.drain()
+
+    async def serve(self, reader: AsyncByteReader, writer: AsyncByteWriter) -> None:
+        while True:
+            try:
+                request = await read_message(reader)
+            except FramingError as exc:
+                if str(exc) == "unexpected end of stream":
+                    return
+                response = error_response(
+                    request_id=None,
+                    error=JsonRpcError(code=exc.code, message=str(exc)),
+                )
+                writer.write(encode_message(response))
+                await writer.drain()
+                continue
+            response = self._dispatcher.dispatch(request)
+            writer.write(encode_message(response))
+            await writer.drain()
