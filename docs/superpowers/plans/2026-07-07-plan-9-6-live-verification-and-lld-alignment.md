@@ -178,6 +178,11 @@ spec (round-trip fidelity, real TTL, cross-process replay, key hygiene). Verify 
 
 ## Task L2A: Live Redis Telemetry Tests (LLD §10 Verification Checklist)
 
+**Status:** Implemented (2026-07-07). `tests/integration/telemetry/test_redis_telemetry_live.py` and
+`live_redis_telemetry` fixture in `tests/conftest.py`. Verify with
+`pytest tests/integration/telemetry/test_redis_telemetry_live.py -m requires_redis -v` after
+`redis:8` pre-flight env is set (same as L2).
+
 **File:** `tests/integration/telemetry/test_redis_telemetry_live.py` (marker: `requires_redis`)
 
 Implements the LLD's own verification checklist against a real TimeSeries-capable Redis, using the

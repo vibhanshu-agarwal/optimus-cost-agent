@@ -10,6 +10,7 @@ import pytest
 from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.agent.state_store import RedisAgentStateStore
 from optimus.gateway.models import GatewayResponse, GatewayUsage
+from optimus.telemetry.redis_adapter import RedisTelemetryAdapter
 
 
 @pytest.fixture
@@ -29,6 +30,25 @@ def live_redis_store(redis_key_namespace: str) -> Iterator[tuple[RedisAgentState
     client = store._client
     for key in client.scan_iter(match=f"agent:plan:{redis_key_namespace}*"):
         client.delete(key)
+
+
+@pytest.fixture
+async def live_redis_telemetry(redis_key_namespace: str):
+    try:
+        redis_url = run_preflight(os.environ, require_timeseries=True)
+    except PreflightFailure as exc:
+        pytest.fail(exc.user_message)
+
+    import redis.asyncio as aioredis
+
+    client = aioredis.from_url(redis_url, decode_responses=True)
+    adapter = RedisTelemetryAdapter(client=client)
+    run_id = redis_key_namespace
+    yield adapter, run_id, client
+    for pattern in (f"telemetry:run:{run_id}*", f"run:{run_id}:*"):
+        async for key in client.scan_iter(match=pattern):
+            await client.delete(key)
+    await client.aclose()
 
 
 class FakeGatewayClient:
