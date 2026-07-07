@@ -1,3 +1,4 @@
+from optimus.loops.tools import GuardedLoopToolExecutor, LoopToolBlocked
 from optimus.loops.completion import DeterministicCompletionEvaluator, GatewayCompletionEvaluator
 from optimus.loops.controller import GoalLoopController, GoalLoopResult, IterationRunner
 from optimus.loops.ledger import InMemoryProgressLedger, JsonlProgressLedger, ProgressLedger, ProgressLedgerEntry
@@ -18,6 +19,7 @@ __all__ = [
     "GatewayCompletionEvaluator",
     "GoalLoopController",
     "GoalLoopResult",
+    "GuardedLoopToolExecutor",
     "InMemoryProgressLedger",
     "IterationOutcome",
     "IterationRunner",
@@ -25,6 +27,7 @@ __all__ = [
     "JsonlProgressLedger",
     "LoopBudgetPolicy",
     "LoopStopReason",
+    "LoopToolBlocked",
     "LoopToolExecutorProtocol",
     "ProgressLedger",
     "ProgressLedgerEntry",
