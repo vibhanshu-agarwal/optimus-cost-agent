@@ -1,3 +1,4 @@
+from optimus.loops.controller import GoalLoopController, GoalLoopResult, IterationRunner
 from optimus.loops.ledger import InMemoryProgressLedger, JsonlProgressLedger, ProgressLedger, ProgressLedgerEntry
 from optimus.loops.models import (
     CompletionEvaluation,
@@ -12,8 +13,11 @@ from optimus.loops.models import (
 __all__ = [
     "CompletionEvaluation",
     "CompletionEvaluatorProtocol",
+    "GoalLoopController",
+    "GoalLoopResult",
     "InMemoryProgressLedger",
     "IterationOutcome",
+    "IterationRunner",
     "IterationState",
     "JsonlProgressLedger",
     "LoopBudgetPolicy",
