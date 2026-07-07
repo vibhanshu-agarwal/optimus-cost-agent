@@ -7,7 +7,6 @@ from optimus.golden.tasks import load_golden_tasks
 from optimus.release.credentials import default_release_credential_scan_paths, scan_local_credentials
 from optimus.release.runner import CallableGate, CommandGate, ReleaseGate
 
-
 PLAN_9_5_REAL_AGENT_TASK_IDS = (
     "explain-small-function",
     "docstring-single-function",
