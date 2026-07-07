@@ -126,7 +126,7 @@ Anything not listed here is part of this completion plan.
 - Produces: newline-delimited JSON-RPC parsing/writing for IDE-facing Agent Client Protocol sessions.
 - Produces: async prompt-turn lifecycle where `session/prompt` remains pending while the agent sends `session/update` notifications and an agent-initiated `session/request_permission` request.
 
-- [ ] **Step 1: Write failing protocol tests**
+- [x] **Step 1: Write failing protocol tests**
 
 Create `tests/unit/acp/test_spec_protocol.py`:
 
@@ -347,7 +347,7 @@ async def test_client_calling_session_update_or_request_permission_is_method_not
     assert permission_response["error"]["code"] == -32601
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -357,7 +357,7 @@ pytest tests/unit/acp/test_spec_protocol.py -v
 
 Expected: FAIL because `optimus.acp.spec` does not exist.
 
-- [ ] **Step 3: Implement ACP spec adapter**
+- [x] **Step 3: Implement ACP spec adapter**
 
 Create `src/optimus/acp/spec.py` with:
 
@@ -392,7 +392,7 @@ Modify `src/optimus/acp/server.py` to add newline-delimited JSON-RPC serving for
   - outbound agent notifications and requests can be written while a client `session/prompt` request remains pending
   - EOF cancels pending turns and exits cleanly
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -413,7 +413,7 @@ Expected: PASS.
 - Produces: `AgentPlanRecord`, `AgentRunRecord`, `AgentStateStore`, `InMemoryAgentStateStore`, `RedisAgentStateStore`, `validate_redis_url(url: str) -> str`.
 - Consumes later: `AgentRunner(..., state_store: AgentStateStore)`.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Create `tests/unit/agent/test_state_store.py`:
 
@@ -496,7 +496,7 @@ def test_in_memory_store_treats_expired_plan_as_missing():
 
 Include the `FakeRedis` helper in the same test file with `hset`, `hgetall`, `expire`, and `ping` methods.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -506,7 +506,7 @@ pytest tests/unit/agent/test_state_store.py -v
 
 Expected: FAIL because `optimus.agent.state_store` does not exist.
 
-- [ ] **Step 3: Implement state store**
+- [x] **Step 3: Implement state store**
 
 Create `src/optimus/agent/state_store.py` with frozen pydantic records, a protocol, an in-memory implementation for tests, and a Redis implementation that stores plans at `agent:plan:{run_id}:{plan_hash}` with TTL.
 
@@ -530,7 +530,7 @@ dependencies = [
 ]
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -552,7 +552,7 @@ Expected: PASS.
 - Produces: `AgentRunner(..., state_store: AgentStateStore)`.
 - Produces behavior: first Agent call stores plan; approved call loads stored plan by `run_id` and `plan_hash`, executes that text, and does not call `GatewayClient.create_response()`.
 
-- [ ] **Step 1: Write failing replay tests**
+- [x] **Step 1: Write failing replay tests**
 
 Add to `tests/unit/agent/test_runner.py`:
 
@@ -663,7 +663,7 @@ def test_approved_agent_run_reports_expired_or_unknown_plan_without_replanning(t
     assert "plan approval expired or was not found" in result.output_text.lower()
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -673,7 +673,7 @@ pytest tests/unit/agent/test_runner.py::test_approved_agent_run_replays_stored_p
 
 Expected: FAIL because `AgentRunner` has no state store and calls the Gateway again.
 
-- [ ] **Step 3: Implement replay**
+- [x] **Step 3: Implement replay**
 
 Update `AgentRunner.__init__`:
 
@@ -692,7 +692,7 @@ Update `_run_once()`:
 - Preserve the original `plan_hash`, `gateway_request_id`, and cost in `AgentRunResult`.
 - On the non-approved planning pass, call Gateway once, compute `plan_hash`, and save `AgentPlanRecord` before returning `AWAITING_APPROVAL`.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -717,7 +717,7 @@ Expected: PASS.
 - Produces: `parse_agent_plan(plan_text: str) -> AgentPlanDirectives`.
 - Produces: typed parse failure `AgentDirectiveParseError`.
 
-- [ ] **Step 1: Write failing prompt and parser tests**
+- [x] **Step 1: Write failing prompt and parser tests**
 
 Create `tests/unit/agent/test_prompts.py`:
 
@@ -784,7 +784,7 @@ def test_unparseable_agent_plan_fails_typed_without_silent_success(tmp_path):
     assert result.mutation_count == 0
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -794,7 +794,7 @@ pytest tests/unit/agent/test_prompts.py tests/unit/agent/test_directives.py test
 
 Expected: FAIL because prompt construction, directive parsing, and unparseable-plan failure semantics do not exist.
 
-- [ ] **Step 3: Implement prompt and parser**
+- [x] **Step 3: Implement prompt and parser**
 
 Create `src/optimus/agent/prompts.py`:
 
@@ -820,7 +820,7 @@ Update `AgentRunner` to:
 - Parse plan text before returning success or awaiting approval.
 - Return `AgentRunStatus.FAILED`, `stop_reason="UNPARSEABLE_PLAN"`, and no mutation when parsing fails.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -842,7 +842,7 @@ Expected: PASS.
 - Produces: `AgentToolbox.run_tests(command: tuple[str, ...]) -> AgentToolCall`.
 - Produces: directive parser support for `TEST pytest tests/path -q`.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add to `tests/unit/agent/test_tools.py`:
 
@@ -910,7 +910,7 @@ def test_test_directive_rejects_non_pytest_or_unsafe_tokens(plan_text):
         parse_agent_plan(plan_text)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -920,7 +920,7 @@ pytest tests/unit/agent/test_tools.py tests/unit/agent/test_runner.py -v
 
 Expected: FAIL because `run_tests` and `TEST` directives do not exist.
 
-- [ ] **Step 3: Implement guarded test runner**
+- [x] **Step 3: Implement guarded test runner**
 
 Update `AgentToolbox.for_workspace()` to accept `shell_runner: Callable[[list[str]], subprocess.CompletedProcess[str]] | None = None`.
 
@@ -941,7 +941,7 @@ The `TEST` parser must enforce all of the following before `shell_exec()` is rea
 - Execution cwd is pinned to `request.workspace_root`.
 - Rejected test directives produce `AgentRunStatus.FAILED`, `stop_reason="UNSAFE_TEST_DIRECTIVE"`, and no shell execution.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -962,7 +962,7 @@ Expected: PASS.
 - Produces: `build_configured_server(environ: Mapping[str, str], workspace_root: Path | None = None, model: str | None = None) -> AcpStreamServer`.
 - Produces: `StartupConfigurationError` with `exit_code: int`, `user_message: str`, and `missing_names: tuple[str, ...]`.
 
-- [ ] **Step 1: Write failing bootstrap tests**
+- [x] **Step 1: Write failing bootstrap tests**
 
 Create `tests/unit/acp/test_bootstrap.py`:
 
@@ -1034,7 +1034,7 @@ def test_bootstrap_reports_unreachable_redis(tmp_path, monkeypatch):
     assert "Redis is not reachable" in exc_info.value.user_message
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1044,7 +1044,7 @@ pytest tests/unit/acp/test_bootstrap.py -v
 
 Expected: FAIL because `optimus.acp.bootstrap` does not exist.
 
-- [ ] **Step 3: Implement bootstrap**
+- [x] **Step 3: Implement bootstrap**
 
 `build_configured_server()` must:
 
@@ -1060,7 +1060,7 @@ Expected: FAIL because `optimus.acp.bootstrap` does not exist.
 
 `StartupConfigurationError.user_message` must be safe for stderr and must never include secret values.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -1083,7 +1083,7 @@ Expected: PASS.
 - Produces: `python -m optimus.acp`.
 - Produces: `optimus-agent` console script.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Create `tests/unit/acp/test_entrypoint.py`:
 
@@ -1122,7 +1122,7 @@ async def test_serve_exits_cleanly_on_eof_after_framing_error():
     assert responses[0]["error"]["message"] == "invalid JSON body"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1132,7 +1132,7 @@ pytest tests/unit/acp/test_entrypoint.py tests/integration/acp/test_server_strea
 
 Expected: FAIL because no module entrypoint, no script, and no continuous serve loop exist.
 
-- [ ] **Step 3: Implement entrypoint**
+- [x] **Step 3: Implement entrypoint**
 
 In `src/optimus/acp/server.py`:
 
@@ -1189,7 +1189,7 @@ Modify `pyproject.toml`:
 optimus-agent = "optimus.acp.__main__:main"
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -1210,7 +1210,7 @@ Expected: PASS.
 - Produces framed Plan-mode and approved Agent-mode integration evidence through `AcpStreamServer.handle_one()`.
 - Produces newline-delimited Agent Client Protocol integration evidence through `AcpStreamServer.serve_ndjson()`.
 
-- [ ] **Step 1: Write failing framed integration tests**
+- [x] **Step 1: Write failing framed integration tests**
 
 Add to `tests/integration/acp/test_server_stream.py`:
 
@@ -1310,7 +1310,7 @@ async def test_ndjson_spec_session_prompt_and_permission_flow(tmp_path):
 
 The `InteractiveLineReader` helper must support appending client messages after the server has already emitted an agent-to-client request. This is required because a real ACP prompt turn is duplex: the server writes `session/request_permission` while the original `session/prompt` request remains pending, then routes the client's JSON-RPC response by outbound request ID.
 
-- [ ] **Step 2: Run tests to verify they fail before implementation**
+- [x] **Step 2: Run tests to verify they fail before implementation**
 
 Run:
 
@@ -1320,13 +1320,13 @@ pytest tests/integration/acp/test_server_stream.py -v
 
 Expected before Tasks 2-5: FAIL because the production-like server is not wired and approval replay is missing.
 
-- [ ] **Step 3: Implement helper and fix response shape**
+- [x] **Step 3: Implement helper and fix response shape**
 
 Use a `configured_test_agent_server()` helper in the test file that constructs the same object graph as production bootstrap but with fake gateway and `InMemoryAgentStateStore`. Do not bypass `AcpStreamServer.handle_one()` for the Content-Length path or `AcpStreamServer.serve_ndjson()` for the Agent Client Protocol path.
 
 If `result.model_dump(mode="json")` does not serialize nested `Decimal` fields as strings consistently, fix that in `JsonRpcDispatcher` and add an assertion for `total_cost_usd`.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -1345,7 +1345,7 @@ Expected: PASS.
 **Interfaces:**
 - Produces operator documentation that a reviewer can follow without chat context.
 
-- [ ] **Step 1: Add README assertions**
+- [x] **Step 1: Add README assertions**
 
 Add or update a text-presence test:
 
@@ -1367,7 +1367,7 @@ def test_readme_documents_spawnable_acp_agent_contract():
     assert "plan approval expires after 3600 seconds" in text
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -1377,7 +1377,7 @@ pytest tests/integration/release/test_phase1_release_gate_cli.py::test_readme_do
 
 Expected: FAIL until README is updated.
 
-- [ ] **Step 3: Update README**
+- [x] **Step 3: Update README**
 
 Add a `Run The ACP Agent From An IDE` section containing:
 
@@ -1440,7 +1440,7 @@ Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP age
   - Plan approval expires after 3600 seconds. If approval arrives after expiry, the runtime returns `PLAN_NOT_FOUND_OR_EXPIRED`; the IDE must ask the user to re-run planning and approve the new plan.
   - If the user cancels the turn, the IDE sends `session/cancel`; the runtime responds to the pending `session/prompt` with `stopReason="cancelled"`.
 
-- [ ] **Step 4: Run test**
+- [x] **Step 4: Run test**
 
 Run:
 
