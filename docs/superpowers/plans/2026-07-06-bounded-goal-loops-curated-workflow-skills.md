@@ -2812,7 +2812,7 @@ git commit -m "Record loop and skill workflow telemetry."
 - Optional modify: `tests/fixtures/golden_tasks/phase1_golden_tasks.json`
 - Optional modify: `tests/unit/golden/test_tasks.py`
 
-- [ ] **Step 1: Update README with Plan 9 operator contract**
+- [x] **Step 1: Update README with Plan 9 operator contract**
 
 Add a concise section to `README.md`:
 
@@ -2836,7 +2836,7 @@ are blocked in Agent mode, and a skill's `allowed_tools` list can only narrow
 tool use. It cannot override project or user deny rules.
 ```
 
-- [ ] **Step 2: Decide whether to add a golden fixture**
+- [x] **Step 2: Decide whether to add a golden fixture**
 
 Inspect the existing golden task schema in `tests/fixtures/golden_tasks/phase1_golden_tasks.json` and `src/optimus/golden/tasks.py`. The current golden runner validates an ordered `expected_tools` trajectory and consumes harness results; a schema-valid fixture without a matching harness scenario/result will fail golden tests and release-gate evaluation.
 
@@ -2864,7 +2864,7 @@ It is not added to `phase1_golden_tasks.json` until the golden schema can assert
 loop stop reasons and skill trust decisions directly.
 ```
 
-- [ ] **Step 3: Run docs and golden-adjacent tests**
+- [x] **Step 3: Run docs and golden-adjacent tests**
 
 Run:
 
@@ -2874,7 +2874,7 @@ pytest tests/unit/golden tests/unit/loops tests/unit/skills tests/integration/lo
 
 Expected: PASS.
 
-- [ ] **Step 4: Local checkpoint**
+- [x] **Step 4: Local checkpoint**
 
 Run:
 
