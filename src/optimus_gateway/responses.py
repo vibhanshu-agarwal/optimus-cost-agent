@@ -6,7 +6,7 @@ from typing import Any
 
 from optimus_gateway.model_mapping import resolve_model_id
 from optimus_gateway.models import GatewayServiceConfig, authorize_bearer
-from optimus_gateway.pricing import billing_units, compute_cost_usd
+from optimus_gateway.pricing import billing_units, compute_cost_usd, lookup_model_rate
 from optimus_gateway.upstream_client import UpstreamClient
 
 
@@ -33,19 +33,21 @@ def handle_responses_request(
         return 400, {"error": str(exc)}
 
     try:
+        lookup_model_rate(provider=config.provider, resolved_model=provider_model)
+    except ValueError as exc:
+        return 500, {"error": str(exc)}
+
+    try:
         provider_result = upstream_client.create_message(model=provider_model, input_text=input_text)
     except RuntimeError as exc:
         return 502, {"error": str(exc)}
 
-    try:
-        cost_usd, price_snapshot_id = compute_cost_usd(
-            provider=config.provider,
-            resolved_model=provider_model,
-            input_tokens=provider_result.input_tokens,
-            output_tokens=provider_result.output_tokens,
-        )
-    except ValueError as exc:
-        return 500, {"error": str(exc)}
+    cost_usd, price_snapshot_id = compute_cost_usd(
+        provider=config.provider,
+        resolved_model=provider_model,
+        input_tokens=provider_result.input_tokens,
+        output_tokens=provider_result.output_tokens,
+    )
 
     gateway_request_id = f"gw-{uuid.uuid4().hex}"
     response_id = f"resp-{uuid.uuid4().hex}"

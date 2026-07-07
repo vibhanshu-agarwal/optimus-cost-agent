@@ -48,6 +48,17 @@ def _openrouter_config() -> GatewayServiceConfig:
     )
 
 
+def _openai_config() -> GatewayServiceConfig:
+    return GatewayServiceConfig(
+        bind_host="127.0.0.1",
+        bind_port=8765,
+        shared_secret="local-shared-secret",
+        provider="openai",
+        provider_api_key="oai-test",
+        base_url="https://api.openai.com/v1",
+    )
+
+
 def test_handle_responses_request_rejects_missing_authorization():
     status, body = handle_responses_request(
         authorization_header=None,
@@ -132,3 +143,17 @@ def test_handle_responses_request_rejects_unsupported_model():
 
     assert status == 400
     assert "unsupported gateway model" in str(body)
+
+
+def test_handle_responses_request_rejects_unpriced_passthrough_before_upstream_call():
+    client = FakeUpstreamClient(FakeProviderResult("chatcmpl-1", "ok", 10, 5))
+    status, body = handle_responses_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={"model": "gpt-4o", "input": "hello"},
+        config=_openai_config(),
+        upstream_client=client,
+    )
+
+    assert status == 500
+    assert "no pricing snapshot" in str(body)
+    assert client.calls == []
