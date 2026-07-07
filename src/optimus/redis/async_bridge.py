@@ -12,6 +12,19 @@ _loop_thread: threading.Thread | None = None
 _loop_lock = threading.Lock()
 
 
+def shutdown_background_loop() -> None:
+    """Stop the dedicated Redis bridge loop (for test session teardown)."""
+    global _loop, _loop_thread
+    with _loop_lock:
+        if _loop is None:
+            return
+        _loop.call_soon_threadsafe(_loop.stop)
+        if _loop_thread is not None:
+            _loop_thread.join(timeout=5.0)
+        _loop = None
+        _loop_thread = None
+
+
 def _background_loop() -> asyncio.AbstractEventLoop:
     global _loop, _loop_thread
     with _loop_lock:

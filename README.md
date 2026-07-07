@@ -285,13 +285,39 @@ Redis stores approved plans for replay.
 If approval arrives after expiry, the runtime returns `PLAN_NOT_FOUND_OR_EXPIRED`
 and the IDE must ask the user to re-run planning and approve the new plan.
 
+### Operator runbook (live verification)
+
+```bash
+# 1. Start Redis WITH TimeSeries (LLD section 10 requires TS.* commands)
+docker run --rm -d --name optimus-redis -p 6379:6379 redis:8
+
+# 2. Real credentials — no fakes, no placeholders
+export OPTIMUS_GATEWAY_URL=https://gateway.optimus.ai
+export OPTIMUS_API_KEY=<real key>
+export OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0
+
+# 3. Pre-flight
+python -m optimus.acp --workspace-root . --check-config --strict
+
+# 4. Live tiers, in cost order
+pytest -m requires_redis -v
+pytest -m requires_gateway -v
+pytest -m e2e -v
+
+# 5. Operator sign-off command
+python tools/verify_live_agent.py --workspace-root .
+```
+
 ### Config check
 
-Validate credentials and Redis reachability before the IDE spawns the agent:
+Validate credentials, Redis reachability, and TimeSeries support before the IDE spawns the agent:
 
 ```bash
 python -m optimus.acp --workspace-root . --check-config
+python -m optimus.acp --workspace-root . --check-config --strict
 ```
+
+`--strict` adds a gateway authentication probe in addition to the default Redis and workspace checks.
 
 ### Launch commands
 

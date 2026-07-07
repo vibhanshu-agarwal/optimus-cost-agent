@@ -7,7 +7,6 @@ from pathlib import Path
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.server import AcpStreamServer
 from optimus.agent.runner import AgentRunner
-from optimus.agent.state_store import validate_redis_url
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.client import GatewayClient
 from optimus.guardrails.pre_tool import PreToolGuard
@@ -35,39 +34,17 @@ def build_agent_runner_for_harness(
     workspace_root: Path,
     model: str | None = None,
 ) -> AgentRunner:
-    missing_gateway = _missing_env_names(environ, ("OPTIMUS_GATEWAY_URL", "OPTIMUS_API_KEY"))
-    if missing_gateway:
-        raise StartupConfigurationError(
-            exit_code=2,
-            user_message="Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP agent.",
-            missing_names=missing_gateway,
-        )
-
-    redis_url = environ.get("OPTIMUS_REDIS_URL", "").strip()
-    if not redis_url:
-        raise StartupConfigurationError(
-            exit_code=2,
-            user_message=f"Set OPTIMUS_REDIS_URL={_DEFAULT_REDIS_URL_HINT} before launching the Optimus ACP agent.",
-            missing_names=("OPTIMUS_REDIS_URL",),
-        )
+    from optimus.acp.preflight import PreflightFailure, run_preflight
 
     try:
-        validate_redis_url(redis_url)
-    except ValueError as exc:
-        raise StartupConfigurationError(exit_code=2, user_message=str(exc)) from exc
-
+        redis_url = run_preflight(environ, workspace_root=workspace_root, require_timeseries=True)
+    except PreflightFailure as exc:
+        raise StartupConfigurationError(exit_code=exc.exit_code, user_message=exc.user_message) from exc
+    redis_runtime = RedisRuntime.from_url(redis_url)
     settings = OptimusGatewaySettings.from_env(environ)
     resolved_workspace = workspace_root.resolve()
     guard = PreToolGuard.for_workspace(workspace_root=resolved_workspace, allowed_network_hosts=())
     gateway_client = GatewayClient(settings=settings)
-    redis_runtime = RedisRuntime.from_url(redis_url)
-    try:
-        redis_runtime.ping()
-    except ConnectionError as exc:
-        raise StartupConfigurationError(
-            exit_code=2,
-            user_message=f"Redis is not reachable. Start Redis or set OPTIMUS_REDIS_URL={_DEFAULT_REDIS_URL_HINT}.",
-        ) from exc
     state_store = redis_runtime.sync_state_store()
     telemetry_sink = RedisTelemetryEventSink(redis_runtime.telemetry_adapter())
 

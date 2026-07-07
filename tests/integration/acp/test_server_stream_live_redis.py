@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 
 import pytest
 
@@ -67,8 +66,7 @@ def _delete_plan_keys(client: object, run_id: str) -> None:
 
 @pytest.fixture
 def live_redis_acp_server(tmp_path, live_redis_store):
-    _store, _run_id = live_redis_store
-    store = RedisAgentStateStore.from_url(os.environ["OPTIMUS_REDIS_URL"])
+    store, _run_id = live_redis_store
     gateway = FakeGatewayClient(_PLAN_TEXT)
     server = _build_live_server(tmp_path=tmp_path, store=store, gateway=gateway)
     tracked_run_ids: set[str] = set()

@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from optimus.acp.bootstrap import StartupConfigurationError, build_agent_runner_for_harness
+from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.agent.golden import AgentGoldenTaskHarness
 from optimus.golden.json_harness import JsonGoldenTaskHarness
 from optimus.release.agent_smoke_transcript import PLAN_9_5_SMOKE_TRANSCRIPT_PATH, RecordingAgentRunner, SmokeTranscriptRecorder
@@ -64,14 +65,17 @@ def main() -> int:
     if args.golden_results is not None:
         golden_harness = JsonGoldenTaskHarness.from_path(args.golden_results)
     elif args.agent_harness:
-        # Redis-backed harness: build_agent_runner_for_harness() uses RedisAgentStateStore.from_url() and .ping().
         workspace_root = Path(".").resolve()
         try:
+            run_preflight(os.environ, workspace_root=workspace_root, require_timeseries=True)
             base_runner = build_agent_runner_for_harness(
                 environ=os.environ,
                 workspace_root=workspace_root,
                 model=args.agent_model,
             )
+        except PreflightFailure as exc:
+            print(exc.user_message, file=sys.stderr)
+            return exc.exit_code
         except StartupConfigurationError as exc:
             print(exc.user_message, file=sys.stderr)
             return exc.exit_code

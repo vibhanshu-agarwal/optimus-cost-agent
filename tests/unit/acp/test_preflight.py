@@ -5,33 +5,48 @@ import pytest
 from optimus.acp.preflight import PreflightFailure, run_preflight
 
 
-class FakeRedisClient:
+class FakeAsyncRedisClient:
     def __init__(self, *, ping_error: Exception | None = None, timeseries: bool = True) -> None:
         self.ping_error = ping_error
         self.timeseries = timeseries
         self.deleted: list[str] = []
 
-    def ping(self):
+    async def ping(self):
         if self.ping_error is not None:
             raise self.ping_error
         return True
 
-    def execute_command(self, command: str, *args):
+    async def execute_command(self, command: str, *args):
         if command == "TS.ADD" and not self.timeseries:
             raise RuntimeError("unknown command TS.ADD")
         return 1
 
-    def delete(self, key: str):
+    async def delete(self, key: str):
         self.deleted.append(key)
         return 1
 
+    async def aclose(self):
+        return None
 
-class FakeRedisStore:
-    def __init__(self, client: FakeRedisClient) -> None:
-        self._client = client
 
-    def ping(self):
-        self._client.ping()
+class FakeRedisRuntime:
+    def __init__(self, client: FakeAsyncRedisClient) -> None:
+        self.client = client
+        self.closed = False
+
+    def ping(self) -> None:
+        if self.client.ping_error is not None:
+            raise ConnectionError(str(self.client.ping_error))
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _patch_runtime(monkeypatch, client: FakeAsyncRedisClient) -> None:
+    monkeypatch.setattr(
+        "optimus.acp.preflight.RedisRuntime.from_url",
+        lambda url: FakeRedisRuntime(client),
+    )
 
 
 def test_preflight_requires_gateway_credentials():
@@ -43,10 +58,7 @@ def test_preflight_requires_gateway_credentials():
 
 
 def test_preflight_requires_redis_url(monkeypatch):
-    monkeypatch.setattr(
-        "optimus.acp.preflight.RedisAgentStateStore.from_url",
-        lambda url: FakeRedisStore(FakeRedisClient()),
-    )
+    _patch_runtime(monkeypatch, FakeAsyncRedisClient())
     with pytest.raises(PreflightFailure, match="OPTIMUS_REDIS_URL"):
         run_preflight({"OPTIMUS_GATEWAY_URL": "https://gateway.optimus.ai", "OPTIMUS_API_KEY": "opt-test"})
 
@@ -63,10 +75,7 @@ def test_preflight_rejects_password_redis_url():
 
 
 def test_preflight_reports_unreachable_redis(monkeypatch):
-    monkeypatch.setattr(
-        "optimus.acp.preflight.RedisAgentStateStore.from_url",
-        lambda url: FakeRedisStore(FakeRedisClient(ping_error=ConnectionError("down"))),
-    )
+    _patch_runtime(monkeypatch, FakeAsyncRedisClient(ping_error=ConnectionError("down")))
     with pytest.raises(PreflightFailure, match="Redis is not reachable"):
         run_preflight(
             {
@@ -78,10 +87,7 @@ def test_preflight_reports_unreachable_redis(monkeypatch):
 
 
 def test_preflight_requires_timeseries_when_requested(monkeypatch):
-    monkeypatch.setattr(
-        "optimus.acp.preflight.RedisAgentStateStore.from_url",
-        lambda url: FakeRedisStore(FakeRedisClient(timeseries=False)),
-    )
+    _patch_runtime(monkeypatch, FakeAsyncRedisClient(timeseries=False))
     with pytest.raises(PreflightFailure, match="TimeSeries"):
         run_preflight(
             {

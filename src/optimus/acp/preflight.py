@@ -5,7 +5,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from optimus.agent.state_store import RedisAgentStateStore, validate_redis_url
+from optimus.agent.state_store import validate_redis_url
+from optimus.redis.runtime import RedisRuntime
 
 DEFAULT_REDIS_URL_HINT = "redis://127.0.0.1:6379/0"
 _REDIS_TS_PROBE_KEY = "optimus:preflight:timeseries-probe"
@@ -31,15 +32,24 @@ def run_preflight(
     env = os.environ if environ is None else environ
     _require_gateway_credentials(env)
     redis_url = _require_redis_url(env)
-    store = RedisAgentStateStore.from_url(redis_url)
-    _require_redis_ping(store)
-    if require_timeseries:
-        _require_redis_timeseries(store)
-    if strict:
-        _require_gateway_auth(env)
-    if workspace_root is not None:
-        _require_workspace_root(workspace_root)
-    return redis_url
+    runtime = RedisRuntime.from_url(redis_url)
+    try:
+        try:
+            runtime.ping()
+        except ConnectionError as exc:
+            raise PreflightFailure(
+                exit_code=2,
+                user_message=f"Redis is not reachable. Start Redis or fix OPTIMUS_REDIS_URL. ({exc})",
+            ) from exc
+        if require_timeseries:
+            _require_redis_timeseries(runtime)
+        if strict:
+            _require_gateway_auth(env)
+        if workspace_root is not None:
+            _require_workspace_root(workspace_root)
+        return redis_url
+    finally:
+        runtime.close()
 
 
 def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
@@ -67,23 +77,12 @@ def _require_redis_url(environ: Mapping[str, str]) -> str:
         raise PreflightFailure(exit_code=2, user_message=str(exc)) from exc
 
 
-def _require_redis_ping(store: RedisAgentStateStore) -> None:
-    try:
-        store.ping()
-    except ConnectionError as exc:
-        raise PreflightFailure(
-            exit_code=2,
-            user_message=f"Redis is not reachable. Start Redis or fix OPTIMUS_REDIS_URL. ({exc})",
-        ) from exc
-
-
-def _require_redis_timeseries(store: RedisAgentStateStore) -> None:
+def _require_redis_timeseries(runtime: RedisRuntime) -> None:
     from optimus.redis.async_bridge import sync_await
 
     async def _probe() -> None:
-        client = store.redis_client
-        await client.execute_command("TS.ADD", _REDIS_TS_PROBE_KEY, "*", 1)
-        await client.delete(_REDIS_TS_PROBE_KEY)
+        await runtime.client.execute_command("TS.ADD", _REDIS_TS_PROBE_KEY, "*", 1)
+        await runtime.client.delete(_REDIS_TS_PROBE_KEY)
 
     try:
         sync_await(_probe())

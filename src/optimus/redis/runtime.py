@@ -57,3 +57,6 @@ class RedisRuntime:
     async def aclose(self) -> None:
         await self.client.aclose()
         await self.pool.aclose()
+
+    def close(self) -> None:
+        sync_await(self.aclose())

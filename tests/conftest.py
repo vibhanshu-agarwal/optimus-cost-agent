@@ -10,8 +10,15 @@ import pytest
 from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.agent.state_store import RedisAgentStateStore
 from optimus.gateway.models import GatewayResponse, GatewayUsage
-from optimus.redis.async_bridge import sync_await
+from optimus.redis.async_bridge import shutdown_background_loop
+from optimus.redis.runtime import RedisRuntime
 from optimus.telemetry.redis_adapter import RedisTelemetryAdapter
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _shutdown_redis_bridge_after_session() -> None:
+    yield
+    shutdown_background_loop()
 
 
 @pytest.fixture
@@ -26,15 +33,12 @@ def live_redis_store(redis_key_namespace: str) -> Iterator[tuple[RedisAgentState
         redis_url = run_preflight(os.environ, require_timeseries=True)
     except PreflightFailure as exc:
         pytest.fail(exc.user_message)
-    store = RedisAgentStateStore.from_url(redis_url)
-    yield store, redis_key_namespace
-
-    async def _cleanup() -> None:
-        client = store.redis_client
-        async for key in client.scan_iter(match=f"agent:plan:{redis_key_namespace}*"):
-            await client.delete(key)
-
-    sync_await(_cleanup())
+    runtime = RedisRuntime.from_url(redis_url)
+    store = runtime.sync_state_store()
+    try:
+        yield store, redis_key_namespace
+    finally:
+        runtime.close()
 
 
 @pytest.fixture
@@ -46,14 +50,16 @@ async def live_redis_telemetry(redis_key_namespace: str):
 
     import redis.asyncio as aioredis
 
-    client = aioredis.from_url(redis_url, decode_responses=True)
+    client = aioredis.from_url(redis_url, decode_responses=True, socket_connect_timeout=2)
     adapter = RedisTelemetryAdapter(client=client)
     run_id = redis_key_namespace
-    yield adapter, run_id, client
-    for pattern in (f"telemetry:run:{run_id}*", f"run:{run_id}:*"):
-        async for key in client.scan_iter(match=pattern):
-            await client.delete(key)
-    await client.aclose()
+    try:
+        yield adapter, run_id, client
+    finally:
+        for pattern in (f"telemetry:run:{run_id}*", f"run:{run_id}:*"):
+            async for key in client.scan_iter(match=pattern):
+                await client.delete(key)
+        await client.aclose()
 
 
 class FakeGatewayClient:

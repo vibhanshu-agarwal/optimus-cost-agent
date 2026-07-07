@@ -1,6 +1,7 @@
 import pytest
 
 from optimus.acp.bootstrap import StartupConfigurationError, build_configured_server
+from optimus.acp.preflight import PreflightFailure
 
 
 def test_bootstrap_reports_missing_optimus_credentials(tmp_path):
@@ -8,7 +9,6 @@ def test_bootstrap_reports_missing_optimus_credentials(tmp_path):
         build_configured_server(environ={"OPTIMUS_REDIS_URL": "redis://localhost:6379/0"}, workspace_root=tmp_path)
 
     assert exc_info.value.exit_code == 2
-    assert exc_info.value.missing_names == ("OPTIMUS_GATEWAY_URL", "OPTIMUS_API_KEY")
     assert "Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY" in exc_info.value.user_message
 
 
@@ -18,8 +18,8 @@ def test_bootstrap_reports_missing_redis_url(tmp_path):
     with pytest.raises(StartupConfigurationError) as exc_info:
         build_configured_server(environ=env, workspace_root=tmp_path)
 
-    assert exc_info.value.missing_names == ("OPTIMUS_REDIS_URL",)
-    assert "Set OPTIMUS_REDIS_URL=redis://localhost:6379/0" in exc_info.value.user_message
+    assert exc_info.value.exit_code == 2
+    assert "Set OPTIMUS_REDIS_URL" in exc_info.value.user_message
 
 
 def test_bootstrap_builds_agent_configured_server(tmp_path, monkeypatch):
@@ -37,6 +37,10 @@ def test_bootstrap_builds_agent_configured_server(tmp_path, monkeypatch):
         def telemetry_adapter(self):
             return object()
 
+    monkeypatch.setattr(
+        "optimus.acp.preflight.run_preflight",
+        lambda environ, **kwargs: "redis://localhost:6379/0",
+    )
     monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: FakeRuntime())
     server = build_configured_server(
         environ={
@@ -52,11 +56,10 @@ def test_bootstrap_builds_agent_configured_server(tmp_path, monkeypatch):
 
 
 def test_bootstrap_reports_unreachable_redis(tmp_path, monkeypatch):
-    class DownRedisRuntime:
-        def ping(self):
-            raise ConnectionError("redis unavailable")
+    def _raise_unreachable(*args, **kwargs):
+        raise PreflightFailure(exit_code=2, user_message="Redis is not reachable.")
 
-    monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: DownRedisRuntime())
+    monkeypatch.setattr("optimus.acp.preflight.run_preflight", _raise_unreachable)
 
     with pytest.raises(StartupConfigurationError) as exc_info:
         build_configured_server(

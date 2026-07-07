@@ -285,6 +285,11 @@ replay. Verify with
 
 ## Task L8: Wire Pre-Flight into Existing Surfaces
 
+**Status:** Implemented (2026-07-07). `run_preflight()` is shared by `--check-config [--strict]`,
+`build_agent_runner_for_harness()`, and `run_phase1_release_gate.py --agent-harness`. README
+operator runbook added. Live fixtures call `RedisRuntime.close()` and session teardown shuts down
+the background Redis bridge loop.
+
 **Files:** `src/optimus/acp/bootstrap.py`, `src/optimus/acp/__main__.py`,
 `tools/run_phase1_release_gate.py`, `README.md`
 

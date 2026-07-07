@@ -143,39 +143,45 @@ def test_readme_documents_spawnable_acp_agent_contract():
     assert "approval_id" in text
     assert "plan_hash" in text
     assert "plan approval expires after 3600 seconds" in text
+    assert "pytest -m requires_redis -v" in text
+    assert "python -m optimus.acp --workspace-root . --check-config --strict" in text
+    assert "python tools/verify_live_agent.py --workspace-root ." in text
+
+
+def test_release_cli_runs_preflight_before_agent_harness():
+    text = RELEASE_CLI.read_text(encoding="utf-8")
+
+    assert "run_preflight" in text
+    assert "require_timeseries=True" in text
 
 
 def test_release_cli_wires_redis_backed_agent_harness():
     text = RELEASE_CLI.read_text(encoding="utf-8")
 
     assert "OPTIMUS_REDIS_URL" in text
-    assert "RedisAgentStateStore" in text
-    assert ".ping()" in text
+    assert "run_preflight" in text
     assert "build_agent_runner_for_harness" in text
     assert "PLAN_9_5_REAL_AGENT_TASK_IDS" in text
     assert "reports/plan-9-5-working-agent-smoke-transcript.json" in text
 
 
-def test_release_cli_agent_harness_pings_redis_before_golden_tasks(tmp_path, monkeypatch):
-    ping_calls: list[bool] = []
-
-    class FakeStore:
-        def ping(self):
-            ping_calls.append(True)
-
+def test_release_cli_agent_harness_runs_preflight_before_golden_tasks(tmp_path, monkeypatch):
+    preflight_calls: list[bool] = []
     class FakeRuntime:
-        def ping(self):
-            ping_calls.append(True)
-
         def sync_state_store(self):
-            return FakeStore()
+            return object()
 
         def telemetry_adapter(self):
             return object()
 
+    def _fake_preflight(environ, **kwargs):
+        preflight_calls.append(True)
+        return "redis://127.0.0.1:6379/0"
+
     monkeypatch.setenv("OPTIMUS_GATEWAY_URL", "https://gateway.optimus.ai")
     monkeypatch.setenv("OPTIMUS_API_KEY", "opt-test")
     monkeypatch.setenv("OPTIMUS_REDIS_URL", "redis://127.0.0.1:6379/0")
+    monkeypatch.setattr("optimus.acp.preflight.run_preflight", _fake_preflight)
     monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: FakeRuntime())
 
     class FakeGatewayClient:
@@ -224,5 +230,5 @@ def test_release_cli_agent_harness_pings_redis_before_golden_tasks(tmp_path, mon
         runpy.run_path(str(RELEASE_CLI), run_name="__main__")
 
     assert exc.value.code in {0, 1}
-    assert ping_calls == [True]
+    assert preflight_calls == [True, True]
     assert transcript_path.is_file()
