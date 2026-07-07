@@ -143,3 +143,76 @@ def test_readme_documents_spawnable_acp_agent_contract():
     assert "approval_id" in text
     assert "plan_hash" in text
     assert "plan approval expires after 3600 seconds" in text
+
+
+def test_release_cli_wires_redis_backed_agent_harness():
+    text = RELEASE_CLI.read_text(encoding="utf-8")
+
+    assert "OPTIMUS_REDIS_URL" in text
+    assert "RedisAgentStateStore" in text
+    assert ".ping()" in text
+    assert "build_agent_runner_for_harness" in text
+    assert "PLAN_9_5_REAL_AGENT_TASK_IDS" in text
+    assert "reports/plan-9-5-working-agent-smoke-transcript.json" in text
+
+
+def test_release_cli_agent_harness_pings_redis_before_golden_tasks(tmp_path, monkeypatch):
+    ping_calls: list[bool] = []
+
+    class FakeStore:
+        def ping(self):
+            ping_calls.append(True)
+
+    monkeypatch.setenv("OPTIMUS_GATEWAY_URL", "https://gateway.optimus.ai")
+    monkeypatch.setenv("OPTIMUS_API_KEY", "opt-test")
+    monkeypatch.setenv("OPTIMUS_REDIS_URL", "redis://127.0.0.1:6379/0")
+    monkeypatch.setattr("optimus.agent.state_store.RedisAgentStateStore.from_url", lambda url, ttl_seconds=3600: FakeStore())
+
+    class FakeGatewayClient:
+        def create_response(self, *, model: str, input_text: str, metadata=None):
+            from decimal import Decimal
+
+            from optimus.gateway.models import GatewayResponse, GatewayUsage
+
+            return GatewayResponse(
+                response_id="resp-1",
+                output_text="READ src/example.py\nExplain the function.",
+                gateway_usage=GatewayUsage(
+                    gateway_request_id="gw-1",
+                    provider="glm",
+                    billing_units=1,
+                    cost_usd=Decimal("0.001"),
+                ),
+                raw={"id": "resp-1"},
+            )
+
+    monkeypatch.setattr("optimus.gateway.client.GatewayClient", lambda settings: FakeGatewayClient())
+    monkeypatch.setattr(
+        "optimus.release.defaults.evaluate_golden_task_suite",
+        lambda tasks, harness: type("Report", (), {"passed": True, "failure_summary": ""})(),
+    )
+    transcript_path = tmp_path / "plan-9-5-working-agent-smoke-transcript.json"
+    monkeypatch.setattr(
+        "optimus.release.agent_smoke_transcript.PLAN_9_5_SMOKE_TRANSCRIPT_PATH",
+        transcript_path,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_phase1_release_gate.py",
+            "--agent-harness",
+            "--task-id",
+            "explain-small-function",
+            "--credential-scan-root",
+            str(tmp_path),
+            "--skip-command-gates-for-test",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_path(str(RELEASE_CLI), run_name="__main__")
+
+    assert exc.value.code in {0, 1}
+    assert ping_calls == [True]
+    assert transcript_path.is_file()

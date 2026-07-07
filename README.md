@@ -354,13 +354,15 @@ Unit and default integration tests use in-memory fakes. To prove Redis-backed pl
 replay works on your machine, start Redis and run the live checks:
 
 ```bash
-docker run --rm -p 6379:6379 redis:7-alpine
+docker run --rm -d --name optimus-redis -p 6379:6379 redis:8
 export OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0
 pytest -m requires_redis tests/integration/agent/test_redis_live_agent.py tests/integration/acp/test_bootstrap_live_redis.py tests/integration/acp/test_server_stream_live_redis.py -v
 python tools/verify_live_agent.py --workspace-root .
 ```
 
-Without Redis, `requires_redis` tests skip instead of passing silently against fakes.
+Without Redis, `requires_redis` tests are deselected by default (`pyproject.toml` addopts). When you
+explicitly select a live tier (`pytest -m requires_redis`) and the environment is broken, fixtures
+call `pytest.fail()` with the operator action message — silent skips are forbidden.
 The smoke script exits non-zero when Redis is unreachable or approval replay fails.
 
 ## Development worktrees

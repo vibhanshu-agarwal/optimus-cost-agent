@@ -35,9 +35,13 @@ addopts = [
   "--strict-config",
   "--strict-markers",
   "--import-mode=importlib",
+  "-m",
+  "not requires_redis and not requires_gateway and not e2e",
 ]
 markers = [
-  "requires_redis: integration test that needs a reachable Redis server",
+  "requires_redis: integration test that needs a live TimeSeries-capable Redis server",
+  "requires_gateway: integration test that needs real Optimus Gateway credentials",
+  "e2e: end-to-end test that spawns the real ACP stdio process",
 ]
 
 [tool.coverage.run]

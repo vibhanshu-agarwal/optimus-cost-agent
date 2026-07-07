@@ -95,7 +95,7 @@ class RedisAgentStateStore:
         validated = validate_redis_url(url)
         from redis import Redis
 
-        return cls(client=Redis.from_url(validated, decode_responses=True), ttl_seconds=ttl_seconds)
+        return cls(client=Redis.from_url(validated, decode_responses=True, socket_connect_timeout=2), ttl_seconds=ttl_seconds)
 
     def save_plan(self, record: AgentPlanRecord) -> None:
         key = _plan_key(run_id=record.run_id, plan_hash=record.plan_hash)

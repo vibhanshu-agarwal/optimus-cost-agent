@@ -30,6 +30,13 @@
 
 ## Definition Of Done
 
+> **Scope note (2026-07-07):** Plan 9.5 is the build plan. Live-dependency verification, real
+> Gateway/Redis/E2E evidence, the committed transcripts, the Zed HITL artifact, LLD §10 Redis
+> alignment, and the working-agent sign-off gate are owned by Plan 9.6
+> (`docs/superpowers/plans/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md`).
+> Items below that reference real-Gateway smoke evidence are satisfied via Plan 9.6; completing
+> Plan 9.5 does not constitute working-agent sign-off.
+
 Plan 9.5 is complete only when all of these are true:
 
 - An ACP-capable IDE can launch `python -m optimus.acp --workspace-root <repo>` or `optimus-agent --workspace-root <repo>` as a stdio Agent Client Protocol server.
@@ -1460,7 +1467,7 @@ Expected: PASS.
 **Interfaces:**
 - Produces: release-gate command path that can run Plan 9.5's real agent harness with production-equivalent bootstrap components.
 
-- [ ] **Step 1: Write failing release CLI assertions**
+- [x] **Step 1: Write failing release CLI assertions**
 
 Add assertions that `tools/run_phase1_release_gate.py` includes:
 
@@ -1473,7 +1480,7 @@ Add assertions that `tools/run_phase1_release_gate.py` includes:
 
 Add one behavioral release CLI test that monkeypatches Redis and Gateway fakes, runs the CLI with `--agent-harness`, and asserts the fake Redis store's `ping()` was called before golden task execution.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1483,7 +1490,7 @@ pytest tests/integration/release/test_phase1_release_gate_cli.py -v
 
 Expected: FAIL until release CLI uses Redis-backed agent state for the real agent harness.
 
-- [ ] **Step 3: Wire release CLI**
+- [x] **Step 3: Wire release CLI**
 
 When `--agent-harness` is used:
 
@@ -1496,7 +1503,7 @@ When `--agent-harness` is used:
 - Fail closed with the same operator-friendly missing variable messages as ACP bootstrap.
 - Capture a redacted smoke transcript at `reports/plan-9-5-working-agent-smoke-transcript.json` when the real Gateway smoke run is executed. The transcript must include request IDs, run IDs, session IDs, model name, prompt version, plan hash, approval ID, tool names, final state, and cost fields; it must not include `OPTIMUS_API_KEY` or any provider key value.
 
-- [ ] **Step 4: Update roadmap**
+- [x] **Step 4: Update roadmap**
 
 In `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`, update Plan 9.5 status to say this completion plan is mandatory before Plan 9.5 is done:
 
@@ -1506,7 +1513,7 @@ In `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`, update Plan 9.5 statu
 **Status:** Plan 9.5 is not complete until the completion plan delivers Agent Client Protocol conformance, a spawnable ACP stdio process, Redis-backed plan replay, framed compatibility tests for `optimus.agent.run`, Zed live-demo docs, and operator launch docs.
 ```
 
-- [ ] **Step 5: Run final verification**
+- [x] **Step 5: Run final verification**
 
 Run:
 
@@ -1524,7 +1531,7 @@ Expected:
 - Coverage remains >=80%.
 - `git diff --check` PASS.
 
-- [ ] **Step 6: Running deliverable smoke checks**
+- [ ] **Step 6: Running deliverable smoke checks** *(transferred to Plan 9.6 Tasks L6/L7 — do not check here)*
 
 With only these local credentials/config values present:
 

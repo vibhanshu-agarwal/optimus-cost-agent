@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from optimus.acp.dispatcher import JsonRpcDispatcher
@@ -8,8 +10,8 @@ from optimus.acp.server import AcpStreamServer
 from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import RedisAgentStateStore
 from optimus.guardrails.pre_tool import PreToolGuard
+from tests.conftest import FakeGatewayClient
 from tests.integration.acp.test_server_stream import MemoryReader, MemoryWriter, decode_framed_response
-from tests.integration.redis_support import FakeGatewayClient, redis_url, skip_unless_redis
 
 pytestmark = pytest.mark.requires_redis
 
@@ -23,12 +25,12 @@ async def roundtrip(server: AcpStreamServer, request: dict) -> dict:
 
 
 @pytest.fixture
-def live_redis_acp_server(tmp_path):
-    skip_unless_redis()
+def live_redis_acp_server(tmp_path, live_redis_store):
+    _store, _run_id = live_redis_store
     workspace_root = tmp_path.resolve()
     gateway = FakeGatewayClient('WRITE example.py\ndef f():\n    """Return one."""\n    return 1\n')
     guard = PreToolGuard.for_workspace(workspace_root=workspace_root, allowed_network_hosts=())
-    store = RedisAgentStateStore.from_url(redis_url())
+    store = RedisAgentStateStore.from_url(os.environ["OPTIMUS_REDIS_URL"])
     runner = AgentRunner(
         gateway_client=gateway,
         model="glm-5.2",
@@ -43,11 +45,7 @@ def live_redis_acp_server(tmp_path):
     )
     server = AcpStreamServer(dispatcher=dispatcher)
     yield server, gateway, tmp_path, store
-    run_ids = set()
-    for call in gateway.calls:
-        metadata = call.get("metadata")
-        if isinstance(metadata, dict) and metadata.get("run_id"):
-            run_ids.add(str(metadata["run_id"]))
+    run_ids = {"run-live-acp-1"}
     client = store._client
     for run_id in run_ids:
         for key in client.scan_iter(match=f"agent:plan:{run_id}*"):

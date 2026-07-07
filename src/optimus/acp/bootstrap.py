@@ -23,12 +23,16 @@ class StartupConfigurationError(Exception):
     missing_names: tuple[str, ...] = ()
 
 
-def build_configured_server(
+def _missing_env_names(environ: Mapping[str, str], names: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(name for name in names if not environ.get(name, "").strip())
+
+
+def build_agent_runner_for_harness(
     *,
     environ: Mapping[str, str],
-    workspace_root: Path | None = None,
+    workspace_root: Path,
     model: str | None = None,
-) -> AcpStreamServer:
+) -> AgentRunner:
     missing_gateway = _missing_env_names(environ, ("OPTIMUS_GATEWAY_URL", "OPTIMUS_API_KEY"))
     if missing_gateway:
         raise StartupConfigurationError(
@@ -51,7 +55,7 @@ def build_configured_server(
         raise StartupConfigurationError(exit_code=2, user_message=str(exc)) from exc
 
     settings = OptimusGatewaySettings.from_env(environ)
-    resolved_workspace = Path(workspace_root or ".").resolve()
+    resolved_workspace = workspace_root.resolve()
     guard = PreToolGuard.for_workspace(workspace_root=resolved_workspace, allowed_network_hosts=())
     gateway_client = GatewayClient(settings=settings)
     state_store = RedisAgentStateStore.from_url(redis_url)
@@ -64,12 +68,29 @@ def build_configured_server(
         ) from exc
 
     agent_model = model or environ.get("OPTIMUS_AGENT_MODEL", _DEFAULT_MODEL)
-    agent_runner = AgentRunner(
+    return AgentRunner(
         gateway_client=gateway_client,
         model=agent_model,
         guard=guard,
         state_store=state_store,
     )
+
+
+def build_configured_server(
+    *,
+    environ: Mapping[str, str],
+    workspace_root: Path | None = None,
+    model: str | None = None,
+) -> AcpStreamServer:
+    agent_runner = build_agent_runner_for_harness(
+        environ=environ,
+        workspace_root=Path(workspace_root or "."),
+        model=model,
+    )
+    resolved_workspace = Path(workspace_root or ".").resolve()
+    settings = OptimusGatewaySettings.from_env(environ)
+    gateway_client = GatewayClient(settings=settings)
+    guard = PreToolGuard.for_workspace(workspace_root=resolved_workspace, allowed_network_hosts=())
     dispatcher = JsonRpcDispatcher(
         gateway_client=gateway_client,
         agent_runner=agent_runner,
@@ -77,7 +98,3 @@ def build_configured_server(
         workspace_root=resolved_workspace,
     )
     return AcpStreamServer(dispatcher=dispatcher)
-
-
-def _missing_env_names(environ: Mapping[str, str], names: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(name for name in names if not environ.get(name, "").strip())

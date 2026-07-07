@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import os
 import uuid
-from decimal import Decimal
 
 import pytest
 
@@ -10,20 +10,15 @@ from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import AgentPlanRecord, RedisAgentStateStore
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.runtime.modes import ExecutionMode
-from tests.integration.redis_support import FakeGatewayClient, redis_url, skip_unless_redis
+from tests.conftest import FakeGatewayClient
 
 pytestmark = pytest.mark.requires_redis
 
 
-def test_live_redis_is_reachable():
-    skip_unless_redis()
-    from tests.integration.redis_support import redis_reachable
-
-    assert redis_reachable()
-
-
 def test_live_redis_store_roundtrips_plan_record(live_redis_store):
     store, run_id = live_redis_store
+    from decimal import Decimal
+
     record = AgentPlanRecord(
         run_id=run_id,
         session_id="session-1",
@@ -52,6 +47,7 @@ def test_live_agent_runner_replays_plan_from_redis_with_fresh_runner(tmp_path, l
     target.write_text("def f():\n    return 1\n", encoding="utf-8")
     plan_text = 'WRITE example.py\ndef f():\n    """Return one."""\n    return 1\n'
     guard = PreToolGuard.for_workspace(workspace_root=tmp_path.resolve(), allowed_network_hosts=())
+    redis_url = os.environ["OPTIMUS_REDIS_URL"]
 
     planner_gateway = FakeGatewayClient(plan_text)
     planner = AgentRunner(
@@ -79,7 +75,7 @@ def test_live_agent_runner_replays_plan_from_redis_with_fresh_runner(tmp_path, l
         gateway_client=replay_gateway,
         model="glm-5.2",
         guard=guard,
-        state_store=RedisAgentStateStore.from_url(redis_url()),
+        state_store=RedisAgentStateStore.from_url(redis_url),
     )
     approved = replay_runner.run(
         AgentRunRequest(
