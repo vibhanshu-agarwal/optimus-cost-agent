@@ -62,4 +62,5 @@
 - Integration tests should mock gateway/provider behavior unless validating the staging gateway path.
 - E2E golden tasks must verify expected mode, tools, cost band, final state, and mutation behavior.
 - Before sign-off, run the narrow relevant tests plus coverage where affected; report any tests not run.
+- **Before commit, push, or PR sign-off, run Ruff and confirm a clean result:** `python -m ruff check .` (or `uv run ruff check .` / `pre-commit run optimus-ruff --all-files` when available). CI enforces the same `optimus-check: ruff` gate on every PR; pytest passing alone is not sufficient. Fix unused imports (`F401`) and import-block formatting (`I001`) before claiming the task complete.
 - Release gate: full Plan-mode and Agent-mode runs with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY`, and no provider key resolvable locally.

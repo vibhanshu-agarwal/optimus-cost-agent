@@ -190,6 +190,17 @@ Plan 9 loop and skill behavior is covered by `tests/unit/loops`,
 It is not added to `phase1_golden_tasks.json` until the golden schema can assert
 loop stop reasons and skill trust decisions directly.
 
+### Phase 1 Agent Orchestration
+
+Plan 9.5 composes the Phase 1 primitives into a task-level coding agent. The
+agent runner accepts a typed task request, plans through the Optimus Gateway,
+pauses for approval before Agent-mode mutation, executes side-effecting tools
+only through guardrails, validates the result, and records the observed tool
+trajectory for golden-task evaluation.
+
+Plan 10 context-window optimization builds on this runner. It does not create
+the task lifecycle, approval boundary, tool adapters, or golden harness.
+
 ## Prerequisites
 
 - **Python** ≥ 3.14

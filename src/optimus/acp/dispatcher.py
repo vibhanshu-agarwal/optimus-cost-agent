@@ -16,6 +16,8 @@ from optimus.acp.errors import (
     success_response,
 )
 from optimus.acp.request_ids import DuplicateRequestId, RequestIdTracker
+from optimus.agent.models import AgentRunRequest
+from optimus.agent.runner import AgentRunner
 from optimus.evidence.acquisition import EvidenceAcquisitionService
 from optimus.evidence.domain_policy import EvidenceDomainRejected
 from optimus.evidence.ledger import EvidenceLedger
@@ -44,6 +46,7 @@ class JsonRpcDispatcher:
         runtime_context: RuntimeContext | None = None,
         gateway_client: GatewayClient | None = None,
         evidence_service: EvidenceAcquisitionService | None = None,
+        agent_runner: AgentRunner | None = None,
         pre_tool_guard: PreToolGuard | None = None,
         workspace_root: str | Path | None = None,
         allowed_network_hosts: tuple[str, ...] = (),
@@ -55,6 +58,8 @@ class JsonRpcDispatcher:
         )
         self._gateway_client = gateway_client
         self._evidence_service = evidence_service
+        self._agent_runner = agent_runner
+        self._workspace_root = Path(workspace_root).resolve() if workspace_root is not None else None
         # One guard (and one audit sink) is built here, at the dispatcher's own
         # lifetime, and threaded into every guarded tool call below. This is
         # deliberate: if each handler built its own default guard instead (as
@@ -173,6 +178,28 @@ class JsonRpcDispatcher:
                     request_id=request_id,
                     result=_evidence_extract_payload(response, ledger, extract_request.run_id),
                 )
+            if method == "optimus.agent.run":
+                if self._agent_runner is None:
+                    return error_response(
+                        request_id=request_id,
+                        error=JsonRpcError(code=METHOD_NOT_FOUND, message="agent runner not configured"),
+                    )
+                try:
+                    agent_request = AgentRunRequest.model_validate(request.get("params"))
+                except ValidationError:
+                    return error_response(
+                        request_id=request_id,
+                        error=JsonRpcError(code=INVALID_REQUEST, message="invalid request"),
+                    )
+                if self._workspace_root is not None and not agent_request.workspace_root.is_relative_to(
+                    self._workspace_root
+                ):
+                    return error_response(
+                        request_id=request_id,
+                        error=JsonRpcError(code=INVALID_REQUEST, message="workspace_root outside configured workspace"),
+                    )
+                result = self._agent_runner.run(agent_request)
+                return success_response(request_id=request_id, result=result.model_dump(mode="json"))
             if method == "optimus.mutation.writeFile":
                 params = request.get("params")
                 if not isinstance(params, dict) or not isinstance(params.get("path"), str):

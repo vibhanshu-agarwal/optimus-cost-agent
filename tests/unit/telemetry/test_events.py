@@ -319,3 +319,24 @@ def test_skill_selection_event_serializes_match_reasons():
 
     assert encoded["kind"] == "skill_selection"
     assert encoded["matched_reasons"] == ["description", "glob:tests/**/*.py"]
+
+
+def test_agent_run_event_serializes_status_and_tool_trajectory():
+    event = TelemetryEvent.agent_run(
+        run_id="run-1",
+        session_id=None,
+        request_id="run-1:agent-run",
+        occurred_at=datetime(2026, 7, 7, tzinfo=UTC),
+        status="completed",
+        final_state="COMPLETED",
+        tool_names=("file_reader", "write_file"),
+        total_cost_usd=Decimal("0.012"),
+        mutation_count=1,
+        stop_reason=None,
+    )
+
+    encoded = event.to_json_dict()
+
+    assert encoded["kind"] == "agent_run"
+    assert encoded["tool_names"] == ["file_reader", "write_file"]
+    assert encoded["total_cost_usd"] == "0.012"

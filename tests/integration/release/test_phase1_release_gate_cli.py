@@ -117,3 +117,12 @@ def test_release_cli_main_in_process(tmp_path, monkeypatch):
         runpy.run_path(str(RELEASE_CLI), run_name="__main__")
 
     assert exc.value.code == 0
+
+
+def test_release_cli_accepts_agent_harness_task_filter_text():
+    text = RELEASE_CLI.read_text(encoding="utf-8")
+
+    assert "--agent-harness" in text
+    assert "--task-id" in text
+    assert "AgentGoldenTaskHarness" in text
+    assert "golden_task_ids=golden_task_ids" in text

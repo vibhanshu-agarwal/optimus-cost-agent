@@ -27,6 +27,7 @@ class TelemetryEventKind(StrEnum):
     GOAL_LOOP = "goal_loop"
     SKILL_SELECTION = "skill_selection"
     SKILL_INVOCATION = "skill_invocation"
+    AGENT_RUN = "agent_run"
 
 
 class TelemetryEvent(BaseModel):
@@ -416,6 +417,39 @@ class TelemetryEvent(BaseModel):
                 "credits_spent": credits_spent,
                 "max_budget_credits": max_budget_credits,
                 "summary": summary,
+            },
+        )
+
+    @classmethod
+    def agent_run(
+        cls,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        occurred_at: datetime,
+        status: str,
+        final_state: str,
+        tool_names: tuple[str, ...],
+        total_cost_usd: Decimal,
+        mutation_count: int,
+        stop_reason: str | None,
+        matched_skills: tuple[str, ...] = (),
+    ) -> TelemetryEvent:
+        return cls(
+            kind=TelemetryEventKind.AGENT_RUN,
+            run_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=occurred_at,
+            payload={
+                "status": status,
+                "final_state": final_state,
+                "tool_names": tool_names,
+                "total_cost_usd": total_cost_usd,
+                "mutation_count": mutation_count,
+                "stop_reason": stop_reason,
+                "matched_skills": matched_skills,
             },
         )
 

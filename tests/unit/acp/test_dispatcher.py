@@ -7,6 +7,73 @@ from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import AgentState, RuntimeContext
 
 
+def test_dispatcher_routes_agent_run_to_runner(tmp_path):
+    agent_runner = FakeAgentRunner()
+    dispatcher = JsonRpcDispatcher(agent_runner=agent_runner, workspace_root=tmp_path)
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "agent-run-1",
+            "method": "optimus.agent.run",
+            "params": {
+                "run_id": "run-1",
+                "task": "Explain code",
+                "execution_mode": "plan",
+                "workspace_root": str(tmp_path),
+            },
+        }
+    )
+
+    assert response["result"]["status"] == "completed"
+    assert response["result"]["output_text"] == "Plan text"
+    assert agent_runner.requests[0].run_id == "run-1"
+    assert agent_runner.requests[0].execution_mode is ExecutionMode.PLAN
+
+
+def test_dispatcher_rejects_agent_run_outside_configured_workspace(tmp_path):
+    agent_runner = FakeAgentRunner()
+    dispatcher = JsonRpcDispatcher(agent_runner=agent_runner, workspace_root=tmp_path)
+    outside = tmp_path.parent / "outside"
+    outside.mkdir(exist_ok=True)
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "agent-run-1",
+            "method": "optimus.agent.run",
+            "params": {
+                "run_id": "run-1",
+                "task": "Explain code",
+                "execution_mode": "plan",
+                "workspace_root": str(outside),
+            },
+        }
+    )
+
+    assert response["error"]["message"] == "workspace_root outside configured workspace"
+    assert agent_runner.requests == []
+
+
+class FakeAgentRunner:
+    def __init__(self):
+        self.requests = []
+
+    def run(self, request):
+        from optimus.agent.models import AgentRunResult, AgentRunStatus
+
+        self.requests.append(request)
+        return AgentRunResult(
+            run_id=request.run_id,
+            session_id=request.session_id,
+            execution_mode=request.execution_mode,
+            status=AgentRunStatus.COMPLETED,
+            final_state="CHAT_ONLY",
+            output_text="Plan text",
+            total_cost_usd=Decimal("0.002"),
+        )
+
+
 def test_dispatcher_handles_ping():
     dispatcher = JsonRpcDispatcher()
 

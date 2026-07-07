@@ -86,3 +86,37 @@ def test_phase1_release_gate_script_accepts_command_timeout_argument():
 
     assert "--command-timeout-seconds" in text
     assert "command_timeout_seconds=args.command_timeout_seconds" in text
+
+
+def test_plan_9_5_golden_gate_filters_to_requested_task_ids():
+    from decimal import Decimal
+
+    from optimus.golden.tasks import GoldenTask, GoldenTaskResult
+    from optimus.release.defaults import PLAN_9_5_REAL_AGENT_TASK_IDS, build_phase1_release_gates
+
+    class StrictHarness:
+        def run(self, task: GoldenTask) -> GoldenTaskResult:
+            if task.task_id not in PLAN_9_5_REAL_AGENT_TASK_IDS:
+                raise AssertionError(f"unexpected task {task.task_id}")
+            return GoldenTaskResult(
+                task_id=task.task_id,
+                actual_mode=task.expected_mode,
+                actual_tools=task.expected_tools,
+                actual_cost_usd=Decimal("0"),
+                actual_final_state=task.expected_final_state,
+                mutation_count=1 if task.mutation_expected else 0,
+                provider_keys_resolvable=(),
+            )
+
+    golden_gate = next(
+        gate
+        for gate in build_phase1_release_gates(
+            golden_harness=StrictHarness(),
+            golden_task_ids=PLAN_9_5_REAL_AGENT_TASK_IDS,
+        )
+        if gate.name == "golden-task-suite"
+    )
+
+    result = golden_gate.run()
+
+    assert result.passed is True

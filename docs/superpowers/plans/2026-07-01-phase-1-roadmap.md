@@ -198,6 +198,24 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 - `GoalLoopController`, `IterationState`, `CompletionEvaluator`, `ProgressLedger`, `LoopBudgetPolicy`, `SkillRegistry`, `SkillManifest`, `SkillTrustPolicy`, and `SkillInvocationPolicy`.
 - Tests proving loop stops on completion, max iterations, budget exhaustion, wall-clock limit, repeated failure, and human halt; skill loading only occurs for matched trusted skills and cannot widen the tool surface or override deny rules.
 
+## Plan 9.5: Agent Orchestration and End-to-End Coding Workflow
+
+**Plan file:** `docs/superpowers/plans/2026-07-07-agent-orchestration-end-to-end-coding-workflow.md`
+
+**User story:** As an operator, I can give the local Optimus Agent a normal coding task and receive a planned, approved, guarded, validated, and cost-attributed outcome.
+
+**Expected deliverables:**
+- `AgentRunner`, `AgentRunRequest`, `AgentRunResult`, guarded tool adapters, `optimus.agent.run`, and `AgentGoldenTaskHarness`.
+- Tests proving Plan/Chat advisory-only behavior, Agent-mode approval before mutation, guarded tool use, bounded-loop stop integration, skill selection, real golden harness execution, and one-key release evidence.
+
+**High-urgency deferred follow-ups (planning gap):** Implied by the working-agent goal but not tasked in Plan 9.5 Tasks 1–7. Treat as the next mandatory slice before Plan 9.5 is complete for end-to-end agent use. See the plan file's Deferred Decisions section for full detail.
+- **HIGH URGENCY — `AcpStreamServer` production wiring:** Wire the stream server to a `JsonRpcDispatcher` backed by real `GatewayClient`, `AgentRunner`, configured `workspace_root`, and shared `PreToolGuard`; default no-runner dispatcher must not remain the production path.
+- **HIGH URGENCY — Spawnable ACP entrypoint:** Documented spawnable stdio process for IDE/session integration (for example `python -m optimus.acp` and/or `console_scripts`). Distinct from a long-running daemon.
+- **HIGH URGENCY — Framed stream integration test:** Prove framed `optimus.agent.run` through `AcpStreamServer.handle_one()`, not only `optimus.ping`.
+- **HIGH URGENCY — Plan persistence/replay:** Store approved plan text and execute it on the approval pass instead of re-planning with a nondeterministic Gateway.
+
+**Status:** Approved for implementation. Tasks 1–7 deliver orchestration primitives; high-urgency follow-ups above remain before Plan 9.5 satisfies the operator user story end-to-end. This is the bridge between Plan 9 primitives and Plan 10 intelligence.
+
 ## Plan 10 (Tracked, Not Yet Scheduled): Context Window Optimization and Intelligent Selection
 
 **Design source:** `docs/context-window-optimization-strategy.md` (standalone canonical design note; no HLD/LLD/Test Strategy anchors yet - see the Cross-Cutting section above)
@@ -206,7 +224,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 **User story:** As the agent runtime, I select, pack, summarize, invalidate, evict, and measure context under a cost- and freshness-aware policy, so the agent gets smarter while fully-loaded cost goes down, without ever silently dropping required evidence to fit a budget.
 
-**Status:** Tracked, not yet scheduled. This plan comes after the release skeleton (Plans 1, 2, 3, 7, 8, 8.5) and the guardrail/input surface (Plans 4, 5, 6, 6.5, 9) are stable, since selection policy depends on the cost-attribution, evidence, trust, freshness, and loop/skill signals those plans establish. Do not start this plan early just because it is architecturally core - its inputs need to exist first.
+**Status:** Tracked, not yet scheduled. This plan comes after Plan 9.5 task-level agent orchestration and the real golden harness are stable, since selection policy depends on the cost-attribution, evidence, trust, freshness, loop/skill, and agent-run signals those plans establish. Do not start this plan early just because it is architecturally core - its inputs need to exist first.
 
 **Source anchors:**
 - `docs/context-window-optimization-strategy.md` - Context Type x Mechanism Matrix, Selection Pipeline, Selection Model, Freshness and Dependency Precedence, Prompt Packing and Cost Controls, Compaction, Offline Promotion Gates, Online Guardrails, Context Regret, Baseline and Ablation Plan, Calibration Items.
@@ -233,6 +251,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 9. Plan 8: Retry, fitness gates, and release gates.
 10. Plan 8.5: Release-gate hardening and golden-harness wiring.
 11. Plan 9: Bounded loops and curated workflow skills.
-12. Plan 10: Context window optimization and intelligent selection - tracked, not yet scheduled; starts only once the release skeleton and guardrail/input surface above are stable.
+12. Plan 9.5: Agent orchestration and end-to-end coding workflow.
+13. Plan 10: Context window optimization and intelligent selection - tracked, not yet scheduled; starts only once Plan 9.5 task-level agent orchestration and the real golden harness are stable.
 
-The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, one-key scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 10 stays last regardless: it depends on inputs from Plans 4, 5, 6, 6.5, 7, and 9, and its PDF fold-in is explicitly deferred until calibration is accepted.
+The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, one-key scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 9.5 composes the Phase 1 primitives into a working local-first coding agent before Plan 10 adds context-window intelligence. Plan 10 stays last regardless: it depends on inputs from Plans 4, 5, 6, 6.5, 7, 9, and 9.5, and its PDF fold-in is explicitly deferred until calibration is accepted.
