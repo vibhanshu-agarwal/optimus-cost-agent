@@ -1346,14 +1346,24 @@ Expected:
 
 ## Deferred Decisions and Follow-Ups
 
+### High-Urgency Follow-Ups (Planning Gap)
+
+These items were implied by the Plan 9.5 goal ("working local-first coding agent") and operator user story, but were not tasked in Tasks 1–7. They block IDE integration and operator expectations even when Python-object tests and dispatcher unit tests pass. **Treat as the next mandatory slice before Plan 9.5 can be considered complete for end-to-end agent use.**
+
+- **HIGH URGENCY — `AcpStreamServer` production wiring:** Wire `AcpStreamServer` to construct or receive a `JsonRpcDispatcher` backed by a real `GatewayClient`, `AgentRunner`, configured `workspace_root`, and shared `PreToolGuard`. The default `JsonRpcDispatcher()` with no agent runner must not remain the production server path. Likely files: `src/optimus/acp/server.py` and a small composition helper if needed.
+- **HIGH URGENCY — Spawnable ACP entrypoint:** Provide a documented, spawnable stdio process for IDE/session integration (for example `python -m optimus.acp` and/or a `console_scripts` entry). This is distinct from a long-running daemon; the process may be short-lived per IDE session. Update `README.md` with launch instructions.
+- **HIGH URGENCY — Framed stream integration test for `optimus.agent.run`:** Extend `tests/integration/acp/test_server_stream.py` (or adjacent ACP integration tests) to prove framed `optimus.agent.run` succeeds through `AcpStreamServer.handle_one()`, not only `optimus.ping`.
+
+### Other Deferred Items
+
 - **Context Window Optimization:** remains Plan 10. Do not add context packing, intelligent pruning, ablation scoring, or calibrated cost-savings gates to Plan 9.5.
 - **Redis-backed agent state:** not required for Plan 9.5. The runner may use in-memory or JSONL ledgers already introduced by Plan 9.
-- **Long-running background service:** not required. Plan 9.5 provides task-level run orchestration, not a daemon.
+- **Long-running background service:** not required. Plan 9.5 provides task-level run orchestration, not a daemon. A spawnable per-session stdio ACP process **is** required; see the high-urgency follow-ups above.
 - **Human UI for approval:** not required. Plan 9.5 models approval through typed request fields and ACP payloads.
 - **Fully autonomous multi-agent scheduling:** not required. The runner may be single-agent and bounded.
 - **Full golden-suite execution through the real runner:** deferred until the web, shadow-apply, reflection, release-gate, and richer test-runner tool surfaces exist. Plan 9.5 owns the named read/write/budget/approval subset and preserves JSON/staging evidence for the rest.
 - **Approval timeout across ACP calls:** deferred until the approval wire payload or persisted plan store carries `requested_at_ms` and `timeout_ms`. Plan 9.5 still uses `AwaitingApproval.grant()` for approved execution but does not claim cross-call timeout enforcement.
-- **Plan persistence/replay:** deferred. Plan 9.5 verifies `plan_hash` against deterministic scaffolding; production replay should store the approved plan text and execute that stored plan instead of re-planning with a nondeterministic model.
+- **Plan persistence/replay:** deferred. Plan 9.5 verifies `plan_hash` against deterministic scaffolding; production replay should store the approved plan text and execute that stored plan instead of re-planning with a nondeterministic model. **HIGH URGENCY** for real Gateway-backed approved Agent runs; blocks trustworthy two-call approval flows outside deterministic test fakes.
 
 ## Self-Review
 
@@ -1365,3 +1375,4 @@ Expected:
 - Cost accounting: per-run budget enforcement and summed golden scenario cost are intentionally different gates.
 - Review fixes: absolute workspace validation checks before resolve; lower-case ACP modes normalize; approved mutations require `approval_id` plus `plan_hash`; Plan/Chat reads and read-before-write are explicit; budget exhaustion terminates before mutation; terminated golden plan runs short-circuit without approval construction; release CLI flags are included in implementation scope; two-call scenario cost sums planning plus execution; runner guard injection preserves dispatcher audit sinks.
 - Placeholder scan: no unresolved placeholders remain in this draft.
+- Planning gap acknowledged: high-urgency deferred follow-ups capture missing server wiring, spawnable entrypoint, and framed `optimus.agent.run` stream tests that Tasks 1–7 did not specify despite the working-agent goal.

@@ -208,7 +208,13 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 - `AgentRunner`, `AgentRunRequest`, `AgentRunResult`, guarded tool adapters, `optimus.agent.run`, and `AgentGoldenTaskHarness`.
 - Tests proving Plan/Chat advisory-only behavior, Agent-mode approval before mutation, guarded tool use, bounded-loop stop integration, skill selection, real golden harness execution, and one-key release evidence.
 
-**Status:** Approved for implementation. This is the bridge between Plan 9 primitives and Plan 10 intelligence.
+**High-urgency deferred follow-ups (planning gap):** Implied by the working-agent goal but not tasked in Plan 9.5 Tasks 1–7. Treat as the next mandatory slice before Plan 9.5 is complete for end-to-end agent use. See the plan file's Deferred Decisions section for full detail.
+- **HIGH URGENCY — `AcpStreamServer` production wiring:** Wire the stream server to a `JsonRpcDispatcher` backed by real `GatewayClient`, `AgentRunner`, configured `workspace_root`, and shared `PreToolGuard`; default no-runner dispatcher must not remain the production path.
+- **HIGH URGENCY — Spawnable ACP entrypoint:** Documented spawnable stdio process for IDE/session integration (for example `python -m optimus.acp` and/or `console_scripts`). Distinct from a long-running daemon.
+- **HIGH URGENCY — Framed stream integration test:** Prove framed `optimus.agent.run` through `AcpStreamServer.handle_one()`, not only `optimus.ping`.
+- **HIGH URGENCY — Plan persistence/replay:** Store approved plan text and execute it on the approval pass instead of re-planning with a nondeterministic Gateway.
+
+**Status:** Approved for implementation. Tasks 1–7 deliver orchestration primitives; high-urgency follow-ups above remain before Plan 9.5 satisfies the operator user story end-to-end. This is the bridge between Plan 9 primitives and Plan 10 intelligence.
 
 ## Plan 10 (Tracked, Not Yet Scheduled): Context Window Optimization and Intelligent Selection
 
