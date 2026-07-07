@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from optimus.telemetry.redaction import redact_for_telemetry
+from optimus.telemetry.serialization import json_safe
 
 
 class TelemetryEventKind(StrEnum):
@@ -23,6 +24,9 @@ class TelemetryEventKind(StrEnum):
     FITNESS_GATE = "fitness_gate"
     GOLDEN_TASK = "golden_task"
     RELEASE_GATE = "release_gate"
+    GOAL_LOOP = "goal_loop"
+    SKILL_SELECTION = "skill_selection"
+    SKILL_INVOCATION = "skill_invocation"
 
 
 class TelemetryEvent(BaseModel):
@@ -386,6 +390,89 @@ class TelemetryEvent(BaseModel):
             },
         )
 
+    @classmethod
+    def goal_loop(
+        cls,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        occurred_at: datetime,
+        iteration: int,
+        stop_reason: str,
+        credits_spent: Decimal,
+        max_budget_credits: Decimal,
+        summary: str,
+    ) -> TelemetryEvent:
+        return cls(
+            kind=TelemetryEventKind.GOAL_LOOP,
+            run_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=occurred_at,
+            payload={
+                "iteration": iteration,
+                "stop_reason": stop_reason,
+                "credits_spent": credits_spent,
+                "max_budget_credits": max_budget_credits,
+                "summary": summary,
+            },
+        )
+
+    @classmethod
+    def skill_invocation(
+        cls,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        occurred_at: datetime,
+        skill_name: str,
+        manifest_hash: str,
+        verdict: str,
+        rule_id: str,
+        requested_tool: str,
+    ) -> TelemetryEvent:
+        return cls(
+            kind=TelemetryEventKind.SKILL_INVOCATION,
+            run_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=occurred_at,
+            payload={
+                "skill_name": skill_name,
+                "manifest_hash": manifest_hash,
+                "verdict": verdict,
+                "rule_id": rule_id,
+                "requested_tool": requested_tool,
+            },
+        )
+
+    @classmethod
+    def skill_selection(
+        cls,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        occurred_at: datetime,
+        skill_name: str,
+        manifest_hash: str,
+        matched_reasons: tuple[str, ...],
+    ) -> TelemetryEvent:
+        return cls(
+            kind=TelemetryEventKind.SKILL_SELECTION,
+            run_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=occurred_at,
+            payload={
+                "skill_name": skill_name,
+                "manifest_hash": manifest_hash,
+                "matched_reasons": matched_reasons,
+            },
+        )
+
     def to_json_dict(self) -> dict[str, Any]:
         encoded = {
             "kind": self.kind.value,
@@ -395,7 +482,7 @@ class TelemetryEvent(BaseModel):
             "occurred_at": self.occurred_at.isoformat(),
             **self.payload,
         }
-        return _json_safe(redact_for_telemetry(encoded))
+        return json_safe(redact_for_telemetry(encoded))
 
     def to_json_line(self) -> str:
         return json.dumps(self.to_json_dict(), sort_keys=True, separators=(",", ":"), default=_json_default)
@@ -405,13 +492,3 @@ def _json_default(value: object) -> str:
     if isinstance(value, Decimal):
         return str(value)
     raise TypeError(f"{type(value).__name__} is not JSON serializable")
-
-
-def _json_safe(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {key: _json_safe(child) for key, child in value.items()}
-    if isinstance(value, list):
-        return [_json_safe(child) for child in value]
-    if isinstance(value, Decimal):
-        return str(value)
-    return value

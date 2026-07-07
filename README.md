@@ -164,7 +164,31 @@ The final go/no-go rule is strict: a Plan-mode and Agent-mode release run must
 complete with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` available locally.
 Provider keys such as Tavily, OpenAI, OpenRouter, GLM, Anthropic, and LangSmith
 must remain Gateway-side. Plan 9 bounded loops and skill loading, and Plan 10
-context-window optimization gates, are out of scope.
+context-window optimization gates, are out of scope for the Phase 1 golden
+fixture set described above.
+
+### Bounded Goal Loops and Curated Workflow Skills
+
+Plan 9 adds architectural support for bounded goal-driven loops and curated
+workflow skills. Loops are not the default execution mode. They are enabled only
+when a task has a machine-checkable completion condition and explicit
+`LoopBudgetPolicy` bounds for iterations, Optimus credits, wall-clock time, and
+repeated failures.
+
+Loop iterations persist progress to an append-only ledger and must use the same
+`PreToolGuard` and permission policy as ordinary Agent-mode tool calls. A loop
+that reaches completion, budget exhaustion, max iterations, wall-clock timeout,
+repeated failure, or human halt records a stable `LoopStopReason`.
+
+Skills are reviewed Markdown artifacts with frontmatter metadata. Trusted skills
+may be loaded only when their description or globs match the task. Draft skills
+are blocked in Agent mode, and a skill's `allowed_tools` list can only narrow
+tool use. It cannot override project or user deny rules.
+
+Plan 9 loop and skill behavior is covered by `tests/unit/loops`,
+`tests/unit/skills`, `tests/integration/loops`, and `tests/integration/skills`.
+It is not added to `phase1_golden_tasks.json` until the golden schema can assert
+loop stop reasons and skill trust decisions directly.
 
 ## Prerequisites
 

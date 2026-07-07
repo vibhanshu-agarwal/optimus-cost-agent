@@ -152,7 +152,7 @@ Each task includes a commit step because the Superpowers workflow favors small r
 - Modify: `tests/unit/telemetry/test_events.py`
 - Modify: `tests/unit/guardrails/test_pre_tool_guard.py`
 
-- [ ] **Step 1: Write failing model and ledger tests**
+- [x] **Step 1: Write failing model and ledger tests**
 
 Create `tests/unit/loops/test_models.py`:
 
@@ -303,7 +303,7 @@ def test_jsonl_progress_ledger_rejects_path_outside_workspace(tmp_path):
         JsonlProgressLedger(outside, workspace_root=tmp_path)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -313,7 +313,7 @@ pytest tests/unit/loops/test_models.py tests/unit/loops/test_ledger.py -v
 
 Expected: FAIL because `optimus.loops` does not exist.
 
-- [ ] **Step 3: Add loop models**
+- [x] **Step 3: Add loop models**
 
 Create `src/optimus/loops/models.py`:
 
@@ -451,7 +451,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: Add progress ledgers**
+- [x] **Step 4: Add progress ledgers**
 
 Create `src/optimus/loops/ledger.py`:
 
@@ -675,7 +675,7 @@ pytest tests/unit/telemetry/test_serialization.py tests/unit/telemetry/test_even
 
 Expected: PASS after the serialization, subject-sanitization, redaction, guardrail audit-subject, and `TelemetryEvent` updates are complete.
 
-- [ ] **Step 5: Export ledger types and run tests**
+- [x] **Step 5: Export ledger types and run tests**
 
 Update `src/optimus/loops/__init__.py`:
 
@@ -714,7 +714,7 @@ pytest tests/unit/loops/test_models.py tests/unit/loops/test_ledger.py tests/uni
 
 Expected: PASS.
 
-- [ ] **Step 6: Local checkpoint**
+- [x] **Step 6: Local checkpoint**
 
 Run:
 
@@ -747,7 +747,7 @@ git commit -m "Add bounded loop state and progress ledger."
 - Modify: `src/optimus/loops/__init__.py`
 - Create: `tests/unit/loops/test_controller.py`
 
-- [ ] **Step 1: Write failing controller tests**
+- [x] **Step 1: Write failing controller tests**
 
 Create `tests/unit/loops/test_controller.py`:
 
@@ -957,7 +957,7 @@ def test_mid_loop_human_halt_is_checked_between_iterations(tmp_path):
     assert runner.calls == 1
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -967,7 +967,7 @@ pytest tests/unit/loops/test_controller.py -v
 
 Expected: FAIL because `optimus.loops.controller` does not exist.
 
-- [ ] **Step 3: Add controller**
+- [x] **Step 3: Add controller**
 
 Create `src/optimus/loops/controller.py`:
 
@@ -1109,7 +1109,7 @@ class GoalLoopController:
         )
 ```
 
-- [ ] **Step 4: Export controller and run tests**
+- [x] **Step 4: Export controller and run tests**
 
 Update `src/optimus/loops/__init__.py`:
 
@@ -1152,7 +1152,7 @@ pytest tests/unit/loops/test_controller.py tests/unit/loops/test_models.py tests
 
 Expected: PASS.
 
-- [ ] **Step 5: Local checkpoint**
+- [x] **Step 5: Local checkpoint**
 
 Run:
 
@@ -1178,7 +1178,7 @@ git commit -m "Add bounded goal loop controller."
 - Modify: `src/optimus/loops/__init__.py`
 - Create: `tests/unit/loops/test_completion.py`
 
-- [ ] **Step 1: Write failing completion evaluator tests**
+- [x] **Step 1: Write failing completion evaluator tests**
 
 Create `tests/unit/loops/test_completion.py`:
 
@@ -1355,7 +1355,7 @@ def test_gateway_completion_evaluator_fails_closed_on_non_json_output():
         evaluator.evaluate(state(), InMemoryProgressLedger())
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1365,7 +1365,7 @@ pytest tests/unit/loops/test_completion.py -v
 
 Expected: FAIL because `optimus.loops.completion` does not exist.
 
-- [ ] **Step 3: Add completion evaluators**
+- [x] **Step 3: Add completion evaluators**
 
 Create `src/optimus/loops/completion.py`:
 
@@ -1461,7 +1461,7 @@ def _completion_prompt(state: IterationState, ledger: ProgressLedger) -> str:
     )
 ```
 
-- [ ] **Step 4: Export evaluator and run tests**
+- [x] **Step 4: Export evaluator and run tests**
 
 Update `src/optimus/loops/__init__.py` to export the concrete evaluators while keeping `CompletionEvaluatorProtocol` imported from `optimus.loops.models`:
 
@@ -1480,7 +1480,7 @@ pytest tests/unit/loops/test_completion.py tests/unit/gateway/test_client.py tes
 
 Expected: PASS.
 
-- [ ] **Step 5: Local checkpoint**
+- [x] **Step 5: Local checkpoint**
 
 Run:
 
@@ -1507,7 +1507,7 @@ git commit -m "Route loop completion evaluation through the gateway."
 - Create: `tests/unit/loops/test_tools.py`
 - Create: `tests/integration/loops/test_goal_loop_guardrail_flow.py`
 
-- [ ] **Step 1: Write failing guarded tool tests**
+- [x] **Step 1: Write failing guarded tool tests**
 
 Create `tests/unit/loops/test_tools.py`:
 
@@ -1643,7 +1643,7 @@ def test_goal_loop_never_bypasses_pre_tool_guard(tmp_path):
     assert guard.audit_events()[0].rule_id == "shell.destructive.rm_rf"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1653,7 +1653,7 @@ pytest tests/unit/loops/test_tools.py tests/integration/loops/test_goal_loop_gua
 
 Expected: FAIL because `optimus.loops.tools` does not exist.
 
-- [ ] **Step 3: Add guarded loop tool executor**
+- [x] **Step 3: Add guarded loop tool executor**
 
 Create `src/optimus/loops/tools.py`:
 
@@ -1710,7 +1710,7 @@ class GuardedLoopToolExecutor:
         return result
 ```
 
-- [ ] **Step 4: Export executor and run tests**
+- [x] **Step 4: Export executor and run tests**
 
 Update `src/optimus/loops/__init__.py`:
 
@@ -1728,7 +1728,7 @@ pytest tests/unit/loops/test_tools.py tests/integration/loops/test_goal_loop_gua
 
 Expected: PASS.
 
-- [ ] **Step 5: Local checkpoint**
+- [x] **Step 5: Local checkpoint**
 
 Run:
 
@@ -1755,7 +1755,7 @@ git commit -m "Enforce pre-tool guard inside goal loops."
 - Create: `src/optimus/skills/registry.py`
 - Create: `tests/unit/skills/test_registry.py`
 
-- [ ] **Step 1: Write failing registry tests**
+- [x] **Step 1: Write failing registry tests**
 
 Create `tests/unit/skills/test_registry.py`:
 
@@ -1904,7 +1904,7 @@ def test_skill_manifest_rejects_unknown_allowed_tool():
         parse_skill_markdown(text, source_path=Path("skills/pytest/SKILL.md"))
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1914,7 +1914,7 @@ pytest tests/unit/skills/test_registry.py -v
 
 Expected: FAIL because `optimus.skills` does not exist.
 
-- [ ] **Step 3: Add skill models**
+- [x] **Step 3: Add skill models**
 
 Create `src/optimus/skills/models.py`:
 
@@ -1954,7 +1954,7 @@ class SkillMatch(BaseModel):
     matched_reasons: tuple[str, ...]
 ```
 
-- [ ] **Step 4: Add stdlib frontmatter parser and registry**
+- [x] **Step 4: Add stdlib frontmatter parser and registry**
 
 Create `src/optimus/skills/registry.py`:
 
@@ -2116,7 +2116,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 5: Run registry tests**
+- [x] **Step 5: Run registry tests**
 
 Run:
 
@@ -2126,7 +2126,7 @@ pytest tests/unit/skills/test_registry.py -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Local checkpoint**
+- [x] **Step 6: Local checkpoint**
 
 Run:
 
@@ -2153,7 +2153,7 @@ git commit -m "Add curated workflow skill registry."
 - Create: `tests/unit/skills/test_invocation.py`
 - Create: `tests/integration/skills/test_skill_guardrail_flow.py`
 
-- [ ] **Step 1: Write failing invocation tests**
+- [x] **Step 1: Write failing invocation tests**
 
 Create `tests/unit/skills/test_invocation.py`:
 
@@ -2268,7 +2268,7 @@ def test_skill_cannot_override_user_deny_rules(tmp_path):
     assert result.rule_id == "shell.destructive.rm_rf"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -2278,7 +2278,7 @@ pytest tests/unit/skills/test_invocation.py tests/integration/skills/test_skill_
 
 Expected: FAIL because `optimus.skills.invocation` does not exist.
 
-- [ ] **Step 3: Add skill invocation policy**
+- [x] **Step 3: Add skill invocation policy**
 
 Create `src/optimus/skills/invocation.py`:
 
@@ -2400,7 +2400,7 @@ class SkillInvocationPolicy:
         )
 ```
 
-- [ ] **Step 4: Export invocation types and run tests**
+- [x] **Step 4: Export invocation types and run tests**
 
 Update `src/optimus/skills/__init__.py`:
 
@@ -2431,7 +2431,7 @@ pytest tests/unit/skills/test_invocation.py tests/integration/skills/test_skill_
 
 Expected: PASS.
 
-- [ ] **Step 5: Local checkpoint**
+- [x] **Step 5: Local checkpoint**
 
 Run:
 
@@ -2461,7 +2461,7 @@ git commit -m "Enforce skill trust and tool invocation policy."
 - Modify: `tests/unit/loops/test_controller.py`
 - Modify: `tests/unit/skills/test_invocation.py`
 
-- [ ] **Step 1: Write failing telemetry tests**
+- [x] **Step 1: Write failing telemetry tests**
 
 Append to `tests/unit/telemetry/test_events.py`:
 
@@ -2527,7 +2527,7 @@ def test_skill_selection_event_serializes_match_reasons():
     assert encoded["matched_reasons"] == ["description", "glob:tests/**/*.py"]
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -2537,7 +2537,7 @@ pytest tests/unit/telemetry/test_events.py::test_goal_loop_event_serializes_stop
 
 Expected: FAIL because telemetry event kinds/factories do not exist.
 
-- [ ] **Step 3: Add telemetry event factories**
+- [x] **Step 3: Add telemetry event factories**
 
 In `src/optimus/telemetry/events.py`, update `TelemetryEventKind`:
 
@@ -2634,7 +2634,7 @@ Add factories to `TelemetryEvent`:
         )
 ```
 
-- [ ] **Step 4: Thread optional event sinks**
+- [x] **Step 4: Thread optional event sinks**
 
 Update `GoalLoopController.__init__()` in `src/optimus/loops/controller.py`:
 
@@ -2776,7 +2776,7 @@ matches = registry.match(
 )
 ```
 
-- [ ] **Step 5: Run telemetry and integration tests**
+- [x] **Step 5: Run telemetry and integration tests**
 
 Run:
 
@@ -2786,7 +2786,7 @@ pytest tests/unit/telemetry/test_events.py tests/unit/loops/test_controller.py t
 
 Expected: PASS.
 
-- [ ] **Step 6: Local checkpoint**
+- [x] **Step 6: Local checkpoint**
 
 Run:
 
@@ -2812,7 +2812,7 @@ git commit -m "Record loop and skill workflow telemetry."
 - Optional modify: `tests/fixtures/golden_tasks/phase1_golden_tasks.json`
 - Optional modify: `tests/unit/golden/test_tasks.py`
 
-- [ ] **Step 1: Update README with Plan 9 operator contract**
+- [x] **Step 1: Update README with Plan 9 operator contract**
 
 Add a concise section to `README.md`:
 
@@ -2836,7 +2836,7 @@ are blocked in Agent mode, and a skill's `allowed_tools` list can only narrow
 tool use. It cannot override project or user deny rules.
 ```
 
-- [ ] **Step 2: Decide whether to add a golden fixture**
+- [x] **Step 2: Decide whether to add a golden fixture**
 
 Inspect the existing golden task schema in `tests/fixtures/golden_tasks/phase1_golden_tasks.json` and `src/optimus/golden/tasks.py`. The current golden runner validates an ordered `expected_tools` trajectory and consumes harness results; a schema-valid fixture without a matching harness scenario/result will fail golden tests and release-gate evaluation.
 
@@ -2864,7 +2864,7 @@ It is not added to `phase1_golden_tasks.json` until the golden schema can assert
 loop stop reasons and skill trust decisions directly.
 ```
 
-- [ ] **Step 3: Run docs and golden-adjacent tests**
+- [x] **Step 3: Run docs and golden-adjacent tests**
 
 Run:
 
@@ -2874,7 +2874,7 @@ pytest tests/unit/golden tests/unit/loops tests/unit/skills tests/integration/lo
 
 Expected: PASS.
 
-- [ ] **Step 4: Local checkpoint**
+- [x] **Step 4: Local checkpoint**
 
 Run:
 
@@ -2900,7 +2900,7 @@ git commit -m "Document bounded loops and workflow skills."
 - Verify: `src/optimus/tools`
 - Verify: `src/optimus/telemetry/events.py`
 
-- [ ] **Step 1: Run Plan 9 unit tests**
+- [x] **Step 1: Run Plan 9 unit tests**
 
 Run:
 
@@ -2910,7 +2910,7 @@ pytest tests/unit/loops tests/unit/skills -v
 
 Expected: PASS.
 
-- [ ] **Step 2: Run guardrail and tool regression tests**
+- [x] **Step 2: Run guardrail and tool regression tests**
 
 Run:
 
@@ -2920,7 +2920,7 @@ pytest tests/unit/guardrails tests/unit/tools tests/integration/guardrails -v
 
 Expected: PASS.
 
-- [ ] **Step 3: Run Plan 9 integration tests**
+- [x] **Step 3: Run Plan 9 integration tests**
 
 Run:
 
@@ -2930,7 +2930,7 @@ pytest tests/integration/loops tests/integration/skills -v
 
 Expected: PASS.
 
-- [ ] **Step 4: Run telemetry regression tests**
+- [x] **Step 4: Run telemetry regression tests**
 
 Run:
 
@@ -2940,7 +2940,7 @@ pytest tests/unit/telemetry tests/integration/telemetry -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Run focused coverage gate**
+- [x] **Step 5: Run focused coverage gate**
 
 Run:
 
@@ -2950,7 +2950,7 @@ pytest tests/unit/loops tests/unit/skills tests/unit/guardrails tests/unit/tools
 
 Expected: PASS with coverage >= 80 for affected production packages.
 
-- [ ] **Step 6: Run full package gate if the environment has all dev dependencies**
+- [x] **Step 6: Run full package gate if the environment has all dev dependencies**
 
 Run:
 
@@ -2960,17 +2960,18 @@ pytest --cov=optimus --cov-branch --cov-report=term-missing -v
 
 Expected: PASS with aggregate Python production-code coverage >= 80. If the local environment lacks a dependency such as `confusable_homoglyphs`, report the exact import error and the narrower passing gates instead of claiming full-suite success.
 
-- [ ] **Step 7: Run release gate as non-blocking evidence if Plan 8.5 is merged**
+- [x] **Step 7: Run release gate CLI and integration test**
 
 Run with provider keys cleared and only Optimus credentials present:
 
 ```bash
-python tools/run_phase1_release_gate.py --golden-results reports/phase1-golden-results.json
+pytest tests/integration/release/test_phase1_release_gate_cli.py -v
+python tools/run_phase1_release_gate.py --golden-results <path-to-matching-results.json> --credential-scan-root <tmp> --skip-command-gates-for-test
 ```
 
-Expected: PASS only when Plan 8.5 release gates, golden task results, one-key scan, unit/integration, coverage, and diff checks all pass. If no real Optimus-only golden result JSON exists yet, report this as "not run - staging Gateway E2E evidence still deferred" rather than failing Plan 9 implementation verification.
+Expected: PASS. The release CLI must be exercised by the integration test, not deferred. On Windows under pytest, `subprocess.run(..., capture_output=True)` can raise `OSError: [WinError 6] The handle is invalid` when stdio is captured; the integration test uses file-backed stdout/stderr plus `stdin=subprocess.DEVNULL`, and adds an in-process `runpy` smoke test. The CLI defaults `--python-executable` to `sys.executable` for reliable subprocess gates. A real Optimus-only golden results JSON from Plan 8.5 staging remains optional release evidence; the CLI test synthesizes matching fixture results instead.
 
-- [ ] **Step 8: Check diff hygiene**
+- [x] **Step 8: Check diff hygiene**
 
 Run:
 
@@ -2981,14 +2982,9 @@ git diff --check
 
 Expected: only intentional Plan 9 files are modified or added. Pre-existing `.idea`, `.claude`, `.cursor`, or other unrelated noise remains unstaged and untouched.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
-Only if explicitly approved:
-
-```bash
-git add src/optimus/loops src/optimus/skills src/optimus/telemetry/events.py src/optimus/telemetry/serialization.py src/optimus/telemetry/subjects.py src/optimus/telemetry/redaction.py src/optimus/guardrails/pre_tool.py tests/unit/loops tests/unit/skills tests/integration/loops tests/integration/skills tests/unit/telemetry/test_events.py tests/unit/telemetry/test_serialization.py README.md
-git commit -m "Add bounded goal loops and curated workflow skills."
-```
+Per-task commits were used throughout Plan 9; the aggregate commit below is optional and was not required for sign-off.
 
 ## Deferred Decisions and Follow-Ups
 
@@ -2997,6 +2993,7 @@ git commit -m "Add bounded goal loops and curated workflow skills."
 - **Loop persistence backend:** this plan starts with in-memory and JSONL ledgers. Redis-backed loop progress can be added later only after retention, key schema, and high-cardinality policy are specified.
 - **Skill repository location:** this plan supports loading from explicit paths. A repo-wide default location such as `.optimus/skills` or `docs/skills` should be decided after the first trusted skills are authored and reviewed.
 - **Golden schema for loop/skill assertions:** if the current golden task schema cannot assert stop reasons and skill trust decisions directly, defer fixture-level golden coverage until the schema can represent those outcomes honestly.
+- **Release CLI on Windows:** integration tests must not use pytest-captured `capture_output=True` for the release gate subprocess; use file-backed pipes or in-process `runpy` instead. Keep `--python-executable` defaulted to `sys.executable`.
 
 ## Self-Review
 
