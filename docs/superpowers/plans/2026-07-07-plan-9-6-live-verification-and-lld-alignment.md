@@ -132,9 +132,8 @@ Surfaces that must all share this one implementation (`src/optimus/acp/preflight
 **Files:** `pyproject.toml`, `tests/conftest.py`, `src/optimus/acp/preflight.py`,
 `tests/unit/acp/test_preflight.py`
 
-**Adopted draft live tests (regularized from Plan 9.5 lane-crossing, pending L3/L4 alignment):**
+**Adopted draft live tests (regularized from Plan 9.5 lane-crossing, pending L4 alignment):**
 
-- `tests/integration/acp/test_bootstrap_live_redis.py` — draft for Task L3
 - `tests/integration/acp/test_server_stream_live_redis.py` — draft for Task L4
 
 These files now use `tests/conftest.py` fail-loud fixtures (`pytest.fail()`, not
@@ -200,6 +199,10 @@ existing `RedisTelemetryAdapter` with a real `redis.asyncio` client:
 - All keys under the `redis_key_namespace` prefix pattern; teardown deletes them.
 
 ## Task L3: Live Redis Bootstrap Tests
+
+**Status:** Implemented (2026-07-07). `tests/integration/acp/test_bootstrap_live_redis.py` aligned to
+spec (live sentinel round-trip, unreachable port fail-fast, password URL rejection). Verify with
+`pytest tests/integration/acp/test_bootstrap_live_redis.py -m requires_redis -v` after L2 env setup.
 
 **File:** `tests/integration/acp/test_bootstrap_live_redis.py` (marker: `requires_redis`)
 

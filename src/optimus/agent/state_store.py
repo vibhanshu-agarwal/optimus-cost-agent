@@ -133,7 +133,19 @@ class RedisAgentStateStore:
             return None
 
     def ping(self) -> None:
-        self._client.ping()
+        try:
+            self._client.ping()
+        except ConnectionError:
+            raise
+        except OSError as exc:
+            raise ConnectionError(str(exc)) from exc
+        except Exception as exc:
+            if type(exc).__module__.startswith("redis") and type(exc).__name__ in {
+                "ConnectionError",
+                "TimeoutError",
+            }:
+                raise ConnectionError(str(exc)) from exc
+            raise
 
 
 def validate_redis_url(url: str) -> str:
