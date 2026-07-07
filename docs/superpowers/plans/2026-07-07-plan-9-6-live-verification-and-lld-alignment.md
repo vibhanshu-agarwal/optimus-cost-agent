@@ -235,6 +235,12 @@ replay. Verify with
 
 ## Task L5: Live Gateway Tests
 
+**Blocked on:** `docs/superpowers/plans/2026-07-07-local-optimus-gateway-service.md`. No Optimus
+Gateway backend exists to issue real credentials against — L5's tests are implemented but were last
+verified against fake gateway credentials (correct for L1-L4/L9, where Redis is the dependency under
+test, but not sufficient here, where the model itself is). The local-gateway plan builds the missing
+piece; re-run L5 against it once that lands before treating this task's live tier as proven.
+
 **File:** `tests/integration/gateway/test_gateway_live.py` (marker: `requires_gateway`)
 
 - One minimal real `GatewayClient.create_response()` call: assert non-empty `response_id`,
@@ -244,6 +250,12 @@ replay. Verify with
   prompt. Acceptable outcomes: parsed directives, or `FAILED/UNPARSEABLE_PLAN`. Both are recorded;
   `UNPARSEABLE_PLAN` on the first attempt triggers exactly one retry, then the test fails WITH the
   raw model output attached — that failure is a prompt-contract finding, never to be papered over.
+- Functional correctness (`test_live_agent_writes_working_calculator`): real `AgentRunner` +
+  `build_agent_runner_for_harness` equivalent, model `claude-haiku`, pinned calculator task prompt,
+  approve plan, verify `calculator.py` by subprocess execution (not `exec()`/`import` in-process).
+  Assert `add(2,3)`, `subtract(10,4)`, `multiply(3,4)`, `divide(10,2)` with `timeout=10`. On any
+  failure, attach generated `calculator.py` content. No retry on this test — one call, one verdict.
+  Same `OPTIMUS_LIVE_MAX_COST_USD` cap (default `0.25`).
 
 ## Task L6: E2E Spawned Agent (Keystone)
 
