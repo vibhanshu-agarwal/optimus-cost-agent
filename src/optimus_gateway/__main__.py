@@ -19,24 +19,23 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
-    if args.bind_host is not None:
+    if args.bind_host is not None or args.port is not None:
         config = GatewayServiceConfig(
-            bind_host=args.bind_host,
-            bind_port=config.bind_port,
+            bind_host=args.bind_host or config.bind_host,
+            bind_port=args.port if args.port is not None else config.bind_port,
             shared_secret=config.shared_secret,
-            anthropic_api_key=config.anthropic_api_key,
-        )
-    if args.port is not None:
-        config = GatewayServiceConfig(
-            bind_host=config.bind_host,
-            bind_port=args.port,
-            shared_secret=config.shared_secret,
-            anthropic_api_key=config.anthropic_api_key,
+            provider=config.provider,
+            provider_api_key=config.provider_api_key,
+            base_url=config.base_url,
         )
 
     server = serve_gateway(config=config)
     host, port = server.server_address
-    print(f"optimus local gateway listening on http://{host}:{port}", flush=True)
+    print(
+        f"optimus local gateway listening on http://{host}:{port} "
+        f"(provider={config.provider})",
+        flush=True,
+    )
     try:
         server.serve_forever()
     except KeyboardInterrupt:

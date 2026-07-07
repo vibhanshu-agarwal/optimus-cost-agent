@@ -233,11 +233,31 @@ OPTIMUS_API_KEY=<shared-secret-you-generate>
 ```
 
 Run the local gateway stub in a **separate shell** with the real provider key on the gateway
-process only:
+process only. **OpenRouter is the default** (`OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter`); OpenAI
+direct and Anthropic-native are also supported.
 
 ```bash
-export ANTHROPIC_API_KEY=<your-anthropic-key>
+export OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter
+export OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=<your-openrouter-key>
 export OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=<same shared secret as OPTIMUS_API_KEY above>
+python -m optimus_gateway
+```
+
+OpenAI direct:
+
+```bash
+export OPTIMUS_LOCAL_GATEWAY_PROVIDER=openai
+export OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=<your-openai-key>
+export OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=<shared-secret>
+python -m optimus_gateway
+```
+
+Anthropic-native (secondary path):
+
+```bash
+export OPTIMUS_LOCAL_GATEWAY_PROVIDER=anthropic
+export ANTHROPIC_API_KEY=<your-anthropic-key>
+export OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=<shared-secret>
 python -m optimus_gateway
 ```
 
