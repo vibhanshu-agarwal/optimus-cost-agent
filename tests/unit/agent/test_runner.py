@@ -4,6 +4,7 @@ from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunStatus
 from optimus.agent.runner import AgentRunner
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.runtime.modes import ExecutionMode
+from optimus.telemetry.events import TelemetryEventKind
 
 
 class FakeGatewayClient:
@@ -143,3 +144,28 @@ def test_agent_mode_terminates_when_gateway_cost_exceeds_budget(tmp_path):
     assert result.stop_reason == "BUDGET_EXHAUSTED"
     assert result.mutation_count == 0
     assert tuple(call.tool_name for call in result.tool_calls) == ("file_reader",)
+
+
+def test_agent_run_emits_telemetry_at_final_boundary(tmp_path):
+    target = tmp_path / "src" / "example.py"
+    target.parent.mkdir()
+    target.write_text("def f():\n    return 1\n", encoding="utf-8")
+    events: list = []
+    runner = AgentRunner(
+        gateway_client=FakeGatewayClient("READ src/example.py\nExplain the function."),
+        model="glm-5.2",
+        event_sink=events.append,
+    )
+
+    runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Explain a small function",
+            execution_mode=ExecutionMode.PLAN,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert events[-1].kind is TelemetryEventKind.AGENT_RUN
+    assert events[-1].payload["status"] == "completed"
+    assert events[-1].payload["tool_names"] == ("file_reader",)
