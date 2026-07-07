@@ -141,6 +141,8 @@ def _mode_decision(request: PermissionRequest) -> PermissionDecision | None:
             return _deny("mode.plan_chat.no_shell", "Plan/Chat mode cannot execute shell commands", PermissionLayer.MODE)
         if request.tool_surface in {ToolSurface.FILE_WRITE, ToolSurface.SHADOW_APPLY, ToolSurface.WEB, ToolSurface.MCP}:
             return _deny("mode.plan_chat.no_side_effects", "Plan/Chat mode cannot perform side effects", PermissionLayer.MODE)
+        if request.tool_surface is ToolSurface.FILE_READ:
+            return None
     if request.execution_mode is not ExecutionMode.AGENT:
         return _deny("mode.unknown", f"unknown execution mode: {request.execution_mode}", PermissionLayer.MODE)
     return None
