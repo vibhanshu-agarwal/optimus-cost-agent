@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import time
 import uuid
+from decimal import Decimal
 
 import pytest
 
@@ -14,31 +16,79 @@ from tests.conftest import FakeGatewayClient
 
 pytestmark = pytest.mark.requires_redis
 
+_MULTILINE_PLAN_TEXT = (
+    "WRITE example.py\n"
+    "def f():\n"
+    '    """Return one."""\n'
+    "    return 1\n"
+    "\n"
+    "WRITE notes.md\n"
+    "line two\n"
+    "line three"
+)
 
-def test_live_redis_store_roundtrips_plan_record(live_redis_store):
+
+def _plan_keys_for_run(client: object, run_id: str) -> set[str]:
+    return set(client.scan_iter(match=f"agent:plan:{run_id}*"))
+
+
+def test_live_redis_store_roundtrips_plan_record_with_full_fidelity(live_redis_store):
     store, run_id = live_redis_store
-    from decimal import Decimal
-
     record = AgentPlanRecord(
         run_id=run_id,
-        session_id="session-1",
-        task="Add a docstring",
-        execution_mode=ExecutionMode.AGENT,
+        session_id=None,
+        task="Add a docstring with fidelity checks",
+        execution_mode=ExecutionMode.PLAN,
         workspace_root="/repo",
-        plan_hash="hash-live-1",
-        plan_text="WRITE example.py\ncontent",
-        gateway_request_id="gw-live-1",
+        plan_hash="hash-live-fidelity",
+        plan_text=_MULTILINE_PLAN_TEXT,
+        gateway_request_id="gw-live-fidelity",
         model="glm-5.2",
         provider="glm",
-        cost_usd=Decimal("0.002"),
+        cost_usd=Decimal("1.23456789"),
         created_at_ms=1_000,
         expires_at_ms=3_601_000,
     )
 
     store.save_plan(record)
 
-    assert store.load_plan(run_id=run_id, plan_hash="hash-live-1") == record
+    loaded = store.load_plan(run_id=run_id, plan_hash="hash-live-fidelity")
+    assert loaded == record
+    assert loaded.session_id is None
+    assert loaded.execution_mode is ExecutionMode.PLAN
+    assert loaded.cost_usd == Decimal("1.23456789")
+    assert loaded.plan_text == _MULTILINE_PLAN_TEXT
     assert store.latest_plan_for_run(run_id=run_id) == record
+
+
+def test_live_redis_plan_expires_after_real_ttl(live_redis_store):
+    _, run_id = live_redis_store
+    redis_url = os.environ["OPTIMUS_REDIS_URL"]
+    short_ttl_store = RedisAgentStateStore.from_url(redis_url, ttl_seconds=1)
+    record = AgentPlanRecord(
+        run_id=run_id,
+        session_id="session-ttl",
+        task="Expire quickly",
+        execution_mode=ExecutionMode.AGENT,
+        workspace_root="/repo",
+        plan_hash="hash-live-ttl",
+        plan_text="WRITE example.py\ncontent",
+        gateway_request_id="gw-live-ttl",
+        model="glm-5.2",
+        provider="glm",
+        cost_usd=Decimal("0.001"),
+        created_at_ms=1_000,
+        expires_at_ms=3_601_000,
+    )
+
+    short_ttl_store.save_plan(record)
+    assert short_ttl_store.load_plan(run_id=run_id, plan_hash="hash-live-ttl") == record
+
+    time.sleep(1.5)
+
+    with pytest.raises(KeyError, match="stored plan not found"):
+        short_ttl_store.load_plan(run_id=run_id, plan_hash="hash-live-ttl")
+    assert short_ttl_store.latest_plan_for_run(run_id=run_id) is None
 
 
 def test_live_agent_runner_replays_plan_from_redis_with_fresh_runner(tmp_path, live_redis_store):
@@ -95,6 +145,35 @@ def test_live_agent_runner_replays_plan_from_redis_with_fresh_runner(tmp_path, l
     assert replay_gateway.calls == []
     assert "Return one" in target.read_text(encoding="utf-8")
     assert "BROKEN SECOND PLAN" not in target.read_text(encoding="utf-8")
+
+
+def test_live_redis_keys_are_namespaced_and_teardown_clears_them(live_redis_store):
+    store, run_id = live_redis_store
+    record = AgentPlanRecord(
+        run_id=run_id,
+        session_id="session-keys",
+        task="Key hygiene",
+        execution_mode=ExecutionMode.AGENT,
+        workspace_root="/repo",
+        plan_hash="hash-live-keys",
+        plan_text="WRITE example.py\ncontent",
+        gateway_request_id="gw-live-keys",
+        model="glm-5.2",
+        provider="glm",
+        cost_usd=Decimal("0.002"),
+        created_at_ms=1_000,
+        expires_at_ms=3_601_000,
+    )
+
+    store.save_plan(record)
+    keys = _plan_keys_for_run(store._client, run_id)
+    assert keys
+    assert all(key.startswith(f"agent:plan:{run_id}") for key in keys)
+
+    for key in store._client.scan_iter(match=f"agent:plan:{run_id}*"):
+        store._client.delete(key)
+
+    assert _plan_keys_for_run(store._client, run_id) == set()
 
 
 def test_live_agent_runner_rejects_approval_when_redis_plan_missing(tmp_path, live_redis_store):
