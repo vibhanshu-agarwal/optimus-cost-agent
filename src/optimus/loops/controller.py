@@ -45,6 +45,12 @@ class GoalLoopController:
         now: Callable[[], datetime] | None = None,
         event_sink: Callable[[TelemetryEvent], None] | None = None,
     ) -> None:
+        """Run bounded goal loops with guarded tools and completion evaluation.
+
+        ``halt_requested`` and ``now`` may be invoked more than once per iteration
+        because stop checks run before and after each turn. Keep both callbacks cheap
+        and idempotent-safe.
+        """
         self._policy = policy
         self._runner = runner
         self._tools = tools

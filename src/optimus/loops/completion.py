@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Protocol
 
 from optimus.gateway.client import GatewayClient
 from optimus.loops.ledger import ProgressLedger
 from optimus.loops.models import CompletionEvaluation, IterationState
+from optimus.telemetry.redaction import redact_for_telemetry
+from optimus.telemetry.subjects import sanitize_workspace_text
 
 
 class DeterministicCompletionPredicate(Protocol):
@@ -30,10 +33,12 @@ class GatewayCompletionEvaluator:
         client: GatewayClient,
         model: str,
         deterministic_predicate: DeterministicCompletionPredicate | None = None,
+        workspace_root: str | Path | None = None,
     ) -> None:
         self._client = client
         self._model = model
         self._deterministic_predicate = deterministic_predicate
+        self._workspace_root = workspace_root
 
     def evaluate(self, state: IterationState, ledger: ProgressLedger) -> CompletionEvaluation:
         if self._deterministic_predicate is not None:
@@ -42,7 +47,7 @@ class GatewayCompletionEvaluator:
                 return deterministic
         response = self._client.create_response(
             model=self._model,
-            input_text=_completion_prompt(state, ledger),
+            input_text=_completion_prompt(state, ledger, workspace_root=self._workspace_root),
             metadata={
                 "purpose": "goal_loop_completion_evaluation",
                 "run_id": state.run_id,
@@ -73,17 +78,42 @@ class GatewayCompletionEvaluator:
         )
 
 
-def _completion_prompt(state: IterationState, ledger: ProgressLedger) -> str:
+def _completion_prompt(
+    state: IterationState,
+    ledger: ProgressLedger,
+    *,
+    workspace_root: str | Path | None,
+) -> str:
     recent = ledger.entries(run_id=state.run_id)[-5:]
     summaries = "\n".join(
-        f"- iteration {entry.iteration}: summary={entry.summary}; failure_signature={entry.failure_signature}; stop_reason={entry.stop_reason}; evidence={entry.evidence}"
+        (
+            f"- iteration {entry.iteration}: "
+            f"summary={_sanitize_prompt_text(entry.summary, workspace_root=workspace_root)}; "
+            f"failure_signature={_sanitize_prompt_text(entry.failure_signature or '', workspace_root=workspace_root)}; "
+            f"stop_reason={entry.stop_reason}; "
+            f"evidence={_sanitize_prompt_evidence(entry.evidence, workspace_root=workspace_root)}"
+        )
         for entry in recent
     )
     return (
         "Evaluate whether the bounded goal loop is complete.\n"
         "Return strict JSON with keys completed, reason, and confidence.\n"
-        f"Goal: {state.goal}\n"
-        f"Completion condition: {state.completion_condition}\n"
+        f"Goal: {_sanitize_prompt_text(state.goal, workspace_root=workspace_root)}\n"
+        f"Completion condition: {_sanitize_prompt_text(state.completion_condition, workspace_root=workspace_root)}\n"
         f"Iterations: {state.iteration}\n"
         f"Recent progress:\n{summaries}\n"
     )
+
+
+def _sanitize_prompt_text(text: str, *, workspace_root: str | Path | None) -> str:
+    return sanitize_workspace_text(text, workspace_root=workspace_root)
+
+
+def _sanitize_prompt_evidence(evidence: dict[str, str], *, workspace_root: str | Path | None) -> dict[str, str]:
+    redacted = redact_for_telemetry(evidence)
+    if not isinstance(redacted, dict):
+        return {}
+    return {
+        str(key): sanitize_workspace_text(str(value), workspace_root=workspace_root)
+        for key, value in redacted.items()
+    }

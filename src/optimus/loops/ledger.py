@@ -7,6 +7,10 @@ continue, stop, or detect stagnation.
 
 In short: ProgressLedger is the storage contract; ProgressLedgerEntry is the
 record shape; InMemoryProgressLedger and JsonlProgressLedger are the two backends.
+
+On completion, the controller may append both an outcome row and a stop-reason row
+for the same iteration number. Downstream consumers should treat those as related
+records rather than assuming one ledger row per iteration.
 """
 from __future__ import annotations
 
