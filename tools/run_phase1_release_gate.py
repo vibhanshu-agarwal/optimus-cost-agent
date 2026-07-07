@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from optimus.golden.json_harness import JsonGoldenTaskHarness
@@ -11,7 +12,7 @@ from optimus.release.runner import ReleaseGateRunner
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the Phase 1 Optimus release gate.")
     parser.add_argument("--golden-results", type=Path, help="Path to actual GoldenTaskResult JSON captured from a real Optimus-only run.")
-    parser.add_argument("--python-executable", default="python", help="Python executable used for command gates.")
+    parser.add_argument("--python-executable", default=sys.executable, help="Python executable used for command gates.")
     parser.add_argument("--credential-scan-root", type=Path, default=Path("."), help="Root used for default release credential artifact scans.")
     parser.add_argument("--command-timeout-seconds", type=float, default=600.0, help="Timeout for each subprocess-backed release gate.")
     parser.add_argument("--skip-command-gates-for-test", action="store_true", help=argparse.SUPPRESS)

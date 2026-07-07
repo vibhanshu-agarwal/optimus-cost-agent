@@ -2960,15 +2960,16 @@ pytest --cov=optimus --cov-branch --cov-report=term-missing -v
 
 Expected: PASS with aggregate Python production-code coverage >= 80. If the local environment lacks a dependency such as `confusable_homoglyphs`, report the exact import error and the narrower passing gates instead of claiming full-suite success.
 
-- [x] **Step 7: Run release gate as non-blocking evidence if Plan 8.5 is merged**
+- [x] **Step 7: Run release gate CLI and integration test**
 
 Run with provider keys cleared and only Optimus credentials present:
 
 ```bash
-python tools/run_phase1_release_gate.py --golden-results reports/phase1-golden-results.json
+pytest tests/integration/release/test_phase1_release_gate_cli.py -v
+python tools/run_phase1_release_gate.py --golden-results <path-to-matching-results.json> --credential-scan-root <tmp> --skip-command-gates-for-test
 ```
 
-Expected: PASS only when Plan 8.5 release gates, golden task results, one-key scan, unit/integration, coverage, and diff checks all pass. If no real Optimus-only golden result JSON exists yet, report this as "not run - staging Gateway E2E evidence still deferred" rather than failing Plan 9 implementation verification.
+Expected: PASS. The release CLI must be exercised by the integration test, not deferred. On Windows under pytest, `subprocess.run(..., capture_output=True)` can raise `OSError: [WinError 6] The handle is invalid` when stdio is captured; the integration test uses file-backed stdout/stderr plus `stdin=subprocess.DEVNULL`, and adds an in-process `runpy` smoke test. The CLI defaults `--python-executable` to `sys.executable` for reliable subprocess gates. A real Optimus-only golden results JSON from Plan 8.5 staging remains optional release evidence; the CLI test synthesizes matching fixture results instead.
 
 - [x] **Step 8: Check diff hygiene**
 
@@ -2981,14 +2982,9 @@ git diff --check
 
 Expected: only intentional Plan 9 files are modified or added. Pre-existing `.idea`, `.claude`, `.cursor`, or other unrelated noise remains unstaged and untouched.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
-Only if explicitly approved:
-
-```bash
-git add src/optimus/loops src/optimus/skills src/optimus/telemetry/events.py src/optimus/telemetry/serialization.py src/optimus/telemetry/subjects.py src/optimus/telemetry/redaction.py src/optimus/guardrails/pre_tool.py tests/unit/loops tests/unit/skills tests/integration/loops tests/integration/skills tests/unit/telemetry/test_events.py tests/unit/telemetry/test_serialization.py README.md
-git commit -m "Add bounded goal loops and curated workflow skills."
-```
+Per-task commits were used throughout Plan 9; the aggregate commit below is optional and was not required for sign-off.
 
 ## Deferred Decisions and Follow-Ups
 
@@ -2997,6 +2993,7 @@ git commit -m "Add bounded goal loops and curated workflow skills."
 - **Loop persistence backend:** this plan starts with in-memory and JSONL ledgers. Redis-backed loop progress can be added later only after retention, key schema, and high-cardinality policy are specified.
 - **Skill repository location:** this plan supports loading from explicit paths. A repo-wide default location such as `.optimus/skills` or `docs/skills` should be decided after the first trusted skills are authored and reviewed.
 - **Golden schema for loop/skill assertions:** if the current golden task schema cannot assert stop reasons and skill trust decisions directly, defer fixture-level golden coverage until the schema can represent those outcomes honestly.
+- **Release CLI on Windows:** integration tests must not use pytest-captured `capture_output=True` for the release gate subprocess; use file-backed pipes or in-process `runpy` instead. Keep `--python-executable` defaulted to `sys.executable`.
 
 ## Self-Review
 
