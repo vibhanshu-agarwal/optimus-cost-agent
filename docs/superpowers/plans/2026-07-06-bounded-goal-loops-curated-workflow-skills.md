@@ -2900,7 +2900,7 @@ git commit -m "Document bounded loops and workflow skills."
 - Verify: `src/optimus/tools`
 - Verify: `src/optimus/telemetry/events.py`
 
-- [ ] **Step 1: Run Plan 9 unit tests**
+- [x] **Step 1: Run Plan 9 unit tests**
 
 Run:
 
@@ -2910,7 +2910,7 @@ pytest tests/unit/loops tests/unit/skills -v
 
 Expected: PASS.
 
-- [ ] **Step 2: Run guardrail and tool regression tests**
+- [x] **Step 2: Run guardrail and tool regression tests**
 
 Run:
 
@@ -2920,7 +2920,7 @@ pytest tests/unit/guardrails tests/unit/tools tests/integration/guardrails -v
 
 Expected: PASS.
 
-- [ ] **Step 3: Run Plan 9 integration tests**
+- [x] **Step 3: Run Plan 9 integration tests**
 
 Run:
 
@@ -2930,7 +2930,7 @@ pytest tests/integration/loops tests/integration/skills -v
 
 Expected: PASS.
 
-- [ ] **Step 4: Run telemetry regression tests**
+- [x] **Step 4: Run telemetry regression tests**
 
 Run:
 
@@ -2940,7 +2940,7 @@ pytest tests/unit/telemetry tests/integration/telemetry -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Run focused coverage gate**
+- [x] **Step 5: Run focused coverage gate**
 
 Run:
 
@@ -2950,7 +2950,7 @@ pytest tests/unit/loops tests/unit/skills tests/unit/guardrails tests/unit/tools
 
 Expected: PASS with coverage >= 80 for affected production packages.
 
-- [ ] **Step 6: Run full package gate if the environment has all dev dependencies**
+- [x] **Step 6: Run full package gate if the environment has all dev dependencies**
 
 Run:
 
@@ -2960,7 +2960,7 @@ pytest --cov=optimus --cov-branch --cov-report=term-missing -v
 
 Expected: PASS with aggregate Python production-code coverage >= 80. If the local environment lacks a dependency such as `confusable_homoglyphs`, report the exact import error and the narrower passing gates instead of claiming full-suite success.
 
-- [ ] **Step 7: Run release gate as non-blocking evidence if Plan 8.5 is merged**
+- [x] **Step 7: Run release gate as non-blocking evidence if Plan 8.5 is merged**
 
 Run with provider keys cleared and only Optimus credentials present:
 
@@ -2970,7 +2970,7 @@ python tools/run_phase1_release_gate.py --golden-results reports/phase1-golden-r
 
 Expected: PASS only when Plan 8.5 release gates, golden task results, one-key scan, unit/integration, coverage, and diff checks all pass. If no real Optimus-only golden result JSON exists yet, report this as "not run - staging Gateway E2E evidence still deferred" rather than failing Plan 9 implementation verification.
 
-- [ ] **Step 8: Check diff hygiene**
+- [x] **Step 8: Check diff hygiene**
 
 Run:
 
