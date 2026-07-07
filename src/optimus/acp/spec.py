@@ -251,9 +251,11 @@ class AcpDuplexAdapter:
         }
         request_task = asyncio.create_task(self._outbound.request("session/request_permission", params))
         await asyncio.sleep(0)
-        if self._active_turns.get(turn.session_id) is turn and hasattr(self._outbound, "requests"):
-            if self._outbound.requests:
+        if self._active_turns.get(turn.session_id) is turn:
+            if hasattr(self._outbound, "requests") and self._outbound.requests:
                 turn.pending_permission_request_id = self._outbound.requests[-1]["id"]
+            elif getattr(self._outbound, "last_outbound_request_id", None) is not None:
+                turn.pending_permission_request_id = self._outbound.last_outbound_request_id
         return await request_task
 
     async def _emit_result_updates(self, *, session_id: str, result: AgentRunResult, planning: bool) -> None:

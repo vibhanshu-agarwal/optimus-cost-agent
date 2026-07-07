@@ -16,7 +16,7 @@ from optimus.acp.errors import (
     success_response,
 )
 from optimus.acp.request_ids import DuplicateRequestId, RequestIdTracker
-from optimus.agent.models import AgentRunRequest
+from optimus.agent.models import AgentRunRequest, AgentRunResult
 from optimus.agent.runner import AgentRunner
 from optimus.evidence.acquisition import EvidenceAcquisitionService
 from optimus.evidence.domain_policy import EvidenceDomainRejected
@@ -75,6 +75,14 @@ class JsonRpcDispatcher:
             workspace_root=workspace_root or Path.cwd(),
             allowed_network_hosts=allowed_network_hosts,
         )
+
+    @property
+    def agent_runner(self) -> AgentRunner | None:
+        return self._agent_runner
+
+    @property
+    def workspace_root(self) -> Path | None:
+        return self._workspace_root
 
     def audit_events(self) -> tuple[ToolInvocationAuditEvent, ...]:
         """Return every guard decision recorded across this dispatcher's lifetime."""
@@ -199,7 +207,7 @@ class JsonRpcDispatcher:
                         error=JsonRpcError(code=INVALID_REQUEST, message="workspace_root outside configured workspace"),
                     )
                 result = self._agent_runner.run(agent_request)
-                return success_response(request_id=request_id, result=result.model_dump(mode="json"))
+                return success_response(request_id=request_id, result=_agent_run_result_payload(result))
             if method == "optimus.mutation.writeFile":
                 params = request.get("params")
                 if not isinstance(params, dict) or not isinstance(params.get("path"), str):
@@ -244,6 +252,15 @@ class JsonRpcDispatcher:
             request_id=request_id,
             error=JsonRpcError(code=METHOD_NOT_FOUND, message=f"method not found: {method}"),
         )
+
+
+def _agent_run_result_payload(result: AgentRunResult) -> dict[str, Any]:
+    payload = result.model_dump(mode="json")
+    payload["total_cost_usd"] = str(result.total_cost_usd)
+    payload["tool_calls"] = [
+        {**tool_call, "cost_usd": str(tool_call["cost_usd"])} for tool_call in payload.get("tool_calls", [])
+    ]
+    return payload
 
 
 def _gateway_usage_payload(usage: GatewayUsage) -> dict[str, Any]:
