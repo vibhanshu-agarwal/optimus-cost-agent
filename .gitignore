@@ -64,6 +64,7 @@ logs/
 *.jsonl
 .cache/
 .local/
+reports/.verify-live-agent-workspace/
 
 # --- IDE / editors ---
 .idea/

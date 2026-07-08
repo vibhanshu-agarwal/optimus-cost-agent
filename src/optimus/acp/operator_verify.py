@@ -33,6 +33,12 @@ DEFAULT_VERIFY_TASK = (
 )
 _DEFAULT_EXAMPLE_SOURCE = "def greet():\n    return 'hello'\n"
 _WALL_CLOCK_TIMEOUT_SECONDS = 120
+_VERIFY_WORKSPACE_DIRNAME = ".verify-live-agent-workspace"
+
+
+def default_verify_workspace_root(project_root: Path | None = None) -> Path:
+    root = project_root or _resolve_project_root()
+    return (root / "reports" / _VERIFY_WORKSPACE_DIRNAME).resolve()
 
 
 def default_live_agent_transcript_path() -> Path:
@@ -68,7 +74,16 @@ class OperatorLiveSessionResult:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Verify the Optimus live agent end to end.")
-    parser.add_argument("--workspace-root", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--workspace-root",
+        type=Path,
+        default=None,
+        help=(
+            "Scratch workspace for the live session (default: "
+            "reports/.verify-live-agent-workspace under the project root). "
+            "The default task creates or mutates example.py inside this directory."
+        ),
+    )
     parser.add_argument("--model", default=None, help="Gateway model override (defaults to OPTIMUS_AGENT_MODEL).")
     parser.add_argument("--task", default=None, help="Task prompt for the live session.")
     parser.add_argument("--plan-only", action="store_true", help="Plan and stop before approval or mutation.")
@@ -88,8 +103,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    workspace = args.workspace_root.resolve()
     project_root = _resolve_project_root()
+    workspace = (args.workspace_root or default_verify_workspace_root(project_root)).resolve()
     model = resolve_agent_model(os.environ, cli_model=args.model)
     task = (args.task or DEFAULT_VERIFY_TASK).strip()
 

@@ -407,10 +407,10 @@ pytest -m requires_redis -v
 pytest -m requires_gateway -v
 pytest -m e2e -v
 
-# 5. Operator sign-off command
-# The default task creates or mutates example.py inside --workspace-root; use a scratch
-# directory (for example /tmp/optimus-verify-workspace) rather than your repo root.
-python tools/verify_live_agent.py --workspace-root .
+# 5. Operator sign-off command (defaults to reports/.verify-live-agent-workspace)
+python tools/verify_live_agent.py
+# Or pass an explicit scratch directory:
+# python tools/verify_live_agent.py --workspace-root /tmp/optimus-verify-workspace
 ```
 
 ### Config check
@@ -497,8 +497,8 @@ replay works on your machine, start Redis and run the live checks:
 docker run --rm -d --name optimus-redis -p 6379:6379 redis:8
 export OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0
 pytest -m requires_redis tests/integration/agent/test_redis_live_agent.py tests/integration/acp/test_bootstrap_live_redis.py tests/integration/acp/test_server_stream_live_redis.py -v
-# Default task creates or mutates example.py in --workspace-root; prefer a scratch directory.
-python tools/verify_live_agent.py --workspace-root .
+# Default uses reports/.verify-live-agent-workspace (gitignored scratch dir).
+python tools/verify_live_agent.py
 ```
 
 Without Redis, `requires_redis` tests are deselected by default (`pyproject.toml` addopts). When you

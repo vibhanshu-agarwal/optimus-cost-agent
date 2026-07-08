@@ -18,12 +18,46 @@ def test_verify_live_agent_module_exposes_required_flags():
     text = Path(operator_verify.__file__).read_text(encoding="utf-8")
 
     assert "--workspace-root" in text
+    assert "default_verify_workspace_root" in text
+    assert "reports/.verify-live-agent-workspace" in text
     assert "--model" in text
     assert "--task" in text
     assert "--plan-only" in text
     assert "--require-manual-approval" in text
     assert "--transcript-path" in text
     assert "default_live_agent_transcript_path" in text
+
+
+def test_default_verify_workspace_root_is_gitignored_scratch_dir(tmp_path):
+    scratch = operator_verify.default_verify_workspace_root(tmp_path)
+    assert scratch == (tmp_path / "reports" / ".verify-live-agent-workspace").resolve()
+
+
+def test_verify_live_agent_defaults_to_scratch_workspace(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("OPTIMUS_GATEWAY_URL", "https://gateway.example")
+    monkeypatch.setenv("OPTIMUS_API_KEY", "opt-test")
+    monkeypatch.setenv("OPTIMUS_REDIS_URL", "redis://127.0.0.1:6379/0")
+    _patch_transcript_path(monkeypatch, tmp_path)
+    monkeypatch.setattr(operator_verify, "_resolve_project_root", lambda: tmp_path)
+
+    observed_workspace: list[Path] = []
+
+    def _passing_checks(environ, **kwargs):
+        observed_workspace.append(kwargs["workspace_root"])
+        return [PreflightCheckResult(name="gateway credentials", passed=True, detail="present")]
+
+    def _fake_session(config, *, environ, transcript, approval_callback=None):
+        observed_workspace.append(config.workspace_root)
+        return OperatorLiveSessionResult(success=True, stop_reason="plan_only", run_id="run-1")
+
+    monkeypatch.setattr(operator_verify, "collect_preflight_checks", _passing_checks)
+    monkeypatch.setattr(operator_verify, "run_operator_live_session", _fake_session)
+
+    exit_code = main(["--plan-only"])
+
+    assert exit_code == 0
+    expected = operator_verify.default_verify_workspace_root(tmp_path)
+    assert observed_workspace == [expected, expected]
 
 
 def test_verify_live_agent_preflight_failure_exits_2(tmp_path, monkeypatch, capsys):

@@ -300,7 +300,8 @@ committed evidence at `reports/plan-9-6-e2e-acp-transcript.json`. Verify with
 
 - Phase 1 — pre-flight: runs all checks from `preflight.py`, prints a PASS/FAIL table per check,
   exits 2 on any failure with the operator action message.
-- Phase 2 — live session: performs the Task L6 flow against `--workspace-root` (default `.`),
+- Phase 2 — live session: performs the Task L6 flow against `--workspace-root` (default
+  `reports/.verify-live-agent-workspace` under the project root),
   writing `reports/plan-9-6-live-agent-transcript.json` and printing a summary: model, prompt
   version, plan hash, approval id, tool trajectory, files changed, total cost USD.
 - Flags: `--workspace-root`, `--model`, `--task` (default docstring task on a generated scratch
@@ -392,8 +393,8 @@ pytest -m requires_redis -v
 pytest -m requires_gateway -v
 pytest -m e2e -v
 
-# 5. Operator sign-off command
-python tools/verify_live_agent.py --workspace-root .
+# 5. Operator sign-off command (defaults to reports/.verify-live-agent-workspace)
+python tools/verify_live_agent.py
 ```
 
 ## Claim → Evidence Table (Definition of Done addendum)

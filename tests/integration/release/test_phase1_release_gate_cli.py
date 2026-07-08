@@ -145,7 +145,8 @@ def test_readme_documents_spawnable_acp_agent_contract():
     assert "plan approval expires after 3600 seconds" in text
     assert "pytest -m requires_redis -v" in text
     assert "python -m optimus.acp --workspace-root . --check-config --strict" in text
-    assert "python tools/verify_live_agent.py --workspace-root ." in text
+    assert "python tools/verify_live_agent.py" in text
+    assert "reports/.verify-live-agent-workspace" in text
 
 
 def test_release_cli_runs_preflight_before_agent_harness():
