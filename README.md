@@ -460,6 +460,15 @@ Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP age
 }
 ```
 
+### Known open defect: Zed panel appears stuck
+
+If Zed shows endless loading after a prompt, the agent is usually waiting on **plan approval**
+(`session/request_permission`) or still planning against the gateway. Subprocess verification
+is green; this is an open Zed HITL integration issue. See **Known Open Defects → Zed HITL**
+in `docs/superpowers/plans/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md` for
+symptoms, causes, and workarounds (`always_allow_external_agent_tools`, workspace-root `"."`,
+preflight, `verify_live_agent.py`).
+
 ### Approval handshake
 
 1. The IDE sends `initialize`, creates a workspace session with `session/new`, and

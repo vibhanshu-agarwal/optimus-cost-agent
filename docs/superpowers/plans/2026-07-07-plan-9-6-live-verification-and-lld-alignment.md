@@ -409,6 +409,46 @@ python tools/verify_live_agent.py --workspace-root .
 | An operator can verify the deliverable alone | `tools/verify_live_agent.py` exit 0 + committed transcript |
 | A real IDE can drive it | Zed session recording/log + workspace diff under `reports/` (HITL) |
 
+## Known Open Defects
+
+### Zed HITL: agent panel appears stuck after `session/prompt` (open)
+
+**Status:** Open (recorded 2026-07-08). Subprocess/e2e and `verify_live_agent.py` flows are
+green; the remaining claim-table row depends on a real Zed session artifact.
+
+**Symptom:** Zed shows a loading indicator indefinitely after sending a prompt (for example
+"Can you help me write a calculator?") with no visible completion, plan text, or error.
+
+**Likely causes (not mutually exclusive):**
+
+1. **Blocked on plan approval** — Agent mode emits `session/request_permission` after planning
+   and keeps `session/prompt` pending until Zed replies. The approval card may be hidden,
+   subtle, or not rendered for custom `agent_servers` entries.
+2. **Workspace mismatch** — `session/new` sends Zed's opened project as `cwd`. If
+   `--workspace-root` does not contain that folder, `session/new` fails; if misconfigured
+   across sibling worktrees, later turns may behave unexpectedly. Use `"."` for
+   `--workspace-root` and open Zed on the same repository folder.
+3. **Infrastructure not ready** — Gateway or Redis down/slow; planning blocks up to the
+   gateway client timeout (~30s) before any permission UI.
+4. **ACP payload shape gap (suspected)** — Optimus `session/request_permission` includes
+   `options` + `metadata` (plan hash/text) but not the ACP v1 `toolCall` object documented at
+   [agentclientprotocol.com](https://agentclientprotocol.com/protocol/v1/tool-calls). Zed may
+   not surface approval UI for non-conformant payloads.
+
+**Workarounds to try:**
+
+- Set `"agent": { "always_allow_external_agent_tools": true }` in Zed settings to auto-approve
+  external ACP permission requests.
+- Align config: open Zed on the target worktree; use `"args": ["-m", "optimus.acp",
+  "--workspace-root", "."]` and the worktree's `.venv` Python.
+- Confirm preflight: `python -m optimus.acp --workspace-root . --check-config --strict`
+  with gateway and Redis running.
+- Smoke without Zed: `python tools/verify_live_agent.py --workspace-root <scratch-dir>`.
+- Start a **new** agent session after config changes; cancel stuck turns with `session/cancel`.
+
+**Follow-up (implementation):** Add ACP-conformant `toolCall` to permission requests; verify
+Zed renders approval UI; capture HITL artifact under `reports/` when green.
+
 ## Execution Order Against In-Flight Work
 
 - L1, L2, and L2A can start immediately (`state_store.py` and `redis_adapter.py` exist).
