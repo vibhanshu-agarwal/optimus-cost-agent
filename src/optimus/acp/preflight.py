@@ -97,18 +97,37 @@ def _require_redis_timeseries(runtime: RedisRuntime) -> None:
 
 
 def _require_gateway_auth(environ: Mapping[str, str]) -> None:
+    from optimus.agent.defaults import resolve_agent_model
     from optimus.config.gateway import OptimusGatewaySettings
     from optimus.gateway.client import GatewayClient
+    from optimus.gateway.errors import GatewayHttpError
 
     settings = OptimusGatewaySettings.from_env(environ)
     client = GatewayClient(settings=settings)
+    probe_model = resolve_agent_model(environ)
+    gateway_url = environ.get("OPTIMUS_GATEWAY_URL", "").strip()
     try:
-        client.create_response(model="glm-5.2", input_text="preflight", metadata={"purpose": "preflight_auth_probe"})
+        client.create_response(
+            model=probe_model,
+            input_text="preflight",
+            metadata={"purpose": "preflight_auth_probe"},
+        )
+    except GatewayHttpError as exc:
+        if exc.status_code in {401, 403}:
+            raise PreflightFailure(exit_code=2, user_message="OPTIMUS_API_KEY was rejected by the gateway.") from exc
+        if exc.status_code > 0:
+            raise PreflightFailure(
+                exit_code=2,
+                user_message=f"Gateway at {gateway_url} rejected the auth probe request: {exc}",
+            ) from exc
+        raise PreflightFailure(
+            exit_code=2,
+            user_message=f"Gateway is not reachable at {gateway_url}. ({exc})",
+        ) from exc
     except Exception as exc:
         message = str(exc)
         if "401" in message or "403" in message:
             raise PreflightFailure(exit_code=2, user_message="OPTIMUS_API_KEY was rejected by the gateway.") from exc
-        gateway_url = environ.get("OPTIMUS_GATEWAY_URL", "")
         raise PreflightFailure(
             exit_code=2,
             user_message=f"Gateway is not reachable at {gateway_url}. ({exc})",

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import re
 import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -13,6 +12,7 @@ from optimus.agent.models import AgentRunRequest, AgentRunResult, AgentRunStatus
 from optimus.agent.prompts import build_agent_planner_input
 from optimus.agent.state_store import AgentPlanRecord, AgentStateStore, InMemoryAgentStateStore
 from optimus.agent.tools import AgentToolbox
+from optimus.agent.workspace_context import gather_workspace_context_for_prompt
 from optimus.gateway.client import GatewayClient
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.loops.completion import DeterministicCompletionEvaluator
@@ -24,9 +24,6 @@ from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import AgentState, AwaitingApproval, RuntimeContext, StateTransition, TransitionValidator
 from optimus.skills.registry import SkillRegistry
 from optimus.telemetry.events import TelemetryEvent
-
-_READ_DIRECTIVE = re.compile(r"^READ\s+(\S+)", re.MULTILINE)
-_WRITE_DIRECTIVE = re.compile(r"^WRITE\s+(\S+)\n([\s\S]*)", re.MULTILINE)
 
 
 class _AgentLoopIterationRunner:
@@ -154,7 +151,8 @@ class AgentRunner:
             return self._run_approved_from_store(request=request, context=context, toolbox=toolbox)
 
         context = self._transition(context, AgentState.PLANNING)
-        planner_input = build_agent_planner_input(request.task)
+        workspace_context = gather_workspace_context_for_prompt(request.workspace_root)
+        planner_input = build_agent_planner_input(request.task, workspace_context=workspace_context)
         response = self._gateway_client.create_response(
             model=self._model,
             input_text=planner_input,
@@ -265,6 +263,15 @@ class AgentRunner:
             if "unsafe TEST directive" in str(exc):
                 return self._unsafe_test_directive_result(request)
             raise
+        write_failure = self._write_execution_failure_if_needed(
+            request=request,
+            plan_text=output_text,
+            tool_calls=tool_calls,
+            total_cost_usd=total_cost_usd,
+            plan_hash=plan_hash,
+        )
+        if write_failure is not None:
+            return write_failure
         self._transition(context, AgentState.COMPLETED)
 
         return self._build_result(
@@ -332,6 +339,15 @@ class AgentRunner:
             if "unsafe TEST directive" in str(exc):
                 return self._unsafe_test_directive_result(request)
             raise
+        write_failure = self._write_execution_failure_if_needed(
+            request=request,
+            plan_text=record.plan_text,
+            tool_calls=tool_calls,
+            total_cost_usd=record.cost_usd,
+            plan_hash=record.plan_hash,
+        )
+        if write_failure is not None:
+            return write_failure
         self._transition(context, AgentState.COMPLETED)
         return self._build_result(
             request=request,
@@ -401,14 +417,17 @@ class AgentRunner:
 
     def _execute_read_directives(
         self,
-        output_text: str,
+        plan_text: str,
         *,
         workspace_root: Path,
         toolbox: AgentToolbox,
     ) -> list[AgentToolCall]:
+        try:
+            directives = parse_agent_plan(plan_text)
+        except AgentDirectiveParseError:
+            return []
         calls: list[AgentToolCall] = []
-        for match in _READ_DIRECTIVE.finditer(output_text):
-            relative_path = match.group(1)
+        for relative_path in directives.read_paths:
             if not self._is_safe_relative_path(relative_path):
                 continue
             _, call = toolbox.read_file(workspace_root / relative_path)
@@ -417,16 +436,19 @@ class AgentRunner:
 
     def _execute_write_directives(
         self,
-        output_text: str,
+        plan_text: str,
         *,
         workspace_root: Path,
         toolbox: AgentToolbox,
     ) -> list[AgentToolCall]:
-        match = _WRITE_DIRECTIVE.match(output_text)
-        if match is None:
+        try:
+            directives = parse_agent_plan(plan_text)
+        except AgentDirectiveParseError:
             return []
-        relative_path = match.group(1)
-        content = match.group(2)
+        if directives.write is None:
+            return []
+        relative_path = directives.write.path
+        content = directives.write.content
         if not self._is_safe_relative_path(relative_path):
             return []
         target = workspace_root / relative_path
@@ -440,6 +462,34 @@ class AgentRunner:
     def _execute_test_directives(self, plan_text: str, *, toolbox: AgentToolbox) -> list[AgentToolCall]:
         directives = parse_agent_plan(plan_text)
         return [toolbox.run_tests(command) for command in directives.tests]
+
+    def _write_execution_failure_if_needed(
+        self,
+        *,
+        request: AgentRunRequest,
+        plan_text: str,
+        tool_calls: list[AgentToolCall],
+        total_cost_usd: Decimal,
+        plan_hash: str | None,
+    ) -> AgentRunResult | None:
+        try:
+            directives = parse_agent_plan(plan_text)
+        except AgentDirectiveParseError:
+            return None
+        if directives.write is None:
+            return None
+        if any(call.tool_name == "write_file" for call in tool_calls):
+            return None
+        return self._build_result(
+            request=request,
+            status=AgentRunStatus.FAILED,
+            final_state="FAILED",
+            output_text=plan_text,
+            tool_calls=tuple(tool_calls),
+            total_cost_usd=total_cost_usd,
+            stop_reason="WRITE_DIRECTIVE_NOT_EXECUTED",
+            plan_hash=plan_hash,
+        )
 
     @staticmethod
     def _is_safe_relative_path(path_text: str) -> bool:

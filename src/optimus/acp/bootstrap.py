@@ -6,6 +6,7 @@ from pathlib import Path
 
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.server import AcpStreamServer
+from optimus.agent.defaults import resolve_agent_model
 from optimus.agent.runner import AgentRunner
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.client import GatewayClient
@@ -13,7 +14,6 @@ from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.redis.runtime import RedisRuntime
 from optimus.telemetry.redis_sink import RedisTelemetryEventSink
 
-_DEFAULT_MODEL = "glm-5.2"
 _DEFAULT_REDIS_URL_HINT = "redis://localhost:6379/0"
 
 
@@ -48,7 +48,7 @@ def build_agent_runner_for_harness(
     state_store = redis_runtime.sync_state_store()
     telemetry_sink = RedisTelemetryEventSink(redis_runtime.telemetry_adapter())
 
-    agent_model = model or environ.get("OPTIMUS_AGENT_MODEL", _DEFAULT_MODEL)
+    agent_model = resolve_agent_model(environ, cli_model=model)
     return AgentRunner(
         gateway_client=gateway_client,
         model=agent_model,

@@ -257,9 +257,16 @@ piece; re-run L5 against it once that lands before treating this task's live tie
   failure, attach generated `calculator.py` content. No retry on this test — one call, one verdict.
   Phase 1 enforces at most one `WRITE` per plan (single-guarded mutation); multi-WRITE impl+test
   pairs are a legitimate Phase 2 consideration — models naturally emit them.
+  Phase 1 feeds capped workspace file content into the planner prompt; Phase 2 two-pass planning
+  (execute READs, feed results back, then plan WRITE) is the architecturally honest follow-on.
   Same `OPTIMUS_LIVE_MAX_COST_USD` cap (default `0.25`).
 
 ## Task L6: E2E Spawned Agent (Keystone)
+
+**Status:** Implemented (2026-07-08). Keystone verified 3/3 consecutive green live runs;
+committed evidence at `reports/plan-9-6-e2e-acp-transcript.json`. Verify with
+`pytest tests/e2e/acp/test_spawned_agent_live.py -m e2e -v` after local gateway, Redis, and
+`OPTIMUS_*` env are up.
 
 **File:** `tests/e2e/acp/test_spawned_agent_live.py` (marker: `e2e`)
 

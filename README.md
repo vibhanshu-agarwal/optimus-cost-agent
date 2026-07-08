@@ -228,7 +228,7 @@ Use **two gitignored files** so agent and gateway secrets never mix:
 
 | File | Loaded by | Purpose |
 |------|-----------|---------|
-| `.env` | your agent shell / launchers | `OPTIMUS_GATEWAY_URL`, `OPTIMUS_API_KEY`, `OPTIMUS_REDIS_URL` |
+| `.env` | your agent shell / launchers | `OPTIMUS_GATEWAY_URL`, `OPTIMUS_API_KEY`, `OPTIMUS_REDIS_URL`, `OPTIMUS_AGENT_MODEL` |
 | `.env.gateway` | gateway launcher only | provider key + `OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET` |
 
 Copy the examples and edit locally (never commit the real files):
@@ -250,7 +250,12 @@ OPTIMUS_PRODUCTION_MODE=false
 OPTIMUS_GATEWAY_URL=http://127.0.0.1:8765
 OPTIMUS_API_KEY=<shared-secret-you-generate>
 OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0
+OPTIMUS_AGENT_MODEL=claude-haiku
 ```
+
+The built-in agent default model is `glm-5.2` (hosted Optimus Gateway). The local gateway
+stub maps `claude-haiku` to the configured provider's economy model, so set
+`OPTIMUS_AGENT_MODEL=claude-haiku` for local development unless you pass `--model` explicitly.
 
 Start the local gateway in a **separate shell** with the provider key on the gateway process
 only. **OpenRouter is the default** (`OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter`); OpenAI

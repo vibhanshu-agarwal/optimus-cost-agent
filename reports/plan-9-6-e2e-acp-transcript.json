@@ -1,0 +1,212 @@
+{
+  "stdio_lines": [
+    {
+      "direction": "outbound",
+      "message": {
+        "id": 1,
+        "jsonrpc": "2.0",
+        "method": "initialize",
+        "params": {
+          "clientCapabilities": {
+            "fs": {
+              "readTextFile": true,
+              "writeTextFile": true
+            },
+            "terminal": true
+          },
+          "clientInfo": {
+            "name": "e2e-live",
+            "version": "1.0.0"
+          },
+          "protocolVersion": 1
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "id": 1,
+        "jsonrpc": "2.0",
+        "result": {
+          "agentCapabilities": {
+            "promptCapabilities": {
+              "audio": false,
+              "embeddedContext": false,
+              "image": false
+            },
+            "sessionCapabilities": {}
+          },
+          "agentInfo": {
+            "name": "optimus",
+            "version": "0.1.0"
+          },
+          "authMethods": [],
+          "protocolVersion": 1
+        }
+      }
+    },
+    {
+      "direction": "outbound",
+      "message": {
+        "id": 2,
+        "jsonrpc": "2.0",
+        "method": "session/new",
+        "params": {
+          "cwd": "C:\\Users\\pc\\AppData\\Local\\Temp\\pytest-of-pc\\pytest-316\\test_spawned_acp_agent_live_do0",
+          "mcpServers": []
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "id": 2,
+        "jsonrpc": "2.0",
+        "result": {
+          "sessionId": "session-b57839d0edc240ceabf69eef116f37aa"
+        }
+      }
+    },
+    {
+      "direction": "outbound",
+      "message": {
+        "id": 3,
+        "jsonrpc": "2.0",
+        "method": "session/prompt",
+        "params": {
+          "prompt": [
+            {
+              "text": "Add a module docstring to `example.py` describing its function. Modify only `example.py`; do not create any other files or tests.",
+              "type": "text"
+            }
+          ],
+          "sessionId": "session-b57839d0edc240ceabf69eef116f37aa"
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "session/update",
+        "params": {
+          "sessionId": "session-b57839d0edc240ceabf69eef116f37aa",
+          "update": {
+            "content": [
+              {
+                "text": "WRITE example.py\n\"\"\"\nModule that provides a simple greeting function.\n\nThis module contains a single function `greet()` which returns a friendly greeting message.\n\nUsage:\n    To use the greeting function, simply import this module and call the `greet()` function.\n\nExample:\n    >>> from example import greet\n    >>> print(greet())\n    hello\n\"\"\"\ndef greet():\n    return 'hello'",
+                "type": "text"
+              }
+            ],
+            "sessionUpdate": "plan"
+          }
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "id": 10000,
+        "jsonrpc": "2.0",
+        "method": "session/request_permission",
+        "params": {
+          "metadata": {
+            "planHash": "b2197607923eb398db4d3d87e431af51d6614ab1c9336bab29b9f9080b50a853",
+            "planText": "WRITE example.py\n\"\"\"\nModule that provides a simple greeting function.\n\nThis module contains a single function `greet()` which returns a friendly greeting message.\n\nUsage:\n    To use the greeting function, simply import this module and call the `greet()` function.\n\nExample:\n    >>> from example import greet\n    >>> print(greet())\n    hello\n\"\"\"\ndef greet():\n    return 'hello'",
+            "runId": "session-b57839d0edc240ceabf69eef116f37aa:3"
+          },
+          "options": [
+            {
+              "kind": "allow_once",
+              "metadata": {
+                "planHash": "b2197607923eb398db4d3d87e431af51d6614ab1c9336bab29b9f9080b50a853"
+              },
+              "name": "Approve",
+              "optionId": "approve"
+            },
+            {
+              "kind": "reject_once",
+              "metadata": {
+                "planHash": "b2197607923eb398db4d3d87e431af51d6614ab1c9336bab29b9f9080b50a853"
+              },
+              "name": "Cancel",
+              "optionId": "cancel"
+            }
+          ],
+          "sessionId": "session-b57839d0edc240ceabf69eef116f37aa"
+        }
+      }
+    },
+    {
+      "direction": "outbound",
+      "message": {
+        "id": 10000,
+        "jsonrpc": "2.0",
+        "result": {
+          "metadata": {
+            "approvalId": "e2e-approval-b98670cfdbfe4f0aa2098d42e844aaf8",
+            "planHash": "b2197607923eb398db4d3d87e431af51d6614ab1c9336bab29b9f9080b50a853"
+          },
+          "outcome": {
+            "optionId": "approve",
+            "outcome": "selected"
+          }
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "session/update",
+        "params": {
+          "sessionId": "session-b57839d0edc240ceabf69eef116f37aa",
+          "update": {
+            "sessionUpdate": "tool_call_update",
+            "toolCall": {
+              "content": [
+                {
+                  "text": "read example.py",
+                  "type": "text"
+                }
+              ],
+              "title": "file_reader"
+            }
+          }
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "session/update",
+        "params": {
+          "sessionId": "session-b57839d0edc240ceabf69eef116f37aa",
+          "update": {
+            "sessionUpdate": "tool_call_update",
+            "toolCall": {
+              "content": [
+                {
+                  "text": "wrote example.py",
+                  "type": "text"
+                }
+              ],
+              "title": "write_file"
+            }
+          }
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "id": 3,
+        "jsonrpc": "2.0",
+        "result": {
+          "stopReason": "end_turn"
+        }
+      }
+    }
+  ]
+}

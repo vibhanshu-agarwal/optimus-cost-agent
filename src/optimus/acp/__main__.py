@@ -8,7 +8,7 @@ from pathlib import Path
 
 from optimus.acp.bootstrap import StartupConfigurationError, build_configured_server
 from optimus.acp.preflight import PreflightFailure, run_preflight
-from optimus.acp.server import StdioByteReader, StdioByteWriter
+from optimus.acp.server import StdioByteReader, StdioByteWriter, StdioNdjsonLineReader, StdioNdjsonLineWriter
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -20,6 +20,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--strict",
         action="store_true",
         help="With --check-config, probe gateway authentication in addition to Redis checks.",
+    )
+    parser.add_argument(
+        "--framed",
+        action="store_true",
+        help="Use Content-Length framed JSON-RPC instead of newline-delimited JSON (IDE default is ndjson).",
     )
     return parser.parse_args(argv)
 
@@ -45,7 +50,15 @@ def main(argv: list[str] | None = None) -> int:
     except StartupConfigurationError as exc:
         print(exc.user_message, file=sys.stderr)
         return exc.exit_code
-    asyncio.run(server.serve(StdioByteReader(sys.stdin.buffer), StdioByteWriter(sys.stdout.buffer)))
+    if args.framed:
+        asyncio.run(server.serve(StdioByteReader(sys.stdin.buffer), StdioByteWriter(sys.stdout.buffer)))
+    else:
+        asyncio.run(
+            server.serve_ndjson(
+                StdioNdjsonLineReader(sys.stdin.buffer),
+                StdioNdjsonLineWriter(sys.stdout.buffer),
+            )
+        )
     return 0
 
 

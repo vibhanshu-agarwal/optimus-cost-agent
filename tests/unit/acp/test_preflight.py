@@ -97,3 +97,84 @@ def test_preflight_requires_timeseries_when_requested(monkeypatch):
             },
             require_timeseries=True,
         )
+
+
+def test_preflight_strict_gateway_probe_uses_configured_agent_model(monkeypatch):
+    _patch_runtime(monkeypatch, FakeAsyncRedisClient())
+    captured: dict[str, str] = {}
+
+    class FakeGatewayClient:
+        def __init__(self, *, settings):
+            self.settings = settings
+
+        def create_response(self, *, model: str, input_text: str, metadata=None):
+            captured["model"] = model
+            return object()
+
+    monkeypatch.setattr("optimus.gateway.client.GatewayClient", FakeGatewayClient)
+
+    run_preflight(
+        {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "opt-test",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+            "OPTIMUS_PRODUCTION_MODE": "false",
+            "OPTIMUS_AGENT_MODEL": "claude-haiku",
+        },
+        strict=True,
+    )
+
+    assert captured["model"] == "claude-haiku"
+
+
+def test_preflight_strict_gateway_probe_reports_rejected_request_for_http_4xx(monkeypatch):
+    _patch_runtime(monkeypatch, FakeAsyncRedisClient())
+    from optimus.gateway.errors import GatewayHttpError
+
+    class FakeGatewayClient:
+        def __init__(self, *, settings):
+            self.settings = settings
+
+        def create_response(self, *, model: str, input_text: str, metadata=None):
+            raise GatewayHttpError(400, "unsupported gateway model: glm-5.2")
+
+    monkeypatch.setattr("optimus.gateway.client.GatewayClient", FakeGatewayClient)
+
+    with pytest.raises(PreflightFailure, match="rejected the auth probe request") as exc_info:
+        run_preflight(
+            {
+                "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+                "OPTIMUS_API_KEY": "opt-test",
+                "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+                "OPTIMUS_PRODUCTION_MODE": "false",
+                "OPTIMUS_AGENT_MODEL": "glm-5.2",
+            },
+            strict=True,
+        )
+
+    assert "Gateway is not reachable" not in exc_info.value.user_message
+
+
+def test_preflight_strict_gateway_probe_reports_unreachable_for_network_failure(monkeypatch):
+    _patch_runtime(monkeypatch, FakeAsyncRedisClient())
+    from optimus.gateway.errors import GatewayHttpError
+
+    class FakeGatewayClient:
+        def __init__(self, *, settings):
+            self.settings = settings
+
+        def create_response(self, *, model: str, input_text: str, metadata=None):
+            raise GatewayHttpError(0, "Connection refused")
+
+    monkeypatch.setattr("optimus.gateway.client.GatewayClient", FakeGatewayClient)
+
+    with pytest.raises(PreflightFailure, match="Gateway is not reachable"):
+        run_preflight(
+            {
+                "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+                "OPTIMUS_API_KEY": "opt-test",
+                "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+                "OPTIMUS_PRODUCTION_MODE": "false",
+            },
+            strict=True,
+        )

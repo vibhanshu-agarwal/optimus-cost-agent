@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Protocol
@@ -48,6 +49,24 @@ class StdioByteWriter:
         self._stream.write(data)
 
     async def drain(self) -> None:
+        await asyncio.to_thread(self._stream.flush)
+
+
+class StdioNdjsonLineReader:
+    def __init__(self, stream: object) -> None:
+        self._stream = stream
+
+    async def readline(self) -> bytes:
+        return await asyncio.to_thread(self._stream.readline)
+
+
+class StdioNdjsonLineWriter:
+    def __init__(self, stream: object) -> None:
+        self._stream = stream
+
+    async def write_line(self, message: Mapping[str, Any]) -> None:
+        payload = (json.dumps(message, separators=(",", ":")) + "\n").encode("utf-8")
+        await asyncio.to_thread(self._stream.write, payload)
         await asyncio.to_thread(self._stream.flush)
 
 
@@ -146,15 +165,24 @@ class AcpStreamServer:
         message_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 
         async def read_lines() -> None:
-            while True:
-                line = await reader.readline()
-                if line == b"":
-                    await message_queue.put(None)
-                    return
-                stripped = line.strip()
-                if not stripped:
-                    continue
-                await message_queue.put(json.loads(stripped.decode("utf-8")))
+            try:
+                while True:
+                    line = await reader.readline()
+                    if line == b"":
+                        await message_queue.put(None)
+                        return
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+                    try:
+                        await message_queue.put(json.loads(stripped.decode("utf-8")))
+                    except json.JSONDecodeError as exc:
+                        print(f"optimus.acp: invalid ndjson line: {exc}", file=sys.stderr)
+                        await message_queue.put(None)
+                        return
+            except Exception as exc:
+                print(f"optimus.acp: ndjson reader failed: {exc}", file=sys.stderr)
+                await message_queue.put(None)
 
         async def process_request(message: dict[str, Any]) -> None:
             response = await adapter.handle_client_request(message)
