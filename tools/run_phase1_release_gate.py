@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
+from optimus.acp.bootstrap import StartupConfigurationError, build_agent_runner_for_harness
+from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.agent.golden import AgentGoldenTaskHarness
-from optimus.agent.runner import AgentRunner
-from optimus.config.gateway import OptimusGatewaySettings
-from optimus.gateway.client import GatewayClient
 from optimus.golden.json_harness import JsonGoldenTaskHarness
+from optimus.release.agent_smoke_transcript import PLAN_9_5_SMOKE_TRANSCRIPT_PATH, RecordingAgentRunner, SmokeTranscriptRecorder
 from optimus.release.defaults import PLAN_9_5_REAL_AGENT_TASK_IDS, build_phase1_release_gates
 from optimus.release.runner import ReleaseGateRunner
+
+_AGENT_HARNESS_REDIS_ENV = "OPTIMUS_REDIS_URL"
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,17 +47,42 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+class _TranscriptGoldenHarness:
+    def __init__(self, *, harness: AgentGoldenTaskHarness, recording_runner: RecordingAgentRunner) -> None:
+        self._harness = harness
+        self._recording_runner = recording_runner
+
+    def run(self, task):
+        self._recording_runner.set_task_id(task.task_id)
+        return self._harness.run(task)
+
+
 def main() -> int:
     args = parse_args()
     golden_harness = None
     golden_task_ids = None
+    transcript_recorder: SmokeTranscriptRecorder | None = None
     if args.golden_results is not None:
         golden_harness = JsonGoldenTaskHarness.from_path(args.golden_results)
     elif args.agent_harness:
-        settings = OptimusGatewaySettings.from_env()
-        gateway_client = GatewayClient(settings=settings)
-        agent_runner = AgentRunner(gateway_client=gateway_client, model=args.agent_model)
-        golden_harness = AgentGoldenTaskHarness(runner=agent_runner, workspace_root=Path("."))
+        workspace_root = Path(".").resolve()
+        try:
+            run_preflight(os.environ, workspace_root=workspace_root, require_timeseries=True)
+            base_runner = build_agent_runner_for_harness(
+                environ=os.environ,
+                workspace_root=workspace_root,
+                model=args.agent_model,
+            )
+        except PreflightFailure as exc:
+            print(exc.user_message, file=sys.stderr)
+            return exc.exit_code
+        except StartupConfigurationError as exc:
+            print(exc.user_message, file=sys.stderr)
+            return exc.exit_code
+        transcript_recorder = SmokeTranscriptRecorder(model=args.agent_model)
+        recording_runner = RecordingAgentRunner(base_runner, recorder=transcript_recorder)
+        harness = AgentGoldenTaskHarness(runner=recording_runner, workspace_root=workspace_root)
+        golden_harness = _TranscriptGoldenHarness(harness=harness, recording_runner=recording_runner)
         golden_task_ids = tuple(args.task_id or PLAN_9_5_REAL_AGENT_TASK_IDS)
     gates = build_phase1_release_gates(
         python_executable=args.python_executable,
@@ -65,6 +93,9 @@ def main() -> int:
         command_timeout_seconds=args.command_timeout_seconds,
     )
     report = ReleaseGateRunner(gates=gates).run()
+    if transcript_recorder is not None:
+        # reports/plan-9-5-working-agent-smoke-transcript.json
+        transcript_recorder.write(PLAN_9_5_SMOKE_TRANSCRIPT_PATH)
     print(report.to_json())
     return 0 if report.passed else 1
 

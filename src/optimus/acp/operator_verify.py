@@ -1,0 +1,573 @@
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import time
+import uuid
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from decimal import Decimal
+from pathlib import Path
+
+from optimus.acp.e2e_transcript import PLAN_9_6_LIVE_AGENT_TRANSCRIPT_PATH, E2eAcpTranscriptWriter
+from optimus.acp.ndjson_subprocess_session import LiveSessionError, NdjsonSubprocessSession
+from optimus.acp.preflight import (
+    PreflightCheckResult,
+    collect_preflight_checks,
+    first_preflight_failure,
+    format_preflight_table,
+)
+from optimus.acp.subprocess_env import SubprocessEnvConfigurationError, build_acp_subprocess_env
+from optimus.agent.defaults import resolve_agent_model
+from optimus.agent.directives import AgentDirectiveParseError, parse_agent_plan
+from optimus.agent.prompts import AGENT_PLANNER_PROMPT_VERSION
+from optimus.agent.state_store import RedisAgentStateStore
+from optimus.redis.async_bridge import sync_await
+
+DEFAULT_VERIFY_TASK = (
+    "Add a module docstring to `example.py` describing its function. "
+    "Modify only `example.py`; do not create any other files or tests."
+)
+_DEFAULT_EXAMPLE_SOURCE = "def greet():\n    return 'hello'\n"
+_WALL_CLOCK_TIMEOUT_SECONDS = 120
+_VERIFY_WORKSPACE_DIRNAME = ".verify-live-agent-workspace"
+
+
+def default_verify_workspace_root(project_root: Path | None = None) -> Path:
+    root = project_root or _resolve_project_root()
+    return (root / "reports" / _VERIFY_WORKSPACE_DIRNAME).resolve()
+
+
+def default_live_agent_transcript_path() -> Path:
+    return PLAN_9_6_LIVE_AGENT_TRANSCRIPT_PATH
+
+
+@dataclass(frozen=True)
+class OperatorLiveSessionConfig:
+    workspace_root: Path
+    project_root: Path
+    model: str
+    task: str
+    transcript_path: Path
+    plan_only: bool = False
+    require_manual_approval: bool = False
+    wall_clock_timeout_seconds: int = _WALL_CLOCK_TIMEOUT_SECONDS
+
+
+@dataclass
+class OperatorLiveSessionResult:
+    success: bool
+    failure_message: str = ""
+    model: str = ""
+    prompt_version: str = AGENT_PLANNER_PROMPT_VERSION
+    plan_hash: str = ""
+    approval_id: str | None = None
+    tool_trajectory: list[str] = field(default_factory=list)
+    files_changed: list[str] = field(default_factory=list)
+    total_cost_usd: Decimal = Decimal("0")
+    stop_reason: str = ""
+    run_id: str = ""
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Verify the Optimus live agent end to end.")
+    parser.add_argument(
+        "--workspace-root",
+        type=Path,
+        default=None,
+        help=(
+            "Scratch workspace for the live session (default: "
+            "reports/.verify-live-agent-workspace under the project root). "
+            "The default task creates or mutates example.py inside this directory."
+        ),
+    )
+    parser.add_argument("--model", default=None, help="Gateway model override (defaults to OPTIMUS_AGENT_MODEL).")
+    parser.add_argument("--task", default=None, help="Task prompt for the live session.")
+    parser.add_argument("--plan-only", action="store_true", help="Plan and stop before approval or mutation.")
+    parser.add_argument(
+        "--require-manual-approval",
+        action="store_true",
+        help="Print the plan and wait for operator y/n approval on stdin.",
+    )
+    parser.add_argument(
+        "--transcript-path",
+        type=Path,
+        default=None,
+        help="Write the live-session transcript to this path (default: reports/plan-9-6-live-agent-transcript.json).",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    project_root = _resolve_project_root()
+    workspace = (args.workspace_root or default_verify_workspace_root(project_root)).resolve()
+    model = resolve_agent_model(os.environ, cli_model=args.model)
+    task = (args.task or DEFAULT_VERIFY_TASK).strip()
+
+    checks = collect_preflight_checks(
+        os.environ,
+        workspace_root=workspace,
+        strict=True,
+        require_timeseries=True,
+    )
+    print(format_preflight_table(checks))
+    failed = first_preflight_failure(checks)
+    if failed is not None:
+        print(f"\nPre-flight failed: {failed.detail}", file=sys.stderr)
+        print(_operator_action_message(failed), file=sys.stderr)
+        return 2
+
+    ensure_verify_workspace(workspace)
+    before_snapshot = snapshot_workspace_text_files(workspace)
+    transcript_path = (args.transcript_path or default_live_agent_transcript_path()).resolve()
+    config = OperatorLiveSessionConfig(
+        workspace_root=workspace,
+        project_root=project_root,
+        model=model,
+        task=task,
+        transcript_path=transcript_path,
+        plan_only=args.plan_only,
+        require_manual_approval=args.require_manual_approval,
+    )
+    transcript = E2eAcpTranscriptWriter()
+    try:
+        result = run_operator_live_session(config, environ=os.environ, transcript=transcript)
+    except (LiveSessionError, SubprocessEnvConfigurationError) as exc:
+        transcript.write(config.transcript_path)
+        print(str(exc), file=sys.stderr)
+        return 3
+
+    result.files_changed = changed_workspace_files(before_snapshot, snapshot_workspace_text_files(workspace))
+    result.tool_trajectory = tool_trajectory_from_transcript(transcript)
+    transcript.write(config.transcript_path)
+    print()
+    print(format_session_summary(result))
+    if not result.success:
+        print(result.failure_message, file=sys.stderr)
+        return 3
+    print("PASS: Optimus live agent verification completed.")
+    return 0
+
+
+def ensure_verify_workspace(workspace: Path) -> None:
+    workspace.mkdir(parents=True, exist_ok=True)
+    example = workspace / "example.py"
+    if not example.exists():
+        example.write_text(_DEFAULT_EXAMPLE_SOURCE, encoding="utf-8")
+    if not (workspace / ".git").exists():
+        git_executable = shutil.which("git")
+        if git_executable is None:
+            raise LiveSessionError("git not found on PATH; required to initialize verify workspace")
+        completed = subprocess.run(
+            [git_executable, "init"],
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise LiveSessionError(f"git init failed in workspace: {completed.stderr}")
+
+
+def run_operator_live_session(
+    config: OperatorLiveSessionConfig,
+    *,
+    environ: Mapping[str, str],
+    transcript: E2eAcpTranscriptWriter,
+    approval_callback: Callable[[str], bool] | None = None,
+) -> OperatorLiveSessionResult:
+    redis_url = environ["OPTIMUS_REDIS_URL"].strip()
+    redis_store = RedisAgentStateStore.from_url(redis_url)
+    subprocess_env = build_acp_subprocess_env(operator_environ=environ, project_root=config.project_root)
+    deadline = time.monotonic() + config.wall_clock_timeout_seconds
+    run_ids: set[str] = set()
+    process: subprocess.Popen[str] | None = None
+    session: NdjsonSubprocessSession | None = None
+
+    try:
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "optimus.acp",
+                "--workspace-root",
+                str(config.workspace_root),
+                "--model",
+                config.model,
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=subprocess_env,
+            text=True,
+            bufsize=1,
+        )
+        session = NdjsonSubprocessSession(process=process, transcript=transcript)
+
+        session.send(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": 1,
+                    "clientCapabilities": {
+                        "fs": {"readTextFile": True, "writeTextFile": True},
+                        "terminal": True,
+                    },
+                    "clientInfo": {"name": "verify-live-agent", "version": "1.0.0"},
+                },
+            }
+        )
+        initialize_response = session.wait_for_response(1, deadline=deadline)
+        if initialize_response.get("result", {}).get("protocolVersion") != 1:
+            return _failure("initialize response missing protocolVersion=1")
+
+        session.send(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {"cwd": str(config.workspace_root), "mcpServers": []},
+            }
+        )
+        session_response = session.wait_for_response(2, deadline=deadline)
+        session_id = session_response.get("result", {}).get("sessionId")
+        if not session_id:
+            return _failure("session/new response missing sessionId")
+
+        prompt_response, run_id, outcome = _run_prompt_turn(
+            session=session,
+            session_id=str(session_id),
+            prompt_request_id=3,
+            task=config.task,
+            deadline=deadline,
+            redis_store=redis_store,
+            transcript=transcript,
+            plan_only=config.plan_only,
+            require_manual_approval=config.require_manual_approval,
+            approval_callback=approval_callback,
+        )
+        run_ids.add(run_id)
+
+        if outcome == "UNPARSEABLE_PLAN":
+            first_output = latest_plan_text_from_transcript(transcript)
+            retry_response, retry_run_id, retry_outcome = _run_prompt_turn(
+                session=session,
+                session_id=str(session_id),
+                prompt_request_id=4,
+                task=config.task,
+                deadline=deadline,
+                redis_store=redis_store,
+                transcript=transcript,
+                plan_only=config.plan_only,
+                require_manual_approval=config.require_manual_approval,
+                approval_callback=approval_callback,
+            )
+            run_ids.add(retry_run_id)
+            if retry_outcome == "UNPARSEABLE_PLAN":
+                retry_output = latest_plan_text_from_transcript(transcript)
+                return _failure(
+                    "Model returned UNPARSEABLE_PLAN after one retry.\n\n"
+                    f"First output:\n{first_output}\n\nRetry output:\n{retry_output}"
+                )
+            prompt_response = retry_response
+            run_id = retry_run_id
+
+        if config.plan_only:
+            loaded = redis_store.latest_plan_for_run(run_id=run_id)
+            cost = loaded.cost_usd if loaded is not None else Decimal("0")
+            plan_hash = _plan_hash_from_transcript(transcript) or (loaded.plan_hash if loaded else "")
+            return OperatorLiveSessionResult(
+                success=True,
+                model=config.model,
+                plan_hash=plan_hash,
+                total_cost_usd=cost,
+                stop_reason="plan_only",
+                run_id=run_id,
+            )
+
+        stop_reason = prompt_response.get("result", {}).get("stopReason", "")
+        if stop_reason != "end_turn":
+            return _failure(f"expected stopReason=end_turn, got {stop_reason!r}")
+
+        loaded = redis_store.latest_plan_for_run(run_id=run_id)
+        cost = loaded.cost_usd if loaded is not None else Decimal("0")
+        plan_hash = _plan_hash_from_transcript(transcript) or (loaded.plan_hash if loaded else "")
+        approval_id = _approval_id_from_transcript(transcript)
+        return OperatorLiveSessionResult(
+            success=True,
+            model=config.model,
+            plan_hash=plan_hash,
+            approval_id=approval_id,
+            total_cost_usd=cost,
+            stop_reason=stop_reason,
+            run_id=run_id,
+        )
+    finally:
+        if session is not None:
+            session.close_stdin()
+            session.terminate()
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        for tracked_run_id in run_ids:
+            _delete_plan_keys(redis_store.redis_client, tracked_run_id)
+
+
+def format_session_summary(result: OperatorLiveSessionResult) -> str:
+    return "\n".join(
+        [
+            "Optimus live agent verification summary",
+            f"model: {result.model}",
+            f"prompt_version: {result.prompt_version}",
+            f"plan_hash: {result.plan_hash}",
+            f"approval_id: {result.approval_id or '(none)'}",
+            f"tool_trajectory: {', '.join(result.tool_trajectory) or '(none)'}",
+            f"files_changed: {', '.join(result.files_changed) or '(none)'}",
+            f"total_cost_usd: {result.total_cost_usd}",
+            f"stop_reason: {result.stop_reason}",
+        ]
+    )
+
+
+def snapshot_workspace_text_files(workspace: Path) -> dict[str, str]:
+    files: dict[str, str] = {}
+    for path in sorted(workspace.rglob("*")):
+        if not path.is_file() or ".git" in path.parts:
+            continue
+        try:
+            files[path.relative_to(workspace).as_posix()] = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+    return files
+
+
+def changed_workspace_files(before: Mapping[str, str], after: Mapping[str, str]) -> list[str]:
+    changed: list[str] = []
+    for key in sorted(set(before) | set(after)):
+        if before.get(key) != after.get(key):
+            changed.append(key)
+    return changed
+
+
+def tool_trajectory_from_transcript(transcript: E2eAcpTranscriptWriter) -> list[str]:
+    trajectory: list[str] = []
+    for line in transcript.lines:
+        if line["direction"] != "inbound":
+            continue
+        message = line["message"]
+        if message.get("method") != "session/update":
+            continue
+        update = message.get("params", {}).get("update", {})
+        if update.get("sessionUpdate") != "tool_call_update":
+            continue
+        title = update.get("toolCall", {}).get("title")
+        if title:
+            trajectory.append(str(title))
+    return trajectory
+
+
+def latest_plan_text_from_transcript(transcript: E2eAcpTranscriptWriter) -> str:
+    for line in reversed(transcript.lines):
+        if line["direction"] != "inbound":
+            continue
+        message = line["message"]
+        if message.get("method") != "session/update":
+            continue
+        update = message.get("params", {}).get("update", {})
+        if update.get("sessionUpdate") != "plan":
+            continue
+        blocks = update.get("content", [])
+        texts = [block["text"] for block in blocks if isinstance(block, dict) and block.get("type") == "text"]
+        if texts:
+            return "\n".join(texts)
+    return ""
+
+
+def _run_prompt_turn(
+    *,
+    session: NdjsonSubprocessSession,
+    session_id: str,
+    prompt_request_id: int,
+    task: str,
+    deadline: float,
+    redis_store: RedisAgentStateStore,
+    transcript: E2eAcpTranscriptWriter,
+    plan_only: bool,
+    require_manual_approval: bool,
+    approval_callback: Callable[[str], bool] | None,
+) -> tuple[dict, str, str]:
+    session.send(
+        {
+            "jsonrpc": "2.0",
+            "id": prompt_request_id,
+            "method": "session/prompt",
+            "params": {
+                "sessionId": session_id,
+                "prompt": [{"type": "text", "text": task}],
+            },
+        }
+    )
+
+    permission_request: dict | None = None
+    prompt_response: dict | None = None
+    while time.monotonic() < deadline:
+        message = session.read_next(deadline=deadline)
+        if message is None:
+            continue
+        if message.get("method") == "session/request_permission":
+            permission_request = message
+            break
+        if message.get("id") == prompt_request_id and ("result" in message or "error" in message):
+            prompt_response = message
+            break
+
+    run_id = f"{session_id}:{prompt_request_id}"
+    if permission_request is None:
+        if prompt_response is None:
+            prompt_response = session.wait_for_response(prompt_request_id, deadline=deadline)
+        plan_text = latest_plan_text_from_transcript(transcript)
+        if _directive_parse_outcome(plan_text) == "UNPARSEABLE_PLAN":
+            return prompt_response, run_id, "UNPARSEABLE_PLAN"
+        raise LiveSessionError(
+            "session/prompt completed without permission and without an UNPARSEABLE_PLAN marker.\n"
+            f"response={prompt_response!r}\nplan_text={plan_text!r}"
+        )
+
+    plan_hash = permission_request["params"]["options"][0]["metadata"]["planHash"]
+    run_id = permission_request["params"]["metadata"]["runId"]
+    plan_text = permission_request["params"]["metadata"].get("planText", "")
+
+    plan_keys = _plan_keys_for_run(redis_store.redis_client, run_id)
+    if not plan_keys:
+        raise LiveSessionError(f"expected Redis plan keys for run_id={run_id!r}, found none")
+
+    loaded = redis_store.load_plan(run_id=run_id, plan_hash=plan_hash)
+    if loaded.cost_usd <= Decimal("0"):
+        raise LiveSessionError(f"expected positive gateway-reported plan cost for run_id={run_id!r}")
+
+    if plan_only:
+        return {"result": {"stopReason": "plan_only"}}, run_id, "PARSED"
+
+    approved = _resolve_approval(
+        plan_text=plan_text,
+        require_manual_approval=require_manual_approval,
+        approval_callback=approval_callback,
+    )
+    if not approved:
+        raise LiveSessionError("operator declined plan approval")
+
+    approval_id = f"verify-approval-{uuid.uuid4().hex}"
+    session.send(
+        {
+            "jsonrpc": "2.0",
+            "id": permission_request["id"],
+            "result": {
+                "outcome": {"outcome": "selected", "optionId": "approve"},
+                "metadata": {"approvalId": approval_id, "planHash": plan_hash},
+            },
+        }
+    )
+    prompt_response = session.wait_for_response(prompt_request_id, deadline=deadline)
+    return prompt_response, run_id, "PARSED"
+
+
+def _resolve_approval(
+    *,
+    plan_text: str,
+    require_manual_approval: bool,
+    approval_callback: Callable[[str], bool] | None,
+) -> bool:
+    if approval_callback is not None:
+        return approval_callback(plan_text)
+    if not require_manual_approval:
+        return True
+    print("--- Agent plan (awaiting approval) ---")
+    print(plan_text)
+    print("---")
+    while True:
+        answer = input("Approve this plan? [y/N]: ").strip().lower()
+        if answer in {"y", "yes"}:
+            return True
+        if answer in {"n", "no", ""}:
+            return False
+        print("Please answer y or n.")
+
+
+def _directive_parse_outcome(plan_text: str) -> str:
+    try:
+        parse_agent_plan(plan_text)
+    except AgentDirectiveParseError:
+        return "UNPARSEABLE_PLAN"
+    return "PARSED"
+
+
+def _plan_hash_from_transcript(transcript: E2eAcpTranscriptWriter) -> str:
+    for line in reversed(transcript.lines):
+        if line["direction"] != "inbound":
+            continue
+        message = line["message"]
+        if message.get("method") != "session/request_permission":
+            continue
+        return str(message.get("params", {}).get("metadata", {}).get("planHash", ""))
+    return ""
+
+
+def _approval_id_from_transcript(transcript: E2eAcpTranscriptWriter) -> str | None:
+    for line in reversed(transcript.lines):
+        if line["direction"] != "outbound":
+            continue
+        message = line["message"]
+        if "result" not in message:
+            continue
+        approval_id = message.get("result", {}).get("metadata", {}).get("approvalId")
+        if approval_id:
+            return str(approval_id)
+    return None
+
+
+def _plan_keys_for_run(client: object, run_id: str) -> set[str]:
+    async def _collect() -> set[str]:
+        keys: set[str] = set()
+        async for key in client.scan_iter(match=f"agent:plan:{run_id}*"):
+            keys.add(key)
+        return keys
+
+    return sync_await(_collect())
+
+
+def _delete_plan_keys(client: object, run_id: str) -> None:
+    async def _delete() -> None:
+        async for key in client.scan_iter(match=f"agent:plan:{run_id}*"):
+            await client.delete(key)
+
+    sync_await(_delete())
+
+
+def _operator_action_message(check: PreflightCheckResult) -> str:
+    if check.name == "gateway credentials":
+        return "Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP agent."
+    if check.name == "redis url":
+        return f"Start Redis and set OPTIMUS_REDIS_URL (for example {check.detail})."
+    if check.name == "redis connectivity":
+        return "Start Redis or fix OPTIMUS_REDIS_URL, then rerun verify_live_agent."
+    if check.name == "redis timeseries":
+        return "Use redis:8 or redis/redis-stack-server so TS.* commands are available."
+    if check.name == "gateway auth":
+        return "Fix OPTIMUS_API_KEY or gateway reachability, then rerun verify_live_agent."
+    if check.name == "workspace writable":
+        return "Choose a writable workspace directory for --workspace-root."
+    return check.detail
+
+
+def _resolve_project_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _failure(message: str) -> OperatorLiveSessionResult:
+    return OperatorLiveSessionResult(success=False, failure_message=message)

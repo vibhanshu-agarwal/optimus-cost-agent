@@ -197,7 +197,7 @@ class AcpDuplexAdapter:
                 execution_mode=session.execution_mode,
                 workspace_root=session.cwd,
             )
-            planning_result = self._runner.run(planning_request)
+            planning_result = await asyncio.to_thread(self._runner.run, planning_request)
             await self._emit_result_updates(session_id=session_id, result=planning_result, planning=True)
             if turn.cancelled:
                 return success_response(request_id=request.get("id"), result={"stopReason": "cancelled"})
@@ -220,7 +220,7 @@ class AcpDuplexAdapter:
                     )
                 }
             )
-            approved_result = self._runner.run(approved_request)
+            approved_result = await asyncio.to_thread(self._runner.run, approved_request)
             await self._emit_result_updates(session_id=session_id, result=approved_result, planning=False)
             return success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(approved_result)})
         finally:
@@ -251,9 +251,11 @@ class AcpDuplexAdapter:
         }
         request_task = asyncio.create_task(self._outbound.request("session/request_permission", params))
         await asyncio.sleep(0)
-        if self._active_turns.get(turn.session_id) is turn and hasattr(self._outbound, "requests"):
-            if self._outbound.requests:
+        if self._active_turns.get(turn.session_id) is turn:
+            if hasattr(self._outbound, "requests") and self._outbound.requests:
                 turn.pending_permission_request_id = self._outbound.requests[-1]["id"]
+            elif getattr(self._outbound, "last_outbound_request_id", None) is not None:
+                turn.pending_permission_request_id = self._outbound.last_outbound_request_id
         return await request_task
 
     async def _emit_result_updates(self, *, session_id: str, result: AgentRunResult, planning: bool) -> None:

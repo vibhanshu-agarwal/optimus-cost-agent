@@ -126,3 +126,110 @@ def test_release_cli_accepts_agent_harness_task_filter_text():
     assert "--task-id" in text
     assert "AgentGoldenTaskHarness" in text
     assert "golden_task_ids=golden_task_ids" in text
+
+
+def test_readme_documents_spawnable_acp_agent_contract():
+    text = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "python -m optimus.acp --workspace-root" in text
+    assert "optimus-agent --workspace-root" in text
+    assert "OPTIMUS_REDIS_URL=redis://localhost:6379/0" in text
+    assert "initialize" in text
+    assert "session/new" in text
+    assert "session/prompt" in text
+    assert "session/request_permission" in text
+    assert "agent_servers" in text
+    assert "session/cancel" in text
+    assert "approval_id" in text
+    assert "plan_hash" in text
+    assert "plan approval expires after 3600 seconds" in text
+    assert "pytest -m requires_redis -v" in text
+    assert "python -m optimus.acp --workspace-root . --check-config --strict" in text
+    assert "python tools/verify_live_agent.py" in text
+    assert "reports/.verify-live-agent-workspace" in text
+
+
+def test_release_cli_runs_preflight_before_agent_harness():
+    text = RELEASE_CLI.read_text(encoding="utf-8")
+
+    assert "run_preflight" in text
+    assert "require_timeseries=True" in text
+
+
+def test_release_cli_wires_redis_backed_agent_harness():
+    text = RELEASE_CLI.read_text(encoding="utf-8")
+
+    assert "OPTIMUS_REDIS_URL" in text
+    assert "run_preflight" in text
+    assert "build_agent_runner_for_harness" in text
+    assert "PLAN_9_5_REAL_AGENT_TASK_IDS" in text
+    assert "reports/plan-9-5-working-agent-smoke-transcript.json" in text
+
+
+def test_release_cli_agent_harness_runs_preflight_before_golden_tasks(tmp_path, monkeypatch):
+    preflight_calls: list[bool] = []
+    class FakeRuntime:
+        def sync_state_store(self):
+            return object()
+
+        def telemetry_adapter(self):
+            return object()
+
+    def _fake_preflight(environ, **kwargs):
+        preflight_calls.append(True)
+        return "redis://127.0.0.1:6379/0"
+
+    monkeypatch.setenv("OPTIMUS_GATEWAY_URL", "https://gateway.optimus.ai")
+    monkeypatch.setenv("OPTIMUS_API_KEY", "opt-test")
+    monkeypatch.setenv("OPTIMUS_REDIS_URL", "redis://127.0.0.1:6379/0")
+    monkeypatch.setattr("optimus.acp.preflight.run_preflight", _fake_preflight)
+    monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: FakeRuntime())
+
+    class FakeGatewayClient:
+        def create_response(self, *, model: str, input_text: str, metadata=None):
+            from decimal import Decimal
+
+            from optimus.gateway.models import GatewayResponse, GatewayUsage
+
+            return GatewayResponse(
+                response_id="resp-1",
+                output_text="READ src/example.py\nExplain the function.",
+                gateway_usage=GatewayUsage(
+                    gateway_request_id="gw-1",
+                    provider="glm",
+                    billing_units=1,
+                    cost_usd=Decimal("0.001"),
+                ),
+                raw={"id": "resp-1"},
+            )
+
+    monkeypatch.setattr("optimus.gateway.client.GatewayClient", lambda settings: FakeGatewayClient())
+    monkeypatch.setattr(
+        "optimus.release.defaults.evaluate_golden_task_suite",
+        lambda tasks, harness: type("Report", (), {"passed": True, "failure_summary": ""})(),
+    )
+    transcript_path = tmp_path / "plan-9-5-working-agent-smoke-transcript.json"
+    monkeypatch.setattr(
+        "optimus.release.agent_smoke_transcript.PLAN_9_5_SMOKE_TRANSCRIPT_PATH",
+        transcript_path,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_phase1_release_gate.py",
+            "--agent-harness",
+            "--task-id",
+            "explain-small-function",
+            "--credential-scan-root",
+            str(tmp_path),
+            "--skip-command-gates-for-test",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_path(str(RELEASE_CLI), run_name="__main__")
+
+    assert exc.value.code in {0, 1}
+    assert preflight_calls == [True, True]
+    assert transcript_path.is_file()

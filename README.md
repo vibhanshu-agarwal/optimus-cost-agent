@@ -220,12 +220,107 @@ Keep this clone on `main` for docs, releases, and merging. Do day-to-day feature
 
 ### 2. Configure environment
 
-Create a local `.env` (never commit this file):
+For this project the Optimus Gateway is a **local process you run yourself**, not a hosted
+service that issues credentials. The agent keeps the one-key model: only
+`OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` in the agent environment.
+
+Use **two gitignored files** so agent and gateway secrets never mix:
+
+| File | Loaded by | Purpose |
+|------|-----------|---------|
+| `.env` | your agent shell / launchers | `OPTIMUS_GATEWAY_URL`, `OPTIMUS_API_KEY`, `OPTIMUS_REDIS_URL`, `OPTIMUS_AGENT_MODEL` |
+| `.env.gateway` | gateway launcher only | provider key + `OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET` |
+
+Copy the examples and edit locally (never commit the real files):
 
 ```bash
-OPTIMUS_GATEWAY_URL=https://your-gateway.example
-OPTIMUS_API_KEY=your-optimus-api-key
+cp .env.example .env
+cp .env.gateway.example .env.gateway
 ```
+
+Set the same shared secret in both files:
+
+- `.env` → `OPTIMUS_API_KEY=...`
+- `.env.gateway` → `OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=...`
+
+Agent-side `.env` example:
+
+```bash
+OPTIMUS_PRODUCTION_MODE=false
+OPTIMUS_GATEWAY_URL=http://127.0.0.1:8765
+OPTIMUS_API_KEY=<shared-secret-you-generate>
+OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0
+OPTIMUS_AGENT_MODEL=claude-haiku
+```
+
+The built-in agent default model is `glm-5.2` (hosted Optimus Gateway). The local gateway
+stub maps `claude-haiku` to the configured provider's economy model, so set
+`OPTIMUS_AGENT_MODEL=claude-haiku` for local development unless you pass `--model` explicitly.
+
+Start the local gateway in a **separate shell** with the provider key on the gateway process
+only. **OpenRouter is the default** (`OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter`); OpenAI
+direct and Anthropic-native are also supported.
+
+Git Bash (recommended, per this repo's shell policy in `AGENTS.md`):
+
+```bash
+bash tools/run_local_gateway.sh
+```
+
+PowerShell (fallback):
+
+```powershell
+.\tools\run_local_gateway.ps1
+```
+
+The launchers load `.env.gateway` into the gateway process only. They do not require manual
+`export` commands and do not put provider keys into your interactive shell history.
+
+**Shell caveat — prefer Git Bash on Windows.** The bash launcher loads secrets in a subshell, so
+the parent shell's environment is never touched, even if the gateway crashes or is killed. The
+PowerShell launcher cannot do this: it must set the variables in the current session and restore
+them in a `finally` block. That restore runs on normal exit and Ctrl+C, but if the process is
+hard-killed (window closed, `Stop-Process`), the loaded secrets — including the provider API key —
+remain in that PowerShell session's environment until the window closes. If you must use the
+PowerShell launcher, close that session when you are done with the gateway.
+
+OpenAI direct (set in `.env.gateway`):
+
+```bash
+OPTIMUS_LOCAL_GATEWAY_PROVIDER=openai
+OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=<your-openai-key>
+```
+
+Anthropic-native (secondary path):
+
+```bash
+OPTIMUS_LOCAL_GATEWAY_PROVIDER=anthropic
+ANTHROPIC_API_KEY=<your-anthropic-key>
+```
+
+Live gateway smoke tests also read `.env.gateway`, but only into the gateway **subprocess**
+environment via `dotenv_values()` — the pytest process itself never receives provider keys.
+Default `pytest` deselects `requires_live_gateway`; opt in explicitly when `.env.gateway` is
+configured:
+
+```bash
+pytest tests/integration/optimus_gateway/test_gateway_live_smoke.py -m requires_live_gateway -v
+```
+
+Security: bind stays on loopback (`127.0.0.1` by default). Do not expose this service beyond
+localhost without adding real TLS first.
+
+Smoke-test the wire contract before pytest live tiers:
+
+```bash
+curl -sS http://127.0.0.1:8765/v1/responses \
+  -H "Authorization: Bearer <shared-secret>" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"claude-haiku","input":"Reply with one short word."}'
+```
+
+Hosted/staging gateways still work when `OPTIMUS_PRODUCTION_MODE=true` (default) and
+`OPTIMUS_GATEWAY_URL` points at an `https://` trusted origin.
 
 ### 3. Create a virtual environment
 
@@ -262,6 +357,154 @@ pytest
 ```
 
 See `pyproject.toml` and `AGENTS.md` for the expected stack: `pytest`, `pytest-asyncio`, `pytest-cov`, and `coverage.py`.
+
+## Run The ACP Agent From An IDE
+
+The Optimus ACP agent is a stdio JSON-RPC server. IDEs such as Zed spawn it as an
+`agent_servers` child process, exchange Agent Client Protocol messages over
+newline-delimited JSON, and keep `session/prompt` pending while the agent emits
+`session/update` notifications and outbound `session/request_permission` requests.
+
+### Required environment
+
+```bash
+export OPTIMUS_GATEWAY_URL=https://gateway.optimus.ai
+export OPTIMUS_API_KEY=...
+export OPTIMUS_REDIS_URL=redis://localhost:6379/0
+```
+
+Redis stores approved plans for replay.
+
+- plan approval expires after 3600 seconds
+
+If approval arrives after expiry, the runtime returns `PLAN_NOT_FOUND_OR_EXPIRED`
+and the IDE must ask the user to re-run planning and approve the new plan.
+
+**Plan-text persistence (governance):** stored plan text includes raw file content from
+WRITE bodies. This is a deliberate, bounded exception to the project rule against persisting
+unparsed source code: the plan store is short-TTL operational approval state (the 3600-second
+expiry is the control), keyed by run and plan hash, never indexed or searched by content, and
+exact text is required for replay correctness. The exception does not extend to long-lived or
+indexed Redis structures (vector/structural memory stores), which hold only signatures,
+summaries, and relative paths — never raw source code.
+
+### Operator runbook (live verification)
+
+```bash
+# 1. Start Redis WITH TimeSeries (LLD section 10 requires TS.* commands)
+docker run --rm -d --name optimus-redis -p 6379:6379 redis:8
+
+# 2. Real credentials — no fakes, no placeholders
+export OPTIMUS_GATEWAY_URL=https://gateway.optimus.ai
+export OPTIMUS_API_KEY=<real key>
+export OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0
+
+# 3. Pre-flight
+python -m optimus.acp --workspace-root . --check-config --strict
+
+# 4. Live tiers, in cost order
+pytest -m requires_redis -v
+pytest -m requires_gateway -v
+pytest -m e2e -v
+
+# 5. Operator sign-off command (defaults to reports/.verify-live-agent-workspace)
+python tools/verify_live_agent.py
+# Or pass an explicit scratch directory:
+# python tools/verify_live_agent.py --workspace-root /tmp/optimus-verify-workspace
+```
+
+### Config check
+
+Validate credentials, Redis reachability, and TimeSeries support before the IDE spawns the agent:
+
+```bash
+python -m optimus.acp --workspace-root . --check-config
+python -m optimus.acp --workspace-root . --check-config --strict
+```
+
+`--strict` adds a gateway authentication probe in addition to the default Redis and workspace checks.
+
+### Launch commands
+
+```bash
+python -m optimus.acp --workspace-root .
+```
+
+Console script equivalent:
+
+```bash
+optimus-agent --workspace-root .
+```
+
+If `OPTIMUS_GATEWAY_URL` or `OPTIMUS_API_KEY` is missing, startup fails with:
+
+```text
+Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP agent.
+```
+
+### Zed `agent_servers` example
+
+```json
+{
+  "agent_servers": {
+    "optimus": {
+      "command": "optimus-agent",
+      "args": ["--workspace-root", "."],
+      "env": {
+        "OPTIMUS_GATEWAY_URL": "https://gateway.optimus.ai",
+        "OPTIMUS_API_KEY": "set-in-your-local-environment",
+        "OPTIMUS_REDIS_URL": "redis://localhost:6379/0"
+      }
+    }
+  }
+}
+```
+
+### Known open defect: Zed panel appears stuck
+
+If Zed shows endless loading after a prompt, the agent is usually waiting on **plan approval**
+(`session/request_permission`) or still planning against the gateway. Subprocess verification
+is green; this is an open Zed HITL integration issue. See **Known Open Defects → Zed HITL**
+in `docs/superpowers/plans/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md` for
+symptoms, causes, and workarounds (`always_allow_external_agent_tools`, workspace-root `"."`,
+preflight, `verify_live_agent.py`).
+
+### Approval handshake
+
+1. The IDE sends `initialize`, creates a workspace session with `session/new`, and
+   submits work through `session/prompt`.
+2. While planning runs, `session/prompt` stays pending and the agent emits
+   `session/update` notifications (for example plan and tool-call updates).
+3. When Agent-mode mutation requires approval, the agent sends
+   `session/request_permission` to the IDE with plan text and `plan_hash`.
+4. The IDE shows the plan to the user and replies to the agent's outbound JSON-RPC
+   request with approval metadata containing `approval_id` and the same `plan_hash`.
+5. The runtime replays the stored plan from Redis and does not call the Gateway
+   again for a new plan.
+6. If the user cancels the turn, the IDE sends `session/cancel`; the runtime
+   resolves the pending `session/prompt` with `stopReason="cancelled"`.
+
+Framed Content-Length JSON-RPC methods such as `optimus.agent.run` remain available
+for harnesses and integration tests. IDE integrations should use the ndjson Agent
+Client Protocol flow above.
+
+### Verify with real Redis
+
+Unit and default integration tests use in-memory fakes. To prove Redis-backed plan
+replay works on your machine, start Redis and run the live checks:
+
+```bash
+docker run --rm -d --name optimus-redis -p 6379:6379 redis:8
+export OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0
+pytest -m requires_redis tests/integration/agent/test_redis_live_agent.py tests/integration/acp/test_bootstrap_live_redis.py tests/integration/acp/test_server_stream_live_redis.py -v
+# Default uses reports/.verify-live-agent-workspace (gitignored scratch dir).
+python tools/verify_live_agent.py
+```
+
+Without Redis, `requires_redis` tests are deselected by default (`pyproject.toml` addopts). When you
+explicitly select a live tier (`pytest -m requires_redis`) and the environment is broken, fixtures
+call `pytest.fail()` with the operator action message — silent skips are forbidden.
+The smoke script exits non-zero when Redis is unreachable or approval replay fails.
 
 ## Development worktrees
 

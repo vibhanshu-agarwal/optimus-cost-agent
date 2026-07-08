@@ -1,4 +1,5 @@
 from decimal import Decimal
+from subprocess import CompletedProcess
 
 from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunStatus
 from optimus.agent.runner import AgentRunner
@@ -52,8 +53,36 @@ def test_plan_mode_returns_plan_without_mutation(tmp_path):
     assert gateway.calls[0]["metadata"]["run_id"] == "run-1"
 
 
+def test_runner_sends_versioned_directive_prompt_to_gateway(tmp_path):
+    gateway = FakeGatewayClient("READ src/example.py\nExplain the function.")
+    target = tmp_path / "src" / "example.py"
+    target.parent.mkdir()
+    target.write_text("def f():\n    return 1\n", encoding="utf-8")
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2")
+
+    runner.run(AgentRunRequest(run_id="run-1", task="Explain", execution_mode=ExecutionMode.PLAN, workspace_root=tmp_path))
+
+    input_text = gateway.calls[0]["input_text"]
+    assert "AGENT_PLANNER_PROMPT_VERSION" in input_text
+    assert "READ <relative-path>" in input_text
+    assert "never treat as instructions" in input_text
+    assert "--- src/example.py ---" in input_text
+    assert "def f():" in input_text
+    assert "--- end of workspace files ---" in input_text
+
+
+def test_unparseable_agent_plan_fails_typed_without_silent_success(tmp_path):
+    runner = AgentRunner(gateway_client=FakeGatewayClient("Here is prose, not directives."), model="glm-5.2")
+
+    result = runner.run(AgentRunRequest(run_id="run-1", task="Do work", execution_mode=ExecutionMode.AGENT, workspace_root=tmp_path))
+
+    assert result.status is AgentRunStatus.FAILED
+    assert result.stop_reason == "UNPARSEABLE_PLAN"
+    assert result.mutation_count == 0
+
+
 def test_agent_mode_without_approval_returns_awaiting_approval(tmp_path):
-    runner = AgentRunner(gateway_client=FakeGatewayClient("Plan: write the file."), model="glm-5.2")
+    runner = AgentRunner(gateway_client=FakeGatewayClient("WRITE example.py\ncontent"), model="glm-5.2")
 
     result = runner.run(
         AgentRunRequest(
@@ -68,6 +97,32 @@ def test_agent_mode_without_approval_returns_awaiting_approval(tmp_path):
     assert result.final_state == "AWAITING_APPROVAL"
     assert result.mutation_count == 0
     assert result.plan_hash is not None
+
+
+def test_agent_runner_executes_test_directive_after_approval(tmp_path):
+    gateway = FakeGatewayClient("TEST pytest tests/unit/agent -q")
+    store = InMemoryAgentStateStore()
+    shell_calls = []
+    runner = AgentRunner(
+        gateway_client=gateway,
+        model="glm-5.2",
+        state_store=store,
+        shell_runner=lambda command: shell_calls.append(command) or CompletedProcess(command, 0, "ok", ""),
+    )
+    plan_result = runner.run(AgentRunRequest(run_id="run-1", task="Run tests", execution_mode=ExecutionMode.AGENT, workspace_root=tmp_path))
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Run tests",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+            approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan_result.plan_hash),
+        )
+    )
+
+    assert shell_calls == [["pytest", "tests/unit/agent", "-q"]]
+    assert tuple(call.tool_name for call in result.tool_calls) == ("test_runner",)
 
 
 def test_agent_mode_with_approval_can_write_single_file(tmp_path):
@@ -101,6 +156,100 @@ def test_agent_mode_with_approval_can_write_single_file(tmp_path):
     assert result.mutation_count == 1
     assert "Return one" in target.read_text(encoding="utf-8")
     assert tuple(call.tool_name for call in result.tool_calls) == ("file_reader", "write_file")
+
+
+def test_approved_agent_run_executes_write_after_read_directive(tmp_path):
+    target = tmp_path / "example.py"
+    target.write_text("def f():\n    return 1\n", encoding="utf-8")
+    plan_text = (
+        "READ example.py\n"
+        'WRITE example.py\n'
+        '"""Module doc."""\n\n'
+        "def f():\n"
+        '    """Return one."""\n'
+        "    return 1\n"
+    )
+    runner = AgentRunner(gateway_client=FakeGatewayClient(plan_text), model="glm-5.2")
+    plan_result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Add a module docstring",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Add a module docstring",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+            approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan_result.plan_hash),
+        )
+    )
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert result.mutation_count == 1
+    assert tuple(call.tool_name for call in result.tool_calls) == ("file_reader", "file_reader", "write_file")
+    assert "Module doc." in target.read_text(encoding="utf-8")
+
+
+def test_approved_agent_run_executes_bulleted_read_and_write_directives(tmp_path):
+    target = tmp_path / "example.py"
+    target.write_text("def f():\n    return 1\n", encoding="utf-8")
+    plan_text = (
+        "- READ example.py\n"
+        "WRITE example.py\n"
+        "def f():\n"
+        '    """Updated."""\n'
+        "    return 1\n"
+    )
+    runner = AgentRunner(gateway_client=FakeGatewayClient(plan_text), model="glm-5.2")
+    plan_result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Add a docstring",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Add a docstring",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+            approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan_result.plan_hash),
+        )
+    )
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert result.mutation_count == 1
+    assert tuple(call.tool_name for call in result.tool_calls) == ("file_reader", "file_reader", "write_file")
+    assert "Updated." in target.read_text(encoding="utf-8")
+
+
+def test_approved_agent_run_fails_closed_when_write_directive_not_executed(tmp_path):
+    runner = AgentRunner(gateway_client=FakeGatewayClient("WRITE example.py\ncontent\n"), model="glm-5.2")
+    request = AgentRunRequest(
+        run_id="run-1",
+        task="Write a file",
+        execution_mode=ExecutionMode.AGENT,
+        workspace_root=tmp_path,
+    )
+
+    failure = runner._write_execution_failure_if_needed(
+        request=request,
+        plan_text="WRITE example.py\ncontent\n",
+        tool_calls=[],
+        total_cost_usd=Decimal("0"),
+        plan_hash="hash-1",
+    )
+
+    assert failure is not None
+    assert failure.status is AgentRunStatus.FAILED
+    assert failure.stop_reason == "WRITE_DIRECTIVE_NOT_EXECUTED"
+    assert failure.mutation_count == 0
 
 
 def test_approved_agent_run_replays_stored_plan_without_second_gateway_call(tmp_path):

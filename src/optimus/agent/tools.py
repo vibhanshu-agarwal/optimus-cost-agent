@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 from optimus.agent.models import AgentToolCall
@@ -8,6 +10,7 @@ from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolVer
 from optimus.runtime.modes import GenerationScope
 from optimus.runtime.mutation import MutationForbidden
 from optimus.runtime.state import RuntimeContext
+from optimus.tools.mutation_tools import shell_exec
 from optimus.tools.mutation_tools import write_file as guarded_write_file
 
 
@@ -20,12 +23,14 @@ class AgentToolbox:
         run_id: str,
         session_id: str | None,
         guard: PreToolGuard,
+        shell_runner: Callable[[list[str]], subprocess.CompletedProcess[str]] | None = None,
     ) -> None:
         self._workspace_root = workspace_root.resolve()
         self._context = context
         self._run_id = run_id
         self._session_id = session_id
         self._guard = guard
+        self._shell_runner = shell_runner
 
     @classmethod
     def for_workspace(
@@ -36,6 +41,7 @@ class AgentToolbox:
         run_id: str,
         session_id: str | None = None,
         guard: PreToolGuard | None = None,
+        shell_runner: Callable[[list[str]], subprocess.CompletedProcess[str]] | None = None,
     ) -> "AgentToolbox":
         root = Path(workspace_root).resolve()
         return cls(
@@ -44,6 +50,7 @@ class AgentToolbox:
             run_id=run_id,
             session_id=session_id,
             guard=guard or PreToolGuard.for_workspace(workspace_root=root, allowed_network_hosts=()),
+            shell_runner=shell_runner,
         )
 
     def read_file(self, path: str | Path) -> tuple[str, AgentToolCall]:
@@ -78,5 +85,19 @@ class AgentToolbox:
         return AgentToolCall(
             tool_name="write_file",
             summary=f"wrote {target.relative_to(self._workspace_root).as_posix()}",
+            authorization_outcome="ALLOW",
+        )
+
+    def run_tests(self, command: tuple[str, ...]) -> AgentToolCall:
+        result = shell_exec(
+            command,
+            context=self._context,
+            runner=self._shell_runner,
+            guard=self._guard,
+        )
+        command_text = " ".join(command)
+        return AgentToolCall(
+            tool_name="test_runner",
+            summary=f"ran {command_text} exit={result.returncode}",
             authorization_outcome="ALLOW",
         )

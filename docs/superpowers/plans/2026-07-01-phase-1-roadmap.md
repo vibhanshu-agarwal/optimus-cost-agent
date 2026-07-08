@@ -220,7 +220,33 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 - Operator-friendly startup messages for missing Optimus credentials or missing, unsafe, or unreachable Redis configuration.
 - README launch instructions and smoke checks that prove a running agent deliverable, not only importable code.
 
-**Status:** Plan 9.5 is not complete until the completion plan delivers the running ACP agent contract above. Tasks 1-7 delivered orchestration primitives; the completion plan is mandatory before the operator user story is satisfied end-to-end.
+**Status:** Plan 9.5 is the build plan and is complete when the completion plan's Tasks 0-8 land with their own DoD tests green. Plan 9.5 completion does NOT constitute working-agent sign-off; that gate is owned by Plan 9.6. The smoke-transcript and live-evidence expectations formerly attached to Plan 9.5 have transferred to Plan 9.6.
+
+## Plan 9.6: Live Verification and LLD Alignment
+
+**Plan file:** `docs/superpowers/plans/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md`
+
+**User story:** As the operator, I can verify on my own machine — against a real TimeSeries-capable Redis, real Optimus Gateway credentials, and a real spawned ACP stdio process — that the agent Plan 9.5 built actually works, before anything is signed off.
+
+**Expected deliverables:**
+- Pre-flight checks (`preflight.py`) shared by `--check-config [--strict]`, pytest fixtures, `tools/verify_live_agent.py`, and the release gate: credential presence, Redis PING, RedisTimeSeries capability probe, gateway auth probe, workspace writability — all failing closed with operator action messages.
+- Live test tiers with registered markers: `requires_redis` (live state-store, telemetry, bootstrap, and server-stream tests — no Redis fakes), `requires_gateway` (real model calls, cost-capped), and `e2e` (spawned `python -m optimus.acp` subprocess over real ndjson pipes).
+- LLD v2.38 §10 conformance: live TS.CREATE/TS.ALTER retention tests, `run:{run_id}:metadata` hash contract tests, `redis.asyncio` shared-pool migration, and `RedisTelemetryAdapter` wired into production bootstrap.
+- Committed evidence: `reports/plan-9-6-e2e-acp-transcript.json`, the `verify_live_agent` transcript, the Zed HITL session artifact, and the recorded Task L10 plan-text governance decision.
+
+**Status:** Approved for implementation. Owns the Phase 1 working-agent sign-off gate; Plan 10 does not start before this gate passes.
+
+### Immediate post-PR #30 follow-up (Plan 9.6 closure)
+
+**Reason:** PR #30 provides subprocess/operator proof, but the real-IDE HITL claim remains open.
+
+**Must land next:**
+- ACP `session/request_permission` payload conformance update in `src/optimus/acp/spec.py`: include the ACP v1-required `toolCall` object in addition to the existing approval options/metadata.
+- Update/add protocol tests and transcript assertions so the permission request shape is locked by tests (not only by manual review).
+- Re-run the Zed HITL flow and commit an artifact under `reports/` proving approval UI rendering + successful end-turn completion.
+- Close the Plan 9.6 claim-table row "A real IDE can drive it" only after the artifact is on disk and reviewed.
+
+**Gate reminder:** Until the follow-up above is complete, treat Plan 9.6 as "subprocess/operator proof green, real IDE HITL open."
 
 ## Plan 10 (Tracked, Not Yet Scheduled): Context Window Optimization and Intelligent Selection
 
@@ -258,6 +284,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 10. Plan 8.5: Release-gate hardening and golden-harness wiring.
 11. Plan 9: Bounded loops and curated workflow skills.
 12. Plan 9.5: Agent orchestration and end-to-end coding workflow.
-13. Plan 10: Context window optimization and intelligent selection - tracked, not yet scheduled; starts only once Plan 9.5 task-level agent orchestration and the real golden harness are stable.
+13. Plan 9.6 closure follow-up: ACP `toolCall` permission conformance + real Zed HITL artifact.
+14. Plan 10: Context window optimization and intelligent selection - tracked, not yet scheduled; starts only once Plan 9.5 task-level agent orchestration and the real golden harness are stable.
 
 The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, one-key scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 9.5 composes the Phase 1 primitives into a working local-first coding agent before Plan 10 adds context-window intelligence. Plan 10 stays last regardless: it depends on inputs from Plans 4, 5, 6, 6.5, 7, 9, and 9.5, and its PDF fold-in is explicitly deferred until calibration is accepted.

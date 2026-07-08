@@ -200,3 +200,35 @@ def test_ignore_policy_cannot_be_used_in_production():
             production_mode=True,
             provider_key_policy=ProviderKeyPolicy.IGNORE,
         )
+
+
+def test_non_production_loopback_http_origin_is_trusted():
+    settings = OptimusGatewaySettings(
+        gateway_url="http://127.0.0.1:8765",
+        optimus_api_key="opt_live_abc",
+        production_mode=False,
+    )
+
+    assert settings.validate_trusted_gateway() is None
+
+
+def test_production_rejects_loopback_http_origin():
+    settings = OptimusGatewaySettings(
+        gateway_url="http://127.0.0.1:8765",
+        optimus_api_key="opt_live_abc",
+        production_mode=True,
+    )
+
+    with pytest.raises(ValueError):
+        settings.validate_trusted_gateway()
+
+
+def test_non_production_rejects_non_loopback_http_origin():
+    settings = OptimusGatewaySettings(
+        gateway_url="http://example.com",
+        optimus_api_key="opt_live_abc",
+        production_mode=False,
+    )
+
+    with pytest.raises(ValueError, match="gateway origin not in trusted set"):
+        settings.validate_trusted_gateway()

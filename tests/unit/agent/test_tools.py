@@ -1,4 +1,6 @@
 
+import subprocess
+
 import pytest
 
 from optimus.agent.tools import AgentToolbox
@@ -33,3 +35,19 @@ def test_toolbox_blocks_secret_file_write(tmp_path):
 
     with pytest.raises(PermissionError, match="secret or credential path access is denied"):
         toolbox.write_file(tmp_path / ".env", "OPENAI_API_KEY=local")
+
+
+def test_toolbox_runs_pytest_through_guard(tmp_path):
+    calls = []
+    toolbox = AgentToolbox.for_workspace(
+        workspace_root=tmp_path,
+        context=approved_context(),
+        run_id="run-1",
+        shell_runner=lambda command: calls.append(command) or subprocess.CompletedProcess(command, 0, "1 passed", ""),
+    )
+
+    call = toolbox.run_tests(("pytest", "tests/unit/agent", "-q"))
+
+    assert calls == [["pytest", "tests/unit/agent", "-q"]]
+    assert call.tool_name == "test_runner"
+    assert call.authorization_outcome == "ALLOW"
