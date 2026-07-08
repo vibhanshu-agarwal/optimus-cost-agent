@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -143,8 +144,11 @@ def ensure_verify_workspace(workspace: Path) -> None:
     if not example.exists():
         example.write_text(_DEFAULT_EXAMPLE_SOURCE, encoding="utf-8")
     if not (workspace / ".git").exists():
+        git_executable = shutil.which("git")
+        if git_executable is None:
+            raise LiveSessionError("git not found on PATH; required to initialize verify workspace")
         completed = subprocess.run(
-            ["git", "init"],
+            [git_executable, "init"],
             cwd=workspace,
             capture_output=True,
             text=True,
