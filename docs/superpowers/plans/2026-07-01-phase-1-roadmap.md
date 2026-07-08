@@ -220,7 +220,21 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 - Operator-friendly startup messages for missing Optimus credentials or missing, unsafe, or unreachable Redis configuration.
 - README launch instructions and smoke checks that prove a running agent deliverable, not only importable code.
 
-**Status:** Plan 9.5 is not complete until the completion plan delivers the running ACP agent contract above. Tasks 1-7 delivered orchestration primitives; the completion plan is mandatory before the operator user story is satisfied end-to-end.
+**Status:** Plan 9.5 is the build plan and is complete when the completion plan's Tasks 0-8 land with their own DoD tests green. Plan 9.5 completion does NOT constitute working-agent sign-off; that gate is owned by Plan 9.6. The smoke-transcript and live-evidence expectations formerly attached to Plan 9.5 have transferred to Plan 9.6.
+
+## Plan 9.6: Live Verification and LLD Alignment
+
+**Plan file:** `docs/superpowers/plans/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md`
+
+**User story:** As the operator, I can verify on my own machine — against a real TimeSeries-capable Redis, real Optimus Gateway credentials, and a real spawned ACP stdio process — that the agent Plan 9.5 built actually works, before anything is signed off.
+
+**Expected deliverables:**
+- Pre-flight checks (`preflight.py`) shared by `--check-config [--strict]`, pytest fixtures, `tools/verify_live_agent.py`, and the release gate: credential presence, Redis PING, RedisTimeSeries capability probe, gateway auth probe, workspace writability — all failing closed with operator action messages.
+- Live test tiers with registered markers: `requires_redis` (live state-store, telemetry, bootstrap, and server-stream tests — no Redis fakes), `requires_gateway` (real model calls, cost-capped), and `e2e` (spawned `python -m optimus.acp` subprocess over real ndjson pipes).
+- LLD v2.38 §10 conformance: live TS.CREATE/TS.ALTER retention tests, `run:{run_id}:metadata` hash contract tests, `redis.asyncio` shared-pool migration, and `RedisTelemetryAdapter` wired into production bootstrap.
+- Committed evidence: `reports/plan-9-6-e2e-acp-transcript.json`, the `verify_live_agent` transcript, the Zed HITL session artifact, and the recorded Task L10 plan-text governance decision.
+
+**Status:** Approved for implementation. Owns the Phase 1 working-agent sign-off gate; Plan 10 does not start before this gate passes.
 
 ## Plan 10 (Tracked, Not Yet Scheduled): Context Window Optimization and Intelligent Selection
 

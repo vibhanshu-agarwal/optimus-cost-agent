@@ -64,3 +64,13 @@
 - Before sign-off, run the narrow relevant tests plus coverage where affected; report any tests not run.
 - **Before commit, push, or PR sign-off, run Ruff and confirm a clean result:** `python -m ruff check .` (or `uv run ruff check .` / `pre-commit run optimus-ruff --all-files` when available). CI enforces the same `optimus-check: ruff` gate on every PR; pytest passing alone is not sufficient. Fix unused imports (`F401`) and import-block formatting (`I001`) before claiming the task complete.
 - Release gate: full Plan-mode and Agent-mode runs with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY`, and no provider key resolvable locally.
+## Plan Fidelity And Anti-Drift Guardrails
+- The plan file on disk is the contract. Chat instructions, summaries, and memory of prior turns are not; when they conflict with the plan file, stop and ask the user instead of improvising.
+- Scope rule: anything not listed under a plan's **Explicit Exceptions** section is IN scope. Never silently narrow scope; never widen it without a plan amendment approved by the user.
+- Frozen plans may not be edited. If new work is discovered, propose a new plan file (as Plan 9.6 was split from Plan 9.5) rather than mutating a plan another agent is executing.
+- One plan, one lane: an agent works only the plan it was assigned. Do not edit another lane's plan file, tests, or tracking checkboxes.
+- Checkbox protocol: `- [x]` in the plan file is the only valid progress claim, and it may be set only after the step's stated verification command actually ran and passed. Prose claims of completion count for nothing.
+- Verify on disk, not by narration: reviewers and agents confirm work by reading files and diffing worktrees, never by trusting an agent's summary of what it did.
+- Evidence-tier rule: the dependency named by a test tier must be real - `requires_redis` uses a live TimeSeries-capable Redis, `requires_gateway` uses real Optimus credentials, `e2e` spawns the real process. Fakes are permitted only in the unit tier; a fake standing in for the tier's named dependency is a rejectable defect. (This refines the earlier "mock gateway in integration tests" guidance: mocking stops at the live tiers.)
+- Every Definition of Done claim must map to a named evidence artifact produced with real dependencies (see the claim-to-evidence table in the Plan 9.6 file). Green fake-based tests alone can never justify sign-off.
+- Working-agent sign-off authority lives in `docs/superpowers/plans/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md`. No agent may declare the Phase 1 agent "working" outside that gate.
