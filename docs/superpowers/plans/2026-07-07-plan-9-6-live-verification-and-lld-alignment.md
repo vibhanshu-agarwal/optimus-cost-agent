@@ -289,6 +289,13 @@ committed evidence at `reports/plan-9-6-e2e-acp-transcript.json`. Verify with
 
 ## Task L7: `tools/verify_live_agent.py` (Operator Sign-Off Command)
 
+**Status:** Implemented and live-verified (2026-07-08). Full flow, `--plan-only`, and
+`--require-manual-approval` decline all verified live; committed evidence at
+`reports/plan-9-6-live-agent-transcript.json`. Verify with
+`python tools/verify_live_agent.py --workspace-root <scratch-dir>` after local gateway, Redis, and
+`OPTIMUS_*` env are up. CLI behavior covered by
+`tests/integration/release/test_verify_live_agent_cli.py`.
+
 **Files:** `tools/verify_live_agent.py`, `tests/integration/release/test_verify_live_agent_cli.py`
 
 - Phase 1 — pre-flight: runs all checks from `preflight.py`, prints a PASS/FAIL table per check,

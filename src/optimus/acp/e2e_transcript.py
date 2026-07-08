@@ -9,6 +9,7 @@ from typing import Any
 from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES
 
 PLAN_9_6_E2E_TRANSCRIPT_PATH = Path("reports/plan-9-6-e2e-acp-transcript.json")
+PLAN_9_6_LIVE_AGENT_TRANSCRIPT_PATH = Path("reports/plan-9-6-live-agent-transcript.json")
 
 _FORBIDDEN_TRANSCRIPT_ROOT_KEYS = frozenset({"environ", "environment", "env", "process_env"})
 _SENSITIVE_ENV_KEY_NAMES = frozenset(LOCAL_PROVIDER_KEY_NAMES) | {
