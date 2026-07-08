@@ -224,41 +224,82 @@ For this project the Optimus Gateway is a **local process you run yourself**, no
 service that issues credentials. The agent keeps the one-key model: only
 `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` in the agent environment.
 
-Create a local `.env` for the agent (never commit this file):
+Use **two gitignored files** so agent and gateway secrets never mix:
+
+| File | Loaded by | Purpose |
+|------|-----------|---------|
+| `.env` | your agent shell / launchers | `OPTIMUS_GATEWAY_URL`, `OPTIMUS_API_KEY`, `OPTIMUS_REDIS_URL` |
+| `.env.gateway` | gateway launcher only | provider key + `OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET` |
+
+Copy the examples and edit locally (never commit the real files):
+
+```bash
+cp .env.example .env
+cp .env.gateway.example .env.gateway
+```
+
+Set the same shared secret in both files:
+
+- `.env` → `OPTIMUS_API_KEY=...`
+- `.env.gateway` → `OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=...`
+
+Agent-side `.env` example:
 
 ```bash
 OPTIMUS_PRODUCTION_MODE=false
 OPTIMUS_GATEWAY_URL=http://127.0.0.1:8765
 OPTIMUS_API_KEY=<shared-secret-you-generate>
+OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0
 ```
 
-Run the local gateway stub in a **separate shell** with the real provider key on the gateway
-process only. **OpenRouter is the default** (`OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter`); OpenAI
+Start the local gateway in a **separate shell** with the provider key on the gateway process
+only. **OpenRouter is the default** (`OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter`); OpenAI
 direct and Anthropic-native are also supported.
 
+Git Bash (recommended, per this repo's shell policy in `AGENTS.md`):
+
 ```bash
-export OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter
-export OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=<your-openrouter-key>
-export OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=<same shared secret as OPTIMUS_API_KEY above>
-python -m optimus_gateway
+bash tools/run_local_gateway.sh
 ```
 
-OpenAI direct:
+PowerShell (fallback):
+
+```powershell
+.\tools\run_local_gateway.ps1
+```
+
+The launchers load `.env.gateway` into the gateway process only. They do not require manual
+`export` commands and do not put provider keys into your interactive shell history.
+
+**Shell caveat — prefer Git Bash on Windows.** The bash launcher loads secrets in a subshell, so
+the parent shell's environment is never touched, even if the gateway crashes or is killed. The
+PowerShell launcher cannot do this: it must set the variables in the current session and restore
+them in a `finally` block. That restore runs on normal exit and Ctrl+C, but if the process is
+hard-killed (window closed, `Stop-Process`), the loaded secrets — including the provider API key —
+remain in that PowerShell session's environment until the window closes. If you must use the
+PowerShell launcher, close that session when you are done with the gateway.
+
+OpenAI direct (set in `.env.gateway`):
 
 ```bash
-export OPTIMUS_LOCAL_GATEWAY_PROVIDER=openai
-export OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=<your-openai-key>
-export OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=<shared-secret>
-python -m optimus_gateway
+OPTIMUS_LOCAL_GATEWAY_PROVIDER=openai
+OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=<your-openai-key>
 ```
 
 Anthropic-native (secondary path):
 
 ```bash
-export OPTIMUS_LOCAL_GATEWAY_PROVIDER=anthropic
-export ANTHROPIC_API_KEY=<your-anthropic-key>
-export OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=<shared-secret>
-python -m optimus_gateway
+OPTIMUS_LOCAL_GATEWAY_PROVIDER=anthropic
+ANTHROPIC_API_KEY=<your-anthropic-key>
+```
+
+Live gateway smoke tests also read `.env.gateway`, but only into the gateway **subprocess**
+environment via `dotenv_values()` — the pytest process itself never receives provider keys.
+Default `pytest` deselects `requires_live_gateway`; opt in explicitly when `.env.gateway` is
+configured:
+
+```bash
+pytest tests/integration/optimus_gateway/test_gateway_live_smoke.py -m requires_live_gateway -v
 ```
 
 Security: bind stays on loopback (`127.0.0.1` by default). Do not expose this service beyond
