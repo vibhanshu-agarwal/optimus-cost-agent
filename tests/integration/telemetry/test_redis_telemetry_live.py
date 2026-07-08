@@ -11,11 +11,16 @@ pytestmark = pytest.mark.requires_redis
 _METADATA_TTL_TOLERANCE_SECONDS = 5
 
 
-def _ts_info_mapping(info: list[object]) -> dict[object, object]:
+from collections.abc import Mapping, Sequence
+
+
+def _ts_info_mapping(info: Mapping[object, object] | Sequence[object]) -> dict[object, object]:
+    if isinstance(info, Mapping):
+        return dict(info)
     return {info[index]: info[index + 1] for index in range(0, len(info), 2)}
 
 
-def _retention_time_ms(info: list[object]) -> int:
+def _retention_time_ms(info: Mapping[object, object] | Sequence[object]) -> int:
     return int(_ts_info_mapping(info)["retentionTime"])
 
 
@@ -57,7 +62,7 @@ async def test_live_record_metric_writes_samples_readable_via_ts_range(live_redi
         key = f"telemetry:run:{run_id}:metrics:{metric_name}"
         samples = await client.execute_command("TS.RANGE", key, "-", "+")
         assert samples
-        assert Decimal(samples[-1][1]) == Decimal(expected)
+        assert Decimal(str(samples[-1][1])) == Decimal(expected)
 
 
 async def test_live_write_run_metadata_sets_hash_fields_and_ttl(live_redis_telemetry):

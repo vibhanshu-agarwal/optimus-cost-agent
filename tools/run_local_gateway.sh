@@ -11,10 +11,18 @@ fi
 
 cd "${ROOT}"
 
+if [[ -x "${ROOT}/.venv/Scripts/python.exe" ]]; then
+  PYTHON="${ROOT}/.venv/Scripts/python.exe"
+elif [[ -x "${ROOT}/.venv/bin/python" ]]; then
+  PYTHON="${ROOT}/.venv/bin/python"
+else
+  PYTHON=python
+fi
+
 (
   set -a
   # shellcheck disable=SC1090
   source "${ENV_FILE}"
   set +a
-  exec python -m optimus_gateway "$@"
+  exec "${PYTHON}" -m optimus_gateway "$@"
 )

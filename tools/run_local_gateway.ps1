@@ -48,7 +48,14 @@ foreach ($key in $overrides.Keys) {
 
 try {
     Set-Location $Root
-    & python -m optimus_gateway @args
+    $VenvPython = Join-Path $Root ".venv\Scripts\python.exe"
+    if (-not (Test-Path $VenvPython)) {
+        $VenvPython = Join-Path $Root ".venv/bin/python"
+    }
+    if (-not (Test-Path $VenvPython)) {
+        $VenvPython = "python"
+    }
+    & $VenvPython -m optimus_gateway @args
     exit $LASTEXITCODE
 }
 finally {

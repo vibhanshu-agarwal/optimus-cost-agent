@@ -15,7 +15,7 @@
             "terminal": true
           },
           "clientInfo": {
-            "name": "e2e-live",
+            "name": "verify-live-agent",
             "version": "1.0.0"
           },
           "protocolVersion": 1
@@ -52,7 +52,7 @@
         "jsonrpc": "2.0",
         "method": "session/new",
         "params": {
-          "cwd": "C:\\Users\\pc\\AppData\\Local\\Temp\\pytest-of-pc\\pytest-316\\test_spawned_acp_agent_live_do0",
+          "cwd": "C:\\Users\\pc\\AppData\\Local\\Temp\\pytest-of-pc\\pytest-334\\test_spawned_acp_agent_live_do0",
           "mcpServers": []
         }
       }
@@ -63,7 +63,7 @@
         "id": 2,
         "jsonrpc": "2.0",
         "result": {
-          "sessionId": "session-b57839d0edc240ceabf69eef116f37aa"
+          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73"
         }
       }
     },
@@ -80,7 +80,7 @@
               "type": "text"
             }
           ],
-          "sessionId": "session-b57839d0edc240ceabf69eef116f37aa"
+          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73"
         }
       }
     },
@@ -90,11 +90,11 @@
         "jsonrpc": "2.0",
         "method": "session/update",
         "params": {
-          "sessionId": "session-b57839d0edc240ceabf69eef116f37aa",
+          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73",
           "update": {
             "content": [
               {
-                "text": "WRITE example.py\n\"\"\"\nModule that provides a simple greeting function.\n\nThis module contains a single function `greet()` which returns a friendly greeting message.\n\nUsage:\n    To use the greeting function, simply import this module and call the `greet()` function.\n\nExample:\n    >>> from example import greet\n    >>> print(greet())\n    hello\n\"\"\"\ndef greet():\n    return 'hello'",
+                "text": "WRITE example.py\n\"\"\"\nexample.py\n\nThis module contains a simple function to greet the user.\n\nFunction:\n- greet: Returns a greeting string 'hello'.\n\"\"\"\n\ndef greet():\n    return 'hello'",
                 "type": "text"
               }
             ],
@@ -111,15 +111,15 @@
         "method": "session/request_permission",
         "params": {
           "metadata": {
-            "planHash": "b2197607923eb398db4d3d87e431af51d6614ab1c9336bab29b9f9080b50a853",
-            "planText": "WRITE example.py\n\"\"\"\nModule that provides a simple greeting function.\n\nThis module contains a single function `greet()` which returns a friendly greeting message.\n\nUsage:\n    To use the greeting function, simply import this module and call the `greet()` function.\n\nExample:\n    >>> from example import greet\n    >>> print(greet())\n    hello\n\"\"\"\ndef greet():\n    return 'hello'",
-            "runId": "session-b57839d0edc240ceabf69eef116f37aa:3"
+            "planHash": "21f1905f8d857f918a60cf2bcefb6d7c59e3f815d0246a9d1e6fae0496c330e6",
+            "planText": "WRITE example.py\n\"\"\"\nexample.py\n\nThis module contains a simple function to greet the user.\n\nFunction:\n- greet: Returns a greeting string 'hello'.\n\"\"\"\n\ndef greet():\n    return 'hello'",
+            "runId": "session-2392b3c82378497dad9fe35ba2e2be73:3"
           },
           "options": [
             {
               "kind": "allow_once",
               "metadata": {
-                "planHash": "b2197607923eb398db4d3d87e431af51d6614ab1c9336bab29b9f9080b50a853"
+                "planHash": "21f1905f8d857f918a60cf2bcefb6d7c59e3f815d0246a9d1e6fae0496c330e6"
               },
               "name": "Approve",
               "optionId": "approve"
@@ -127,13 +127,13 @@
             {
               "kind": "reject_once",
               "metadata": {
-                "planHash": "b2197607923eb398db4d3d87e431af51d6614ab1c9336bab29b9f9080b50a853"
+                "planHash": "21f1905f8d857f918a60cf2bcefb6d7c59e3f815d0246a9d1e6fae0496c330e6"
               },
               "name": "Cancel",
               "optionId": "cancel"
             }
           ],
-          "sessionId": "session-b57839d0edc240ceabf69eef116f37aa"
+          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73"
         }
       }
     },
@@ -144,8 +144,8 @@
         "jsonrpc": "2.0",
         "result": {
           "metadata": {
-            "approvalId": "e2e-approval-b98670cfdbfe4f0aa2098d42e844aaf8",
-            "planHash": "b2197607923eb398db4d3d87e431af51d6614ab1c9336bab29b9f9080b50a853"
+            "approvalId": "verify-approval-ba0f56529a104e1e82ad118950833fc6",
+            "planHash": "21f1905f8d857f918a60cf2bcefb6d7c59e3f815d0246a9d1e6fae0496c330e6"
           },
           "outcome": {
             "optionId": "approve",
@@ -160,7 +160,7 @@
         "jsonrpc": "2.0",
         "method": "session/update",
         "params": {
-          "sessionId": "session-b57839d0edc240ceabf69eef116f37aa",
+          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73",
           "update": {
             "sessionUpdate": "tool_call_update",
             "toolCall": {
@@ -182,7 +182,7 @@
         "jsonrpc": "2.0",
         "method": "session/update",
         "params": {
-          "sessionId": "session-b57839d0edc240ceabf69eef116f37aa",
+          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73",
           "update": {
             "sessionUpdate": "tool_call_update",
             "toolCall": {

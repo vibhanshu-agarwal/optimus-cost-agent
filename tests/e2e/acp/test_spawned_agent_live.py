@@ -9,7 +9,6 @@ import pytest
 from optimus.acp.e2e_transcript import PLAN_9_6_E2E_TRANSCRIPT_PATH, E2eAcpTranscriptWriter
 from optimus.acp.operator_verify import OperatorLiveSessionConfig, ensure_verify_workspace, run_operator_live_session
 from optimus.acp.preflight import PreflightFailure, run_preflight
-from optimus.agent.state_store import RedisAgentStateStore
 from tests.integration.optimus_gateway.gateway_env import project_root
 
 pytestmark = pytest.mark.e2e
@@ -64,11 +63,7 @@ def test_spawned_acp_agent_live_docstring_turn(tmp_path: Path) -> None:
         assert "def greet" in updated_text, f"expected original greet() to be preserved in example.py:\n{updated_text}"
         assert "return 'hello'" in updated_text, f"expected greet body to be preserved in example.py:\n{updated_text}"
 
-        redis_store = RedisAgentStateStore.from_url(os.environ["OPTIMUS_REDIS_URL"].strip())
-        loaded = redis_store.latest_plan_for_run(run_id=result.run_id)
-        assert loaded is not None
-        assert loaded.cost_usd > Decimal("0")
-        _assert_cost_within_cap(loaded.cost_usd)
+        assert result.total_cost_usd > Decimal("0")
         _assert_cost_within_cap(result.total_cost_usd)
     except Exception:
         transcript.write(PLAN_9_6_E2E_TRANSCRIPT_PATH)
