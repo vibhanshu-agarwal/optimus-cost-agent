@@ -241,12 +241,62 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 **Reason:** PR #30 provides subprocess/operator proof, but the real-IDE HITL claim remains open.
 
 **Must land next:**
-- ACP `session/request_permission` payload conformance update in `src/optimus/acp/spec.py`: include the ACP v1-required `toolCall` object in addition to the existing approval options/metadata.
-- Update/add protocol tests and transcript assertions so the permission request shape is locked by tests (not only by manual review).
-- Re-run the Zed HITL flow and commit an artifact under `reports/` proving approval UI rendering + successful end-turn completion.
-- Close the Plan 9.6 claim-table row "A real IDE can drive it" only after the artifact is on disk and reviewed.
+- [x] ACP `session/request_permission` payload conformance update in `src/optimus/acp/spec.py`: include the ACP v1-required `toolCall` object (`toolCallId`, `kind`, `status`, `title`, `locations` derived from the plan's directives) in addition to the existing approval options/metadata.
+- [x] Update/add protocol tests and transcript assertions so the permission request shape is locked by tests (not only by manual review) — see `tests/unit/acp/test_spec_protocol.py`.
+- [x] Standardize the operator/IDE launch path on `uv tool install --editable .` (documented in README "Install the `optimus-agent` command") so `agent_servers` configs use a plain `optimus-agent` command with no project-specific `.venv` path. The Plan 9.6 "Known Open Defects → Zed HITL → Workarounds" section previously reintroduced a raw worktree `.venv` python path as a stopgap; that has been replaced with the `uv tool install` guidance. Do not let a path-based workaround creep back into docs.
+- [ ] Re-run the Zed HITL flow (using the `uv tool install`-based launch config) and commit an artifact under `reports/` proving approval UI rendering + successful end-turn completion. This step needs a real Zed session and has not been performed in this environment.
+- [ ] Close the Plan 9.6 claim-table row "A real IDE can drive it" only after the artifact is on disk and reviewed.
 
-**Gate reminder:** Until the follow-up above is complete, treat Plan 9.6 as "subprocess/operator proof green, real IDE HITL open."
+**Gate reminder:** Until the two unchecked items above are complete, treat Plan 9.6 as "subprocess/operator proof green, real IDE HITL open."
+
+## Plan 9.7: Local Dev Infra Auto-Start and Keychain-Based Setup
+
+**Plan file:** `docs/superpowers/plans/2026-07-08-plan-9-7-local-dev-infra-autostart-and-setup.md`
+
+**User story:** As an operator, I run `optimus-agent` and it ensures its own local dependencies
+(Redis via Docker, the local Optimus Gateway process) are up, instead of me hand-editing two
+`.env` files and starting each dependency manually in separate shells first.
+
+**Expected deliverables:**
+- `local_gateway_secrets.py`: precedence-chain secret resolution (env var → `.env.gateway` →
+  Windows keychain via `keyring`) and an `optimus-agent --setup` one-time interactive wizard.
+- `local_infra.py`: `apply_local_defaults()`, `ensure_local_redis()` (Docker auto-start/reuse),
+  `ensure_local_gateway()` (spawn/track the gateway child process, torn down when `optimus-agent`
+  exits, never left as an orphaned secret-holding background process).
+- `--no-auto-start` opt-out flag; `.env`/`.env.gateway` retained as a transitional fallback.
+
+**Status:** Drafted 2026-07-08, awaiting reviewer approval before implementation begins. Windows-
+only scope for now (Linux/WSL keyring-backend support deferred; Phase 2 is a planned Rust
+rewrite). Orthogonal to Plan 9.6 — changes how local dependencies get started, not whether the
+agent's behavior against them is proven; does not weaken or bypass any Plan 9.6 preflight check.
+
+## Plan 9.8 (Tracked, Not Yet Scheduled): Unified Gateway Capabilities Broker
+
+**Raised:** 2026-07-08, during Plan 9.7 review. The client-side one-key contract is already
+shaped for this: `src/optimus/evidence/acquisition.py` posts to `/v1/tools/web/search` and
+`src/optimus/telemetry/observability.py` posts to `/v1/observability/traces` through
+`GatewayClient`, the same gateway-only seam model calls already use — but the local gateway
+(`src/optimus_gateway/server.py`) only implements `/v1/responses`. Those calls would 404 against
+the local gateway today. The gap is not in the agent-side contract; it's that the local gateway
+stub hasn't grown routes/upstream adapters for web search or observability export yet. Any real
+web-search or observability provider key (e.g. Tavily, LangSmith) would need to live gateway-side
+once those routes exist, per the same one-key model already enforced for model calls.
+
+**User story:** As an operator, I hold exactly one local credential set, and the local gateway
+brokers web search, web extract, and observability export the same way it already brokers model
+calls — vendor keys for those capabilities live gateway-side only, never in the agent's own
+environment.
+
+**Status:** Tracked, not yet scheduled; no design work done yet. Explicitly out of scope for Plan
+9.7 (a local-startup-ergonomics plan, not a gateway-capability-surface redesign) and for Plan 9.6
+(live-verification proof of the existing model-call path). The one confirmed decision so far:
+this is its own plan, not folded into 9.7. Design questions to resolve when scheduled: whether to
+implement web search and observability together as one gateway-capability slice (same
+secret-boundary and route pattern serves both) versus web search first with observability staying
+a no-op/local-JSONL sink until a later slice; the gateway-side secret resolution shape (own
+env/`.env.gateway`/keyring precedence, independent of Plan 9.7's agent-side equivalent); and
+normalized `gateway_usage`/cost fields for non-model calls, matching the existing model-call
+pattern.
 
 ## Plan 10 (Tracked, Not Yet Scheduled): Context Window Optimization and Intelligent Selection
 
@@ -285,6 +335,9 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 11. Plan 9: Bounded loops and curated workflow skills.
 12. Plan 9.5: Agent orchestration and end-to-end coding workflow.
 13. Plan 9.6 closure follow-up: ACP `toolCall` permission conformance + real Zed HITL artifact.
-14. Plan 10: Context window optimization and intelligent selection - tracked, not yet scheduled; starts only once Plan 9.5 task-level agent orchestration and the real golden harness are stable.
+14. Plan 9.7: Local dev infra auto-start and keychain-based setup - drafted, awaiting reviewer approval before implementation; orthogonal to Plan 9.6 sign-off.
+15. Plan 10: Context window optimization and intelligent selection - tracked, not yet scheduled; starts only once Plan 9.5 task-level agent orchestration and the real golden harness are stable.
 
 The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, one-key scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 9.5 composes the Phase 1 primitives into a working local-first coding agent before Plan 10 adds context-window intelligence. Plan 10 stays last regardless: it depends on inputs from Plans 4, 5, 6, 6.5, 7, 9, and 9.5, and its PDF fold-in is explicitly deferred until calibration is accepted.
+
+Plans 9.6 and 9.7 sit alongside each other, not in a strict dependency order: Plan 9.6 owns the Phase 1 working-agent sign-off gate (live Redis/Gateway/e2e proof plus the real-IDE HITL artifact) and Plan 10 does not start until it passes; Plan 9.7 only changes how an operator's local Redis/Gateway dependencies get started before a session and does not touch what Plan 9.6 proves or gate. Plan 9.7 can be implemented and merged independently of Plan 9.6's remaining open HITL item, but its own manual verification step should be re-run once Plan 9.6's `uv tool install`-based launch path is the documented default, since both change how `optimus-agent` gets invoked. Plan 9.8 is tracked separately and not yet scheduled or designed; do not fold its gateway-capability-broker scope into 9.6 or 9.7 when picking up either.

@@ -28,7 +28,7 @@
 
 ## Shell And Tools
 - Prefer Bash on Windows for project scripts and command examples.
-- If Bash is unavailable on Windows, suggest installing Git Bash or WSL Bash before falling back to PowerShell.
+- If Bash is unavailable on Windows, suggest installing Git Bash before falling back to PowerShell.
 - Use local evidence first: repo search, file reads, AST/dependency inspection, and git diff before web or package lookups.
 - Use web/package/security lookups only when policy-triggered by current facts, dependency/version work, security work, or explicit user request.
 - Treat shell, build, install, and test execution as gated operations; explain material failures and next steps.

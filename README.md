@@ -365,6 +365,32 @@ The Optimus ACP agent is a stdio JSON-RPC server. IDEs such as Zed spawn it as a
 newline-delimited JSON, and keep `session/prompt` pending while the agent emits
 `session/update` notifications and outbound `session/request_permission` requests.
 
+### Install the `optimus-agent` command (recommended: `uv tool install`)
+
+IDEs and shells should never need a project-specific `.venv` path or a
+`python -m optimus.acp` invocation tied to one checkout. Install the console script as a
+`uv`-managed tool instead — `uv` resolves and runs it from its own isolated environment, so
+`optimus-agent` works as a plain command from any directory, with no venv to activate:
+
+```bash
+uv tool install --editable .
+```
+
+`--editable` means source edits under `src/` take effect immediately without reinstalling.
+After adding or upgrading a *dependency* in `pyproject.toml`, refresh the tool environment:
+
+```bash
+uv tool install --editable . --reinstall
+```
+
+If `optimus-agent` isn't found after installing, `uv`'s tool bin directory isn't on `PATH` yet:
+
+```bash
+uv tool update-shell
+```
+
+To remove it: `uv tool uninstall optimus-cost-agent`.
+
 ### Required environment
 
 ```bash
@@ -418,22 +444,25 @@ python tools/verify_live_agent.py
 Validate credentials, Redis reachability, and TimeSeries support before the IDE spawns the agent:
 
 ```bash
-python -m optimus.acp --workspace-root . --check-config
-python -m optimus.acp --workspace-root . --check-config --strict
+optimus-agent --workspace-root . --check-config
+optimus-agent --workspace-root . --check-config --strict
 ```
 
 `--strict` adds a gateway authentication probe in addition to the default Redis and workspace checks.
 
+Equivalent from inside a repo checkout without installing the tool (e.g. during development,
+with the project venv active): `python -m optimus.acp --workspace-root . --check-config`.
+
 ### Launch commands
 
 ```bash
-python -m optimus.acp --workspace-root .
+optimus-agent --workspace-root .
 ```
 
-Console script equivalent:
+Module-invocation equivalent from inside a repo checkout:
 
 ```bash
-optimus-agent --workspace-root .
+python -m optimus.acp --workspace-root .
 ```
 
 If `OPTIMUS_GATEWAY_URL` or `OPTIMUS_API_KEY` is missing, startup fails with:
@@ -476,7 +505,9 @@ preflight, `verify_live_agent.py`).
 2. While planning runs, `session/prompt` stays pending and the agent emits
    `session/update` notifications (for example plan and tool-call updates).
 3. When Agent-mode mutation requires approval, the agent sends
-   `session/request_permission` to the IDE with plan text and `plan_hash`.
+   `session/request_permission` to the IDE with an ACP v1 `toolCall` object
+   (`toolCallId`, `kind`, `status`, `title`, and `locations` derived from the
+   plan's directives), plus plan text and `plan_hash` in `options`/`metadata`.
 4. The IDE shows the plan to the user and replies to the agent's outbound JSON-RPC
    request with approval metadata containing `approval_id` and the same `plan_hash`.
 5. The runtime replays the stored plan from Redis and does not call the Gateway
