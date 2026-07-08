@@ -37,6 +37,20 @@
 > Items below that reference real-Gateway smoke evidence are satisfied via Plan 9.6; completing
 > Plan 9.5 does not constitute working-agent sign-off.
 
+> **Governance decision — plan-text persistence (Plan 9.6 Task L10, decided by owner 2026-07-08):**
+> The Redis plan store (`agent:plan:{run_id}:{plan_hash}` HASH, `plan_text` field) persists raw
+> plan text whose WRITE bodies contain file content. This is accepted as a **bounded exception**
+> to Architecture §4's rule against unparsed source code in persistent stores, on these grounds:
+> the plan store is short-TTL operational approval state (3600s `EXPIRE`, the control), keyed by
+> `run_id`+`plan_hash`; it is not an index — nothing searches, embeds, or retrieves it by
+> content; and replay correctness requires the exact text (a hash-only record cannot re-execute
+> an approved plan after a process restart, which the Plan 9.6 L4/L6 restart-replay evidence
+> depends on). This exception does NOT extend to long-lived or indexed structures: the Plan 10
+> structural memory store (Architecture §6) remains bound by §4 — signatures, summaries, and
+> relative paths only, never raw source code, even though it shares the same Redis instance.
+> Same server, two governance zones: short-TTL operational keys may carry raw text; indexed
+> structures may not.
+
 Plan 9.5 is complete only when all of these are true:
 
 - An ACP-capable IDE can launch `python -m optimus.acp --workspace-root <repo>` or `optimus-agent --workspace-root <repo>` as a stdio Agent Client Protocol server.

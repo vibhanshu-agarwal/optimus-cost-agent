@@ -380,6 +380,14 @@ Redis stores approved plans for replay.
 If approval arrives after expiry, the runtime returns `PLAN_NOT_FOUND_OR_EXPIRED`
 and the IDE must ask the user to re-run planning and approve the new plan.
 
+**Plan-text persistence (governance):** stored plan text includes raw file content from
+WRITE bodies. This is a deliberate, bounded exception to the project rule against persisting
+unparsed source code: the plan store is short-TTL operational approval state (the 3600-second
+expiry is the control), keyed by run and plan hash, never indexed or searched by content, and
+exact text is required for replay correctness. The exception does not extend to long-lived or
+indexed Redis structures (vector/structural memory stores), which hold only signatures,
+summaries, and relative paths — never raw source code.
+
 ### Operator runbook (live verification)
 
 ```bash

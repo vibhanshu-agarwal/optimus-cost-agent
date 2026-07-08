@@ -352,7 +352,12 @@ blocking the ndjson event loop. Verify with `pytest -q`, live tiers L2/L2A/L4, a
 
 ## Task L10: Plan-Text Persistence Governance Decision
 
-**Status:** HITL — owner decision required (Vibhanshu). Do not implement without explicit approval.
+**Status:** DECIDED (owner: Vibhanshu, 2026-07-08) — recommended position accepted. The Redis
+plan store keeps raw plan text as short-TTL (3600s) operational approval state, documented as a
+bounded exception to Architecture §4 with the TTL as the control; the exception explicitly does
+not extend to indexed/long-lived structures (the Plan 10 structural memory store stays
+signatures/summaries/paths only). Recorded in the Plan 9.5 completion doc (governance note under
+Definition Of Done) and the README plan-persistence section.
 
 **Files:** `docs/superpowers/plans/2026-07-07-plan-9-5-working-acp-agent-completion.md` (governance
 note), `README.md`
