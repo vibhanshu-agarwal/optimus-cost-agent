@@ -100,6 +100,29 @@ storage-key naming note.
   when `provider == "anthropic"`, and `OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY` otherwise — the
   spawned gateway child's env must set the *correct* variable name for the resolved provider, not
   a single generic name. Found during 2026-07-08 review; addressed in Task 1/Task 2.
+- `src/optimus/config/gateway.py:18,112`: `LOCAL_PROVIDER_KEY_NAMES` (includes `ANTHROPIC_API_KEY`,
+  not `OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY`) and `validate_no_local_provider_keys()`, called from
+  `OptimusGatewaySettings.from_env()` at three sites — `src/optimus/acp/bootstrap.py:44` (inside
+  `build_agent_runner_for_harness`), `bootstrap.py:73` (inside `build_configured_server`), and
+  `src/optimus/acp/preflight.py:99` (strict `--check-config`). **Real conflict found in review
+  2026-07-08, round 2:** the anthropic path is a hard collision — `ANTHROPIC_API_KEY` is
+  simultaneously the var name the gateway child needs *and* a name the agent's own settings loader
+  explicitly rejects with `ProviderKeyViolation`. If `ensure_local_gateway` and
+  `build_configured_server` are handed the same `environ` object, an anthropic-provider auto-start
+  would successfully spawn the gateway and then immediately crash agent startup.
+  **Round 3 finding:** `OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY` (the openai/openrouter case) does
+  not crash the same way — it isn't in `LOCAL_PROVIDER_KEY_NAMES`, precisely because it was
+  invented to avoid the round-2 collision for those two providers (see
+  `docs/superpowers/plans/2026-07-07-local-optimus-gateway-service.md`, Scope item 5) — but it is
+  still a real provider API key, and the stricter architecture rule (Design Decision 3 below) is
+  that the agent-facing view must never contain one at all, crash or no crash. The strip set
+  (`_AGENT_ENVIRON_EXCLUDED_KEYS` in Task 2) must be broader than `LOCAL_PROVIDER_KEY_NAMES`:
+  `LOCAL_PROVIDER_KEY_NAMES | {"OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY",
+  "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"}` — the latter because it's a gateway-internal duplicate
+  of `OPTIMUS_API_KEY` once `apply_local_defaults()` has copied the value across, and the agent
+  view should keep only the public contract name. Addressed in Task 2
+  (`strip_local_provider_keys`, `_AGENT_ENVIRON_EXCLUDED_KEYS`) and Task 3 (two separate `environ`
+  views in `main()`, with sibling regression tests for both the anthropic and openrouter cases).
 
 ## Confirmed Design Decisions (from 2026-07-08 planning discussion)
 
@@ -114,9 +137,26 @@ storage-key naming note.
    Plan 9.7 manages automatically (Task 2) is a different, persistent-by-design instance and
    intentionally omits `--rm` so `docker start` can restart it by name across launches — see Task
    2 for the full reasoning, this item only states the ownership/lifecycle split, not the flag.
-3. **Provider-key boundary:** `optimus-agent` may transiently hold the provider API key in memory
-   only to construct the spawned gateway child's environment dict — never in its own
-   `os.environ`, never used to call a model itself.
+3. **Provider-key boundary:** the actually-enforceable guarantee is narrower than "never in
+   `os.environ`" — since Plan 9.7 supports explicit-env-var precedence for provider keys (Design
+   Decision 4 below), an operator who launches `optimus-agent` with `ANTHROPIC_API_KEY` or
+   `OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY` already set necessarily has that secret in the real
+   process `os.environ` — nothing `optimus-agent` does can retroactively make that untrue, and this
+   plan doesn't promise otherwise. What Plan 9.7 does guarantee: `optimus-agent` never *adds* a
+   provider key to its own environment, never uses one to call a model itself, and the
+   agent-facing `agent_environ` passed to `run_preflight`/`build_configured_server` never contains
+   one — only the spawned gateway child's own environment does. This is stricter than "don't
+   trigger `ProviderKeyViolation`" — it holds even for names (like
+   `OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY`) that don't collide with the agent's explicit reject
+   list but are still real vendor secrets.
+   **Enforced mechanism (added after 2026-07-08 review, rounds 2-3):** `main()` keeps two distinct
+   `environ` views — the unsanitized one (used only to resolve secrets for `ensure_local_gateway`'s
+   child env) and a `strip_local_provider_keys()`-sanitized one, built from
+   `_AGENT_ENVIRON_EXCLUDED_KEYS` (`LOCAL_PROVIDER_KEY_NAMES` plus
+   `OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY` and `OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET`), used for
+   everything that reaches `OptimusGatewaySettings.from_env()` — `build_configured_server` and, in
+   strict `--check-config`, `run_preflight`. The two must never collapse into a single object
+   passed to both call sites.
 4. **`.env`/`.env.gateway` remain supported now but are transitional**, not permanent; keyring is
    the intended long-term default. Resolution precedence per secret: explicit env var →
    `.env.gateway` file → keyring.
@@ -135,7 +175,9 @@ storage-key naming note.
   `OPTIMUS_GATEWAY_URL` / `OPTIMUS_API_KEY` / `OPTIMUS_PRODUCTION_MODE` / `OPTIMUS_AGENT_MODEL`
   with local defaults when unset and the resolved gateway URL is loopback), `ensure_local_redis()`
   (Docker auto-start/reuse, no `--rm` so the container survives across launches),
-  `ensure_local_gateway()` (spawn/track the local gateway child process).
+  `ensure_local_gateway()` (spawn/track the local gateway child process),
+  `strip_local_provider_keys()` (produces the agent-facing `environ` view that must never contain
+  a real vendor key — see the anthropic-collision finding above).
 - `src/optimus/acp/__main__.py`: new `--setup` and `--no-auto-start` flags (the latter gates both
   `ensure_local_redis` and `ensure_local_gateway` consistently, in both the real serve path and
   `--check-config`); wiring auto-start into the real serve path; wiring defaults-and-redis-only
@@ -199,17 +241,23 @@ buffer/reviewer fixes.
 ```python
 @dataclass(frozen=True)
 class ProviderSecrets:
-    provider: str  # "openai" | "openrouter" | "anthropic"
+    provider: str  # "openai" | "openrouter" | "anthropic" — defaults to "openrouter" if
+                   # unconfigured anywhere, matching GatewayServiceConfig.from_env()'s own default
+                   # (src/optimus_gateway/models.py:40) so the two sides never disagree.
     model_provider_api_key: str
+    base_url: str | None = None  # OPTIMUS_LOCAL_GATEWAY_BASE_URL pass-through; optional override
+                                  # for OpenAI-compatible endpoints (models.py:44), not a secret.
 
     def as_gateway_child_env(self) -> dict[str, str]:
-        """Map to the exact var name GatewayServiceConfig.from_env() reads for this provider
+        """Map to the exact var names GatewayServiceConfig.from_env() reads for this provider
         (src/optimus_gateway/models.py:45): ANTHROPIC_API_KEY for anthropic, else
         OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY. Only ever sets the one name the resolved
         provider needs; never sets the other provider-key family, even if it happens to be
         present in the operator's own environment (mirrors the existing pop()-based clearing
         already done in tests/integration/optimus_gateway/gateway_env.py's
-        merge_gateway_subprocess_env, promoted here to a production code path)."""
+        merge_gateway_subprocess_env, promoted here to a production code path). Also passes
+        through OPTIMUS_LOCAL_GATEWAY_BASE_URL when set, so a custom OpenAI-compatible endpoint
+        configured anywhere in the precedence chain isn't silently dropped."""
 
 def resolve_provider_secrets(environ, *, project_root, keyring_backend=keyring) -> ProviderSecrets | None
 def resolve_shared_secret(environ, *, project_root, keyring_backend=keyring) -> str | None
@@ -290,6 +338,50 @@ def test_resolve_provider_secrets_returns_none_when_nothing_configured(tmp_path)
     assert resolve_provider_secrets({}, project_root=tmp_path, keyring_backend=FakeKeyring()) is None
 
 
+def test_resolve_provider_secrets_defaults_provider_to_openrouter_when_unset(tmp_path):
+    # Matches GatewayServiceConfig.from_env()'s own default (models.py:40) — an operator who only
+    # sets the API key, without ever naming a provider, should still resolve, not fail closed.
+    resolved = resolve_provider_secrets(
+        {"OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-or-implicit"},
+        project_root=tmp_path,
+        keyring_backend=FakeKeyring(),
+    )
+
+    assert resolved == ProviderSecrets(provider="openrouter", model_provider_api_key="sk-or-implicit")
+
+
+def test_provider_secrets_includes_base_url_when_set(tmp_path):
+    secrets_ = ProviderSecrets(
+        provider="openai",
+        model_provider_api_key="sk-test",
+        base_url="https://custom.example.com/v1",
+    )
+
+    child_env = secrets_.as_gateway_child_env()
+
+    assert child_env == {
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-test",
+        "OPTIMUS_LOCAL_GATEWAY_BASE_URL": "https://custom.example.com/v1",
+    }
+
+
+def test_resolve_provider_secrets_passes_through_base_url_from_dotenv(tmp_path):
+    (tmp_path / ".env.gateway").write_text(
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openai\n"
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-test\n"
+        "OPTIMUS_LOCAL_GATEWAY_BASE_URL=https://custom.example.com/v1\n",
+        encoding="utf-8",
+    )
+
+    resolved = resolve_provider_secrets({}, project_root=tmp_path, keyring_backend=FakeKeyring())
+
+    assert resolved == ProviderSecrets(
+        provider="openai",
+        model_provider_api_key="sk-test",
+        base_url="https://custom.example.com/v1",
+    )
+
+
 def test_provider_secrets_maps_anthropic_to_anthropic_api_key_only(tmp_path):
     secrets_ = ProviderSecrets(provider="anthropic", model_provider_api_key="sk-ant-test")
 
@@ -333,37 +425,212 @@ def test_no_keyring_backend_available_fails_with_dotenv_pointer(tmp_path):
   `ImportError`/collection failure).
 
 - [ ] **Step 3: Implement** `src/optimus/acp/local_gateway_secrets.py`:
-  - A minimal `.env.gateway` line parser scoped to this file (`KEY=VALUE`, `#` comments, optional
-    surrounding quotes). Do **not** add `python-dotenv` as a runtime dependency for this — it is
-    dev-only today (`[project.optional-dependencies].dev`), and promoting it to a hard runtime
-    dependency just for this one file is disproportionate; a ~10-line parser is sufficient and
-    keeps the dependency footprint minimal, consistent with this project's existing runtime
-    dependency list (`confusable-homoglyphs`, `pydantic`, `redis`).
-  - `resolve_shared_secret` / `resolve_provider_secrets`: env → `.env.gateway` →
-    `keyring_backend.get_password("optimus-cost-agent", <key>)`, swallowing any keyring backend
-    exception as "not available" (return `None`, never raise) so a real launch always falls
-    through to the existing preflight fail-closed message rather than crashing with a traceback.
-  - **Keychain key naming (forward-compat with Plan 9.8, tracked separately — see "Relationship
-    to Plan 9.8" above):** use `model_provider`, `model_provider_api_key`, and
-    `local_gateway_shared_secret` as the three keyring key names under service
-    `optimus-cost-agent` — not the bare `provider`/`provider_api_key`/`shared_secret` from the
-    first draft. This is namespaced by capability (`model_*`) precisely so a future Plan 9.8 can
-    add sibling keys (e.g. a web-search or observability provider's key) under the same service
-    without colliding with or restructuring what Plan 9.7 already stores. No other behavior change
-    — this is a naming choice only, made now while the schema doesn't exist yet.
-  - `run_setup_wizard`: prompts provider via `input_fn` (default `openrouter` on empty input),
-    validates against `{"openai", "openrouter", "anthropic"}`, prompts the provider API key via
-    `getpass_fn`, checks existing keyring values and asks to overwrite via `input_fn` (declining
-    returns exit code `1` with no changes made), generates the shared secret via
-    `secrets.token_urlsafe(32)` only on first-time setup or confirmed overwrite (never
-    regenerated/prompted otherwise), stores all three (`model_provider`, `model_provider_api_key`,
-    `local_gateway_shared_secret`) under service name `optimus-cost-agent`, prints a plain
-    confirmation via `print_fn`. Returns `2` if the keyring backend itself raises on first use,
-    printing a message that names `.env.gateway` as the fallback path.
-  - `ProviderSecrets.as_gateway_child_env()`: exact one-to-one mapping per provider (see
-    Source Anchors: `src/optimus_gateway/models.py:45`) — never sets both key names, never
-    carries over an unrelated provider-key env var from the calling process. `ensure_local_gateway`
-    (Task 2) calls this method rather than re-implementing the mapping.
+
+**Design notes to keep in mind while reading the code below:**
+- A minimal `.env.gateway` line parser scoped to this file (`KEY=VALUE`, `#` comments, optional
+  surrounding quotes). Do **not** add `python-dotenv` as a runtime dependency for this — it is
+  dev-only today (`[project.optional-dependencies].dev`), and promoting it to a hard runtime
+  dependency just for this one file is disproportionate; a ~10-line parser is sufficient and
+  keeps the dependency footprint minimal, consistent with this project's existing runtime
+  dependency list (`confusable-homoglyphs`, `pydantic`, `redis`).
+- **Keychain key naming (forward-compat with Plan 9.8, tracked separately — see "Relationship to
+  Plan 9.8" above):** `model_provider`, `model_provider_api_key`, and `local_gateway_shared_secret`
+  as the three keyring key names under service `optimus-cost-agent` — namespaced by capability
+  (`model_*`) precisely so a future Plan 9.8 can add sibling keys (e.g. a web-search or
+  observability provider's key) under the same service without colliding with or restructuring
+  what Plan 9.7 already stores.
+- `run_setup_wizard`'s prompt order is provider **first**, then the overwrite check — matching the
+  test input sequence `["openrouter", "n"]` above (provider, then the decline answer). Asking
+  overwrite before provider would consume the test's inputs in the wrong order.
+
+```python
+from __future__ import annotations
+
+import getpass
+import re
+import secrets
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import keyring
+
+_KEYRING_SERVICE = "optimus-cost-agent"
+_KEY_MODEL_PROVIDER = "model_provider"
+_KEY_MODEL_PROVIDER_API_KEY = "model_provider_api_key"
+_KEY_SHARED_SECRET = "local_gateway_shared_secret"
+
+_SUPPORTED_PROVIDERS = ("openai", "openrouter", "anthropic")
+_DEFAULT_PROVIDER = "openrouter"
+
+_ENV_LINE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
+
+
+@dataclass(frozen=True)
+class ProviderSecrets:
+    provider: str  # "openai" | "openrouter" | "anthropic"
+    model_provider_api_key: str
+    base_url: str | None = None
+
+    def as_gateway_child_env(self) -> dict[str, str]:
+        """Map to the exact var names GatewayServiceConfig.from_env() reads for this provider
+        (src/optimus_gateway/models.py:45): ANTHROPIC_API_KEY for anthropic, else
+        OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY. Only ever sets the one name the resolved
+        provider needs. Also passes through OPTIMUS_LOCAL_GATEWAY_BASE_URL when set (models.py:44)
+        — harmless to include for anthropic too, since GatewayServiceConfig.from_env() always
+        forces base_url to None for that provider regardless of what's in its env."""
+        env = {"ANTHROPIC_API_KEY": self.model_provider_api_key} if self.provider == "anthropic" else {
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": self.model_provider_api_key
+        }
+        if self.base_url:
+            env["OPTIMUS_LOCAL_GATEWAY_BASE_URL"] = self.base_url
+        return env
+
+
+def _parse_env_gateway_file(path: Path) -> dict[str, str]:
+    if not path.is_file():
+        return {}
+    values: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = _ENV_LINE.match(line)
+        if match is None:
+            continue
+        key, value = match.group(1), match.group(2).strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        values[key] = value
+    return values
+
+
+def _safe_get_password(keyring_backend: Any, key: str) -> str | None:
+    try:
+        value = keyring_backend.get_password(_KEYRING_SERVICE, key)
+    except Exception:
+        return None
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
+
+
+def resolve_shared_secret(
+    environ: Mapping[str, str],
+    *,
+    project_root: Path,
+    keyring_backend: Any = keyring,
+) -> str | None:
+    env_value = environ.get("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET", "").strip()
+    if env_value:
+        return env_value
+    dotenv_value = _parse_env_gateway_file(project_root / ".env.gateway").get(
+        "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET", ""
+    ).strip()
+    if dotenv_value:
+        return dotenv_value
+    return _safe_get_password(keyring_backend, _KEY_SHARED_SECRET)
+
+
+def resolve_provider_secrets(
+    environ: Mapping[str, str],
+    *,
+    project_root: Path,
+    keyring_backend: Any = keyring,
+) -> ProviderSecrets | None:
+    dotenv_values = _parse_env_gateway_file(project_root / ".env.gateway")
+
+    # Default to "openrouter" when unconfigured anywhere — matches GatewayServiceConfig.from_env()'s
+    # own default (models.py:40). Only a missing/unresolvable *API key* is a hard failure below;
+    # the provider name alone should never block resolution when the gateway itself wouldn't block.
+    provider = (
+        environ.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER", "").strip()
+        or dotenv_values.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER", "").strip()
+        or _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER)
+        or _DEFAULT_PROVIDER
+    ).lower()
+    if provider not in _SUPPORTED_PROVIDERS:
+        return None
+
+    if provider == "anthropic":
+        api_key = (
+            environ.get("ANTHROPIC_API_KEY", "").strip()
+            or dotenv_values.get("ANTHROPIC_API_KEY", "").strip()
+            or _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER_API_KEY)
+            or ""
+        )
+    else:
+        api_key = (
+            environ.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY", "").strip()
+            or dotenv_values.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY", "").strip()
+            or _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER_API_KEY)
+            or ""
+        )
+    if not api_key:
+        return None
+
+    # Not a secret — no keyring lookup, matching the design that keyring is reserved for secrets
+    # only (see Task 1's keychain-schema note). Left as None if unset anywhere, letting
+    # GatewayServiceConfig.from_env() apply its own per-provider default base URL.
+    base_url = (
+        environ.get("OPTIMUS_LOCAL_GATEWAY_BASE_URL", "").strip()
+        or dotenv_values.get("OPTIMUS_LOCAL_GATEWAY_BASE_URL", "").strip()
+        or None
+    )
+    return ProviderSecrets(provider=provider, model_provider_api_key=api_key, base_url=base_url)
+
+
+def run_setup_wizard(
+    *,
+    project_root: Path,
+    keyring_backend: Any = keyring,
+    input_fn: Callable[[str], str] = input,
+    getpass_fn: Callable[[str], str] = getpass.getpass,
+    print_fn: Callable[..., None] = print,
+) -> int:
+    provider = (input_fn(f"Provider [{_DEFAULT_PROVIDER}]: ").strip() or _DEFAULT_PROVIDER).lower()
+    if provider not in _SUPPORTED_PROVIDERS:
+        print_fn(f"Unsupported provider: {provider!r}. Choose one of {_SUPPORTED_PROVIDERS}.")
+        return 1
+
+    existing_api_key = _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER_API_KEY)
+    if existing_api_key:
+        answer = input_fn("A provider key is already stored. Overwrite? [y/N]: ").strip().lower()
+        if answer not in {"y", "yes"}:
+            print_fn("Setup cancelled; existing credentials unchanged.")
+            return 1
+
+    api_key = getpass_fn(f"{provider} API key: ").strip()
+    if not api_key:
+        print_fn("No API key entered; aborting setup.")
+        return 1
+
+    shared_secret = secrets.token_urlsafe(32)
+
+    try:
+        keyring_backend.set_password(_KEYRING_SERVICE, _KEY_MODEL_PROVIDER, provider)
+        keyring_backend.set_password(_KEYRING_SERVICE, _KEY_MODEL_PROVIDER_API_KEY, api_key)
+        keyring_backend.set_password(_KEYRING_SERVICE, _KEY_SHARED_SECRET, shared_secret)
+    except Exception as exc:
+        print_fn(
+            f"Could not store credentials in the OS keychain ({exc}). "
+            "Use .env.gateway instead (see .env.gateway.example)."
+        )
+        return 2
+
+    print_fn(
+        "Stored local gateway credentials in the OS keychain. "
+        "You can now run `optimus-agent` with no environment variables required."
+    )
+    if (project_root / ".env.gateway").is_file():
+        print_fn(
+            "Note: .env.gateway also exists in this project; explicit env vars and that file "
+            "take precedence over the keychain values just stored."
+        )
+    return 0
+```
 
 - [ ] **Step 4: Run tests** — `pytest tests/unit/acp/test_local_gateway_secrets.py -v`, confirm
   green.
@@ -377,6 +644,7 @@ def test_no_keyring_backend_available_fails_with_dotenv_pointer(tmp_path):
 **Interfaces:**
 ```python
 def apply_local_defaults(environ: Mapping[str, str], *, project_root: Path) -> dict[str, str]
+def strip_local_provider_keys(environ: Mapping[str, str]) -> dict[str, str]
 def ensure_local_redis(redis_url: str, *, log: Callable[[str], None] = lambda _msg: None) -> None
 def ensure_local_gateway(*, environ: Mapping[str, str], project_root: Path, log=lambda _msg: None) -> "LocalGatewayProcess | None"
 
@@ -414,6 +682,15 @@ class LocalGatewayProcess:
     - Neither of these two new defaults applies when `OPTIMUS_GATEWAY_URL` is (or resolves to) a
       non-loopback origin — a real hosted gateway must never be silently switched to
       non-production mode or have its model overridden.
+  - `strip_local_provider_keys` removes every name in `_AGENT_ENVIRON_EXCLUDED_KEYS` — that's
+    `LOCAL_PROVIDER_KEY_NAMES` (`src/optimus/config/gateway.py:18`) **plus**
+    `OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY` and `OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET`, not
+    `LOCAL_PROVIDER_KEY_NAMES` alone — from a copied dict, leaving everything else (including
+    `OPTIMUS_API_KEY`, `OPTIMUS_GATEWAY_URL`, `OPTIMUS_REDIS_URL`) untouched. This is the function
+    `main()` (Task 3) must call to build the agent-facing `environ` passed to
+    `build_configured_server`/strict `run_preflight`, separate from the unsanitized `environ`
+    `ensure_local_gateway` uses — see the anthropic- and openrouter-collision findings in Source
+    Anchors above.
   - `ensure_local_redis` no-ops when already TCP-reachable (assert the docker spy is never
     called).
   - `ensure_local_redis` no-ops when host is non-loopback (never touches a remote Redis).
@@ -433,30 +710,469 @@ class LocalGatewayProcess:
     differently depending on which path created them last.
   - `ensure_local_gateway` returns `None` (no-op) when already reachable, when the URL isn't
     loopback, and when no secrets can be resolved anywhere.
-  - `ensure_local_gateway` spawns `[sys.executable, "-m", "optimus_gateway"]` with a **fully and
-    explicitly asserted** child env — not just "contains the provider key" — matching exactly what
-    `GatewayServiceConfig.from_env()` (`src/optimus_gateway/models.py`) reads:
-    `OPTIMUS_LOCAL_GATEWAY_PROVIDER` (the resolved provider name), `OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET`
-    (from `resolve_shared_secret`), `OPTIMUS_LOCAL_GATEWAY_BIND_HOST`/`OPTIMUS_LOCAL_GATEWAY_PORT`
-    (derived from the loopback `OPTIMUS_GATEWAY_URL` being spawned for), and the correct
-    provider-API-key variable via `ProviderSecrets.as_gateway_child_env()` (Task 1) — assert the
-    complete env dict equals exactly this set, not merely `in`/superset checks, so a future edit
-    can't silently add or drop a required key without failing a test. Also assert this dict is a
-    distinct object from — never merged into — the calling process's own `os.environ`, and that
-    stdout/stderr are redirected to a log file path, never `subprocess.PIPE` shared with the
-    caller's own stdio.
+  - `ensure_local_gateway` spawns `[sys.executable, "-m", "optimus_gateway"]` with a child env
+    containing the gateway-specific keys `GatewayServiceConfig.from_env()`
+    (`src/optimus_gateway/models.py`) reads — `OPTIMUS_LOCAL_GATEWAY_PROVIDER`,
+    `OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET`, `OPTIMUS_LOCAL_GATEWAY_BIND_HOST`,
+    `OPTIMUS_LOCAL_GATEWAY_PORT`, and the correct provider-API-key variable via
+    `ProviderSecrets.as_gateway_child_env()` — asserted with **exact values**, plus an explicit
+    assertion that the unused provider-key family (e.g. `ANTHROPIC_API_KEY` when the resolved
+    provider is `openrouter`) is absent. **Correction from an earlier draft of this plan:** this is
+    *not* a check that the whole env dict equals only those five keys — the child process also
+    needs `PATH`/`SYSTEMROOT`/etc. and `PYTHONPATH` to run at all on Windows (the same system-key
+    passthrough pattern `build_acp_subprocess_env` in `subprocess_env.py` already uses), so the
+    test asserts the gateway-specific subset exactly, not the entire dict. Also assert the env
+    dict is a distinct object from — never merged into — the calling process's own `os.environ`,
+    and that stdout/stderr are redirected to a log file, never `subprocess.PIPE` shared with the
+    caller's own stdio. See the concrete test below.
   - `ensure_local_gateway` returns `None` and reports failure via `log(...)` if the spawned
     process exits before becoming reachable (simulate with a fake `Popen` whose `.poll()` returns
     a non-`None` exit code immediately).
+  - `ensure_local_gateway` passes through `OPTIMUS_LOCAL_GATEWAY_BASE_URL` into the child env when
+    `ProviderSecrets.base_url` is set (from any point in the precedence chain) — the local gateway
+    config surface already supports this override for OpenAI-compatible endpoints
+    (`src/optimus_gateway/models.py:44`); dropping it here would silently break an operator who
+    points at a custom endpoint. `resolve_provider_secrets` also defaults the *provider name* to
+    `"openrouter"` when unconfigured anywhere, matching `GatewayServiceConfig.from_env()`'s own
+    default (`models.py:40`) — only a missing/unresolvable API key blocks resolution, not an
+    absent provider name.
+  - `ensure_local_gateway` fails closed (`return None`, via `log(...)`) rather than propagating an
+    exception if preparing the log file (`mkdir`/`open`) or `subprocess.Popen(...)` itself raises
+    `OSError` — a permissions issue or missing interpreter must not crash `optimus-agent`'s own
+    `main()`; it should look identical to "gateway didn't come up" and let the existing preflight
+    check report it with its own operator-actionable message.
   - `LocalGatewayProcess.stop()` terminates a running process and is a no-op if the process
     already exited.
 
+```python
+import os
+import subprocess
+import sys
+
+from optimus.acp import local_infra
+from optimus.acp.local_gateway_secrets import ProviderSecrets
+
+
+def test_strip_local_provider_keys_removes_vendor_keys_but_keeps_optimus_vars():
+    environ = {
+        "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+        "OPTIMUS_API_KEY": "shared-secret",
+        "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
+        "ANTHROPIC_API_KEY": "sk-ant-leaked",
+        "OPENAI_API_KEY": "sk-oai-leaked",
+    }
+
+    sanitized = local_infra.strip_local_provider_keys(environ)
+
+    assert sanitized == {
+        "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+        "OPTIMUS_API_KEY": "shared-secret",
+        "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
+    }
+    assert environ["ANTHROPIC_API_KEY"] == "sk-ant-leaked"  # input untouched, a new dict returned
+
+
+def test_strip_local_provider_keys_also_removes_openrouter_key_and_shared_secret():
+    # Regression test (2026-07-08 review, round 3): OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY is
+    # NOT in LOCAL_PROVIDER_KEY_NAMES (it was invented specifically to avoid the
+    # ANTHROPIC_API_KEY-style collision — see the module-level comment above
+    # _AGENT_ENVIRON_EXCLUDED_KEYS) and would otherwise leak through untouched for the
+    # openai/openrouter path even though it is still a real provider API key.
+    # OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET is likewise stripped as a gateway-internal duplicate of
+    # OPTIMUS_API_KEY, not because it's a vendor key.
+    environ = {
+        "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+        "OPTIMUS_API_KEY": "shared-secret",
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-or-leaked",
+        "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "shared-secret",
+    }
+
+    sanitized = local_infra.strip_local_provider_keys(environ)
+
+    assert sanitized == {"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765", "OPTIMUS_API_KEY": "shared-secret"}
+
+
+def test_ensure_local_gateway_spawns_with_exact_gateway_env_and_no_stray_secrets(tmp_path, monkeypatch):
+    (tmp_path / "src").mkdir()
+    reachable_calls = {"n": 0}
+
+    def fake_tcp_reachable(host, port, *, timeout=1.0):
+        reachable_calls["n"] += 1
+        return reachable_calls["n"] > 1  # not reachable on the pre-check; reachable once "up"
+
+    monkeypatch.setattr(local_infra, "_tcp_reachable", fake_tcp_reachable)
+    monkeypatch.setattr(
+        local_infra,
+        "resolve_provider_secrets",
+        lambda environ, *, project_root: ProviderSecrets(provider="openrouter", model_provider_api_key="sk-or-test"),
+    )
+    monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda environ, *, project_root: "shared-secret-value")
+
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        pid = 4321
+        returncode = None
+
+        def poll(self):
+            return None
+
+    def fake_popen(args, *, env, stdin, stdout, stderr):
+        captured["args"] = args
+        captured["env"] = env
+        captured["stdout"] = stdout
+        return FakeProcess()
+
+    monkeypatch.setattr(local_infra.subprocess, "Popen", fake_popen)
+
+    result = local_infra.ensure_local_gateway(
+        environ={"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765", "PATH": os.environ.get("PATH", "")},
+        project_root=tmp_path,
+    )
+
+    assert result is not None
+    assert captured["args"] == [sys.executable, "-m", "optimus_gateway"]
+    gateway_env = captured["env"]
+    assert gateway_env["OPTIMUS_LOCAL_GATEWAY_PROVIDER"] == "openrouter"
+    assert gateway_env["OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"] == "shared-secret-value"
+    assert gateway_env["OPTIMUS_LOCAL_GATEWAY_BIND_HOST"] == "127.0.0.1"
+    assert gateway_env["OPTIMUS_LOCAL_GATEWAY_PORT"] == "8765"
+    assert gateway_env["OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"] == "sk-or-test"
+    assert "ANTHROPIC_API_KEY" not in gateway_env  # unused provider-key family never set
+    assert gateway_env is not os.environ  # distinct object, never merged into the caller's own env
+    assert captured["stdout"] != subprocess.PIPE  # redirected to a log file, never shared stdio
+
+
+def test_ensure_local_gateway_passes_through_custom_base_url(tmp_path, monkeypatch):
+    (tmp_path / "src").mkdir()
+    reachable_calls = {"n": 0}
+
+    def fake_tcp_reachable(host, port, *, timeout=1.0):
+        reachable_calls["n"] += 1
+        return reachable_calls["n"] > 1
+
+    monkeypatch.setattr(local_infra, "_tcp_reachable", fake_tcp_reachable)
+    monkeypatch.setattr(
+        local_infra,
+        "resolve_provider_secrets",
+        lambda environ, *, project_root: ProviderSecrets(
+            provider="openai", model_provider_api_key="sk-test", base_url="https://custom.example.com/v1"
+        ),
+    )
+    monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda environ, *, project_root: "shared-secret-value")
+
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        pid = 1111
+        returncode = None
+
+        def poll(self):
+            return None
+
+    def fake_popen(args, *, env, stdin, stdout, stderr):
+        captured["env"] = env
+        return FakeProcess()
+
+    monkeypatch.setattr(local_infra.subprocess, "Popen", fake_popen)
+
+    result = local_infra.ensure_local_gateway(
+        environ={"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765"},
+        project_root=tmp_path,
+    )
+
+    assert result is not None
+    assert captured["env"]["OPTIMUS_LOCAL_GATEWAY_BASE_URL"] == "https://custom.example.com/v1"
+
+
+def test_ensure_local_gateway_fails_closed_when_popen_raises(tmp_path, monkeypatch):
+    (tmp_path / "src").mkdir()
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda host, port, *, timeout=1.0: False)
+    monkeypatch.setattr(
+        local_infra,
+        "resolve_provider_secrets",
+        lambda environ, *, project_root: ProviderSecrets(provider="openrouter", model_provider_api_key="sk-or-test"),
+    )
+    monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda environ, *, project_root: "shared-secret-value")
+
+    def raising_popen(*_a, **_k):
+        raise OSError("spawn failed")
+
+    monkeypatch.setattr(local_infra.subprocess, "Popen", raising_popen)
+
+    messages = []
+    result = local_infra.ensure_local_gateway(
+        environ={"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765"},
+        project_root=tmp_path,
+        log=messages.append,
+    )
+
+    assert result is None  # fails closed, does not propagate the OSError
+    assert any("could not start local gateway process" in msg for msg in messages)
+```
+
 - [ ] **Step 2: Run tests, confirm failure.**
 
-- [ ] **Step 3: Implement** `src/optimus/acp/local_infra.py` per the interfaces above. Loopback
-  detection reuses the same host allowlist already established in
-  `src/optimus_gateway/models.py` (`_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}`) —
-  import it rather than duplicating the frozenset, to avoid drift between the two definitions.
+- [ ] **Step 3: Implement** `src/optimus/acp/local_infra.py`:
+
+```python
+from __future__ import annotations
+
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from pathlib import Path
+from urllib.parse import urlparse
+
+from optimus.acp.local_gateway_secrets import resolve_provider_secrets, resolve_shared_secret
+from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES, _LOOPBACK_HOSTS
+
+# _LOOPBACK_HOSTS reused from optimus.config.gateway (agent-side package, already imported
+# elsewhere in bootstrap.py) rather than src/optimus_gateway/models.py's own separate copy of the
+# same frozenset — the local-gateway-service plan documents optimus_gateway as "a distinct
+# process/deployable, not a module the agent imports," so this module must not import across
+# that boundary even though optimus_gateway/models.py happens to define an identical constant.
+
+# The agent-facing environ (passed to build_configured_server / strict run_preflight) must never
+# contain a real vendor key OR the local gateway's own auth secret. LOCAL_PROVIDER_KEY_NAMES alone
+# is not enough: it's the set OptimusGatewaySettings.from_env() explicitly rejects (ANTHROPIC_API_KEY,
+# OPENAI_API_KEY, etc.), but OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY — the var GatewayServiceConfig
+# reads for the openai/openrouter path — was deliberately NOT put in that set (it exists precisely
+# to avoid the ANTHROPIC_API_KEY-style collision; see
+# docs/superpowers/plans/2026-07-07-local-optimus-gateway-service.md, Scope item 5), so it would
+# otherwise leak through untouched even though it is still a real provider API key. Also strip
+# OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET: once apply_local_defaults() has copied its value into
+# OPTIMUS_API_KEY, the agent view should keep only that public contract name, not the
+# gateway-internal duplicate under its own name. Found in 2026-07-08 review, round 3.
+_AGENT_ENVIRON_EXCLUDED_KEYS = LOCAL_PROVIDER_KEY_NAMES | {
+    "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY",
+    "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET",
+}
+
+_REDIS_CONTAINER_NAME = "optimus-redis"
+_REDIS_IMAGE = "redis:8"
+_REDIS_READY_TIMEOUT_SECONDS = 15.0
+_GATEWAY_READY_TIMEOUT_SECONDS = 10.0
+_POLL_INTERVAL_SECONDS = 0.5
+_DEFAULT_REDIS_URL = "redis://127.0.0.1:6379/0"
+_DEFAULT_GATEWAY_URL = "http://127.0.0.1:8765"
+_DEFAULT_LOCAL_AGENT_MODEL = "claude-haiku"
+_SYSTEM_ENV_KEYS = ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "PATH", "TEMP", "TMP")
+
+
+def _noop_log(_message: str) -> None:
+    return
+
+
+def _is_loopback(host: str | None) -> bool:
+    return (host or "").lower() in _LOOPBACK_HOSTS
+
+
+def apply_local_defaults(environ: Mapping[str, str], *, project_root: Path) -> dict[str, str]:
+    resolved = dict(environ)
+
+    if not resolved.get("OPTIMUS_REDIS_URL", "").strip():
+        resolved["OPTIMUS_REDIS_URL"] = _DEFAULT_REDIS_URL
+    if not resolved.get("OPTIMUS_GATEWAY_URL", "").strip():
+        resolved["OPTIMUS_GATEWAY_URL"] = _DEFAULT_GATEWAY_URL
+
+    if not _is_loopback(urlparse(resolved["OPTIMUS_GATEWAY_URL"]).hostname):
+        return resolved
+
+    if not resolved.get("OPTIMUS_PRODUCTION_MODE", "").strip():
+        resolved["OPTIMUS_PRODUCTION_MODE"] = "false"
+    if not resolved.get("OPTIMUS_AGENT_MODEL", "").strip():
+        resolved["OPTIMUS_AGENT_MODEL"] = _DEFAULT_LOCAL_AGENT_MODEL
+    if not resolved.get("OPTIMUS_API_KEY", "").strip():
+        shared_secret = resolve_shared_secret(resolved, project_root=project_root)
+        if shared_secret:
+            resolved["OPTIMUS_API_KEY"] = shared_secret
+
+    return resolved
+
+
+def strip_local_provider_keys(environ: Mapping[str, str]) -> dict[str, str]:
+    """Produce the agent-facing environ view: never contains a real vendor key or the local
+    gateway's own auth secret under its gateway-side name.
+
+    ensure_local_gateway() legitimately reads provider keys and the shared secret from the
+    UNSANITIZED environ to construct the spawned gateway's own child env. But
+    OptimusGatewaySettings.from_env() — reached from build_configured_server and, in strict mode,
+    run_preflight — explicitly rejects any LOCAL_PROVIDER_KEY_NAMES entry with
+    ProviderKeyViolation (the anthropic-provider collision), and even where a name isn't on that
+    reject list (OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY for openai/openrouter), it's still a real
+    provider API key that should never sit in the agent's own view — see
+    _AGENT_ENVIRON_EXCLUDED_KEYS above. The two call sites must never share one environ object.
+    Callers pass this function's output to build_configured_server/run_preflight; they pass the
+    original, unsanitized environ to ensure_local_gateway.
+    """
+    return {key: value for key, value in environ.items() if key not in _AGENT_ENVIRON_EXCLUDED_KEYS}
+
+
+def _tcp_reachable(host: str, port: int, *, timeout: float = 1.0) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _docker_daemon_reachable(docker: str) -> bool:
+    try:
+        result = subprocess.run([docker, "ps"], capture_output=True, text=True, check=False, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def _container_exists(docker: str, name: str) -> bool:
+    try:
+        result = subprocess.run(
+            [docker, "ps", "-a", "--filter", f"name=^/{name}$", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return name in result.stdout.split()
+
+
+def ensure_local_redis(redis_url: str, *, log: Callable[[str], None] = _noop_log) -> None:
+    parsed = urlparse(redis_url)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 6379
+    if not _is_loopback(host):
+        return
+    if _tcp_reachable(host, port):
+        return
+
+    docker = shutil.which("docker")
+    if docker is None:
+        log("optimus-agent: docker not found on PATH; leaving Redis pre-flight to fail closed.")
+        return
+    if not _docker_daemon_reachable(docker):
+        log("optimus-agent: Docker daemon not reachable; leaving Redis pre-flight to fail closed.")
+        return
+
+    if _container_exists(docker, _REDIS_CONTAINER_NAME):
+        log(f"optimus-agent: starting existing {_REDIS_CONTAINER_NAME} container...")
+        subprocess.run([docker, "start", _REDIS_CONTAINER_NAME], capture_output=True, text=True, check=False)
+    else:
+        log(f"optimus-agent: creating {_REDIS_CONTAINER_NAME} container ({_REDIS_IMAGE})...")
+        subprocess.run(
+            [docker, "run", "-d", "--name", _REDIS_CONTAINER_NAME, "-p", f"{port}:6379", _REDIS_IMAGE],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    deadline = time.monotonic() + _REDIS_READY_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if _tcp_reachable(host, port):
+            return
+        time.sleep(_POLL_INTERVAL_SECONDS)
+    log(f"optimus-agent: {_REDIS_CONTAINER_NAME} did not become reachable in time; leaving pre-flight to fail closed.")
+
+
+@dataclass
+class LocalGatewayProcess:
+    process: subprocess.Popen | None
+    log_path: Path | None
+
+    def stop(self) -> None:
+        if self.process is None or self.process.poll() is not None:
+            return
+        self.process.terminate()
+        try:
+            self.process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.wait(timeout=5)
+
+
+def ensure_local_gateway(
+    *,
+    environ: Mapping[str, str],
+    project_root: Path,
+    log: Callable[[str], None] = _noop_log,
+) -> LocalGatewayProcess | None:
+    gateway_url = environ.get("OPTIMUS_GATEWAY_URL", "").strip()
+    if not gateway_url:
+        return None
+    parsed = urlparse(gateway_url)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 8765
+    if not _is_loopback(host):
+        return None
+    if _tcp_reachable(host, port):
+        return None  # already up - ours from an earlier session, or someone else's; don't own it
+
+    provider_secrets = resolve_provider_secrets(environ, project_root=project_root)
+    shared_secret = resolve_shared_secret(environ, project_root=project_root)
+    if provider_secrets is None or not shared_secret:
+        log(
+            "optimus-agent: no local gateway credentials found "
+            "(run `optimus-agent --setup` or configure .env.gateway); "
+            "leaving Gateway pre-flight to fail closed."
+        )
+        return None
+
+    child_env: dict[str, str] = {
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER": provider_secrets.provider,
+        "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": shared_secret,
+        "OPTIMUS_LOCAL_GATEWAY_BIND_HOST": host,
+        "OPTIMUS_LOCAL_GATEWAY_PORT": str(port),
+        **provider_secrets.as_gateway_child_env(),
+    }
+    for key in _SYSTEM_ENV_KEYS:
+        value = environ.get(key, "")
+        if value:
+            child_env[key] = value
+    child_env["PYTHONPATH"] = str((project_root / "src").resolve())
+
+    log_dir = project_root / "reports"
+    log_path = log_dir / "local-gateway.log"
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = open(log_path, "ab")
+    except OSError as exc:
+        log(f"optimus-agent: could not prepare local gateway log file ({exc}); leaving Gateway pre-flight to fail closed.")
+        return None
+
+    try:
+        process = subprocess.Popen(
+            [sys.executable, "-m", "optimus_gateway"],
+            env=child_env,
+            stdin=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+    except OSError as exc:
+        log(f"optimus-agent: could not start local gateway process ({exc}); leaving Gateway pre-flight to fail closed.")
+        return None
+    finally:
+        log_file.close()  # the child holds its own duplicated fd; the parent doesn't need this one
+    log(f"optimus-agent: starting local gateway (pid {process.pid}); logging to {log_path}")
+
+    deadline = time.monotonic() + _GATEWAY_READY_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            log(f"optimus-agent: local gateway exited early (code {process.returncode}); see {log_path}")
+            return None
+        if _tcp_reachable(host, port):
+            return LocalGatewayProcess(process=process, log_path=log_path)
+        time.sleep(_POLL_INTERVAL_SECONDS)
+
+    log(f"optimus-agent: local gateway did not become ready in time; see {log_path}")
+    LocalGatewayProcess(process=process, log_path=log_path).stop()
+    return None
+```
 
 - [ ] **Step 4: Run tests** — confirm green.
 
@@ -489,7 +1205,22 @@ the operator started one manually. Document this explicitly (Task 5): plain `--c
 validates credential-shape and Redis, neither of which requires the gateway to be up yet;
 `--strict` is for validating an already-running stack (e.g. right before pointing an IDE at it),
 not for validating a not-yet-started one. This plan does not add spawn-then-teardown-just-for-the-
-probe logic to `--check-config --strict`, to keep it free of process side effects.
+probe logic to `--check-config --strict`, to keep it free of process side effects. **Also note:**
+in strict mode, `_require_gateway_auth` (`preflight.py:99`) calls `OptimusGatewaySettings.from_env`
+too — so the environ passed to `run_preflight` here must be the `strip_local_provider_keys()`-
+sanitized one, same as `build_configured_server` below, not the unsanitized one `ensure_local_gateway`
+uses.
+
+**Two `environ` views, not one (2026-07-08 review finding):** `ensure_local_gateway` needs the
+unsanitized `environ` (it may legitimately contain `ANTHROPIC_API_KEY` etc., read to build the
+spawned gateway's own child env). But `build_configured_server` and strict `run_preflight` both
+reach `OptimusGatewaySettings.from_env()`, which raises `ProviderKeyViolation` if any
+`LOCAL_PROVIDER_KEY_NAMES` name is present. For the anthropic provider specifically, that's the
+*same* variable name (`ANTHROPIC_API_KEY`) needed on one side and rejected on the other — so
+passing one shared `environ` object to both would let an anthropic-provider auto-start spawn the
+gateway successfully and then immediately crash agent startup with an unrelated-looking error.
+`main()` must build a separate `agent_environ = strip_local_provider_keys(environ)` and pass
+*that* — never the raw `environ` — to `build_configured_server`/`run_preflight`.
 
 - [ ] **Step 1: Write failing tests** asserting:
   - `--setup` calls `run_setup_wizard` and returns its exit code without touching
@@ -500,27 +1231,456 @@ probe logic to `--check-config --strict`, to keep it free of process side effect
     spy), while `apply_local_defaults` still runs in both branches regardless of the flag.
   - Without `--no-auto-start`, the real serve path calls `apply_local_defaults`, then
     `ensure_local_redis`, then `ensure_local_gateway`, then `build_configured_server`, in that
-    order, and calls `.stop()` on the returned `LocalGatewayProcess` after `serve`/`serve_ndjson`
-    returns — but only when `ensure_local_gateway` returned a non-`None` handle (assert `.stop()`
-    is not called when it returned `None`), and also on the exception path (simulate `serve`
-    raising).
+    order (a dedicated ordering test, not just implied by the other tests), and calls `.stop()` on
+    the returned `LocalGatewayProcess` after `serve`/`serve_ndjson` returns — but only when
+    `ensure_local_gateway` returned a non-`None` handle (assert `.stop()` is not called when it
+    returned `None`), and on the exception path both when `serve` raises AND when
+    `build_configured_server` itself raises something other than `StartupConfigurationError`
+    (two separate tests — an earlier draft of this plan only covered the `serve`-raises case).
   - Without `--no-auto-start`, `--check-config` calls `apply_local_defaults` and
     `ensure_local_redis` but does **not** call `ensure_local_gateway` (assert via spy/monkeypatch).
+  - **Regression tests for the anthropic-collision finding above, plus its openrouter sibling
+    (round 3 of review):** when `environ` (as returned by `apply_local_defaults`) contains
+    `OPTIMUS_LOCAL_GATEWAY_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`, `ensure_local_gateway`
+    must receive the value (asserted via a spy), while `build_configured_server` must never see it
+    in its `environ` (asserted via a spy) — proving the two-`environ`-view split actually happens,
+    not just that each function individually works. A second, sibling test does the same for
+    `OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter` plus `OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY` and
+    `OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET` — these don't trigger `ProviderKeyViolation` (they're not
+    in `LOCAL_PROVIDER_KEY_NAMES`), so this case would pass silently without an explicit test even
+    though it's still a real provider key reaching the agent view.
+
+```python
+import pytest
+
+from optimus.acp import __main__ as acp_main
+
+
+def test_setup_flag_calls_wizard_and_short_circuits(monkeypatch):
+    calls = []
+    monkeypatch.setattr(acp_main, "run_setup_wizard", lambda **kwargs: calls.append(kwargs) or 0)
+
+    exit_code = acp_main.main(["--setup"])
+
+    assert exit_code == 0
+    assert len(calls) == 1
+
+
+def _patch_common(monkeypatch, *, gateway_url="https://gateway.optimus.ai", server_factory=None):
+    monkeypatch.setattr(
+        acp_main,
+        "apply_local_defaults",
+        lambda environ, *, project_root: {
+            "OPTIMUS_GATEWAY_URL": gateway_url,
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
+        },
+    )
+
+    if server_factory is None:
+        class FakeServer:
+            def serve_ndjson(self, *_a, **_k):
+                async def _noop():
+                    return None
+                return _noop()
+
+        server_factory = lambda **k: FakeServer()
+
+    monkeypatch.setattr(acp_main, "build_configured_server", server_factory)
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineReader", lambda *_a, **_k: object())
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineWriter", lambda *_a, **_k: object())
+
+
+def test_no_auto_start_skips_redis_and_gateway_in_real_serve_path(monkeypatch, tmp_path):
+    redis_calls = []
+    gateway_calls = []
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: redis_calls.append((a, k)))
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: gateway_calls.append(k) or None)
+    _patch_common(monkeypatch)
+
+    exit_code = acp_main.main(["--no-auto-start", "--workspace-root", str(tmp_path)])
+
+    assert exit_code == 0
+    assert redis_calls == []
+    assert gateway_calls == []
+
+
+def test_check_config_never_calls_ensure_local_gateway(monkeypatch, tmp_path):
+    gateway_calls = []
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: gateway_calls.append(k) or None)
+    monkeypatch.setattr(acp_main, "run_preflight", lambda environ, **k: None)
+    _patch_common(monkeypatch)
+
+    exit_code = acp_main.main(["--check-config", "--workspace-root", str(tmp_path)])
+
+    assert exit_code == 0
+    assert gateway_calls == []
+
+
+def test_no_auto_start_skips_redis_in_check_config_branch(monkeypatch, tmp_path):
+    redis_calls = []
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: redis_calls.append((a, k)))
+    monkeypatch.setattr(acp_main, "run_preflight", lambda environ, **k: None)
+    _patch_common(monkeypatch)
+
+    exit_code = acp_main.main(["--check-config", "--no-auto-start", "--workspace-root", str(tmp_path)])
+
+    assert exit_code == 0
+    assert redis_calls == []
+
+
+def test_gateway_process_stopped_only_if_it_was_started(monkeypatch, tmp_path):
+    stop_calls = []
+
+    class FakeGatewayProcess:
+        def stop(self):
+            stop_calls.append("stopped")
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: FakeGatewayProcess())
+    _patch_common(monkeypatch, gateway_url="http://127.0.0.1:8765")
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
+
+    assert exit_code == 0
+    assert stop_calls == ["stopped"]
+
+
+def test_gateway_process_not_stopped_when_none_was_started(monkeypatch, tmp_path):
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: None)
+    _patch_common(monkeypatch, gateway_url="http://127.0.0.1:8765")
+    # No FakeGatewayProcess anywhere in this test — if main() ever calls .stop() on the None
+    # returned by ensure_local_gateway, this test fails with AttributeError, not a soft assertion.
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
+
+    assert exit_code == 0
+
+
+def test_gateway_process_stopped_when_serve_raises(monkeypatch, tmp_path):
+    # Locks the fix for a leak an earlier draft of this plan had: only StartupConfigurationError
+    # and the post-serve finally stopped the gateway, so any OTHER exception from serve (or from
+    # build_configured_server itself) would leave a spawned gateway process orphaned.
+    stop_calls = []
+
+    class FakeGatewayProcess:
+        def stop(self):
+            stop_calls.append("stopped")
+
+    class FailingServer:
+        def serve_ndjson(self, *_a, **_k):
+            async def _raise():
+                raise RuntimeError("boom")
+            return _raise()
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: FakeGatewayProcess())
+    _patch_common(monkeypatch, gateway_url="http://127.0.0.1:8765", server_factory=lambda **k: FailingServer())
+
+    with pytest.raises(RuntimeError):
+        acp_main.main(["--workspace-root", str(tmp_path)])
+
+    assert stop_calls == ["stopped"]
+
+
+def test_gateway_process_stopped_when_build_configured_server_raises_unexpectedly(monkeypatch, tmp_path):
+    # Sibling to the serve-raises test above: this covers the OTHER half of the leak an earlier
+    # draft had — build_configured_server itself raising something other than
+    # StartupConfigurationError, before serve() is ever reached.
+    stop_calls = []
+
+    class FakeGatewayProcess:
+        def stop(self):
+            stop_calls.append("stopped")
+
+    def raising_build_configured_server(**_k):
+        raise ValueError("unexpected settings construction failure")
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: FakeGatewayProcess())
+    _patch_common(monkeypatch, gateway_url="http://127.0.0.1:8765", server_factory=raising_build_configured_server)
+
+    with pytest.raises(ValueError):
+        acp_main.main(["--workspace-root", str(tmp_path)])
+
+    assert stop_calls == ["stopped"]
+
+
+def test_real_serve_path_calls_helpers_in_expected_order(monkeypatch, tmp_path):
+    call_order = []
+
+    monkeypatch.setattr(
+        acp_main,
+        "apply_local_defaults",
+        lambda environ, *, project_root: call_order.append("apply_local_defaults")
+        or {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
+        },
+    )
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: call_order.append("ensure_local_redis"))
+    monkeypatch.setattr(
+        acp_main, "ensure_local_gateway", lambda **k: call_order.append("ensure_local_gateway") or None
+    )
+
+    class FakeServer:
+        def serve_ndjson(self, *_a, **_k):
+            async def _noop():
+                return None
+            return _noop()
+
+    def fake_build_configured_server(**_k):
+        call_order.append("build_configured_server")
+        return FakeServer()
+
+    monkeypatch.setattr(acp_main, "build_configured_server", fake_build_configured_server)
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineReader", lambda *_a, **_k: object())
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineWriter", lambda *_a, **_k: object())
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
+
+    assert exit_code == 0
+    assert call_order == [
+        "apply_local_defaults",
+        "ensure_local_redis",
+        "ensure_local_gateway",
+        "build_configured_server",
+    ]
+
+
+def test_anthropic_provider_key_reaches_gateway_child_but_not_agent_settings(monkeypatch, tmp_path):
+    # Regression test for the review finding: ANTHROPIC_API_KEY is both the var name
+    # GatewayServiceConfig.from_env() reads for the anthropic provider AND a name
+    # OptimusGatewaySettings.validate_no_local_provider_keys() explicitly rejects. The environ
+    # ensure_local_gateway sees must still contain it (it needs to build the child env); the
+    # environ build_configured_server sees must not (or agent startup would crash with
+    # ProviderKeyViolation immediately after the gateway spawned successfully).
+    gateway_environ_seen = {}
+    agent_environ_seen = {}
+
+    def fake_ensure_local_gateway(*, environ, project_root, log):
+        gateway_environ_seen.update(environ)
+        return None
+
+    def fake_build_configured_server(*, environ, workspace_root, model):
+        agent_environ_seen.update(environ)
+
+        class FakeServer:
+            def serve_ndjson(self, *_a, **_k):
+                async def _noop():
+                    return None
+                return _noop()
+
+        return FakeServer()
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", fake_ensure_local_gateway)
+    monkeypatch.setattr(acp_main, "build_configured_server", fake_build_configured_server)
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineReader", lambda *_a, **_k: object())
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineWriter", lambda *_a, **_k: object())
+    monkeypatch.setattr(
+        acp_main,
+        "apply_local_defaults",
+        lambda environ, *, project_root: {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "shared-secret",
+            "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "anthropic",
+            "ANTHROPIC_API_KEY": "sk-ant-real",
+        },
+    )
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
+
+    assert exit_code == 0
+    assert gateway_environ_seen["ANTHROPIC_API_KEY"] == "sk-ant-real"  # gateway spawn legitimately sees it
+    assert "ANTHROPIC_API_KEY" not in agent_environ_seen  # agent settings never do
+
+
+def test_openrouter_provider_key_reaches_gateway_child_but_not_agent_settings(monkeypatch, tmp_path):
+    # Sibling to the anthropic regression test above (2026-07-08 review, round 3):
+    # OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY doesn't trigger ProviderKeyViolation (it isn't in
+    # LOCAL_PROVIDER_KEY_NAMES), so this doesn't crash agent startup the way the anthropic case
+    # does — but it's still a real provider API key and must not reach the agent-facing environ.
+    gateway_environ_seen = {}
+    agent_environ_seen = {}
+
+    def fake_ensure_local_gateway(*, environ, project_root, log):
+        gateway_environ_seen.update(environ)
+        return None
+
+    def fake_build_configured_server(*, environ, workspace_root, model):
+        agent_environ_seen.update(environ)
+
+        class FakeServer:
+            def serve_ndjson(self, *_a, **_k):
+                async def _noop():
+                    return None
+                return _noop()
+
+        return FakeServer()
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", fake_ensure_local_gateway)
+    monkeypatch.setattr(acp_main, "build_configured_server", fake_build_configured_server)
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineReader", lambda *_a, **_k: object())
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineWriter", lambda *_a, **_k: object())
+    monkeypatch.setattr(
+        acp_main,
+        "apply_local_defaults",
+        lambda environ, *, project_root: {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "shared-secret",
+            "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "openrouter",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-or-real",
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "shared-secret",
+        },
+    )
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
+
+    assert exit_code == 0
+    assert gateway_environ_seen["OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"] == "sk-or-real"
+    assert "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY" not in agent_environ_seen
+    assert "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET" not in agent_environ_seen
+```
 
 - [ ] **Step 2: Run tests, confirm failure.**
 
 - [ ] **Step 3: Implement wiring** in `main()`:
-  - Add `--setup` (runs the wizard, returns its exit code, short-circuits everything else) and
-    `--no-auto-start` (`store_true`) argparse arguments.
-  - In the `--check-config` branch: `environ = apply_local_defaults(os.environ,
-    project_root=...)`; if not `args.no_auto_start`, `ensure_local_redis(environ["OPTIMUS_REDIS_URL"])`;
-    then proceed to `run_preflight(environ, ...)` exactly as today.
-  - In the real serve branch: same `apply_local_defaults`; if not `args.no_auto_start`,
-    `ensure_local_redis(environ["OPTIMUS_REDIS_URL"])` and
-    `gateway_process = ensure_local_gateway(environ=environ, project_root=...)`, else
-    `gateway_process = None` (and `ensure_local_redis` is skipped too); wrap the existing
-    `build_configured_server(...)` / `asyncio.run(server.serve(...))` call in `try/finally`,
-    calling `gateway_process.stop()` in the `finally` only if `gateway_process is not None`.
+
+```python
+from __future__ import annotations
+
+import argparse
+import asyncio
+import os
+import sys
+from pathlib import Path
+
+from optimus.acp.bootstrap import StartupConfigurationError, build_configured_server
+from optimus.acp.local_gateway_secrets import run_setup_wizard
+from optimus.acp.local_infra import (
+    apply_local_defaults,
+    ensure_local_gateway,
+    ensure_local_redis,
+    strip_local_provider_keys,
+)
+from optimus.acp.preflight import PreflightFailure, run_preflight
+from optimus.acp.server import StdioByteReader, StdioByteWriter, StdioNdjsonLineReader, StdioNdjsonLineWriter
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _print_log(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog="optimus-agent")
+    parser.add_argument("--workspace-root", default=".", help="Workspace root exposed to the ACP agent.")
+    parser.add_argument("--model", default=None, help="Gateway model for agent planning.")
+    parser.add_argument("--check-config", action="store_true", help="Validate configuration and exit.")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="With --check-config, probe gateway authentication in addition to Redis checks.",
+    )
+    parser.add_argument(
+        "--framed",
+        action="store_true",
+        help="Use Content-Length framed JSON-RPC instead of newline-delimited JSON (IDE default is ndjson).",
+    )
+    parser.add_argument(
+        "--setup",
+        action="store_true",
+        help="Interactively store local gateway credentials in the OS keychain, then exit.",
+    )
+    parser.add_argument(
+        "--no-auto-start",
+        action="store_true",
+        help="Do not auto-start local Redis or the local gateway process; assume they are already running.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+
+    if args.setup:
+        return run_setup_wizard(project_root=_project_root())
+
+    workspace_root = Path(args.workspace_root)
+    # `environ` may legitimately contain a real vendor key (e.g. ANTHROPIC_API_KEY in the
+    # operator's own shell, or resolved from .env.gateway/keyring) — ensure_local_gateway needs
+    # that to construct the spawned gateway's child env. It must NEVER be the same object passed
+    # to build_configured_server/run_preflight, both of which reach
+    # OptimusGatewaySettings.from_env(), which rejects any LOCAL_PROVIDER_KEY_NAMES entry with
+    # ProviderKeyViolation. agent_environ (built just below each use) is that separate, sanitized
+    # view. See the anthropic-collision finding in Source Anchors / Confirmed Design Decisions.
+    environ = apply_local_defaults(os.environ, project_root=_project_root())
+
+    if args.check_config:
+        if not args.no_auto_start:
+            ensure_local_redis(environ["OPTIMUS_REDIS_URL"], log=_print_log)
+        agent_environ = strip_local_provider_keys(environ)
+        try:
+            run_preflight(
+                agent_environ,
+                workspace_root=workspace_root,
+                strict=args.strict,
+                require_timeseries=True,
+            )
+        except PreflightFailure as exc:
+            print(exc.user_message, file=sys.stderr)
+            return exc.exit_code
+        print("Optimus ACP agent configuration OK.", file=sys.stderr)
+        return 0
+
+    gateway_process = None
+    if not args.no_auto_start:
+        ensure_local_redis(environ["OPTIMUS_REDIS_URL"], log=_print_log)
+        gateway_process = ensure_local_gateway(environ=environ, project_root=_project_root(), log=_print_log)
+
+    agent_environ = strip_local_provider_keys(environ)
+
+    # Single try/finally around BOTH build_configured_server(...) and serve(...): an earlier draft
+    # of this plan wrapped only the serve() call, so an unexpected (non-StartupConfigurationError)
+    # exception from build_configured_server() would skip both the except block below and the
+    # inner finally, leaking the already-spawned gateway_process. Nesting everything inside one
+    # outer finally means every exit path — normal completion, StartupConfigurationError, or any
+    # other exception — stops it exactly once.
+    try:
+        try:
+            server = build_configured_server(environ=agent_environ, workspace_root=workspace_root, model=args.model)
+        except StartupConfigurationError as exc:
+            print(exc.user_message, file=sys.stderr)
+            return exc.exit_code
+
+        if args.framed:
+            asyncio.run(server.serve(StdioByteReader(sys.stdin.buffer), StdioByteWriter(sys.stdout.buffer)))
+        else:
+            asyncio.run(
+                server.serve_ndjson(
+                    StdioNdjsonLineReader(sys.stdin.buffer),
+                    StdioNdjsonLineWriter(sys.stdout.buffer),
+                )
+            )
+    finally:
+        if gateway_process is not None:
+            gateway_process.stop()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
 
 - [ ] **Step 4: Run tests** — confirm green.
 
@@ -530,14 +1690,36 @@ probe logic to `--check-config --strict`, to keep it free of process side effect
 - Modify: `src/optimus/acp/preflight.py`
 - Modify: `tests/unit/acp/test_preflight.py`
 
-- [ ] **Step 1:** Confirm the existing test asserts via substring (`in`), not exact equality, so
-  appending a clause stays additive. If it currently asserts exact equality, update the assertion
-  to `in` first (failing-test-first for the changed assertion).
-- [ ] **Step 2:** Change `_require_gateway_credentials`'s message from
-  `"Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP agent."` to also
-  mention `optimus-agent --setup`, e.g.:
-  `"Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP agent (or run"
-  " optimus-agent --setup to configure the local gateway)."`
+- [ ] **Step 1:** Verified (2026-07-08): `tests/unit/acp/test_preflight.py:57` already asserts
+  `assert "OPTIMUS_GATEWAY_URL" in exc_info.value.user_message` — a substring check, not exact
+  equality — so appending a clause below is additive and this existing test does not need to
+  change.
+
+- [ ] **Step 2:** In `src/optimus/acp/preflight.py`, `_require_gateway_credentials`:
+
+```python
+# Before
+def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
+    missing = tuple(name for name in ("OPTIMUS_GATEWAY_URL", "OPTIMUS_API_KEY") if not environ.get(name, "").strip())
+    if missing:
+        raise PreflightFailure(
+            exit_code=2,
+            user_message="Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP agent.",
+        )
+
+# After
+def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
+    missing = tuple(name for name in ("OPTIMUS_GATEWAY_URL", "OPTIMUS_API_KEY") if not environ.get(name, "").strip())
+    if missing:
+        raise PreflightFailure(
+            exit_code=2,
+            user_message=(
+                "Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP agent "
+                "(or run `optimus-agent --setup` to configure the local gateway)."
+            ),
+        )
+```
+
 - [ ] **Step 3:** Run `pytest tests/unit/acp/test_preflight.py -v` — confirm green.
 
 ## Task 5: Documentation
