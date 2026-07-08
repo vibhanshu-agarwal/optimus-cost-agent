@@ -415,7 +415,12 @@ python tools/verify_live_agent.py
 ### Zed HITL: agent panel appears stuck after `session/prompt` (open)
 
 **Status:** Open (recorded 2026-07-08). Subprocess/e2e and `verify_live_agent.py` flows are
-green; the remaining claim-table row depends on a real Zed session artifact.
+green; the remaining claim-table row depends on a real Zed session artifact. **Update
+(2026-07-08):** cause 4 below (missing `toolCall`) is fixed in `src/optimus/acp/spec.py` and
+locked by `tests/unit/acp/test_spec_protocol.py`; the launch-path workaround (cause-adjacent,
+via the `.venv` path) is replaced by the `uv tool install --editable .` guidance below. Neither
+change has been verified against a real Zed session yet — that verification is what remains
+open.
 
 **Symptom:** Zed shows a loading indicator indefinitely after sending a prompt (for example
 "Can you help me write a calculator?") with no visible completion, plan text, or error.
@@ -431,24 +436,32 @@ green; the remaining claim-table row depends on a real Zed session artifact.
    `--workspace-root` and open Zed on the same repository folder.
 3. **Infrastructure not ready** — Gateway or Redis down/slow; planning blocks up to the
    gateway client timeout (~30s) before any permission UI.
-4. **ACP payload shape gap (suspected)** — Optimus `session/request_permission` includes
-   `options` + `metadata` (plan hash/text) but not the ACP v1 `toolCall` object documented at
-   [agentclientprotocol.com](https://agentclientprotocol.com/protocol/v1/tool-calls). Zed may
-   not surface approval UI for non-conformant payloads.
+4. **ACP payload shape gap (fixed 2026-07-08, unverified against real Zed)** — Optimus
+   `session/request_permission` previously included `options` + `metadata` (plan hash/text) but
+   not the ACP v1 `toolCall` object documented at
+   [agentclientprotocol.com](https://agentclientprotocol.com/protocol/v1/tool-calls). `spec.py`
+   now sends a `toolCall` (`toolCallId`, `kind`, `status`, `title`, `locations`) derived from the
+   plan's parsed directives. Whether this was the actual cause of the stuck panel is unconfirmed
+   until re-tested in Zed.
 
 **Workarounds to try:**
 
 - Set `"agent": { "always_allow_external_agent_tools": true }` in Zed settings to auto-approve
   external ACP permission requests.
-- Align config: open Zed on the target worktree; use `"args": ["-m", "optimus.acp",
-  "--workspace-root", "."]` and the worktree's `.venv` Python.
-- Confirm preflight: `python -m optimus.acp --workspace-root . --check-config --strict`
+- Install the console script as a `uv` tool once — `uv tool install --editable .` — so Zed's
+  `agent_servers` config can use `"command": "optimus-agent"` with no `.venv` python path and no
+  per-worktree path juggling (see README "Install the `optimus-agent` command"). A raw path to a
+  worktree's `.venv\Scripts\python.exe` is project-specific and was a stopgap, not the target
+  shape; do not reintroduce it as the documented fix.
+- Open Zed on the target worktree so `session/new`'s `cwd` resolves under `--workspace-root "."`.
+- Confirm preflight: `optimus-agent --workspace-root . --check-config --strict`
   with gateway and Redis running.
 - Smoke without Zed: `python tools/verify_live_agent.py --workspace-root <scratch-dir>`.
 - Start a **new** agent session after config changes; cancel stuck turns with `session/cancel`.
 
-**Follow-up (implementation):** Add ACP-conformant `toolCall` to permission requests; verify
-Zed renders approval UI; capture HITL artifact under `reports/` when green.
+**Follow-up (implementation):** ~~Add ACP-conformant `toolCall` to permission requests~~ done;
+remaining work is to verify Zed renders approval UI with the fixed payload and the
+`uv tool install`-based launch config, then capture the HITL artifact under `reports/` when green.
 
 ## Execution Order Against In-Flight Work
 
