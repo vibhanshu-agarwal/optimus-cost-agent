@@ -5,7 +5,7 @@ PROVIDER_MODEL_ALIASES: dict[str, dict[str, str]] = {
         "claude-haiku": "claude-haiku-4-5-20251001",
     },
     "openrouter": {
-        "claude-haiku": "anthropic/claude-3.5-haiku",
+        "claude-haiku": "anthropic/claude-haiku-4.5",
     },
     "openai": {
         "claude-haiku": "gpt-4o-mini",

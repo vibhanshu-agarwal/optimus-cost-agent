@@ -50,3 +50,22 @@ def test_merge_gateway_subprocess_env_reads_provider_key_from_file(tmp_path, mon
     assert gateway_env["OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"] == "sk-or-test"
     assert gateway_env["OPTIMUS_LOCAL_GATEWAY_PORT"] == "9876"
     assert "OPTIMUS_API_KEY" not in gateway_env
+    assert gateway_env["PYTHONPATH"].startswith(str(tmp_path / "src"))
+
+
+def test_merge_gateway_subprocess_env_preserves_existing_pythonpath(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY", raising=False)
+    (tmp_path / ".env.gateway").write_text(
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openai\n"
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-test\n",
+        encoding="utf-8",
+    )
+
+    gateway_env = merge_gateway_subprocess_env(
+        base_environ={"PYTHONPATH": "/existing/path"},
+        root=tmp_path,
+        port=9876,
+        shared_secret="live-gateway-smoke-secret",
+    )
+
+    assert gateway_env["PYTHONPATH"] == f"{tmp_path / 'src'}{os.pathsep}/existing/path"

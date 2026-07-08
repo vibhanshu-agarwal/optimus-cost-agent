@@ -9,3 +9,4 @@ def test_planner_prompt_mandates_directive_grammar():
     assert "WRITE <relative-path>" in prompt
     assert "TEST pytest <relative-test-path-or-args>" in prompt
     assert "Do not emit prose before the directives" in prompt
+    assert "Emit at most one WRITE directive per plan" in prompt

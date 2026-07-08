@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-AGENT_PLANNER_PROMPT_VERSION = "AGENT_PLANNER_PROMPT_VERSION:2026-07-07"
+AGENT_PLANNER_PROMPT_VERSION = "AGENT_PLANNER_PROMPT_VERSION:2026-07-09"
 
 _DIRECTIVE_GRAMMAR = """\
 Respond using only the directive grammar below. Do not emit prose before the directives.
+Use plain lines only: no markdown bullets, numbering, or code fences.
+Emit at most one WRITE directive per plan.
 
 Directives:
 - READ <relative-path>

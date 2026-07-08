@@ -23,11 +23,11 @@ def test_compute_cost_usd_uses_anthropic_haiku_rates():
 def test_compute_cost_usd_uses_openrouter_haiku_rates():
     cost, _snapshot = compute_cost_usd(
         provider="openrouter",
-        resolved_model="anthropic/claude-3.5-haiku",
+        resolved_model="anthropic/claude-haiku-4.5",
         input_tokens=1_000_000,
         output_tokens=0,
     )
-    assert cost == Decimal("0.80")
+    assert cost == Decimal("1.00")
 
 
 def test_lookup_model_rate_fails_loudly_for_unknown_model():

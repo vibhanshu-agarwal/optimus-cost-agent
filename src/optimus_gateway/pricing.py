@@ -17,10 +17,10 @@ MODEL_RATES: dict[tuple[str, str], ModelRate] = {
         Decimal("1.00"),
         Decimal("5.00"),
     ),
-    ("openrouter", "anthropic/claude-3.5-haiku"): ModelRate(
-        "openrouter-anthropic-claude-3.5-haiku-2026-07-08",
-        Decimal("0.80"),
-        Decimal("4.00"),
+    ("openrouter", "anthropic/claude-haiku-4.5"): ModelRate(
+        "openrouter-anthropic-claude-haiku-4.5-2026-07-08",
+        Decimal("1.00"),
+        Decimal("5.00"),
     ),
     ("openai", "gpt-4o-mini"): ModelRate(
         "openai-gpt-4o-mini-2026-07-08",

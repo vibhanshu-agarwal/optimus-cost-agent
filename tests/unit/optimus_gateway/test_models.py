@@ -9,7 +9,7 @@ def test_resolve_model_id_anthropic_alias():
 
 
 def test_resolve_model_id_openrouter_alias():
-    assert resolve_model_id(provider="openrouter", model="claude-haiku") == "anthropic/claude-3.5-haiku"
+    assert resolve_model_id(provider="openrouter", model="claude-haiku") == "anthropic/claude-haiku-4.5"
 
 
 def test_resolve_model_id_openai_alias():

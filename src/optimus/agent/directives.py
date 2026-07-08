@@ -33,11 +33,11 @@ def parse_agent_plan(plan_text: str) -> AgentPlanDirectives:
     read_paths: list[str] = []
     tests: list[tuple[str, ...]] = []
     write: AgentWriteDirective | None = None
-    lines = plan_text.splitlines()
+    lines = _unwrap_markdown_code_fence(plan_text).splitlines()
     index = 0
 
     while index < len(lines):
-        line = lines[index]
+        line = _normalize_directive_line(lines[index])
         read_match = _READ_DIRECTIVE.match(line)
         if read_match is not None:
             path = read_match.group(1)
@@ -49,7 +49,7 @@ def parse_agent_plan(plan_text: str) -> AgentPlanDirectives:
         write_match = _WRITE_DIRECTIVE.match(line)
         if write_match is not None:
             if write is not None:
-                raise AgentDirectiveParseError("no valid agent directives")
+                raise AgentDirectiveParseError("multiple WRITE directives are not supported")
             path = write_match.group(1)
             _validate_relative_path(path)
             index += 1
@@ -80,11 +80,38 @@ def parse_agent_plan(plan_text: str) -> AgentPlanDirectives:
 
 
 def _is_directive_line(line: str) -> bool:
+    normalized = _normalize_directive_line(line)
     return (
-        _READ_DIRECTIVE.match(line) is not None
-        or _WRITE_DIRECTIVE.match(line) is not None
-        or _TEST_DIRECTIVE.match(line) is not None
+        _READ_DIRECTIVE.match(normalized) is not None
+        or _WRITE_DIRECTIVE.match(normalized) is not None
+        or _TEST_DIRECTIVE.match(normalized) is not None
     )
+
+
+def _unwrap_markdown_code_fence(plan_text: str) -> str:
+    stripped = plan_text.strip()
+    if not stripped.startswith("```"):
+        return plan_text
+    lines = stripped.splitlines()
+    if len(lines) < 2:
+        return plan_text
+    closing_index = len(lines) - 1
+    while closing_index > 0 and not lines[closing_index].strip().startswith("```"):
+        closing_index -= 1
+    if closing_index == 0:
+        return plan_text
+    return "\n".join(lines[1:closing_index])
+
+
+def _normalize_directive_line(line: str) -> str:
+    normalized = line.strip()
+    while True:
+        for prefix in ("- ", "* ", "+ "):
+            if normalized.startswith(prefix):
+                normalized = normalized[len(prefix) :].lstrip()
+                break
+        else:
+            return normalized
 
 
 def _validate_relative_path(path_text: str) -> None:

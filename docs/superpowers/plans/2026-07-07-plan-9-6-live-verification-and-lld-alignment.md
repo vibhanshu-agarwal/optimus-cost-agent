@@ -255,6 +255,8 @@ piece; re-run L5 against it once that lands before treating this task's live tie
   approve plan, verify `calculator.py` by subprocess execution (not `exec()`/`import` in-process).
   Assert `add(2,3)`, `subtract(10,4)`, `multiply(3,4)`, `divide(10,2)` with `timeout=10`. On any
   failure, attach generated `calculator.py` content. No retry on this test — one call, one verdict.
+  Phase 1 enforces at most one `WRITE` per plan (single-guarded mutation); multi-WRITE impl+test
+  pairs are a legitimate Phase 2 consideration — models naturally emit them.
   Same `OPTIMUS_LIVE_MAX_COST_USD` cap (default `0.25`).
 
 ## Task L6: E2E Spawned Agent (Keystone)

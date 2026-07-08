@@ -130,7 +130,7 @@ def test_handle_responses_request_openrouter_alias_and_provider_field():
     assert status == 200
     parsed = parse_gateway_response(body)
     assert parsed.gateway_usage.provider == "openrouter"
-    assert client.calls == [{"model": "anthropic/claude-3.5-haiku", "input_text": "hello"}]
+    assert client.calls == [{"model": "anthropic/claude-haiku-4.5", "input_text": "hello"}]
 
 
 def test_handle_responses_request_rejects_unsupported_model():

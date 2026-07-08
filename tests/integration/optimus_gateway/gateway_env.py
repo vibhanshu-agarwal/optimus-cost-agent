@@ -76,4 +76,18 @@ def merge_gateway_subprocess_env(
         )
         gateway_env.pop("ANTHROPIC_API_KEY", None)
 
+    _ensure_src_on_pythonpath(gateway_env, root or project_root())
+
     return gateway_env
+
+
+def _ensure_src_on_pythonpath(gateway_env: dict[str, str], root: Path) -> None:
+    src_path = str(root / "src")
+    existing = gateway_env.get("PYTHONPATH", "").strip()
+    if not existing:
+        gateway_env["PYTHONPATH"] = src_path
+        return
+    prefix_entries = existing.split(os.pathsep)
+    if prefix_entries[0] == src_path:
+        return
+    gateway_env["PYTHONPATH"] = f"{src_path}{os.pathsep}{existing}"

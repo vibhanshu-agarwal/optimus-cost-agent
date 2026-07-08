@@ -28,7 +28,8 @@ _CALCULATOR_TASK = (
     "Create a file `calculator.py` with exactly these functions: "
     "`add(a, b)`, `subtract(a, b)`, `multiply(a, b)`, `divide(a, b)`. "
     "Each returns the numeric result of that operation on its two arguments. "
-    "No classes, no CLI wrapper, no extra functions."
+    "No classes, no CLI wrapper, no extra functions. "
+    "Write only `calculator.py`; do not create any other files or tests."
 )
 _CALCULATOR_CHECKS: tuple[tuple[str, str], ...] = (
     ("add(2, 3)", "5"),
@@ -119,9 +120,13 @@ def _assert_calculator_subprocess(workspace: Path, expression: str, expected: st
         f"calculator.{expression} subprocess failed "
         f"(exit={completed.returncode}, stderr={completed.stderr!r}, stdout={completed.stdout!r})"
     )
-    assert completed.stdout.strip() == expected, (
-        f"calculator.{expression} expected {expected!r}, got {completed.stdout.strip()!r}"
-    )
+    actual = completed.stdout.strip()
+    try:
+        assert float(actual) == float(expected)
+    except ValueError as exc:
+        raise AssertionError(
+            f"calculator.{expression} expected numeric {expected!r}, got non-numeric {actual!r}"
+        ) from exc
 
 
 def _fail_with_calculator_source(workspace: Path, message: str) -> None:
