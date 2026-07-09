@@ -198,6 +198,27 @@ pauses for approval before Agent-mode mutation, executes side-effecting tools
 only through guardrails, validates the result, and records the observed tool
 trajectory for golden-task evaluation.
 
+**Plan 9.6** (live verification and LLD alignment) owns the Phase 1 working-agent
+sign-off gate: live Redis/Gateway tiers, spawned ACP subprocess proof, and the
+real-IDE HITL artifact. Subprocess and operator verification are green; the Zed
+HITL claim-table row remains open — see Known Open Defects in the Plan 9.6 plan
+file.
+
+**Plan 9.7** (local dev infra auto-start and keychain setup) merged to `main`
+(2026-07-09). Operators install `optimus-agent` on PATH, run `--setup` once,
+and rely on auto-start Redis/gateway — no hand-edited `.env` files required for
+the default local path. Manual DoD planning-bar verification is partially met;
+IDE turn completion is deferred to Plan 9.75.
+
+**Plan 9.75** (drafted, P0) fixes the open Zed `session/prompt` hang: add ACP
+v1 `toolCall` to `session/request_permission`, re-test in Zed using the Plan 9.7
+operator PATH install, and commit HITL evidence under `reports/`. See
+`docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`.
+
+**Plan 9.8** (tracked, not yet scheduled) is the Unified Gateway Capabilities
+Broker — web search and observability routes on the local gateway stub. Out of
+scope for Plans 9.6, 9.7, and 9.75.
+
 Plan 10 context-window optimization builds on this runner. It does not create
 the task lifecycle, approval boundary, tool adapters, or golden harness.
 
@@ -626,10 +647,11 @@ See **Quick start → Install and configure** for the local auto-start Zed examp
 
 If Zed shows endless loading after a prompt, the agent is usually waiting on **plan approval**
 (`session/request_permission`) or still planning against the gateway. Subprocess verification
-is green; this is an open Zed HITL integration issue. See **Known Open Defects → Zed HITL**
-in `docs/superpowers/plans/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md` for
-symptoms, causes, and workarounds (`always_allow_external_agent_tools`, workspace-root `"."`,
-preflight, `verify_live_agent.py`).
+is green; this is an open Zed HITL integration issue tracked as **Plan 9.75** — see
+`docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md` for the fix
+plan and DoD. Symptom analysis and workarounds (`always_allow_external_agent_tools`,
+workspace-root `"."`, preflight, `verify_live_agent.py`) remain in **Known Open Defects → Zed
+HITL** in `docs/superpowers/plans/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md`.
 
 ### Approval handshake
 
@@ -638,9 +660,13 @@ preflight, `verify_live_agent.py`).
 2. While planning runs, `session/prompt` stays pending and the agent emits
    `session/update` notifications (for example plan and tool-call updates).
 3. When Agent-mode mutation requires approval, the agent sends
-   `session/request_permission` to the IDE with an ACP v1 `toolCall` object
-   (`toolCallId`, `kind`, `status`, `title`, and `locations` derived from the
-   plan's directives), plus plan text and `plan_hash` in `options`/`metadata`.
+   `session/request_permission` to the IDE with approval `options` and plan
+   `metadata` (`planHash`, `planText`, `runId`). **Today** `_request_permission()`
+   does not include the ACP v1 `toolCall` object on this request — only
+   `session/update` `tool_call_update` notifications carry `toolCall` during
+   execution. **Plan 9.75** adds the spec-required `toolCall` (`toolCallId`,
+   `kind`, `status`, `title`, `locations`) to `session/request_permission` so
+   IDEs such as Zed can render the approval UI.
 4. The IDE shows the plan to the user and replies to the agent's outbound JSON-RPC
    request with approval metadata containing `approval_id` and the same `plan_hash`.
 5. The runtime replays the stored plan from Redis and does not call the Gateway

@@ -236,18 +236,16 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 **Status:** Approved for implementation. Owns the Phase 1 working-agent sign-off gate; Plan 10 does not start before this gate passes.
 
-### Immediate post-PR #30 follow-up (Plan 9.6 closure)
+### Plan 9.6 closure — remaining work (see Plan 9.75)
 
-**Reason:** PR #30 provides subprocess/operator proof, but the real-IDE HITL claim remains open.
+Subprocess and operator proof tiers are green. The real-IDE HITL claim, ACP
+`toolCall` on `session/request_permission`, and committed Zed artifact remain
+open — **all tracked in Plan 9.75**
+(`docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`).
+Do not maintain a separate checklist here; use Plan 9.75 tasks and DoD.
 
-**Must land next:**
-- [x] ACP `session/request_permission` payload conformance update in `src/optimus/acp/spec.py`: include the ACP v1-required `toolCall` object (`toolCallId`, `kind`, `status`, `title`, `locations` derived from the plan's directives) in addition to the existing approval options/metadata.
-- [x] Update/add protocol tests and transcript assertions so the permission request shape is locked by tests (not only by manual review) — see `tests/unit/acp/test_spec_protocol.py`.
-- [x] Standardize the operator/IDE launch path on `uv tool install --editable .` (documented in README "Install the `optimus-agent` command") so `agent_servers` configs use a plain `optimus-agent` command with no project-specific `.venv` path. The Plan 9.6 "Known Open Defects → Zed HITL → Workarounds" section previously reintroduced a raw worktree `.venv` python path as a stopgap; that has been replaced with the `uv tool install` guidance. Do not let a path-based workaround creep back into docs.
-- [ ] Re-run the Zed HITL flow (using the `uv tool install`-based launch config) and commit an artifact under `reports/` proving approval UI rendering + successful end-turn completion. This step needs a real Zed session and has not been performed in this environment.
-- [ ] Close the Plan 9.6 claim-table row "A real IDE can drive it" only after the artifact is on disk and reviewed.
-
-**Gate reminder:** Until the two unchecked items above are complete, treat Plan 9.6 as "subprocess/operator proof green, real IDE HITL open."
+**Already landed from the original closure list:** operator/IDE launch path
+standardized on `uv tool install --editable .` (README + Plan 9.6 workarounds).
 
 ## Plan 9.7: Local Dev Infra Auto-Start and Keychain-Based Setup
 
@@ -265,10 +263,11 @@ Context Window Optimization - with Intelligent Selection as the primary control 
   exits, never left as an orphaned secret-holding background process).
 - `--no-auto-start` opt-out flag; `.env`/`.env.gateway` retained as a transitional fallback.
 
-**Status:** Drafted 2026-07-08, awaiting reviewer approval before implementation begins. Windows-
-only scope for now (Linux/WSL keyring-backend support deferred; Phase 2 is a planned Rust
-rewrite). Orthogonal to Plan 9.6 — changes how local dependencies get started, not whether the
-agent's behavior against them is proven; does not weaken or bypass any Plan 9.6 preflight check.
+**Status:** Merged to `main` (2026-07-09, PR #32). Operator infra path manually verified on
+Windows (global PATH install, `--setup`, `--check-config --strict`, auto-start). IDE turn
+completion deferred to Plan 9.75. Windows-only scope for now (Linux/WSL keyring-backend support
+deferred). Orthogonal to Plan 9.6 live-verification scope — changes how local dependencies get
+started, not whether the agent's behavior against them is proven.
 
 ## Plan 9.8 (Tracked, Not Yet Scheduled): Unified Gateway Capabilities Broker
 
@@ -334,13 +333,14 @@ pattern.
 10. Plan 8.5: Release-gate hardening and golden-harness wiring.
 11. Plan 9: Bounded loops and curated workflow skills.
 12. Plan 9.5: Agent orchestration and end-to-end coding workflow.
-13. Plan 9.6 closure follow-up: ACP `toolCall` permission conformance + real Zed HITL artifact —
-    tracked as [#33](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/33) (P0).
-14. Plan 9.7: Local dev infra auto-start and keychain-based setup — **merged (PR #32,
-    2026-07-09).** Operator infra path verified; IDE `session/prompt` completion open —
-    [#33](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/33).
+13. Plan 9.7: Local dev infra auto-start and keychain-based setup — **merged (PR #32,
+    2026-07-09).** Operator infra path verified; IDE `session/prompt` completion deferred to
+    Plan 9.75.
+14. Plan 9.75: Zed HITL — ACP `toolCall` on `session/request_permission` + real Zed turn
+    completion (P0, drafted — depends on Plan 9.7 operator PATH install for verification; see
+    `docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`).
 15. Plan 10: Context window optimization and intelligent selection - tracked, not yet scheduled; starts only once Plan 9.5 task-level agent orchestration and the real golden harness are stable.
 
 The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, one-key scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 9.5 composes the Phase 1 primitives into a working local-first coding agent before Plan 10 adds context-window intelligence. Plan 10 stays last regardless: it depends on inputs from Plans 4, 5, 6, 6.5, 7, 9, and 9.5, and its PDF fold-in is explicitly deferred until calibration is accepted.
 
-Plans 9.6 and 9.7 sit alongside each other, not in a strict dependency order: Plan 9.6 owns the Phase 1 working-agent sign-off gate (live Redis/Gateway/e2e proof plus the real-IDE HITL artifact) and Plan 10 does not start until it passes; Plan 9.7 only changes how an operator's local Redis/Gateway dependencies get started before a session and does not touch what Plan 9.6 proves or gate. Plan 9.7 can be implemented and merged independently of Plan 9.6's remaining open HITL item, but its own manual verification step should be re-run once Plan 9.6's `uv tool install`-based launch path is the documented default, since both change how `optimus-agent` gets invoked. Plan 9.8 is tracked separately and not yet scheduled or designed; do not fold its gateway-capability-broker scope into 9.6 or 9.7 when picking up either.
+Plans 9.6 and 9.7 sit alongside each other, not in a strict dependency order: Plan 9.6 owns the Phase 1 working-agent sign-off gate (live Redis/Gateway/e2e proof plus the real-IDE HITL artifact) and Plan 10 does not start until it passes; Plan 9.7 only changes how an operator's local Redis/Gateway dependencies get started before a session and does not touch what Plan 9.6 proves or gate. Plan 9.7 merged independently of Plan 9.6's remaining open HITL item. **Plan 9.75** follows Plan 9.7 in the recommended sequence: it fixes the open Zed HITL / `toolCall` permission payload and closes Plan 9.7's deferred planning-bar DoD using the Plan 9.7 operator PATH install for manual verification. Plan 9.8 is tracked separately and not yet scheduled or designed; do not fold its gateway-capability-broker scope into 9.6, 9.7, or 9.75 when picking up either.
