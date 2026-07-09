@@ -13,8 +13,10 @@ optional one-time `optimus-agent --setup` wizard that stores the provider API ke
 generated shared secret in the Windows credential store via `keyring`, while `.env`/
 `.env.gateway` remain supported as a transitional fallback.
 
-**Status:** Approved 2026-07-09. Tasks 1–5 implemented on branch `agent/cursor/plan-9-7-local-dev-infra`;
-manual planning E2E (Definition of Done) pending operator run with keychain-only credentials.
+**Status:** Merged via PR #32 (2026-07-09). Operator infra path manually verified on Windows
+(global PATH install, `--setup`, `--check-config --strict`, auto-start). **IDE turn completion
+deferred:** manual DoD planning bar blocked by [#33](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/33)
+(Zed `session/prompt` hang — tracked as open defect linked to Plan 9.6 and Phase 1 Roadmap).
 
 **Architecture:** Two new modules on the agent side (`local_gateway_secrets.py`,
 `local_infra.py`), wired into the existing `optimus.acp.__main__` entrypoint and
@@ -1756,6 +1758,12 @@ def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
   complete **all** of the following and record commands plus stdout/stderr (and the tail of
   `reports/local-gateway.log`) in `reports/plan-9-7-manual-e2e-evidence.md` or the plan DoD
   section below — not "tests passed" prose alone.
+
+  **Partial sign-off (2026-07-09):** operator PATH install, `--setup`, `--check-config --strict`,
+  auto-start Redis/gateway, and Zed process launch verified. **Remaining gate:** real planning
+  turn completion in Zed (`claude-haiku` through auto-started gateway) — blocked by
+  [#33](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/33). Leave unchecked
+  until #33 is fixed and evidence recorded.
 
   **Install (PATH, no venv):** use `uv tool install --editable .` + `uv tool update-shell`
   (preferred) or `pip install --user -e .` on Windows. **`pip install --user` requires an

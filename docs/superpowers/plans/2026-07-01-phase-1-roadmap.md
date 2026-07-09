@@ -334,8 +334,11 @@ pattern.
 10. Plan 8.5: Release-gate hardening and golden-harness wiring.
 11. Plan 9: Bounded loops and curated workflow skills.
 12. Plan 9.5: Agent orchestration and end-to-end coding workflow.
-13. Plan 9.6 closure follow-up: ACP `toolCall` permission conformance + real Zed HITL artifact.
-14. Plan 9.7: Local dev infra auto-start and keychain-based setup - drafted, awaiting reviewer approval before implementation; orthogonal to Plan 9.6 sign-off.
+13. Plan 9.6 closure follow-up: ACP `toolCall` permission conformance + real Zed HITL artifact —
+    tracked as [#33](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/33) (P0).
+14. Plan 9.7: Local dev infra auto-start and keychain-based setup — **merged (PR #32,
+    2026-07-09).** Operator infra path verified; IDE `session/prompt` completion open —
+    [#33](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/33).
 15. Plan 10: Context window optimization and intelligent selection - tracked, not yet scheduled; starts only once Plan 9.5 task-level agent orchestration and the real golden harness are stable.
 
 The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, one-key scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 9.5 composes the Phase 1 primitives into a working local-first coding agent before Plan 10 adds context-window intelligence. Plan 10 stays last regardless: it depends on inputs from Plans 4, 5, 6, 6.5, 7, 9, and 9.5, and its PDF fold-in is explicitly deferred until calibration is accepted.

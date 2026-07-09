@@ -414,13 +414,15 @@ python tools/verify_live_agent.py
 
 ### Zed HITL: agent panel appears stuck after `session/prompt` (open)
 
+**Tracking:** [#33](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/33) (P0,
+2026-07-09 — confirmed on Plan 9.7 operator PATH install + Zed minimal `agent_servers` config).
+
 **Status:** Open (recorded 2026-07-08). Subprocess/e2e and `verify_live_agent.py` flows are
-green; the remaining claim-table row depends on a real Zed session artifact. **Update
-(2026-07-08):** cause 4 below (missing `toolCall`) is fixed in `src/optimus/acp/spec.py` and
-locked by `tests/unit/acp/test_spec_protocol.py`; the launch-path workaround (cause-adjacent,
-via the `.venv` path) is replaced by the `uv tool install --editable .` guidance below. Neither
-change has been verified against a real Zed session yet — that verification is what remains
-open.
+green; the remaining claim-table row depends on a real Zed session artifact. **Correction
+(2026-07-09):** Plan 9.6 previously stated cause 4 (`toolCall` on `session/request_permission`)
+was fixed in `spec.py` — **that is incorrect.** `_request_permission()` still sends only
+`options` + `metadata`; `toolCall` appears only on `session/update` `tool_call_update`
+notifications. See issue #33 and `src/optimus/acp/spec.py` lines 229–259.
 
 **Symptom:** Zed shows a loading indicator indefinitely after sending a prompt (for example
 "Can you help me write a calculator?") with no visible completion, plan text, or error.
@@ -436,13 +438,11 @@ open.
    `--workspace-root` and open Zed on the same repository folder.
 3. **Infrastructure not ready** — Gateway or Redis down/slow; planning blocks up to the
    gateway client timeout (~30s) before any permission UI.
-4. **ACP payload shape gap (fixed 2026-07-08, unverified against real Zed)** — Optimus
-   `session/request_permission` previously included `options` + `metadata` (plan hash/text) but
-   not the ACP v1 `toolCall` object documented at
-   [agentclientprotocol.com](https://agentclientprotocol.com/protocol/v1/tool-calls). `spec.py`
-   now sends a `toolCall` (`toolCallId`, `kind`, `status`, `title`, `locations`) derived from the
-   plan's parsed directives. Whether this was the actual cause of the stuck panel is unconfirmed
-   until re-tested in Zed.
+4. **ACP payload shape gap (open — see #33)** — Optimus `session/request_permission` sends
+   `options` + `metadata` (plan hash/text) but **not** the ACP v1 `toolCall` object documented at
+   [agentclientprotocol.com](https://agentclientprotocol.com/protocol/v1/tool-calls). Plan 9.6
+   previously claimed this was fixed; code review (2026-07-09) found `_request_permission()` still
+   omits `toolCall`. Whether this causes the stuck panel is unconfirmed until re-tested in Zed.
 
 **Workarounds to try:**
 
