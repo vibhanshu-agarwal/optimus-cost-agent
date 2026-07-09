@@ -277,7 +277,7 @@ class FakeKeyring:
 
 
 def test_resolve_shared_secret_prefers_env_over_dotenv_and_keyring(tmp_path):
-    (tmp_path / ".env.old.gateway").write_text("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=from-dotenv\n", encoding="utf-8")
+    (tmp_path / ".env.gateway").write_text("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=from-dotenv\n", encoding="utf-8")
     fake_keyring = FakeKeyring()
     fake_keyring.set_password("optimus-cost-agent", "local_gateway_shared_secret", "from-keyring")
 
@@ -296,7 +296,7 @@ def test_resolve_shared_secret_falls_back_dotenv_then_keyring(tmp_path):
 
     assert resolve_shared_secret({}, project_root=tmp_path, keyring_backend=fake_keyring) == "from-keyring"
 
-    (tmp_path / ".env.old.gateway").write_text("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=from-dotenv\n", encoding="utf-8")
+    (tmp_path / ".env.gateway").write_text("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=from-dotenv\n", encoding="utf-8")
     assert resolve_shared_secret({}, project_root=tmp_path, keyring_backend=fake_keyring) == "from-dotenv"
 
 
@@ -366,7 +366,7 @@ def test_provider_secrets_includes_base_url_when_set(tmp_path):
 
 
 def test_resolve_provider_secrets_passes_through_base_url_from_dotenv(tmp_path):
-    (tmp_path / ".env.old.gateway").write_text(
+    (tmp_path / ".env.gateway").write_text(
         "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openai\n"
         "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-test\n"
         "OPTIMUS_LOCAL_GATEWAY_BASE_URL=https://custom.example.com/v1\n",
@@ -417,7 +417,7 @@ def test_no_keyring_backend_available_fails_with_dotenv_pointer(tmp_path):
     )
 
     assert exit_code == 2
-    assert any(".env.old.gateway" in msg for msg in messages)
+    assert any(".env.gateway" in msg for msg in messages)
 ```
 
 - [x] **Step 2: Run tests, confirm failure** —
@@ -526,7 +526,7 @@ def resolve_shared_secret(
     env_value = environ.get("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET", "").strip()
     if env_value:
         return env_value
-    dotenv_value = _parse_env_gateway_file(project_root / ".env.old.gateway").get(
+    dotenv_value = _parse_env_gateway_file(project_root / ".env.gateway").get(
         "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET", ""
     ).strip()
     if dotenv_value:
@@ -540,7 +540,7 @@ def resolve_provider_secrets(
     project_root: Path,
     keyring_backend: Any = keyring,
 ) -> ProviderSecrets | None:
-    dotenv_values = _parse_env_gateway_file(project_root / ".env.old.gateway")
+    dotenv_values = _parse_env_gateway_file(project_root / ".env.gateway")
 
     # Default to "openrouter" when unconfigured anywhere — matches GatewayServiceConfig.from_env()'s
     # own default (models.py:40). Only a missing/unresolvable *API key* is a hard failure below;
@@ -616,7 +616,7 @@ def run_setup_wizard(
     except Exception as exc:
         print_fn(
             f"Could not store credentials in the OS keychain ({exc}). "
-            "Use .env.old.gateway instead (see .env.old.gateway.example)."
+            "Use .env.gateway instead (see .env.gateway.example)."
         )
         return 2
 
@@ -624,9 +624,9 @@ def run_setup_wizard(
         "Stored local gateway credentials in the OS keychain. "
         "You can now run `optimus-agent` with no environment variables required."
     )
-    if (project_root / ".env.old.gateway").is_file():
+    if (project_root / ".env.gateway").is_file():
         print_fn(
-            "Note: .env.old.gateway also exists in this project; explicit env vars and that file "
+            "Note: .env.gateway also exists in this project; explicit env vars and that file "
             "take precedence over the keychain values just stored."
         )
     return 0
@@ -1120,7 +1120,7 @@ def ensure_local_gateway(
     if provider_secrets is None or not shared_secret:
         log(
             "optimus-agent: no local gateway credentials found "
-            "(run `optimus-agent --setup` or configure .env.old.gateway); "
+            "(run `optimus-agent --setup` or configure .env.gateway); "
             "leaving Gateway pre-flight to fail closed."
         )
         return None
@@ -1620,7 +1620,7 @@ def main(argv: list[str] | None = None) -> int:
 
     workspace_root = Path(args.workspace_root)
     # `environ` may legitimately contain a real vendor key (e.g. ANTHROPIC_API_KEY in the
-    # operator's own shell, or resolved from .env.old.gateway/keyring) — ensure_local_gateway needs
+    # operator's own shell, or resolved from .env.gateway/keyring) — ensure_local_gateway needs
     # that to construct the spawned gateway's child env. It must NEVER be the same object passed
     # to build_configured_server/run_preflight, both of which reach
     # OptimusGatewaySettings.from_env(), which rejects any LOCAL_PROVIDER_KEY_NAMES entry with
