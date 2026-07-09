@@ -459,9 +459,10 @@ notifications. See Plan 9.75 and `src/optimus/acp/spec.py` lines 229–259.
 - Smoke without Zed: `python tools/verify_live_agent.py --workspace-root <scratch-dir>`.
 - Start a **new** agent session after config changes; cancel stuck turns with `session/cancel`.
 
-**Follow-up (implementation):** ~~Add ACP-conformant `toolCall` to permission requests~~ done;
-remaining work is to verify Zed renders approval UI with the fixed payload and the
-`uv tool install`-based launch config, then capture the HITL artifact under `reports/` when green.
+**Follow-up (implementation):** ACP `toolCall` on `session/request_permission` is **not**
+implemented — see Known Open Defects above and **Plan 9.75**
+(`docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`) for
+tasks, DoD, and the HITL artifact under `reports/`.
 
 ## Execution Order Against In-Flight Work
 

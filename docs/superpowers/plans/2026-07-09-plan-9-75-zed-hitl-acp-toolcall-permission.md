@@ -61,8 +61,9 @@ render approval UI → adapter blocks awaiting a response that never comes.
 - [ ] **Task 2:** Implement `toolCall` in `_request_permission()`; green unit tests + ruff.
 - [ ] **Task 3:** Manual Zed verification (operator PATH, same config as Plan 9.7 partial sign-off);
   record transcript and stdout in `reports/plan-9-7-manual-e2e-evidence.md`.
-- [ ] **Task 4:** Update Plan 9.6 defect status and README architecture narrative (Plans 9.6/9.7
-  subsections under Agent Orchestration).
+- [ ] **Task 4:** Close Plan 9.6 defect status when DoD met (README architecture narrative and
+  known-defect pointers for Plans 9.6–9.75 landed in the doc-consistency pass; approval-handshake
+  text documents current vs Plan 9.75 target state).
 
 ## Definition of Done
 
