@@ -207,7 +207,10 @@ the task lifecycle, approval boundary, tool adapters, or golden harness.
 - **Optimus Gateway** access (`OPTIMUS_GATEWAY_URL`, `OPTIMUS_API_KEY`)
 - **Git** with worktree support (for parallel development)
 
-## Quick start
+## Quick start (operators)
+
+Use this path for **running `optimus-agent` from PATH** (IDEs, shells, Plan 9.7 manual sign-off).
+It is **not** the repo `.venv` contributor workflow in [Contributor development setup](#contributor-development-setup) below.
 
 ### 1. Clone the repository
 
@@ -218,7 +221,122 @@ cd optimus-cost-agent
 
 Keep this clone on `main` for docs, releases, and merging. Do day-to-day feature work in a [worktree](#development-worktrees) on your own branch.
 
-### 2. Configure environment
+### 2. Install and configure (keychain — operator path)
+
+On Windows, `optimus-agent` can store local gateway credentials in the OS keychain and
+auto-start Redis (Docker) plus the local gateway process on launch — no `.env` files required.
+
+**Install on PATH** (pick one; do **not** activate a repo `.venv` for this path):
+
+```bash
+# Recommended — uv adds its tool bin dir to PATH via update-shell
+uv tool install --editable .
+uv tool update-shell   # then open a new terminal
+
+# Windows fallback when uv/pipx are unavailable
+pip install --user -e . --force-reinstall
+```
+
+**Required after `pip install --user` on Windows:** Python installs scripts to
+`%APPDATA%\Python\Python<version>\Scripts` (for example
+`C:\Users\<you>\AppData\Roaming\Python\Python314\Scripts`). Windows does **not** add this
+directory to PATH automatically. Add it to your **user** PATH, then open a **new terminal**:
+
+```powershell
+# Discover your scripts directory
+python -c "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))"
+
+# Add to user PATH (PowerShell — replace the path if yours differs)
+[Environment]::SetEnvironmentVariable(
+  'Path',
+  [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + (python -c "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))"),
+  'User'
+)
+```
+
+**IDE note:** JetBrains IDEs and Cursor may cache PATH from launch time. After fixing user PATH,
+**fully quit and restart the IDE** (not just a new integrated terminal) before configuring
+`"command": "optimus-agent"`.
+
+Verify from a **new terminal** (no venv activated, no `VIRTUAL_ENV` set):
+
+```powershell
+where.exe optimus-agent
+# Must NOT resolve to .venv\Scripts\optimus-agent.exe
+# Must NOT resolve to a stale shim (see Troubleshooting below)
+```
+
+```bash
+optimus-agent --setup
+```
+
+`--setup` interactively stores your model provider choice, provider API key, and a generated
+shared secret in the Windows credential store. After setup, launch with no environment variables:
+
+```bash
+optimus-agent --workspace-root .
+```
+
+Before pointing an IDE at the agent, validate configuration (Redis reachability; no gateway
+spawn on this path):
+
+```bash
+optimus-agent --workspace-root . --check-config
+```
+
+`--check-config --strict` additionally probes gateway authentication, so the gateway must
+already be reachable (for example because `optimus-agent` is serving in another terminal, or you
+started one manually). Plain `--check-config` is the right pre-launch check for the auto-start
+flow.
+
+**Flags**
+
+| Flag | Purpose |
+|------|---------|
+| `--setup` | One-time wizard: store provider key + shared secret in the OS keychain, then exit |
+| `--no-auto-start` | Skip auto-starting Redis and the local gateway; assume both are already running |
+| `--check-config` | Validate credentials, Redis, and workspace; exit without serving |
+
+`--no-auto-start` disables **both** Redis and gateway auto-start consistently.
+
+**Auto-managed Redis container:** when auto-start creates `optimus-redis`, it uses
+`docker run -d` **without** `--rm` and binds to `127.0.0.1` only, so the container can be
+restarted by name across launches. The manual runbook below uses `docker run --rm -d ...` for
+one-off sessions where the operator wants full cleanup on stop — both patterns are intentional.
+
+**First-run note:** the first auto-start may pull the `redis:8` image and can take several
+minutes on a slow network; `docker run`/`docker start` have no timeout in this path.
+
+**Zed `agent_servers` (local auto-start — no `env` block):**
+
+```json
+{
+  "agent_servers": {
+    "optimus": {
+      "command": "optimus-agent",
+      "args": ["--workspace-root", "."]
+    }
+  }
+}
+```
+
+Do **not** point Zed at `.venv\Scripts\optimus-agent.exe` — use the PATH command above.
+
+**Troubleshooting (Windows PATH)**
+
+| Symptom | Likely cause | Fix |
+|---------|----------------|-----|
+| `where.exe optimus-agent` finds nothing after `pip install --user` | Scripts dir not on user PATH | Add `%APPDATA%\Python\Python<ver>\Scripts` to user PATH (see above); new terminal + full IDE restart |
+| `ModuleNotFoundError: No module named 'keyring'` | Stale `optimus-agent.exe` shim on PATH (often `~/.local/bin/`) from an old install | `where.exe optimus-agent` — remove or rename the broken shim; reinstall with `uv tool install --editable . --reinstall` or `pip install --user -e . --force-reinstall` + PATH fix |
+| Wrong binary wins on PATH | `.venv\Scripts` or `.local\bin` shadows the working install | Close venv (`deactivate`); fix PATH order; prefer Roaming Python `Scripts` or `uv tool` bin dir |
+| `uv: command not found` | uv not installed | Install [uv](https://docs.astral.sh/uv/) (preferred) or use `pip install --user -e .` **with the PATH step above** |
+| IDE still can't find `optimus-agent` after PATH fix | IDE inherited old PATH at startup | Fully quit and restart JetBrains/Cursor/Zed — not just a new terminal tab |
+
+### Manual / advanced setup (transitional)
+
+Keychain setup above is the intended long-term default. `.env` and `.env.gateway` remain
+supported for operators who prefer files or need to override keychain values (explicit env vars
+and `.env.gateway` take precedence over the keychain).
 
 For this project the Optimus Gateway is a **local process you run yourself**, not a hosted
 service that issues credentials. The agent keeps the one-key model: only
@@ -322,7 +440,13 @@ curl -sS http://127.0.0.1:8765/v1/responses \
 Hosted/staging gateways still work when `OPTIMUS_PRODUCTION_MODE=true` (default) and
 `OPTIMUS_GATEWAY_URL` points at an `https://` trusted origin.
 
-### 3. Create a virtual environment
+## Contributor development setup
+
+Use this section for **pytest, coverage, and code changes** inside a repo checkout. It does
+**not** satisfy Plan 9.7 operator manual sign-off or IDE `"command": "optimus-agent"` integration
+— see [Quick start (operators)](#quick-start-operators) for PATH install and keychain setup.
+
+### Create a virtual environment
 
 Using `uv` (recommended):
 
@@ -342,7 +466,7 @@ source .venv/bin/activate   # Linux/macOS/Git Bash
 pip install -e ".[dev]"
 ```
 
-### 4. Run tests
+### Run tests
 
 Using `uv`:
 
@@ -448,7 +572,11 @@ optimus-agent --workspace-root . --check-config
 optimus-agent --workspace-root . --check-config --strict
 ```
 
-`--strict` adds a gateway authentication probe in addition to the default Redis and workspace checks.
+`--strict` adds a gateway authentication probe in addition to the default Redis and workspace
+checks. **`--check-config` never spawns the local gateway** — use plain `--check-config` before
+first launch with auto-start; use `--strict` only when a gateway is already up.
+
+To skip auto-starting Redis and the gateway (manage them yourself), pass `--no-auto-start`.
 
 Equivalent from inside a repo checkout without installing the tool (e.g. during development,
 with the project venv active): `python -m optimus.acp --workspace-root . --check-config`.
@@ -468,10 +596,13 @@ python -m optimus.acp --workspace-root .
 If `OPTIMUS_GATEWAY_URL` or `OPTIMUS_API_KEY` is missing, startup fails with:
 
 ```text
-Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP agent.
+Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP agent (or run `optimus-agent --setup` to configure the local gateway).
 ```
 
-### Zed `agent_servers` example
+### Zed `agent_servers` example (hosted gateway)
+
+For a real hosted `OPTIMUS_GATEWAY_URL`, auto-start and keychain setup do not engage — set
+credentials explicitly:
 
 ```json
 {
@@ -488,6 +619,8 @@ Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP age
   }
 }
 ```
+
+See **Quick start → Install and configure** for the local auto-start Zed example (no `env` block).
 
 ### Known open defect: Zed panel appears stuck
 

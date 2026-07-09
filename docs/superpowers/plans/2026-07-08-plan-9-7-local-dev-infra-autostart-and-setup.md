@@ -13,8 +13,10 @@ optional one-time `optimus-agent --setup` wizard that stores the provider API ke
 generated shared secret in the Windows credential store via `keyring`, while `.env`/
 `.env.gateway` remain supported as a transitional fallback.
 
-**Status:** Drafted 2026-07-08, awaiting reviewer approval. Do not begin implementation tasks
-until this plan is reviewed and approved.
+**Status:** Merged via PR #32 (2026-07-09). Operator infra path manually verified on Windows
+(global PATH install, `--setup`, `--check-config --strict`, auto-start). **IDE turn completion
+deferred:** manual DoD planning bar blocked by [#33](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/33)
+(Zed `session/prompt` hang — tracked as open defect linked to Plan 9.6 and Phase 1 Roadmap).
 
 **Architecture:** Two new modules on the agent side (`local_gateway_secrets.py`,
 `local_infra.py`), wired into the existing `optimus.acp.__main__` entrypoint and
@@ -264,7 +266,7 @@ def resolve_shared_secret(environ, *, project_root, keyring_backend=keyring) -> 
 def run_setup_wizard(*, project_root, keyring_backend=keyring, input_fn=input, getpass_fn=getpass.getpass, print_fn=print) -> int
 ```
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 class FakeKeyring:
@@ -420,11 +422,11 @@ def test_no_keyring_backend_available_fails_with_dotenv_pointer(tmp_path):
     assert any(".env.gateway" in msg for msg in messages)
 ```
 
-- [ ] **Step 2: Run tests, confirm failure** —
+- [x] **Step 2: Run tests, confirm failure** —
   `pytest tests/unit/acp/test_local_gateway_secrets.py -v` (module doesn't exist yet, expect
   `ImportError`/collection failure).
 
-- [ ] **Step 3: Implement** `src/optimus/acp/local_gateway_secrets.py`:
+- [x] **Step 3: Implement** `src/optimus/acp/local_gateway_secrets.py`:
 
 **Design notes to keep in mind while reading the code below:**
 - A minimal `.env.gateway` line parser scoped to this file (`KEY=VALUE`, `#` comments, optional
@@ -632,7 +634,7 @@ def run_setup_wizard(
     return 0
 ```
 
-- [ ] **Step 4: Run tests** — `pytest tests/unit/acp/test_local_gateway_secrets.py -v`, confirm
+- [x] **Step 4: Run tests** — `pytest tests/unit/acp/test_local_gateway_secrets.py -v`, confirm
   green.
 
 ## Task 2: `local_infra.py` — Redis and Gateway Process Lifecycle
@@ -655,7 +657,7 @@ class LocalGatewayProcess:
     def stop(self) -> None: ...
 ```
 
-- [ ] **Step 1: Write failing tests**, using `monkeypatch.setattr` on module-level
+- [x] **Step 1: Write failing tests**, using `monkeypatch.setattr` on module-level
   `subprocess.run` / `subprocess.Popen` / `socket.create_connection` (matching this repo's
   existing `monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", ...)` style) — no
   real Docker or process spawned in this tier. Cover:
@@ -697,11 +699,13 @@ class LocalGatewayProcess:
   - `ensure_local_redis` no-ops when `docker` isn't on `PATH` (`shutil.which` returns `None`), and
     when the daemon is unreachable (`docker ps` fails) — leaving the same "not reachable" state
     preflight already reports, not raising.
-  - `ensure_local_redis` runs `docker run -d --name optimus-redis -p <port>:6379 redis:8`
-    (**no `--rm`**) when the named container doesn't exist, and `docker start optimus-redis` when
-    it exists but is stopped. `--rm` and "restart a stopped container by name" are mutually
-    exclusive — `--rm` makes Docker delete the container the instant it stops, so a later
-    `docker start optimus-redis` would always fail with "no such container". The already-committed
+  - `ensure_local_redis` runs `docker run -d --name optimus-redis -p 127.0.0.1:<port>:6379 redis:8`
+    (**no `--rm`**, loopback bind only — corrected 2026-07-09 review: unqualified `-p <port>:6379`
+    publishes on `0.0.0.0`, exposing unauthenticated Redis to the LAN) when the named container
+    doesn't exist, and `docker start optimus-redis` when it exists but is stopped. `--rm` and
+    "restart a stopped container by name" are mutually exclusive — `--rm` makes Docker delete
+    the container the instant it stops, so a later `docker start optimus-redis` would always fail
+    with "no such container". The already-committed
     operator runbook (Plan 9.6, `README.md`) documents `docker run --rm -d ...` for a manual,
     one-off session where the operator explicitly wants full cleanup on stop; the container this
     plan manages automatically is a different, persistent-by-design instance (needs to survive
@@ -911,9 +915,9 @@ def test_ensure_local_gateway_fails_closed_when_popen_raises(tmp_path, monkeypat
     assert any("could not start local gateway process" in msg for msg in messages)
 ```
 
-- [ ] **Step 2: Run tests, confirm failure.**
+- [x] **Step 2: Run tests, confirm failure.**
 
-- [ ] **Step 3: Implement** `src/optimus/acp/local_infra.py`:
+- [x] **Step 3: Implement** `src/optimus/acp/local_infra.py`:
 
 ```python
 from __future__ import annotations
@@ -1066,7 +1070,7 @@ def ensure_local_redis(redis_url: str, *, log: Callable[[str], None] = _noop_log
     else:
         log(f"optimus-agent: creating {_REDIS_CONTAINER_NAME} container ({_REDIS_IMAGE})...")
         subprocess.run(
-            [docker, "run", "-d", "--name", _REDIS_CONTAINER_NAME, "-p", f"{port}:6379", _REDIS_IMAGE],
+            [docker, "run", "-d", "--name", _REDIS_CONTAINER_NAME, "-p", f"127.0.0.1:{port}:6379", _REDIS_IMAGE],
             capture_output=True,
             text=True,
             check=False,
@@ -1174,7 +1178,7 @@ def ensure_local_gateway(
     return None
 ```
 
-- [ ] **Step 4: Run tests** — confirm green.
+- [x] **Step 4: Run tests** — confirm green.
 
 ## Task 3: Wire Into `__main__.py`
 
@@ -1222,7 +1226,7 @@ gateway successfully and then immediately crash agent startup with an unrelated-
 `main()` must build a separate `agent_environ = strip_local_provider_keys(environ)` and pass
 *that* — never the raw `environ` — to `build_configured_server`/`run_preflight`.
 
-- [ ] **Step 1: Write failing tests** asserting:
+- [x] **Step 1: Write failing tests** asserting:
   - `--setup` calls `run_setup_wizard` and returns its exit code without touching
     preflight/server construction.
   - `--no-auto-start` skips both `ensure_local_redis` and `ensure_local_gateway` calls in the real
@@ -1549,9 +1553,9 @@ def test_openrouter_provider_key_reaches_gateway_child_but_not_agent_settings(mo
     assert "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET" not in agent_environ_seen
 ```
 
-- [ ] **Step 2: Run tests, confirm failure.**
+- [x] **Step 2: Run tests, confirm failure.**
 
-- [ ] **Step 3: Implement wiring** in `main()`:
+- [x] **Step 3: Implement wiring** in `main()`:
 
 ```python
 from __future__ import annotations
@@ -1682,7 +1686,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: Run tests** — confirm green.
+- [x] **Step 4: Run tests** — confirm green.
 
 ## Task 4: Preflight Message Update
 
@@ -1690,12 +1694,12 @@ if __name__ == "__main__":
 - Modify: `src/optimus/acp/preflight.py`
 - Modify: `tests/unit/acp/test_preflight.py`
 
-- [ ] **Step 1:** Verified (2026-07-08): `tests/unit/acp/test_preflight.py:57` already asserts
+- [x] **Step 1:** Verified (2026-07-08): `tests/unit/acp/test_preflight.py:57` already asserts
   `assert "OPTIMUS_GATEWAY_URL" in exc_info.value.user_message` — a substring check, not exact
   equality — so appending a clause below is additive and this existing test does not need to
   change.
 
-- [ ] **Step 2:** In `src/optimus/acp/preflight.py`, `_require_gateway_credentials`:
+- [x] **Step 2:** In `src/optimus/acp/preflight.py`, `_require_gateway_credentials`:
 
 ```python
 # Before
@@ -1720,52 +1724,75 @@ def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
         )
 ```
 
-- [ ] **Step 3:** Run `pytest tests/unit/acp/test_preflight.py -v` — confirm green.
+- [x] **Step 3:** Run `pytest tests/unit/acp/test_preflight.py -v` — confirm green.
 
 ## Task 5: Documentation
 
 **Files:**
 - Modify: `README.md`
 
-- [ ] New quickstart: `uv tool install --editable .` → `optimus-agent --setup` → Zed
+- [x] New quickstart: `uv tool install --editable .` → `optimus-agent --setup` → Zed
   `agent_servers` example with **no `env` block** for the local case.
-- [ ] Existing `.env`/`.env.gateway` instructions retained under an explicit "Manual / advanced
+- [x] Existing `.env`/`.env.gateway` instructions retained under an explicit "Manual / advanced
   setup (transitional)" subsection, noting keyring is the intended long-term default per this
   plan's decision.
-- [ ] Document `--setup` and `--no-auto-start` next to the existing `--check-config`
+- [x] Document `--setup` and `--no-auto-start` next to the existing `--check-config`
   documentation, including that `--no-auto-start` disables both Redis and gateway auto-start
   consistently (not just the gateway).
-- [ ] Document that `--check-config --strict` requires the gateway to already be reachable (it
+- [x] Document that `--check-config --strict` requires the gateway to already be reachable (it
   never spawns one itself); plain `--check-config` is the right pre-launch check for the
   auto-start flow.
-- [ ] Note that the `optimus-redis` container this plan manages automatically omits `--rm` (so it
+- [x] Note that the `optimus-redis` container this plan manages automatically omits `--rm` (so it
   can be restarted by name across launches), which differs from the manual runbook's
   `docker run --rm -d ...` one-off example — both are intentional, for different use cases.
-- [ ] Keep the hosted-gateway Zed example (explicit `OPTIMUS_GATEWAY_URL`/`OPTIMUS_API_KEY` env
+- [x] Keep the hosted-gateway Zed example (explicit `OPTIMUS_GATEWAY_URL`/`OPTIMUS_API_KEY` env
   values) — auto-start/keyring never engages there.
 
 ## Definition of Done
 
-- [ ] `pytest tests/unit/acp/test_local_gateway_secrets.py tests/unit/acp/test_local_infra.py -v`
+- [x] `pytest tests/unit/acp/test_local_gateway_secrets.py tests/unit/acp/test_local_infra.py -v`
   green.
-- [ ] Full `pytest -q` green, no regressions.
-- [ ] `python -m ruff check .` clean.
-- [ ] Manual verification on a real Windows machine (not just unit tests): remove/rename any
-  local `.env.gateway`, run `optimus-agent --setup` with a real provider key, then `optimus-agent
-  --workspace-root .` with **no environment variables set at all**, and confirm the
-  `optimus-redis` Docker container and the local gateway process both come up, preflight passes,
-  **and a real planning call succeeds against the auto-defaulted `claude-haiku` model** (not just
-  that the process starts — the model-default bug found in review only surfaces once planning
-  actually runs). Record the actual commands/output used, not just "tests passed."
-- [ ] Explicitly verify the zero-env-var run also produces `OPTIMUS_PRODUCTION_MODE=false` being
+- [x] Full `pytest -q` green, no regressions.
+- [x] `python -m ruff check .` clean.
+- [ ] **Manual verification (operator PATH — not repo venv):** on a real Windows machine,
+  complete **all** of the following and record commands plus stdout/stderr (and the tail of
+  `reports/local-gateway.log`) in `reports/plan-9-7-manual-e2e-evidence.md` or the plan DoD
+  section below — not "tests passed" prose alone.
+
+  **Partial sign-off (2026-07-09):** operator PATH install, `--setup`, `--check-config --strict`,
+  auto-start Redis/gateway, and Zed process launch verified. **Remaining gate:** real planning
+  turn completion in Zed (`claude-haiku` through auto-started gateway) — blocked by
+  [#33](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/33). Leave unchecked
+  until #33 is fixed and evidence recorded.
+
+  **Install (PATH, no venv):** use `uv tool install --editable .` + `uv tool update-shell`
+  (preferred) or `pip install --user -e .` on Windows. **`pip install --user` requires an
+  explicit user-PATH step** — scripts land in
+  `%APPDATA%\Python\Python<version>\Scripts`, which Windows does not add automatically (see
+  README and `reports/plan-9-7-manual-e2e-evidence.md`). After any PATH change, use a new
+  terminal **and** a full IDE restart (JetBrains/Cursor cache PATH at launch). From that shell,
+  with no venv activated and no `OPTIMUS_*` env vars set, `where.exe optimus-agent` must resolve
+  to the working global binary and must **not** resolve to `.venv\Scripts\optimus-agent.exe` or a
+  stale broken shim (e.g. `~/.local/bin/` missing `keyring`).
+
+  **Credentials:** rename away local `.env` and `.env.gateway`; run `optimus-agent --setup` with a
+  real provider key (keychain only).
+
+  **Launch:** `optimus-agent --workspace-root .` with **no environment variables** — confirm
+  `optimus-redis` and the local gateway child both come up and preflight-equivalent behavior works.
+
+  **Planning bar:** a **real planning call succeeds against the auto-defaulted `claude-haiku` model**
+  through the auto-started gateway — process startup alone is insufficient (the model-default bug
+  only surfaces when planning runs).
+- [x] Explicitly verify the zero-env-var run also produces `OPTIMUS_PRODUCTION_MODE=false` being
   applied (e.g. via a debug print or by confirming `OptimusGatewaySettings.from_env()` does not
   raise on the loopback origin) — this is the specific failure this review found and is easy to
   regress silently since it only manifests as a `ValueError` deep inside settings construction.
-- [ ] README changes reviewed for accuracy against the actual CLI flags implemented.
-- [ ] No change to any Plan 9.6 preflight check's fail-closed behavior when auto-start is
+- [x] README changes reviewed for accuracy against the actual CLI flags implemented.
+- [x] No change to any Plan 9.6 preflight check's fail-closed behavior when auto-start is
   disabled (`--no-auto-start`) or when Docker/keyring are unavailable — verified by the no-op
   test cases in Task 2.
-- [ ] `--no-auto-start` verified to skip Redis auto-start too, not only gateway auto-start (the
+- [x] `--no-auto-start` verified to skip Redis auto-start too, not only gateway auto-start (the
   inconsistency this review found between the plan's test list and implementation notes).
 
 ## Explicit Exceptions (do not silently expand scope to cover these)

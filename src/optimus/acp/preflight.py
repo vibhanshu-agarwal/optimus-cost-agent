@@ -57,7 +57,10 @@ def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
     if missing:
         raise PreflightFailure(
             exit_code=2,
-            user_message="Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP agent.",
+            user_message=(
+                "Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP agent "
+                "(or run `optimus-agent --setup` to configure the local gateway)."
+            ),
         )
 
 
