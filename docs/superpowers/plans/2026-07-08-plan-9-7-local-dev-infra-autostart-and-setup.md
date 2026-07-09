@@ -13,8 +13,8 @@ optional one-time `optimus-agent --setup` wizard that stores the provider API ke
 generated shared secret in the Windows credential store via `keyring`, while `.env`/
 `.env.gateway` remain supported as a transitional fallback.
 
-**Status:** Drafted 2026-07-08, awaiting reviewer approval. Do not begin implementation tasks
-until this plan is reviewed and approved.
+**Status:** Approved 2026-07-09. Task 1 complete; Tasks 2–5 in progress on branch
+`agent/cursor/plan-9-7-local-dev-infra`.
 
 **Architecture:** Two new modules on the agent side (`local_gateway_secrets.py`,
 `local_infra.py`), wired into the existing `optimus.acp.__main__` entrypoint and
@@ -264,7 +264,7 @@ def resolve_shared_secret(environ, *, project_root, keyring_backend=keyring) -> 
 def run_setup_wizard(*, project_root, keyring_backend=keyring, input_fn=input, getpass_fn=getpass.getpass, print_fn=print) -> int
 ```
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 class FakeKeyring:
@@ -420,11 +420,11 @@ def test_no_keyring_backend_available_fails_with_dotenv_pointer(tmp_path):
     assert any(".env.gateway" in msg for msg in messages)
 ```
 
-- [ ] **Step 2: Run tests, confirm failure** —
+- [x] **Step 2: Run tests, confirm failure** —
   `pytest tests/unit/acp/test_local_gateway_secrets.py -v` (module doesn't exist yet, expect
   `ImportError`/collection failure).
 
-- [ ] **Step 3: Implement** `src/optimus/acp/local_gateway_secrets.py`:
+- [x] **Step 3: Implement** `src/optimus/acp/local_gateway_secrets.py`:
 
 **Design notes to keep in mind while reading the code below:**
 - A minimal `.env.gateway` line parser scoped to this file (`KEY=VALUE`, `#` comments, optional
@@ -632,7 +632,7 @@ def run_setup_wizard(
     return 0
 ```
 
-- [ ] **Step 4: Run tests** — `pytest tests/unit/acp/test_local_gateway_secrets.py -v`, confirm
+- [x] **Step 4: Run tests** — `pytest tests/unit/acp/test_local_gateway_secrets.py -v`, confirm
   green.
 
 ## Task 2: `local_infra.py` — Redis and Gateway Process Lifecycle
