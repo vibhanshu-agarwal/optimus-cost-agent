@@ -218,7 +218,71 @@ cd optimus-cost-agent
 
 Keep this clone on `main` for docs, releases, and merging. Do day-to-day feature work in a [worktree](#development-worktrees) on your own branch.
 
-### 2. Configure environment
+### 2. Install and configure (keychain — recommended)
+
+On Windows, `optimus-agent` can store local gateway credentials in the OS keychain and
+auto-start Redis (Docker) plus the local gateway process on launch — no `.env` files required.
+
+```bash
+uv tool install --editable .
+optimus-agent --setup
+```
+
+`--setup` interactively stores your model provider choice, provider API key, and a generated
+shared secret in the Windows credential store. After setup, launch with no environment variables:
+
+```bash
+optimus-agent --workspace-root .
+```
+
+Before pointing an IDE at the agent, validate configuration (Redis reachability; no gateway
+spawn on this path):
+
+```bash
+optimus-agent --workspace-root . --check-config
+```
+
+`--check-config --strict` additionally probes gateway authentication, so the gateway must
+already be reachable (for example because `optimus-agent` is serving in another terminal, or you
+started one manually). Plain `--check-config` is the right pre-launch check for the auto-start
+flow.
+
+**Flags**
+
+| Flag | Purpose |
+|------|---------|
+| `--setup` | One-time wizard: store provider key + shared secret in the OS keychain, then exit |
+| `--no-auto-start` | Skip auto-starting Redis and the local gateway; assume both are already running |
+| `--check-config` | Validate credentials, Redis, and workspace; exit without serving |
+
+`--no-auto-start` disables **both** Redis and gateway auto-start consistently.
+
+**Auto-managed Redis container:** when auto-start creates `optimus-redis`, it uses
+`docker run -d` **without** `--rm` and binds to `127.0.0.1` only, so the container can be
+restarted by name across launches. The manual runbook below uses `docker run --rm -d ...` for
+one-off sessions where the operator wants full cleanup on stop — both patterns are intentional.
+
+**First-run note:** the first auto-start may pull the `redis:8` image and can take several
+minutes on a slow network; `docker run`/`docker start` have no timeout in this path.
+
+**Zed `agent_servers` (local auto-start — no `env` block):**
+
+```json
+{
+  "agent_servers": {
+    "optimus": {
+      "command": "optimus-agent",
+      "args": ["--workspace-root", "."]
+    }
+  }
+}
+```
+
+### Manual / advanced setup (transitional)
+
+Keychain setup above is the intended long-term default. `.env` and `.env.gateway` remain
+supported for operators who prefer files or need to override keychain values (explicit env vars
+and `.env.gateway` take precedence over the keychain).
 
 For this project the Optimus Gateway is a **local process you run yourself**, not a hosted
 service that issues credentials. The agent keeps the one-key model: only
@@ -448,7 +512,11 @@ optimus-agent --workspace-root . --check-config
 optimus-agent --workspace-root . --check-config --strict
 ```
 
-`--strict` adds a gateway authentication probe in addition to the default Redis and workspace checks.
+`--strict` adds a gateway authentication probe in addition to the default Redis and workspace
+checks. **`--check-config` never spawns the local gateway** — use plain `--check-config` before
+first launch with auto-start; use `--strict` only when a gateway is already up.
+
+To skip auto-starting Redis and the gateway (manage them yourself), pass `--no-auto-start`.
 
 Equivalent from inside a repo checkout without installing the tool (e.g. during development,
 with the project venv active): `python -m optimus.acp --workspace-root . --check-config`.
@@ -468,10 +536,13 @@ python -m optimus.acp --workspace-root .
 If `OPTIMUS_GATEWAY_URL` or `OPTIMUS_API_KEY` is missing, startup fails with:
 
 ```text
-Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP agent.
+Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP agent (or run `optimus-agent --setup` to configure the local gateway).
 ```
 
-### Zed `agent_servers` example
+### Zed `agent_servers` example (hosted gateway)
+
+For a real hosted `OPTIMUS_GATEWAY_URL`, auto-start and keychain setup do not engage — set
+credentials explicitly:
 
 ```json
 {
@@ -488,6 +559,8 @@ Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP age
   }
 }
 ```
+
+See **Quick start → Install and configure** for the local auto-start Zed example (no `env` block).
 
 ### Known open defect: Zed panel appears stuck
 

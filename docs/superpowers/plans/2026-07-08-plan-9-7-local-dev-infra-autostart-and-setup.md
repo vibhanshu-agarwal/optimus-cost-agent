@@ -1697,7 +1697,7 @@ if __name__ == "__main__":
   equality — so appending a clause below is additive and this existing test does not need to
   change.
 
-- [ ] **Step 2:** In `src/optimus/acp/preflight.py`, `_require_gateway_credentials`:
+- [x] **Step 2:** In `src/optimus/acp/preflight.py`, `_require_gateway_credentials`:
 
 ```python
 # Before
@@ -1722,7 +1722,7 @@ def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
         )
 ```
 
-- [ ] **Step 3:** Run `pytest tests/unit/acp/test_preflight.py -v` — confirm green.
+- [x] **Step 3:** Run `pytest tests/unit/acp/test_preflight.py -v` — confirm green.
 
 ## Task 5: Documentation
 
