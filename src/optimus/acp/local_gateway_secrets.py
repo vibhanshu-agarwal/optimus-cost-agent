@@ -16,6 +16,7 @@ _KEY_MODEL_PROVIDER_API_KEY = "model_provider_api_key"
 _KEY_SHARED_SECRET = "local_gateway_shared_secret"
 
 _SUPPORTED_PROVIDERS = ("openai", "openrouter", "anthropic")
+SUPPORTED_GATEWAY_PROVIDERS = frozenset(_SUPPORTED_PROVIDERS)
 _DEFAULT_PROVIDER = "openrouter"
 
 _ENV_LINE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")

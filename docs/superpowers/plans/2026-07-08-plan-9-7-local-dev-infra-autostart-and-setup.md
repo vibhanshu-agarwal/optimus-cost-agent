@@ -655,7 +655,7 @@ class LocalGatewayProcess:
     def stop(self) -> None: ...
 ```
 
-- [ ] **Step 1: Write failing tests**, using `monkeypatch.setattr` on module-level
+- [x] **Step 1: Write failing tests**, using `monkeypatch.setattr` on module-level
   `subprocess.run` / `subprocess.Popen` / `socket.create_connection` (matching this repo's
   existing `monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", ...)` style) — no
   real Docker or process spawned in this tier. Cover:
@@ -697,11 +697,13 @@ class LocalGatewayProcess:
   - `ensure_local_redis` no-ops when `docker` isn't on `PATH` (`shutil.which` returns `None`), and
     when the daemon is unreachable (`docker ps` fails) — leaving the same "not reachable" state
     preflight already reports, not raising.
-  - `ensure_local_redis` runs `docker run -d --name optimus-redis -p <port>:6379 redis:8`
-    (**no `--rm`**) when the named container doesn't exist, and `docker start optimus-redis` when
-    it exists but is stopped. `--rm` and "restart a stopped container by name" are mutually
-    exclusive — `--rm` makes Docker delete the container the instant it stops, so a later
-    `docker start optimus-redis` would always fail with "no such container". The already-committed
+  - `ensure_local_redis` runs `docker run -d --name optimus-redis -p 127.0.0.1:<port>:6379 redis:8`
+    (**no `--rm`**, loopback bind only — corrected 2026-07-09 review: unqualified `-p <port>:6379`
+    publishes on `0.0.0.0`, exposing unauthenticated Redis to the LAN) when the named container
+    doesn't exist, and `docker start optimus-redis` when it exists but is stopped. `--rm` and
+    "restart a stopped container by name" are mutually exclusive — `--rm` makes Docker delete
+    the container the instant it stops, so a later `docker start optimus-redis` would always fail
+    with "no such container". The already-committed
     operator runbook (Plan 9.6, `README.md`) documents `docker run --rm -d ...` for a manual,
     one-off session where the operator explicitly wants full cleanup on stop; the container this
     plan manages automatically is a different, persistent-by-design instance (needs to survive
@@ -911,9 +913,9 @@ def test_ensure_local_gateway_fails_closed_when_popen_raises(tmp_path, monkeypat
     assert any("could not start local gateway process" in msg for msg in messages)
 ```
 
-- [ ] **Step 2: Run tests, confirm failure.**
+- [x] **Step 2: Run tests, confirm failure.**
 
-- [ ] **Step 3: Implement** `src/optimus/acp/local_infra.py`:
+- [x] **Step 3: Implement** `src/optimus/acp/local_infra.py`:
 
 ```python
 from __future__ import annotations
@@ -1066,7 +1068,7 @@ def ensure_local_redis(redis_url: str, *, log: Callable[[str], None] = _noop_log
     else:
         log(f"optimus-agent: creating {_REDIS_CONTAINER_NAME} container ({_REDIS_IMAGE})...")
         subprocess.run(
-            [docker, "run", "-d", "--name", _REDIS_CONTAINER_NAME, "-p", f"{port}:6379", _REDIS_IMAGE],
+            [docker, "run", "-d", "--name", _REDIS_CONTAINER_NAME, "-p", f"127.0.0.1:{port}:6379", _REDIS_IMAGE],
             capture_output=True,
             text=True,
             check=False,
@@ -1174,7 +1176,7 @@ def ensure_local_gateway(
     return None
 ```
 
-- [ ] **Step 4: Run tests** — confirm green.
+- [x] **Step 4: Run tests** — confirm green.
 
 ## Task 3: Wire Into `__main__.py`
 
