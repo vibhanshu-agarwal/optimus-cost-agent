@@ -277,7 +277,7 @@ class FakeKeyring:
 
 
 def test_resolve_shared_secret_prefers_env_over_dotenv_and_keyring(tmp_path):
-    (tmp_path / ".env.gateway").write_text("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=from-dotenv\n", encoding="utf-8")
+    (tmp_path / ".env.old.gateway").write_text("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=from-dotenv\n", encoding="utf-8")
     fake_keyring = FakeKeyring()
     fake_keyring.set_password("optimus-cost-agent", "local_gateway_shared_secret", "from-keyring")
 
@@ -296,7 +296,7 @@ def test_resolve_shared_secret_falls_back_dotenv_then_keyring(tmp_path):
 
     assert resolve_shared_secret({}, project_root=tmp_path, keyring_backend=fake_keyring) == "from-keyring"
 
-    (tmp_path / ".env.gateway").write_text("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=from-dotenv\n", encoding="utf-8")
+    (tmp_path / ".env.old.gateway").write_text("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=from-dotenv\n", encoding="utf-8")
     assert resolve_shared_secret({}, project_root=tmp_path, keyring_backend=fake_keyring) == "from-dotenv"
 
 
@@ -366,7 +366,7 @@ def test_provider_secrets_includes_base_url_when_set(tmp_path):
 
 
 def test_resolve_provider_secrets_passes_through_base_url_from_dotenv(tmp_path):
-    (tmp_path / ".env.gateway").write_text(
+    (tmp_path / ".env.old.gateway").write_text(
         "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openai\n"
         "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-test\n"
         "OPTIMUS_LOCAL_GATEWAY_BASE_URL=https://custom.example.com/v1\n",
@@ -417,7 +417,7 @@ def test_no_keyring_backend_available_fails_with_dotenv_pointer(tmp_path):
     )
 
     assert exit_code == 2
-    assert any(".env.gateway" in msg for msg in messages)
+    assert any(".env.old.gateway" in msg for msg in messages)
 ```
 
 - [x] **Step 2: Run tests, confirm failure** —
@@ -526,7 +526,7 @@ def resolve_shared_secret(
     env_value = environ.get("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET", "").strip()
     if env_value:
         return env_value
-    dotenv_value = _parse_env_gateway_file(project_root / ".env.gateway").get(
+    dotenv_value = _parse_env_gateway_file(project_root / ".env.old.gateway").get(
         "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET", ""
     ).strip()
     if dotenv_value:
@@ -540,7 +540,7 @@ def resolve_provider_secrets(
     project_root: Path,
     keyring_backend: Any = keyring,
 ) -> ProviderSecrets | None:
-    dotenv_values = _parse_env_gateway_file(project_root / ".env.gateway")
+    dotenv_values = _parse_env_gateway_file(project_root / ".env.old.gateway")
 
     # Default to "openrouter" when unconfigured anywhere — matches GatewayServiceConfig.from_env()'s
     # own default (models.py:40). Only a missing/unresolvable *API key* is a hard failure below;
@@ -616,7 +616,7 @@ def run_setup_wizard(
     except Exception as exc:
         print_fn(
             f"Could not store credentials in the OS keychain ({exc}). "
-            "Use .env.gateway instead (see .env.gateway.example)."
+            "Use .env.old.gateway instead (see .env.old.gateway.example)."
         )
         return 2
 
@@ -624,9 +624,9 @@ def run_setup_wizard(
         "Stored local gateway credentials in the OS keychain. "
         "You can now run `optimus-agent` with no environment variables required."
     )
-    if (project_root / ".env.gateway").is_file():
+    if (project_root / ".env.old.gateway").is_file():
         print_fn(
-            "Note: .env.gateway also exists in this project; explicit env vars and that file "
+            "Note: .env.old.gateway also exists in this project; explicit env vars and that file "
             "take precedence over the keychain values just stored."
         )
     return 0
@@ -1120,7 +1120,7 @@ def ensure_local_gateway(
     if provider_secrets is None or not shared_secret:
         log(
             "optimus-agent: no local gateway credentials found "
-            "(run `optimus-agent --setup` or configure .env.gateway); "
+            "(run `optimus-agent --setup` or configure .env.old.gateway); "
             "leaving Gateway pre-flight to fail closed."
         )
         return None
@@ -1620,7 +1620,7 @@ def main(argv: list[str] | None = None) -> int:
 
     workspace_root = Path(args.workspace_root)
     # `environ` may legitimately contain a real vendor key (e.g. ANTHROPIC_API_KEY in the
-    # operator's own shell, or resolved from .env.gateway/keyring) — ensure_local_gateway needs
+    # operator's own shell, or resolved from .env.old.gateway/keyring) — ensure_local_gateway needs
     # that to construct the spawned gateway's child env. It must NEVER be the same object passed
     # to build_configured_server/run_preflight, both of which reach
     # OptimusGatewaySettings.from_env(), which rejects any LOCAL_PROVIDER_KEY_NAMES entry with
@@ -1752,13 +1752,26 @@ def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
   green.
 - [x] Full `pytest -q` green, no regressions.
 - [x] `python -m ruff check .` clean.
-- [ ] Manual verification on a real Windows machine (not just unit tests): remove/rename any
-  local `.env.gateway`, run `optimus-agent --setup` with a real provider key, then `optimus-agent
-  --workspace-root .` with **no environment variables set at all**, and confirm the
-  `optimus-redis` Docker container and the local gateway process both come up, preflight passes,
-  **and a real planning call succeeds against the auto-defaulted `claude-haiku` model** (not just
-  that the process starts — the model-default bug found in review only surfaces once planning
-  actually runs). Record the actual commands/output used, not just "tests passed."
+- [ ] **Manual verification (operator PATH — not repo venv):** on a real Windows machine,
+  complete **all** of the following and record commands plus stdout/stderr (and the tail of
+  `reports/local-gateway.log`) in `reports/plan-9-7-manual-e2e-evidence.md` or the plan DoD
+  section below — not "tests passed" prose alone.
+
+  **Install (PATH, no venv):** use `uv tool install --editable .` (preferred) or documented
+  Windows alternatives (`pip install --user -e .` / `pipx install -e .`). From a **new terminal**
+  with no venv activated and no `OPTIMUS_*` env vars set, `where.exe optimus-agent` must **not**
+  resolve to `.venv\Scripts\optimus-agent.exe` or a stale broken shim (e.g. `~/.local/bin/` missing
+  `keyring`).
+
+  **Credentials:** rename away local `.env` and `.env.gateway`; run `optimus-agent --setup` with a
+  real provider key (keychain only).
+
+  **Launch:** `optimus-agent --workspace-root .` with **no environment variables** — confirm
+  `optimus-redis` and the local gateway child both come up and preflight-equivalent behavior works.
+
+  **Planning bar:** a **real planning call succeeds against the auto-defaulted `claude-haiku` model**
+  through the auto-started gateway — process startup alone is insufficient (the model-default bug
+  only surfaces when planning runs).
 - [x] Explicitly verify the zero-env-var run also produces `OPTIMUS_PRODUCTION_MODE=false` being
   applied (e.g. via a debug print or by confirming `OptimusGatewaySettings.from_env()` does not
   raise on the loopback origin) — this is the specific failure this review found and is easy to

@@ -207,7 +207,10 @@ the task lifecycle, approval boundary, tool adapters, or golden harness.
 - **Optimus Gateway** access (`OPTIMUS_GATEWAY_URL`, `OPTIMUS_API_KEY`)
 - **Git** with worktree support (for parallel development)
 
-## Quick start
+## Quick start (operators)
+
+Use this path for **running `optimus-agent` from PATH** (IDEs, shells, Plan 9.7 manual sign-off).
+It is **not** the repo `.venv` contributor workflow in [Contributor development setup](#contributor-development-setup) below.
 
 ### 1. Clone the repository
 
@@ -218,13 +221,31 @@ cd optimus-cost-agent
 
 Keep this clone on `main` for docs, releases, and merging. Do day-to-day feature work in a [worktree](#development-worktrees) on your own branch.
 
-### 2. Install and configure (keychain — recommended)
+### 2. Install and configure (keychain — operator path)
 
 On Windows, `optimus-agent` can store local gateway credentials in the OS keychain and
 auto-start Redis (Docker) plus the local gateway process on launch — no `.env` files required.
 
+**Install on PATH** (pick one; do **not** activate a repo `.venv` for this path):
+
 ```bash
+# Recommended
 uv tool install --editable .
+
+# Windows alternatives when uv is unavailable
+pip install --user -e .
+# or: pipx install -e .
+```
+
+Verify from a **new terminal** (no venv activated, no `VIRTUAL_ENV` set):
+
+```powershell
+where.exe optimus-agent
+# Must NOT resolve to .venv\Scripts\optimus-agent.exe
+# Must NOT resolve to a stale shim (see Troubleshooting below)
+```
+
+```bash
 optimus-agent --setup
 ```
 
@@ -277,6 +298,16 @@ minutes on a slow network; `docker run`/`docker start` have no timeout in this p
   }
 }
 ```
+
+Do **not** point Zed at `.venv\Scripts\optimus-agent.exe` — use the PATH command above.
+
+**Troubleshooting (Windows PATH)**
+
+| Symptom | Likely cause | Fix |
+|---------|----------------|-----|
+| `ModuleNotFoundError: No module named 'keyring'` | Stale `optimus-agent.exe` shim on PATH (often `~/.local/bin/`) from an old install | `where.exe optimus-agent` — remove or rename the broken shim; reinstall with `uv tool install --editable . --reinstall` or `pip install --user -e . --force-reinstall` |
+| Wrong binary wins on PATH | `.venv\Scripts` or `.local\bin` shadows the working install | Close venv (`deactivate`); fix PATH order; prefer `%APPDATA%\Python\Python314\Scripts` or `uv tool` bin dir after `uv tool update-shell` |
+| `uv: command not found` | uv not installed | Install [uv](https://docs.astral.sh/uv/) or use `pip install --user -e .` for operator PATH install |
 
 ### Manual / advanced setup (transitional)
 
@@ -386,7 +417,13 @@ curl -sS http://127.0.0.1:8765/v1/responses \
 Hosted/staging gateways still work when `OPTIMUS_PRODUCTION_MODE=true` (default) and
 `OPTIMUS_GATEWAY_URL` points at an `https://` trusted origin.
 
-### 3. Create a virtual environment
+## Contributor development setup
+
+Use this section for **pytest, coverage, and code changes** inside a repo checkout. It does
+**not** satisfy Plan 9.7 operator manual sign-off or IDE `"command": "optimus-agent"` integration
+— see [Quick start (operators)](#quick-start-operators) for PATH install and keychain setup.
+
+### Create a virtual environment
 
 Using `uv` (recommended):
 
@@ -406,7 +443,7 @@ source .venv/bin/activate   # Linux/macOS/Git Bash
 pip install -e ".[dev]"
 ```
 
-### 4. Run tests
+### Run tests
 
 Using `uv`:
 
