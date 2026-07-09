@@ -1757,11 +1757,15 @@ def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
   `reports/local-gateway.log`) in `reports/plan-9-7-manual-e2e-evidence.md` or the plan DoD
   section below — not "tests passed" prose alone.
 
-  **Install (PATH, no venv):** use `uv tool install --editable .` (preferred) or documented
-  Windows alternatives (`pip install --user -e .` / `pipx install -e .`). From a **new terminal**
-  with no venv activated and no `OPTIMUS_*` env vars set, `where.exe optimus-agent` must **not**
-  resolve to `.venv\Scripts\optimus-agent.exe` or a stale broken shim (e.g. `~/.local/bin/` missing
-  `keyring`).
+  **Install (PATH, no venv):** use `uv tool install --editable .` + `uv tool update-shell`
+  (preferred) or `pip install --user -e .` on Windows. **`pip install --user` requires an
+  explicit user-PATH step** — scripts land in
+  `%APPDATA%\Python\Python<version>\Scripts`, which Windows does not add automatically (see
+  README and `reports/plan-9-7-manual-e2e-evidence.md`). After any PATH change, use a new
+  terminal **and** a full IDE restart (JetBrains/Cursor cache PATH at launch). From that shell,
+  with no venv activated and no `OPTIMUS_*` env vars set, `where.exe optimus-agent` must resolve
+  to the working global binary and must **not** resolve to `.venv\Scripts\optimus-agent.exe` or a
+  stale broken shim (e.g. `~/.local/bin/` missing `keyring`).
 
   **Credentials:** rename away local `.env` and `.env.gateway`; run `optimus-agent --setup` with a
   real provider key (keychain only).

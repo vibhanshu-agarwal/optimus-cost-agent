@@ -5,24 +5,48 @@
 
 ## Preconditions
 
-- [ ] New terminal — no venv activated (`echo $env:VIRTUAL_ENV` empty on PowerShell)
+- [ ] New terminal — no venv activated (`$env:VIRTUAL_ENV` empty on PowerShell)
 - [ ] No `OPTIMUS_*` or provider API keys in the shell environment
 - [ ] `.env` and `.env.gateway` renamed away in the workspace used for the test
 - [ ] Docker Desktop running (for auto-start Redis)
+- [ ] Stale shim removed if present: rename `C:\Users\<you>\.local\bin\optimus-agent.exe` if broken
 
 ## 1. Install on PATH
+
+**Preferred (when `uv` is available):**
 
 ```powershell
 cd <repo-checkout>
 uv tool install --editable . --reinstall
-# If uv unavailable: pip install --user -e . --force-reinstall
-uv tool update-shell   # if optimus-agent not found
+uv tool update-shell
+# Open a new terminal; verify with where.exe optimus-agent
 ```
+
+**Windows fallback (`pip install --user`):**
+
+```powershell
+cd <repo-checkout>
+pip install --user -e . --force-reinstall
+
+# REQUIRED: add Scripts dir to user PATH (Windows does not do this automatically)
+python -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+# Example output: C:\Users\<you>\AppData\Roaming\Python\Python314\Scripts
+
+[Environment]::SetEnvironmentVariable(
+  'Path',
+  [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + (python -c "import sysconfig; print(sysconfig.get_path('scripts'))"),
+  'User'
+)
+```
+
+**After any PATH change:** open a new terminal **and fully restart your IDE** (JetBrains/Cursor
+cache PATH from launch — a new integrated terminal alone may not be enough).
 
 Verify:
 
 ```powershell
 where.exe optimus-agent
+# Expected: Roaming Python\Python*\Scripts\optimus-agent.exe OR uv tool bin dir
 # Expected: NOT .venv\Scripts\optimus-agent.exe
 # Expected: NOT a stale C:\Users\<you>\.local\bin\optimus-agent.exe missing keyring
 ```
@@ -75,5 +99,6 @@ Evidence (session log excerpt, gateway log tail — redact secrets):
 - [ ] Local gateway reachable on loopback
 - [ ] Planning call succeeded via auto-started stack on `claude-haiku`
 - [ ] Operator PATH path used (not venv)
+- [ ] `where.exe optimus-agent` showed global PATH binary before IDE launch
 
 Recorded by: _____________  Date: _____________

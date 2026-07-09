@@ -229,13 +229,34 @@ auto-start Redis (Docker) plus the local gateway process on launch — no `.env`
 **Install on PATH** (pick one; do **not** activate a repo `.venv` for this path):
 
 ```bash
-# Recommended
+# Recommended — uv adds its tool bin dir to PATH via update-shell
 uv tool install --editable .
+uv tool update-shell   # then open a new terminal
 
-# Windows alternatives when uv is unavailable
-pip install --user -e .
-# or: pipx install -e .
+# Windows fallback when uv/pipx are unavailable
+pip install --user -e . --force-reinstall
 ```
+
+**Required after `pip install --user` on Windows:** Python installs scripts to
+`%APPDATA%\Python\Python<version>\Scripts` (for example
+`C:\Users\<you>\AppData\Roaming\Python\Python314\Scripts`). Windows does **not** add this
+directory to PATH automatically. Add it to your **user** PATH, then open a **new terminal**:
+
+```powershell
+# Discover your scripts directory
+python -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+
+# Add to user PATH (PowerShell — replace the path if yours differs)
+[Environment]::SetEnvironmentVariable(
+  'Path',
+  [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + (python -c "import sysconfig; print(sysconfig.get_path('scripts'))"),
+  'User'
+)
+```
+
+**IDE note:** JetBrains IDEs and Cursor may cache PATH from launch time. After fixing user PATH,
+**fully quit and restart the IDE** (not just a new integrated terminal) before configuring
+`"command": "optimus-agent"`.
 
 Verify from a **new terminal** (no venv activated, no `VIRTUAL_ENV` set):
 
@@ -305,9 +326,11 @@ Do **not** point Zed at `.venv\Scripts\optimus-agent.exe` — use the PATH comma
 
 | Symptom | Likely cause | Fix |
 |---------|----------------|-----|
-| `ModuleNotFoundError: No module named 'keyring'` | Stale `optimus-agent.exe` shim on PATH (often `~/.local/bin/`) from an old install | `where.exe optimus-agent` — remove or rename the broken shim; reinstall with `uv tool install --editable . --reinstall` or `pip install --user -e . --force-reinstall` |
-| Wrong binary wins on PATH | `.venv\Scripts` or `.local\bin` shadows the working install | Close venv (`deactivate`); fix PATH order; prefer `%APPDATA%\Python\Python314\Scripts` or `uv tool` bin dir after `uv tool update-shell` |
-| `uv: command not found` | uv not installed | Install [uv](https://docs.astral.sh/uv/) or use `pip install --user -e .` for operator PATH install |
+| `where.exe optimus-agent` finds nothing after `pip install --user` | Scripts dir not on user PATH | Add `%APPDATA%\Python\Python<ver>\Scripts` to user PATH (see above); new terminal + full IDE restart |
+| `ModuleNotFoundError: No module named 'keyring'` | Stale `optimus-agent.exe` shim on PATH (often `~/.local/bin/`) from an old install | `where.exe optimus-agent` — remove or rename the broken shim; reinstall with `uv tool install --editable . --reinstall` or `pip install --user -e . --force-reinstall` + PATH fix |
+| Wrong binary wins on PATH | `.venv\Scripts` or `.local\bin` shadows the working install | Close venv (`deactivate`); fix PATH order; prefer Roaming Python `Scripts` or `uv tool` bin dir |
+| `uv: command not found` | uv not installed | Install [uv](https://docs.astral.sh/uv/) (preferred) or use `pip install --user -e .` **with the PATH step above** |
+| IDE still can't find `optimus-agent` after PATH fix | IDE inherited old PATH at startup | Fully quit and restart JetBrains/Cursor/Zed — not just a new terminal tab |
 
 ### Manual / advanced setup (transitional)
 
