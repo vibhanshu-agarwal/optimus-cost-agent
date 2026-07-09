@@ -13,8 +13,8 @@ optional one-time `optimus-agent --setup` wizard that stores the provider API ke
 generated shared secret in the Windows credential store via `keyring`, while `.env`/
 `.env.gateway` remain supported as a transitional fallback.
 
-**Status:** Approved 2026-07-09. Task 1 complete; Tasks 2–5 in progress on branch
-`agent/cursor/plan-9-7-local-dev-infra`.
+**Status:** Approved 2026-07-09. Tasks 1–5 implemented on branch `agent/cursor/plan-9-7-local-dev-infra`;
+manual planning E2E (Definition of Done) pending operator run with keychain-only credentials.
 
 **Architecture:** Two new modules on the agent side (`local_gateway_secrets.py`,
 `local_infra.py`), wired into the existing `optimus.acp.__main__` entrypoint and
@@ -1692,7 +1692,7 @@ if __name__ == "__main__":
 - Modify: `src/optimus/acp/preflight.py`
 - Modify: `tests/unit/acp/test_preflight.py`
 
-- [ ] **Step 1:** Verified (2026-07-08): `tests/unit/acp/test_preflight.py:57` already asserts
+- [x] **Step 1:** Verified (2026-07-08): `tests/unit/acp/test_preflight.py:57` already asserts
   `assert "OPTIMUS_GATEWAY_URL" in exc_info.value.user_message` — a substring check, not exact
   equality — so appending a clause below is additive and this existing test does not need to
   change.
@@ -1729,29 +1729,29 @@ def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
 **Files:**
 - Modify: `README.md`
 
-- [ ] New quickstart: `uv tool install --editable .` → `optimus-agent --setup` → Zed
+- [x] New quickstart: `uv tool install --editable .` → `optimus-agent --setup` → Zed
   `agent_servers` example with **no `env` block** for the local case.
-- [ ] Existing `.env`/`.env.gateway` instructions retained under an explicit "Manual / advanced
+- [x] Existing `.env`/`.env.gateway` instructions retained under an explicit "Manual / advanced
   setup (transitional)" subsection, noting keyring is the intended long-term default per this
   plan's decision.
-- [ ] Document `--setup` and `--no-auto-start` next to the existing `--check-config`
+- [x] Document `--setup` and `--no-auto-start` next to the existing `--check-config`
   documentation, including that `--no-auto-start` disables both Redis and gateway auto-start
   consistently (not just the gateway).
-- [ ] Document that `--check-config --strict` requires the gateway to already be reachable (it
+- [x] Document that `--check-config --strict` requires the gateway to already be reachable (it
   never spawns one itself); plain `--check-config` is the right pre-launch check for the
   auto-start flow.
-- [ ] Note that the `optimus-redis` container this plan manages automatically omits `--rm` (so it
+- [x] Note that the `optimus-redis` container this plan manages automatically omits `--rm` (so it
   can be restarted by name across launches), which differs from the manual runbook's
   `docker run --rm -d ...` one-off example — both are intentional, for different use cases.
-- [ ] Keep the hosted-gateway Zed example (explicit `OPTIMUS_GATEWAY_URL`/`OPTIMUS_API_KEY` env
+- [x] Keep the hosted-gateway Zed example (explicit `OPTIMUS_GATEWAY_URL`/`OPTIMUS_API_KEY` env
   values) — auto-start/keyring never engages there.
 
 ## Definition of Done
 
-- [ ] `pytest tests/unit/acp/test_local_gateway_secrets.py tests/unit/acp/test_local_infra.py -v`
+- [x] `pytest tests/unit/acp/test_local_gateway_secrets.py tests/unit/acp/test_local_infra.py -v`
   green.
-- [ ] Full `pytest -q` green, no regressions.
-- [ ] `python -m ruff check .` clean.
+- [x] Full `pytest -q` green, no regressions.
+- [x] `python -m ruff check .` clean.
 - [ ] Manual verification on a real Windows machine (not just unit tests): remove/rename any
   local `.env.gateway`, run `optimus-agent --setup` with a real provider key, then `optimus-agent
   --workspace-root .` with **no environment variables set at all**, and confirm the
@@ -1759,15 +1759,15 @@ def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
   **and a real planning call succeeds against the auto-defaulted `claude-haiku` model** (not just
   that the process starts — the model-default bug found in review only surfaces once planning
   actually runs). Record the actual commands/output used, not just "tests passed."
-- [ ] Explicitly verify the zero-env-var run also produces `OPTIMUS_PRODUCTION_MODE=false` being
+- [x] Explicitly verify the zero-env-var run also produces `OPTIMUS_PRODUCTION_MODE=false` being
   applied (e.g. via a debug print or by confirming `OptimusGatewaySettings.from_env()` does not
   raise on the loopback origin) — this is the specific failure this review found and is easy to
   regress silently since it only manifests as a `ValueError` deep inside settings construction.
-- [ ] README changes reviewed for accuracy against the actual CLI flags implemented.
-- [ ] No change to any Plan 9.6 preflight check's fail-closed behavior when auto-start is
+- [x] README changes reviewed for accuracy against the actual CLI flags implemented.
+- [x] No change to any Plan 9.6 preflight check's fail-closed behavior when auto-start is
   disabled (`--no-auto-start`) or when Docker/keyring are unavailable — verified by the no-op
   test cases in Task 2.
-- [ ] `--no-auto-start` verified to skip Redis auto-start too, not only gateway auto-start (the
+- [x] `--no-auto-start` verified to skip Redis auto-start too, not only gateway auto-start (the
   inconsistency this review found between the plan's test list and implementation notes).
 
 ## Explicit Exceptions (do not silently expand scope to cover these)
