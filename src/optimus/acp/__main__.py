@@ -7,8 +7,23 @@ import sys
 from pathlib import Path
 
 from optimus.acp.bootstrap import StartupConfigurationError, build_configured_server
+from optimus.acp.local_gateway_secrets import run_setup_wizard
+from optimus.acp.local_infra import (
+    apply_local_defaults,
+    ensure_local_gateway,
+    ensure_local_redis,
+    strip_local_provider_keys,
+)
 from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.acp.server import StdioByteReader, StdioByteWriter, StdioNdjsonLineReader, StdioNdjsonLineWriter
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _print_log(message: str) -> None:
+    print(message, file=sys.stderr)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -26,16 +41,42 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Use Content-Length framed JSON-RPC instead of newline-delimited JSON (IDE default is ndjson).",
     )
+    parser.add_argument(
+        "--setup",
+        action="store_true",
+        help="Interactively store local gateway credentials in the OS keychain, then exit.",
+    )
+    parser.add_argument(
+        "--no-auto-start",
+        action="store_true",
+        help="Do not auto-start local Redis or the local gateway process; assume they are already running.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+
+    if args.setup:
+        return run_setup_wizard(project_root=_project_root())
+
     workspace_root = Path(args.workspace_root)
+    # `environ` may legitimately contain a real vendor key (e.g. ANTHROPIC_API_KEY in the
+    # operator's own shell, or resolved from .env.gateway/keyring) — ensure_local_gateway needs
+    # that to construct the spawned gateway's child env. It must NEVER be the same object passed
+    # to build_configured_server/run_preflight, both of which reach
+    # OptimusGatewaySettings.from_env(), which rejects any LOCAL_PROVIDER_KEY_NAMES entry with
+    # ProviderKeyViolation. agent_environ (built just below each use) is that separate, sanitized
+    # view. See the anthropic-collision finding in Source Anchors / Confirmed Design Decisions.
+    environ = apply_local_defaults(os.environ, project_root=_project_root())
+
     if args.check_config:
+        if not args.no_auto_start:
+            ensure_local_redis(environ["OPTIMUS_REDIS_URL"], log=_print_log)
+        agent_environ = strip_local_provider_keys(environ)
         try:
             run_preflight(
-                os.environ,
+                agent_environ,
                 workspace_root=workspace_root,
                 strict=args.strict,
                 require_timeseries=True,
@@ -45,20 +86,39 @@ def main(argv: list[str] | None = None) -> int:
             return exc.exit_code
         print("Optimus ACP agent configuration OK.", file=sys.stderr)
         return 0
+
+    gateway_process = None
+    if not args.no_auto_start:
+        ensure_local_redis(environ["OPTIMUS_REDIS_URL"], log=_print_log)
+        gateway_process = ensure_local_gateway(environ=environ, project_root=_project_root(), log=_print_log)
+
+    agent_environ = strip_local_provider_keys(environ)
+
+    # Single try/finally around BOTH build_configured_server(...) and serve(...): an earlier draft
+    # of this plan wrapped only the serve() call, so an unexpected (non-StartupConfigurationError)
+    # exception from build_configured_server() would skip both the except block below and the
+    # inner finally, leaking the already-spawned gateway_process. Nesting everything inside one
+    # outer finally means every exit path — normal completion, StartupConfigurationError, or any
+    # other exception — stops it exactly once.
     try:
-        server = build_configured_server(environ=os.environ, workspace_root=workspace_root, model=args.model)
-    except StartupConfigurationError as exc:
-        print(exc.user_message, file=sys.stderr)
-        return exc.exit_code
-    if args.framed:
-        asyncio.run(server.serve(StdioByteReader(sys.stdin.buffer), StdioByteWriter(sys.stdout.buffer)))
-    else:
-        asyncio.run(
-            server.serve_ndjson(
-                StdioNdjsonLineReader(sys.stdin.buffer),
-                StdioNdjsonLineWriter(sys.stdout.buffer),
+        try:
+            server = build_configured_server(environ=agent_environ, workspace_root=workspace_root, model=args.model)
+        except StartupConfigurationError as exc:
+            print(exc.user_message, file=sys.stderr)
+            return exc.exit_code
+
+        if args.framed:
+            asyncio.run(server.serve(StdioByteReader(sys.stdin.buffer), StdioByteWriter(sys.stdout.buffer)))
+        else:
+            asyncio.run(
+                server.serve_ndjson(
+                    StdioNdjsonLineReader(sys.stdin.buffer),
+                    StdioNdjsonLineWriter(sys.stdout.buffer),
+                )
             )
-        )
+    finally:
+        if gateway_process is not None:
+            gateway_process.stop()
     return 0
 
 

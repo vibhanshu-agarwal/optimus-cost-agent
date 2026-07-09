@@ -1224,7 +1224,7 @@ gateway successfully and then immediately crash agent startup with an unrelated-
 `main()` must build a separate `agent_environ = strip_local_provider_keys(environ)` and pass
 *that* — never the raw `environ` — to `build_configured_server`/`run_preflight`.
 
-- [ ] **Step 1: Write failing tests** asserting:
+- [x] **Step 1: Write failing tests** asserting:
   - `--setup` calls `run_setup_wizard` and returns its exit code without touching
     preflight/server construction.
   - `--no-auto-start` skips both `ensure_local_redis` and `ensure_local_gateway` calls in the real
@@ -1551,9 +1551,9 @@ def test_openrouter_provider_key_reaches_gateway_child_but_not_agent_settings(mo
     assert "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET" not in agent_environ_seen
 ```
 
-- [ ] **Step 2: Run tests, confirm failure.**
+- [x] **Step 2: Run tests, confirm failure.**
 
-- [ ] **Step 3: Implement wiring** in `main()`:
+- [x] **Step 3: Implement wiring** in `main()`:
 
 ```python
 from __future__ import annotations
@@ -1684,7 +1684,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: Run tests** — confirm green.
+- [x] **Step 4: Run tests** — confirm green.
 
 ## Task 4: Preflight Message Update
 
