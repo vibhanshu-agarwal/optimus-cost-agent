@@ -29,12 +29,12 @@ cd <repo-checkout>
 pip install --user -e . --force-reinstall
 
 # REQUIRED: add Scripts dir to user PATH (Windows does not do this automatically)
-python -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+python -c "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))"
 # Example output: C:\Users\<you>\AppData\Roaming\Python\Python314\Scripts
 
 [Environment]::SetEnvironmentVariable(
   'Path',
-  [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + (python -c "import sysconfig; print(sysconfig.get_path('scripts'))"),
+  [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + (python -c "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))"),
   'User'
 )
 ```

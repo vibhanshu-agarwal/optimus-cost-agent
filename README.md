@@ -244,12 +244,12 @@ directory to PATH automatically. Add it to your **user** PATH, then open a **new
 
 ```powershell
 # Discover your scripts directory
-python -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+python -c "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))"
 
 # Add to user PATH (PowerShell — replace the path if yours differs)
 [Environment]::SetEnvironmentVariable(
   'Path',
-  [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + (python -c "import sysconfig; print(sysconfig.get_path('scripts'))"),
+  [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + (python -c "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))"),
   'User'
 )
 ```
