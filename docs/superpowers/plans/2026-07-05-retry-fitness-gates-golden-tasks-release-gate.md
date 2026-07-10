@@ -39,7 +39,7 @@
 
 - Real staging Gateway calls in unit tests. The release runner supports staging commands, but unit/integration tests inject fakes.
 - Adding DeepEval, Ragas, PyRIT, or LangSmith SDK dependencies. Deterministic golden-task checks are implemented now; LLM-scored evaluation remains a Gateway-only extension.
-- Context Window Optimization thresholds from Plan 10. Plan 8 reserves report fields for future offline promotion gates but does not enforce cost-savings, regret, latency, or cache-hit calibration placeholders.
+- Context Window Optimization thresholds from Plan 11. Plan 8 reserves report fields for future offline promotion gates but does not enforce cost-savings, regret, latency, or cache-hit calibration placeholders.
 - Plan 9 bounded loop and skill-loading implementation. Plan 8 may evaluate retry loops and release gates, but it does not implement `GoalLoopController` or `SkillRegistry`.
 - Rewriting existing guardrail, MCP trust, usage accounting, or telemetry behavior from Plans 5, 6, 6.5, and 7.
 
@@ -1019,7 +1019,7 @@ class OptionalFailingCheck:
     required = False
 
     def run(self) -> GateResult:
-        return GateResult.fail(name=self.name, summary="future Plan 10 signal", duration_ms=1)
+        return GateResult.fail(name=self.name, summary="future Plan 11 signal", duration_ms=1)
 
 
 class RaisingCheck:
@@ -3270,7 +3270,7 @@ These items are accepted Plan 8 limitations. They should be tracked with the sta
 - One-key model: Local runtime still allows only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY`; provider and LangSmith keys are treated as release-gate failures.
 - Fail-closed behavior: gate exceptions become failed required gate results; candidates are applied to a shadow workspace and real workspace promotion occurs only after `assert_mutation_allowed()` and required composite gates pass, with rollback on promotion errors.
 - Golden-task scoring: deterministic fixture evaluation is implemented without adding new local provider keys or LLM-judge dependencies, and the release gate requires actual `GoldenTaskResult` records from a harness rather than fixture-count checks.
-- Context optimization boundary: Plan 10 promotion fields are reserved only as optional warnings; no calibration placeholder becomes a binding release gate in Plan 8.
+- Context optimization boundary: Plan 11 promotion fields are reserved only as optional warnings; no calibration placeholder becomes a binding release gate in Plan 8.
 - Type consistency: retry decisions use `FailureKind`, `FailureSeverity`, and `RetryAction.SUCCESS` for success; gate failures use `CompositeGateError`; golden outcomes use `GoldenTaskResult`; release output uses `ReleaseGateReport`.
 - Red-flag scan: The plan contains concrete file paths, test code, implementation code, commands, expected outcomes, and no unresolved placeholders.
 - TDD compliance: Every production change starts with a failing unit or integration test, followed by minimal implementation and verification.

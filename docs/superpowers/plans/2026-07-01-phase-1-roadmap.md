@@ -234,7 +234,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 - LLD v2.38 §10 conformance: live TS.CREATE/TS.ALTER retention tests, `run:{run_id}:metadata` hash contract tests, `redis.asyncio` shared-pool migration, and `RedisTelemetryAdapter` wired into production bootstrap.
 - Committed evidence: `reports/plan-9-6-e2e-acp-transcript.json`, the `verify_live_agent` transcript, the Zed HITL session artifact, and the recorded Task L10 plan-text governance decision.
 
-**Status:** Approved for implementation. Owns the Phase 1 working-agent sign-off gate; Plan 10 does not start before this gate passes.
+**Status:** Approved for implementation. Owns the Phase 1 working-agent sign-off gate; Plan 11 does not start before this gate passes.
 
 ### Plan 9.6 closure — remaining work (see Plan 9.75)
 
@@ -269,7 +269,20 @@ completion deferred to Plan 9.75. Windows-only scope for now (Linux/WSL keyring-
 deferred). Orthogonal to Plan 9.6 live-verification scope — changes how local dependencies get
 started, not whether the agent's behavior against them is proven.
 
-## Plan 9.8 (Tracked, Not Yet Scheduled): Unified Gateway Capabilities Broker
+## Plan 9.8: Task-Aware Workspace Context for Planning
+
+**Plan file:** `docs/superpowers/plans/2026-07-10-plan-9-8-task-aware-workspace-context.md`
+
+**User story:** As an operator, when I ask the agent to change an explicitly referenced file, the
+planner receives that file's content even when task-blind workspace filler would otherwise exhaust
+the context budget.
+
+**Status:** Drafted 2026-07-10 (priority: high). This is a correctness floor for the specific
+silent READ-only fallback observed during Plan 9.75 verification, not a claim that mutation tasks
+generally work. Its working hypothesis must be confirmed with runtime context evidence before
+implementation begins.
+
+## Plan 10 (Tracked, Not Yet Scheduled): Unified Gateway Capabilities Broker
 
 **Raised:** 2026-07-08, during Plan 9.7 review. The client-side one-key contract is already
 shaped for this: `src/optimus/evidence/acquisition.py` posts to `/v1/tools/web/search` and
@@ -297,15 +310,15 @@ env/`.env.gateway`/keyring precedence, independent of Plan 9.7's agent-side equi
 normalized `gateway_usage`/cost fields for non-model calls, matching the existing model-call
 pattern.
 
-## Plan 10 (Tracked, Not Yet Scheduled): Context Window Optimization and Intelligent Selection
+## Plan 11 (Tracked, Not Yet Scheduled): Context Window Optimization and Intelligent Selection
 
 **Design source:** `docs/context-window-optimization-strategy.md` (standalone canonical design note; no HLD/LLD/Test Strategy anchors yet - see the Cross-Cutting section above)
 
-**Future implementation plan:** create `docs/superpowers/plans/YYYY-MM-DD-context-window-optimization-intelligent-selection.md` after the prerequisite plans (7, 8, 8.5, and the input-supplying Plans 4, 5, 6, 6.5, 9) are stable.
+**Future implementation plan:** create `docs/superpowers/plans/YYYY-MM-DD-context-window-optimization-intelligent-selection.md` after Plan 9.8 and the prerequisite plans (7, 8, 8.5, and the input-supplying Plans 4, 5, 6, 6.5, 9) are stable.
 
 **User story:** As the agent runtime, I select, pack, summarize, invalidate, evict, and measure context under a cost- and freshness-aware policy, so the agent gets smarter while fully-loaded cost goes down, without ever silently dropping required evidence to fit a budget.
 
-**Status:** Tracked, not yet scheduled. This plan comes after Plan 9.5 task-level agent orchestration and the real golden harness are stable, since selection policy depends on the cost-attribution, evidence, trust, freshness, loop/skill, and agent-run signals those plans establish. Do not start this plan early just because it is architecturally core - its inputs need to exist first.
+**Status:** Tracked, not yet scheduled. This plan comes after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden harness are stable, since selection policy depends on the cost-attribution, evidence, trust, freshness, loop/skill, and agent-run signals those plans establish. Do not start this plan early just because it is architecturally core - its inputs need to exist first.
 
 **Source anchors:**
 - `docs/context-window-optimization-strategy.md` - Context Type x Mechanism Matrix, Selection Pipeline, Selection Model, Freshness and Dependency Precedence, Prompt Packing and Cost Controls, Compaction, Offline Promotion Gates, Online Guardrails, Context Regret, Baseline and Ablation Plan, Calibration Items.
@@ -339,8 +352,13 @@ pattern.
 14. Plan 9.75: Zed HITL — ACP `toolCall` on `session/request_permission` + real Zed turn
     completion (P0, drafted — depends on Plan 9.7 operator PATH install for verification; see
     `docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`).
-15. Plan 10: Context window optimization and intelligent selection - tracked, not yet scheduled; starts only once Plan 9.5 task-level agent orchestration and the real golden harness are stable.
+15. Plan 9.8: Task-aware workspace context for planning — drafted, high priority; confirms and
+    fixes the specific budget/ordering-driven silent READ-only fallback before broader context work.
+16. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
+17. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
+    starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden
+    harness are stable.
 
-The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, one-key scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 9.5 composes the Phase 1 primitives into a working local-first coding agent before Plan 10 adds context-window intelligence. Plan 10 stays last regardless: it depends on inputs from Plans 4, 5, 6, 6.5, 7, 9, and 9.5, and its PDF fold-in is explicitly deferred until calibration is accepted.
+The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, one-key scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 9.5 composes the Phase 1 primitives into a working local-first coding agent; Plan 9.8 establishes the specific task-aware context correctness floor before Plan 11 adds context-window intelligence. Plan 11 stays last regardless: it depends on Plan 9.8 and inputs from Plans 4, 5, 6, 6.5, 7, 9, and 9.5, and its PDF fold-in is explicitly deferred until calibration is accepted.
 
-Plans 9.6 and 9.7 sit alongside each other, not in a strict dependency order: Plan 9.6 owns the Phase 1 working-agent sign-off gate (live Redis/Gateway/e2e proof plus the real-IDE HITL artifact) and Plan 10 does not start until it passes; Plan 9.7 only changes how an operator's local Redis/Gateway dependencies get started before a session and does not touch what Plan 9.6 proves or gate. Plan 9.7 merged independently of Plan 9.6's remaining open HITL item. **Plan 9.75** follows Plan 9.7 in the recommended sequence: it fixes the open Zed HITL / `toolCall` permission payload and closes Plan 9.7's deferred planning-bar DoD using the Plan 9.7 operator PATH install for manual verification. Plan 9.8 is tracked separately and not yet scheduled or designed; do not fold its gateway-capability-broker scope into 9.6, 9.7, or 9.75 when picking up either.
+Plans 9.6 and 9.7 sit alongside each other, not in a strict dependency order: Plan 9.6 owns the Phase 1 working-agent sign-off gate (live Redis/Gateway/e2e proof plus the real-IDE HITL artifact) and Plan 11 does not start until it passes; Plan 9.7 only changes how an operator's local Redis/Gateway dependencies get started before a session and does not touch what Plan 9.6 proves or gate. Plan 9.7 merged independently of Plan 9.6's remaining open HITL item. **Plan 9.75** follows Plan 9.7 in the recommended sequence: it fixes the open Zed HITL / `toolCall` permission payload and closes Plan 9.7's deferred planning-bar DoD using the Plan 9.7 operator PATH install for manual verification. Plan 10 is tracked separately and not yet scheduled or designed; do not fold its gateway-capability-broker scope into 9.6, 9.7, or 9.75 when picking up either.

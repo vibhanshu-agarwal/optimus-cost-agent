@@ -47,7 +47,7 @@ fail-closed check Plan 9.6 established. Auto-start only removes manual setup ste
 non-zero with an operator-actionable message if the dependency isn't actually up afterward.
 Plan 9.6's live test tiers, evidence artifacts, and sign-off gate are unaffected.
 
-## Relationship to Plan 9.8 (Tracked, Not Yet Scheduled)
+## Relationship to Plan 10 (Tracked, Not Yet Scheduled)
 
 During review (2026-07-08) the operator raised a separate, larger architectural gap: the
 client-side one-key contract is already shaped for this — `src/optimus/evidence/acquisition.py:88`
@@ -60,7 +60,7 @@ observability export yet, and any real web-search or observability provider key 
 LangSmith) would need to live gateway-side once those routes exist. That is a
 gateway-capability-surface redesign (new routes, upstream adapters, a secret taxonomy and
 usage/cost normalization for non-model calls, fail-closed semantics for missing integration keys),
-not a local-startup-ergonomics change, and is being tracked separately as **Plan 9.8: Unified
+not a local-startup-ergonomics change, and is being tracked separately as **Plan 10: Unified
 Gateway Capabilities
 Broker** — out of scope for this plan and not designed here. The only amendment Plan 9.7 makes
 for forward compatibility: `local_gateway_secrets.py`'s keychain schema (Task 1) must not
@@ -436,10 +436,10 @@ def test_no_keyring_backend_available_fails_with_dotenv_pointer(tmp_path):
   dependency just for this one file is disproportionate; a ~10-line parser is sufficient and
   keeps the dependency footprint minimal, consistent with this project's existing runtime
   dependency list (`confusable-homoglyphs`, `pydantic`, `redis`).
-- **Keychain key naming (forward-compat with Plan 9.8, tracked separately — see "Relationship to
-  Plan 9.8" above):** `model_provider`, `model_provider_api_key`, and `local_gateway_shared_secret`
+- **Keychain key naming (forward-compat with Plan 10, tracked separately — see "Relationship to
+  Plan 10" above):** `model_provider`, `model_provider_api_key`, and `local_gateway_shared_secret`
   as the three keyring key names under service `optimus-cost-agent` — namespaced by capability
-  (`model_*`) precisely so a future Plan 9.8 can add sibling keys (e.g. a web-search or
+  (`model_*`) precisely so a future Plan 10 can add sibling keys (e.g. a web-search or
   observability provider's key) under the same service without colliding with or restructuring
   what Plan 9.7 already stores.
 - `run_setup_wizard`'s prompt order is provider **first**, then the overwrite check — matching the

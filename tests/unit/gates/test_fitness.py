@@ -30,7 +30,7 @@ class OptionalFailingCheck:
     required = False
 
     def run(self) -> GateResult:
-        return GateResult.fail(name=self.name, summary="future Plan 10 signal", duration_ms=1)
+        return GateResult.fail(name=self.name, summary="future Plan 11 signal", duration_ms=1)
 
 
 class RaisingCheck:

@@ -163,7 +163,7 @@ run, or the release evidence must state that staging Gateway E2E was not run.
 The final go/no-go rule is strict: a Plan-mode and Agent-mode release run must
 complete with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` available locally.
 Provider keys such as Tavily, OpenAI, OpenRouter, GLM, Anthropic, and LangSmith
-must remain Gateway-side. Plan 9 bounded loops and skill loading, and Plan 10
+must remain Gateway-side. Plan 9 bounded loops and skill loading, and Plan 11
 context-window optimization gates, are out of scope for the Phase 1 golden
 fixture set described above.
 
@@ -215,11 +215,11 @@ v1 `toolCall` to `session/request_permission`, re-test in Zed using the Plan 9.7
 operator PATH install, and commit HITL evidence under `reports/`. See
 `docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`.
 
-**Plan 9.8** (tracked, not yet scheduled) is the Unified Gateway Capabilities
+**Plan 10** (tracked, not yet scheduled) is the Unified Gateway Capabilities
 Broker — web search and observability routes on the local gateway stub. Out of
 scope for Plans 9.6, 9.7, and 9.75.
 
-Plan 10 context-window optimization builds on this runner. It does not create
+Plan 11 context-window optimization builds on this runner. It does not create
 the task lifecycle, approval boundary, tool adapters, or golden harness.
 
 ## Prerequisites

@@ -53,7 +53,7 @@
 
 - Plan 6.5 guardrail fixes: git bypass hardening, Unicode confusable upgrades, MCP runtime trust wiring, and missing manifest path handling.
 - Retry/backoff, failure classification, golden task fixtures, release-gate runner, and one-key final release gate. Those belong to Plan 8.
-- Context-window intelligent selection, scoring, compaction, ablations, and cost-saving promotion thresholds. Those remain Plan 10.
+- Context-window intelligent selection, scoring, compaction, ablations, and cost-saving promotion thresholds. Those remain Plan 11.
 - Real Redis server E2E setup in unit tests. This plan uses fake Redis clients for deterministic unit/integration tests; staging Redis validation belongs to release-gate work.
 - Direct LangSmith SDK or local LangSmith key use. The local agent sends trace events to the Optimus Gateway only.
 - Local token/cost estimation when gateway usage exists. Missing gateway usage fails closed for persisted provider accounting.

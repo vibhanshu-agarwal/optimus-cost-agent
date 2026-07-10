@@ -83,7 +83,7 @@ not only the new plan store:
    Task L10. Do not let it pass silently.
 6. **Structural memory store (Architecture §6 step [3]):** the `Local Redis State Store` of
    topology/code-signature HASHes that feeds the Context Optimization Node is documented but
-   unbuilt — it is the Plan 10 state dependency ("no context management without state"). Out of
+   unbuilt — it is the Plan 11 state dependency ("no context management without state"). Out of
    scope here, but the pool, pre-flight, and live tier built now are its foundation and must be
    reusable by it.
 
@@ -356,7 +356,7 @@ blocking the ndjson event loop. Verify with `pytest -q`, live tiers L2/L2A/L4, a
 **Status:** DECIDED (owner: Vibhanshu, 2026-07-08) — recommended position accepted. The Redis
 plan store keeps raw plan text as short-TTL (3600s) operational approval state, documented as a
 bounded exception to Architecture §4 with the TTL as the control; the exception explicitly does
-not extend to indexed/long-lived structures (the Plan 10 structural memory store stays
+not extend to indexed/long-lived structures (the Plan 11 structural memory store stays
 signatures/summaries/paths only). Recorded in the Plan 9.5 completion doc (governance note under
 Definition Of Done) and the README plan-persistence section.
 
