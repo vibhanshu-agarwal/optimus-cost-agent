@@ -62,7 +62,7 @@ Approve/H7 gates. See evidence report for dual-source correlation.
 - [x] **Task 2:** Implement `shapes.py` + `spec.py` conformance; green unit tests + ruff.
 - [x] **Task 3:** Phase 2 `server.py` error propagation tests + implementation.
 - [x] **Task 4:** Post-fix Zed verification with `--debug-trace`; confirm success table.
-- [ ] **Task 5:** Close Plan 9.6 / Plan 9.7 evidence rows when DoD met.
+- [x] **Task 5:** Close Plan 9.6 / Plan 9.7 evidence rows when DoD met.
 
 ## Definition of Done
 
