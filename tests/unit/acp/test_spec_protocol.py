@@ -2,6 +2,7 @@ import asyncio
 from decimal import Decimal
 
 from optimus.acp.errors import METHOD_NOT_FOUND
+from optimus.acp.shapes import build_plan_session_update
 from optimus.acp.spec import ACP_PROTOCOL_VERSION, AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus, AgentToolCall
 from optimus.runtime.modes import ExecutionMode
@@ -101,11 +102,19 @@ async def test_session_prompt_sends_permission_request_and_keeps_prompt_pending(
     assert not prompt_task.done()
     assert outbound.notifications[0]["method"] == "session/update"
     assert outbound.notifications[0]["params"]["update"]["sessionUpdate"] == "plan"
+    assert outbound.notifications[0]["params"] == build_plan_session_update(
+        session_id=session_id,
+        plan_text="WRITE example.py\ncontent",
+    )
     permission_request = outbound.requests[0]
     assert permission_request["method"] == "session/request_permission"
     assert permission_request["params"]["sessionId"] == session_id
     assert permission_request["params"]["options"][0]["optionId"] == "approve"
     assert permission_request["params"]["options"][0]["metadata"]["planHash"] == "hash-1"
+    assert "toolCall" in permission_request["params"]
+    assert permission_request["params"]["toolCall"]["toolCallId"]
+    assert permission_request["params"]["toolCall"]["title"]
+    assert "toolCallId" not in permission_request["params"]
 
     outbound.respond(permission_request["id"], {"outcome": {"outcome": "cancelled"}})
     response = await prompt_task
@@ -140,16 +149,77 @@ async def test_permission_response_replays_approved_plan_before_prompt_response(
         permission_request["id"],
         {
             "outcome": {"outcome": "selected", "optionId": "approve"},
-            "metadata": {"approvalId": "approval-1", "planHash": "hash-1"},
         },
     )
     response = await prompt_task
 
     assert response["result"]["stopReason"] == "end_turn"
     assert runner.requests[-1].approval.approved is True
-    assert runner.requests[-1].approval.approval_id == "approval-1"
+    assert runner.requests[-1].approval.approval_id.startswith("approval-")
     assert runner.requests[-1].approval.plan_hash == "hash-1"
-    assert any(notification["params"]["update"]["sessionUpdate"] == "tool_call_update" for notification in outbound.notifications)
+    tool_calls = [
+        notification["params"]["update"]
+        for notification in outbound.notifications
+        if notification["params"]["update"]["sessionUpdate"] == "tool_call"
+    ]
+    assert tool_calls
+    assert "toolCallId" in tool_calls[0]
+    assert "toolCall" not in tool_calls[0]
+    assert all(
+        notification["params"]["update"]["sessionUpdate"] != "tool_call_update"
+        for notification in outbound.notifications
+    )
+    message_chunks = [
+        notification["params"]["update"]
+        for notification in outbound.notifications
+        if notification["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
+    ]
+    assert message_chunks
+    assert message_chunks[0]["content"]["type"] == "text"
+    completed_plans = [
+        notification["params"]["update"]
+        for notification in outbound.notifications
+        if notification["params"]["update"]["sessionUpdate"] == "plan"
+        and notification["params"]["update"]["entries"][0]["status"] == "completed"
+    ]
+    assert completed_plans
+
+
+async def test_permission_cancel_option_does_not_execute_plan(tmp_path):
+    runner = FakeRunner()
+    outbound = RecordingOutboundChannel()
+    adapter = AcpDuplexAdapter(runner=runner, workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound)
+    session_id = (
+        await adapter.handle_client_request(
+            {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
+        )
+    )["result"]["sessionId"]
+
+    prompt_task = asyncio.create_task(
+        adapter.handle_client_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/prompt",
+                "params": {
+                    "sessionId": session_id,
+                    "prompt": [{"type": "text", "text": "Add a docstring"}],
+                },
+            }
+        )
+    )
+    permission_request = await outbound.wait_for_request("session/request_permission")
+    outbound.respond(
+        permission_request["id"],
+        {
+            "outcome": {"outcome": "selected", "optionId": "cancel"},
+        },
+    )
+    response = await prompt_task
+
+    assert response["result"]["stopReason"] == "cancelled"
+    assert len(runner.requests) == 1
+    assert runner.requests[0].approval.approved is False
 
 
 async def test_session_cancel_resolves_prompt_and_pending_permission(tmp_path):

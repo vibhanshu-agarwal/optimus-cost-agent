@@ -430,7 +430,13 @@ class AgentRunner:
         for relative_path in directives.read_paths:
             if not self._is_safe_relative_path(relative_path):
                 continue
-            _, call = toolbox.read_file(workspace_root / relative_path)
+            target = workspace_root / relative_path
+            if not target.is_file():
+                continue
+            try:
+                _, call = toolbox.read_file(target)
+            except OSError:
+                continue
             calls.append(call)
         return calls
 

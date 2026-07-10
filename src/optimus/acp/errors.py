@@ -19,6 +19,18 @@ class JsonRpcError:
     data: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class AcpOutboundError(Exception):
+    """Raised when the ACP client rejects an agent-initiated outbound request."""
+
+    code: int
+    message: str
+    data: dict[str, Any] | None = None
+
+    def __str__(self) -> str:
+        return f"{self.code}: {self.message}"
+
+
 def success_response(request_id: str | int | None, result: Any) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": request_id, "result": result}
 

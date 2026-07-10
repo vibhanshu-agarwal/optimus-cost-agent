@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from optimus.acp.bootstrap import StartupConfigurationError, build_configured_server
+from optimus.acp.debug_trace import configure_debug_trace, log_provenance_once, resolve_debug_log_path
 from optimus.acp.local_gateway_secrets import run_setup_wizard
 from optimus.acp.local_infra import (
     apply_local_defaults,
@@ -51,7 +52,29 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Do not auto-start local Redis or the local gateway process; assume they are already running.",
     )
+    parser.add_argument(
+        "--debug-trace",
+        action="store_true",
+        help="Enable ACP protocol debug tracing to an NDJSON log file (never stdout).",
+    )
+    parser.add_argument(
+        "--debug-log",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Debug trace log path. Relative paths resolve under --workspace-root. "
+            "Default with --debug-trace: .optimus/debug-acp.ndjson"
+        ),
+    )
     return parser.parse_args(argv)
+
+
+def _apply_debug_trace_args(args: argparse.Namespace, *, workspace_root: Path) -> Path | None:
+    if not args.debug_trace:
+        return None
+    resolved = resolve_debug_log_path(workspace_root=workspace_root, log_path=args.debug_log)
+    configure_debug_trace(enabled=True, log_path=resolved)
+    return resolved
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -60,7 +83,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.setup:
         return run_setup_wizard(project_root=_project_root())
 
-    workspace_root = Path(args.workspace_root)
+    workspace_root = Path(args.workspace_root).resolve()
+    debug_log_path = _apply_debug_trace_args(args, workspace_root=workspace_root)
+    if debug_log_path is not None:
+        _print_log(f"ACP debug trace: {debug_log_path}")
     # `environ` may legitimately contain a real vendor key (e.g. ANTHROPIC_API_KEY in the
     # operator's own shell, or resolved from .env.gateway/keyring) — ensure_local_gateway needs
     # that to construct the spawned gateway's child env. It must NEVER be the same object passed
@@ -84,6 +110,7 @@ def main(argv: list[str] | None = None) -> int:
         except PreflightFailure as exc:
             print(exc.user_message, file=sys.stderr)
             return exc.exit_code
+        log_provenance_once()
         print("Optimus ACP agent configuration OK.", file=sys.stderr)
         return 0
 
