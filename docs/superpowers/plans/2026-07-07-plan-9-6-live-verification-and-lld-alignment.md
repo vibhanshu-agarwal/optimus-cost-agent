@@ -14,8 +14,7 @@ closed with operator action messages. Redis usage conforms to Architecture v2.15
 
 **Status:** Approved for implementation. Owns Plan 9.5/Phase 1 operator sign-off. **Active
 execution checklist:**
-[Plan 9.6 live sign-off execution](2026-07-10-plan-9-6-live-signoff-execution.md) (branch
-`agent/cursor/plan-9-6-live-signoff`).
+[Plan 9.6 live sign-off execution](2026-07-10-plan-9-6-live-signoff-execution.md).
 
 ## Scope Transfer From Plan 9.5
 

@@ -45,7 +45,7 @@ agent runs. No local provider keys.
   $env:OPTIMUS_GATEWAY_URL = "<your gateway url>"
   $env:OPTIMUS_API_KEY = "<your key>"
   # Confirm no other OPTIMUS_* or provider keys leak:
-  Get-ChildItem Env: | Where-Object { $_.Name -match 'OPTIMUS|OPENAI|ANTHROPIC|OPENROUTER' }
+  Get-ChildItem Env: | Where-Object { $_.Name -match 'OPTIMUS|OPENAI|ANTHROPIC|OPENROUTER|GLM|TAVILY|ZHIPUAI|LANGSMITH|LANGCHAIN' }
   ```
 
 - [ ] **A3. Redis URL** (if not auto-defaulted):
