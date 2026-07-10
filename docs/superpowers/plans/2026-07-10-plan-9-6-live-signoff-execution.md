@@ -4,7 +4,7 @@
 > after the stated verification command actually ran and passed on the operator machine. Prose
 > claims count for nothing (AGENTS.md checkbox protocol).
 
-**Parent plan:** [Plan 9.6](2026-07-07-plan-9-6-live-verification-and-lld-alignment.md)  
+**Parent plan:** [Plan 9.6](2026-07-07-plan-9-6-live-verification-and-lld-alignment.md)
 **Evidence:** [Phase A](reports/plan-9-6-phase-a-evidence.md)
 
 ## Claim → Evidence status (8 rows)

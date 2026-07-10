@@ -1,7 +1,7 @@
 # Plan 9.6 Phase B evidence
 
-**Date:** 2026-07-10  
-**Checkout:** `optimus-cost-agent-wt-cursor` @ branch `agent/cursor/plan-9-6-phase-a-evidence`  
+**Date:** 2026-07-10
+**Checkout:** `optimus-cost-agent-wt-cursor` @ branch `agent/cursor/plan-9-6-phase-a-evidence`
 **Depends on:** [Phase A evidence](plan-9-6-phase-a-evidence.md)
 
 ## Gateway provenance (before B2)

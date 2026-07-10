@@ -1,7 +1,7 @@
 # Plan 9.6 Phase A evidence
 
-**Date:** 2026-07-10  
-**Checkout:** `optimus-cost-agent-wt-cursor` @ `main` (`0ca83f8`, post-PR #38)  
+**Date:** 2026-07-10
+**Checkout:** `optimus-cost-agent-wt-cursor` @ `main` (`0ca83f8`, post-PR #38)
 **Operator:** Cursor agent shell (Windows)
 
 ## First live blocker — disposition
