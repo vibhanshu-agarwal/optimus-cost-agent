@@ -4,19 +4,18 @@
 > after the stated verification command actually ran and passed on the operator machine. Prose
 > claims count for nothing (AGENTS.md checkbox protocol).
 
-**Parent plan:** [Plan 9.6](2026-07-07-plan-9-6-live-verification-and-lld-alignment.md)  
-**Branch:** `agent/cursor/plan-9-6-live-signoff`  
-**Base:** `main` @ post-PR #35 (`7304644`)
+**Parent plan:** [Plan 9.6](2026-07-07-plan-9-6-live-verification-and-lld-alignment.md)
+**Evidence:** [Phase A](reports/plan-9-6-phase-a-evidence.md)
 
 ## Claim → Evidence status (8 rows)
 
 | # | DoD claim | Evidence artifact | Status |
 |---|-----------|-------------------|--------|
-| 1 | Redis-backed plan state | `test_redis_live_agent.py` green | `[ ]` |
-| 2 | Bootstrap fails closed | `test_bootstrap_live_redis.py` green | `[ ]` |
-| 3 | LLD §10 telemetry on real Redis | `test_redis_telemetry_live.py` green | `[ ]` |
-| 4 | ACP server persist/replay | `test_server_stream_live_redis.py` green | `[ ]` |
-| 5 | Real model honors directive prompt | `test_gateway_live.py` green | `[ ]` |
+| 1 | Redis-backed plan state | `test_redis_live_agent.py` green | `[x]` |
+| 2 | Bootstrap fails closed | `test_bootstrap_live_redis.py` green | `[x]` |
+| 3 | LLD §10 telemetry on real Redis | `test_redis_telemetry_live.py` green | `[x]` |
+| 4 | ACP server persist/replay | `test_server_stream_live_redis.py` green | `[x]` |
+| 5 | Real model honors directive prompt | `test_gateway_live.py` green | `[x]` |
 | 6 | IDE-spawnable agent E2E | `test_spawned_agent_live.py` + `reports/plan-9-6-e2e-acp-transcript.json` | `[ ]` |
 | 7 | Operator verify alone | `tools/verify_live_agent.py` exit 0 + transcript | `[ ]` |
 | 8 | Real IDE (Zed HITL) | `reports/plan-9-75-zed-hitl-runtime-evidence.md` | `[x]` (PR #36) |
@@ -49,67 +48,56 @@ shell session env, Windows User-scoped persistent env, or `.env.gateway`. This i
 **cross-layer provider/key mismatch** gap from Plan 9.7 review (deferred to Plan 10+ broker work);
 Phase A surfaced it in production.
 
+**Disposition (2026-07-10):** Resolved on re-run. Most likely stale session env from the pre-#38 A2
+instruction (unconfirmed — failing session not captured); all four layers verified clean on re-run,
+keyring backfill authenticated successfully. Evidence:
+`reports/plan-9-6-phase-a-evidence.md`.
+
 **Resolution order before A4:** clean all four layers, then let keyring supply the secret (local
 loopback path). **Run the env-cleanup steps in every terminal** you will use (preflight terminal
 *and* gateway terminal) — file renames are workspace-wide; env vars are per-session.
 
-- [ ] **A0. Clear stale credential layers** (workspace = repo checkout used for serve):
+- [x] **A0. Clear stale credential layers** — evidence:
+  [reports/plan-9-6-phase-a-evidence.md](reports/plan-9-6-phase-a-evidence.md). Commands:
   ```powershell
-  # Layer 1 — Windows User-scoped persistent env (survives new terminals; check first)
+  # Layer 1 — Windows User-scoped persistent env
   [Environment]::GetEnvironmentVariable('OPTIMUS_API_KEY','User')
   [Environment]::GetEnvironmentVariable('OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET','User')
-  # If either is non-empty, clear persistent store then open a NEW terminal:
   [Environment]::SetEnvironmentVariable('OPTIMUS_API_KEY',$null,'User')
   [Environment]::SetEnvironmentVariable('OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET',$null,'User')
-
-  # Layer 2 — current-session shell env (run in EACH terminal before gateway/preflight)
+  # Layer 2 — session env (each terminal)
   Remove-Item Env:OPTIMUS_API_KEY -ErrorAction SilentlyContinue
   Remove-Item Env:OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET -ErrorAction SilentlyContinue
-
-  # Layer 3 — workspace dotenv (gateway side outranks keyring in resolve_shared_secret)
+  # Layer 3 — workspace dotenv
   Rename-Item .env .env.bak -ErrorAction SilentlyContinue
   Rename-Item .env.gateway .env.gateway.bak -ErrorAction SilentlyContinue
-
-  # Layer 4 — keyring only after 1–3 are clean (via optimus-agent --setup if never run)
   ```
-  Do **not** manually set `$env:OPTIMUS_API_KEY` for local loopback unless you know it matches the
-  gateway shared secret exactly.
 
-- [ ] **A0b. Start local gateway** (`--check-config` does not spawn it). **After A0 in this
-  terminal too**, second terminal:
-  ```powershell
-  optimus-agent --workspace-root .
-  ```
+- [x] **A0b. Local gateway for preflight** — port `8765` was already listening (prior session);
+  sufficient for strict preflight only. **Before B2 and Phase D:** kill and restart gateway from
+  current `main` checkout (provenance — see Phase B).
 
 If A4 still fails with all layers clean (no User-scope vars, empty session env in both terminals,
 no `.env`/`.env.gateway`, keyring-only), treat as a possible **auth-path defect** (preflight probe
 vs real planning) — capture the preflight table and safe env snapshot below and escalate.
 
-- [ ] **A1. Docker Desktop running** — Redis auto-start depends on it.
+- [x] **A1. Docker Desktop running** — `optimus-redis Up 22 hours` (evidence file).
   ```powershell
   docker ps --filter name=optimus-redis
   ```
 
-- [ ] **A2. Gateway URL** (hosted gateway only — set key explicitly to match that URL):
+- [x] **A2. Gateway URL** — loopback default; no provider keys in session (evidence file).
   ```powershell
-  $env:OPTIMUS_GATEWAY_URL = "<your gateway url>"
-  # Hosted/staging only:
-  # $env:OPTIMUS_API_KEY = "<key issued for that URL>"
-  # Local loopback: leave OPTIMUS_API_KEY unset after A0; defaults to http://127.0.0.1:8765
   Get-ChildItem Env: | Where-Object { $_.Name -match 'OPTIMUS|OPENAI|ANTHROPIC|OPENROUTER|GLM|TAVILY|ZHIPUAI|LANGSMITH|LANGCHAIN' }
   ```
 
-- [ ] **A3. Redis URL** (if not auto-defaulted):
-  ```powershell
-  $env:OPTIMUS_REDIS_URL = "redis://127.0.0.1:6379/0"
-  ```
+- [x] **A3. Redis URL** — default `redis://127.0.0.1:6379/0` (evidence file).
 
-- [ ] **A4. Preflight passes** (from repo checkout):
+- [x] **A4. Preflight passes** — non-strict and strict exit 0 (evidence file).
   ```powershell
-  cd <repo-checkout>
   python -m optimus.acp --workspace-root . --check-config --strict
   ```
-  Record exit code and stderr (no secrets). On auth failure, also capture:
+  On auth failure, capture preflight table + resolved safe snapshot:
   ```powershell
   python -c "
 from pathlib import Path
@@ -117,37 +105,49 @@ import os
 from optimus.acp.__main__ import _project_root
 from optimus.acp.local_infra import apply_local_defaults, strip_local_provider_keys
 from optimus.acp.preflight import collect_preflight_checks, format_preflight_table
+from urllib.parse import urlparse
 env = apply_local_defaults(os.environ, project_root=_project_root())
 agent = strip_local_provider_keys(env)
 print(format_preflight_table(collect_preflight_checks(agent, workspace_root=Path('.'), strict=True, require_timeseries=True)))
+p = urlparse(env.get('OPTIMUS_GATEWAY_URL',''))
+k = env.get('OPTIMUS_API_KEY','')
+print('resolved_gateway_host', p.hostname)
+print('resolved_gateway_port', p.port)
+print('resolved_api_key_set', bool(k.strip()))
+print('resolved_api_key_len', len(k.strip()))
+print('keyring_backfill', not bool(os.environ.get('OPTIMUS_API_KEY','').strip()) and bool(k.strip()))
 "
-  python -c "import os; from urllib.parse import urlparse; u=os.environ.get('OPTIMUS_GATEWAY_URL',''); p=urlparse(u); k=os.environ.get('OPTIMUS_API_KEY',''); print('gateway_host', p.hostname); print('gateway_port', p.port); print('api_key_set', bool(k.strip())); print('api_key_len', len(k.strip()))"
   ```
 
-- [ ] **A5. Live Redis reachable** (TimeSeries-capable):
-  ```powershell
-  python -c "import redis; r=redis.from_url('redis://127.0.0.1:6379/0'); print('PING', r.ping())"
-  ```
-
-**Phase A pass criteria:** A4 exit 0, A5 prints `PING True`. Report pass/fail + command output.
+- [x] **A5. Live Redis reachable** — `PING True` (evidence file).
 
 ## Phase B — Live-tier pytest (`requires_redis`, then `requires_gateway`)
 
 Run from repo checkout with Phase A env active. Capture full stdout/stderr per tier.
 
-- [ ] **B1. `requires_redis`** (rows 1–4):
-  ```powershell
-  pytest tests/integration/agent/test_redis_live_agent.py `
-    tests/integration/acp/test_bootstrap_live_redis.py `
-    tests/integration/telemetry/test_redis_telemetry_live.py `
-    tests/integration/acp/test_server_stream_live_redis.py `
-    -m requires_redis -v
-  ```
+**Gateway provenance (before B2 and Phase D):** Kill any process on `127.0.0.1:8765` and restart
+from the current checkout so live-tier evidence is not against an unknown older build:
+```powershell
+Get-NetTCPConnection -LocalPort 8765 -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty OwningProcess -Unique |
+  ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
+python -c "
+import os
+from pathlib import Path
+from optimus.acp.local_infra import apply_local_defaults, ensure_local_gateway
+root = Path('.').resolve()
+env = apply_local_defaults(os.environ, project_root=root)
+proc = ensure_local_gateway(environ=env, project_root=root, log=print)
+print('gateway_pid', proc.process.pid if proc else None)
+"
+```
 
-- [ ] **B2. `requires_gateway`** (row 5):
-  ```powershell
-  pytest tests/integration/gateway/test_gateway_live.py -m requires_gateway -v
-  ```
+- [x] **B1. `requires_redis`** — 15/15 passed; evidence
+  [reports/plan-9-6-phase-b-evidence.md](reports/plan-9-6-phase-b-evidence.md). Required one
+  integration-test fix for post-#36 permission `run_id` shape.
+
+- [x] **B2. `requires_gateway`** — 3/3 passed after gateway restart (pid 36952); same evidence
+  file.
 
 **Phase B pass criteria:** All selected tests green. Any failure is a ship-blocker until root-caused.
 

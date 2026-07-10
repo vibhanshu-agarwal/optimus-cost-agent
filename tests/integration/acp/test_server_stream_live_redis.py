@@ -120,7 +120,7 @@ async def test_live_ndjson_session_prompt_permission_flow_persists_plan_to_redis
     permission_request = await writer.wait_for_request("session/request_permission")
     assert permission_request["params"]["sessionId"] == session_id
     plan_hash = permission_request["params"]["options"][0]["metadata"]["planHash"]
-    run_id = permission_request["params"]["metadata"]["runId"]
+    run_id = permission_request["params"]["_meta"]["runId"]
     tracked_run_ids.add(run_id)
 
     loaded = store.load_plan(run_id=run_id, plan_hash=plan_hash)
@@ -133,7 +133,6 @@ async def test_live_ndjson_session_prompt_permission_flow_persists_plan_to_redis
             "id": permission_request["id"],
             "result": {
                 "outcome": {"outcome": "selected", "optionId": "approve"},
-                "metadata": {"approvalId": "approval-live-1", "planHash": plan_hash},
             },
         }
     )
@@ -188,7 +187,7 @@ async def test_live_ndjson_server_restart_replays_approval_on_second_server(live
     )
     permission_request = await writer.wait_for_request("session/request_permission")
     plan_hash = permission_request["params"]["options"][0]["metadata"]["planHash"]
-    run_id = permission_request["params"]["metadata"]["runId"]
+    run_id = permission_request["params"]["_meta"]["runId"]
     tracked_run_ids.add(run_id)
     assert len(gateway_one.calls) == 1
 
