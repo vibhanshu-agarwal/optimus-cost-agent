@@ -1,78 +1,89 @@
-# Plan 9.75: Zed HITL — ACP `toolCall` on `session/request_permission`
+# Plan 9.75: Zed HITL — ACP conformance (plan entries + permission `toolCall`)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:test-driven-development before
-> implementation. Do not start without reviewer approval of this plan.
+> implementation.
 
-**Goal:** Unblock real-IDE sign-off by fixing the Zed `session/prompt` hang after planning: send
-ACP v1-conformant `toolCall` on `session/request_permission`, verify Zed renders approval UI (or
-auto-approve path works), and complete a real planning turn through the operator PATH install
-from Plan 9.7.
+**Goal:** Fix Zed `session/prompt` empty-thread / perceived-spinner after planning by sending
+ACP v1-conformant `session/update` plan entries and `session/request_permission` payloads, completing
+a real planning turn through approval.
 
-**Status:** Drafted 2026-07-09 (P0). Not yet implemented. Supersedes ad-hoc issue tracking for
-this defect — use **Plan 9.75** in roadmap and cross-plan references, not PR or issue numbers.
+**Status:** In progress (2026-07-10). Runtime evidence committed:
+`reports/plan-9-75-zed-hitl-runtime-evidence.md`.
 
-**Architecture:** Minimal change in `src/optimus/acp/spec.py` `_request_permission()` plus
-protocol tests in `tests/unit/acp/test_spec_protocol.py`. Reuse `toolCall` field construction
-patterns from the existing `session/update` `tool_call_update` path. No gateway or local-infra
-changes (Plan 9.7 scope).
+**Architecture:** Build wire shapes from ACP v1 `schema.json` in `src/optimus/acp/shapes.py`; wire
+through `src/optimus/acp/spec.py`. Protocol tests pin exact serialized shapes in
+`tests/unit/acp/test_shapes.py` and `tests/unit/acp/test_spec_protocol.py`. Phase 2 error surfacing
+in `src/optimus/acp/server.py`.
 
-**Relationship to other plans:**
+**Runtime evidence (2026-07-10):** Zed 1.10 rejects non-conformant plan (`missing field entries`)
+and permission (`missing field toolCall`) at deserialization with `-32602`. Error masking converted
+both to invisible `stopReason: cancelled` (~5.6s). See evidence report for dual-source correlation.
 
-- **Plan 9.6** — Known Open Defects section records symptom and root-cause analysis; Plan 9.75
-  closes the open HITL claim-table row when a real Zed artifact is committed under `reports/`.
-- **Plan 9.7** — Operator infra path verified; manual DoD planning bar stays unchecked until
-  Plan 9.75 completes and evidence is recorded in `reports/plan-9-7-manual-e2e-evidence.md`.
-- **Plan 9.8** — Unified Gateway Capabilities Broker; **out of scope** for Plan 9.75.
+## Verified defects (runtime + code review)
 
-## Verified facts (code review 2026-07-09)
-
-- `_request_permission()` (`spec.py` lines 229–259) sends only `options` + `metadata` — **no
-  `toolCall`** on `session/request_permission`.
-- `toolCall` appears only on `session/update` `tool_call_update` notifications.
-- No test asserts `toolCall` on permission requests.
-- Plan 9.6 previously overstated that `toolCall` was fixed; correction recorded in Plan 9.6
-  Known Open Defects.
-
-## Working hypothesis
-
-Missing `toolCall` on `session/request_permission` likely **causes** the HITL deadlock: Zed cannot
-render approval UI → adapter blocks awaiting a response that never comes.
+1. **Plan `session/update`:** Agent sent `update.content` (content blocks) instead of required
+   `update.entries`. **`PlanEntry.content` is a plain string**, not content blocks.
+2. **Permission request:** Agent omitted required nested `toolCall` (`ToolCallUpdate` under `toolCall`
+   key) on `session/request_permission`.
+3. **`tool_call_update` notifications:** Fields must be **flattened at `update` level** (`toolCallId`,
+   `title`, `content`, …) — not nested under `toolCall`. Permission request uses the **opposite**
+   nesting: `toolCall: { toolCallId, … }`.
+4. **Approval handshake:** Runner integrity gate is `plan_hash` only; agent generates `approvalId`
+   and reads `plan_hash` from retained `planning_result` (Zed need not echo `metadata`).
+5. **Error masking (Phase 2):** `deliver_client_response` mapped client JSON-RPC errors to
+   `{outcome: cancelled}`.
 
 ## Explicit scope boundaries
 
-**In scope:**
+**In scope (Phase 1):**
 
-1. Failing test asserting `toolCall` shape on outbound `session/request_permission`.
-2. Payload fix in `_request_permission()`.
-3. Real Zed re-test with Plan 9.7 operator PATH config; commit HITL artifact under `reports/`.
-4. Fill `reports/plan-9-7-manual-e2e-evidence.md` planning-run section; check Plan 9.7 DoD box.
+1. `entries: [{content: <string>, priority, status}]` on plan `session/update`.
+2. Nested `toolCall` on `session/request_permission`.
+3. Flattened `tool_call_update` on execution `session/update`.
+4. Agent-side approval handshake (no metadata echo dependency).
+5. Unit tests pinning exact shapes from `tests/fixtures/acp/acp-v1-schema.json`.
+6. Committed runtime evidence under `reports/`.
 
-**Out of scope (separate plan/UX decision):**
+**In scope (Phase 2):**
 
-- Read-only / Plan-mode fast path for Q&A without mutation approval (root-cause #3 in defect
-  notes).
-- Session resume support.
-- Cross-layer provider/key mismatch warning (parked for Plan 9.8 or later).
+1. Propagate outbound-request JSON-RPC errors (do not map to `cancelled`).
+2. `process_request` exceptions → JSON-RPC error response on `session/prompt`.
 
-## Suggested task order (TDD)
+**Out of scope:**
 
-- [ ] **Task 1:** Add failing `test_spec_protocol.py` assertion for `toolCall` on
-  `session/request_permission`.
-- [ ] **Task 2:** Implement `toolCall` in `_request_permission()`; green unit tests + ruff.
-- [ ] **Task 3:** Manual Zed verification (operator PATH, same config as Plan 9.7 partial sign-off);
-  record transcript and stdout in `reports/plan-9-7-manual-e2e-evidence.md`.
-- [ ] **Task 4:** Close Plan 9.6 defect status when DoD met (README architecture narrative and
-  known-defect pointers for Plans 9.6–9.75 landed in the doc-consistency pass; approval-handshake
-  text documents current vs Plan 9.75 target state).
+- Plan/Chat fast path without approval.
+- Session resume.
+
+## Task order (TDD)
+
+- [x] **Task 0:** Commit runtime evidence (`reports/plan-9-75-zed-hitl-runtime-evidence.md`).
+- [ ] **Task 1:** Failing shape tests (`test_shapes.py`, `test_spec_protocol.py`).
+- [ ] **Task 2:** Implement `shapes.py` + `spec.py` conformance; green unit tests + ruff.
+- [ ] **Task 3:** Phase 2 `server.py` error propagation tests + implementation.
+- [ ] **Task 4:** Post-fix Zed verification with `--debug-trace`; confirm success table.
+- [ ] **Task 5:** Close Plan 9.6 / Plan 9.7 evidence rows when DoD met.
 
 ## Definition of Done
 
-- Zed shows plan text or approval UI after `session/prompt` (no infinite loading).
-- `session/prompt` always resolves (success, cancellation, or JSON-RPC error).
-- Committed `reports/` HITL artifact + filled Plan 9.7 evidence template.
-- Plan 9.7 manual DoD planning checkbox checked with evidence citation.
+- No Zed `-32602` on plan or permission outbound messages.
+- Agent logs: `has_entries: true`, `has_toolCall: true`.
+- `permission_done` with `outcome: selected` → `stopReason: end_turn` (GAP1 proof).
+- Zed shows plan or approval UI after `session/prompt`.
+- `session/prompt` resolves with success, visible error, or explicit cancellation.
 
-## Reference notes
+## Post-fix success table
 
-Detailed repro, environment, and root-cause analysis:
-`reports/plan-9-75-zed-hitl-defect-notes.md`.
+| Signal | Expected |
+|--------|----------|
+| Zed `-32602` on plan/permission | None |
+| Agent log plan emit | `has_entries: true` |
+| Agent log permission emit | `has_toolCall: true` |
+| `permission_done` | `outcome: selected` |
+| `session/prompt` result | `stopReason: end_turn` |
+| Zed UI | Plan or approval visible |
+
+## Reference
+
+- Runtime evidence: `reports/plan-9-75-zed-hitl-runtime-evidence.md`
+- Defect notes: `reports/plan-9-75-zed-hitl-defect-notes.md`
+- Schema fixture: `tests/fixtures/acp/acp-v1-schema.json`

@@ -33,6 +33,9 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# --- Local agent runtime artifacts ---
+.optimus/
+
 # --- Virtual environments ---
 .venv/
 venv/

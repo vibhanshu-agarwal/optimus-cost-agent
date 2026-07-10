@@ -7,7 +7,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from optimus.acp.errors import INVALID_REQUEST, METHOD_NOT_FOUND, JsonRpcError, error_response, success_response
+from optimus.acp.debug_trace import acp_debug_log
+from optimus.acp.errors import INVALID_REQUEST, METHOD_NOT_FOUND, AcpOutboundError, JsonRpcError, error_response, success_response
+from optimus.acp.shapes import (
+    build_agent_message_chunk_notification,
+    build_plan_session_update,
+    build_request_permission_params,
+    build_tool_call_notification,
+    new_approval_id,
+    new_tool_call_id,
+    tool_kind_for_name,
+)
 from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus
 from optimus.runtime.modes import ExecutionMode
 
@@ -39,6 +49,7 @@ class AcpPromptTurn:
     run_id: str
     cancelled: bool = False
     pending_permission_request_id: str | int | None = None
+    permission_tool_call_id: str | None = None
 
 
 class InMemoryAcpSpecSessionStore:
@@ -124,6 +135,14 @@ class AcpDuplexAdapter:
     async def handle_client_notification(self, notification: dict[str, Any]) -> None:
         if notification.get("method") != "session/cancel":
             return
+        # region agent log
+        acp_debug_log(
+            location="spec.py:handle_client_notification:session_cancel",
+            message="session/cancel notification received",
+            data={"session_id": notification.get("params", {}).get("sessionId") if isinstance(notification.get("params"), dict) else None},
+            hypothesis_id="H1",
+        )
+        # endregion
         params = notification.get("params")
         if not isinstance(params, dict):
             return
@@ -189,6 +208,14 @@ class AcpDuplexAdapter:
         run_id = f"{session_id}:{request.get('id')}"
         turn = AcpPromptTurn(session_id=session_id, request_id=request.get("id"), run_id=run_id)
         self._active_turns[session_id] = turn
+        # region agent log
+        acp_debug_log(
+            location="spec.py:_handle_session_prompt:entry",
+            message="session/prompt started",
+            data={"session_id": session_id, "request_id": request.get("id"), "run_id": run_id},
+            hypothesis_id="H1",
+        )
+        # endregion
         try:
             planning_request = AgentRunRequest(
                 run_id=run_id,
@@ -198,57 +225,113 @@ class AcpDuplexAdapter:
                 workspace_root=session.cwd,
             )
             planning_result = await asyncio.to_thread(self._runner.run, planning_request)
+            # region agent log
+            acp_debug_log(
+                location="spec.py:_handle_session_prompt:planning_done",
+                message="planning completed",
+                data={
+                    "run_id": run_id,
+                    "status": planning_result.status.value,
+                    "plan_hash": planning_result.plan_hash,
+                    "read_tool_calls": sum(1 for call in planning_result.tool_calls if call.tool_name == "file_reader"),
+                },
+                hypothesis_id="H3",
+            )
+            # endregion
             await self._emit_result_updates(session_id=session_id, result=planning_result, planning=True)
             if turn.cancelled:
                 return success_response(request_id=request.get("id"), result={"stopReason": "cancelled"})
             if planning_result.status is not AgentRunStatus.AWAITING_APPROVAL:
+                await self._emit_completion_message(session_id=session_id, result=planning_result)
                 return success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(planning_result)})
 
             permission_result = await self._request_permission(turn=turn, result=planning_result)
-            if turn.cancelled or permission_result.get("outcome", {}).get("outcome") != "selected":
+            # region agent log
+            acp_debug_log(
+                location="spec.py:_handle_session_prompt:permission_done",
+                message="permission response received",
+                data={
+                    "run_id": run_id,
+                    "outcome": permission_result.get("outcome"),
+                    "has_metadata": isinstance(permission_result.get("metadata"), dict),
+                    "metadata_keys": sorted(permission_result["metadata"].keys())
+                    if isinstance(permission_result.get("metadata"), dict)
+                    else [],
+                    "top_level_keys": sorted(permission_result.keys()),
+                },
+                hypothesis_id="GAP1",
+            )
+            # endregion
+            if turn.cancelled or not _permission_approved(permission_result):
                 return success_response(request_id=request.get("id"), result={"stopReason": "cancelled"})
 
-            metadata = permission_result.get("metadata")
-            if not isinstance(metadata, dict):
-                return success_response(request_id=request.get("id"), result={"stopReason": "refusal"})
             approved_request = planning_request.model_copy(
                 update={
                     "approval": AgentApproval(
                         approved=True,
-                        approval_id=str(metadata.get("approvalId") or ""),
-                        plan_hash=str(metadata.get("planHash") or ""),
+                        approval_id=new_approval_id(),
+                        plan_hash=planning_result.plan_hash or "",
                     )
                 }
             )
             approved_result = await asyncio.to_thread(self._runner.run, approved_request)
+            # region agent log
+            acp_debug_log(
+                location="spec.py:_handle_session_prompt:approved_done",
+                message="approved execution completed",
+                data={
+                    "run_id": run_id,
+                    "status": approved_result.status.value,
+                    "mutation_count": approved_result.mutation_count,
+                    "tool_call_count": len(approved_result.tool_calls),
+                    "tool_names": [call.tool_name for call in approved_result.tool_calls],
+                },
+                hypothesis_id="H7",
+                run_id="post-fix",
+            )
+            # endregion
             await self._emit_result_updates(session_id=session_id, result=approved_result, planning=False)
+            await self._emit_completion_message(session_id=session_id, result=approved_result)
             return success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(approved_result)})
+        except AcpOutboundError as exc:
+            # region agent log
+            acp_debug_log(
+                location="spec.py:_handle_session_prompt:outbound_error",
+                message="client rejected outbound ACP request",
+                data={"run_id": run_id, "code": exc.code, "message": exc.message},
+                hypothesis_id="H1",
+            )
+            # endregion
+            return error_response(
+                request_id=request.get("id"),
+                error=JsonRpcError(code=exc.code, message=exc.message, data=exc.data),
+            )
         finally:
             self._active_turns.pop(session_id, None)
 
     async def _request_permission(self, *, turn: AcpPromptTurn, result: AgentRunResult) -> dict[str, Any]:
-        params = {
-            "sessionId": turn.session_id,
-            "options": [
-                {
-                    "optionId": "approve",
-                    "name": "Approve",
-                    "kind": "allow_once",
-                    "metadata": {"planHash": result.plan_hash},
-                },
-                {
-                    "optionId": "cancel",
-                    "name": "Cancel",
-                    "kind": "reject_once",
-                    "metadata": {"planHash": result.plan_hash},
-                },
-            ],
-            "metadata": {
-                "runId": result.run_id,
-                "planHash": result.plan_hash,
-                "planText": result.output_text,
+        tool_call_id = new_tool_call_id()
+        turn.permission_tool_call_id = tool_call_id
+        params = build_request_permission_params(
+            session_id=turn.session_id,
+            tool_call_id=tool_call_id,
+            plan_text=result.output_text,
+            plan_hash=result.plan_hash or "",
+            run_id=result.run_id,
+        )
+        # region agent log
+        acp_debug_log(
+            location="spec.py:_request_permission:pre_send",
+            message="sending session/request_permission",
+            data={
+                "session_id": turn.session_id,
+                "run_id": result.run_id,
+                "param_keys": sorted(params.keys()),
+                "has_toolCall": "toolCall" in params,
             },
-        }
+            hypothesis_id="H2",
+        )
+        # endregion
         request_task = asyncio.create_task(self._outbound.request("session/request_permission", params))
         await asyncio.sleep(0)
         if self._active_turns.get(turn.session_id) is turn:
@@ -260,31 +343,91 @@ class AcpDuplexAdapter:
 
     async def _emit_result_updates(self, *, session_id: str, result: AgentRunResult, planning: bool) -> None:
         if planning:
-            await self._outbound.notify(
-                "session/update",
-                {
-                    "sessionId": session_id,
-                    "update": {
-                        "sessionUpdate": "plan",
-                        "content": [{"type": "text", "text": result.output_text}],
-                    },
+            update_payload = build_plan_session_update(session_id=session_id, plan_text=result.output_text)
+            # region agent log
+            acp_debug_log(
+                location="spec.py:_emit_result_updates:plan",
+                message="emitting plan session/update",
+                data={
+                    "session_id": session_id,
+                    "update_keys": sorted(update_payload["update"].keys()),
+                    "has_entries": "entries" in update_payload["update"],
                 },
+                hypothesis_id="GAP2",
             )
+            # endregion
+            await self._outbound.notify("session/update", update_payload)
             return
         for tool_call in result.tool_calls:
-            await self._outbound.notify(
-                "session/update",
-                {
-                    "sessionId": session_id,
-                    "update": {
-                        "sessionUpdate": "tool_call_update",
-                        "toolCall": {
-                            "title": tool_call.tool_name,
-                            "content": [{"type": "text", "text": tool_call.summary}],
-                        },
-                    },
-                },
+            tool_call_id = new_tool_call_id()
+            payload = build_tool_call_notification(
+                session_id=session_id,
+                tool_call_id=tool_call_id,
+                title=tool_call.tool_name,
+                summary=tool_call.summary,
+                kind=tool_kind_for_name(tool_call.tool_name),
             )
+            # region agent log
+            acp_debug_log(
+                location="spec.py:_emit_result_updates:tool_call",
+                message="emitting tool_call session/update",
+                data={
+                    "session_id": session_id,
+                    "tool_call_id": tool_call_id,
+                    "session_update": payload["update"]["sessionUpdate"],
+                    "tool_name": tool_call.tool_name,
+                    "status": payload["update"]["status"],
+                },
+                hypothesis_id="H5",
+                run_id="post-fix",
+            )
+            # endregion
+            await self._outbound.notify("session/update", payload)
+
+    async def _emit_completion_message(self, *, session_id: str, result: AgentRunResult) -> None:
+        completed_plan = build_plan_session_update(
+            session_id=session_id,
+            plan_text=result.output_text,
+            entry_status="completed",
+        )
+        await self._outbound.notify("session/update", completed_plan)
+        message = _completion_message(result)
+        message_payload = build_agent_message_chunk_notification(session_id=session_id, text=message)
+        # region agent log
+        acp_debug_log(
+            location="spec.py:_emit_completion_message",
+            message="emitting completion updates",
+            data={
+                "session_id": session_id,
+                "plan_entry_count": len(completed_plan["update"]["entries"]),
+                "message_preview": message[:120],
+                "has_agent_message_chunk": message_payload["update"]["sessionUpdate"] == "agent_message_chunk",
+            },
+            hypothesis_id="H7",
+            run_id="post-fix",
+        )
+        # endregion
+        await self._outbound.notify("session/update", message_payload)
+
+
+def _completion_message(result: AgentRunResult) -> str:
+    if result.mutation_count > 0:
+        writes = [call.summary for call in result.tool_calls if call.tool_name == "write_file"]
+        if writes:
+            return "Completed:\n" + "\n".join(f"- {summary}" for summary in writes)
+        return f"Completed {result.mutation_count} file change(s)."
+    if result.tool_calls:
+        return "Executed:\n" + "\n".join(f"- {call.summary}" for call in result.tool_calls)
+    return "Turn completed."
+
+
+def _permission_approved(permission_result: dict[str, Any]) -> bool:
+    outcome = permission_result.get("outcome")
+    if not isinstance(outcome, dict):
+        return False
+    if outcome.get("outcome") != "selected":
+        return False
+    return outcome.get("optionId") == "approve"
 
 
 def _text_from_content_blocks(blocks: list[Any]) -> str:

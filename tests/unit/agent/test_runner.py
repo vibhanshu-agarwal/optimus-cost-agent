@@ -99,6 +99,27 @@ def test_agent_mode_without_approval_returns_awaiting_approval(tmp_path):
     assert result.plan_hash is not None
 
 
+def test_read_directive_on_directory_skips_without_aborting_agent_turn(tmp_path):
+    (tmp_path / "README.md").write_text("# repo\n", encoding="utf-8")
+    (tmp_path / "src" / "optimus").mkdir(parents=True)
+    gateway = FakeGatewayClient("READ src/optimus\nREAD README.md\nWRITE example.py\ncontent")
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2")
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Give me an overview of this repository",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0].tool_name == "file_reader"
+    assert result.tool_calls[0].summary == "read README.md"
+
+
 def test_agent_runner_executes_test_directive_after_approval(tmp_path):
     gateway = FakeGatewayClient("TEST pytest tests/unit/agent -q")
     store = InMemoryAgentStateStore()
