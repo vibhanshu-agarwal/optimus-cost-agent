@@ -175,6 +175,10 @@ Cheaper failure discovery than burning a manual walkthrough on a broken stack.
 
 ## Phase C — Manual operator walkthrough (Plan 9.7 template)
 
+**Runbook:** [Phase C operator runbook](2026-07-10-plan-9-6-phase-c-operator-runbook.md) — schedule
+one sitting in the **primary clone** (`optimus-cost-agent`); keychain-only (zero `OPTIMUS_*` in
+shell), PATH reinstall from post-#40 `main`.
+
 Only after Phase D passes (or failures are understood and fixed). Fill every section of
 `reports/plan-9-7-manual-e2e-evidence.md` — replace every `(paste)` placeholder with real output.
 
