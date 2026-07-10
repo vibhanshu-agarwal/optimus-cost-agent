@@ -1,8 +1,8 @@
 # Plan 9.75 — Zed HITL Runtime Evidence (Issue #33)
 
-**Date:** 2026-07-10  
-**Client:** Zed 1.10.0+stable.318.111c4082fd38215c31fa87803ece7695f898a94e  
-**Agent build:** `a53c2ee` (`optimus-cost-agent-wt-cursor`, instrumented `debug/issue-33-trace`)  
+**Date:** 2026-07-10
+**Client:** Zed 1.10.0+stable.318.111c4082fd38215c31fa87803ece7695f898a94e
+**Agent build:** `a53c2ee` (`optimus-cost-agent-wt-cursor`, instrumented `debug/issue-33-trace`)
 **Log:** `.optimus/debug-acp.ndjson` (copy committed with this report)
 
 ## Summary
@@ -96,8 +96,8 @@ addresses the latter class; Phase 1 addresses protocol non-conformance.
 
 ## Post-fix verification (2026-07-10, Zed 1.10)
 
-**Prompt:** "Add a docstring to example.py" (two turns in same session)  
-**Build:** `fix/issue-33-acp-conformance` working tree via `uv tool install --editable`  
+**Prompt:** "Add a docstring to example.py" (two turns in same session)
+**Build:** `fix/issue-33-acp-conformance` working tree via `uv tool install --editable`
 **Log:** `.optimus/debug-acp.ndjson` (session `session-1e3658b5db7d4321bfd96445f1342847`)
 
 ### Turn 1 — Cancel gate (explicit rejection)
