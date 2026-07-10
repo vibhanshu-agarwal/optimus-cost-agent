@@ -45,7 +45,7 @@
 > `run_id`+`plan_hash`; it is not an index — nothing searches, embeds, or retrieves it by
 > content; and replay correctness requires the exact text (a hash-only record cannot re-execute
 > an approved plan after a process restart, which the Plan 9.6 L4/L6 restart-replay evidence
-> depends on). This exception does NOT extend to long-lived or indexed structures: the Plan 10
+> depends on). This exception does NOT extend to long-lived or indexed structures: the Plan 11
 > structural memory store (Architecture §6) remains bound by §4 — signatures, summaries, and
 > relative paths only, never raw source code, even though it shares the same Redis instance.
 > Same server, two governance zones: short-TTL operational keys may carry raw text; indexed

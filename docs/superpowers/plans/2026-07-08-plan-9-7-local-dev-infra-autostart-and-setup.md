@@ -15,9 +15,9 @@ generated shared secret in the Windows credential store via `keyring`, while `.e
 
 **Status:** Merged via PR #32 (2026-07-09). Operator infra path manually verified on Windows
 (global PATH install, `--setup`, `--check-config --strict`, auto-start). **IDE turn completion
-deferred:** manual DoD planning bar blocked by
-[Plan 9.75](2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md) (Zed `session/prompt`
-hang — tracked as open defect linked to Plan 9.6 and Phase 1 Roadmap).
+verified (2026-07-10):** Zed planning/HITL flow confirmed via
+[Plan 9.75](2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md) evidence in
+`reports/plan-9-75-zed-hitl-runtime-evidence.md` (operator PATH install + Zed 1.10).
 
 **Architecture:** Two new modules on the agent side (`local_gateway_secrets.py`,
 `local_infra.py`), wired into the existing `optimus.acp.__main__` entrypoint and
@@ -47,7 +47,7 @@ fail-closed check Plan 9.6 established. Auto-start only removes manual setup ste
 non-zero with an operator-actionable message if the dependency isn't actually up afterward.
 Plan 9.6's live test tiers, evidence artifacts, and sign-off gate are unaffected.
 
-## Relationship to Plan 9.8 (Tracked, Not Yet Scheduled)
+## Relationship to Plan 10 (Tracked, Not Yet Scheduled)
 
 During review (2026-07-08) the operator raised a separate, larger architectural gap: the
 client-side one-key contract is already shaped for this — `src/optimus/evidence/acquisition.py:88`
@@ -60,7 +60,7 @@ observability export yet, and any real web-search or observability provider key 
 LangSmith) would need to live gateway-side once those routes exist. That is a
 gateway-capability-surface redesign (new routes, upstream adapters, a secret taxonomy and
 usage/cost normalization for non-model calls, fail-closed semantics for missing integration keys),
-not a local-startup-ergonomics change, and is being tracked separately as **Plan 9.8: Unified
+not a local-startup-ergonomics change, and is being tracked separately as **Plan 10: Unified
 Gateway Capabilities
 Broker** — out of scope for this plan and not designed here. The only amendment Plan 9.7 makes
 for forward compatibility: `local_gateway_secrets.py`'s keychain schema (Task 1) must not
@@ -436,10 +436,10 @@ def test_no_keyring_backend_available_fails_with_dotenv_pointer(tmp_path):
   dependency just for this one file is disproportionate; a ~10-line parser is sufficient and
   keeps the dependency footprint minimal, consistent with this project's existing runtime
   dependency list (`confusable-homoglyphs`, `pydantic`, `redis`).
-- **Keychain key naming (forward-compat with Plan 9.8, tracked separately — see "Relationship to
-  Plan 9.8" above):** `model_provider`, `model_provider_api_key`, and `local_gateway_shared_secret`
+- **Keychain key naming (forward-compat with Plan 10, tracked separately — see "Relationship to
+  Plan 10" above):** `model_provider`, `model_provider_api_key`, and `local_gateway_shared_secret`
   as the three keyring key names under service `optimus-cost-agent` — namespaced by capability
-  (`model_*`) precisely so a future Plan 9.8 can add sibling keys (e.g. a web-search or
+  (`model_*`) precisely so a future Plan 10 can add sibling keys (e.g. a web-search or
   observability provider's key) under the same service without colliding with or restructuring
   what Plan 9.7 already stores.
 - `run_setup_wizard`'s prompt order is provider **first**, then the overwrite check — matching the
@@ -1755,16 +1755,16 @@ def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
   green.
 - [x] Full `pytest -q` green, no regressions.
 - [x] `python -m ruff check .` clean.
-- [ ] **Manual verification (operator PATH — not repo venv):** on a real Windows machine,
+- [x] **Manual verification (operator PATH — not repo venv):** on a real Windows machine,
   complete **all** of the following and record commands plus stdout/stderr (and the tail of
   `reports/local-gateway.log`) in `reports/plan-9-7-manual-e2e-evidence.md` or the plan DoD
   section below — not "tests passed" prose alone.
 
-  **Partial sign-off (2026-07-09):** operator PATH install, `--setup`, `--check-config --strict`,
-  auto-start Redis/gateway, and Zed process launch verified. **Remaining gate:** real planning
-  turn completion in Zed (`claude-haiku` through auto-started gateway) — blocked by
-  [Plan 9.75](2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md). Leave unchecked
-  until Plan 9.75 is complete and evidence recorded.
+  **Sign-off (2026-07-10):** operator PATH install, `--setup`, `--check-config --strict`,
+  auto-start Redis/gateway, Zed process launch, and real planning turn completion verified.
+  Planning/HITL evidence recorded in
+  `reports/plan-9-75-zed-hitl-runtime-evidence.md` (Plan 9.75 post-fix Zed verification on
+  operator PATH install).
 
   **Install (PATH, no venv):** use `uv tool install --editable .` + `uv tool update-shell`
   (preferred) or `pip install --user -e .` on Windows. **`pip install --user` requires an

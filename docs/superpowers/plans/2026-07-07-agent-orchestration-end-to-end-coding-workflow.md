@@ -4,7 +4,7 @@
 
 **Status:** Approved for implementation.
 
-**Goal:** Compose the existing Phase 1 primitives into a working local-first coding agent that can plan, request approval, execute guarded mutations, validate outcomes, and produce real golden-task evidence before Plan 10 adds context-window intelligence.
+**Goal:** Compose the existing Phase 1 primitives into a working local-first coding agent that can plan, request approval, execute guarded mutations, validate outcomes, and produce real golden-task evidence before Plan 11 adds context-window intelligence.
 
 **Architecture:** Add a small `optimus.agent` package that owns task-level orchestration above the existing ACP, gateway, evidence, guardrail, mutation, retry, loop, skill, telemetry, and golden-task primitives. The agent runner exposes a typed run contract, drives the Plan/Approval/Execute/Validate lifecycle through `RuntimeContext` and `TransitionValidator`, and delegates all side effects to existing guarded tool wrappers with the dispatcher's guard/audit sink injected when available. ACP gains one task-level method, `optimus.agent.run`, while the existing primitive methods remain available for focused tests and lower-level clients.
 
@@ -22,7 +22,7 @@
 - All Gateway/model-touching calls must use `GatewayClient`; usage and cost must come from gateway response fields, not local estimates.
 - Budget checks use gateway `cost_usd` values accumulated per run; the runner terminates with `stop_reason="BUDGET_EXHAUSTED"` when the configured dollar budget is exceeded.
 - Every task uses TDD: write or update the failing test first, run it to observe failure, implement minimum code, then refactor with tests green.
-- Plan 10 context-window optimization, intelligent selection, intelligent pruning, context-regret scoring, ablation suites, and calibrated cost-savings gates are out of scope.
+- Plan 11 context-window optimization, intelligent selection, intelligent pruning, context-regret scoring, ablation suites, and calibrated cost-savings gates are out of scope.
 
 ---
 
@@ -30,7 +30,7 @@
 
 - `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`
   - Plans 1-9 provide the runtime, guardrail, evidence, usage, release, loop, and skill primitives.
-  - Plan 10 starts only once the release skeleton and guardrail/input surface are stable.
+  - Plan 11 starts only once the release skeleton and guardrail/input surface are stable.
 - `docs/superpowers/plans/2026-07-06-bounded-goal-loops-curated-workflow-skills.md`
   - Plan 9 provides `GoalLoopController`, completion evaluation, progress ledger, guarded loop tools, `SkillRegistry`, and skill invocation policy.
 - `tests/fixtures/golden_tasks/phase1_golden_tasks.json`
@@ -56,7 +56,7 @@ Plan 9 is implemented and validated, but the repository still mostly exposes pri
 - There is no task-level runner that can receive a coding task and produce an observed trajectory by composing planning, approval, tool use, mutation, validation, loop stop reasons, skill selection, telemetry, and golden-task evidence.
 - There is no first-party harness evidence for the Phase 1 subset that Plan 9.5 should own: `explain-small-function`, `docstring-single-function`, `plan-then-approve-agent`, and `budget-exhausted`.
 
-Plan 9.5 closes that gap. It should leave the project with a working Phase 1 Agent before Plan 10 makes the Agent smarter.
+Plan 9.5 closes that gap. It should leave the project with a working Phase 1 Agent before Plan 11 makes the Agent smarter.
 
 ## File Structure
 
@@ -1187,7 +1187,7 @@ Expected: PASS.
 
 ## Task 6: Skills, Loops, Telemetry, and Stop Reasons in Agent Runs
 
-**Traceability:** Plan 7 telemetry, Plan 9 loops and skills, Plan 10 input-signal prerequisite
+**Traceability:** Plan 7 telemetry, Plan 9 loops and skills, Plan 11 input-signal prerequisite
 
 **Files:**
 - Modify: `src/optimus/agent/runner.py`
@@ -1267,15 +1267,15 @@ Expected: PASS.
 
 ## Task 7: README, Release Visibility, and Verification
 
-**Traceability:** Phase 1 release sign-off and Plan 10 readiness
+**Traceability:** Phase 1 release sign-off and Plan 11 readiness
 
 **Files:**
 - Modify: `README.md`
 - Modify: `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`
 
 **Interfaces:**
-- Updates roadmap sequence to include Plan 9.5 before Plan 10.
-- Documents that Plan 10 starts after task-level Agent run and real golden harness are stable.
+- Updates roadmap sequence to include Plan 9.5 before Plan 11.
+- Documents that Plan 11 starts after task-level Agent run and real golden harness are stable.
 
 - [ ] **Step 1: Update README**
 
@@ -1290,7 +1290,7 @@ pauses for approval before Agent-mode mutation, executes side-effecting tools
 only through guardrails, validates the result, and records the observed tool
 trajectory for golden-task evaluation.
 
-Plan 10 context-window optimization builds on this runner. It does not create
+Plan 11 context-window optimization builds on this runner. It does not create
 the task lifecycle, approval boundary, tool adapters, or golden harness.
 ```
 
@@ -1309,10 +1309,10 @@ In `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`, insert:
 - `AgentRunner`, `AgentRunRequest`, `AgentRunResult`, guarded tool adapters, `optimus.agent.run`, and `AgentGoldenTaskHarness`.
 - Tests proving Plan/Chat advisory-only behavior, Agent-mode approval before mutation, guarded tool use, bounded-loop stop integration, skill selection, real golden harness execution, and one-key release evidence.
 
-**Status:** Approved for implementation. This is the bridge between Plan 9 primitives and Plan 10 intelligence.
+**Status:** Approved for implementation. This is the bridge between Plan 9 primitives and Plan 11 intelligence.
 ```
 
-Update the recommended sequence so Plan 9.5 appears between Plan 9 and Plan 10.
+Update the recommended sequence so Plan 9.5 appears between Plan 9 and Plan 11.
 
 - [ ] **Step 3: Run verification**
 
@@ -1366,8 +1366,8 @@ The completion plan contains the only explicit exceptions for the working-agent 
 
 ## Self-Review
 
-- Spec coverage: this plan closes the task-level Agent gap between Plan 9 primitives and Plan 10 context intelligence.
-- Scope control: Plan 10 context optimization remains out of scope.
+- Spec coverage: this plan closes the task-level Agent gap between Plan 9 primitives and Plan 11 context intelligence.
+- Scope control: Plan 11 context optimization remains out of scope.
 - One-key model: all model calls route through `GatewayClient`; local provider keys remain forbidden.
 - Guardrail boundary: every side effect routes through existing guarded tool wrappers, configured workspace containment, approval state, and plan-hash verification.
 - Golden evidence: this plan replaces JSON-only result consumption with a real agent harness path for `explain-small-function`, `docstring-single-function`, `plan-then-approve-agent`, and `budget-exhausted`, while preserving JSON/staging evidence for unsupported fixtures.

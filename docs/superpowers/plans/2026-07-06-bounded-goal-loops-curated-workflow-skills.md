@@ -72,7 +72,7 @@ These items were reviewed before writing Plan 9. Recommended disposition:
 - Building a full autonomous planner, multi-agent scheduler, or long-running background service.
 - Adding local OpenAI, Tavily, OpenRouter, GLM, LangSmith, Anthropic, Azure OpenAI, or provider keys.
 - Adding PyYAML or any new runtime dependency for frontmatter parsing.
-- Plan 10 context-window optimization or enforcing uncalibrated context/cost savings gates.
+- Plan 11 context-window optimization or enforcing uncalibrated context/cost savings gates.
 - Reopening Plan 8.5 shadow promotion, one-key scan, golden harness, command timeout, or release runner work.
 
 ### Dependency Notes
@@ -2450,7 +2450,7 @@ git commit -m "Enforce skill trust and tool invocation policy."
 
 ## Task 7: Loop and Skill Telemetry
 
-**Traceability:** Guardrails Strategy 7.2, 8.2, 9; LLD 10A/12C/12D; Plan 10 input signals
+**Traceability:** Guardrails Strategy 7.2, 8.2, 9; LLD 10A/12C/12D; Plan 11 input signals
 
 **Files:**
 - Modify: `src/optimus/telemetry/events.py`
@@ -2805,7 +2805,7 @@ git commit -m "Record loop and skill workflow telemetry."
 
 ## Task 8: Documentation and Golden/Release Visibility
 
-**Traceability:** Roadmap Plan 9, Test Strategy 14.8-14.9, Plan 10 input-signal dependency
+**Traceability:** Roadmap Plan 9, Test Strategy 14.8-14.9, Plan 11 input-signal dependency
 
 **Files:**
 - Modify: `README.md`

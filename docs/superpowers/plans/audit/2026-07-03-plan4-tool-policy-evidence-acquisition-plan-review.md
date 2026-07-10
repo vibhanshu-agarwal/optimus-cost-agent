@@ -107,7 +107,7 @@ Tasks 1–2 give full-file contents for `src/optimus/tools/__init__.py` that exp
 
 ### L4. No trust marker on extracted web content (Low)
 
-`AGENTS.md` and Test Strategy §11 require treating web-extract text as untrusted, and this plan's In-Scope claims it provides "tool-output trust signals." But `EvidenceExtractResponse.content` is a bare `str` with no accompanying trust/provenance flag. Add an explicit marker (e.g. `trust: Literal["untrusted"]` or a typed wrapper) so downstream selection/promotion code (Plan 10) cannot accidentally treat it as trusted. The integration fixture only asserts the *string* "must be treated as untrusted" — that is a comment, not an enforced signal.
+`AGENTS.md` and Test Strategy §11 require treating web-extract text as untrusted, and this plan's In-Scope claims it provides "tool-output trust signals." But `EvidenceExtractResponse.content` is a bare `str` with no accompanying trust/provenance flag. Add an explicit marker (e.g. `trust: Literal["untrusted"]` or a typed wrapper) so downstream selection/promotion code (Plan 11) cannot accidentally treat it as trusted. The integration fixture only asserts the *string* "must be treated as untrusted" — that is a comment, not an enforced signal.
 
 ### L5. Per-task `git commit` steps contradict the plan's own commit policy (Low)
 
@@ -139,7 +139,7 @@ Cross-checked against `AGENTS.md`'s global logging/persistence/retry requirement
 - Durable `ProviderUsage` persistence, Redis writes, trace export, full cost reconciliation → Plan 7.
 - Retry/backoff, transient/permanent classification, release-gate runner → Plan 8.
 - Deny-before-allow permission engine, network egress validator, MCP trust, prompt-injection fixtures, CI parity → Plans 5/6 (but see M4 re: shell authorization leaking in).
-- Context selection, freshness/promotion gates → Plan 10.
+- Context selection, freshness/promotion gates → Plan 11.
 - Staging-gateway E2E that would violate server-side policy.
 
 ## What worked well (carry forward)

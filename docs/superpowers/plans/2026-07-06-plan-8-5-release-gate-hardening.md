@@ -4,7 +4,7 @@
 
 **Goal:** Close the Plan 8 release-gate hardening gaps so shadow promotion matches the state evaluated by gates, one-key scanning covers the release runner's local artifact surface, golden tasks are wired through a real CLI harness path, command gates cannot hang forever, shadow copies are bounded, and fitness-gate telemetry carries reconcilable cost.
 
-**Architecture:** Keep this as a focused hardening layer over the Plan 8 modules already present in `src/optimus/gates`, `src/optimus/retry`, `src/optimus/golden`, and `src/optimus/release`. Use small compatibility-preserving model changes where needed: represent shadow changes explicitly as writes or deletes, snapshot copied shadow files with content digests, centralize release credential scan paths, add bounded command execution, and wire golden-task execution through JSON `GoldenTaskResult` evidence rather than manual in-process injection. Do not reopen Plan 7 usage accounting, Plan 9 bounded loops/skills, or Plan 10 context-window optimization gates.
+**Architecture:** Keep this as a focused hardening layer over the Plan 8 modules already present in `src/optimus/gates`, `src/optimus/retry`, `src/optimus/golden`, and `src/optimus/release`. Use small compatibility-preserving model changes where needed: represent shadow changes explicitly as writes or deletes, snapshot copied shadow files with content digests, centralize release credential scan paths, add bounded command execution, and wire golden-task execution through JSON `GoldenTaskResult` evidence rather than manual in-process injection. Do not reopen Plan 7 usage accounting, Plan 9 bounded loops/skills, or Plan 11 context-window optimization gates.
 
 **Tech Stack:** Python >=3.14, pydantic >=2.8, pytest, pytest-asyncio, coverage.py, pytest-cov, stdlib `argparse`, `dataclasses`, `decimal`, `json`, `pathlib`, `shutil`, `subprocess`, `tempfile`, and existing `optimus.gates`, `optimus.golden`, `optimus.release`, `optimus.retry`, `optimus.runtime`, and `optimus.telemetry` modules. No new runtime dependency is required.
 
@@ -62,7 +62,7 @@
 
 - Building the full interactive agent loop or Plan 9 `GoalLoopController`.
 - Adding DeepEval, OpenEvals, Ragas, PyRIT, LangSmith SDK, or any local provider-key dependency.
-- Adding Plan 10 context-window optimization gates or enforcing uncalibrated cost-savings placeholders.
+- Adding Plan 11 context-window optimization gates or enforcing uncalibrated cost-savings placeholders.
 - Rewriting Plan 7 usage accounting, evidence ledger, or observability export behavior.
 - Treating synthetic golden results as Sprint 1 staging evidence. Synthetic fixtures can prove wiring; release evidence must name whether a real Optimus-only run was performed.
 

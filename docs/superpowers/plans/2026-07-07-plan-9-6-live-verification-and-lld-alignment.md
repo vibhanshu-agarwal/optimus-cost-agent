@@ -83,7 +83,7 @@ not only the new plan store:
    Task L10. Do not let it pass silently.
 6. **Structural memory store (Architecture §6 step [3]):** the `Local Redis State Store` of
    topology/code-signature HASHes that feeds the Context Optimization Node is documented but
-   unbuilt — it is the Plan 10 state dependency ("no context management without state"). Out of
+   unbuilt — it is the Plan 11 state dependency ("no context management without state"). Out of
    scope here, but the pool, pre-flight, and live tier built now are its foundation and must be
    reusable by it.
 
@@ -356,7 +356,7 @@ blocking the ndjson event loop. Verify with `pytest -q`, live tiers L2/L2A/L4, a
 **Status:** DECIDED (owner: Vibhanshu, 2026-07-08) — recommended position accepted. The Redis
 plan store keeps raw plan text as short-TTL (3600s) operational approval state, documented as a
 bounded exception to Architecture §4 with the TTL as the control; the exception explicitly does
-not extend to indexed/long-lived structures (the Plan 10 structural memory store stays
+not extend to indexed/long-lived structures (the Plan 11 structural memory store stays
 signatures/summaries/paths only). Recorded in the Plan 9.5 completion doc (governance note under
 Definition Of Done) and the README plan-persistence section.
 
@@ -412,17 +412,15 @@ python tools/verify_live_agent.py
 
 ## Known Open Defects
 
-### Zed HITL: agent panel appears stuck after `session/prompt` (open)
+### Zed HITL: agent panel appears stuck after `session/prompt` (fixed 2026-07-10)
 
 **Tracking:** [Plan 9.75](2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md) (P0,
 2026-07-09 — confirmed on Plan 9.7 operator PATH install + Zed minimal `agent_servers` config).
 
-**Status:** Open (recorded 2026-07-08). Subprocess/e2e and `verify_live_agent.py` flows are
-green; the remaining claim-table row depends on a real Zed session artifact. **Correction
-(2026-07-09):** Plan 9.6 previously stated cause 4 (`toolCall` on `session/request_permission`)
-was fixed in `spec.py` — **that is incorrect.** `_request_permission()` still sends only
-`options` + `metadata`; `toolCall` appears only on `session/update` `tool_call_update`
-notifications. See Plan 9.75 and `src/optimus/acp/spec.py` lines 229–259.
+**Status:** Fixed (2026-07-10). Evidence:
+`reports/plan-9-75-zed-hitl-runtime-evidence.md` (pre-fix RCA + post-fix Cancel/Approve Zed
+verification on operator PATH install). Root causes: non-conformant plan `entries` and permission
+`toolCall`, plus JSON-RPC error masking as `stopReason: cancelled`. Merged via PR #36.
 
 **Symptom:** Zed shows a loading indicator indefinitely after sending a prompt (for example
 "Can you help me write a calculator?") with no visible completion, plan text, or error.
@@ -438,11 +436,9 @@ notifications. See Plan 9.75 and `src/optimus/acp/spec.py` lines 229–259.
    `--workspace-root` and open Zed on the same repository folder.
 3. **Infrastructure not ready** — Gateway or Redis down/slow; planning blocks up to the
    gateway client timeout (~30s) before any permission UI.
-4. **ACP payload shape gap (open — Plan 9.75)** — Optimus `session/request_permission` sends
-   `options` + `metadata` (plan hash/text) but **not** the ACP v1 `toolCall` object documented at
-   [agentclientprotocol.com](https://agentclientprotocol.com/protocol/v1/tool-calls). Plan 9.6
-   previously claimed this was fixed; code review (2026-07-09) found `_request_permission()` still
-   omits `toolCall`. Whether this causes the stuck panel is unconfirmed until re-tested in Zed.
+4. **ACP payload shape gap (fixed — Plan 9.75)** — Optimus `session/request_permission` now
+   sends conformant plan `entries` and nested `toolCall`; error masking removed. Verified in Zed
+   1.10 per `reports/plan-9-75-zed-hitl-runtime-evidence.md`.
 
 **Workarounds to try:**
 
@@ -459,10 +455,9 @@ notifications. See Plan 9.75 and `src/optimus/acp/spec.py` lines 229–259.
 - Smoke without Zed: `python tools/verify_live_agent.py --workspace-root <scratch-dir>`.
 - Start a **new** agent session after config changes; cancel stuck turns with `session/cancel`.
 
-**Follow-up (implementation):** ACP `toolCall` on `session/request_permission` is **not**
-implemented — see Known Open Defects above and **Plan 9.75**
-(`docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`) for
-tasks, DoD, and the HITL artifact under `reports/`.
+**Follow-up (implementation):** ACP conformance fix landed in PR #36 — see **Plan 9.75**
+(`docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`) and
+`reports/plan-9-75-zed-hitl-runtime-evidence.md`.
 
 ## Execution Order Against In-Flight Work
 

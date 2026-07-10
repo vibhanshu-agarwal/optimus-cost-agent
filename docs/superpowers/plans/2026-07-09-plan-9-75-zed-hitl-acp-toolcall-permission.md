@@ -7,8 +7,8 @@
 ACP v1-conformant `session/update` plan entries and `session/request_permission` payloads, completing
 a real planning turn through approval.
 
-**Status:** In progress (2026-07-10). Runtime evidence committed:
-`reports/plan-9-75-zed-hitl-runtime-evidence.md`.
+**Status:** Complete (2026-07-10). Runtime evidence and post-fix Zed verification committed in
+`reports/plan-9-75-zed-hitl-runtime-evidence.md` (merged via PR #36).
 
 **Architecture:** Build wire shapes from ACP v1 `schema.json` in `src/optimus/acp/shapes.py`; wire
 through `src/optimus/acp/spec.py`. Protocol tests pin exact serialized shapes in
@@ -17,7 +17,8 @@ in `src/optimus/acp/server.py`.
 
 **Runtime evidence (2026-07-10):** Zed 1.10 rejects non-conformant plan (`missing field entries`)
 and permission (`missing field toolCall`) at deserialization with `-32602`. Error masking converted
-both to invisible `stopReason: cancelled` (~5.6s). See evidence report for dual-source correlation.
+both to invisible `stopReason: cancelled` (~5.6s). Post-fix verification confirms Cancel and
+Approve/H7 gates. See evidence report for dual-source correlation.
 
 ## Verified defects (runtime + code review)
 
@@ -57,11 +58,11 @@ both to invisible `stopReason: cancelled` (~5.6s). See evidence report for dual-
 ## Task order (TDD)
 
 - [x] **Task 0:** Commit runtime evidence (`reports/plan-9-75-zed-hitl-runtime-evidence.md`).
-- [ ] **Task 1:** Failing shape tests (`test_shapes.py`, `test_spec_protocol.py`).
-- [ ] **Task 2:** Implement `shapes.py` + `spec.py` conformance; green unit tests + ruff.
-- [ ] **Task 3:** Phase 2 `server.py` error propagation tests + implementation.
-- [ ] **Task 4:** Post-fix Zed verification with `--debug-trace`; confirm success table.
-- [ ] **Task 5:** Close Plan 9.6 / Plan 9.7 evidence rows when DoD met.
+- [x] **Task 1:** Failing shape tests (`test_shapes.py`, `test_spec_protocol.py`).
+- [x] **Task 2:** Implement `shapes.py` + `spec.py` conformance; green unit tests + ruff.
+- [x] **Task 3:** Phase 2 `server.py` error propagation tests + implementation.
+- [x] **Task 4:** Post-fix Zed verification with `--debug-trace`; confirm success table.
+- [x] **Task 5:** Close Plan 9.6 / Plan 9.7 evidence rows when DoD met.
 
 ## Definition of Done
 
