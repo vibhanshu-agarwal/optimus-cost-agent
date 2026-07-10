@@ -11,11 +11,11 @@
 
 | # | DoD claim | Evidence artifact | Status |
 |---|-----------|-------------------|--------|
-| 1 | Redis-backed plan state | `test_redis_live_agent.py` green | `[ ]` |
-| 2 | Bootstrap fails closed | `test_bootstrap_live_redis.py` green | `[ ]` |
-| 3 | LLD §10 telemetry on real Redis | `test_redis_telemetry_live.py` green | `[ ]` |
-| 4 | ACP server persist/replay | `test_server_stream_live_redis.py` green | `[ ]` |
-| 5 | Real model honors directive prompt | `test_gateway_live.py` green | `[ ]` |
+| 1 | Redis-backed plan state | `test_redis_live_agent.py` green | `[x]` |
+| 2 | Bootstrap fails closed | `test_bootstrap_live_redis.py` green | `[x]` |
+| 3 | LLD §10 telemetry on real Redis | `test_redis_telemetry_live.py` green | `[x]` |
+| 4 | ACP server persist/replay | `test_server_stream_live_redis.py` green | `[x]` |
+| 5 | Real model honors directive prompt | `test_gateway_live.py` green | `[x]` |
 | 6 | IDE-spawnable agent E2E | `test_spawned_agent_live.py` + `reports/plan-9-6-e2e-acp-transcript.json` | `[ ]` |
 | 7 | Operator verify alone | `tools/verify_live_agent.py` exit 0 + transcript | `[ ]` |
 | 8 | Real IDE (Zed HITL) | `reports/plan-9-75-zed-hitl-runtime-evidence.md` | `[x]` (PR #36) |
@@ -142,19 +142,12 @@ print('gateway_pid', proc.process.pid if proc else None)
 "
 ```
 
-- [ ] **B1. `requires_redis`** (rows 1–4):
-  ```powershell
-  pytest tests/integration/agent/test_redis_live_agent.py `
-    tests/integration/acp/test_bootstrap_live_redis.py `
-    tests/integration/telemetry/test_redis_telemetry_live.py `
-    tests/integration/acp/test_server_stream_live_redis.py `
-    -m requires_redis -v
-  ```
+- [x] **B1. `requires_redis`** — 15/15 passed; evidence
+  [reports/plan-9-6-phase-b-evidence.md](reports/plan-9-6-phase-b-evidence.md). Required one
+  integration-test fix for post-#36 permission `run_id` shape.
 
-- [ ] **B2. `requires_gateway`** (row 5):
-  ```powershell
-  pytest tests/integration/gateway/test_gateway_live.py -m requires_gateway -v
-  ```
+- [x] **B2. `requires_gateway`** — 3/3 passed after gateway restart (pid 36952); same evidence
+  file.
 
 **Phase B pass criteria:** All selected tests green. Any failure is a ship-blocker until root-caused.
 
