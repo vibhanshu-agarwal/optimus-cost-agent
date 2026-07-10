@@ -19,8 +19,8 @@ gateway_ready True
 **First run:** 13 passed, 2 failed — `test_server_stream_live_redis.py` expected removed
 `params.metadata.runId` from pre-#36 permission shape (test drift, not infra).
 
-**Fix:** Align integration tests with agent-side `run_id = f"{session_id}:3"` and GAP1 approve
-handshake (`optionId: approve` only).
+**Fix:** Align integration tests with post-#36 permission shape: read `run_id` from
+`params["_meta"]["runId"]` (`shapes.py`); approve via `optionId` only (GAP1 — no metadata echo).
 
 **Second run:** **15 passed**, exit **0** (4.11s).
 
