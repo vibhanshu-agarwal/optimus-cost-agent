@@ -12,7 +12,10 @@ on the operator's machine, real Optimus Gateway credentials, and a real spawned 
 Pre-flight checks verify the environment before any live test or agent session runs and fail
 closed with operator action messages. Redis usage conforms to Architecture v2.15 and LLD v2.38.
 
-**Status:** Approved for implementation. Owns Plan 9.5/Phase 1 operator sign-off.
+**Status:** Approved for implementation. Owns Plan 9.5/Phase 1 operator sign-off. **Active
+execution checklist:**
+[Plan 9.6 live sign-off execution](2026-07-10-plan-9-6-live-signoff-execution.md) (branch
+`agent/cursor/plan-9-6-live-signoff`).
 
 ## Scope Transfer From Plan 9.5
 
