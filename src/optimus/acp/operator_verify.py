@@ -6,7 +6,6 @@ import shutil
 import subprocess
 import sys
 import time
-import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -108,6 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     model = resolve_agent_model(os.environ, cli_model=args.model)
     task = (args.task or DEFAULT_VERIFY_TASK).strip()
 
+    ensure_verify_workspace(workspace)
     checks = collect_preflight_checks(
         os.environ,
         workspace_root=workspace,
@@ -121,7 +121,6 @@ def main(argv: list[str] | None = None) -> int:
         print(_operator_action_message(failed), file=sys.stderr)
         return 2
 
-    ensure_verify_workspace(workspace)
     before_snapshot = snapshot_workspace_text_files(workspace)
     transcript_path = (args.transcript_path or default_live_agent_transcript_path()).resolve()
     config = OperatorLiveSessionConfig(
@@ -364,9 +363,9 @@ def tool_trajectory_from_transcript(transcript: E2eAcpTranscriptWriter) -> list[
         if message.get("method") != "session/update":
             continue
         update = message.get("params", {}).get("update", {})
-        if update.get("sessionUpdate") != "tool_call_update":
+        if update.get("sessionUpdate") not in {"tool_call", "tool_call_update"}:
             continue
-        title = update.get("toolCall", {}).get("title")
+        title = update.get("title") or update.get("toolCall", {}).get("title")
         if title:
             trajectory.append(str(title))
     return trajectory
@@ -382,6 +381,15 @@ def latest_plan_text_from_transcript(transcript: E2eAcpTranscriptWriter) -> str:
         update = message.get("params", {}).get("update", {})
         if update.get("sessionUpdate") != "plan":
             continue
+        entries = update.get("entries")
+        if isinstance(entries, list) and entries:
+            lines = [
+                str(entry.get("content", "")).strip()
+                for entry in entries
+                if isinstance(entry, dict) and str(entry.get("content", "")).strip()
+            ]
+            if lines:
+                return "\n".join(lines)
         blocks = update.get("content", [])
         texts = [block["text"] for block in blocks if isinstance(block, dict) and block.get("type") == "text"]
         if texts:
@@ -440,8 +448,9 @@ def _run_prompt_turn(
         )
 
     plan_hash = permission_request["params"]["options"][0]["metadata"]["planHash"]
-    run_id = permission_request["params"]["metadata"]["runId"]
-    plan_text = permission_request["params"]["metadata"].get("planText", "")
+    params_meta = permission_request["params"].get("_meta", {})
+    run_id = str(params_meta.get("runId", run_id))
+    plan_text = latest_plan_text_from_transcript(transcript)
 
     plan_keys = _plan_keys_for_run(redis_store.redis_client, run_id)
     if not plan_keys:
@@ -462,14 +471,12 @@ def _run_prompt_turn(
     if not approved:
         raise LiveSessionError("operator declined plan approval")
 
-    approval_id = f"verify-approval-{uuid.uuid4().hex}"
     session.send(
         {
             "jsonrpc": "2.0",
             "id": permission_request["id"],
             "result": {
                 "outcome": {"outcome": "selected", "optionId": "approve"},
-                "metadata": {"approvalId": approval_id, "planHash": plan_hash},
             },
         }
     )
@@ -514,7 +521,9 @@ def _plan_hash_from_transcript(transcript: E2eAcpTranscriptWriter) -> str:
         message = line["message"]
         if message.get("method") != "session/request_permission":
             continue
-        return str(message.get("params", {}).get("metadata", {}).get("planHash", ""))
+        options = message.get("params", {}).get("options", [])
+        if options and isinstance(options[0], dict):
+            return str(options[0].get("metadata", {}).get("planHash", ""))
     return ""
 
 

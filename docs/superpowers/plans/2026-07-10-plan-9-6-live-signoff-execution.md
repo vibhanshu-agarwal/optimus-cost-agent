@@ -5,7 +5,7 @@
 > claims count for nothing (AGENTS.md checkbox protocol).
 
 **Parent plan:** [Plan 9.6](2026-07-07-plan-9-6-live-verification-and-lld-alignment.md)
-**Evidence:** [Phase A](reports/plan-9-6-phase-a-evidence.md)
+**Evidence:** [Phase A](reports/plan-9-6-phase-a-evidence.md), [Phase D](reports/plan-9-6-phase-d-evidence.md)
 
 ## Claim → Evidence status (8 rows)
 
@@ -16,8 +16,8 @@
 | 3 | LLD §10 telemetry on real Redis | `test_redis_telemetry_live.py` green | `[x]` |
 | 4 | ACP server persist/replay | `test_server_stream_live_redis.py` green | `[x]` |
 | 5 | Real model honors directive prompt | `test_gateway_live.py` green | `[x]` |
-| 6 | IDE-spawnable agent E2E | `test_spawned_agent_live.py` + `reports/plan-9-6-e2e-acp-transcript.json` | `[ ]` |
-| 7 | Operator verify alone | `tools/verify_live_agent.py` exit 0 + transcript | `[ ]` |
+| 6 | IDE-spawnable agent E2E | `test_spawned_agent_live.py` + `reports/plan-9-6-e2e-acp-transcript.json` | `[x]` |
+| 7 | Operator verify alone | `tools/verify_live_agent.py` exit 0 + transcript | `[x]` |
 | 8 | Real IDE (Zed HITL) | `reports/plan-9-75-zed-hitl-runtime-evidence.md` | `[x]` (PR #36) |
 
 Default `pytest` excludes live tiers (`requires_redis`, `requires_gateway`, `e2e`). Every live
@@ -155,17 +155,21 @@ print('gateway_pid', proc.process.pid if proc else None)
 
 Cheaper failure discovery than burning a manual walkthrough on a broken stack.
 
-- [ ] **D1. `e2e` spawned agent** (row 6):
+- [x] **D1. `e2e` spawned agent** (row 6):
   ```powershell
   pytest tests/e2e/acp/test_spawned_agent_live.py -m e2e -v
   ```
-  Confirm/update committed `reports/plan-9-6-e2e-acp-transcript.json` if the test regenerates it.
+  Transcript regenerated with post-#36 conformant shapes; diff vs
+  `reports/plan-9-6-e2e-acp-transcript.pre-d1-run.json` in
+  [Phase D evidence](reports/plan-9-6-phase-d-evidence.md).
 
-- [ ] **D2. `verify_live_agent.py`** (row 7):
+- [x] **D2. `verify_live_agent.py`** (row 7):
   ```powershell
-  python tools/verify_live_agent.py --workspace-root <scratch-dir>
+  python tools/verify_live_agent.py
   ```
-  Confirm/update `reports/plan-9-6-live-agent-transcript.json` (or path documented by tool).
+  Default scratch workspace `reports/.verify-live-agent-workspace` (no `--workspace-root`
+  override). Third run shows populated `tool_trajectory` — evidence:
+  [reports/plan-9-6-phase-d-evidence.md](reports/plan-9-6-phase-d-evidence.md).
 
 **Phase D pass criteria:** Exit 0 on D2; D1 green with committed transcript artifacts current for `main`.
 
