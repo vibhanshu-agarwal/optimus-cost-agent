@@ -14,10 +14,11 @@ generated shared secret in the Windows credential store via `keyring`, while `.e
 `.env.gateway` remain supported as a transitional fallback.
 
 **Status:** Merged via PR #32 (2026-07-09). Operator infra path manually verified on Windows
-(global PATH install, `--setup`, `--check-config --strict`, auto-start). **IDE turn completion
-verified (2026-07-10):** Zed planning/HITL flow confirmed via
-[Plan 9.75](2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md) evidence in
-`reports/plan-9-75-zed-hitl-runtime-evidence.md` (operator PATH install + Zed 1.10).
+(global PATH install, `--setup`, `--check-config --strict`, auto-start). **Zed HITL protocol
+(Plan 9.75):** fixed and verified in
+`reports/plan-9-75-zed-hitl-runtime-evidence.md`. **Manual DoD walkthrough:** still open —
+`reports/plan-9-7-manual-e2e-evidence.md` remains an unfilled template; leave the DoD checkbox
+below unchecked until that walkthrough is completed and pasted.
 
 **Architecture:** Two new modules on the agent side (`local_gateway_secrets.py`,
 `local_infra.py`), wired into the existing `optimus.acp.__main__` entrypoint and
@@ -1755,16 +1756,17 @@ def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
   green.
 - [x] Full `pytest -q` green, no regressions.
 - [x] `python -m ruff check .` clean.
-- [x] **Manual verification (operator PATH — not repo venv):** on a real Windows machine,
+- [ ] **Manual verification (operator PATH — not repo venv):** on a real Windows machine,
   complete **all** of the following and record commands plus stdout/stderr (and the tail of
   `reports/local-gateway.log`) in `reports/plan-9-7-manual-e2e-evidence.md` or the plan DoD
   section below — not "tests passed" prose alone.
 
-  **Sign-off (2026-07-10):** operator PATH install, `--setup`, `--check-config --strict`,
-  auto-start Redis/gateway, Zed process launch, and real planning turn completion verified.
-  Planning/HITL evidence recorded in
-  `reports/plan-9-75-zed-hitl-runtime-evidence.md` (Plan 9.75 post-fix Zed verification on
-  operator PATH install).
+  **Partial sign-off (2026-07-09):** operator PATH install, `--setup`, `--check-config --strict`,
+  auto-start Redis/gateway, and Zed process launch verified. **Remaining gate:** complete the
+  full operator walkthrough in `reports/plan-9-7-manual-e2e-evidence.md` (PATH install,
+  keychain-only credentials, zero `OPTIMUS_*` env, real planning call through auto-started stack).
+  Plan 9.75 closed the Zed HITL protocol defect but does **not** substitute for this template.
+  Leave unchecked until the walkthrough is actually filled.
 
   **Install (PATH, no venv):** use `uv tool install --editable .` + `uv tool update-shell`
   (preferred) or `pip install --user -e .` on Windows. **`pip install --user` requires an
