@@ -4,7 +4,8 @@ from decimal import Decimal
 from pathlib import Path
 
 from optimus.acp import operator_verify
-from optimus.acp.operator_verify import OperatorLiveSessionResult, main
+from optimus.acp.e2e_transcript import E2eAcpTranscriptWriter
+from optimus.acp.operator_verify import OperatorLiveSessionResult, main, tool_trajectory_from_transcript
 from optimus.acp.preflight import PreflightCheckResult
 
 
@@ -79,6 +80,51 @@ def test_verify_live_agent_preflight_failure_exits_2(tmp_path, monkeypatch, caps
     assert "rejected" in captured.err
 
 
+def test_tool_trajectory_from_transcript_accepts_post_36_tool_call_shape():
+    transcript = E2eAcpTranscriptWriter()
+    transcript.record_inbound(
+        {
+            "method": "session/update",
+            "params": {
+                "update": {
+                    "sessionUpdate": "tool_call",
+                    "title": "file_reader",
+                    "toolCallId": "tool-1",
+                }
+            },
+        }
+    )
+    transcript.record_inbound(
+        {
+            "method": "session/update",
+            "params": {
+                "update": {
+                    "sessionUpdate": "tool_call",
+                    "title": "write_file",
+                    "toolCallId": "tool-2",
+                }
+            },
+        }
+    )
+    transcript.record_inbound(
+        {
+            "method": "session/update",
+            "params": {
+                "update": {
+                    "sessionUpdate": "tool_call_update",
+                    "toolCall": {"title": "legacy_reader"},
+                }
+            },
+        }
+    )
+
+    assert tool_trajectory_from_transcript(transcript) == [
+        "file_reader",
+        "write_file",
+        "legacy_reader",
+    ]
+
+
 def test_verify_live_agent_success_exits_0(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("OPTIMUS_GATEWAY_URL", "https://gateway.example")
     monkeypatch.setenv("OPTIMUS_API_KEY", "opt-test")
@@ -94,8 +140,32 @@ def test_verify_live_agent_success_exits_0(tmp_path, monkeypatch, capsys):
                 "method": "session/update",
                 "params": {
                     "update": {
+                        "sessionUpdate": "tool_call",
+                        "title": "file_reader",
+                        "toolCallId": "tool-1",
+                    }
+                },
+            }
+        )
+        transcript.record_inbound(
+            {
+                "method": "session/update",
+                "params": {
+                    "update": {
+                        "sessionUpdate": "tool_call",
+                        "title": "write_file",
+                        "toolCallId": "tool-2",
+                    }
+                },
+            }
+        )
+        transcript.record_inbound(
+            {
+                "method": "session/update",
+                "params": {
+                    "update": {
                         "sessionUpdate": "tool_call_update",
-                        "toolCall": {"title": "write_file"},
+                        "toolCall": {"title": "legacy_reader"},
                     }
                 },
             }
@@ -119,6 +189,7 @@ def test_verify_live_agent_success_exits_0(tmp_path, monkeypatch, capsys):
     assert "PASS: Optimus live agent verification completed." in output
     assert "prompt_version:" in output
     assert "plan_hash: abc123" in output
+    assert "tool_trajectory: file_reader, write_file, legacy_reader" in output
     assert transcript_file.is_file()
 
 

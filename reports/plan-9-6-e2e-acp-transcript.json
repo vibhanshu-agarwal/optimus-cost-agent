@@ -52,7 +52,7 @@
         "jsonrpc": "2.0",
         "method": "session/new",
         "params": {
-          "cwd": "C:\\Users\\pc\\AppData\\Local\\Temp\\pytest-of-pc\\pytest-334\\test_spawned_acp_agent_live_do0",
+          "cwd": "C:\\Users\\pc\\AppData\\Local\\Temp\\pytest-of-pc\\pytest-381\\test_spawned_acp_agent_live_do0",
           "mcpServers": []
         }
       }
@@ -63,7 +63,7 @@
         "id": 2,
         "jsonrpc": "2.0",
         "result": {
-          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73"
+          "sessionId": "session-3496ecce564b45478e0293581f47a3d8"
         }
       }
     },
@@ -80,7 +80,7 @@
               "type": "text"
             }
           ],
-          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73"
+          "sessionId": "session-3496ecce564b45478e0293581f47a3d8"
         }
       }
     },
@@ -90,12 +90,43 @@
         "jsonrpc": "2.0",
         "method": "session/update",
         "params": {
-          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73",
+          "sessionId": "session-3496ecce564b45478e0293581f47a3d8",
           "update": {
-            "content": [
+            "entries": [
               {
-                "text": "WRITE example.py\n\"\"\"\nexample.py\n\nThis module contains a simple function to greet the user.\n\nFunction:\n- greet: Returns a greeting string 'hello'.\n\"\"\"\n\ndef greet():\n    return 'hello'",
-                "type": "text"
+                "content": "READ example.py",
+                "priority": "medium",
+                "status": "pending"
+              },
+              {
+                "content": "WRITE example.py",
+                "priority": "medium",
+                "status": "pending"
+              },
+              {
+                "content": "\"\"\"Module for basic greeting functionality.",
+                "priority": "medium",
+                "status": "pending"
+              },
+              {
+                "content": "This module provides a simple greet function that returns a greeting string.",
+                "priority": "medium",
+                "status": "pending"
+              },
+              {
+                "content": "\"\"\"",
+                "priority": "medium",
+                "status": "pending"
+              },
+              {
+                "content": "def greet():",
+                "priority": "medium",
+                "status": "pending"
+              },
+              {
+                "content": "return 'hello'",
+                "priority": "medium",
+                "status": "pending"
               }
             ],
             "sessionUpdate": "plan"
@@ -110,16 +141,15 @@
         "jsonrpc": "2.0",
         "method": "session/request_permission",
         "params": {
-          "metadata": {
-            "planHash": "21f1905f8d857f918a60cf2bcefb6d7c59e3f815d0246a9d1e6fae0496c330e6",
-            "planText": "WRITE example.py\n\"\"\"\nexample.py\n\nThis module contains a simple function to greet the user.\n\nFunction:\n- greet: Returns a greeting string 'hello'.\n\"\"\"\n\ndef greet():\n    return 'hello'",
-            "runId": "session-2392b3c82378497dad9fe35ba2e2be73:3"
+          "_meta": {
+            "planHash": "b0ce195a4eb97aa1cbd4b4f07609f66de62e586f86284e55d05ff18c372c6a8e",
+            "runId": "session-3496ecce564b45478e0293581f47a3d8:3"
           },
           "options": [
             {
               "kind": "allow_once",
               "metadata": {
-                "planHash": "21f1905f8d857f918a60cf2bcefb6d7c59e3f815d0246a9d1e6fae0496c330e6"
+                "planHash": "b0ce195a4eb97aa1cbd4b4f07609f66de62e586f86284e55d05ff18c372c6a8e"
               },
               "name": "Approve",
               "optionId": "approve"
@@ -127,13 +157,28 @@
             {
               "kind": "reject_once",
               "metadata": {
-                "planHash": "21f1905f8d857f918a60cf2bcefb6d7c59e3f815d0246a9d1e6fae0496c330e6"
+                "planHash": "b0ce195a4eb97aa1cbd4b4f07609f66de62e586f86284e55d05ff18c372c6a8e"
               },
               "name": "Cancel",
               "optionId": "cancel"
             }
           ],
-          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73"
+          "sessionId": "session-3496ecce564b45478e0293581f47a3d8",
+          "toolCall": {
+            "content": [
+              {
+                "content": {
+                  "text": "READ example.py\nWRITE example.py\n\"\"\"Module for basic greeting functionality.\n\nThis module provides a simple greet function that returns a greeting string.\n\"\"\"\n\ndef greet():\n    return 'hello'",
+                  "type": "text"
+                },
+                "type": "content"
+              }
+            ],
+            "kind": "edit",
+            "status": "pending",
+            "title": "Approve plan execution",
+            "toolCallId": "tool-64da503b6e734692969e689cc105dbda"
+          }
         }
       }
     },
@@ -143,10 +188,6 @@
         "id": 10000,
         "jsonrpc": "2.0",
         "result": {
-          "metadata": {
-            "approvalId": "verify-approval-ba0f56529a104e1e82ad118950833fc6",
-            "planHash": "21f1905f8d857f918a60cf2bcefb6d7c59e3f815d0246a9d1e6fae0496c330e6"
-          },
           "outcome": {
             "optionId": "approve",
             "outcome": "selected"
@@ -160,18 +201,22 @@
         "jsonrpc": "2.0",
         "method": "session/update",
         "params": {
-          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73",
+          "sessionId": "session-3496ecce564b45478e0293581f47a3d8",
           "update": {
-            "sessionUpdate": "tool_call_update",
-            "toolCall": {
-              "content": [
-                {
+            "content": [
+              {
+                "content": {
                   "text": "read example.py",
                   "type": "text"
-                }
-              ],
-              "title": "file_reader"
-            }
+                },
+                "type": "content"
+              }
+            ],
+            "kind": "read",
+            "sessionUpdate": "tool_call",
+            "status": "completed",
+            "title": "file_reader",
+            "toolCallId": "tool-0e77e4f7c6cc4705b93e5644482f11f0"
           }
         }
       }
@@ -182,18 +227,115 @@
         "jsonrpc": "2.0",
         "method": "session/update",
         "params": {
-          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73",
+          "sessionId": "session-3496ecce564b45478e0293581f47a3d8",
           "update": {
-            "sessionUpdate": "tool_call_update",
-            "toolCall": {
-              "content": [
-                {
+            "content": [
+              {
+                "content": {
+                  "text": "read example.py",
+                  "type": "text"
+                },
+                "type": "content"
+              }
+            ],
+            "kind": "read",
+            "sessionUpdate": "tool_call",
+            "status": "completed",
+            "title": "file_reader",
+            "toolCallId": "tool-89980e040ea9487cbe540a9f4a242143"
+          }
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "session/update",
+        "params": {
+          "sessionId": "session-3496ecce564b45478e0293581f47a3d8",
+          "update": {
+            "content": [
+              {
+                "content": {
                   "text": "wrote example.py",
                   "type": "text"
-                }
-              ],
-              "title": "write_file"
-            }
+                },
+                "type": "content"
+              }
+            ],
+            "kind": "edit",
+            "sessionUpdate": "tool_call",
+            "status": "completed",
+            "title": "write_file",
+            "toolCallId": "tool-2bbe456645704a17bc6550f10a50bc08"
+          }
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "session/update",
+        "params": {
+          "sessionId": "session-3496ecce564b45478e0293581f47a3d8",
+          "update": {
+            "entries": [
+              {
+                "content": "READ example.py",
+                "priority": "medium",
+                "status": "completed"
+              },
+              {
+                "content": "WRITE example.py",
+                "priority": "medium",
+                "status": "completed"
+              },
+              {
+                "content": "\"\"\"Module for basic greeting functionality.",
+                "priority": "medium",
+                "status": "completed"
+              },
+              {
+                "content": "This module provides a simple greet function that returns a greeting string.",
+                "priority": "medium",
+                "status": "completed"
+              },
+              {
+                "content": "\"\"\"",
+                "priority": "medium",
+                "status": "completed"
+              },
+              {
+                "content": "def greet():",
+                "priority": "medium",
+                "status": "completed"
+              },
+              {
+                "content": "return 'hello'",
+                "priority": "medium",
+                "status": "completed"
+              }
+            ],
+            "sessionUpdate": "plan"
+          }
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "session/update",
+        "params": {
+          "sessionId": "session-3496ecce564b45478e0293581f47a3d8",
+          "update": {
+            "content": {
+              "text": "Completed:\n- wrote example.py",
+              "type": "text"
+            },
+            "sessionUpdate": "agent_message_chunk"
           }
         }
       }

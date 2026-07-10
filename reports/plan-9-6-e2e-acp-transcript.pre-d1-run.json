@@ -1,0 +1,212 @@
+{
+  "stdio_lines": [
+    {
+      "direction": "outbound",
+      "message": {
+        "id": 1,
+        "jsonrpc": "2.0",
+        "method": "initialize",
+        "params": {
+          "clientCapabilities": {
+            "fs": {
+              "readTextFile": true,
+              "writeTextFile": true
+            },
+            "terminal": true
+          },
+          "clientInfo": {
+            "name": "verify-live-agent",
+            "version": "1.0.0"
+          },
+          "protocolVersion": 1
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "id": 1,
+        "jsonrpc": "2.0",
+        "result": {
+          "agentCapabilities": {
+            "promptCapabilities": {
+              "audio": false,
+              "embeddedContext": false,
+              "image": false
+            },
+            "sessionCapabilities": {}
+          },
+          "agentInfo": {
+            "name": "optimus",
+            "version": "0.1.0"
+          },
+          "authMethods": [],
+          "protocolVersion": 1
+        }
+      }
+    },
+    {
+      "direction": "outbound",
+      "message": {
+        "id": 2,
+        "jsonrpc": "2.0",
+        "method": "session/new",
+        "params": {
+          "cwd": "C:\\Users\\pc\\AppData\\Local\\Temp\\pytest-of-pc\\pytest-334\\test_spawned_acp_agent_live_do0",
+          "mcpServers": []
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "id": 2,
+        "jsonrpc": "2.0",
+        "result": {
+          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73"
+        }
+      }
+    },
+    {
+      "direction": "outbound",
+      "message": {
+        "id": 3,
+        "jsonrpc": "2.0",
+        "method": "session/prompt",
+        "params": {
+          "prompt": [
+            {
+              "text": "Add a module docstring to `example.py` describing its function. Modify only `example.py`; do not create any other files or tests.",
+              "type": "text"
+            }
+          ],
+          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73"
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "session/update",
+        "params": {
+          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73",
+          "update": {
+            "content": [
+              {
+                "text": "WRITE example.py\n\"\"\"\nexample.py\n\nThis module contains a simple function to greet the user.\n\nFunction:\n- greet: Returns a greeting string 'hello'.\n\"\"\"\n\ndef greet():\n    return 'hello'",
+                "type": "text"
+              }
+            ],
+            "sessionUpdate": "plan"
+          }
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "id": 10000,
+        "jsonrpc": "2.0",
+        "method": "session/request_permission",
+        "params": {
+          "metadata": {
+            "planHash": "21f1905f8d857f918a60cf2bcefb6d7c59e3f815d0246a9d1e6fae0496c330e6",
+            "planText": "WRITE example.py\n\"\"\"\nexample.py\n\nThis module contains a simple function to greet the user.\n\nFunction:\n- greet: Returns a greeting string 'hello'.\n\"\"\"\n\ndef greet():\n    return 'hello'",
+            "runId": "session-2392b3c82378497dad9fe35ba2e2be73:3"
+          },
+          "options": [
+            {
+              "kind": "allow_once",
+              "metadata": {
+                "planHash": "21f1905f8d857f918a60cf2bcefb6d7c59e3f815d0246a9d1e6fae0496c330e6"
+              },
+              "name": "Approve",
+              "optionId": "approve"
+            },
+            {
+              "kind": "reject_once",
+              "metadata": {
+                "planHash": "21f1905f8d857f918a60cf2bcefb6d7c59e3f815d0246a9d1e6fae0496c330e6"
+              },
+              "name": "Cancel",
+              "optionId": "cancel"
+            }
+          ],
+          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73"
+        }
+      }
+    },
+    {
+      "direction": "outbound",
+      "message": {
+        "id": 10000,
+        "jsonrpc": "2.0",
+        "result": {
+          "metadata": {
+            "approvalId": "verify-approval-ba0f56529a104e1e82ad118950833fc6",
+            "planHash": "21f1905f8d857f918a60cf2bcefb6d7c59e3f815d0246a9d1e6fae0496c330e6"
+          },
+          "outcome": {
+            "optionId": "approve",
+            "outcome": "selected"
+          }
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "session/update",
+        "params": {
+          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73",
+          "update": {
+            "sessionUpdate": "tool_call_update",
+            "toolCall": {
+              "content": [
+                {
+                  "text": "read example.py",
+                  "type": "text"
+                }
+              ],
+              "title": "file_reader"
+            }
+          }
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "session/update",
+        "params": {
+          "sessionId": "session-2392b3c82378497dad9fe35ba2e2be73",
+          "update": {
+            "sessionUpdate": "tool_call_update",
+            "toolCall": {
+              "content": [
+                {
+                  "text": "wrote example.py",
+                  "type": "text"
+                }
+              ],
+              "title": "write_file"
+            }
+          }
+        }
+      }
+    },
+    {
+      "direction": "inbound",
+      "message": {
+        "id": 3,
+        "jsonrpc": "2.0",
+        "result": {
+          "stopReason": "end_turn"
+        }
+      }
+    }
+  ]
+}
