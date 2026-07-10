@@ -44,34 +44,46 @@ checks pass (401/403 on preflight auth probe).
 **Mechanism (code-confirmed):** Agent `OPTIMUS_API_KEY` is filled from shell env when non-empty
 (`local_infra.py` — env outranks keyring). Auto-started local gateway auth uses
 `resolve_shared_secret` (env → `.env.gateway` → keyring). A stale value in **any** layer can make
-the agent authenticate with secret A while the gateway expects secret B. This is the parked
+the agent authenticate with secret A while the gateway expects secret B. Stale values can live in
+shell session env, Windows User-scoped persistent env, or `.env.gateway`. This is the parked
 **cross-layer provider/key mismatch** gap from Plan 9.7 review (deferred to Plan 10+ broker work);
 Phase A surfaced it in production.
 
-**Resolution order before A4:** clean all three layers, then let keyring supply the secret (local
-loopback path):
+**Resolution order before A4:** clean all four layers, then let keyring supply the secret (local
+loopback path). **Run the env-cleanup steps in every terminal** you will use (preflight terminal
+*and* gateway terminal) — file renames are workspace-wide; env vars are per-session.
 
 - [ ] **A0. Clear stale credential layers** (workspace = repo checkout used for serve):
   ```powershell
-  # Layer 1 — shell env (agent side)
+  # Layer 1 — Windows User-scoped persistent env (survives new terminals; check first)
+  [Environment]::GetEnvironmentVariable('OPTIMUS_API_KEY','User')
+  [Environment]::GetEnvironmentVariable('OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET','User')
+  # If either is non-empty, clear persistent store then open a NEW terminal:
+  [Environment]::SetEnvironmentVariable('OPTIMUS_API_KEY',$null,'User')
+  [Environment]::SetEnvironmentVariable('OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET',$null,'User')
+
+  # Layer 2 — current-session shell env (run in EACH terminal before gateway/preflight)
   Remove-Item Env:OPTIMUS_API_KEY -ErrorAction SilentlyContinue
   Remove-Item Env:OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET -ErrorAction SilentlyContinue
-  # Layer 2 — workspace dotenv (gateway side outranks keyring in resolve_shared_secret)
+
+  # Layer 3 — workspace dotenv (gateway side outranks keyring in resolve_shared_secret)
   Rename-Item .env .env.bak -ErrorAction SilentlyContinue
   Rename-Item .env.gateway .env.gateway.bak -ErrorAction SilentlyContinue
-  # Layer 3 — keyring only after 1–2 are clean (via optimus-agent --setup if never run)
+
+  # Layer 4 — keyring only after 1–3 are clean (via optimus-agent --setup if never run)
   ```
   Do **not** manually set `$env:OPTIMUS_API_KEY` for local loopback unless you know it matches the
   gateway shared secret exactly.
 
-- [ ] **A0b. Start local gateway** (`--check-config` does not spawn it). Second terminal:
+- [ ] **A0b. Start local gateway** (`--check-config` does not spawn it). **After A0 in this
+  terminal too**, second terminal:
   ```powershell
   optimus-agent --workspace-root .
   ```
 
-If A4 still fails with all layers clean (empty env, no `.env`/`.env.gateway`, keyring-only), treat
-as a possible **auth-path defect** (preflight probe vs real planning) — capture the preflight table
-and safe env snapshot below and escalate.
+If A4 still fails with all layers clean (no User-scope vars, empty session env in both terminals,
+no `.env`/`.env.gateway`, keyring-only), treat as a possible **auth-path defect** (preflight probe
+vs real planning) — capture the preflight table and safe env snapshot below and escalate.
 
 - [ ] **A1. Docker Desktop running** — Redis auto-start depends on it.
   ```powershell
