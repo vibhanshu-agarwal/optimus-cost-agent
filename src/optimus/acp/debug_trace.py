@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -49,9 +50,12 @@ def _log_path() -> Path:
 
 
 def _git_sha() -> str:
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        return "unknown"
     try:
         completed = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
+            [git_executable, "rev-parse", "HEAD"],
             cwd=_project_root(),
             check=True,
             capture_output=True,
