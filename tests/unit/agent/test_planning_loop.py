@@ -15,6 +15,7 @@ from optimus.agent.planning_loop import (
     PlanningTurnParseError,
     max_planning_observation_text_bytes,
     observations_for_intermediate_turn,
+    observations_from_read_evidence,
     pack_planning_evidence,
     parse_planning_turn,
     planning_observation_carryover_bytes,
@@ -315,7 +316,7 @@ def test_parse_and_pack_share_observation_budget_at_boundary():
         observations=observations_for_intermediate_turn(
             observation_text=observation,
             read_requests=decision.read_requests,
-            source_sha256="a" * 64,
+            source_sha256s=("a" * 64,),
         ),
         current_reads=(),
     )
@@ -341,15 +342,61 @@ def test_parse_and_pack_share_observation_budget_at_boundary_for_multi_range_tur
         source_sha256="a" * 64,
     ) <= PLANNING_OBSERVATION_MAX_BYTES
 
+    hash_b = "b" * 64
+    hash_a = "c" * 64
+    observations = observations_for_intermediate_turn(
+        observation_text=observation,
+        read_requests=read_requests,
+        source_sha256s=(hash_b, hash_a),
+    )
+    assert observations[0].source_sha256 == hash_b
+    assert observations[1].source_sha256 == hash_a
+
     envelope = pack_planning_evidence(
-        observations=observations_for_intermediate_turn(
-            observation_text=observation,
-            read_requests=read_requests,
-            source_sha256="a" * 64,
-        ),
+        observations=observations,
         current_reads=(),
     )
     assert envelope.byte_size <= PLANNING_OBSERVATION_MAX_BYTES
+
+
+def test_observations_for_intermediate_turn_requires_aligned_source_hashes():
+    with pytest.raises(ValueError, match="source_sha256s must align with read_requests"):
+        observations_for_intermediate_turn(
+            observation_text="note",
+            read_requests=(
+                PlanningReadRequest(path="src/a.py", start_byte=0, end_byte=1),
+                PlanningReadRequest(path="src/b.py", start_byte=0, end_byte=1),
+            ),
+            source_sha256s=("a" * 64,),
+        )
+
+
+def test_observations_from_read_evidence_preserves_per_file_hashes():
+    read_evidence = (
+        PlanningReadEvidence(
+            path="src/b.py",
+            start_byte=0,
+            end_byte=128,
+            source_sha256="b" * 64,
+            range_text="beta",
+        ),
+        PlanningReadEvidence(
+            path="src/a.py",
+            start_byte=128,
+            end_byte=256,
+            source_sha256="c" * 64,
+            range_text="alpha",
+        ),
+    )
+
+    observations = observations_from_read_evidence(
+        observation_text="shared note",
+        read_evidence=read_evidence,
+    )
+
+    assert observations[0].source_sha256 == "b" * 64
+    assert observations[1].source_sha256 == "c" * 64
+    assert all(observation.observation_text == "shared note" for observation in observations)
 
 
 def test_parse_rejects_multi_range_observation_when_duplicated_carryover_would_overflow():

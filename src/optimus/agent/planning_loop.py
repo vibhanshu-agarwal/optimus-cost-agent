@@ -207,17 +207,40 @@ def observations_for_intermediate_turn(
     *,
     observation_text: str,
     read_requests: tuple[PlanningReadRequest, ...],
-    source_sha256: str = _PLACEHOLDER_SOURCE_SHA256,
+    source_sha256s: tuple[str, ...] | None = None,
 ) -> tuple[PlanningObservation, ...]:
+    if source_sha256s is None:
+        hashes = (_PLACEHOLDER_SOURCE_SHA256,) * len(read_requests)
+    elif len(source_sha256s) != len(read_requests):
+        raise ValueError("source_sha256s must align with read_requests")
+    else:
+        hashes = source_sha256s
     return tuple(
         PlanningObservation(
             path=request.path,
             start_byte=request.start_byte,
             end_byte=request.end_byte,
-            source_sha256=source_sha256,
+            source_sha256=source_hash,
             observation_text=observation_text,
         )
-        for request in read_requests
+        for request, source_hash in zip(read_requests, hashes, strict=True)
+    )
+
+
+def observations_from_read_evidence(
+    *,
+    observation_text: str,
+    read_evidence: tuple[PlanningReadEvidence, ...],
+) -> tuple[PlanningObservation, ...]:
+    return tuple(
+        PlanningObservation(
+            path=evidence.path,
+            start_byte=evidence.start_byte,
+            end_byte=evidence.end_byte,
+            source_sha256=evidence.source_sha256,
+            observation_text=observation_text,
+        )
+        for evidence in read_evidence
     )
 
 
