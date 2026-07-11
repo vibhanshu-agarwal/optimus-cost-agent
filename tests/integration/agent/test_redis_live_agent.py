@@ -14,6 +14,12 @@ from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.redis.async_bridge import sync_await
 from optimus.runtime.modes import ExecutionMode
 from tests.conftest import FakeGatewayClient
+from tests.integration.agent.test_multi_turn_planning_flow import (
+    _FINAL_PLAN,
+    _READ_MORE,
+    ScriptingGateway,
+    _write_oversized_required_file,
+)
 
 pytestmark = pytest.mark.requires_redis
 
@@ -254,3 +260,72 @@ def test_live_two_run_ids_do_not_collide_in_redis(tmp_path, live_redis_store):
         assert store.latest_plan_for_run(run_id=other_run_id).task == "Task B"
     finally:
         _delete_plan_keys(store.redis_client, other_run_id)
+
+
+def test_live_multi_turn_planning_persists_final_plan_and_replays_without_gateway(
+    tmp_path,
+    live_redis_store,
+) -> None:
+    store, run_id = live_redis_store
+    _write_oversized_required_file(tmp_path)
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path.resolve(), allowed_network_hosts=())
+    redis_url = os.environ["OPTIMUS_REDIS_URL"]
+    gateway = ScriptingGateway(
+        [
+            (_READ_MORE, Decimal("0.002"), "gw-live-mt-1"),
+            (_FINAL_PLAN, Decimal("0.003"), "gw-live-mt-2"),
+        ]
+    )
+    planner = AgentRunner(
+        gateway_client=gateway,
+        model="glm-5.2",
+        guard=guard,
+        state_store=store,
+    )
+    plan_result = planner.run(
+        AgentRunRequest(
+            run_id=run_id,
+            task="Edit large.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path.resolve(),
+            max_planning_turns=2,
+        )
+    )
+
+    assert plan_result.status is AgentRunStatus.AWAITING_APPROVAL
+    assert plan_result.plan_hash is not None
+    assert len(gateway.calls) == 2
+
+    stored = store.load_plan(run_id=run_id, plan_hash=plan_result.plan_hash)
+    assert stored.planning_turns == 2
+    assert stored.gateway_request_ids == ("gw-live-mt-1", "gw-live-mt-2")
+    assert stored.cost_usd == Decimal("0.005")
+    assert stored.plan_text == _FINAL_PLAN
+    assert "OBSERVE:" not in stored.plan_text
+    assert "need header" not in stored.plan_text
+
+    replay_gateway = ScriptingGateway([("WRITE large.py\nstale replay\n", Decimal("0.01"), "gw-stale")])
+    replay_runner = AgentRunner(
+        gateway_client=replay_gateway,
+        model="glm-5.2",
+        guard=guard,
+        state_store=RedisAgentStateStore.from_url(redis_url),
+    )
+    approved = replay_runner.run(
+        AgentRunRequest(
+            run_id=run_id,
+            task="Edit large.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path.resolve(),
+            approval=AgentApproval(
+                approved=True,
+                approval_id="approval-live-mt",
+                plan_hash=plan_result.plan_hash,
+            ),
+        )
+    )
+
+    assert approved.status is AgentRunStatus.COMPLETED
+    assert replay_gateway.calls == []
+    assert "updated header" in (tmp_path / "large.py").read_text(encoding="utf-8")
+    assert "stale replay" not in (tmp_path / "large.py").read_text(encoding="utf-8")

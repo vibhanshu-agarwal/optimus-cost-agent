@@ -606,11 +606,11 @@ git commit -m "Expose settled replanning over ACP"
 - Consumes: production bootstrap, real Redis state store, real Gateway fixture, spawned agent process.
 - Produces: integration evidence for settlement, aggregate usage, persistence, and regression safety.
 
-- [ ] **Step 1: Add deterministic fake-based integration cases**
+- [x] **Step 1: Add deterministic fake-based integration cases**
 
 Prove a two-turn READ_MORE -> final flow, a repeated-range failure, observation overflow, current-read overflow, cap=1, cap=2, budget/max-turn collision, no pre-settlement mutation, and exact approval replay.
 
-- [ ] **Step 2: Run deterministic integration tests**
+- [x] **Step 2: Run deterministic integration tests**
 
 ```bash
 python -m pytest tests/integration/agent/test_multi_turn_planning_flow.py -v
@@ -618,7 +618,7 @@ python -m pytest tests/integration/agent/test_multi_turn_planning_flow.py -v
 
 Expected: PASS. Label this evidence fake-based and not sufficient for live sign-off.
 
-- [ ] **Step 3: Add real Redis persistence coverage**
+- [x] **Step 3: Add real Redis persistence coverage**
 
 With `requires_redis`, persist only the final plan and aggregate metadata, recreate the runner/store, approve the final hash, and prove no new Gateway call. Assert no intermediate source or observation text exists in the persisted plan record.
 
@@ -630,7 +630,7 @@ python -m pytest -m requires_redis tests/integration/agent/test_redis_live_agent
 
 Expected: PASS against a real TimeSeries-capable Redis. If unavailable, report NOT RUN; do not substitute a fake.
 
-- [ ] **Step 5: Add real Gateway accounting coverage**
+- [x] **Step 5: Add real Gateway accounting coverage**
 
 With `requires_gateway`, run a bounded two-turn prompt using real Optimus credentials, assert distinct `gateway_request_id` values, aggregate reported costs, one-key environment, and no locally resolvable provider key.
 

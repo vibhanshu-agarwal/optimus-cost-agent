@@ -20,6 +20,7 @@ from optimus.redis.async_bridge import sync_await
 from optimus.redis.runtime import RedisRuntime
 from optimus.runtime.modes import ExecutionMode
 from optimus.telemetry.redis_sink import RedisTelemetryEventSink
+from tests.integration.agent.test_multi_turn_planning_flow import _write_oversized_required_file
 
 pytestmark = pytest.mark.requires_gateway
 
@@ -266,3 +267,90 @@ def test_live_agent_writes_working_calculator(tmp_path: Path) -> None:
     finally:
         _delete_plan_keys(runtime, run_id)
         runtime.close()
+
+
+class TrackingGatewayClient:
+    def __init__(self, inner: GatewayClient) -> None:
+        self._inner = inner
+        self.calls: list[dict[str, object]] = []
+
+    def create_response(
+        self,
+        *,
+        model: str,
+        input_text: str,
+        metadata: dict[str, object] | None = None,
+    ):
+        response = self._inner.create_response(model=model, input_text=input_text, metadata=metadata)
+        self.calls.append({"response": response, "metadata": metadata or {}})
+        return response
+
+
+_PROVIDER_ENV_KEYS = (
+    "ANTHROPIC_API_KEY",
+    "GLM_API_KEY",
+    "LANGSMITH_API_KEY",
+    "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "TAVILY_API_KEY",
+    "ZHIPUAI_API_KEY",
+)
+
+
+def test_live_oversized_planning_accounts_distinct_gateway_ids_with_one_key_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for key in _PROVIDER_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+    gateway = TrackingGatewayClient(_require_gateway_client())
+    settings = OptimusGatewaySettings.from_env()
+    assert settings.validate_no_local_provider_keys(os.environ) == ()
+
+    workspace = tmp_path.resolve()
+    _write_oversized_required_file(workspace)
+    runner = AgentRunner(
+        gateway_client=gateway,
+        model=_LIVE_HAIKU_MODEL,
+    )
+    run_id = f"live-mt-plan-{uuid.uuid4().hex}"
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id=run_id,
+            session_id=None,
+            task="Edit large.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=workspace,
+            max_planning_turns=2,
+            max_cost_usd=_live_max_cost_usd(),
+        )
+    )
+
+    assert gateway.calls, "expected at least one live planning gateway call"
+    assert all(call["metadata"].get("purpose") == "planning_turn" for call in gateway.calls)
+
+    request_ids = [
+        call["response"].gateway_usage.gateway_request_id  # type: ignore[index]
+        for call in gateway.calls
+    ]
+    assert all(request_ids)
+    assert len(set(request_ids)) == len(request_ids)
+
+    reported_cost = sum(
+        call["response"].gateway_usage.cost_usd  # type: ignore[index]
+        for call in gateway.calls
+    )
+    assert result.total_cost_usd == reported_cost
+    _assert_cost_within_cap(result.total_cost_usd)
+    assert result.provider_keys_resolvable == ()
+
+    if len(gateway.calls) >= 2:
+        assert result.status in {AgentRunStatus.AWAITING_APPROVAL, AgentRunStatus.TERMINATED}
+    else:
+        assert result.status in {
+            AgentRunStatus.AWAITING_APPROVAL,
+            AgentRunStatus.TERMINATED,
+            AgentRunStatus.FAILED,
+        }
