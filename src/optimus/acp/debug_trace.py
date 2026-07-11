@@ -13,6 +13,7 @@ from typing import Any
 from optimus.agent.models import AgentRunRequest
 from optimus.agent.planning_loop import PlanningProgressEvent
 from optimus.agent.workspace_context import WorkspaceContextResult
+from optimus.telemetry.redaction import redact_for_telemetry
 
 _DEBUG_SESSION_ID = "c66f94"
 _PROVENANCE_LOGGED = False
@@ -106,15 +107,22 @@ def acp_debug_log(
     hypothesis_id: str = "",
     run_id: str = "pre-fix",
 ) -> None:
-    """Append one NDJSON debug line. Never writes to stdout (ACP protocol channel)."""
+    """Append one NDJSON debug line. Never writes to stdout (ACP protocol channel).
+
+    ``message`` and ``data`` are passed through ``redact_for_telemetry`` unconditionally
+    before being written to disk. This is a deliberate last line of defense: call sites
+    are expected to log content-free fields already, but this sink cannot assume every
+    current and future caller (including generic exception handlers that log
+    ``str(exc)``) gets that right on its own.
+    """
     if not debug_trace_enabled():
         return
     payload = {
         "sessionId": _DEBUG_SESSION_ID,
         "timestamp": int(time.time() * 1000),
         "location": location,
-        "message": message,
-        "data": data or {},
+        "message": redact_for_telemetry(message),
+        "data": redact_for_telemetry(data or {}),
         "hypothesisId": hypothesis_id,
         "runId": run_id,
     }

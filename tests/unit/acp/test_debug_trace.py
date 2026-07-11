@@ -46,3 +46,32 @@ def test_acp_debug_log_noop_when_disabled(tmp_path, monkeypatch):
     acp_debug_log(location="test", message="ignored", data={"secret": "value"})
 
     assert not log_path.exists()
+
+
+def test_acp_debug_log_redacts_secret_shaped_fields_and_free_text_by_default(tmp_path, monkeypatch):
+    """Every acp_debug_log call is redacted at the sink, regardless of what an
+    individual call site (including a generic `except Exception: ...str(exc)`
+    handler) happens to pass in."""
+    log_path = resolve_debug_log_path(workspace_root=tmp_path)
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+
+    acp_debug_log(
+        location="test:leaky_call_site",
+        message="upstream call failed: Authorization: Bearer sk-live-abc123xyz",
+        data={
+            "api_key": "sk-live-abc123xyz",
+            "OPTIMUS_API_KEY": "sk-live-abc123xyz",
+            "nested": {"password": "hunter2"},
+            "url": "https://user:hunter2@example.com/path",
+            "safe_field": "run-1",
+        },
+    )
+
+    line = json.loads(log_path.read_text(encoding="utf-8").strip())
+    assert "sk-live-abc123xyz" not in json.dumps(line)
+    assert "hunter2" not in json.dumps(line)
+    assert line["data"]["api_key"] == "**********"
+    assert line["data"]["OPTIMUS_API_KEY"] == "**********"
+    assert line["data"]["nested"]["password"] == "**********"
+    assert line["data"]["safe_field"] == "run-1"
