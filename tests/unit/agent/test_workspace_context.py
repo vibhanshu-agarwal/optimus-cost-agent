@@ -97,6 +97,29 @@ def test_nonexistent_path_inside_skip_directory_is_not_readable(tmp_path):
     assert {item.reference for item in result.diagnostics} == {".venv/new.py", "node_modules/new.js"}
     assert all(item.status is WorkspaceReferenceStatus.NOT_READABLE for item in result.diagnostics)
     assert result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
+    assert ".venv/new.py" in result.blocking_message
+    assert "node_modules/new.js" not in result.blocking_message
+
+
+def test_mixed_ambiguous_and_not_readable_resolves_all_diagnostics(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    (tmp_path / "a" / "example.py").write_text("a\n", encoding="utf-8")
+    (tmp_path / "b" / "example.py").write_text("b\n", encoding="utf-8")
+
+    result = assemble_workspace_context_for_prompt(
+        tmp_path,
+        task="Update example.py and create .venv/new.py",
+    )
+
+    assert len(result.diagnostics) == 2
+    assert result.diagnostics[0].reference == "example.py"
+    assert result.diagnostics[0].status is WorkspaceReferenceStatus.AMBIGUOUS
+    assert result.diagnostics[1].reference == ".venv/new.py"
+    assert result.diagnostics[1].status is WorkspaceReferenceStatus.NOT_READABLE
+    assert result.blocking_stop_reason == "AMBIGUOUS_WORKSPACE_REFERENCE"
+    assert "example.py" in result.blocking_message
+    assert ".venv/new.py" not in result.blocking_message
 
 
 def test_absolute_and_parent_traversal_tokens_are_not_prioritized(tmp_path):

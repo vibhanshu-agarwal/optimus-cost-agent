@@ -84,8 +84,6 @@ def assemble_workspace_context_for_prompt(
     diagnostics: list[WorkspaceReferenceDiagnostic] = []
     prioritized_paths: list[str] = []
     seen_resolved: set[str] = set()
-    blocking_stop_reason: str | None = None
-    blocking_message: str | None = None
 
     for reference in references:
         diagnostic = _resolve_reference(reference, root, index)
@@ -98,22 +96,9 @@ def assemble_workspace_context_for_prompt(
             if resolved_path not in seen_resolved:
                 prioritized_paths.append(resolved_path)
                 seen_resolved.add(resolved_path)
-            continue
 
-        if diagnostic.status is WorkspaceReferenceStatus.AMBIGUOUS:
-            blocking_stop_reason = "AMBIGUOUS_WORKSPACE_REFERENCE"
-            candidates = ", ".join(diagnostic.candidates)
-            blocking_message = (
-                f"Workspace reference '{diagnostic.reference}' is ambiguous. "
-                f"Candidates: {candidates}. Retry with one exact workspace-relative path."
-            )
-            break
-
-        if diagnostic.status is WorkspaceReferenceStatus.NOT_READABLE:
-            blocking_stop_reason = "WORKSPACE_REFERENCE_NOT_READABLE"
-            blocking_message = (
-                f"Workspace reference '{diagnostic.reference}' cannot be read safely."
-            )
+    diagnostic_tuple = tuple(diagnostics)
+    blocking_stop_reason, blocking_message = _blocking_from_diagnostics(diagnostic_tuple)
 
     if blocking_stop_reason is not None:
         return WorkspaceContextResult(
@@ -122,7 +107,7 @@ def assemble_workspace_context_for_prompt(
             used_bytes=0,
             prioritized_paths=(),
             omitted_paths=(),
-            diagnostics=tuple(diagnostics),
+            diagnostics=diagnostic_tuple,
             blocking_stop_reason=blocking_stop_reason,
             blocking_message=blocking_message,
         )
@@ -141,6 +126,28 @@ def assemble_workspace_context_for_prompt(
         omitted_paths=omitted_paths,
         diagnostics=tuple(diagnostics),
     )
+
+
+def _blocking_from_diagnostics(
+    diagnostics: tuple[WorkspaceReferenceDiagnostic, ...],
+) -> tuple[str | None, str | None]:
+    for diagnostic in diagnostics:
+        if diagnostic.status is WorkspaceReferenceStatus.AMBIGUOUS:
+            candidates = ", ".join(diagnostic.candidates)
+            return (
+                "AMBIGUOUS_WORKSPACE_REFERENCE",
+                (
+                    f"Workspace reference '{diagnostic.reference}' is ambiguous. "
+                    f"Candidates: {candidates}. Retry with one exact workspace-relative path."
+                ),
+            )
+    for diagnostic in diagnostics:
+        if diagnostic.status is WorkspaceReferenceStatus.NOT_READABLE:
+            return (
+                "WORKSPACE_REFERENCE_NOT_READABLE",
+                f"Workspace reference '{diagnostic.reference}' cannot be read safely.",
+            )
+    return None, None
 
 
 def _extract_file_references(task: str) -> tuple[str, ...]:
