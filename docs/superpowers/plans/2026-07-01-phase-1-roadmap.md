@@ -289,6 +289,31 @@ then panic the client (`range end index 3 out of range for slice of length 2`). 
 contract and independent `acpx` durable UI remain proven; durable Zed stay-up on that path is
 deferred, not claimed.
 
+## Plan 9.85 (Tracked, Not Yet Scheduled): Multi-Turn Read-Observe-Replan Workflow
+
+**Raised:** Deferred from Plan 9.8 as `P9.8-FU-1` (2026-07-10 draft); formalized as its own
+tracked roadmap entry 2026-07-11 during Plan 9.8 evidence review, closing a gap where the plan
+document named a candidate plan number that was never added to the roadmap.
+
+**User story:** As the agent runtime, when a required task spans files whose complete priority
+blocks exceed the workspace-context budget, or the model needs READ evidence before it can safely
+form a WRITE, I run bounded READ -> observe -> replan iterations instead of either silently
+truncating required context or failing closed on every multi-file task.
+
+**Initial scope (from P9.8-FU-1's trigger and acceptance criteria):**
+
+- Bounded READ -> observe -> replan iteration loop, with an explicit iteration/turn cap.
+- Budget and cost accounting across the multiple Gateway calls a multi-turn workflow implies.
+- Approval hash semantics for the final plan (the thing the operator actually approves must still
+  be unambiguous after multiple planning turns).
+- Real (non-fake) evidence for the multi-turn path, to the same standard Plan 9.8 held itself to.
+
+**Status:** Tracked, not yet scheduled; no implementation plan exists. This is a separate lane
+from Plan 9.9 (operator packaging/credential diagnostics) and from Plan 11 (context-window
+selection intelligence) — do not fold this scope into either. Plan 9.8's correctness floor
+(single-pass, exact-path/unique-basename inclusion, fail-closed on ambiguity) remains the
+prerequisite baseline this plan extends, not replaces.
+
 ## Plan 9.9 (Tracked, Not Yet Scheduled): Operator Packaging and Credential Diagnostics
 
 **Raised:** 2026-07-11 while closing Plan 9.7 review follow-ups during Plan 9.8 review.
@@ -389,10 +414,12 @@ pattern.
 15. Plan 9.8: Task-aware workspace context for planning — implemented and live-verified 2026-07-11;
     exact-path Zed mutation under filler pressure proven; ambiguous refusal on-wire with Zed stay-up
     deferred as P9.8-FU-5; evidence in `reports/plan-9-8-task-aware-context-evidence.md`.
-16. Plan 9.9: Operator packaging and credential diagnostics — tracked, not yet scheduled; owns
+16. Plan 9.85: Multi-turn read-observe-replan workflow — tracked, not yet scheduled; deferred from
+    Plan 9.8 as P9.8-FU-1, closes the gap where required context exceeds the single-pass budget.
+17. Plan 9.9: Operator packaging and credential diagnostics — tracked, not yet scheduled; owns
     cross-layer provider/key mismatch diagnostics and non-editable-install root discovery.
-17. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
-18. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
+18. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
+19. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
     starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden
     harness are stable.
 
@@ -402,5 +429,8 @@ Plan 9.9 follows Plan 9.8 as a separate operator-runtime hardening lane. It owns
 Plan 9.7 packaging/credential diagnostics and does not expand Plan 9.8's context-selection scope.
 Plan 9.8 continues to use an editable operator install for live proof until Plan 9.9 establishes
 and verifies the non-editable-install root contract.
+Plan 9.85 is a separate lane from both Plan 9.8 and Plan 9.9: it extends Plan 9.8's single-pass
+correctness floor to bounded multi-turn planning when required context cannot fit one pass, and it
+neither depends on nor blocks Plan 9.9.
 
 Plans 9.6 and 9.7 sit alongside each other, not in a strict dependency order: Plan 9.6 owns the Phase 1 working-agent sign-off gate (live Redis/Gateway/e2e proof plus the real-IDE HITL artifact) and Plan 11 does not start until it passes; Plan 9.7 only changes how an operator's local Redis/Gateway dependencies get started before a session and does not touch what Plan 9.6 proves or gate. Plan 9.7 merged independently of Plan 9.6's remaining open HITL item. **Plan 9.75** follows Plan 9.7 in the recommended sequence: it fixes the open Zed HITL / `toolCall` permission payload and closes Plan 9.7's deferred planning-bar DoD using the Plan 9.7 operator PATH install for manual verification. Plan 10 is tracked separately and not yet scheduled or designed; do not fold its gateway-capability-broker scope into 9.6, 9.7, or 9.75 when picking up either.
