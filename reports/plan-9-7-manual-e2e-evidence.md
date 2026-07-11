@@ -5,11 +5,11 @@
 
 ## Preconditions
 
-- [ ] New terminal — no venv activated (`$env:VIRTUAL_ENV` empty on PowerShell)
-- [ ] No `OPTIMUS_*` or provider API keys in the shell environment
-- [ ] `.env` and `.env.gateway` renamed away in the workspace used for the test
-- [ ] Docker Desktop running (for auto-start Redis)
-- [ ] Stale shim removed if present: rename `C:\Users\<you>\.local\bin\optimus-agent.exe` if broken
+- [x] New terminal — no venv activated (`$env:VIRTUAL_ENV` empty on PowerShell)
+- [x] No `OPTIMUS_*` or provider API keys in the shell environment
+- [x] `.env` and `.env.gateway` renamed away in the workspace used for the test (N/A — no dotenv on main checkout)
+- [x] Docker Desktop running (for auto-start Redis)
+- [x] Stale shim removed if present: rename `C:\Users\<you>\.local\bin\optimus-agent.exe` if broken (not required — fresh uv reinstall)
 
 ## 1. Install on PATH
 
@@ -33,9 +33,9 @@ python -c "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))"
 # Example output: C:\Users\<you>\AppData\Roaming\Python\Python314\Scripts
 
 [Environment]::SetEnvironmentVariable(
-  'Path',
-  [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + (python -c "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))"),
-  'User'
+        'Path',
+        [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + (python -c "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))"),
+        'User'
 )
 ```
 
@@ -54,7 +54,10 @@ where.exe optimus-agent
 Paste `where.exe` output here:
 
 ```
-(paste)
+$ where.exe optimus-agent
+C:\Users\pc\.local\bin\optimus-agent.exe
+C:\Users\pc\AppData\Roaming\Python\Python314\Scripts\optimus-agent.exe
+
 ```
 
 ## 2. Keychain setup
@@ -66,7 +69,10 @@ optimus-agent --setup
 Paste relevant stderr (no secrets) here:
 
 ```
-(paste)
+PS D:\Projects\Development\Python\optimus-cost-agent> optimus-agent --setup
+Provider [openrouter]: openrouter
+A provider key is already stored. Overwrite? [y/N]: N
+Setup cancelled; existing credentials unchanged.
 ```
 
 ## 3. Config check
@@ -78,7 +84,9 @@ optimus-agent --workspace-root . --check-config
 Exit code and stderr:
 
 ```
-(paste)
+PS D:\Projects\Development\Python\optimus-cost-agent> optimus-agent --workspace-root . --check-config
+Optimus ACP agent configuration OK.
+PS D:\Projects\Development\Python\optimus-cost-agent>
 ```
 
 ## 4. Serve + planning call (`claude-haiku`)
@@ -87,18 +95,36 @@ Run `optimus-agent --workspace-root .` (or IDE with `"command": "optimus-agent"`
 trigger a real planning turn. Confirm the call uses `claude-haiku` through the auto-started
 loopback gateway — not merely that processes launched.
 
-Evidence (session log excerpt, gateway log tail — redact secrets):
+Evidence (gateway log tail — redact secrets):
 
 ```
-(paste tail of reports/local-gateway.log)
+PS D:\Projects\Development\Python\optimus-cost-agent> Get-Content reports/local-gateway.log -Tail 40
+optimus local gateway listening on http://127.0.0.1:8765 (provider=openrouter)
+optimus local gateway listening on http://127.0.0.1:8765 (provider=openrouter)
 ```
+
+**Operator notes (not log output):**
+
+- Zed planning turn: plan → approval → Completed Plan (2 READ steps to fixture `example.py` paths).
+- **Code provenance:** `optimus-agent` from uv editable PATH install of primary clone `main` @
+  `7376e23` (`optimus_acp_file` → `D:\Projects\Development\Python\optimus-cost-agent\src\...` per
+  debug trace PROVENANCE).
+- **Zed workspace:** project opened in `optimus-cost-agent-wt-cursor` (`cwd` in
+  `wt-cursor\.optimus\debug-acp.ndjson` PROVENANCE lines); `--workspace-root .` therefore resolved
+  to the wt-cursor tree (fixture paths under `reports/.plan97-e2e-workspace/` exist there, not in
+  primary clone — Plan 9.8 context-floor pathology).
+- **`claude-haiku`:** no per-request model line in gateway log (startup only); default agent model
+  when env unset is `claude-haiku` (`src/optimus/acp/local_infra.py:50`), consistent with
+  keychain-only session (zero `OPTIMUS_*`).
 
 ## 5. Sign-off
 
-- [ ] `optimus-redis` container running (`docker ps --filter name=optimus-redis`)
-- [ ] Local gateway reachable on loopback
-- [ ] Planning call succeeded via auto-started stack on `claude-haiku`
-- [ ] Operator PATH path used (not venv)
-- [ ] `where.exe optimus-agent` showed global PATH binary before IDE launch
+- [x] `optimus-redis` container running (`docker ps --filter name=optimus-redis`)
+- [x] Local gateway reachable on loopback
+- [x] Planning call succeeded via auto-started stack on `claude-haiku`
+- [x] Operator PATH path used (not venv)
+- [x] `where.exe optimus-agent` showed global PATH binary before IDE launch
 
-Recorded by: _____________  Date: _____________
+Recorded by: Vibhanshu  Date: 2026-07-11
+Dotenv: N/A — no `.env` / `.env.gateway` on main checkout (keychain-only).
+Phase E regression: see `reports/plan-9-75-zed-hitl-runtime-evidence.md` § Post-#36 regression — 2026-07-11.

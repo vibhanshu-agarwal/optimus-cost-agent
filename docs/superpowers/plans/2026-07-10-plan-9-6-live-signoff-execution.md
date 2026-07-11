@@ -182,12 +182,12 @@ shell), PATH reinstall from post-#40 `main`.
 Only after Phase D passes (or failures are understood and fixed). Fill every section of
 `reports/plan-9-7-manual-e2e-evidence.md` — replace every `(paste)` placeholder with real output.
 
-- [ ] **C1. Preconditions** — clean shell, no venv, no `OPTIMUS_*` in env, `.env` renamed away.
-- [ ] **C2. PATH install** — `uv tool install --editable .` + `where.exe optimus-agent` output pasted.
-- [ ] **C3. Keychain setup** — `optimus-agent --setup` (stderr pasted, secrets redacted).
-- [ ] **C4. Config check** — `optimus-agent --workspace-root . --check-config`.
-- [ ] **C5. Serve + planning call** — real `claude-haiku` turn through auto-started stack; gateway log tail pasted.
-- [ ] **C6. Sign-off checkboxes** in the evidence file all checked with date/signature.
+- [x] **C1. Preconditions** — clean shell, no venv, no `OPTIMUS_*` in env, `.env` renamed away.
+- [x] **C2. PATH install** — `uv tool install --editable .` + `where.exe optimus-agent` output pasted.
+- [x] **C3. Keychain setup** — `optimus-agent --setup` (stderr pasted, secrets redacted).
+- [x] **C4. Config check** — `optimus-agent --workspace-root . --check-config`.
+- [x] **C5. Serve + planning call** — real `claude-haiku` turn through auto-started stack; gateway log tail pasted.
+- [x] **C6. Sign-off checkboxes** in the evidence file all checked with date/signature.
 
 **Phase C pass criteria:** `reports/plan-9-7-manual-e2e-evidence.md` fully filled; Plan 9.7 DoD
 checkbox may then be set `[x]` in a follow-up commit citing this file.
@@ -196,17 +196,18 @@ checkbox may then be set `[x]` in a follow-up commit citing this file.
 
 Row 8 is already closed by Plan 9.75, but confirm no regression on post-merge `main`.
 
-- [ ] **E1. Fresh Zed session** — one planning turn with `--debug-trace` optional; confirm plan +
+- [x] **E1. Fresh Zed session** — one planning turn with `--debug-trace` optional; confirm plan +
   approval UI + `end_turn` or explicit cancel.
-- [ ] **E2. Record** — append a short "post-#36/#35 regression" note to
+- [x] **E2. Record** — append a short "post-#36/#35 regression" note to
   `reports/plan-9-75-zed-hitl-runtime-evidence.md` or a new dated section if behavior differs.
 
 ## Phase F — Sign-off commit
 
-- [ ] **F1.** All claim-table rows `[x]` with artifact paths cited in Plan 9.6.
-- [ ] **F2.** Plan 9.7 manual DoD checkbox `[x]` only after Phase C evidence file is filled.
-- [ ] **F3.** Plan 9.75 Task 5 `[x]` only after F1 + F2.
-- [ ] **F4.** `python -m ruff check .` clean; default `pytest -q` green.
+- [x] **F1.** All claim-table rows `[x]` with artifact paths cited in Plan 9.6.
+- [x] **F2.** Plan 9.7 manual DoD checkbox `[x]` only after Phase C evidence file is filled.
+- [x] **F3.** Plan 9.75 Task 5 `[x]` only after F1 + F2.
+- [x] **F4.** `python -m ruff check .` clean; default `pytest -q` green (652 passed, 20 deselected,
+  2026-07-11; verified independently by reviewer — wt-vibhanshu venv stale for ruff/pytest).
 - [ ] **F5.** PR opened; reviewer verifies artifacts on disk, not agent prose.
 
 ## Notes
