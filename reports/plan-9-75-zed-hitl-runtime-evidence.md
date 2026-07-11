@@ -169,3 +169,15 @@ Zed agent config: `optimus-agent` with `--workspace-root .`, `--debug-trace`. La
 `reports/.verify-live-agent-workspace/example.py`); `stop_reason: end_turn`; no `-32602`
 deserialization errors. Fixture paths exist in wt-cursor but not primary clone — consistent with
 Plan 9.8 workspace-context attribution. HITL protocol from PR #36 remains intact.
+
+---
+
+## Cross-reference — Plan 9.8 (2026-07-11)
+
+Task-aware workspace context live evidence is recorded in
+[`plan-9-8-task-aware-context-evidence.md`](plan-9-8-task-aware-context-evidence.md). That report
+preserves this document's historical READ-only / HITL findings unchanged. Plan 9.8 exact-path Zed
+mutation under filler pressure succeeded on Zed 1.10.2 with conformant `entries` / nested
+`toolCall` and no `-32602`. Ambiguous refusal completed correctly on the agent wire (and briefly
+in Zed UI) before a Zed client panic tracked as `P9.8-FU-5` — a separate client-stability issue,
+not a regression of the Plan 9.75 protocol fixes.

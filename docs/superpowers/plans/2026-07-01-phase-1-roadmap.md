@@ -277,12 +277,17 @@ started, not whether the agent's behavior against them is proven.
 planner receives that file's content even when task-blind workspace filler would otherwise exhaust
 the context budget.
 
-**Status:** Drafted 2026-07-10 (priority: high). This is a correctness floor for the specific
-silent READ-only fallback observed during Plan 9.75 verification, not a claim that mutation tasks
-generally work. Current-main reproduction confirms the 16 KiB size/order mechanism: referenced
-fixture paths may survive in the omission marker while their complete contents are absent. The
-historical July 11 planner input was not captured byte-for-byte, so implementation evidence must
-preserve that distinction.
+**Status:** Implemented and live-verified 2026-07-11. Evidence:
+[`reports/plan-9-8-task-aware-context-evidence.md`](../../reports/plan-9-8-task-aware-context-evidence.md).
+
+Plan 9.8 guarantees context inclusion for exact relative paths and unique basenames and visibly
+rejects ambiguous/oversized required references. It does not provide multi-turn replanning or
+Plan 11 intelligent selection and does not prove mutation tasks generally.
+
+**Known limitation (P9.8-FU-5):** On Zed 1.10.2, the ambiguous-refusal corrective text can flash and
+then panic the client (`range end index 3 out of range for slice of length 2`). Agent-side refusal
+contract and independent `acpx` durable UI remain proven; durable Zed stay-up on that path is
+deferred, not claimed.
 
 ## Plan 9.9 (Tracked, Not Yet Scheduled): Operator Packaging and Credential Diagnostics
 
@@ -381,8 +386,9 @@ pattern.
 14. Plan 9.75: Zed HITL — ACP `toolCall` on `session/request_permission` + real Zed turn
     completion (P0, drafted — depends on Plan 9.7 operator PATH install for verification; see
     `docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`).
-15. Plan 9.8: Task-aware workspace context for planning — drafted, high priority; confirms and
-    fixes the specific budget/ordering-driven silent READ-only fallback before broader context work.
+15. Plan 9.8: Task-aware workspace context for planning — implemented and live-verified 2026-07-11;
+    exact-path Zed mutation under filler pressure proven; ambiguous refusal on-wire with Zed stay-up
+    deferred as P9.8-FU-5; evidence in `reports/plan-9-8-task-aware-context-evidence.md`.
 16. Plan 9.9: Operator packaging and credential diagnostics — tracked, not yet scheduled; owns
     cross-layer provider/key mismatch diagnostics and non-editable-install root discovery.
 17. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.

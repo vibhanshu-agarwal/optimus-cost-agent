@@ -293,7 +293,7 @@ ambiguous fail-closed diagnostics, and safe handling of absent/ineligible refere
   `WorkspaceContextResult`, `assemble_workspace_context_for_prompt(...)`.
 - Preserves: `gather_workspace_context_for_prompt(...) -> str`.
 
-- [ ] **Step 1: Add a failing regression proving task-blind alphabetical omission**
+- [x] **Step 1: Add a failing regression proving task-blind alphabetical omission**
 
 ```python
 def test_task_aware_context_includes_explicit_path_ahead_of_alphabetical_filler(tmp_path):
@@ -314,7 +314,7 @@ def test_task_aware_context_includes_explicit_path_ahead_of_alphabetical_filler(
     assert result.prioritized_paths == ("reports/fixture/example.py",)
 ```
 
-- [ ] **Step 2: Run the regression and verify the new interface is absent**
+- [x] **Step 2: Run the regression and verify the new interface is absent**
 
 Run:
 
@@ -324,7 +324,7 @@ pytest tests/unit/agent/test_workspace_context.py::test_task_aware_context_inclu
 
 Expected: FAIL during import because `assemble_workspace_context_for_prompt` does not exist.
 
-- [ ] **Step 3: Add failing resolution-policy tests**
+- [x] **Step 3: Add failing resolution-policy tests**
 
 Add these named tests with the stated exact outcomes:
 
@@ -365,7 +365,7 @@ assert result.diagnostics == (
 assert "Retry with one exact workspace-relative path" in result.blocking_message
 ```
 
-- [ ] **Step 4: Implement the immutable result types and conservative resolver**
+- [x] **Step 4: Implement the immutable result types and conservative resolver**
 
 Use a module-level compiled regex and small helpers with one responsibility:
 
@@ -398,7 +398,7 @@ relative-path matching distinct from basename matching so ambiguity is explicit.
 candidate to normalized POSIX form with `Path(*candidate.parts).as_posix()` before lookup; this
 collapses a leading `./` without performing filesystem resolution outside the workspace.
 
-- [ ] **Step 5: Run the resolver tests**
+- [x] **Step 5: Run the resolver tests**
 
 Run:
 
@@ -408,7 +408,7 @@ pytest tests/unit/agent/test_workspace_context.py -v
 
 Expected: all workspace-context tests PASS.
 
-- [ ] **Step 6: Commit Task 1**
+- [x] **Step 6: Commit Task 1**
 
 ```bash
 git add src/optimus/agent/workspace_context.py tests/unit/agent/test_workspace_context.py
@@ -431,7 +431,7 @@ oversized required files fail before planning; filler remains deterministic and 
 - Produces: final `WorkspaceContextResult.text`, `used_bytes`, `prioritized_paths`, and
   `omitted_paths` contract.
 
-- [ ] **Step 1: Add failing packing tests**
+- [x] **Step 1: Add failing packing tests**
 
 Add these named tests with exact assertions:
 
@@ -459,7 +459,7 @@ assert result.diagnostics[0].status is WorkspaceReferenceStatus.TOO_LARGE
 assert "partial" not in result.blocking_message.lower()
 ```
 
-- [ ] **Step 2: Verify the new cap cases fail**
+- [x] **Step 2: Verify the new cap cases fail**
 
 Run:
 
@@ -469,7 +469,7 @@ pytest tests/unit/agent/test_workspace_context.py -v
 
 Expected: the new priority/cap tests FAIL; Task 1 resolution tests remain PASS.
 
-- [ ] **Step 3: Implement two-phase packing**
+- [x] **Step 3: Implement two-phase packing**
 
 Use a complete-block helper and pack priority blocks before filler:
 
@@ -486,7 +486,7 @@ the minimum required omission marker. If it exceeds the cap, return a blocking r
 prompt text. Only filler may use `_truncate_utf8`. Ensure `used_bytes` equals
 `len(text.encode("utf-8"))`, not an incrementally estimated value.
 
-- [ ] **Step 4: Run focused and regression tests**
+- [x] **Step 4: Run focused and regression tests**
 
 Run:
 
@@ -496,7 +496,7 @@ pytest tests/unit/agent/test_workspace_context.py tests/unit/agent/test_prompts.
 
 Expected: PASS; existing workspace prompt header/footer and untrusted-input boundary remain intact.
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
 
 ```bash
 git add src/optimus/agent/workspace_context.py tests/unit/agent/test_workspace_context.py
@@ -520,7 +520,7 @@ conditions.
 - Produces: optional `workspace_context_observer` constructor parameter and typed
   `AgentRunResult.stop_reason` values.
 
-- [ ] **Step 1: Add failing runner tests**
+- [x] **Step 1: Add failing runner tests**
 
 Add these named tests with exact outcomes:
 
@@ -547,7 +547,7 @@ assert "a/example.py" in result.output_text
 assert "b/example.py" in result.output_text
 ```
 
-- [ ] **Step 2: Run tests and verify current runner is task-blind**
+- [x] **Step 2: Run tests and verify current runner is task-blind**
 
 Run:
 
@@ -557,7 +557,7 @@ pytest tests/unit/agent/test_runner.py -v
 
 Expected: new tests FAIL because the runner still calls the string-only gatherer without task text.
 
-- [ ] **Step 3: Add the optional observer and result gate**
+- [x] **Step 3: Add the optional observer and result gate**
 
 Implement this sequence immediately after transition to `PLANNING`:
 
@@ -584,7 +584,7 @@ planner_input = build_agent_planner_input(request.task, workspace_context=worksp
 The observer must run for both blocking and non-blocking results. Do not call the Gateway, save a
 plan, or execute tools on a blocking result.
 
-- [ ] **Step 4: Run runner plus state/replay regressions**
+- [x] **Step 4: Run runner plus state/replay regressions**
 
 Run:
 
@@ -594,7 +594,7 @@ pytest tests/unit/agent/test_runner.py tests/unit/agent/test_state_store.py -v
 
 Expected: PASS; approved replay still uses stored plan text without a second Gateway call.
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 3**
 
 ```bash
 git add src/optimus/agent/runner.py tests/unit/agent/test_runner.py
@@ -621,7 +621,7 @@ shows the corrective failure message for ambiguous/oversized references.
 - Produces: `log_workspace_context_result(request, result) -> None` in ACP debug trace.
 - Preserves: debug tracing remains opt-in and never writes to ACP stdout.
 
-- [ ] **Step 1: Add a failing debug-trace redaction test**
+- [x] **Step 1: Add a failing debug-trace redaction test**
 
 The test must enable tracing to a temporary log, construct a `WorkspaceContextResult` whose `text`
 contains `UNIQUE_SECRET_SENTINEL`, call `log_workspace_context_result`, parse the single NDJSON
@@ -634,7 +634,7 @@ assert payload["data"]["used_bytes"] > 0
 assert "UNIQUE_SECRET_SENTINEL" not in log_path.read_text(encoding="utf-8")
 ```
 
-- [ ] **Step 2: Add failing bootstrap and visible-refusal tests**
+- [x] **Step 2: Add failing bootstrap and visible-refusal tests**
 
 Bootstrap test: capture the `AgentRunner` constructor arguments and assert
 `workspace_context_observer is log_workspace_context_result`.
@@ -658,7 +658,7 @@ Also add `test_unparseable_plan_completion_does_not_echo_raw_model_output`: retu
 with `stop_reason="UNPARSEABLE_PLAN"` and a unique raw-model sentinel in `output_text`; assert the
 agent message remains `Turn completed.` and does not contain the sentinel.
 
-- [ ] **Step 3: Run the new ACP tests and verify failure**
+- [x] **Step 3: Run the new ACP tests and verify failure**
 
 Run:
 
@@ -668,7 +668,7 @@ pytest tests/unit/acp/test_main_debug_trace.py tests/unit/acp/test_bootstrap.py 
 
 Expected: new diagnostics/wiring/refusal assertions FAIL.
 
-- [ ] **Step 4: Implement the ACP-owned observer**
+- [x] **Step 4: Implement the ACP-owned observer**
 
 Add a function in `debug_trace.py` that maps dataclass fields to JSON-safe primitives and calls
 `acp_debug_log`. Example payload fields:
@@ -696,7 +696,7 @@ Add a function in `debug_trace.py` that maps dataclass fields to JSON-safe primi
 
 Do not include `result.text` or any file bytes.
 
-- [ ] **Step 5: Inject the observer and correct failure completion text**
+- [x] **Step 5: Inject the observer and correct failure completion text**
 
 Pass `log_workspace_context_result` from `build_agent_runner_for_harness` into `AgentRunner`. In
 `_completion_message`, preserve existing mutation/tool-call branches, then surface sanitized
@@ -719,7 +719,7 @@ return "Turn completed."
 The Step 2 `UNPARSEABLE_PLAN` regression pins that raw model output is not echoed. This change
 closes only the Plan 9.75 fast-follow needed by Plan 9.8. Do not redesign other ACP failure UX.
 
-- [ ] **Step 6: Run ACP, runner, and workspace regressions**
+- [x] **Step 6: Run ACP, runner, and workspace regressions**
 
 Run:
 
@@ -729,7 +729,7 @@ pytest tests/unit/acp/test_main_debug_trace.py tests/unit/acp/test_bootstrap.py 
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 4**
+- [x] **Step 7: Commit Task 4**
 
 ```bash
 git add src/optimus/acp/debug_trace.py src/optimus/acp/bootstrap.py src/optimus/acp/spec.py tests/unit/acp/test_main_debug_trace.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_spec_protocol.py
@@ -753,7 +753,7 @@ in a large workspace with correlated context-selection evidence.
 - Consumes: Tasks 1-4 and the Plan 9.7 operator PATH/keychain runbook.
 - Produces: deterministic and live evidence mapped one-to-one to the Definition of Done.
 
-- [ ] **Step 1: Restore the contributor test environment and run narrow tests**
+- [x] **Step 1: Restore the contributor test environment and run narrow tests**
 
 Use repository-declared dev dependencies; do not install ad hoc unpinned packages:
 
@@ -764,7 +764,7 @@ pytest tests/unit/agent/test_workspace_context.py tests/unit/agent/test_runner.p
 
 Expected: PASS. Record exact counts in the evidence file.
 
-- [ ] **Step 2: Run default tests, coverage, and Ruff**
+- [x] **Step 2: Run default tests, coverage, and Ruff**
 
 ```bash
 pytest -q
@@ -776,7 +776,7 @@ Expected: default suite PASS; aggregate production coverage >=80%; Ruff clean. R
 counts, coverage, and current Git SHA. If live tiers are deselected by default, state that rather
 than implying they ran.
 
-- [ ] **Step 3: Prove deterministic exact-path inclusion under filler pressure**
+- [x] **Step 3: Prove deterministic exact-path inclusion under filler pressure**
 
 Run the named regression with `-vv` and add a small evidence table containing:
 
@@ -790,7 +790,7 @@ Run the named regression with `-vv` and add a small evidence table containing:
 
 Do not paste source content into the evidence report.
 
-- [ ] **Step 4: Prove ambiguous basename fails visibly without Gateway cost**
+- [x] **Step 4: Prove ambiguous basename fails visibly without Gateway cost**
 
 Run the runner unit test and ACP protocol test by exact node ID. Record that:
 
@@ -801,7 +801,7 @@ Run the runner unit test and ACP protocol test by exact node ID. Record that:
 - Zed-facing message is not `Turn completed.`;
 - stop reason is `refusal` on ACP and `AMBIGUOUS_WORKSPACE_REFERENCE` internally.
 
-- [ ] **Step 5: Install the exact implementation build on the operator PATH**
+- [x] **Step 5: Install the exact implementation build on the operator PATH**
 
 From the implementation checkout:
 
@@ -820,7 +820,7 @@ Evidence requirements:
 - local gateway credentials come through the Plan 9.7 keychain path;
 - never copy secret values into reports.
 
-- [ ] **Step 6: Run the real large-workspace Zed acceptance scenario**
+- [x] **Step 6: Run the real large-workspace Zed acceptance scenario**
 
 Create or reset one dedicated text fixture under the Zed workspace with content small enough to fit
 fully. Ensure alphabetical filler alone exceeds 16 KiB. Use an exact task:
@@ -847,7 +847,7 @@ If the target is confirmed present but the real model still emits READ-only, do 
 live gate complete and do not weaken the deterministic contract. Record the result and propose a
 separate prompt/model or multi-turn follow-up.
 
-- [ ] **Step 7: Run the ambiguous-path live refusal scenario**
+- [x] **Step 7: Run the ambiguous-path live refusal scenario**
 
 Place two eligible `example.py` files in distinct fixture directories and submit:
 
@@ -859,7 +859,7 @@ Require a visible Zed refusal listing both relative candidates, no permission re
 model call attributable to that run, no file mutation, and correlated `P9.8-CONTEXT` evidence with
 `AMBIGUOUS_WORKSPACE_REFERENCE`.
 
-- [ ] **Step 8: Write and cross-link the evidence**
+- [x] **Step 8: Write and cross-link the evidence**
 
 `reports/plan-9-8-task-aware-context-evidence.md` must contain:
 
@@ -875,7 +875,7 @@ model call attributable to that run, no file mutation, and correlated `P9.8-CONT
 Append only a short dated cross-reference to the Plan 9.75 evidence. Preserve its historical
 READ-only result unchanged.
 
-- [ ] **Step 9: Update roadmap status only after every gate passes**
+- [x] **Step 9: Update roadmap status only after every gate passes**
 
 Change Plan 9.8 from `Drafted` to `Implemented and live-verified`, link the evidence file, and retain
 this exact limitation:
@@ -886,7 +886,7 @@ this exact limitation:
 
 Do not change Plan 11 to started/scheduled. Its dependency on the landed 9.8 floor remains.
 
-- [ ] **Step 10: Final verification and documentation commit**
+- [x] **Step 10: Final verification and documentation commit**
 
 ```bash
 git diff --check
@@ -907,32 +907,33 @@ Expected: checks PASS; staged paths contain only the intended Plan 9.8 evidence/
 
 ### Deterministic code contract
 
-- [ ] Exact eligible relative path is completely included before filler under cap pressure.
-- [ ] A unique basename resolves to its one eligible path.
-- [ ] Ambiguous basename returns sorted candidates and blocks before Gateway/tool/mutation work.
-- [ ] Missing path remains non-blocking for file-creation tasks.
-- [ ] Absolute/traversal/glob/ineligible references cannot escape or bypass workspace policy.
-- [ ] Oversized or collectively over-budget required files are never partially represented as
+- [x] Exact eligible relative path is completely included before filler under cap pressure.
+- [x] A unique basename resolves to its one eligible path.
+- [x] Ambiguous basename returns sorted candidates and blocks before Gateway/tool/mutation work.
+- [x] Missing path remains non-blocking for file-creation tasks.
+- [x] Absolute/traversal/glob/ineligible references cannot escape or bypass workspace policy.
+- [x] Oversized or collectively over-budget required files are never partially represented as
   included.
-- [ ] Final UTF-8 context size never exceeds 16 KiB.
-- [ ] Existing task-blind compatibility wrapper and prompt untrusted-data boundary remain green.
+- [x] Final UTF-8 context size never exceeds 16 KiB.
+- [x] Existing task-blind compatibility wrapper and prompt untrusted-data boundary remain green.
 
 ### Runtime and observability contract
 
-- [ ] ACP trace proves selected path/status/byte budget for the exact run and logs no source content.
-- [ ] Typed ambiguous/oversized failures cost zero and are visible in Zed as corrective refusals.
-- [ ] Exact-path large-workspace Zed run produces an approved real WRITE and one mutation.
-- [ ] Plan 9.75 protocol remains conformant: no `-32602`, approval works, and turn ends explicitly.
-- [ ] Operator proof uses global PATH/keychain runtime with zero local provider keys.
+- [x] ACP trace proves selected path/status/byte budget for the exact run and logs no source content.
+- [x] Typed ambiguous/oversized failures cost zero and are visible in Zed as corrective refusals.
+  (Durable Zed stay-up after flash deferred as P9.8-FU-5; agent + acpx durable visibility proven.)
+- [x] Exact-path large-workspace Zed run produces an approved real WRITE and one mutation.
+- [x] Plan 9.75 protocol remains conformant: no `-32602`, approval works, and turn ends explicitly.
+- [x] Operator proof uses global PATH/keychain runtime with zero local provider keys.
 
 ### Quality and documentation gates
 
-- [ ] Narrow tests pass.
-- [ ] Default suite passes.
-- [ ] Aggregate production coverage is >=80%.
-- [ ] `python -m ruff check .` is clean.
-- [ ] Evidence artifact maps every claim to deterministic or real-dependency proof.
-- [ ] Roadmap and cross-plan wording make no general mutation-success claim.
+- [x] Narrow tests pass.
+- [x] Default suite passes.
+- [x] Aggregate production coverage is >=80%.
+- [x] `python -m ruff check .` is clean.
+- [x] Evidence artifact maps every claim to deterministic or real-dependency proof.
+- [x] Roadmap and cross-plan wording make no general mutation-success claim.
 
 ## Deferred Follow-Ups
 
@@ -968,6 +969,25 @@ against the null baseline, and never silently omit required evidence.
 project-root discovery for non-editable operator installs. Until it lands, Plan 9.8 live evidence
 must continue using `uv tool install --editable . --reinstall`; these operator-runtime concerns
 must not be silently absorbed into this context-selection plan.
+
+### P9.8-FU-5: Zed stay-up on ACP refusal / completed-plan UI
+
+**Trigger:** Zed 1.10.2 (`adc60cc`) panics after briefly rendering the Plan 9.8 ambiguous-refusal
+corrective text: `range end index 3 out of range for slice of length 2` (native Rust panic;
+minidump under `%LOCALAPPDATA%\Zed\logs\`). Agent contract and `acpx` durable UI already proven.
+
+**Acceptance criteria:** Root-cause or upstream Zed fix such that an ambiguous-reference refusal
+remains readable in Zed without crash; or an ACP-shape workaround proven against real Zed with
+evidence. Do not silently fold this into Plan 11.
+
+### P9.8-FU-6: Adopt acpx; retire hand-rolled ACP live harnesses
+
+**Trigger:** Project-authored ACP subprocess clients (e.g. `tools/run_plan98_live_evidence.py`) can
+pass the same scenario that crashes real Zed, so they are not independent conformance evidence.
+
+**Acceptance criteria:** Documented operator/pre-GUI evidence path uses independently authored
+`acpx` (or successor); hand-rolled Plan 9.8 harnesses are removed or clearly marked non-evidence.
+Unit-level doubles such as `FakeGatewayClient` remain in scope for isolated business-logic tests.
 
 ## Reviewer Checklist Before Approval
 
