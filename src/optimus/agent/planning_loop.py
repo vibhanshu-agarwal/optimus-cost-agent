@@ -585,11 +585,12 @@ class PlanningLoopRunner:
             session_id=session_id,
             execution_mode=self._execution_mode,
             policy=self._policy,
+            loop_budget_policy=self._policy.to_loop_budget_policy(max_cost_usd=self._max_cost_usd),
             max_cost_usd=self._max_cost_usd,
             now=self._now,
         )
         controller = GoalLoopController(
-            policy=self._policy.to_loop_budget_policy(max_cost_usd=self._max_cost_usd),
+            policy=iteration_runner.loop_budget_policy,
             runner=iteration_runner,
             tools=GuardedLoopToolExecutor(guard=self._guard),
             evaluator=DeterministicCompletionEvaluator(
@@ -625,6 +626,7 @@ class _PlanningIterationRunner:
         session_id: str | None,
         execution_mode: ExecutionMode,
         policy: PlanningLoopPolicy,
+        loop_budget_policy: LoopBudgetPolicy,
         max_cost_usd: Decimal,
         now: Callable[[], datetime],
     ) -> None:
@@ -637,6 +639,7 @@ class _PlanningIterationRunner:
         self._session_id = session_id
         self._execution_mode = execution_mode
         self._policy = policy
+        self.loop_budget_policy = loop_budget_policy
         self._max_cost_usd = max_cost_usd
         self._now = now
         self._observations: list[PlanningObservation] = []
@@ -748,9 +751,34 @@ class _PlanningIterationRunner:
 
         raise AssertionError(f"unsupported planning decision: {decision.kind}")
 
+    def _planning_resource_stop_after_settlement(self, *, state: IterationState) -> str | None:
+        """Planning-only post-settlement checks when the shared controller reports COMPLETED."""
+        if state.human_halt_requested:
+            return "PLANNING_HALTED"
+        if state.repeated_failure_count >= self.loop_budget_policy.repeated_failure_limit:
+            return "PLANNING_REPEATED_READ_REQUEST"
+        if state.credits_spent >= self.loop_budget_policy.max_budget_credits:
+            return "PLANNING_BUDGET_EXHAUSTED"
+        if state.elapsed_minutes(now=self._now()) >= self.loop_budget_policy.max_wall_clock_minutes:
+            return "PLANNING_WALL_CLOCK_EXHAUSTED"
+        return None
+
     def to_planning_result(self, loop_result) -> PlanningLoopResult:
         settled_turns = loop_result.state.iteration
         if loop_result.stop_reason is LoopStopReason.COMPLETED:
+            resource_stop = self._planning_resource_stop_after_settlement(state=loop_result.state)
+            if resource_stop is not None:
+                return PlanningLoopResult(
+                    stop_reason=resource_stop,
+                    settled_turns=settled_turns,
+                    total_cost_usd=self._total_cost_usd,
+                    gateway_request_ids=tuple(self._gateway_request_ids),
+                    corrective_text=planning_corrective_text(
+                        resource_stop,
+                        workspace_root=self._workspace_root,
+                    ),
+                    evidence_metadata={"settled_turns": str(settled_turns)},
+                )
             decision = self._last_decision
             if decision is not None and decision.kind is PlanningTurnKind.REFUSE:
                 refusal_reason = decision.reason

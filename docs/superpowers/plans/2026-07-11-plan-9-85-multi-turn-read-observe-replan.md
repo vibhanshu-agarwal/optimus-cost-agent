@@ -439,7 +439,7 @@ python -m pytest tests/unit/agent/test_planning_loop.py tests/unit/agent/test_pr
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/optimus/agent/planning_loop.py src/optimus/agent/prompts.py tests/unit/agent/test_planning_loop.py tests/unit/agent/test_prompts.py tests/unit/loops/test_controller.py
@@ -802,6 +802,14 @@ git commit -m "Record live Plan 9.85 ACP evidence"
 **Owner:** Plan 9.87.
 
 **Acceptance criteria:** With a real Gateway/model and real `acpx`, produce a task where the live model emits `REFUSE:` because safe WRITE content cannot be grounded in currently visible raw evidence. Prove ACP returns `PLANNING_MODEL_REFUSED` with sanitized visible text, zero plan hash, zero permission requests, zero mutation, and `end_turn`. Scripted unit/ACP evidence remains necessary for deterministic grammar and mapping coverage but cannot satisfy this live model-behavior claim.
+
+### P9.85-FU-6: Planning gateway calls through `RetryController`
+
+**Owner:** Task 4 integration (Plan 9.85).
+
+**Raised:** Task 3 shipped `PlanningLoopRunner` with direct `GatewayClient.create_response` calls because `RetryController` is unused anywhere in the repo today. This contradicts Global Constraint line 19 ("transient wire retries... do not consume additional planning turns") until wired.
+
+**Acceptance criteria:** Each settled planning turn performs gateway work through `RetryController`; every wire attempt with reported usage is recorded and charged to `max_cost_usd`; transient retries do not increment settled-turn count; unit/integration tests prove multi-attempt usage aggregation on a retried planning turn.
 
 ## Plan Self-Review Record
 
