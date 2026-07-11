@@ -160,6 +160,60 @@ def test_planning_loop_maps_repeated_read_request_to_typed_stop(tmp_path):
     assert result.plan_hash is None
 
 
+def test_planning_loop_maps_observation_carryover_overflow_to_typed_stop(tmp_path):
+    _write_file(tmp_path, "large.py", "x" * (17 * 1024))
+    from optimus.agent.planning_loop import PlanningReadRequest, max_planning_observation_text_bytes
+
+    scripts: list[tuple[str, Decimal, str]] = []
+    for index in range(6):
+        start = index * 5
+        end = start + 5
+        read_request = (PlanningReadRequest(path="large.py", start_byte=start, end_byte=end),)
+        observation = "o" * max_planning_observation_text_bytes(read_request)
+        scripts.append(
+            (
+                f"OBSERVE: {observation}\nREAD: large.py#bytes={start}:{end}\n",
+                Decimal("0.001"),
+                f"gw-{index + 1}",
+            )
+        )
+    gateway = ScriptingGateway(scripts)
+    result = _runner(tmp_path, gateway=gateway, policy=PlanningLoopPolicy(max_planning_turns=8)).run(
+        run_id="run-1",
+        session_id=None,
+        task="Update large.py",
+        initial_workspace_context="",
+    )
+
+    assert result.stop_reason == "PLANNING_OBSERVATION_BUDGET_EXHAUSTED"
+    assert result.plan_hash is None
+    assert "observation evidence exceeds" in result.corrective_text
+
+
+def test_planning_loop_maps_current_read_overflow_to_typed_stop(tmp_path):
+    from optimus.agent.planning_loop import PLANNING_NEW_READ_MAX_BYTES
+
+    _write_file(tmp_path, "large.py", "x" * (17 * 1024))
+    oversized_read = PLANNING_NEW_READ_MAX_BYTES + 500
+    read_more = f"OBSERVE: need large chunk\nREAD: large.py#bytes=0:{oversized_read}\n"
+    gateway = ScriptingGateway(
+        [
+            (read_more, Decimal("0.001"), "gw-1"),
+            (FINAL_PLAN.replace("src/a.py", "large.py"), Decimal("0.001"), "gw-2"),
+        ]
+    )
+    result = _runner(tmp_path, gateway=gateway, policy=PlanningLoopPolicy(max_planning_turns=2)).run(
+        run_id="run-1",
+        session_id=None,
+        task="Update large.py",
+        initial_workspace_context="",
+    )
+
+    assert result.stop_reason == "PLANNING_READ_BUDGET_EXHAUSTED"
+    assert result.plan_hash is None
+    assert "read evidence exceeds" in result.corrective_text
+
+
 def test_planning_loop_maps_budget_exhaustion_before_turn_limit(tmp_path):
     gateway = ScriptingGateway(
         [

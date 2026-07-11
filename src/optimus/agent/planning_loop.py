@@ -551,6 +551,20 @@ def planning_corrective_text(
         "PLANNING_WALL_CLOCK_EXHAUSTED": "Planning stopped because the wall-clock limit was reached.",
         "PLANNING_TURN_LIMIT_EXHAUSTED": "Planning stopped before a final plan could be settled.",
         "PLANNING_HALTED": "Planning was halted before settlement.",
+        "PLANNING_OBSERVATION_BUDGET_EXHAUSTED": (
+            "Planning stopped because carried observation evidence exceeds the allowed budget."
+        ),
+        "PLANNING_READ_BUDGET_EXHAUSTED": (
+            "Planning stopped because requested read evidence exceeds the allowed budget."
+        ),
+        "PLANNING_READ_INVALID_RANGE": "Planning stopped because a guarded read range was invalid.",
+        "PLANNING_READ_INVALID_PATH": "Planning stopped because a guarded read path was invalid.",
+        "PLANNING_READ_FILE_NOT_FOUND": "Planning stopped because a guarded read target was not found.",
+        "PLANNING_READ_NOT_UTF8_ALIGNED": (
+            "Planning stopped because a guarded read range was not valid UTF-8."
+        ),
+        "PLANNING_READ_SOURCE_CHANGED": "Planning stopped because source content changed during planning.",
+        "PLANNING_READ_GUARD_BLOCKED": "Planning stopped because a guarded read was blocked by policy.",
     }
     if stop_reason is None:
         return ""
@@ -692,6 +706,22 @@ class _PlanningIterationRunner:
         self._last_decision: PlanningTurnDecision | None = None
         self._last_provider: str | None = None
         self._last_wire_retry_count = 0
+        self._typed_planning_stop_reason: str | None = None
+
+    def _typed_planning_failure(
+        self,
+        *,
+        stop_reason: str,
+        summary: str,
+        cost_credits: Decimal,
+    ) -> IterationOutcome:
+        self._typed_planning_stop_reason = stop_reason
+        return IterationOutcome(
+            summary=summary,
+            deterministic_completion=True,
+            failure_signature=None,
+            cost_credits=cost_credits,
+        )
 
     def _invoke_planning_gateway(
         self,
@@ -735,17 +765,24 @@ class _PlanningIterationRunner:
             self._policy.max_wall_clock_minutes - state.elapsed_minutes(now=self._now()),
         )
         carried_envelope = ""
-        if self._observations:
-            carried_envelope = pack_planning_evidence(
-                observations=tuple(self._observations),
-                current_reads=(),
-            ).text
         current_envelope = ""
-        if self._current_reads:
-            current_envelope = pack_planning_evidence(
-                observations=(),
-                current_reads=self._current_reads,
-            ).text
+        try:
+            if self._observations:
+                carried_envelope = pack_planning_evidence(
+                    observations=tuple(self._observations),
+                    current_reads=(),
+                ).text
+            if self._current_reads:
+                current_envelope = pack_planning_evidence(
+                    observations=(),
+                    current_reads=self._current_reads,
+                ).text
+        except PlanningEvidenceBudgetError as exc:
+            return self._typed_planning_failure(
+                stop_reason=exc.code,
+                summary=str(exc),
+                cost_credits=Decimal("0"),
+            )
         prompt = build_multi_turn_planner_input(
             self._task,
             planning_turn=planning_turn,
@@ -780,20 +817,39 @@ class _PlanningIterationRunner:
 
         self._last_decision = decision
         if decision.kind is PlanningTurnKind.READ_MORE:
-            from optimus.loops.tools import GuardedLoopToolExecutor
+            from optimus.loops.tools import GuardedLoopToolExecutor, LoopToolBlocked
 
             if not isinstance(tools, GuardedLoopToolExecutor):
                 raise TypeError("planning loop requires GuardedLoopToolExecutor")
             read_evidence: list[PlanningReadEvidence] = []
-            for request in decision.read_requests:
-                read_evidence.append(
-                    tools.read_file_range(
-                        workspace_root=self._workspace_root,
-                        run_id=self._run_id,
-                        session_id=self._session_id,
-                        execution_mode=self._execution_mode,
-                        request=request,
+            try:
+                for request in decision.read_requests:
+                    read_evidence.append(
+                        tools.read_file_range(
+                            workspace_root=self._workspace_root,
+                            run_id=self._run_id,
+                            session_id=self._session_id,
+                            execution_mode=self._execution_mode,
+                            request=request,
+                        )
                     )
+            except PlanningEvidenceBudgetError as exc:
+                return self._typed_planning_failure(
+                    stop_reason=exc.code,
+                    summary=str(exc),
+                    cost_credits=attempt_cost,
+                )
+            except PlanningReadError as exc:
+                return self._typed_planning_failure(
+                    stop_reason=exc.code,
+                    summary=str(exc),
+                    cost_credits=attempt_cost,
+                )
+            except LoopToolBlocked as exc:
+                return self._typed_planning_failure(
+                    stop_reason="PLANNING_READ_GUARD_BLOCKED",
+                    summary=str(exc),
+                    cost_credits=attempt_cost,
                 )
             self._observations.extend(
                 observations_from_read_evidence(
@@ -877,6 +933,19 @@ class _PlanningIterationRunner:
                     gateway_request_ids=tuple(self._gateway_request_ids),
                     corrective_text=planning_corrective_text(
                         resource_stop,
+                        workspace_root=self._workspace_root,
+                    ),
+                    evidence_metadata={"settled_turns": str(settled_turns)},
+                )
+            if self._typed_planning_stop_reason is not None:
+                stop_reason = self._typed_planning_stop_reason
+                return PlanningLoopResult(
+                    stop_reason=stop_reason,
+                    settled_turns=settled_turns,
+                    total_cost_usd=self._total_cost_usd,
+                    gateway_request_ids=tuple(self._gateway_request_ids),
+                    corrective_text=planning_corrective_text(
+                        stop_reason,
                         workspace_root=self._workspace_root,
                     ),
                     evidence_metadata={"settled_turns": str(settled_turns)},

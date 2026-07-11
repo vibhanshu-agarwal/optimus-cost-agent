@@ -810,3 +810,58 @@ async def test_concurrent_sessions_route_planning_progress_to_own_session_only(t
     ]
     assert progress_for_a == [session_a]
     assert progress_for_b == [session_b]
+
+
+async def test_planning_observation_overflow_emits_end_turn_not_internal_error(tmp_path):
+    from optimus.agent.planning_loop import PlanningReadRequest, max_planning_observation_text_bytes
+    from optimus.agent.runner import AgentRunner
+    from tests.integration.agent.test_multi_turn_planning_flow import ScriptingGateway, _write_oversized_required_file
+
+    _write_oversized_required_file(tmp_path)
+    scripts: list[tuple[str, Decimal, str]] = []
+    for index in range(6):
+        start = index * 5
+        end = start + 5
+        read_request = (PlanningReadRequest(path="large.py", start_byte=start, end_byte=end),)
+        observation = "o" * max_planning_observation_text_bytes(read_request)
+        scripts.append(
+            (
+                f"OBSERVE: {observation}\nREAD: large.py#bytes={start}:{end}\n",
+                Decimal("0.001"),
+                f"gw-{index + 1}",
+            )
+        )
+    outbound = RecordingOutboundChannel()
+    adapter = AcpDuplexAdapter(
+        runner=AgentRunner(gateway_client=ScriptingGateway(scripts), model="glm-5.2"),
+        workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(),
+        outbound=outbound,
+    )
+    session_id = (
+        await adapter.handle_client_request(
+            {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
+        )
+    )["result"]["sessionId"]
+
+    response = await adapter.handle_client_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/prompt",
+            "params": {
+                "sessionId": session_id,
+                "prompt": [{"type": "text", "text": "Edit large.py"}],
+            },
+        }
+    )
+
+    assert "error" not in response
+    assert response["result"]["stopReason"] == "end_turn"
+    messages = [
+        item["params"]["update"]["content"]["text"]
+        for item in outbound.notifications
+        if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
+    ]
+    assert messages[-1] == "Planning stopped because carried observation evidence exceeds the allowed budget."
+    assert outbound.requests == []

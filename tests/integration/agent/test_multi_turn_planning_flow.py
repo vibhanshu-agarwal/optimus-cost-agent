@@ -11,12 +11,9 @@ import hashlib
 from decimal import Decimal
 from pathlib import Path
 
-import pytest
-
 from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunStatus
 from optimus.agent.planning_loop import (
     PLANNING_NEW_READ_MAX_BYTES,
-    PlanningEvidenceBudgetError,
     PlanningReadRequest,
     max_planning_observation_text_bytes,
 )
@@ -167,10 +164,12 @@ def test_fake_integration_observation_carryover_overflow_fails_closed(tmp_path: 
     gateway = ScriptingGateway(scripts)
     runner = _integration_runner(tmp_path, gateway=gateway)
 
-    with pytest.raises(PlanningEvidenceBudgetError) as exc_info:
-        runner.run(_planning_request(tmp_path, max_planning_turns=8))
+    result = runner.run(_planning_request(tmp_path, max_planning_turns=8))
 
-    assert exc_info.value.code == "PLANNING_OBSERVATION_BUDGET_EXHAUSTED"
+    assert result.status is AgentRunStatus.TERMINATED
+    assert result.stop_reason == "PLANNING_OBSERVATION_BUDGET_EXHAUSTED"
+    assert result.plan_hash is None
+    assert "observation evidence exceeds" in result.output_text
 
 
 def test_fake_integration_current_read_overflow_fails_closed(tmp_path: Path) -> None:
@@ -185,10 +184,12 @@ def test_fake_integration_current_read_overflow_fails_closed(tmp_path: Path) -> 
     )
     runner = _integration_runner(tmp_path, gateway=gateway)
 
-    with pytest.raises(PlanningEvidenceBudgetError) as exc_info:
-        runner.run(_planning_request(tmp_path, max_planning_turns=2))
+    result = runner.run(_planning_request(tmp_path, max_planning_turns=2))
 
-    assert exc_info.value.code == "PLANNING_READ_BUDGET_EXHAUSTED"
+    assert result.status is AgentRunStatus.TERMINATED
+    assert result.stop_reason == "PLANNING_READ_BUDGET_EXHAUSTED"
+    assert result.plan_hash is None
+    assert "read evidence exceeds" in result.output_text
 
 
 def test_fake_integration_max_planning_turns_one(tmp_path: Path) -> None:
