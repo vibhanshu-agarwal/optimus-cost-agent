@@ -150,3 +150,22 @@ Planner/gateway prompt quality; track separately.
 
 `_emit_completion_message` on `FAILED`/`TERMINATED` early-return may emit `"Turn completed."`
 alongside `stopReason: refusal` — log as follow-up issue, not a merge blocker.
+
+---
+
+## Post-#36 regression — 2026-07-11 (main @ 7376e23)
+
+2026-07-11: plan + approval + completed turn; READ-only plan to fixture paths; no protocol hang.
+
+**Provenance (debug trace, not prose alone):** `optimus-cost-agent-wt-cursor\.optimus\debug-acp.ndjson`
+— PROVENANCE lines on 2026-07-11 show `git_sha: 7376e23`, `optimus_acp_file` under the **primary
+clone** (`D:\Projects\Development\Python\optimus-cost-agent\src\...`) from the uv editable PATH
+install, while `cwd` / `--workspace-root .` resolved to the **wt-cursor worktree**
+(`D:\Projects\Development\Python\optimus-cost-agent-wt-cursor`). Agent **code** = primary clone
+`main` @ `7376e23`; Zed **workspace** = wt-cursor.
+
+Zed agent config: `optimus-agent` with `--workspace-root .`, `--debug-trace`. Latest session:
+2-step Completed Plan (READ `reports/.plan97-e2e-workspace/example.py`, READ
+`reports/.verify-live-agent-workspace/example.py`); `stop_reason: end_turn`; no `-32602`
+deserialization errors. Fixture paths exist in wt-cursor but not primary clone — consistent with
+Plan 9.8 workspace-context attribution. HITL protocol from PR #36 remains intact.

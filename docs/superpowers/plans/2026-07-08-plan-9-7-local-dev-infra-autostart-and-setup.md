@@ -1756,10 +1756,11 @@ def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
   green.
 - [x] Full `pytest -q` green, no regressions.
 - [x] `python -m ruff check .` clean.
-- [ ] **Manual verification (operator PATH — not repo venv):** on a real Windows machine,
+- [x] **Manual verification (operator PATH — not repo venv):** on a real Windows machine,
   complete **all** of the following and record commands plus stdout/stderr (and the tail of
   `reports/local-gateway.log`) in `reports/plan-9-7-manual-e2e-evidence.md` or the plan DoD
-  section below — not "tests passed" prose alone.
+  section below — not "tests passed" prose alone. **Signed off 2026-07-11:** see
+  `reports/plan-9-7-manual-e2e-evidence.md` (primary clone, main @ 7376e23, keychain-only PATH path).
 
   **Partial sign-off (2026-07-09):** operator PATH install, `--setup`, `--check-config --strict`,
   auto-start Redis/gateway, and Zed process launch verified. **Remaining gate:** complete the
