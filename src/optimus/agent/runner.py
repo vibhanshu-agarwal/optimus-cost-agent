@@ -166,7 +166,7 @@ class AgentRunner:
         if self._workspace_context_observer is not None:
             self._workspace_context_observer(request, workspace_context)
         if workspace_context.blocking_stop_reason is not None:
-            if workspace_context.blocking_stop_reason is _OVERSIZED_REQUIRED_CONTEXT_TRIGGER:
+            if workspace_context.blocking_stop_reason == _OVERSIZED_REQUIRED_CONTEXT_TRIGGER:
                 return self._run_multi_turn_planning(
                     request=request,
                     context=context,
