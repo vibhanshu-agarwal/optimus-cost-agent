@@ -12,7 +12,7 @@ from optimus.agent.models import AgentRunRequest, AgentRunResult, AgentRunStatus
 from optimus.agent.prompts import build_agent_planner_input
 from optimus.agent.state_store import AgentPlanRecord, AgentStateStore, InMemoryAgentStateStore
 from optimus.agent.tools import AgentToolbox
-from optimus.agent.workspace_context import gather_workspace_context_for_prompt
+from optimus.agent.workspace_context import WorkspaceContextResult, assemble_workspace_context_for_prompt
 from optimus.gateway.client import GatewayClient
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.loops.completion import DeterministicCompletionEvaluator
@@ -24,6 +24,8 @@ from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import AgentState, AwaitingApproval, RuntimeContext, StateTransition, TransitionValidator
 from optimus.skills.registry import SkillRegistry
 from optimus.telemetry.events import TelemetryEvent
+
+WorkspaceContextObserver = Callable[[AgentRunRequest, WorkspaceContextResult], None]
 
 
 class _AgentLoopIterationRunner:
@@ -55,6 +57,7 @@ class AgentRunner:
         state_store: AgentStateStore | None = None,
         clock_ms: Callable[[], int] | None = None,
         shell_runner: Callable[[list[str]], subprocess.CompletedProcess[str]] | None = None,
+        workspace_context_observer: WorkspaceContextObserver | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -65,6 +68,7 @@ class AgentRunner:
         self._state_store = state_store or InMemoryAgentStateStore(clock_ms=clock_ms)
         self._clock_ms = clock_ms or _epoch_ms
         self._shell_runner = shell_runner
+        self._workspace_context_observer = workspace_context_observer
         self._transition_validator = TransitionValidator()
 
     def run(self, request: AgentRunRequest) -> AgentRunResult:
@@ -151,8 +155,23 @@ class AgentRunner:
             return self._run_approved_from_store(request=request, context=context, toolbox=toolbox)
 
         context = self._transition(context, AgentState.PLANNING)
-        workspace_context = gather_workspace_context_for_prompt(request.workspace_root)
-        planner_input = build_agent_planner_input(request.task, workspace_context=workspace_context)
+        workspace_context = assemble_workspace_context_for_prompt(
+            request.workspace_root,
+            task=request.task,
+        )
+        if self._workspace_context_observer is not None:
+            self._workspace_context_observer(request, workspace_context)
+        if workspace_context.blocking_stop_reason is not None:
+            return self._build_result(
+                request=request,
+                status=AgentRunStatus.FAILED,
+                final_state="FAILED",
+                output_text=workspace_context.blocking_message or "Workspace context could not be assembled.",
+                tool_calls=(),
+                total_cost_usd=Decimal("0"),
+                stop_reason=workspace_context.blocking_stop_reason,
+            )
+        planner_input = build_agent_planner_input(request.task, workspace_context=workspace_context.text)
         response = self._gateway_client.create_response(
             model=self._model,
             input_text=planner_input,

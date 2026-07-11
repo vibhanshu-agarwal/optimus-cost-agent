@@ -280,3 +280,113 @@ async def test_client_calling_session_update_or_request_permission_is_method_not
 
     assert update_response["error"]["code"] == METHOD_NOT_FOUND
     assert permission_response["error"]["code"] == METHOD_NOT_FOUND
+
+
+async def test_workspace_context_failure_surfaces_corrective_refusal_message(tmp_path):
+    failure_text = (
+        "Workspace reference 'example.py' is ambiguous. "
+        "Candidates: a/example.py, b/example.py. Retry with one exact workspace-relative path."
+    )
+
+    class AmbiguousFailureRunner:
+        def run(self, request):
+            return AgentRunResult(
+                run_id=request.run_id,
+                session_id=request.session_id,
+                execution_mode=request.execution_mode,
+                status=AgentRunStatus.FAILED,
+                final_state="FAILED",
+                output_text=failure_text,
+                tool_calls=(),
+                total_cost_usd=Decimal("0"),
+                mutation_count=0,
+                provider_keys_resolvable=(),
+                stop_reason="AMBIGUOUS_WORKSPACE_REFERENCE",
+            )
+
+    outbound = RecordingOutboundChannel()
+    adapter = AcpDuplexAdapter(
+        runner=AmbiguousFailureRunner(),
+        workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(),
+        outbound=outbound,
+    )
+    session_id = (
+        await adapter.handle_client_request(
+            {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
+        )
+    )["result"]["sessionId"]
+
+    response = await adapter.handle_client_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/prompt",
+            "params": {
+                "sessionId": session_id,
+                "prompt": [{"type": "text", "text": "Add a docstring to example.py"}],
+            },
+        }
+    )
+
+    assert response["result"]["stopReason"] == "refusal"
+    messages = [
+        item["params"]["update"]["content"]["text"]
+        for item in outbound.notifications
+        if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
+    ]
+    assert messages[-1] == failure_text
+    assert messages[-1] != "Turn completed."
+
+
+async def test_unparseable_plan_completion_does_not_echo_raw_model_output(tmp_path):
+    raw_sentinel = "UNIQUE_RAW_MODEL_SENTINEL_XYZ"
+
+    class UnparseablePlanRunner:
+        def run(self, request):
+            return AgentRunResult(
+                run_id=request.run_id,
+                session_id=request.session_id,
+                execution_mode=request.execution_mode,
+                status=AgentRunStatus.FAILED,
+                final_state="FAILED",
+                output_text=f"Here is prose, not directives. {raw_sentinel}",
+                tool_calls=(),
+                total_cost_usd=Decimal("0.002"),
+                mutation_count=0,
+                provider_keys_resolvable=(),
+                stop_reason="UNPARSEABLE_PLAN",
+            )
+
+    outbound = RecordingOutboundChannel()
+    adapter = AcpDuplexAdapter(
+        runner=UnparseablePlanRunner(),
+        workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(),
+        outbound=outbound,
+    )
+    session_id = (
+        await adapter.handle_client_request(
+            {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
+        )
+    )["result"]["sessionId"]
+
+    await adapter.handle_client_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/prompt",
+            "params": {
+                "sessionId": session_id,
+                "prompt": [{"type": "text", "text": "Do work"}],
+            },
+        }
+    )
+
+    messages = [
+        item["params"]["update"]["content"]["text"]
+        for item in outbound.notifications
+        if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
+    ]
+    assert messages[-1] == "Turn completed."
+    assert raw_sentinel not in messages[-1]

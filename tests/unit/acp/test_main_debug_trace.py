@@ -54,6 +54,41 @@ def test_check_config_with_debug_trace_writes_default_provenance_log(monkeypatch
     assert payload["data"]["log_path"] == str(log_path)
 
 
+def test_log_workspace_context_result_redacts_source_content(monkeypatch, tmp_path):
+    log_path = tmp_path / "trace.ndjson"
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+
+    from optimus.acp.debug_trace import log_workspace_context_result
+    from optimus.agent.models import AgentRunRequest
+    from optimus.agent.workspace_context import WorkspaceContextResult
+    from optimus.runtime.modes import ExecutionMode
+
+    request = AgentRunRequest(
+        run_id="run-1",
+        session_id="session-1",
+        task="Edit example.py",
+        execution_mode=ExecutionMode.PLAN,
+        workspace_root=tmp_path,
+    )
+    result = WorkspaceContextResult(
+        text="--- src/example.py ---\nUNIQUE_SECRET_SENTINEL\n",
+        max_total_bytes=16 * 1024,
+        used_bytes=42,
+        prioritized_paths=("src/example.py",),
+        omitted_paths=(),
+        diagnostics=(),
+    )
+
+    log_workspace_context_result(request, result)
+
+    payload = json.loads(log_path.read_text(encoding="utf-8").strip())
+    assert payload["hypothesisId"] == "P9.8-CONTEXT"
+    assert payload["data"]["prioritized_paths"] == ["src/example.py"]
+    assert payload["data"]["used_bytes"] > 0
+    assert "UNIQUE_SECRET_SENTINEL" not in log_path.read_text(encoding="utf-8")
+
+
 def test_check_config_with_relative_debug_log_path(monkeypatch, tmp_path):
     monkeypatch.delenv("OPTIMUS_ACP_DEBUG_TRACE", raising=False)
     monkeypatch.delenv("OPTIMUS_ACP_DEBUG_LOG", raising=False)

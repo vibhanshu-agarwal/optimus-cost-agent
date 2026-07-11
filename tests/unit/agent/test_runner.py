@@ -4,6 +4,7 @@ from subprocess import CompletedProcess
 from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunStatus
 from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import InMemoryAgentStateStore
+from optimus.agent.workspace_context import WorkspaceContextResult
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.runtime.modes import ExecutionMode
 from optimus.telemetry.events import TelemetryEventKind
@@ -440,3 +441,157 @@ def test_agent_run_emits_telemetry_at_final_boundary(tmp_path):
     assert events[-1].kind is TelemetryEventKind.AGENT_RUN
     assert events[-1].payload["status"] == "completed"
     assert events[-1].payload["tool_names"] == ("file_reader",)
+
+
+def test_runner_prioritizes_explicit_task_path_in_gateway_input(tmp_path):
+    (tmp_path / "a-filler.txt").write_text("y" * 900, encoding="utf-8")
+    target = tmp_path / "reports" / "fixture" / "example.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("def answer():\n    return 42\n", encoding="utf-8")
+    gateway = FakeGatewayClient("WRITE reports/fixture/example.py\ndef answer():\n    return 42\n")
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2")
+
+    runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Add a docstring to reports/fixture/example.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+
+    input_text = gateway.calls[0]["input_text"]
+    target_index = input_text.index("--- reports/fixture/example.py ---")
+    filler_index = input_text.index("--- a-filler.txt ---")
+    assert target_index < filler_index
+    assert "def answer():" in input_text
+
+
+def test_runner_calls_workspace_context_observer_before_gateway(tmp_path):
+    events: list[str] = []
+
+    def observer(_request: AgentRunRequest, _result: WorkspaceContextResult) -> None:
+        events.append("observer")
+
+    class ObservingGateway(FakeGatewayClient):
+        def create_response(self, *, model: str, input_text: str, metadata=None):
+            events.append("gateway")
+            return super().create_response(model=model, input_text=input_text, metadata=metadata)
+
+    runner = AgentRunner(
+        gateway_client=ObservingGateway("WRITE example.py\ncontent\n"),
+        model="glm-5.2",
+        workspace_context_observer=observer,
+    )
+    (tmp_path / "example.py").write_text("ok\n", encoding="utf-8")
+
+    runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Edit example.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert events == ["observer", "gateway"]
+
+
+def test_runner_calls_workspace_context_observer_on_blocking_result(tmp_path):
+    events: list[str] = []
+
+    def observer(_request: AgentRunRequest, result: WorkspaceContextResult) -> None:
+        events.append("observer")
+        assert result.blocking_stop_reason == "AMBIGUOUS_WORKSPACE_REFERENCE"
+
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    (tmp_path / "a" / "example.py").write_text("a\n", encoding="utf-8")
+    (tmp_path / "b" / "example.py").write_text("b\n", encoding="utf-8")
+    gateway = FakeGatewayClient("WRITE example.py\ncontent\n")
+    runner = AgentRunner(
+        gateway_client=gateway,
+        model="glm-5.2",
+        workspace_context_observer=observer,
+    )
+
+    runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Add a docstring to example.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert events == ["observer"]
+    assert gateway.calls == []
+
+
+def test_ambiguous_reference_fails_before_gateway_with_zero_cost(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    (tmp_path / "a" / "example.py").write_text("a\n", encoding="utf-8")
+    (tmp_path / "b" / "example.py").write_text("b\n", encoding="utf-8")
+    gateway = FakeGatewayClient("WRITE example.py\ncontent\n")
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2")
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Add a docstring to example.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert result.status is AgentRunStatus.FAILED
+    assert result.stop_reason == "AMBIGUOUS_WORKSPACE_REFERENCE"
+    assert result.total_cost_usd == Decimal("0")
+    assert result.mutation_count == 0
+    assert gateway.calls == []
+    assert "a/example.py" in result.output_text
+    assert "b/example.py" in result.output_text
+
+
+def test_oversized_required_file_fails_before_gateway_with_zero_cost(tmp_path):
+    (tmp_path / "large.py").write_text("x" * (17 * 1024), encoding="utf-8")
+    gateway = FakeGatewayClient("WRITE large.py\ncontent\n")
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2")
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Edit large.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert result.status is AgentRunStatus.FAILED
+    assert result.stop_reason == "REQUIRED_WORKSPACE_FILE_TOO_LARGE"
+    assert result.total_cost_usd == Decimal("0")
+    assert result.mutation_count == 0
+    assert gateway.calls == []
+
+
+def test_missing_path_can_reach_gateway_for_create_task(tmp_path):
+    gateway = FakeGatewayClient(
+        "WRITE new/module.py\n"
+        '"""New module."""\n\n'
+        "def create():\n"
+        '    return "ok"\n'
+    )
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2")
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Create new/module.py with a docstring",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert len(gateway.calls) == 1
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL
