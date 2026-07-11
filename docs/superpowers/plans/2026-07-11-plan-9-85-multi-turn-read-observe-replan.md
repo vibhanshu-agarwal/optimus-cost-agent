@@ -659,7 +659,52 @@ git commit -m "Verify multi-turn planning across runtime layers"
 
 ---
 
-### Task 7: Produce Real `acpx` Evidence, Close Plan 9.85, and Track Plan 9.87
+### Task 7: Redact ACP Debug-Trace Output by Default
+
+**Raised:** During Task 6 review, reviewer and operator identified that `acp_debug_log` (the sink behind `.optimus/debug-acp.ndjson`, the file Task 8's live evidence report is curated from) never passed its `message`/`data` fields through the existing `redact_for_telemetry` helper already used by `telemetry/events.py`, `loops/completion.py`, and `loops/ledger.py`. Every call site currently logs content-free fields by convention, not enforcement — including a generic `except Exception: ...message=str(exc)` handler in `server.py` that would log whatever any future or third-party exception's string representation contains. Operator decision: apply the existing redactor at this one choke point now, brute-force and unconditional (no opt-out flag), rather than block Plan 9.85 closure on a fuller redaction-system design. A more careful design (session/time-scoped opt-out flags for deliberate raw-trace access, a broader audit of other logging surfaces) is deferred to `P9.85-FU-7`, owned by a future plan after Plan 9.9.
+
+**Deliverable:** `acp_debug_log` redacts secret-shaped fields and free text unconditionally before writing to the NDJSON debug trace, so Task 8's live evidence gathering does not depend on every call site, or a human curating the committed report, remembering to scrub sensitive content from our own diagnostic output. This does not cover the real `acpx` client's own transcript output, which is external to this codebase and still requires human review before excerpting into the committed report.
+
+**Files:**
+- Modify: `src/optimus/acp/debug_trace.py`
+- Test: `tests/unit/acp/test_debug_trace.py`
+
+**Interfaces:**
+- Consumes: existing `optimus.telemetry.redaction.redact_for_telemetry`.
+- Produces: `acp_debug_log(...)` writes redacted `message` and `data` fields; all existing call sites (`server.py`, `spec.py`, `debug_trace.py` itself) inherit this without modification.
+
+- [x] **Step 1: Confirm the gap**
+
+Audited every `acp_debug_log` call site across `server.py`/`spec.py`/`debug_trace.py` and confirmed `redact_for_telemetry` was used elsewhere in the codebase (`telemetry/events.py`, `loops/completion.py`, `loops/ledger.py`) but never wired into the ACP debug-trace sink.
+
+- [x] **Step 2: Wire the existing redactor into the sink**
+
+`acp_debug_log` now passes both `message` and `data` through `redact_for_telemetry(...)` before constructing the NDJSON payload. No new flag; redaction is unconditional whenever debug tracing is enabled.
+
+- [x] **Step 3: Add a regression test proving redaction at the sink**
+
+Added `test_acp_debug_log_redacts_secret_shaped_fields_and_free_text_by_default`: feeds a bearer token, an `api_key` field, `OPTIMUS_API_KEY`, a nested `password`, and a credentialed URL into `acp_debug_log`, and asserts none of the raw secret values survive in the written NDJSON line while an ordinary field passes through untouched.
+
+- [x] **Step 4: Run focused and full verification**
+
+```bash
+python -m pytest tests/unit/acp -q
+python -m pytest tests/unit -q -m "not requires_redis and not requires_gateway"
+python -m ruff check .
+```
+
+Result: 146 passed (ACP suite), 724 passed / 1 skipped (full non-live unit suite), Ruff clean.
+
+- [x] **Step 5: Commit**
+
+```bash
+git add src/optimus/acp/debug_trace.py tests/unit/acp/test_debug_trace.py
+git commit -m "Redact ACP debug-trace output by default"
+```
+
+---
+
+### Task 8: Produce Real `acpx` Evidence, Close Plan 9.85, and Track Plan 9.87
 
 **Deliverable:** A redacted artifact proves Plan 9.85's real ACP protocol path; the roadmap then marks Plan 9.85 implemented/live-verified with explicit deferrals and creates Plan 9.87 as their durable owner.
 
@@ -810,6 +855,14 @@ git commit -m "Record live Plan 9.85 ACP evidence"
 **Status:** `PlanningLoopRunner` wraps each settled-turn Gateway call in `RetryController` with per-attempt usage callbacks. Runner-level accounting records stable `run_id:planning:{turn}:{wire_attempt}` request IDs when normalized usage fields are present.
 
 **Remaining acceptance criteria:** prove multi-attempt usage aggregation when transient failures report billable usage before aborting; integration tests for transport failures with unknown cost.
+
+### P9.85-FU-7: Deliberate-access design for redacted debug traces
+
+**Owner:** Future plan, scheduled after Plan 9.9.
+
+**Raised:** Task 7 applied `redact_for_telemetry` to `acp_debug_log` unconditionally (brute-force, no opt-out) to close an operator-flagged risk before Plan 9.85 closure, rather than design the full mechanism inline.
+
+**Acceptance criteria:** A deliberate design for session- or time-scoped opt-out access to unredacted debug traces (for legitimate deep debugging), a broader audit of every other logging/telemetry surface for the same class of gap, and an explicit decision on whether real `acpx` client transcripts can or should be brought under the same redaction guarantee rather than relying on human review before excerpting into a committed report.
 
 ## Plan Self-Review Record
 
