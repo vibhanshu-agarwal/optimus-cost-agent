@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from decimal import Decimal
 
 from optimus.acp.errors import METHOD_NOT_FOUND
@@ -12,12 +13,9 @@ from optimus.runtime.modes import ExecutionMode
 class FakeRunner:
     def __init__(self) -> None:
         self.requests = []
-        self._planning_progress_observer = None
 
-    def set_planning_progress_observer(self, observer) -> None:
-        self._planning_progress_observer = observer
-
-    def run(self, request):
+    def run(self, request, *, planning_progress_observer=None):
+        del planning_progress_observer
         self.requests.append(request)
         if request.execution_mode is ExecutionMode.AGENT and not request.approval.approved:
             return AgentRunResult(
@@ -294,7 +292,8 @@ async def test_workspace_context_failure_surfaces_corrective_refusal_message(tmp
     )
 
     class AmbiguousFailureRunner:
-        def run(self, request):
+        def run(self, request, *, planning_progress_observer=None):
+            del planning_progress_observer
             return AgentRunResult(
                 run_id=request.run_id,
                 session_id=request.session_id,
@@ -348,7 +347,8 @@ async def test_unparseable_plan_completion_does_not_echo_raw_model_output(tmp_pa
     raw_sentinel = "UNIQUE_RAW_MODEL_SENTINEL_XYZ"
 
     class UnparseablePlanRunner:
-        def run(self, request):
+        def run(self, request, *, planning_progress_observer=None):
+            del planning_progress_observer
             return AgentRunResult(
                 run_id=request.run_id,
                 session_id=request.session_id,
@@ -401,12 +401,8 @@ async def test_multi_turn_planning_emits_progress_before_final_permission(tmp_pa
     class MultiTurnRunner:
         def __init__(self) -> None:
             self.requests = []
-            self._planning_progress_observer = None
 
-        def set_planning_progress_observer(self, observer) -> None:
-            self._planning_progress_observer = observer
-
-        def run(self, request):
+        def run(self, request, *, planning_progress_observer=None):
             self.requests.append(request)
             if request.approval.approved:
                 return AgentRunResult(
@@ -422,8 +418,8 @@ async def test_multi_turn_planning_emits_progress_before_final_permission(tmp_pa
                     provider_keys_resolvable=(),
                     plan_hash="hash-final",
                 )
-            if self._planning_progress_observer is not None:
-                self._planning_progress_observer(
+            if planning_progress_observer is not None:
+                planning_progress_observer(
                     PlanningProgressEvent(
                         run_id=request.run_id,
                         session_id=request.session_id,
@@ -500,10 +496,8 @@ async def test_multi_turn_planning_emits_progress_before_final_permission(tmp_pa
 
 async def test_planning_failure_emits_end_turn_without_permission(tmp_path):
     class PlanningFailureRunner:
-        def set_planning_progress_observer(self, observer) -> None:
-            del observer
-
-        def run(self, request):
+        def run(self, request, *, planning_progress_observer=None):
+            del planning_progress_observer
             return AgentRunResult(
                 run_id=request.run_id,
                 session_id=request.session_id,
@@ -557,10 +551,8 @@ async def test_planning_model_refused_emits_sanitized_text_without_permission(tm
     refusal = "Current raw evidence is insufficient for a safe write."
 
     class RefusalRunner:
-        def set_planning_progress_observer(self, observer) -> None:
-            del observer
-
-        def run(self, request):
+        def run(self, request, *, planning_progress_observer=None):
+            del planning_progress_observer
             return AgentRunResult(
                 run_id=request.run_id,
                 session_id=request.session_id,
@@ -616,10 +608,8 @@ async def test_superseded_approval_hash_does_not_execute_plan(tmp_path):
         def __init__(self) -> None:
             self.requests = []
 
-        def set_planning_progress_observer(self, observer) -> None:
-            del observer
-
-        def run(self, request):
+        def run(self, request, *, planning_progress_observer=None):
+            del planning_progress_observer
             self.requests.append(request)
             if request.approval.approved:
                 return AgentRunResult(
@@ -697,3 +687,126 @@ async def test_superseded_approval_hash_does_not_execute_plan(tmp_path):
         and item["params"]["update"].get("kind") == "edit"
     ]
     assert write_calls == []
+
+
+async def test_concurrent_sessions_route_planning_progress_to_own_session_only(tmp_path):
+    class ConcurrentRaceRunner:
+        def __init__(self) -> None:
+            self._entered = 0
+            self._lock = threading.Lock()
+            self._both_entered = threading.Event()
+
+        def run(self, request, *, planning_progress_observer=None):
+            if request.approval.approved:
+                return AgentRunResult(
+                    run_id=request.run_id,
+                    session_id=request.session_id,
+                    execution_mode=request.execution_mode,
+                    status=AgentRunStatus.COMPLETED,
+                    final_state="COMPLETED",
+                    output_text="done",
+                    tool_calls=(),
+                    total_cost_usd=Decimal("0.002"),
+                    mutation_count=0,
+                    provider_keys_resolvable=(),
+                    plan_hash=f"hash-{request.session_id}",
+                )
+            with self._lock:
+                self._entered += 1
+                if self._entered == 2:
+                    self._both_entered.set()
+            assert self._both_entered.wait(timeout=2), "both sessions must overlap inside runner.run"
+            if planning_progress_observer is not None:
+                planning_progress_observer(
+                    PlanningProgressEvent(
+                        run_id=request.run_id,
+                        session_id=request.session_id,
+                        settled_turn=1,
+                        max_planning_turns=3,
+                        read_request_count=1,
+                        read_identities=(f"{request.session_id}#bytes=0:5",),
+                        source_sha256s=("a" * 64,),
+                        read_byte_counts=(5,),
+                        total_cost_usd=Decimal("0.002"),
+                        remaining_budget_usd=Decimal("0.048"),
+                        gateway_request_ids=(request.run_id,),
+                    )
+                )
+            return AgentRunResult(
+                run_id=request.run_id,
+                session_id=request.session_id,
+                execution_mode=ExecutionMode.AGENT,
+                status=AgentRunStatus.AWAITING_APPROVAL,
+                final_state="AWAITING_APPROVAL",
+                output_text=f"WRITE {request.session_id}.py\ncontent\n",
+                tool_calls=(),
+                total_cost_usd=Decimal("0.002"),
+                mutation_count=0,
+                provider_keys_resolvable=(),
+                plan_hash=f"hash-{request.session_id}",
+            )
+
+    runner = ConcurrentRaceRunner()
+    outbound = RecordingOutboundChannel()
+    adapter = AcpDuplexAdapter(
+        runner=runner,
+        workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(),
+        outbound=outbound,
+    )
+    session_a = (
+        await adapter.handle_client_request(
+            {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
+        )
+    )["result"]["sessionId"]
+    session_b = (
+        await adapter.handle_client_request(
+            {"jsonrpc": "2.0", "id": 2, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
+        )
+    )["result"]["sessionId"]
+
+    prompt_a = asyncio.create_task(
+        adapter.handle_client_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "session/prompt",
+                "params": {"sessionId": session_a, "prompt": [{"type": "text", "text": "Edit large-a.py"}]},
+            }
+        )
+    )
+    prompt_b = asyncio.create_task(
+        adapter.handle_client_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "session/prompt",
+                "params": {"sessionId": session_b, "prompt": [{"type": "text", "text": "Edit large-b.py"}]},
+            }
+        )
+    )
+
+    while len([item for item in outbound.requests if item["method"] == "session/request_permission"]) < 2:
+        await asyncio.sleep(0)
+
+    for permission_request in [item for item in outbound.requests if item["method"] == "session/request_permission"]:
+        outbound.respond(permission_request["id"], {"outcome": {"outcome": "selected", "optionId": "approve"}})
+
+    await asyncio.gather(prompt_a, prompt_b)
+
+    progress_for_a = [
+        item["params"]["sessionId"]
+        for item in outbound.notifications
+        if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
+        and "Planning turn" in item["params"]["update"]["content"]["text"]
+        and item["params"]["sessionId"] == session_a
+    ]
+    progress_for_b = [
+        item["params"]["sessionId"]
+        for item in outbound.notifications
+        if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
+        and "Planning turn" in item["params"]["update"]["content"]["text"]
+        and item["params"]["sessionId"] == session_b
+    ]
+    assert progress_for_a == [session_a]
+    assert progress_for_b == [session_b]

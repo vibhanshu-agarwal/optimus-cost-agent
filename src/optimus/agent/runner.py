@@ -82,15 +82,22 @@ class AgentRunner:
         self._planning_progress_observer = planning_progress_observer
         self._transition_validator = TransitionValidator()
 
-    def set_planning_progress_observer(self, observer: PlanningProgressObserver | None) -> None:
-        self._planning_progress_observer = observer
-
-    def run(self, request: AgentRunRequest) -> AgentRunResult:
+    def run(
+        self,
+        request: AgentRunRequest,
+        *,
+        planning_progress_observer: PlanningProgressObserver | None = None,
+    ) -> AgentRunResult:
+        observer = (
+            planning_progress_observer
+            if planning_progress_observer is not None
+            else self._planning_progress_observer
+        )
         matched_skills = self._match_skills(request)
         if request.completion_condition:
             result = self._run_bounded_loop(request, matched_skills=matched_skills)
         else:
-            result = self._run_once(request)
+            result = self._run_once(request, planning_progress_observer=observer)
         self._emit_agent_run(request, result, matched_skills=matched_skills)
         return result
 
@@ -152,7 +159,12 @@ class AgentRunner:
             stop_reason=loop_result.stop_reason.value,
         )
 
-    def _run_once(self, request: AgentRunRequest) -> AgentRunResult:
+    def _run_once(
+        self,
+        request: AgentRunRequest,
+        *,
+        planning_progress_observer: PlanningProgressObserver | None = None,
+    ) -> AgentRunResult:
         context = RuntimeContext(execution_mode=request.execution_mode)
         toolbox = AgentToolbox.for_workspace(
             workspace_root=request.workspace_root,
@@ -180,6 +192,7 @@ class AgentRunner:
                     request=request,
                     context=context,
                     toolbox=toolbox,
+                    progress_observer=planning_progress_observer,
                 )
             return self._build_result(
                 request=request,
@@ -228,6 +241,7 @@ class AgentRunner:
         request: AgentRunRequest,
         context: RuntimeContext,
         toolbox: AgentToolbox,
+        progress_observer: PlanningProgressObserver | None = None,
     ) -> AgentRunResult:
         from optimus.agent.planning_loop import PlanningLoopPolicy, PlanningLoopRunner
 
@@ -257,7 +271,7 @@ class AgentRunner:
             max_cost_usd=request.max_cost_usd,
             guard=guard,
             usage_callback=usage_callback,
-            progress_observer=self._planning_progress_observer,
+            progress_observer=progress_observer,
         )
         planning_result = planner.run(
             run_id=request.run_id,

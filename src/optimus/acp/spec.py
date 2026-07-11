@@ -227,27 +227,25 @@ class AcpDuplexAdapter:
                 workspace_root=session.cwd,
             )
             loop = asyncio.get_running_loop()
-            existing_observer = (
+            default_observer = (
                 self._runner._planning_progress_observer
                 if hasattr(self._runner, "_planning_progress_observer")
                 else None
             )
 
-            def _chained_progress_observer(event: PlanningProgressEvent) -> None:
-                if existing_observer is not None:
-                    existing_observer(event)
+            def _session_progress_observer(event: PlanningProgressEvent) -> None:
+                if default_observer is not None:
+                    default_observer(event)
                 asyncio.run_coroutine_threadsafe(
                     self._emit_planning_progress(session_id=session_id, event=event),
                     loop,
                 )
 
-            if hasattr(self._runner, "set_planning_progress_observer"):
-                self._runner.set_planning_progress_observer(_chained_progress_observer)
-            try:
-                planning_result = await asyncio.to_thread(self._runner.run, planning_request)
-            finally:
-                if hasattr(self._runner, "set_planning_progress_observer"):
-                    self._runner.set_planning_progress_observer(existing_observer)
+            planning_result = await asyncio.to_thread(
+                self._runner.run,
+                planning_request,
+                planning_progress_observer=_session_progress_observer,
+            )
             # region agent log
             acp_debug_log(
                 location="spec.py:_handle_session_prompt:planning_done",
