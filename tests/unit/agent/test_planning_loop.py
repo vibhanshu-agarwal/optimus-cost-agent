@@ -14,8 +14,10 @@ from optimus.agent.planning_loop import (
     PlanningTurnKind,
     PlanningTurnParseError,
     max_planning_observation_text_bytes,
+    observations_for_intermediate_turn,
     pack_planning_evidence,
     parse_planning_turn,
+    planning_observation_carryover_bytes,
     run_planning_with_budget,
 )
 from optimus.agent.workspace_context import DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
@@ -310,18 +312,58 @@ def test_parse_and_pack_share_observation_budget_at_boundary():
     assert decision.observation_text == observation
 
     envelope = pack_planning_evidence(
-        observations=(
-            PlanningObservation(
-                path="src/a.py",
-                start_byte=0,
-                end_byte=128,
-                source_sha256="a" * 64,
-                observation_text=observation,
-            ),
+        observations=observations_for_intermediate_turn(
+            observation_text=observation,
+            read_requests=decision.read_requests,
+            source_sha256="a" * 64,
         ),
         current_reads=(),
     )
     assert envelope.byte_size <= PLANNING_OBSERVATION_MAX_BYTES
+
+
+def test_parse_and_pack_share_observation_budget_at_boundary_for_multi_range_turn():
+    read_requests = (
+        PlanningReadRequest(path="src/b.py", start_byte=0, end_byte=128),
+        PlanningReadRequest(path="src/a.py", start_byte=128, end_byte=256),
+    )
+    observation = "x" * max_planning_observation_text_bytes(read_requests)
+    decision = parse_planning_turn(
+        f"OBSERVE: {observation}\n"
+        "READ: src/b.py#bytes=0:128\n"
+        "READ: src/a.py#bytes=128:256\n"
+    )
+    assert decision.kind is PlanningTurnKind.READ_MORE
+    assert decision.read_requests == read_requests
+    assert planning_observation_carryover_bytes(
+        observation_text=observation,
+        read_requests=read_requests,
+        source_sha256="a" * 64,
+    ) <= PLANNING_OBSERVATION_MAX_BYTES
+
+    envelope = pack_planning_evidence(
+        observations=observations_for_intermediate_turn(
+            observation_text=observation,
+            read_requests=read_requests,
+            source_sha256="a" * 64,
+        ),
+        current_reads=(),
+    )
+    assert envelope.byte_size <= PLANNING_OBSERVATION_MAX_BYTES
+
+
+def test_parse_rejects_multi_range_observation_when_duplicated_carryover_would_overflow():
+    read_requests = (
+        PlanningReadRequest(path="src/b.py", start_byte=0, end_byte=128),
+        PlanningReadRequest(path="src/a.py", start_byte=128, end_byte=256),
+    )
+    observation = "x" * (max_planning_observation_text_bytes(read_requests) + 1)
+    with pytest.raises(PlanningTurnParseError, match="observation"):
+        parse_planning_turn(
+            f"OBSERVE: {observation}\n"
+            "READ: src/b.py#bytes=0:128\n"
+            "READ: src/a.py#bytes=128:256\n"
+        )
 
 
 def test_parse_rejects_raw_4096_byte_observe_when_serialized_record_would_overflow():

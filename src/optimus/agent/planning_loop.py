@@ -173,19 +173,52 @@ def verify_planning_source_hash(*, workspace_root: Path, path: str, expected_sha
 def max_planning_observation_text_bytes(read_requests: tuple[PlanningReadRequest, ...]) -> int:
     if not read_requests:
         return PLANNING_OBSERVATION_MAX_BYTES
-    largest_header_bytes = max(
+    header_sum = planning_observation_carryover_bytes(
+        observation_text="",
+        read_requests=read_requests,
+    )
+    remaining = PLANNING_OBSERVATION_MAX_BYTES - header_sum
+    if remaining <= 0:
+        return 0
+    return remaining // len(read_requests)
+
+
+def planning_observation_carryover_bytes(
+    *,
+    observation_text: str,
+    read_requests: tuple[PlanningReadRequest, ...],
+    source_sha256: str = _PLACEHOLDER_SOURCE_SHA256,
+) -> int:
+    return sum(
         planning_observation_serialized_bytes(
             PlanningObservation(
                 path=request.path,
                 start_byte=request.start_byte,
                 end_byte=request.end_byte,
-                source_sha256=_PLACEHOLDER_SOURCE_SHA256,
-                observation_text="",
+                source_sha256=source_sha256,
+                observation_text=observation_text,
             )
         )
         for request in read_requests
     )
-    return PLANNING_OBSERVATION_MAX_BYTES - largest_header_bytes
+
+
+def observations_for_intermediate_turn(
+    *,
+    observation_text: str,
+    read_requests: tuple[PlanningReadRequest, ...],
+    source_sha256: str = _PLACEHOLDER_SOURCE_SHA256,
+) -> tuple[PlanningObservation, ...]:
+    return tuple(
+        PlanningObservation(
+            path=request.path,
+            start_byte=request.start_byte,
+            end_byte=request.end_byte,
+            source_sha256=source_sha256,
+            observation_text=observation_text,
+        )
+        for request in read_requests
+    )
 
 
 def planning_observation_serialized_bytes(observation: PlanningObservation) -> int:
@@ -340,9 +373,13 @@ def _parse_intermediate_turn(text: str) -> PlanningTurnDecision:
         raise PlanningTurnParseError("intermediate planning turn requires at least one ranged READ")
 
     read_request_tuple = tuple(read_requests)
-    max_observation_text_bytes = max_planning_observation_text_bytes(read_request_tuple)
-    observation_text_bytes = len(observation_text.encode("utf-8"))
-    if observation_text_bytes > max_observation_text_bytes:
+    if (
+        planning_observation_carryover_bytes(
+            observation_text=observation_text,
+            read_requests=read_request_tuple,
+        )
+        > PLANNING_OBSERVATION_MAX_BYTES
+    ):
         raise PlanningTurnParseError("observation exceeds planning observation budget")
 
     _validate_non_overlapping_reads(read_requests)
