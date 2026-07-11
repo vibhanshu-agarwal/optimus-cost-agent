@@ -39,6 +39,26 @@ def test_log_planning_replan_event_writes_content_free_fields(tmp_path, monkeypa
     assert "alpha content" not in json.dumps(data)
 
 
+def test_log_planning_replan_event_uses_event_stop_reason_when_not_overridden(tmp_path, monkeypatch):
+    log_path = resolve_debug_log_path(workspace_root=tmp_path)
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+
+    log_planning_replan_event(
+        PlanningProgressEvent(
+            run_id="run-1",
+            session_id="session-1",
+            settled_turn=3,
+            max_planning_turns=3,
+            gateway_request_ids=("gw-1", "gw-2", "gw-3"),
+            stop_reason="PLANNING_TURN_LIMIT_EXHAUSTED",
+        ),
+    )
+
+    line = json.loads(log_path.read_text(encoding="utf-8").strip())
+    assert line["data"]["loop_stop"] == "PLANNING_TURN_LIMIT_EXHAUSTED"
+
+
 def test_acp_debug_log_noop_when_disabled(tmp_path, monkeypatch):
     log_path = resolve_debug_log_path(workspace_root=tmp_path)
     monkeypatch.delenv("OPTIMUS_ACP_DEBUG_TRACE", raising=False)

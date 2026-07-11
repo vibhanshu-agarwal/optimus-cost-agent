@@ -9,6 +9,7 @@ from pathlib import Path
 from optimus.agent.planning_loop import (
     PlanningLoopPolicy,
     PlanningLoopRunner,
+    PlanningProgressEvent,
 )
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
@@ -59,6 +60,7 @@ def _runner(
     max_cost_usd: Decimal = Decimal("0.05"),
     now: callable | None = None,
     halt_requested: callable | None = None,
+    progress_observer: callable | None = None,
 ) -> PlanningLoopRunner:
     return PlanningLoopRunner(
         gateway_client=gateway,
@@ -70,6 +72,7 @@ def _runner(
         max_cost_usd=max_cost_usd,
         now=now,
         halt_requested=halt_requested,
+        progress_observer=progress_observer,
     )
 
 
@@ -158,6 +161,87 @@ def test_planning_loop_maps_repeated_read_request_to_typed_stop(tmp_path):
     assert result.stop_reason == "PLANNING_REPEATED_READ_REQUEST"
     assert result.settled_turns == 2
     assert result.plan_hash is None
+
+
+def test_planning_loop_emits_final_progress_event_with_stop_reason_on_typed_failure(tmp_path):
+    _write_file(tmp_path, "src/a.py", "alpha")
+    gateway = ScriptingGateway(
+        [
+            (READ_MORE_A, Decimal("0.001"), "gw-1"),
+            (READ_MORE_A, Decimal("0.001"), "gw-2"),
+        ]
+    )
+    events: list[PlanningProgressEvent] = []
+    result = _runner(
+        tmp_path,
+        gateway=gateway,
+        policy=PlanningLoopPolicy(max_planning_turns=3),
+        progress_observer=events.append,
+    ).run(
+        run_id="run-1",
+        session_id=None,
+        task="Update src/a.py",
+        initial_workspace_context="",
+    )
+
+    assert result.stop_reason == "PLANNING_REPEATED_READ_REQUEST"
+    # Two READ_MORE progress events (one per turn) plus one final settlement event.
+    assert len(events) == 3
+    assert events[0].stop_reason is None
+    assert events[1].stop_reason is None
+    assert events[-1].stop_reason == "PLANNING_REPEATED_READ_REQUEST"
+    assert events[-1].settled_turn == result.settled_turns
+    assert events[-1].gateway_request_ids == result.gateway_request_ids
+
+
+def test_planning_loop_emits_final_progress_event_on_success(tmp_path):
+    _write_file(tmp_path, "src/a.py", "alpha content")
+    gateway = ScriptingGateway(
+        [
+            (READ_MORE_A, Decimal("0.002"), "gw-1"),
+            (FINAL_PLAN, Decimal("0.002"), "gw-2"),
+        ]
+    )
+    events: list[PlanningProgressEvent] = []
+    result = _runner(
+        tmp_path,
+        gateway=gateway,
+        policy=PlanningLoopPolicy(max_planning_turns=2),
+        progress_observer=events.append,
+    ).run(
+        run_id="run-1",
+        session_id=None,
+        task="Update src/a.py",
+        initial_workspace_context="seed",
+    )
+
+    assert result.stop_reason is None
+    assert result.plan_text == FINAL_PLAN
+    # One READ_MORE progress event plus one final settlement event.
+    assert len(events) == 2
+    assert events[0].stop_reason is None
+    assert events[-1].stop_reason is None
+    assert events[-1].settled_turn == result.settled_turns
+
+
+def test_planning_loop_skips_final_progress_event_when_nothing_settled(tmp_path):
+    gateway = ScriptingGateway([(FINAL_PLAN, Decimal("0.002"), "gw-1")])
+    events: list[PlanningProgressEvent] = []
+    result = _runner(
+        tmp_path,
+        gateway=gateway,
+        halt_requested=lambda: True,
+        progress_observer=events.append,
+    ).run(
+        run_id="run-1",
+        session_id=None,
+        task="Update src/a.py",
+        initial_workspace_context="",
+    )
+
+    assert result.stop_reason == "PLANNING_HALTED"
+    assert result.settled_turns == 0
+    assert events == []
 
 
 def test_planning_loop_maps_observation_carryover_overflow_to_typed_stop(tmp_path):

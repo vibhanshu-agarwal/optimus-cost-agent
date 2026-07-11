@@ -157,6 +157,9 @@ class PlanningProgressEvent(BaseModel):
     remaining_budget_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     gateway_request_ids: tuple[str, ...] = ()
     wire_retry_count: int = Field(default=0, ge=0)
+    stop_reason: str | None = None
+    """Set only on the final, settling event for a run; None on intermediate
+    READ_MORE progress events."""
 
 
 PlanningProgressObserver = Callable[[PlanningProgressEvent], None]
@@ -661,7 +664,9 @@ class PlanningLoopRunner:
                 started_at=self._now(),
             )
         )
-        return iteration_runner.to_planning_result(loop_result)
+        result = iteration_runner.to_planning_result(loop_result)
+        iteration_runner.emit_final_progress(result)
+        return result
 
 
 class _PlanningIterationRunner:
@@ -995,4 +1000,28 @@ class _PlanningIterationRunner:
                 workspace_root=self._workspace_root,
             ),
             evidence_metadata={"settled_turns": str(settled_turns)},
+        )
+
+    def emit_final_progress(self, result: PlanningLoopResult) -> None:
+        """Record one content-free telemetry event for the settled/stopped run.
+
+        Per-turn PlanningProgressEvents (emitted from run_iteration's READ_MORE
+        branch) never carry a stop reason; this is the only place the final
+        outcome (success or any typed stop) gets recorded for evidence/telemetry.
+        Skipped when nothing settled (e.g. an immediate halt before any turn ran).
+        """
+        if self._progress_observer is None or result.settled_turns == 0:
+            return
+        self._progress_observer(
+            PlanningProgressEvent(
+                run_id=self._run_id,
+                session_id=self._session_id,
+                settled_turn=result.settled_turns,
+                max_planning_turns=self._policy.max_planning_turns,
+                total_cost_usd=self._total_cost_usd,
+                remaining_budget_usd=max(Decimal("0"), self._max_cost_usd - self._total_cost_usd),
+                gateway_request_ids=tuple(self._gateway_request_ids),
+                wire_retry_count=self._last_wire_retry_count,
+                stop_reason=result.stop_reason,
+            )
         )

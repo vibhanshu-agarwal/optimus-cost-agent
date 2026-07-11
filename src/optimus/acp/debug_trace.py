@@ -164,7 +164,14 @@ def log_workspace_context_result(request: AgentRunRequest, result: WorkspaceCont
 
 
 def log_planning_replan_event(event: PlanningProgressEvent, *, stop_reason: str | None = None) -> None:
-    """Record content-free multi-turn planning progress for ACP/debug evidence."""
+    """Record content-free multi-turn planning progress for ACP/debug evidence.
+
+    ``stop_reason`` is an explicit override for callers that don't build it into
+    the event; PlanningLoopRunner's own final-settlement event already carries
+    ``event.stop_reason`` (None for intermediate READ_MORE turns, set once on
+    the settling call), which is used when no override is given.
+    """
+    resolved_stop_reason = stop_reason if stop_reason is not None else event.stop_reason
     acp_debug_log(
         location="debug_trace.py:log_planning_replan_event",
         message="planning turn settled",
@@ -180,7 +187,7 @@ def log_planning_replan_event(event: PlanningProgressEvent, *, stop_reason: str 
             "source_sha256s": list(event.source_sha256s),
             "gateway_request_ids": list(event.gateway_request_ids),
             "wire_retry_count": event.wire_retry_count,
-            "loop_stop": stop_reason,
+            "loop_stop": resolved_stop_reason,
         },
         hypothesis_id="P9.85-REPLAN",
         run_id=event.run_id,
