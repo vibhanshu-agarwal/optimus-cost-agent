@@ -10,8 +10,10 @@ from optimus.agent.planning_loop import (
     PlanningLoopPolicy,
     PlanningObservation,
     PlanningReadEvidence,
+    PlanningReadRequest,
     PlanningTurnKind,
     PlanningTurnParseError,
+    max_planning_observation_text_bytes,
     pack_planning_evidence,
     parse_planning_turn,
     run_planning_with_budget,
@@ -142,7 +144,9 @@ def test_parse_planning_turn_rejects_missing_observation():
 
 
 def test_parse_planning_turn_rejects_oversized_observation():
-    observation = "x" * (PLANNING_OBSERVATION_MAX_BYTES + 1)
+    read_requests = (PlanningReadRequest(path="src/a.py", start_byte=0, end_byte=10),)
+    max_text_bytes = max_planning_observation_text_bytes(read_requests)
+    observation = "x" * (max_text_bytes + 1)
     with pytest.raises(PlanningTurnParseError, match="observation"):
         parse_planning_turn(f"OBSERVE: {observation}\nREAD: src/a.py#bytes=0:10\n")
 
@@ -281,13 +285,14 @@ def test_pack_planning_evidence_serializes_observations_and_current_reads_in_ord
 
 
 def test_pack_planning_evidence_rejects_observation_budget_overflow():
-    oversized = "x" * (PLANNING_OBSERVATION_MAX_BYTES + 1)
+    read_requests = (PlanningReadRequest(path="src/a.py", start_byte=0, end_byte=4),)
+    oversized = "x" * (max_planning_observation_text_bytes(read_requests) + 1)
     observations = (
         PlanningObservation(
             path="src/a.py",
             start_byte=0,
             end_byte=4,
-            source_sha256="hash-a",
+            source_sha256="a" * 64,
             observation_text=oversized,
         ),
     )
@@ -295,6 +300,34 @@ def test_pack_planning_evidence_rejects_observation_budget_overflow():
     with pytest.raises(PlanningEvidenceBudgetError) as exc:
         pack_planning_evidence(observations=observations, current_reads=())
     assert exc.value.code == "PLANNING_OBSERVATION_BUDGET_EXHAUSTED"
+
+
+def test_parse_and_pack_share_observation_budget_at_boundary():
+    read_requests = (PlanningReadRequest(path="src/a.py", start_byte=0, end_byte=128),)
+    observation = "x" * max_planning_observation_text_bytes(read_requests)
+    decision = parse_planning_turn(f"OBSERVE: {observation}\nREAD: src/a.py#bytes=0:128\n")
+    assert decision.kind is PlanningTurnKind.READ_MORE
+    assert decision.observation_text == observation
+
+    envelope = pack_planning_evidence(
+        observations=(
+            PlanningObservation(
+                path="src/a.py",
+                start_byte=0,
+                end_byte=128,
+                source_sha256="a" * 64,
+                observation_text=observation,
+            ),
+        ),
+        current_reads=(),
+    )
+    assert envelope.byte_size <= PLANNING_OBSERVATION_MAX_BYTES
+
+
+def test_parse_rejects_raw_4096_byte_observe_when_serialized_record_would_overflow():
+    observation = "x" * PLANNING_OBSERVATION_MAX_BYTES
+    with pytest.raises(PlanningTurnParseError, match="observation"):
+        parse_planning_turn(f"OBSERVE: {observation}\nREAD: src/a.py#bytes=0:128\n")
 
 
 def test_pack_planning_evidence_rejects_current_read_budget_overflow():

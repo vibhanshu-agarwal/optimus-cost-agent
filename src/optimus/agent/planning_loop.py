@@ -14,6 +14,7 @@ from optimus.loops.models import LoopBudgetPolicy
 
 PLANNING_OBSERVATION_MAX_BYTES = 4 * 1024
 PLANNING_NEW_READ_MAX_BYTES = 12 * 1024
+_PLACEHOLDER_SOURCE_SHA256 = "0" * 64
 
 _OBSERVE_DIRECTIVE = re.compile(r"^OBSERVE:\s*(.*)$", re.DOTALL)
 _READ_RANGE_DIRECTIVE = re.compile(r"^READ:\s+(\S+)#bytes=(\d+):(\d+)\s*$")
@@ -125,18 +126,6 @@ def run_planning_with_budget(max_cost_usd: Decimal) -> PlanningLoopResult:
     raise NotImplementedError("planning loop runner is implemented in a later task")
 
 
-def verify_planning_source_hash(*, workspace_root: Path, path: str, expected_sha256: str) -> None:
-    target = _resolve_workspace_file(workspace_root=workspace_root, relative_path=path)
-    if not target.is_file():
-        raise PlanningReadError("PLANNING_READ_FILE_NOT_FOUND", f"file not found: {path}")
-    actual_sha256 = hashlib.sha256(target.read_bytes()).hexdigest()
-    if actual_sha256 != expected_sha256:
-        raise PlanningReadError(
-            "PLANNING_READ_SOURCE_CHANGED",
-            f"source hash changed for {path}",
-        )
-
-
 def pack_planning_evidence(
     *,
     observations: tuple[PlanningObservation, ...],
@@ -167,6 +156,40 @@ def pack_planning_evidence(
         )
 
     return PlanningEvidenceEnvelope(text=combined_text, byte_size=combined_bytes)
+
+
+def verify_planning_source_hash(*, workspace_root: Path, path: str, expected_sha256: str) -> None:
+    target = _resolve_workspace_file(workspace_root=workspace_root, relative_path=path)
+    if not target.is_file():
+        raise PlanningReadError("PLANNING_READ_FILE_NOT_FOUND", f"file not found: {path}")
+    actual_sha256 = hashlib.sha256(target.read_bytes()).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise PlanningReadError(
+            "PLANNING_READ_SOURCE_CHANGED",
+            f"source hash changed for {path}",
+        )
+
+
+def max_planning_observation_text_bytes(read_requests: tuple[PlanningReadRequest, ...]) -> int:
+    if not read_requests:
+        return PLANNING_OBSERVATION_MAX_BYTES
+    largest_header_bytes = max(
+        planning_observation_serialized_bytes(
+            PlanningObservation(
+                path=request.path,
+                start_byte=request.start_byte,
+                end_byte=request.end_byte,
+                source_sha256=_PLACEHOLDER_SOURCE_SHA256,
+                observation_text="",
+            )
+        )
+        for request in read_requests
+    )
+    return PLANNING_OBSERVATION_MAX_BYTES - largest_header_bytes
+
+
+def planning_observation_serialized_bytes(observation: PlanningObservation) -> int:
+    return len(_serialize_planning_observation(observation).encode("utf-8"))
 
 
 def _serialize_planning_observation(observation: PlanningObservation) -> str:
@@ -316,7 +339,10 @@ def _parse_intermediate_turn(text: str) -> PlanningTurnDecision:
     if not read_requests:
         raise PlanningTurnParseError("intermediate planning turn requires at least one ranged READ")
 
-    if len(observation_text.encode("utf-8")) > PLANNING_OBSERVATION_MAX_BYTES:
+    read_request_tuple = tuple(read_requests)
+    max_observation_text_bytes = max_planning_observation_text_bytes(read_request_tuple)
+    observation_text_bytes = len(observation_text.encode("utf-8"))
+    if observation_text_bytes > max_observation_text_bytes:
         raise PlanningTurnParseError("observation exceeds planning observation budget")
 
     _validate_non_overlapping_reads(read_requests)
@@ -324,7 +350,7 @@ def _parse_intermediate_turn(text: str) -> PlanningTurnDecision:
     return PlanningTurnDecision(
         kind=PlanningTurnKind.READ_MORE,
         observation_text=observation_text,
-        read_requests=tuple(read_requests),
+        read_requests=read_request_tuple,
         failure_signature=_normalized_read_failure_signature(read_requests),
     )
 
