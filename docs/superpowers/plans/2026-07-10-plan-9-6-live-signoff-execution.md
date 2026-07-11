@@ -208,7 +208,7 @@ Row 8 is already closed by Plan 9.75, but confirm no regression on post-merge `m
 - [x] **F3.** Plan 9.75 Task 5 `[x]` only after F1 + F2.
 - [x] **F4.** `python -m ruff check .` clean; default `pytest -q` green (652 passed, 20 deselected,
   2026-07-11; verified independently by reviewer — wt-vibhanshu venv stale for ruff/pytest).
-- [ ] **F5.** PR opened; reviewer verifies artifacts on disk, not agent prose.
+- [x] **F5.** PR opened and merged (PR #42, 2026-07-11); reviewer verified artifacts on disk, not agent prose.
 
 ## Notes
 
