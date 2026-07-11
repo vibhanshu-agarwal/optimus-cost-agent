@@ -51,6 +51,8 @@ class AgentRunRequest(BaseModel):
     workspace_root: Path
     approval: AgentApproval = Field(default_factory=AgentApproval)
     max_cost_usd: Decimal = Field(default=Decimal("0.05"), ge=Decimal("0"))
+    max_planning_turns: int = Field(default=3, ge=1)
+    planning_wall_clock_minutes: int = Field(default=30, ge=1)
     skill_paths: tuple[Path, ...] = ()
     completion_condition: str | None = None
 

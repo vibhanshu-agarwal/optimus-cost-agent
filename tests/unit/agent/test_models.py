@@ -40,6 +40,52 @@ def test_agent_approval_requires_id_and_plan_hash_when_approved():
         AgentApproval(approved=True, approval_id="approval-1")
 
 
+def test_agent_run_request_defaults_planning_turn_policy(tmp_path):
+    request = AgentRunRequest(
+        run_id="run-1",
+        task="Explain code",
+        execution_mode=ExecutionMode.PLAN,
+        workspace_root=tmp_path,
+    )
+    assert request.max_planning_turns == 3
+    assert request.planning_wall_clock_minutes == 30
+
+
+def test_agent_run_request_accepts_boundary_planning_turn_cap(tmp_path):
+    request = AgentRunRequest(
+        run_id="run-1",
+        task="Explain code",
+        execution_mode=ExecutionMode.PLAN,
+        workspace_root=tmp_path,
+        max_planning_turns=1,
+    )
+    assert request.max_planning_turns == 1
+
+
+@pytest.mark.parametrize("turns", [0, -1])
+def test_agent_run_request_rejects_non_positive_planning_turn_caps(turns: int, tmp_path):
+    with pytest.raises(ValidationError):
+        AgentRunRequest(
+            run_id="run-1",
+            task="Explain code",
+            execution_mode=ExecutionMode.PLAN,
+            workspace_root=tmp_path,
+            max_planning_turns=turns,
+        )
+
+
+@pytest.mark.parametrize("minutes", [0, -1])
+def test_agent_run_request_rejects_non_positive_planning_wall_clock(minutes: int, tmp_path):
+    with pytest.raises(ValidationError):
+        AgentRunRequest(
+            run_id="run-1",
+            task="Explain code",
+            execution_mode=ExecutionMode.PLAN,
+            workspace_root=tmp_path,
+            planning_wall_clock_minutes=minutes,
+        )
+
+
 def test_agent_run_result_records_tool_trajectory_and_final_state():
     result = AgentRunResult(
         run_id="run-1",
