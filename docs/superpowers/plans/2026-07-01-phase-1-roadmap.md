@@ -279,8 +279,37 @@ the context budget.
 
 **Status:** Drafted 2026-07-10 (priority: high). This is a correctness floor for the specific
 silent READ-only fallback observed during Plan 9.75 verification, not a claim that mutation tasks
-generally work. Its working hypothesis must be confirmed with runtime context evidence before
-implementation begins.
+generally work. Current-main reproduction confirms the 16 KiB size/order mechanism: referenced
+fixture paths may survive in the omission marker while their complete contents are absent. The
+historical July 11 planner input was not captured byte-for-byte, so implementation evidence must
+preserve that distinction.
+
+## Plan 9.9 (Tracked, Not Yet Scheduled): Operator Packaging and Credential Diagnostics
+
+**Raised:** 2026-07-11 while closing Plan 9.7 review follow-ups during Plan 9.8 review.
+
+**User story:** As a Windows operator, I get an actionable diagnostic when provider identity and
+provider key resolve from incompatible configuration layers, and `optimus-agent` finds its project
+resources correctly from both editable and non-editable tool installations.
+
+**Initial scope (exactly these two deferred Plan 9.7 seeds):**
+
+- Cross-layer provider/key mismatch diagnostics: `resolve_provider_secrets` currently resolves the
+  provider name and provider API key independently through env -> `.env.gateway` -> keyring. An
+  env-overridden provider can therefore be paired with a keyring key for a different provider,
+  spawning the local gateway and surfacing only a confusing upstream 401 in
+  `reports/local-gateway.log`. Plan 9.9 must warn or fail closed at the `ensure_local_gateway`
+  call site without logging either key.
+- Non-editable-install project-root discovery: `Path(__file__).parents[3]` in
+  `src/optimus/acp/__main__.py` and the same pattern in `src/optimus/acp/debug_trace.py` can resolve
+  the installed package tree rather than the repository/project root. That can skip
+  `.env.gateway` discovery and place gateway/debug logs under the wrong tree. Plan 9.9 must define
+  and test an explicit resource/config/log-root contract for editable and non-editable installs.
+
+**Status:** Tracked, not yet scheduled; no implementation plan exists. Until Plan 9.9 lands, Plan
+9.8's live operator gate must use `uv tool install --editable . --reinstall`. Do not silently
+change that gate to a non-editable install or fold these packaging/credential concerns into Plan
+9.8's context-selection implementation.
 
 ## Plan 10 (Tracked, Not Yet Scheduled): Unified Gateway Capabilities Broker
 
@@ -354,11 +383,18 @@ pattern.
     `docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`).
 15. Plan 9.8: Task-aware workspace context for planning — drafted, high priority; confirms and
     fixes the specific budget/ordering-driven silent READ-only fallback before broader context work.
-16. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
-17. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
+16. Plan 9.9: Operator packaging and credential diagnostics — tracked, not yet scheduled; owns
+    cross-layer provider/key mismatch diagnostics and non-editable-install root discovery.
+17. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
+18. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
     starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden
     harness are stable.
 
 The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, one-key scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 9.5 composes the Phase 1 primitives into a working local-first coding agent; Plan 9.8 establishes the specific task-aware context correctness floor before Plan 11 adds context-window intelligence. Plan 11 stays last regardless: it depends on Plan 9.8 and inputs from Plans 4, 5, 6, 6.5, 7, 9, and 9.5, and its PDF fold-in is explicitly deferred until calibration is accepted.
+
+Plan 9.9 follows Plan 9.8 as a separate operator-runtime hardening lane. It owns the two deferred
+Plan 9.7 packaging/credential diagnostics and does not expand Plan 9.8's context-selection scope.
+Plan 9.8 continues to use an editable operator install for live proof until Plan 9.9 establishes
+and verifies the non-editable-install root contract.
 
 Plans 9.6 and 9.7 sit alongside each other, not in a strict dependency order: Plan 9.6 owns the Phase 1 working-agent sign-off gate (live Redis/Gateway/e2e proof plus the real-IDE HITL artifact) and Plan 11 does not start until it passes; Plan 9.7 only changes how an operator's local Redis/Gateway dependencies get started before a session and does not touch what Plan 9.6 proves or gate. Plan 9.7 merged independently of Plan 9.6's remaining open HITL item. **Plan 9.75** follows Plan 9.7 in the recommended sequence: it fixes the open Zed HITL / `toolCall` permission payload and closes Plan 9.7's deferred planning-bar DoD using the Plan 9.7 operator PATH install for manual verification. Plan 10 is tracked separately and not yet scheduled or designed; do not fold its gateway-capability-broker scope into 9.6, 9.7, or 9.75 when picking up either.
