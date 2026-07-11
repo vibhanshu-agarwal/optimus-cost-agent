@@ -16,8 +16,12 @@ PLANNING_NEW_READ_MAX_BYTES = 12 * 1024
 _OBSERVE_DIRECTIVE = re.compile(r"^OBSERVE:\s*(.*)$", re.DOTALL)
 _READ_RANGE_DIRECTIVE = re.compile(r"^READ:\s+(\S+)#bytes=(\d+):(\d+)\s*$")
 _REFUSE_DIRECTIVE = re.compile(r"^REFUSE:\s*(.+)$")
+_WRITE_DIRECTIVE = re.compile(r"^WRITE\s+(\S+)\s*$")
 _DIRECTIVE_PREFIXES = ("OBSERVE:", "READ:", "WRITE", "TEST", "REFUSE:", "PLAN:")
-_FORBIDDEN_REFUSE_SUBSTRINGS = ("OBSERVE:", "READ:", "WRITE", "TEST", "PLAN:", "CONTENT:", "END_CONTENT")
+_REFUSE_REASON_DIRECTIVE_PREFIX = re.compile(
+    r"^(?:OBSERVE:|READ:|WRITE(?:\s|$)|TEST\s|PLAN:|CONTENT:|END_CONTENT)"
+)
+_BULLET_PREFIXES = ("- ", "* ", "+ ")
 
 
 class PlanningTurnKind(StrEnum):
@@ -91,6 +95,8 @@ def run_planning_with_budget(max_cost_usd: Decimal) -> PlanningLoopResult:
 
 
 _RANGED_READ_LINE = re.compile(r"^READ:\s+\S+#bytes=\d+:\d+\s*$")
+_FINAL_READ_DIRECTIVE = re.compile(r"^READ\s+(\S+)\s*$")
+_FINAL_TEST_DIRECTIVE = re.compile(r"^TEST\s+(.+)$")
 
 
 def parse_planning_turn(text: str) -> PlanningTurnDecision:
@@ -98,27 +104,71 @@ def parse_planning_turn(text: str) -> PlanningTurnDecision:
     if not stripped:
         raise PlanningTurnParseError("no recognized planning-turn grammar")
 
-    if _looks_like_intermediate_turn(stripped):
-        return _parse_intermediate_turn(stripped)
-
     refuse_decision = _try_parse_refuse(stripped)
     if refuse_decision is not None:
         return refuse_decision
     if stripped.startswith("REFUSE:"):
         raise PlanningTurnParseError("REFUSE reason must be one non-empty line")
 
+    surface_lines = _directive_surface_lines(stripped)
+    if _surface_has_observe(surface_lines):
+        return _parse_intermediate_turn(stripped)
+
     final_decision = _try_parse_final_plan(stripped)
     if final_decision is not None:
         return final_decision
 
+    if _surface_has_ranged_read(surface_lines):
+        return _parse_intermediate_turn(stripped)
+
     raise PlanningTurnParseError("no recognized planning-turn grammar")
 
 
-def _looks_like_intermediate_turn(text: str) -> bool:
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if any(line.startswith("OBSERVE:") for line in lines):
-        return True
-    return any(_RANGED_READ_LINE.match(line) is not None for line in lines)
+def _directive_surface_lines(text: str) -> tuple[str, ...]:
+    lines = text.splitlines()
+    surface_lines: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        normalized = _normalize_directive_surface_line(line)
+        if _WRITE_DIRECTIVE.match(normalized) is not None:
+            index += 1
+            while index < len(lines) and not _is_final_directive_line(lines[index]):
+                index += 1
+            continue
+        stripped = line.strip()
+        if stripped:
+            surface_lines.append(stripped)
+        index += 1
+    return tuple(surface_lines)
+
+
+def _normalize_directive_surface_line(line: str) -> str:
+    normalized = line.strip()
+    while True:
+        for prefix in _BULLET_PREFIXES:
+            if normalized.startswith(prefix):
+                normalized = normalized[len(prefix) :].lstrip()
+                break
+        else:
+            return normalized
+
+
+def _is_final_directive_line(line: str) -> bool:
+    normalized = _normalize_directive_surface_line(line)
+    return (
+        _FINAL_READ_DIRECTIVE.match(normalized) is not None
+        or _WRITE_DIRECTIVE.match(normalized) is not None
+        or _FINAL_TEST_DIRECTIVE.match(normalized) is not None
+    )
+
+
+def _surface_has_observe(surface_lines: tuple[str, ...]) -> bool:
+    return any(line.startswith("OBSERVE:") for line in surface_lines)
+
+
+def _surface_has_ranged_read(surface_lines: tuple[str, ...]) -> bool:
+    return any(_RANGED_READ_LINE.match(line) is not None for line in surface_lines)
 
 
 def _parse_intermediate_turn(text: str) -> PlanningTurnDecision:
@@ -191,16 +241,13 @@ def _try_parse_refuse(text: str) -> PlanningTurnDecision | None:
         raise PlanningTurnParseError("REFUSE reason must be one non-empty line")
     if len(reason.encode("utf-8")) > 512:
         raise PlanningTurnParseError("REFUSE reason exceeds 512 UTF-8 bytes")
-    if any(prefix in reason for prefix in _FORBIDDEN_REFUSE_SUBSTRINGS):
+    if _REFUSE_REASON_DIRECTIVE_PREFIX.match(reason):
         raise PlanningTurnParseError("REFUSE reason must not contain directive prefixes")
 
     return PlanningTurnDecision(kind=PlanningTurnKind.REFUSE, reason=reason)
 
 
 def _try_parse_final_plan(text: str) -> PlanningTurnDecision | None:
-    if any(line.strip().startswith("OBSERVE:") for line in text.splitlines()):
-        return None
-
     try:
         directives = parse_agent_plan(text)
     except AgentDirectiveParseError:

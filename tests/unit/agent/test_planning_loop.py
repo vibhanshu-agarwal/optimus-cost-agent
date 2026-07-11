@@ -183,6 +183,22 @@ def test_parse_planning_turn_accepts_valid_final_plan():
     assert decision.failure_signature is None
 
 
+def test_parse_planning_turn_accepts_final_plan_whose_write_content_contains_ranged_read_example():
+    plan_text = (
+        "READ src/example.py\n"
+        "WRITE docs/example.md\n"
+        "Some doc text.\n"
+        "READ: src/b.py#bytes=0:128\n"
+        "More doc text.\n"
+        "TEST pytest tests/unit -q"
+    )
+    decision = parse_planning_turn(plan_text)
+    assert decision.kind is PlanningTurnKind.FINAL_PLAN
+    assert decision.directives is not None
+    assert decision.directives.write is not None
+    assert "READ: src/b.py#bytes=0:128" in decision.directives.write.content
+
+
 def test_parse_planning_turn_accepts_valid_refuse():
     decision = parse_planning_turn("REFUSE: Current raw evidence is insufficient for a safe write.")
     assert decision.kind is PlanningTurnKind.REFUSE
@@ -206,6 +222,12 @@ def test_parse_planning_turn_rejects_invalid_refuse_reasons(reason: str):
 def test_parse_planning_turn_rejects_refuse_with_directive_prefix_in_reason():
     with pytest.raises(PlanningTurnParseError, match="REFUSE"):
         parse_planning_turn("REFUSE: READ: src/a.py")
+
+
+def test_parse_planning_turn_accepts_refuse_reason_containing_test_word():
+    decision = parse_planning_turn("REFUSE: I need to see the full file before any TEST can run safely.")
+    assert decision.kind is PlanningTurnKind.REFUSE
+    assert "TEST can run safely" in decision.reason
 
 
 def test_parse_planning_turn_raises_for_unrecognized_grammar():
