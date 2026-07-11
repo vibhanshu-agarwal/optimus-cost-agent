@@ -410,6 +410,15 @@ class AcpDuplexAdapter:
         await self._outbound.notify("session/update", message_payload)
 
 
+_VISIBLE_WORKSPACE_CONTEXT_FAILURES = frozenset(
+    {
+        "AMBIGUOUS_WORKSPACE_REFERENCE",
+        "REQUIRED_WORKSPACE_FILE_TOO_LARGE",
+        "WORKSPACE_REFERENCE_NOT_READABLE",
+    }
+)
+
+
 def _completion_message(result: AgentRunResult) -> str:
     if result.mutation_count > 0:
         writes = [call.summary for call in result.tool_calls if call.tool_name == "write_file"]
@@ -418,6 +427,8 @@ def _completion_message(result: AgentRunResult) -> str:
         return f"Completed {result.mutation_count} file change(s)."
     if result.tool_calls:
         return "Executed:\n" + "\n".join(f"- {call.summary}" for call in result.tool_calls)
+    if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES:
+        return result.output_text
     return "Turn completed."
 
 

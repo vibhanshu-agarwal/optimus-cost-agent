@@ -1,7 +1,8 @@
 import pytest
 
-from optimus.acp.bootstrap import StartupConfigurationError, build_configured_server
+from optimus.acp.bootstrap import StartupConfigurationError, build_agent_runner_for_harness, build_configured_server
 from optimus.acp.preflight import PreflightFailure
+from optimus.agent.runner import AgentRunner
 
 
 def test_bootstrap_reports_missing_optimus_credentials(tmp_path):
@@ -73,3 +74,47 @@ def test_bootstrap_reports_unreachable_redis(tmp_path, monkeypatch):
 
     assert exc_info.value.exit_code == 2
     assert "Redis is not reachable" in exc_info.value.user_message
+
+
+def test_bootstrap_wires_workspace_context_observer(monkeypatch, tmp_path):
+    from optimus.acp.debug_trace import log_workspace_context_result
+
+    captured_kwargs: dict = {}
+
+    class CapturingAgentRunner(AgentRunner):
+        def __init__(self, **kwargs) -> None:
+            captured_kwargs.update(kwargs)
+            super().__init__(**kwargs)
+
+    class FakeStore:
+        def ping(self):
+            return None
+
+    class FakeRuntime:
+        def ping(self):
+            return None
+
+        def sync_state_store(self):
+            return FakeStore()
+
+        def telemetry_adapter(self):
+            return object()
+
+    monkeypatch.setattr("optimus.acp.bootstrap.AgentRunner", CapturingAgentRunner)
+    monkeypatch.setattr(
+        "optimus.acp.preflight.run_preflight",
+        lambda environ, **kwargs: "redis://localhost:6379/0",
+    )
+    monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: FakeRuntime())
+
+    build_agent_runner_for_harness(
+        environ={
+            "OPTIMUS_GATEWAY_URL": "https://gateway.optimus.ai",
+            "OPTIMUS_API_KEY": "opt-test",
+            "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
+        },
+        workspace_root=tmp_path,
+        model="glm-5.2",
+    )
+
+    assert captured_kwargs["workspace_context_observer"] is log_workspace_context_result

@@ -10,6 +10,9 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
+from optimus.agent.models import AgentRunRequest
+from optimus.agent.workspace_context import WorkspaceContextResult
+
 _DEBUG_SESSION_ID = "c66f94"
 _PROVENANCE_LOGGED = False
 DEFAULT_DEBUG_LOG_RELATIVE_PATH = Path(".optimus/debug-acp.ndjson")
@@ -121,3 +124,31 @@ def acp_debug_log(
             handle.write(json.dumps(payload, separators=(",", ":"), default=str) + "\n")
     except Exception:
         return
+
+
+def log_workspace_context_result(request: AgentRunRequest, result: WorkspaceContextResult) -> None:
+    """Record content-free workspace context diagnostics for the active run."""
+    acp_debug_log(
+        location="debug_trace.py:log_workspace_context_result",
+        message="workspace context assembled",
+        data={
+            "run_id": request.run_id,
+            "session_id": request.session_id,
+            "max_total_bytes": result.max_total_bytes,
+            "used_bytes": result.used_bytes,
+            "prioritized_paths": list(result.prioritized_paths),
+            "omitted_count": len(result.omitted_paths),
+            "references": [
+                {
+                    "reference": item.reference,
+                    "status": item.status.value,
+                    "candidate_count": len(item.candidates),
+                    "candidates": list(item.candidates),
+                }
+                for item in result.diagnostics
+            ],
+            "blocking_stop_reason": result.blocking_stop_reason,
+        },
+        hypothesis_id="P9.8-CONTEXT",
+        run_id=request.run_id,
+    )
