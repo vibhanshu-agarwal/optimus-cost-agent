@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable
 from decimal import Decimal
@@ -24,6 +25,8 @@ class AgentPlanRecord(BaseModel):
     plan_hash: str = Field(min_length=1)
     plan_text: str = Field(min_length=1)
     gateway_request_id: str = Field(min_length=1)
+    gateway_request_ids: tuple[str, ...] = ()
+    planning_turns: int = Field(default=1, ge=1)
     model: str = Field(min_length=1)
     provider: str = Field(min_length=1)
     cost_usd: Decimal = Field(ge=Decimal("0"))
@@ -260,7 +263,15 @@ def _latest_plan_key(*, run_id: str) -> str:
 
 
 def _record_to_mapping(record: AgentPlanRecord) -> dict[str, str]:
-    return {key: str(value) for key, value in record.model_dump(mode="json").items() if value is not None}
+    mapping: dict[str, str] = {}
+    for key, value in record.model_dump(mode="json").items():
+        if value is None:
+            continue
+        if key == "gateway_request_ids":
+            mapping[key] = json.dumps(value)
+        else:
+            mapping[key] = str(value)
+    return mapping
 
 
 def _decode_mapping(raw: dict[object, object]) -> dict[str, str]:
@@ -273,6 +284,8 @@ def _decode_mapping(raw: dict[object, object]) -> dict[str, str]:
 
 
 def _record_from_mapping(mapping: dict[str, str]) -> AgentPlanRecord:
+    raw_gateway_request_ids = mapping.get("gateway_request_ids")
+    gateway_request_ids = tuple(json.loads(raw_gateway_request_ids)) if raw_gateway_request_ids else ()
     return AgentPlanRecord(
         run_id=mapping["run_id"],
         session_id=mapping.get("session_id"),
@@ -282,6 +295,8 @@ def _record_from_mapping(mapping: dict[str, str]) -> AgentPlanRecord:
         plan_hash=mapping["plan_hash"],
         plan_text=mapping["plan_text"],
         gateway_request_id=mapping["gateway_request_id"],
+        gateway_request_ids=gateway_request_ids,
+        planning_turns=int(mapping.get("planning_turns", "1")),
         model=mapping["model"],
         provider=mapping["provider"],
         cost_usd=Decimal(mapping["cost_usd"]),

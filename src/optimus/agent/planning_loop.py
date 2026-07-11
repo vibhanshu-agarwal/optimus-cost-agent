@@ -13,13 +13,17 @@ from pydantic import BaseModel, ConfigDict, Field
 from optimus.agent.directives import AgentDirectiveParseError, AgentPlanDirectives, parse_agent_plan
 from optimus.agent.prompts import build_multi_turn_planner_input
 from optimus.agent.workspace_context import DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
+from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.loops.completion import DeterministicCompletionEvaluator
 from optimus.loops.controller import GoalLoopController
 from optimus.loops.ledger import InMemoryProgressLedger
 from optimus.loops.models import IterationOutcome, IterationState, LoopBudgetPolicy, LoopStopReason, LoopToolExecutorProtocol
+from optimus.retry.policy import RetryController, RetryPolicy
 from optimus.runtime.modes import ExecutionMode
 from optimus.telemetry.subjects import sanitize_workspace_text
+
+PlanningGatewayUsageCallback = Callable[[GatewayUsage, int, int], None]
 
 PLANNING_OBSERVATION_MAX_BYTES = 4 * 1024
 PLANNING_NEW_READ_MAX_BYTES = 12 * 1024
@@ -131,6 +135,7 @@ class PlanningLoopResult(BaseModel):
     gateway_request_ids: tuple[str, ...] = ()
     plan_text: str | None = None
     plan_hash: str | None = None
+    provider: str | None = None
     directives: AgentPlanDirectives | None = None
     corrective_text: str = ""
     refusal_reason: str | None = None
@@ -548,6 +553,8 @@ class PlanningLoopRunner:
         guard: PreToolGuard | None = None,
         now: Callable[[], datetime] | None = None,
         halt_requested: Callable[[], bool] | None = None,
+        usage_callback: PlanningGatewayUsageCallback | None = None,
+        retry_controller: RetryController | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -561,6 +568,11 @@ class PlanningLoopRunner:
         )
         self._now = now or (lambda: datetime.now(tz=UTC))
         self._halt_requested = halt_requested or (lambda: False)
+        self._usage_callback = usage_callback
+        self._retry_controller = retry_controller or RetryController(
+            policy=RetryPolicy(base_delay_ms=0, jitter_ms=(0,)),
+            sleep_ms=lambda _delay_ms: None,
+        )
 
     def run(
         self,
@@ -588,6 +600,8 @@ class PlanningLoopRunner:
             loop_budget_policy=self._policy.to_loop_budget_policy(max_cost_usd=self._max_cost_usd),
             max_cost_usd=self._max_cost_usd,
             now=self._now,
+            usage_callback=self._usage_callback,
+            retry_controller=self._retry_controller,
         )
         controller = GoalLoopController(
             policy=iteration_runner.loop_budget_policy,
@@ -629,6 +643,8 @@ class _PlanningIterationRunner:
         loop_budget_policy: LoopBudgetPolicy,
         max_cost_usd: Decimal,
         now: Callable[[], datetime],
+        usage_callback: PlanningGatewayUsageCallback | None,
+        retry_controller: RetryController,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -642,11 +658,47 @@ class _PlanningIterationRunner:
         self.loop_budget_policy = loop_budget_policy
         self._max_cost_usd = max_cost_usd
         self._now = now
+        self._usage_callback = usage_callback
+        self._retry_controller = retry_controller
         self._observations: list[PlanningObservation] = []
         self._current_reads: tuple[PlanningReadEvidence, ...] = ()
         self._gateway_request_ids: list[str] = []
         self._total_cost_usd = Decimal("0")
         self._last_decision: PlanningTurnDecision | None = None
+        self._last_provider: str | None = None
+
+    def _invoke_planning_gateway(
+        self,
+        *,
+        planning_turn: int,
+        prompt: str,
+    ) -> tuple[GatewayResponse, Decimal]:
+        attempt_cost = Decimal("0")
+        wire_attempt = 0
+
+        def operation() -> GatewayResponse:
+            nonlocal attempt_cost, wire_attempt
+            wire_attempt += 1
+            response = self._gateway_client.create_response(
+                model=self._model,
+                input_text=prompt,
+                metadata={
+                    "run_id": self._run_id,
+                    "session_id": self._session_id,
+                    "purpose": "planning_turn",
+                    "planning_turn": planning_turn,
+                },
+            )
+            attempt_cost = response.gateway_usage.cost_usd
+            self._last_provider = response.gateway_usage.provider
+            if self._usage_callback is not None:
+                self._usage_callback(response.gateway_usage, planning_turn, wire_attempt)
+            return response
+
+        retry_result = self._retry_controller.run(operation)
+        if retry_result.value is None:
+            raise RuntimeError("planning gateway request failed after retries")
+        return retry_result.value, attempt_cost
 
     def run_iteration(self, state: IterationState, tools: LoopToolExecutorProtocol) -> IterationOutcome:
         planning_turn = state.iteration + 1
@@ -677,18 +729,16 @@ class _PlanningIterationRunner:
             current_read_evidence_envelope=current_envelope,
             initial_workspace_context=self._initial_workspace_context if planning_turn == 1 else "",
         )
-        response = self._gateway_client.create_response(
-            model=self._model,
-            input_text=prompt,
-            metadata={
-                "run_id": self._run_id,
-                "session_id": self._session_id,
-                "purpose": "planning_turn",
-                "planning_turn": planning_turn,
-            },
-        )
+        try:
+            response, attempt_cost = self._invoke_planning_gateway(planning_turn=planning_turn, prompt=prompt)
+        except RuntimeError:
+            return IterationOutcome(
+                summary="planning gateway request failed after retries",
+                deterministic_completion=False,
+                failure_signature="GATEWAY_FAILURE",
+                cost_credits=Decimal("0"),
+            )
         self._gateway_request_ids.append(response.gateway_usage.gateway_request_id)
-        attempt_cost = response.gateway_usage.cost_usd
         self._total_cost_usd += attempt_cost
 
         try:
@@ -808,6 +858,7 @@ class _PlanningIterationRunner:
                 gateway_request_ids=tuple(self._gateway_request_ids),
                 plan_text=plan_text,
                 plan_hash=plan_hash,
+                provider=self._last_provider,
                 directives=decision.directives if decision is not None else None,
                 evidence_metadata={"settled_turns": str(settled_turns)},
             )

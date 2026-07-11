@@ -1,3 +1,4 @@
+import hashlib
 from decimal import Decimal
 from subprocess import CompletedProcess
 
@@ -5,10 +6,12 @@ from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunStatus
 from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import InMemoryAgentStateStore
 from optimus.agent.workspace_context import WorkspaceContextResult
+from optimus.gateway.errors import GatewayHttpError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.loops.models import IterationOutcome, IterationState
 from optimus.runtime.modes import ExecutionMode
 from optimus.telemetry.events import TelemetryEventKind
+from optimus.usage.accounting import UsageAccountingService
 
 
 class FakeGatewayClient:
@@ -28,6 +31,72 @@ class FakeGatewayClient:
                 cost_usd=Decimal("0.002"),
             ),
             raw={"id": "resp-1"},
+        )
+
+
+class ScriptingGateway:
+    def __init__(self, scripts: list[tuple[str, Decimal, str]]) -> None:
+        self._scripts = list(scripts)
+        self.calls: list[dict[str, object]] = []
+
+    def create_response(
+        self,
+        *,
+        model: str,
+        input_text: str,
+        metadata: dict[str, object] | None = None,
+    ) -> GatewayResponse:
+        if not self._scripts:
+            raise RuntimeError("scripted gateway exhausted")
+        output_text, cost_usd, gateway_request_id = self._scripts.pop(0)
+        self.calls.append(
+            {
+                "model": model,
+                "input_text": input_text,
+                "metadata": metadata,
+                "gateway_request_id": gateway_request_id,
+            }
+        )
+        return GatewayResponse(
+            response_id=gateway_request_id,
+            output_text=output_text,
+            gateway_usage=GatewayUsage(
+                gateway_request_id=gateway_request_id,
+                provider="glm",
+                billing_units=1,
+                cost_usd=cost_usd,
+            ),
+            raw={"id": gateway_request_id},
+        )
+
+
+class FlakyPlanningGateway:
+    def __init__(self, *, final_text: str, cost_usd: Decimal, gateway_request_id: str) -> None:
+        self._final_text = final_text
+        self._cost_usd = cost_usd
+        self._gateway_request_id = gateway_request_id
+        self.attempts = 0
+        self.calls: list[dict[str, object]] = []
+
+    def create_response(self, *, model: str, input_text: str, metadata=None) -> GatewayResponse:
+        self.attempts += 1
+        self.calls.append({"model": model, "metadata": metadata, "attempt": self.attempts})
+        if self.attempts < 3:
+            raise GatewayHttpError(503, "temporary outage")
+        return GatewayResponse(
+            response_id=self._gateway_request_id,
+            output_text=self._final_text,
+            gateway_usage=GatewayUsage(
+                gateway_request_id=self._gateway_request_id,
+                provider="glm",
+                billing_units=1,
+                cost_usd=self._cost_usd,
+                service="responses",
+                native_unit="tokens",
+                optimus_credits_debited=Decimal("0.2"),
+                price_snapshot_id="prices-test",
+            ),
+            raw={"id": self._gateway_request_id},
         )
 
 
@@ -302,7 +371,7 @@ def test_approved_agent_run_replays_stored_plan_without_second_gateway_call(tmp_
     assert "BROKEN SECOND PLAN" not in target.read_text(encoding="utf-8")
 
 
-def test_approved_agent_run_with_wrong_hash_returns_awaiting_approval_without_mutation(tmp_path):
+def test_approved_agent_run_with_wrong_hash_returns_plan_not_found_or_expired(tmp_path):
     target = tmp_path / "example.py"
     target.write_text("def f():\n    return 1\n", encoding="utf-8")
     gateway = FakeGatewayClient('WRITE example.py\ndef f():\n    """Return one."""\n    return 1\n')
@@ -320,7 +389,8 @@ def test_approved_agent_run_with_wrong_hash_returns_awaiting_approval_without_mu
         )
     )
 
-    assert result.status is AgentRunStatus.AWAITING_APPROVAL
+    assert result.status is AgentRunStatus.FAILED
+    assert result.stop_reason == "PLAN_NOT_FOUND_OR_EXPIRED"
     assert result.mutation_count == 0
     assert "Return one" not in target.read_text(encoding="utf-8")
 
@@ -555,10 +625,12 @@ def test_ambiguous_reference_fails_before_gateway_with_zero_cost(tmp_path):
     assert "b/example.py" in result.output_text
 
 
-def test_oversized_required_file_fails_before_gateway_with_zero_cost(tmp_path):
+def test_oversized_required_file_triggers_multi_turn_planning(tmp_path):
     (tmp_path / "large.py").write_text("x" * (17 * 1024), encoding="utf-8")
-    gateway = FakeGatewayClient("WRITE large.py\ncontent\n")
-    runner = AgentRunner(gateway_client=gateway, model="glm-5.2")
+    final_plan = "READ large.py\nWRITE large.py\nupdated header\n"
+    gateway = ScriptingGateway([(final_plan, Decimal("0.002"), "gw-1")])
+    store = InMemoryAgentStateStore()
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2", state_store=store)
 
     result = runner.run(
         AgentRunRequest(
@@ -569,11 +641,106 @@ def test_oversized_required_file_fails_before_gateway_with_zero_cost(tmp_path):
         )
     )
 
-    assert result.status is AgentRunStatus.FAILED
-    assert result.stop_reason == "REQUIRED_WORKSPACE_FILE_TOO_LARGE"
-    assert result.total_cost_usd == Decimal("0")
-    assert result.mutation_count == 0
-    assert gateway.calls == []
+    assert len(gateway.calls) == 1
+    assert gateway.calls[0]["metadata"]["purpose"] == "planning_turn"
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL
+    assert result.total_cost_usd == Decimal("0.002")
+    assert result.plan_hash == hashlib.sha256(final_plan.encode("utf-8")).hexdigest()
+    stored = store.load_plan(run_id="run-1", plan_hash=result.plan_hash or "")
+    assert stored.planning_turns == 1
+    assert stored.gateway_request_ids == ("gw-1",)
+    assert stored.cost_usd == Decimal("0.002")
+
+
+def test_oversized_required_file_settles_after_read_more_then_final(tmp_path):
+    (tmp_path / "large.py").write_text("alpha" + ("x" * (17 * 1024)), encoding="utf-8")
+    read_more = "OBSERVE: need header\nREAD: large.py#bytes=0:5\n"
+    final_plan = "READ large.py\nWRITE large.py\nupdated header\n"
+    gateway = ScriptingGateway(
+        [
+            (read_more, Decimal("0.002"), "gw-1"),
+            (final_plan, Decimal("0.003"), "gw-2"),
+        ]
+    )
+    store = InMemoryAgentStateStore()
+    runner = AgentRunner(
+        gateway_client=gateway,
+        model="glm-5.2",
+        state_store=store,
+        usage_accounting=UsageAccountingService(),
+    )
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Edit large.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+            max_planning_turns=2,
+        )
+    )
+
+    assert len(gateway.calls) == 2
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL
+    assert result.total_cost_usd == Decimal("0.005")
+    stored = store.load_plan(run_id="run-1", plan_hash=result.plan_hash or "")
+    assert stored.planning_turns == 2
+    assert stored.gateway_request_ids == ("gw-1", "gw-2")
+    assert stored.cost_usd == Decimal("0.005")
+    assert stored.plan_text == final_plan
+
+
+def test_oversized_required_file_honors_max_planning_turns_override(tmp_path):
+    (tmp_path / "large.py").write_text("x" * (17 * 1024), encoding="utf-8")
+    read_more = "OBSERVE: need header\nREAD: large.py#bytes=0:5\n"
+    gateway = ScriptingGateway([(read_more, Decimal("0.002"), "gw-1")])
+    store = InMemoryAgentStateStore()
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2", state_store=store)
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Edit large.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+            max_planning_turns=1,
+        )
+    )
+
+    assert len(gateway.calls) == 1
+    assert result.status is AgentRunStatus.TERMINATED
+    assert result.stop_reason == "PLANNING_TURN_LIMIT_EXHAUSTED"
+    assert store.latest_plan_for_run(run_id="run-1") is None
+
+
+def test_oversized_planning_retries_gateway_without_extra_settled_turn(tmp_path):
+    (tmp_path / "large.py").write_text("x" * (17 * 1024), encoding="utf-8")
+    final_plan = "READ large.py\nWRITE large.py\nupdated header\n"
+    gateway = FlakyPlanningGateway(
+        final_text=final_plan,
+        cost_usd=Decimal("0.002"),
+        gateway_request_id="gw-1",
+    )
+    accounting = UsageAccountingService()
+    runner = AgentRunner(
+        gateway_client=gateway,
+        model="glm-5.2",
+        usage_accounting=accounting,
+    )
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Edit large.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert gateway.attempts == 3
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL
+    assert accounting.provider_ledger.entries[0].request_id == "run-1:planning:1:3"
+    assert accounting.provider_ledger.total_cost_usd() == Decimal("0.002")
 
 
 def test_missing_path_can_reach_gateway_for_create_task(tmp_path):

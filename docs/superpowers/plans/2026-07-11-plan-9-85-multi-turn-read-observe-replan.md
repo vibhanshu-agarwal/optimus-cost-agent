@@ -465,7 +465,7 @@ git commit -m "Adapt bounded goal loops for replanning"
 - Consumes: `PlanningLoopRunner`, existing Plan 9.8 `WorkspaceContextResult`, Plan 7 `UsageAccountingService`.
 - Produces: final-only `AgentPlanRecord`, aggregate `total_cost_usd`, all Gateway request IDs, and unchanged approval replay.
 
-- [ ] **Step 1: Write failing integration-at-runner tests**
+- [x] **Step 1: Write failing integration-at-runner tests**
 
 Cover:
 
@@ -481,7 +481,7 @@ Cover:
 - approval with the final hash replays without a Gateway call.
 - a new operator prompt/run gets a fresh three-turn attempt, while Plan 7 retains cumulative per-run/session usage entries and each request still obeys `max_cost_usd`.
 
-- [ ] **Step 2: Run focused tests and verify failure**
+- [x] **Step 2: Run focused tests and verify failure**
 
 ```bash
 python -m pytest tests/unit/agent/test_runner.py tests/unit/agent/test_state_store.py tests/unit/usage/test_accounting.py -v
@@ -489,17 +489,17 @@ python -m pytest tests/unit/agent/test_runner.py tests/unit/agent/test_state_sto
 
 Expected: FAIL on missing planning integration and aggregate record fields.
 
-- [ ] **Step 3: Trigger the loop only for the Plan 9.8 oversized-required-context condition**
+- [x] **Step 3: Trigger the loop only for the Plan 9.8 oversized-required-context condition**
 
 Preserve terminal handling for ambiguity and other blocking reasons. Do not silently broaden the trigger. If normal context fits, retain the single-pass path for cost and behavior stability.
 
 Construct `PlanningLoopPolicy(max_planning_turns=request.max_planning_turns, max_wall_clock_minutes=request.planning_wall_clock_minutes)` at this integration boundary, then map `request.max_cost_usd` through `to_loop_budget_policy(...)`. Add runner tests that override each request field so defaults cannot mask missing wiring.
 
-- [ ] **Step 4: Aggregate and record all reported Gateway usage**
+- [x] **Step 4: Aggregate and record all reported Gateway usage**
 
 The retry wrapper must expose per-attempt usage when present. For each item, call `UsageAccountingService.record_gateway_usage(...)` with a stable request ID derived from `run_id`, settled turn, and wire attempt. Sum `cost_usd` before loop stop evaluation. Missing usage on a transport failure is recorded as an error/unknown-cost condition; it must not be estimated locally.
 
-- [ ] **Step 5: Persist only settlement**
+- [x] **Step 5: Persist only settlement**
 
 Extend `AgentPlanRecord` with:
 
@@ -510,11 +510,11 @@ planning_turns: int = Field(default=1, ge=1)
 
 Keep `gateway_request_id` as the final settled response ID for compatibility. Set `cost_usd` to aggregate reported planning cost. Do not persist intermediate source ranges or model observations in the approval store.
 
-- [ ] **Step 6: Preserve exact final-hash replay**
+- [x] **Step 6: Preserve exact final-hash replay**
 
 Hash only after final grammar validation. On approval, load by `run_id + final plan_hash`, compare task/mode/workspace as today, and execute the stored final text without planning or Gateway calls. A missing/superseded hash remains fail-closed.
 
-- [ ] **Step 7: Run focused tests**
+- [x] **Step 7: Run focused tests**
 
 ```bash
 python -m pytest tests/unit/agent/test_runner.py tests/unit/agent/test_state_store.py tests/unit/usage/test_accounting.py -v
@@ -807,9 +807,9 @@ git commit -m "Record live Plan 9.85 ACP evidence"
 
 **Owner:** Task 4 integration (Plan 9.85).
 
-**Raised:** Task 3 shipped `PlanningLoopRunner` with direct `GatewayClient.create_response` calls because `RetryController` is unused anywhere in the repo today. This contradicts Global Constraint line 19 ("transient wire retries... do not consume additional planning turns") until wired.
+**Status:** `PlanningLoopRunner` wraps each settled-turn Gateway call in `RetryController` with per-attempt usage callbacks. Runner-level accounting records stable `run_id:planning:{turn}:{wire_attempt}` request IDs when normalized usage fields are present.
 
-**Acceptance criteria:** Each settled planning turn performs gateway work through `RetryController`; every wire attempt with reported usage is recorded and charged to `max_cost_usd`; transient retries do not increment settled-turn count; unit/integration tests prove multi-attempt usage aggregation on a retried planning turn.
+**Remaining acceptance criteria:** prove multi-attempt usage aggregation when transient failures report billable usage before aborting; integration tests for transport failures with unknown cost.
 
 ## Plan Self-Review Record
 
