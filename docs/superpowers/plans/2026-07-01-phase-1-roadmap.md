@@ -306,7 +306,9 @@ truncating required context or failing closed on every multi-file task.
 - Budget and cost accounting across the multiple Gateway calls a multi-turn workflow implies.
 - Approval hash semantics for the final plan (the thing the operator actually approves must still
   be unambiguous after multiple planning turns).
-- Real (non-fake) evidence for the multi-turn path, to the same standard Plan 9.8 held itself to.
+- Real (non-fake) evidence for the multi-turn path: ACP-protocol integration evidence must use a
+  real ACP client (`acpx`), not a project-authored harness, per `P9.8-FU-6` and the AGENTS.md
+  evidence-tier rule.
 
 **Status:** Tracked, not yet scheduled; no implementation plan exists. This is a separate lane
 from Plan 9.9 (operator packaging/credential diagnostics) and from Plan 11 (context-window
