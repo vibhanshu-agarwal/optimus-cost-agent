@@ -12,6 +12,7 @@ from optimus.acp.errors import INVALID_REQUEST, METHOD_NOT_FOUND, AcpOutboundErr
 from optimus.acp.shapes import (
     build_agent_message_chunk_notification,
     build_plan_session_update,
+    build_planning_progress_notification,
     build_request_permission_params,
     build_tool_call_notification,
     new_approval_id,
@@ -19,6 +20,7 @@ from optimus.acp.shapes import (
     tool_kind_for_name,
 )
 from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus
+from optimus.agent.planning_loop import PlanningProgressEvent
 from optimus.runtime.modes import ExecutionMode
 
 ACP_PROTOCOL_VERSION = 1
@@ -224,7 +226,28 @@ class AcpDuplexAdapter:
                 execution_mode=session.execution_mode,
                 workspace_root=session.cwd,
             )
-            planning_result = await asyncio.to_thread(self._runner.run, planning_request)
+            loop = asyncio.get_running_loop()
+            existing_observer = (
+                self._runner._planning_progress_observer
+                if hasattr(self._runner, "_planning_progress_observer")
+                else None
+            )
+
+            def _chained_progress_observer(event: PlanningProgressEvent) -> None:
+                if existing_observer is not None:
+                    existing_observer(event)
+                asyncio.run_coroutine_threadsafe(
+                    self._emit_planning_progress(session_id=session_id, event=event),
+                    loop,
+                )
+
+            if hasattr(self._runner, "set_planning_progress_observer"):
+                self._runner.set_planning_progress_observer(_chained_progress_observer)
+            try:
+                planning_result = await asyncio.to_thread(self._runner.run, planning_request)
+            finally:
+                if hasattr(self._runner, "set_planning_progress_observer"):
+                    self._runner.set_planning_progress_observer(existing_observer)
             # region agent log
             acp_debug_log(
                 location="spec.py:_handle_session_prompt:planning_done",
@@ -242,6 +265,10 @@ class AcpDuplexAdapter:
             if turn.cancelled:
                 return success_response(request_id=request.get("id"), result={"stopReason": "cancelled"})
             if planning_result.status is not AgentRunStatus.AWAITING_APPROVAL:
+                await self._emit_completion_message(session_id=session_id, result=planning_result)
+                return success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(planning_result)})
+
+            if not planning_result.plan_hash:
                 await self._emit_completion_message(session_id=session_id, result=planning_result)
                 return success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(planning_result)})
 
@@ -409,12 +436,32 @@ class AcpDuplexAdapter:
         # endregion
         await self._outbound.notify("session/update", message_payload)
 
+    async def _emit_planning_progress(self, *, session_id: str, event: PlanningProgressEvent) -> None:
+        payload = build_planning_progress_notification(
+            session_id=session_id,
+            settled_turn=event.settled_turn,
+            max_planning_turns=event.max_planning_turns,
+            read_request_count=event.read_request_count,
+        )
+        await self._outbound.notify("session/update", payload)
+
 
 _VISIBLE_WORKSPACE_CONTEXT_FAILURES = frozenset(
     {
         "AMBIGUOUS_WORKSPACE_REFERENCE",
         "REQUIRED_WORKSPACE_FILE_TOO_LARGE",
         "WORKSPACE_REFERENCE_NOT_READABLE",
+    }
+)
+
+_PLANNING_TERMINAL_STOP_REASONS = frozenset(
+    {
+        "PLANNING_REPEATED_READ_REQUEST",
+        "PLANNING_BUDGET_EXHAUSTED",
+        "PLANNING_WALL_CLOCK_EXHAUSTED",
+        "PLANNING_TURN_LIMIT_EXHAUSTED",
+        "PLANNING_HALTED",
+        "PLANNING_MODEL_REFUSED",
     }
 )
 
@@ -428,6 +475,8 @@ def _completion_message(result: AgentRunResult) -> str:
     if result.tool_calls:
         return "Executed:\n" + "\n".join(f"- {call.summary}" for call in result.tool_calls)
     if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES:
+        return result.output_text
+    if result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
         return result.output_text
     return "Turn completed."
 
@@ -454,4 +503,8 @@ def _stop_reason(result: AgentRunResult) -> str:
         return "end_turn"
     if result.status is AgentRunStatus.TERMINATED and result.stop_reason == "cancelled":
         return "cancelled"
+    if result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
+        return "end_turn"
+    if result.stop_reason == "PLAN_NOT_FOUND_OR_EXPIRED":
+        return "end_turn"
     return "refusal"

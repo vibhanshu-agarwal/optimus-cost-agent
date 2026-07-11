@@ -142,6 +142,26 @@ class PlanningLoopResult(BaseModel):
     evidence_metadata: dict[str, str] = Field(default_factory=dict)
 
 
+class PlanningProgressEvent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    run_id: str
+    session_id: str | None = None
+    settled_turn: int = Field(ge=1)
+    max_planning_turns: int = Field(ge=1)
+    read_request_count: int = Field(default=0, ge=0)
+    read_identities: tuple[str, ...] = ()
+    source_sha256s: tuple[str, ...] = ()
+    read_byte_counts: tuple[int, ...] = ()
+    total_cost_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    remaining_budget_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    gateway_request_ids: tuple[str, ...] = ()
+    wire_retry_count: int = Field(default=0, ge=0)
+
+
+PlanningProgressObserver = Callable[[PlanningProgressEvent], None]
+
+
 def run_planning_with_budget(max_cost_usd: Decimal) -> PlanningLoopResult:
     if max_cost_usd <= Decimal("0"):
         return PlanningLoopResult(stop_reason="PLANNING_BUDGET_EXHAUSTED", settled_turns=0)
@@ -555,6 +575,7 @@ class PlanningLoopRunner:
         halt_requested: Callable[[], bool] | None = None,
         usage_callback: PlanningGatewayUsageCallback | None = None,
         retry_controller: RetryController | None = None,
+        progress_observer: PlanningProgressObserver | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -573,6 +594,7 @@ class PlanningLoopRunner:
             policy=RetryPolicy(base_delay_ms=0, jitter_ms=(0,)),
             sleep_ms=lambda _delay_ms: None,
         )
+        self._progress_observer = progress_observer
 
     def run(
         self,
@@ -602,6 +624,7 @@ class PlanningLoopRunner:
             now=self._now,
             usage_callback=self._usage_callback,
             retry_controller=self._retry_controller,
+            progress_observer=self._progress_observer,
         )
         controller = GoalLoopController(
             policy=iteration_runner.loop_budget_policy,
@@ -645,6 +668,7 @@ class _PlanningIterationRunner:
         now: Callable[[], datetime],
         usage_callback: PlanningGatewayUsageCallback | None,
         retry_controller: RetryController,
+        progress_observer: PlanningProgressObserver | None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -660,12 +684,14 @@ class _PlanningIterationRunner:
         self._now = now
         self._usage_callback = usage_callback
         self._retry_controller = retry_controller
+        self._progress_observer = progress_observer
         self._observations: list[PlanningObservation] = []
         self._current_reads: tuple[PlanningReadEvidence, ...] = ()
         self._gateway_request_ids: list[str] = []
         self._total_cost_usd = Decimal("0")
         self._last_decision: PlanningTurnDecision | None = None
         self._last_provider: str | None = None
+        self._last_wire_retry_count = 0
 
     def _invoke_planning_gateway(
         self,
@@ -698,6 +724,7 @@ class _PlanningIterationRunner:
         retry_result = self._retry_controller.run(operation)
         if retry_result.value is None:
             raise RuntimeError("planning gateway request failed after retries")
+        self._last_wire_retry_count = retry_result.retry_count
         return retry_result.value, attempt_cost
 
     def run_iteration(self, state: IterationState, tools: LoopToolExecutorProtocol) -> IterationOutcome:
@@ -775,6 +802,31 @@ class _PlanningIterationRunner:
                 )
             )
             self._current_reads = tuple(read_evidence)
+            if self._progress_observer is not None:
+                self._progress_observer(
+                    PlanningProgressEvent(
+                        run_id=self._run_id,
+                        session_id=self._session_id,
+                        settled_turn=planning_turn,
+                        max_planning_turns=self._policy.max_planning_turns,
+                        read_request_count=len(read_evidence),
+                        read_identities=tuple(
+                            sorted(
+                                f"{item.path}#bytes={item.start_byte}:{item.end_byte}"
+                                for item in read_evidence
+                            )
+                        ),
+                        source_sha256s=tuple(item.source_sha256 for item in read_evidence),
+                        read_byte_counts=tuple(item.end_byte - item.start_byte for item in read_evidence),
+                        total_cost_usd=self._total_cost_usd,
+                        remaining_budget_usd=max(
+                            Decimal("0"),
+                            self._max_cost_usd - state.credits_spent - attempt_cost,
+                        ),
+                        gateway_request_ids=tuple(self._gateway_request_ids),
+                        wire_retry_count=self._last_wire_retry_count,
+                    )
+                )
             return IterationOutcome(
                 summary="planning requested guarded read evidence",
                 deterministic_completion=False,

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from optimus.agent.directives import AgentDirectiveParseError, parse_agent_plan
 from optimus.agent.models import AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
@@ -26,6 +27,9 @@ from optimus.runtime.state import AgentState, AwaitingApproval, RuntimeContext, 
 from optimus.skills.registry import SkillRegistry
 from optimus.telemetry.events import TelemetryEvent
 from optimus.usage.accounting import UsageAccountingService
+
+if TYPE_CHECKING:
+    from optimus.agent.planning_loop import PlanningProgressObserver
 
 WorkspaceContextObserver = Callable[[AgentRunRequest, WorkspaceContextResult], None]
 _OVERSIZED_REQUIRED_CONTEXT_TRIGGER = "REQUIRED_WORKSPACE_FILE_TOO_LARGE"
@@ -62,6 +66,7 @@ class AgentRunner:
         shell_runner: Callable[[list[str]], subprocess.CompletedProcess[str]] | None = None,
         workspace_context_observer: WorkspaceContextObserver | None = None,
         usage_accounting: UsageAccountingService | None = None,
+        planning_progress_observer: PlanningProgressObserver | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -74,7 +79,11 @@ class AgentRunner:
         self._shell_runner = shell_runner
         self._workspace_context_observer = workspace_context_observer
         self._usage_accounting = usage_accounting
+        self._planning_progress_observer = planning_progress_observer
         self._transition_validator = TransitionValidator()
+
+    def set_planning_progress_observer(self, observer: PlanningProgressObserver | None) -> None:
+        self._planning_progress_observer = observer
 
     def run(self, request: AgentRunRequest) -> AgentRunResult:
         matched_skills = self._match_skills(request)
@@ -248,6 +257,7 @@ class AgentRunner:
             max_cost_usd=request.max_cost_usd,
             guard=guard,
             usage_callback=usage_callback,
+            progress_observer=self._planning_progress_observer,
         )
         planning_result = planner.run(
             run_id=request.run_id,

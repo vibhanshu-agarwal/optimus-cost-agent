@@ -522,7 +522,7 @@ python -m pytest tests/unit/agent/test_runner.py tests/unit/agent/test_state_sto
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/optimus/agent/runner.py src/optimus/agent/state_store.py src/optimus/usage/accounting.py src/optimus/usage/models.py tests/unit/agent/test_runner.py tests/unit/agent/test_state_store.py tests/unit/usage/test_accounting.py
@@ -547,7 +547,7 @@ git commit -m "Settle multi-turn plans before approval"
 - Consumes: settled/failure `AgentRunResult` and content-free planning observer events.
 - Produces: ACP `session/update`, final-only `session/request_permission`, sanitized terminal completion, and JSONL trace evidence.
 
-- [ ] **Step 1: Write failing ACP protocol tests**
+- [x] **Step 1: Write failing ACP protocol tests**
 
 Use a scripted runner to prove:
 
@@ -559,7 +559,7 @@ Use a scripted runner to prove:
 - a superseded hash cannot reach execution;
 - trace fields contain turn number, requested path/range identities, byte counts, hashes, costs, stop reason, and request IDs but no source or observation text.
 
-- [ ] **Step 2: Run focused ACP tests and verify failure**
+- [x] **Step 2: Run focused ACP tests and verify failure**
 
 ```bash
 python -m pytest tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_debug_trace.py tests/unit/acp/test_bootstrap.py -v
@@ -567,15 +567,15 @@ python -m pytest tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_debug_
 
 Expected: FAIL on missing settlement-aware protocol behavior and observer wiring.
 
-- [ ] **Step 3: Implement final-only permission emission**
+- [x] **Step 3: Implement final-only permission emission**
 
 Keep the `session/prompt` request pending across internal settled planning turns. Emit sanitized `session/update` progress such as `Planning turn 2 of 3: reading 2 guarded ranges.` Do not include paths if the existing ACP redaction policy classifies them as sensitive. Send `session/request_permission` only when `AgentRunStatus.AWAITING_APPROVAL` includes the final hash.
 
-- [ ] **Step 4: Implement content-free trace events**
+- [x] **Step 4: Implement content-free trace events**
 
 Use hypothesis ID `P9.85-REPLAN`. Include `run_id`, `session_id`, settled turn, max turns, reported aggregate cost, remaining budget, range identities/hashes/byte counts, retry count, and loop stop. Exclude prompts, source bytes, observation text, credentials, and raw model output.
 
-- [ ] **Step 5: Run focused ACP tests**
+- [x] **Step 5: Run focused ACP tests**
 
 ```bash
 python -m pytest tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_debug_trace.py tests/unit/acp/test_bootstrap.py -v
@@ -583,7 +583,7 @@ python -m pytest tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_debug_
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/optimus/acp/spec.py src/optimus/acp/debug_trace.py src/optimus/acp/bootstrap.py tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_debug_trace.py tests/unit/acp/test_bootstrap.py

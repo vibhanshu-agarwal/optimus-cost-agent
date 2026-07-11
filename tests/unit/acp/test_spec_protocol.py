@@ -5,12 +5,17 @@ from optimus.acp.errors import METHOD_NOT_FOUND
 from optimus.acp.shapes import build_plan_session_update
 from optimus.acp.spec import ACP_PROTOCOL_VERSION, AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus, AgentToolCall
+from optimus.agent.planning_loop import PlanningProgressEvent
 from optimus.runtime.modes import ExecutionMode
 
 
 class FakeRunner:
     def __init__(self) -> None:
         self.requests = []
+        self._planning_progress_observer = None
+
+    def set_planning_progress_observer(self, observer) -> None:
+        self._planning_progress_observer = observer
 
     def run(self, request):
         self.requests.append(request)
@@ -390,3 +395,305 @@ async def test_unparseable_plan_completion_does_not_echo_raw_model_output(tmp_pa
     ]
     assert messages[-1] == "Turn completed."
     assert raw_sentinel not in messages[-1]
+
+
+async def test_multi_turn_planning_emits_progress_before_final_permission(tmp_path):
+    class MultiTurnRunner:
+        def __init__(self) -> None:
+            self.requests = []
+            self._planning_progress_observer = None
+
+        def set_planning_progress_observer(self, observer) -> None:
+            self._planning_progress_observer = observer
+
+        def run(self, request):
+            self.requests.append(request)
+            if request.approval.approved:
+                return AgentRunResult(
+                    run_id=request.run_id,
+                    session_id=request.session_id,
+                    execution_mode=request.execution_mode,
+                    status=AgentRunStatus.COMPLETED,
+                    final_state="COMPLETED",
+                    output_text="done",
+                    tool_calls=(AgentToolCall(tool_name="write_file", summary="wrote large.py"),),
+                    total_cost_usd=Decimal("0.004"),
+                    mutation_count=1,
+                    provider_keys_resolvable=(),
+                    plan_hash="hash-final",
+                )
+            if self._planning_progress_observer is not None:
+                self._planning_progress_observer(
+                    PlanningProgressEvent(
+                        run_id=request.run_id,
+                        session_id=request.session_id,
+                        settled_turn=1,
+                        max_planning_turns=3,
+                        read_request_count=2,
+                        read_identities=("large.py#bytes=0:5", "large.py#bytes=5:10"),
+                        source_sha256s=("a" * 64, "b" * 64),
+                        read_byte_counts=(5, 5),
+                        total_cost_usd=Decimal("0.002"),
+                        remaining_budget_usd=Decimal("0.048"),
+                        gateway_request_ids=("gw-1",),
+                    )
+                )
+            return AgentRunResult(
+                run_id=request.run_id,
+                session_id=request.session_id,
+                execution_mode=ExecutionMode.AGENT,
+                status=AgentRunStatus.AWAITING_APPROVAL,
+                final_state="AWAITING_APPROVAL",
+                output_text="READ large.py\nWRITE large.py\nupdated\n",
+                tool_calls=(),
+                total_cost_usd=Decimal("0.004"),
+                mutation_count=0,
+                provider_keys_resolvable=(),
+                plan_hash="hash-final",
+            )
+
+    runner = MultiTurnRunner()
+    outbound = RecordingOutboundChannel()
+    adapter = AcpDuplexAdapter(
+        runner=runner,
+        workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(),
+        outbound=outbound,
+    )
+    session_id = (
+        await adapter.handle_client_request(
+            {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
+        )
+    )["result"]["sessionId"]
+
+    prompt_task = asyncio.create_task(
+        adapter.handle_client_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/prompt",
+                "params": {
+                    "sessionId": session_id,
+                    "prompt": [{"type": "text", "text": "Edit large.py"}],
+                },
+            }
+        )
+    )
+    permission_request = await outbound.wait_for_request("session/request_permission")
+    outbound.respond(
+        permission_request["id"],
+        {"outcome": {"outcome": "selected", "optionId": "approve"}},
+    )
+    response = await prompt_task
+
+    progress_chunks = [
+        item["params"]["update"]["content"]["text"]
+        for item in outbound.notifications
+        if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
+        and "Planning turn" in item["params"]["update"]["content"]["text"]
+    ]
+    assert progress_chunks == ["Planning turn 1 of 3: reading 2 guarded ranges."]
+    assert len([item for item in outbound.requests if item["method"] == "session/request_permission"]) == 1
+    assert permission_request["params"]["options"][0]["metadata"]["planHash"] == "hash-final"
+    assert response["result"]["stopReason"] == "end_turn"
+
+
+async def test_planning_failure_emits_end_turn_without_permission(tmp_path):
+    class PlanningFailureRunner:
+        def set_planning_progress_observer(self, observer) -> None:
+            del observer
+
+        def run(self, request):
+            return AgentRunResult(
+                run_id=request.run_id,
+                session_id=request.session_id,
+                execution_mode=request.execution_mode,
+                status=AgentRunStatus.TERMINATED,
+                final_state="TERMINATED",
+                output_text="Planning stopped because the run budget was exhausted.",
+                tool_calls=(),
+                total_cost_usd=Decimal("0.05"),
+                mutation_count=0,
+                provider_keys_resolvable=(),
+                stop_reason="PLANNING_BUDGET_EXHAUSTED",
+            )
+
+    outbound = RecordingOutboundChannel()
+    adapter = AcpDuplexAdapter(
+        runner=PlanningFailureRunner(),
+        workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(),
+        outbound=outbound,
+    )
+    session_id = (
+        await adapter.handle_client_request(
+            {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
+        )
+    )["result"]["sessionId"]
+
+    response = await adapter.handle_client_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/prompt",
+            "params": {
+                "sessionId": session_id,
+                "prompt": [{"type": "text", "text": "Edit large.py"}],
+            },
+        }
+    )
+
+    assert response["result"]["stopReason"] == "end_turn"
+    assert outbound.requests == []
+    messages = [
+        item["params"]["update"]["content"]["text"]
+        for item in outbound.notifications
+        if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
+    ]
+    assert messages[-1] == "Planning stopped because the run budget was exhausted."
+
+
+async def test_planning_model_refused_emits_sanitized_text_without_permission(tmp_path):
+    refusal = "Current raw evidence is insufficient for a safe write."
+
+    class RefusalRunner:
+        def set_planning_progress_observer(self, observer) -> None:
+            del observer
+
+        def run(self, request):
+            return AgentRunResult(
+                run_id=request.run_id,
+                session_id=request.session_id,
+                execution_mode=request.execution_mode,
+                status=AgentRunStatus.FAILED,
+                final_state="FAILED",
+                output_text=refusal,
+                tool_calls=(),
+                total_cost_usd=Decimal("0.002"),
+                mutation_count=0,
+                provider_keys_resolvable=(),
+                stop_reason="PLANNING_MODEL_REFUSED",
+                plan_hash=None,
+            )
+
+    outbound = RecordingOutboundChannel()
+    adapter = AcpDuplexAdapter(
+        runner=RefusalRunner(),
+        workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(),
+        outbound=outbound,
+    )
+    session_id = (
+        await adapter.handle_client_request(
+            {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
+        )
+    )["result"]["sessionId"]
+
+    response = await adapter.handle_client_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/prompt",
+            "params": {
+                "sessionId": session_id,
+                "prompt": [{"type": "text", "text": "Edit large.py"}],
+            },
+        }
+    )
+
+    assert response["result"]["stopReason"] == "end_turn"
+    assert outbound.requests == []
+    messages = [
+        item["params"]["update"]["content"]["text"]
+        for item in outbound.notifications
+        if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
+    ]
+    assert messages[-1] == refusal
+
+
+async def test_superseded_approval_hash_does_not_execute_plan(tmp_path):
+    class SupersededHashRunner:
+        def __init__(self) -> None:
+            self.requests = []
+
+        def set_planning_progress_observer(self, observer) -> None:
+            del observer
+
+        def run(self, request):
+            self.requests.append(request)
+            if request.approval.approved:
+                return AgentRunResult(
+                    run_id=request.run_id,
+                    session_id=request.session_id,
+                    execution_mode=request.execution_mode,
+                    status=AgentRunStatus.FAILED,
+                    final_state="FAILED",
+                    output_text="Plan approval expired or was not found. Re-run planning and approve the new plan.",
+                    tool_calls=(),
+                    total_cost_usd=Decimal("0"),
+                    mutation_count=0,
+                    provider_keys_resolvable=(),
+                    stop_reason="PLAN_NOT_FOUND_OR_EXPIRED",
+                )
+            return AgentRunResult(
+                run_id=request.run_id,
+                session_id=request.session_id,
+                execution_mode=ExecutionMode.AGENT,
+                status=AgentRunStatus.AWAITING_APPROVAL,
+                final_state="AWAITING_APPROVAL",
+                output_text="WRITE example.py\ncontent\n",
+                tool_calls=(),
+                total_cost_usd=Decimal("0.002"),
+                mutation_count=0,
+                provider_keys_resolvable=(),
+                plan_hash="hash-final",
+            )
+
+    runner = SupersededHashRunner()
+    outbound = RecordingOutboundChannel()
+    adapter = AcpDuplexAdapter(
+        runner=runner,
+        workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(),
+        outbound=outbound,
+    )
+    session_id = (
+        await adapter.handle_client_request(
+            {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
+        )
+    )["result"]["sessionId"]
+
+    prompt_task = asyncio.create_task(
+        adapter.handle_client_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/prompt",
+                "params": {
+                    "sessionId": session_id,
+                    "prompt": [{"type": "text", "text": "Add a docstring"}],
+                },
+            }
+        )
+    )
+    permission_request = await outbound.wait_for_request("session/request_permission")
+    outbound.respond(
+        permission_request["id"],
+        {
+            "outcome": {"outcome": "selected", "optionId": "approve"},
+            "metadata": {"planHash": "superseded-hash"},
+        },
+    )
+    response = await prompt_task
+
+    assert response["result"]["stopReason"] == "end_turn"
+    assert len(runner.requests) == 2
+    assert runner.requests[-1].approval.plan_hash == "hash-final"
+    assert runner.requests[-1].approval.approved is True
+    write_calls = [
+        item
+        for item in outbound.notifications
+        if item["params"]["update"].get("sessionUpdate") == "tool_call"
+        and item["params"]["update"].get("kind") == "edit"
+    ]
+    assert write_calls == []

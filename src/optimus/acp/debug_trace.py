@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from optimus.agent.models import AgentRunRequest
+from optimus.agent.planning_loop import PlanningProgressEvent
 from optimus.agent.workspace_context import WorkspaceContextResult
 
 _DEBUG_SESSION_ID = "c66f94"
@@ -151,4 +152,28 @@ def log_workspace_context_result(request: AgentRunRequest, result: WorkspaceCont
         },
         hypothesis_id="P9.8-CONTEXT",
         run_id=request.run_id,
+    )
+
+
+def log_planning_replan_event(event: PlanningProgressEvent, *, stop_reason: str | None = None) -> None:
+    """Record content-free multi-turn planning progress for ACP/debug evidence."""
+    acp_debug_log(
+        location="debug_trace.py:log_planning_replan_event",
+        message="planning turn settled",
+        data={
+            "run_id": event.run_id,
+            "session_id": event.session_id,
+            "settled_turn": event.settled_turn,
+            "max_planning_turns": event.max_planning_turns,
+            "reported_aggregate_cost_usd": str(event.total_cost_usd),
+            "remaining_budget_usd": str(event.remaining_budget_usd),
+            "read_identities": list(event.read_identities),
+            "read_byte_counts": list(event.read_byte_counts),
+            "source_sha256s": list(event.source_sha256s),
+            "gateway_request_ids": list(event.gateway_request_ids),
+            "wire_retry_count": event.wire_retry_count,
+            "loop_stop": stop_reason,
+        },
+        hypothesis_id="P9.85-REPLAN",
+        run_id=event.run_id,
     )

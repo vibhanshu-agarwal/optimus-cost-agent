@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from optimus.acp.debug_trace import log_workspace_context_result
+from optimus.acp.debug_trace import log_planning_replan_event, log_workspace_context_result
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.server import AcpStreamServer
 from optimus.agent.defaults import resolve_agent_model
@@ -57,6 +57,7 @@ def build_agent_runner_for_harness(
         state_store=state_store,
         event_sink=telemetry_sink,
         workspace_context_observer=log_workspace_context_result,
+        planning_progress_observer=log_planning_replan_event,
     )
 
 

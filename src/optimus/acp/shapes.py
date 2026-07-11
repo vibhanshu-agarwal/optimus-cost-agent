@@ -42,6 +42,33 @@ def build_agent_message_chunk_notification(*, session_id: str, text: str) -> dic
     }
 
 
+def build_planning_progress_message(*, settled_turn: int, max_planning_turns: int, read_request_count: int) -> str:
+    if read_request_count:
+        range_label = "range" if read_request_count == 1 else "ranges"
+        return (
+            f"Planning turn {settled_turn} of {max_planning_turns}: "
+            f"reading {read_request_count} guarded {range_label}."
+        )
+    return f"Planning turn {settled_turn} of {max_planning_turns}."
+
+
+def build_planning_progress_notification(
+    *,
+    session_id: str,
+    settled_turn: int,
+    max_planning_turns: int,
+    read_request_count: int,
+) -> dict[str, Any]:
+    return build_agent_message_chunk_notification(
+        session_id=session_id,
+        text=build_planning_progress_message(
+            settled_turn=settled_turn,
+            max_planning_turns=max_planning_turns,
+            read_request_count=read_request_count,
+        ),
+    )
+
+
 def build_permission_tool_call(*, tool_call_id: str, plan_text: str) -> dict[str, Any]:
     return {
         "toolCallId": tool_call_id,
