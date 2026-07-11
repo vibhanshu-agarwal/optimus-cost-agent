@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from decimal import Decimal
 from enum import StrEnum
+from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -32,6 +34,18 @@ class PlanningTurnKind(StrEnum):
 
 class PlanningTurnParseError(ValueError):
     pass
+
+
+class PlanningReadError(ValueError):
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        super().__init__(message)
+
+
+class PlanningEvidenceBudgetError(ValueError):
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        super().__init__(message)
 
 
 class PlanningLoopPolicy(BaseModel):
@@ -69,6 +83,23 @@ class PlanningReadRequest(BaseModel):
     end_byte: int = Field(ge=1)
 
 
+class PlanningReadEvidence(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    start_byte: int = Field(ge=0)
+    end_byte: int = Field(ge=1)
+    source_sha256: str = Field(min_length=1)
+    range_text: str
+
+
+class PlanningEvidenceEnvelope(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    text: str
+    byte_size: int = Field(ge=0)
+
+
 class PlanningTurnDecision(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -92,6 +123,80 @@ def run_planning_with_budget(max_cost_usd: Decimal) -> PlanningLoopResult:
     if max_cost_usd <= Decimal("0"):
         return PlanningLoopResult(stop_reason="PLANNING_BUDGET_EXHAUSTED", settled_turns=0)
     raise NotImplementedError("planning loop runner is implemented in a later task")
+
+
+def verify_planning_source_hash(*, workspace_root: Path, path: str, expected_sha256: str) -> None:
+    target = _resolve_workspace_file(workspace_root=workspace_root, relative_path=path)
+    if not target.is_file():
+        raise PlanningReadError("PLANNING_READ_FILE_NOT_FOUND", f"file not found: {path}")
+    actual_sha256 = hashlib.sha256(target.read_bytes()).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise PlanningReadError(
+            "PLANNING_READ_SOURCE_CHANGED",
+            f"source hash changed for {path}",
+        )
+
+
+def pack_planning_evidence(
+    *,
+    observations: tuple[PlanningObservation, ...],
+    current_reads: tuple[PlanningReadEvidence, ...],
+) -> PlanningEvidenceEnvelope:
+    observation_text = "".join(_serialize_planning_observation(observation) for observation in observations)
+    observation_bytes = len(observation_text.encode("utf-8"))
+    if observation_bytes > PLANNING_OBSERVATION_MAX_BYTES:
+        raise PlanningEvidenceBudgetError(
+            "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+            "serialized planning observations exceed the carryover budget",
+        )
+
+    current_read_text = "".join(_serialize_planning_read_evidence(evidence) for evidence in current_reads)
+    current_read_bytes = len(current_read_text.encode("utf-8"))
+    if current_read_bytes > PLANNING_NEW_READ_MAX_BYTES:
+        raise PlanningEvidenceBudgetError(
+            "PLANNING_READ_BUDGET_EXHAUSTED",
+            "serialized planning read evidence exceeds the current-turn budget",
+        )
+
+    combined_text = observation_text + current_read_text
+    combined_bytes = len(combined_text.encode("utf-8"))
+    if combined_bytes > DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES:
+        raise PlanningEvidenceBudgetError(
+            "PLANNING_READ_BUDGET_EXHAUSTED",
+            "combined planning evidence exceeds the workspace context budget",
+        )
+
+    return PlanningEvidenceEnvelope(text=combined_text, byte_size=combined_bytes)
+
+
+def _serialize_planning_observation(observation: PlanningObservation) -> str:
+    return (
+        "OBS_RECORD "
+        f"path={observation.path} "
+        f"bytes={observation.start_byte}:{observation.end_byte} "
+        f"sha256={observation.source_sha256}\n"
+        f"{observation.observation_text}\n"
+        "END_OBS_RECORD\n"
+    )
+
+
+def _serialize_planning_read_evidence(evidence: PlanningReadEvidence) -> str:
+    return (
+        "READ_BLOCK "
+        f"path={evidence.path} "
+        f"bytes={evidence.start_byte}:{evidence.end_byte} "
+        f"sha256={evidence.source_sha256}\n"
+        f"{evidence.range_text}\n"
+        "END_READ_BLOCK\n"
+    )
+
+
+def _resolve_workspace_file(*, workspace_root: Path, relative_path: str) -> Path:
+    root = workspace_root.resolve()
+    candidate = Path(relative_path)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise PlanningReadError("PLANNING_READ_INVALID_PATH", "READ path must be workspace-relative")
+    return (root / candidate).resolve()
 
 
 _RANGED_READ_LINE = re.compile(r"^READ:\s+\S+#bytes=\d+:\d+\s*$")

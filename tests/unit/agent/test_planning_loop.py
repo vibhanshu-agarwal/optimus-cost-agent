@@ -6,9 +6,13 @@ from pydantic import ValidationError
 from optimus.agent.planning_loop import (
     PLANNING_NEW_READ_MAX_BYTES,
     PLANNING_OBSERVATION_MAX_BYTES,
+    PlanningEvidenceBudgetError,
     PlanningLoopPolicy,
+    PlanningObservation,
+    PlanningReadEvidence,
     PlanningTurnKind,
     PlanningTurnParseError,
+    pack_planning_evidence,
     parse_planning_turn,
     run_planning_with_budget,
 )
@@ -238,3 +242,73 @@ def test_parse_planning_turn_raises_for_unrecognized_grammar():
 def test_parse_planning_turn_rejects_intermediate_without_read():
     with pytest.raises(PlanningTurnParseError, match="READ"):
         parse_planning_turn("OBSERVE: note only\n")
+
+
+def test_pack_planning_evidence_serializes_observations_and_current_reads_in_order():
+    observations = (
+        PlanningObservation(
+            path="src/a.py",
+            start_byte=0,
+            end_byte=4,
+            source_sha256="hash-a",
+            observation_text="note a",
+        ),
+        PlanningObservation(
+            path="src/b.py",
+            start_byte=8,
+            end_byte=16,
+            source_sha256="hash-b",
+            observation_text="note b",
+        ),
+    )
+    current_reads = (
+        PlanningReadEvidence(
+            path="src/c.py",
+            start_byte=0,
+            end_byte=5,
+            source_sha256="hash-c",
+            range_text="hello",
+        ),
+    )
+
+    envelope = pack_planning_evidence(observations=observations, current_reads=current_reads)
+
+    assert envelope.text.index("src/a.py") < envelope.text.index("src/b.py") < envelope.text.index("src/c.py")
+    assert "note a" in envelope.text
+    assert "hello" in envelope.text
+    assert envelope.byte_size == len(envelope.text.encode("utf-8"))
+    assert envelope.byte_size <= PLANNING_OBSERVATION_MAX_BYTES + PLANNING_NEW_READ_MAX_BYTES
+
+
+def test_pack_planning_evidence_rejects_observation_budget_overflow():
+    oversized = "x" * (PLANNING_OBSERVATION_MAX_BYTES + 1)
+    observations = (
+        PlanningObservation(
+            path="src/a.py",
+            start_byte=0,
+            end_byte=4,
+            source_sha256="hash-a",
+            observation_text=oversized,
+        ),
+    )
+
+    with pytest.raises(PlanningEvidenceBudgetError) as exc:
+        pack_planning_evidence(observations=observations, current_reads=())
+    assert exc.value.code == "PLANNING_OBSERVATION_BUDGET_EXHAUSTED"
+
+
+def test_pack_planning_evidence_rejects_current_read_budget_overflow():
+    oversized = "x" * (PLANNING_NEW_READ_MAX_BYTES + 1)
+    current_reads = (
+        PlanningReadEvidence(
+            path="src/a.py",
+            start_byte=0,
+            end_byte=len(oversized.encode("utf-8")),
+            source_sha256="hash-a",
+            range_text=oversized,
+        ),
+    )
+
+    with pytest.raises(PlanningEvidenceBudgetError) as exc:
+        pack_planning_evidence(observations=(), current_reads=current_reads)
+    assert exc.value.code == "PLANNING_READ_BUDGET_EXHAUSTED"
