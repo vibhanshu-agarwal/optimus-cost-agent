@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import os
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,25 @@ from optimus.agent.planning_loop import PlanningProgressEvent
 from optimus.runtime.modes import ExecutionMode
 
 ACP_PROTOCOL_VERSION = 1
+
+
+def _max_planning_turns_from_env() -> int | None:
+    """Operator-only testing override for AgentRunRequest.max_planning_turns.
+
+    Not part of the ACP wire contract: session/prompt has no client-facing field
+    for this, so live evidence gathering (Plan 9.85 Task 8) sets this env var on
+    the agent process itself to force turn-limit scenarios.
+    """
+    raw = os.environ.get("OPTIMUS_MAX_PLANNING_TURNS")
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        value = int(raw.strip())
+    except ValueError as exc:
+        raise ValueError("OPTIMUS_MAX_PLANNING_TURNS must be an integer >= 1") from exc
+    if value < 1:
+        raise ValueError("OPTIMUS_MAX_PLANNING_TURNS must be an integer >= 1")
+    return value
 
 
 class AcpOutboundChannel(Protocol):
@@ -219,13 +239,17 @@ class AcpDuplexAdapter:
         )
         # endregion
         try:
-            planning_request = AgentRunRequest(
-                run_id=run_id,
-                session_id=session_id,
-                task=task,
-                execution_mode=session.execution_mode,
-                workspace_root=session.cwd,
-            )
+            planning_fields: dict[str, object] = {
+                "run_id": run_id,
+                "session_id": session_id,
+                "task": task,
+                "execution_mode": session.execution_mode,
+                "workspace_root": session.cwd,
+            }
+            max_planning_turns = _max_planning_turns_from_env()
+            if max_planning_turns is not None:
+                planning_fields["max_planning_turns"] = max_planning_turns
+            planning_request = AgentRunRequest(**planning_fields)
             loop = asyncio.get_running_loop()
             default_observer = (
                 self._runner._planning_progress_observer

@@ -2,9 +2,17 @@ import asyncio
 import threading
 from decimal import Decimal
 
+import pytest
+
 from optimus.acp.errors import METHOD_NOT_FOUND
 from optimus.acp.shapes import build_plan_session_update
-from optimus.acp.spec import ACP_PROTOCOL_VERSION, AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
+from optimus.acp.spec import (
+    ACP_PROTOCOL_VERSION,
+    AcpDuplexAdapter,
+    InMemoryAcpSpecSessionStore,
+    RecordingOutboundChannel,
+    _max_planning_turns_from_env,
+)
 from optimus.agent.models import AgentRunResult, AgentRunStatus, AgentToolCall
 from optimus.agent.planning_loop import PlanningProgressEvent
 from optimus.runtime.modes import ExecutionMode
@@ -44,6 +52,105 @@ class FakeRunner:
             provider_keys_resolvable=(),
             plan_hash="hash-1",
         )
+
+
+def test_max_planning_turns_from_env_returns_none_when_unset(monkeypatch):
+    monkeypatch.delenv("OPTIMUS_MAX_PLANNING_TURNS", raising=False)
+    assert _max_planning_turns_from_env() is None
+
+
+def test_max_planning_turns_from_env_returns_none_when_blank(monkeypatch):
+    monkeypatch.setenv("OPTIMUS_MAX_PLANNING_TURNS", "   ")
+    assert _max_planning_turns_from_env() is None
+
+
+def test_max_planning_turns_from_env_parses_valid_value(monkeypatch):
+    monkeypatch.setenv("OPTIMUS_MAX_PLANNING_TURNS", "1")
+    assert _max_planning_turns_from_env() == 1
+
+
+@pytest.mark.parametrize("raw", ["0", "-1", "abc"])
+def test_max_planning_turns_from_env_rejects_invalid_values(monkeypatch, raw):
+    monkeypatch.setenv("OPTIMUS_MAX_PLANNING_TURNS", raw)
+    with pytest.raises(ValueError, match="OPTIMUS_MAX_PLANNING_TURNS"):
+        _max_planning_turns_from_env()
+
+
+class _RecordingCompletedRunner:
+    """Returns COMPLETED immediately: no approval round-trip to drive."""
+
+    def __init__(self) -> None:
+        self.requests = []
+
+    def run(self, request, *, planning_progress_observer=None):
+        del planning_progress_observer
+        self.requests.append(request)
+        return AgentRunResult(
+            run_id=request.run_id,
+            session_id=request.session_id,
+            execution_mode=request.execution_mode,
+            status=AgentRunStatus.COMPLETED,
+            final_state="CHAT_ONLY",
+            output_text="done",
+            tool_calls=(),
+            total_cost_usd=Decimal("0"),
+            mutation_count=0,
+            provider_keys_resolvable=(),
+        )
+
+
+async def test_session_prompt_applies_max_planning_turns_env_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPTIMUS_MAX_PLANNING_TURNS", "1")
+    runner = _RecordingCompletedRunner()
+    adapter = AcpDuplexAdapter(
+        runner=runner,
+        workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(),
+        outbound=RecordingOutboundChannel(),
+    )
+    session_id = (
+        await adapter.handle_client_request(
+            {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
+        )
+    )["result"]["sessionId"]
+
+    await adapter.handle_client_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/prompt",
+            "params": {"sessionId": session_id, "prompt": [{"type": "text", "text": "Add a docstring"}]},
+        }
+    )
+
+    assert runner.requests[0].max_planning_turns == 1
+
+
+async def test_session_prompt_uses_default_max_planning_turns_when_env_unset(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPTIMUS_MAX_PLANNING_TURNS", raising=False)
+    runner = _RecordingCompletedRunner()
+    adapter = AcpDuplexAdapter(
+        runner=runner,
+        workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(),
+        outbound=RecordingOutboundChannel(),
+    )
+    session_id = (
+        await adapter.handle_client_request(
+            {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
+        )
+    )["result"]["sessionId"]
+
+    await adapter.handle_client_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/prompt",
+            "params": {"sessionId": session_id, "prompt": [{"type": "text", "text": "Add a docstring"}]},
+        }
+    )
+
+    assert runner.requests[0].max_planning_turns == 3
 
 
 async def test_initialize_returns_spec_capabilities(tmp_path):
