@@ -82,6 +82,16 @@ class GoalLoopController:
             )
 
             if outcome.deterministic_completion:
+                post_stop = self._post_completion_stop_reason(state)
+                if post_stop is not None:
+                    self._record(
+                        state=state,
+                        summary=f"stopped after iteration: {post_stop.value}",
+                        stop_reason=post_stop,
+                    )
+                    self._emit_stop(state=state, stop_reason=post_stop, summary=post_stop.value)
+                    return GoalLoopResult(state=state, stop_reason=post_stop, summary=post_stop.value)
+
                 self._record(
                     state=state,
                     summary=outcome.summary,
@@ -126,6 +136,18 @@ class GoalLoopController:
                 summary=summary,
             )
         )
+
+    def _post_completion_stop_reason(self, state: IterationState) -> LoopStopReason | None:
+        """Resource and safety stops that can invalidate an otherwise settled turn."""
+        if state.human_halt_requested or self._halt_requested():
+            return LoopStopReason.HUMAN_HALT
+        if state.repeated_failure_count >= self._policy.repeated_failure_limit:
+            return LoopStopReason.REPEATED_FAILURE
+        if state.credits_spent >= self._policy.max_budget_credits:
+            return LoopStopReason.BUDGET_EXHAUSTED
+        if state.elapsed_minutes(now=self._now()) >= self._policy.max_wall_clock_minutes:
+            return LoopStopReason.WALL_CLOCK
+        return None
 
     def _stop_reason(self, state: IterationState) -> LoopStopReason | None:
         """Evaluates termination conditions against policy and state constraints"""

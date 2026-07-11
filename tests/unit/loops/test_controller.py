@@ -80,6 +80,38 @@ def test_loop_stops_on_max_iterations(tmp_path):
     assert runner.calls == 3
 
 
+def test_loop_stops_on_budget_exhaustion_after_deterministic_completion(tmp_path):
+    ledger = InMemoryProgressLedger()
+    runner = StaticRunner(
+        [
+            IterationOutcome(
+                summary="final plan",
+                cost_credits=Decimal("1.25"),
+                deterministic_completion=True,
+            ),
+        ]
+    )
+    evaluator = StaticEvaluator([])
+    controller = GoalLoopController(
+        policy=LoopBudgetPolicy(
+            max_iterations=3,
+            max_budget_credits=Decimal("1.0"),
+            max_wall_clock_minutes=10,
+        ),
+        runner=runner,
+        tools=loop_tools(tmp_path),
+        evaluator=evaluator,
+        ledger=ledger,
+        now=lambda: datetime(2026, 7, 6, tzinfo=UTC),
+    )
+
+    result = controller.run(state())
+
+    assert result.stop_reason is LoopStopReason.BUDGET_EXHAUSTED
+    assert result.state.iteration == 1
+    assert result.state.credits_spent == Decimal("1.25")
+
+
 def test_loop_stops_on_budget_exhaustion(tmp_path):
     ledger = InMemoryProgressLedger()
     runner = StaticRunner([IterationOutcome(summary="expensive", cost_credits=Decimal("1.25"))])

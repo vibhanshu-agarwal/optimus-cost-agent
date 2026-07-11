@@ -154,7 +154,7 @@ Raw range bytes are visible to the model for one planning turn only. Earlier evi
 - Consumes: `LoopBudgetPolicy`, `DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES`, `AgentRunRequest.max_cost_usd`.
 - Produces: `PlanningLoopPolicy.to_loop_budget_policy(max_cost_usd)`, `PlanningObservation`, `PlanningReadRequest`, `PlanningTurnDecision`, and `parse_planning_turn(text)`.
 
-- [ ] **Step 1: Write failing policy validation and boundary tests**
+- [x] **Step 1: Write failing policy validation and boundary tests**
 
 Add tests proving:
 
@@ -188,7 +188,7 @@ def test_planning_policy_accepts_deterministic_boundary_caps(turns: int):
 
 Add `AgentRunRequest` round-trip coverage for `max_planning_turns=1` and rejection of zero.
 
-- [ ] **Step 2: Run the tests and verify the intended failures**
+- [x] **Step 2: Run the tests and verify the intended failures**
 
 Run:
 
@@ -198,7 +198,7 @@ python -m pytest tests/unit/agent/test_planning_loop.py tests/unit/agent/test_mo
 
 Expected: FAIL because the planning-loop types and request field do not exist.
 
-- [ ] **Step 3: Add the validated policy and request field**
+- [x] **Step 3: Add the validated policy and request field**
 
 Implement:
 
@@ -233,7 +233,7 @@ planning_wall_clock_minutes: int = Field(default=30, ge=1)
 
 Do not add another request cost field.
 
-- [ ] **Step 4: Write failing parser tests**
+- [x] **Step 4: Write failing parser tests**
 
 Cover one READ, multiple sorted READ identities, malformed/absolute/traversal paths, overlapping ranges, `end <= start`, missing observation, oversized observation, intermediate `WRITE`/`TEST`, mixed intermediate/final grammar, a valid existing final plan, a valid one-line `REFUSE`, empty/multiline/oversized refusal reasons, and text matching none of the three grammars.
 
@@ -250,11 +250,11 @@ assert decision.failure_signature == (
 )
 ```
 
-- [ ] **Step 5: Implement strict intermediate models and parser**
+- [x] **Step 5: Implement strict intermediate models and parser**
 
 Use frozen Pydantic models. Normalize paths to POSIX workspace-relative form, sort identities only for the failure signature, preserve declared order for execution, and reject duplicate or overlapping ranges for the same file. `parse_planning_turn` must return a discriminated result whose kind is `READ_MORE`, `FINAL_PLAN`, or `REFUSE`; it must never guess based on parse failure. Represent no-match text with an explicit parse error that the iteration adapter converts to the fixed `UNPARSEABLE` non-progress outcome.
 
-- [ ] **Step 6: Run narrow tests**
+- [x] **Step 6: Run narrow tests**
 
 Run:
 
@@ -264,7 +264,7 @@ python -m pytest tests/unit/agent/test_planning_loop.py tests/unit/agent/test_mo
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/optimus/agent/planning_loop.py src/optimus/agent/models.py tests/unit/agent/test_planning_loop.py tests/unit/agent/test_models.py
@@ -287,11 +287,11 @@ git commit -m "Define bounded planning-turn contracts"
 - Consumes: `GuardedLoopToolExecutor`, `PreToolGuard`, `PlanningReadRequest`.
 - Produces: `GuardedLoopToolExecutor.read_file_range(...) -> PlanningReadEvidence` and `pack_planning_evidence(...) -> PlanningEvidenceEnvelope`.
 
-- [ ] **Step 1: Write failing guarded-range tests**
+- [x] **Step 1: Write failing guarded-range tests**
 
 Cover exact bytes, UTF-8 boundary rejection, path traversal, symlink escape, missing file, changed-file hash, aggregate range budget overflow, and proof that `PreToolGuard.evaluate(...)` runs before opening the file. Do not repair a split UTF-8 code point silently; return `PLANNING_READ_NOT_UTF8_ALIGNED`.
 
-- [ ] **Step 2: Run the focused tests and verify failure**
+- [x] **Step 2: Run the focused tests and verify failure**
 
 ```bash
 python -m pytest tests/unit/loops/test_tools.py tests/unit/agent/test_planning_loop.py -v
@@ -299,7 +299,7 @@ python -m pytest tests/unit/loops/test_tools.py tests/unit/agent/test_planning_l
 
 Expected: FAIL because ranged READ and envelope packing are absent.
 
-- [ ] **Step 3: Implement the guarded ranged READ**
+- [x] **Step 3: Implement the guarded ranged READ**
 
 Add a read-only method that:
 
@@ -312,7 +312,7 @@ Add a read-only method that:
 
 The planning adapter must receive evidence only through this method. It must not accept `Path`, `open`, `read_text`, or `read_bytes` callbacks.
 
-- [ ] **Step 4: Implement deterministic envelope packing**
+- [x] **Step 4: Implement deterministic envelope packing**
 
 `pack_planning_evidence` must:
 
@@ -329,7 +329,7 @@ Add an invariant test:
 assert PLANNING_OBSERVATION_MAX_BYTES + PLANNING_NEW_READ_MAX_BYTES == DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
 ```
 
-- [ ] **Step 5: Run the focused tests**
+- [x] **Step 5: Run the focused tests**
 
 ```bash
 python -m pytest tests/unit/loops/test_tools.py tests/unit/agent/test_planning_loop.py -v
@@ -337,7 +337,7 @@ python -m pytest tests/unit/loops/test_tools.py tests/unit/agent/test_planning_l
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/optimus/loops/tools.py src/optimus/agent/planning_loop.py tests/unit/loops/test_tools.py tests/unit/agent/test_planning_loop.py
@@ -361,7 +361,7 @@ git commit -m "Add guarded ranged planning evidence"
 - Consumes: `GoalLoopController`, `IterationState`, `IterationOutcome`, `GuardedLoopToolExecutor`, `GatewayClient`, `PlanningLoopPolicy`.
 - Produces: `PlanningLoopRunner.run(...) -> PlanningLoopResult` containing final plan or typed stop, aggregate reported usage, settled-turn count, and content-free evidence metadata.
 
-- [ ] **Step 1: Write failing settled-turn and stop-precedence tests**
+- [x] **Step 1: Write failing settled-turn and stop-precedence tests**
 
 Required cases:
 
@@ -376,7 +376,7 @@ Required cases:
 - a scripted `REFUSE: Current raw evidence is insufficient for a safe write.` response yields `PLANNING_MODEL_REFUSED`, sanitized corrective text, no plan hash, and no permission request; the runtime does not claim to semantically detect ungrounded WRITE content.
 - two consecutive responses matching no grammar produce `failure_signature="UNPARSEABLE"` and stop through `REPEATED_FAILURE`; one unparseable response followed by a valid final plan may still settle.
 
-- [ ] **Step 2: Run the tests and verify failure**
+- [x] **Step 2: Run the tests and verify failure**
 
 ```bash
 python -m pytest tests/unit/agent/test_planning_loop.py tests/unit/agent/test_prompts.py tests/unit/loops/test_controller.py -v
@@ -384,7 +384,7 @@ python -m pytest tests/unit/agent/test_planning_loop.py tests/unit/agent/test_pr
 
 Expected: FAIL because the planning adapter and prompt contract are absent.
 
-- [ ] **Step 3: Add the versioned multi-turn prompt contract**
+- [x] **Step 3: Add the versioned multi-turn prompt contract**
 
 The prompt must state:
 
@@ -399,7 +399,7 @@ The prompt must state:
 
 Include `planning_turn`, `max_planning_turns`, remaining USD budget, remaining wall-clock minutes, carried observations, and current read evidence in deterministic sections.
 
-- [ ] **Step 4: Implement the adapter over `GoalLoopController`**
+- [x] **Step 4: Implement the adapter over `GoalLoopController`**
 
 The adapter's `IterationRunner` performs one settled planning turn:
 
@@ -416,7 +416,7 @@ Use a deterministic completion evaluator that performs no Gateway call. The adap
 
 Before constructing `GoalLoopController`, return `PLANNING_BUDGET_EXHAUSTED` with zero settled turns when `max_cost_usd == 0`; do not call `to_loop_budget_policy` and do not replace zero with `0.01`.
 
-- [ ] **Step 5: Map controller stops to typed planning failures**
+- [x] **Step 5: Map controller stops to typed planning failures**
 
 Use exact public stop reasons:
 
@@ -431,7 +431,7 @@ settled REFUSE decision -> PLANNING_MODEL_REFUSED
 
 Each failure returns sanitized corrective text, zero mutations, no plan hash, and no approval request.
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 ```bash
 python -m pytest tests/unit/agent/test_planning_loop.py tests/unit/agent/test_prompts.py tests/unit/loops/test_controller.py -v

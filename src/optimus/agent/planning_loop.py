@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Callable
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
@@ -9,8 +11,15 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from optimus.agent.directives import AgentDirectiveParseError, AgentPlanDirectives, parse_agent_plan
+from optimus.agent.prompts import build_multi_turn_planner_input
 from optimus.agent.workspace_context import DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
-from optimus.loops.models import LoopBudgetPolicy
+from optimus.guardrails.pre_tool import PreToolGuard
+from optimus.loops.completion import DeterministicCompletionEvaluator
+from optimus.loops.controller import GoalLoopController
+from optimus.loops.ledger import InMemoryProgressLedger
+from optimus.loops.models import IterationOutcome, IterationState, LoopBudgetPolicy, LoopStopReason, LoopToolExecutorProtocol
+from optimus.runtime.modes import ExecutionMode
+from optimus.telemetry.subjects import sanitize_workspace_text
 
 PLANNING_OBSERVATION_MAX_BYTES = 4 * 1024
 PLANNING_NEW_READ_MAX_BYTES = 12 * 1024
@@ -118,6 +127,14 @@ class PlanningLoopResult(BaseModel):
 
     stop_reason: str | None = None
     settled_turns: int = Field(default=0, ge=0)
+    total_cost_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    gateway_request_ids: tuple[str, ...] = ()
+    plan_text: str | None = None
+    plan_hash: str | None = None
+    directives: AgentPlanDirectives | None = None
+    corrective_text: str = ""
+    refusal_reason: str | None = None
+    evidence_metadata: dict[str, str] = Field(default_factory=dict)
 
 
 def run_planning_with_budget(max_cost_usd: Decimal) -> PlanningLoopResult:
@@ -298,7 +315,7 @@ def parse_planning_turn(text: str) -> PlanningTurnDecision:
     if _surface_has_observe(surface_lines):
         return _parse_intermediate_turn(stripped)
 
-    final_decision = _try_parse_final_plan(stripped)
+    final_decision = _try_parse_final_plan(text)
     if final_decision is not None:
         return final_decision
 
@@ -485,3 +502,297 @@ def _normalized_read_failure_signature(read_requests: list[PlanningReadRequest])
 
 
 assert PLANNING_OBSERVATION_MAX_BYTES + PLANNING_NEW_READ_MAX_BYTES == DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
+
+_PLANNING_STOP_REASONS = {
+    LoopStopReason.REPEATED_FAILURE: "PLANNING_REPEATED_READ_REQUEST",
+    LoopStopReason.BUDGET_EXHAUSTED: "PLANNING_BUDGET_EXHAUSTED",
+    LoopStopReason.WALL_CLOCK: "PLANNING_WALL_CLOCK_EXHAUSTED",
+    LoopStopReason.MAX_ITERATIONS: "PLANNING_TURN_LIMIT_EXHAUSTED",
+    LoopStopReason.HUMAN_HALT: "PLANNING_HALTED",
+}
+
+
+def planning_corrective_text(
+    stop_reason: str | None,
+    *,
+    refusal_reason: str | None = None,
+    workspace_root: Path | None = None,
+) -> str:
+    if stop_reason == "PLANNING_MODEL_REFUSED" and refusal_reason is not None:
+        return sanitize_workspace_text(refusal_reason, workspace_root=workspace_root)
+    templates = {
+        "PLANNING_REPEATED_READ_REQUEST": "Planning stopped after repeated non-progress read requests.",
+        "PLANNING_BUDGET_EXHAUSTED": "Planning stopped because the run budget was exhausted.",
+        "PLANNING_WALL_CLOCK_EXHAUSTED": "Planning stopped because the wall-clock limit was reached.",
+        "PLANNING_TURN_LIMIT_EXHAUSTED": "Planning stopped before a final plan could be settled.",
+        "PLANNING_HALTED": "Planning was halted before settlement.",
+    }
+    if stop_reason is None:
+        return ""
+    return templates.get(
+        stop_reason,
+        sanitize_workspace_text(stop_reason, workspace_root=workspace_root),
+    )
+
+
+class PlanningLoopRunner:
+    def __init__(
+        self,
+        *,
+        gateway_client,
+        model: str,
+        policy: PlanningLoopPolicy,
+        workspace_root: Path,
+        execution_mode: ExecutionMode,
+        max_cost_usd: Decimal,
+        guard: PreToolGuard | None = None,
+        now: Callable[[], datetime] | None = None,
+        halt_requested: Callable[[], bool] | None = None,
+    ) -> None:
+        self._gateway_client = gateway_client
+        self._model = model
+        self._policy = policy
+        self._workspace_root = workspace_root.resolve()
+        self._execution_mode = execution_mode
+        self._max_cost_usd = max_cost_usd
+        self._guard = guard or PreToolGuard.for_workspace(
+            workspace_root=self._workspace_root,
+            allowed_network_hosts=(),
+        )
+        self._now = now or (lambda: datetime.now(tz=UTC))
+        self._halt_requested = halt_requested or (lambda: False)
+
+    def run(
+        self,
+        *,
+        run_id: str,
+        session_id: str | None,
+        task: str,
+        initial_workspace_context: str = "",
+    ) -> PlanningLoopResult:
+        if self._max_cost_usd <= Decimal("0"):
+            return PlanningLoopResult(stop_reason="PLANNING_BUDGET_EXHAUSTED", settled_turns=0)
+
+        from optimus.loops.tools import GuardedLoopToolExecutor
+
+        iteration_runner = _PlanningIterationRunner(
+            gateway_client=self._gateway_client,
+            model=self._model,
+            task=task,
+            initial_workspace_context=initial_workspace_context,
+            workspace_root=self._workspace_root,
+            run_id=run_id,
+            session_id=session_id,
+            execution_mode=self._execution_mode,
+            policy=self._policy,
+            max_cost_usd=self._max_cost_usd,
+            now=self._now,
+        )
+        controller = GoalLoopController(
+            policy=self._policy.to_loop_budget_policy(max_cost_usd=self._max_cost_usd),
+            runner=iteration_runner,
+            tools=GuardedLoopToolExecutor(guard=self._guard),
+            evaluator=DeterministicCompletionEvaluator(
+                completed=False,
+                reason="planning loop uses per-turn settlement",
+            ),
+            ledger=InMemoryProgressLedger(),
+            halt_requested=self._halt_requested,
+            now=self._now,
+        )
+        loop_result = controller.run(
+            IterationState(
+                run_id=run_id,
+                session_id=session_id,
+                goal=task,
+                completion_condition=task,
+                started_at=self._now(),
+            )
+        )
+        return iteration_runner.to_planning_result(loop_result)
+
+
+class _PlanningIterationRunner:
+    def __init__(
+        self,
+        *,
+        gateway_client,
+        model: str,
+        task: str,
+        initial_workspace_context: str,
+        workspace_root: Path,
+        run_id: str,
+        session_id: str | None,
+        execution_mode: ExecutionMode,
+        policy: PlanningLoopPolicy,
+        max_cost_usd: Decimal,
+        now: Callable[[], datetime],
+    ) -> None:
+        self._gateway_client = gateway_client
+        self._model = model
+        self._task = task
+        self._initial_workspace_context = initial_workspace_context
+        self._workspace_root = workspace_root
+        self._run_id = run_id
+        self._session_id = session_id
+        self._execution_mode = execution_mode
+        self._policy = policy
+        self._max_cost_usd = max_cost_usd
+        self._now = now
+        self._observations: list[PlanningObservation] = []
+        self._current_reads: tuple[PlanningReadEvidence, ...] = ()
+        self._gateway_request_ids: list[str] = []
+        self._total_cost_usd = Decimal("0")
+        self._last_decision: PlanningTurnDecision | None = None
+
+    def run_iteration(self, state: IterationState, tools: LoopToolExecutorProtocol) -> IterationOutcome:
+        planning_turn = state.iteration + 1
+        remaining_budget = max(Decimal("0"), self._max_cost_usd - state.credits_spent)
+        remaining_wall_clock = max(
+            0,
+            self._policy.max_wall_clock_minutes - state.elapsed_minutes(now=self._now()),
+        )
+        carried_envelope = ""
+        if self._observations:
+            carried_envelope = pack_planning_evidence(
+                observations=tuple(self._observations),
+                current_reads=(),
+            ).text
+        current_envelope = ""
+        if self._current_reads:
+            current_envelope = pack_planning_evidence(
+                observations=(),
+                current_reads=self._current_reads,
+            ).text
+        prompt = build_multi_turn_planner_input(
+            self._task,
+            planning_turn=planning_turn,
+            max_planning_turns=self._policy.max_planning_turns,
+            remaining_budget_usd=remaining_budget,
+            remaining_wall_clock_minutes=remaining_wall_clock,
+            carried_observations_envelope=carried_envelope,
+            current_read_evidence_envelope=current_envelope,
+            initial_workspace_context=self._initial_workspace_context if planning_turn == 1 else "",
+        )
+        response = self._gateway_client.create_response(
+            model=self._model,
+            input_text=prompt,
+            metadata={
+                "run_id": self._run_id,
+                "session_id": self._session_id,
+                "purpose": "planning_turn",
+                "planning_turn": planning_turn,
+            },
+        )
+        self._gateway_request_ids.append(response.gateway_usage.gateway_request_id)
+        attempt_cost = response.gateway_usage.cost_usd
+        self._total_cost_usd += attempt_cost
+
+        try:
+            decision = parse_planning_turn(response.output_text)
+        except PlanningTurnParseError:
+            return IterationOutcome(
+                summary="planning response was unparseable",
+                deterministic_completion=False,
+                failure_signature="UNPARSEABLE",
+                cost_credits=attempt_cost,
+            )
+
+        self._last_decision = decision
+        if decision.kind is PlanningTurnKind.READ_MORE:
+            from optimus.loops.tools import GuardedLoopToolExecutor
+
+            if not isinstance(tools, GuardedLoopToolExecutor):
+                raise TypeError("planning loop requires GuardedLoopToolExecutor")
+            read_evidence: list[PlanningReadEvidence] = []
+            for request in decision.read_requests:
+                read_evidence.append(
+                    tools.read_file_range(
+                        workspace_root=self._workspace_root,
+                        run_id=self._run_id,
+                        session_id=self._session_id,
+                        execution_mode=self._execution_mode,
+                        request=request,
+                    )
+                )
+            self._observations.extend(
+                observations_from_read_evidence(
+                    observation_text=decision.observation_text or "",
+                    read_evidence=tuple(read_evidence),
+                )
+            )
+            self._current_reads = tuple(read_evidence)
+            return IterationOutcome(
+                summary="planning requested guarded read evidence",
+                deterministic_completion=False,
+                failure_signature=decision.failure_signature,
+                cost_credits=attempt_cost,
+            )
+
+        if decision.kind is PlanningTurnKind.FINAL_PLAN:
+            return IterationOutcome(
+                summary="planning settled with a final directive plan",
+                deterministic_completion=True,
+                failure_signature=None,
+                cost_credits=attempt_cost,
+                evidence={"planning_turn": str(planning_turn)},
+            )
+
+        if decision.kind is PlanningTurnKind.REFUSE:
+            return IterationOutcome(
+                summary="planning settled with a typed refusal",
+                deterministic_completion=True,
+                failure_signature=None,
+                cost_credits=attempt_cost,
+            )
+
+        raise AssertionError(f"unsupported planning decision: {decision.kind}")
+
+    def to_planning_result(self, loop_result) -> PlanningLoopResult:
+        settled_turns = loop_result.state.iteration
+        if loop_result.stop_reason is LoopStopReason.COMPLETED:
+            decision = self._last_decision
+            if decision is not None and decision.kind is PlanningTurnKind.REFUSE:
+                refusal_reason = decision.reason
+                return PlanningLoopResult(
+                    stop_reason="PLANNING_MODEL_REFUSED",
+                    settled_turns=settled_turns,
+                    total_cost_usd=self._total_cost_usd,
+                    gateway_request_ids=tuple(self._gateway_request_ids),
+                    corrective_text=planning_corrective_text(
+                        "PLANNING_MODEL_REFUSED",
+                        refusal_reason=refusal_reason,
+                        workspace_root=self._workspace_root,
+                    ),
+                    refusal_reason=refusal_reason,
+                    evidence_metadata={"settled_turns": str(settled_turns)},
+                )
+            plan_text = decision.plan_text if decision is not None else None
+            plan_hash = (
+                hashlib.sha256(plan_text.encode("utf-8")).hexdigest()
+                if plan_text is not None
+                else None
+            )
+            return PlanningLoopResult(
+                stop_reason=None,
+                settled_turns=settled_turns,
+                total_cost_usd=self._total_cost_usd,
+                gateway_request_ids=tuple(self._gateway_request_ids),
+                plan_text=plan_text,
+                plan_hash=plan_hash,
+                directives=decision.directives if decision is not None else None,
+                evidence_metadata={"settled_turns": str(settled_turns)},
+            )
+
+        mapped_stop = _PLANNING_STOP_REASONS.get(loop_result.stop_reason)
+        return PlanningLoopResult(
+            stop_reason=mapped_stop,
+            settled_turns=settled_turns,
+            total_cost_usd=self._total_cost_usd,
+            gateway_request_ids=tuple(self._gateway_request_ids),
+            corrective_text=planning_corrective_text(
+                mapped_stop,
+                workspace_root=self._workspace_root,
+            ),
+            evidence_metadata={"settled_turns": str(settled_turns)},
+        )
