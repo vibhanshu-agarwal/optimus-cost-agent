@@ -33,3 +33,14 @@ def test_compute_cost_usd_uses_openrouter_haiku_rates():
 def test_lookup_model_rate_fails_loudly_for_unknown_model():
     with pytest.raises(ValueError, match="no pricing snapshot"):
         lookup_model_rate(provider="openrouter", resolved_model="unknown/model")
+
+
+def test_compute_cost_usd_uses_openrouter_glm_5_2_rates():
+    cost, snapshot = compute_cost_usd(
+        provider="openrouter",
+        resolved_model="z-ai/glm-5.2",
+        input_tokens=1_000_000,
+        output_tokens=1_000_000,
+    )
+    assert cost == Decimal("0.42") + Decimal("1.32")
+    assert snapshot.startswith("openrouter-z-ai-glm-5.2-")

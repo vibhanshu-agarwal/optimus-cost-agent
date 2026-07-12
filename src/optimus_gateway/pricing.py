@@ -27,6 +27,11 @@ MODEL_RATES: dict[tuple[str, str], ModelRate] = {
         Decimal("0.15"),
         Decimal("0.60"),
     ),
+    ("openrouter", "z-ai/glm-5.2"): ModelRate(
+        "openrouter-z-ai-glm-5.2-2026-07-12",
+        Decimal("0.42"),
+        Decimal("1.32"),
+    ),
 }
 
 
