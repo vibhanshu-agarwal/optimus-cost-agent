@@ -604,6 +604,40 @@ def _permission_events(records: list[dict]) -> list[dict[str, str]]:
     return events
 
 
+def _transcript_run_identity(records: list[dict]) -> tuple[str, str]:
+    session_id = ""
+    run_id = ""
+    for record in records:
+        if record.get("method") == "session/new":
+            result = record.get("result")
+            if isinstance(result, dict):
+                session_id = str(result.get("sessionId", "") or "")
+        if record.get("method") != "session/request_permission":
+            continue
+        params = record.get("params")
+        if not isinstance(params, dict):
+            continue
+        meta = params.get("_meta")
+        if isinstance(meta, dict):
+            run_id = str(meta.get("runId", "") or "")
+    return session_id, run_id
+
+
+def _debug_event_matches_run(
+    data: dict[str, object],
+    *,
+    run_id: str,
+    session_id: str,
+) -> bool:
+    event_run = str(data.get("run_id", "") or "")
+    event_session = str(data.get("session_id", "") or "")
+    if run_id and event_run and event_run != run_id:
+        return False
+    if session_id and event_session and event_session != session_id:
+        return False
+    return bool(event_run or event_session)
+
+
 def _transcript_stop_reasons(records: list[dict]) -> list[str]:
     reasons: list[str] = []
     for record in records:
@@ -638,7 +672,12 @@ def _infer_model_decision(event: dict[str, object]) -> str:
     return "FINAL_PLAN"
 
 
-def _analyze_debug_trace(debug_trace_path: Path | None) -> dict[str, object]:
+def _analyze_debug_trace(
+    debug_trace_path: Path | None,
+    *,
+    filter_run_id: str = "",
+    filter_session_id: str = "",
+) -> dict[str, object]:
     if debug_trace_path is None or not debug_trace_path.exists():
         return {
             "context_fits": False,
@@ -663,6 +702,13 @@ def _analyze_debug_trace(debug_trace_path: Path | None) -> dict[str, object]:
         data = payload.get("data")
         if not isinstance(data, dict):
             continue
+        if filter_run_id or filter_session_id:
+            if not _debug_event_matches_run(
+                data,
+                run_id=filter_run_id,
+                session_id=filter_session_id,
+            ):
+                continue
         if hypothesis_id == "P9.8-CONTEXT":
             blocking = data.get("blocking_stop_reason")
             if blocking:
@@ -806,15 +852,23 @@ def build_evidence_summary_from_run(
     previous_fixture_manifest_sha256: str = "",
     previous_task_sha256: str = "",
 ) -> EvidenceSummary:
-    debug = _analyze_debug_trace(debug_trace_path)
     permission_events = _permission_events(records)
+    transcript_session_id, transcript_run_id = _transcript_run_identity(records)
+    debug = _analyze_debug_trace(
+        debug_trace_path,
+        filter_run_id=transcript_run_id,
+        filter_session_id=transcript_session_id,
+    )
     stop_reasons = _transcript_stop_reasons(records)
+    replan_by_turn = debug["replan_by_turn"]
+    if not isinstance(replan_by_turn, dict):
+        replan_by_turn = {}
     turn_summaries = _build_turn_summaries(
-        debug["replan_by_turn"],  # type: ignore[arg-type]
+        replan_by_turn,  # type: ignore[arg-type]
         permission_events=permission_events,
         records=records,
     )
-    settled_turns = len({item["settled_turn"] for item in turn_summaries})
+    settled_turns = len(replan_by_turn) if replan_by_turn else len({item["settled_turn"] for item in turn_summaries})
     wire_attempts = sum(len(item["gateway_request_ids"]) for item in turn_summaries)
     gateway_request_ids = debug["gateway_request_ids"]  # type: ignore[assignment]
     if not isinstance(gateway_request_ids, list):
@@ -841,8 +895,8 @@ def build_evidence_summary_from_run(
 
     total_cost_usd = float(debug.get("total_cost_usd", 0.0) or 0.0)
     usage_recorded = total_cost_usd > 0.0
-    session_id = str(debug.get("session_id", "") or "")
-    run_id = str(debug.get("run_id", "") or "")
+    session_id = transcript_session_id or str(debug.get("session_id", "") or "")
+    run_id = transcript_run_id or str(debug.get("run_id", "") or "")
     completed_model_attempt = infrastructure_valid and bool(turn_summaries or stop_reasons)
 
     summary: EvidenceSummary = {
@@ -1114,6 +1168,10 @@ def main(argv: list[str] | None = None) -> int:
     manifest = prepare(workspace, agent_exe=agent_exe, model=resolved_model)
     task = str(manifest["task"])
 
+    debug_trace = workspace / ".optimus" / "debug-acp.ndjson"
+    if debug_trace.exists():
+        debug_trace.unlink()
+
     prior_summary: EvidenceSummary | None = None
     if args.attempt > 1:
         try:
@@ -1149,7 +1207,6 @@ def main(argv: list[str] | None = None) -> int:
 
     transcript_path = workspace / f"attempt-{args.attempt}-transcript.jsonl"
     transcript_path.write_text(proc.stdout, encoding="utf-8")
-    debug_trace = workspace / ".optimus" / "debug-acp.ndjson"
     records = _parse_jsonl(transcript_path)
     transcript_locator = f"transcript: attempt-{args.attempt}"
     debug_trace_locator = f"debug: attempt-{args.attempt}"

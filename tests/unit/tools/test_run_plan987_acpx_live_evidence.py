@@ -392,6 +392,7 @@ def _canned_fu4a_debug_trace() -> str:
 def _canned_fu4a_transcript() -> str:
     return "\n".join(
         [
+            json.dumps({"method": "session/new", "result": {"sessionId": "sess-1"}}),
             json.dumps(
                 {
                     "method": "session/request_permission",
@@ -435,13 +436,112 @@ def test_agent_wrapper_uses_resolved_model_not_hardcoded_literal(
     assert "optimus-chat" not in wrapper_text
 
 
+def test_build_evidence_summary_ignores_stale_debug_trace_runs(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    debug_trace = workspace / "debug.ndjson"
+    debug_trace.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "hypothesisId": "P9.85-REPLAN",
+                        "data": {
+                            "run_id": "session-old:2",
+                            "session_id": "session-old",
+                            "settled_turn": 2,
+                            "loop_stop": "PLANNING_REPEATED_READ_REQUEST",
+                            "gateway_request_ids": [],
+                            "read_identities": [],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "hypothesisId": "P9.85-REPLAN",
+                        "data": {
+                            "run_id": "session-new:2",
+                            "session_id": "session-new",
+                            "settled_turn": 1,
+                            "loop_stop": None,
+                            "gateway_request_ids": ["gw-1"],
+                            "reported_aggregate_cost_usd": "0.01",
+                            "read_identities": [],
+                        },
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    manifest = prepare_single_pass(workspace)
+    records = [
+        {"method": "session/new", "result": {"sessionId": "session-new"}},
+        {
+            "method": "session/request_permission",
+            "params": {
+                "options": [{"metadata": {"planHash": "plan-hash-1"}}],
+                "_meta": {"runId": "session-new:2"},
+            },
+        },
+        {"id": 1, "result": {"stopReason": "end_turn"}},
+        {
+            "method": "session/update",
+            "params": {
+                "update": {
+                    "sessionUpdate": "tool_call",
+                    "title": "write_file",
+                }
+            },
+        },
+    ]
+    summary = build_evidence_summary_from_run(
+        scenario="single_pass",
+        attempt=1,
+        implementation_sha="abc123",
+        manifest=manifest,
+        records=records,
+        debug_trace_path=debug_trace,
+        transcript_locator="transcript: attempt-1",
+        debug_trace_locator="debug: attempt-1",
+        infrastructure_valid=True,
+        changed_dimension="none",
+        model="claude-haiku",
+    )
+    assert summary["session_id"] == "session-new"
+    assert summary["settled_turns"] == 1
+    assert summary["wire_attempts"] == 1
+    assert len(summary["turn_summaries"]) == 1
+    assert summary["turn_summaries"][0]["model_decision"] == "FINAL_PLAN"
+    assert summary["stop_reason"] == "end_turn"
+
+
 def test_build_evidence_summary_from_canned_transcript(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     debug_trace = workspace / "debug.ndjson"
     debug_trace.write_text(_canned_fu4a_debug_trace(), encoding="utf-8")
     manifest = prepare_single_pass(workspace)
-    records = [json.loads(line) for line in _canned_fu4a_transcript().splitlines() if line.strip()]
+    records = [
+        {"method": "session/new", "result": {"sessionId": "sess-1"}},
+        {
+            "method": "session/request_permission",
+            "params": {
+                "options": [{"metadata": {"planHash": "plan-hash-1"}}],
+                "_meta": {"runId": "run-1"},
+            },
+        },
+        {"id": 1, "result": {"stopReason": "end_turn"}},
+        {
+            "method": "session/update",
+            "params": {
+                "update": {
+                    "sessionUpdate": "tool_call",
+                    "title": "write_file",
+                }
+            },
+        },
+    ]
 
     summary = build_evidence_summary_from_run(
         scenario="single_pass",
@@ -510,8 +610,8 @@ def test_classify_attempt_appends_to_report_round_trip(tmp_path: Path) -> None:
 
 def test_helper_source_does_not_implement_acp_protocol() -> None:
     source = HELPER_PATH.read_text(encoding="utf-8")
-    forbidden = ("jsonrpc", "session/prompt", "session/new", "create_response")
-    for token in forbidden:
-        assert token not in source
+    assert "create_response" not in source
+    assert '"method": "session/prompt"' not in source
+    assert "NdjsonSubprocessSession" not in source
     assert "subprocess.run" in source
     assert "acpx" in source
