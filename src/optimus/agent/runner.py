@@ -187,11 +187,15 @@ class AgentRunner:
         if self._workspace_context_observer is not None:
             self._workspace_context_observer(request, workspace_context)
         if workspace_context.blocking_stop_reason is not None:
-            if workspace_context.blocking_stop_reason == _OVERSIZED_REQUIRED_CONTEXT_TRIGGER:
+            if (
+                request.execution_mode is ExecutionMode.AGENT
+                and workspace_context.blocking_stop_reason == _OVERSIZED_REQUIRED_CONTEXT_TRIGGER
+            ):
                 return self._run_multi_turn_planning(
                     request=request,
                     context=context,
                     toolbox=toolbox,
+                    initial_workspace_context="",
                     progress_observer=planning_progress_observer,
                 )
             return self._build_result(
@@ -202,6 +206,14 @@ class AgentRunner:
                 tool_calls=(),
                 total_cost_usd=Decimal("0"),
                 stop_reason=workspace_context.blocking_stop_reason,
+            )
+        if request.execution_mode is ExecutionMode.AGENT:
+            return self._run_multi_turn_planning(
+                request=request,
+                context=context,
+                toolbox=toolbox,
+                initial_workspace_context=workspace_context.text,
+                progress_observer=planning_progress_observer,
             )
         planner_input = build_agent_planner_input(request.task, workspace_context=workspace_context.text)
         response = self._gateway_client.create_response(
@@ -241,6 +253,7 @@ class AgentRunner:
         request: AgentRunRequest,
         context: RuntimeContext,
         toolbox: AgentToolbox,
+        initial_workspace_context: str = "",
         progress_observer: PlanningProgressObserver | None = None,
     ) -> AgentRunResult:
         from optimus.agent.planning_loop import PlanningLoopPolicy, PlanningLoopRunner
@@ -277,7 +290,7 @@ class AgentRunner:
             run_id=request.run_id,
             session_id=request.session_id,
             task=request.task,
-            initial_workspace_context="",
+            initial_workspace_context=initial_workspace_context,
         )
         if planning_result.stop_reason is not None:
             status = (
