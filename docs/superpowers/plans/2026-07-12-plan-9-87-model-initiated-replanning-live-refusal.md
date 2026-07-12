@@ -519,7 +519,7 @@ python tools/run_plan987_acpx_live_evidence.py --verify-report reports/plan-9-87
 
 Expected: PASS for qualifying FU-4B evidence, or record the characterized-but-unproven terminal blocker and leave the Definition of Done unchecked.
 
-- [ ] **Step 6: Commit the redacted report and Task 6b plan amendment**
+- [x] **Step 6: Commit the redacted report and Task 6b plan amendment**
 
 ```bash
 git add reports/plan-9-87-model-replanning-refusal-acpx-evidence.md docs/superpowers/plans/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md
