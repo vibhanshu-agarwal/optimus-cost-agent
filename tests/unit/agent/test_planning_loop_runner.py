@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import itertools
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+from optimus.acp.debug_trace import resolve_debug_log_path
 from optimus.agent.planning_loop import (
     PlanningLoopPolicy,
     PlanningLoopRunner,
@@ -603,3 +605,31 @@ def test_planning_loop_stop_precedence_favors_repeated_failure(tmp_path):
     )
 
     assert result.stop_reason == "PLANNING_REPEATED_READ_REQUEST"
+
+
+def test_planning_loop_logs_rejected_read_path_to_debug_trace(tmp_path, monkeypatch):
+    log_path = resolve_debug_log_path(workspace_root=tmp_path)
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+
+    read_missing = "OBSERVE: need policy\nREAD: policy.txt#bytes=0:1024\n"
+    gateway = ScriptingGateway([(read_missing, Decimal("0.001"), "gw-1")])
+    result = _runner(tmp_path, gateway=gateway).run(
+        run_id="run-read-reject",
+        session_id="session-read-reject",
+        task="Update target.py",
+        initial_workspace_context="",
+    )
+
+    assert result.stop_reason == "PLANNING_READ_FILE_NOT_FOUND"
+    assert "policy.txt" not in result.corrective_text
+
+    lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").strip().splitlines()]
+    reject_lines = [line for line in lines if line.get("hypothesisId") == "P9.87-READ-REJECT"]
+    assert len(reject_lines) == 1
+    data = reject_lines[0]["data"]
+    assert data["rejected_path"] == "policy.txt"
+    assert data["stop_reason"] == "PLANNING_READ_FILE_NOT_FOUND"
+    assert data["start_byte"] == 0
+    assert data["end_byte"] == 1024
+    assert data["run_id"] == "run-read-reject"
