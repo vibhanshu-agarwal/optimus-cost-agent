@@ -21,6 +21,7 @@ from tools.run_plan987_acpx_live_evidence import (
     prepare_refusal,
     prepare_replan,
     prepare_single_pass,
+    resolve_live_model,
     verify_report,
 )
 
@@ -74,7 +75,7 @@ def _base_summary(**overrides: object) -> EvidenceSummary:
         "attempt": 1,
         "implementation_sha": "abc123",
         "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87",
-        "model": "optimus-chat",
+        "model": "claude-haiku",
         "fixture_manifest_sha256": "manifest",
         "task_sha256": "task",
         "session_id": "sess-1",
@@ -416,6 +417,24 @@ def _canned_fu4a_transcript() -> str:
     )
 
 
+def test_resolve_live_model_prefers_optimus_agent_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OPTIMUS_AGENT_MODEL", raising=False)
+    monkeypatch.setenv("OPTIMUS_AGENT_MODEL", "claude-haiku")
+    assert resolve_live_model() == "claude-haiku"
+
+
+def test_agent_wrapper_uses_resolved_model_not_hardcoded_literal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OPTIMUS_AGENT_MODEL", "claude-haiku")
+    workspace = tmp_path / "ws"
+    prepare_single_pass(workspace, agent_exe="C:/fake/optimus-agent.exe", model=resolve_live_model())
+    wrapper_name = "run-optimus-agent.cmd" if __import__("platform").system() == "Windows" else "run-optimus-agent.sh"
+    wrapper_text = (workspace / wrapper_name).read_text(encoding="utf-8")
+    assert "claude-haiku" in wrapper_text
+    assert "optimus-chat" not in wrapper_text
+
+
 def test_build_evidence_summary_from_canned_transcript(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -435,6 +454,7 @@ def test_build_evidence_summary_from_canned_transcript(tmp_path: Path) -> None:
         debug_trace_locator="debug: attempt-1",
         infrastructure_valid=True,
         changed_dimension="none",
+        model="claude-haiku",
     )
 
     assert summary["settled_turns"] == 1

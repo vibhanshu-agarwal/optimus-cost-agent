@@ -18,12 +18,12 @@ from typing import Literal, TypedDict
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from optimus.agent.defaults import resolve_agent_model  # noqa: E402
 from optimus.agent.prompts import MULTI_TURN_PLANNER_PROMPT_VERSION  # noqa: E402
 from optimus.telemetry.subjects import sanitize_workspace_text  # noqa: E402
 
 PROMPT_VERSION = MULTI_TURN_PLANNER_PROMPT_VERSION
 EVIDENCE_SCHEMA_VERSION = "plan-9-87-evidence-summary-v1"
-DEFAULT_MODEL = "optimus-chat"
 DEFAULT_REPORT = ROOT / "reports/plan-9-87-model-replanning-refusal-acpx-evidence.md"
 ACP_TIMEOUT_SECONDS = 600
 
@@ -143,18 +143,27 @@ def _build_policy_bytes(size: int) -> bytes:
     return _pad_bytes(bytes(body), size)
 
 
-def _write_agent_wrapper(workspace: Path, agent_exe: str) -> None:
+def resolve_live_model(
+    environ: dict[str, str] | None = None,
+    *,
+    cli_model: str | None = None,
+) -> str:
+    """Resolve the Gateway model for live runs (CLI > OPTIMUS_AGENT_MODEL > default)."""
+    return resolve_agent_model(environ or os.environ, cli_model=cli_model)
+
+
+def _write_agent_wrapper(workspace: Path, agent_exe: str, *, model: str) -> None:
     if platform.system() == "Windows":
         wrapper = workspace / "run-optimus-agent.cmd"
         wrapper.write_text(
-            f'@echo off\r\n"{agent_exe}" --workspace-root "%CD%" --debug-trace --model {DEFAULT_MODEL}\r\n',
+            f'@echo off\r\n"{agent_exe}" --workspace-root "%CD%" --debug-trace --model {model}\r\n',
             encoding="ascii",
         )
     else:
         wrapper = workspace / "run-optimus-agent.sh"
         wrapper.write_text(
             "#!/usr/bin/env bash\n"
-            f'exec "{agent_exe}" --workspace-root "$PWD" --debug-trace --model {DEFAULT_MODEL}\n',
+            f'exec "{agent_exe}" --workspace-root "$PWD" --debug-trace --model {model}\n',
             encoding="utf-8",
         )
         wrapper.chmod(0o755)
@@ -192,16 +201,26 @@ def _build_manifest(*, scenario: str, task: str, files: dict[str, Path]) -> dict
     return manifest
 
 
-def prepare_single_pass(workspace: Path, *, agent_exe: str | None = None) -> dict[str, object]:
+def prepare_single_pass(
+    workspace: Path,
+    *,
+    agent_exe: str | None = None,
+    model: str | None = None,
+) -> dict[str, object]:
     workspace.mkdir(parents=True, exist_ok=True)
     target = workspace / "target.py"
     target.write_text("# greeting\nprint('hello world')\n", encoding="utf-8")
     if agent_exe is not None:
-        _write_agent_wrapper(workspace, agent_exe)
+        _write_agent_wrapper(workspace, agent_exe, model=model or resolve_live_model())
     return _build_manifest(scenario="single_pass", task=SINGLE_PASS_TASK, files={"target.py": target})
 
 
-def prepare_replan(workspace: Path, *, agent_exe: str | None = None) -> dict[str, object]:
+def prepare_replan(
+    workspace: Path,
+    *,
+    agent_exe: str | None = None,
+    model: str | None = None,
+) -> dict[str, object]:
     workspace.mkdir(parents=True, exist_ok=True)
     target = workspace / "target.py"
     policy = workspace / "policy.txt"
@@ -209,7 +228,7 @@ def prepare_replan(workspace: Path, *, agent_exe: str | None = None) -> dict[str
     target.write_bytes(_pad_bytes(target_header, REPLAN_TARGET_BYTES))
     policy.write_bytes(_build_policy_bytes(REPLAN_POLICY_BYTES))
     if agent_exe is not None:
-        _write_agent_wrapper(workspace, agent_exe)
+        _write_agent_wrapper(workspace, agent_exe, model=model or resolve_live_model())
     return _build_manifest(
         scenario="replan",
         task=REPLAN_TASK,
@@ -217,7 +236,12 @@ def prepare_replan(workspace: Path, *, agent_exe: str | None = None) -> dict[str
     )
 
 
-def prepare_refusal(workspace: Path, *, agent_exe: str | None = None) -> dict[str, object]:
+def prepare_refusal(
+    workspace: Path,
+    *,
+    agent_exe: str | None = None,
+    model: str | None = None,
+) -> dict[str, object]:
     workspace.mkdir(parents=True, exist_ok=True)
     target = workspace / "target.py"
     policy = workspace / "policy.txt"
@@ -225,7 +249,7 @@ def prepare_refusal(workspace: Path, *, agent_exe: str | None = None) -> dict[st
     target.write_bytes(_pad_bytes(target_header, REFUSAL_TARGET_BYTES))
     policy.write_bytes(_build_policy_bytes(REFUSAL_POLICY_BYTES))
     if agent_exe is not None:
-        _write_agent_wrapper(workspace, agent_exe)
+        _write_agent_wrapper(workspace, agent_exe, model=model or resolve_live_model())
     return _build_manifest(
         scenario="refusal",
         task=REFUSAL_TASK,
@@ -778,6 +802,7 @@ def build_evidence_summary_from_run(
     debug_trace_locator: str,
     infrastructure_valid: bool,
     changed_dimension: ChangedDimension,
+    model: str,
     previous_fixture_manifest_sha256: str = "",
     previous_task_sha256: str = "",
 ) -> EvidenceSummary:
@@ -826,7 +851,7 @@ def build_evidence_summary_from_run(
         "attempt": attempt,
         "implementation_sha": implementation_sha,
         "prompt_version": PROMPT_VERSION,
-        "model": DEFAULT_MODEL,
+        "model": model,
         "fixture_manifest_sha256": str(manifest["fixture_manifest_sha256"]),
         "task_sha256": str(manifest["task_sha256"]),
         "session_id": session_id,
@@ -1019,6 +1044,10 @@ def main(argv: list[str] | None = None) -> int:
         default="none",
     )
     parser.add_argument("--approve-all", action="store_true")
+    parser.add_argument(
+        "--model",
+        help="Gateway model override (defaults via OPTIMUS_AGENT_MODEL, else agent default).",
+    )
     parser.add_argument("--implementation-sha")
     parser.add_argument("--implementation-sha-from-report", type=Path)
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
@@ -1073,6 +1102,8 @@ def main(argv: list[str] | None = None) -> int:
 
     acpx = _resolve_acpx()
     agent_exe = _resolve_optimus_agent()
+    env = dict(os.environ)
+    resolved_model = resolve_live_model(env, cli_model=args.model)
     workspace = ROOT / "reports" / f".plan987-{args.scenario}-workspace"
     workspace.mkdir(parents=True, exist_ok=True)
     prepare = {
@@ -1080,7 +1111,7 @@ def main(argv: list[str] | None = None) -> int:
         "replan": prepare_replan,
         "refusal": prepare_refusal,
     }[args.scenario]
-    manifest = prepare(workspace, agent_exe=agent_exe)
+    manifest = prepare(workspace, agent_exe=agent_exe, model=resolved_model)
     task = str(manifest["task"])
 
     prior_summary: EvidenceSummary | None = None
@@ -1114,7 +1145,6 @@ def main(argv: list[str] | None = None) -> int:
         "exec",
         task,
     ]
-    env = dict(os.environ)
     proc = _run_subprocess(cmd, cwd=workspace, env=env)
 
     transcript_path = workspace / f"attempt-{args.attempt}-transcript.jsonl"
@@ -1135,6 +1165,7 @@ def main(argv: list[str] | None = None) -> int:
         debug_trace_locator=debug_trace_locator,
         infrastructure_valid=proc.returncode == 0,
         changed_dimension=args.changed,
+        model=resolved_model,
         previous_fixture_manifest_sha256=previous_fixture,
         previous_task_sha256=previous_task,
     )
