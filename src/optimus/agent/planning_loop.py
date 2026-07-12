@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -550,6 +551,9 @@ def planning_corrective_text(
         return sanitize_workspace_text(refusal_reason, workspace_root=workspace_root)
     templates = {
         "PLANNING_REPEATED_READ_REQUEST": "Planning stopped after repeated non-progress read requests.",
+        "PLANNING_UNPARSEABLE_RESPONSE": (
+            "Planning stopped after repeated responses that did not match the required directive grammar."
+        ),
         "PLANNING_BUDGET_EXHAUSTED": "Planning stopped because the run budget was exhausted.",
         "PLANNING_WALL_CLOCK_EXHAUSTED": "Planning stopped because the wall-clock limit was reached.",
         "PLANNING_TURN_LIMIT_EXHAUSTED": "Planning stopped before a final plan could be settled.",
@@ -642,6 +646,7 @@ class PlanningLoopRunner:
             usage_callback=self._usage_callback,
             retry_controller=self._retry_controller,
             progress_observer=self._progress_observer,
+            halt_requested=self._halt_requested,
         )
         controller = GoalLoopController(
             policy=iteration_runner.loop_budget_policy,
@@ -688,6 +693,7 @@ class _PlanningIterationRunner:
         usage_callback: PlanningGatewayUsageCallback | None,
         retry_controller: RetryController,
         progress_observer: PlanningProgressObserver | None,
+        halt_requested: Callable[[], bool] | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -712,6 +718,8 @@ class _PlanningIterationRunner:
         self._last_provider: str | None = None
         self._last_wire_retry_count = 0
         self._typed_planning_stop_reason: str | None = None
+        self._last_non_progress_kind: Literal["READ_MORE", "UNPARSEABLE"] | None = None
+        self._halt_requested = halt_requested or (lambda: False)
 
     def _typed_planning_failure(
         self,
@@ -813,6 +821,7 @@ class _PlanningIterationRunner:
         try:
             decision = parse_planning_turn(response.output_text)
         except PlanningTurnParseError:
+            self._last_non_progress_kind = "UNPARSEABLE"
             return IterationOutcome(
                 summary="planning response was unparseable",
                 deterministic_completion=False,
@@ -822,6 +831,7 @@ class _PlanningIterationRunner:
 
         self._last_decision = decision
         if decision.kind is PlanningTurnKind.READ_MORE:
+            self._last_non_progress_kind = "READ_MORE"
             from optimus.loops.tools import GuardedLoopToolExecutor, LoopToolBlocked
 
             if not isinstance(tools, GuardedLoopToolExecutor):
@@ -914,79 +924,102 @@ class _PlanningIterationRunner:
 
         raise AssertionError(f"unsupported planning decision: {decision.kind}")
 
-    def _planning_resource_stop_after_settlement(self, *, state: IterationState) -> str | None:
-        """Planning-only post-settlement checks when the shared controller reports COMPLETED."""
-        if state.human_halt_requested:
-            return "PLANNING_HALTED"
-        if state.repeated_failure_count >= self.loop_budget_policy.repeated_failure_limit:
-            return "PLANNING_REPEATED_READ_REQUEST"
+    def _planning_resource_stop_after_final_plan(self, *, state: IterationState) -> str | None:
         if state.credits_spent >= self.loop_budget_policy.max_budget_credits:
             return "PLANNING_BUDGET_EXHAUSTED"
         if state.elapsed_minutes(now=self._now()) >= self.loop_budget_policy.max_wall_clock_minutes:
             return "PLANNING_WALL_CLOCK_EXHAUSTED"
         return None
 
+    def _planning_failure_result(
+        self,
+        *,
+        stop_reason: str,
+        settled_turns: int,
+        refusal_reason: str | None = None,
+    ) -> PlanningLoopResult:
+        return PlanningLoopResult(
+            stop_reason=stop_reason,
+            settled_turns=settled_turns,
+            total_cost_usd=self._total_cost_usd,
+            gateway_request_ids=tuple(self._gateway_request_ids),
+            corrective_text=planning_corrective_text(
+                stop_reason,
+                refusal_reason=refusal_reason,
+                workspace_root=self._workspace_root,
+            ),
+            refusal_reason=(
+                planning_corrective_text(
+                    "PLANNING_MODEL_REFUSED",
+                    refusal_reason=refusal_reason,
+                    workspace_root=self._workspace_root,
+                )
+                if stop_reason == "PLANNING_MODEL_REFUSED" and refusal_reason is not None
+                else None
+            ),
+            evidence_metadata={"settled_turns": str(settled_turns)},
+        )
+
     def to_planning_result(self, loop_result) -> PlanningLoopResult:
         settled_turns = loop_result.state.iteration
         if loop_result.stop_reason is LoopStopReason.COMPLETED:
-            resource_stop = self._planning_resource_stop_after_settlement(state=loop_result.state)
-            if resource_stop is not None:
-                return PlanningLoopResult(
-                    stop_reason=resource_stop,
-                    settled_turns=settled_turns,
-                    total_cost_usd=self._total_cost_usd,
-                    gateway_request_ids=tuple(self._gateway_request_ids),
-                    corrective_text=planning_corrective_text(
-                        resource_stop,
-                        workspace_root=self._workspace_root,
-                    ),
-                    evidence_metadata={"settled_turns": str(settled_turns)},
-                )
-            if self._typed_planning_stop_reason is not None:
-                stop_reason = self._typed_planning_stop_reason
-                return PlanningLoopResult(
-                    stop_reason=stop_reason,
-                    settled_turns=settled_turns,
-                    total_cost_usd=self._total_cost_usd,
-                    gateway_request_ids=tuple(self._gateway_request_ids),
-                    corrective_text=planning_corrective_text(
-                        stop_reason,
-                        workspace_root=self._workspace_root,
-                    ),
-                    evidence_metadata={"settled_turns": str(settled_turns)},
-                )
             decision = self._last_decision
+
+            if loop_result.state.human_halt_requested or self._halt_requested():
+                return self._planning_failure_result(
+                    stop_reason="PLANNING_HALTED",
+                    settled_turns=settled_turns,
+                )
+
+            if self._typed_planning_stop_reason is not None:
+                return self._planning_failure_result(
+                    stop_reason=self._typed_planning_stop_reason,
+                    settled_turns=settled_turns,
+                )
+
             if decision is not None and decision.kind is PlanningTurnKind.REFUSE:
-                refusal_reason = decision.reason
-                return PlanningLoopResult(
+                return self._planning_failure_result(
                     stop_reason="PLANNING_MODEL_REFUSED",
                     settled_turns=settled_turns,
+                    refusal_reason=decision.reason,
+                )
+
+            if decision is not None and decision.kind is PlanningTurnKind.FINAL_PLAN:
+                resource_stop = self._planning_resource_stop_after_final_plan(state=loop_result.state)
+                if resource_stop is not None:
+                    return self._planning_failure_result(
+                        stop_reason=resource_stop,
+                        settled_turns=settled_turns,
+                    )
+                plan_text = decision.plan_text
+                plan_hash = (
+                    hashlib.sha256(plan_text.encode("utf-8")).hexdigest()
+                    if plan_text is not None
+                    else None
+                )
+                return PlanningLoopResult(
+                    stop_reason=None,
+                    settled_turns=settled_turns,
                     total_cost_usd=self._total_cost_usd,
                     gateway_request_ids=tuple(self._gateway_request_ids),
-                    corrective_text=planning_corrective_text(
-                        "PLANNING_MODEL_REFUSED",
-                        refusal_reason=refusal_reason,
-                        workspace_root=self._workspace_root,
-                    ),
-                    refusal_reason=refusal_reason,
+                    plan_text=plan_text,
+                    plan_hash=plan_hash,
+                    provider=self._last_provider,
+                    directives=decision.directives,
                     evidence_metadata={"settled_turns": str(settled_turns)},
                 )
-            plan_text = decision.plan_text if decision is not None else None
-            plan_hash = (
-                hashlib.sha256(plan_text.encode("utf-8")).hexdigest()
-                if plan_text is not None
-                else None
+
+            raise AssertionError("planning loop completed without a settled decision")
+
+        if loop_result.stop_reason is LoopStopReason.REPEATED_FAILURE:
+            mapped_stop = (
+                "PLANNING_UNPARSEABLE_RESPONSE"
+                if self._last_non_progress_kind == "UNPARSEABLE"
+                else "PLANNING_REPEATED_READ_REQUEST"
             )
-            return PlanningLoopResult(
-                stop_reason=None,
+            return self._planning_failure_result(
+                stop_reason=mapped_stop,
                 settled_turns=settled_turns,
-                total_cost_usd=self._total_cost_usd,
-                gateway_request_ids=tuple(self._gateway_request_ids),
-                plan_text=plan_text,
-                plan_hash=plan_hash,
-                provider=self._last_provider,
-                directives=decision.directives if decision is not None else None,
-                evidence_metadata={"settled_turns": str(settled_turns)},
             )
 
         mapped_stop = _PLANNING_STOP_REASONS.get(loop_result.stop_reason)

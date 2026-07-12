@@ -155,9 +155,10 @@ def test_unparseable_agent_plan_fails_typed_without_silent_success(tmp_path):
     result = runner.run(AgentRunRequest(run_id="run-1", task="Do work", execution_mode=ExecutionMode.AGENT, workspace_root=tmp_path))
 
     assert result.status is AgentRunStatus.TERMINATED
-    assert result.stop_reason == "PLANNING_REPEATED_READ_REQUEST"
+    assert result.stop_reason == "PLANNING_UNPARSEABLE_RESPONSE"
     assert result.mutation_count == 0
     assert result.plan_hash is None
+    assert "did not match the required directive grammar" in result.output_text
     assert "Here is prose, not directives." not in result.output_text
 
 
