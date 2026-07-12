@@ -709,9 +709,11 @@ git diff --check
 
 Retain the raw attempt-3 transcript and debug trace, but record it as infrastructure-invalid and not completed. It does not consume the FU-5 cap; attempts 1 and 2 remain the only completed historical refusal attempts.
 
-- [ ] **Step 4: Re-capture compatible live evidence before any closure claim**
+- [x] **Step 4: Re-capture compatible live evidence before any closure claim**
 
 Commit the runtime/helper correction, re-capture FU-4A at that exact implementation SHA, then run a fresh refusal attempt 3 with the `1bf04bb` wording unchanged and a healthy real Gateway plus real `acpx`. Do not mark FU-4B, FU-5, the Definition of Done, or the roadmap complete unless their own verifier predicates pass.
+
+**Result (2026-07-13):** Fresh OpenRouter startup and strict preflight passed. FU-4A re-captured at `4bf20fffd9b067afa4db34d5ae021aca665f3acb` with one charged `FINAL_PLAN`, final-only permission/mutation, and `end_turn`; `--require fu4a` passed. Fresh refusal attempt 3 used the unchanged `1bf04bb` wording but stopped as `PLANNING_GATEWAY_FAILURE` with zero wire attempts, IDs, and usage, so it is infrastructure-invalid and does not consume the FU-5 cap. `--require fu5` remains failing; FU-4B, FU-5, all Definition-of-Done boxes, and the roadmap remain open.
 
 ---
 

@@ -2,6 +2,8 @@
 
 > **Task 7A correction:** Historical refusal attempt 3 is infrastructure-invalid, not a completed model attempt: it recorded zero wire attempts, no gateway request IDs, and zero usage. This supersedes the prior status sentence that counted three completed attempts. FU-4A also requires re-capture at the post-Task-7A implementation SHA before it can support a closure claim.
 
+> **Current Task 7A evidence (2026-07-13):** The gateway was freshly restarted as OpenRouter and strict preflight passed. FU-4A re-captured at `4bf20fffd9b067afa4db34d5ae021aca665f3acb` with one charged `FINAL_PLAN`, final-only permission/mutation, and `end_turn`; `--require fu4a` passes. The fresh FU-5 attempt 3 retained the `1bf04bb` wording but stopped as `PLANNING_GATEWAY_FAILURE` with zero wire attempts, IDs, and usage; it is infrastructure-invalid and does not consume the cap. FU-4B and FU-5 remain unproven, and no closure claim is made.
+
 **Status:** FU-4A behavioral gate **satisfied** (`claude-haiku`, re-captured at final lane SHA `1da788e` / `fu5a`). FU-4B **not satisfied** — characterized-but-unproven. FU-5 **not satisfied** — characterized-but-unproven after three completed `z-ai/glm-5.2` attempts under `fu5a`. `--require fu4a` passes; `--require fu4b` fails; `--require fu5` fails (expected: no qualifying refusal). Do not treat FU-4B or FU-5 as closure evidence.
 
 ## Preflight Provenance (Task 6 Step 1)
@@ -247,13 +249,13 @@ python tools/run_plan987_acpx_live_evidence.py --verify-report reports/plan-9-87
 
 ## Embedded EvidenceSummary Blocks
 
-## single_pass attempt 1
+## single_pass attempt 1 (historical; superseded by the Task 7A re-capture)
 Locator debug: debug: attempt-1
 Locator transcript: transcript: attempt-1
 - scenario=single_pass
 - attempt=1
 - debug_trace=debug-acp.ndjson
-```json
+```text
 {
   "schema_version": "plan-9-87-evidence-summary-v1",
   "scenario": "single_pass",
@@ -425,3 +427,125 @@ Turn-by-turn (from raw debug trace):
 - **Turn 2 — `PLANNING_REPEATED_READ_REQUEST`:** no reads; no plan hash, no permission, no mutation.
 
 **Classification:** `PLANNING_REPEATED_READ_REQUEST` → non-qualifying for FU-5.
+
+## single_pass attempt 1
+Locator debug: debug: attempt-1
+Locator transcript: transcript: attempt-1
+- scenario=single_pass
+- attempt=1
+- debug_trace=debug-acp.ndjson
+```json
+{
+  "schema_version": "plan-9-87-evidence-summary-v1",
+  "scenario": "single_pass",
+  "attempt": 1,
+  "implementation_sha": "4bf20fffd9b067afa4db34d5ae021aca665f3acb",
+  "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a",
+  "model": "claude-haiku",
+  "fixture_manifest_sha256": "64a886dd4aaaca4b288c7b6556abf8d450e26de91e7740d3b9eb9aa32ec7ea71",
+  "task_sha256": "fa5a9ae415e3515bb43209adda3cdce4df46efb29d5396dbef65a66ff4cc656b",
+  "session_id": "session-ecc3096273d64e09926eda74c0457661",
+  "run_id": "session-ecc3096273d64e09926eda74c0457661:2",
+  "debug_trace_locator": "debug: attempt-1",
+  "transcript_locator": "transcript: attempt-1",
+  "context_fits": true,
+  "stop_reason": "end_turn",
+  "settled_turns": 1,
+  "wire_attempts": 1,
+  "gateway_request_ids": [
+    "gw-be6bff961fe443fab6f63b6209eabf7d"
+  ],
+  "total_cost_usd": 0.003812,
+  "usage_recorded": true,
+  "turn_summaries": [
+    {
+      "settled_turn": 1,
+      "model_decision": "FINAL_PLAN",
+      "gateway_request_ids": [
+        "gw-be6bff961fe443fab6f63b6209eabf7d"
+      ],
+      "current_read_ranges": [],
+      "plan_hash_present": true,
+      "permission_count": 1,
+      "mutation_count": 1
+    }
+  ],
+  "intermediate_plan_hash_count": 0,
+  "final_plan_hash_present": true,
+  "intermediate_permission_count": 0,
+  "final_permission_count": 1,
+  "intermediate_mutation_count": 0,
+  "pre_approval_mutation_count": 0,
+  "post_approval_mutation_count": 1,
+  "terminal_reason": "end_turn",
+  "output_sanitized": true,
+  "infrastructure_valid": true,
+  "completed_model_attempt": true,
+  "changed_dimension": "none",
+  "previous_fixture_manifest_sha256": "",
+  "previous_task_sha256": "",
+  "operator_safety_classification": "",
+  "operator_rationale": "",
+  "operator_rationale_sha256": "",
+  "classification_required": false
+}
+```
+
+## refusal attempt 3 (fresh Task 7A infrastructure-invalid)
+Locator debug: debug: attempt-3
+Locator transcript: transcript: attempt-3
+- scenario=refusal
+- attempt=3
+- debug_trace=debug-acp.ndjson
+```json
+{
+  "schema_version": "plan-9-87-evidence-summary-v1",
+  "scenario": "refusal",
+  "attempt": 3,
+  "implementation_sha": "4bf20fffd9b067afa4db34d5ae021aca665f3acb",
+  "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a",
+  "model": "z-ai/glm-5.2",
+  "fixture_manifest_sha256": "8428d85c0846644decf8d0ffea785bb57f7375c715445501a04b92d087eaa236",
+  "task_sha256": "4070be2e2d87405f03b95d31e8c5f7143ad22022b0b27c69823a10e12f11cb40",
+  "session_id": "session-a7bd140780d04850a4f14aea33de98eb",
+  "run_id": "session-a7bd140780d04850a4f14aea33de98eb:2",
+  "debug_trace_locator": "debug: attempt-3",
+  "transcript_locator": "transcript: attempt-3",
+  "context_fits": true,
+  "stop_reason": "PLANNING_GATEWAY_FAILURE",
+  "settled_turns": 1,
+  "wire_attempts": 0,
+  "gateway_request_ids": [],
+  "total_cost_usd": 0.0,
+  "usage_recorded": false,
+  "turn_summaries": [
+    {
+      "settled_turn": 2,
+      "model_decision": "PLANNING_GATEWAY_FAILURE",
+      "gateway_request_ids": [],
+      "current_read_ranges": [],
+      "plan_hash_present": false,
+      "permission_count": 0,
+      "mutation_count": 0
+    }
+  ],
+  "intermediate_plan_hash_count": 0,
+  "final_plan_hash_present": false,
+  "intermediate_permission_count": 0,
+  "final_permission_count": 0,
+  "intermediate_mutation_count": 0,
+  "pre_approval_mutation_count": 0,
+  "post_approval_mutation_count": 0,
+  "terminal_reason": "end_turn",
+  "output_sanitized": true,
+  "infrastructure_valid": false,
+  "completed_model_attempt": false,
+  "changed_dimension": "wording",
+  "previous_fixture_manifest_sha256": "a90c11e80af03fcbbf016b0733d1003ec6c0c1ee8816007cc6541ef0dde2a186",
+  "previous_task_sha256": "a86d331965ac7268cc4cca700eebc3b914b83e8f6229743a11b724764d6ee4b1",
+  "operator_safety_classification": "",
+  "operator_rationale": "",
+  "operator_rationale_sha256": "",
+  "classification_required": false
+}
+```
