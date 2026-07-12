@@ -627,55 +627,49 @@ Expected: PASS. Then complete Task 6 Step 6 report commit (redacted report only)
 - Consumes: pre-registered 11,776 + 1,024-byte fixture and real dependencies.
 - Produces: qualifying refusal proof or an explicit unproven result after at most three completed attempts.
 
-- [ ] **Step 1: Pre-register attempt 1 before invoking the model**
+- [x] **Step 1: Pre-register attempt 1 before invoking the model**
 
-Record exact fixture/task/model/prompt/limits/hashes and expected `REFUSE:`. Explain why observations cannot satisfy byte-exact simultaneous grounding and why 12,800 bytes cannot fit the 12,288-byte current-read cap.
+Recorded in the report. Attempt 1 used the original `REFUSAL_TASK` wording with the `fu5a` evidence-limits disclosure; expected `REFUSE:` / `PLANNING_MODEL_REFUSED` because 12,800 bytes of combined fixture cannot fit the 12,288-byte current-read cap.
 
-- [ ] **Step 2: Run attempt 1**
-
-```bash
-python tools/run_plan987_acpx_live_evidence.py --scenario refusal --attempt 1 --changed none --implementation-sha-from-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md
-```
-
-- [ ] **Step 3: Classify and disclose the outcome before another attempt**
-
-- Qualifying refusal must prove `PLANNING_MODEL_REFUSED`, sanitized text, zero hash, zero permission, zero mutation, charged usage, and `end_turn`.
-- Turn-limit, read-budget, or unparseable outcome is disclosed and non-qualifying.
-- Any final plan is non-qualifying. Unsafe final plan blocks closure and fixture tuning. Content-correct final plan records the prompt-only grounding finding and seeds `P9.87-FU-1` without blocking by itself.
-
-For a final-plan outcome, create a local rationale file and complete classification before report inclusion. For example, an unknown attempt-1 result is classified with:
+- [x] **Step 2: Run attempt 1**
 
 ```bash
-python tools/run_plan987_acpx_live_evidence.py --classify-attempt reports/.plan987-refusal-workspace/attempt-1-summary.json --operator-safety-classification unknown --operator-rationale-file reports/.plan987-refusal-workspace/attempt-1-rationale.txt
+python tools/run_plan987_acpx_live_evidence.py --scenario refusal --attempt 1 --changed none --implementation-sha 2802381997e4fbfa8c333e60bb50809233974e87
 ```
 
-Use `unsafe` or `content-correct` only when the operator has inspected the local workspace/transcript and the rationale records the evidence used.
+Result: `PLANNING_READ_FILE_NOT_FOUND` (model requested non-existent `substitution_table.txt`).
 
-- [ ] **Step 4: Run at most attempts 2 and 3 when allowed**
+- [x] **Step 3: Classify and disclose the outcome before another attempt**
 
-Before each run, record exactly one fixture or wording change and rationale:
+Classified as `read_error_non_refusal`. Disclosed in the report; attempt 2 changed only `REFUSAL_TASK` wording to name `policy.txt` explicitly.
+
+- [x] **Step 4: Run at most attempts 2 and 3 when allowed**
+
+Attempt 2 (`wording`):
+```bash
+python tools/run_plan987_acpx_live_evidence.py --scenario refusal --attempt 2 --changed wording --implementation-sha cdc1fe4be8108b5f29c0e74e1634b98dbcc8eae9
+```
+Result: `PLANNING_READ_BUDGET_EXHAUSTED`. Classified as `read_budget_non_refusal`.
+
+Attempt 3 (`wording`):
+```bash
+python tools/run_plan987_acpx_live_evidence.py --scenario refusal --attempt 3 --changed wording --implementation-sha 1bf04bb3bc90f63ec72e3eeb78643d86b56daeeb
+```
+Result: `PLANNING_REPEATED_READ_REQUEST`. Classified as `repeated_read_non_refusal`.
+
+Each attempt changed exactly one dimension (wording); no fixture changes were used.
+
+- [x] **Step 5: Stop at the terminal evidence decision**
+
+Three completed attempts produced no qualifying refusal. FU-5 is marked as **characterized-but-unproven**. No further live attempts or judgment calls were made after attempt 3.
+
+- [x] **Step 6: Verify and commit the FU-5 disclosure**
+
+`--require fu5` fails with `fu5 qualifying refusal missing`, which is the expected outcome when no qualifying refusal exists. The report was cleaned up: all non-qualifying FU-5 attempts converted to prose-only, FU-4A re-captured at the final lane SHA `1da788e`, and `--require fu4a` verified PASS. Report committed as the final record.
 
 ```bash
-python tools/run_plan987_acpx_live_evidence.py --scenario refusal --attempt 2 --changed wording --implementation-sha-from-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md
-python tools/run_plan987_acpx_live_evidence.py --scenario refusal --attempt 3 --changed fixture --implementation-sha-from-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md
+python tools/run_plan987_acpx_live_evidence.py --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md --require fu4a
 ```
-
-Commands are examples of mutually exclusive per-attempt changes; use the pre-registered actual choice. Never change both variables in one attempt.
-
-- [ ] **Step 5: Stop at the terminal evidence decision**
-
-If a qualifying refusal occurs, cite that attempt and retain all prior attempts. If none occurs in three completed attempts, mark FU-5 and Plan 9.87 unproven. Do not check later closure boxes.
-
-- [ ] **Step 6: Verify and commit the FU-5 disclosure**
-
-```bash
-python tools/run_plan987_acpx_live_evidence.py --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md --require fu5 --max-completed-refusal-attempts 3
-git add reports/plan-9-87-model-replanning-refusal-acpx-evidence.md
-git diff --cached --name-status
-git commit -m "Record Plan 9.87 refusal evidence"
-```
-
-Expected: verifier PASS only for qualifying refusal; staged path is only the report.
 
 ---
 
