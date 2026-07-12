@@ -551,6 +551,7 @@ def planning_corrective_text(
         return sanitize_workspace_text(refusal_reason, workspace_root=workspace_root)
     templates = {
         "PLANNING_REPEATED_READ_REQUEST": "Planning stopped after repeated non-progress read requests.",
+        "PLANNING_GATEWAY_FAILURE": "Planning stopped after repeated gateway request failures.",
         "PLANNING_UNPARSEABLE_RESPONSE": (
             "Planning stopped after repeated responses that did not match the required directive grammar."
         ),
@@ -722,7 +723,7 @@ class _PlanningIterationRunner:
         self._last_provider: str | None = None
         self._last_wire_retry_count = 0
         self._typed_planning_stop_reason: str | None = None
-        self._last_non_progress_kind: Literal["READ_MORE", "UNPARSEABLE"] | None = None
+        self._last_non_progress_kind: Literal["GATEWAY_FAILURE", "READ_MORE", "UNPARSEABLE"] | None = None
         self._halt_requested = halt_requested or (lambda: False)
 
     def _typed_planning_failure(
@@ -821,6 +822,7 @@ class _PlanningIterationRunner:
         try:
             response, attempt_cost = self._invoke_planning_gateway(planning_turn=planning_turn, prompt=prompt)
         except RuntimeError:
+            self._last_non_progress_kind = "GATEWAY_FAILURE"
             return IterationOutcome(
                 summary="planning gateway request failed after retries",
                 deterministic_completion=False,
@@ -1040,11 +1042,10 @@ class _PlanningIterationRunner:
             raise AssertionError("planning loop completed without a settled decision")
 
         if loop_result.stop_reason is LoopStopReason.REPEATED_FAILURE:
-            mapped_stop = (
-                "PLANNING_UNPARSEABLE_RESPONSE"
-                if self._last_non_progress_kind == "UNPARSEABLE"
-                else "PLANNING_REPEATED_READ_REQUEST"
-            )
+            mapped_stop = {
+                "GATEWAY_FAILURE": "PLANNING_GATEWAY_FAILURE",
+                "UNPARSEABLE": "PLANNING_UNPARSEABLE_RESPONSE",
+            }.get(self._last_non_progress_kind, "PLANNING_REPEATED_READ_REQUEST")
             return self._planning_failure_result(
                 stop_reason=mapped_stop,
                 settled_turns=settled_turns,

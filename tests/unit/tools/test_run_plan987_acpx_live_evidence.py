@@ -591,6 +591,51 @@ def test_build_evidence_summary_from_canned_transcript(tmp_path: Path) -> None:
     assert summary["context_fits"] is True
 
 
+def test_zero_gateway_run_is_not_a_completed_model_attempt(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    debug_trace = workspace / "debug.ndjson"
+    debug_trace.write_text(
+        json.dumps(
+            {
+                "hypothesisId": "P9.85-REPLAN",
+                "data": {
+                    "session_id": "sess-1",
+                    "run_id": "run-1",
+                    "settled_turn": 1,
+                    "loop_stop": "PLANNING_REPEATED_READ_REQUEST",
+                    "gateway_request_ids": [],
+                    "reported_aggregate_cost_usd": "0",
+                    "read_identities": [],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = build_evidence_summary_from_run(
+        scenario="refusal",
+        attempt=3,
+        implementation_sha="abc123",
+        manifest=prepare_refusal(workspace),
+        records=[
+            {"method": "session/new", "result": {"sessionId": "sess-1"}},
+            {"id": 1, "result": {"stopReason": "end_turn"}},
+        ],
+        debug_trace_path=debug_trace,
+        transcript_locator="transcript: attempt-3",
+        debug_trace_locator="debug: attempt-3",
+        infrastructure_valid=True,
+        changed_dimension="wording",
+        model="z-ai/glm-5.2",
+    )
+
+    assert summary["wire_attempts"] == 0
+    assert summary["gateway_request_ids"] == []
+    assert summary["infrastructure_valid"] is False
+    assert summary["completed_model_attempt"] is False
+
+
 def test_classify_attempt_appends_to_report_round_trip(tmp_path: Path) -> None:
     summary_path = tmp_path / "attempt-1-summary.json"
     rationale_path = tmp_path / "attempt-1-rationale.txt"

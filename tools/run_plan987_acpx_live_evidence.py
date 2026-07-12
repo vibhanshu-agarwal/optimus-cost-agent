@@ -916,6 +916,8 @@ def build_evidence_summary_from_run(
 
     total_cost_usd = float(debug.get("total_cost_usd", 0.0) or 0.0)
     usage_recorded = total_cost_usd > 0.0
+    gateway_evidence = usage_recorded or wire_attempts > 0 or bool(gateway_request_ids)
+    infrastructure_valid = infrastructure_valid and gateway_evidence
     session_id = transcript_session_id or str(debug.get("session_id", "") or "")
     run_id = transcript_run_id or str(debug.get("run_id", "") or "")
     completed_model_attempt = infrastructure_valid and bool(turn_summaries or stop_reasons)

@@ -673,19 +673,61 @@ python tools/run_plan987_acpx_live_evidence.py --verify-report reports/plan-9-87
 
 ---
 
+### Task 7A: Correct Gateway-Failure Classification and Refusal Attempt Accounting
+
+**Amendment reason:** The Task 7 attempt-3 record is a zero-gateway infrastructure failure, not a completed model attempt: it has zero wire attempts, no gateway request IDs, and zero recorded usage. The original repeated-read stop was caused by retry-exhausted gateway failures falling through the generic repeated-failure mapping. This correction is general runtime/evidence-helper behavior, not refusal prompt tuning, and does not consume the one wording-change allowance.
+
+**Files:**
+- Modify: `.gitignore`
+- Modify: `src/optimus/agent/planning_loop.py`
+- Modify: `src/optimus/acp/spec.py`
+- Modify: `tools/run_plan987_acpx_live_evidence.py`
+- Modify: `tests/unit/agent/test_planning_loop_runner.py`
+- Modify: `tests/unit/acp/test_spec_protocol.py`
+- Modify: `tests/unit/tools/test_run_plan987_acpx_live_evidence.py`
+- Modify: `reports/plan-9-87-model-replanning-refusal-acpx-evidence.md`
+
+- [x] **Step 1: Prove the misclassification and zero-gateway accounting defect**
+
+```bash
+python -m pytest tests/unit/agent/test_planning_loop_runner.py::test_repeated_gateway_failures_map_to_gateway_failure_stop tests/unit/acp/test_spec_protocol.py::test_gateway_failure_is_a_terminal_planning_stop tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_zero_gateway_run_is_not_a_completed_model_attempt -v
+```
+
+The tests failed against the prior mapping and helper classification.
+
+- [x] **Step 2: Implement and verify the bounded runtime correction**
+
+Map repeated `GATEWAY_FAILURE` outcomes to `PLANNING_GATEWAY_FAILURE`, retain the existing repeated-read and repeated-unparseable mappings, expose the new typed stop through ACP, and mark a live run infrastructure-valid only when process success has genuine gateway evidence (usage, wire attempt, or request ID). Ignore local `.plan*-workspace` evidence fixtures so repository-wide Ruff does not lint their deliberately non-source fixture files.
+
+```bash
+python -m pytest tests/unit/agent/test_planning_loop_runner.py tests/unit/acp/test_spec_protocol.py tests/unit/tools/test_run_plan987_acpx_live_evidence.py -q
+python -m ruff check src/optimus/agent/planning_loop.py src/optimus/acp/spec.py tools/run_plan987_acpx_live_evidence.py tests/unit/agent/test_planning_loop_runner.py tests/unit/acp/test_spec_protocol.py tests/unit/tools/test_run_plan987_acpx_live_evidence.py
+git diff --check
+```
+
+- [x] **Step 3: Reclassify historical refusal attempt 3**
+
+Retain the raw attempt-3 transcript and debug trace, but record it as infrastructure-invalid and not completed. It does not consume the FU-5 cap; attempts 1 and 2 remain the only completed historical refusal attempts.
+
+- [ ] **Step 4: Re-capture compatible live evidence before any closure claim**
+
+Commit the runtime/helper correction, re-capture FU-4A at that exact implementation SHA, then run a fresh refusal attempt 3 with the `1bf04bb` wording unchanged and a healthy real Gateway plus real `acpx`. Do not mark FU-4B, FU-5, the Definition of Done, or the roadmap complete unless their own verifier predicates pass.
+
+---
+
 ### Task 8: Run Final Gates and Close the Roadmap
 
 **Files:**
 - Modify: `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`
 - Modify: `reports/plan-9-87-model-replanning-refusal-acpx-evidence.md`
 
-- [ ] **Step 1: Run narrow unit suites**
+- [x] **Step 1: Run narrow unit suites**
 
 ```bash
 python -m pytest tests/unit/agent/test_prompts.py tests/unit/agent/test_runner.py tests/unit/agent/test_planning_loop.py tests/unit/agent/test_planning_loop_runner.py tests/unit/acp/test_spec_protocol.py tests/unit/tools/test_run_plan987_acpx_live_evidence.py -v
 ```
 
-- [ ] **Step 2: Run relevant integrations**
+- [x] **Step 2: Run relevant integrations**
 
 ```bash
 python -m pytest tests/integration/agent tests/integration/acp tests/integration/usage -v
@@ -699,7 +741,9 @@ python -m pytest -m requires_redis tests/integration/agent/test_redis_live_agent
 
 Expected: PASS against real TimeSeries-capable Redis. If unavailable, record `NOT RUN` and leave the corresponding DoD open; do not substitute a fake.
 
-- [ ] **Step 4: Run full coverage, Ruff, and diff checks**
+**Result (2026-07-12):** `NOT RUN` — preflight rejected the session before Redis setup because `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` are not available in this test process. No fake substitute was used.
+
+- [x] **Step 4: Run full coverage, Ruff, and diff checks**
 
 ```bash
 python -m pytest --cov=src/optimus --cov-report=term-missing --cov-fail-under=80

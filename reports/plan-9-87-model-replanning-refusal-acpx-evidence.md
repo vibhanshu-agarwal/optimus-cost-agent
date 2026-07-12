@@ -1,5 +1,7 @@
 # Plan 9.87 Live Evidence Report (acpx)
 
+> **Task 7A correction:** Historical refusal attempt 3 is infrastructure-invalid, not a completed model attempt: it recorded zero wire attempts, no gateway request IDs, and zero usage. This supersedes the prior status sentence that counted three completed attempts. FU-4A also requires re-capture at the post-Task-7A implementation SHA before it can support a closure claim.
+
 **Status:** FU-4A behavioral gate **satisfied** (`claude-haiku`, re-captured at final lane SHA `1da788e` / `fu5a`). FU-4B **not satisfied** — characterized-but-unproven. FU-5 **not satisfied** — characterized-but-unproven after three completed `z-ai/glm-5.2` attempts under `fu5a`. `--require fu4a` passes; `--require fu4b` fails; `--require fu5` fails (expected: no qualifying refusal). Do not treat FU-4B or FU-5 as closure evidence.
 
 ## Preflight Provenance (Task 6 Step 1)
@@ -394,7 +396,7 @@ Turn-by-turn (from raw debug trace):
 
 **Classification:** `PLANNING_READ_BUDGET_EXHAUSTED` → non-qualifying for FU-5.
 
-## refusal attempt 3 (prose-only; fu5a non-qualifying)
+## refusal attempt 3 (prose-only; fu5a infrastructure-invalid)
 
 This run was captured under `fu5a` at implementation SHA `1bf04bb3bc90f63ec72e3eeb78643d86b56daeeb`. It is retained as a prose-only historical record and is **not** an embedded `EvidenceSummary` block — it is excluded from `--verify-report` parsing so the report can carry a single clean `implementation_sha` after the FU-5 lane closes. The raw artifacts remain on disk under `reports/.plan987-refusal-workspace/` (debug trace `debug-acp.ndjson`; transcript `attempt-3-transcript.jsonl`).
 
@@ -415,6 +417,8 @@ This run was captured under `fu5a` at implementation SHA `1bf04bb3bc90f63ec72e3e
 | Usage recorded | False |
 | Terminal stop | `PLANNING_REPEATED_READ_REQUEST` |
 | Terminal ACP reason | `end_turn` |
+
+**Task 7A reclassification:** the historical terminal stop was a gateway-failure misclassification. Because this run has zero wire attempts, no gateway request IDs, and zero usage, it is **infrastructure-invalid**, not a completed model attempt, and does **not** consume the FU-5 cap. The next genuine refusal run remains attempt 3 and retains the `1bf04bb` wording unchanged.
 
 Turn-by-turn (from raw debug trace):
 

@@ -168,6 +168,33 @@ def test_repeated_unparseable_responses_map_to_unparseable_stop(tmp_path):
     assert "Still just prose." not in result.corrective_text
 
 
+def test_repeated_gateway_failures_map_to_gateway_failure_stop(tmp_path):
+    class FailingGateway(ScriptingGateway):
+        def create_response(
+            self,
+            *,
+            model: str,
+            input_text: str,
+            metadata: dict[str, object] | None = None,
+        ) -> GatewayResponse:
+            raise RuntimeError("gateway unavailable")
+
+    result = _runner(
+        tmp_path,
+        gateway=FailingGateway([]),
+        policy=PlanningLoopPolicy(max_planning_turns=3),
+    ).run(
+        run_id="run-1",
+        session_id=None,
+        task="Update src/a.py",
+        initial_workspace_context="",
+    )
+
+    assert result.stop_reason == "PLANNING_GATEWAY_FAILURE"
+    assert result.gateway_request_ids == ()
+    assert result.total_cost_usd == Decimal("0")
+
+
 def test_repeated_identical_read_more_maps_to_read_stop(tmp_path):
     _write_file(tmp_path, "src/a.py", "alpha")
     gateway = ScriptingGateway(

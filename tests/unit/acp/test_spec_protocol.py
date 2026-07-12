@@ -7,6 +7,7 @@ import pytest
 from optimus.acp.errors import METHOD_NOT_FOUND
 from optimus.acp.shapes import build_plan_session_update
 from optimus.acp.spec import (
+    _PLANNING_TERMINAL_STOP_REASONS,
     ACP_PROTOCOL_VERSION,
     AcpDuplexAdapter,
     InMemoryAcpSpecSessionStore,
@@ -62,6 +63,10 @@ def test_max_planning_turns_from_env_returns_none_when_unset(monkeypatch):
 def test_max_planning_turns_from_env_returns_none_when_blank(monkeypatch):
     monkeypatch.setenv("OPTIMUS_MAX_PLANNING_TURNS", "   ")
     assert _max_planning_turns_from_env() is None
+
+
+def test_gateway_failure_is_a_terminal_planning_stop() -> None:
+    assert "PLANNING_GATEWAY_FAILURE" in _PLANNING_TERMINAL_STOP_REASONS
 
 
 def test_max_planning_turns_from_env_parses_valid_value(monkeypatch):
