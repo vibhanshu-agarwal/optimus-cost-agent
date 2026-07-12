@@ -166,6 +166,11 @@ def test_classify_unparseable_non_refusal() -> None:
     assert classify_attempt(summary) == "unparseable_non_refusal"
 
 
+def test_classify_read_file_not_found_non_refusal() -> None:
+    summary = _base_summary(stop_reason="PLANNING_READ_FILE_NOT_FOUND")
+    assert classify_attempt(summary) == "read_error_non_refusal"
+
+
 def test_classify_final_plan_non_refusal() -> None:
     summary = _base_summary(
         stop_reason="end_turn",
