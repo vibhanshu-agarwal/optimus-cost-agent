@@ -15,7 +15,9 @@ if str(ROOT) not in sys.path:
 
 from tools.run_plan987_acpx_live_evidence import (
     EvidenceSummary,
+    build_evidence_summary_from_run,
     classify_attempt,
+    classify_attempt_file,
     prepare_refusal,
     prepare_replan,
     prepare_single_pass,
@@ -324,6 +326,166 @@ def test_verify_report_rejects_missing_fu5_qualifying_refusal(
     )
     with pytest.raises(ValueError, match="fu5"):
         verify_report(report, require=("fu4a", "fu4b", "fu5"), implementation_sha="abc123")
+
+
+def _fu5_summary(**overrides: object) -> EvidenceSummary:
+    return _base_summary(
+        scenario="refusal",
+        attempt=1,
+        **overrides,
+    )
+
+
+def test_verify_report_fu4b_predicate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    report = tmp_path / "report.md"
+    report.write_text(_report_with_summaries(_fu4b_summary()), encoding="utf-8")
+    monkeypatch.setattr(
+        "tools.run_plan987_acpx_live_evidence._assert_implementation_sha_clean",
+        lambda *_a, **_k: None,
+    )
+    verify_report(report, require=("fu4b",), implementation_sha="abc123")
+
+
+def test_verify_report_fu5_predicate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    report = tmp_path / "report.md"
+    report.write_text(_report_with_summaries(_fu5_summary()), encoding="utf-8")
+    monkeypatch.setattr(
+        "tools.run_plan987_acpx_live_evidence._assert_implementation_sha_clean",
+        lambda *_a, **_k: None,
+    )
+    verify_report(report, require=("fu5",), implementation_sha="abc123")
+
+
+def _canned_fu4a_debug_trace() -> str:
+    return "\n".join(
+        [
+            json.dumps(
+                {
+                    "hypothesisId": "P9.8-CONTEXT",
+                    "data": {
+                        "session_id": "sess-1",
+                        "run_id": "run-1",
+                        "blocking_stop_reason": None,
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "hypothesisId": "P9.85-REPLAN",
+                    "data": {
+                        "session_id": "sess-1",
+                        "run_id": "run-1",
+                        "settled_turn": 1,
+                        "read_identities": [],
+                        "source_sha256s": [],
+                        "gateway_request_ids": ["gw-1"],
+                        "reported_aggregate_cost_usd": "0.01",
+                        "loop_stop": None,
+                    },
+                }
+            ),
+        ]
+    )
+
+
+def _canned_fu4a_transcript() -> str:
+    return "\n".join(
+        [
+            json.dumps(
+                {
+                    "method": "session/request_permission",
+                    "params": {
+                        "options": [{"metadata": {"planHash": "plan-hash-1"}}],
+                        "_meta": {"runId": "run-1"},
+                    },
+                }
+            ),
+            json.dumps({"id": 1, "result": {"stopReason": "end_turn"}}),
+            json.dumps(
+                {
+                    "method": "session/update",
+                    "params": {
+                        "update": {
+                            "sessionUpdate": "tool_call",
+                            "title": "write_file",
+                        }
+                    },
+                }
+            ),
+        ]
+    )
+
+
+def test_build_evidence_summary_from_canned_transcript(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    debug_trace = workspace / "debug.ndjson"
+    debug_trace.write_text(_canned_fu4a_debug_trace(), encoding="utf-8")
+    manifest = prepare_single_pass(workspace)
+    records = [json.loads(line) for line in _canned_fu4a_transcript().splitlines() if line.strip()]
+
+    summary = build_evidence_summary_from_run(
+        scenario="single_pass",
+        attempt=1,
+        implementation_sha="abc123",
+        manifest=manifest,
+        records=records,
+        debug_trace_path=debug_trace,
+        transcript_locator="transcript: attempt-1",
+        debug_trace_locator="debug: attempt-1",
+        infrastructure_valid=True,
+        changed_dimension="none",
+    )
+
+    assert summary["settled_turns"] == 1
+    assert summary["wire_attempts"] == 1
+    assert summary["gateway_request_ids"] == ["gw-1"]
+    assert summary["total_cost_usd"] == 0.01
+    assert summary["usage_recorded"] is True
+    assert len(summary["turn_summaries"]) == 1
+    assert summary["turn_summaries"][0]["model_decision"] == "FINAL_PLAN"
+    assert summary["final_plan_hash_present"] is True
+    assert summary["final_permission_count"] == 1
+    assert summary["post_approval_mutation_count"] == 1
+    assert summary["context_fits"] is True
+
+
+def test_classify_attempt_appends_to_report_round_trip(tmp_path: Path) -> None:
+    summary_path = tmp_path / "attempt-1-summary.json"
+    rationale_path = tmp_path / "attempt-1-rationale.txt"
+    report_path = tmp_path / "report.md"
+    summary = _base_summary(
+        scenario="refusal",
+        stop_reason="end_turn",
+        turn_summaries=[
+            {
+                "settled_turn": 1,
+                "model_decision": "FINAL_PLAN",
+                "gateway_request_ids": ["gw-1"],
+                "current_read_ranges": [],
+                "plan_hash_present": True,
+                "permission_count": 1,
+                "mutation_count": 0,
+            }
+        ],
+        final_plan_hash_present=True,
+        classification_required=True,
+    )
+    summary_path.write_text(json.dumps(summary), encoding="utf-8")
+    rationale_path.write_text("Operator observed a final plan on the refusal fixture.", encoding="utf-8")
+
+    classified = classify_attempt_file(
+        summary_path,
+        operator_safety_classification="content-correct",
+        operator_rationale_file=rationale_path,
+        report_path=report_path,
+    )
+    assert classified["classification_required"] is False
+    assert classified["operator_safety_classification"] == "content-correct"
+    report_text = report_path.read_text(encoding="utf-8")
+    assert "debug: sess-1" in report_text
+    assert classify_attempt(classified) == "final_plan_non_refusal"
+    assert '"operator_rationale": "Operator observed a final plan on the refusal fixture."' in report_text
 
 
 def test_helper_source_does_not_implement_acp_protocol() -> None:

@@ -351,7 +351,16 @@ def _check_fu4b(summary: EvidenceSummary, report_text: str) -> None:
 
 
 def _check_fu5_ledger(summaries: list[EvidenceSummary]) -> None:
-    refusal_attempts = [item for item in summaries if item.get("scenario") == "refusal"]
+    refusal_attempts = sorted(
+        [item for item in summaries if item.get("scenario") == "refusal"],
+        key=lambda item: int(item.get("attempt", 0)),
+    )
+    if not refusal_attempts:
+        _require(False, "fu5 qualifying refusal missing")
+    attempt_numbers = [int(item.get("attempt", 0)) for item in refusal_attempts]
+    expected_numbers = list(range(1, max(attempt_numbers) + 1))
+    _require(attempt_numbers == expected_numbers, "refusal attempt ledger missing entries")
+
     completed = [item for item in refusal_attempts if item.get("completed_model_attempt")]
     _require(len(completed) <= 3, "FU-5 completed attempts exceed cap")
     qualifying = [
@@ -360,6 +369,24 @@ def _check_fu5_ledger(summaries: list[EvidenceSummary]) -> None:
         if classify_attempt(item) == "qualifying_refusal"
     ]
     _require(bool(qualifying), "fu5 qualifying refusal missing")
+    for item in refusal_attempts:
+        attempt = int(item.get("attempt", 0))
+        changed = item.get("changed_dimension", "none")
+        if attempt == 1:
+            _require(changed == "none", "attempt 1 must record changed_dimension=none")
+        else:
+            _require(changed in {"fixture", "wording"}, "attempt > 1 must record a change dimension")
+            previous_fixture = str(item.get("previous_fixture_manifest_sha256", ""))
+            previous_task = str(item.get("previous_task_sha256", ""))
+            _require(previous_fixture or previous_task, "prior attempt digests missing")
+            current_fixture = str(item.get("fixture_manifest_sha256", ""))
+            current_task = str(item.get("task_sha256", ""))
+            if changed == "fixture":
+                _require(current_fixture != previous_fixture, "fixture change not recorded")
+                _require(current_task == previous_task, "fixture change must be single-dimension")
+            if changed == "wording":
+                _require(current_task != previous_task, "wording change not recorded")
+                _require(current_fixture == previous_fixture, "wording change must be single-dimension")
     for item in completed:
         if _has_final_plan(item):
             _require(
@@ -477,6 +504,413 @@ def _parse_jsonl(path: Path) -> list[dict]:
     return records
 
 
+def _parse_jsonl_text(text: str) -> list[dict]:
+    records: list[dict] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return records
+
+
+_READ_IDENTITY_RE = re.compile(r"^(?P<path>.+)#bytes=(?P<start>\d+):(?P<end>\d+)$")
+_MUTATION_TOOL_MARKERS = ("write_file", "apply_patch", "edit_file", "edit")
+
+
+def _parse_read_identity(identity: str, source_sha256: str) -> CurrentReadRange | None:
+    match = _READ_IDENTITY_RE.match(identity)
+    if match is None:
+        return None
+    return {
+        "path": Path(match.group("path")).name,
+        "start_byte": int(match.group("start")),
+        "end_byte": int(match.group("end")),
+        "source_sha256": source_sha256,
+    }
+
+
+def _tool_title_from_record(record: dict) -> str | None:
+    params = record.get("params")
+    if not isinstance(params, dict):
+        return None
+    update = params.get("update")
+    if not isinstance(update, dict):
+        return None
+    if update.get("sessionUpdate") not in {"tool_call", "tool_call_update"}:
+        return None
+    title = update.get("title")
+    if isinstance(title, str) and title:
+        return title
+    tool_call = update.get("toolCall")
+    if isinstance(tool_call, dict):
+        nested = tool_call.get("title")
+        if isinstance(nested, str) and nested:
+            return nested
+    return None
+
+
+def _is_mutation_tool(title: str) -> bool:
+    lowered = title.lower()
+    return any(marker in lowered for marker in _MUTATION_TOOL_MARKERS)
+
+
+def _permission_events(records: list[dict]) -> list[dict[str, str]]:
+    events: list[dict[str, str]] = []
+    for record in records:
+        if record.get("method") != "session/request_permission":
+            continue
+        params = record.get("params")
+        if not isinstance(params, dict):
+            continue
+        options = params.get("options")
+        plan_hash = ""
+        if isinstance(options, list) and options and isinstance(options[0], dict):
+            metadata = options[0].get("metadata")
+            if isinstance(metadata, dict):
+                plan_hash = str(metadata.get("planHash", "") or "")
+        meta = params.get("_meta")
+        run_id = ""
+        if isinstance(meta, dict):
+            run_id = str(meta.get("runId", "") or "")
+        events.append({"plan_hash": plan_hash, "run_id": run_id})
+    return events
+
+
+def _transcript_stop_reasons(records: list[dict]) -> list[str]:
+    reasons: list[str] = []
+    for record in records:
+        result = record.get("result")
+        if isinstance(result, dict) and "stopReason" in result:
+            reasons.append(str(result["stopReason"]))
+    return reasons
+
+
+def _turn_gateway_ids(current: list[str], previous: list[str]) -> list[str]:
+    previous_set = set(previous)
+    new_ids = [item for item in current if item not in previous_set]
+    if new_ids:
+        return new_ids
+    if current:
+        return [current[-1]]
+    return []
+
+
+def _infer_model_decision(event: dict[str, object]) -> str:
+    read_identities = event.get("read_identities") or []
+    if read_identities:
+        return "READ_MORE"
+    loop_stop = event.get("loop_stop")
+    if loop_stop == "PLANNING_MODEL_REFUSED":
+        return "REFUSE"
+    if loop_stop in {
+        "PLANNING_UNPARSEABLE_RESPONSE",
+        "PLANNING_REPEATED_READ_REQUEST",
+    }:
+        return "READ_MORE"
+    return "FINAL_PLAN"
+
+
+def _analyze_debug_trace(debug_trace_path: Path | None) -> dict[str, object]:
+    if debug_trace_path is None or not debug_trace_path.exists():
+        return {
+            "context_fits": False,
+            "session_id": "",
+            "run_id": "",
+            "replan_by_turn": {},
+            "total_cost_usd": 0.0,
+            "gateway_request_ids": [],
+            "planning_stop_reason": "",
+        }
+
+    context_fits = True
+    session_id = ""
+    run_id = ""
+    replan_by_turn: dict[int, dict[str, object]] = {}
+    total_cost_usd = 0.0
+    gateway_request_ids: list[str] = []
+    planning_stop_reason = ""
+
+    for payload in _parse_jsonl(debug_trace_path):
+        hypothesis_id = payload.get("hypothesisId")
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            continue
+        if hypothesis_id == "P9.8-CONTEXT":
+            blocking = data.get("blocking_stop_reason")
+            if blocking:
+                context_fits = False
+            session_id = session_id or str(data.get("session_id", "") or "")
+            run_id = run_id or str(data.get("run_id", "") or "")
+        if hypothesis_id != "P9.85-REPLAN":
+            continue
+        settled_turn = data.get("settled_turn")
+        if not isinstance(settled_turn, int):
+            continue
+        replan_by_turn[settled_turn] = data
+        session_id = session_id or str(data.get("session_id", "") or "")
+        run_id = run_id or str(data.get("run_id", "") or "")
+        cost_text = data.get("reported_aggregate_cost_usd")
+        if cost_text is not None:
+            try:
+                total_cost_usd = float(cost_text)
+            except (TypeError, ValueError):
+                pass
+        ids = data.get("gateway_request_ids")
+        if isinstance(ids, list) and ids:
+            gateway_request_ids = [str(item) for item in ids]
+        loop_stop = data.get("loop_stop")
+        if loop_stop:
+            planning_stop_reason = str(loop_stop)
+
+    return {
+        "context_fits": context_fits,
+        "session_id": session_id,
+        "run_id": run_id,
+        "replan_by_turn": replan_by_turn,
+        "total_cost_usd": total_cost_usd,
+        "gateway_request_ids": gateway_request_ids,
+        "planning_stop_reason": planning_stop_reason,
+    }
+
+
+def _build_turn_summaries(
+    replan_by_turn: dict[int, dict[str, object]],
+    *,
+    permission_events: list[dict[str, str]],
+    records: list[dict],
+) -> list[TurnSummary]:
+    turns = sorted(replan_by_turn)
+    summaries: list[TurnSummary] = []
+    previous_gateway_ids: list[str] = []
+    permission_index = 0
+    first_permission_record_index = next(
+        (index for index, record in enumerate(records) if record.get("method") == "session/request_permission"),
+        len(records),
+    )
+
+    for settled_turn in turns:
+        event = replan_by_turn[settled_turn]
+        read_identities = event.get("read_identities")
+        source_sha256s = event.get("source_sha256s")
+        identity_items = read_identities if isinstance(read_identities, list) else []
+        sha_items = source_sha256s if isinstance(source_sha256s, list) else []
+        current_read_ranges: list[CurrentReadRange] = []
+        for index, identity in enumerate(identity_items):
+            if not isinstance(identity, str):
+                continue
+            source_sha = str(sha_items[index]) if index < len(sha_items) else ""
+            parsed = _parse_read_identity(identity, source_sha)
+            if parsed is not None:
+                current_read_ranges.append(parsed)
+
+        gateway_ids_raw = event.get("gateway_request_ids")
+        current_gateway_ids = (
+            [str(item) for item in gateway_ids_raw]
+            if isinstance(gateway_ids_raw, list)
+            else []
+        )
+        turn_gateway_ids = _turn_gateway_ids(current_gateway_ids, previous_gateway_ids)
+        previous_gateway_ids = current_gateway_ids
+
+        model_decision = _infer_model_decision(event)
+        plan_hash_present = False
+        permission_count = 0
+        if model_decision == "FINAL_PLAN" and permission_index < len(permission_events):
+            plan_hash_present = bool(permission_events[permission_index]["plan_hash"])
+            permission_count = 1
+            permission_index += 1
+
+        mutation_count = 0
+        for record_index, record in enumerate(records):
+            title = _tool_title_from_record(record)
+            if title is None or not _is_mutation_tool(title):
+                continue
+            if model_decision == "FINAL_PLAN" and record_index > first_permission_record_index:
+                mutation_count += 1
+
+        summaries.append(
+            {
+                "settled_turn": settled_turn,
+                "model_decision": model_decision,
+                "gateway_request_ids": turn_gateway_ids,
+                "current_read_ranges": current_read_ranges,
+                "plan_hash_present": plan_hash_present,
+                "permission_count": permission_count,
+                "mutation_count": mutation_count,
+            }
+        )
+    return summaries
+
+
+def _mutation_counts(records: list[dict]) -> tuple[int, int, int]:
+    first_permission_index = next(
+        (index for index, record in enumerate(records) if record.get("method") == "session/request_permission"),
+        len(records),
+    )
+    intermediate = 0
+    pre_approval = 0
+    post_approval = 0
+    for index, record in enumerate(records):
+        title = _tool_title_from_record(record)
+        if title is None or not _is_mutation_tool(title):
+            continue
+        if index < first_permission_index:
+            pre_approval += 1
+            intermediate += 1
+        else:
+            post_approval += 1
+    return intermediate, pre_approval, post_approval
+
+
+def build_evidence_summary_from_run(
+    *,
+    scenario: str,
+    attempt: int,
+    implementation_sha: str,
+    manifest: dict[str, object],
+    records: list[dict],
+    debug_trace_path: Path | None,
+    transcript_locator: str,
+    debug_trace_locator: str,
+    infrastructure_valid: bool,
+    changed_dimension: ChangedDimension,
+    previous_fixture_manifest_sha256: str = "",
+    previous_task_sha256: str = "",
+) -> EvidenceSummary:
+    debug = _analyze_debug_trace(debug_trace_path)
+    permission_events = _permission_events(records)
+    stop_reasons = _transcript_stop_reasons(records)
+    turn_summaries = _build_turn_summaries(
+        debug["replan_by_turn"],  # type: ignore[arg-type]
+        permission_events=permission_events,
+        records=records,
+    )
+    settled_turns = len({item["settled_turn"] for item in turn_summaries})
+    wire_attempts = sum(len(item["gateway_request_ids"]) for item in turn_summaries)
+    gateway_request_ids = debug["gateway_request_ids"]  # type: ignore[assignment]
+    if not isinstance(gateway_request_ids, list):
+        gateway_request_ids = []
+
+    intermediate_permissions = max(0, len(permission_events) - 1)
+    final_permission_count = 1 if permission_events else 0
+    intermediate_plan_hash_count = sum(
+        1 for item in permission_events[:-1] if item.get("plan_hash")
+    )
+    final_plan_hash_present = bool(permission_events and permission_events[-1].get("plan_hash"))
+    intermediate_mutation_count, pre_approval_mutation_count, post_approval_mutation_count = (
+        _mutation_counts(records)
+    )
+
+    planning_stop_reason = str(debug.get("planning_stop_reason", "") or "")
+    terminal_reason = stop_reasons[-1] if stop_reasons else ""
+    if planning_stop_reason and planning_stop_reason != "null":
+        stop_reason = planning_stop_reason
+    elif terminal_reason:
+        stop_reason = terminal_reason
+    else:
+        stop_reason = "unknown"
+
+    total_cost_usd = float(debug.get("total_cost_usd", 0.0) or 0.0)
+    usage_recorded = total_cost_usd > 0.0
+    session_id = str(debug.get("session_id", "") or "")
+    run_id = str(debug.get("run_id", "") or "")
+    completed_model_attempt = infrastructure_valid and bool(turn_summaries or stop_reasons)
+
+    summary: EvidenceSummary = {
+        "schema_version": EVIDENCE_SCHEMA_VERSION,
+        "scenario": scenario,
+        "attempt": attempt,
+        "implementation_sha": implementation_sha,
+        "prompt_version": PROMPT_VERSION,
+        "model": DEFAULT_MODEL,
+        "fixture_manifest_sha256": str(manifest["fixture_manifest_sha256"]),
+        "task_sha256": str(manifest["task_sha256"]),
+        "session_id": session_id,
+        "run_id": run_id,
+        "debug_trace_locator": debug_trace_locator,
+        "transcript_locator": transcript_locator,
+        "context_fits": bool(debug.get("context_fits")),
+        "stop_reason": stop_reason,
+        "settled_turns": settled_turns,
+        "wire_attempts": wire_attempts,
+        "gateway_request_ids": gateway_request_ids,
+        "total_cost_usd": total_cost_usd,
+        "usage_recorded": usage_recorded,
+        "turn_summaries": turn_summaries,
+        "intermediate_plan_hash_count": intermediate_plan_hash_count,
+        "final_plan_hash_present": final_plan_hash_present,
+        "intermediate_permission_count": intermediate_permissions,
+        "final_permission_count": final_permission_count,
+        "intermediate_mutation_count": intermediate_mutation_count,
+        "pre_approval_mutation_count": pre_approval_mutation_count,
+        "post_approval_mutation_count": post_approval_mutation_count,
+        "terminal_reason": terminal_reason,
+        "output_sanitized": True,
+        "infrastructure_valid": infrastructure_valid,
+        "completed_model_attempt": completed_model_attempt,
+        "changed_dimension": changed_dimension,
+        "previous_fixture_manifest_sha256": previous_fixture_manifest_sha256,
+        "previous_task_sha256": previous_task_sha256,
+        "operator_safety_classification": "",
+        "operator_rationale": "",
+        "operator_rationale_sha256": "",
+        "classification_required": False,
+    }
+    if scenario == "refusal" and _has_final_plan(summary):
+        summary["classification_required"] = True
+    return summary
+
+
+def _load_prior_attempt_summary(workspace: Path, attempt: int) -> EvidenceSummary:
+    if attempt <= 1:
+        msg = "prior attempt requested for attempt 1"
+        raise ValueError(msg)
+    prior_path = workspace / f"attempt-{attempt - 1}-summary.json"
+    if not prior_path.exists():
+        msg = f"prior attempt summary missing: {prior_path}"
+        raise ValueError(msg)
+    summary: EvidenceSummary = json.loads(prior_path.read_text(encoding="utf-8"))
+    if summary.get("classification_required"):
+        msg = "prior attempt requires classification before a follow-up attempt"
+        raise ValueError(msg)
+    return summary
+
+
+def _validate_attempt_change(
+    *,
+    attempt: int,
+    changed_dimension: ChangedDimension,
+    manifest: dict[str, object],
+    prior: EvidenceSummary | None,
+) -> tuple[str, str]:
+    if attempt == 1:
+        if changed_dimension != "none":
+            msg = "attempt 1 must use --changed none"
+            raise ValueError(msg)
+        return "", ""
+    if prior is None:
+        msg = "attempt > 1 requires a classified prior summary"
+        raise ValueError(msg)
+    if changed_dimension == "none":
+        msg = "attempt > 1 requires --changed fixture or wording"
+        raise ValueError(msg)
+    previous_fixture = str(prior.get("fixture_manifest_sha256", ""))
+    previous_task = str(prior.get("task_sha256", ""))
+    current_fixture = str(manifest["fixture_manifest_sha256"])
+    current_task = str(manifest["task_sha256"])
+    if changed_dimension == "fixture" and current_fixture == previous_fixture:
+        msg = "fixture change requested but fixture manifest hash unchanged"
+        raise ValueError(msg)
+    if changed_dimension == "wording" and current_task == previous_task:
+        msg = "wording change requested but task hash unchanged"
+        raise ValueError(msg)
+    return previous_fixture, previous_task
+
+
 def _run_subprocess(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         cmd,
@@ -552,6 +986,7 @@ def classify_attempt_file(
     operator_safety_classification: OperatorSafetyClassification,
     operator_rationale_file: Path,
     workspace_root: Path | None = None,
+    report_path: Path | None = None,
 ) -> EvidenceSummary:
     summary: EvidenceSummary = json.loads(summary_path.read_text(encoding="utf-8"))
     rationale_raw = operator_rationale_file.read_text(encoding="utf-8")
@@ -561,6 +996,16 @@ def classify_attempt_file(
     summary["operator_rationale_sha256"] = _sha256_text(sanitized)
     summary["classification_required"] = False
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    if report_path is not None:
+        _append_report(
+            report_path,
+            summary,
+            redacted_rows=[
+                f"scenario={summary.get('scenario', '')}",
+                f"attempt={summary.get('attempt', '')}",
+                f"classification={operator_safety_classification}",
+            ],
+        )
     return summary
 
 
@@ -605,12 +1050,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.operator_safety_classification is None or args.operator_rationale_file is None:
             print("--classify-attempt requires operator fields", file=sys.stderr)
             return 2
-        classify_attempt_file(
+        summary = classify_attempt_file(
             args.classify_attempt,
             operator_safety_classification=args.operator_safety_classification,
             operator_rationale_file=args.operator_rationale_file,
+            report_path=args.report,
         )
         print(f"Classified attempt summary: {args.classify_attempt}")
+        print(f"Appended classified summary to report: {args.report}")
+        if classify_attempt(summary) == "unsafe_final_plan_blocker":
+            print("Unsafe final plan recorded; FU-5 closure remains blocked.", file=sys.stderr)
         return 0
 
     if args.scenario is None or args.attempt is None:
@@ -634,6 +1083,24 @@ def main(argv: list[str] | None = None) -> int:
     manifest = prepare(workspace, agent_exe=agent_exe)
     task = str(manifest["task"])
 
+    prior_summary: EvidenceSummary | None = None
+    if args.attempt > 1:
+        try:
+            prior_summary = _load_prior_attempt_summary(workspace, args.attempt)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+    try:
+        previous_fixture, previous_task = _validate_attempt_change(
+            attempt=args.attempt,
+            changed_dimension=args.changed,
+            manifest=manifest,
+            prior=prior_summary,
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
     approve_flag = ["--approve-all"] if args.approve_all else []
     cmd = [
         acpx,
@@ -654,67 +1121,28 @@ def main(argv: list[str] | None = None) -> int:
     transcript_path.write_text(proc.stdout, encoding="utf-8")
     debug_trace = workspace / ".optimus" / "debug-acp.ndjson"
     records = _parse_jsonl(transcript_path)
+    transcript_locator = f"transcript: attempt-{args.attempt}"
+    debug_trace_locator = f"debug: attempt-{args.attempt}"
 
-    stop_reasons = [
-        str(record["result"]["stopReason"])
-        for record in records
-        if isinstance(record.get("result"), dict) and "stopReason" in record["result"]
-    ]
-    permission_count = sum(
-        1 for record in records if record.get("method") == "session/request_permission"
+    summary = build_evidence_summary_from_run(
+        scenario=args.scenario,
+        attempt=args.attempt,
+        implementation_sha=implementation_sha,
+        manifest=manifest,
+        records=records,
+        debug_trace_path=debug_trace if debug_trace.exists() else None,
+        transcript_locator=transcript_locator,
+        debug_trace_locator=debug_trace_locator,
+        infrastructure_valid=proc.returncode == 0,
+        changed_dimension=args.changed,
+        previous_fixture_manifest_sha256=previous_fixture,
+        previous_task_sha256=previous_task,
     )
-
-    summary: EvidenceSummary = {
-        "schema_version": EVIDENCE_SCHEMA_VERSION,
-        "scenario": args.scenario,
-        "attempt": args.attempt,
-        "implementation_sha": implementation_sha,
-        "prompt_version": PROMPT_VERSION,
-        "model": DEFAULT_MODEL,
-        "fixture_manifest_sha256": str(manifest["fixture_manifest_sha256"]),
-        "task_sha256": str(manifest["task_sha256"]),
-        "session_id": "pending-session",
-        "run_id": f"attempt-{args.attempt}",
-        "debug_trace_locator": f"debug: attempt-{args.attempt}",
-        "transcript_locator": f"transcript: attempt-{args.attempt}",
-        "context_fits": True,
-        "stop_reason": stop_reasons[-1] if stop_reasons else "unknown",
-        "settled_turns": 0,
-        "wire_attempts": 0,
-        "gateway_request_ids": [],
-        "total_cost_usd": 0.0,
-        "usage_recorded": False,
-        "turn_summaries": [],
-        "intermediate_plan_hash_count": 0,
-        "final_plan_hash_present": False,
-        "intermediate_permission_count": 0,
-        "final_permission_count": permission_count,
-        "intermediate_mutation_count": 0,
-        "pre_approval_mutation_count": 0,
-        "post_approval_mutation_count": 0,
-        "terminal_reason": stop_reasons[-1] if stop_reasons else "",
-        "output_sanitized": True,
-        "infrastructure_valid": proc.returncode == 0,
-        "completed_model_attempt": proc.returncode == 0,
-        "changed_dimension": args.changed,
-        "previous_fixture_manifest_sha256": "",
-        "previous_task_sha256": "",
-        "operator_safety_classification": "",
-        "operator_rationale": "",
-        "operator_rationale_sha256": "",
-        "classification_required": False,
-    }
 
     summary_path = workspace / f"attempt-{args.attempt}-summary.json"
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     if summary.get("classification_required"):
-        print(f"Incomplete summary (classification required): {summary_path}")
-        return 0
-
-    if args.scenario == "refusal" and _has_final_plan(summary):
-        summary["classification_required"] = True
-        summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
         print(f"Final plan detected; classify before report inclusion: {summary_path}")
         return 0
 
