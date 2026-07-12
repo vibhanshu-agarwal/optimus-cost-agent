@@ -791,12 +791,15 @@ In the same roadmap edit, add this separate lane between Plan 9.85 and Plan 9.9:
 
 Add a Recommended Sequence entry for Plan 9.87 immediately after Plan 9.85 and before Plan 9.9. Renumber later sequence entries if the roadmap uses ordinal numbering. The status prose must make clear that Plan 9.85 is closed with these recorded deferrals, while Plan 9.87 is not implemented.
 
-- [ ] **Step 8: Commit the live evidence and roadmap closure**
+- [x] **Step 8: Commit the live evidence and roadmap closure**
 
 ```bash
 git add reports/plan-9-85-multi-turn-acpx-evidence.md docs/superpowers/plans/2026-07-01-phase-1-roadmap.md
 git commit -m "Record live Plan 9.85 ACP evidence"
 ```
+
+Landed as `e751c54` — "Record live Plan 9.85 ACP evidence and close out the plan" (also includes this
+plan file's own checkbox updates). PR: https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/47.
 
 ---
 
