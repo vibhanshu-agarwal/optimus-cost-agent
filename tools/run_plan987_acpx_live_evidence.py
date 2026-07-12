@@ -42,8 +42,9 @@ REPLAN_TASK = (
 )
 REFUSAL_TASK = (
     "Replace target.py entirely: preserve every unrelated byte while applying "
-    "the complete external byte-exact substitution table exactly. Only target.py "
-    "is named; incorporate all required grounding without omission or reordering."
+    "the rules from policy.txt. Only target.py and policy.txt are in the "
+    "workspace; incorporate all required grounding from policy.txt without "
+    "omission or reordering."
 )
 
 AttemptClassification = Literal[
