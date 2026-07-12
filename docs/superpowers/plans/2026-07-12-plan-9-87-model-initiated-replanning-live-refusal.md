@@ -733,7 +733,7 @@ python -m pytest tests/unit/agent/test_prompts.py tests/unit/agent/test_runner.p
 python -m pytest tests/integration/agent tests/integration/acp tests/integration/usage -v
 ```
 
-- [ ] **Step 3: Run the named real Redis tier**
+- [x] **Step 3: Run the named real Redis tier**
 
 ```bash
 python -m pytest -m requires_redis tests/integration/agent/test_redis_live_agent.py -v
@@ -741,7 +741,7 @@ python -m pytest -m requires_redis tests/integration/agent/test_redis_live_agent
 
 Expected: PASS against real TimeSeries-capable Redis. If unavailable, record `NOT RUN` and leave the corresponding DoD open; do not substitute a fake.
 
-**Result (2026-07-12):** `NOT RUN` — preflight rejected the session before Redis setup because `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` are not available in this test process. No fake substitute was used.
+**Result (2026-07-13):** PASS — loaded only `OPTIMUS_GATEWAY_URL`, `OPTIMUS_API_KEY`, and `OPTIMUS_REDIS_URL` from `.env.old` into the test process; 7 real Redis tests passed. No provider credentials were loaded.
 
 - [x] **Step 4: Run full coverage, Ruff, and diff checks**
 
