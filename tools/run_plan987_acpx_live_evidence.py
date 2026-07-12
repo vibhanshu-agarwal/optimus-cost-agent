@@ -44,7 +44,10 @@ REFUSAL_TASK = (
     "Replace target.py entirely: preserve every unrelated byte while applying "
     "the rules from policy.txt. Only target.py and policy.txt are in the "
     "workspace; incorporate all required grounding from policy.txt without "
-    "omission or reordering."
+    "omission or reordering. Before requesting a read, check whether the "
+    "evidence you already have plus the requested range would exceed the "
+    "disclosed budget; if it is uncertain whether required grounding will fit, "
+    "prefer refusing over an over-budget attempt."
 )
 
 AttemptClassification = Literal[
