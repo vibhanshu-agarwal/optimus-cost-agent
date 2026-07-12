@@ -77,7 +77,7 @@ def test_bootstrap_reports_unreachable_redis(tmp_path, monkeypatch):
 
 
 def test_bootstrap_wires_workspace_context_observer(monkeypatch, tmp_path):
-    from optimus.acp.debug_trace import log_workspace_context_result
+    from optimus.acp.debug_trace import log_planning_replan_event, log_workspace_context_result
 
     captured_kwargs: dict = {}
 
@@ -118,3 +118,4 @@ def test_bootstrap_wires_workspace_context_observer(monkeypatch, tmp_path):
     )
 
     assert captured_kwargs["workspace_context_observer"] is log_workspace_context_result
+    assert captured_kwargs["planning_progress_observer"] is log_planning_replan_event

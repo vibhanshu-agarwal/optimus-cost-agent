@@ -124,6 +124,20 @@ def test_reconciliation_matches_evidence_and_provider_costs_by_gateway_request_i
     assert report.reconciled is True
 
 
+def test_accounting_service_records_planning_wire_attempt_request_id():
+    service = UsageAccountingService()
+
+    ledger = service.record_gateway_usage(
+        gateway_usage("gw-1", "0.003", 3),
+        run_id="run-1",
+        session_id="session-1",
+        request_id="run-1:planning:2:1",
+        occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
+    )
+
+    assert ledger.entries[0].request_id == "run-1:planning:2:1"
+
+
 def test_reconciliation_reports_missing_provider_usage():
     evidence = EvidenceLedger().record(evidence_entry("gw-1", "0.003", 3))
 

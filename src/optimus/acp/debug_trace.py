@@ -11,7 +11,9 @@ from pathlib import Path
 from typing import Any
 
 from optimus.agent.models import AgentRunRequest
+from optimus.agent.planning_loop import PlanningProgressEvent
 from optimus.agent.workspace_context import WorkspaceContextResult
+from optimus.telemetry.redaction import redact_for_telemetry
 
 _DEBUG_SESSION_ID = "c66f94"
 _PROVENANCE_LOGGED = False
@@ -105,15 +107,22 @@ def acp_debug_log(
     hypothesis_id: str = "",
     run_id: str = "pre-fix",
 ) -> None:
-    """Append one NDJSON debug line. Never writes to stdout (ACP protocol channel)."""
+    """Append one NDJSON debug line. Never writes to stdout (ACP protocol channel).
+
+    ``message`` and ``data`` are passed through ``redact_for_telemetry`` unconditionally
+    before being written to disk. This is a deliberate last line of defense: call sites
+    are expected to log content-free fields already, but this sink cannot assume every
+    current and future caller (including generic exception handlers that log
+    ``str(exc)``) gets that right on its own.
+    """
     if not debug_trace_enabled():
         return
     payload = {
         "sessionId": _DEBUG_SESSION_ID,
         "timestamp": int(time.time() * 1000),
         "location": location,
-        "message": message,
-        "data": data or {},
+        "message": redact_for_telemetry(message),
+        "data": redact_for_telemetry(data or {}),
         "hypothesisId": hypothesis_id,
         "runId": run_id,
     }
@@ -151,4 +160,35 @@ def log_workspace_context_result(request: AgentRunRequest, result: WorkspaceCont
         },
         hypothesis_id="P9.8-CONTEXT",
         run_id=request.run_id,
+    )
+
+
+def log_planning_replan_event(event: PlanningProgressEvent, *, stop_reason: str | None = None) -> None:
+    """Record content-free multi-turn planning progress for ACP/debug evidence.
+
+    ``stop_reason`` is an explicit override for callers that don't build it into
+    the event; PlanningLoopRunner's own final-settlement event already carries
+    ``event.stop_reason`` (None for intermediate READ_MORE turns, set once on
+    the settling call), which is used when no override is given.
+    """
+    resolved_stop_reason = stop_reason if stop_reason is not None else event.stop_reason
+    acp_debug_log(
+        location="debug_trace.py:log_planning_replan_event",
+        message="planning turn settled",
+        data={
+            "run_id": event.run_id,
+            "session_id": event.session_id,
+            "settled_turn": event.settled_turn,
+            "max_planning_turns": event.max_planning_turns,
+            "reported_aggregate_cost_usd": str(event.total_cost_usd),
+            "remaining_budget_usd": str(event.remaining_budget_usd),
+            "read_identities": list(event.read_identities),
+            "read_byte_counts": list(event.read_byte_counts),
+            "source_sha256s": list(event.source_sha256s),
+            "gateway_request_ids": list(event.gateway_request_ids),
+            "wire_retry_count": event.wire_retry_count,
+            "loop_stop": resolved_stop_reason,
+        },
+        hypothesis_id="P9.85-REPLAN",
+        run_id=event.run_id,
     )

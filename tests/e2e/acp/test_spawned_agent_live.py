@@ -1,3 +1,9 @@
+"""Spawned-process E2E evidence for the ACP agent (process tier, not acpx protocol tier).
+
+Plan 9.85 regression: this path must keep passing after multi-turn planning changes
+without altering the spawned single-session docstring workflow.
+"""
+
 from __future__ import annotations
 
 import os

@@ -215,6 +215,37 @@ v1 `toolCall` to `session/request_permission`, re-test in Zed using the Plan 9.7
 operator PATH install, and commit HITL evidence under `reports/`. See
 `docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`.
 
+**Plan 9.8** (task-aware workspace context) guarantees the planner receives an
+explicitly referenced file's content even when task-blind workspace filler
+would otherwise exhaust the single-pass context budget. Exact relative paths
+and unique basenames resolve deterministically; ambiguous or oversized
+required references fail closed with a visible corrective message instead of
+silently truncating or guessing. Implemented and live-verified 2026-07-11 —
+see `reports/plan-9-8-task-aware-context-evidence.md`. Plan 9.8 does not add
+multi-turn replanning (Plan 9.85) or Plan 11 intelligent selection.
+
+**Plan 9.85** (multi-turn read-observe-replan) extends Plan 9.8: when a
+required file's complete content exceeds the single-pass context budget, the
+agent runs a bounded READ → observe → replan loop (default 3 turns, 30 minute
+wall clock, both overridable per request) instead of failing closed on every
+oversized reference. Every Gateway call across every turn — including
+retries — is charged against the same run-level `max_cost_usd` ceiling, and
+only the final settled plan is ever hashed, persisted, or exposed for ACP
+approval; intermediate turns never surface a plan hash or a permission
+request. Implemented and live-verified 2026-07-12 over real `acpx` — see
+`reports/plan-9-85-multi-turn-acpx-evidence.md`. Model-initiated replanning
+when Plan 9.8's context already fits, and a live model-emitted `REFUSE:`
+demonstration, are tracked separately as **Plan 9.87** below.
+
+**Plan 9.87** (tracked, not yet scheduled) covers model-initiated replanning
+when Plan 9.8's single-pass context already fits but the model needs more
+evidence before a safe WRITE, plus a live model-emitted `REFUSE:`
+demonstration — deferred from Plan 9.85 as `P9.85-FU-4` and `P9.85-FU-5`.
+
+**Plan 9.9** (tracked, not yet scheduled) covers operator packaging and
+credential diagnostics — cross-layer provider/key mismatch warnings and
+non-editable-install resource-root discovery.
+
 **Plan 10** (tracked, not yet scheduled) is the Unified Gateway Capabilities
 Broker — web search and observability routes on the local gateway stub. Out of
 scope for Plans 9.6, 9.7, and 9.75.

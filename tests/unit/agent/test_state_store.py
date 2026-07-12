@@ -85,12 +85,21 @@ def test_validate_redis_url_rejects_non_redis_schemes():
 def test_redis_store_writes_hash_and_ttl():
     fake = FakeRedis()
     store = RedisAgentStateStore(client=fake, ttl_seconds=3600)
+    record = plan_record().model_copy(
+        update={
+            "gateway_request_ids": ("gw-1", "gw-2"),
+            "planning_turns": 2,
+            "cost_usd": Decimal("0.004"),
+        }
+    )
 
-    store.save_plan(plan_record())
+    store.save_plan(record)
 
     assert fake.hsets[0][0] == "agent:plan:run-1:hash-1"
     assert fake.hsets[0][1]["plan_text"] == "WRITE example.py\ncontent"
-    assert fake.hsets[0][1]["cost_usd"] == "0.002"
+    assert fake.hsets[0][1]["cost_usd"] == "0.004"
+    assert fake.hsets[0][1]["planning_turns"] == "2"
+    assert fake.hsets[0][1]["gateway_request_ids"] == '["gw-1", "gw-2"]'
     assert fake.expires == [("agent:plan:run-1:hash-1", 3600), ("agent:plan:run-1:latest", 3600)]
 
 

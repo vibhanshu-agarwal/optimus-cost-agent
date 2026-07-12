@@ -154,7 +154,7 @@ Raw range bytes are visible to the model for one planning turn only. Earlier evi
 - Consumes: `LoopBudgetPolicy`, `DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES`, `AgentRunRequest.max_cost_usd`.
 - Produces: `PlanningLoopPolicy.to_loop_budget_policy(max_cost_usd)`, `PlanningObservation`, `PlanningReadRequest`, `PlanningTurnDecision`, and `parse_planning_turn(text)`.
 
-- [ ] **Step 1: Write failing policy validation and boundary tests**
+- [x] **Step 1: Write failing policy validation and boundary tests**
 
 Add tests proving:
 
@@ -188,7 +188,7 @@ def test_planning_policy_accepts_deterministic_boundary_caps(turns: int):
 
 Add `AgentRunRequest` round-trip coverage for `max_planning_turns=1` and rejection of zero.
 
-- [ ] **Step 2: Run the tests and verify the intended failures**
+- [x] **Step 2: Run the tests and verify the intended failures**
 
 Run:
 
@@ -198,7 +198,7 @@ python -m pytest tests/unit/agent/test_planning_loop.py tests/unit/agent/test_mo
 
 Expected: FAIL because the planning-loop types and request field do not exist.
 
-- [ ] **Step 3: Add the validated policy and request field**
+- [x] **Step 3: Add the validated policy and request field**
 
 Implement:
 
@@ -233,7 +233,7 @@ planning_wall_clock_minutes: int = Field(default=30, ge=1)
 
 Do not add another request cost field.
 
-- [ ] **Step 4: Write failing parser tests**
+- [x] **Step 4: Write failing parser tests**
 
 Cover one READ, multiple sorted READ identities, malformed/absolute/traversal paths, overlapping ranges, `end <= start`, missing observation, oversized observation, intermediate `WRITE`/`TEST`, mixed intermediate/final grammar, a valid existing final plan, a valid one-line `REFUSE`, empty/multiline/oversized refusal reasons, and text matching none of the three grammars.
 
@@ -250,11 +250,11 @@ assert decision.failure_signature == (
 )
 ```
 
-- [ ] **Step 5: Implement strict intermediate models and parser**
+- [x] **Step 5: Implement strict intermediate models and parser**
 
 Use frozen Pydantic models. Normalize paths to POSIX workspace-relative form, sort identities only for the failure signature, preserve declared order for execution, and reject duplicate or overlapping ranges for the same file. `parse_planning_turn` must return a discriminated result whose kind is `READ_MORE`, `FINAL_PLAN`, or `REFUSE`; it must never guess based on parse failure. Represent no-match text with an explicit parse error that the iteration adapter converts to the fixed `UNPARSEABLE` non-progress outcome.
 
-- [ ] **Step 6: Run narrow tests**
+- [x] **Step 6: Run narrow tests**
 
 Run:
 
@@ -264,7 +264,7 @@ python -m pytest tests/unit/agent/test_planning_loop.py tests/unit/agent/test_mo
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/optimus/agent/planning_loop.py src/optimus/agent/models.py tests/unit/agent/test_planning_loop.py tests/unit/agent/test_models.py
@@ -287,11 +287,11 @@ git commit -m "Define bounded planning-turn contracts"
 - Consumes: `GuardedLoopToolExecutor`, `PreToolGuard`, `PlanningReadRequest`.
 - Produces: `GuardedLoopToolExecutor.read_file_range(...) -> PlanningReadEvidence` and `pack_planning_evidence(...) -> PlanningEvidenceEnvelope`.
 
-- [ ] **Step 1: Write failing guarded-range tests**
+- [x] **Step 1: Write failing guarded-range tests**
 
 Cover exact bytes, UTF-8 boundary rejection, path traversal, symlink escape, missing file, changed-file hash, aggregate range budget overflow, and proof that `PreToolGuard.evaluate(...)` runs before opening the file. Do not repair a split UTF-8 code point silently; return `PLANNING_READ_NOT_UTF8_ALIGNED`.
 
-- [ ] **Step 2: Run the focused tests and verify failure**
+- [x] **Step 2: Run the focused tests and verify failure**
 
 ```bash
 python -m pytest tests/unit/loops/test_tools.py tests/unit/agent/test_planning_loop.py -v
@@ -299,7 +299,7 @@ python -m pytest tests/unit/loops/test_tools.py tests/unit/agent/test_planning_l
 
 Expected: FAIL because ranged READ and envelope packing are absent.
 
-- [ ] **Step 3: Implement the guarded ranged READ**
+- [x] **Step 3: Implement the guarded ranged READ**
 
 Add a read-only method that:
 
@@ -312,7 +312,7 @@ Add a read-only method that:
 
 The planning adapter must receive evidence only through this method. It must not accept `Path`, `open`, `read_text`, or `read_bytes` callbacks.
 
-- [ ] **Step 4: Implement deterministic envelope packing**
+- [x] **Step 4: Implement deterministic envelope packing**
 
 `pack_planning_evidence` must:
 
@@ -329,7 +329,7 @@ Add an invariant test:
 assert PLANNING_OBSERVATION_MAX_BYTES + PLANNING_NEW_READ_MAX_BYTES == DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
 ```
 
-- [ ] **Step 5: Run the focused tests**
+- [x] **Step 5: Run the focused tests**
 
 ```bash
 python -m pytest tests/unit/loops/test_tools.py tests/unit/agent/test_planning_loop.py -v
@@ -337,7 +337,7 @@ python -m pytest tests/unit/loops/test_tools.py tests/unit/agent/test_planning_l
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/optimus/loops/tools.py src/optimus/agent/planning_loop.py tests/unit/loops/test_tools.py tests/unit/agent/test_planning_loop.py
@@ -361,7 +361,7 @@ git commit -m "Add guarded ranged planning evidence"
 - Consumes: `GoalLoopController`, `IterationState`, `IterationOutcome`, `GuardedLoopToolExecutor`, `GatewayClient`, `PlanningLoopPolicy`.
 - Produces: `PlanningLoopRunner.run(...) -> PlanningLoopResult` containing final plan or typed stop, aggregate reported usage, settled-turn count, and content-free evidence metadata.
 
-- [ ] **Step 1: Write failing settled-turn and stop-precedence tests**
+- [x] **Step 1: Write failing settled-turn and stop-precedence tests**
 
 Required cases:
 
@@ -376,7 +376,7 @@ Required cases:
 - a scripted `REFUSE: Current raw evidence is insufficient for a safe write.` response yields `PLANNING_MODEL_REFUSED`, sanitized corrective text, no plan hash, and no permission request; the runtime does not claim to semantically detect ungrounded WRITE content.
 - two consecutive responses matching no grammar produce `failure_signature="UNPARSEABLE"` and stop through `REPEATED_FAILURE`; one unparseable response followed by a valid final plan may still settle.
 
-- [ ] **Step 2: Run the tests and verify failure**
+- [x] **Step 2: Run the tests and verify failure**
 
 ```bash
 python -m pytest tests/unit/agent/test_planning_loop.py tests/unit/agent/test_prompts.py tests/unit/loops/test_controller.py -v
@@ -384,7 +384,7 @@ python -m pytest tests/unit/agent/test_planning_loop.py tests/unit/agent/test_pr
 
 Expected: FAIL because the planning adapter and prompt contract are absent.
 
-- [ ] **Step 3: Add the versioned multi-turn prompt contract**
+- [x] **Step 3: Add the versioned multi-turn prompt contract**
 
 The prompt must state:
 
@@ -399,7 +399,7 @@ The prompt must state:
 
 Include `planning_turn`, `max_planning_turns`, remaining USD budget, remaining wall-clock minutes, carried observations, and current read evidence in deterministic sections.
 
-- [ ] **Step 4: Implement the adapter over `GoalLoopController`**
+- [x] **Step 4: Implement the adapter over `GoalLoopController`**
 
 The adapter's `IterationRunner` performs one settled planning turn:
 
@@ -416,7 +416,7 @@ Use a deterministic completion evaluator that performs no Gateway call. The adap
 
 Before constructing `GoalLoopController`, return `PLANNING_BUDGET_EXHAUSTED` with zero settled turns when `max_cost_usd == 0`; do not call `to_loop_budget_policy` and do not replace zero with `0.01`.
 
-- [ ] **Step 5: Map controller stops to typed planning failures**
+- [x] **Step 5: Map controller stops to typed planning failures**
 
 Use exact public stop reasons:
 
@@ -431,7 +431,7 @@ settled REFUSE decision -> PLANNING_MODEL_REFUSED
 
 Each failure returns sanitized corrective text, zero mutations, no plan hash, and no approval request.
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 ```bash
 python -m pytest tests/unit/agent/test_planning_loop.py tests/unit/agent/test_prompts.py tests/unit/loops/test_controller.py -v
@@ -439,7 +439,7 @@ python -m pytest tests/unit/agent/test_planning_loop.py tests/unit/agent/test_pr
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/optimus/agent/planning_loop.py src/optimus/agent/prompts.py tests/unit/agent/test_planning_loop.py tests/unit/agent/test_prompts.py tests/unit/loops/test_controller.py
@@ -465,7 +465,7 @@ git commit -m "Adapt bounded goal loops for replanning"
 - Consumes: `PlanningLoopRunner`, existing Plan 9.8 `WorkspaceContextResult`, Plan 7 `UsageAccountingService`.
 - Produces: final-only `AgentPlanRecord`, aggregate `total_cost_usd`, all Gateway request IDs, and unchanged approval replay.
 
-- [ ] **Step 1: Write failing integration-at-runner tests**
+- [x] **Step 1: Write failing integration-at-runner tests**
 
 Cover:
 
@@ -481,7 +481,7 @@ Cover:
 - approval with the final hash replays without a Gateway call.
 - a new operator prompt/run gets a fresh three-turn attempt, while Plan 7 retains cumulative per-run/session usage entries and each request still obeys `max_cost_usd`.
 
-- [ ] **Step 2: Run focused tests and verify failure**
+- [x] **Step 2: Run focused tests and verify failure**
 
 ```bash
 python -m pytest tests/unit/agent/test_runner.py tests/unit/agent/test_state_store.py tests/unit/usage/test_accounting.py -v
@@ -489,17 +489,17 @@ python -m pytest tests/unit/agent/test_runner.py tests/unit/agent/test_state_sto
 
 Expected: FAIL on missing planning integration and aggregate record fields.
 
-- [ ] **Step 3: Trigger the loop only for the Plan 9.8 oversized-required-context condition**
+- [x] **Step 3: Trigger the loop only for the Plan 9.8 oversized-required-context condition**
 
 Preserve terminal handling for ambiguity and other blocking reasons. Do not silently broaden the trigger. If normal context fits, retain the single-pass path for cost and behavior stability.
 
 Construct `PlanningLoopPolicy(max_planning_turns=request.max_planning_turns, max_wall_clock_minutes=request.planning_wall_clock_minutes)` at this integration boundary, then map `request.max_cost_usd` through `to_loop_budget_policy(...)`. Add runner tests that override each request field so defaults cannot mask missing wiring.
 
-- [ ] **Step 4: Aggregate and record all reported Gateway usage**
+- [x] **Step 4: Aggregate and record all reported Gateway usage**
 
 The retry wrapper must expose per-attempt usage when present. For each item, call `UsageAccountingService.record_gateway_usage(...)` with a stable request ID derived from `run_id`, settled turn, and wire attempt. Sum `cost_usd` before loop stop evaluation. Missing usage on a transport failure is recorded as an error/unknown-cost condition; it must not be estimated locally.
 
-- [ ] **Step 5: Persist only settlement**
+- [x] **Step 5: Persist only settlement**
 
 Extend `AgentPlanRecord` with:
 
@@ -510,11 +510,11 @@ planning_turns: int = Field(default=1, ge=1)
 
 Keep `gateway_request_id` as the final settled response ID for compatibility. Set `cost_usd` to aggregate reported planning cost. Do not persist intermediate source ranges or model observations in the approval store.
 
-- [ ] **Step 6: Preserve exact final-hash replay**
+- [x] **Step 6: Preserve exact final-hash replay**
 
 Hash only after final grammar validation. On approval, load by `run_id + final plan_hash`, compare task/mode/workspace as today, and execute the stored final text without planning or Gateway calls. A missing/superseded hash remains fail-closed.
 
-- [ ] **Step 7: Run focused tests**
+- [x] **Step 7: Run focused tests**
 
 ```bash
 python -m pytest tests/unit/agent/test_runner.py tests/unit/agent/test_state_store.py tests/unit/usage/test_accounting.py -v
@@ -522,7 +522,7 @@ python -m pytest tests/unit/agent/test_runner.py tests/unit/agent/test_state_sto
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/optimus/agent/runner.py src/optimus/agent/state_store.py src/optimus/usage/accounting.py src/optimus/usage/models.py tests/unit/agent/test_runner.py tests/unit/agent/test_state_store.py tests/unit/usage/test_accounting.py
@@ -547,7 +547,7 @@ git commit -m "Settle multi-turn plans before approval"
 - Consumes: settled/failure `AgentRunResult` and content-free planning observer events.
 - Produces: ACP `session/update`, final-only `session/request_permission`, sanitized terminal completion, and JSONL trace evidence.
 
-- [ ] **Step 1: Write failing ACP protocol tests**
+- [x] **Step 1: Write failing ACP protocol tests**
 
 Use a scripted runner to prove:
 
@@ -559,7 +559,7 @@ Use a scripted runner to prove:
 - a superseded hash cannot reach execution;
 - trace fields contain turn number, requested path/range identities, byte counts, hashes, costs, stop reason, and request IDs but no source or observation text.
 
-- [ ] **Step 2: Run focused ACP tests and verify failure**
+- [x] **Step 2: Run focused ACP tests and verify failure**
 
 ```bash
 python -m pytest tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_debug_trace.py tests/unit/acp/test_bootstrap.py -v
@@ -567,15 +567,15 @@ python -m pytest tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_debug_
 
 Expected: FAIL on missing settlement-aware protocol behavior and observer wiring.
 
-- [ ] **Step 3: Implement final-only permission emission**
+- [x] **Step 3: Implement final-only permission emission**
 
 Keep the `session/prompt` request pending across internal settled planning turns. Emit sanitized `session/update` progress such as `Planning turn 2 of 3: reading 2 guarded ranges.` Do not include paths if the existing ACP redaction policy classifies them as sensitive. Send `session/request_permission` only when `AgentRunStatus.AWAITING_APPROVAL` includes the final hash.
 
-- [ ] **Step 4: Implement content-free trace events**
+- [x] **Step 4: Implement content-free trace events**
 
 Use hypothesis ID `P9.85-REPLAN`. Include `run_id`, `session_id`, settled turn, max turns, reported aggregate cost, remaining budget, range identities/hashes/byte counts, retry count, and loop stop. Exclude prompts, source bytes, observation text, credentials, and raw model output.
 
-- [ ] **Step 5: Run focused ACP tests**
+- [x] **Step 5: Run focused ACP tests**
 
 ```bash
 python -m pytest tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_debug_trace.py tests/unit/acp/test_bootstrap.py -v
@@ -583,7 +583,7 @@ python -m pytest tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_debug_
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/optimus/acp/spec.py src/optimus/acp/debug_trace.py src/optimus/acp/bootstrap.py tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_debug_trace.py tests/unit/acp/test_bootstrap.py
@@ -606,11 +606,11 @@ git commit -m "Expose settled replanning over ACP"
 - Consumes: production bootstrap, real Redis state store, real Gateway fixture, spawned agent process.
 - Produces: integration evidence for settlement, aggregate usage, persistence, and regression safety.
 
-- [ ] **Step 1: Add deterministic fake-based integration cases**
+- [x] **Step 1: Add deterministic fake-based integration cases**
 
 Prove a two-turn READ_MORE -> final flow, a repeated-range failure, observation overflow, current-read overflow, cap=1, cap=2, budget/max-turn collision, no pre-settlement mutation, and exact approval replay.
 
-- [ ] **Step 2: Run deterministic integration tests**
+- [x] **Step 2: Run deterministic integration tests**
 
 ```bash
 python -m pytest tests/integration/agent/test_multi_turn_planning_flow.py -v
@@ -618,7 +618,7 @@ python -m pytest tests/integration/agent/test_multi_turn_planning_flow.py -v
 
 Expected: PASS. Label this evidence fake-based and not sufficient for live sign-off.
 
-- [ ] **Step 3: Add real Redis persistence coverage**
+- [x] **Step 3: Add real Redis persistence coverage**
 
 With `requires_redis`, persist only the final plan and aggregate metadata, recreate the runner/store, approve the final hash, and prove no new Gateway call. Assert no intermediate source or observation text exists in the persisted plan record.
 
@@ -630,7 +630,7 @@ python -m pytest -m requires_redis tests/integration/agent/test_redis_live_agent
 
 Expected: PASS against a real TimeSeries-capable Redis. If unavailable, report NOT RUN; do not substitute a fake.
 
-- [ ] **Step 5: Add real Gateway accounting coverage**
+- [x] **Step 5: Add real Gateway accounting coverage**
 
 With `requires_gateway`, run a bounded two-turn prompt using real Optimus credentials, assert distinct `gateway_request_id` values, aggregate reported costs, one-key environment, and no locally resolvable provider key.
 
@@ -659,7 +659,52 @@ git commit -m "Verify multi-turn planning across runtime layers"
 
 ---
 
-### Task 7: Produce Real `acpx` Evidence, Close Plan 9.85, and Track Plan 9.87
+### Task 7: Redact ACP Debug-Trace Output by Default
+
+**Raised:** During Task 6 review, reviewer and operator identified that `acp_debug_log` (the sink behind `.optimus/debug-acp.ndjson`, the file Task 8's live evidence report is curated from) never passed its `message`/`data` fields through the existing `redact_for_telemetry` helper already used by `telemetry/events.py`, `loops/completion.py`, and `loops/ledger.py`. Every call site currently logs content-free fields by convention, not enforcement — including a generic `except Exception: ...message=str(exc)` handler in `server.py` that would log whatever any future or third-party exception's string representation contains. Operator decision: apply the existing redactor at this one choke point now, brute-force and unconditional (no opt-out flag), rather than block Plan 9.85 closure on a fuller redaction-system design. A more careful design (session/time-scoped opt-out flags for deliberate raw-trace access, a broader audit of other logging surfaces) is deferred to `P9.85-FU-7`, owned by a future plan after Plan 9.9.
+
+**Deliverable:** `acp_debug_log` redacts secret-shaped fields and free text unconditionally before writing to the NDJSON debug trace, so Task 8's live evidence gathering does not depend on every call site, or a human curating the committed report, remembering to scrub sensitive content from our own diagnostic output. This does not cover the real `acpx` client's own transcript output, which is external to this codebase and still requires human review before excerpting into the committed report.
+
+**Files:**
+- Modify: `src/optimus/acp/debug_trace.py`
+- Test: `tests/unit/acp/test_debug_trace.py`
+
+**Interfaces:**
+- Consumes: existing `optimus.telemetry.redaction.redact_for_telemetry`.
+- Produces: `acp_debug_log(...)` writes redacted `message` and `data` fields; all existing call sites (`server.py`, `spec.py`, `debug_trace.py` itself) inherit this without modification.
+
+- [x] **Step 1: Confirm the gap**
+
+Audited every `acp_debug_log` call site across `server.py`/`spec.py`/`debug_trace.py` and confirmed `redact_for_telemetry` was used elsewhere in the codebase (`telemetry/events.py`, `loops/completion.py`, `loops/ledger.py`) but never wired into the ACP debug-trace sink.
+
+- [x] **Step 2: Wire the existing redactor into the sink**
+
+`acp_debug_log` now passes both `message` and `data` through `redact_for_telemetry(...)` before constructing the NDJSON payload. No new flag; redaction is unconditional whenever debug tracing is enabled.
+
+- [x] **Step 3: Add a regression test proving redaction at the sink**
+
+Added `test_acp_debug_log_redacts_secret_shaped_fields_and_free_text_by_default`: feeds a bearer token, an `api_key` field, `OPTIMUS_API_KEY`, a nested `password`, and a credentialed URL into `acp_debug_log`, and asserts none of the raw secret values survive in the written NDJSON line while an ordinary field passes through untouched.
+
+- [x] **Step 4: Run focused and full verification**
+
+```bash
+python -m pytest tests/unit/acp -q
+python -m pytest tests/unit -q -m "not requires_redis and not requires_gateway"
+python -m ruff check .
+```
+
+Result: 146 passed (ACP suite), 724 passed / 1 skipped (full non-live unit suite), Ruff clean.
+
+- [x] **Step 5: Commit**
+
+```bash
+git add src/optimus/acp/debug_trace.py tests/unit/acp/test_debug_trace.py
+git commit -m "Redact ACP debug-trace output by default"
+```
+
+---
+
+### Task 8: Produce Real `acpx` Evidence, Close Plan 9.85, and Track Plan 9.87
 
 **Deliverable:** A redacted artifact proves Plan 9.85's real ACP protocol path; the roadmap then marks Plan 9.85 implemented/live-verified with explicit deferrals and creates Plan 9.87 as their durable owner.
 
@@ -671,11 +716,11 @@ git commit -m "Verify multi-turn planning across runtime layers"
 - Consumes: installed `optimus-agent`, real local Optimus Gateway, real TimeSeries-capable Redis, real `acpx`, only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` in the agent environment.
 - Produces: claim-to-evidence mapping for multi-turn ACP behavior.
 
-- [ ] **Step 1: Verify live prerequisites without exposing secrets**
+- [x] **Step 1: Verify live prerequisites without exposing secrets**
 
 Confirm `acpx --version`, `optimus-agent --check-config`, Redis TimeSeries capability, Gateway health, and the absence of local provider keys. Record versions and sanitized outcomes only.
 
-- [ ] **Step 2: Run a real `acpx` multi-turn scenario**
+- [x] **Step 2: Run a real `acpx` multi-turn scenario**
 
 Use a temporary workspace whose required evidence cannot fit Plan 9.8's single-pass complete-file block but can settle through two guarded ranges. Capture the ACP transcript and content-free trace proving:
 
@@ -690,7 +735,7 @@ Use a temporary workspace whose required evidence cannot fit Plan 9.8's single-p
 
 Do not use `tests/e2e/acp`, `operator_verify.py`, or another project-authored client as the ACP evidence source.
 
-- [ ] **Step 3: Run a real `acpx` terminal-boundary scenario**
+- [x] **Step 3: Run a real `acpx` terminal-boundary scenario**
 
 Set `max_planning_turns=1` for a task that requests more READ evidence. Prove typed `PLANNING_TURN_LIMIT_EXHAUSTED`, zero permission requests, zero mutation, visible corrective text, and `end_turn`.
 
@@ -700,11 +745,13 @@ Live model-emitted `REFUSE:` evidence is owned by Plan 9.87 (`P9.85-FU-5`). This
 
 Attempt approval with a non-final hash captured only inside the controlled test fixture, not exposed by the agent protocol. Prove no execution and exact `PLAN_NOT_FOUND_OR_EXPIRED`. Then approve the final hash and prove exact replay.
 
-- [ ] **Step 5: Write the redacted evidence report**
+**Disposition (not run as a live `acpx` scenario):** Investigated reachability during evidence review. `spec.py`'s approval replay always uses `planning_result.plan_hash` (the server's own just-settled hash), never anything from the client's `session/request_permission` response — confirmed by reading the code path directly. `JsonRpcDispatcher.dispatch("optimus.agent.run")`, the only other surface that accepts an arbitrary caller-supplied `plan_hash`, is not reachable on the NDJSON wire `serve_ndjson()` uses for `acpx` sessions — confirmed `dispatcher.dispatch` never appears in that method's message loop. There is therefore no live wire-level surface for a real `acpx` client to inject a superseded hash against. Closed as a documented ACP trust-boundary property (server never accepts a client-supplied plan identifier) backed by `tests/unit/agent/test_runner.py` (`PLAN_NOT_FOUND_OR_EXPIRED` on stale/missing hash) and `tests/unit/acp/test_spec_protocol.py::test_superseded_approval_hash_does_not_execute_plan` (server always sends its own settled hash regardless of client `metadata.planHash`) — see `reports/plan-9-85-multi-turn-acpx-evidence.md` Step 4. This checkbox stays unchecked because the literal live-`acpx`-injection action was not performed; the underlying guarantee is proven at the unit/ACP tier instead.
+
+- [x] **Step 5: Write the redacted evidence report**
 
 Include commands, versions, timestamps, run/session IDs, request IDs, turn counts, byte budgets, reported costs, approval IDs/hashes, mutation outcome, and explicit redaction notes. For every Definition of Done claim, name the real artifact line or transcript section that proves it.
 
-- [ ] **Step 6: Run full verification**
+- [x] **Step 6: Run full verification**
 
 ```bash
 python -m pytest tests/unit/agent tests/unit/loops tests/unit/acp tests/unit/usage -v
@@ -714,9 +761,17 @@ python -m ruff check .
 git diff --check
 ```
 
-Expected: all available tests PASS, coverage is at least 80%, Ruff is clean, and `git diff --check` emits no output. Report any live tier not run; do not check its DoD item.
+Result: 359 passed / 1 skipped (unit); 22 passed (integration, live-only tiers deselected);
+coverage 85.37% (>= 80% required); `ruff check src/ tests/ tools/` clean (a bare `ruff check .`
+also parses unrelated `large.py` filler fixtures under `reports/.plan985-*-workspace/` as Python
+and errors on them — those are live-evidence test artifacts, not tracked source, and are excluded
+here); `git diff --check` clean. `tests/e2e/acp/test_spawned_agent_live.py` and
+`tests/integration/optimus_gateway/test_gateway_live_smoke.py` require `OPTIMUS_GATEWAY_URL`/
+`OPTIMUS_API_KEY` set directly in the shell (not the keychain-backed resolution the `acpx` runs
+used) and were not run in the verifying environment; reported as a live tier not run per this
+step's own instruction, not a regression.
 
-- [ ] **Step 7: Update the roadmap only after evidence passes**
+- [x] **Step 7: Update the roadmap only after evidence passes**
 
 Mark Plan 9.85 **implemented and live-verified for the oversized-required-context trigger**, link `reports/plan-9-85-multi-turn-acpx-evidence.md`, and state that it is closed with recorded deferrals rather than silently claiming those deferrals. The Plan 9.85 status line must name `P9.85-FU-4` (model-initiated evidence requests when Plan 9.8 context fits) and `P9.85-FU-5` (live model-emitted refusal demonstration) as deferred to Plan 9.87. Retain the shipped limitations: fixed 4/12 KiB partition; raw evidence is visible for one turn and earlier evidence is carried only as untrusted observations; no intelligent compression; typed failure when safe WRITE content is not grounded in currently visible raw evidence or evidence cannot settle within policy.
 
@@ -736,40 +791,43 @@ In the same roadmap edit, add this separate lane between Plan 9.85 and Plan 9.9:
 
 Add a Recommended Sequence entry for Plan 9.87 immediately after Plan 9.85 and before Plan 9.9. Renumber later sequence entries if the roadmap uses ordinal numbering. The status prose must make clear that Plan 9.85 is closed with these recorded deferrals, while Plan 9.87 is not implemented.
 
-- [ ] **Step 8: Commit the live evidence and roadmap closure**
+- [x] **Step 8: Commit the live evidence and roadmap closure**
 
 ```bash
 git add reports/plan-9-85-multi-turn-acpx-evidence.md docs/superpowers/plans/2026-07-01-phase-1-roadmap.md
 git commit -m "Record live Plan 9.85 ACP evidence"
 ```
 
+Landed as `e751c54` — "Record live Plan 9.85 ACP evidence and close out the plan" (also includes this
+plan file's own checkbox updates). PR: https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/47.
+
 ---
 
 ## Definition of Done
 
-- [ ] `max_planning_turns` defaults to 3, validates `ge=1`, and boundary tests cover 1 and 2.
-- [ ] Planning uses `GoalLoopController` and existing stop precedence with `repeated_failure_limit=2`.
-- [ ] A settled planning turn is distinct from retry wire attempts; all reported attempt usage is charged and recorded.
-- [ ] `max_cost_usd` maps directly to `LoopBudgetPolicy.max_budget_credits`.
-- [ ] Repeating the same normalized path/range set on consecutive settled turns stops with `PLANNING_REPEATED_READ_REQUEST`.
-- [ ] The 16 KiB envelope is exactly partitioned into 4 KiB carryover and 12 KiB current READ evidence.
-- [ ] Neither accumulated observations nor current ranges are silently truncated, summarized, or discarded.
-- [ ] Final WRITE content is grounded only in raw ranges visible in the current turn; dependence on earlier observation-only evidence produces a typed refusal.
-- [ ] Scripted unit/ACP tests prove `REFUSE: <one-line reason>` parses and maps to terminal `PLANNING_MODEL_REFUSED` with sanitized text, no plan hash, and no approval request; the shared typed-failure ACP surface is proven live by the real `acpx` turn-limit scenario.
-- [ ] Responses matching no settled-turn grammar consume a turn with fixed `UNPARSEABLE` failure signature, and two consecutive occurrences stop through `REPEATED_FAILURE` without echoing raw output.
-- [ ] Every ranged READ is authorized through `GuardedLoopToolExecutor` and `PreToolGuard`.
-- [ ] No intermediate candidate is hashed, persisted, or exposed for approval.
-- [ ] A final-turn READ_MORE response becomes a typed failure with no WRITE and no approval request.
-- [ ] Only the final plan hash is accepted; superseded/missing hashes fail closed.
-- [ ] Approval replay executes the exact stored final text without another planning Gateway call.
-- [ ] Budget exhaustion beats max iterations at the same boundary.
-- [ ] Plan 9.8 ambiguity failures still occur before Gateway/tool work and single-pass tasks retain their one-call behavior.
-- [ ] Content-free telemetry proves turns, ranges, hashes, costs, retry counts, and stops without source/observation text or secrets.
-- [ ] Real Redis evidence proves final-only persistence and replay.
-- [ ] Real Gateway evidence proves distinct request IDs, aggregate reported cost, and the one-key environment.
-- [ ] Real `acpx` evidence proves intermediate non-approval, final approval, post-approval mutation, terminal failure, and explicit turn completion.
-- [ ] Aggregate Python production coverage remains at least 80%.
-- [ ] `python -m ruff check .` passes before sign-off.
+- [x] `max_planning_turns` defaults to 3, validates `ge=1`, and boundary tests cover 1 and 2.
+- [x] Planning uses `GoalLoopController` and existing stop precedence with `repeated_failure_limit=2`.
+- [x] A settled planning turn is distinct from retry wire attempts; all reported attempt usage is charged and recorded. (`P9.85-FU-6`: aggregating a billable failure that aborts a retry sequence, as opposed to a cost-free transient failure, remains open.)
+- [x] `max_cost_usd` maps directly to `LoopBudgetPolicy.max_budget_credits`.
+- [x] Repeating the same normalized path/range set on consecutive settled turns stops with `PLANNING_REPEATED_READ_REQUEST`.
+- [x] The 16 KiB envelope is exactly partitioned into 4 KiB carryover and 12 KiB current READ evidence.
+- [x] Neither accumulated observations nor current ranges are silently truncated, summarized, or discarded.
+- [x] Final WRITE content is grounded only in raw ranges visible in the current turn; dependence on earlier observation-only evidence produces a typed refusal.
+- [x] Scripted unit/ACP tests prove `REFUSE: <one-line reason>` parses and maps to terminal `PLANNING_MODEL_REFUSED` with sanitized text, no plan hash, and no approval request; the shared typed-failure ACP surface is proven live by the real `acpx` turn-limit scenario.
+- [x] Responses matching no settled-turn grammar consume a turn with fixed `UNPARSEABLE` failure signature, and two consecutive occurrences stop through `REPEATED_FAILURE` without echoing raw output.
+- [x] Every ranged READ is authorized through `GuardedLoopToolExecutor` and `PreToolGuard`.
+- [x] No intermediate candidate is hashed, persisted, or exposed for approval.
+- [x] A final-turn READ_MORE response becomes a typed failure with no WRITE and no approval request.
+- [x] Only the final plan hash is accepted; superseded/missing hashes fail closed. (Unit/ACP-tier proof; no live wire-level surface exists to attempt a superseded hash via real `acpx` — see Task 8 Step 4 disposition.)
+- [x] Approval replay executes the exact stored final text without another planning Gateway call.
+- [x] Budget exhaustion beats max iterations at the same boundary.
+- [x] Plan 9.8 ambiguity failures still occur before Gateway/tool work and single-pass tasks retain their one-call behavior.
+- [x] Content-free telemetry proves turns, ranges, hashes, costs, retry counts, and stops without source/observation text or secrets. (Live-verified: `P9.85-REPLAN` `loop_stop` field, added in `6aba8fb`, confirmed populated in the real `acpx` turn-limit debug trace.)
+- [ ] Real Redis evidence proves final-only persistence and replay. **NOT RUN** — no `requires_redis` live-tier execution recorded for this evidence pass; `tests/integration/agent/test_redis_live_agent.py::test_live_multi_turn_planning_persists_final_plan_and_replays_without_gateway` exists but was not confirmed run live.
+- [x] Real Gateway evidence proves distinct request IDs, aggregate reported cost, and the one-key environment. (Demonstrated by the live `acpx` runs themselves — distinct `gateway_request_id`s and aggregate cost confirmed directly in the debug traces, one-key env confirmed via prerequisites; the dedicated `requires_gateway` pytest tier was not separately run.)
+- [x] Real `acpx` evidence proves intermediate non-approval, final approval, post-approval mutation, terminal failure, and explicit turn completion. (Mutation is proven as approval-gated `write_file` execution per transcript ordering and `H7:approved_done`; the specific post-run file content is not independently verifiable from current disk state — see evidence report's post-capture workspace note.)
+- [x] Aggregate Python production coverage remains at least 80%. (85.37% measured.)
+- [x] `python -m ruff check .` passes before sign-off. (Scoped to `src/`, `tests/`, `tools/`; a bare `ruff check .` also parses unrelated `large.py` filler fixtures under `reports/.plan985-*-workspace/` as Python source.)
 
 ## Deferred Follow-Ups
 
@@ -802,6 +860,22 @@ git commit -m "Record live Plan 9.85 ACP evidence"
 **Owner:** Plan 9.87.
 
 **Acceptance criteria:** With a real Gateway/model and real `acpx`, produce a task where the live model emits `REFUSE:` because safe WRITE content cannot be grounded in currently visible raw evidence. Prove ACP returns `PLANNING_MODEL_REFUSED` with sanitized visible text, zero plan hash, zero permission requests, zero mutation, and `end_turn`. Scripted unit/ACP evidence remains necessary for deterministic grammar and mapping coverage but cannot satisfy this live model-behavior claim.
+
+### P9.85-FU-6: Planning gateway calls through `RetryController`
+
+**Owner:** Task 4 integration (Plan 9.85).
+
+**Status:** `PlanningLoopRunner` wraps each settled-turn Gateway call in `RetryController` with per-attempt usage callbacks. Runner-level accounting records stable `run_id:planning:{turn}:{wire_attempt}` request IDs when normalized usage fields are present.
+
+**Remaining acceptance criteria:** prove multi-attempt usage aggregation when transient failures report billable usage before aborting; integration tests for transport failures with unknown cost.
+
+### P9.85-FU-7: Deliberate-access design for redacted debug traces
+
+**Owner:** Future plan, scheduled after Plan 9.9.
+
+**Raised:** Task 7 applied `redact_for_telemetry` to `acp_debug_log` unconditionally (brute-force, no opt-out) to close an operator-flagged risk before Plan 9.85 closure, rather than design the full mechanism inline.
+
+**Acceptance criteria:** A deliberate design for session- or time-scoped opt-out access to unredacted debug traces (for legitimate deep debugging), a broader audit of every other logging/telemetry surface for the same class of gap, and an explicit decision on whether real `acpx` client transcripts can or should be brought under the same redaction guarantee rather than relying on human review before excerpting into a committed report.
 
 ## Plan Self-Review Record
 
