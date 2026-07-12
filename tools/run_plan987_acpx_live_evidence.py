@@ -55,6 +55,7 @@ AttemptClassification = Literal[
     "turn_limit_non_refusal",
     "read_budget_non_refusal",
     "read_error_non_refusal",
+    "repeated_read_non_refusal",
     "unparseable_non_refusal",
     "final_plan_non_refusal",
     "unsafe_final_plan_blocker",
@@ -315,6 +316,8 @@ def classify_attempt(summary: EvidenceSummary) -> AttemptClassification:
         return "read_budget_non_refusal"
     if stop_reason in _READ_ERROR_STOP_REASONS:
         return "read_error_non_refusal"
+    if stop_reason == "PLANNING_REPEATED_READ_REQUEST":
+        return "repeated_read_non_refusal"
     if stop_reason == "PLANNING_UNPARSEABLE_RESPONSE":
         return "unparseable_non_refusal"
     msg = f"unclassified attempt with stop_reason={stop_reason!r}"
