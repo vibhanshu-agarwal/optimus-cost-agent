@@ -43,6 +43,7 @@
 7. Add deterministic FU-4 plumbing tests and ACP failure-surface tests.
 8. Create reproducible live fixtures and a helper that invokes real `acpx` without implementing ACP.
 9. Produce separate FU-4A, FU-4B, and FU-5 claim-to-evidence tables before updating the roadmap.
+10. Amend the multi-turn prompt (version bump) so `READ_MORE` re-reads of turn-1-visible files request full known byte ranges, then re-capture qualifying FU-4B live evidence (Task 6b).
 
 ### Explicit exceptions
 
@@ -90,7 +91,7 @@
 - Consumes: `build_multi_turn_planner_input(..., initial_workspace_context=...)`.
 - Produces: `MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87` and explicit ephemerality/re-read/refusal rules.
 
-- [ ] **Step 1: Write the failing prompt test**
+- [x] **Step 1: Write the failing prompt test**
 
 ```python
 def test_multi_turn_prompt_marks_initial_context_ephemeral_and_requires_complete_reread():
@@ -111,7 +112,7 @@ def test_multi_turn_prompt_marks_initial_context_ephemeral_and_requires_complete
     assert "emit REFUSE" in prompt
 ```
 
-- [ ] **Step 2: Run the test and verify failure**
+- [x] **Step 2: Run the test and verify failure**
 
 ```bash
 python -m pytest tests/unit/agent/test_prompts.py::test_multi_turn_prompt_marks_initial_context_ephemeral_and_requires_complete_reread -v
@@ -119,7 +120,7 @@ python -m pytest tests/unit/agent/test_prompts.py::test_multi_turn_prompt_marks_
 
 Expected: FAIL because the new version and wording are absent.
 
-- [ ] **Step 3: Add literal prompt rules and bump the version**
+- [x] **Step 3: Add literal prompt rules and bump the version**
 
 Set:
 
@@ -131,7 +132,7 @@ MULTI_TURN_PLANNER_PROMPT_VERSION = (
 
 Add literal rules stating: initial context is turn-1-only; it is not carried; another turn must request every required raw range, including previously visible ranges; observations cannot ground WRITE; impossible raw coexistence requires `REFUSE:`.
 
-- [ ] **Step 4: Run all prompt tests**
+- [x] **Step 4: Run all prompt tests**
 
 ```bash
 python -m pytest tests/unit/agent/test_prompts.py -v
@@ -139,7 +140,7 @@ python -m pytest tests/unit/agent/test_prompts.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimus/agent/prompts.py tests/unit/agent/test_prompts.py
@@ -158,21 +159,21 @@ git commit -m "Clarify ephemeral planning context"
 - Consumes: Plan 9.8 workspace context and `PlanningLoopRunner.run`.
 - Produces: `_run_multi_turn_planning(..., initial_workspace_context: str, ...)` as the AGENT planning entry.
 
-- [ ] **Step 1: Write the failing fitting-context test**
+- [x] **Step 1: Write the failing fitting-context test**
 
 Name it `test_fitting_agent_context_uses_planning_loop_and_settles_in_one_turn`. Use a fitting `target.py` and scripted final plan. Assert one call with `metadata.purpose == "planning_turn"`, the Plan 9.87 prompt version and target context are present, result is `AWAITING_APPROVAL`, and the stored record has `planning_turns == 1` and `gateway_request_ids == ("gw-1",)`.
 
-- [ ] **Step 2: Write failing oversized PLAN/CHAT tests**
+- [x] **Step 2: Write failing oversized PLAN/CHAT tests**
 
 Add separate tests named `test_oversized_plan_mode_fails_before_gateway` and `test_oversized_chat_mode_fails_before_gateway` against a 17 KiB required file. Assert `FAILED`, `REQUIRED_WORKSPACE_FILE_TOO_LARGE`, zero cost, no hash, and `gateway.calls == []`. Retain the fitting PLAN prose/`CHAT_ONLY` test.
 
-- [ ] **Step 3: Verify the new tests fail**
+- [x] **Step 3: Verify the new tests fail**
 
 ```bash
 python -m pytest tests/unit/agent/test_runner.py::test_fitting_agent_context_uses_planning_loop_and_settles_in_one_turn tests/unit/agent/test_runner.py::test_oversized_plan_mode_fails_before_gateway tests/unit/agent/test_runner.py::test_oversized_chat_mode_fails_before_gateway -v
 ```
 
-- [ ] **Step 4: Make context routing mode-aware**
+- [x] **Step 4: Make context routing mode-aware**
 
 Implement this branch shape:
 
@@ -203,19 +204,19 @@ if request.execution_mode is ExecutionMode.AGENT:
 
 Keep the direct Gateway lane only for fitting PLAN/CHAT.
 
-- [ ] **Step 5: Pass initial context to the loop**
+- [x] **Step 5: Pass initial context to the loop**
 
 Add `initial_workspace_context: str` to `_run_multi_turn_planning` and pass it unchanged to `planner.run`. Do not parse turns in `runner.py`.
 
-- [ ] **Step 6: Update intentionally changed AGENT tests**
+- [x] **Step 6: Update intentionally changed AGENT tests**
 
 Replace old AGENT assertions for `purpose="agent_plan"`, `UNPARSEABLE_PLAN`, raw malformed output, and direct `BUDGET_EXHAUSTED` with the compatibility-matrix outcomes. Leave PLAN/CHAT behavior unchanged.
 
-- [ ] **Step 7: Pin approved-plan replay before the shared-loop routing branch**
+- [x] **Step 7: Pin approved-plan replay before the shared-loop routing branch**
 
 Retain and strengthen `test_approved_agent_run_replays_stored_plan_without_second_gateway_call`. After the first request stores a fitting-context Plan 9.87 plan, submit a second AGENT request with `approval.approved=True` and the exact stored hash. Assert the second request executes the stored plan, `len(gateway.calls)` remains exactly `1` across both requests, and the Gateway's deliberately changed second response is absent from disk. This proves the approved-replay branch performs zero planning calls after unification.
 
-- [ ] **Step 8: Run the full runner unit file**
+- [x] **Step 8: Run the full runner unit file**
 
 ```bash
 python -m pytest tests/unit/agent/test_runner.py -v
@@ -223,7 +224,7 @@ python -m pytest tests/unit/agent/test_runner.py -v
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/optimus/agent/runner.py tests/unit/agent/test_runner.py
@@ -242,21 +243,21 @@ git commit -m "Unify agent planning orchestration"
 - Consumes: `PlanningTurnKind`, `IterationOutcome.failure_signature`, `LoopStopReason`, and `IterationState`.
 - Produces: content-free non-progress tracking, `PLANNING_UNPARSEABLE_RESPONSE`, and decision-aware settlement ordering.
 
-- [ ] **Step 1: Write failing classification tests**
+- [x] **Step 1: Write failing classification tests**
 
 Name the tests `test_repeated_unparseable_responses_map_to_unparseable_stop` and `test_repeated_identical_read_more_maps_to_read_stop`. The first expects `PLANNING_UNPARSEABLE_RESPONSE`, two turns, no plan/hash, and sanitized corrective text. The second remains pinned to `PLANNING_REPEATED_READ_REQUEST`.
 
-- [ ] **Step 2: Write failing precedence tests**
+- [x] **Step 2: Write failing precedence tests**
 
 Add independent tests named `test_refusal_wins_accumulated_repeated_failure`, `test_refusal_wins_budget_equality`, and `test_refusal_wins_wall_clock`; each returns `PLANNING_MODEL_REFUSED`. Add `test_human_halt_wins_refusal_race` returning `PLANNING_HALTED`. Add `test_final_plan_at_budget_equality_has_no_hash` and `test_final_plan_loses_wall_clock_has_no_hash` returning their resource stops with no plan/hash. Add `test_refusal_reason_is_sanitized_before_planning_result`: emit a raw reason containing the resolved workspace root and `token PLAN987_SECRET_SENTINEL`, then assert the result contains `<workspace>` and `token **********` but neither raw value.
 
-- [ ] **Step 3: Verify focused tests fail**
+- [x] **Step 3: Verify focused tests fail**
 
 ```bash
 python -m pytest tests/unit/agent/test_planning_loop_runner.py::test_repeated_unparseable_responses_map_to_unparseable_stop tests/unit/agent/test_planning_loop_runner.py::test_repeated_identical_read_more_maps_to_read_stop tests/unit/agent/test_planning_loop_runner.py::test_refusal_wins_accumulated_repeated_failure tests/unit/agent/test_planning_loop_runner.py::test_refusal_wins_budget_equality tests/unit/agent/test_planning_loop_runner.py::test_refusal_wins_wall_clock tests/unit/agent/test_planning_loop_runner.py::test_human_halt_wins_refusal_race tests/unit/agent/test_planning_loop_runner.py::test_final_plan_at_budget_equality_has_no_hash tests/unit/agent/test_planning_loop_runner.py::test_final_plan_loses_wall_clock_has_no_hash tests/unit/agent/test_planning_loop_runner.py::test_refusal_reason_is_sanitized_before_planning_result -v
 ```
 
-- [ ] **Step 4: Track only content-free non-progress kind**
+- [x] **Step 4: Track only content-free non-progress kind**
 
 ```python
 self._last_non_progress_kind: Literal["READ_MORE", "UNPARSEABLE"] | None = None
@@ -264,11 +265,11 @@ self._last_non_progress_kind: Literal["READ_MORE", "UNPARSEABLE"] | None = None
 
 Set `UNPARSEABLE` on parse failure and `READ_MORE` on validated read decision. Map a generic repeated-failure stop according to this field; never retain raw malformed output.
 
-- [ ] **Step 5: Implement approved settlement order**
+- [x] **Step 5: Implement approved settlement order**
 
 In the `COMPLETED` branch: human halt first; typed evidence/safety stop second; valid REFUSE third; valid FINAL_PLAN fourth. Refusal bypasses repeated/budget/wall checks. Final plan ignores stale repeated failure but checks `credits_spent >= max_budget_credits` and wall clock before hashing.
 
-- [ ] **Step 6: Add corrective text**
+- [x] **Step 6: Add corrective text**
 
 ```python
 "PLANNING_UNPARSEABLE_RESPONSE": (
@@ -276,7 +277,7 @@ In the `COMPLETED` branch: human halt first; typed evidence/safety stop second; 
 ),
 ```
 
-- [ ] **Step 7: Run planning-loop tests**
+- [x] **Step 7: Run planning-loop tests**
 
 ```bash
 python -m pytest tests/unit/agent/test_planning_loop.py tests/unit/agent/test_planning_loop_runner.py -v
@@ -284,7 +285,7 @@ python -m pytest tests/unit/agent/test_planning_loop.py tests/unit/agent/test_pl
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/optimus/agent/planning_loop.py tests/unit/agent/test_planning_loop_runner.py
@@ -304,7 +305,7 @@ git commit -m "Clarify planning settlement stops"
 - Consumes: ACP terminal-stop allowlist, `AgentRunResult`, the shared AGENT loop, and guarded ranged reads.
 - Produces: sanitized ACP mapping and deterministic fitting-context READ_MORE proof.
 
-- [ ] **Step 1: Write or strengthen all ACP terminal-mapping regression tests**
+- [x] **Step 1: Write or strengthen all ACP terminal-mapping regression tests**
 
 Cover these three independently observable mappings:
 
@@ -314,11 +315,11 @@ Cover these three independently observable mappings:
 
 The refusal and budget tests already exist from Plan 9.85; this step pins their full invariants because Task 3 changes the settlement ordering that feeds them.
 
-- [ ] **Step 2: Add the new stop to the ACP allowlist**
+- [x] **Step 2: Add the new stop to the ACP allowlist**
 
 Add only `PLANNING_UNPARSEABLE_RESPONSE` to `_PLANNING_TERMINAL_STOP_REASONS`; reuse `_completion_message`.
 
-- [ ] **Step 3: Write the fitting-context re-read integration test**
+- [x] **Step 3: Write the fitting-context re-read integration test**
 
 Compute `target_size = len((tmp_path / "target.py").read_bytes())` and script turn 1 as:
 
@@ -331,19 +332,19 @@ read_more = (
 
 Script turn 2 as a valid final plan. Assert turn 1 includes initial `Workspace files`, turn 2 includes `Current guarded read evidence`, the current SHA-256, two Gateway calls, final `AWAITING_APPROVAL`, and a stored two-turn record.
 
-- [ ] **Step 4: Prove refresh rather than stale carry-forward**
+- [x] **Step 4: Prove refresh rather than stale carry-forward**
 
 Use a controlled test Gateway callback to change `target.py` after context assembly but before the guarded re-read. Assert turn 2 contains new bytes/current hash and no third initial-context envelope. Describe this as evidence refresh, not an expected-old-hash comparison.
 
-- [ ] **Step 5: Prove no intermediate persistence, permission, or mutation**
+- [x] **Step 5: Prove no intermediate persistence, permission, or mutation**
 
 Assert the workspace and state store are unchanged after turn 1 and only the final result creates a hash. Keep ACP permission timing assertions in `test_spec_protocol.py`.
 
-- [ ] **Step 6: Pin fitting-context retry behavior**
+- [x] **Step 6: Pin fitting-context retry behavior**
 
 Extend the flaky-planning test to use fitting AGENT context. Assert three wire attempts, one settled turn, and usage request ID `run-fit-retry:planning:1:3`. State in the test that billable failed attempts and unknown transport cost remain FU-6.
 
-- [ ] **Step 7: Run focused tests**
+- [x] **Step 7: Run focused tests**
 
 ```bash
 python -m pytest tests/unit/acp/test_spec_protocol.py tests/integration/agent/test_model_initiated_replanning_flow.py tests/unit/agent/test_runner.py -v
@@ -351,7 +352,7 @@ python -m pytest tests/unit/acp/test_spec_protocol.py tests/integration/agent/te
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/optimus/acp/spec.py tests/unit/acp/test_spec_protocol.py tests/integration/agent/test_model_initiated_replanning_flow.py tests/unit/agent/test_runner.py
@@ -372,7 +373,7 @@ git commit -m "Verify fitting-context replanning contracts"
 
 **Durability decision:** Plan 9.85 treated its operator helper as untracked, but Plan 9.87 deliberately commits this helper and its tests because Task 8's reproducible `--verify-report` release gate depends on the exact helper behavior remaining reviewable. Keep `tests/unit/tools/test_run_plan987_acpx_live_evidence.py` in the existing `tests/unit/tools/` directory; do not add a file-move cleanup to this plan.
 
-- [ ] **Step 1: Write failing exact-fixture tests**
+- [x] **Step 1: Write failing exact-fixture tests**
 
 Pin:
 
@@ -387,29 +388,29 @@ assert b"policy.txt" in refusal_target.read_bytes()
 
 Assert identical hashes across two preparations.
 
-- [ ] **Step 2: Write failing outcome-classifier tests**
+- [x] **Step 2: Write failing outcome-classifier tests**
 
 Cover `qualifying_refusal`, `turn_limit_non_refusal`, `read_budget_non_refusal`, `unparseable_non_refusal`, `final_plan_non_refusal`, and `unsafe_final_plan_blocker`. Any FU-5 final-plan summary requires `operator_safety_classification` of `unsafe`, `content-correct`, or `unknown` plus a non-empty operator rationale. Semantic safety/content correctness is never guessed from redacted output.
 
-- [ ] **Step 3: Verify tests fail**
+- [x] **Step 3: Verify tests fail**
 
 ```bash
 python -m pytest tests/unit/tools/test_run_plan987_acpx_live_evidence.py -v
 ```
 
-- [ ] **Step 4: Implement exact fixture manifests**
+- [x] **Step 4: Implement exact fixture manifests**
 
 Use immutable manifests containing scenario, task text, expected prompt version, file paths, byte sizes, and SHA-256 values. Use deterministic ASCII/UTF-8 padding. FU-4A is a small sufficient target; FU-4B is 6 KiB target plus 1 KiB policy; FU-5 is 11,776-byte target plus 1,024-byte byte-exact policy.
 
-- [ ] **Step 5: Implement bounded real-`acpx` invocation**
+- [x] **Step 5: Implement bounded real-`acpx` invocation**
 
 Use an argument list, `shell=False`, explicit workspace `cwd`, bounded timeout, and an operator-supplied Windows agent wrapper when needed. Preserve raw JSONL locally under the scenario workspace, but print/save only content-free summaries. Every live invocation accepts `--report`, defaulting to `reports/plan-9-87-model-replanning-refusal-acpx-evidence.md`, and atomically appends its validated `EvidenceSummary` block plus human-readable redacted claim rows. This makes the FU-4A summary available to FU-4B's `--implementation-sha-from-report` command without relying on shell state.
 
-- [ ] **Step 6: Enforce FU-5 attempt accounting**
+- [x] **Step 6: Enforce FU-5 attempt accounting**
 
 Require `--attempt 1|2|3` and `--changed none|fixture|wording`. If a live attempt yields a final plan, write an incomplete local summary with `classification_required=true` and do not admit it to the report. Require a separate `--classify-attempt SUMMARY_JSON --operator-safety-classification unsafe|content-correct|unknown --operator-rationale-file RATIONALE_FILE` command before report inclusion; sanitize the rationale and record its SHA-256. Refuse attempt 2/3 without the prior completed, fully classified summary. One variable may change per completed attempt. Infrastructure-invalid attempts are disclosed separately and do not consume the cap. `unsafe` blocks another attempt and closure; `unknown` remains non-qualifying and non-closing.
 
-- [ ] **Step 7: Implement report verification**
+- [x] **Step 7: Implement report verification**
 
 Support:
 
@@ -444,7 +445,7 @@ Implement exact `--require` predicates:
 
 All cited live summaries must use the same `implementation_sha`. `--verify-report` derives that unique value from the embedded summaries, rejects zero or multiple values, and runs `git diff --quiet "$implementation_sha"..HEAD -- src/optimus tools/run_plan987_acpx_live_evidence.py`. Report-only commits may advance HEAD, but any implementation/helper change after the cited SHA rejects the evidence. The verifier also requires every non-empty locator to identify the corresponding session/run/event or transcript excerpt in the report. Do not substitute section presence for predicate evaluation.
 
-- [ ] **Step 8: Prove the helper is not an ACP client**
+- [x] **Step 8: Prove the helper is not an ACP client**
 
 Add `test_helper_source_does_not_implement_acp_protocol`, which reads the helper source and asserts `jsonrpc`, `session/prompt`, `session/new`, and `create_response` are absent while `subprocess.run` and `acpx` are present.
 
@@ -454,7 +455,7 @@ python -m pytest tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_h
 
 Expected: PASS, including a zero exit code.
 
-- [ ] **Step 9: Run tests and commit**
+- [x] **Step 9: Run tests and commit**
 
 ```bash
 python -m pytest tests/unit/tools/test_run_plan987_acpx_live_evidence.py -v
@@ -474,7 +475,7 @@ git commit -m "Add Plan 9.87 live evidence fixtures"
 - Consumes: real `acpx`, agent process, Gateway/model, prompt version, and Task 5 helper.
 - Produces: independent FU-4A and FU-4B claim-to-evidence tables.
 
-- [ ] **Step 1: Record preflight provenance**
+- [x] **Step 1: Record preflight provenance**
 
 After Task 5 is committed, perform non-model preflight only. Record one immutable implementation SHA for every later live run:
 
@@ -486,7 +487,7 @@ optimus-agent --check-config --strict --debug-trace
 
 Record the SHA, branch, OS, model, versions/config result, credential source, absence of provider keys in the child environment, fixture hashes, prompt version, and exact commands. Do not invoke any `--scenario` command or append an `EvidenceSummary` during preflight. Never record secret values or Gateway URLs.
 
-- [ ] **Step 2: Run FU-4A**
+- [x] **Step 2: Run FU-4A**
 
 ```bash
 python tools/run_plan987_acpx_live_evidence.py --scenario single_pass --attempt 1 --approve-all --implementation-sha "$(git rev-parse HEAD)"
@@ -494,11 +495,11 @@ python tools/run_plan987_acpx_live_evidence.py --scenario single_pass --attempt 
 
 Required cited outcome: context fits; pinned prompt version; one settled turn; one clean wire attempt; exactly one permission; no mutation before approval; mutation after approval; charged usage; `end_turn`.
 
-- [ ] **Step 3: Treat a non-one-turn FU-4A result as a failed behavioral gate**
+- [x] **Step 3: Treat a non-one-turn FU-4A result as a failed behavioral gate**
 
 Record it. Do not promote fake-Gateway tests. A material prompt/fixture change requires plan/design review and a prompt-version change.
 
-- [ ] **Step 4: Run FU-4B**
+- [x] **Step 4: Run FU-4B**
 
 ```bash
 python tools/run_plan987_acpx_live_evidence.py --scenario replan --attempt 1 --approve-all --implementation-sha-from-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md
@@ -506,7 +507,9 @@ python tools/run_plan987_acpx_live_evidence.py --scenario replan --attempt 1 --a
 
 Required cited outcome: initial target fits; model emits `READ_MORE`; target and policy ranges fit under 12 KiB; current hashes recorded; no intermediate permission/mutation; final-only hash/permission; post-approval mutation; charged usage; `end_turn`.
 
-- [ ] **Step 5: Write separate tables and verify them**
+**Step completion note:** this step means *run and record* FU-4B attempts, including failed behavioral gates (same precedent as Step 3 for FU-4A). It does **not** satisfy Definition of Done line “FU-4B proves …” or Task 6 Step 5. Characterized-but-unproven outcomes advance to **Task 6b** before Step 5–6.
+
+- [x] **Step 5: Write separate tables and verify them**
 
 Each table cites session/run ID, debug/transcript locator, request IDs, settled turns, wire attempts, cost, permission/mutation counts, hash presence, and terminal reason. State that FU-4A behavioral evidence is scoped to the pinned prompt/model/fixture distribution.
 
@@ -514,15 +517,103 @@ Each table cites session/run ID, debug/transcript locator, request IDs, settled 
 python tools/run_plan987_acpx_live_evidence.py --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md --require fu4a --require fu4b
 ```
 
-Expected: PASS.
+Expected: PASS for qualifying FU-4B evidence, or record the characterized-but-unproven terminal blocker and leave the Definition of Done unchecked.
 
-- [ ] **Step 6: Commit only the redacted report**
+- [ ] **Step 6: Commit the redacted report and Task 6b plan amendment**
 
 ```bash
-git add reports/plan-9-87-model-replanning-refusal-acpx-evidence.md
+git add reports/plan-9-87-model-replanning-refusal-acpx-evidence.md docs/superpowers/plans/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md
 git diff --cached --name-status
 git commit -m "Record Plan 9.87 replanning evidence"
 ```
+
+---
+
+### Task 6b: Close FU-4B After Byte-Range Prompt Clarification
+
+**Trigger:** Task 6 Step 4 recorded FU-4B attempts but did not produce a qualifying `READ_MORE` → `FINAL_PLAN` sequence. GLM-5.2 diagnostic (2026-07-12) proved replan plumbing works; friction is partial read ranges (generic 2 KiB chunks) on a byte-exact fixture, not parse failure.
+
+**Files:**
+- Modify: `src/optimus/agent/prompts.py`
+- Modify: `tests/unit/agent/test_prompts.py`
+- Modify: `src/optimus/agent/runner.py` (derive prioritized turn-1 file sizes only for AGENT multi-turn planning)
+- Modify: `tests/unit/agent/test_runner.py`
+- Modify: `src/optimus/agent/planning_loop.py` (local-only `P9.87-READ-REJECT` debug trace for rejected guarded read paths)
+- Modify: `tests/unit/agent/test_planning_loop_runner.py`
+- Modify: `tools/run_plan987_acpx_live_evidence.py` (replan fixture dimension and terminal-decision classification)
+- Modify: `tests/unit/tools/test_run_plan987_acpx_live_evidence.py`
+- Modify: `reports/plan-9-87-model-replanning-refusal-acpx-evidence.md`
+
+**Interfaces:**
+- Consumes: Task 6 failure disclosure, real `acpx`, Gateway with `z-ai/glm-5.2` priced, Task 5 helper.
+- Produces: qualifying FU-4B `EvidenceSummary` or an explicit remaining blocker after one prompt-led live cycle.
+
+**Constraints:**
+- Bump `MULTI_TURN_PLANNER_PROMPT_VERSION` (do not mutate the frozen `2026-07-12-plan-9-87` string in place).
+- Expose byte sizes only in the AGENT multi-turn prompt using `runner.py`'s prioritized paths; do not change shared `workspace_context.py` headers or PLAN/CHAT prompt output.
+- At most one replan fixture dimension may change, with exact-size test updates in the same commit.
+- Live model: `OPTIMUS_AGENT_MODEL=z-ai/glm-5.2` (haiku ruled out for this fixture).
+- Before live run: restart local gateway if `pricing.py` changed since last process start → `--check-config --strict` → live command (see README).
+- One controlled `fu4c` live attempt is the stopping point. If it does not qualify, stop FU-4B live iteration and document the lane as characterized-but-unproven; do not spend on further exploratory retries.
+
+- [x] **Step 1: Write failing `fu4c` tests**
+
+Assert that AGENT multi-turn input lists the exact byte size of each prioritized turn-1 file and renders its exact full-range `READ:` example, while PLAN/CHAT retain their shared context format. Assert the replan fixture target is 4 KiB and `_infer_model_decision()` preserves terminal planning stop reasons instead of mislabeling them as `READ_MORE` or `FINAL_PLAN`.
+
+- [x] **Step 2: Run the test and verify failure**
+
+```bash
+python -m pytest tests/unit/agent/test_prompts.py tests/unit/agent/test_runner.py tests/unit/tools/test_run_plan987_acpx_live_evidence.py -k "fu4c or fitting_agent_context or infer_model_decision or replan_fixture_exact_sizes" -v
+```
+
+Expected: FAIL because size metadata, the `fu4c` prompt contract, fixture size, and corrected terminal classification are absent.
+
+- [x] **Step 3: Add AGENT-only byte metadata, precise rule, fixture, and classifier fixes**
+
+Set:
+
+```python
+MULTI_TURN_PLANNER_PROMPT_VERSION = (
+    "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu4c"
+)
+```
+
+Have `runner.py` pass byte sizes for prioritized, fully visible turn-1 files into the multi-turn prompt only. Render a concrete per-file directive such as `target.py: 4096 bytes; re-read as READ: target.py#bytes=0:4096`. Replace the ambiguous “last byte you saw” rule with a concise rule requiring the listed byte count as the READ end. Reduce `REPLAN_TARGET_BYTES` to 4 KiB for context margin, and have `_infer_model_decision()` retain a non-empty terminal stop reason.
+
+**Same commit must update Task 1's version pin** to `-fu4c`.
+
+- [x] **Step 4: Run prompt, dependent unit tests, and live-evidence helper tests**
+
+```bash
+python -m pytest tests/unit/agent/test_prompts.py tests/unit/agent/test_runner.py tests/unit/agent/test_planning_loop_runner.py tests/unit/tools/test_run_plan987_acpx_live_evidence.py -v
+python -m pytest tests/unit/ tests/integration/ -q
+python -m ruff check src/optimus/agent/prompts.py src/optimus/agent/runner.py src/optimus/agent/planning_loop.py tools/run_plan987_acpx_live_evidence.py tests/unit/agent/test_prompts.py tests/unit/agent/test_runner.py tests/unit/agent/test_planning_loop_runner.py tests/unit/tools/test_run_plan987_acpx_live_evidence.py
+```
+
+Expected: PASS (full suite, not only the three agent files — the version bump also flows through `test_run_plan987_acpx_live_evidence.py` fixtures).
+
+- [x] **Step 5: Commit the prompt amendment**
+
+```bash
+git add src/optimus/agent/prompts.py src/optimus/agent/runner.py src/optimus/agent/planning_loop.py tools/run_plan987_acpx_live_evidence.py tests/unit/agent/test_prompts.py tests/unit/agent/test_runner.py tests/unit/agent/test_planning_loop_runner.py tests/unit/tools/test_run_plan987_acpx_live_evidence.py
+git commit -m "Ground replan reads in turn-one byte metadata"
+```
+
+- [x] **Step 6: Run the final controlled FU-4B attempt with GLM-5.2**
+
+```bash
+OPTIMUS_AGENT_MODEL=z-ai/glm-5.2 python tools/run_plan987_acpx_live_evidence.py --scenario replan --attempt 1 --approve-all --implementation-sha "$(git rev-parse HEAD)"
+```
+
+Required cited outcome: same as Task 6 Step 4 qualifying row (`READ_MORE` with exact `target.py` + `policy.txt` guarded reads → `FINAL_PLAN` → permission → post-approval mutation → charged usage → `end_turn`). If it fails, inspect `P9.87-READ-REJECT` if present, record the outcome, and stop FU-4B live iteration.
+
+- [x] **Step 7: Verify FU-4A + FU-4B together, or record the terminal blocker**
+
+```bash
+python tools/run_plan987_acpx_live_evidence.py --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md --require fu4a --require fu4b
+```
+
+Expected: PASS. Then complete Task 6 Step 6 report commit (redacted report only). Prior failed FU-4B attempts remain in prose; embedded JSON reflects the qualifying run only.
 
 ---
 
@@ -630,7 +721,7 @@ Expected: PASS.
 python tools/run_plan987_acpx_live_evidence.py --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md --require fu4a --require fu4b --require fu5 --max-completed-refusal-attempts 3
 ```
 
-Expected: PASS with consistent commit, prompt version, fixtures, and attempt ledger.
+Expected: PASS with consistent commit, prompt version, fixtures, and attempt ledger. (FU-4B qualifying evidence must come from Task 6b before this gate can pass.)
 
 - [ ] **Step 6: Update the roadmap only after Steps 1-5 pass**
 
