@@ -5,7 +5,7 @@ from decimal import Decimal
 
 AGENT_PLANNER_PROMPT_VERSION = "AGENT_PLANNER_PROMPT_VERSION:2026-07-12"
 MULTI_TURN_PLANNER_PROMPT_VERSION = (
-    "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu4c"
+    "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a"
 )
 
 WORKSPACE_FILES_HEADER = (
@@ -96,6 +96,7 @@ def build_multi_turn_planner_input(
     current_read_evidence_envelope: str = "",
     initial_workspace_context: str = "",
     initial_workspace_file_sizes: Mapping[str, int] | None = None,
+    evidence_limits: tuple[int, int, int] | None = None,
 ) -> str:
     sections = [
         f"{MULTI_TURN_PLANNER_PROMPT_VERSION}\n",
@@ -104,6 +105,13 @@ def build_multi_turn_planner_input(
         f"Remaining budget (USD): {remaining_budget_usd}\n",
         f"Remaining wall-clock minutes: {remaining_wall_clock_minutes}\n",
     ]
+    if evidence_limits is not None:
+        observation_max, new_read_max, combined_max = evidence_limits
+        sections.append(
+            "Evidence limits (bytes): carried observations up to "
+            f"{observation_max}; current guarded reads up to {new_read_max}; "
+            f"combined planning evidence up to {combined_max}.\n"
+        )
     initial_context = initial_workspace_context.strip()
     if initial_context:
         sections.append(

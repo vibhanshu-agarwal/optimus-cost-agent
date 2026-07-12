@@ -812,6 +812,11 @@ class _PlanningIterationRunner:
             initial_workspace_file_sizes=(
                 self._initial_workspace_file_sizes if planning_turn == 1 else {}
             ),
+            evidence_limits=(
+                PLANNING_OBSERVATION_MAX_BYTES,
+                PLANNING_NEW_READ_MAX_BYTES,
+                DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES,
+            ),
         )
         try:
             response, attempt_cost = self._invoke_planning_gateway(planning_turn=planning_turn, prompt=prompt)

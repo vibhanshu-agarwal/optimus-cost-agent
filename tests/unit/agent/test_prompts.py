@@ -89,7 +89,7 @@ def test_multi_turn_prompt_marks_initial_context_ephemeral_and_requires_complete
         remaining_wall_clock_minutes=30,
         initial_workspace_context="--- target.py ---\noriginal\n",
     )
-    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-07-12-plan-9-87-fu4c")
+    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-07-12-plan-9-87-fu5a")
     assert "available on planning turn 1 only" in prompt
     assert "will not be carried to planning turn 2" in prompt
     assert "request every raw byte range" in prompt
@@ -138,3 +138,24 @@ def test_fu4c_multi_turn_prompt_exposes_known_turn1_file_size_for_full_reread():
     assert "Known byte sizes for fully visible turn-1 files:" in prompt
     assert "- target.py: 6144 bytes; re-read as" in prompt
     assert "READ: target.py#bytes=0:6144" in prompt
+
+
+def test_fu5a_multi_turn_prompt_discloses_enforced_evidence_limits():
+    from decimal import Decimal
+
+    from optimus.agent.prompts import build_multi_turn_planner_input
+
+    prompt = build_multi_turn_planner_input(
+        "Update target.py per the module documentation.",
+        planning_turn=1,
+        max_planning_turns=3,
+        remaining_budget_usd=Decimal("0.05"),
+        remaining_wall_clock_minutes=30,
+        initial_workspace_context="--- target.py ---\noriginal\n",
+        evidence_limits=(4096, 12288, 16384),
+    )
+
+    assert "Evidence limits (bytes):" in prompt
+    assert "carried observations up to 4096" in prompt
+    assert "current guarded reads up to 12288" in prompt
+    assert "combined planning evidence up to 16384" in prompt
