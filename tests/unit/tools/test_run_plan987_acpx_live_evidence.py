@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from optimus.agent.prompts import MULTI_TURN_PLANNER_PROMPT_VERSION
 from tools.run_plan987_acpx_live_evidence import (
     EvidenceSummary,
     build_evidence_summary_from_run,
@@ -74,7 +75,7 @@ def _base_summary(**overrides: object) -> EvidenceSummary:
         "scenario": "refusal",
         "attempt": 1,
         "implementation_sha": "abc123",
-        "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87",
+        "prompt_version": MULTI_TURN_PLANNER_PROMPT_VERSION,
         "model": "claude-haiku",
         "fixture_manifest_sha256": "manifest",
         "task_sha256": "task",
@@ -611,6 +612,7 @@ def test_classify_attempt_appends_to_report_round_trip(tmp_path: Path) -> None:
 def test_helper_source_does_not_implement_acp_protocol() -> None:
     source = HELPER_PATH.read_text(encoding="utf-8")
     assert "create_response" not in source
+    assert "jsonrpc" not in source
     assert '"method": "session/prompt"' not in source
     assert "NdjsonSubprocessSession" not in source
     assert "subprocess.run" in source

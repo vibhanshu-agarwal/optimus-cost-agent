@@ -89,10 +89,32 @@ def test_multi_turn_prompt_marks_initial_context_ephemeral_and_requires_complete
         remaining_wall_clock_minutes=30,
         initial_workspace_context="--- target.py ---\noriginal\n",
     )
-    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-07-12-plan-9-87")
+    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-07-12-plan-9-87-fu4b")
     assert "available on planning turn 1 only" in prompt
     assert "will not be carried to planning turn 2" in prompt
     assert "request every raw byte range" in prompt
     assert "including ranges already visible in the initial workspace context" in prompt
     assert "observations cannot ground final WRITE content" in prompt
     assert "emit REFUSE" in prompt
+
+
+def test_fu4b_multi_turn_prompt_requires_full_reread_for_turn1_visible_files():
+    from decimal import Decimal
+
+    from optimus.agent.prompts import build_multi_turn_planner_input
+
+    prompt = build_multi_turn_planner_input(
+        "Update target.py per the module documentation.",
+        planning_turn=2,
+        max_planning_turns=3,
+        remaining_budget_usd=Decimal("0.04"),
+        remaining_wall_clock_minutes=12,
+        carried_observations_envelope=(
+            "OBS_RECORD path=target.py bytes=0:6143 sha256=abc\nseen in turn 1\nEND_OBS_RECORD\n"
+        ),
+        current_read_evidence_envelope="",
+        initial_workspace_context="",
+    )
+    assert "fully visible in turn-1 initial workspace context" in prompt
+    assert "request the file's complete byte range" in prompt
+    assert "do not substitute a default or generic chunk size" in prompt
