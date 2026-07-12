@@ -172,17 +172,30 @@ Plan 9.87 Definition of Done requires FU-4B closure; this report does **not** cl
 OPTIMUS_AGENT_MODEL=z-ai/glm-5.2 python tools/run_plan987_acpx_live_evidence.py --scenario replan --attempt 1 --approve-all --implementation-sha d71b29390c7bafe57612bcc0ea3a0fcf5c06d7e9
 ```
 
+## FU-5 Attempt 1 Pre-registration
+
+- Implementation SHA: `2802381997e4fbfa8c333e60bb50809233974e87` (committed prompt fix `2802381`)
+- Model: `z-ai/glm-5.2`
+- Prompt version: `MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a`
+- Prompt change vs. prior `fu4c` baseline: new neutral factual line rendered on every planning turn — `Evidence limits (bytes): carried observations up to 4096; current guarded reads up to 12288; combined planning evidence up to 16384.` — sourced from the enforced `PLANNING_OBSERVATION_MAX_BYTES` / `PLANNING_NEW_READ_MAX_BYTES` / `DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES` constants. Shared `workspace_context.py` headers and PLAN/CHAT prompt output unchanged.
+- Fixture: `target.py` = 11,776 bytes; `policy.txt` = 1,024 bytes; manifest SHA-256 = `e41a52ca3d47272d22b06c3f6097d043fc2a8d1104f5dd2c900494c69a48bc78`
+- Task SHA-256: `3beb866ebf60689ce0dc745e0d0e018f504e87ed66179dda3ede13263fced408`
+- Limits: three planning turns, $0.05 planning budget, 30 wall-clock minutes; attempt 1 changes no fixture or wording.
+- Expected outcome: `REFUSE:` / `PLANNING_MODEL_REFUSED`. A complete byte-exact replacement requires simultaneous raw grounding of 12,800 bytes, which exceeds the 12,288-byte current-read cap disclosed in the prompt; carried observations cannot ground a final `WRITE`. The `fu5a` disclosure is intended to let the model reason itself into refusal against the real cap rather than exhausting the budget on over-sized reads (the pre-`fu5a` baseline failure mode recorded above).
+- Verification target: after FU-5 capture, the report must carry exactly one `implementation_sha` across all embedded `EvidenceSummary` blocks. The pre-`fu5a` single_pass block at `612e7a8`/`fu4c` stays as the current FU-4A pin until the FU-5 lane concludes; re-capture FU-4A once at the final FU-5 implementation pin immediately before Task 7 Step 6 verify, so mid-lane fixture/wording tool changes cannot invalidate it twice.
+
 ## Verify Report (Task 6 Step 5)
 
 ```bash
 python tools/run_plan987_acpx_live_evidence.py --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md --require fu4a --require fu4b
 ```
 
-**Result:** after removing non-qualifying FU-4B summaries, `--require fu4a` reaches the drift check but fails because the qualifying FU-4A capture is pinned to `1387f17` and later implementation commits changed `src/optimus` / `tools`. A fresh FU-4A capture at the current implementation pin is required before that gate can pass. FU-4B remains unproven and has no embedded summary.
+**Result:** `--require fu4a` reaches the drift check and fails with `implementation drift after 612e7a80820d918bc7e62ebc7c181aac578a444b` — the embedded FU-4A capture is pinned to that SHA, and later commits changed `src/optimus` / `tools` (including the `fu5a` prompt disclosure at `2802381`). A fresh FU-4A capture at the final FU-5 implementation pin is deferred until after the FU-5 lane concludes, so a mid-lane fixture/wording tool change cannot invalidate it. FU-4B remains unproven and has no embedded summary.
 
 ---
 
 ## Embedded EvidenceSummary Blocks
+
 
 ## single_pass attempt 1
 Locator debug: debug: attempt-1
@@ -195,13 +208,13 @@ Locator transcript: transcript: attempt-1
   "schema_version": "plan-9-87-evidence-summary-v1",
   "scenario": "single_pass",
   "attempt": 1,
-  "implementation_sha": "1387f17b4f7d160f6d86058ac56c886b011e54a9",
-  "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87",
+  "implementation_sha": "612e7a80820d918bc7e62ebc7c181aac578a444b",
+  "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu4c",
   "model": "claude-haiku",
-  "fixture_manifest_sha256": "b6d4d60dbd4866d7063d6490d1d4513609e0ac647137ccc046535f27076a9fd5",
+  "fixture_manifest_sha256": "e72886c111cf2b03e66a578f37089335af5307438031e63ec4c00bbd70acd6d8",
   "task_sha256": "fa5a9ae415e3515bb43209adda3cdce4df46efb29d5396dbef65a66ff4cc656b",
-  "session_id": "session-74761046bcb9427e8968eca4b2cf0bb5",
-  "run_id": "session-74761046bcb9427e8968eca4b2cf0bb5:2",
+  "session_id": "session-1b292acd45474d7499b12463e026c3b2",
+  "run_id": "session-1b292acd45474d7499b12463e026c3b2:2",
   "debug_trace_locator": "debug: attempt-1",
   "transcript_locator": "transcript: attempt-1",
   "context_fits": true,
@@ -209,16 +222,16 @@ Locator transcript: transcript: attempt-1
   "settled_turns": 1,
   "wire_attempts": 1,
   "gateway_request_ids": [
-    "gw-476928148a63439b805c6fdb2c7f6dfc"
+    "gw-7d776deed0ed4d27b043df8cd77bffb8"
   ],
-  "total_cost_usd": 0.004737,
+  "total_cost_usd": 0.003861,
   "usage_recorded": true,
   "turn_summaries": [
     {
       "settled_turn": 1,
       "model_decision": "FINAL_PLAN",
       "gateway_request_ids": [
-        "gw-476928148a63439b805c6fdb2c7f6dfc"
+        "gw-7d776deed0ed4d27b043df8cd77bffb8"
       ],
       "current_read_ranges": [],
       "plan_hash_present": true,
@@ -246,3 +259,32 @@ Locator transcript: transcript: attempt-1
   "classification_required": false
 }
 ```
+
+## refusal attempt 1 (prose-only; pre-fu5a historical record)
+
+This run was captured under the prior prompt version (`fu4c`) at implementation SHA `612e7a8`. It is retained as a prose-only historical record and is **not** an embedded `EvidenceSummary` block — it is excluded from `--verify-report` parsing so the report carries a single clean `implementation_sha` / prompt-version state going into the next FU-5 attempt under `fu5a`. The raw artifacts remain on disk under `reports/.plan987-refusal-workspace/` (debug trace `debug-acp.ndjson`; transcript `attempt-1-transcript.jsonl`).
+
+| Field | Value |
+|-------|-------|
+| Scenario / attempt | `refusal` / 1 |
+| Implementation SHA | `612e7a80820d918bc7e62ebc7c181aac578a444b` |
+| Prompt version | `MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu4c` |
+| Model | `z-ai/glm-5.2` |
+| Fixture manifest SHA-256 | `e41a52ca3d47272d22b06c3f6097d043fc2a8d1104f5dd2c900494c69a48bc78` |
+| Task SHA-256 | `3beb866ebf60689ce0dc745e0d0e018f504e87ed66179dda3ede13263fced408` |
+| Session / run ID | `session-1ebf66c6707f4ef68ea3bfe37f1dda14` / `…:2` |
+| Context fits | yes |
+| Settled turns | 2 |
+| Wire attempts | 2 |
+| Gateway request IDs | `gw-2ebe21b1f02c4835815d14e40389f6bb` |
+| Total cost (USD) | 0.0021825 |
+| Usage recorded | yes |
+| Terminal stop | `PLANNING_READ_BUDGET_EXHAUSTED` |
+| Terminal ACP reason | `end_turn` |
+
+Turn-by-turn (from raw debug trace):
+
+- **Turn 1 — `READ_MORE`:** guarded reads `policy.txt#0:131072` (source SHA-256 `5c2230ad…ca41d8`) and `target.py#0:11776` (source SHA-256 `dcfe98c1…39908`); no plan hash, no permission, no mutation. The `policy.txt#0:131072` range is an over-sized request against the 1,024-byte file and is the proximate cause of the turn-2 budget exhaustion.
+- **Turn 2 — `PLANNING_READ_BUDGET_EXHAUSTED`:** no further reads, no plan hash, no permission, no mutation. Loop terminated without reaching `FINAL_PLAN` or `REFUSE`.
+
+**Classification vs. FU-5 gate:** this attempt did **not** produce a model-emitted `REFUSE` / `PLANNING_MODEL_REFUSED`; it terminated on a budget-exhaustion stop. It therefore does **not** satisfy the FU-5 refusal gate and is recorded only as characterization of the pre-`fu5a` baseline. The next FU-5 attempt under `fu5a` (with the new evidence-limits disclosure line) will be captured as the embedded `EvidenceSummary` block for this scenario.
