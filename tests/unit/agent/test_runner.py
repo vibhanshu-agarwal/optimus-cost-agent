@@ -838,6 +838,37 @@ def test_oversized_planning_retries_gateway_without_extra_settled_turn(tmp_path)
     assert accounting.provider_ledger.total_cost_usd() == Decimal("0.002")
 
 
+def test_fitting_context_planning_retries_gateway_without_extra_settled_turn(tmp_path):
+    # Billable failed attempts and unknown transport cost aggregation remain FU-6.
+    (tmp_path / "target.py").write_text("original\n", encoding="utf-8")
+    final_plan = "READ target.py\nWRITE target.py\nupdated header\n"
+    gateway = FlakyPlanningGateway(
+        final_text=final_plan,
+        cost_usd=Decimal("0.002"),
+        gateway_request_id="gw-1",
+    )
+    accounting = UsageAccountingService()
+    runner = AgentRunner(
+        gateway_client=gateway,
+        model="glm-5.2",
+        usage_accounting=accounting,
+    )
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-fit-retry",
+            task="Update target.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert gateway.attempts == 3
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL
+    assert accounting.provider_ledger.entries[0].request_id == "run-fit-retry:planning:1:3"
+    assert accounting.provider_ledger.total_cost_usd() == Decimal("0.002")
+
+
 def test_missing_path_can_reach_gateway_for_create_task(tmp_path):
     gateway = FakeGatewayClient(
         "WRITE new/module.py\n"
