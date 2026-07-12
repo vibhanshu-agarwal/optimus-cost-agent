@@ -341,6 +341,13 @@ already be reachable (for example because `optimus-agent` is serving in another 
 started one manually). Plain `--check-config` is the right pre-launch check for the auto-start
 flow.
 
+**If you kill or restart the local gateway manually:** `--check-config` does **not** spawn it.
+After changing gateway source (for example a new `pricing.py` entry), the running process keeps
+the old in-memory config until restarted. Safe order: (1) restart the gateway
+(`tools/run_local_gateway.sh` or equivalent), (2) `optimus-agent --check-config --strict` with
+your intended `OPTIMUS_AGENT_MODEL`, (3) only then run live evidence or IDE sessions. Skipping
+step 1 after a code change produces misleading `no pricing snapshot` errors from a stale process.
+
 **Flags**
 
 | Flag | Purpose |
@@ -627,6 +634,10 @@ optimus-agent --workspace-root . --check-config --strict
 `--strict` adds a gateway authentication probe in addition to the default Redis and workspace
 checks. **`--check-config` never spawns the local gateway** — use plain `--check-config` before
 first launch with auto-start; use `--strict` only when a gateway is already up.
+
+If you manually stop the gateway or change gateway code (for example add a model pricing
+snapshot), restart the gateway process before `--strict` or live runs — the old process does not
+reload `pricing.py` from disk. Order: restart gateway → `--check-config --strict` → live work.
 
 To skip auto-starting Redis and the gateway (manage them yourself), pass `--no-auto-start`.
 
