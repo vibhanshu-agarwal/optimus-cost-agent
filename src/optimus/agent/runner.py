@@ -196,6 +196,7 @@ class AgentRunner:
                     context=context,
                     toolbox=toolbox,
                     initial_workspace_context="",
+                    initial_workspace_file_sizes={},
                     progress_observer=planning_progress_observer,
                 )
             return self._build_result(
@@ -213,6 +214,10 @@ class AgentRunner:
                 context=context,
                 toolbox=toolbox,
                 initial_workspace_context=workspace_context.text,
+                initial_workspace_file_sizes=self._initial_workspace_file_sizes(
+                    request.workspace_root,
+                    workspace_context.prioritized_paths,
+                ),
                 progress_observer=planning_progress_observer,
             )
         planner_input = build_agent_planner_input(request.task, workspace_context=workspace_context.text)
@@ -254,6 +259,7 @@ class AgentRunner:
         context: RuntimeContext,
         toolbox: AgentToolbox,
         initial_workspace_context: str = "",
+        initial_workspace_file_sizes: dict[str, int] | None = None,
         progress_observer: PlanningProgressObserver | None = None,
     ) -> AgentRunResult:
         from optimus.agent.planning_loop import PlanningLoopPolicy, PlanningLoopRunner
@@ -291,6 +297,7 @@ class AgentRunner:
             session_id=request.session_id,
             task=request.task,
             initial_workspace_context=initial_workspace_context,
+            initial_workspace_file_sizes=initial_workspace_file_sizes,
         )
         if planning_result.stop_reason is not None:
             status = (
@@ -682,6 +689,23 @@ class AgentRunner:
             stop_reason="WRITE_DIRECTIVE_NOT_EXECUTED",
             plan_hash=plan_hash,
         )
+
+    @staticmethod
+    def _initial_workspace_file_sizes(
+        workspace_root: Path,
+        relative_paths: tuple[str, ...],
+    ) -> dict[str, int]:
+        root = workspace_root.resolve()
+        sizes: dict[str, int] = {}
+        for relative_path in relative_paths:
+            candidate = (root / relative_path).resolve()
+            try:
+                candidate.relative_to(root)
+            except ValueError:
+                continue
+            if candidate.is_file():
+                sizes[relative_path] = candidate.stat().st_size
+        return sizes
 
     @staticmethod
     def _is_safe_relative_path(path_text: str) -> bool:

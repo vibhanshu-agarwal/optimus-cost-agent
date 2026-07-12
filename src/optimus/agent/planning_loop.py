@@ -624,6 +624,7 @@ class PlanningLoopRunner:
         session_id: str | None,
         task: str,
         initial_workspace_context: str = "",
+        initial_workspace_file_sizes: dict[str, int] | None = None,
     ) -> PlanningLoopResult:
         if self._max_cost_usd <= Decimal("0"):
             return PlanningLoopResult(stop_reason="PLANNING_BUDGET_EXHAUSTED", settled_turns=0)
@@ -635,6 +636,7 @@ class PlanningLoopRunner:
             model=self._model,
             task=task,
             initial_workspace_context=initial_workspace_context,
+            initial_workspace_file_sizes=initial_workspace_file_sizes or {},
             workspace_root=self._workspace_root,
             run_id=run_id,
             session_id=session_id,
@@ -682,6 +684,7 @@ class _PlanningIterationRunner:
         model: str,
         task: str,
         initial_workspace_context: str,
+        initial_workspace_file_sizes: dict[str, int],
         workspace_root: Path,
         run_id: str,
         session_id: str | None,
@@ -699,6 +702,7 @@ class _PlanningIterationRunner:
         self._model = model
         self._task = task
         self._initial_workspace_context = initial_workspace_context
+        self._initial_workspace_file_sizes = initial_workspace_file_sizes
         self._workspace_root = workspace_root
         self._run_id = run_id
         self._session_id = session_id
@@ -805,6 +809,9 @@ class _PlanningIterationRunner:
             carried_observations_envelope=carried_envelope,
             current_read_evidence_envelope=current_envelope,
             initial_workspace_context=self._initial_workspace_context if planning_turn == 1 else "",
+            initial_workspace_file_sizes=(
+                self._initial_workspace_file_sizes if planning_turn == 1 else {}
+            ),
         )
         try:
             response, attempt_cost = self._invoke_planning_gateway(planning_turn=planning_turn, prompt=prompt)

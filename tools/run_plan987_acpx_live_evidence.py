@@ -29,7 +29,7 @@ ACP_TIMEOUT_SECONDS = 600
 
 REFUSAL_TARGET_BYTES = 11_776
 REFUSAL_POLICY_BYTES = 1_024
-REPLAN_TARGET_BYTES = 6 * 1024
+REPLAN_TARGET_BYTES = 4 * 1024
 REPLAN_POLICY_BYTES = 1024
 
 SINGLE_PASS_TASK = (
@@ -664,11 +664,8 @@ def _infer_model_decision(event: dict[str, object]) -> str:
     loop_stop = event.get("loop_stop")
     if loop_stop == "PLANNING_MODEL_REFUSED":
         return "REFUSE"
-    if loop_stop in {
-        "PLANNING_UNPARSEABLE_RESPONSE",
-        "PLANNING_REPEATED_READ_REQUEST",
-    }:
-        return "READ_MORE"
+    if isinstance(loop_stop, str) and loop_stop:
+        return loop_stop
     return "FINAL_PLAN"
 
 

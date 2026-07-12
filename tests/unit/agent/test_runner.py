@@ -666,6 +666,7 @@ def test_fitting_agent_context_uses_planning_loop_and_settles_in_one_turn(tmp_pa
     input_text = gateway.calls[0]["input_text"]
     assert MULTI_TURN_PLANNER_PROMPT_VERSION in input_text
     assert "--- target.py ---" in input_text
+    assert "- target.py: 10 bytes" in input_text
     assert "original" in input_text
     assert result.status is AgentRunStatus.AWAITING_APPROVAL
     assert result.total_cost_usd == Decimal("0.002")

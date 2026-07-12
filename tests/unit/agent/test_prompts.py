@@ -89,7 +89,7 @@ def test_multi_turn_prompt_marks_initial_context_ephemeral_and_requires_complete
         remaining_wall_clock_minutes=30,
         initial_workspace_context="--- target.py ---\noriginal\n",
     )
-    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-07-12-plan-9-87-fu4b")
+    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-07-12-plan-9-87-fu4c")
     assert "available on planning turn 1 only" in prompt
     assert "will not be carried to planning turn 2" in prompt
     assert "request every raw byte range" in prompt
@@ -98,7 +98,7 @@ def test_multi_turn_prompt_marks_initial_context_ephemeral_and_requires_complete
     assert "emit REFUSE" in prompt
 
 
-def test_fu4b_multi_turn_prompt_requires_full_reread_for_turn1_visible_files():
+def test_fu4c_multi_turn_prompt_requires_listed_byte_count_for_turn1_visible_files():
     from decimal import Decimal
 
     from optimus.agent.prompts import build_multi_turn_planner_input
@@ -115,6 +115,26 @@ def test_fu4b_multi_turn_prompt_requires_full_reread_for_turn1_visible_files():
         current_read_evidence_envelope="",
         initial_workspace_context="",
     )
-    assert "fully visible in turn-1 initial workspace context" in prompt
-    assert "request the file's complete byte range" in prompt
-    assert "do not substitute a default or generic chunk size" in prompt
+    assert "fully visible in turn 1" in prompt
+    assert "use its listed byte count as the READ end" in prompt
+    assert "never guess a chunk size" in prompt
+
+
+def test_fu4c_multi_turn_prompt_exposes_known_turn1_file_size_for_full_reread():
+    from decimal import Decimal
+
+    from optimus.agent.prompts import build_multi_turn_planner_input
+
+    prompt = build_multi_turn_planner_input(
+        "Update target.py per the module documentation.",
+        planning_turn=1,
+        max_planning_turns=3,
+        remaining_budget_usd=Decimal("0.05"),
+        remaining_wall_clock_minutes=30,
+        initial_workspace_context="--- target.py ---\noriginal\n",
+        initial_workspace_file_sizes={"target.py": 6144},
+    )
+
+    assert "Known byte sizes for fully visible turn-1 files:" in prompt
+    assert "- target.py: 6144 bytes; re-read as" in prompt
+    assert "READ: target.py#bytes=0:6144" in prompt

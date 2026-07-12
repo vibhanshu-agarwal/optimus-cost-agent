@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 from optimus.agent.prompts import MULTI_TURN_PLANNER_PROMPT_VERSION
 from tools.run_plan987_acpx_live_evidence import (
     EvidenceSummary,
+    _infer_model_decision,
     build_evidence_summary_from_run,
     classify_attempt,
     classify_attempt_file,
@@ -47,8 +48,17 @@ def test_replan_fixture_exact_sizes() -> None:
         prepare_replan(workspace)
         replan_target = workspace / "target.py"
         replan_policy = workspace / "policy.txt"
-        assert replan_target.stat().st_size == 6 * 1024
+        assert replan_target.stat().st_size == 4 * 1024
         assert replan_policy.stat().st_size == 1 * 1024
+
+
+def test_infer_model_decision_preserves_terminal_repeated_read_stop() -> None:
+    assert _infer_model_decision(
+        {
+            "read_identities": [],
+            "loop_stop": "PLANNING_REPEATED_READ_REQUEST",
+        }
+    ) == "PLANNING_REPEATED_READ_REQUEST"
 
 
 def test_fixture_manifests_are_identical_across_preparations() -> None:
