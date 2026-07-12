@@ -1,13 +1,13 @@
 # Plan 9.85 — Multi-Turn Planning Live `acpx` Evidence
 
-**Date:** 2026-07-12  
-**OS:** Windows 11 Pro (10.0.26200)  
-**Branch:** `agent/cursor/plan-9-85-multi-turn-planning`  
-**Commit (implementation HEAD):** `6aba8fb59403ccd2483d77bc003c0a4ce932a4e4`  
-**Model (operator / acpx live):** `claude-haiku`  
-**Client:** `acpx` **0.12.0** (`npm install -g acpx`)  
-**Agent:** `optimus-agent` **0.1.0** (`uv tool install --force -e .`)  
-**Source checkout:** `D:\Projects\Development\Python\optimus-cost-agent-wt-cursor`  
+**Date:** 2026-07-12
+**OS:** Windows 11 Pro (10.0.26200)
+**Branch:** `agent/cursor/plan-9-85-multi-turn-planning`
+**Commit (implementation HEAD):** `6aba8fb59403ccd2483d77bc003c0a4ce932a4e4`
+**Model (operator / acpx live):** `claude-haiku`
+**Client:** `acpx` **0.12.0** (`npm install -g acpx`)
+**Agent:** `optimus-agent` **0.1.0** (`uv tool install --force -e .`)
+**Source checkout:** `D:\Projects\Development\Python\optimus-cost-agent-wt-cursor`
 **PROVENANCE (operator):** `git_sha=6aba8fb`, keychain / local-default credentials (`shell_has_gateway_url=false`, `shell_has_optimus_api_key=false`); no local provider keys in shell.
 
 **Plan:** [`docs/superpowers/plans/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`](../docs/superpowers/plans/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md)
@@ -83,11 +83,11 @@ Edit large.py
 
 ## Step 2 — Multi-turn success (`acpx`)
 
-**Artifact (local, not committed):** `reports/plan985-acpx-multiturn-output.jsonl`  
-**Debug trace:** `reports/.plan985-acpx-workspace/.optimus/debug-acp.ndjson`  
-**Workspace:** `reports/.plan985-acpx-workspace`  
-**session_id:** `session-7cc6f451c06f47bdb37c71ea50fa170e`  
-**run_id:** `session-7cc6f451c06f47bdb37c71ea50fa170e:2`  
+**Artifact (local, not committed):** `reports/plan985-acpx-multiturn-output.jsonl`
+**Debug trace:** `reports/.plan985-acpx-workspace/.optimus/debug-acp.ndjson`
+**Workspace:** `reports/.plan985-acpx-workspace`
+**session_id:** `session-7cc6f451c06f47bdb37c71ea50fa170e`
+**run_id:** `session-7cc6f451c06f47bdb37c71ea50fa170e:2`
 **plan_hash:** `2be03177a7df5d136fd5828638d51cb40d03f5ddd2b08403c196a292129e3031`
 
 | Claim | Evidence |
@@ -129,11 +129,11 @@ informed fixture/task selection only.
 
 ## Step 3 — Turn-limit terminal (`acpx`)
 
-**Artifact (local):** `reports/plan985-acpx-turn-limit-output.jsonl`  
-**Debug trace:** `reports/.plan985-acpx-turn-limit-workspace/.optimus/debug-acp.ndjson`  
-**Workspace:** `reports/.plan985-acpx-turn-limit-workspace`  
-**session_id:** `session-f804cbaf3d244082bf9742e52cbfe1d1`  
-**run_id:** `session-f804cbaf3d244082bf9742e52cbfe1d1:2`  
+**Artifact (local):** `reports/plan985-acpx-turn-limit-output.jsonl`
+**Debug trace:** `reports/.plan985-acpx-turn-limit-workspace/.optimus/debug-acp.ndjson`
+**Workspace:** `reports/.plan985-acpx-turn-limit-workspace`
+**session_id:** `session-f804cbaf3d244082bf9742e52cbfe1d1`
+**run_id:** `session-f804cbaf3d244082bf9742e52cbfe1d1:2`
 **Env:** `OPTIMUS_MAX_PLANNING_TURNS=1` (operator script child env)
 
 | Claim | Evidence |
@@ -295,15 +295,15 @@ Record pass/fail in the roadmap PR; do not imply live Redis/Gateway/e2e tiers ra
 
 ## Shipped limitations (retained)
 
-- Fixed 4 KiB / 12 KiB observation vs current-read partition  
-- Raw evidence visible for one turn; earlier evidence carried as untrusted observations only  
-- No intelligent compression  
-- Typed failure when safe WRITE cannot be grounded in visible raw evidence or policy cannot settle  
+- Fixed 4 KiB / 12 KiB observation vs current-read partition
+- Raw evidence visible for one turn; earlier evidence carried as untrusted observations only
+- No intelligent compression
+- Typed failure when safe WRITE cannot be grounded in visible raw evidence or policy cannot settle
 - Oversized-required-context trigger only (not model-initiated replan when Plan 9.8 context fits)
 
 ---
 
 ## Deferred follow-ups → Plan 9.87
 
-- **`P9.85-FU-4`** — model-initiated guarded READ_MORE when Plan 9.8 context fits but WRITE cannot settle single-pass  
+- **`P9.85-FU-4`** — model-initiated guarded READ_MORE when Plan 9.8 context fits but WRITE cannot settle single-pass
 - **`P9.85-FU-5`** — live `REFUSE:` with `PLANNING_MODEL_REFUSED` as dedicated Plan 9.87 evidence (supplementary shape observed in early failed run)
