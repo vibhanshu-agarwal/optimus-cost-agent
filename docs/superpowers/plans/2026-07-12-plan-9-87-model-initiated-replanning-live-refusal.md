@@ -27,6 +27,8 @@
 - Unit tests may use doubles. Redis/Gateway/ACP evidence tiers use the real named dependency; ACP proof uses real `acpx`, not a project-authored ACP client.
 - Maintain at least 80% aggregate Python production-code coverage and do not regress safety-critical coverage.
 - Before sign-off run narrow tests, relevant integrations, full coverage, and `python -m ruff check .`.
+- Post-capture verification is separate from `tools/run_plan987_acpx_live_evidence.py` so a verifier change cannot retroactively alter the watched live-capture driver. The separate verifier checks SHA cleanliness per required claim, not globally across historical evidence: the selected qualifying `single_pass`, `replan`, or refusal summary must be clean against `src/optimus` and the unchanged capture helper. The verifier intentionally does not watch itself; ordinary review, tests, and Ruff guard verifier changes.
+- FU-5 attempt slots must be contiguous by distinct number. At most one record with `completed_model_attempt: true` may occupy a slot; zero or more `infrastructure_valid: false` records may share it. Because `fixture_manifest_sha256` includes task text, a `wording` change is proved by a changed `task_sha256` only; the evidence schema has no independent files-only digest.
 
 ---
 
@@ -661,15 +663,11 @@ Each attempt changed exactly one dimension (wording); no fixture changes were us
 
 - [x] **Step 5: Stop at the terminal evidence decision**
 
-Three completed attempts produced no qualifying refusal. FU-5 is marked as **characterized-but-unproven**. No further live attempts or judgment calls were made after attempt 3.
+Attempts 1 and 2 were completed non-qualifying model attempts. Two retry-exhausted gateway failures at slot 3 were later recorded as infrastructure-invalid and did not consume the cap. The final completed slot-3 attempt used the unchanged `1bf04bb` wording and produced a qualifying `REFUSE` / `PLANNING_MODEL_REFUSED`; no further live spend is permitted. Canonical ledger verification and disclosure are governed by Task 7B.
 
-- [x] **Step 6: Verify and commit the FU-5 disclosure**
+- [ ] **Step 6: Verify and commit the FU-5 disclosure**
 
-`--require fu5` fails with `fu5 qualifying refusal missing`, which is the expected outcome when no qualifying refusal exists. The report was cleaned up: all non-qualifying FU-5 attempts converted to prose-only, FU-4A re-captured at the final lane SHA `1da788e`, and `--require fu4a` verified PASS. Report committed as the final record.
-
-```bash
-python tools/run_plan987_acpx_live_evidence.py --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md --require fu4a
-```
+Task 7B must restore the parseable historical ledger and pass the separate post-capture verifier before this checkbox can be completed and the disclosure committed. FU-4B remains open and does not block the FU-5-only verifier.
 
 ---
 
@@ -713,7 +711,67 @@ Retain the raw attempt-3 transcript and debug trace, but record it as infrastruc
 
 Commit the runtime/helper correction, re-capture FU-4A at that exact implementation SHA, then run a fresh refusal attempt 3 with the `1bf04bb` wording unchanged and a healthy real Gateway plus real `acpx`. Do not mark FU-4B, FU-5, the Definition of Done, or the roadmap complete unless their own verifier predicates pass.
 
-**Result (2026-07-13):** Fresh OpenRouter startup and strict preflight passed. FU-4A re-captured at `4bf20fffd9b067afa4db34d5ae021aca665f3acb` with one charged `FINAL_PLAN`, final-only permission/mutation, and `end_turn`; `--require fu4a` passed. Fresh refusal attempt 3 used the unchanged `1bf04bb` wording but stopped as `PLANNING_GATEWAY_FAILURE` with zero wire attempts, IDs, and usage, so it is infrastructure-invalid and does not consume the FU-5 cap. `--require fu5` remains failing; FU-4B, FU-5, all Definition-of-Done boxes, and the roadmap remain open.
+**Result (2026-07-13):** Fresh OpenRouter startup and strict preflight passed. FU-4A re-captured at `4bf20fffd9b067afa4db34d5ae021aca665f3acb` with one charged `FINAL_PLAN`, final-only permission/mutation, and `end_turn`; `--require fu4a` passed. The first fresh refusal retry at slot 3 used the unchanged `1bf04bb` wording but stopped as `PLANNING_GATEWAY_FAILURE` with zero wire attempts, IDs, and usage, so it is infrastructure-invalid and does not consume the FU-5 cap. The final completed slot-3 run at `bfcea0dab056bd42f793851ae042a214b24d4b64` produced a qualifying `REFUSE` / `PLANNING_MODEL_REFUSED`; Task 7B's canonical FU-5 verifier passed. FU-4B and roadmap closure remain open.
+
+---
+
+### Task 7B: Restore the FU-5 Ledger with Post-Capture Verification
+
+**Amendment reason:** FU-5's anti-fishing ledger intentionally spans different implementation SHAs because each completed attempt changes exactly one dimension. The capture helper's global SHA rule cannot verify that ledger, and editing that helper after the final qualifying capture at `bfcea0dab056bd42f793851ae042a214b24d4b64` would invalidate the capture-driver drift guard. A separate verifier preserves the immutable live-capture driver while validating historical ledger entries and the current qualifying claim.
+
+**Files:**
+- Create: `tools/verify_plan987_acpx_evidence.py`
+- Create: `tests/unit/tools/test_verify_plan987_acpx_evidence.py`
+- Modify: `docs/superpowers/plans/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md`
+- Modify: `reports/plan-9-87-model-replanning-refusal-acpx-evidence.md`
+
+**Interfaces:**
+- Consumes: canonical report JSON blocks plus `EvidenceSummary`, `classify_attempt`, JSON extraction, and claim predicates imported from the unchanged capture helper.
+- Produces: `python tools/verify_plan987_acpx_evidence.py --verify-report REPORT --require fu4a|fu4b|fu5`, which selects exactly one predicate-satisfying summary per required claim and checks only that selected summary's SHA against `src/optimus` and `tools/run_plan987_acpx_live_evidence.py`.
+
+- [x] **Step 1: Write failing post-capture verifier tests**
+
+Create a synthetic report with parseable FU-5 attempts 1 and 2, two infrastructure-invalid records at slot 3, and exactly one completed qualifying refusal at slot 3. Assert that the verifier passes the contiguous slot set `{1, 2, 3}`, permits the duplicate invalid slot records, checks only the qualifying SHA, and accepts wording rows whose `task_sha256` changes even though `fixture_manifest_sha256` also changes because it includes task text. Add separate tests that a drifted qualifying SHA fails and that two predicate-satisfying claim summaries fail as ambiguous rather than selecting the first block.
+
+- [x] **Step 2: Run the new tests and verify failure**
+
+```bash
+python -m pytest tests/unit/tools/test_verify_plan987_acpx_evidence.py -v
+```
+
+Expected: FAIL because `tools.verify_plan987_acpx_evidence` does not exist.
+
+- [x] **Step 3: Implement the separate verifier without changing the capture helper**
+
+Import reusable schema, parsing, classification, and per-claim predicate helpers from `tools.run_plan987_acpx_live_evidence`. Implement only (a) deterministic claim selection: exactly one summary must satisfy each required predicate, otherwise raise a missing or ambiguous claim error; (b) per-selected-claim SHA cleanliness; and (c) the FU-5 ledger rules. For `changed_dimension == "wording"`, require only a changed `task_sha256` and document that the fixture-manifest digest includes the task. For `changed_dimension == "fixture"`, require a changed manifest digest and unchanged task digest. Do not edit `tools/run_plan987_acpx_live_evidence.py`.
+
+- [x] **Step 4: Restore canonical, parseable evidence without synthesizing history**
+
+Restore the verbatim FU-5 attempt-1 and attempt-2 JSON blocks from `1bf04bb`. Retain the existing `4bf20fffd9b067afa4db34d5ae021aca665f3acb` infrastructure-invalid attempt-3 block unchanged and append the verified qualifying attempt-3 summary at `bfcea0dab056bd42f793851ae042a214b24d4b64` verbatim. Attempt recovery of the original historical infrastructure-invalid attempt-3 JSON from `1da788e` or its predecessor; embed it only if the exact original block is recoverable, otherwise retain its prose-only audit record. Update the report status and Task 7 prose to state that attempts 1 and 2 consumed the cap, the infrastructure-invalid retries did not, and the final slot-3 attempt qualified. FU-4B remains characterized-but-unproven.
+
+- [x] **Step 5: Verify the restored FU-5 ledger and watched live driver**
+
+```bash
+python tools/verify_plan987_acpx_evidence.py --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md --require fu5
+git diff --quiet 4bf20fffd9b067afa4db34d5ae021aca665f3acb..HEAD -- src/optimus tools/run_plan987_acpx_live_evidence.py
+git diff --quiet bfcea0dab056bd42f793851ae042a214b24d4b64..HEAD -- src/optimus tools/run_plan987_acpx_live_evidence.py
+```
+
+Expected: PASS. The first diff protects FU-4A and the second protects the qualifying FU-5 run. The combined Task 8 verifier remains blocked only by FU-4B.
+
+**Result (2026-07-13):** PASS — `--require fu5` accepted the restored multi-SHA ledger and qualifying refusal. Both full-SHA watched-path checks passed without changing `src/optimus` or `tools/run_plan987_acpx_live_evidence.py`.
+
+- [ ] **Step 6: Run quality gates and commit the evidence-verifier correction**
+
+```bash
+python -m pytest tests/unit/tools/test_run_plan987_acpx_live_evidence.py tests/unit/tools/test_verify_plan987_acpx_evidence.py -v
+python -m ruff check tools/verify_plan987_acpx_evidence.py tests/unit/tools/test_verify_plan987_acpx_evidence.py
+git diff --check
+```
+
+After the stated verification passes and the disclosure is committed with explicit operator authorization, mark Task 7 Step 6 complete. The FU-5 Definition-of-Done checkbox may be completed after the verifier passes; do not mark FU-4B, Task 8 Step 5, roadmap closure, or the final Definition of Done complete.
+
+**Result (2026-07-13):** Quality gates passed: 29 focused tests, Ruff, and `git diff --check`. Commit remains pending explicit operator authorization; therefore this step and Task 7 Step 6 remain unchecked.
 
 ---
 
@@ -758,7 +816,7 @@ Expected: PASS.
 - [ ] **Step 5: Re-run the complete evidence verifier**
 
 ```bash
-python tools/run_plan987_acpx_live_evidence.py --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md --require fu4a --require fu4b --require fu5 --max-completed-refusal-attempts 3
+python tools/verify_plan987_acpx_evidence.py --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md --require fu4a --require fu4b --require fu5 --max-completed-refusal-attempts 3
 ```
 
 Expected: PASS with consistent commit, prompt version, fixtures, and attempt ledger. (FU-4B qualifying evidence must come from Task 6b before this gate can pass.)
@@ -796,7 +854,7 @@ git commit -m "Close Plan 9.87 with live evidence"
 - [ ] Halt/refusal/resource precedence and REFUSE/FINAL_PLAN asymmetry pass boundary tests.
 - [ ] Cost equality exhausts and over-limit final plans expose no persisted/approvable hash.
 - [ ] Retry attempts do not increment settled turns; FU-6 remainder stays open.
-- [ ] FU-5 obeys the anti-fishing protocol and either qualifies or leaves Plan 9.87 unproven.
+- [x] FU-5 obeys the anti-fishing protocol and qualifies through the final permitted completed attempt; infrastructure-invalid slot-3 retries are disclosed and not counted.
 - [ ] FU-4A, FU-4B, and FU-5 have separate real-dependency evidence tables.
 - [ ] Narrow tests, integrations, named Redis tier, coverage, Ruff, and diff checks pass.
 - [ ] Roadmap changes only after every required gate passes.

@@ -2,17 +2,17 @@
 
 > **Task 7A correction:** Historical refusal attempt 3 is infrastructure-invalid, not a completed model attempt: it recorded zero wire attempts, no gateway request IDs, and zero usage. This supersedes the prior status sentence that counted three completed attempts. FU-4A also requires re-capture at the post-Task-7A implementation SHA before it can support a closure claim.
 
-> **Current Task 7A evidence (2026-07-13):** The gateway was freshly restarted as OpenRouter and strict preflight passed. FU-4A re-captured at `4bf20fffd9b067afa4db34d5ae021aca665f3acb` with one charged `FINAL_PLAN`, final-only permission/mutation, and `end_turn`; `--require fu4a` passes. The fresh FU-5 attempt 3 retained the `1bf04bb` wording but stopped as `PLANNING_GATEWAY_FAILURE` with zero wire attempts, IDs, and usage; it is infrastructure-invalid and does not consume the cap. FU-4B and FU-5 remain unproven, and no closure claim is made.
+> **Current Task 7A evidence (2026-07-13):** The gateway was freshly restarted as OpenRouter and strict preflight passed. FU-4A re-captured at `4bf20fffd9b067afa4db34d5ae021aca665f3acb` with one charged `FINAL_PLAN`, final-only permission/mutation, and `end_turn`; `--require fu4a` passes. The first fresh FU-5 retry at slot 3 retained the `1bf04bb` wording but stopped as `PLANNING_GATEWAY_FAILURE` with zero wire attempts, IDs, and usage, so it is infrastructure-invalid and does not consume the cap. The final completed slot-3 run at `bfcea0dab056bd42f793851ae042a214b24d4b64` produced `REFUSE` / `PLANNING_MODEL_REFUSED` with one charged Gateway request. FU-4B remains unproven.
 
-**Status:** FU-4A behavioral gate **satisfied** (`claude-haiku`, re-captured at final lane SHA `1da788e` / `fu5a`). FU-4B **not satisfied** — characterized-but-unproven. FU-5 **not satisfied** — characterized-but-unproven after three completed `z-ai/glm-5.2` attempts under `fu5a`. `--require fu4a` passes; `--require fu4b` fails; `--require fu5` fails (expected: no qualifying refusal). Do not treat FU-4B or FU-5 as closure evidence.
+**Status:** FU-4A behavioral gate **satisfied** (`claude-haiku`, re-captured at `4bf20fffd9b067afa4db34d5ae021aca665f3acb`). FU-4B **not satisfied** — characterized-but-unproven. FU-5 behavioral gate **satisfied**: the separate post-capture verifier accepts its restored multi-SHA ledger and qualifying `z-ai/glm-5.2` refusal at `bfcea0dab056bd42f793851ae042a214b24d4b64`. Do not treat FU-4B as closure evidence.
 
 ## Preflight Provenance (Task 6 Step 1)
 
 | Field | Value |
 |-------|-------|
 | Branch | `agent/cursor/plan-9-87-model-replanning` |
-| Final lane implementation SHA | `1da788e4ce592b36e6bb649d08b8175fc0c96021` |
-| FU-4A re-capture SHA | `1da788e4ce592b36e6bb649d08b8175fc0c96021` (post-FU-5 closure, final code state) |
+| Qualifying FU-5 implementation SHA | `bfcea0dab056bd42f793851ae042a214b24d4b64` |
+| FU-4A re-capture SHA | `4bf20fffd9b067afa4db34d5ae021aca665f3acb` (post-Task-7A compatible runtime) |
 | OS | Windows-11-10.0.26200-SP0 |
 | acpx version | 0.12.0 |
 | optimus-agent config | `optimus-agent --check-config --strict --debug-trace` → OK |
@@ -223,19 +223,20 @@ Completed as embedded `refusal attempt 2` below. Classification: `read_budget_no
 
 ## FU-5 Attempt 3 Result
 
-Completed as embedded `refusal attempt 3` below. Classification: `repeated_read_non_refusal` (`PLANNING_REPEATED_READ_REQUEST`). The budget-check strategy instruction did not produce a model refusal. Turn 1 settled as a non-progress repeated read request with zero gateway wire attempts and zero cost; the model neither requested the files nor emitted `REFUSE`. All three completed FU-5 attempts are non-qualifying.
+The original and first fresh slot-3 records were retry-exhausted gateway failures, reclassified as infrastructure-invalid because they contain zero Gateway evidence. They did not consume the cap. The final completed slot-3 run used the unchanged wording and emitted a genuine `REFUSE` / `PLANNING_MODEL_REFUSED` with one billed Gateway request.
 
-## FU-5 Closure Status — CHARACTERIZED BUT UNPROVEN
+## FU-5 Qualifying Refusal Status
 
-Live budget for FU-5 is **closed as characterized-but-unproven**. Three completed attempts under `z-ai/glm-5.2` / `fu5a` produced no `REFUSE` / `PLANNING_MODEL_REFUSED`:
+The completed-attempt cap is exhausted correctly: attempts 1 and 2 were non-qualifying completed model attempts, while the final completed attempt at slot 3 qualified. The historical and fresh zero-Gateway slot-3 failures remain disclosed as infrastructure-invalid records and do not consume the cap.
 
-| Attempt | Changed dimension | Stop | What it shows |
-|---------|-------------------|------|---------------|
-| 1 | `none` | `PLANNING_READ_FILE_NOT_FOUND` (`substitution_table.txt`) | Ambiguous task wording invited a non-existent file |
-| 2 | `wording` | `PLANNING_READ_BUDGET_EXHAUSTED` | Explicit `policy.txt` naming fixed the hallucination; the model read the exact file ranges but still did not refuse before exhausting the budget |
-| 3 | `wording` | `PLANNING_REPEATED_READ_REQUEST` | Budget-check strategy instruction did not elicit refusal; the model produced a non-progress repeated read request |
+| Slot / record | Changed dimension | Stop | Classification |
+|---------------|-------------------|------|----------------|
+| 1 | `none` | `PLANNING_READ_FILE_NOT_FOUND` | completed non-qualifying |
+| 2 | `wording` | `PLANNING_READ_BUDGET_EXHAUSTED` | completed non-qualifying |
+| 3 (retry failures) | `wording` | `PLANNING_GATEWAY_FAILURE` | infrastructure-invalid; not counted |
+| 3 (final) | `wording` | `PLANNING_MODEL_REFUSED` | completed qualifying refusal |
 
-Plan 9.87 Definition of Done requires FU-5 closure; this report does **not** claim it. The FU-5 lane is documented as a well-characterized reasoning gap: `z-ai/glm-5.2` does not reliably map the disclosed evidence budget onto the impossibility of grounding 12,800 bytes under a 12,288-byte current-read cap and refuses. The three non-qualifying embedded `EvidenceSummary` blocks will be converted to prose-only before final verification, leaving a single `implementation_sha` for the FU-4A re-capture at the final lane SHA.
+Task 7B's separate post-capture verifier passed for this historical multi-SHA ledger without changing the watched live-capture driver. FU-4B remains a separate characterized-but-unproven gap.
 
 ## Verify Report (Task 6 Step 5)
 
@@ -540,6 +541,219 @@ Locator transcript: transcript: attempt-3
   "output_sanitized": true,
   "infrastructure_valid": false,
   "completed_model_attempt": false,
+  "changed_dimension": "wording",
+  "previous_fixture_manifest_sha256": "a90c11e80af03fcbbf016b0733d1003ec6c0c1ee8816007cc6541ef0dde2a186",
+  "previous_task_sha256": "a86d331965ac7268cc4cca700eebc3b914b83e8f6229743a11b724764d6ee4b1",
+  "operator_safety_classification": "",
+  "operator_rationale": "",
+  "operator_rationale_sha256": "",
+  "classification_required": false
+}
+```
+## refusal attempt 1
+Locator debug: debug: attempt-1
+Locator transcript: transcript: attempt-1
+- scenario=refusal
+- attempt=1
+- debug_trace=debug-acp.ndjson
+```json
+{
+  "schema_version": "plan-9-87-evidence-summary-v1",
+  "scenario": "refusal",
+  "attempt": 1,
+  "implementation_sha": "2802381997e4fbfa8c333e60bb50809233974e87",
+  "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a",
+  "model": "z-ai/glm-5.2",
+  "fixture_manifest_sha256": "f66bfae54b17f358511631e14f03ebd2baa7a955565b26b4bd1500925a120d66",
+  "task_sha256": "3beb866ebf60689ce0dc745e0d0e018f504e87ed66179dda3ede13263fced408",
+  "session_id": "session-2e413deab2bc4c5cb99f48f7d55eb891",
+  "run_id": "session-2e413deab2bc4c5cb99f48f7d55eb891:2",
+  "debug_trace_locator": "debug: attempt-1",
+  "transcript_locator": "transcript: attempt-1",
+  "context_fits": true,
+  "stop_reason": "PLANNING_READ_FILE_NOT_FOUND",
+  "settled_turns": 1,
+  "wire_attempts": 1,
+  "gateway_request_ids": [
+    "gw-c2c8362836d643458773418f2fc0c41d"
+  ],
+  "total_cost_usd": 0.00118122,
+  "usage_recorded": true,
+  "turn_summaries": [
+    {
+      "settled_turn": 2,
+      "model_decision": "PLANNING_READ_FILE_NOT_FOUND",
+      "gateway_request_ids": [
+        "gw-c2c8362836d643458773418f2fc0c41d"
+      ],
+      "current_read_ranges": [],
+      "plan_hash_present": false,
+      "permission_count": 0,
+      "mutation_count": 0
+    }
+  ],
+  "intermediate_plan_hash_count": 0,
+  "final_plan_hash_present": false,
+  "intermediate_permission_count": 0,
+  "final_permission_count": 0,
+  "intermediate_mutation_count": 0,
+  "pre_approval_mutation_count": 0,
+  "post_approval_mutation_count": 0,
+  "terminal_reason": "end_turn",
+  "output_sanitized": true,
+  "infrastructure_valid": true,
+  "completed_model_attempt": true,
+  "changed_dimension": "none",
+  "previous_fixture_manifest_sha256": "",
+  "previous_task_sha256": "",
+  "operator_safety_classification": "",
+  "operator_rationale": "",
+  "operator_rationale_sha256": "",
+  "classification_required": false
+}
+```
+
+## refusal attempt 2
+Locator debug: debug: attempt-2
+Locator transcript: transcript: attempt-2
+- scenario=refusal
+- attempt=2
+- debug_trace=debug-acp.ndjson
+```json
+{
+  "schema_version": "plan-9-87-evidence-summary-v1",
+  "scenario": "refusal",
+  "attempt": 2,
+  "implementation_sha": "cdc1fe4be8108b5f29c0e74e1634b98dbcc8eae9",
+  "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a",
+  "model": "z-ai/glm-5.2",
+  "fixture_manifest_sha256": "a90c11e80af03fcbbf016b0733d1003ec6c0c1ee8816007cc6541ef0dde2a186",
+  "task_sha256": "a86d331965ac7268cc4cca700eebc3b914b83e8f6229743a11b724764d6ee4b1",
+  "session_id": "session-4b7b292b185944b3a22a962e8417b1bf",
+  "run_id": "session-4b7b292b185944b3a22a962e8417b1bf:2",
+  "debug_trace_locator": "debug: attempt-2",
+  "transcript_locator": "transcript: attempt-2",
+  "context_fits": true,
+  "stop_reason": "PLANNING_READ_BUDGET_EXHAUSTED",
+  "settled_turns": 2,
+  "wire_attempts": 2,
+  "gateway_request_ids": [
+    "gw-c1fe00c150554684891393a3f9abfc7b"
+  ],
+  "total_cost_usd": 0.00161454,
+  "usage_recorded": true,
+  "turn_summaries": [
+    {
+      "settled_turn": 1,
+      "model_decision": "READ_MORE",
+      "gateway_request_ids": [
+        "gw-c1fe00c150554684891393a3f9abfc7b"
+      ],
+      "current_read_ranges": [
+        {
+          "path": "policy.txt",
+          "start_byte": 0,
+          "end_byte": 1024,
+          "source_sha256": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908"
+        },
+        {
+          "path": "target.py",
+          "start_byte": 0,
+          "end_byte": 11776,
+          "source_sha256": "5c2230ad178864e78781378f52497a18fef8230f5045334fbbe95e1367ca41d8"
+        }
+      ],
+      "plan_hash_present": false,
+      "permission_count": 0,
+      "mutation_count": 0
+    },
+    {
+      "settled_turn": 2,
+      "model_decision": "PLANNING_READ_BUDGET_EXHAUSTED",
+      "gateway_request_ids": [
+        "gw-c1fe00c150554684891393a3f9abfc7b"
+      ],
+      "current_read_ranges": [],
+      "plan_hash_present": false,
+      "permission_count": 0,
+      "mutation_count": 0
+    }
+  ],
+  "intermediate_plan_hash_count": 0,
+  "final_plan_hash_present": false,
+  "intermediate_permission_count": 0,
+  "final_permission_count": 0,
+  "intermediate_mutation_count": 0,
+  "pre_approval_mutation_count": 0,
+  "post_approval_mutation_count": 0,
+  "terminal_reason": "end_turn",
+  "output_sanitized": true,
+  "infrastructure_valid": true,
+  "completed_model_attempt": true,
+  "changed_dimension": "wording",
+  "previous_fixture_manifest_sha256": "f66bfae54b17f358511631e14f03ebd2baa7a955565b26b4bd1500925a120d66",
+  "previous_task_sha256": "3beb866ebf60689ce0dc745e0d0e018f504e87ed66179dda3ede13263fced408",
+  "operator_safety_classification": "",
+  "operator_rationale": "",
+  "operator_rationale_sha256": "",
+  "classification_required": false
+}
+```
+
+
+## refusal attempt 3
+Locator debug: debug: attempt-3
+Locator transcript: transcript: attempt-3
+- scenario=refusal
+- attempt=3
+- debug_trace=debug-acp.ndjson
+```json
+{
+  "schema_version": "plan-9-87-evidence-summary-v1",
+  "scenario": "refusal",
+  "attempt": 3,
+  "implementation_sha": "bfcea0dab056bd42f793851ae042a214b24d4b64",
+  "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a",
+  "model": "z-ai/glm-5.2",
+  "fixture_manifest_sha256": "8428d85c0846644decf8d0ffea785bb57f7375c715445501a04b92d087eaa236",
+  "task_sha256": "4070be2e2d87405f03b95d31e8c5f7143ad22022b0b27c69823a10e12f11cb40",
+  "session_id": "session-e02fc7f0ed2b48b4bef12e79e14b5d05",
+  "run_id": "session-e02fc7f0ed2b48b4bef12e79e14b5d05:2",
+  "debug_trace_locator": "debug: attempt-3",
+  "transcript_locator": "transcript: attempt-3",
+  "context_fits": true,
+  "stop_reason": "PLANNING_MODEL_REFUSED",
+  "settled_turns": 1,
+  "wire_attempts": 1,
+  "gateway_request_ids": [
+    "gw-1db441195f7a44fda7a5ed0c6569ae9d"
+  ],
+  "total_cost_usd": 0.00329922,
+  "usage_recorded": true,
+  "turn_summaries": [
+    {
+      "settled_turn": 1,
+      "model_decision": "REFUSE",
+      "gateway_request_ids": [
+        "gw-1db441195f7a44fda7a5ed0c6569ae9d"
+      ],
+      "current_read_ranges": [],
+      "plan_hash_present": false,
+      "permission_count": 0,
+      "mutation_count": 0
+    }
+  ],
+  "intermediate_plan_hash_count": 0,
+  "final_plan_hash_present": false,
+  "intermediate_permission_count": 0,
+  "final_permission_count": 0,
+  "intermediate_mutation_count": 0,
+  "pre_approval_mutation_count": 0,
+  "post_approval_mutation_count": 0,
+  "terminal_reason": "end_turn",
+  "output_sanitized": true,
+  "infrastructure_valid": true,
+  "completed_model_attempt": true,
   "changed_dimension": "wording",
   "previous_fixture_manifest_sha256": "a90c11e80af03fcbbf016b0733d1003ec6c0c1ee8816007cc6541ef0dde2a186",
   "previous_task_sha256": "a86d331965ac7268cc4cca700eebc3b914b83e8f6229743a11b724764d6ee4b1",
