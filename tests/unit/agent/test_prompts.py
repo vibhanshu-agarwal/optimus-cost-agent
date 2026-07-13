@@ -74,3 +74,88 @@ def test_build_agent_planner_input_omits_workspace_section_when_empty():
     assert WORKSPACE_FILES_HEADER not in prompt
     assert WORKSPACE_FILES_FOOTER not in prompt
     assert "Task: Add a docstring" in prompt
+
+
+def test_multi_turn_prompt_marks_initial_context_ephemeral_and_requires_complete_reread():
+    from decimal import Decimal
+
+    from optimus.agent.prompts import MULTI_TURN_PLANNER_PROMPT_VERSION, build_multi_turn_planner_input
+
+    prompt = build_multi_turn_planner_input(
+        "Update target.py",
+        planning_turn=1,
+        max_planning_turns=3,
+        remaining_budget_usd=Decimal("0.05"),
+        remaining_wall_clock_minutes=30,
+        initial_workspace_context="--- target.py ---\noriginal\n",
+    )
+    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-07-12-plan-9-87-fu5a")
+    assert "available on planning turn 1 only" in prompt
+    assert "will not be carried to planning turn 2" in prompt
+    assert "request every raw byte range" in prompt
+    assert "including ranges already visible in the initial workspace context" in prompt
+    assert "observations cannot ground final WRITE content" in prompt
+    assert "emit REFUSE" in prompt
+
+
+def test_fu4c_multi_turn_prompt_requires_listed_byte_count_for_turn1_visible_files():
+    from decimal import Decimal
+
+    from optimus.agent.prompts import build_multi_turn_planner_input
+
+    prompt = build_multi_turn_planner_input(
+        "Update target.py per the module documentation.",
+        planning_turn=2,
+        max_planning_turns=3,
+        remaining_budget_usd=Decimal("0.04"),
+        remaining_wall_clock_minutes=12,
+        carried_observations_envelope=(
+            "OBS_RECORD path=target.py bytes=0:6143 sha256=abc\nseen in turn 1\nEND_OBS_RECORD\n"
+        ),
+        current_read_evidence_envelope="",
+        initial_workspace_context="",
+    )
+    assert "fully visible in turn 1" in prompt
+    assert "use its listed byte count as the READ end" in prompt
+    assert "never guess a chunk size" in prompt
+
+
+def test_fu4c_multi_turn_prompt_exposes_known_turn1_file_size_for_full_reread():
+    from decimal import Decimal
+
+    from optimus.agent.prompts import build_multi_turn_planner_input
+
+    prompt = build_multi_turn_planner_input(
+        "Update target.py per the module documentation.",
+        planning_turn=1,
+        max_planning_turns=3,
+        remaining_budget_usd=Decimal("0.05"),
+        remaining_wall_clock_minutes=30,
+        initial_workspace_context="--- target.py ---\noriginal\n",
+        initial_workspace_file_sizes={"target.py": 6144},
+    )
+
+    assert "Known byte sizes for fully visible turn-1 files:" in prompt
+    assert "- target.py: 6144 bytes; re-read as" in prompt
+    assert "READ: target.py#bytes=0:6144" in prompt
+
+
+def test_fu5a_multi_turn_prompt_discloses_enforced_evidence_limits():
+    from decimal import Decimal
+
+    from optimus.agent.prompts import build_multi_turn_planner_input
+
+    prompt = build_multi_turn_planner_input(
+        "Update target.py per the module documentation.",
+        planning_turn=1,
+        max_planning_turns=3,
+        remaining_budget_usd=Decimal("0.05"),
+        remaining_wall_clock_minutes=30,
+        initial_workspace_context="--- target.py ---\noriginal\n",
+        evidence_limits=(4096, 12288, 16384),
+    )
+
+    assert "Evidence limits (bytes):" in prompt
+    assert "carried observations up to 4096" in prompt
+    assert "current guarded reads up to 12288" in prompt
+    assert "combined planning evidence up to 16384" in prompt

@@ -335,7 +335,7 @@ as a supplementary artifact and is credited to Plan 9.87's scope, not claimed as
   (session/time-scoped opt-out for legitimate raw-trace debugging, plus a broader logging-surface
   audit) is deferred to a future plan scheduled after Plan 9.9.
 
-## Plan 9.87 (Tracked, Not Yet Scheduled): Model-Initiated Replanning and Live Refusal Evidence
+## Plan 9.87 (In Closure): Model-Initiated Replanning and Live Refusal Evidence
 
 **Raised:** Deferred from Plan 9.85 as `P9.85-FU-4` and `P9.85-FU-5` when closing the
 oversized-required-context workflow.
@@ -347,9 +347,41 @@ oversized-required-context workflow.
   `PLANNING_MODEL_REFUSED` with sanitized text, zero plan hash, zero permission requests, zero
   mutation, and `end_turn`.
 
-**Status:** Tracked, not yet scheduled; no implementation plan exists. This planning-loop lane is
+**Status:** FU-4A and FU-5 now have verified real-dependency evidence. FU-4B is
+characterized-but-unproven after its controlled live lane stopped on a `README.md` filename
+hallucination. Plan 9.88 owns the separately planned remediation and final Plan 9.87 closure
+decision. This planning-loop lane remains
 separate from Plan 9.9 packaging/credential diagnostics and from Plan 11 intelligent
 selection/compression — do not fold this scope into either.
+
+## Plan 9.88 (Pending Design): FU-4B Evidence Remediation and Plan 9.87 Closure
+
+**Raised:** 2026-07-13 from Plan 9.87's documented FU-4B characterization. This is a dedicated
+follow-up lane, not a reopening of the frozen Plan 9.87 capture driver.
+
+**Initial scope:**
+- Use a new FU-4B `acpx` capture helper with task wording that explicitly names `policy.txt`,
+  reusing only safe, read-only machinery from the frozen Plan 9.87 helper.
+- Pre-register a maximum of three completed model attempts. Each later attempt changes exactly one
+  dimension (`wording`, `fixture`, or `model`); a model change retains fixture/task digests, records
+  the prior model, uses the normal model-resolution path rather than a hardcoded model, and requires
+  a priced model plus a Gateway restart and strict preflight. Disclose infrastructure-invalid runs
+  without counting them.
+- Extend only the post-capture verifier so the selected FU-4B claim watches `src/optimus` and the
+  new helper; retain the existing FU-4A/FU-5 verifier semantics and watched paths unchanged.
+- If a qualifying FU-4B capture succeeds, run the full FU-4A/FU-4B/FU-5 closure gate. If the cap
+  exhausts, require contemporaneous operator sign-off before an honest Plan 9.87 amendment changes
+  the closure command to FU-4A/FU-5 and records FU-4B as an accepted-open limitation; never make
+  the FU-4B verifier pass vacuously.
+
+**Sequencing guard-rail:** `main` must stay frozen on `src/optimus/**` and
+`tools/run_plan987_acpx_live_evidence.py` until Plan 9.88 records the Plan 9.87 closure gate.
+Doc-only merges are safe; any change to either watched path before that ceremony would permanently
+invalidate the spent FU-5 evidence. Plan 9.88 must complete this closure decision before Plan 9.9
+starts.
+
+**Status:** Pending design in a fresh post-merge worktree. No Plan 9.88 capture, verifier, runtime,
+or fixture implementation is authorized by this roadmap record.
 
 ## Plan 9.9 (Tracked, Not Yet Scheduled): Operator Packaging and Credential Diagnostics
 

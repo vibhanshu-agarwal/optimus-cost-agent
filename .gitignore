@@ -68,6 +68,7 @@ logs/
 .cache/
 .local/
 reports/.verify-live-agent-workspace/
+reports/.plan*-workspace/
 
 # --- IDE / editors ---
 .idea/

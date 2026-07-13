@@ -7,6 +7,7 @@ import pytest
 from optimus.acp.errors import METHOD_NOT_FOUND
 from optimus.acp.shapes import build_plan_session_update
 from optimus.acp.spec import (
+    _PLANNING_TERMINAL_STOP_REASONS,
     ACP_PROTOCOL_VERSION,
     AcpDuplexAdapter,
     InMemoryAcpSpecSessionStore,
@@ -62,6 +63,10 @@ def test_max_planning_turns_from_env_returns_none_when_unset(monkeypatch):
 def test_max_planning_turns_from_env_returns_none_when_blank(monkeypatch):
     monkeypatch.setenv("OPTIMUS_MAX_PLANNING_TURNS", "   ")
     assert _max_planning_turns_from_env() is None
+
+
+def test_gateway_failure_is_a_terminal_planning_stop() -> None:
+    assert "PLANNING_GATEWAY_FAILURE" in _PLANNING_TERMINAL_STOP_REASONS
 
 
 def test_max_planning_turns_from_env_parses_valid_value(monkeypatch):
@@ -452,6 +457,9 @@ async def test_workspace_context_failure_surfaces_corrective_refusal_message(tmp
 
 async def test_unparseable_plan_completion_does_not_echo_raw_model_output(tmp_path):
     raw_sentinel = "UNIQUE_RAW_MODEL_SENTINEL_XYZ"
+    corrective_text = (
+        "Planning stopped after repeated responses that did not match the required directive grammar."
+    )
 
     class UnparseablePlanRunner:
         def run(self, request, *, planning_progress_observer=None):
@@ -460,14 +468,15 @@ async def test_unparseable_plan_completion_does_not_echo_raw_model_output(tmp_pa
                 run_id=request.run_id,
                 session_id=request.session_id,
                 execution_mode=request.execution_mode,
-                status=AgentRunStatus.FAILED,
-                final_state="FAILED",
-                output_text=f"Here is prose, not directives. {raw_sentinel}",
+                status=AgentRunStatus.TERMINATED,
+                final_state="TERMINATED",
+                output_text=corrective_text,
                 tool_calls=(),
                 total_cost_usd=Decimal("0.002"),
                 mutation_count=0,
                 provider_keys_resolvable=(),
-                stop_reason="UNPARSEABLE_PLAN",
+                stop_reason="PLANNING_UNPARSEABLE_RESPONSE",
+                plan_hash=None,
             )
 
     outbound = RecordingOutboundChannel()
@@ -483,7 +492,7 @@ async def test_unparseable_plan_completion_does_not_echo_raw_model_output(tmp_pa
         )
     )["result"]["sessionId"]
 
-    await adapter.handle_client_request(
+    response = await adapter.handle_client_request(
         {
             "jsonrpc": "2.0",
             "id": 2,
@@ -500,7 +509,9 @@ async def test_unparseable_plan_completion_does_not_echo_raw_model_output(tmp_pa
         for item in outbound.notifications
         if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
     ]
-    assert messages[-1] == "Turn completed."
+    assert response["result"]["stopReason"] == "end_turn"
+    assert outbound.requests == []
+    assert messages[-1] == corrective_text
     assert raw_sentinel not in messages[-1]
 
 
@@ -602,6 +613,8 @@ async def test_multi_turn_planning_emits_progress_before_final_permission(tmp_pa
 
 
 async def test_planning_failure_emits_end_turn_without_permission(tmp_path):
+    corrective_text = "Planning stopped because the run budget was exhausted."
+
     class PlanningFailureRunner:
         def run(self, request, *, planning_progress_observer=None):
             del planning_progress_observer
@@ -611,12 +624,13 @@ async def test_planning_failure_emits_end_turn_without_permission(tmp_path):
                 execution_mode=request.execution_mode,
                 status=AgentRunStatus.TERMINATED,
                 final_state="TERMINATED",
-                output_text="Planning stopped because the run budget was exhausted.",
+                output_text=corrective_text,
                 tool_calls=(),
                 total_cost_usd=Decimal("0.05"),
                 mutation_count=0,
                 provider_keys_resolvable=(),
                 stop_reason="PLANNING_BUDGET_EXHAUSTED",
+                plan_hash=None,
             )
 
     outbound = RecordingOutboundChannel()
@@ -651,11 +665,13 @@ async def test_planning_failure_emits_end_turn_without_permission(tmp_path):
         for item in outbound.notifications
         if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
     ]
-    assert messages[-1] == "Planning stopped because the run budget was exhausted."
+    assert messages[-1] == corrective_text
+    outbound_blob = str(outbound.requests) + str(outbound.notifications)
+    assert "planHash" not in outbound_blob
 
 
 async def test_planning_model_refused_emits_sanitized_text_without_permission(tmp_path):
-    refusal = "Current raw evidence is insufficient for a safe write."
+    refusal = "Inspect <workspace>; token **********"
 
     class RefusalRunner:
         def run(self, request, *, planning_progress_observer=None):
@@ -708,6 +724,8 @@ async def test_planning_model_refused_emits_sanitized_text_without_permission(tm
         if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
     ]
     assert messages[-1] == refusal
+    outbound_blob = str(outbound.requests) + str(outbound.notifications)
+    assert "planHash" not in outbound_blob
 
 
 async def test_superseded_approval_hash_does_not_execute_plan(tmp_path):

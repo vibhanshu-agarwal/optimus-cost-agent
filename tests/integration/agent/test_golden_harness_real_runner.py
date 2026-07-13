@@ -118,7 +118,7 @@ def test_budget_exhausted_termination_scenario(tmp_path):
     result = harness.run(task)
 
     assert result.actual_mode == "agent"
-    assert result.actual_tools == ("file_reader",)
+    assert result.actual_tools == ()
     assert result.actual_final_state == "terminated"
     assert result.mutation_count == 0
     assert result.actual_cost_usd == Decimal("0.002")

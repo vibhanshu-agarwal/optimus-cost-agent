@@ -237,10 +237,18 @@ request. Implemented and live-verified 2026-07-12 over real `acpx` — see
 when Plan 9.8's context already fits, and a live model-emitted `REFUSE:`
 demonstration, are tracked separately as **Plan 9.87** below.
 
-**Plan 9.87** (tracked, not yet scheduled) covers model-initiated replanning
+**Plan 9.87** is in its live-evidence closure phase: FU-4A and FU-5 are
+verified, while FU-4B remains characterized-but-unproven after its controlled
+attempt cap. Its original scope covers model-initiated replanning
 when Plan 9.8's single-pass context already fits but the model needs more
 evidence before a safe WRITE, plus a live model-emitted `REFUSE:`
 demonstration — deferred from Plan 9.85 as `P9.85-FU-4` and `P9.85-FU-5`.
+
+**Plan 9.88** (pending design after Plan 9.87's closure PR merges) will use a new capture
+helper and a capped, anti-fishing FU-4B ledger to remediate the known filename-hallucination
+failure without altering the evidence-frozen runtime or capture helper. It must run the Plan 9.87
+triple gate (or the operator-approved amended double gate) before Plan 9.9 changes
+`src/optimus/**` or `tools/run_plan987_acpx_live_evidence.py`.
 
 **Plan 9.9** (tracked, not yet scheduled) covers operator packaging and
 credential diagnostics — cross-layer provider/key mismatch warnings and
@@ -340,6 +348,13 @@ optimus-agent --workspace-root . --check-config
 already be reachable (for example because `optimus-agent` is serving in another terminal, or you
 started one manually). Plain `--check-config` is the right pre-launch check for the auto-start
 flow.
+
+**If you kill or restart the local gateway manually:** `--check-config` does **not** spawn it.
+After changing gateway source (for example a new `pricing.py` entry), the running process keeps
+the old in-memory config until restarted. Safe order: (1) restart the gateway
+(`tools/run_local_gateway.sh` or equivalent), (2) `optimus-agent --check-config --strict` with
+your intended `OPTIMUS_AGENT_MODEL`, (3) only then run live evidence or IDE sessions. Skipping
+step 1 after a code change produces misleading `no pricing snapshot` errors from a stale process.
 
 **Flags**
 
@@ -627,6 +642,10 @@ optimus-agent --workspace-root . --check-config --strict
 `--strict` adds a gateway authentication probe in addition to the default Redis and workspace
 checks. **`--check-config` never spawns the local gateway** — use plain `--check-config` before
 first launch with auto-start; use `--strict` only when a gateway is already up.
+
+If you manually stop the gateway or change gateway code (for example add a model pricing
+snapshot), restart the gateway process before `--strict` or live runs — the old process does not
+reload `pricing.py` from disk. Order: restart gateway → `--check-config --strict` → live work.
 
 To skip auto-starting Redis and the gateway (manage them yourself), pass `--no-auto-start`.
 

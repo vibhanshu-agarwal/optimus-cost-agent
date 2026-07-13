@@ -3,6 +3,7 @@ from decimal import Decimal
 from subprocess import CompletedProcess
 
 from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunStatus
+from optimus.agent.prompts import MULTI_TURN_PLANNER_PROMPT_VERSION
 from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import InMemoryAgentStateStore
 from optimus.agent.workspace_context import WorkspaceContextResult
@@ -143,13 +144,22 @@ def test_runner_sends_versioned_directive_prompt_to_gateway(tmp_path):
 
 
 def test_unparseable_agent_plan_fails_typed_without_silent_success(tmp_path):
-    runner = AgentRunner(gateway_client=FakeGatewayClient("Here is prose, not directives."), model="glm-5.2")
+    gateway = ScriptingGateway(
+        [
+            ("Here is prose, not directives.", Decimal("0.001"), "gw-1"),
+            ("Here is prose, not directives.", Decimal("0.001"), "gw-2"),
+        ]
+    )
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2")
 
     result = runner.run(AgentRunRequest(run_id="run-1", task="Do work", execution_mode=ExecutionMode.AGENT, workspace_root=tmp_path))
 
-    assert result.status is AgentRunStatus.FAILED
-    assert result.stop_reason == "UNPARSEABLE_PLAN"
+    assert result.status is AgentRunStatus.TERMINATED
+    assert result.stop_reason == "PLANNING_UNPARSEABLE_RESPONSE"
     assert result.mutation_count == 0
+    assert result.plan_hash is None
+    assert "did not match the required directive grammar" in result.output_text
+    assert "Here is prose, not directives." not in result.output_text
 
 
 def test_agent_mode_without_approval_returns_awaiting_approval(tmp_path):
@@ -352,13 +362,22 @@ def test_approved_agent_run_replays_stored_plan_without_second_gateway_call(tmp_
     runner = AgentRunner(gateway_client=gateway, model="glm-5.2", state_store=store)
 
     plan_result = runner.run(
-        AgentRunRequest(run_id="run-1", task="Add a docstring", execution_mode=ExecutionMode.AGENT, workspace_root=tmp_path)
+        AgentRunRequest(
+            run_id="run-1",
+            task="Add a docstring to example.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
     )
+    first_input = gateway.calls[0]["input_text"]
+    assert gateway.calls[0]["metadata"]["purpose"] == "planning_turn"
+    assert MULTI_TURN_PLANNER_PROMPT_VERSION in first_input
+    assert "--- example.py ---" in first_input
     gateway.output_text = "WRITE example.py\nBROKEN SECOND PLAN\n"
     result = runner.run(
         AgentRunRequest(
             run_id="run-1",
-            task="Add a docstring",
+            task="Add a docstring to example.py",
             execution_mode=ExecutionMode.AGENT,
             workspace_root=tmp_path,
             approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan_result.plan_hash),
@@ -484,9 +503,10 @@ def test_agent_mode_terminates_when_gateway_cost_exceeds_budget(tmp_path):
     )
 
     assert result.status is AgentRunStatus.TERMINATED
-    assert result.stop_reason == "BUDGET_EXHAUSTED"
+    assert result.stop_reason == "PLANNING_BUDGET_EXHAUSTED"
     assert result.mutation_count == 0
-    assert tuple(call.tool_name for call in result.tool_calls) == ("file_reader",)
+    assert result.plan_hash is None
+    assert tuple(call.tool_name for call in result.tool_calls) == ()
 
 
 def test_agent_run_emits_telemetry_at_final_boundary(tmp_path):
@@ -625,6 +645,82 @@ def test_ambiguous_reference_fails_before_gateway_with_zero_cost(tmp_path):
     assert "b/example.py" in result.output_text
 
 
+def test_fitting_agent_context_uses_planning_loop_and_settles_in_one_turn(tmp_path):
+    (tmp_path / "target.py").write_bytes(b"original\n")
+    final_plan = "READ target.py\nWRITE target.py\nupdated\n"
+    gateway = ScriptingGateway([(final_plan, Decimal("0.002"), "gw-1")])
+    store = InMemoryAgentStateStore()
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2", state_store=store)
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Update target.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert len(gateway.calls) == 1
+    assert gateway.calls[0]["metadata"]["purpose"] == "planning_turn"
+    input_text = gateway.calls[0]["input_text"]
+    assert MULTI_TURN_PLANNER_PROMPT_VERSION in input_text
+    assert "--- target.py ---" in input_text
+    assert "- target.py: 9 bytes" in input_text
+    assert "original" in input_text
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL
+    assert result.total_cost_usd == Decimal("0.002")
+    assert result.plan_hash == hashlib.sha256(final_plan.encode("utf-8")).hexdigest()
+    stored = store.load_plan(run_id="run-1", plan_hash=result.plan_hash or "")
+    assert stored.planning_turns == 1
+    assert stored.gateway_request_ids == ("gw-1",)
+    assert stored.cost_usd == Decimal("0.002")
+
+
+def test_oversized_plan_mode_fails_before_gateway(tmp_path):
+    (tmp_path / "large.py").write_text("x" * (17 * 1024), encoding="utf-8")
+    gateway = FakeGatewayClient("READ large.py\nExplain")
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2")
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Explain large.py",
+            execution_mode=ExecutionMode.PLAN,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert result.status is AgentRunStatus.FAILED
+    assert result.stop_reason == "REQUIRED_WORKSPACE_FILE_TOO_LARGE"
+    assert result.total_cost_usd == Decimal("0")
+    assert result.plan_hash is None
+    assert result.mutation_count == 0
+    assert gateway.calls == []
+
+
+def test_oversized_chat_mode_fails_before_gateway(tmp_path):
+    (tmp_path / "large.py").write_text("x" * (17 * 1024), encoding="utf-8")
+    gateway = FakeGatewayClient("READ large.py\nExplain")
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2")
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Explain large.py",
+            execution_mode=ExecutionMode.CHAT,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert result.status is AgentRunStatus.FAILED
+    assert result.stop_reason == "REQUIRED_WORKSPACE_FILE_TOO_LARGE"
+    assert result.total_cost_usd == Decimal("0")
+    assert result.plan_hash is None
+    assert result.mutation_count == 0
+    assert gateway.calls == []
+
+
 def test_oversized_required_file_triggers_multi_turn_planning(tmp_path):
     (tmp_path / "large.py").write_text("x" * (17 * 1024), encoding="utf-8")
     final_plan = "READ large.py\nWRITE large.py\nupdated header\n"
@@ -740,6 +836,37 @@ def test_oversized_planning_retries_gateway_without_extra_settled_turn(tmp_path)
     assert gateway.attempts == 3
     assert result.status is AgentRunStatus.AWAITING_APPROVAL
     assert accounting.provider_ledger.entries[0].request_id == "run-1:planning:1:3"
+    assert accounting.provider_ledger.total_cost_usd() == Decimal("0.002")
+
+
+def test_fitting_context_planning_retries_gateway_without_extra_settled_turn(tmp_path):
+    # Billable failed attempts and unknown transport cost aggregation remain FU-6.
+    (tmp_path / "target.py").write_text("original\n", encoding="utf-8")
+    final_plan = "READ target.py\nWRITE target.py\nupdated header\n"
+    gateway = FlakyPlanningGateway(
+        final_text=final_plan,
+        cost_usd=Decimal("0.002"),
+        gateway_request_id="gw-1",
+    )
+    accounting = UsageAccountingService()
+    runner = AgentRunner(
+        gateway_client=gateway,
+        model="glm-5.2",
+        usage_accounting=accounting,
+    )
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-fit-retry",
+            task="Update target.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert gateway.attempts == 3
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL
+    assert accounting.provider_ledger.entries[0].request_id == "run-fit-retry:planning:1:3"
     assert accounting.provider_ledger.total_cost_usd() == Decimal("0.002")
 
 
