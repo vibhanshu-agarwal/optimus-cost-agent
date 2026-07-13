@@ -665,9 +665,11 @@ Each attempt changed exactly one dimension (wording); no fixture changes were us
 
 Attempts 1 and 2 were completed non-qualifying model attempts. Two retry-exhausted gateway failures at slot 3 were later recorded as infrastructure-invalid and did not consume the cap. The final completed slot-3 attempt used the unchanged `1bf04bb` wording and produced a qualifying `REFUSE` / `PLANNING_MODEL_REFUSED`; no further live spend is permitted. Canonical ledger verification and disclosure are governed by Task 7B.
 
-- [ ] **Step 6: Verify and commit the FU-5 disclosure**
+- [x] **Step 6: Verify and commit the FU-5 disclosure**
 
 Task 7B must restore the parseable historical ledger and pass the separate post-capture verifier before this checkbox can be completed and the disclosure committed. FU-4B remains open and does not block the FU-5-only verifier.
+
+**Result (2026-07-13):** The post-capture verifier accepted the restored FU-5 ledger, and the evidence-verifier correction was committed at `59b125c` after explicit operator authorization. FU-4B remains open.
 
 ---
 
@@ -761,7 +763,7 @@ Expected: PASS. The first diff protects FU-4A and the second protects the qualif
 
 **Result (2026-07-13):** PASS — `--require fu5` accepted the restored multi-SHA ledger and qualifying refusal. Both full-SHA watched-path checks passed without changing `src/optimus` or `tools/run_plan987_acpx_live_evidence.py`.
 
-- [ ] **Step 6: Run quality gates and commit the evidence-verifier correction**
+- [x] **Step 6: Run quality gates and commit the evidence-verifier correction**
 
 ```bash
 python -m pytest tests/unit/tools/test_run_plan987_acpx_live_evidence.py tests/unit/tools/test_verify_plan987_acpx_evidence.py -v
@@ -771,7 +773,7 @@ git diff --check
 
 After the stated verification passes and the disclosure is committed with explicit operator authorization, mark Task 7 Step 6 complete. The FU-5 Definition-of-Done checkbox may be completed after the verifier passes; do not mark FU-4B, Task 8 Step 5, roadmap closure, or the final Definition of Done complete.
 
-**Result (2026-07-13):** Quality gates passed: 29 focused tests, Ruff, and `git diff --check`. Commit remains pending explicit operator authorization; therefore this step and Task 7 Step 6 remain unchecked.
+**Result (2026-07-13):** Quality gates passed: 31 focused tests, Ruff, and `git diff --check`. The evidence-verifier correction was committed at `59b125c` after explicit operator authorization; Task 7 Step 6 is now complete. FU-4B, Task 8 Step 5, roadmap closure, and the final Definition of Done remain unchecked.
 
 ---
 
