@@ -237,10 +237,18 @@ request. Implemented and live-verified 2026-07-12 over real `acpx` — see
 when Plan 9.8's context already fits, and a live model-emitted `REFUSE:`
 demonstration, are tracked separately as **Plan 9.87** below.
 
-**Plan 9.87** (tracked, not yet scheduled) covers model-initiated replanning
+**Plan 9.87** is in its live-evidence closure phase: FU-4A and FU-5 are
+verified, while FU-4B remains characterized-but-unproven after its controlled
+attempt cap. Its original scope covers model-initiated replanning
 when Plan 9.8's single-pass context already fits but the model needs more
 evidence before a safe WRITE, plus a live model-emitted `REFUSE:`
 demonstration — deferred from Plan 9.85 as `P9.85-FU-4` and `P9.85-FU-5`.
+
+**Plan 9.88** (pending design after Plan 9.87's closure PR merges) will use a new capture
+helper and a capped, anti-fishing FU-4B ledger to remediate the known filename-hallucination
+failure without altering the evidence-frozen runtime or capture helper. It must run the Plan 9.87
+triple gate (or the operator-approved amended double gate) before Plan 9.9 changes
+`src/optimus/**` or `tools/run_plan987_acpx_live_evidence.py`.
 
 **Plan 9.9** (tracked, not yet scheduled) covers operator packaging and
 credential diagnostics — cross-layer provider/key mismatch warnings and
