@@ -646,7 +646,7 @@ def test_ambiguous_reference_fails_before_gateway_with_zero_cost(tmp_path):
 
 
 def test_fitting_agent_context_uses_planning_loop_and_settles_in_one_turn(tmp_path):
-    (tmp_path / "target.py").write_text("original\n", encoding="utf-8")
+    (tmp_path / "target.py").write_bytes(b"original\n")
     final_plan = "READ target.py\nWRITE target.py\nupdated\n"
     gateway = ScriptingGateway([(final_plan, Decimal("0.002"), "gw-1")])
     store = InMemoryAgentStateStore()
@@ -666,7 +666,7 @@ def test_fitting_agent_context_uses_planning_loop_and_settles_in_one_turn(tmp_pa
     input_text = gateway.calls[0]["input_text"]
     assert MULTI_TURN_PLANNER_PROMPT_VERSION in input_text
     assert "--- target.py ---" in input_text
-    assert "- target.py: 10 bytes" in input_text
+    assert "- target.py: 9 bytes" in input_text
     assert "original" in input_text
     assert result.status is AgentRunStatus.AWAITING_APPROVAL
     assert result.total_cost_usd == Decimal("0.002")
