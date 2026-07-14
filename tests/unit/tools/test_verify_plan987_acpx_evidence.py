@@ -699,3 +699,35 @@ def test_fu4b_status_check_does_not_make_claim_pass(tmp_path: Path, status: str)
     verify_report(report, require=(), fu4b_ledger_status=status, max_completed_replan_attempts=3)
     with pytest.raises(ValueError, match="fu4b claim missing"):
         verify_report(report, require=("fu4b",), max_completed_replan_attempts=3)
+
+
+def test_fu5_rejects_non_contiguous_attempt_slots(tmp_path: Path) -> None:
+    records = [record for record in _refusal_ledger() if record["attempt"] != 2]
+    report = tmp_path / "report.md"
+    report.write_text(_report_with(*records), encoding="utf-8")
+    with pytest.raises(ValueError, match="refusal attempt ledger missing entries"):
+        verify_report(report, require=("fu5",))
+
+
+def test_fu5_rejects_wording_change_with_unchanged_task_hash(tmp_path: Path) -> None:
+    records = _refusal_ledger()
+    attempt_two = next(record for record in records if record["attempt"] == 2)
+    attempt_two["task_sha256"] = attempt_two["previous_task_sha256"]
+    report = tmp_path / "report.md"
+    report.write_text(_report_with(*records), encoding="utf-8")
+    with pytest.raises(ValueError, match="wording change not recorded"):
+        verify_report(report, require=("fu5",))
+
+
+def test_fu5_rejects_duplicate_slot_record_that_is_valid_but_not_completed(
+    tmp_path: Path,
+) -> None:
+    records = _refusal_ledger()
+    duplicate = dict(records[-1])
+    duplicate["completed_model_attempt"] = False
+    duplicate["infrastructure_valid"] = True
+    records.append(duplicate)
+    report = tmp_path / "report.md"
+    report.write_text(_report_with(*records), encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate is not infrastructure-invalid"):
+        verify_report(report, require=("fu5",))
