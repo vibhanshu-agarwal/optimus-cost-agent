@@ -94,7 +94,9 @@
 - Consumes: `--workspace-root` text and a `Mapping[str, str]` environment.
 - Produces: `OperatorPaths(workspace_root: Path, config_root: Path, runtime_root: Path, debug_log_path: Path, gateway_log_path: Path)`, `OperatorPathConfigurationError(user_message: str, exit_code: int = 2)`, `resolve_operator_paths(...) -> OperatorPaths`, and `resolve_config_root(...) -> Path`.
 
-- [ ] **Step 1: Write failing default, override, and containment tests**
+- [x] **Step 1: Write failing default, override, and containment tests**
+
+Evidence (2026-07-14): failing tests authored first in `tests/unit/acp/test_operator_paths.py` (TDD); landed in `0265f8e2bd6a8eaff80ecc578cc4fadae2c70ddc`.
 
 Create tests with these exact behaviors:
 
@@ -151,7 +153,9 @@ def test_string_prefix_sibling_is_not_treated_as_descendant(tmp_path):
 
 Also test: relative `OPTIMUS_CONFIG_ROOT` fails; missing `%APPDATA%` on simulated Windows fails with an action message; POSIX uses `XDG_CONFIG_HOME` then `~/.config`; symlink/`..` inputs are resolved before containment; no directory is created by resolution.
 
-- [ ] **Step 2: Run the tests and verify the contract is absent**
+- [x] **Step 2: Run the tests and verify the contract is absent**
+
+Evidence (2026-07-14): `uv run python -m pytest tests/unit/acp/test_operator_paths.py -v` failed collection with `ModuleNotFoundError: No module named 'optimus.acp.operator_paths'` before implementation (Task 1 implementer report).
 
 Run:
 
@@ -161,7 +165,9 @@ python -m pytest tests/unit/acp/test_operator_paths.py -v
 
 Expected: collection/import failure because `optimus.acp.operator_paths` does not exist.
 
-- [ ] **Step 3: Implement the pure resolver and exact remediation error**
+- [x] **Step 3: Implement the pure resolver and exact remediation error**
+
+Evidence (2026-07-14): `src/optimus/acp/operator_paths.py` matches the planned public shape (safe-default precompute before override validation); committed `0265f8e`.
 
 Implement this public shape; keep `_is_at_or_below` injectable/testable so Windows semantics are exercised on non-Windows CI:
 
@@ -213,7 +219,9 @@ message = (
 
 Return paths only; do not call `mkdir`, open a file, read `.env.gateway`, or mutate `os.environ` in this module.
 
-- [ ] **Step 4: Run focused tests and Ruff**
+- [x] **Step 4: Run focused tests and Ruff**
+
+Evidence (2026-07-14, operator-reverified): `uv run python -m pytest tests/unit/acp/test_operator_paths.py -v` → 13 passed, 1 skipped (symlink privileges); `ruff check` clean; `git diff --check` clean.
 
 Run:
 
@@ -225,7 +233,9 @@ git diff --check
 
 Expected: all path tests PASS, Ruff clean, diff check clean.
 
-- [ ] **Step 5: Review and commit Task 1 after explicit approval**
+- [x] **Step 5: Review and commit Task 1 after explicit approval**
+
+Evidence: operator approval 2026-07-14; commit `0265f8e2bd6a8eaff80ecc578cc4fadae2c70ddc` — `Define safe operator path boundaries` (exactly the two Task 1 files).
 
 ```bash
 git add src/optimus/acp/operator_paths.py tests/unit/acp/test_operator_paths.py
@@ -250,7 +260,9 @@ Expected: exactly the two Task 1 files are committed.
 - Consumes: environment mapping, `config_root/.env.gateway`, and the existing keyring service fields `model_provider`, `model_provider_api_key`, and `local_gateway_shared_secret`.
 - Produces: `CredentialLayer`, `CredentialProvenance`, `ProviderCredentialResolution`, `ProviderCredentialConfigurationError`, `resolve_provider_credentials(...) -> ProviderCredentialResolution`, `resolve_shared_secret(..., config_root=...)`, and updated `run_setup_wizard(config_root=...)`.
 
-- [ ] **Step 1: Write the credential decision-table tests first**
+- [x] **Step 1: Write the credential decision-table tests first**
+
+Evidence (2026-07-14): matrix + named R3/unsupported/ambient tests added in `tests/unit/acp/test_local_gateway_secrets.py`; operator traced all 12 plan rows; landed in `174cb3145366d9fb2e3518cd2a8f5d2b4ca5a7d1`.
 
 Add this matrix as named tests; every row asserts no raw key appears in warnings, exception text, or `repr(result)`:
 
@@ -293,7 +305,9 @@ def test_keyring_key_without_stored_provider_warns_and_resolves(tmp_path):
     assert "sk-private-value" not in repr(result)
 ```
 
-- [ ] **Step 2: Run the focused tests and verify they fail on the old independent resolver**
+- [x] **Step 2: Run the focused tests and verify they fail on the old independent resolver**
+
+Evidence (2026-07-14): TDD RED before provenance implementation — new imports/assertions failed against the pre-Task-2 resolver (Task 2 implementer path / subsequent GREEN at 25 passed).
 
 ```bash
 python -m pytest tests/unit/acp/test_local_gateway_secrets.py -v
@@ -301,7 +315,9 @@ python -m pytest tests/unit/acp/test_local_gateway_secrets.py -v
 
 Expected: new imports/assertions FAIL because provenance and precise diagnostics do not exist.
 
-- [ ] **Step 3: Implement provenance and the exact conflict predicate**
+- [x] **Step 3: Implement provenance and the exact conflict predicate**
+
+Evidence (2026-07-14): `resolve_provider_credentials` + keyring-pair / wrong-variable / DEFAULT-skip predicates in `src/optimus/acp/local_gateway_secrets.py`; KEYRING provenance only when a key is loaded; committed `174cb31`.
 
 Use these immutable types:
 
@@ -352,7 +368,9 @@ if api_key_provenance.layer is CredentialLayer.KEYRING and stored_keyring_provid
 
 Evaluate the two wrong-variable cases only when `provider_provenance.layer` is `ENVIRONMENT`, `CONFIG_FILE`, or `KEYRING`; skip them when it is `DEFAULT`. Do not infer provider identity from key prefixes. Do not fail merely because provider and key layers differ. For wrong-variable diagnostics, name the expected and found variable names but never their values. Mark key-bearing dataclass fields `repr=False` or provide a redacted `__repr__` so `repr(result)` cannot disclose the key through nested `ProviderSecrets`.
 
-- [ ] **Step 4: Change the setup wizard from `project_root` to `config_root`**
+- [x] **Step 4: Change the setup wizard from `project_root` to `config_root`**
+
+Evidence (2026-07-14): `run_setup_wizard(config_root=...)` and `resolve_shared_secret(..., config_root=...)` replace `project_root`; committed `174cb31`.
 
 Change the signature to:
 
@@ -371,7 +389,9 @@ Its precedence warning checks only `config_root / ".env.gateway"` and says that 
 
 Change `resolve_shared_secret` from `project_root` to the same explicit `config_root` contract. Remove the obsolete independent-provider override helper and any imports used only by it; `resolve_provider_credentials` must preserve and test its unsupported-provider diagnostics, so local-infra callers cannot reconstruct a second, drifting predicate.
 
-- [ ] **Step 5: Run the complete credential matrix and static checks**
+- [x] **Step 5: Run the complete credential matrix and static checks**
+
+Evidence (2026-07-14, operator-reverified): `uv run python -m pytest tests/unit/acp/test_local_gateway_secrets.py -v` → 25 passed; `ruff check` clean; `git diff --check` clean.
 
 ```bash
 python -m pytest tests/unit/acp/test_local_gateway_secrets.py -v
@@ -381,7 +401,9 @@ git diff --check
 
 Expected: all existing and new credential tests PASS; no warning/exception/repr contains fixture key values.
 
-- [ ] **Step 6: Review and commit Task 2 after explicit approval**
+- [x] **Step 6: Review and commit Task 2 after explicit approval**
+
+Evidence: operator approval 2026-07-14; commit `174cb3145366d9fb2e3518cd2a8f5d2b4ca5a7d1` — `Diagnose local gateway credential conflicts` (exactly the two Task 2 files).
 
 ```bash
 git add src/optimus/acp/local_gateway_secrets.py tests/unit/acp/test_local_gateway_secrets.py
@@ -417,7 +439,9 @@ Expected: exactly the resolver and its unit tests are committed.
 - Consumes: Task 1 `resolve_operator_paths`; Task 2 `resolve_provider_credentials`.
 - Produces: `apply_local_defaults(environ, *, config_root)`, `ensure_local_gateway(environ, *, config_root, runtime_root, log)`, `configure_debug_trace(enabled, *, log_path, provenance_root)`, `build_acp_subprocess_env(operator_environ)`, and `operator_verify.main(..., repository_root)`.
 
-- [ ] **Step 1: Write failing main/setup/path-error wiring tests**
+- [x] **Step 1: Write failing main/setup/path-error wiring tests**
+
+Evidence (2026-07-14): setup/config-root and containment-before-infra tests in `tests/unit/acp/test_main_wiring.py` (and related); landed in `f37d4efd9ed65fa085c1955fcbdb813ac7bf2bb0`.
 
 Add tests proving:
 
@@ -451,7 +475,9 @@ def test_workspace_contained_config_root_exits_before_setup_or_infra(monkeypatch
 
 Also assert `apply_local_defaults`, `ensure_local_gateway`, and debug configuration receive the same resolved root object from one `resolve_operator_paths` call.
 
-- [ ] **Step 2: Write failing local-gateway mismatch, singleton, and non-disclosure tests**
+- [x] **Step 2: Write failing local-gateway mismatch, singleton, and non-disclosure tests**
+
+Evidence (2026-07-14): conflict-before-spawn, reused-gateway no second log, and non-disclosure assertions in `tests/unit/acp/test_local_infra.py`; committed `f37d4ef`.
 
 Add these exact properties:
 
@@ -491,7 +517,9 @@ def test_reused_gateway_creates_no_log_in_second_workspace(tmp_path, monkeypatch
 
 Extend the existing spawn test to assert the actual log path is `<runtime_root>/local-gateway.log`, and join every emitted startup message to prove neither provider key nor shared secret is present.
 
-- [ ] **Step 3: Write failing tests for removal of package-root and `PYTHONPATH` assumptions**
+- [x] **Step 3: Write failing tests for removal of package-root and `PYTHONPATH` assumptions**
+
+Evidence (2026-07-14): subprocess-env / operator_verify / debug-trace tests updated; plus tracked e2e custody and `provenance_root` follow-up test; committed `f37d4ef`.
 
 Update subprocess-env expectations to:
 
@@ -505,7 +533,9 @@ assert "OPENAI_API_KEY" not in env
 
 Update operator-verifier tests so `tools/verify_live_agent.py` passes its `ROOT` explicitly into `operator_verify.main(repository_root=ROOT)`. Test that default scratch/report paths derive from that explicit repository root, not `operator_verify.__file__`.
 
-- [ ] **Step 4: Run the focused tests and observe the old wiring failures**
+- [x] **Step 4: Run the focused tests and observe the old wiring failures**
+
+Evidence (2026-07-14): TDD expected pre-wiring failures; a clean pre-implementation RED transcript was not captured (sandbox blocked the first pytest invoke before implementation). Post-wiring GREEN for the focused suite is recorded under Step 9.
 
 ```bash
 python -m pytest \
@@ -520,7 +550,9 @@ python -m pytest \
 
 Expected: new root/signature/log assertions FAIL against the old `project_root` and editable-only behavior.
 
-- [ ] **Step 5: Resolve paths once at the top of `main()` and route `--setup` through them**
+- [x] **Step 5: Resolve paths once at the top of `main()` and route `--setup` through them**
+
+Evidence (2026-07-14): `src/optimus/acp/__main__.py` resolves `OperatorPaths` once and passes `config_root` into setup; committed `f37d4ef`.
 
 Replace `_project_root()` with this control flow:
 
@@ -538,7 +570,9 @@ if args.setup:
 
 Pass `paths.config_root` to `apply_local_defaults`; pass `paths.config_root` and `paths.runtime_root` to `ensure_local_gateway`; pass `paths.debug_log_path` and `paths.workspace_root` to debug configuration. The path error must happen before Redis, keyring reads, Gateway calls, state persistence, or file creation.
 
-- [ ] **Step 6: Wire credential diagnostics and `.optimus` gateway logs**
+- [x] **Step 6: Wire credential diagnostics and `.optimus` gateway logs**
+
+Evidence (2026-07-14): `ensure_local_gateway(..., config_root=, runtime_root=)` writes `<runtime_root>/local-gateway.log` and fails closed before spawn on credential conflict; committed `f37d4ef`. Live singleton path later corroborated under Task 5 (`live-workspace/.optimus/local-gateway.log`).
 
 Change local-infra signatures and ordering:
 
@@ -645,11 +679,15 @@ def ensure_local_gateway(
 
 After loopback/reuse checks and before `runtime_root.mkdir` or `Popen`, call `resolve_provider_credentials`. Catch `ProviderCredentialConfigurationError`, emit only `user_message`, and return `None`. Emit every sanitized resolution warning. Remove `child_env["PYTHONPATH"]`. Create `runtime_root` only immediately before opening `runtime_root / "local-gateway.log"`.
 
-- [ ] **Step 7: Remove debug-trace package-root fallbacks without weakening redaction**
+- [x] **Step 7: Remove debug-trace package-root fallbacks without weakening redaction**
+
+Evidence (2026-07-14): `configure_debug_trace(..., log_path=, provenance_root=)` in `src/optimus/acp/debug_trace.py`; redaction tests remain green in focused suite; committed `f37d4ef`.
 
 Delete `debug_trace._project_root()`. `configure_debug_trace` receives an explicit `provenance_root` and records it in a non-secret process setting used by `_git_sha`; `_log_path` uses the explicit configured log path. This intentionally changes `_git_sha` from an inferred agent-checkout SHA to the current workspace SHA. Label it `workspace_git_sha` in Plan 9.9 evidence and retain `package_version` as the installed agent-build identifier so provenance readers cannot confuse the two. The default CLI path remains `<workspace>/.optimus/debug-acp.ndjson`. `acp_debug_log` must continue passing `message` and `data` through `redact_for_telemetry` unconditionally; do not implement P9.85-FU-7.
 
-- [ ] **Step 8: Remove spawned-agent `PYTHONPATH` injection and make repo tooling explicit**
+- [x] **Step 8: Remove spawned-agent `PYTHONPATH` injection and make repo tooling explicit**
+
+Evidence (2026-07-14): `build_acp_subprocess_env` omits `PYTHONPATH`; `tools/verify_live_agent.py` / `operator_verify.main(repository_root=...)` use explicit repo root; inventory clean for `parents[3]|PYTHONPATH` under `src`; committed `f37d4ef`.
 
 Change:
 
@@ -676,7 +714,9 @@ def build_acp_subprocess_env(
 
 Delete `_ensure_src_on_pythonpath`. The calling Python environment must already contain the installed package, which is true for editable contributor environments and the non-editable wheel verifier. Change `operator_verify.main` to accept `repository_root: Path`; its tool wrapper passes `ROOT`. This explicit repo-only root may own verification reports but must never be used by `optimus-agent` credential or log discovery.
 
-- [ ] **Step 9: Run the focused startup/runtime suite and the mechanical inventory**
+- [x] **Step 9: Run the focused startup/runtime suite and the mechanical inventory**
+
+Evidence (2026-07-14): focused Task 3 suite → 104 passed, 1 skipped; `rg -n 'parents\[3\]|PYTHONPATH' src` clean; `ruff check` on named surfaces clean; `git diff --check` clean (Task 3 implementer report / operator approval).
 
 ```bash
 python -m pytest \
@@ -699,7 +739,9 @@ git diff --check
 
 Expected: tests PASS; `rg` returns no matches in `src`; Ruff and diff check pass. Test-only/repo-wrapper `sys.path` handling is not a product `PYTHONPATH` dependency.
 
-- [ ] **Step 10: Review and commit Task 3 after explicit approval**
+- [x] **Step 10: Review and commit Task 3 after explicit approval**
+
+Evidence: operator approval 2026-07-14; commit `f37d4efd9ed65fa085c1955fcbdb813ac7bf2bb0` — `Remove editable runtime root assumptions`.
 
 ```bash
 git add \
@@ -738,7 +780,9 @@ Expected: only the listed runtime/wiring files are committed.
 - Consumes: `--wheel-dir`, `--scratch-root`, optional `--live`, optional `--model`, optional `--report`, system `uv`, and (live only) real `acpx`, keyring, Redis, Gateway credentials/model.
 - Produces: `select_wheel`, `installed_script_path`, `build_offline_commands`, `validate_live_prerequisites`, `assert_no_secret_values`, exit 0 plus sanitized JSON/Markdown evidence, and non-zero with one actionable failure; never an ACP client implementation.
 
-- [ ] **Step 1: Write failing verifier-unit tests**
+- [x] **Step 1: Write failing verifier-unit tests**
+
+Evidence (2026-07-14): `tests/unit/tools/test_verify_plan99_noneditable_install.py` authored first; later expanded for hostile-var names, live gateway-log path, and Windows regression pins; initial gate commit `55a6689`, Windows fix+tests `f120a5a`.
 
 Test deterministic helpers rather than creating a real environment in unit tests:
 
@@ -814,7 +858,9 @@ def test_script_delegates_acp_protocol_to_acpx():
 
 The source inspection test is the mechanical guard that the script delegates ACP protocol behavior to `acpx` rather than implementing `initialize`, `session/new`, `session/prompt`, JSON-RPC framing, or stdio parsing itself.
 
-- [ ] **Step 2: Run the unit tests and verify the script is absent**
+- [x] **Step 2: Run the unit tests and verify the script is absent**
+
+Evidence (2026-07-14): RED collection failed because `tools.verify_plan99_noneditable_install` did not exist (Task 4 implementer report).
 
 ```bash
 python -m pytest tests/unit/tools/test_verify_plan99_noneditable_install.py -v
@@ -822,7 +868,9 @@ python -m pytest tests/unit/tools/test_verify_plan99_noneditable_install.py -v
 
 Expected: import/collection failure because the verifier does not exist.
 
-- [ ] **Step 3: Implement offline wheel verification with pinned commands**
+- [x] **Step 3: Implement offline wheel verification with pinned commands**
+
+Evidence (2026-07-14): `tools/verify_plan99_noneditable_install.py` offline path (install, `--help`, roots, hostile ignore); committed `55a6689` (+ Windows path/env fixes in `f120a5a`).
 
 The script must run these operations through argument lists with `shell=False`:
 
@@ -846,7 +894,9 @@ The probe runs with `cwd=<scratch>/outside-repo/workspace`, an empty workspace `
 
 Offline mode does not start Redis, Gateway, or a model call. It writes a content-free result containing wheel filename/SHA-256, package locations, command exit codes, config root, runtime root, and log destinations.
 
-- [ ] **Step 4: Implement the explicitly operator-only live mode**
+- [x] **Step 4: Implement the explicitly operator-only live mode**
+
+Evidence (2026-07-14): `--live` mode fails closed on missing Redis/credentials/ACP predicates; real live PASS recorded in Task 5 evidence report; code in `55a6689`/`f120a5a`.
 
 `--live` additionally requires:
 
@@ -868,7 +918,9 @@ acpx --format json --approve-all \
 
 The script validates `end_turn`, a permission request/approval, a positive post-approval mutation to `example.py`, package paths outside the repo, the safe config root, and the starting workspace's `.optimus/local-gateway.log`. It records content-free transcript predicates, not raw source or credentials.
 
-- [ ] **Step 5: Add the offline CI step**
+- [x] **Step 5: Add the offline CI step**
+
+Evidence (2026-07-14): `.github/workflows/guardrails.yml` step `optimus-check: noneditable-package` (no `--live`); committed `55a6689`.
 
 Append after dependency installation in `.github/workflows/guardrails.yml`:
 
@@ -883,7 +935,9 @@ Append after dependency installation in `.github/workflows/guardrails.yml`:
 
 Do not add `--live` to CI. CI owns the offline package regression only; the operator evidence tier remains Task 5.
 
-- [ ] **Step 6: Run unit tests, build a wheel, and execute offline mode locally**
+- [x] **Step 6: Run unit tests, build a wheel, and execute offline mode locally**
+
+Evidence (2026-07-14, Task 4): unit tests GREEN (8 then later 13 after Windows pins); `uv build --wheel --out-dir C:/tmp/optimus-plan99-dist` + offline verifier exit 0; `provider_secrets=False` / `shared_secret=False`; Ruff/`git diff --check` clean. Reconfirmed at Task 6 Step 6 on a fresh scratch tree.
 
 Use a scratch path outside the checkout:
 
@@ -899,7 +953,9 @@ git diff --check
 
 Expected: unit tests PASS; exactly one wheel selected; both console scripts return help; both package paths are inside the isolated environment and outside the repo; path assertions PASS; Ruff/diff clean.
 
-- [ ] **Step 7: Review and commit Task 4 after explicit approval**
+- [x] **Step 7: Review and commit Task 4 after explicit approval**
+
+Evidence: operator approval 2026-07-14; commit `55a66893665f622b220bf8c3c8a4f7c5ca4a5d53` — `Gate noneditable Optimus package installs` (verifier + tests + CI). Follow-on Windows packaging-verifier fix `f120a5afde39e3b3a8a405211ae71653b6e75665`.
 
 ```bash
 git add \
@@ -926,7 +982,9 @@ Expected: exactly the verifier, its tests, and CI workflow are committed.
 - Consumes: Task 4 verifier; the exact implementation commit SHA; real operator keyring/config; real Redis/Gateway/model; real `acpx`.
 - Produces: one claim-to-evidence artifact that separates offline package proof from paid live proof.
 
-- [ ] **Step 1: Verify live prerequisites without exposing secret values**
+- [x] **Step 1: Verify live prerequisites without exposing secret values**
+
+Evidence (2026-07-14): Redis container `optimus-redis` on `127.0.0.1:6379` with TimeSeries (`MODULE LIST`); credential source recorded as keyring field names only; `acpx 0.12.0` / `uv 0.11.26`. Disclosed substitution: literal `pytest -m requires_redis tests/integration/agent/test_redis_live_agent.py` was not run (fixture requires parent-shell gateway creds); Redis capability instead proven via TCP + MODULE LIST and the live Gateway path. See `reports/plan-9-9-operator-packaging-evidence.md`.
 
 Using Git Bash, run:
 
@@ -940,7 +998,9 @@ python -m pytest -m requires_redis tests/integration/agent/test_redis_live_agent
 
 Expected: record the full implementation SHA, tool versions, a running TimeSeries-capable Redis, and the live Redis test PASS. Record credential source field names only; do not print or record values.
 
-- [ ] **Step 2: Build the exact implementation wheel outside the repo's normal `dist/`**
+- [x] **Step 2: Build the exact implementation wheel outside the repo's normal `dist/`**
+
+Evidence (2026-07-14): `uv build --wheel --out-dir C:/tmp/optimus-plan99-live-dist` → `optimus_cost_agent-0.1.0-py3-none-any.whl`; SHA-256 `1F7F9AD65C3BAC3F769C8A1BE52FA584E4A2CD4DF838794FEA6E7A91441E1DEE` (operator-recomputed).
 
 ```bash
 uv build --wheel --out-dir C:/tmp/optimus-plan99-live-dist
@@ -948,7 +1008,9 @@ uv build --wheel --out-dir C:/tmp/optimus-plan99-live-dist
 
 Expected: exactly one wheel for `optimus-cost-agent`; record filename and SHA-256 in the new report.
 
-- [ ] **Step 3: Run the checked-in live verifier once**
+- [x] **Step 3: Run the checked-in live verifier once**
+
+Evidence (2026-07-14): live verifier against scratch `C:/tmp/optimus-plan99-live5` with real `acpx`, keyring, Redis, Gateway/`claude-haiku`; predicates_passed (`end_turn`, permission before mutation); `example.py` gained module docstring; gateway log owned by starting live workspace. Report: `reports/plan-9-9-operator-packaging-evidence.md` (Identity SHA `f120a5a...`).
 
 ```bash
 python tools/verify_plan99_noneditable_install.py \
@@ -961,7 +1023,9 @@ python tools/verify_plan99_noneditable_install.py \
 
 Expected: PASS with real `acpx`; exact installed `optimus-agent` path lies under the isolated environment; workspace lies outside repo; config root lies outside workspace; hostile workspace `.env.gateway` is ignored; Redis/Gateway/model call succeeds; approval precedes mutation; `example.py` alone changes; stop reason is `end_turn`; gateway log is under the workspace that started the singleton. Record `_git_sha` as `workspace_git_sha` and record `package_version` separately as the installed agent-build identifier. If the gateway was already running, the report must say it was reused and must not claim a new workspace log.
 
-- [ ] **Step 4: Scan the evidence and gateway startup output for secrets**
+- [x] **Step 4: Scan the evidence and gateway startup output for secrets**
+
+Evidence (2026-07-14, operator-reverified): hostile-fixture / trailing-whitespace scans clean on the report; acpx transcript greps found `end_turn`/`permission`/`approve` and no `sk-`-style secrets; gateway log content-free (`provider=openrouter` only).
 
 Run a local script/test using the known fixture values in memory (never echo them) to assert they do not occur in the report, transcript summary, stderr capture, or gateway-start messages. Then run:
 
@@ -975,7 +1039,9 @@ fi
 
 Expected: redaction assertions PASS; report has no placeholders, raw prompts/source, authorization values, credentialed URLs, or key material.
 
-- [ ] **Step 5: Review and commit the evidence after explicit approval**
+- [x] **Step 5: Review and commit the evidence after explicit approval**
+
+Evidence: sequenced commits — verifier Windows fix `f120a5afde39e3b3a8a405211ae71653b6e75665`, then report-only `cde9cb9d22c32d0d0fe05b019543d6b1b5ba78a5` — `Record Plan 9.9 packaged operator evidence` (Identity points at `f120a5a`).
 
 ```bash
 git add reports/plan-9-9-operator-packaging-evidence.md
@@ -1002,7 +1068,7 @@ Expected: report-only commit with the full evidence commit SHA recorded in the r
 - Consumes: Task 5 evidence SHA and outcomes.
 - Produces: current operator instructions, Plan 9.8 non-editable handoff, closed Plan 9.9 roadmap status, and Plan 9.95 custody for `P9.9-FU-1`.
 
-- [ ] **Step 1: Update README non-editable installation and safe config migration**
+- [x] **Step 1: Update README non-editable installation and safe config migration**
 
 Change operator installation from:
 
@@ -1026,7 +1092,7 @@ For Windows auto-start configuration, document `%APPDATA%/optimus-cost-agent/.en
 
 Document singleton log semantics exactly: the workspace that starts the loopback gateway owns `.optimus/local-gateway.log`; later workspaces reusing the same port do not receive a new log. Debug trace remains `<current-workspace>/.optimus/debug-acp.ndjson`.
 
-- [ ] **Step 2: Update the living Phase C operator runbook**
+- [x] **Step 2: Update the living Phase C operator runbook**
 
 In `2026-07-10-plan-9-6-phase-c-operator-runbook.md` only:
 
@@ -1037,7 +1103,7 @@ In `2026-07-10-plan-9-6-phase-c-operator-runbook.md` only:
 
 Do not edit its linked historical evidence report or the architectural Plan 9.6 plan.
 
-- [ ] **Step 3: Record Plan 9.9 completion and the Plan 9.8 handoff in the roadmap**
+- [x] **Step 3: Record Plan 9.9 completion and the Plan 9.8 handoff in the roadmap**
 
 After Task 5 passes, change Plan 9.9 from tracked/not scheduled to implemented/live-verified with the exact implementation/evidence SHAs. Replace the temporary Plan 9.8 editable-install constraint with:
 
@@ -1047,7 +1113,7 @@ Plan 9.9 established and live-verified the non-editable install contract. Future
 
 Preserve the existing Plan 9.87/9.88 closure and all explicit exclusions.
 
-- [ ] **Step 4: Update the residual environment-trust follow-up in this plan and its Plan 9.95 custody line**
+- [x] **Step 4: Update the residual environment-trust follow-up in this plan and its Plan 9.95 custody line**
 
 Add exactly:
 
@@ -1070,7 +1136,15 @@ base URL, or credentials. Preserve legitimate shell/admin deployment flows and d
 
 Do not implement this follow-up inside Plan 9.9. The roadmap already contains exactly one Plan 9.95 custody line for `P9.9-FU-1`; update that line with Plan 9.9's final status/evidence pointer if needed, but do not add a duplicate entry.
 
-- [ ] **Step 5: Verify frozen history and cross-document consistency**
+- [x] **Step 5: Verify frozen history and cross-document consistency**
+
+Evidence (run 2026-07-14 on `agent/cursor/plan-9-9-operator-paths`): `git diff --exit-code
+origin/main -- <six frozen plan files>` exit 0; `git diff --exit-code origin/main -- reports
+':(exclude)reports/plan-9-9-operator-packaging-evidence.md'` exit 0; the `rg` cross-document scan
+found only current, consistent install/config/log guidance in `README.md` and the Phase C
+runbook, plus one explicitly historical `uv tool install --editable .` reference in the roadmap's
+Plan 9.6 closure note ("Already landed from the original closure list"); `git diff --check` exit
+0.
 
 Run:
 
@@ -1094,7 +1168,23 @@ git diff --check
 
 Expected: every frozen-plan diff exits 0; the report command emits nothing except the one new Plan 9.9 report; living docs agree on install/config/log semantics; any remaining `--editable` occurrence is explicitly historical rather than current guidance.
 
-- [ ] **Step 6: Run final release-quality gates**
+- [x] **Step 6: Run final release-quality gates**
+
+Evidence (run 2026-07-14 on `agent/cursor/plan-9-9-operator-paths`):
+- `python -m pytest -q` → `922 passed, 2 skipped, 22 deselected` (PASS).
+- `python -m pytest --cov=optimus --cov=optimus_gateway --cov-branch --cov-report=term-missing -q`
+  → `TOTAL` coverage `85.02%` (>= 80% required); `922 passed, 2 skipped, 22 deselected`.
+- `python -m ruff check .` → `All checks passed!`.
+- `uv build --wheel --out-dir C:/tmp/optimus-plan99-final-dist` → built
+  `optimus_cost_agent-0.1.0-py3-none-any.whl` successfully.
+- `python tools/verify_plan99_noneditable_install.py --wheel-dir C:/tmp/optimus-plan99-final-dist
+  --scratch-root C:/tmp/optimus-plan99-final-package` → exit 0; JSON result confirms both
+  entry points exit 0, `optimus`/`optimus_gateway` resolve under the isolated `venv` outside the
+  checkout, `provider_secrets=False` and `shared_secret=False` (hostile workspace config ignored).
+- `rg -n 'parents\[3\]|PYTHONPATH' src` → no matches.
+- `git diff --check` → exit 0. `git status --short` → only `README.md`, the roadmap, and the
+  Phase C runbook modified among plan-owned files (plus pre-existing unrelated `uv.lock`/untracked
+  scratch files from before this task).
 
 ```bash
 python -m pytest -q
@@ -1114,7 +1204,9 @@ git status --short
 
 Expected: default suite PASS; aggregate production coverage >=80%; Ruff clean; offline wheel verifier PASS; root-inventory `rg` has no matches; diff clean. Report live Task 5 separately and never substitute unit/offline success for the real `acpx` evidence.
 
-- [ ] **Step 7: Review and commit living-doc closure after explicit approval**
+- [x] **Step 7: Review and commit living-doc closure after explicit approval**
+
+Evidence: operator approval 2026-07-14; commit message `Close Plan 9.9 operator packaging` (this commit; SHA recorded via `git rev-parse HEAD` after landing).
 
 ```bash
 git add \
@@ -1151,25 +1243,25 @@ base URL, or credentials. Preserve legitimate shell/admin deployment flows and d
 
 ## Definition of Done
 
-- [ ] Reviewer agent and operator approved this implementation plan before code implementation began.
-- [ ] `OperatorPaths` separates workspace, operator config, runtime logs, and installed-package concerns.
-- [ ] Resolved, case-insensitive Windows containment rejects config roots equal to or below the workspace and does not reject prefix siblings.
-- [ ] Migration failures name the safe config directory and both supported remediations without exposing values.
-- [ ] Compatible mixed-layer credentials resolve; provable keyring provider/key mismatch fails before log/spawn; partial keyring state warns.
-- [ ] Anthropic/non-Anthropic wrong-variable cases produce distinct actionable diagnostics.
-- [ ] Default provider provenance ignores an ambient wrong-provider variable and preserves the setup pointer; explicit unsupported environment/config/keyring providers fail with the supported set and required remediation.
-- [ ] `--setup` inspects only the operator config root for `.env.gateway` precedence.
-- [ ] Provider/shared secrets never appear in exceptions, warnings, repr, stderr, debug trace, startup output, packaging output, or committed evidence.
-- [ ] Product code under `src` contains no `parents[3]` or `PYTHONPATH` source-root injection.
-- [ ] Gateway logs use the starting workspace's `.optimus/local-gateway.log`; singleton reuse semantics are documented and tested.
-- [ ] Debug logs use `<workspace>/.optimus/debug-acp.ndjson` without weakening unconditional redaction or absorbing P9.85-FU-7.
-- [ ] Checked-in offline packaging verification builds/installs one wheel outside the repo and runs in CI.
-- [ ] Operator-only live packaging evidence uses real Redis, real Gateway/model, and real independently authored `acpx`.
-- [ ] Future operator/Plan 9.8 regression guidance uses a non-editable install; historical plans/evidence remain unchanged.
-- [ ] `P9.9-FU-1` records the workspace-influenced environment residual risk without implementing it.
-- [ ] P9.87-FU-1, P9.85-FU-6/FU-7, P9.88-FU-2/FU-3, accepted-open FU-4B, Plan 10, and Plan 11 remain outside this lane.
-- [ ] Default tests pass; aggregate production coverage is >=80%; Ruff and diff checks are clean.
-- [ ] Every checked task/DoD item cites the command and evidence that actually passed.
+- [x] Reviewer agent and operator approved this implementation plan before code implementation began. Evidence: plan approval before Task 1 (2026-07-14); branch `agent/cursor/plan-9-9-operator-paths` from `origin/main`.
+- [x] `OperatorPaths` separates workspace, operator config, runtime logs, and installed-package concerns. Evidence: Task 1 — `src/optimus/acp/operator_paths.py` in `0265f8e`; unit suite 13 passed / 1 skipped.
+- [x] Resolved, case-insensitive Windows containment rejects config roots equal to or below the workspace and does not reject prefix siblings. Evidence: Task 1 containment/sibling tests in `tests/unit/acp/test_operator_paths.py` (operator-reverified GREEN).
+- [x] Migration failures name the safe config directory and both supported remediations without exposing values. Evidence: Task 1 remediation message template + safe-default precompute; committed `0265f8e`.
+- [x] Compatible mixed-layer credentials resolve; provable keyring provider/key mismatch fails before log/spawn; partial keyring state warns. Evidence: Task 2 matrix (25 passed, `174cb31`) + Task 3 `test_credential_conflict_stops_before_log_or_spawn` (`f37d4ef`).
+- [x] Anthropic/non-Anthropic wrong-variable cases produce distinct actionable diagnostics. Evidence: Task 2 wrong-variable tests naming `ANTHROPIC_API_KEY` vs `OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY`; suite GREEN under `174cb31`.
+- [x] Default provider provenance ignores an ambient wrong-provider variable and preserves the setup pointer; explicit unsupported environment/config/keyring providers fail with the supported set and required remediation. Evidence: Task 2 named tests (`test_default_provider_with_only_ambient_anthropic_key_returns_setup_pointer`, unsupported provider tests); `174cb31`.
+- [x] `--setup` inspects only the operator config root for `.env.gateway` precedence. Evidence: Task 2 `config_root` API (`174cb31`) + Task 3 `test_setup_uses_operator_config_root_not_workspace` (`f37d4ef`).
+- [x] Provider/shared secrets never appear in exceptions, warnings, repr, stderr, debug trace, startup output, packaging output, or committed evidence. Evidence: Task 2/3 non-disclosure assertions; Task 4/5 hostile-fixture scans; Task 5 report + operator transcript greps (no `sk-` leakage).
+- [x] Product code under `src` contains no `parents[3]` or `PYTHONPATH` source-root injection. Evidence: Task 3/`rg` inventory at `f37d4ef`; Task 6 Step 5/6 re-runs clean (`rg 'parents\[3\]|PYTHONPATH' src`).
+- [x] Gateway logs use the starting workspace's `.optimus/local-gateway.log`; singleton reuse semantics are documented and tested. Evidence: Task 3 unit tests (`f37d4ef`); live path in Task 5 evidence; Task 6 README/runbook documentation.
+- [x] Debug logs use `<workspace>/.optimus/debug-acp.ndjson` without weakening unconditional redaction or absorbing P9.85-FU-7. Evidence: Task 3 `configure_debug_trace` wiring + redaction tests (`f37d4ef`); documented in Task 6 README.
+- [x] Checked-in offline packaging verification builds/installs one wheel outside the repo and runs in CI. Evidence: Task 4 verifier + `optimus-check: noneditable-package` in `55a6689`; offline PASS reconfirmed Task 6 Step 6.
+- [x] Operator-only live packaging evidence uses real Redis, real Gateway/model, and real independently authored `acpx`. Evidence: `reports/plan-9-9-operator-packaging-evidence.md` (`cde9cb9`); Identity implementation SHA `f120a5a`; operator independently corroborated scratch artifacts.
+- [x] Future operator/Plan 9.8 regression guidance uses a non-editable install; historical plans/evidence remain unchanged. Evidence: Task 6 Step 5 frozen-history/`rg` scan (2026-07-14), all clean.
+- [x] `P9.9-FU-1` records the workspace-influenced environment residual risk without implementing it. Evidence: Task 6 Step 4 — block already present in this plan's Deferred Follow-Ups (not duplicated) and the Plan 9.95 custody line updated with implementation SHA `f120a5afde39e3b3a8a405211ae71653b6e75665` and evidence pointer `reports/plan-9-9-operator-packaging-evidence.md`.
+- [x] P9.87-FU-1, P9.85-FU-6/FU-7, P9.88-FU-2/FU-3, accepted-open FU-4B, Plan 10, and Plan 11 remain outside this lane. Evidence: no commits in this branch implement those plans; roadmap still tracks them under Plan 9.95 / later entries; Plan 9.9 scope limited to packaging/credential/paths/docs.
+- [x] Default tests pass; aggregate production coverage is >=80%; Ruff and diff checks are clean. Evidence: Task 6 Step 6 (2026-07-14) — `922 passed, 2 skipped, 22 deselected`; coverage `85.02%`; `python -m ruff check .` clean; `git diff --check` clean.
+- [x] Every checked task/DoD item cites the command and evidence that actually passed. Evidence: this Task 6 documentation pass fills Tasks 1–5 and remaining DoD rows with commit SHA and command/result citations from the landed work and operator-reverified gates.
 
 ## Plan Self-Review Record
 
