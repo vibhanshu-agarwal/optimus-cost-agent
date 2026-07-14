@@ -424,21 +424,84 @@ Plan 9.8 regression runs use `uv tool install . --reinstall`; the historical Pla
 remains unchanged.
 
 `P9.9-FU-1` (workspace-influenced agent launch environment) is deliberately deferred, not
-implemented here — see the Plan 9.9 plan file's Deferred Follow-Ups and the Plan 9.95 custody
-entry below.
+implemented here. Its sole current custody line is under Plan 9.96 below.
 
-## Plan 9.95 (Tracked, Not Yet Scheduled): Usage, Telemetry, and Evidence-Tooling Correctness
+## Plan 9.95 (Reviewer Approved; Awaiting Operator Approval): Usage, Telemetry, and Evidence-Tooling Correctness
 
-**Raised:** 2026-07-14 as the custody entry for open deferred follow-ups.
+**Raised:** 2026-07-14 as the custody entry for open deferred follow-ups. The operator approved
+the three-lane split on 2026-07-14; the detailed Plan 9.95 implementation plan is
+`docs/superpowers/plans/2026-07-14-plan-9-95-usage-telemetry-evidence-tooling-correctness.md`
+was reviewer-agent approved on 2026-07-14 and remains subject to operator approval before
+implementation.
 
 - `P9.85-FU-6` — billable failed-retry aggregation / unknown transport cost — raised Plan 9.85, carried through Plans 9.87/9.88.
 - `P9.88-FU-2` — ledger digest specification and verifier helper — raised Plan 9.88.
 - `P9.88-FU-3` — read-range telemetry misattribution in `planning_loop.py` — raised Plan 9.88; now unblocked since the post-ceremony freeze lift.
-- `P9.85-FU-7` — deliberate-access design for redacted debug traces plus logging-surface audit — raised Plan 9.85; its redaction opt-out requires its own security review at scheduling time.
-- `P9.87-FU-1` — mechanical current-raw-evidence grounding guard — raised Plan 9.87; must not absorb or be absorbed by Plan 11 and may split into its own entry when scheduled.
-- `P9.9-FU-1` — workspace-influenced agent launch environment — raised by Plan 9.9's design review; Plan 9.9 closed implemented and live-verified (implementation SHA `f120a5afde39e3b3a8a405211ae71653b6e75665`, evidence `reports/plan-9-9-operator-packaging-evidence.md`) without implementing this follow-up; security-design lane that may split when scheduled.
 
-FU-4B accepted-open is deliberately not in this entry: it is a closed disposition under the Plan 9.88 ceremony, not a TODO. **Status:** Tracked, not yet scheduled; no implementation plan exists; this entry may split by lane when scheduled.
+**Custody transfer record (trace only, not ownership):**
+
+- `P9.85-FU-7` moved from Plan 9.95 to Plan 9.96.
+- `P9.9-FU-1` moved from Plan 9.95 to Plan 9.96.
+- `P9.87-FU-1` moved from Plan 9.95 to Plan 9.97.
+
+FU-4B accepted-open is deliberately not in this entry: it is a closed disposition under the Plan
+9.88 ceremony, not a TODO. **Status:** Detailed implementation plan drafted for exactly
+`P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3`; reviewer-agent approved; awaiting operator approval;
+no implementation has begun.
+
+## Plan 9.96 (Tracked, Not Yet Scheduled): Operator-Controlled Debug and Launch Trust
+
+**Raised:** 2026-07-14 by the approved Plan 9.95 lane split.
+
+**Foundation:** This lane builds on the landed Plan 9.9 implementation commit
+`f120a5afde39e3b3a8a405211ae71653b6e75665` and its verified evidence artifact
+`reports/plan-9-9-operator-packaging-evidence.md`. Those proven code and evidence anchors, not a
+prior plan document, are the dependency contract for this lane.
+
+**Design-entry gate:** When scheduled, the design phase opens with a dedicated security review of
+both follow-ups below. No implementation design or implementation work precedes that review. For
+`P9.85-FU-7`, the review must decide the authorization, session/time scope, expiry, audit, storage,
+and transcript treatment for any redaction opt-out. For `P9.9-FU-1`, it must define the trust and
+approval boundary for workspace-influenced launch settings before those settings can affect
+provider, base URL, or credentials.
+
+**Owned follow-ups (sole custody):**
+
+- `P9.85-FU-7` — deliberate-access design for session- or time-scoped access to unredacted debug
+  traces, a broader audit of every logging/telemetry surface for the same class of gap, and an
+  explicit decision on whether real `acpx` client transcripts can or should be brought under the
+  same redaction guarantee rather than relying on human review before committed excerpts.
+- **Sole custody — `P9.9-FU-1`: Workspace-influenced agent launch environment.** Scope wording is
+  retained from the landed follow-up's Deferred Follow-Ups section; that is scope provenance, not
+  this lane's dependency anchor.
+
+  **Risk:** The config-root containment guard prevents implicit or explicitly redirected config
+  files from resolving inside the workspace. It cannot prove that top-precedence environment values
+  are operator-authored when an IDE merges project-local settings into the external agent launch
+  environment. A malicious workspace could therefore influence provider, base-URL, or credential
+  environment fields even though `.env.gateway` discovery is safe.
+
+  **Acceptance criteria:** Define and implement a trust boundary that distinguishes
+  operator-approved agent environment overrides from workspace-provided launch settings; fail
+  closed or require an explicit approval ceremony before workspace-originated settings can affect
+  local-Gateway provider, base URL, or credentials. Preserve legitimate shell/admin deployment
+  flows and do not log values.
+
+**Status:** Tracked, not yet scheduled; no implementation plan exists on this branch. The dedicated
+security review is the first design activity when the lane is scheduled.
+
+## Plan 9.97 (Tracked, Not Yet Scheduled): Mechanical Current-Raw-Evidence Grounding
+
+**Raised:** 2026-07-14 by the approved Plan 9.95 lane split.
+
+**Owned follow-up:** `P9.87-FU-1` — define a mechanical provenance guard between final WRITE
+content and current-turn raw ranges without logging source bodies.
+
+This lane must not absorb or be absorbed by Plan 11.
+
+**Status:** Tracked, not yet scheduled; no implementation plan exists on this branch. Its future
+design must preserve the current-raw-evidence boundary independently of Plan 11's intelligent
+selection and compression work.
 
 ## Plan 10 (Tracked, Not Yet Scheduled): Unified Gateway Capabilities Broker
 
@@ -527,10 +590,14 @@ pattern.
     `cde9cb9d22c32d0d0fe05b019543d6b1b5ba78a5`; owns cross-layer provider/key mismatch diagnostics
     and non-editable-install root discovery; evidence in
     `reports/plan-9-9-operator-packaging-evidence.md`.
-20. Plan 9.95: Usage, telemetry, and evidence-tooling correctness — tracked, not yet scheduled;
-    custody entry for open deferred follow-ups after Plan 9.9, with lane splits allowed at scheduling.
-21. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
-22. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
+20. Plan 9.95: Usage, telemetry, and evidence-tooling correctness — implementation plan
+    reviewer-approved for `P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3`; awaiting operator approval.
+21. Plan 9.96: Operator-controlled debug and launch trust — tracked, not yet scheduled; opens its
+    design phase with the dedicated security review; no implementation plan exists.
+22. Plan 9.97: Mechanical current-raw-evidence grounding — tracked, not yet scheduled; remains
+    isolated from Plan 11; no implementation plan exists.
+23. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
+24. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
     starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden
     harness are stable.
 
