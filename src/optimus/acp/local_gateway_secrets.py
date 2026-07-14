@@ -4,7 +4,8 @@ import getpass
 import re
 import secrets
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,7 @@ _KEY_MODEL_PROVIDER = "model_provider"
 _KEY_MODEL_PROVIDER_API_KEY = "model_provider_api_key"
 _KEY_SHARED_SECRET = "local_gateway_shared_secret"
 
-_SUPPORTED_PROVIDERS = ("openai", "openrouter", "anthropic")
+_SUPPORTED_PROVIDERS = ("anthropic", "openai", "openrouter")
 SUPPORTED_GATEWAY_PROVIDERS = frozenset(_SUPPORTED_PROVIDERS)
 _DEFAULT_PROVIDER = "openrouter"
 
@@ -25,7 +26,7 @@ _ENV_LINE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 @dataclass(frozen=True)
 class ProviderSecrets:
     provider: str  # "openai" | "openrouter" | "anthropic"
-    model_provider_api_key: str
+    model_provider_api_key: str = field(repr=False)
     base_url: str | None = None
 
     def as_gateway_child_env(self) -> dict[str, str]:
@@ -43,6 +44,35 @@ class ProviderSecrets:
         if self.base_url:
             env["OPTIMUS_LOCAL_GATEWAY_BASE_URL"] = self.base_url
         return env
+
+
+class CredentialLayer(str, Enum):
+    ENVIRONMENT = "environment"
+    CONFIG_FILE = "config_file"
+    KEYRING = "keyring"
+    DEFAULT = "default"
+    MISSING = "missing"
+
+
+@dataclass(frozen=True)
+class CredentialProvenance:
+    layer: CredentialLayer
+    field_name: str
+
+
+@dataclass(frozen=True)
+class ProviderCredentialResolution:
+    secrets: ProviderSecrets | None
+    provider_provenance: CredentialProvenance
+    api_key_provenance: CredentialProvenance
+    base_url_provenance: CredentialProvenance
+    warnings: tuple[str, ...] = ()
+
+
+class ProviderCredentialConfigurationError(ValueError):
+    def __init__(self, user_message: str) -> None:
+        super().__init__(user_message)
+        self.user_message = user_message
 
 
 def _parse_env_gateway_file(path: Path) -> dict[str, str]:
@@ -77,13 +107,13 @@ def _safe_get_password(keyring_backend: Any, key: str) -> str | None:
 def resolve_shared_secret(
     environ: Mapping[str, str],
     *,
-    project_root: Path,
+    config_root: Path,
     keyring_backend: Any = keyring,
 ) -> str | None:
     env_value = environ.get("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET", "").strip()
     if env_value:
         return env_value
-    dotenv_value = _parse_env_gateway_file(project_root / ".env.gateway").get(
+    dotenv_value = _parse_env_gateway_file(config_root / ".env.gateway").get(
         "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET", ""
     ).strip()
     if dotenv_value:
@@ -91,57 +121,174 @@ def resolve_shared_secret(
     return _safe_get_password(keyring_backend, _KEY_SHARED_SECRET)
 
 
-def resolve_provider_secrets(
+def _provider_error(provider: str, *, keyring: bool = False) -> ProviderCredentialConfigurationError:
+    suffix = " Run `optimus-agent --setup` to choose a supported provider." if keyring else ""
+    return ProviderCredentialConfigurationError(
+        f"optimus-agent: unsupported provider {provider!r}; supported providers: "
+        f"{', '.join(_SUPPORTED_PROVIDERS)}.{suffix}"
+    )
+
+
+def resolve_provider_credentials(
     environ: Mapping[str, str],
     *,
-    project_root: Path,
+    config_root: Path,
     keyring_backend: Any = keyring,
-) -> ProviderSecrets | None:
-    dotenv_values = _parse_env_gateway_file(project_root / ".env.gateway")
-
-    # Default to "openrouter" when unconfigured anywhere — matches GatewayServiceConfig.from_env()'s
-    # own default (models.py:40). Only a missing/unresolvable *API key* is a hard failure below;
-    # the provider name alone should never block resolution when the gateway itself wouldn't block.
-    provider = (
-        environ.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER", "").strip()
-        or dotenv_values.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER", "").strip()
-        or _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER)
-        or _DEFAULT_PROVIDER
-    ).lower()
-    if provider not in _SUPPORTED_PROVIDERS:
-        return None
-
-    if provider == "anthropic":
-        api_key = (
-            environ.get("ANTHROPIC_API_KEY", "").strip()
-            or dotenv_values.get("ANTHROPIC_API_KEY", "").strip()
-            or _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER_API_KEY)
-            or ""
+) -> ProviderCredentialResolution:
+    dotenv_values = _parse_env_gateway_file(config_root / ".env.gateway")
+    provider_raw = environ.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER", "").strip()
+    provider_provenance = CredentialProvenance(
+        CredentialLayer.ENVIRONMENT,
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER",
+    )
+    if not provider_raw:
+        provider_raw = dotenv_values.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER", "").strip()
+        provider_provenance = CredentialProvenance(
+            CredentialLayer.CONFIG_FILE,
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER",
+        )
+    if not provider_raw:
+        provider_raw = _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER)
+        provider_provenance = CredentialProvenance(
+            CredentialLayer.KEYRING,
+            _KEY_MODEL_PROVIDER,
+        )
+    if provider_raw is None:
+        provider = _DEFAULT_PROVIDER
+        provider_provenance = CredentialProvenance(
+            CredentialLayer.DEFAULT,
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER",
         )
     else:
-        api_key = (
-            environ.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY", "").strip()
-            or dotenv_values.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY", "").strip()
-            or _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER_API_KEY)
-            or ""
+        provider = provider_raw.casefold()
+    if provider not in _SUPPORTED_PROVIDERS:
+        raise _provider_error(
+            provider,
+            keyring=provider_provenance.layer is CredentialLayer.KEYRING,
         )
-    if not api_key:
-        return None
-
-    # Not a secret — no keyring lookup, matching the design that keyring is reserved for secrets
-    # only (see Task 1's keychain-schema note). Left as None if unset anywhere, letting
-    # GatewayServiceConfig.from_env() apply its own per-provider default base URL.
-    base_url = (
-        environ.get("OPTIMUS_LOCAL_GATEWAY_BASE_URL", "").strip()
-        or dotenv_values.get("OPTIMUS_LOCAL_GATEWAY_BASE_URL", "").strip()
-        or None
+    stored_keyring_provider = _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER)
+    expected_key_name = (
+        "ANTHROPIC_API_KEY"
+        if provider == "anthropic"
+        else "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"
     )
-    return ProviderSecrets(provider=provider, model_provider_api_key=api_key, base_url=base_url)
+    alternate_key_name = (
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"
+        if provider == "anthropic"
+        else "ANTHROPIC_API_KEY"
+    )
+    api_key = environ.get(expected_key_name, "").strip()
+    api_key_provenance = CredentialProvenance(CredentialLayer.ENVIRONMENT, expected_key_name)
+    if not api_key:
+        api_key = dotenv_values.get(expected_key_name, "").strip()
+        api_key_provenance = CredentialProvenance(CredentialLayer.CONFIG_FILE, expected_key_name)
+    if not api_key:
+        keyring_api_key = _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER_API_KEY)
+        if keyring_api_key:
+            api_key = keyring_api_key
+            api_key_provenance = CredentialProvenance(
+                CredentialLayer.KEYRING,
+                _KEY_MODEL_PROVIDER_API_KEY,
+            )
+    warnings: list[str] = []
+    if (
+        api_key_provenance.layer is CredentialLayer.KEYRING
+        and stored_keyring_provider
+        and stored_keyring_provider.casefold() != provider.casefold()
+    ):
+        raise ProviderCredentialConfigurationError(
+            "optimus-agent: local gateway provider resolves to "
+            f"{provider!r} from {provider_provenance.layer.value}, but the keyring API key is paired "
+            f"with provider {stored_keyring_provider!r}; run `optimus-agent --setup` or remove the "
+            "higher-precedence provider override."
+        )
+    if provider_provenance.layer in {
+        CredentialLayer.ENVIRONMENT,
+        CredentialLayer.CONFIG_FILE,
+        CredentialLayer.KEYRING,
+    } and not api_key:
+        alternate_value = environ.get(alternate_key_name, "").strip() or dotenv_values.get(
+            alternate_key_name,
+            "",
+        ).strip()
+        if alternate_value:
+            raise ProviderCredentialConfigurationError(
+                f"optimus-agent: provider {provider!r} requires {expected_key_name}; "
+                f"found {alternate_key_name} instead. Configure {expected_key_name} or run "
+                "`optimus-agent --setup`."
+            )
+    if not api_key:
+        api_key_provenance = CredentialProvenance(CredentialLayer.MISSING, expected_key_name)
+        if provider_provenance.layer is CredentialLayer.DEFAULT:
+            return ProviderCredentialResolution(
+                secrets=None,
+                provider_provenance=provider_provenance,
+                api_key_provenance=api_key_provenance,
+                base_url_provenance=CredentialProvenance(
+                    CredentialLayer.DEFAULT,
+                    "OPTIMUS_LOCAL_GATEWAY_BASE_URL",
+                ),
+                warnings=(),
+            )
+        warnings.append(
+            f"optimus-agent: provider {provider!r} is configured but no {expected_key_name} "
+            "was found; run `optimus-agent --setup`."
+        )
+    elif (
+        provider_provenance.layer in {CredentialLayer.ENVIRONMENT, CredentialLayer.CONFIG_FILE}
+        and api_key_provenance.layer in {CredentialLayer.ENVIRONMENT, CredentialLayer.CONFIG_FILE}
+        and provider_provenance.layer is not api_key_provenance.layer
+    ):
+        warnings.append(
+            "optimus-agent: provider and API key came from different configuration layers; "
+            "the provider/key pairing cannot be proven."
+        )
+    if (
+        api_key_provenance.layer is CredentialLayer.KEYRING
+        and stored_keyring_provider is None
+    ):
+        warnings.append(
+            "optimus-agent: provider key came from keyring but keyring has no stored model_provider; "
+            "run `optimus-agent --setup` to restore the provider/key pair."
+        )
+    base_url = environ.get("OPTIMUS_LOCAL_GATEWAY_BASE_URL", "").strip()
+    base_url_provenance = CredentialProvenance(
+        CredentialLayer.ENVIRONMENT,
+        "OPTIMUS_LOCAL_GATEWAY_BASE_URL",
+    )
+    if not base_url:
+        base_url = dotenv_values.get("OPTIMUS_LOCAL_GATEWAY_BASE_URL", "").strip()
+        base_url_provenance = CredentialProvenance(
+            CredentialLayer.CONFIG_FILE,
+            "OPTIMUS_LOCAL_GATEWAY_BASE_URL",
+        )
+    if not base_url:
+        base_url = None
+        base_url_provenance = CredentialProvenance(
+            CredentialLayer.DEFAULT,
+            "OPTIMUS_LOCAL_GATEWAY_BASE_URL",
+        )
+    resolved_secrets = (
+        ProviderSecrets(
+            provider=provider,
+            model_provider_api_key=api_key,
+            base_url=base_url,
+        )
+        if api_key
+        else None
+    )
+    return ProviderCredentialResolution(
+        secrets=resolved_secrets,
+        provider_provenance=provider_provenance,
+        api_key_provenance=api_key_provenance,
+        base_url_provenance=base_url_provenance,
+        warnings=tuple(warnings),
+    )
 
 
 def run_setup_wizard(
     *,
-    project_root: Path,
+    config_root: Path,
     keyring_backend: Any = keyring,
     input_fn: Callable[[str], str] = input,
     getpass_fn: Callable[[str], str] = getpass.getpass,
@@ -181,9 +328,9 @@ def run_setup_wizard(
         "Stored local gateway credentials in the OS keychain. "
         "You can now run `optimus-agent` with no environment variables required."
     )
-    if (project_root / ".env.gateway").is_file():
+    if (config_root / ".env.gateway").is_file():
         print_fn(
-            "Note: .env.gateway also exists in this project; explicit env vars and that file "
-            "take precedence over the keychain values just stored."
+            "Note: operator config file .env.gateway also exists; explicit environment values and "
+            "that file take precedence over the keychain values just stored."
         )
     return 0
