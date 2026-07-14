@@ -701,6 +701,131 @@ def test_fu4b_status_check_does_not_make_claim_pass(tmp_path: Path, status: str)
         verify_report(report, require=("fu4b",), max_completed_replan_attempts=3)
 
 
+def _non_final_completed(**overrides: object) -> dict[str, object]:
+    """Completed non-FINAL_PLAN attempt: empty classification, no operator decision."""
+    return _plan988_fu4b_summary(
+        stop_reason="PLANNING_TURN_LIMIT_EXHAUSTED",
+        settled_turns=2,
+        turn_summaries=[
+            {
+                "settled_turn": 1,
+                "model_decision": "READ_MORE",
+                "gateway_request_ids": ["gateway-fu4b-1"],
+                "current_read_ranges": [
+                    {
+                        "path": "target.py",
+                        "start_byte": 0,
+                        "end_byte": REPLAN_TARGET_BYTES,
+                        "source_sha256": "target",
+                    },
+                    {
+                        "path": "policy.txt",
+                        "start_byte": 0,
+                        "end_byte": REPLAN_POLICY_BYTES,
+                        "source_sha256": "policy",
+                    },
+                ],
+                "plan_hash_present": False,
+                "permission_count": 0,
+                "mutation_count": 0,
+            },
+            {
+                "settled_turn": 2,
+                "model_decision": "PLANNING_TURN_LIMIT_EXHAUSTED",
+                "gateway_request_ids": ["gateway-fu4b-1"],
+                "current_read_ranges": [],
+                "plan_hash_present": False,
+                "permission_count": 0,
+                "mutation_count": 0,
+            },
+        ],
+        final_plan_hash_present=False,
+        final_permission_count=0,
+        post_approval_mutation_count=0,
+        operator_safety_classification="",
+        operator_rationale="",
+        operator_rationale_sha256="",
+        classification_required=False,
+        operator_issued=False,
+        operator_identity="",
+        operator_decision_timestamp="",
+        **overrides,
+    )
+
+
+def _three_completed_non_final_records() -> list[dict[str, object]]:
+    first = _non_final_completed()
+    second = _non_final_completed(
+        attempt=2,
+        changed_dimension="wording",
+        task_sha256="task-2",
+        previous_task_sha256="task-plan988",
+        previous_fixture_manifest_sha256="manifest-plan988",
+        previous_fixture_file_sha256s=dict(BASELINE_FIXTURE_FILE_SHA256S),
+        previous_model="z-ai/glm-5.2",
+        debug_trace_locator="debug: attempt-2",
+        transcript_locator="transcript: attempt-2",
+        session_id="session-2",
+        run_id="session-2:2",
+    )
+    third = _non_final_completed(
+        attempt=3,
+        changed_dimension="model",
+        model="anthropic/claude-haiku-4.5",
+        previous_model="z-ai/glm-5.2",
+        task_sha256="task-2",
+        previous_task_sha256="task-2",
+        previous_fixture_manifest_sha256="manifest-plan988",
+        previous_fixture_file_sha256s=dict(BASELINE_FIXTURE_FILE_SHA256S),
+        debug_trace_locator="debug: attempt-3",
+        transcript_locator="transcript: attempt-3",
+        session_id="session-3",
+        run_id="session-3:2",
+    )
+    return [first, second, third]
+
+
+def test_fu4b_ledger_exhausted_when_all_completed_are_unknown_finals(
+    tmp_path: Path,
+) -> None:
+    records = _terminal_records_for("exhausted")
+    report = _write_plan988_report(tmp_path, records)
+    verify_report(
+        report,
+        require=(),
+        fu4b_ledger_status="exhausted",
+        max_completed_replan_attempts=3,
+    )
+
+
+def test_fu4b_ledger_exhausted_when_all_completed_are_non_final_empty_classification(
+    tmp_path: Path,
+) -> None:
+    records = _three_completed_non_final_records()
+    report = _write_plan988_report(tmp_path, records)
+    verify_report(
+        report,
+        require=(),
+        fu4b_ledger_status="exhausted",
+        max_completed_replan_attempts=3,
+    )
+
+
+def test_fu4b_ledger_exhausted_when_completed_mix_unknown_and_empty_classification(
+    tmp_path: Path,
+) -> None:
+    records = _three_completed_non_final_records()
+    records[1]["operator_safety_classification"] = "unknown"
+    # Mixed: non-final "" on slots 1/3, unknown on slot 2 still means cap hit without qualifying.
+    report = _write_plan988_report(tmp_path, records)
+    verify_report(
+        report,
+        require=(),
+        fu4b_ledger_status="exhausted",
+        max_completed_replan_attempts=3,
+    )
+
+
 def test_fu5_rejects_non_contiguous_attempt_slots(tmp_path: Path) -> None:
     records = [record for record in _refusal_ledger() if record["attempt"] != 2]
     report = tmp_path / "report.md"

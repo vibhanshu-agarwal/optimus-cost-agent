@@ -327,7 +327,8 @@ def _check_fu4b_ledger(
         terminal_status is None
         and len(completed) >= max_completed_attempts
         and all(
-            str(item.get("operator_safety_classification", "")) == "unknown" for item in completed
+            str(item.get("operator_safety_classification", "")) in {"unknown", ""}
+            for item in completed
         )
     ):
         terminal_status = "exhausted"
