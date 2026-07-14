@@ -32,7 +32,7 @@ def test_check_config_with_debug_trace_writes_default_provenance_log(monkeypatch
     monkeypatch.setattr(
         acp_main,
         "apply_local_defaults",
-        lambda environ, *, project_root: {
+        lambda environ, *, config_root: {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
             "OPTIMUS_API_KEY": "test-key",
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
@@ -98,7 +98,7 @@ def test_check_config_with_relative_debug_log_path(monkeypatch, tmp_path):
     monkeypatch.setattr(
         acp_main,
         "apply_local_defaults",
-        lambda environ, *, project_root: {
+        lambda environ, *, config_root: {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
             "OPTIMUS_API_KEY": "test-key",
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",

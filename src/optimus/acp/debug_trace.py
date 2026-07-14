@@ -31,27 +31,30 @@ def resolve_debug_log_path(*, workspace_root: str | Path, log_path: str | Path |
     return (root / candidate).resolve()
 
 
-def configure_debug_trace(*, enabled: bool, log_path: str | Path | None = None) -> None:
+def configure_debug_trace(
+    *,
+    enabled: bool,
+    log_path: str | Path | None = None,
+    provenance_root: str | Path | None = None,
+) -> None:
     """Enable ACP debug tracing via CLI (sets process env before serve_ndjson starts)."""
     if enabled:
         os.environ["OPTIMUS_ACP_DEBUG_TRACE"] = "1"
     if log_path is not None:
         os.environ["OPTIMUS_ACP_DEBUG_LOG"] = str(Path(log_path).resolve())
+    if provenance_root is not None:
+        os.environ["OPTIMUS_ACP_PROVENANCE_ROOT"] = str(Path(provenance_root).resolve())
 
 
 def debug_trace_enabled() -> bool:
     return os.environ.get("OPTIMUS_ACP_DEBUG_TRACE", "").strip().lower() in {"1", "true", "yes"}
 
 
-def _project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
 def _log_path() -> Path:
     configured = os.environ.get("OPTIMUS_ACP_DEBUG_LOG", "").strip()
     if configured:
         return Path(configured).resolve()
-    return (_project_root() / "debug-c66f94.log").resolve()
+    return (Path.cwd() / DEFAULT_DEBUG_LOG_RELATIVE_PATH).resolve()
 
 
 def _git_sha() -> str:
@@ -61,7 +64,7 @@ def _git_sha() -> str:
     try:
         completed = subprocess.run(
             [git_executable, "rev-parse", "HEAD"],
-            cwd=_project_root(),
+            cwd=os.environ.get("OPTIMUS_ACP_PROVENANCE_ROOT") or Path.cwd(),
             check=True,
             capture_output=True,
             text=True,

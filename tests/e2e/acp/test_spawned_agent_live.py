@@ -52,7 +52,7 @@ def test_spawned_acp_agent_live_docstring_turn(tmp_path: Path) -> None:
     transcript = E2eAcpTranscriptWriter()
     config = OperatorLiveSessionConfig(
         workspace_root=workspace,
-        project_root=project_root(),
+        repository_root=project_root(),
         model=_LIVE_MODEL,
         task=_DOCSTRING_TASK,
         transcript_path=PLAN_9_6_E2E_TRANSCRIPT_PATH,

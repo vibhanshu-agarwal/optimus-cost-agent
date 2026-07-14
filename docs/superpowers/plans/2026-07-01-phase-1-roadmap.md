@@ -390,7 +390,7 @@ and `P9.88-FU-3` (frozen-code read-range telemetry misattribution) — see Plan 
 Follow-Ups. No `P9.88-FU-1` (unsafe-final follow-up) was created — terminal disposition was
 exhaustion, not unsafe.
 
-## Plan 9.9 (Tracked, Not Yet Scheduled): Operator Packaging and Credential Diagnostics
+## Plan 9.9 (Implemented and Live-Verified): Operator Packaging and Credential Diagnostics
 
 **Raised:** 2026-07-11 while closing Plan 9.7 review follow-ups during Plan 9.8 review.
 
@@ -412,12 +412,20 @@ resources correctly from both editable and non-editable tool installations.
   `.env.gateway` discovery and place gateway/debug logs under the wrong tree. Plan 9.9 must define
   and test an explicit resource/config/log-root contract for editable and non-editable installs.
 
-**Status:** Implementation plan approved by the reviewer agent and operator on 2026-07-14
+**Status:** Implemented and live-verified. Implementation plan approved by the reviewer agent and
+operator on 2026-07-14
 (`docs/superpowers/plans/2026-07-14-plan-9-9-operator-packaging-and-credential-diagnostics.md`);
-implementation not started. Until Plan 9.9 lands, Plan 9.8's live operator gate must use
-`uv tool install --editable . --reinstall`. Do not silently
-change that gate to a non-editable install or fold these packaging/credential concerns into Plan
-9.8's context-selection implementation.
+implementation SHA `f120a5afde39e3b3a8a405211ae71653b6e75665`, evidence report SHA
+`cde9cb9d22c32d0d0fe05b019543d6b1b5ba78a5`. Real `acpx` packaging evidence:
+`reports/plan-9-9-operator-packaging-evidence.md`.
+
+Plan 9.9 established and live-verified the non-editable install contract. Future operator and
+Plan 9.8 regression runs use `uv tool install . --reinstall`; the historical Plan 9.8 evidence
+remains unchanged.
+
+`P9.9-FU-1` (workspace-influenced agent launch environment) is deliberately deferred, not
+implemented here — see the Plan 9.9 plan file's Deferred Follow-Ups and the Plan 9.95 custody
+entry below.
 
 ## Plan 9.95 (Tracked, Not Yet Scheduled): Usage, Telemetry, and Evidence-Tooling Correctness
 
@@ -428,7 +436,7 @@ change that gate to a non-editable install or fold these packaging/credential co
 - `P9.88-FU-3` — read-range telemetry misattribution in `planning_loop.py` — raised Plan 9.88; now unblocked since the post-ceremony freeze lift.
 - `P9.85-FU-7` — deliberate-access design for redacted debug traces plus logging-surface audit — raised Plan 9.85; its redaction opt-out requires its own security review at scheduling time.
 - `P9.87-FU-1` — mechanical current-raw-evidence grounding guard — raised Plan 9.87; must not absorb or be absorbed by Plan 11 and may split into its own entry when scheduled.
-- `P9.9-FU-1` — workspace-influenced agent launch environment — raised by Plan 9.9's design review; security-design lane that may split when scheduled.
+- `P9.9-FU-1` — workspace-influenced agent launch environment — raised by Plan 9.9's design review; Plan 9.9 closed implemented and live-verified (implementation SHA `f120a5afde39e3b3a8a405211ae71653b6e75665`, evidence `reports/plan-9-9-operator-packaging-evidence.md`) without implementing this follow-up; security-design lane that may split when scheduled.
 
 FU-4B accepted-open is deliberately not in this entry: it is a closed disposition under the Plan 9.88 ceremony, not a TODO. **Status:** Tracked, not yet scheduled; no implementation plan exists; this entry may split by lane when scheduled.
 
@@ -513,10 +521,12 @@ pattern.
     proven, FU-4B accepted-open (exhausted) via Plan 9.88 ceremony
     `fec114b7fc79da35ea399f4d66e22e776e6b76a3`.
 18. Plan 9.88: FU-4B evidence remediation and Plan 9.87 closure — **closed** (Outcome B
-    accepted-open); must complete before Plan 9.9 begins.
-19. Plan 9.9: Operator packaging and credential diagnostics — implementation plan approved
-    2026-07-14, implementation not started; owns cross-layer provider/key mismatch diagnostics and
-    non-editable-install root discovery.
+    accepted-open); completed before Plan 9.9 began.
+19. Plan 9.9: Operator packaging and credential diagnostics — **implemented and live-verified**;
+    implementation SHA `f120a5afde39e3b3a8a405211ae71653b6e75665`, evidence report SHA
+    `cde9cb9d22c32d0d0fe05b019543d6b1b5ba78a5`; owns cross-layer provider/key mismatch diagnostics
+    and non-editable-install root discovery; evidence in
+    `reports/plan-9-9-operator-packaging-evidence.md`.
 20. Plan 9.95: Usage, telemetry, and evidence-tooling correctness — tracked, not yet scheduled;
     custody entry for open deferred follow-ups after Plan 9.9, with lane splits allowed at scheduling.
 21. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
@@ -528,8 +538,9 @@ The recommended sequence builds the executable release skeleton while ensuring t
 
 Plan 9.9 follows Plan 9.8 as a separate operator-runtime hardening lane. It owns the two deferred
 Plan 9.7 packaging/credential diagnostics and does not expand Plan 9.8's context-selection scope.
-Plan 9.8 continues to use an editable operator install for live proof until Plan 9.9 establishes
-and verifies the non-editable-install root contract.
+Plan 9.9 established and live-verified the non-editable install contract. Future operator and
+Plan 9.8 regression runs use `uv tool install . --reinstall`; the historical Plan 9.8 evidence
+remains unchanged.
 Plan 9.85 is a separate lane from both Plan 9.8 and Plan 9.9: it extends Plan 9.8's single-pass
 correctness floor to bounded multi-turn planning when required context cannot fit one pass, and it
 neither depends on nor blocks Plan 9.9. Plan 9.85 is implemented and live-verified for the
@@ -537,6 +548,7 @@ oversized-required-context trigger; `P9.85-FU-4` (model-initiated replanning whe
 already fits) and `P9.85-FU-5` (live model-emitted `REFUSE:` demonstration) are explicitly deferred
 to the newly tracked **Plan 9.87**, which follows Plan 9.85; **Plan 9.88** remediated FU-4B
 and closed Plan 9.87 (Outcome B accepted-open) before Plan 9.9 in the sequence above. Plan 9.87
-and Plan 9.88 are closed; Plan 9.9 remains not itself implemented.
+and Plan 9.88 are closed; Plan 9.9 is now itself implemented and live-verified (implementation SHA
+`f120a5afde39e3b3a8a405211ae71653b6e75665`).
 
 Plans 9.6 and 9.7 sit alongside each other, not in a strict dependency order: Plan 9.6 owns the Phase 1 working-agent sign-off gate (live Redis/Gateway/e2e proof plus the real-IDE HITL artifact) and Plan 11 does not start until it passes; Plan 9.7 only changes how an operator's local Redis/Gateway dependencies get started before a session and does not touch what Plan 9.6 proves or gate. Plan 9.7 merged independently of Plan 9.6's remaining open HITL item. **Plan 9.75** follows Plan 9.7 in the recommended sequence: it fixes the open Zed HITL / `toolCall` permission payload and closes Plan 9.7's deferred planning-bar DoD using the Plan 9.7 operator PATH install for manual verification. Plan 10 is tracked separately and not yet scheduled or designed; do not fold its gateway-capability-broker scope into 9.6, 9.7, or 9.75 when picking up either.

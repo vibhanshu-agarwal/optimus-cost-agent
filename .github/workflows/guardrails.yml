@@ -31,6 +31,13 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
 
+      - name: "optimus-check: noneditable-package"
+        run: |
+          uv build --wheel --out-dir dist/plan99
+          uv run python tools/verify_plan99_noneditable_install.py \
+            --wheel-dir dist/plan99 \
+            --scratch-root "${RUNNER_TEMP}/optimus-plan99-package"
+
       - name: "optimus-check: hygiene"
         run: |
           uv run pre-commit run trailing-whitespace --all-files

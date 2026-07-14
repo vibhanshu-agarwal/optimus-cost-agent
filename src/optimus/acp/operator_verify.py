@@ -35,19 +35,18 @@ _WALL_CLOCK_TIMEOUT_SECONDS = 120
 _VERIFY_WORKSPACE_DIRNAME = ".verify-live-agent-workspace"
 
 
-def default_verify_workspace_root(project_root: Path | None = None) -> Path:
-    root = project_root or _resolve_project_root()
-    return (root / "reports" / _VERIFY_WORKSPACE_DIRNAME).resolve()
+def default_verify_workspace_root(repository_root: Path) -> Path:
+    return (repository_root / "reports" / _VERIFY_WORKSPACE_DIRNAME).resolve()
 
 
-def default_live_agent_transcript_path() -> Path:
-    return PLAN_9_6_LIVE_AGENT_TRANSCRIPT_PATH
+def default_live_agent_transcript_path(repository_root: Path) -> Path:
+    return (repository_root / PLAN_9_6_LIVE_AGENT_TRANSCRIPT_PATH).resolve()
 
 
 @dataclass(frozen=True)
 class OperatorLiveSessionConfig:
     workspace_root: Path
-    project_root: Path
+    repository_root: Path
     model: str
     task: str
     transcript_path: Path
@@ -100,7 +99,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, repository_root: Path) -> int:
     """
     Main entry point for the application. This function orchestrates the live verification
     process and ensures all preliminary checks and configurations are in place before invoking
@@ -115,8 +114,8 @@ def main(argv: list[str] | None = None) -> int:
     :rtype: int
     """
     args = parse_args(argv)
-    project_root = _resolve_project_root()
-    workspace = (args.workspace_root or default_verify_workspace_root(project_root)).resolve()
+    repository_root = repository_root.resolve()
+    workspace = (args.workspace_root or default_verify_workspace_root(repository_root)).resolve()
     model = resolve_agent_model(os.environ, cli_model=args.model)
     task = (args.task or DEFAULT_VERIFY_TASK).strip()
 
@@ -135,10 +134,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     before_snapshot = snapshot_workspace_text_files(workspace)
-    transcript_path = (args.transcript_path or default_live_agent_transcript_path()).resolve()
+    transcript_path = (args.transcript_path or default_live_agent_transcript_path(repository_root)).resolve()
     config = OperatorLiveSessionConfig(
         workspace_root=workspace,
-        project_root=project_root,
+        repository_root=repository_root,
         model=model,
         task=task,
         transcript_path=transcript_path,
@@ -222,7 +221,7 @@ def run_operator_live_session(
     """
     redis_url = environ["OPTIMUS_REDIS_URL"].strip()
     redis_store = RedisAgentStateStore.from_url(redis_url)
-    subprocess_env = build_acp_subprocess_env(operator_environ=environ, project_root=config.project_root)
+    subprocess_env = build_acp_subprocess_env(operator_environ=environ)
     deadline = time.monotonic() + config.wall_clock_timeout_seconds
     run_ids: set[str] = set()
     process: subprocess.Popen[str] | None = None
@@ -648,10 +647,6 @@ def _operator_action_message(check: PreflightCheckResult) -> str:
     if check.name == "workspace writable":
         return "Choose a writable workspace directory for --workspace-root."
     return check.detail
-
-
-def _resolve_project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
 
 
 def _failure(message: str) -> OperatorLiveSessionResult:

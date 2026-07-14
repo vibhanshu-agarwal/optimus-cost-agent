@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pytest
 
 from optimus.acp import __main__ as acp_main
@@ -21,11 +23,81 @@ def test_setup_flag_calls_wizard_and_short_circuits(monkeypatch) -> None:
     assert len(calls) == 1
 
 
+def test_setup_uses_operator_config_root_not_workspace(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    config = tmp_path / "operator-config"
+    captured = {}
+
+    def fake_setup(*, config_root):
+        captured["root"] = config_root
+        return 0
+
+    monkeypatch.setenv("OPTIMUS_CONFIG_ROOT", str(config))
+    monkeypatch.setattr(acp_main, "run_setup_wizard", fake_setup)
+    assert acp_main.main(["--workspace-root", str(workspace), "--setup"]) == 0
+    assert captured["root"] == config.resolve()
+
+
+def test_workspace_contained_config_root_exits_before_setup_or_infra(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    monkeypatch.setenv("OPTIMUS_CONFIG_ROOT", str(workspace / "config"))
+    setup = Mock()
+    redis = Mock()
+    monkeypatch.setattr(acp_main, "run_setup_wizard", setup)
+    monkeypatch.setattr(acp_main, "ensure_local_redis", redis)
+    assert acp_main.main(["--workspace-root", str(workspace), "--setup"]) == 2
+    setup.assert_not_called()
+    redis.assert_not_called()
+
+
+def test_main_routes_one_resolved_operator_paths_object_to_startup_helpers(monkeypatch, tmp_path):
+    paths = Mock(
+        workspace_root=tmp_path / "workspace",
+        config_root=tmp_path / "config",
+        runtime_root=tmp_path / ".optimus",
+        debug_log_path=tmp_path / ".optimus" / "debug-acp.ndjson",
+    )
+    monkeypatch.setattr(acp_main, "resolve_operator_paths", Mock(return_value=paths))
+    seen: dict[str, object] = {}
+
+    def fake_apply(environ, *, config_root):
+        seen["apply_config_root"] = config_root
+        return {
+            "OPTIMUS_GATEWAY_URL": "https://gateway.example",
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
+        }
+
+    def fake_debug(*, enabled, log_path, provenance_root):
+        seen["debug"] = (log_path, provenance_root)
+
+    monkeypatch.setattr(acp_main, "apply_local_defaults", fake_apply)
+    monkeypatch.setattr(acp_main, "configure_debug_trace", fake_debug)
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(
+        acp_main,
+        "ensure_local_gateway",
+        lambda **kwargs: seen.update(
+            gateway=(kwargs["config_root"], kwargs["runtime_root"])
+        ) or None,
+    )
+    monkeypatch.setattr(acp_main, "build_configured_server", lambda **_k: Mock(
+        serve_ndjson=lambda *_a, **_k: __import__("asyncio").sleep(0)
+    ))
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineReader", lambda *_a, **_k: object())
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineWriter", lambda *_a, **_k: object())
+
+    assert acp_main.main(["--workspace-root", str(tmp_path), "--debug-trace"]) == 0
+    assert seen["apply_config_root"] is paths.config_root
+    assert seen["gateway"] == (paths.config_root, paths.runtime_root)
+    assert seen["debug"] == (paths.debug_log_path, paths.workspace_root)
+
+
 def _patch_common(monkeypatch, *, gateway_url: str = "https://gateway.optimus.ai", server_factory=None):
     monkeypatch.setattr(
         acp_main,
         "apply_local_defaults",
-        lambda environ, *, project_root: {
+        lambda environ, *, config_root: {
             "OPTIMUS_GATEWAY_URL": gateway_url,
             "OPTIMUS_API_KEY": "test-key",
             "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
@@ -99,7 +171,7 @@ def test_check_config_passes_sanitized_environ_to_preflight(monkeypatch, tmp_pat
     monkeypatch.setattr(
         acp_main,
         "apply_local_defaults",
-        lambda environ, *, project_root: {
+        lambda environ, *, config_root: {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
             "OPTIMUS_API_KEY": "shared-secret",
             "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
@@ -195,7 +267,7 @@ def test_real_serve_path_calls_helpers_in_expected_order(monkeypatch, tmp_path) 
     monkeypatch.setattr(
         acp_main,
         "apply_local_defaults",
-        lambda environ, *, project_root: call_order.append("apply_local_defaults")
+        lambda environ, *, config_root: call_order.append("apply_local_defaults")
         or {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
             "OPTIMUS_API_KEY": "test-key",
@@ -239,7 +311,7 @@ def test_anthropic_provider_key_reaches_gateway_child_but_not_agent_settings(mon
     gateway_environ_seen: dict[str, str] = {}
     agent_environ_seen: dict[str, str] = {}
 
-    def fake_ensure_local_gateway(*, environ, project_root, log):
+    def fake_ensure_local_gateway(*, environ, config_root, runtime_root, log):
         gateway_environ_seen.update(environ)
         return None
 
@@ -263,7 +335,7 @@ def test_anthropic_provider_key_reaches_gateway_child_but_not_agent_settings(mon
     monkeypatch.setattr(
         acp_main,
         "apply_local_defaults",
-        lambda environ, *, project_root: {
+        lambda environ, *, config_root: {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
             "OPTIMUS_API_KEY": "shared-secret",
             "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
@@ -283,7 +355,7 @@ def test_openrouter_provider_key_reaches_gateway_child_but_not_agent_settings(mo
     gateway_environ_seen: dict[str, str] = {}
     agent_environ_seen: dict[str, str] = {}
 
-    def fake_ensure_local_gateway(*, environ, project_root, log):
+    def fake_ensure_local_gateway(*, environ, config_root, runtime_root, log):
         gateway_environ_seen.update(environ)
         return None
 
@@ -307,7 +379,7 @@ def test_openrouter_provider_key_reaches_gateway_child_but_not_agent_settings(mo
     monkeypatch.setattr(
         acp_main,
         "apply_local_defaults",
-        lambda environ, *, project_root: {
+        lambda environ, *, config_root: {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
             "OPTIMUS_API_KEY": "shared-secret",
             "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",

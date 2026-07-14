@@ -6,7 +6,23 @@ import sys
 from unittest.mock import MagicMock
 
 from optimus.acp import local_infra
-from optimus.acp.local_gateway_secrets import ProviderSecrets
+from optimus.acp.local_gateway_secrets import (
+    CredentialLayer,
+    CredentialProvenance,
+    ProviderCredentialConfigurationError,
+    ProviderCredentialResolution,
+    ProviderSecrets,
+)
+
+
+def _resolution(secrets: ProviderSecrets | None) -> ProviderCredentialResolution:
+    provenance = CredentialProvenance(CredentialLayer.ENVIRONMENT, "test")
+    return ProviderCredentialResolution(
+        secrets=secrets,
+        provider_provenance=provenance,
+        api_key_provenance=provenance,
+        base_url_provenance=provenance,
+    )
 
 
 def test_strip_local_provider_keys_removes_vendor_keys_but_keeps_optimus_vars() -> None:
@@ -47,7 +63,7 @@ def test_strip_local_provider_keys_also_removes_openrouter_key_and_shared_secret
 def test_apply_local_defaults_fills_loopback_urls_when_unset(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda *_a, **_k: None)
 
-    result = local_infra.apply_local_defaults({}, project_root=tmp_path)
+    result = local_infra.apply_local_defaults({}, config_root=tmp_path)
 
     assert result["OPTIMUS_REDIS_URL"] == "redis://127.0.0.1:6379/0"
     assert result["OPTIMUS_GATEWAY_URL"] == "http://127.0.0.1:8765"
@@ -65,7 +81,7 @@ def test_apply_local_defaults_leaves_explicit_values_untouched(tmp_path, monkeyp
         "OPTIMUS_API_KEY": "explicit-key",
     }
 
-    result = local_infra.apply_local_defaults(input_environ, project_root=tmp_path)
+    result = local_infra.apply_local_defaults(input_environ, config_root=tmp_path)
 
     assert result == input_environ
     assert result is not input_environ
@@ -74,7 +90,7 @@ def test_apply_local_defaults_leaves_explicit_values_untouched(tmp_path, monkeyp
 def test_apply_local_defaults_resolves_api_key_from_shared_secret_on_loopback(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda *_a, **_k: "resolved-secret")
 
-    result = local_infra.apply_local_defaults({}, project_root=tmp_path)
+    result = local_infra.apply_local_defaults({}, config_root=tmp_path)
 
     assert result["OPTIMUS_API_KEY"] == "resolved-secret"
 
@@ -84,7 +100,7 @@ def test_apply_local_defaults_skips_production_mode_and_model_for_hosted_gateway
 
     result = local_infra.apply_local_defaults(
         {"OPTIMUS_GATEWAY_URL": "https://gateway.optimus.ai"},
-        project_root=tmp_path,
+        config_root=tmp_path,
     )
 
     assert result == {"OPTIMUS_GATEWAY_URL": "https://gateway.optimus.ai", "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0"}
@@ -96,7 +112,7 @@ def test_apply_local_defaults_does_not_mutate_input_or_os_environ(tmp_path, monk
     monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda *_a, **_k: None)
     input_environ: dict[str, str] = {}
 
-    result = local_infra.apply_local_defaults(input_environ, project_root=tmp_path)
+    result = local_infra.apply_local_defaults(input_environ, config_root=tmp_path)
 
     assert input_environ == {}
     assert result is not input_environ
@@ -205,11 +221,45 @@ def test_ensure_local_gateway_noops_when_already_reachable(tmp_path, monkeypatch
 
     result = local_infra.ensure_local_gateway(
         environ={"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765"},
-        project_root=tmp_path,
+        config_root=tmp_path,
+        runtime_root=tmp_path / ".optimus",
     )
 
     assert result is None
     assert popen_calls == []
+
+
+def test_credential_conflict_stops_before_log_or_spawn(tmp_path, monkeypatch):
+    runtime_root = tmp_path / "workspace" / ".optimus"
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        local_infra,
+        "resolve_provider_credentials",
+        MagicMock(side_effect=ProviderCredentialConfigurationError("sanitized mismatch")),
+    )
+    popen = MagicMock()
+    monkeypatch.setattr(local_infra.subprocess, "Popen", popen)
+    messages = []
+    assert local_infra.ensure_local_gateway(
+        environ={"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765"},
+        config_root=tmp_path / "config",
+        runtime_root=runtime_root,
+        log=messages.append,
+    ) is None
+    popen.assert_not_called()
+    assert not runtime_root.exists()
+    assert messages == ["sanitized mismatch"]
+
+
+def test_reused_gateway_creates_no_log_in_second_workspace(tmp_path, monkeypatch):
+    runtime_root = tmp_path / "second-workspace" / ".optimus"
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)
+    assert local_infra.ensure_local_gateway(
+        environ={"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765"},
+        config_root=tmp_path / "config",
+        runtime_root=runtime_root,
+    ) is None
+    assert not (runtime_root / "local-gateway.log").exists()
 
 
 def test_ensure_local_gateway_noops_for_non_loopback_url(tmp_path, monkeypatch) -> None:
@@ -219,7 +269,8 @@ def test_ensure_local_gateway_noops_for_non_loopback_url(tmp_path, monkeypatch) 
 
     result = local_infra.ensure_local_gateway(
         environ={"OPTIMUS_GATEWAY_URL": "https://gateway.optimus.ai"},
-        project_root=tmp_path,
+        config_root=tmp_path,
+        runtime_root=tmp_path / ".optimus",
     )
 
     assert result is None
@@ -228,13 +279,14 @@ def test_ensure_local_gateway_noops_for_non_loopback_url(tmp_path, monkeypatch) 
 
 def test_ensure_local_gateway_noops_when_no_secrets(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: False)
-    monkeypatch.setattr(local_infra, "resolve_provider_secrets", lambda *_a, **_k: None)
+    monkeypatch.setattr(local_infra, "resolve_provider_credentials", lambda *_a, **_k: _resolution(None))
     monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda *_a, **_k: None)
     messages: list[str] = []
 
     result = local_infra.ensure_local_gateway(
         environ={"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765"},
-        project_root=tmp_path,
+        config_root=tmp_path,
+        runtime_root=tmp_path / ".optimus",
         log=messages.append,
     )
 
@@ -251,12 +303,13 @@ def test_ensure_local_gateway_reports_unsupported_provider_without_setup_pointer
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "typo-provider",
         },
-        project_root=tmp_path,
+        config_root=tmp_path,
+        runtime_root=tmp_path / ".optimus",
         log=messages.append,
     )
 
     assert result is None
-    assert any("unsupported local gateway provider" in msg for msg in messages)
+    assert any("unsupported provider" in msg for msg in messages)
     assert not any("run `optimus-agent --setup`" in msg for msg in messages)
 
 
@@ -271,11 +324,14 @@ def test_ensure_local_gateway_spawns_with_exact_gateway_env_and_no_stray_secrets
     monkeypatch.setattr(local_infra, "_tcp_reachable", fake_tcp_reachable)
     monkeypatch.setattr(
         local_infra,
-        "resolve_provider_secrets",
-        lambda environ, *, project_root: ProviderSecrets(provider="openrouter", model_provider_api_key="sk-or-test"),
+        "resolve_provider_credentials",
+        lambda environ, *, config_root: _resolution(
+            ProviderSecrets(provider="openrouter", model_provider_api_key="sk-or-test")
+        ),
     )
-    monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda environ, *, project_root: "shared-secret-value")
+    monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda environ, *, config_root: "shared-secret-value")
     monkeypatch.setattr(local_infra.time, "sleep", lambda _seconds: None)
+    messages: list[str] = []
 
     captured: dict[str, object] = {}
 
@@ -296,7 +352,9 @@ def test_ensure_local_gateway_spawns_with_exact_gateway_env_and_no_stray_secrets
 
     result = local_infra.ensure_local_gateway(
         environ={"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765", "PATH": os.environ.get("PATH", "")},
-        project_root=tmp_path,
+        config_root=tmp_path,
+        runtime_root=tmp_path / ".optimus",
+        log=messages.append,
     )
 
     assert result is not None
@@ -310,6 +368,10 @@ def test_ensure_local_gateway_spawns_with_exact_gateway_env_and_no_stray_secrets
     assert "ANTHROPIC_API_KEY" not in gateway_env
     assert gateway_env is not os.environ
     assert captured["stdout"] != subprocess.PIPE
+    assert result.log_path == tmp_path / ".optimus" / "local-gateway.log"
+    startup_output = "\n".join(messages)
+    assert "sk-or-test" not in startup_output
+    assert "shared-secret-value" not in startup_output
 
 
 def test_ensure_local_gateway_passes_through_custom_base_url(tmp_path, monkeypatch) -> None:
@@ -323,14 +385,16 @@ def test_ensure_local_gateway_passes_through_custom_base_url(tmp_path, monkeypat
     monkeypatch.setattr(local_infra, "_tcp_reachable", fake_tcp_reachable)
     monkeypatch.setattr(
         local_infra,
-        "resolve_provider_secrets",
-        lambda environ, *, project_root: ProviderSecrets(
-            provider="openai",
-            model_provider_api_key="sk-test",
-            base_url="https://custom.example.com/v1",
+        "resolve_provider_credentials",
+        lambda environ, *, config_root: _resolution(
+            ProviderSecrets(
+                provider="openai",
+                model_provider_api_key="sk-test",
+                base_url="https://custom.example.com/v1",
+            )
         ),
     )
-    monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda environ, *, project_root: "shared-secret-value")
+    monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda environ, *, config_root: "shared-secret-value")
     monkeypatch.setattr(local_infra.time, "sleep", lambda _seconds: None)
 
     captured: dict[str, object] = {}
@@ -350,7 +414,8 @@ def test_ensure_local_gateway_passes_through_custom_base_url(tmp_path, monkeypat
 
     result = local_infra.ensure_local_gateway(
         environ={"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765"},
-        project_root=tmp_path,
+        config_root=tmp_path,
+        runtime_root=tmp_path / ".optimus",
     )
 
     assert result is not None
@@ -358,21 +423,25 @@ def test_ensure_local_gateway_passes_through_custom_base_url(tmp_path, monkeypat
 
 
 def test_ensure_local_gateway_fails_closed_when_log_file_preparation_raises(tmp_path, monkeypatch) -> None:
-    (tmp_path / "reports").write_text("not a directory", encoding="utf-8")
+    runtime_root = tmp_path / ".optimus"
+    runtime_root.write_text("not a directory", encoding="utf-8")
     monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: False)
     monkeypatch.setattr(
         local_infra,
-        "resolve_provider_secrets",
-        lambda environ, *, project_root: ProviderSecrets(provider="openrouter", model_provider_api_key="sk-or-test"),
+        "resolve_provider_credentials",
+        lambda environ, *, config_root: _resolution(
+            ProviderSecrets(provider="openrouter", model_provider_api_key="sk-or-test")
+        ),
     )
-    monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda environ, *, project_root: "shared-secret-value")
+    monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda environ, *, config_root: "shared-secret-value")
     popen_calls: list[object] = []
     monkeypatch.setattr(local_infra.subprocess, "Popen", lambda *a, **k: popen_calls.append((a, k)))
     messages: list[str] = []
 
     result = local_infra.ensure_local_gateway(
         environ={"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765"},
-        project_root=tmp_path,
+        config_root=tmp_path,
+        runtime_root=runtime_root,
         log=messages.append,
     )
 
@@ -386,10 +455,12 @@ def test_ensure_local_gateway_fails_closed_when_popen_raises(tmp_path, monkeypat
     monkeypatch.setattr(local_infra, "_tcp_reachable", lambda host, port, *, timeout=1.0: False)
     monkeypatch.setattr(
         local_infra,
-        "resolve_provider_secrets",
-        lambda environ, *, project_root: ProviderSecrets(provider="openrouter", model_provider_api_key="sk-or-test"),
+        "resolve_provider_credentials",
+        lambda environ, *, config_root: _resolution(
+            ProviderSecrets(provider="openrouter", model_provider_api_key="sk-or-test")
+        ),
     )
-    monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda environ, *, project_root: "shared-secret-value")
+    monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda environ, *, config_root: "shared-secret-value")
 
     def raising_popen(*_a, **_k):
         raise OSError("spawn failed")
@@ -399,7 +470,8 @@ def test_ensure_local_gateway_fails_closed_when_popen_raises(tmp_path, monkeypat
 
     result = local_infra.ensure_local_gateway(
         environ={"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765"},
-        project_root=tmp_path,
+        config_root=tmp_path,
+        runtime_root=tmp_path / ".optimus",
         log=messages.append,
     )
 
@@ -412,10 +484,12 @@ def test_ensure_local_gateway_returns_none_when_process_exits_early(tmp_path, mo
     monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: False)
     monkeypatch.setattr(
         local_infra,
-        "resolve_provider_secrets",
-        lambda environ, *, project_root: ProviderSecrets(provider="openrouter", model_provider_api_key="sk-or-test"),
+        "resolve_provider_credentials",
+        lambda environ, *, config_root: _resolution(
+            ProviderSecrets(provider="openrouter", model_provider_api_key="sk-or-test")
+        ),
     )
-    monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda environ, *, project_root: "shared-secret-value")
+    monkeypatch.setattr(local_infra, "resolve_shared_secret", lambda environ, *, config_root: "shared-secret-value")
     monkeypatch.setattr(local_infra.time, "sleep", lambda _seconds: None)
     messages: list[str] = []
 
@@ -439,7 +513,8 @@ def test_ensure_local_gateway_returns_none_when_process_exits_early(tmp_path, mo
 
     result = local_infra.ensure_local_gateway(
         environ={"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765"},
-        project_root=tmp_path,
+        config_root=tmp_path,
+        runtime_root=tmp_path / ".optimus",
         log=messages.append,
     )
 

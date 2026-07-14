@@ -252,9 +252,17 @@ pair-plus-exhaustion closure gate before Plan 9.9 may change `src/optimus/**` or
 `tools/run_plan987_acpx_live_evidence.py`. See
 `reports/plan-9-87-model-replanning-refusal-acpx-evidence.md`.
 
-**Plan 9.9** (implementation plan approved 2026-07-14; implementation not
-started) covers operator packaging and credential diagnostics — cross-layer
-provider/key mismatch warnings and non-editable-install resource-root discovery.
+**Plan 9.9** (implemented and live-verified 2026-07-14; implementation SHA
+`f120a5afde39e3b3a8a405211ae71653b6e75665`, evidence report SHA
+`cde9cb9d22c32d0d0fe05b019543d6b1b5ba78a5`) covers operator packaging and
+credential diagnostics — cross-layer provider/key mismatch warnings and
+non-editable-install resource-root discovery. `optimus-agent` and
+`optimus-local-gateway` now install and run correctly from a non-editable
+wheel outside the checkout; operator credentials resolve from an
+operator-owned config directory that can never be inside the workspace. See
+`reports/plan-9-9-operator-packaging-evidence.md` for the real `acpx`
+packaging evidence. `P9.9-FU-1` (workspace-influenced agent launch
+environment) remains open and is tracked under Plan 9.95 below.
 
 **Plan 9.95** (tracked, not yet scheduled) is the custody entry for open
 deferred follow-ups: `P9.85-FU-6`, `P9.85-FU-7`, `P9.87-FU-1`,
@@ -297,13 +305,45 @@ auto-start Redis (Docker) plus the local gateway process on launch — no `.env`
 **Install on PATH** (pick one; do **not** activate a repo `.venv` for this path):
 
 ```bash
-# Recommended — uv adds its tool bin dir to PATH via update-shell
-uv tool install --editable .
+# Recommended — uv builds a non-editable wheel from this checkout and adds its
+# tool bin dir to PATH via update-shell
+uv tool install . --reinstall
 uv tool update-shell   # then open a new terminal
 
 # Windows fallback when uv/pipx are unavailable
 pip install --user -e . --force-reinstall
 ```
+
+`uv tool install . --reinstall` builds and installs a wheel from this checkout into an
+isolated `uv`-managed environment; it does **not** create an editable link back to
+`src/`, so `optimus-agent` and `optimus-local-gateway` run the same way whether the
+checkout later moves or is deleted. Once this project is published, the long-term
+form of this command will be:
+
+```bash
+# Future — not yet published to PyPI:
+# uv tool install optimus-cost-agent
+```
+
+**Operator configuration location (non-editable install):** `optimus-agent` no
+longer implicitly reads a repo-root `.env.gateway`. Its provider key and shared
+secret resolve from an **operator config directory** that can never be inside the
+workspace: on Windows this defaults to `%APPDATA%/optimus-cost-agent/.env.gateway`;
+set `OPTIMUS_CONFIG_ROOT` to an absolute directory outside the workspace to override
+it explicitly. `optimus-agent --setup` writes to the OS keychain, not to this file —
+use `.env.gateway` in the config directory only if you prefer a file over the
+keychain. The two manual gateway launcher scripts (`tools/run_local_gateway.sh` /
+`.ps1`, described in [Manual / advanced setup](#manual--advanced-setup-transitional)
+below) still load the checkout's own repo-root `.env.gateway` — that remains an
+explicit developer action, not `optimus-agent`'s implicit config discovery.
+
+**Local gateway and debug logs (singleton semantics):** the workspace that starts
+the loopback local gateway owns `<that-workspace>/.optimus/local-gateway.log`. If a
+gateway is already reachable on the configured loopback port, later `optimus-agent`
+invocations from other workspaces reuse that process and do **not** create their own
+gateway log. Debug tracing (`--debug-trace`) always writes to the current
+workspace's own `<workspace>/.optimus/debug-acp.ndjson`, regardless of gateway
+ownership.
 
 **Required after `pip install --user` on Windows:** Python installs scripts to
 `%APPDATA%\Python\Python<version>\Scripts` (for example
@@ -402,7 +442,7 @@ Do **not** point Zed at `.venv\Scripts\optimus-agent.exe` — use the PATH comma
 | Symptom | Likely cause | Fix |
 |---------|----------------|-----|
 | `where.exe optimus-agent` finds nothing after `pip install --user` | Scripts dir not on user PATH | Add `%APPDATA%\Python\Python<ver>\Scripts` to user PATH (see above); new terminal + full IDE restart |
-| `ModuleNotFoundError: No module named 'keyring'` | Stale `optimus-agent.exe` shim on PATH (often `~/.local/bin/`) from an old install | `where.exe optimus-agent` — remove or rename the broken shim; reinstall with `uv tool install --editable . --reinstall` or `pip install --user -e . --force-reinstall` + PATH fix |
+| `ModuleNotFoundError: No module named 'keyring'` | Stale `optimus-agent.exe` shim on PATH (often `~/.local/bin/`) from an old install | `where.exe optimus-agent` — remove or rename the broken shim; reinstall with `uv tool install . --reinstall` or `pip install --user -e . --force-reinstall` + PATH fix |
 | Wrong binary wins on PATH | `.venv\Scripts` or `.local\bin` shadows the working install | Close venv (`deactivate`); fix PATH order; prefer Roaming Python `Scripts` or `uv tool` bin dir |
 | `uv: command not found` | uv not installed | Install [uv](https://docs.astral.sh/uv/) (preferred) or use `pip install --user -e .` **with the PATH step above** |
 | IDE still can't find `optimus-agent` after PATH fix | IDE inherited old PATH at startup | Fully quit and restart JetBrains/Cursor/Zed — not just a new terminal tab |
@@ -413,6 +453,14 @@ Keychain setup above is the intended long-term default. `.env` and `.env.gateway
 supported for operators who prefer files or need to override keychain values (explicit env vars
 and `.env.gateway` take precedence over the keychain).
 
+**This section's `.env.gateway` is the checkout's own repo-root file, loaded only by the manual
+launcher scripts below (`tools/run_local_gateway.sh` / `.ps1`) when you invoke them explicitly.**
+It is a separate file from the operator config directory's `.env.gateway`
+(`%APPDATA%/optimus-cost-agent/.env.gateway` by default, or an absolute `OPTIMUS_CONFIG_ROOT`
+override) that `optimus-agent`'s own auto-start path reads — see
+[Install and configure](#2-install-and-configure-keychain--operator-path) above.
+`optimus-agent` never implicitly reads this repo-root file.
+
 For this project the Optimus Gateway is a **local process you run yourself**, not a hosted
 service that issues credentials. The agent keeps the one-key model: only
 `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` in the agent environment.
@@ -422,7 +470,7 @@ Use **two gitignored files** so agent and gateway secrets never mix:
 | File | Loaded by | Purpose |
 |------|-----------|---------|
 | `.env` | your agent shell / launchers | `OPTIMUS_GATEWAY_URL`, `OPTIMUS_API_KEY`, `OPTIMUS_REDIS_URL`, `OPTIMUS_AGENT_MODEL` |
-| `.env.gateway` | gateway launcher only | provider key + `OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET` |
+| `.env.gateway` (repo root) | `tools/run_local_gateway.sh` / `.ps1` only | provider key + `OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET` |
 
 Copy the examples and edit locally (never commit the real files):
 
@@ -572,15 +620,22 @@ IDEs and shells should never need a project-specific `.venv` path or a
 `optimus-agent` works as a plain command from any directory, with no venv to activate:
 
 ```bash
-uv tool install --editable .
+uv tool install . --reinstall
 ```
 
-`--editable` means source edits under `src/` take effect immediately without reinstalling.
-After adding or upgrading a *dependency* in `pyproject.toml`, refresh the tool environment:
+This builds a wheel from the checkout and installs it non-editably into an isolated
+`uv`-managed environment — the same non-editable-install contract Plan 9.9 established and
+live-verified with `tools/verify_plan99_noneditable_install.py` (see
+`reports/plan-9-9-operator-packaging-evidence.md`). Source edits under `src/` do **not** take
+effect until you rerun this command. After changing source or adding/upgrading a dependency in
+`pyproject.toml`, reinstall:
 
 ```bash
-uv tool install --editable . --reinstall
+uv tool install . --reinstall
 ```
+
+Once this project is published, the long-term form of this command will be
+`uv tool install optimus-cost-agent` (not yet available).
 
 If `optimus-agent` isn't found after installing, `uv`'s tool bin directory isn't on `PATH` yet:
 
