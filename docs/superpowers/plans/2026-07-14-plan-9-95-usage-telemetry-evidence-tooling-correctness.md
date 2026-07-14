@@ -368,7 +368,7 @@ and proves the planning artifact was approved before code changes.
 - Read: `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`
 - Read: this plan
 
-- [ ] **Step 1: Confirm branch ancestry and a clean scoped baseline**
+- [x] **Step 1: Confirm branch ancestry and a clean scoped baseline**
 
 Run:
 
@@ -381,7 +381,7 @@ git status --short --branch
 Expected: the ancestry command exits 0. Stop if the worktree contains unrelated changes that overlap
 any file in the File and Responsibility Map; do not reset or overwrite them.
 
-- [ ] **Step 2: Confirm custody and exclusions mechanically**
+- [x] **Step 2: Confirm custody and exclusions mechanically**
 
 Run:
 
@@ -402,7 +402,7 @@ Do not mark this step complete from chat memory; use the approved plan text on d
 Evidence (2026-07-14): the reviewer-agent and operator both approved the amended detailed plan;
 their dispositions are recorded in the `Status` and `Design approval` fields above.
 
-- [ ] **Step 4: Request approval for the Task 0 documentation-only commit**
+- [x] **Step 4: Request approval for the Task 0 documentation-only commit**
 
 Run:
 
