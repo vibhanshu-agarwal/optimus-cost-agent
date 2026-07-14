@@ -335,7 +335,7 @@ as a supplementary artifact and is credited to Plan 9.87's scope, not claimed as
   (session/time-scoped opt-out for legitimate raw-trace debugging, plus a broader logging-surface
   audit) is deferred to a future plan scheduled after Plan 9.9.
 
-## Plan 9.87 (In Closure): Model-Initiated Replanning and Live Refusal Evidence
+## Plan 9.87 (Closed): Model-Initiated Replanning and Live Refusal Evidence
 
 **Raised:** Deferred from Plan 9.85 as `P9.85-FU-4` and `P9.85-FU-5` when closing the
 oversized-required-context workflow.
@@ -347,14 +347,15 @@ oversized-required-context workflow.
   `PLANNING_MODEL_REFUSED` with sanitized text, zero plan hash, zero permission requests, zero
   mutation, and `end_turn`.
 
-**Status:** FU-4A and FU-5 now have verified real-dependency evidence. FU-4B is
-characterized-but-unproven after its controlled live lane stopped on a `README.md` filename
-hallucination. Plan 9.88 owns the separately planned remediation and final Plan 9.87 closure
-decision. This planning-loop lane remains
-separate from Plan 9.9 packaging/credential diagnostics and from Plan 11 intelligent
-selection/compression — do not fold this scope into either.
+**Status:** Closed. FU-4A and FU-5 are proven with verified real-dependency evidence. FU-4B is
+**accepted-open** (exhausted, not qualifying) under Plan 9.88 Task 8 Outcome B — ceremony HEAD
+`fec114b7fc79da35ea399f4d66e22e776e6b76a3`, operator `vibhanshu-agarwal`, timestamp
+`2026-07-14T08:13:56Z`; pair-plus-exhaustion gate PASS; `--require fu4b` correctly FAIL.
+Accepted-open is not qualifying FU-4B evidence. This planning-loop lane remains separate from
+Plan 9.9 packaging/credential diagnostics and from Plan 11 intelligent selection/compression —
+do not fold this scope into either.
 
-## Plan 9.88 (Pending Design): FU-4B Evidence Remediation and Plan 9.87 Closure
+## Plan 9.88 (Closed): FU-4B Evidence Remediation and Plan 9.87 Closure
 
 **Raised:** 2026-07-13 from Plan 9.87's documented FU-4B characterization. This is a dedicated
 follow-up lane, not a reopening of the frozen Plan 9.87 capture driver.
@@ -380,8 +381,14 @@ Doc-only merges are safe; any change to either watched path before that ceremony
 invalidate the spent FU-5 evidence. Plan 9.88 must complete this closure decision before Plan 9.9
 starts.
 
-**Status:** Pending design in a fresh post-merge worktree. No Plan 9.88 capture, verifier, runtime,
-or fixture implementation is authorized by this roadmap record.
+**Status:** Closed under Outcome B (exhausted ledger + contemporaneous accepted-open). Ceremony
+HEAD `fec114b7fc79da35ea399f4d66e22e776e6b76a3`; disposition recorded in
+`reports/plan-9-87-model-replanning-refusal-acpx-evidence.md`. Plan 9.88 carries forward
+`P9.87-FU-1` (raw-evidence grounding guard, unresolved) and `P9.85-FU-6` (billable retry
+accounting, unresolved) from Plan 9.87, and adds `P9.88-FU-2` (ledger digest specification)
+and `P9.88-FU-3` (frozen-code read-range telemetry misattribution) — see Plan 9.88's Deferred
+Follow-Ups. No `P9.88-FU-1` (unsafe-final follow-up) was created — terminal disposition was
+exhaustion, not unsafe.
 
 ## Plan 9.9 (Tracked, Not Yet Scheduled): Operator Packaging and Credential Diagnostics
 
@@ -487,12 +494,15 @@ pattern.
     2026-07-12 for the oversized-required-context trigger; deferred from Plan 9.8 as P9.8-FU-1;
     closes the gap where required context exceeds the single-pass budget; evidence in
     `reports/plan-9-85-multi-turn-acpx-evidence.md`.
-17. Plan 9.87: Model-initiated replanning and live refusal evidence — tracked, not yet scheduled;
-    deferred from Plan 9.85 as P9.85-FU-4 and P9.85-FU-5.
-18. Plan 9.9: Operator packaging and credential diagnostics — tracked, not yet scheduled; owns
+17. Plan 9.87: Model-initiated replanning and live refusal evidence — **closed**; FU-4A/FU-5
+    proven, FU-4B accepted-open (exhausted) via Plan 9.88 ceremony
+    `fec114b7fc79da35ea399f4d66e22e776e6b76a3`.
+18. Plan 9.88: FU-4B evidence remediation and Plan 9.87 closure — **closed** (Outcome B
+    accepted-open); must complete before Plan 9.9 begins.
+19. Plan 9.9: Operator packaging and credential diagnostics — tracked, not yet scheduled; owns
     cross-layer provider/key mismatch diagnostics and non-editable-install root discovery.
-19. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
-20. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
+20. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
+21. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
     starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden
     harness are stable.
 
@@ -507,7 +517,8 @@ correctness floor to bounded multi-turn planning when required context cannot fi
 neither depends on nor blocks Plan 9.9. Plan 9.85 is implemented and live-verified for the
 oversized-required-context trigger; `P9.85-FU-4` (model-initiated replanning when Plan 9.8 context
 already fits) and `P9.85-FU-5` (live model-emitted `REFUSE:` demonstration) are explicitly deferred
-to the newly tracked **Plan 9.87**, which follows Plan 9.85 and precedes Plan 9.9 in the sequence
-above and is not itself implemented.
+to the newly tracked **Plan 9.87**, which follows Plan 9.85; **Plan 9.88** remediated FU-4B
+and closed Plan 9.87 (Outcome B accepted-open) before Plan 9.9 in the sequence above. Plan 9.87
+and Plan 9.88 are closed; Plan 9.9 remains not itself implemented.
 
 Plans 9.6 and 9.7 sit alongside each other, not in a strict dependency order: Plan 9.6 owns the Phase 1 working-agent sign-off gate (live Redis/Gateway/e2e proof plus the real-IDE HITL artifact) and Plan 11 does not start until it passes; Plan 9.7 only changes how an operator's local Redis/Gateway dependencies get started before a session and does not touch what Plan 9.6 proves or gate. Plan 9.7 merged independently of Plan 9.6's remaining open HITL item. **Plan 9.75** follows Plan 9.7 in the recommended sequence: it fixes the open Zed HITL / `toolCall` permission payload and closes Plan 9.7's deferred planning-bar DoD using the Plan 9.7 operator PATH install for manual verification. Plan 10 is tracked separately and not yet scheduled or designed; do not fold its gateway-capability-broker scope into 9.6, 9.7, or 9.75 when picking up either.

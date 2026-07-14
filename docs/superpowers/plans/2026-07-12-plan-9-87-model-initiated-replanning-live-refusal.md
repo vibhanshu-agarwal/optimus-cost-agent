@@ -815,32 +815,45 @@ git diff --check
 
 Expected: PASS.
 
-- [ ] **Step 5: Re-run the complete evidence verifier**
+- [x] **Step 5: Re-run the complete evidence verifier**
 
 ```bash
-python tools/verify_plan987_acpx_evidence.py --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md --require fu4a --require fu4b --require fu5 --max-completed-refusal-attempts 3
+python tools/verify_plan987_acpx_evidence.py \
+  --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md \
+  --require fu4a --require fu5 \
+  --check-fu4b-ledger-status exhausted \
+  --max-completed-replan-attempts 3 \
+  --max-completed-refusal-attempts 3
 ```
 
-Expected: PASS with consistent commit, prompt version, fixtures, and attempt ledger. (FU-4B qualifying evidence must come from Task 6b before this gate can pass.)
+Expected: PASS for the amended pair-plus-exhaustion gate after contemporaneous accepted-open sign-off. FU-4B does **not** qualify; `--require fu4b` must continue to fail with `fu4b claim missing`. Reason and record: Plan 9.88 Task 8 Outcome B ceremony in `reports/plan-9-87-model-replanning-refusal-acpx-evidence.md` at ceremony HEAD `fec114b7fc79da35ea399f4d66e22e776e6b76a3` (operator `vibhanshu-agarwal`, timestamp `2026-07-14T08:13:56Z`).
 
-- [ ] **Step 6: Update the roadmap only after Steps 1-5 pass**
+- [x] **Step 6: Update the roadmap only after Steps 1-5 pass**
 
-Mark `P9.85-FU-4` closed by FU-4A/FU-4B and `P9.85-FU-5` closed by the qualifying fresh FU-5 attempt. Retain turn-1-only context, prompt-enforced observation grounding, fixed partitions, Plan 11 exclusion, and open FU-6 cases.
+Mark `P9.85-FU-4` closed by FU-4A proven plus FU-4B accepted-open (exhausted ledger; not qualifying) and `P9.85-FU-5` closed by the qualifying fresh FU-5 attempt. Retain turn-1-only context, prompt-enforced observation grounding, fixed partitions, Plan 11 exclusion, and open FU-6 cases. Never represent accepted-open FU-4B as qualifying evidence.
 
-- [ ] **Step 7: Verify roadmap/report consistency**
+- [x] **Step 7: Verify roadmap/report consistency**
 
 ```bash
-rg -n "Plan 9\.87|P9\.85-FU-4|P9\.85-FU-5|P9\.85-FU-6|Plan 11|prompt-enforced" docs/superpowers/plans/2026-07-01-phase-1-roadmap.md reports/plan-9-87-model-replanning-refusal-acpx-evidence.md
+rg -n "Plan 9\.87|Plan 9\.88|FU-4A|FU-4B|FU-5|P9\.85-FU-6|P9\.87-FU-1|P9\.88-FU-2|P9\.88-FU-3|Plan 9\.9|Plan 11|Do not treat FU-4B" \
+  docs/superpowers/plans/2026-07-01-phase-1-roadmap.md \
+  docs/superpowers/plans/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md \
+  docs/superpowers/plans/2026-07-13-plan-9-88-fu4b-evidence-remediation-and-plan-9-87-closure.md \
+  reports/plan-9-87-model-replanning-refusal-acpx-evidence.md README.md
 git diff --check
 ```
 
 - [ ] **Step 8: Commit final closure artifacts**
 
 ```bash
-git add docs/superpowers/plans/2026-07-01-phase-1-roadmap.md reports/plan-9-87-model-replanning-refusal-acpx-evidence.md
+git add \
+  reports/plan-9-87-model-replanning-refusal-acpx-evidence.md \
+  docs/superpowers/plans/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md \
+  docs/superpowers/plans/2026-07-13-plan-9-88-fu4b-evidence-remediation-and-plan-9-87-closure.md \
+  docs/superpowers/plans/2026-07-01-phase-1-roadmap.md README.md
 git diff --cached --name-status
 git diff --cached --check
-git commit -m "Close Plan 9.87 with live evidence"
+git commit -m "Close Plan 9.87 through Plan 9.88 evidence"
 ```
 
 ---
@@ -851,13 +864,13 @@ git commit -m "Close Plan 9.87 with live evidence"
 - [ ] Oversized PLAN/CHAT fails pre-Gateway with the existing typed stop.
 - [ ] The pinned prompt states ephemerality, complete re-read, and refusal requirements.
 - [ ] Automated tests prove one-turn plumbing; only FU-4A live evidence claims real-model one-turn behavior.
-- [ ] FU-4B proves fitting-context model-initiated guarded replanning and final-only approval/mutation.
+- [x] FU-4B is accepted-open (not qualifying): Plan 9.88 ran three completed real `acpx` attempts against `P9.88-FU4B-QUALIFY-v1`, exhausted the ledger (`--check-fu4b-ledger-status exhausted` PASS; `--require fu4b` FAIL), and recorded contemporaneous operator sign-off. See the Task 8 Outcome B ceremony in `reports/plan-9-87-model-replanning-refusal-acpx-evidence.md`. Accepted-open is never represented as qualifying FU-4B evidence.
 - [ ] Repeated malformed output uses sanitized `PLANNING_UNPARSEABLE_RESPONSE`.
 - [ ] Halt/refusal/resource precedence and REFUSE/FINAL_PLAN asymmetry pass boundary tests.
 - [ ] Cost equality exhausts and over-limit final plans expose no persisted/approvable hash.
 - [ ] Retry attempts do not increment settled turns; FU-6 remainder stays open.
 - [x] FU-5 obeys the anti-fishing protocol and qualifies through the final permitted completed attempt; infrastructure-invalid slot-3 retries are disclosed and not counted.
-- [ ] FU-4A, FU-4B, and FU-5 have separate real-dependency evidence tables.
+- [x] FU-4A and FU-5 have separate qualifying real-dependency evidence tables; FU-4B has a complete Plan 9.88 terminal ledger plus accepted-open ceremony/sign-off (not a qualifying table).
 - [ ] Narrow tests, integrations, named Redis tier, coverage, Ruff, and diff checks pass.
 - [ ] Roadmap changes only after every required gate passes.
 
@@ -865,13 +878,15 @@ git commit -m "Close Plan 9.87 with live evidence"
 
 ### P9.87-FU-1: Mechanical current-raw-evidence grounding guard
 
+**Status:** Remains open. Plan 9.88 did not resolve this follow-up.
+
 **Trigger:** A content-correct FU-5 final plan or later evidence shows exact policy bytes can pass through observations despite the prompt prohibition.
 
 **Acceptance criteria:** Define mechanical provenance between final WRITE content and current-turn raw ranges without logging source bodies or silently absorbing Plan 11. This does not block Plan 9.87 unless the observed final plan is unsafe.
 
 ### P9.85-FU-6: Billable failed retry aggregation and unknown transport cost
 
-**Status:** Remains open. Plan 9.87 expands retry-wrapper coverage but does not close unresolved accounting cases.
+**Status:** Remains open. Plan 9.87 expands retry-wrapper coverage but does not close unresolved accounting cases. Plan 9.88 did not resolve this follow-up.
 
 ### Plan 11: Intelligent context selection and compression
 

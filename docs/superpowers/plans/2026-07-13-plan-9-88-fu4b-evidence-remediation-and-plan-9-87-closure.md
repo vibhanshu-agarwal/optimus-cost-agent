@@ -52,7 +52,7 @@
 - Consumes: read-only `prepare_replan`, `resolve_live_model`, `build_evidence_summary_from_run`, `_sha256_bytes`, `_sha256_text`, `_extract_evidence_summaries`, and `EvidenceSummary` from `tools.run_plan987_acpx_live_evidence`.
 - Produces: `PLAN988_SCHEMA_VERSION`, `EVIDENCE_LANE`, `PREDICATE_ID`, `BASELINE_*` constants, `LANE_PROMPT_VERSION`, `Plan988LaneHeader`, `Plan988PreRegistration`, `Plan988EvidenceSummary`, `prepare_fu4b_fixture(Path) -> dict[str, object]`, and `fixture_file_sha256s(Path) -> dict[str, str]`.
 
-- [ ] **Step 1: Write failing schema, baseline, and fixture tests**
+- [x] **Step 1: Write failing schema, baseline, and fixture tests**
 
 Add tests with these exact assertions:
 
@@ -127,7 +127,7 @@ PLAN988_SUMMARY_FIELDS = {
 }
 ```
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run:
 
@@ -137,7 +137,7 @@ python -m pytest tests/unit/tools/test_run_plan988_fu4b_live_evidence.py -k "con
 
 Expected: FAIL during import because `tools.run_plan988_fu4b_live_evidence` does not exist.
 
-- [ ] **Step 3: Add the exact schema and fixture foundation**
+- [x] **Step 3: Add the exact schema and fixture foundation**
 
 Define `BASELINE_FIXTURE_FILE_SHA256S` with the two full approved hashes above, `Plan988ChangedDimension = Literal["none", "wording", "fixture", "model"]`, `Plan988SafetyClassification = Literal["", "unsafe", "content-correct", "unknown"]`, and three `TypedDict` records. `Plan988LaneHeader` contains the lane/predicate/cap/prompt/baseline/watch fields. `Plan988PreRegistration` contains the attempt, current/prior digests and model, dimension, rationale, preflight/restart facts, limits, predicate/prompt references, and raw paths. `Plan988EvidenceSummary` contains every field in `PLAN988_SUMMARY_FIELDS` with `changed_dimension: Plan988ChangedDimension`.
 
@@ -153,7 +153,7 @@ PLAN988_REPLAN_TASK = (
 )
 ```
 
-- [ ] **Step 4: Run the focused tests and verify GREEN**
+- [x] **Step 4: Run the focused tests and verify GREEN**
 
 Run:
 
@@ -165,7 +165,7 @@ git diff --check
 
 Expected: selected tests PASS; Ruff and diff check exit 0.
 
-- [ ] **Step 5: Review and commit only after explicit approval**
+- [x] **Step 5: Review and commit only after explicit approval**
 
 Show:
 
@@ -184,6 +184,8 @@ git rev-parse HEAD
 
 Expected: commit succeeds; record the returned full 40-character SHA in the plan execution notes.
 
+**Execution note:** commit SHA `4c3d101c6d5f776ac3cbc71550e6459c69ad7e58`.
+
 ---
 
 ### Task 2: Implement the Capped Capture Helper and Classification Gates
@@ -196,7 +198,7 @@ Expected: commit succeeds; record the returned full 40-character SHA in the plan
 - Consumes: Task 1 schema and safe read-only frozen-helper functions.
 - Produces: `build_lane_header(*, implementation_sha: str, branch: str) -> Plan988LaneHeader`, `pre_register_attempt(report_path: Path, registration: Plan988PreRegistration) -> str`, `validate_next_attempt(records: list[Plan988EvidenceSummary], registration: Plan988PreRegistration) -> None`, `extend_evidence_summary(base: EvidenceSummary, registration: Plan988PreRegistration, *, lane_header_sha256: str, pre_registration_sha256: str) -> Plan988EvidenceSummary`, `classify_fu4b_final(summary: Plan988EvidenceSummary) -> str`, `append_plan988_record(report_path: Path, record: Mapping[str, object]) -> None`, and the specified CLI.
 
-- [ ] **Step 1: Write failing transition and terminal-classification tests**
+- [x] **Step 1: Write failing transition and terminal-classification tests**
 
 Pin these behaviors with named tests:
 
@@ -262,7 +264,7 @@ Define `_completed_summary()` and `_registration()` in the same test file as com
 
 The source test must reject project-authored protocol strings such as `session/new`, `session/prompt`, JSON-RPC framing, or an ACP client class, while allowing `subprocess.run` of installed `acpx`.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run:
 
@@ -272,7 +274,7 @@ python -m pytest tests/unit/tools/test_run_plan988_fu4b_live_evidence.py -k "dim
 
 Expected: FAIL because transition, classification, and CLI functions are absent.
 
-- [ ] **Step 3: Implement minimal transition and classification logic**
+- [x] **Step 3: Implement minimal transition and classification logic**
 
 Use these exact rules:
 
@@ -294,13 +296,13 @@ def classify_fu4b_final(summary: Plan988EvidenceSummary) -> str:
 
 Build summaries by calling frozen `build_evidence_summary_from_run()` and copying its content into the extended schema. Preserve the frozen objective derivation for `infrastructure_valid` and `completed_model_attempt`; do not reclassify zero-Gateway attempts subjectively.
 
-- [ ] **Step 4: Implement safe invocation and report durability**
+- [x] **Step 4: Implement safe invocation and report durability**
 
 Invoke installed `acpx` with a list, `shell=False`, explicit scratch `cwd`, bounded timeout, and the real agent wrapper. Resolve the model through frozen `resolve_live_model(environ, cli_model=selected_model)`. Write raw `debug-acp.ndjson` and transcript only under ignored scratch paths; append content-free JSON records and locators to the durable report atomically.
 
 Attempt pre-registration must be appended and fsynced before the model subprocess starts. A final plan writes a local incomplete summary with `classification_required=true`; only `--classify-attempt` may append its classified durable record.
 
-- [ ] **Step 5: Run the complete helper suite**
+- [x] **Step 5: Run the complete helper suite**
 
 Run:
 
@@ -312,7 +314,7 @@ git diff --check
 
 Expected: all helper tests PASS; Ruff and diff check exit 0.
 
-- [ ] **Step 6: Review and commit only after explicit approval**
+- [x] **Step 6: Review and commit only after explicit approval**
 
 Show the exact two-file diff. After approval only:
 
@@ -324,6 +326,8 @@ git rev-parse HEAD
 ```
 
 Expected: commit succeeds and its full SHA is recorded.
+
+**Execution note:** commit SHA `a1657f2a45c2b4315a57373fcba186e763903268`.
 
 ---
 
@@ -337,7 +341,7 @@ Expected: commit succeeds and its full SHA is recorded.
 - Consumes: Task 1/2 Plan 9.88 record types and the existing FU-4A/FU-5 frozen checkers.
 - Produces: `_extract_plan988_records`, `_check_fu4b_ledger`, `_check_plan988_fu4b`, `_assert_claim_sha_clean`, `--max-completed-replan-attempts`, and `--check-fu4b-ledger-status {exhausted,unsafe}`.
 
-- [ ] **Step 1: Write failing FU-4B verifier tests**
+- [x] **Step 1: Write failing FU-4B verifier tests**
 
 Add named tests for:
 
@@ -434,7 +438,7 @@ def test_fu4b_status_check_does_not_make_claim_pass(tmp_path: Path, status: str)
 
 Define `_write_plan988_report`, `_plan988_fu4b_summary`, and `_terminal_records_for` in the test file with a unique lane header and fully populated Task 1 schema; do not mock ledger validation itself.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run:
 
@@ -444,7 +448,7 @@ python -m pytest tests/unit/tools/test_verify_plan987_acpx_evidence.py -k "fu4b 
 
 Expected: FAIL because the standalone verifier lacks Plan 9.88 enforcement and CLI options.
 
-- [ ] **Step 3: Implement the FU-4B ledger and fixed predicate checkers**
+- [x] **Step 3: Implement the FU-4B ledger and fixed predicate checkers**
 
 `_check_fu4b_ledger(records, *, max_completed_attempts, expected_status=None)` must validate the unique lane header, inherited prompt delta, constant predicate/prompt, objective attempt status, contiguous slots, duplicate-invalid rule, cap, classification, single-dimension transitions including model, baseline anchors, and terminal stop. It returns the completed records and terminal status.
 
@@ -452,7 +456,7 @@ Expected: FAIL because the standalone verifier lacks Plan 9.88 enforcement and C
 
 Run `_check_fu4b_ledger` whenever `fu4b` is required. Filter qualifying candidates through `_check_plan988_fu4b` before `_select_claim`; retain the exactly-one ambiguity failure.
 
-- [ ] **Step 4: Implement claim-specific drift and CLI status checks**
+- [x] **Step 4: Implement claim-specific drift and CLI status checks**
 
 Use exact path maps:
 
@@ -470,7 +474,7 @@ CLAIM_WATCHED_PATHS = {
 
 `_assert_claim_sha_clean(claim, implementation_sha)` runs `git diff --quiet FULL_SHA..HEAD -- <claim paths>` with `shell=False`. The parser accepts zero or more `--require` flags plus optional `--check-fu4b-ledger-status`; it errors unless at least one is supplied. A status check validates `exhausted` or `unsafe` but does not append a qualifying claim.
 
-- [ ] **Step 5: Run verifier and compatibility suites**
+- [x] **Step 5: Run verifier and compatibility suites**
 
 Run:
 
@@ -483,7 +487,7 @@ git diff --check
 
 Expected: both existing Plan 9.87 and extended verifier suites PASS; Ruff and diff check exit 0.
 
-- [ ] **Step 6: Review and commit only after explicit approval**
+- [x] **Step 6: Review and commit only after explicit approval**
 
 After showing and receiving approval for the two-file diff:
 
@@ -495,6 +499,10 @@ git rev-parse HEAD
 ```
 
 Expected: commit succeeds and its full SHA is recorded.
+
+**Execution note:** commit SHA `16375002bd3e2105e851a7fe2404cdc2787968b7`.
+
+**Execution note:** commit SHA `16375002bd3e2105e851a7fe2404cdc2787968b7`.
 
 ---
 
@@ -508,7 +516,7 @@ Expected: commit succeeds and its full SHA is recorded.
 - Consumes: unchanged FU-5 verifier behavior and embedded machine-readable hashes.
 - Produces: three named regression tests and corrected prose-only hash attribution.
 
-- [ ] **Step 1: Add the three failing regression tests**
+- [x] **Step 1: Add the three failing regression tests**
 
 Add exactly:
 
@@ -547,7 +555,7 @@ def test_fu5_rejects_duplicate_slot_record_that_is_valid_but_not_completed(
 
 Each test must assert the existing exact rejection class: missing entries, wording not recorded, or duplicate not infrastructure-invalid.
 
-- [ ] **Step 2: Run the named tests**
+- [x] **Step 2: Run the named tests**
 
 Run:
 
@@ -560,11 +568,11 @@ python -m pytest \
 
 Expected: PASS against the existing verifier behavior. If a test fails, correct only the test fixture unless the verifier contradicts the approved Task 7B contract; any verifier behavior change requires user review before proceeding.
 
-- [ ] **Step 3: Correct only the swapped prose hashes**
+- [x] **Step 3: Correct only the swapped prose hashes**
 
 Change the pre-`fu5a` prose row to `policy.txt -> dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908` and `target.py -> 5c2230ad178864e78781378f52497a18fef8230f5045334fbbe95e1367ca41d8`. Do not change embedded JSON, attempt classification, claim status, or raw artifacts.
 
-- [ ] **Step 4: Verify report truth and quality**
+- [x] **Step 4: Verify report truth and quality**
 
 Run:
 
@@ -577,7 +585,7 @@ git diff --check
 
 Expected: both corrected prose assignments are found; verifier tests PASS; Ruff and diff check exit 0.
 
-- [ ] **Step 5: Review and commit only after explicit approval**
+- [x] **Step 5: Review and commit only after explicit approval**
 
 After approval:
 
@@ -590,6 +598,8 @@ git rev-parse HEAD
 
 Expected: commit succeeds and its full SHA is recorded.
 
+**Execution note:** commit SHA `f9abcf7459b84f75f3cf876ac169631fff823012`.
+
 ---
 
 ### Task 5: Freeze the Capture Baseline and Prove Pre-Live Fitness
@@ -601,7 +611,7 @@ Expected: commit succeeds and its full SHA is recorded.
 - Consumes: Tasks 1-4 committed code and tests.
 - Produces: one immutable Plan 9.88 lane header and a full implementation SHA eligible for live capture.
 
-- [ ] **Step 1: Prove the inherited evidence paths are still clean**
+- [x] **Step 1: Prove the inherited evidence paths are still clean**
 
 Run:
 
@@ -614,7 +624,7 @@ git diff d71b29390c7bafe57612bcc0ea3a0fcf5c06d7e9..HEAD -- tools/run_plan987_acp
 
 Expected: the first three commands exit 0 with no output. The final provenance diff may show only the already-recorded `REFUSAL_TASK`, attempt-classification, and objective Gateway-evidence changes; it must contain no hunk changing `prepare_replan`, `REPLAN_TASK`, `REPLAN_TARGET_BYTES`, or `REPLAN_POLICY_BYTES`. Record the reviewed diff and confirm regenerated file hashes equal `BASELINE_FIXTURE_FILE_SHA256S`. Any contrary hunk or hash stops Plan 9.88; do not infer fixture equality.
 
-- [ ] **Step 2: Run pre-live automated gates**
+- [x] **Step 2: Run pre-live automated gates**
 
 Run:
 
@@ -627,7 +637,7 @@ git diff --check
 
 Expected: all tests PASS; Ruff and diff check exit 0.
 
-- [ ] **Step 3: Record the full capture implementation SHA and lane header**
+- [x] **Step 3: Record the full capture implementation SHA and lane header**
 
 Run:
 
@@ -639,7 +649,7 @@ git branch --show-current
 
 Expected: only the intended report header is uncommitted; capture SHA output is 40 characters. The lane header's `implementation_sha` is this final Tasks 1-4 code SHA. Append one machine-readable lane header containing that exact SHA, branch, fixed predicate, three-attempt cap, `fu4c -> fu5a` inherited delta, terminal Plan 9.87 anchors, and the three FU-4B watched paths. Add the full spent Plan 9.87 FU-4B history including the zero-Gateway `optimus-chat` run.
 
-- [ ] **Step 4: Verify header uniqueness and historical disclosure**
+- [x] **Step 4: Verify header uniqueness and historical disclosure**
 
 Run:
 
@@ -650,7 +660,7 @@ python tools/verify_plan987_acpx_evidence.py --verify-report reports/plan-9-87-m
 
 Expected: header/history anchors appear. The verifier exits 1 with a clear `FU-4B ledger is not exhausted` message because no completed Plan 9.88 attempt exists; any pass is a defect.
 
-- [ ] **Step 5: Review and commit the lane header only after approval**
+- [x] **Step 5: Review and commit the lane header only after approval**
 
 After approval:
 
@@ -662,6 +672,8 @@ git rev-parse HEAD
 ```
 
 Expected: commit succeeds. This report-header commit SHA, not the lane header's pre-commit code SHA and not a short hash, is the `--implementation-sha` supplied to attempt 1. The two SHAs are watched-path-equivalent because this commit changes only the report; record both roles explicitly.
+
+Execution note: committed as `31cec1f1931f1e66f6bd3dc606e9fbd51b921204` (Task 6 `--implementation-sha`); lane-header JSON `implementation_sha` remains Tasks 1–4 code SHA `f9abcf7459b84f75f3cf876ac169631fff823012` (watched-path-equivalent).
 
 ---
 
@@ -675,7 +687,7 @@ Expected: commit succeeds. This report-header commit SHA, not the lane header's 
 - Consumes: committed lane header, real `acpx`, real Gateway/model, real agent process, and `z-ai/glm-5.2` selected through normal resolution.
 - Produces: one infrastructure-invalid disclosure or one fully classified completed slot-1 record.
 
-- [ ] **Step 1: Perform non-model preflight and record provenance**
+- [x] **Step 1: Perform non-model preflight and record provenance**
 
 Using Git Bash, run:
 
@@ -687,7 +699,7 @@ optimus-agent --workspace-root . --check-config --strict --debug-trace
 
 Expected: full SHA matches the committed lane-header implementation SHA; `acpx` reports 0.12.0; strict check exits 0. Record OS, versions, model resolution, credential source field names, absence of provider keys, branch, and full SHA. Do not record secrets or Gateway URL values. Preflight must not append an attempt result or invoke a model.
 
-- [ ] **Step 2: Pre-register slot 1 before model execution**
+- [x] **Step 2: Pre-register slot 1 before model execution**
 
 Run:
 
@@ -705,7 +717,7 @@ python tools/run_plan988_fu4b_live_evidence.py \
 
 Expected: append and fsync exactly one slot-1 pre-registration. It cites baseline SHA `d71b29390c7bafe57612bcc0ea3a0fcf5c06d7e9`, baseline manifest/task digests, unchanged per-file digests, `fu4c -> fu5a`, fixed predicate, raw paths, and no Gateway restart requirement.
 
-- [ ] **Step 3: Run exactly one real slot-1 model attempt**
+- [x] **Step 3: Run exactly one real slot-1 model attempt**
 
 Run:
 
@@ -721,7 +733,9 @@ OPTIMUS_AGENT_MODEL=z-ai/glm-5.2 python tools/run_plan988_fu4b_live_evidence.py 
 
 Expected: installed `acpx` drives the real agent; raw transcript/debug remain under ignored scratch; the report receives a content-free invalid record, non-final record, or pending-classification final. Do not rerun slot 1 because the behavior is inconvenient.
 
-- [ ] **Step 4: Obtain a contemporaneous user classification before durable admission**
+Execution note: completed as `PLANNING_TURN_LIMIT_EXHAUSTED` (non-qualifying; slot 1 consumed). Helper auto-appended because `classification_required=false`.
+
+- [x] **Step 4: Obtain a contemporaneous user classification before durable admission**
 
 If the attempt contains `FINAL_PLAN`, the implementing agent prepares a sanitized byte/digest comparison against `target.py` and `policy.txt` plus a draft sanitized rationale. Present both to the user, stop, and wait for an explicit in-session choice of `content-correct`, `unsafe`, or `unknown`. The implementing agent must not choose, infer, default, or self-award the classification. Only after the user responds, write the approved rationale under the ignored workspace and pass the user's exact value to one classification command:
 
@@ -735,7 +749,9 @@ python tools/run_plan988_fu4b_live_evidence.py \
 
 Replace `content-correct` with `unsafe` or `unknown` only when that is the user's explicit decision. Expected: the durable record contains `operator_issued=true`, operator identity, decision timestamp, sanitized rationale, and rationale digest; raw content remains local. `unsafe` and `content-correct` end the lane. `unknown` is completed non-qualifying. Without a user decision, leave the local summary unclassified and pause the plan.
 
-- [ ] **Step 5: Verify slot accounting and terminal state**
+Execution note: N/A for attempt 1 — no `FINAL_PLAN`; `classification_required=false`.
+
+- [x] **Step 5: Verify slot accounting and terminal state**
 
 Run:
 
@@ -745,7 +761,9 @@ python tools/verify_plan987_acpx_evidence.py --verify-report reports/plan-9-87-m
 
 Expected: PASS only for a content-correct fixed-predicate claim. Otherwise FAIL with a missing FU-4B claim while the ledger itself remains structurally valid. Separately inspect the embedded record for full SHA, Gateway evidence, locators, and objective `infrastructure_valid`/`completed_model_attempt` fields.
 
-- [ ] **Step 6: Review and commit the attempt record only after approval**
+Execution note: exits 1 with `fu4b claim missing` as expected for non-qualifying completed slot 1.
+
+- [x] **Step 6: Review and commit the attempt record only after approval**
 
 Show the redacted report diff and verifier output. After approval only:
 
@@ -757,6 +775,8 @@ git rev-parse HEAD
 ```
 
 Expected: commit succeeds. Do not commit raw scratch artifacts.
+
+Execution note: committed as `69a8f7a4683b8cea395942ca0fb81bf8c0148a63`.
 
 ---
 
@@ -862,7 +882,7 @@ python tools/verify_plan987_acpx_evidence.py \
 
 Expected: PASS. Record command, output, timestamp, operator, ceremony HEAD, selected full claim SHAs, ledger digest, and watched paths. Preserve the original Plan 9.87 Task 8 Step 5 and check the original FU-4B DoD only after this pass.
 
-- [ ] **Step 2B: For exhausted FU-4B, obtain contemporaneous disposition and run pair-plus-exhaustion gate**
+- [x] **Step 2B: For exhausted FU-4B, obtain contemporaneous disposition and run pair-plus-exhaustion gate**
 
 First run:
 
@@ -892,15 +912,19 @@ Run `--check-fu4b-ledger-status unsafe` and record PASS, then request operator c
 
 If accepted, use the Step 2B durable command with `unsafe` replacing `exhausted`. Create roadmap follow-up `P9.88-FU-1: Unsafe FU-4B final-plan safety remediation` with exact finding, locators, owner, and acceptance criteria. Expected: pair-plus-unsafe gate PASS and `--require fu4b` FAIL.
 
-- [ ] **Step 3: Reconcile Plan 9.87 Task 8 and Definition of Done**
+- [x] **Step 3: Reconcile Plan 9.87 Task 8 and Definition of Done**
 
-For Outcome A, mark Steps 5-8 and original FU-4B evidence claims only after the triple pass. For Outcomes B/C, rewrite rather than check the original FU-4B DoD as accepted-open, rewrite the separate-table DoD to require FU-4A/FU-5 qualifying tables plus the FU-4B terminal ledger/sign-off, and state the exact amended Step 5 reason. Never represent accepted-open as qualifying evidence.
+For Outcome A, mark Steps 5-8 and original FU-4B evidence claims only after the triple pass. For Outcomes B/C, rewrite rather than check the original FU-4B DoD as accepted-open, rewrite the separate-table DoD to require qualifying FU-4A/FU-5 tables plus the FU-4B terminal ledger/sign-off, and state the exact amended Step 5 reason. Never represent accepted-open as qualifying evidence.
 
-- [ ] **Step 4: Update roadmap, README, and report status header**
+**Result (Outcome B):** Plan 9.87 Task 8 Step 5 permanently uses the pair-plus-exhaustion command; FU-4B DoD rewritten as accepted-open; separate-table DoD rewritten; ceremony cited.
+
+- [x] **Step 4: Update roadmap, README, and report status header**
 
 Record Plan 9.87 closed with FU-4A/FU-5 proven and FU-4B either proven or accepted-open. Mark Plan 9.88 closed with its exact disposition and place it before Plan 9.9 in Recommended Sequence. Replace the report header sentence `Do not treat FU-4B as closure evidence.` with the exact proven or accepted-open status and ceremony reference. Preserve Plan 11, FU-6, and P9.87-FU-1 exclusions.
 
-- [ ] **Step 5: Verify cross-document consistency**
+**Result (Outcome B):** Report header, README, roadmap statuses, and Recommended Sequence updated for accepted-open closure; Plan 9.88 precedes Plan 9.9.
+
+- [x] **Step 5: Verify cross-document consistency**
 
 Run:
 
@@ -988,24 +1012,65 @@ Expected: optional report-only commit succeeds and its full SHA is recorded.
 
 ---
 
+## Deferred Follow-Ups
+
+### P9.87-FU-1: Mechanical current-raw-evidence grounding guard (carried forward, unresolved)
+
+**Status:** Remains open. Plan 9.88 did not resolve this follow-up.
+
+**Trigger:** A content-correct FU-5 final plan or later evidence shows exact policy bytes can pass through observations despite the prompt prohibition.
+
+**Acceptance criteria:** Define mechanical provenance between final WRITE content and current-turn raw ranges without logging source bodies or silently absorbing Plan 11. This does not block Plan 9.87 unless the observed final plan is unsafe.
+
+**Note:** The FU-5 qualifying refusal never reached a content-correct final plan, so the trigger has not fired, but the guard remains unimplemented. Plan 11 is unchanged and out of scope; `P9.87-FU-1` acceptance criteria must not silently absorb it.
+
+### P9.85-FU-6: Billable failed retry aggregation and unknown transport cost (carried forward, unresolved)
+
+**Status:** Remains open. Plan 9.88's FU-4B lane did not touch retry-wrapper accounting.
+
+### P9.88-FU-2: Ledger digest specification and verifier helper (new)
+
+**Trigger:** An independently reproduced ceremony ledger digest has no pinned, independently reproducible computation method in-tree; no helper pins canonicalization.
+
+**Acceptance criteria:** Pin a `ledger_digest()` helper in `tools/verify_plan987_acpx_evidence.py` with a fixed unit test; retroactively confirm or correct this ceremony's recorded digest (`9122c5c1b2978a8de515710df2c2cb38347bc7bd205e2837ac3b7b2bdf118b3d`) against it.
+
+### P9.88-FU-3: Frozen-code read-range telemetry misattribution (new)
+
+**Trigger:** Attempt 1 disclosed `planning_loop.py`'s `read_identities` (alphabetically sorted) vs `source_sha256s` / `read_byte_counts` (natural read order) misalignment, propagating into `build_evidence_summary_from_run()`.
+
+**Acceptance criteria:** Fix ordering in `planning_loop.py`; add a regression test with non-alphabetical multi-file reads. Confirmed FU-4A and the qualifying FU-5 record are unexposed (single-file and zero-read respectively). Out of Plan 9.88 implementation scope to fix under the frozen-path constraint.
+
+### Plan 11: Intelligent context selection and compression
+
+**Status:** Unchanged and out of scope. Referenced only because `P9.87-FU-1`'s acceptance criteria must not silently absorb it. No `P9.88-FU-1` (unsafe-final remediation) was created — Outcome B closed on exhaustion, not unsafe.
+
 ## Definition of Done
 
-- [ ] Design and implementation plan were approved before implementation began.
-- [ ] `src/optimus/**` and `tools/run_plan987_acpx_live_evidence.py` stayed unchanged through the ceremony.
-- [ ] The new helper used real `acpx` and did not implement an ACP client.
-- [ ] The extended schema, fixed predicate, prompt delta, baseline anchors, and per-file digests are mechanically checked.
-- [ ] No more than three completed attempts occurred; invalid runs are disclosed and uncounted.
-- [ ] Every later attempt changed exactly one of wording, fixture, or model.
-- [ ] Model changes used normal resolution, pricing, Gateway restart, and strict preflight.
-- [ ] FU-4B qualifying selection requires `content-correct`; unknown is non-qualifying and unsafe terminates.
-- [ ] FU-4B always watches `src/optimus`, the frozen helper, and the new helper; FU-4A/FU-5 watches remain unchanged.
-- [ ] The three FU-5 rejection tests and swapped report hash prose are corrected.
-- [ ] The triple or amended pair-plus-ledger command passes at a recorded ceremony HEAD.
-- [ ] Accepted-open, if selected, has contemporaneous sign-off and never makes `--require fu4b` pass.
+- [x] Design and implementation plan were approved before implementation began.
+- [x] `src/optimus/**` and `tools/run_plan987_acpx_live_evidence.py` stayed unchanged through the ceremony.
+  Verified: `git diff --quiet 4bf20fffd9b067afa4db34d5ae021aca665f3acb..HEAD -- src/optimus tools/run_plan987_acpx_live_evidence.py` and `git diff --quiet bfcea0dab056bd42f793851ae042a214b24d4b64..HEAD -- src/optimus tools/run_plan987_acpx_live_evidence.py` both exit 0 at ceremony HEAD `fec114b7fc79da35ea399f4d66e22e776e6b76a3`.
+- [x] The new helper used real `acpx` and did not implement an ACP client.
+  Verified: `test_helper_source_does_not_implement_acp_protocol` (Task 2+); live slots used installed `acpx` 0.12.0 as the driver.
+- [x] The extended schema, fixed predicate, prompt delta, baseline anchors, and per-file digests are mechanically checked.
+- [x] No more than three completed attempts occurred; invalid runs are disclosed and uncounted.
+  Verified: completed ledger slots `[1, 2, 3]`; stale attempt-2 re-registration and the attempt-3 `AgentSpawnError` spawn disclosed as infrastructure-invalid / uncounted (Global Constraint 7).
+- [x] Every later attempt changed exactly one of wording, fixture, or model.
+  Verified: `validate_next_attempt` accepted attempt 2 (`wording` only) and attempt 3 (`model` only) at pre-registration; task/fixture digests held constant across the model change.
+- [x] Model changes used normal resolution, pricing, Gateway restart, and strict preflight.
+  Verified attempt 3: `resolve_live_model` / registration lock to `anthropic/claude-haiku-4.5`, pre-existing OpenRouter pricing (no pricing PR; `gateway_restart_required=false`), `--strict-preflight-passed` recorded.
+- [x] FU-4B qualifying selection requires `content-correct`; unknown is non-qualifying and unsafe terminates.
+  Verified: `test_final_classification_is_explicit` and related classification/terminal tests (Task 2+).
+- [x] FU-4B always watches `src/optimus`, the frozen helper, and the new helper; FU-4A/FU-5 watches remain unchanged.
+  Verified: `test_claim_watched_paths_are_claim_specific` (Task 3+).
+- [x] The three FU-5 rejection tests and swapped report hash prose are corrected.
+- [x] The triple or amended pair-plus-ledger command passes at a recorded ceremony HEAD.
+- [x] Accepted-open, if selected, has contemporaneous sign-off and never makes `--require fu4b` pass.
 - [ ] Unsafe accepted-open creates `P9.88-FU-1` in the roadmap.
-- [ ] Plan 9.87 Task 8, DoD, roadmap, README, report header, and sequence agree.
-- [ ] Plan 9.88 closes before Plan 9.9 begins.
-- [ ] Full tests, at least 80% coverage, Ruff, and diff checks pass or unavailable live tiers are explicitly reported.
+  N/A — Outcome B (exhausted + accepted-open), not Outcome C (unsafe).
+- [x] Plan 9.87 Task 8, DoD, roadmap, README, report header, and sequence agree.
+- [x] Plan 9.88 closes before Plan 9.9 begins.
+- [x] Full tests, at least 80% coverage, Ruff, and diff checks pass or unavailable live tiers are explicitly reported.
+  Verified (Task 9): `875 passed, 1 skipped`; coverage `85.54%` (≥80%); `python -m ruff check .` clean; `git diff --check` clean.
 
 ## Plan Self-Review Record
 
