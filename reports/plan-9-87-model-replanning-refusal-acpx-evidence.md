@@ -1153,3 +1153,153 @@ Completed model attempt; non-qualifying. Stop reason `PLANNING_GATEWAY_FAILURE` 
   "wire_attempts": 2
 }
 ```
+
+```json
+{
+  "attempt": 3,
+  "baseline_remediation_dimension": "wording",
+  "changed_dimension": "model",
+  "evidence_lane": "P9.88-FU4B",
+  "fixture_file_sha256s": {
+    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8"
+  },
+  "fixture_manifest_sha256": "35f7557fc4928475d06a902d3c04ae42d154f35e19bc241dfe2a6e12cce53df3",
+  "gateway_restart_recorded": false,
+  "gateway_restart_required": false,
+  "implementation_sha": "04899e30ebf8595703bb8e66a91006a412c1dbd5",
+  "lane_header_sha256": "040d3af206253cff357b035b329ff7312ebc97057e7c65c8a5a45702b068f879",
+  "max_cost_usd": 1.0,
+  "max_planning_turns": 8,
+  "model": "anthropic/claude-haiku-4.5",
+  "predicate_id": "P9.88-FU4B-QUALIFY-v1",
+  "previous_fixture_file_sha256s": {
+    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8"
+  },
+  "previous_fixture_manifest_sha256": "35f7557fc4928475d06a902d3c04ae42d154f35e19bc241dfe2a6e12cce53df3",
+  "previous_model": "z-ai/glm-5.2",
+  "previous_task_sha256": "3dc6fc978a3b1b46d189b217ff8ca04e73dc13debffd68953ef4f4c71921752b",
+  "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a",
+  "rationale": "Slot 3 model change: previous z-ai/glm-5.2 already demonstrated exact full-range READ_MORE under attempt-2 wording; anthropic/claude-haiku-4.5 is the only priced OpenRouter alternate and FU-4A shows it can settle FINAL_PLAN when grammar works. Task and fixture digests unchanged from attempt 2. No pricing PR or Gateway restart required.",
+  "raw_debug_path": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor-plan988/reports/.plan988-fu4b-workspace/.optimus/debug-acp.ndjson",
+  "raw_transcript_path": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor-plan988/reports/.plan988-fu4b-workspace/attempt-3-transcript.jsonl",
+  "record_type": "plan988_pre_registration",
+  "schema_version": "plan-9-88-fu4b-evidence-v1",
+  "strict_preflight_passed": true,
+  "task_sha256": "3dc6fc978a3b1b46d189b217ff8ca04e73dc13debffd68953ef4f4c71921752b",
+  "wall_clock_minutes": 30
+}
+```
+
+## Plan 9.88 FU-4B Attempt 3 Result
+
+Completed model attempt; non-qualifying. Stop reason `PLANNING_TURN_LIMIT_EXHAUSTED` after turn-2 exact-range `READ_MORE`. No `FINAL_PLAN`, so operator classification was not required. Slot 3 is consumed. With three completed non-final slots, FU-4B ledger status is `exhausted`.
+
+> **Disclosure:** the first live spawn for this slot hit `AgentSpawnError` on `run-optimus-agent.cmd` with zero wire attempts, IDs, and usage — infrastructure-invalid under Global Constraint 7, disclosed but uncounted, and did not consume slot 3. The successful retry below reused the same locked pre-registration and produced this completed non-qualifying record (`anthropic/claude-haiku-4.5`; exact full-range reads `policy.txt#0:1024`, `target.py#0:4096`; then turn-limit).
+
+```json
+{
+  "attempt": 3,
+  "baseline_remediation_dimension": "wording",
+  "changed_dimension": "model",
+  "classification_required": false,
+  "completed_model_attempt": true,
+  "context_fits": true,
+  "debug_trace_locator": "debug: attempt-3",
+  "evidence_lane": "P9.88-FU4B",
+  "final_permission_count": 0,
+  "final_plan_hash_present": false,
+  "fixture_file_sha256s": {
+    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8"
+  },
+  "fixture_manifest_sha256": "35f7557fc4928475d06a902d3c04ae42d154f35e19bc241dfe2a6e12cce53df3",
+  "gateway_request_ids": [
+    "gw-2874a0d273ec429a8b2355364fd60538",
+    "gw-518f8364b17b483192189052f2e48462",
+    "gw-4b0a22df9ed44772a3c5328ccfa0891a"
+  ],
+  "gateway_restart_recorded": false,
+  "gateway_restart_required": false,
+  "implementation_sha": "04899e30ebf8595703bb8e66a91006a412c1dbd5",
+  "infrastructure_valid": true,
+  "intermediate_mutation_count": 0,
+  "intermediate_permission_count": 0,
+  "intermediate_plan_hash_count": 0,
+  "lane_header_sha256": "040d3af206253cff357b035b329ff7312ebc97057e7c65c8a5a45702b068f879",
+  "model": "anthropic/claude-haiku-4.5",
+  "operator_decision_timestamp": "",
+  "operator_identity": "",
+  "operator_issued": false,
+  "operator_rationale": "",
+  "operator_rationale_sha256": "",
+  "operator_safety_classification": "",
+  "output_sanitized": true,
+  "post_approval_mutation_count": 0,
+  "pre_approval_mutation_count": 0,
+  "pre_registration_sha256": "4c3891e8a9930c284ce83b58be82e4bc63020a9a16b732806679e0b932338ef5",
+  "predicate_id": "P9.88-FU4B-QUALIFY-v1",
+  "previous_fixture_file_sha256s": {
+    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8"
+  },
+  "previous_fixture_manifest_sha256": "35f7557fc4928475d06a902d3c04ae42d154f35e19bc241dfe2a6e12cce53df3",
+  "previous_model": "z-ai/glm-5.2",
+  "previous_task_sha256": "3dc6fc978a3b1b46d189b217ff8ca04e73dc13debffd68953ef4f4c71921752b",
+  "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a",
+  "raw_debug_path": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor-plan988/reports/.plan988-fu4b-workspace/.optimus/debug-acp.ndjson",
+  "raw_transcript_path": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor-plan988/reports/.plan988-fu4b-workspace/attempt-3-transcript.jsonl",
+  "record_type": "plan988_evidence_summary",
+  "run_id": "session-f7496d13e6d5465db3e3be4faab5ce1c:2",
+  "schema_version": "plan-9-88-fu4b-evidence-v1",
+  "session_id": "session-f7496d13e6d5465db3e3be4faab5ce1c",
+  "settled_turns": 2,
+  "stop_reason": "PLANNING_TURN_LIMIT_EXHAUSTED",
+  "strict_preflight_passed": true,
+  "task_sha256": "3dc6fc978a3b1b46d189b217ff8ca04e73dc13debffd68953ef4f4c71921752b",
+  "terminal_reason": "end_turn",
+  "total_cost_usd": 0.011761,
+  "transcript_locator": "transcript: attempt-3",
+  "turn_summaries": [
+    {
+      "current_read_ranges": [
+        {
+          "end_byte": 1024,
+          "path": "policy.txt",
+          "source_sha256": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+          "start_byte": 0
+        },
+        {
+          "end_byte": 4096,
+          "path": "target.py",
+          "source_sha256": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8",
+          "start_byte": 0
+        }
+      ],
+      "gateway_request_ids": [
+        "gw-2874a0d273ec429a8b2355364fd60538",
+        "gw-518f8364b17b483192189052f2e48462"
+      ],
+      "model_decision": "READ_MORE",
+      "mutation_count": 0,
+      "permission_count": 0,
+      "plan_hash_present": false,
+      "settled_turn": 2
+    },
+    {
+      "current_read_ranges": [],
+      "gateway_request_ids": [
+        "gw-4b0a22df9ed44772a3c5328ccfa0891a"
+      ],
+      "model_decision": "PLANNING_TURN_LIMIT_EXHAUSTED",
+      "mutation_count": 0,
+      "permission_count": 0,
+      "plan_hash_present": false,
+      "settled_turn": 3
+    }
+  ],
+  "usage_recorded": true,
+  "wire_attempts": 3
+}
+```
