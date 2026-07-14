@@ -27,6 +27,24 @@ class DeterministicCompletionEvaluator:
 
 
 class GatewayCompletionEvaluator:
+    """
+    Facilitates evaluation of completions for a given iteration state and progress ledger.
+
+    This class interacts with a gateway to assess the state of completion for a specified
+    task or iteration step. It supports deterministic evaluation through an optional
+    predicate and delegates completion decision-making to a remote gateway client when
+    the predicate is not provided or its evaluation is incomplete.
+
+    :ivar client: Gateway client used to communicate with the remote service.
+    :type client: GatewayClient
+    :ivar model: Model identifier used for generating responses during evaluations.
+    :type model: str
+    :ivar deterministic_predicate: Optional predicate function for deterministic completion
+        evaluations.
+    :type deterministic_predicate: DeterministicCompletionPredicate | None
+    :ivar workspace_root: Optional path to the workspace root directory, if applicable.
+    :type workspace_root: str | Path | None
+    """
     def __init__(
         self,
         *,

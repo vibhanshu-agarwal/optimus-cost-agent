@@ -37,6 +37,18 @@ _GENERIC_SECRET_ASSIGNMENT_PATTERN = re.compile(
 
 
 def redact_for_telemetry(value: Any) -> Any:
+    """
+    Recursively redacts sensitive information from the input value to ensure it is safe for use in telemetry.
+
+    Supports redaction of sensitive information in dictionaries, lists, tuples, and strings. The function identifies
+    sensitive keys in dictionaries and masks them with a placeholder string. Strings are processed to redact sensitive
+    content as free text. The input type and structure are preserved in the output.
+
+    :param value: Input data which may contain sensitive information. Accepted input types include dictionaries, lists,
+        tuples, strings, or any other data types.
+    :returns: The input data with sensitive information redacted. The redacted output preserves the same structure and
+        type as the input.
+    """
     if isinstance(value, dict):
         redacted: dict[str, Any] = {}
         for key, child in value.items():

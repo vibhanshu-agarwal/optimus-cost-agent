@@ -54,6 +54,30 @@ class PreToolResult:
 
 
 class PreToolGuard:
+    """
+    Represents a guard that performs safety and permission checks for tool invocation.
+
+    The PreToolGuard enforces security, permission, and safety policies for running
+    tools in different surfaces (e.g., shell commands, file operations, web requests,
+    or MCP calls). It utilizes validators for various safety checks and employs
+    a permission policy to make decision verdicts. Additionally, the guard records
+    audit events for transparency and reporting purposes.
+
+    :ivar permission_policy: The policy governing permissions for tool invocation.
+    :type permission_policy: PermissionPolicy
+    :ivar command_validator: Validator to ensure safety of shell commands.
+    :type command_validator: CommandSafetyValidator
+    :ivar path_validator: Validator to ensure safety of file read/write paths.
+    :type path_validator: PathSafetyValidator
+    :ivar network_validator: Validator to ensure safety of URLs for web tool surfaces.
+    :type network_validator: NetworkSafetyValidator
+    :ivar workspace_root: The absolute path indicating the workspace root, if set.
+    :type workspace_root: Path | None
+    :ivar audit_sink: Sink for logging audit events during tool invocations.
+    :type audit_sink: InMemoryAuditSink
+    :ivar mcp_trust_registry: Trust registry for validating MCP tool calls, if applicable.
+    :type mcp_trust_registry: MCPTrustRegistry | None
+    """
     def __init__(
         self,
         *,

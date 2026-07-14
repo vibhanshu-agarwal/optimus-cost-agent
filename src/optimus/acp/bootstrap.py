@@ -35,6 +35,28 @@ def build_agent_runner_for_harness(
     workspace_root: Path,
     model: str | None = None,
 ) -> AgentRunner:
+    """
+    Builds and initializes an AgentRunner instance configured for use with a harness.
+
+    This function sets up the necessary runtime environment by performing preflight
+    checks, initializing required runtime components such as Redis, and resolving
+    the provided workspace settings and model. It ensures that all dependencies
+    and configurations are in place before returning the configured AgentRunner.
+
+    :param environ: A mapping of environment variables as key-value pairs used for
+        configuration and runtime behavior.
+    :type environ: Mapping[str, str]
+    :param workspace_root: The root directory path where the workspace resides. It
+        is used for resolving workspace configurations and state.
+    :type workspace_root: Path
+    :param model: Optional argument to specify the model to be used by the AgentRunner.
+        Defaults to None, which means the model will be resolved from the environment.
+    :type model: str | None
+    :return: A fully configured AgentRunner instance ready for execution.
+    :rtype: AgentRunner
+    :raises StartupConfigurationError: Raised when a preflight failure occurs, such
+        as missing or misconfigured runtime dependencies.
+    """
     from optimus.acp.preflight import PreflightFailure, run_preflight
 
     try:
@@ -67,6 +89,25 @@ def build_configured_server(
     workspace_root: Path | None = None,
     model: str | None = None,
 ) -> AcpStreamServer:
+    """
+    Builds and configures an `AcpStreamServer` instance with the specified environment
+    settings, workspace, and model. This function sets up the necessary components such as
+    the agent runner, gateway client, and dispatcher required for the server.
+
+    :param environ: A mapping of environment variables to be used for configuration.
+    :type environ: Mapping[str, str]
+
+    :param workspace_root: The root path of the workspace. If not provided, defaults
+        to the current directory.
+    :type workspace_root: Path | None
+
+    :param model: The name of the model to be used in the configuration. If not
+        specified, defaults to None.
+    :type model: str | None
+
+    :return: A fully configured instance of `AcpStreamServer`.
+    :rtype: AcpStreamServer
+    """
     agent_runner = build_agent_runner_for_harness(
         environ=environ,
         workspace_root=Path(workspace_root or "."),

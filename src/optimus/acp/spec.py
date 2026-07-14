@@ -88,6 +88,21 @@ class InMemoryAcpSpecSessionStore:
 
 
 class RecordingOutboundChannel:
+    """
+    Represents an outbound channel used for recording JSON-RPC notifications and
+    requests, as well as handling responses and cancellations.
+
+    This class facilitates the sending and recording of JSON-RPC notifications and
+    requests, the retrieval of specific requests based on their method, and the
+    management of responses and cancellations for active requests. Its purpose is
+    to provide a structured mechanism to log, retrieve, and handle JSON-RPC
+    communications in an asynchronous context.
+
+    :ivar notifications: List of recorded JSON-RPC notification messages.
+    :type notifications: list[dict[str, Any]]
+    :ivar requests: List of recorded JSON-RPC request messages.
+    :type requests: list[dict[str, Any]]
+    """
     def __init__(self) -> None:
         self.notifications: list[dict[str, Any]] = []
         self.requests: list[dict[str, Any]] = []
@@ -124,6 +139,24 @@ class RecordingOutboundChannel:
 
 
 class AcpDuplexAdapter:
+    """
+    Handles duplex communication and request-response mechanism for the ACP framework.
+
+    The AcpDuplexAdapter class is responsible for managing requests and notifications
+    from clients and coordinating sessions within the ACP framework. It provides
+    mechanisms for handling various JSON-RPC 2.0 methods such as initializing the
+    agent, creating new sessions, and managing session prompts. Additionally, it
+    supports asynchronous processing and error handling for robust communication.
+
+    :ivar runner: Executes tasks and runs planning processes.
+    :type runner: Any
+    :ivar workspace_root: Path to the root directory for workspace-related operations.
+    :type workspace_root: str or Path
+    :ivar sessions: In-memory storage for session specifications.
+    :type sessions: InMemoryAcpSpecSessionStore
+    :ivar outbound: Channel for managing outbound requests and notifications.
+    :type outbound: AcpOutboundChannel
+    """
     def __init__(
         self,
         *,

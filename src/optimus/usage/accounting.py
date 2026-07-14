@@ -33,6 +33,19 @@ class UsageReconciliationReport(BaseModel):
 
 
 class UsageAccountingService:
+    """
+    Provides services for tracking and auditing usage of gateways and related
+    provider services.
+
+    This class is responsible for recording usage metrics and auditing
+    specific events, such as pricing fallback occurrences. It utilizes
+    `ProviderUsageLedger` for maintaining records of usage and ensures
+    telemetry details are captured for further analysis.
+
+    :ivar provider_ledger: Ledger used for recording and maintaining
+        provider usage data.
+    :type provider_ledger: ProviderUsageLedger
+    """
     def __init__(self, *, provider_ledger: ProviderUsageLedger | None = None) -> None:
         self.provider_ledger = provider_ledger or ProviderUsageLedger()
 

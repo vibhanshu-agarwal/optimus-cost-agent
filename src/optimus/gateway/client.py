@@ -66,6 +66,23 @@ class UrllibGatewayTransport:
 
 
 class GatewayClient:
+    """
+    This class provides a client interface for interacting with the Gateway service.
+
+    The class enables interacting with the Gateway service through HTTP requests. Supported
+    operations include creating responses, posting tool-specific data, and sending
+    observability information. It also abstracts the underlying transport mechanism and
+    provides configuration options for timeouts and authentication.
+
+    :ivar settings: Configuration object for the Gateway API, including gateway URL
+        and authentication details.
+    :type settings: OptimusGatewaySettings
+    :ivar transport: Transport mechanism for sending HTTP requests. Defaults to
+        `UrllibGatewayTransport` if not provided.
+    :type transport: GatewayTransport | None
+    :ivar timeout_seconds: Default timeout for network requests, in seconds.
+    :type timeout_seconds: float
+    """
     def __init__(
         self,
         *,

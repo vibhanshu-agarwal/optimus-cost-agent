@@ -64,6 +64,20 @@ class ToolInvocationDecision:
 
 
 class ToolInvocationPolicy:
+    """
+    Handles the authorization and policy enforcement for invoking tools in various execution modes.
+
+    This class determines whether specific tools can be used based on defined rules and conditions,
+    adhering to security policies, domain restrictions, and execution modes. It supports multiple
+    tool classes and provides specialized handling for tools like web search and web data extraction.
+    Tools' invocation is authorized or rejected based on different signals and contexts.
+
+    :ivar SUPPORTED_EXECUTION_MODES: Set of execution modes that are supported for invoking tools.
+    :type SUPPORTED_EXECUTION_MODES: frozenset
+
+    :ivar WEB_SEARCH_TRIGGERS: Set of conditions and reason code pairs required to authorize a web search tool.
+    :type WEB_SEARCH_TRIGGERS: frozenset
+    """
     SUPPORTED_EXECUTION_MODES = frozenset(
         {ExecutionMode.PLAN, ExecutionMode.CHAT, ExecutionMode.AGENT}
     )

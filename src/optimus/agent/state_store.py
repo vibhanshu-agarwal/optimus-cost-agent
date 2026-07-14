@@ -89,6 +89,21 @@ class InMemoryAgentStateStore:
 
 
 class RedisAgentStateStore:
+    """
+    Provides an interface for storing and retrieving agent plans using Redis.
+
+    This class is used to manage the storage and retrieval of agent plan records within a
+    Redis datastore. It supports both synchronous and asynchronous Redis clients and ensures
+    records are stored with a specified time-to-live (TTL).
+
+    :ivar client: The synchronous Redis client used for connecting to the datastore if
+        specified.
+    :type client: object | None
+    :ivar async_store: The asynchronous Redis state store used if specified instead of the synchronous client.
+    :type async_store: AsyncRedisAgentStateStore | None
+    :ivar ttl_seconds: The time-to-live (TTL) in seconds for the stored plans.
+    :type ttl_seconds: int
+    """
     def __init__(
         self,
         *,
@@ -186,6 +201,20 @@ class RedisAgentStateStore:
 
 
 class AsyncRedisAgentStateStore:
+    """
+    AsyncRedisAgentStateStore is responsible for managing agent state storage using
+    Redis. It handles saving, loading, and retrieving the latest agent plans, and
+    providing a mechanism to check the connection with the Redis client.
+
+    This class is designed to work asynchronously and relies on an external Redis
+    client for operations. It provides TTL-based expiration for stored plans and
+    ensures efficient data management in a Redis datastore.
+
+    :ivar client: Redis client used for the storage and retrieval of data.
+    :type client: object
+    :ivar ttl_seconds: Time-to-Live (TTL) duration in seconds for stored plans.
+    :type ttl_seconds: int
+    """
     def __init__(self, *, client: object, ttl_seconds: int = DEFAULT_PLAN_TTL_SECONDS) -> None:
         self._client = client
         self._ttl_seconds = ttl_seconds

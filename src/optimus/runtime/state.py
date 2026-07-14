@@ -81,6 +81,21 @@ class AwaitingApproval:
 
 
 class TransitionValidator:
+    """
+    Facilitates and enforces state transitions within an agent's lifecycle.
+
+    This class validates and ensures that state transitions adhere to logical
+    rules and constraints defined for the agent's behavior and execution
+    environment. Custom exceptions are raised to prevent invalid mutations.
+    Modifications to the agent's context are performed as necessary.
+
+    :ivar context: The runtime context of the agent, including current state
+        and execution configuration.
+    :type context: RuntimeContext
+    :ivar transition: The state transition being applied, including target
+        state information.
+    :type transition: StateTransition
+    """
     def transition(
         self,
         context: RuntimeContext,

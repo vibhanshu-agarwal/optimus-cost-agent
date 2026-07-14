@@ -52,6 +52,50 @@ class _AgentLoopIterationRunner:
 
 
 class AgentRunner:
+    """
+    Represents an execution framework for running agent tasks.
+
+    The `AgentRunner` class provides the main interface for managing and executing tasks
+    within an agent-based framework. It initializes various optional components such as
+    state storage, planning observers, shell runners, and evaluators that can be used
+    to extend its functionality. The `run` method acts as the entry point for processing
+    agent requests, either by executing a single step or iterating through a bounded loop
+    until a completion condition is met. This class encapsulates the logic for managing
+    goals, evaluating progress, and handling transitions between states.
+
+    :ivar gateway_client: The client interface for communicating with the gateway
+        server for task execution.
+    :type gateway_client: GatewayClient
+    :ivar model: The name of the language model used for generating agent responses.
+    :type model: str
+    :ivar guard: An optional guard instance for handling pre-tool execution checks.
+    :type guard: PreToolGuard | None
+    :ivar event_sink: An optional callable used to collect telemetry events.
+    :type event_sink: Callable[[TelemetryEvent], None] | None
+    :ivar loop_iteration_runner: Optional runner for managing iterations in a
+        bounded loop during agent execution.
+    :type loop_iteration_runner: IterationRunner | None
+    :ivar loop_evaluator: Protocol for evaluating the completion of tasks in a loop setting.
+    :type loop_evaluator: CompletionEvaluatorProtocol | None
+    :ivar state_store: Storage interface for maintaining the state of the agent during
+        execution.
+    :type state_store: AgentStateStore
+    :ivar clock_ms: Callable that returns the current timestamp in milliseconds. Defaults
+        to an internal epoch if not provided.
+    :type clock_ms: Callable[[], int] | None
+    :ivar shell_runner: Optional callable for running shell commands, used during the
+        agent's operations.
+    :type shell_runner: Callable[[list[str]], subprocess.CompletedProcess[str]] | None
+    :ivar workspace_context_observer: Observer that inspects workspace-related context
+        during execution.
+    :type workspace_context_observer: WorkspaceContextObserver | None
+    :ivar usage_accounting: Service responsible for tracking and accounting usage
+        costs.
+    :type usage_accounting: UsageAccountingService | None
+    :ivar planning_progress_observer: Observer for tracking planning progress during
+        task execution.
+    :type planning_progress_observer: PlanningProgressObserver | None
+    """
     def __init__(
         self,
         *,

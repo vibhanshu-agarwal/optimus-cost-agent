@@ -18,6 +18,18 @@ class LiveSessionError(Exception):
 
 
 class NdjsonSubprocessSession:
+    """
+    Handles a subprocess session that communicates using newline-delimited JSON (NDJSON) format.
+
+    This class provides methods to send messages to, read responses from, and control a subprocess
+    that reads and writes NDJSON-formatted messages. It also logs inbound and outbound communications
+    and manages subprocess lifecycle and error handling.
+
+    :ivar process: The subprocess instance to communicate with.
+    :type process: subprocess.Popen[str]
+    :ivar transcript: The transcript writer that records inbound and outbound messages.
+    :type transcript: E2eAcpTranscriptWriter
+    """
     def __init__(self, *, process: subprocess.Popen[str], transcript: E2eAcpTranscriptWriter) -> None:
         self._process = process
         self._transcript = transcript

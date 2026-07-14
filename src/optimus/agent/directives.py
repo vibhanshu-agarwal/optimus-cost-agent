@@ -30,6 +30,21 @@ class AgentPlanDirectives:
 
 
 def parse_agent_plan(plan_text: str) -> AgentPlanDirectives:
+    """
+    Parses a plan text containing agent directives and translates it into structured
+    data. The plan text may contain directives to read files, write content to a specific
+    path, or perform tests with given commands. This function validates and organizes
+    the parsed data for further processing.
+
+    :param plan_text: The raw input plan text that contains agent directives.
+    :type plan_text: str
+    :return: An instance of AgentPlanDirectives containing parsed read paths, a write
+        directive, and test commands.
+    :rtype: AgentPlanDirectives
+    :raises AgentDirectiveParseError: If the input contains invalid or improperly
+        formatted directives, such as multiple WRITE directives or a lack of any valid
+        directives.
+    """
     read_paths: list[str] = []
     tests: list[tuple[str, ...]] = []
     write: AgentWriteDirective | None = None

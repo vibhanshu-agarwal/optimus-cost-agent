@@ -66,6 +66,25 @@ def assemble_workspace_context_for_prompt(
     task: str,
     max_total_bytes: int = DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES,
 ) -> WorkspaceContextResult:
+    """
+    Assembles a context representation of a workspace for use in generating prompts. This function evaluates
+    the files in a given workspace directory, prioritizes paths based on references derived from the task
+    description, and attempts to pack the file contents into a text buffer while adhering to a maximum size
+    limit. Any unresolved references or files that cannot be packed due to size constraints are flagged
+    appropriately.
+
+    :param workspace_root: The root directory of the workspace from which to assemble the context.
+    :type workspace_root: Path
+    :param task: A description of the task to drive prioritization of workspace files.
+    :type task: str
+    :param max_total_bytes: The maximum number of bytes allowed for the assembled context buffer. Falls back to
+       DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES if not provided.
+    :type max_total_bytes: int
+    :return: A `WorkspaceContextResult` containing the assembled context, the list of prioritized and omitted
+       file paths, diagnostics regarding file reference resolutions, and any blocking reasons if context
+       assembly fails.
+    :rtype: WorkspaceContextResult
+    """
     root = workspace_root.resolve()
     empty = WorkspaceContextResult(
         text="",

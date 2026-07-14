@@ -55,6 +55,25 @@ class SkillTrustPolicy:
 
 
 class SkillInvocationPolicy:
+    """
+    SkillInvocationPolicy handles the process of authorizing and managing skill
+    invocations, ensuring compliance with defined trust policies and operational
+    constraints.
+
+    The class is responsible for validating requested tools against skill
+    manifests, invoking pre-tool guards, and emitting telemetry events for skill
+    invocation decisions. It provides mechanisms to determine if a skill is
+    authorized to perform certain actions based on its manifest's trust
+    declaration and runtime parameters.
+
+    :ivar trust_policy: Defines how trust is evaluated for each skill invocation.
+    :type trust_policy: SkillTrustPolicy | None
+    :ivar event_sink: Function to emit telemetry events for skill invocations.
+    :type event_sink: Callable[[TelemetryEvent], None] | None
+    :ivar now: Callable to get the current datetime, allowing for injection
+        of custom time sources for testing and other purposes.
+    :type now: Callable[[], datetime] | None
+    """
     def __init__(
         self,
         *,

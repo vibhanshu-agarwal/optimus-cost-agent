@@ -45,6 +45,22 @@ class ShadowPromotionPlan:
 
 
 class ShadowWorkspace:
+    """
+    Manages a shadow copy of a workspace directory to track changes.
+
+    This class creates a temporary shadow copy of the specified workspace directory, enabling
+    monitoring of changes (additions, modifications, deletions) made to its content relative
+    to the original state. It allows for querying changes, computing the promotion plan to update
+    the original workspace with shadow changes, and ensures housekeeping by cleaning up the
+    temporary directory when finished.
+
+    :ivar workspace_root: The root path of the original workspace directory.
+    :type workspace_root: Path
+    :ivar ignore_patterns: Patterns of files or directories to ignore during the copying process.
+    :type ignore_patterns: tuple[str, ...]
+    :ivar shadow_root: The root path of the temporary shadow workspace directory.
+    :type shadow_root: Path
+    """
     def __init__(self, *, workspace_root: Path, ignore_patterns: tuple[str, ...] = ()) -> None:
         self.workspace_root = workspace_root.resolve()
         self.ignore_patterns = tuple(dict.fromkeys((*DEFAULT_SHADOW_IGNORE_PATTERNS, *ignore_patterns)))

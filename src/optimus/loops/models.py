@@ -56,6 +56,39 @@ class LoopToolExecutorProtocol(Protocol):
 
 
 class IterationState(BaseModel):
+    """
+    Represents the state of an iteration in a process, managing data such as runtime, budget, and
+    progress. Ensures validity of time-aware datetime and provides methods for updating the state
+    based on outcomes and evaluations.
+
+    This class is designed to encapsulate iteration information, calculate elapsed time, track
+    progress, and provide mechanisms for handling runtime limits, failures, and halt requests.
+
+    :ivar run_id: Unique identifier for the run.
+    :type run_id: str
+    :ivar session_id: Identifier for the session, if applicable.
+    :type session_id: str | None
+    :ivar goal: Description of the goal for the iteration.
+    :type goal: str
+    :ivar completion_condition: Criteria defining what constitutes completion for this iteration.
+    :type completion_condition: str
+    :ivar started_at: Datetime when the iteration started, must be timezone-aware.
+    :type started_at: datetime
+    :ivar deadline_at: Optional deadline for completing the iteration.
+    :type deadline_at: datetime | None
+    :ivar remaining_budget_credits: Remaining budget credits for the iteration, if applicable.
+    :type remaining_budget_credits: Decimal | None
+    :ivar iteration: Counter tracking the current iteration cycle.
+    :type iteration: int
+    :ivar credits_spent: Total credits spent up to the current iteration.
+    :type credits_spent: Decimal
+    :ivar last_failure_signature: Identifier for the last failure signature, if any.
+    :type last_failure_signature: str | None
+    :ivar repeated_failure_count: Count of consecutive failures with the same signature.
+    :type repeated_failure_count: int
+    :ivar human_halt_requested: Indicates whether a halt has been requested by a human.
+    :type human_halt_requested: bool
+    """
     model_config = ConfigDict(frozen=True)
 
     run_id: str = Field(min_length=1)
