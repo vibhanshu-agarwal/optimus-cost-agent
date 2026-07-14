@@ -16,6 +16,7 @@ from tools import run_plan988_fu4b_live_evidence as plan988  # noqa: E402
 from tools.run_plan987_acpx_live_evidence import (  # noqa: E402
     REPLAN_POLICY_BYTES,
     REPLAN_TARGET_BYTES,
+    _sha256_text,
 )
 from tools.run_plan988_fu4b_live_evidence import (  # noqa: E402
     BASELINE_FIXTURE_FILE_SHA256S,
@@ -28,6 +29,7 @@ from tools.run_plan988_fu4b_live_evidence import (  # noqa: E402
     PLAN988_LANE_HEADER_FIELDS,
     PLAN988_PRE_REGISTRATION_FIELDS,
     PLAN988_REPLAN_TASK,
+    PLAN988_REPLAN_TASK_ATTEMPT2,
     PLAN988_SUMMARY_FIELDS,
     PREDICATE_ID,
     Plan988EvidenceSummary,
@@ -36,6 +38,7 @@ from tools.run_plan988_fu4b_live_evidence import (  # noqa: E402
     classify_fu4b_final,
     fixture_file_sha256s,
     prepare_fu4b_fixture,
+    select_fu4b_task,
     validate_next_attempt,
 )
 
@@ -67,6 +70,28 @@ def test_attempt_one_fixture_changes_only_cross_lane_wording(tmp_path: Path) -> 
     assert (tmp_path / "policy.txt").stat().st_size == REPLAN_POLICY_BYTES
     assert fixture_file_sha256s(tmp_path) == BASELINE_FIXTURE_FILE_SHA256S
     assert manifest["fixture_file_sha256s"] == BASELINE_FIXTURE_FILE_SHA256S
+
+
+def test_attempt_two_wording_selects_new_task_preserving_fixture_bytes(tmp_path: Path) -> None:
+    assert select_fu4b_task(attempt=1, changed_dimension="none") == PLAN988_REPLAN_TASK
+    assert (
+        select_fu4b_task(attempt=2, changed_dimension="wording") == PLAN988_REPLAN_TASK_ATTEMPT2
+    )
+    assert PLAN988_REPLAN_TASK_ATTEMPT2 != PLAN988_REPLAN_TASK
+    assert "1024" in PLAN988_REPLAN_TASK_ATTEMPT2
+    assert "4096" in PLAN988_REPLAN_TASK_ATTEMPT2
+
+    attempt1 = prepare_fu4b_fixture(tmp_path / "a1")
+    attempt2 = prepare_fu4b_fixture(
+        tmp_path / "a2",
+        task=select_fu4b_task(attempt=2, changed_dimension="wording"),
+    )
+    assert attempt2["task"] == PLAN988_REPLAN_TASK_ATTEMPT2
+    assert attempt2["task_sha256"] != attempt1["task_sha256"]
+    assert attempt2["task_sha256"] == _sha256_text(PLAN988_REPLAN_TASK_ATTEMPT2)
+    assert attempt2["fixture_file_sha256s"] == attempt1["fixture_file_sha256s"]
+    assert attempt2["fixture_file_sha256s"] == BASELINE_FIXTURE_FILE_SHA256S
+    assert attempt2["fixture_manifest_sha256"] != attempt1["fixture_manifest_sha256"]
 
 
 def test_plan988_schema_field_sets_are_pinned() -> None:
