@@ -140,3 +140,33 @@ def test_live_gateway_log_status_uses_live_workspace_path():
     source = Path("tools/verify_plan99_noneditable_install.py").read_text(encoding="utf-8")
     assert 'gateway_log = workspace / ".optimus" / "local-gateway.log"' in source
     assert 'gateway_log = Path(str(paths["gateway_log"]))' not in source
+
+
+def test_resolve_executable_uses_shutil_which(tmp_path, monkeypatch):
+    shim = tmp_path / "acpx.CMD"
+    shim.write_text("@echo off\n", encoding="utf-8")
+    monkeypatch.setattr(verifier.shutil, "which", lambda _name: str(shim))
+    assert verifier._resolve_executable("acpx") == str(shim)
+
+
+def test_safe_env_sets_redis_and_gateway_defaults_only_when_unset(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPTIMUS_REDIS_URL", raising=False)
+    monkeypatch.delenv("OPTIMUS_GATEWAY_URL", raising=False)
+    monkeypatch.delenv("OPTIMUS_API_KEY", raising=False)
+    env = verifier._safe_env(config_root=tmp_path)
+    assert env["OPTIMUS_REDIS_URL"] == "redis://127.0.0.1:6379/0"
+    assert env["OPTIMUS_GATEWAY_URL"] == "http://127.0.0.1:8765"
+    assert env["OPTIMUS_CONFIG_ROOT"] == str(tmp_path)
+
+    monkeypatch.setenv("OPTIMUS_REDIS_URL", "redis://127.0.0.1:6380/1")
+    monkeypatch.setenv("OPTIMUS_GATEWAY_URL", "http://127.0.0.1:9000")
+    env_override = verifier._safe_env(config_root=tmp_path)
+    assert env_override["OPTIMUS_REDIS_URL"] == "redis://127.0.0.1:6380/1"
+    assert env_override["OPTIMUS_GATEWAY_URL"] == "http://127.0.0.1:9000"
+
+
+def test_live_acpx_command_uses_posix_paths_for_cwd_and_agent():
+    source = Path("tools/verify_plan99_noneditable_install.py").read_text(encoding="utf-8")
+    assert "workspace.as_posix()" in source
+    assert "wrapper.as_posix()" in source
+    assert 'str(workspace),\n        "--agent",\n        str(wrapper),' not in source.replace(" ", "")

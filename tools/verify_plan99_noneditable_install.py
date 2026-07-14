@@ -73,6 +73,17 @@ def build_offline_commands(
     ]
 
 
+def _resolve_executable(executable: str) -> str:
+    """Resolve shell shims (e.g. npm's acpx.CMD) to an absolute path for shell=False."""
+    resolved = shutil.which(executable)
+    if resolved:
+        return resolved
+    candidate = Path(executable)
+    if candidate.exists():
+        return str(candidate.resolve())
+    raise VerificationError(f"executable not found: {executable}")
+
+
 def validate_live_prerequisites(
     *,
     acpx_executable: str | None,
@@ -84,11 +95,10 @@ def validate_live_prerequisites(
         raise VerificationError("live mode requires --report")
     if not acpx_executable:
         raise VerificationError("live mode requires an acpx executable")
-    if shutil.which(acpx_executable) is None and not Path(acpx_executable).exists():
-        raise VerificationError(f"acpx executable not found: {acpx_executable}")
+    resolved_acpx = _resolve_executable(acpx_executable)
     environment = dict(os.environ if environ is None else environ)
     version = subprocess.run(
-        [acpx_executable, "--version"],
+        [resolved_acpx, "--version"],
         check=False,
         capture_output=True,
         text=True,
@@ -150,6 +160,10 @@ def _safe_env(*, config_root: Path) -> dict[str, str]:
     for name in (*_PROVIDER_KEY_NAMES, "PYTHONPATH"):
         env.pop(name, None)
     env["OPTIMUS_CONFIG_ROOT"] = str(config_root)
+    if not env.get("OPTIMUS_REDIS_URL", "").strip():
+        env["OPTIMUS_REDIS_URL"] = "redis://127.0.0.1:6379/0"
+    if not env.get("OPTIMUS_GATEWAY_URL", "").strip():
+        env["OPTIMUS_GATEWAY_URL"] = "http://127.0.0.1:8765"
     return env
 
 
@@ -318,8 +332,9 @@ def _live(args: argparse.Namespace) -> dict[str, object]:
         report_path=args.report,
         config_root=config_root,
     )
+    acpx = _resolve_executable(args.acpx)
     version_result = subprocess.run(
-        [args.acpx, "--version"],
+        [acpx, "--version"],
         cwd=Path.cwd(),
         env=_safe_env(config_root=config_root),
         check=False,
@@ -343,16 +358,16 @@ def _live(args: argparse.Namespace) -> dict[str, object]:
     if args.model:
         env["OPTIMUS_AGENT_MODEL"] = args.model
     command = [
-        args.acpx,
+        acpx,
         "--format",
         "json",
         "--approve-all",
         "--cwd",
-        str(workspace),
+        workspace.as_posix(),
         "--agent",
-        str(wrapper),
+        wrapper.as_posix(),
         "exec",
-        "edit example.py and finish",
+        "Add a module docstring to example.py. Modify only example.py.",
     ]
     result = _run(command, cwd=workspace, env=env)
     _assert_output_clean(result.stdout + result.stderr, env)
