@@ -4,7 +4,7 @@
 
 > **Current Task 7A evidence (2026-07-13):** The gateway was freshly restarted as OpenRouter and strict preflight passed. FU-4A re-captured at `4bf20fffd9b067afa4db34d5ae021aca665f3acb` with one charged `FINAL_PLAN`, final-only permission/mutation, and `end_turn`; `--require fu4a` passes. The first fresh FU-5 retry at slot 3 retained the `1bf04bb` wording but stopped as `PLANNING_GATEWAY_FAILURE` with zero wire attempts, IDs, and usage, so it is infrastructure-invalid and does not consume the cap. The final completed slot-3 run at `bfcea0dab056bd42f793851ae042a214b24d4b64` produced `REFUSE` / `PLANNING_MODEL_REFUSED` with one charged Gateway request. FU-4B remains unproven.
 
-**Status:** FU-4A behavioral gate **satisfied** (`claude-haiku`, re-captured at `4bf20fffd9b067afa4db34d5ae021aca665f3acb`). FU-4B **not satisfied** — characterized-but-unproven. FU-5 behavioral gate **satisfied**: the separate post-capture verifier accepts its restored multi-SHA ledger and qualifying `z-ai/glm-5.2` refusal at `bfcea0dab056bd42f793851ae042a214b24d4b64`. Do not treat FU-4B as closure evidence.
+**Status:** FU-4A behavioral gate **satisfied** (`claude-haiku`, re-captured at `4bf20fffd9b067afa4db34d5ae021aca665f3acb`). FU-5 behavioral gate **satisfied**: the separate post-capture verifier accepts its restored multi-SHA ledger and qualifying `z-ai/glm-5.2` refusal at `bfcea0dab056bd42f793851ae042a214b24d4b64`. FU-4B is **accepted-open** (exhausted, not qualifying) per Plan 9.88 Task 8 Outcome B ceremony at HEAD `fec114b7fc79da35ea399f4d66e22e776e6b76a3` (operator `vibhanshu-agarwal`, `2026-07-14T08:13:56Z`); `--require fu4b` remains failing and accepted-open is not qualifying closure evidence.
 
 ## Preflight Provenance (Task 6 Step 1)
 
@@ -1303,3 +1303,33 @@ Completed model attempt; non-qualifying. Stop reason `PLANNING_TURN_LIMIT_EXHAUS
   "wire_attempts": 3
 }
 ```
+
+## Plan 9.88 FU-4B Closure Ceremony (Task 8 Outcome B)
+
+Operator `vibhanshu-agarwal` contemporaneously accepts FU-4B open under Task 8 Outcome B (ledger exhausted, not qualifying) per Global Constraint 3 / Task 8 Step 2B.
+
+| Field | Value |
+|---|---|
+| Disposition | `accepted-open` (exhausted) |
+| Ceremony HEAD | `fec114b7fc79da35ea399f4d66e22e776e6b76a3` |
+| Operator identity | `vibhanshu-agarwal` |
+| Timestamp (UTC) | 2026-07-14T08:13:56Z |
+| Ledger digest | `9122c5c1b2978a8de515710df2c2cb38347bc7bd205e2837ac3b7b2bdf118b3d` (canonicalization method not yet pinned — tracked as `P9.88-FU-2`) |
+| Claim SHAs | FU-4A `4bf20fffd9b067afa4db34d5ae021aca665f3acb`, FU-5 `bfcea0dab056bd42f793851ae042a214b24d4b64` |
+
+**Durable pair-plus-exhaustion gate (recorded):**
+
+```bash
+python tools/verify_plan987_acpx_evidence.py \
+  --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md \
+  --require fu4a --require fu5 \
+  --check-fu4b-ledger-status exhausted \
+  --max-completed-replan-attempts 3 \
+  --max-completed-refusal-attempts 3
+```
+
+Result: PASS (`Verified report: …`). Concurrent check: `--require fu4b` alone FAILs with `fu4b claim missing` — accepted-open does not make the FU-4B claim pass.
+
+**Sanitized rationale:**
+
+> Plan 9.88 FU-4B ran three real, capped `acpx` model attempts against the fixed `P9.88-FU4B-QUALIFY-v1` predicate. Attempt 1 (`z-ai/glm-5.2`, unchanged wording) exhausted the real 3-turn planning budget after an oversized multi-file `READ_MORE`. Attempt 2 (single-dimension `wording` change disclosing exact fixture sizes) demonstrated the wording fix worked — turn 1 issued exact full-range guarded reads — but the attempt terminated on a repeated, charged Gateway request failure unrelated to task comprehension. Attempt 3 (single-dimension `model` change to `anthropic/claude-haiku-4.5`, task/fixture held constant) again reproduced exact-range guarded reads but exhausted the turn budget before `FINAL_PLAN`. All three completed attempts, and one discarded infrastructure-invalid spawn (`AgentSpawnError`, zero wire activity, uncounted per Global Constraint 7), are disclosed in the report. No attempt reached a content-correct final plan; none was unsafe. The ledger is mechanically verified `exhausted` (`--check-fu4b-ledger-status exhausted` PASS; `--require fu4b` correctly FAIL). FU-4A and FU-5 remain independently qualifying and unaffected by this disposition — their claim SHAs are watched-path-clean through this HEAD. Two gaps surfaced during this lane and are tracked separately rather than blocking closure: (1) a frozen-code ordering defect in `planning_loop.py` causing `source_sha256`/path misattribution in multi-file read telemetry when read order isn't alphabetical (disclosed inline in the attempt-1 report entry; tracked as `P9.88-FU-3`, out of Plan 9.88 scope to fix); (2) the ceremony's own "ledger digest" field has no pinned, independently-reproducible computation method, tracked as `P9.88-FU-2`. Accepting FU-4B open on this basis; Plan 9.87 closes with FU-4A/FU-5 proven and FU-4B accepted-open, not qualifying.
