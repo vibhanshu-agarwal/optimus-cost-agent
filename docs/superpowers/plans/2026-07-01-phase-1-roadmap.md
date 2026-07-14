@@ -333,7 +333,7 @@ as a supplementary artifact and is credited to Plan 9.87's scope, not claimed as
 - `P9.85-FU-7`: ACP debug-trace redaction (`redact_for_telemetry` applied in `acp_debug_log`) is a
   brute-force, unconditional fix landed ahead of this closure; a deliberate-access design
   (session/time-scoped opt-out for legitimate raw-trace debugging, plus a broader logging-surface
-  audit) is deferred to a future plan scheduled after Plan 9.9.
+  audit) is owned by Plan 9.95, scheduled after Plan 9.9.
 
 ## Plan 9.87 (Closed): Model-Initiated Replanning and Live Refusal Evidence
 
@@ -412,10 +412,25 @@ resources correctly from both editable and non-editable tool installations.
   `.env.gateway` discovery and place gateway/debug logs under the wrong tree. Plan 9.9 must define
   and test an explicit resource/config/log-root contract for editable and non-editable installs.
 
-**Status:** Tracked, not yet scheduled; no implementation plan exists. Until Plan 9.9 lands, Plan
-9.8's live operator gate must use `uv tool install --editable . --reinstall`. Do not silently
+**Status:** Implementation plan approved by the reviewer agent and operator on 2026-07-14
+(`docs/superpowers/plans/2026-07-14-plan-9-9-operator-packaging-and-credential-diagnostics.md`);
+implementation not started. Until Plan 9.9 lands, Plan 9.8's live operator gate must use
+`uv tool install --editable . --reinstall`. Do not silently
 change that gate to a non-editable install or fold these packaging/credential concerns into Plan
 9.8's context-selection implementation.
+
+## Plan 9.95 (Tracked, Not Yet Scheduled): Usage, Telemetry, and Evidence-Tooling Correctness
+
+**Raised:** 2026-07-14 as the custody entry for open deferred follow-ups.
+
+- `P9.85-FU-6` — billable failed-retry aggregation / unknown transport cost — raised Plan 9.85, carried through Plans 9.87/9.88.
+- `P9.88-FU-2` — ledger digest specification and verifier helper — raised Plan 9.88.
+- `P9.88-FU-3` — read-range telemetry misattribution in `planning_loop.py` — raised Plan 9.88; now unblocked since the post-ceremony freeze lift.
+- `P9.85-FU-7` — deliberate-access design for redacted debug traces plus logging-surface audit — raised Plan 9.85; its redaction opt-out requires its own security review at scheduling time.
+- `P9.87-FU-1` — mechanical current-raw-evidence grounding guard — raised Plan 9.87; must not absorb or be absorbed by Plan 11 and may split into its own entry when scheduled.
+- `P9.9-FU-1` — workspace-influenced agent launch environment — raised by Plan 9.9's design review; security-design lane that may split when scheduled.
+
+FU-4B accepted-open is deliberately not in this entry: it is a closed disposition under the Plan 9.88 ceremony, not a TODO. **Status:** Tracked, not yet scheduled; no implementation plan exists; this entry may split by lane when scheduled.
 
 ## Plan 10 (Tracked, Not Yet Scheduled): Unified Gateway Capabilities Broker
 
@@ -499,10 +514,13 @@ pattern.
     `fec114b7fc79da35ea399f4d66e22e776e6b76a3`.
 18. Plan 9.88: FU-4B evidence remediation and Plan 9.87 closure — **closed** (Outcome B
     accepted-open); must complete before Plan 9.9 begins.
-19. Plan 9.9: Operator packaging and credential diagnostics — tracked, not yet scheduled; owns
-    cross-layer provider/key mismatch diagnostics and non-editable-install root discovery.
-20. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
-21. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
+19. Plan 9.9: Operator packaging and credential diagnostics — implementation plan approved
+    2026-07-14, implementation not started; owns cross-layer provider/key mismatch diagnostics and
+    non-editable-install root discovery.
+20. Plan 9.95: Usage, telemetry, and evidence-tooling correctness — tracked, not yet scheduled;
+    custody entry for open deferred follow-ups after Plan 9.9, with lane splits allowed at scheduling.
+21. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
+22. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
     starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden
     harness are stable.
 

@@ -252,9 +252,15 @@ pair-plus-exhaustion closure gate before Plan 9.9 may change `src/optimus/**` or
 `tools/run_plan987_acpx_live_evidence.py`. See
 `reports/plan-9-87-model-replanning-refusal-acpx-evidence.md`.
 
-**Plan 9.9** (tracked, not yet scheduled) covers operator packaging and
-credential diagnostics — cross-layer provider/key mismatch warnings and
-non-editable-install resource-root discovery.
+**Plan 9.9** (implementation plan approved 2026-07-14; implementation not
+started) covers operator packaging and credential diagnostics — cross-layer
+provider/key mismatch warnings and non-editable-install resource-root discovery.
+
+**Plan 9.95** (tracked, not yet scheduled) is the custody entry for open
+deferred follow-ups: `P9.85-FU-6`, `P9.85-FU-7`, `P9.87-FU-1`,
+`P9.88-FU-2`, `P9.88-FU-3`, and `P9.9-FU-1`. It may split by lane when
+scheduled. FU-4B accepted-open is deliberately not included — it is a closed
+disposition, not a TODO.
 
 **Plan 10** (tracked, not yet scheduled) is the Unified Gateway Capabilities
 Broker — web search and observability routes on the local gateway stub. Out of
