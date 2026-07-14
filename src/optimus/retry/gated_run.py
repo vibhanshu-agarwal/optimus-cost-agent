@@ -39,6 +39,30 @@ class GatedRetryResult(Generic[T]):
 
 
 class GatedRetryRunner:
+    """
+    Executes processing logic with a gated retry mechanism for handling failures
+    based on dynamic policies and telemetry event tracking.
+
+    This class orchestrates a gated retry process where actions are attempted
+    and evaluated against fitness gates. Failure outcomes are classified, and
+    subsequent retry decisions are made based on policy rules. It tracks and
+    emits telemetry events to provide insights into retry and gate evaluation.
+
+    :ivar policy: The retry policy used to determine whether and how retries
+        are conducted.
+    :type policy: RetryPolicy | None
+    :ivar sleep_ms: A callable function to introduce a delay (in milliseconds)
+        between retries.
+    :type sleep_ms: Callable[[int], None] | None
+    :ivar event_sink: A callable function to emit telemetry events for tracking
+        retry and fitness gate evaluations.
+    :type event_sink: Callable[[TelemetryEvent], None] | None
+    :ivar run_id: A unique identifier for this specific gated retry execution.
+    :type run_id: str
+    :ivar session_id: An optional identifier to group related retry executions
+        into a session for better tracking.
+    :type session_id: str | None
+    """
     def __init__(
         self,
         *,

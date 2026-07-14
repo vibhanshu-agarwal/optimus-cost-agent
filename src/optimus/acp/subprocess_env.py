@@ -26,7 +26,28 @@ def build_acp_subprocess_env(
     operator_environ: Mapping[str, str] | None = None,
     project_root: Path,
 ) -> dict[str, str]:
-    """Build a minimal child-process env for ``python -m optimus.acp`` without provider keys."""
+    """
+    Builds and configures a subprocess environment dictionary necessary for ACP operations.
+
+    This function assembles an environment dictionary by extracting necessary and
+    optional environment variables. It ensures that the required environment keys
+    are present and assigns them to the resulting environment dictionary. Optional
+    keys and system keys are conditionally added if they have a non-empty value.
+    Additionally, it modifies the environment to include the project source directory
+    on the Python path and performs validations to guarantee configuration integrity.
+
+    :param operator_environ: A mapping of environment variables that may override
+        or complement the current environment. If not provided, the existing
+        environment variables from `os.environ` will be used.
+    :type operator_environ: Mapping[str, str] | None
+    :param project_root: The root directory of the project, used to ensure
+        the source directory is included in the Python path.
+    :type project_root: Path
+    :return: A dictionary of environment variables configured for ACP operations.
+    :rtype: dict[str, str]
+    :raises SubprocessEnvConfigurationError: If any of the required environment
+        keys are missing or if specific validation conditions fail.
+    """
     source = dict(operator_environ or os.environ)
     env: dict[str, str] = {}
 

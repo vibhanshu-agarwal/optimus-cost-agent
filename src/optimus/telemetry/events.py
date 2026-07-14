@@ -31,6 +31,32 @@ class TelemetryEventKind(StrEnum):
 
 
 class TelemetryEvent(BaseModel):
+    """
+    Represents a telemetry event capturing various types of system, tool, or service-related
+    operations and metrics.
+
+    This class is designed to encapsulate structured data for a range of telemetry event
+    types such as model calls, retries, errors, audits, and usage breakdowns. Each event
+    type encapsulates specific attributes aligned to the specific operational or diagnostic
+    context. This information can be employed for analytics, troubleshooting, billing, or
+    pipeline monitoring.
+
+    :ivar model_config: Configuration for the model, ensuring it is immutable.
+    :type model_config: ConfigDict
+    :ivar kind: The type of telemetry event being captured.
+    :type kind: TelemetryEventKind
+    :ivar run_id: Globally unique identifier for the runtime or operation that triggered
+        this event.
+    :type run_id: str
+    :ivar session_id: Identifier for the session during which the event occurred, if available.
+    :type session_id: str | None
+    :ivar request_id: Globally unique identifier for the specific request tied to this event.
+    :type request_id: str
+    :ivar occurred_at: The exact timestamp of when the event occurred.
+    :type occurred_at: datetime
+    :ivar payload: A dictionary containing additional event-specific data.
+    :type payload: dict[str, Any]
+    """
     model_config = ConfigDict(frozen=True)
 
     kind: TelemetryEventKind

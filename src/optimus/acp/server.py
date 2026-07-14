@@ -82,6 +82,19 @@ class NdjsonLineWriter(Protocol):
 
 
 class NdjsonOutboundChannel:
+    """
+    Handles the outbound communication channel over NDJSON protocol.
+
+    This class is responsible for sending notifications and requests in the
+    NDJSON-RPC format, managing request IDs, handling responses from the client,
+    and providing means to cancel pending requests. It uses an `NdjsonLineWriter`
+    for writing data in the NDJSON format and integrates debugging logs at specific
+    execution points.
+
+    :ivar last_outbound_request_id: The ID of the most recent outbound request,
+        or None if no request has been sent yet.
+    :type last_outbound_request_id: str | int | None
+    """
     def __init__(self, writer: NdjsonLineWriter) -> None:
         self._writer = writer
         self._agent_request_ids = iter(range(10_000, 100_000))
@@ -158,6 +171,21 @@ class NdjsonOutboundChannel:
 
 
 class AcpStreamServer:
+    """
+    Handles Advanced Control Protocol (ACP) stream server functionality, allowing
+    interaction between a client and server using JSON-RPC or NDJSON over various
+    communication channels.
+
+    This class facilitates processing of client requests and manages the interaction
+    using provided or default JsonRpcDispatcher instances, supporting multiple
+    communication patterns (streaming or newline-delimited JSON). Intended for
+    scenarios requiring structured communication, such as IDE integrations, build
+    automation, or custom tooling.
+
+    :ivar dispatcher: JSON-RPC dispatcher instance used to process incoming
+        requests and route them to the correct handling functions.
+    :type dispatcher: JsonRpcDispatcher
+    """
     def __init__(self, dispatcher: JsonRpcDispatcher | None = None) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
 

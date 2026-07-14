@@ -109,6 +109,23 @@ class MCPTrustDecision:
 
 
 class MCPTrustRegistry:
+    """
+    Handles the trust registry for MCP servers, ensuring that server actions and specified tools comply
+    with approved permissions and security standards.
+
+    The MCPTrustRegistry class is responsible for managing trust records for MCP servers. It validates
+    server manifests, controls the interaction of registered servers with their tools, and enforces
+    security constraints based on declared permissions and rules. The registry relies on a scanner to
+    analyze descriptor texts and blocks unsafe or unapproved operations.
+
+    :ivar scanner: Reference to a ConfigTrustScanner used for scanning and analyzing manifest
+        descriptor texts to ensure compliance with trust policies.
+    :type scanner: ConfigTrustScanner
+
+    :ivar records: A dictionary where the keys are server IDs and the values are
+        MCPServerTrustRecord objects representing the trust records for registered servers.
+    :type records: dict[str, MCPServerTrustRecord]
+    """
     def __init__(self, *, scanner: ConfigTrustScanner) -> None:
         self._scanner = scanner
         self._records: dict[str, MCPServerTrustRecord] = {}

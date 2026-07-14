@@ -16,6 +16,24 @@ PatchResult = TypeVar("PatchResult")
 
 
 class PreToolGuardLike(Protocol):
+    """
+    Defines an interface for a pre-tool guard that processes and evaluates
+    requests based on a custom protocol.
+
+    This class serves as a blueprint for implementing functionality to check
+    and return results for pre-tool operations. Classes implementing this protocol
+    must define the method outlined, adhering to its specified behavior. Commonly
+    used in scenarios requiring validation, condition checks, or permission grants
+    before performing tool-specific tasks.
+
+    :ivar request: Represents the input request to be processed by the `check`
+        method. Expected to be of type ``PreToolRequest``.
+    :type request: PreToolRequest
+    :ivar result: Represents the output result produced by the `check` method.
+        It encapsulates the evaluation or decision made for the input request.
+        Expected to be of type ``PreToolResult``.
+    :type result: PreToolResult
+    """
     def check(self, request: PreToolRequest) -> PreToolResult:
         ...
 

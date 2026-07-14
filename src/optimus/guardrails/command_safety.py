@@ -21,6 +21,20 @@ _NON_HTTP_EGRESS = {"scp", "sftp", "ssh", "ftp", "nc", "ncat", "netcat", "telnet
 
 
 class CommandSafetyValidator:
+    """
+    CommandSafetyValidator is responsible for validating shell commands to ensure
+    they adhere to safety and security standards.
+
+    This class checks commands for potential dangerous patterns, destructive
+    behaviors, and security vulnerabilities. It encompasses both general validation
+    and specific validations, such as handling network safety, dangerous command
+    patterns, and improper Unicode sequences.
+
+    :ivar _paths: Validates path-related safety constraints.
+    :type _paths: PathSafetyValidator
+    :ivar _network: Validates network-related safety constraints.
+    :type _network: NetworkSafetyValidator
+    """
     def __init__(self, *, workspace_root: str | Path, allowed_network_hosts: tuple[str, ...]) -> None:
         self._paths = PathSafetyValidator(workspace_root=workspace_root)
         self._network = NetworkSafetyValidator(allowed_hosts=allowed_network_hosts)

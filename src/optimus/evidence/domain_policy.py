@@ -10,6 +10,19 @@ class EvidenceDomainRejected(ValueError):
 
 
 class EvidenceDomainPolicy:
+    """
+    Manages the policy for allowed evidence domains.
+
+    This class encapsulates the logic for determining which domains are allowed
+    based on a configured set of allowed domains and a requested set of domains.
+    It is also capable of verifying if a given URL is allowed based on the
+    effective allowed domains.
+
+    :ivar configured_domains: A set of pre-configured allowed domains that serve
+        as the basis for determining effective allowed domains and validating URL
+        access.
+    :type configured_domains: frozenset[str]
+    """
     def __init__(self, *, configured_allowed_domains: tuple[str, ...]) -> None:
         self._configured_domains = frozenset(
             domain

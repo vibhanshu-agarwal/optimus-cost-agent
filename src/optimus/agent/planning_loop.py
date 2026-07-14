@@ -177,6 +177,28 @@ def pack_planning_evidence(
     observations: tuple[PlanningObservation, ...],
     current_reads: tuple[PlanningReadEvidence, ...],
 ) -> PlanningEvidenceEnvelope:
+    """
+    Packs planning evidence, including observations and current read evidence, into an envelope while ensuring
+    that size constraints for serialized data are not exceeded.
+
+    This function validates that the serialized forms of observations, current reads, and their combination
+    do not surpass the predefined byte budgets. If any validation fails, an appropriate
+    PlanningEvidenceBudgetError is raised.
+
+    :param observations: A tuple containing instances of PlanningObservation, representing
+                         planning-related observations to be serialized and included in
+                         the evidence envelope.
+    :param current_reads: A tuple containing instances of PlanningReadEvidence, representing
+                          current read-based evidence to be serialized and included in
+                          the evidence envelope.
+    :return: A PlanningEvidenceEnvelope object holding the serialized and validated planning
+             evidence, including its combined text and computed byte size.
+    :rtype: PlanningEvidenceEnvelope
+    :raises PlanningEvidenceBudgetError: Raised under the following conditions:
+        - Serialized planning observations exceed the carryover budget.
+        - Serialized planning read evidence exceeds the current-turn budget.
+        - Combined serialized evidence exceeds the workspace context budget.
+    """
     observation_text = "".join(_serialize_planning_observation(observation) for observation in observations)
     observation_bytes = len(observation_text.encode("utf-8"))
     if observation_bytes > PLANNING_OBSERVATION_MAX_BYTES:
@@ -402,6 +424,31 @@ def _surface_has_ranged_read(surface_lines: tuple[str, ...]) -> bool:
 
 
 def _parse_intermediate_turn(text: str) -> PlanningTurnDecision:
+    """
+    Parses an intermediate planning turn from the provided text and extracts directives for
+    observation and read requests. Each directive is validated for correctness and supported format.
+    The function ensures that there is exactly one OBSERVE directive, at least one ranged READ directive,
+    and validates that their combined size does not exceed the observation byte budget. Additionally,
+    it ensures that read ranges do not overlap.
+
+    :param text: The input text representing the intermediate planning turn, containing directives
+        for observation and read requests.
+    :type text: str
+
+    :raises PlanningTurnParseError: Raised if:
+        - Multiple OBSERVE directives are present in the input.
+        - No OBSERVE directive is found.
+        - No ranged READ directive is present.
+        - READ range end byte is less than or equal to the start byte.
+        - Any unsupported or unrecognized directive is found in the input.
+        - The observation size exceeds the allowed planning observation byte budget.
+        - Overlapping reads are detected in the read requests.
+
+    :return: A decision object representing the parsed planning turn, including the observation text,
+        a tuple of read requests, and additional metadata. The decision is of type `PlanningTurnDecision`
+        and indicates that more reads are required.
+    :rtype: PlanningTurnDecision
+    """
     lines = text.splitlines()
     observation_text: str | None = None
     read_requests: list[PlanningReadRequest] = []

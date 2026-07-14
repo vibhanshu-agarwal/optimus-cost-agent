@@ -33,6 +33,33 @@ class GoalLoopResult(BaseModel):
 
 
 class GoalLoopController:
+    """
+    Manages and executes bounded goal-oriented loops while enforcing limits defined by
+    a policy, and evaluating progress and outcomes with configurable tools and evaluators.
+
+    This controller interacts with an iteration runner, tools, an evaluator, and a ledger
+    to facilitate iterative execution of a goal loop. It also supports runtime stop checks
+    through user-provided callbacks to ensure flexible termination based on external
+    conditions. The goal loop concludes either when deterministic completion is achieved
+    or when any termination condition specified by the policy is met.
+
+    :ivar _policy: Loop budget policy defining iteration constraints and limits.
+    :type _policy: LoopBudgetPolicy
+    :ivar _runner: Runner responsible for executing individual iterations.
+    :type _runner: IterationRunner
+    :ivar _tools: Executor protocol providing guarded tools for loop execution.
+    :type _tools: LoopToolExecutorProtocol
+    :ivar _evaluator: Evaluator for assessing intermediate and final loop completions.
+    :type _evaluator: CompletionEvaluatorProtocol
+    :ivar _ledger: Progress ledger for recording milestones and loop state progressions.
+    :type _ledger: ProgressLedger
+    :ivar _halt_requested: Optional callable indicating if a halt is requested externally.
+    :type _halt_requested: Callable[[], bool] | None
+    :ivar _now: Optional callable to fetch the current time for time-related checks.
+    :type _now: Callable[[], datetime] | None
+    :ivar _event_sink: Optional telemetry event sink for emitting loop termination data.
+    :type _event_sink: Callable[[TelemetryEvent], None] | None
+    """
     def __init__(
         self,
         *,

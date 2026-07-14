@@ -81,6 +81,18 @@ def _require_redis_url(environ: Mapping[str, str]) -> str:
 
 
 def _require_redis_timeseries(runtime: RedisRuntime) -> None:
+    """
+    Validates that the provided Redis runtime includes TimeSeries support. If the
+    required support is not available, a `PreflightFailure` exception is raised
+    with a descriptive message. TimeSeries support is essential for running
+    specific command sets required by the application.
+
+    :param runtime: RedisRuntime instance representing the Redis runtime to be
+        validated.
+    :raises PreflightFailure: Raised if the Redis runtime lacks TimeSeries
+        support.
+    :rtype: None
+    """
     try:
         _probe_redis_timeseries(runtime)
     except Exception as exc:
@@ -94,6 +106,22 @@ def _require_redis_timeseries(runtime: RedisRuntime) -> None:
 
 
 def _require_gateway_auth(environ: Mapping[str, str]) -> None:
+    """
+    Validates the authentication credentials for the Optimus gateway using preflight checks. This function attempts to
+    initiate a request to the gateway with provided environment configurations to ensure that the credentials are valid.
+    If the authentication fails or the gateway is unreachable, appropriate exceptions are raised to indicate the issue.
+
+    :param environ: A dictionary-like object that contains environment variables required for gateway configuration.
+                    These environment variables include but are not limited to keys such as ``OPTIMUS_GATEWAY_URL``.
+    :type environ: Mapping[str, str]
+
+    :return: This function does not return a value. It performs a validation check on the gateway authentication credentials.
+    :rtype: None
+
+    :raises PreflightFailure: If the gateway rejects the authentication probe (e.g., due to invalid API key) or if the
+                               gateway is unreachable. The exception includes specific exit codes and user-friendly
+                               messages to indicate the nature of the failure.
+    """
     from optimus.agent.defaults import resolve_agent_model
     from optimus.config.gateway import OptimusGatewaySettings
     from optimus.gateway.client import GatewayClient
@@ -153,7 +181,28 @@ def collect_preflight_checks(
     strict: bool = False,
     require_timeseries: bool = False,
 ) -> list[PreflightCheckResult]:
-    """Run pre-flight checks independently and return one result per check."""
+    """
+    Collects and performs a series of preflight checks to validate the environment and configuration
+    necessary for application execution. The checks include validation of gateway credentials,
+    Redis URL and connectivity, Redis time series support, workspace writability, and optional
+    gateway authentication when in strict mode.
+
+    The function consolidates the results of all preflight checks into a list of `PreflightCheckResult`
+    objects, detailing the name of the check, its pass status, and any additional information.
+
+    :param environ: Optional mapping of environment variables to override the default OS environment.
+    :type environ: Mapping[str, str] | None
+    :param workspace_root: Path to the application's workspace root. If provided, its directory
+        existence and writability are validated.
+    :type workspace_root: Path | None
+    :param strict: If True, additional strict validation such as gateway authentication probes
+        are performed.
+    :type strict: bool
+    :param require_timeseries: If True, checks are performed to ensure Redis TimeSeries support is available.
+    :type require_timeseries: bool
+    :return: A list of `PreflightCheckResult` objects, each representing the result of a specific preflight check.
+    :rtype: list[PreflightCheckResult]
+    """
     env = os.environ if environ is None else environ
     results: list[PreflightCheckResult] = []
     redis_url: str | None = None

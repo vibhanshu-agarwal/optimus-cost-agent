@@ -101,6 +101,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """
+    Main entry point for the application. This function orchestrates the live verification
+    process and ensures all preliminary checks and configurations are in place before invoking
+    the live session. It processes input arguments, validates the workspace and environment,
+    executes the live verification session, and handles errors or failures if they occur.
+
+    :param argv: List of command-line arguments to be parsed for initializing the session.
+                  Pass None to default to `sys.argv`.
+    :type argv: list[str] or None
+    :return: Exit status of the verification process. Zero indicates success, whereas non-zero
+             values indicate specific errors or failures.
+    :rtype: int
+    """
     args = parse_args(argv)
     project_root = _resolve_project_root()
     workspace = (args.workspace_root or default_verify_workspace_root(project_root)).resolve()
@@ -179,6 +192,34 @@ def run_operator_live_session(
     transcript: E2eAcpTranscriptWriter,
     approval_callback: Callable[[str], bool] | None = None,
 ) -> OperatorLiveSessionResult:
+    """
+    Executes a live operator session for a specified task, handling interaction
+    with a subprocess-driven model and ensuring proper session lifecycle
+    management.
+
+    This function initializes a communication session with the model, sends
+    prompts for task execution, handles retries for specific conditions, and
+    tracks the resulting plan's execution cost. If specified, the function
+    can limit execution to plan generation only or require manual approval
+    through a callback mechanism.
+
+    :param config: Configuration object for the operator live session,
+        encapsulating session details such as task, model, workspace, and timeout.
+    :type config: OperatorLiveSessionConfig
+    :param environ: Environment variables used to set up the session
+        and subprocess execution.
+    :type environ: Mapping[str, str]
+    :param transcript: Transcript writer used to log communication and outputs
+        between the client and the subprocess.
+    :type transcript: E2eAcpTranscriptWriter
+    :param approval_callback: Optional callback function for manual approval
+        of plans. It takes a string as input and returns a boolean indicating
+        approval or rejection.
+    :type approval_callback: Callable[[str], bool] | None
+    :return: Result of the operator live session, including the model used,
+        plan details, execution costs, and session stop reasons.
+    :rtype: OperatorLiveSessionResult
+    """
     redis_url = environ["OPTIMUS_REDIS_URL"].strip()
     redis_store = RedisAgentStateStore.from_url(redis_url)
     subprocess_env = build_acp_subprocess_env(operator_environ=environ, project_root=config.project_root)
@@ -410,6 +451,28 @@ def _run_prompt_turn(
     require_manual_approval: bool,
     approval_callback: Callable[[str], bool] | None,
 ) -> tuple[dict, str, str]:
+    """
+    Executes a single turn of a prompt workflow by interacting with a session, handling
+    permission requests, and processing prompt responses. It ensures appropriate approvals
+    and handles unparseable plans or errors that may arise during the session while
+    communicating with Redis for state management.
+
+    :param session: The NdjsonSubprocessSession instance managing the prompt workflow.
+    :param session_id: Unique identifier for the current session.
+    :param prompt_request_id: Identifier for the prompt request being processed.
+    :param task: The textual task or prompt that will be sent to the session.
+    :param deadline: The time threshold (in seconds) for completing this operation.
+    :param redis_store: Instance for managing Redis-based agent state storage.
+    :param transcript: The transcript writer used for recording end-to-end operations.
+    :param plan_only: Boolean flag indicating whether only the planning stage is required.
+    :param require_manual_approval: Boolean indicating if manual approval is mandatory.
+    :param approval_callback: Optional callback to handle manual approval for the plan.
+
+    :return: A tuple consisting of:
+        - The response dictionary corresponding to the prompt execution.
+        - A string representing the unique run identifier for this workflow.
+        - A string describing the parsing status or result.
+    """
     session.send(
         {
             "jsonrpc": "2.0",
@@ -490,6 +553,19 @@ def _resolve_approval(
     require_manual_approval: bool,
     approval_callback: Callable[[str], bool] | None,
 ) -> bool:
+    """
+    Resolves the approval for a given plan by either using an optional callback,
+    bypassing manual approval, or prompting the user for input if required. This
+    function is designed to handle flexible approval workflows.
+
+    :param plan_text: The textual representation of the plan to be approved.
+    :param require_manual_approval: Indicates whether manual approval is required.
+    :param approval_callback: A callable function that, if provided, determines
+        approval based on the plan text. It takes a single string parameter and
+        returns a boolean indicating the approval decision.
+    :return: A boolean indicating whether the plan was approved (True) or not
+        (False).
+    """
     if approval_callback is not None:
         return approval_callback(plan_text)
     if not require_manual_approval:
