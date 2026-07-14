@@ -122,3 +122,67 @@ def test_gateway_usage_rejects_negative_optimus_credits():
                 },
             }
         )
+
+
+# --- Plan 9.95 Task 1 Step 1: usage-preserving malformed response tests ---
+
+
+def test_missing_output_preserves_valid_gateway_usage_on_response_error():
+    """Valid usage is preserved when output_text is missing/malformed."""
+    body = {
+        "id": "resp-1",
+        "gateway_usage": {
+            "gateway_request_id": "gw-failed-1",
+            "provider": "glm",
+            "cache_hit": False,
+            "billing_units": 10,
+            "cost_usd": "0.001",
+        },
+    }
+
+    with pytest.raises(GatewayResponseError) as exc_info:
+        parse_gateway_response(body)
+
+    assert exc_info.value.gateway_usage is not None
+    assert exc_info.value.gateway_usage.gateway_request_id == "gw-failed-1"
+
+
+def test_invalid_response_id_preserves_valid_gateway_usage_on_response_error():
+    """Valid usage is preserved when the response id field is non-string."""
+    body = {
+        "id": 12345,
+        "output_text": "done",
+        "gateway_usage": {
+            "gateway_request_id": "gw-failed-1",
+            "provider": "glm",
+            "cache_hit": False,
+            "billing_units": 10,
+            "cost_usd": "0.001",
+        },
+    }
+
+    with pytest.raises(GatewayResponseError) as exc_info:
+        parse_gateway_response(body)
+
+    assert exc_info.value.gateway_usage is not None
+    assert exc_info.value.gateway_usage.gateway_request_id == "gw-failed-1"
+
+
+def test_invalid_gateway_usage_has_no_partial_usage():
+    """When gateway_usage itself is invalid, no partial usage is attached."""
+    body = {
+        "id": "resp-1",
+        "output_text": "done",
+        "gateway_usage": {
+            "gateway_request_id": "",
+            "provider": "glm",
+            "cache_hit": False,
+            "billing_units": 10,
+            "cost_usd": "0.001",
+        },
+    }
+
+    with pytest.raises(GatewayResponseError) as exc_info:
+        parse_gateway_response(body)
+
+    assert exc_info.value.gateway_usage is None

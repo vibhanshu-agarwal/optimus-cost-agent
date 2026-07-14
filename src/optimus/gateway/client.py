@@ -11,8 +11,10 @@ from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.errors import GatewayHttpError
 from optimus.gateway.models import (
     GatewayResponse,
+    GatewayUsage,
     build_responses_payload,
     parse_gateway_response,
+    parse_gateway_usage,
 )
 
 
@@ -58,7 +60,10 @@ class UrllibGatewayTransport:
                 body = response.read().decode("utf-8")
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            raise GatewayHttpError(exc.code, detail or exc.reason) from exc
+            gateway_usage = _try_parse_error_usage(detail)
+            raise GatewayHttpError(
+                exc.code, detail or exc.reason, gateway_usage=gateway_usage
+            ) from exc
         except URLError as exc:
             raise GatewayHttpError(0, str(exc.reason)) from exc
 
@@ -149,6 +154,28 @@ class GatewayClient:
         headers["Content-Type"] = "application/json"
         headers["Accept"] = "application/json"
         return headers
+
+
+def _try_parse_error_usage(detail: str) -> GatewayUsage | None:
+    """Attempt to extract valid gateway_usage from an HTTP error body.
+
+    Returns a validated GatewayUsage if the body is a JSON object containing a
+    valid gateway_usage envelope. Returns None for non-JSON bodies, non-object
+    JSON, missing gateway_usage, or invalid gateway_usage — without raising.
+    """
+    try:
+        decoded = json.loads(detail, parse_float=Decimal)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(decoded, dict):
+        return None
+    usage_body = decoded.get("gateway_usage")
+    if not isinstance(usage_body, dict):
+        return None
+    try:
+        return parse_gateway_usage(usage_body)
+    except Exception:  # noqa: BLE001 — intentionally broad; invalid usage is not an error here
+        return None
 
 
 def _decode_gateway_json(body: str) -> dict[str, Any]:
