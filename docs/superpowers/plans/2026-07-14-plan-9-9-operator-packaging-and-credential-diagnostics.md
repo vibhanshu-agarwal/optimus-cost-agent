@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Draft for reviewer-agent and operator approval. Do not implement until both approve this file.
+**Status:** Approved by the reviewer agent and operator on 2026-07-14. Implementation must start from a fresh worktree and branch from latest `main` per the handoff below.
 
 **Goal:** Make `optimus-agent` safe and predictable from editable and non-editable installations by separating operator-owned configuration from workspace-owned runtime files, diagnosing provable provider/key mismatches before gateway spawn, and proving the packaged path with a real independently authored ACP client.
 
