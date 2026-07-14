@@ -763,3 +763,61 @@ Locator transcript: transcript: attempt-3
   "classification_required": false
 }
 ```
+
+## Plan 9.88 FU-4B Pre-Live Capture Baseline (Task 5)
+
+> **PRE-LIVE GATE ONLY.** This section freezes the capture baseline and appends the immutable Plan 9.88 lane header. No live `acpx`/Gateway/model attempt occurs here; live capture begins only in Task 6 after the report-header commit.
+
+| Field | Value |
+|-------|-------|
+| Capture implementation SHA (Tasks 1-4 code) | `f9abcf7459b84f75f3cf876ac169631fff823012` |
+| Branch | `agent/cursor/plan-9-88-fu4b-evidence` |
+| Predicate | `P9.88-FU4B-QUALIFY-v1` |
+| Max completed attempts | 3 |
+| Baseline prompt | `MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu4c` |
+| Lane prompt | `MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a` |
+| Inherited prompt delta | Inherited frozen-runtime prompt delta fu4c -> fu5a; not an attempt dimension. |
+| Terminal Plan 9.87 SHA | `d71b29390c7bafe57612bcc0ea3a0fcf5c06d7e9` |
+| Baseline model | `z-ai/glm-5.2` |
+| Watched paths | `src/optimus`, `tools/run_plan987_acpx_live_evidence.py`, `tools/run_plan988_fu4b_live_evidence.py` |
+
+**SHA roles (record explicitly):** the lane header `implementation_sha` is the Tasks 1-4 code SHA above. After the approved report-only Task 5 commit, that new report-header commit SHA (not the code SHA, not a short hash) is what Task 6 supplies as `--implementation-sha`. The two SHAs are watched-path-equivalent because Task 5 changes only this report.
+
+### Spent Plan 9.87 FU-4B history (retained disclosure; not Plan 9.88 ledger slots)
+
+Plan 9.88 is a sanctioned remediation lane over the spent Plan 9.87 FU-4B effort already recorded above. Complete history retained here:
+
+| Phase | Model | Gateway | Terminal | Notes |
+|-------|-------|---------|----------|-------|
+| Initial (pre-`26098ba`) | `optimus-chat` | **zero** wire attempts / IDs / usage | `PLANNING_REPEATED_READ_REQUEST` | Invalid model resolution; infrastructure-invalid |
+| Retry 1 | `claude-haiku` | charged (2 wire) | `PLANNING_UNPARSEABLE_RESPONSE` | No READ_MORE |
+| Retry 2 | `claude-haiku` | charged (2 wire) | `PLANNING_READ_FILE_NOT_FOUND` | Same non-qualifying shape |
+| Retry 3 diagnostic | `z-ai/glm-5.2` | charged (2 wire) | `PLANNING_MODEL_REFUSED` after turn-1 READ_MORE | Replan plumbing works; not FINAL_PLAN |
+| Post-fix ×2 (`fu4b`) | `z-ai/glm-5.2` | charged | `PLANNING_READ_FILE_NOT_FOUND` | No READ_MORE |
+| Terminal `fu4c` | `z-ai/glm-5.2` at `d71b29390c7bafe57612bcc0ea3a0fcf5c06d7e9` | charged | `PLANNING_READ_FILE_NOT_FOUND` (`README.md#bytes=0:8192`) | Plan 9.87 FU-4B live budget closed as characterized-but-unproven |
+
+Machine-readable Plan 9.88 lane header follows.
+
+```json
+{
+  "baseline_fixture_manifest_sha256": "a642d014fe0317d3bb8d76fd03ce596721a5d223129da7150ee8c5b4cad082bd",
+  "baseline_implementation_sha": "d71b29390c7bafe57612bcc0ea3a0fcf5c06d7e9",
+  "baseline_model": "z-ai/glm-5.2",
+  "baseline_prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu4c",
+  "baseline_task_sha256": "72ac1a176db8bbe91f8533aa1b701b36f319eeecb5860dcb03d8bfb363175252",
+  "branch": "agent/cursor/plan-9-88-fu4b-evidence",
+  "evidence_lane": "P9.88-FU4B",
+  "implementation_sha": "f9abcf7459b84f75f3cf876ac169631fff823012",
+  "inherited_prompt_delta": "Inherited frozen-runtime prompt delta fu4c -> fu5a; not an attempt dimension.",
+  "lane_prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a",
+  "max_completed_attempts": 3,
+  "predicate_id": "P9.88-FU4B-QUALIFY-v1",
+  "record_type": "plan988_lane_header",
+  "schema_version": "plan-9-88-fu4b-evidence-v1",
+  "watched_paths": [
+    "src/optimus",
+    "tools/run_plan987_acpx_live_evidence.py",
+    "tools/run_plan988_fu4b_live_evidence.py"
+  ]
+}
+```
