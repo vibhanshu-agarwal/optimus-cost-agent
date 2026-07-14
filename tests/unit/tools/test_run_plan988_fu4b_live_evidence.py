@@ -94,6 +94,21 @@ def test_attempt_two_wording_selects_new_task_preserving_fixture_bytes(tmp_path:
     assert attempt2["fixture_manifest_sha256"] != attempt1["fixture_manifest_sha256"]
 
 
+def test_attempt_three_model_change_preserves_attempt_two_wording_task() -> None:
+    attempt2_digest = _sha256_text(PLAN988_REPLAN_TASK_ATTEMPT2)
+    assert (
+        select_fu4b_task(
+            attempt=3,
+            changed_dimension="model",
+            previous_task_sha256=attempt2_digest,
+        )
+        == PLAN988_REPLAN_TASK_ATTEMPT2
+    )
+    assert (
+        select_fu4b_task(attempt=3, changed_dimension="model") == PLAN988_REPLAN_TASK
+    )
+
+
 def test_plan988_schema_field_sets_are_pinned() -> None:
     assert PLAN988_LANE_HEADER_FIELDS == {
         "schema_version",

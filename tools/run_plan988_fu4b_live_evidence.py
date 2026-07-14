@@ -296,9 +296,20 @@ def fixture_file_sha256s(workspace: Path) -> dict[str, str]:
     }
 
 
-def select_fu4b_task(*, attempt: int, changed_dimension: str) -> str:
-    """Select the task string for a Plan 9.88 slot without mutating attempt-1 constants."""
+def select_fu4b_task(
+    *,
+    attempt: int,
+    changed_dimension: str,
+    previous_task_sha256: str = "",
+) -> str:
+    """Select the task string for a Plan 9.88 slot without mutating attempt-1 constants.
+
+    A wording change on attempt > 1 introduces PLAN988_REPLAN_TASK_ATTEMPT2. Later
+    fixture/model slots must preserve that text when the prior completed digest matches.
+    """
     if attempt > 1 and changed_dimension == "wording":
+        return PLAN988_REPLAN_TASK_ATTEMPT2
+    if previous_task_sha256 == _sha256_text(PLAN988_REPLAN_TASK_ATTEMPT2):
         return PLAN988_REPLAN_TASK_ATTEMPT2
     return PLAN988_REPLAN_TASK
 
@@ -876,7 +887,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.pre_register:
         # Attempt-1 keeps PLAN988_REPLAN_TASK pinned. Later wording attempts select a
         # separate constant so regenerating attempt-1 fixtures cannot rewrite history.
-        task = select_fu4b_task(attempt=int(args.attempt), changed_dimension=str(args.changed))
+        # Fixture/model follow-ups preserve the prior completed task digest.
+        prior_task_sha = str(previous.get("task_sha256", "")) if previous is not None else ""
+        task = select_fu4b_task(
+            attempt=int(args.attempt),
+            changed_dimension=str(args.changed),
+            previous_task_sha256=prior_task_sha,
+        )
         manifest = prepare_fu4b_fixture(workspace, task=task)
         registration = _build_registration_from_args(
             args,
@@ -902,9 +919,11 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             print(str(exc), file=sys.stderr)
             return 2
+        # Bind the prepared task to the locked registration digest, not argv.
         task = select_fu4b_task(
             attempt=int(registration["attempt"]),
             changed_dimension=str(registration["changed_dimension"]),
+            previous_task_sha256=str(registration["task_sha256"]),
         )
         manifest = prepare_fu4b_fixture(workspace, task=task)
         if str(manifest["task_sha256"]) != str(registration["task_sha256"]):
