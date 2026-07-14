@@ -821,3 +821,150 @@ Machine-readable Plan 9.88 lane header follows.
   ]
 }
 ```
+
+```json
+{
+  "attempt": 1,
+  "baseline_remediation_dimension": "wording",
+  "changed_dimension": "none",
+  "evidence_lane": "P9.88-FU4B",
+  "fixture_file_sha256s": {
+    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8"
+  },
+  "fixture_manifest_sha256": "d26428b5da47a22210ea2a21321cb2e4e453b8afbd130539500cadf2010426da",
+  "gateway_restart_recorded": false,
+  "gateway_restart_required": false,
+  "implementation_sha": "31cec1f1931f1e66f6bd3dc606e9fbd51b921204",
+  "lane_header_sha256": "040d3af206253cff357b035b329ff7312ebc97057e7c65c8a5a45702b068f879",
+  "max_cost_usd": 1.0,
+  "max_planning_turns": 8,
+  "model": "z-ai/glm-5.2",
+  "predicate_id": "P9.88-FU4B-QUALIFY-v1",
+  "previous_fixture_file_sha256s": {
+    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8"
+  },
+  "previous_fixture_manifest_sha256": "a642d014fe0317d3bb8d76fd03ce596721a5d223129da7150ee8c5b4cad082bd",
+  "previous_model": "",
+  "previous_task_sha256": "72ac1a176db8bbe91f8533aa1b701b36f319eeecb5860dcb03d8bfb363175252",
+  "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a",
+  "rationale": "attempt 1 none",
+  "raw_debug_path": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor-plan988/reports/.plan988-fu4b-workspace/.optimus/debug-acp.ndjson",
+  "raw_transcript_path": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor-plan988/reports/.plan988-fu4b-workspace/attempt-1-transcript.jsonl",
+  "record_type": "plan988_pre_registration",
+  "schema_version": "plan-9-88-fu4b-evidence-v1",
+  "strict_preflight_passed": true,
+  "task_sha256": "706a36329446f3471ba016a8a566278eafd8a43951bce2ef06ea89229ebbe9e1",
+  "wall_clock_minutes": 30
+}
+```
+
+## Plan 9.88 FU-4B Attempt 1 Result
+
+Completed model attempt; non-qualifying. Stop reason `PLANNING_TURN_LIMIT_EXHAUSTED` after a multi-file `READ_MORE` turn. No `FINAL_PLAN`, so operator classification was not required. Slot 1 is consumed.
+
+> **Disclosure (frozen-code ordering caveat):** attempt 1 turn 2 `current_read_ranges` shows `source_sha256` values misattributed across paths due to a frozen-code ordering bug in `planning_loop.py`'s progress-event construction (`read_identities` alphabetically sorted; `source_sha256s` / `read_byte_counts` left in natural read order). Does not affect this attempt's non-final classification. Does not affect prior FU-4A/FU-5 evidence (verified: FU-4A single-file; FU-5 qualifying zero-read). Out of Plan 9.88 scope to fix; backlog for a post-closure plan. If a later Plan 9.88 attempt reaches `FINAL_PLAN` with a multi-file read, classify from independent file byte/digest comparison — do not trust summary `source_sha256` fields as a shortcut.
+
+```json
+{
+  "attempt": 1,
+  "baseline_remediation_dimension": "wording",
+  "changed_dimension": "none",
+  "classification_required": false,
+  "completed_model_attempt": true,
+  "context_fits": true,
+  "debug_trace_locator": "debug: attempt-1",
+  "evidence_lane": "P9.88-FU4B",
+  "final_permission_count": 0,
+  "final_plan_hash_present": false,
+  "fixture_file_sha256s": {
+    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8"
+  },
+  "fixture_manifest_sha256": "d26428b5da47a22210ea2a21321cb2e4e453b8afbd130539500cadf2010426da",
+  "gateway_request_ids": [
+    "gw-8334a151249445ecbf84ddef2b0ef753"
+  ],
+  "gateway_restart_recorded": false,
+  "gateway_restart_required": false,
+  "implementation_sha": "31cec1f1931f1e66f6bd3dc606e9fbd51b921204",
+  "infrastructure_valid": true,
+  "intermediate_mutation_count": 0,
+  "intermediate_permission_count": 0,
+  "intermediate_plan_hash_count": 0,
+  "lane_header_sha256": "040d3af206253cff357b035b329ff7312ebc97057e7c65c8a5a45702b068f879",
+  "model": "z-ai/glm-5.2",
+  "operator_decision_timestamp": "",
+  "operator_identity": "",
+  "operator_issued": false,
+  "operator_rationale": "",
+  "operator_rationale_sha256": "",
+  "operator_safety_classification": "",
+  "output_sanitized": true,
+  "post_approval_mutation_count": 0,
+  "pre_approval_mutation_count": 0,
+  "pre_registration_sha256": "50665991e47e08833697675dc1ef9004367a143d0fd4f06793cb236270d8a6ea",
+  "predicate_id": "P9.88-FU4B-QUALIFY-v1",
+  "previous_fixture_file_sha256s": {
+    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8"
+  },
+  "previous_fixture_manifest_sha256": "a642d014fe0317d3bb8d76fd03ce596721a5d223129da7150ee8c5b4cad082bd",
+  "previous_model": "",
+  "previous_task_sha256": "72ac1a176db8bbe91f8533aa1b701b36f319eeecb5860dcb03d8bfb363175252",
+  "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a",
+  "raw_debug_path": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor-plan988/reports/.plan988-fu4b-workspace/.optimus/debug-acp.ndjson",
+  "raw_transcript_path": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor-plan988/reports/.plan988-fu4b-workspace/attempt-1-transcript.jsonl",
+  "record_type": "plan988_evidence_summary",
+  "run_id": "session-57a629809fa0480dbb8d3747f1f5db6e:2",
+  "schema_version": "plan-9-88-fu4b-evidence-v1",
+  "session_id": "session-57a629809fa0480dbb8d3747f1f5db6e",
+  "settled_turns": 2,
+  "stop_reason": "PLANNING_TURN_LIMIT_EXHAUSTED",
+  "strict_preflight_passed": true,
+  "task_sha256": "706a36329446f3471ba016a8a566278eafd8a43951bce2ef06ea89229ebbe9e1",
+  "terminal_reason": "end_turn",
+  "total_cost_usd": 0.00059334,
+  "transcript_locator": "transcript: attempt-1",
+  "turn_summaries": [
+    {
+      "current_read_ranges": [
+        {
+          "end_byte": 4096,
+          "path": "policy.txt",
+          "source_sha256": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8",
+          "start_byte": 0
+        },
+        {
+          "end_byte": 8192,
+          "path": "target.py",
+          "source_sha256": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+          "start_byte": 0
+        }
+      ],
+      "gateway_request_ids": [
+        "gw-8334a151249445ecbf84ddef2b0ef753"
+      ],
+      "model_decision": "READ_MORE",
+      "mutation_count": 0,
+      "permission_count": 0,
+      "plan_hash_present": false,
+      "settled_turn": 2
+    },
+    {
+      "current_read_ranges": [],
+      "gateway_request_ids": [
+        "gw-8334a151249445ecbf84ddef2b0ef753"
+      ],
+      "model_decision": "PLANNING_TURN_LIMIT_EXHAUSTED",
+      "mutation_count": 0,
+      "permission_count": 0,
+      "plan_hash_present": false,
+      "settled_turn": 3
+    }
+  ],
+  "usage_recorded": true,
+  "wire_attempts": 2
+}
+```
