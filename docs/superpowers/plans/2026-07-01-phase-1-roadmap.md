@@ -426,13 +426,13 @@ remains unchanged.
 `P9.9-FU-1` (workspace-influenced agent launch environment) is deliberately deferred, not
 implemented here. Its sole current custody line is under Plan 9.96 below.
 
-## Plan 9.95 (Reviewer Approved; Awaiting Operator Approval): Usage, Telemetry, and Evidence-Tooling Correctness
+## Plan 9.95 (Approved; Implementation Not Started): Usage, Telemetry, and Evidence-Tooling Correctness
 
 **Raised:** 2026-07-14 as the custody entry for open deferred follow-ups. The operator approved
 the three-lane split on 2026-07-14; the detailed Plan 9.95 implementation plan is
 `docs/superpowers/plans/2026-07-14-plan-9-95-usage-telemetry-evidence-tooling-correctness.md`
-was reviewer-agent approved on 2026-07-14 and remains subject to operator approval before
-implementation.
+was approved by the reviewer-agent and operator on 2026-07-14. Implementation has not started and
+must use a fresh branch from the latest `origin/main` after this documentation PR merges.
 
 - `P9.85-FU-6` — billable failed-retry aggregation / unknown transport cost — raised Plan 9.85, carried through Plans 9.87/9.88.
 - `P9.88-FU-2` — ledger digest specification and verifier helper — raised Plan 9.88.
@@ -446,8 +446,8 @@ implementation.
 
 FU-4B accepted-open is deliberately not in this entry: it is a closed disposition under the Plan
 9.88 ceremony, not a TODO. **Status:** Detailed implementation plan drafted for exactly
-`P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3`; reviewer-agent approved; awaiting operator approval;
-no implementation has begun.
+`P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3`; reviewer-agent and operator approved; no
+implementation has begun.
 
 ## Plan 9.96 (Tracked, Not Yet Scheduled): Operator-Controlled Debug and Launch Trust
 
@@ -591,7 +591,7 @@ pattern.
     and non-editable-install root discovery; evidence in
     `reports/plan-9-9-operator-packaging-evidence.md`.
 20. Plan 9.95: Usage, telemetry, and evidence-tooling correctness — implementation plan
-    reviewer-approved for `P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3`; awaiting operator approval.
+    approved for `P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3`; implementation not started.
 21. Plan 9.96: Operator-controlled debug and launch trust — tracked, not yet scheduled; opens its
     design phase with the dedicated security review; no implementation plan exists.
 22. Plan 9.97: Mechanical current-raw-evidence grounding — tracked, not yet scheduled; remains

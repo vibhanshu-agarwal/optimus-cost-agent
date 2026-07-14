@@ -5,9 +5,9 @@
 > `superpowers:subagent-driven-development` unless the operator explicitly authorizes subagents for
 > the implementation session.
 
-**Status:** Reviewer-agent approved on 2026-07-14; operator approval remains pending. The
-three-plan split is approved, but this detailed implementation plan is not approved for execution
-yet. No implementation code may begin until the operator approval is recorded on disk.
+**Status:** Approved by the reviewer-agent and operator on 2026-07-14. Implementation has not
+begun. Execution must start only after this documentation PR merges, from a fresh branch based on
+the latest `origin/main`, as required by the handoff below.
 
 **Goal:** Close `P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3` by making failed-attempt cost handling
 honest and budget-safe, keeping multi-file read telemetry mechanically aligned, and pinning a
@@ -32,7 +32,8 @@ real-transport integration, evidence correction, and reviewer/operator checkpoin
 `P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3`; Plan 9.96 owns `P9.85-FU-7` and `P9.9-FU-1`; Plan
 9.97 owns `P9.87-FU-1`. The roadmap custody update on this branch is part of the planning artifact,
 not implementation evidence. The reviewer-agent approved the amended detailed plan on 2026-07-14;
-operator approval of the detailed plan remains pending.
+the operator approved the detailed plan on 2026-07-14. This approval does not authorize
+implementation on the planning branch.
 
 ## Source Anchors and Conflict Check
 
@@ -393,10 +394,13 @@ rg -n "Plan 9\.95|P9\.85-FU-6|P9\.88-FU-2|P9\.88-FU-3|Plan 9\.96|Plan 9\.97" \
 Expected: Plan 9.95 owns exactly the three implementation follow-ups; Plans 9.96 and 9.97 remain
 tracked-only with no implementation plans.
 
-- [ ] **Step 3: Record reviewer-agent and operator approval**
+- [x] **Step 3: Record reviewer-agent and operator approval**
 
 Add the approval date and review disposition to this plan's `Status` and `Design approval` fields.
 Do not mark this step complete from chat memory; use the approved plan text on disk.
+
+Evidence (2026-07-14): the reviewer-agent and operator both approved the amended detailed plan;
+their dispositions are recorded in the `Status` and `Design approval` fields above.
 
 - [ ] **Step 4: Request approval for the Task 0 documentation-only commit**
 
