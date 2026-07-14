@@ -968,3 +968,188 @@ Completed model attempt; non-qualifying. Stop reason `PLANNING_TURN_LIMIT_EXHAUS
   "wire_attempts": 2
 }
 ```
+
+```json
+{
+  "attempt": 2,
+  "baseline_remediation_dimension": "wording",
+  "changed_dimension": "wording",
+  "evidence_lane": "P9.88-FU4B",
+  "fixture_file_sha256s": {
+    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8"
+  },
+  "fixture_manifest_sha256": "35f7557fc4928475d06a902d3c04ae42d154f35e19bc241dfe2a6e12cce53df3",
+  "gateway_restart_recorded": false,
+  "gateway_restart_required": false,
+  "implementation_sha": "69a8f7a4683b8cea395942ca0fb81bf8c0148a63",
+  "lane_header_sha256": "040d3af206253cff357b035b329ff7312ebc97057e7c65c8a5a45702b068f879",
+  "max_cost_usd": 1.0,
+  "max_planning_turns": 8,
+  "model": "z-ai/glm-5.2",
+  "predicate_id": "P9.88-FU4B-QUALIFY-v1",
+  "previous_fixture_file_sha256s": {
+    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8"
+  },
+  "previous_fixture_manifest_sha256": "d26428b5da47a22210ea2a21321cb2e4e453b8afbd130539500cadf2010426da",
+  "previous_model": "z-ai/glm-5.2",
+  "previous_task_sha256": "706a36329446f3471ba016a8a566278eafd8a43951bce2ef06ea89229ebbe9e1",
+  "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a",
+  "rationale": "Slot 1 exhausted the real 3-turn default after oversized multi-file READ_MORE ranges; wording discloses exact fixture extents so the model can ground both files and reach FINAL_PLAN within that budget. Fixture bytes and model unchanged.",
+  "raw_debug_path": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor-plan988/reports/.plan988-fu4b-workspace/.optimus/debug-acp.ndjson",
+  "raw_transcript_path": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor-plan988/reports/.plan988-fu4b-workspace/attempt-2-transcript.jsonl",
+  "record_type": "plan988_pre_registration",
+  "schema_version": "plan-9-88-fu4b-evidence-v1",
+  "strict_preflight_passed": true,
+  "task_sha256": "3dc6fc978a3b1b46d189b217ff8ca04e73dc13debffd68953ef4f4c71921752b",
+  "wall_clock_minutes": 30
+}
+```
+
+```json
+{
+  "attempt": 2,
+  "baseline_remediation_dimension": "wording",
+  "changed_dimension": "wording",
+  "evidence_lane": "P9.88-FU4B",
+  "fixture_file_sha256s": {
+    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8"
+  },
+  "fixture_manifest_sha256": "35f7557fc4928475d06a902d3c04ae42d154f35e19bc241dfe2a6e12cce53df3",
+  "gateway_restart_recorded": false,
+  "gateway_restart_required": false,
+  "implementation_sha": "ec3d6d6e26d312011a584f8062277d410ca0366a",
+  "lane_header_sha256": "040d3af206253cff357b035b329ff7312ebc97057e7c65c8a5a45702b068f879",
+  "max_cost_usd": 1.0,
+  "max_planning_turns": 8,
+  "model": "z-ai/glm-5.2",
+  "predicate_id": "P9.88-FU4B-QUALIFY-v1",
+  "previous_fixture_file_sha256s": {
+    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8"
+  },
+  "previous_fixture_manifest_sha256": "d26428b5da47a22210ea2a21321cb2e4e453b8afbd130539500cadf2010426da",
+  "previous_model": "z-ai/glm-5.2",
+  "previous_task_sha256": "706a36329446f3471ba016a8a566278eafd8a43951bce2ef06ea89229ebbe9e1",
+  "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a",
+  "rationale": "Slot 1 exhausted the real 3-turn default after oversized multi-file READ_MORE ranges; wording discloses exact fixture extents so the model can ground both files and reach FINAL_PLAN within that budget. Fixture bytes and model unchanged.",
+  "raw_debug_path": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor-plan988/reports/.plan988-fu4b-workspace/.optimus/debug-acp.ndjson",
+  "raw_transcript_path": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor-plan988/reports/.plan988-fu4b-workspace/attempt-2-transcript.jsonl",
+  "record_type": "plan988_pre_registration",
+  "schema_version": "plan-9-88-fu4b-evidence-v1",
+  "strict_preflight_passed": true,
+  "task_sha256": "3dc6fc978a3b1b46d189b217ff8ca04e73dc13debffd68953ef4f4c71921752b",
+  "wall_clock_minutes": 30
+}
+```
+
+## Plan 9.88 FU-4B Attempt 2 Result
+
+Completed model attempt; non-qualifying. Stop reason `PLANNING_GATEWAY_FAILURE` after turn-1 `READ_MORE`. No `FINAL_PLAN`, so operator classification was not required. Slot 2 is consumed.
+
+> **Disclosure:** turn 1 issued exact full-range guarded reads (`policy.txt#0:1024`, `target.py#0:4096`) with path-aligned `source_sha256` values — confirms the attempt-2 wording disclosure removed the oversized-read failure mode from slot 1. Planning then stopped after repeated gateway request failures on a later call (charged Gateway work already recorded: wire attempts, request ID, usage). Per the objective `infrastructure_valid` / `completed_model_attempt` formula and Global Constraint 7, this is a completed non-qualifying slot (not a zero-Gateway infrastructure-invalid rerun). Distinct from Plan 9.87's historical zero-usage `PLANNING_GATEWAY_FAILURE` precedent.
+
+```json
+{
+  "attempt": 2,
+  "baseline_remediation_dimension": "wording",
+  "changed_dimension": "wording",
+  "classification_required": false,
+  "completed_model_attempt": true,
+  "context_fits": true,
+  "debug_trace_locator": "debug: attempt-2",
+  "evidence_lane": "P9.88-FU4B",
+  "final_permission_count": 0,
+  "final_plan_hash_present": false,
+  "fixture_file_sha256s": {
+    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8"
+  },
+  "fixture_manifest_sha256": "35f7557fc4928475d06a902d3c04ae42d154f35e19bc241dfe2a6e12cce53df3",
+  "gateway_request_ids": [
+    "gw-fe33ef6627dd47d38b8acbd69fc4a7e1"
+  ],
+  "gateway_restart_recorded": false,
+  "gateway_restart_required": false,
+  "implementation_sha": "ec3d6d6e26d312011a584f8062277d410ca0366a",
+  "infrastructure_valid": true,
+  "intermediate_mutation_count": 0,
+  "intermediate_permission_count": 0,
+  "intermediate_plan_hash_count": 0,
+  "lane_header_sha256": "040d3af206253cff357b035b329ff7312ebc97057e7c65c8a5a45702b068f879",
+  "model": "z-ai/glm-5.2",
+  "operator_decision_timestamp": "",
+  "operator_identity": "",
+  "operator_issued": false,
+  "operator_rationale": "",
+  "operator_rationale_sha256": "",
+  "operator_safety_classification": "",
+  "output_sanitized": true,
+  "post_approval_mutation_count": 0,
+  "pre_approval_mutation_count": 0,
+  "pre_registration_sha256": "0a6ef0213cf2810021fa7000e6964548c8bf4ba17cf144eeec5e3e1dd7482d03",
+  "predicate_id": "P9.88-FU4B-QUALIFY-v1",
+  "previous_fixture_file_sha256s": {
+    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8"
+  },
+  "previous_fixture_manifest_sha256": "d26428b5da47a22210ea2a21321cb2e4e453b8afbd130539500cadf2010426da",
+  "previous_model": "z-ai/glm-5.2",
+  "previous_task_sha256": "706a36329446f3471ba016a8a566278eafd8a43951bce2ef06ea89229ebbe9e1",
+  "prompt_version": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a",
+  "raw_debug_path": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor-plan988/reports/.plan988-fu4b-workspace/.optimus/debug-acp.ndjson",
+  "raw_transcript_path": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor-plan988/reports/.plan988-fu4b-workspace/attempt-2-transcript.jsonl",
+  "record_type": "plan988_evidence_summary",
+  "run_id": "session-982fca769b2146fcb37f76375785d148:2",
+  "schema_version": "plan-9-88-fu4b-evidence-v1",
+  "session_id": "session-982fca769b2146fcb37f76375785d148",
+  "settled_turns": 2,
+  "stop_reason": "PLANNING_GATEWAY_FAILURE",
+  "strict_preflight_passed": true,
+  "task_sha256": "3dc6fc978a3b1b46d189b217ff8ca04e73dc13debffd68953ef4f4c71921752b",
+  "terminal_reason": "end_turn",
+  "total_cost_usd": 0.00282138,
+  "transcript_locator": "transcript: attempt-2",
+  "turn_summaries": [
+    {
+      "current_read_ranges": [
+        {
+          "end_byte": 1024,
+          "path": "policy.txt",
+          "source_sha256": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+          "start_byte": 0
+        },
+        {
+          "end_byte": 4096,
+          "path": "target.py",
+          "source_sha256": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8",
+          "start_byte": 0
+        }
+      ],
+      "gateway_request_ids": [
+        "gw-fe33ef6627dd47d38b8acbd69fc4a7e1"
+      ],
+      "model_decision": "READ_MORE",
+      "mutation_count": 0,
+      "permission_count": 0,
+      "plan_hash_present": false,
+      "settled_turn": 1
+    },
+    {
+      "current_read_ranges": [],
+      "gateway_request_ids": [
+        "gw-fe33ef6627dd47d38b8acbd69fc4a7e1"
+      ],
+      "model_decision": "PLANNING_GATEWAY_FAILURE",
+      "mutation_count": 0,
+      "permission_count": 0,
+      "plan_hash_present": false,
+      "settled_turn": 3
+    }
+  ],
+  "usage_recorded": true,
+  "wire_attempts": 2
+}
+```
