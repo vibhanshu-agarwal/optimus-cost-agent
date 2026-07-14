@@ -1,7 +1,14 @@
 import json
 from decimal import Decimal
+from pathlib import Path
 
-from optimus.acp.debug_trace import acp_debug_log, log_planning_replan_event, resolve_debug_log_path
+from optimus.acp import debug_trace
+from optimus.acp.debug_trace import (
+    acp_debug_log,
+    configure_debug_trace,
+    log_planning_replan_event,
+    resolve_debug_log_path,
+)
 from optimus.agent.planning_loop import PlanningProgressEvent
 
 
@@ -95,3 +102,35 @@ def test_acp_debug_log_redacts_secret_shaped_fields_and_free_text_by_default(tmp
     assert line["data"]["OPTIMUS_API_KEY"] == "**********"
     assert line["data"]["nested"]["password"] == "**********"
     assert line["data"]["safe_field"] == "run-1"
+
+
+def test_configure_debug_trace_uses_provenance_root_for_git_sha(tmp_path, monkeypatch):
+    import os
+
+    provenance_root = tmp_path / "workspace"
+    provenance_root.mkdir()
+    monkeypatch.delenv("OPTIMUS_ACP_PROVENANCE_ROOT", raising=False)
+
+    configure_debug_trace(
+        enabled=True,
+        log_path=tmp_path / "debug-acp.ndjson",
+        provenance_root=provenance_root,
+    )
+
+    assert Path(os.environ["OPTIMUS_ACP_PROVENANCE_ROOT"]).resolve() == provenance_root.resolve()
+
+    captured: dict[str, object] = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cwd"] = kwargs["cwd"]
+
+        class Result:
+            stdout = "deadbeef\n"
+
+        return Result()
+
+    monkeypatch.setattr(debug_trace.shutil, "which", lambda _name: "git")
+    monkeypatch.setattr(debug_trace.subprocess, "run", fake_run)
+
+    assert debug_trace._git_sha() == "deadbeef"
+    assert Path(str(captured["cwd"])).resolve() == provenance_root.resolve()

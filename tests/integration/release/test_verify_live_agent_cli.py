@@ -11,7 +11,11 @@ from optimus.acp.preflight import PreflightCheckResult
 
 def _patch_transcript_path(monkeypatch, tmp_path: Path) -> Path:
     transcript_path = tmp_path / "plan-9-6-live-agent-transcript.json"
-    monkeypatch.setattr(operator_verify, "default_live_agent_transcript_path", lambda: transcript_path)
+    monkeypatch.setattr(
+        operator_verify,
+        "default_live_agent_transcript_path",
+        lambda repository_root: transcript_path,
+    )
     return transcript_path
 
 
@@ -34,13 +38,17 @@ def test_default_verify_workspace_root_is_gitignored_scratch_dir(tmp_path):
     assert scratch == (tmp_path / "reports" / ".verify-live-agent-workspace").resolve()
 
 
+def test_default_report_path_uses_explicit_repository_root(tmp_path):
+    assert operator_verify.default_live_agent_transcript_path(tmp_path) == (
+        tmp_path / "reports" / "plan-9-6-live-agent-transcript.json"
+    ).resolve()
+
+
 def test_verify_live_agent_defaults_to_scratch_workspace(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("OPTIMUS_GATEWAY_URL", "https://gateway.example")
     monkeypatch.setenv("OPTIMUS_API_KEY", "opt-test")
     monkeypatch.setenv("OPTIMUS_REDIS_URL", "redis://127.0.0.1:6379/0")
     _patch_transcript_path(monkeypatch, tmp_path)
-    monkeypatch.setattr(operator_verify, "_resolve_project_root", lambda: tmp_path)
-
     observed_workspace: list[Path] = []
 
     def _passing_checks(environ, **kwargs):
@@ -54,7 +62,7 @@ def test_verify_live_agent_defaults_to_scratch_workspace(tmp_path, monkeypatch, 
     monkeypatch.setattr(operator_verify, "collect_preflight_checks", _passing_checks)
     monkeypatch.setattr(operator_verify, "run_operator_live_session", _fake_session)
 
-    exit_code = main(["--plan-only"])
+    exit_code = main(["--plan-only"], repository_root=tmp_path)
 
     assert exit_code == 0
     expected = operator_verify.default_verify_workspace_root(tmp_path)
@@ -72,7 +80,7 @@ def test_verify_live_agent_preflight_failure_exits_2(tmp_path, monkeypatch, caps
 
     monkeypatch.setattr(operator_verify, "collect_preflight_checks", _failed_checks)
 
-    exit_code = main(["--workspace-root", str(tmp_path)])
+    exit_code = main(["--workspace-root", str(tmp_path)], repository_root=tmp_path)
 
     captured = capsys.readouterr()
     assert exit_code == 2
@@ -183,7 +191,7 @@ def test_verify_live_agent_success_exits_0(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(operator_verify, "collect_preflight_checks", _passing_checks)
     monkeypatch.setattr(operator_verify, "run_operator_live_session", _fake_session)
 
-    exit_code = main(["--workspace-root", str(tmp_path)])
+    exit_code = main(["--workspace-root", str(tmp_path)], repository_root=tmp_path)
     output = capsys.readouterr().out
     assert exit_code == 0
     assert "PASS: Optimus live agent verification completed." in output
@@ -208,7 +216,7 @@ def test_verify_live_agent_runtime_failure_exits_3(tmp_path, monkeypatch, capsys
     monkeypatch.setattr(operator_verify, "collect_preflight_checks", _passing_checks)
     monkeypatch.setattr(operator_verify, "run_operator_live_session", _failed_session)
 
-    exit_code = main(["--workspace-root", str(tmp_path)])
+    exit_code = main(["--workspace-root", str(tmp_path)], repository_root=tmp_path)
 
     assert exit_code == 3
     assert "stopReason mismatch" in capsys.readouterr().err

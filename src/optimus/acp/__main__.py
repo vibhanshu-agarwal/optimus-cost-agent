@@ -15,12 +15,9 @@ from optimus.acp.local_infra import (
     ensure_local_redis,
     strip_local_provider_keys,
 )
+from optimus.acp.operator_paths import OperatorPathConfigurationError, resolve_operator_paths
 from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.acp.server import StdioByteReader, StdioByteWriter, StdioNdjsonLineReader, StdioNdjsonLineWriter
-
-
-def _project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
 
 
 def _print_log(message: str) -> None:
@@ -69,22 +66,40 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _apply_debug_trace_args(args: argparse.Namespace, *, workspace_root: Path) -> Path | None:
+def _apply_debug_trace_args(
+    args: argparse.Namespace,
+    *,
+    workspace_root: Path,
+    default_log_path: Path,
+) -> Path | None:
     if not args.debug_trace:
         return None
-    resolved = resolve_debug_log_path(workspace_root=workspace_root, log_path=args.debug_log)
-    configure_debug_trace(enabled=True, log_path=resolved)
+    resolved = resolve_debug_log_path(
+        workspace_root=workspace_root,
+        log_path=args.debug_log or default_log_path,
+    )
+    configure_debug_trace(enabled=True, log_path=resolved, provenance_root=workspace_root)
     return resolved
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
 
-    if args.setup:
-        return run_setup_wizard(project_root=_project_root())
-
     workspace_root = Path(args.workspace_root).resolve()
-    debug_log_path = _apply_debug_trace_args(args, workspace_root=workspace_root)
+    try:
+        paths = resolve_operator_paths(workspace_root=workspace_root, environ=os.environ)
+    except OperatorPathConfigurationError as exc:
+        print(exc.user_message, file=sys.stderr)
+        return exc.exit_code
+
+    if args.setup:
+        return run_setup_wizard(config_root=paths.config_root)
+
+    debug_log_path = _apply_debug_trace_args(
+        args,
+        workspace_root=paths.workspace_root,
+        default_log_path=paths.debug_log_path,
+    )
     if debug_log_path is not None:
         _print_log(f"ACP debug trace: {debug_log_path}")
     # `environ` may legitimately contain a real vendor key (e.g. ANTHROPIC_API_KEY in the
@@ -94,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
     # OptimusGatewaySettings.from_env(), which rejects any LOCAL_PROVIDER_KEY_NAMES entry with
     # ProviderKeyViolation. agent_environ (built just below each use) is that separate, sanitized
     # view. See the anthropic-collision finding in Source Anchors / Confirmed Design Decisions.
-    environ = apply_local_defaults(os.environ, project_root=_project_root())
+    environ = apply_local_defaults(os.environ, config_root=paths.config_root)
 
     if args.check_config:
         if not args.no_auto_start:
@@ -117,7 +132,12 @@ def main(argv: list[str] | None = None) -> int:
     gateway_process = None
     if not args.no_auto_start:
         ensure_local_redis(environ["OPTIMUS_REDIS_URL"], log=_print_log)
-        gateway_process = ensure_local_gateway(environ=environ, project_root=_project_root(), log=_print_log)
+        gateway_process = ensure_local_gateway(
+            environ=environ,
+            config_root=paths.config_root,
+            runtime_root=paths.runtime_root,
+            log=_print_log,
+        )
 
     agent_environ = strip_local_provider_keys(environ)
 

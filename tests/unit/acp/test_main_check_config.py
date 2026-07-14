@@ -6,7 +6,7 @@ def _patch_check_config_infra(monkeypatch) -> None:
     monkeypatch.setattr(
         acp_main,
         "apply_local_defaults",
-        lambda environ, *, project_root: {
+        lambda environ, *, config_root: {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
             "OPTIMUS_API_KEY": "test-key",
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",

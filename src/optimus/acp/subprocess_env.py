@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 
 from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES
 
@@ -24,7 +23,6 @@ class SubprocessEnvConfigurationError(Exception):
 def build_acp_subprocess_env(
     *,
     operator_environ: Mapping[str, str] | None = None,
-    project_root: Path,
 ) -> dict[str, str]:
     """
     Builds and configures a subprocess environment dictionary necessary for ACP operations.
@@ -33,16 +31,12 @@ def build_acp_subprocess_env(
     optional environment variables. It ensures that the required environment keys
     are present and assigns them to the resulting environment dictionary. Optional
     keys and system keys are conditionally added if they have a non-empty value.
-    Additionally, it modifies the environment to include the project source directory
-    on the Python path and performs validations to guarantee configuration integrity.
+    The resulting environment contains only the agent contract and safe system settings.
 
     :param operator_environ: A mapping of environment variables that may override
         or complement the current environment. If not provided, the existing
         environment variables from `os.environ` will be used.
     :type operator_environ: Mapping[str, str] | None
-    :param project_root: The root directory of the project, used to ensure
-        the source directory is included in the Python path.
-    :type project_root: Path
     :return: A dictionary of environment variables configured for ACP operations.
     :rtype: dict[str, str]
     :raises SubprocessEnvConfigurationError: If any of the required environment
@@ -70,7 +64,6 @@ def build_acp_subprocess_env(
         if value:
             env[key] = value
 
-    _ensure_src_on_pythonpath(env, project_root)
     _assert_no_provider_or_gateway_secrets(env)
     return env
 
@@ -87,18 +80,6 @@ def _missing_env_message(key: str) -> str:
             "(bash tools/run_local_gateway.sh)."
         )
     return f"Set {key} in the environment before running the live agent."
-
-
-def _ensure_src_on_pythonpath(env: dict[str, str], root: Path) -> None:
-    src_path = str((root / "src").resolve())
-    existing = env.get("PYTHONPATH", "").strip()
-    if not existing:
-        env["PYTHONPATH"] = src_path
-        return
-    prefix_entries = existing.split(os.pathsep)
-    if prefix_entries[0] == src_path:
-        return
-    env["PYTHONPATH"] = f"{src_path}{os.pathsep}{existing}"
 
 
 def _assert_no_provider_or_gateway_secrets(env: Mapping[str, str]) -> None:

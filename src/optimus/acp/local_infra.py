@@ -11,9 +11,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from optimus.acp.local_gateway_secrets import (
-    SUPPORTED_GATEWAY_PROVIDERS,
-    _parse_env_gateway_file,
-    resolve_provider_secrets,
+    ProviderCredentialConfigurationError,
+    resolve_provider_credentials,
     resolve_shared_secret,
 )
 from optimus.config.gateway import _LOOPBACK_HOSTS, LOCAL_PROVIDER_KEY_NAMES
@@ -59,16 +58,7 @@ def _is_loopback(host: str | None) -> bool:
     return (host or "").lower() in _LOOPBACK_HOSTS
 
 
-def _explicit_provider_override(environ: Mapping[str, str], project_root: Path) -> str | None:
-    """Provider name set explicitly in env or .env.gateway — not keyring defaults."""
-    name = environ.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER", "").strip().lower()
-    if not name:
-        dotenv_values = _parse_env_gateway_file(project_root / ".env.gateway")
-        name = dotenv_values.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER", "").strip().lower()
-    return name or None
-
-
-def apply_local_defaults(environ: Mapping[str, str], *, project_root: Path) -> dict[str, str]:
+def apply_local_defaults(environ: Mapping[str, str], *, config_root: Path) -> dict[str, str]:
     resolved = dict(environ)
 
     if not resolved.get("OPTIMUS_REDIS_URL", "").strip():
@@ -84,7 +74,7 @@ def apply_local_defaults(environ: Mapping[str, str], *, project_root: Path) -> d
     if not resolved.get("OPTIMUS_AGENT_MODEL", "").strip():
         resolved["OPTIMUS_AGENT_MODEL"] = _DEFAULT_LOCAL_AGENT_MODEL
     if not resolved.get("OPTIMUS_API_KEY", "").strip():
-        shared_secret = resolve_shared_secret(resolved, project_root=project_root)
+        shared_secret = resolve_shared_secret(resolved, config_root=config_root)
         if shared_secret:
             resolved["OPTIMUS_API_KEY"] = shared_secret
 
@@ -195,7 +185,8 @@ class LocalGatewayProcess:
 def ensure_local_gateway(
     *,
     environ: Mapping[str, str],
-    project_root: Path,
+    config_root: Path,
+    runtime_root: Path,
     log: Callable[[str], None] = _noop_log,
 ) -> LocalGatewayProcess | None:
     gateway_url = environ.get("OPTIMUS_GATEWAY_URL", "").strip()
@@ -209,21 +200,20 @@ def ensure_local_gateway(
     if _tcp_reachable(host, port):
         return None  # already up - ours from an earlier session, or someone else's; don't own it
 
-    explicit_provider = _explicit_provider_override(environ, project_root)
-    if explicit_provider and explicit_provider not in SUPPORTED_GATEWAY_PROVIDERS:
-        supported = ", ".join(sorted(SUPPORTED_GATEWAY_PROVIDERS))
-        log(
-            f"optimus-agent: unsupported local gateway provider {explicit_provider!r}; "
-            f"choose one of: {supported}."
-        )
+    try:
+        resolution = resolve_provider_credentials(environ, config_root=config_root)
+    except ProviderCredentialConfigurationError as exc:
+        log(exc.user_message)
         return None
+    for warning in resolution.warnings:
+        log(warning)
 
-    provider_secrets = resolve_provider_secrets(environ, project_root=project_root)
-    shared_secret = resolve_shared_secret(environ, project_root=project_root)
+    provider_secrets = resolution.secrets
+    shared_secret = resolve_shared_secret(environ, config_root=config_root)
     if provider_secrets is None or not shared_secret:
         log(
-            "optimus-agent: no local gateway credentials found "
-            "(run `optimus-agent --setup` or configure .env.gateway); "
+            "optimus-agent: no compatible local gateway credentials found "
+            f"(run `optimus-agent --setup` or configure {config_root / '.env.gateway'}); "
             "leaving Gateway pre-flight to fail closed."
         )
         return None
@@ -239,12 +229,9 @@ def ensure_local_gateway(
         value = environ.get(key, "")
         if value:
             child_env[key] = value
-    child_env["PYTHONPATH"] = str((project_root / "src").resolve())
-
-    log_dir = project_root / "reports"
-    log_path = log_dir / "local-gateway.log"
+    log_path = runtime_root / "local-gateway.log"
     try:
-        log_dir.mkdir(parents=True, exist_ok=True)
+        runtime_root.mkdir(parents=True, exist_ok=True)
         log_file = open(log_path, "ab")
     except OSError as exc:
         log(f"optimus-agent: could not prepare local gateway log file ({exc}); leaving Gateway pre-flight to fail closed.")
