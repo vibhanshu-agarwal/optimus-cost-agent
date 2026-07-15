@@ -234,18 +234,19 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 - LLD v2.38 §10 conformance: live TS.CREATE/TS.ALTER retention tests, `run:{run_id}:metadata` hash contract tests, `redis.asyncio` shared-pool migration, and `RedisTelemetryAdapter` wired into production bootstrap.
 - Committed evidence: `reports/plan-9-6-e2e-acp-transcript.json`, the `verify_live_agent` transcript, the Zed HITL session artifact, and the recorded Task L10 plan-text governance decision.
 
-**Status:** Approved for implementation. Owns the Phase 1 working-agent sign-off gate; Plan 11 does not start before this gate passes.
+**Status:** Complete (2026-07-11). The active execution checklist records all 8/8 claim-to-evidence
+rows and Phases A-F complete. Phase D alignment/evidence merged through PR #40
+(`8aa9776411e6f433463c1493b118435520fc6f3c`); final Phase F sign-off merged through PR #42
+(`3ac2f914e14dcf62045375faae5c85908e73c075`). The Phase 1 working-agent gate passed, so this
+Plan 11 prerequisite is no longer open.
 
-### Plan 9.6 closure — remaining work (see Plan 9.75)
+### Plan 9.6 closure — complete
 
-Subprocess and operator proof tiers are green. The real-IDE HITL claim, ACP
-`toolCall` on `session/request_permission`, and committed Zed artifact remain
-open — **all tracked in Plan 9.75**
-(`docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`).
-Do not maintain a separate checklist here; use Plan 9.75 tasks and DoD.
-
-**Already landed from the original closure list:** operator/IDE launch path
-standardized on `uv tool install --editable .` (README + Plan 9.6 workarounds).
+The real-IDE HITL row closed through Plan 9.75's conformant ACP approval/completion flow and
+`reports/plan-9-75-zed-hitl-runtime-evidence.md`. Subprocess, live Redis/Gateway, operator-only,
+manual PATH/keychain, and post-merge Zed evidence are recorded in
+`docs/superpowers/plans/2026-07-10-plan-9-6-live-signoff-execution.md` and its linked reports. The
+operator/IDE launch path remains standardized on `uv tool install --editable .`.
 
 ## Plan 9.7: Local Dev Infra Auto-Start and Keychain-Based Setup
 
@@ -263,11 +264,31 @@ standardized on `uv tool install --editable .` (README + Plan 9.6 workarounds).
   exits, never left as an orphaned secret-holding background process).
 - `--no-auto-start` opt-out flag; `.env`/`.env.gateway` retained as a transitional fallback.
 
-**Status:** Merged to `main` (2026-07-09, PR #32). Operator infra path manually verified on
-Windows (global PATH install, `--setup`, `--check-config --strict`, auto-start). IDE turn
-completion deferred to Plan 9.75. Windows-only scope for now (Linux/WSL keyring-backend support
-deferred). Orthogonal to Plan 9.6 live-verification scope — changes how local dependencies get
-started, not whether the agent's behavior against them is proven.
+**Status:** Merged to `main` (2026-07-09, PR #32). The complete Windows operator walkthrough
+(global PATH install, keychain-only `--setup`, zero `OPTIMUS_*` shell variables, auto-start, and a
+real planning call) is recorded in `reports/plan-9-7-manual-e2e-evidence.md`. The formerly deferred
+IDE turn completed through Plan 9.75. Windows-only scope remains; Linux/WSL keyring-backend support
+is deferred. This lane stays orthogonal to Plan 9.6 live-verification scope.
+
+## Plan 9.75 (Complete)
+
+**Plan:** Zed HITL ACP conformance — plan `entries`, permission `toolCall`, approval handling, and
+visible completion.
+
+**Plan file:**
+`docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`.
+Its **Verified defects** section is the authoritative protocol-shape record.
+
+**Status:** Complete (2026-07-10). PR #36 merged at
+`4fe353bb21ff3a39914e5cf84979a4494c54e25b`. Runtime and post-fix Zed evidence is in
+`reports/plan-9-75-zed-hitl-runtime-evidence.md`; the original diagnosis is retained in
+`reports/plan-9-75-zed-hitl-defect-notes.md`. PR #40 later aligned Phase D operator verification to
+the post-#36 shapes, and PR #42 closed the parent Plan 9.6 sign-off gate.
+
+**Separate client-stability custody:** Plan 9.8 later raised `P9.8-FU-5` for a Zed 1.10.2 panic
+after correctly rendering the ambiguous-refusal text. That is not a regression or reopened item in
+this completed lane; it is owned by the standalone tracked backlog entry below and must not be
+folded into Plan 11.
 
 ## Plan 9.8: Task-Aware Workspace Context for Planning
 
@@ -287,7 +308,8 @@ Plan 11 intelligent selection and does not prove mutation tasks generally.
 **Known limitation (P9.8-FU-5):** On Zed 1.10.2, the ambiguous-refusal corrective text can flash and
 then panic the client (`range end index 3 out of range for slice of length 2`). Agent-side refusal
 contract and independent `acpx` durable UI remain proven; durable Zed stay-up on that path is
-deferred, not claimed.
+deferred, not claimed. Sole custody is the standalone tracked backlog entry below; this work must
+not be folded into Plan 11 or the completed Plan 9.75 lane.
 
 ## Plan 9.85: Multi-Turn Read-Observe-Replan Workflow
 
@@ -450,7 +472,7 @@ FU-4B accepted-open is deliberately not in this entry: it is a closed dispositio
 9.88 ceremony, not a TODO. **Status:** Implemented; `P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3`
 closed with evidence. Remaining deferred follow-ups owned by Plans 9.96 and 9.97.
 
-## Plan 9.96 (Tracked, Not Yet Scheduled): Operator-Controlled Debug and Launch Trust
+## Plan 9.96 (Planning Approved; Implementation Not Started): Operator-Controlled Debug and Launch Trust
 
 **Raised:** 2026-07-14 by the approved Plan 9.95 lane split.
 
@@ -459,12 +481,13 @@ closed with evidence. Remaining deferred follow-ups owned by Plans 9.96 and 9.97
 `reports/plan-9-9-operator-packaging-evidence.md`. Those proven code and evidence anchors, not a
 prior plan document, are the dependency contract for this lane.
 
-**Design-entry gate:** When scheduled, the design phase opens with a dedicated security review of
-both follow-ups below. No implementation design or implementation work precedes that review. For
-`P9.85-FU-7`, the review must decide the authorization, session/time scope, expiry, audit, storage,
-and transcript treatment for any redaction opt-out. For `P9.9-FU-1`, it must define the trust and
-approval boundary for workspace-influenced launch settings before those settings can affect
-provider, base URL, or credentials.
+**Design-entry gate:** Satisfied on 2026-07-15. The dedicated security review froze
+`docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md`
+at SHA-256 `8B67FC187B92F0B66A9932AAAD9A013C476C19C165A1044F57F338245A01786C`; its adjacent approval record
+is `docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md` at SHA-256
+`63F2200FE3A4540A4455CF737B42E042D9613648454736B543846A6CB4BD211D`. The review fixed the
+authorization, scope, expiry, audit, storage, transcript, workspace-origin, and launch-setting
+trust boundaries before implementation planning began.
 
 **Owned follow-ups (sole custody):**
 
@@ -488,8 +511,15 @@ provider, base URL, or credentials.
   local-Gateway provider, base URL, or credentials. Preserve legitimate shell/admin deployment
   flows and do not log values.
 
-**Status:** Tracked, not yet scheduled; no implementation plan exists on this branch. The dedicated
-security review is the first design activity when the lane is scheduled.
+**Status:** Planning approved on 2026-07-15; implementation has not started. The reviewer-agent and
+operator approved
+`docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md` at
+SHA-256 `E47701358596D0D31E6CD7FDF21438D529C65F0190889058C936FB9A0B00E721`. The authoritative adjacent
+plan-approval record is
+`docs/superpowers/reviews/2026-07-15-plan-9-96-implementation-plan-approval.md` at SHA-256
+`A7DD28190FAC6859B6FED451E4CC89F64035EA0581CE3AB9A5D3BA1C89E8C6DB`. Implementation must wait for
+this docs-only planning branch to merge, then begin from a fresh branch/worktree based on the latest
+`origin/main`.
 
 ## Plan 9.97 (Tracked, Not Yet Scheduled): Mechanical Current-Raw-Evidence Grounding
 
@@ -513,6 +543,34 @@ report's `--require fu4a` and `--require fu5` gates fail with `implementation dr
 and other unrelated prior work. Re-establishing freshness requires re-capturing live `acpx`
 evidence against the current codebase. This is not a correctness defect (the underlying
 implementations remain functionally correct) but a watched-path-drift gap in the evidence chain.
+
+Plan 9.96 will materially modify `src/optimus/**`, increasing watched-path drift, and freezes the
+Plan 9.87/9.88 raw-capture helpers as non-qualifying while introducing a sanitized capture path.
+The future re-pin must be prioritized with that change in mind and explicitly choose its capture
+path (expected to be the reviewed Plan 9.96 tool if that implementation has landed); it must not
+assume the frozen helpers remain an acceptable current-evidence path.
+
+**Status:** Tracked, not yet scheduled. No implementation plan exists.
+
+## Backlog: P9.8-FU-5 Zed Refusal-Rendering Stability (Tracked, Not Yet Scheduled)
+
+**Raised:** 2026-07-11 during Plan 9.8 live evidence. Zed 1.10.2 correctly received and briefly
+rendered the ambiguous-refusal corrective text, then panicked in native client code with
+`range end index 3 out of range for slice of length 2`. The agent wire contract and independent
+`acpx` durable refusal UI remain proven.
+
+**Sole custody:** This backlog entry. Plan 9.75 was already complete when the client-stability issue
+was discovered, and its evidence report classifies the panic as separate from the ACP conformance
+fix. Do not reopen Plan 9.75 and do not silently fold this work into Plan 11.
+
+**Acceptance boundary:** Reproduce against a supported current Zed build, separate agent payload
+correctness from client rendering behavior, preserve the existing fail-closed refusal contract,
+and produce durable operator-visible refusal evidence or an explicit externally owned Zed defect
+disposition. Any agent-side workaround requires its own reviewed plan and must not weaken ACP
+conformance.
+
+**Evidence anchors:** `reports/plan-9-8-task-aware-context-evidence.md`,
+`reports/plan-9-75-zed-hitl-runtime-evidence.md`, and the Plan 9.8 `P9.8-FU-5` acceptance criteria.
 
 **Status:** Tracked, not yet scheduled. No implementation plan exists.
 
@@ -558,6 +616,15 @@ pattern.
 - `docs/context-window-optimization-strategy.md` - Context Type x Mechanism Matrix, Selection Pipeline, Selection Model, Freshness and Dependency Precedence, Prompt Packing and Cost Controls, Compaction, Offline Promotion Gates, Online Guardrails, Context Regret, Baseline and Ablation Plan, Calibration Items.
 - Depends on: Plan 7's cost-attribution ledger, Plan 4's evidence/tool-output trust, Plans 5/6/6.5's guardrail and MCP/config/runtime trust signals, Plan 9's loop/skill state.
 
+**Owned deferred follow-ups (sole custody):**
+- `P9.8-FU-2` — intelligent ambiguous-reference ranking with measured wrong-target regret and a
+  fail-closed threshold.
+- `P9.8-FU-3` — dynamic, model-aware context budgets and injection-safe required-file
+  summarization with measured quality/cost trade-offs.
+
+`P9.8-FU-5` is explicitly excluded; its Zed client-stability custody remains in the standalone
+backlog entry above.
+
 **Expected deliverables:**
 - Selection/scoring engine implementing the utility function (weighted relevance, dependency-coverage gain, authority, recency, user pin, failure recurrence, evidence-diversity gain, minus redundancy penalty), dependency-closure resolution, and budget-constrained packing.
 - Two-phase trust/freshness gating, cache-stable prompt packing, and compaction triggered by the defined high-water marks (context usage threshold, iteration boundary, tool-output budget, repeated-failure pollution, model-tier downgrade, scope/approval change).
@@ -581,11 +648,11 @@ pattern.
 11. Plan 9: Bounded loops and curated workflow skills.
 12. Plan 9.5: Agent orchestration and end-to-end coding workflow.
 13. Plan 9.7: Local dev infra auto-start and keychain-based setup — **merged (PR #32,
-    2026-07-09).** Operator infra path verified; IDE `session/prompt` completion deferred to
-    Plan 9.75.
-14. Plan 9.75: Zed HITL — ACP `toolCall` on `session/request_permission` + real Zed turn
-    completion (P0, drafted — depends on Plan 9.7 operator PATH install for verification; see
-    `docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`).
+    2026-07-09); complete operator walkthrough recorded 2026-07-11.** IDE `session/prompt`
+    completion was subsequently closed by Plan 9.75.
+14. Plan 9.75: Zed HITL ACP conformance and real Zed completion — **complete (2026-07-10),**
+    merged through PR #36 at `4fe353bb21ff3a39914e5cf84979a4494c54e25b`; evidence in
+    `reports/plan-9-75-zed-hitl-runtime-evidence.md`.
 15. Plan 9.8: Task-aware workspace context for planning — implemented and live-verified 2026-07-11;
     exact-path Zed mutation under filler pressure proven; ambiguous refusal on-wire with Zed stay-up
     deferred as P9.8-FU-5; evidence in `reports/plan-9-8-task-aware-context-evidence.md`.
@@ -606,8 +673,12 @@ pattern.
 20. Plan 9.95: Usage, telemetry, and evidence-tooling correctness — implemented;
     `P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3` closed; evidence in
     `reports/plan-9-95-usage-telemetry-evidence.md`.
-21. Plan 9.96: Operator-controlled debug and launch trust — tracked, not yet scheduled; opens its
-    design phase with the dedicated security review; no implementation plan exists.
+21. Plan 9.96: Operator-controlled debug and launch trust — **planning approved 2026-07-15;
+    implementation not started.** Frozen security contract SHA-256
+    `8B67FC187B92F0B66A9932AAAD9A013C476C19C165A1044F57F338245A01786C`, security-contract approval
+    record SHA-256 `63F2200FE3A4540A4455CF737B42E042D9613648454736B543846A6CB4BD211D`, and approved implementation
+    plan SHA-256 `E47701358596D0D31E6CD7FDF21438D529C65F0190889058C936FB9A0B00E721`; adjacent plan-approval
+    record SHA-256 `A7DD28190FAC6859B6FED451E4CC89F64035EA0581CE3AB9A5D3BA1C89E8C6DB`.
 22. Plan 9.97: Mechanical current-raw-evidence grounding — tracked, not yet scheduled; remains
     isolated from Plan 11; no implementation plan exists.
 23. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.

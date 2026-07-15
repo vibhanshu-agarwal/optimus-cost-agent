@@ -198,22 +198,28 @@ pauses for approval before Agent-mode mutation, executes side-effecting tools
 only through guardrails, validates the result, and records the observed tool
 trajectory for golden-task evaluation.
 
-**Plan 9.6** (live verification and LLD alignment) owns the Phase 1 working-agent
-sign-off gate: live Redis/Gateway tiers, spawned ACP subprocess proof, and the
-real-IDE HITL artifact. Subprocess and operator verification are green; the Zed
-HITL claim-table row remains open — see Known Open Defects in the Plan 9.6 plan
-file.
+**Plan 9.6** (live verification and LLD alignment) completed the Phase 1
+working-agent sign-off gate on 2026-07-11: all 8/8 claim-table rows and Phases
+A-F are checked in the active execution checklist. Phase D alignment/evidence
+merged through PR #40; final Phase F sign-off merged through PR #42. The Zed
+HITL row is closed by the Plan 9.75 runtime evidence.
 
 **Plan 9.7** (local dev infra auto-start and keychain setup) merged to `main`
 (2026-07-09). Operators install `optimus-agent` on PATH, run `--setup` once,
 and rely on auto-start Redis/gateway — no hand-edited `.env` files required for
-the default local path. Manual DoD planning-bar verification is partially met;
-IDE turn completion is deferred to Plan 9.75.
+the default local path. The full keychain-only PATH walkthrough and real planning
+call were signed off on 2026-07-11 in
+`reports/plan-9-7-manual-e2e-evidence.md`; IDE turn completion closed through
+Plan 9.75.
 
-**Plan 9.75** (drafted, P0) fixes the open Zed `session/prompt` hang: add ACP
-v1 `toolCall` to `session/request_permission`, re-test in Zed using the Plan 9.7
-operator PATH install, and commit HITL evidence under `reports/`. See
-`docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`.
+**Plan 9.75** is complete (2026-07-10), merged through PR #36 at
+`4fe353bb21ff3a39914e5cf84979a4494c54e25b`. It fixed the Zed
+`session/prompt` hang with ACP-conformant plan `entries`, nested permission
+`toolCall`, approval handling, and visible completion. See the plan's Verified
+defects section, `reports/plan-9-75-zed-hitl-runtime-evidence.md`, and
+`reports/plan-9-75-zed-hitl-defect-notes.md`. The later Zed 1.10.2 refusal-rendering
+panic (`P9.8-FU-5`) has its own tracked roadmap backlog and does not reopen this
+completed lane or belong to Plan 11.
 
 **Plan 9.8** (task-aware workspace context) guarantees the planner receives an
 explicitly referenced file's content even when task-blind workspace filler
@@ -244,6 +250,10 @@ HEAD `fec114b7fc79da35ea399f4d66e22e776e6b76a3` (operator `vibhanshu-agarwal`,
 covers model-initiated replanning when Plan 9.8's single-pass context already fits but the model
 needs more evidence before a safe WRITE, plus a live model-emitted `REFUSE:` demonstration —
 deferred from Plan 9.85 as `P9.85-FU-4` and `P9.85-FU-5`.
+The FU-4A/FU-5 claims remain valid at their pinned implementation SHAs, but the durable verifier's
+current `--require fu4a` / `--require fu5` freshness checks fail with `implementation drift`.
+Re-capture and re-pinning are tracked in the roadmap backlog, which must account for Plan 9.96's
+additional watched-path drift and sanitized-capture decision.
 
 **Plan 9.88** is **closed** (Outcome B accepted-open). It used a new capture helper and a
 capped, anti-fishing FU-4B ledger to remediate the known filename-hallucination failure without
@@ -272,6 +282,18 @@ Implementation SHA `41a9cddddbacad766d8a432b7129a18d8976b54a`; evidence in
 are owned by Plan 9.96 (`P9.85-FU-7`, `P9.9-FU-1`) and Plan 9.97
 (`P9.87-FU-1`). FU-4B accepted-open is deliberately not included — it is a
 closed disposition, not a TODO.
+
+**Plan 9.96** planning is approved (2026-07-15); implementation has not started.
+The operator-controlled debug and launch-trust security contract is frozen at
+SHA-256 `8B67FC187B92F0B66A9932AAAD9A013C476C19C165A1044F57F338245A01786C`, with
+approval recorded in
+`docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md`.
+The implementation plan is separately frozen and reviewer/operator-approved at
+SHA-256 `E47701358596D0D31E6CD7FDF21438D529C65F0190889058C936FB9A0B00E721`, with
+approval recorded in
+`docs/superpowers/reviews/2026-07-15-plan-9-96-implementation-plan-approval.md`.
+Implementation begins only after the docs-only planning branch merges, from a
+fresh branch/worktree based on the latest `origin/main`.
 
 **Plan 10** (tracked, not yet scheduled) is the Unified Gateway Capabilities
 Broker — web search and observability routes on the local gateway stub. Out of
@@ -759,15 +781,17 @@ credentials explicitly:
 
 See **Quick start → Install and configure** for the local auto-start Zed example (no `env` block).
 
-### Known open defect: Zed panel appears stuck
+### Zed plan-approval troubleshooting
 
-If Zed shows endless loading after a prompt, the agent is usually waiting on **plan approval**
-(`session/request_permission`) or still planning against the gateway. Subprocess verification
-is green; this is an open Zed HITL integration issue tracked as **Plan 9.75** — see
-`docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md` for the fix
-plan and DoD. Symptom analysis and workarounds (`always_allow_external_agent_tools`,
-workspace-root `"."`, preflight, `verify_live_agent.py`) remain in **Known Open Defects → Zed
-HITL** in `docs/superpowers/plans/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md`.
+Plan 9.75 fixed the historical endless-loading defect on 2026-07-10 and verified Cancel plus
+Approve/Completed Plan flows in real Zed. If a current session appears stuck, the agent may still
+be waiting on **plan approval** (`session/request_permission`) or planning against the gateway;
+check the approval UI, workspace root, preflight, and current debug trace rather than treating the
+old ACP-shape defect as open. The completed fix and evidence are in
+`docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md` and
+`reports/plan-9-75-zed-hitl-runtime-evidence.md`. Historical symptom analysis and operational
+checks (`always_allow_external_agent_tools`, workspace-root `"."`, preflight, and
+`verify_live_agent.py`) remain in the Plan 9.6 Zed section.
 
 ### Approval handshake
 
@@ -776,15 +800,13 @@ HITL** in `docs/superpowers/plans/2026-07-07-plan-9-6-live-verification-and-lld-
 2. While planning runs, `session/prompt` stays pending and the agent emits
    `session/update` notifications (for example plan and tool-call updates).
 3. When Agent-mode mutation requires approval, the agent sends
-   `session/request_permission` to the IDE with approval `options` and plan
-   `metadata` (`planHash`, `planText`, `runId`). **Today** `_request_permission()`
-   does not include the ACP v1 `toolCall` object on this request — only
-   `session/update` `tool_call_update` notifications carry `toolCall` during
-   execution. **Plan 9.75** adds the spec-required `toolCall` (`toolCallId`,
-   `kind`, `status`, `title`, `locations`) to `session/request_permission` so
-   IDEs such as Zed can render the approval UI.
-4. The IDE shows the plan to the user and replies to the agent's outbound JSON-RPC
-   request with approval metadata containing `approval_id` and the same `plan_hash`.
+   `session/request_permission` with approval `options`, `_meta` containing the
+   retained run/plan identity, and the ACP v1 nested `toolCall` object
+   (`toolCallId`, `kind`, `status`, `title`, `locations`). Plan 9.75 completed
+   this wire-shape correction so IDEs such as Zed can render the approval UI.
+4. The IDE shows the plan and replies with the selected approval `optionId`.
+   Optimus retains the planning result and uses its plan hash when constructing
+   the approval; it does not require Zed to echo custom approval metadata.
 5. The runtime replays the stored plan from Redis and does not call the Gateway
    again for a new plan.
 6. If the user cancels the turn, the IDE sends `session/cancel`; the runtime
