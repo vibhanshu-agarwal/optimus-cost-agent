@@ -435,7 +435,7 @@ missing or malformed error usage remains explicitly absent.
 - Modify: `tests/unit/gateway/test_client.py`
 - Modify: `tests/unit/gateway/test_usage_fields.py`
 
-- [ ] **Step 1: Write failing model tests for usage-preserving malformed responses**
+- [x] **Step 1: Write failing model tests for usage-preserving malformed responses**
 
 Add exact tests:
 
@@ -452,13 +452,13 @@ uv run pytest tests/unit/gateway/test_models.py tests/unit/gateway/test_usage_fi
 
 Expected RED: valid usage is currently discarded by later response-validation failures.
 
-- [ ] **Step 2: Extract the strict usage parser and preserve usage on later parse failures**
+- [x] **Step 2: Extract the strict usage parser and preserve usage on later parse failures**
 
 Implement `parse_gateway_usage()` and route `parse_gateway_response()` through it. Attach `usage`
 to every `GatewayResponseError` raised after usage validation succeeds. Do not attach a partially
 validated dict.
 
-- [ ] **Step 3: Write failing transport tests for reported and unknown HTTP-error cost**
+- [x] **Step 3: Write failing transport tests for reported and unknown HTTP-error cost**
 
 Add exact tests:
 
@@ -479,13 +479,13 @@ uv run pytest tests/unit/gateway/test_client.py -q
 Expected RED: `GatewayHttpError` currently has no usage field and the transport treats the body only
 as message text.
 
-- [ ] **Step 4: Parse optional error usage without changing primary error semantics**
+- [x] **Step 4: Parse optional error usage without changing primary error semantics**
 
 Decode an HTTP error body once. If it is an object with a valid `gateway_usage`, attach the model.
 If decoding or usage validation fails, retain `gateway_usage=None` and preserve the HTTP status.
 Do not let error-usage parsing raise `GatewayResponseError` out of the transport.
 
-- [ ] **Step 5: Verify Task 1**
+- [x] **Step 5: Verify Task 1**
 
 Run:
 
@@ -513,7 +513,7 @@ cost cannot be retried or presented as complete.
 - Modify: `tests/unit/retry/test_policy.py` only if a new typed terminal exception needs direct
   classification coverage
 
-- [ ] **Step 1: Write failing aggregation and terminal-state tests**
+- [x] **Step 1: Write failing aggregation and terminal-state tests**
 
 Add exact planning-loop tests:
 
@@ -559,19 +559,19 @@ uv run pytest tests/unit/agent/test_planning_loop_runner.py -q
 Expected RED: only successful usage is currently charged and unknown transport failure follows the
 generic retry path.
 
-- [ ] **Step 2: Add the result/progress completeness contract**
+- [x] **Step 2: Add the result/progress completeness contract**
 
 Add the fixed fields to `PlanningLoopResult` and `PlanningProgressEvent`. Update
 `planning_corrective_text()` for `PLANNING_GATEWAY_COST_UNKNOWN` using content-free wording.
 
-- [ ] **Step 3: Centralize per-attempt reported-usage recording**
+- [x] **Step 3: Centralize per-attempt reported-usage recording**
 
 Create `_record_reported_gateway_usage()` on `_PlanningIterationRunner`. Move request-ID append,
 cost accumulation, provider capture, and callback invocation into it. Call it once from the
 successful response path and once from a Gateway-exception path only when `gateway_usage` is not
 `None`.
 
-- [ ] **Step 4: Enforce cost completeness and the between-attempt budget gate**
+- [x] **Step 4: Enforce cost completeness and the between-attempt budget gate**
 
 Inside the retry operation:
 
@@ -588,13 +588,13 @@ Inside the retry operation:
 
 Do not make unknown cost retryable merely because the underlying HTTP status is 503/429.
 
-- [ ] **Step 5: Make iteration cost include the whole wire sequence**
+- [x] **Step 5: Make iteration cost include the whole wire sequence**
 
 Capture `_total_cost_usd` at invocation entry and return the delta after the wire sequence. Every
 `IterationOutcome` for that settled turn uses this sequence cost, not only the final response cost.
 Remove the old post-invocation append/add path to prevent double charging.
 
-- [ ] **Step 6: Verify Task 2 and adjacent retry behavior**
+- [x] **Step 6: Verify Task 2 and adjacent retry behavior**
 
 Run:
 
@@ -626,7 +626,7 @@ reported total from a known lower bound, and reported failed attempts persist wi
 - Modify: `tests/unit/acp/test_debug_trace.py`
 - Modify: `tests/unit/usage/test_accounting.py` only if a regression assertion is needed
 
-- [ ] **Step 1: Replace the FU-6-annotated placeholder coverage with failing closure tests**
+- [x] **Step 1: Replace the FU-6-annotated placeholder coverage with failing closure tests**
 
 Confirm the current number and locations of FU-6 annotations with
 `rg -n "FU-6|billable failed|unknown transport cost" tests/unit/agent/test_runner.py` rather than
@@ -663,25 +663,25 @@ uv run pytest tests/unit/agent/test_runner.py -q
 
 Expected RED until result propagation is implemented.
 
-- [ ] **Step 2: Propagate completeness through `AgentRunResult`**
+- [x] **Step 2: Propagate completeness through `AgentRunResult`**
 
 Add the two defaulted fields to the model and `_build_result()`. The multi-turn planning path copies
 them for both success and terminal results. Existing single-call planning remains complete with zero
 unknown attempts.
 
-- [ ] **Step 3: Add the unknown-cost ACP terminal contract**
+- [x] **Step 3: Add the unknown-cost ACP terminal contract**
 
 Add `PLANNING_GATEWAY_COST_UNKNOWN` to `_PLANNING_TERMINAL_STOP_REASONS`. Add protocol tests proving
 the operator receives the sanitized corrective text, ACP returns `end_turn`, and no
 `session/request_permission`, plan update, or mutation occurs.
 
-- [ ] **Step 4: Extend content-free debug progress**
+- [x] **Step 4: Extend content-free debug progress**
 
 Log `cost_complete` and `unknown_cost_attempt_count` next to
 `reported_aggregate_cost_usd`. Update debug-trace tests to assert the fields and scan the serialized
 record for supplied prompt/response/credential sentinel strings.
 
-- [ ] **Step 5: Verify Task 3**
+- [x] **Step 5: Verify Task 3**
 
 Run:
 
@@ -711,7 +711,7 @@ progress events, debug JSONL, and the downstream evidence summary.
 - Modify: `tests/unit/acp/test_debug_trace.py`
 - Modify: `tests/unit/tools/test_run_plan987_acpx_live_evidence.py`
 
-- [ ] **Step 1: Write the non-alphabetical multi-file regression first**
+- [x] **Step 1: Write the non-alphabetical multi-file regression first**
 
 Use read execution order `zeta.py` then `alpha.py`, unequal byte lengths, and distinct hashes. Assert
 the emitted event has this exact aligned projection:
@@ -732,18 +732,18 @@ uv run pytest tests/unit/agent/test_planning_loop_runner.py \
   -k "non_alphabetical_multi_file_read_telemetry" -q
 ```
 
-- [ ] **Step 2: Add the cardinality invariant tests**
+- [x] **Step 2: Add the cardinality invariant tests**
 
 Add parameterized model tests that reject a mismatch in each parallel tuple and accept the final
 zero-read progress event. Error text must name alignment with `read_request_count`.
 
-- [ ] **Step 3: Implement the single-projection helper and validator**
+- [x] **Step 3: Implement the single-projection helper and validator**
 
 Implement `planning_read_telemetry_fields()` exactly as fixed above. In the READ_MORE branch call it
 once, unpack three tuples, and pass them to `PlanningProgressEvent`. Do not sort observation or tool
 execution order.
 
-- [ ] **Step 4: Prove downstream association, not only tuple ordering**
+- [x] **Step 4: Prove downstream association, not only tuple ordering**
 
 First assert the serialized debug event keeps each byte count aligned with the corresponding
 identity and hash. Then feed that debug trace to `build_evidence_summary_from_run()` and assert each
@@ -751,7 +751,7 @@ identity and hash. Then feed that debug trace to `build_evidence_summary_from_ru
 schema does not carry byte counts. Do not change `tools/run_plan987_acpx_live_evidence.py` unless the
 corrected producer exposes another independently demonstrated consumer defect.
 
-- [ ] **Step 5: Verify Task 4**
+- [x] **Step 5: Verify Task 4**
 
 Run:
 
@@ -780,7 +780,7 @@ historical ceremony report records a transparent, mechanically verified correcti
 - Modify: `tests/unit/tools/test_verify_plan987_acpx_evidence.py`
 - Modify: `reports/plan-9-87-model-replanning-refusal-acpx-evidence.md`
 
-- [ ] **Step 1: Write fixed-vector and domain tests first**
+- [x] **Step 1: Write fixed-vector and domain tests first**
 
 Add exact tests:
 
@@ -801,12 +801,12 @@ uv run pytest tests/unit/tools/test_verify_plan987_acpx_evidence.py \
 
 Expected RED: `ledger_digest()` does not exist.
 
-- [ ] **Step 2: Implement canonicalization exactly once**
+- [x] **Step 2: Implement canonicalization exactly once**
 
 Add `hashlib` and `Sequence` imports and implement the fixed helper. Use the existing
 `_extract_plan988_records()` output directly; do not re-sort records by attempt or type.
 
-- [ ] **Step 3: Add failing API/CLI pass and mismatch tests**
+- [x] **Step 3: Add failing API/CLI pass and mismatch tests**
 
 Add:
 
@@ -817,14 +817,14 @@ Add:
 
 Mismatch text must include expected and actual digest but no report bodies.
 
-- [ ] **Step 4: Wire the API and CLI without changing claim semantics**
+- [x] **Step 4: Wire the API and CLI without changing claim semantics**
 
 Add `fu4b_ledger_digest` to `verify_report()` and
 `--check-fu4b-ledger-digest` to `main()`. A digest-only invocation satisfies the verifier's
 "at least one check" precondition. Existing FU-4A/FU-5 and accepted-open FU-4B behavior must remain
 unchanged.
 
-- [ ] **Step 5: Verify and commit the helper before changing historical evidence**
+- [x] **Step 5: Verify and commit the helper before changing historical evidence**
 
 Run:
 
@@ -849,7 +849,7 @@ git rev-parse HEAD
 Record the full output as `LEDGER_HELPER_SHA`. This removes the circularity of asking the report to
 cite a helper commit that does not exist yet.
 
-- [ ] **Step 6: Recompute the historical ledger with the committed helper**
+- [x] **Step 6: Recompute the historical ledger with the committed helper**
 
 Run:
 
@@ -882,7 +882,7 @@ force a pass.
 > rather than silently drop it. Tracked separately: add a tracked-not-yet-scheduled roadmap backlog note
 > for re-pinning/re-capturing FU-4A/FU-5 evidence (not a Plan 9.95 deliverable).
 
-- [ ] **Step 7: Amend the ceremony report transparently**
+- [x] **Step 7: Amend the ceremony report transparently**
 
 Retain the original `9122...` value labeled as the unpinned contemporaneous value. Add the pinned
 digest, the exact canonicalization rule, the eight-record domain statement, `LEDGER_HELPER_SHA`,
@@ -902,7 +902,7 @@ independently fail today with `implementation drift after <SHA>` because unrelat
 changes landed after their pinned implementation SHAs, predating Plan 9.95; re-establishing that
 freshness is out of scope for `P9.88-FU-2` and is tracked separately, not silently dropped.
 
-- [ ] **Step 8: Verify and commit the report amendment**
+- [x] **Step 8: Verify and commit the report amendment**
 
 Run:
 
@@ -944,7 +944,7 @@ successful retry and a 503 without usage stops after one request with incomplete
 - Create: `tests/integration/gateway/test_failed_usage_transport_flow.py`
 - Modify only if an integration-discovered defect requires it: Task 1-3 product files and their tests
 
-- [ ] **Step 1: Write the reported-failure transport integration**
+- [x] **Step 1: Write the reported-failure transport integration**
 
 Start a local `ThreadingHTTPServer` on loopback. Its first `/v1/responses` response is HTTP 503 with
 an error object and fully normalized `gateway_usage` costing `0.001`; its second response is HTTP
@@ -955,13 +955,13 @@ settled turn, one retry, total `0.003`, two Gateway IDs, two persisted provider-
 cost, and an awaiting-approval result. The server fixture may hold only deterministic test data and
 must shut down in `finally`/fixture teardown.
 
-- [ ] **Step 2: Write the unknown-cost transport integration**
+- [x] **Step 2: Write the unknown-cost transport integration**
 
 Return HTTP 503 with `{"error":"temporary outage"}` and no usage. Assert exactly one HTTP request,
 `PLANNING_GATEWAY_COST_UNKNOWN`, incomplete cost, one unknown attempt, no provider-usage rows, no
 plan hash, no permission, and zero mutation.
 
-- [ ] **Step 3: Run the integration and focused regression bundle**
+- [x] **Step 3: Run the integration and focused regression bundle**
 
 Run:
 
@@ -977,7 +977,7 @@ uv run pytest tests/integration/gateway/test_failed_usage_transport_flow.py \
 Expected: all tests pass. The local HTTP integration is not marked `requires_gateway` and makes no
 real-provider claim.
 
-- [ ] **Step 4: Verify Task 6 quality and isolation**
+- [x] **Step 4: Verify Task 6 quality and isolation**
 
 Run:
 
@@ -1004,7 +1004,7 @@ close the three owned follow-ups while Plans 9.96 and 9.97 remain tracked and un
 - Modify: `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`
 - Modify: this plan's checkboxes/status
 
-- [ ] **Step 1: Create the evidence report skeleton before final gates**
+- [x] **Step 1: Create the evidence report skeleton before final gates**
 
 First run:
 
@@ -1034,7 +1034,7 @@ The report must contain:
 Do not paste prompts, model responses, source bodies, provider error bodies, keys, or authorization
 headers.
 
-- [ ] **Step 2: Run focused closure gates**
+- [x] **Step 2: Run focused closure gates**
 
 Run:
 
@@ -1058,7 +1058,7 @@ Implementation Amendment, this closure gate does not include `--require fu4a --r
 combination independently fails on pre-existing, out-of-scope implementation drift and is not part of
 what Plan 9.95 closes.
 
-- [ ] **Step 3: Run full default tests and aggregate coverage**
+- [x] **Step 3: Run full default tests and aggregate coverage**
 
 Run:
 
@@ -1071,7 +1071,7 @@ uv run pytest --cov=optimus --cov=optimus_gateway --cov-branch --cov-report=term
 Expected: the repository's default marker exclusions apply; all selected tests pass and aggregate
 production coverage is at least 80%. Record exact counts and coverage in the report.
 
-- [ ] **Step 4: Run final static and secret-safe checks**
+- [x] **Step 4: Run final static and secret-safe checks**
 
 Run:
 
@@ -1087,7 +1087,7 @@ git status --short
 Expected: Ruff/diff clean; secret scan has no secret-value matches; status contains only reviewed
 Plan 9.95 files plus separately disclosed operator-owned noise.
 
-- [ ] **Step 5: Update living documentation without closing later lanes**
+- [x] **Step 5: Update living documentation without closing later lanes**
 
 Update README and roadmap to say Plan 9.95 implemented only after Steps 2-4 pass. Name the final
 implementation SHA and `reports/plan-9-95-usage-telemetry-evidence.md`. Remove
@@ -1095,7 +1095,7 @@ implementation SHA and `reports/plan-9-95-usage-telemetry-evidence.md`. Remove
 tracked-not-yet-scheduled and preserve the exact Plan 9.97 isolation sentence. Do not create plans
 for them.
 
-- [ ] **Step 6: Run custody and frozen-history assertions**
+- [x] **Step 6: Run custody and frozen-history assertions**
 
 Run:
 
@@ -1112,7 +1112,7 @@ Expected: the three Plan 9.95 FUs are closed with evidence; the other three have
 owners; the isolation sentence exists. The final command exits 0 because the frozen Plan 9.88 plan
 was not edited.
 
-- [ ] **Step 7: Request final sign-off and commit only after approval**
+- [x] **Step 7: Request final sign-off and commit only after approval**
 
 Show:
 
@@ -1128,27 +1128,27 @@ to this plan, or Plans 9.96/9.97 implementation artifacts.
 
 ## Definition of Done
 
-- [ ] Reviewer-agent and operator approved this implementation plan before code work began.
-- [ ] Every valid Gateway-reported failed-attempt usage envelope is aggregated exactly once.
-- [ ] Normalized reported failed-attempt usage persists with stable settled-turn/wire-attempt IDs.
-- [ ] An attempt without valid usage stops before another retry with
+- [x] Reviewer-agent and operator approved this implementation plan before code work began.
+- [x] Every valid Gateway-reported failed-attempt usage envelope is aggregated exactly once.
+- [x] Normalized reported failed-attempt usage persists with stable settled-turn/wire-attempt IDs.
+- [x] An attempt without valid usage stops before another retry with
   `PLANNING_GATEWAY_COST_UNKNOWN`, incomplete cost, no plan hash, no permission, and zero mutation.
-- [ ] Reported failed-attempt cost participates in the budget cap before another wire request.
-- [ ] `total_cost_usd` is never presented as complete when any wire-attempt cost is unknown.
-- [ ] Non-alphabetical multi-file telemetry preserves identity/hash/byte-count association through
+- [x] Reported failed-attempt cost participates in the budget cap before another wire request.
+- [x] `total_cost_usd` is never presented as complete when any wire-attempt cost is unknown.
+- [x] Non-alphabetical multi-file telemetry preserves identity/hash/byte-count association through
   `build_evidence_summary_from_run()`.
-- [ ] `ledger_digest()` has the fixed canonicalization, fixed vector, empty-ledger rejection, and
+- [x] `ledger_digest()` has the fixed canonicalization, fixed vector, empty-ledger rejection, and
   report-order domain.
-- [ ] The historical `9122...` value is retained as unpinned and the mechanically recomputed pinned
+- [x] The historical `9122...` value is retained as unpinned and the mechanically recomputed pinned
   digest is recorded with a durable command.
-- [ ] FU-4B remains accepted-open and `--require fu4b` still fails.
-- [ ] The real urllib/local-HTTP integration passes without being mislabeled as a real Gateway tier.
-- [ ] `reports/plan-9-95-usage-telemetry-evidence.md` maps each DoD claim to named evidence.
-- [ ] Plans 9.96 and 9.97 remain tracked-not-yet-scheduled with no implementation-plan files.
-- [ ] Plan 9.97 still says it **must not absorb or be absorbed by Plan 11**.
-- [ ] Full default tests pass; aggregate production coverage is at least 80%; `uv run ruff check .`
+- [x] FU-4B remains accepted-open and `--require fu4b` still fails.
+- [x] The real urllib/local-HTTP integration passes without being mislabeled as a real Gateway tier.
+- [x] `reports/plan-9-95-usage-telemetry-evidence.md` maps each DoD claim to named evidence.
+- [x] Plans 9.96 and 9.97 remain tracked-not-yet-scheduled with no implementation-plan files.
+- [x] Plan 9.97 still says it **must not absorb or be absorbed by Plan 11**.
+- [x] Full default tests pass; aggregate production coverage is at least 80%; `uv run ruff check .`
   and `git diff --check` are clean.
-- [ ] Final status contains no unintended `.idea`, `.claude`, `.cursor`, `.superpowers`, secret,
+- [x] Final status contains no unintended `.idea`, `.claude`, `.cursor`, `.superpowers`, secret,
   environment, or unrelated lockfile changes in the reviewed commit.
 
 ## Implementation Handoff After Approval
