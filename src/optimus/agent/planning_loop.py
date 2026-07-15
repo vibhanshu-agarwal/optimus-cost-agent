@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from optimus.agent.directives import AgentDirectiveParseError, AgentPlanDirectives, parse_agent_plan
 from optimus.agent.prompts import build_multi_turn_planner_input
 from optimus.agent.workspace_context import DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
+from optimus.gateway.errors import GatewayError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.loops.completion import DeterministicCompletionEvaluator
@@ -61,6 +62,15 @@ class PlanningEvidenceBudgetError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         self.code = code
         super().__init__(message)
+
+
+class _PlanningGatewayInvocationError(RuntimeError):
+    """Internal: typed planning stop raised from _invoke_planning_gateway."""
+
+    def __init__(self, stop_reason: str, *, reported_cost_usd: Decimal) -> None:
+        self.stop_reason = stop_reason
+        self.reported_cost_usd = reported_cost_usd
+        super().__init__(stop_reason)
 
 
 class PlanningLoopPolicy(BaseModel):
@@ -133,6 +143,8 @@ class PlanningLoopResult(BaseModel):
     stop_reason: str | None = None
     settled_turns: int = Field(default=0, ge=0)
     total_cost_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    cost_complete: bool = True
+    unknown_cost_attempt_count: int = Field(default=0, ge=0)
     gateway_request_ids: tuple[str, ...] = ()
     plan_text: str | None = None
     plan_hash: str | None = None
@@ -155,6 +167,8 @@ class PlanningProgressEvent(BaseModel):
     source_sha256s: tuple[str, ...] = ()
     read_byte_counts: tuple[int, ...] = ()
     total_cost_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    cost_complete: bool = True
+    unknown_cost_attempt_count: int = Field(default=0, ge=0)
     remaining_budget_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     gateway_request_ids: tuple[str, ...] = ()
     wire_retry_count: int = Field(default=0, ge=0)
@@ -599,6 +613,10 @@ def planning_corrective_text(
     templates = {
         "PLANNING_REPEATED_READ_REQUEST": "Planning stopped after repeated non-progress read requests.",
         "PLANNING_GATEWAY_FAILURE": "Planning stopped after repeated gateway request failures.",
+        "PLANNING_GATEWAY_COST_UNKNOWN": (
+            "Planning stopped because a gateway attempt cost could not be verified; "
+            "no further retry was dispatched."
+        ),
         "PLANNING_UNPARSEABLE_RESPONSE": (
             "Planning stopped after repeated responses that did not match the required directive grammar."
         ),
@@ -766,6 +784,8 @@ class _PlanningIterationRunner:
         self._current_reads: tuple[PlanningReadEvidence, ...] = ()
         self._gateway_request_ids: list[str] = []
         self._total_cost_usd = Decimal("0")
+        self._cost_complete = True
+        self._unknown_cost_attempt_count = 0
         self._last_decision: PlanningTurnDecision | None = None
         self._last_provider: str | None = None
         self._last_wire_retry_count = 0
@@ -788,39 +808,116 @@ class _PlanningIterationRunner:
             cost_credits=cost_credits,
         )
 
+    def _record_reported_gateway_usage(
+        self,
+        usage: GatewayUsage,
+        planning_turn: int,
+        wire_attempt: int,
+    ) -> None:
+        """Record one reported usage envelope exactly once.
+
+        Appends the Gateway request ID, adds cost, captures provider, and
+        invokes the usage callback. Called from both the success path and the
+        typed-Gateway-exception path when gateway_usage is not None.
+        """
+        self._gateway_request_ids.append(usage.gateway_request_id)
+        self._total_cost_usd += usage.cost_usd
+        self._last_provider = usage.provider
+        if self._usage_callback is not None:
+            self._usage_callback(usage, planning_turn, wire_attempt)
+
     def _invoke_planning_gateway(
         self,
         *,
         planning_turn: int,
         prompt: str,
     ) -> tuple[GatewayResponse, Decimal]:
-        attempt_cost = Decimal("0")
+        cost_before = self._total_cost_usd
         wire_attempt = 0
 
         def operation() -> GatewayResponse:
-            nonlocal attempt_cost, wire_attempt
+            nonlocal wire_attempt
             wire_attempt += 1
-            response = self._gateway_client.create_response(
-                model=self._model,
-                input_text=prompt,
-                metadata={
-                    "run_id": self._run_id,
-                    "session_id": self._session_id,
-                    "purpose": "planning_turn",
-                    "planning_turn": planning_turn,
-                },
+            try:
+                response = self._gateway_client.create_response(
+                    model=self._model,
+                    input_text=prompt,
+                    metadata={
+                        "run_id": self._run_id,
+                        "session_id": self._session_id,
+                        "purpose": "planning_turn",
+                        "planning_turn": planning_turn,
+                    },
+                )
+            except GatewayError as exc:
+                # Typed gateway error — check for reported usage.
+                usage = getattr(exc, "gateway_usage", None)
+                if usage is not None:
+                    self._record_reported_gateway_usage(usage, planning_turn, wire_attempt)
+                    # Budget gate: if aggregate is at/above cap, stop immediately.
+                    if self._total_cost_usd >= self._max_cost_usd:
+                        from optimus.retry.policy import PermanentGatewayError as _PermanentStop
+
+                        raise _PermanentStop("budget exhausted after reported failed attempt") from exc
+                    # Re-raise for normal RetryController classification.
+                    raise
+                # No valid usage — unknown cost. Terminal regardless of retryability.
+                self._cost_complete = False
+                self._unknown_cost_attempt_count += 1
+                from optimus.retry.policy import PermanentGatewayError as _PermanentStop
+
+                raise _PermanentStop("unknown transport cost") from exc
+            except Exception as exc:
+                # Unexpected non-Gateway exception — treat as unknown cost.
+                self._cost_complete = False
+                self._unknown_cost_attempt_count += 1
+                from optimus.acp.debug_trace import acp_debug_log
+
+                acp_debug_log(
+                    location="planning_loop.py:_invoke_planning_gateway",
+                    message="planning attempt cost unknown",
+                    data={
+                        "run_id": self._run_id,
+                        "session_id": self._session_id,
+                        "planning_turn": planning_turn,
+                        "wire_attempt": wire_attempt,
+                        "error_type": type(exc).__name__,
+                    },
+                    hypothesis_id="P9.95-USAGE-UNKNOWN",
+                    run_id=self._run_id,
+                )
+                from optimus.retry.policy import PermanentGatewayError as _PermanentStop
+
+                raise _PermanentStop("unknown transport cost") from exc
+
+            # Success path — record usage exactly once.
+            self._record_reported_gateway_usage(
+                response.gateway_usage, planning_turn, wire_attempt
             )
-            attempt_cost = response.gateway_usage.cost_usd
-            self._last_provider = response.gateway_usage.provider
-            if self._usage_callback is not None:
-                self._usage_callback(response.gateway_usage, planning_turn, wire_attempt)
             return response
 
         retry_result = self._retry_controller.run(operation)
-        if retry_result.value is None:
-            raise RuntimeError("planning gateway request failed after retries")
-        self._last_wire_retry_count = retry_result.retry_count
-        return retry_result.value, attempt_cost
+
+        # Map RetryResult to planning outcomes.
+        sequence_cost = self._total_cost_usd - cost_before
+
+        if retry_result.value is not None:
+            # Success after zero or more reported retries.
+            self._last_wire_retry_count = retry_result.retry_count
+            return retry_result.value, sequence_cost
+
+        # Terminal failure — determine stop reason.
+        if not self._cost_complete:
+            raise _PlanningGatewayInvocationError(
+                "PLANNING_GATEWAY_COST_UNKNOWN", reported_cost_usd=sequence_cost
+            )
+        if self._total_cost_usd >= self._max_cost_usd:
+            raise _PlanningGatewayInvocationError(
+                "PLANNING_BUDGET_EXHAUSTED", reported_cost_usd=sequence_cost
+            )
+        raise _PlanningGatewayInvocationError(
+            "PLANNING_GATEWAY_FAILURE", reported_cost_usd=sequence_cost
+        )
 
     def run_iteration(self, state: IterationState, tools: LoopToolExecutorProtocol) -> IterationOutcome:
         planning_turn = state.iteration + 1
@@ -868,16 +965,15 @@ class _PlanningIterationRunner:
         )
         try:
             response, attempt_cost = self._invoke_planning_gateway(planning_turn=planning_turn, prompt=prompt)
-        except RuntimeError:
+        except _PlanningGatewayInvocationError as exc:
             self._last_non_progress_kind = "GATEWAY_FAILURE"
-            return IterationOutcome(
-                summary="planning gateway request failed after retries",
-                deterministic_completion=False,
-                failure_signature="GATEWAY_FAILURE",
-                cost_credits=Decimal("0"),
+            return self._typed_planning_failure(
+                stop_reason=exc.stop_reason,
+                summary=f"planning gateway invocation stopped: {exc.stop_reason}",
+                cost_credits=exc.reported_cost_usd,
             )
-        self._gateway_request_ids.append(response.gateway_usage.gateway_request_id)
-        self._total_cost_usd += attempt_cost
+        # Success path — cost already recorded inside _invoke_planning_gateway via
+        # _record_reported_gateway_usage; do NOT append/add again here.
 
         try:
             decision = parse_planning_turn(response.output_text)
@@ -1019,6 +1115,8 @@ class _PlanningIterationRunner:
             stop_reason=stop_reason,
             settled_turns=settled_turns,
             total_cost_usd=self._total_cost_usd,
+            cost_complete=self._cost_complete,
+            unknown_cost_attempt_count=self._unknown_cost_attempt_count,
             gateway_request_ids=tuple(self._gateway_request_ids),
             corrective_text=planning_corrective_text(
                 stop_reason,
@@ -1078,6 +1176,8 @@ class _PlanningIterationRunner:
                     stop_reason=None,
                     settled_turns=settled_turns,
                     total_cost_usd=self._total_cost_usd,
+                    cost_complete=self._cost_complete,
+                    unknown_cost_attempt_count=self._unknown_cost_attempt_count,
                     gateway_request_ids=tuple(self._gateway_request_ids),
                     plan_text=plan_text,
                     plan_hash=plan_hash,
@@ -1103,6 +1203,8 @@ class _PlanningIterationRunner:
             stop_reason=mapped_stop,
             settled_turns=settled_turns,
             total_cost_usd=self._total_cost_usd,
+            cost_complete=self._cost_complete,
+            unknown_cost_attempt_count=self._unknown_cost_attempt_count,
             gateway_request_ids=tuple(self._gateway_request_ids),
             corrective_text=planning_corrective_text(
                 mapped_stop,

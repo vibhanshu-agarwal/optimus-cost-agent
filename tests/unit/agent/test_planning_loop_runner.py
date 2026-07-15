@@ -13,6 +13,7 @@ from optimus.agent.planning_loop import (
     PlanningLoopRunner,
     PlanningProgressEvent,
 )
+from optimus.gateway.errors import GatewayHttpError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.runtime.modes import ExecutionMode
@@ -63,6 +64,7 @@ def _runner(
     now: callable | None = None,
     halt_requested: callable | None = None,
     progress_observer: callable | None = None,
+    usage_callback: callable | None = None,
 ) -> PlanningLoopRunner:
     return PlanningLoopRunner(
         gateway_client=gateway,
@@ -75,6 +77,7 @@ def _runner(
         now=now,
         halt_requested=halt_requested,
         progress_observer=progress_observer,
+        usage_callback=usage_callback,
     )
 
 
@@ -190,9 +193,12 @@ def test_repeated_gateway_failures_map_to_gateway_failure_stop(tmp_path):
         initial_workspace_context="",
     )
 
-    assert result.stop_reason == "PLANNING_GATEWAY_FAILURE"
+    # RuntimeError is not a typed GatewayError — unknown transport cost.
+    assert result.stop_reason == "PLANNING_GATEWAY_COST_UNKNOWN"
     assert result.gateway_request_ids == ()
     assert result.total_cost_usd == Decimal("0")
+    assert result.cost_complete is False
+    assert result.unknown_cost_attempt_count == 1
 
 
 def test_repeated_identical_read_more_maps_to_read_stop(tmp_path):
@@ -660,3 +666,300 @@ def test_planning_loop_logs_rejected_read_path_to_debug_trace(tmp_path, monkeypa
     assert data["start_byte"] == 0
     assert data["end_byte"] == 1024
     assert data["run_id"] == "run-read-reject"
+
+
+# --- Plan 9.95 Task 2 Step 1: failing aggregation and terminal-state tests ---
+
+
+class FailThenSucceedGateway:
+    """First call raises GatewayHttpError 503 with valid usage, second returns success."""
+
+    def __init__(self) -> None:
+        self.attempts = 0
+
+    def create_response(
+        self,
+        *,
+        model: str,
+        input_text: str,
+        metadata: dict[str, object] | None = None,
+    ) -> GatewayResponse:
+        self.attempts += 1
+        if self.attempts == 1:
+            raise GatewayHttpError(
+                503,
+                "temporary overload",
+                gateway_usage=GatewayUsage(
+                    gateway_request_id="gw-failed-1",
+                    provider="glm",
+                    billing_units=5,
+                    cost_usd=Decimal("0.001"),
+                ),
+            )
+        return GatewayResponse(
+            response_id="resp-success-2",
+            output_text=FINAL_PLAN,
+            gateway_usage=GatewayUsage(
+                gateway_request_id="gw-success-2",
+                provider="glm",
+                billing_units=10,
+                cost_usd=Decimal("0.002"),
+            ),
+            raw={"id": "resp-success-2"},
+        )
+
+
+class PermanentFailWithUsageGateway:
+    """Raises GatewayHttpError 400 (permanent) with valid usage."""
+
+    def __init__(self) -> None:
+        self.attempts = 0
+
+    def create_response(
+        self,
+        *,
+        model: str,
+        input_text: str,
+        metadata: dict[str, object] | None = None,
+    ) -> GatewayResponse:
+        self.attempts += 1
+        raise GatewayHttpError(
+            400,
+            "bad request",
+            gateway_usage=GatewayUsage(
+                gateway_request_id="gw-perm-1",
+                provider="glm",
+                billing_units=3,
+                cost_usd=Decimal("0.001"),
+            ),
+        )
+
+
+class UnknownCostGateway:
+    """Raises GatewayHttpError 503 without valid usage (unknown cost)."""
+
+    def __init__(self) -> None:
+        self.attempts = 0
+
+    def create_response(
+        self,
+        *,
+        model: str,
+        input_text: str,
+        metadata: dict[str, object] | None = None,
+    ) -> GatewayResponse:
+        self.attempts += 1
+        raise GatewayHttpError(503, "temporary outage")
+
+
+class ReportedThenUnknownGateway:
+    """First call has valid usage (503), second has no usage (503)."""
+
+    def __init__(self) -> None:
+        self.attempts = 0
+
+    def create_response(
+        self,
+        *,
+        model: str,
+        input_text: str,
+        metadata: dict[str, object] | None = None,
+    ) -> GatewayResponse:
+        self.attempts += 1
+        if self.attempts == 1:
+            raise GatewayHttpError(
+                503,
+                "first failure with usage",
+                gateway_usage=GatewayUsage(
+                    gateway_request_id="gw-reported-1",
+                    provider="glm",
+                    billing_units=5,
+                    cost_usd=Decimal("0.001"),
+                ),
+            )
+        raise GatewayHttpError(503, "second failure no usage")
+
+
+class BudgetCapGateway:
+    """503 with valid usage that exactly hits the budget cap."""
+
+    def __init__(self) -> None:
+        self.attempts = 0
+
+    def create_response(
+        self,
+        *,
+        model: str,
+        input_text: str,
+        metadata: dict[str, object] | None = None,
+    ) -> GatewayResponse:
+        self.attempts += 1
+        raise GatewayHttpError(
+            503,
+            "overloaded",
+            gateway_usage=GatewayUsage(
+                gateway_request_id="gw-cap-1",
+                provider="glm",
+                billing_units=50,
+                cost_usd=Decimal("0.005"),
+            ),
+        )
+
+
+class UnexpectedExceptionGateway:
+    """Raises TypeError (unexpected non-Gateway exception)."""
+
+    def __init__(self) -> None:
+        self.attempts = 0
+
+    def create_response(
+        self,
+        *,
+        model: str,
+        input_text: str,
+        metadata: dict[str, object] | None = None,
+    ) -> GatewayResponse:
+        self.attempts += 1
+        raise TypeError("SENTINEL-PAYLOAD-BUG")
+
+
+def test_reported_transient_failure_then_success_aggregates_both_wire_attempts(tmp_path):
+    gateway = FailThenSucceedGateway()
+    callback_attempts: list[tuple[int, int, str]] = []
+
+    def usage_cb(usage: GatewayUsage, planning_turn: int, wire_attempt: int) -> None:
+        callback_attempts.append((planning_turn, wire_attempt, usage.gateway_request_id))
+
+    result = _runner(tmp_path, gateway=gateway, usage_callback=usage_cb).run(
+        run_id="run-retry-agg",
+        session_id=None,
+        task="Update src/a.py",
+        initial_workspace_context="",
+    )
+
+    assert result.total_cost_usd == Decimal("0.003")
+    assert result.gateway_request_ids == ("gw-failed-1", "gw-success-2")
+    assert result.cost_complete is True
+    assert result.unknown_cost_attempt_count == 0
+    assert callback_attempts == [(1, 1, "gw-failed-1"), (1, 2, "gw-success-2")]
+
+
+def test_reported_permanent_failure_is_charged_before_gateway_stop(tmp_path):
+    gateway = PermanentFailWithUsageGateway()
+    callback_attempts: list[tuple[int, int, str]] = []
+
+    def usage_cb(usage: GatewayUsage, planning_turn: int, wire_attempt: int) -> None:
+        callback_attempts.append((planning_turn, wire_attempt, usage.gateway_request_id))
+
+    result = _runner(tmp_path, gateway=gateway, usage_callback=usage_cb).run(
+        run_id="run-perm-fail",
+        session_id=None,
+        task="Update src/a.py",
+        initial_workspace_context="",
+    )
+
+    assert gateway.attempts == 1
+    assert result.stop_reason == "PLANNING_GATEWAY_FAILURE"
+    assert result.total_cost_usd == Decimal("0.001")
+    assert result.gateway_request_ids == ("gw-perm-1",)
+    assert result.cost_complete is True
+    assert result.unknown_cost_attempt_count == 0
+    assert callback_attempts == [(1, 1, "gw-perm-1")]
+    assert result.plan_hash is None
+
+
+def test_unknown_transport_cost_stops_before_retry(tmp_path):
+    gateway = UnknownCostGateway()
+
+    result = _runner(tmp_path, gateway=gateway).run(
+        run_id="run-unknown",
+        session_id=None,
+        task="Update src/a.py",
+        initial_workspace_context="",
+    )
+
+    assert gateway.attempts == 1
+    assert result.stop_reason == "PLANNING_GATEWAY_COST_UNKNOWN"
+    assert result.total_cost_usd == Decimal("0")
+    assert result.cost_complete is False
+    assert result.unknown_cost_attempt_count == 1
+    assert result.plan_hash is None
+
+
+def test_unknown_after_reported_failure_retains_known_cost_lower_bound(tmp_path):
+    gateway = ReportedThenUnknownGateway()
+
+    result = _runner(tmp_path, gateway=gateway).run(
+        run_id="run-partial-unknown",
+        session_id=None,
+        task="Update src/a.py",
+        initial_workspace_context="",
+    )
+
+    # First attempt has reported cost, second is unknown → stops
+    assert gateway.attempts == 2
+    assert result.stop_reason == "PLANNING_GATEWAY_COST_UNKNOWN"
+    assert result.total_cost_usd == Decimal("0.001")  # known lower bound
+    assert result.cost_complete is False
+    assert result.unknown_cost_attempt_count == 1
+    assert result.gateway_request_ids == ("gw-reported-1",)
+    assert result.plan_hash is None
+
+
+def test_reported_failed_attempt_at_budget_cap_stops_before_retry(tmp_path):
+    gateway = BudgetCapGateway()
+
+    # max_cost_usd = 0.005 and the first failure costs exactly 0.005
+    result = _runner(tmp_path, gateway=gateway, max_cost_usd=Decimal("0.005")).run(
+        run_id="run-cap",
+        session_id=None,
+        task="Update src/a.py",
+        initial_workspace_context="",
+    )
+
+    assert gateway.attempts == 1
+    assert result.stop_reason == "PLANNING_BUDGET_EXHAUSTED"
+    assert result.total_cost_usd == Decimal("0.005")
+    assert result.cost_complete is True
+    assert result.unknown_cost_attempt_count == 0
+    assert result.gateway_request_ids == ("gw-cap-1",)
+    assert result.plan_hash is None
+
+
+def test_unexpected_attempt_exception_logs_type_only_and_stops_cost_unknown(tmp_path, monkeypatch):
+    log_path = resolve_debug_log_path(workspace_root=tmp_path)
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+
+    gateway = UnexpectedExceptionGateway()
+
+    result = _runner(tmp_path, gateway=gateway).run(
+        run_id="run-unexpected",
+        session_id="session-unexpected",
+        task="Update src/a.py",
+        initial_workspace_context="",
+    )
+
+    assert gateway.attempts == 1
+    assert result.stop_reason == "PLANNING_GATEWAY_COST_UNKNOWN"
+    assert result.total_cost_usd == Decimal("0")
+    assert result.cost_complete is False
+    assert result.unknown_cost_attempt_count == 1
+    assert result.plan_hash is None
+
+    # Verify the debug record
+    lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").strip().splitlines()]
+    usage_unknown_lines = [line for line in lines if line.get("hypothesisId") == "P9.95-USAGE-UNKNOWN"]
+    assert len(usage_unknown_lines) == 1
+    record = usage_unknown_lines[0]
+    assert record["data"]["error_type"] == "TypeError"
+    assert record["data"]["run_id"] == "run-unexpected"
+    assert record["data"]["session_id"] == "session-unexpected"
+    assert record["data"]["planning_turn"] == 1
+    assert record["data"]["wire_attempt"] == 1
+    # Must NOT contain the exception message or traceback
+    record_str = json.dumps(record)
+    assert "SENTINEL-PAYLOAD-BUG" not in record_str
+
+    # Corrective text must not contain the exception message
+    assert "SENTINEL-PAYLOAD-BUG" not in result.corrective_text
