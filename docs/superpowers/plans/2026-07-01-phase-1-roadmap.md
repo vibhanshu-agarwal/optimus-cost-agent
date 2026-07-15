@@ -426,17 +426,19 @@ remains unchanged.
 `P9.9-FU-1` (workspace-influenced agent launch environment) is deliberately deferred, not
 implemented here. Its sole current custody line is under Plan 9.96 below.
 
-## Plan 9.95 (Approved; Implementation Not Started): Usage, Telemetry, and Evidence-Tooling Correctness
+## Plan 9.95 (Implemented): Usage, Telemetry, and Evidence-Tooling Correctness
 
 **Raised:** 2026-07-14 as the custody entry for open deferred follow-ups. The operator approved
 the three-lane split on 2026-07-14; the detailed Plan 9.95 implementation plan is
 `docs/superpowers/plans/2026-07-14-plan-9-95-usage-telemetry-evidence-tooling-correctness.md`
-was approved by the reviewer-agent and operator on 2026-07-14. Implementation has not started and
-must use a fresh branch from the latest `origin/main` after this documentation PR merges.
+was approved by the reviewer-agent and operator on 2026-07-14. Implemented 2026-07-15 on branch
+`agent/kiro/plan-9-95-usage-telemetry-evidence`; implementation SHA
+`41a9cddddbacad766d8a432b7129a18d8976b54a`; evidence in
+`reports/plan-9-95-usage-telemetry-evidence.md`.
 
-- `P9.85-FU-6` — billable failed-retry aggregation / unknown transport cost — raised Plan 9.85, carried through Plans 9.87/9.88.
-- `P9.88-FU-2` — ledger digest specification and verifier helper — raised Plan 9.88.
-- `P9.88-FU-3` — read-range telemetry misattribution in `planning_loop.py` — raised Plan 9.88; now unblocked since the post-ceremony freeze lift.
+- `P9.85-FU-6` — billable failed-retry aggregation / unknown transport cost — **closed**.
+- `P9.88-FU-2` — ledger digest specification and verifier helper — **closed**.
+- `P9.88-FU-3` — read-range telemetry misattribution in `planning_loop.py` — **closed**.
 
 **Custody transfer record (trace only, not ownership):**
 
@@ -445,9 +447,8 @@ must use a fresh branch from the latest `origin/main` after this documentation P
 - `P9.87-FU-1` moved from Plan 9.95 to Plan 9.97.
 
 FU-4B accepted-open is deliberately not in this entry: it is a closed disposition under the Plan
-9.88 ceremony, not a TODO. **Status:** Detailed implementation plan drafted for exactly
-`P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3`; reviewer-agent and operator approved; no
-implementation has begun.
+9.88 ceremony, not a TODO. **Status:** Implemented; `P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3`
+closed with evidence. Remaining deferred follow-ups owned by Plans 9.96 and 9.97.
 
 ## Plan 9.96 (Tracked, Not Yet Scheduled): Operator-Controlled Debug and Launch Trust
 
@@ -502,6 +503,18 @@ This lane must not absorb or be absorbed by Plan 11.
 **Status:** Tracked, not yet scheduled; no implementation plan exists on this branch. Its future
 design must preserve the current-raw-evidence boundary independently of Plan 11's intelligent
 selection and compression work.
+
+## Backlog: Re-pin FU-4A/FU-5 Live Evidence (Tracked, Not Yet Scheduled)
+
+**Raised:** 2026-07-15 by Plan 9.95 Task 5 Implementation Amendment. The Plan 9.87 evidence
+report's `--require fu4a` and `--require fu5` gates fail with `implementation drift` because
+34 files in `src/optimus` changed between the pinned implementation SHAs (`4bf20fff` for fu4a,
+`bfcea0da` for fu5) and `origin/main` at the time of Plan 9.95's branch-cut — caused by Plan 9.9
+and other unrelated prior work. Re-establishing freshness requires re-capturing live `acpx`
+evidence against the current codebase. This is not a correctness defect (the underlying
+implementations remain functionally correct) but a watched-path-drift gap in the evidence chain.
+
+**Status:** Tracked, not yet scheduled. No implementation plan exists.
 
 ## Plan 10 (Tracked, Not Yet Scheduled): Unified Gateway Capabilities Broker
 
@@ -590,8 +603,9 @@ pattern.
     `cde9cb9d22c32d0d0fe05b019543d6b1b5ba78a5`; owns cross-layer provider/key mismatch diagnostics
     and non-editable-install root discovery; evidence in
     `reports/plan-9-9-operator-packaging-evidence.md`.
-20. Plan 9.95: Usage, telemetry, and evidence-tooling correctness — implementation plan
-    approved for `P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3`; implementation not started.
+20. Plan 9.95: Usage, telemetry, and evidence-tooling correctness — implemented;
+    `P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3` closed; evidence in
+    `reports/plan-9-95-usage-telemetry-evidence.md`.
 21. Plan 9.96: Operator-controlled debug and launch trust — tracked, not yet scheduled; opens its
     design phase with the dedicated security review; no implementation plan exists.
 22. Plan 9.97: Mechanical current-raw-evidence grounding — tracked, not yet scheduled; remains

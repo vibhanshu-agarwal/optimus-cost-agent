@@ -262,13 +262,16 @@ wheel outside the checkout; operator credentials resolve from an
 operator-owned config directory that can never be inside the workspace. See
 `reports/plan-9-9-operator-packaging-evidence.md` for the real `acpx`
 packaging evidence. `P9.9-FU-1` (workspace-influenced agent launch
-environment) remains open and is tracked under Plan 9.95 below.
+environment) remains open and is tracked under Plan 9.96.
 
-**Plan 9.95** (tracked, not yet scheduled) is the custody entry for open
-deferred follow-ups: `P9.85-FU-6`, `P9.85-FU-7`, `P9.87-FU-1`,
-`P9.88-FU-2`, `P9.88-FU-3`, and `P9.9-FU-1`. It may split by lane when
-scheduled. FU-4B accepted-open is deliberately not included — it is a closed
-disposition, not a TODO.
+**Plan 9.95** (implemented) closed `P9.85-FU-6` (billable failed-retry
+aggregation and unknown transport cost), `P9.88-FU-2` (ledger digest
+specification), and `P9.88-FU-3` (read-range telemetry misattribution).
+Implementation SHA `41a9cddddbacad766d8a432b7129a18d8976b54a`; evidence in
+`reports/plan-9-95-usage-telemetry-evidence.md`. Remaining open follow-ups
+are owned by Plan 9.96 (`P9.85-FU-7`, `P9.9-FU-1`) and Plan 9.97
+(`P9.87-FU-1`). FU-4B accepted-open is deliberately not included — it is a
+closed disposition, not a TODO.
 
 **Plan 10** (tracked, not yet scheduled) is the Unified Gateway Capabilities
 Broker — web search and observability routes on the local gateway stub. Out of
