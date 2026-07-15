@@ -184,6 +184,8 @@ def log_planning_replan_event(event: PlanningProgressEvent, *, stop_reason: str 
             "settled_turn": event.settled_turn,
             "max_planning_turns": event.max_planning_turns,
             "reported_aggregate_cost_usd": str(event.total_cost_usd),
+            "cost_complete": event.cost_complete,
+            "unknown_cost_attempt_count": event.unknown_cost_attempt_count,
             "remaining_budget_usd": str(event.remaining_budget_usd),
             "read_identities": list(event.read_identities),
             "read_byte_counts": list(event.read_byte_counts),

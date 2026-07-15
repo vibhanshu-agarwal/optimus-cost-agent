@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -109,6 +110,29 @@ def _extract_plan988_records(report_text: str) -> list[dict[str, object]]:
         if isinstance(payload, dict) and payload.get("evidence_lane") == EVIDENCE_LANE:
             records.append(payload)
     return records
+
+
+def ledger_digest(records: Sequence[Mapping[str, object]]) -> str:
+    """Compute the deterministic SHA-256 digest of a Plan 9.88 ceremony ledger.
+
+    Each record is canonicalized with sorted keys, compact separators, no ASCII
+    escaping, no NaN/Infinity, encoded as UTF-8, and terminated with one LF byte.
+    The digest covers all records in physical report order. An empty ledger is
+    rejected.
+    """
+    _require(bool(records), "FU-4B ledger is empty")
+    payload = b"".join(
+        json.dumps(
+            record,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n"
+        for record in records
+    )
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _check_fu5_ledger(summaries: list[EvidenceSummary], *, max_completed_attempts: int) -> None:
@@ -405,11 +429,12 @@ def verify_report(
     max_completed_refusal_attempts: int = 3,
     max_completed_replan_attempts: int = 3,
     fu4b_ledger_status: str | None = None,
+    fu4b_ledger_digest: str | None = None,
 ) -> None:
     """Verify required claims and/or Plan 9.88 FU-4B ledger status."""
     _require(
-        bool(require) or fu4b_ledger_status is not None,
-        "at least one --require claim or --check-fu4b-ledger-status is required",
+        bool(require) or fu4b_ledger_status is not None or fu4b_ledger_digest is not None,
+        "at least one --require claim, --check-fu4b-ledger-status, or --check-fu4b-ledger-digest is required",
     )
     report_text = report_path.read_text(encoding="utf-8")
     summaries = _extract_evidence_summaries(report_text)
@@ -424,6 +449,14 @@ def verify_report(
         )
     else:
         completed = []
+
+    if fu4b_ledger_digest is not None:
+        _require(bool(plan988_records), "FU-4B Plan 9.88 records missing")
+        actual = ledger_digest(plan988_records)
+        _require(
+            actual == fu4b_ledger_digest,
+            f"FU-4B ledger digest mismatch: expected {fu4b_ledger_digest}, got {actual}",
+        )
 
     if not require:
         return
@@ -473,9 +506,19 @@ def main(argv: list[str] | None = None) -> int:
         choices=("exhausted", "unsafe"),
         default=None,
     )
+    parser.add_argument(
+        "--check-fu4b-ledger-digest",
+        default=None,
+        type=str,
+    )
     args = parser.parse_args(argv)
-    if not args.require and args.check_fu4b_ledger_status is None:
-        parser.error("at least one --require claim or --check-fu4b-ledger-status is required")
+    if args.check_fu4b_ledger_digest is not None:
+        import re as _re
+
+        if not _re.fullmatch(r"[0-9a-f]{64}", args.check_fu4b_ledger_digest):
+            parser.error("--check-fu4b-ledger-digest must be a lowercase 64-char hex SHA-256")
+    if not args.require and args.check_fu4b_ledger_status is None and args.check_fu4b_ledger_digest is None:
+        parser.error("at least one --require claim, --check-fu4b-ledger-status, or --check-fu4b-ledger-digest is required")
     try:
         verify_report(
             args.verify_report,
@@ -483,6 +526,7 @@ def main(argv: list[str] | None = None) -> int:
             max_completed_refusal_attempts=args.max_completed_refusal_attempts,
             max_completed_replan_attempts=args.max_completed_replan_attempts,
             fu4b_ledger_status=args.check_fu4b_ledger_status,
+            fu4b_ledger_digest=args.check_fu4b_ledger_digest,
         )
     except ValueError as exc:
         print(str(exc))

@@ -1314,7 +1314,7 @@ Operator `vibhanshu-agarwal` contemporaneously accepts FU-4B open under Task 8 O
 | Ceremony HEAD | `fec114b7fc79da35ea399f4d66e22e776e6b76a3` |
 | Operator identity | `vibhanshu-agarwal` |
 | Timestamp (UTC) | 2026-07-14T08:13:56Z |
-| Ledger digest | `9122c5c1b2978a8de515710df2c2cb38347bc7bd205e2837ac3b7b2bdf118b3d` (canonicalization method not yet pinned — tracked as `P9.88-FU-2`) |
+| Ledger digest | Unpinned contemporaneous value: `9122c5c1b2978a8de515710df2c2cb38347bc7bd205e2837ac3b7b2bdf118b3d` (recorded at ceremony time without a pinned canonicalization method). Pinned value (Plan 9.95 `P9.88-FU-2`): `e265065147f505e56ed1ad8d60571f9d1f212fb8f8d192ec407121c0e7ac4195` — computed by `ledger_digest()` (commit `80c1db9a20edc619a6a80f5bf4ac70db0357a074`) over all 8 `P9.88-FU4B` JSON records in physical report order; canonicalization: `json.dumps(record, sort_keys=True, separators=(",",":"), ensure_ascii=False, allow_nan=False).encode("utf-8") + b"\n"` per record, SHA-256 of the concatenated payload. |
 | Claim SHAs | FU-4A `4bf20fffd9b067afa4db34d5ae021aca665f3acb`, FU-5 `bfcea0dab056bd42f793851ae042a214b24d4b64` |
 
 **Durable pair-plus-exhaustion gate (recorded):**
@@ -1329,6 +1329,26 @@ python tools/verify_plan987_acpx_evidence.py \
 ```
 
 Result: PASS (`Verified report: …`). Concurrent check: `--require fu4b` alone FAILs with `fu4b claim missing` — accepted-open does not make the FU-4B claim pass.
+
+**Pinned ledger-digest durable command (Plan 9.95, `P9.88-FU-2` closure):**
+
+```bash
+uv run python tools/verify_plan987_acpx_evidence.py \
+  --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md \
+  --check-fu4b-ledger-status exhausted \
+  --check-fu4b-ledger-digest e265065147f505e56ed1ad8d60571f9d1f212fb8f8d192ec407121c0e7ac4195 \
+  --max-completed-replan-attempts 3
+```
+
+Result: PASS. This command is independently reproducible: `ledger_digest()` (commit `80c1db9a20edc619a6a80f5bf4ac70db0357a074`)
+computes the SHA-256 of all 8 `P9.88-FU4B` records in physical report order using the exact
+canonicalization above. `--require fu4b` still FAILs with `fu4b claim missing` — FU-4B remains
+accepted-open. Note: the original `--require fu4a --require fu5` combination independently fails
+today with `implementation drift after 4bf20fffd9b067afa4db34d5ae021aca665f3acb` (fu4a) and
+`implementation drift after bfcea0dab056bd42f793851ae042a214b24d4b64` (fu5) because unrelated
+`src/optimus` changes (Plan 9.9 and others) landed after their pinned implementation SHAs, predating
+Plan 9.95; re-establishing that freshness is out of scope for `P9.88-FU-2` and is tracked separately,
+not silently dropped.
 
 **Sanitized rationale:**
 

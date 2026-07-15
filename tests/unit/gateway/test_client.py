@@ -273,3 +273,143 @@ def test_post_tool_json_rejects_non_tool_path():
 
     with pytest.raises(ValueError, match="tool path must start with /v1/tools/"):
         client.post_tool_json(path="/v1/responses", payload={})
+
+
+# --- Plan 9.95 Task 1 Step 3: transport tests for reported and unknown HTTP-error cost ---
+
+
+def test_urllib_http_error_with_valid_gateway_usage_attaches_usage(monkeypatch):
+    """HTTP 503 with a valid gateway_usage in the error body attaches usage to the error."""
+    error_body = json.dumps(
+        {
+            "error": "temporary overload",
+            "gateway_usage": {
+                "gateway_request_id": "gw-err-1",
+                "provider": "glm",
+                "cache_hit": False,
+                "billing_units": 5,
+                "cost_usd": "0.0005",
+            },
+        }
+    ).encode("utf-8")
+
+    def fake_urlopen(request: object, timeout: float) -> FakeHttpResponse:
+        raise HTTPError(
+            url="https://gateway.optimus.ai/v1/responses",
+            code=503,
+            msg="Service Unavailable",
+            hdrs=None,
+            fp=io.BytesIO(error_body),
+        )
+
+    monkeypatch.setattr("optimus.gateway.client.urlopen", fake_urlopen)
+
+    with pytest.raises(GatewayHttpError) as exc_info:
+        UrllibGatewayTransport().post_json(
+            GatewayRequest(
+                method="POST",
+                url="https://gateway.optimus.ai/v1/responses",
+                headers={"Authorization": "Bearer opt_live_secret", "Content-Type": "application/json"},
+                payload={"model": "glm-5.2", "input": "hello"},
+            )
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.gateway_usage is not None
+    assert exc_info.value.gateway_usage.gateway_request_id == "gw-err-1"
+    assert exc_info.value.gateway_usage.cost_usd == Decimal("0.0005")
+    assert "opt_live_secret" not in str(exc_info.value)
+
+
+def test_urllib_http_error_without_gateway_usage_has_unknown_cost(monkeypatch):
+    """HTTP 503 with no gateway_usage in the error body has gateway_usage=None."""
+    error_body = json.dumps({"error": "temporary outage"}).encode("utf-8")
+
+    def fake_urlopen(request: object, timeout: float) -> FakeHttpResponse:
+        raise HTTPError(
+            url="https://gateway.optimus.ai/v1/responses",
+            code=503,
+            msg="Service Unavailable",
+            hdrs=None,
+            fp=io.BytesIO(error_body),
+        )
+
+    monkeypatch.setattr("optimus.gateway.client.urlopen", fake_urlopen)
+
+    with pytest.raises(GatewayHttpError) as exc_info:
+        UrllibGatewayTransport().post_json(
+            GatewayRequest(
+                method="POST",
+                url="https://gateway.optimus.ai/v1/responses",
+                headers={"Authorization": "Bearer opt_live_secret", "Content-Type": "application/json"},
+                payload={"model": "glm-5.2", "input": "hello"},
+            )
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.gateway_usage is None
+    assert "opt_live_secret" not in str(exc_info.value)
+
+
+def test_urllib_http_error_with_malformed_gateway_usage_has_unknown_cost(monkeypatch):
+    """HTTP 503 with invalid gateway_usage (empty request ID) has gateway_usage=None."""
+    error_body = json.dumps(
+        {
+            "error": "bad request",
+            "gateway_usage": {
+                "gateway_request_id": "",
+                "provider": "glm",
+                "cache_hit": False,
+                "billing_units": 5,
+                "cost_usd": "0.0005",
+            },
+        }
+    ).encode("utf-8")
+
+    def fake_urlopen(request: object, timeout: float) -> FakeHttpResponse:
+        raise HTTPError(
+            url="https://gateway.optimus.ai/v1/responses",
+            code=503,
+            msg="Service Unavailable",
+            hdrs=None,
+            fp=io.BytesIO(error_body),
+        )
+
+    monkeypatch.setattr("optimus.gateway.client.urlopen", fake_urlopen)
+
+    with pytest.raises(GatewayHttpError) as exc_info:
+        UrllibGatewayTransport().post_json(
+            GatewayRequest(
+                method="POST",
+                url="https://gateway.optimus.ai/v1/responses",
+                headers={"Authorization": "Bearer opt_live_secret", "Content-Type": "application/json"},
+                payload={"model": "glm-5.2", "input": "hello"},
+            )
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.gateway_usage is None
+    assert "opt_live_secret" not in str(exc_info.value)
+
+
+def test_urllib_url_error_has_unknown_cost(monkeypatch):
+    """URLError (network failure) results in gateway_usage=None."""
+
+    def fake_urlopen(request: object, timeout: float) -> FakeHttpResponse:
+        raise URLError("connection refused")
+
+    monkeypatch.setattr("optimus.gateway.client.urlopen", fake_urlopen)
+
+    with pytest.raises(GatewayHttpError) as exc_info:
+        UrllibGatewayTransport().post_json(
+            GatewayRequest(
+                method="POST",
+                url="https://gateway.optimus.ai/v1/responses",
+                headers={"Authorization": "Bearer opt_live_secret", "Content-Type": "application/json"},
+                payload={"model": "glm-5.2", "input": "hello"},
+            )
+        )
+
+    assert exc_info.value.status_code == 0
+    assert exc_info.value.gateway_usage is None
+    assert "opt_live_secret" not in str(exc_info.value)

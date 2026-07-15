@@ -990,3 +990,74 @@ async def test_planning_observation_overflow_emits_end_turn_not_internal_error(t
     ]
     assert messages[-1] == "Planning stopped because carried observation evidence exceeds the allowed budget."
     assert outbound.requests == []
+
+
+# --- Plan 9.95 Task 3 Step 3: unknown-cost ACP terminal contract ---
+
+
+def test_cost_unknown_is_a_terminal_planning_stop() -> None:
+    assert "PLANNING_GATEWAY_COST_UNKNOWN" in _PLANNING_TERMINAL_STOP_REASONS
+
+
+async def test_unknown_cost_emits_end_turn_without_permission_request(tmp_path):
+    """PLANNING_GATEWAY_COST_UNKNOWN returns end_turn with corrective text and no permission."""
+    corrective_text = (
+        "Planning stopped because a gateway attempt cost could not be verified; "
+        "no further retry was dispatched."
+    )
+
+    class UnknownCostRunner:
+        def run(self, request, *, planning_progress_observer=None):
+            del planning_progress_observer
+            return AgentRunResult(
+                run_id=request.run_id,
+                session_id=request.session_id,
+                execution_mode=request.execution_mode,
+                status=AgentRunStatus.TERMINATED,
+                final_state="TERMINATED",
+                output_text=corrective_text,
+                tool_calls=(),
+                total_cost_usd=Decimal("0"),
+                cost_complete=False,
+                unknown_cost_attempt_count=1,
+                mutation_count=0,
+                provider_keys_resolvable=(),
+                stop_reason="PLANNING_GATEWAY_COST_UNKNOWN",
+                plan_hash=None,
+            )
+
+    outbound = RecordingOutboundChannel()
+    adapter = AcpDuplexAdapter(
+        runner=UnknownCostRunner(),
+        workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(),
+        outbound=outbound,
+    )
+    session_id = (
+        await adapter.handle_client_request(
+            {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
+        )
+    )["result"]["sessionId"]
+
+    response = await adapter.handle_client_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/prompt",
+            "params": {
+                "sessionId": session_id,
+                "prompt": [{"type": "text", "text": "Do work"}],
+            },
+        }
+    )
+
+    assert response["result"]["stopReason"] == "end_turn"
+    # No permission request issued.
+    assert outbound.requests == []
+    # Corrective text is the final message.
+    messages = [
+        item["params"]["update"]["content"]["text"]
+        for item in outbound.notifications
+        if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
+    ]
+    assert messages[-1] == corrective_text

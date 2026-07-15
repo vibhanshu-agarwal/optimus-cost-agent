@@ -83,7 +83,20 @@ class FlakyPlanningGateway:
         self.attempts += 1
         self.calls.append({"model": model, "metadata": metadata, "attempt": self.attempts})
         if self.attempts < 3:
-            raise GatewayHttpError(503, "temporary outage")
+            raise GatewayHttpError(
+                503,
+                "temporary outage",
+                gateway_usage=GatewayUsage(
+                    gateway_request_id=f"gw-failed-{self.attempts}",
+                    provider="glm",
+                    billing_units=1,
+                    cost_usd=Decimal("0.0005"),
+                    service="responses",
+                    native_unit="tokens",
+                    optimus_credits_debited=Decimal("0.05"),
+                    price_snapshot_id="prices-test",
+                ),
+            )
         return GatewayResponse(
             response_id=self._gateway_request_id,
             output_text=self._final_text,
@@ -835,12 +848,17 @@ def test_oversized_planning_retries_gateway_without_extra_settled_turn(tmp_path)
 
     assert gateway.attempts == 3
     assert result.status is AgentRunStatus.AWAITING_APPROVAL
-    assert accounting.provider_ledger.entries[0].request_id == "run-1:planning:1:3"
-    assert accounting.provider_ledger.total_cost_usd() == Decimal("0.002")
+    # All three attempts are persisted: two failed + one success.
+    assert [entry.request_id for entry in accounting.provider_ledger.entries] == [
+        "run-1:planning:1:1",
+        "run-1:planning:1:2",
+        "run-1:planning:1:3",
+    ]
+    assert accounting.provider_ledger.total_cost_usd() == Decimal("0.003")
 
 
 def test_fitting_context_planning_retries_gateway_without_extra_settled_turn(tmp_path):
-    # Billable failed attempts and unknown transport cost aggregation remain FU-6.
+    # Plan 9.95 Task 3: billable failed attempts are now aggregated (FU-6 closure).
     (tmp_path / "target.py").write_text("original\n", encoding="utf-8")
     final_plan = "READ target.py\nWRITE target.py\nupdated header\n"
     gateway = FlakyPlanningGateway(
@@ -866,8 +884,61 @@ def test_fitting_context_planning_retries_gateway_without_extra_settled_turn(tmp
 
     assert gateway.attempts == 3
     assert result.status is AgentRunStatus.AWAITING_APPROVAL
-    assert accounting.provider_ledger.entries[0].request_id == "run-fit-retry:planning:1:3"
-    assert accounting.provider_ledger.total_cost_usd() == Decimal("0.002")
+    # All three attempts are persisted: two failed + one success.
+    assert [entry.request_id for entry in accounting.provider_ledger.entries] == [
+        "run-fit-retry:planning:1:1",
+        "run-fit-retry:planning:1:2",
+        "run-fit-retry:planning:1:3",
+    ]
+    assert accounting.provider_ledger.gateway_request_ids(run_id="run-fit-retry") == {
+        "gw-failed-1",
+        "gw-failed-2",
+        "gw-1",
+    }
+    assert accounting.provider_ledger.total_cost_usd(run_id="run-fit-retry") == Decimal("0.003")
+    assert result.total_cost_usd == Decimal("0.003")
+    assert result.cost_complete is True
+    assert result.unknown_cost_attempt_count == 0
+
+
+def test_unknown_planning_cost_terminates_without_plan_or_usage_row(tmp_path):
+    """A gateway error with no valid usage terminates immediately with no persisted rows."""
+    (tmp_path / "target.py").write_text("original\n", encoding="utf-8")
+
+    class UnknownCostPlanningGateway:
+        def __init__(self) -> None:
+            self.attempts = 0
+
+        def create_response(self, *, model: str, input_text: str, metadata=None) -> GatewayResponse:
+            self.attempts += 1
+            raise GatewayHttpError(503, "temporary outage")
+
+    gateway = UnknownCostPlanningGateway()
+    accounting = UsageAccountingService()
+    runner = AgentRunner(
+        gateway_client=gateway,
+        model="glm-5.2",
+        usage_accounting=accounting,
+    )
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-unknown",
+            task="Update target.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert gateway.attempts == 1
+    assert result.status is AgentRunStatus.TERMINATED
+    assert result.stop_reason == "PLANNING_GATEWAY_COST_UNKNOWN"
+    assert result.total_cost_usd == Decimal("0")
+    assert result.cost_complete is False
+    assert result.unknown_cost_attempt_count == 1
+    assert result.plan_hash is None
+    assert result.mutation_count == 0
+    assert accounting.provider_ledger.entries == ()
 
 
 def test_missing_path_can_reach_gateway_for_create_task(tmp_path):

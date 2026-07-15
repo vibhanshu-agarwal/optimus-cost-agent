@@ -856,3 +856,119 @@ def test_fu5_rejects_duplicate_slot_record_that_is_valid_but_not_completed(
     report.write_text(_report_with(*records), encoding="utf-8")
     with pytest.raises(ValueError, match="duplicate is not infrastructure-invalid"):
         verify_report(report, require=("fu5",))
+
+
+# --- Plan 9.95 Task 5 Steps 1+3: ledger digest tests ---
+
+from tools.verify_plan987_acpx_evidence import _extract_plan988_records, ledger_digest
+
+
+def test_ledger_digest_has_fixed_canonical_vector():
+    """Two records in fixed order produce the exact expected SHA-256."""
+    records = [{"a": "alpha", "z": 2}, {"a": 1}]
+    assert ledger_digest(records) == "083d33790eef3a46cebde05f11206acfe01598a08bc3ab610d81c9fafe6bf2ec"
+
+
+def test_ledger_digest_preserves_record_and_list_order():
+    """Swapping record order changes the digest; list values stay in original order."""
+    records_ab = [{"a": "alpha", "z": 2}, {"a": 1}]
+    records_ba = [{"a": 1}, {"a": "alpha", "z": 2}]
+    # Different record order → different digest.
+    assert ledger_digest(records_ab) != ledger_digest(records_ba)
+    # List values preserve their order (not sorted).
+    records_with_list = [{"items": [3, 1, 2]}]
+    canonical = json.dumps({"items": [3, 1, 2]}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    import hashlib
+
+    expected = hashlib.sha256((canonical + "\n").encode("utf-8")).hexdigest()
+    assert ledger_digest(records_with_list) == expected
+
+
+def test_ledger_digest_rejects_empty_ledger():
+    with pytest.raises(ValueError, match="FU-4B ledger is empty"):
+        ledger_digest([])
+
+
+def test_plan988_extraction_keeps_all_eight_records_in_report_order():
+    """All 8 Plan 9.88 FU-4B records are extracted in physical report order."""
+    # Build a report with 8 records having evidence_lane == EVIDENCE_LANE.
+    records = []
+    for i in range(8):
+        records.append({"evidence_lane": EVIDENCE_LANE, "record_index": i, "data": f"record-{i}"})
+    report_blocks = []
+    for record in records:
+        report_blocks.append(f"```json\n{json.dumps(record)}\n```\n")
+    report_text = "\n".join(report_blocks)
+    extracted = _extract_plan988_records(report_text)
+    assert len(extracted) == 8
+    for i, record in enumerate(extracted):
+        assert record["record_index"] == i
+
+
+def test_verify_report_accepts_matching_fu4b_ledger_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    records = [_plan988_fu4b_summary()]
+    report = _write_plan988_report(tmp_path, records)
+    report_text = report.read_text(encoding="utf-8")
+    plan988_records = _extract_plan988_records(report_text)
+    expected_digest = ledger_digest(plan988_records)
+
+    # Digest-only check (no --require needed).
+    verify_report(report, fu4b_ledger_digest=expected_digest, max_completed_replan_attempts=3)
+
+
+def test_verify_report_rejects_mismatched_fu4b_ledger_digest(
+    tmp_path: Path,
+) -> None:
+    records = [_plan988_fu4b_summary()]
+    report = _write_plan988_report(tmp_path, records)
+    wrong_digest = "0" * 64
+
+    with pytest.raises(ValueError, match="FU-4B ledger digest mismatch"):
+        verify_report(report, fu4b_ledger_digest=wrong_digest, max_completed_replan_attempts=3)
+
+
+def test_cli_digest_gate_composes_with_exhausted_status_and_fu4a_fu5(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Digest gate composes with status and claim checks in a single invocation."""
+    exhausted_records = _terminal_records_for("exhausted")
+    report = _write_plan988_report(tmp_path, exhausted_records)
+    report_text = report.read_text(encoding="utf-8")
+    plan988_records = _extract_plan988_records(report_text)
+    expected_digest = ledger_digest(plan988_records)
+
+    # Status + digest without --require works.
+    verify_report(
+        report,
+        fu4b_ledger_status="exhausted",
+        fu4b_ledger_digest=expected_digest,
+        max_completed_replan_attempts=3,
+    )
+
+
+def test_cli_digest_gate_rejects_non_lowercase_or_non_sha256_value() -> None:
+    """CLI argument parser rejects invalid digest formats."""
+    # Too short.
+    result = subprocess.run(
+        [sys.executable, str(VERIFIER_PATH), "--verify-report", "fake.md", "--check-fu4b-ledger-digest", "abc"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "lowercase 64-char hex" in result.stderr
+    # Uppercase.
+    result = subprocess.run(
+        [sys.executable, str(VERIFIER_PATH), "--verify-report", "fake.md", "--check-fu4b-ledger-digest", "A" * 64],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "lowercase 64-char hex" in result.stderr

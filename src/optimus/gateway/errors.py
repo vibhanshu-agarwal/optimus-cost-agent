@@ -11,8 +11,15 @@ class GatewayError(Exception):
 
 
 class GatewayHttpError(GatewayError):
-    def __init__(self, status_code: int, message: str) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        *,
+        gateway_usage: GatewayUsage | None = None,
+    ) -> None:
         self.status_code = status_code
+        self.gateway_usage = gateway_usage
         super().__init__(message)
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any
+from typing import Any, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -63,24 +63,42 @@ def build_chat_completions_payload(
     return {"model": model, "messages": messages}
 
 
+def parse_gateway_usage(body: Mapping[str, Any]) -> GatewayUsage:
+    """Single strict parser for a gateway_usage envelope.
+
+    Validates and returns a GatewayUsage model from the raw dict.
+    Raises GatewayResponseError on missing or invalid usage data.
+    This is the canonical entry point for usage parsing—called by both
+    the success-response path and the error-body path.
+    """
+    if not isinstance(body, Mapping):
+        raise GatewayResponseError("gateway_usage missing")
+    try:
+        return GatewayUsage.model_validate(body)
+    except ValidationError as exc:
+        raise GatewayResponseError(str(exc)) from exc
+
+
 def parse_gateway_response(body: dict[str, Any]) -> GatewayResponse:
     usage_body = body.get("gateway_usage")
     if not isinstance(usage_body, dict):
         raise GatewayResponseError("gateway_usage missing")
     try:
-        usage = GatewayUsage.model_validate(usage_body)
-    except ValidationError as exc:
-        raise GatewayResponseError(str(exc)) from exc
+        usage = parse_gateway_usage(usage_body)
+    except GatewayResponseError:
+        # Usage itself is invalid—no partial usage to preserve.
+        raise
 
+    # Usage is valid from here. Any later failure preserves it on the exception.
     output_text = body.get("output_text")
     if output_text is None:
         output_text = _extract_text_from_output(body.get("output"))
     if not isinstance(output_text, str):
-        raise GatewayResponseError("output_text missing")
+        raise GatewayResponseError("output_text missing", gateway_usage=usage)
 
     response_id = body.get("id")
     if response_id is not None and not isinstance(response_id, str):
-        raise GatewayResponseError("id must be a string when present")
+        raise GatewayResponseError("id must be a string when present", gateway_usage=usage)
 
     return GatewayResponse(
         response_id=response_id,
