@@ -4,6 +4,10 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from optimus.acp.trusted_paths import TrustedOperatorRoots
 
 _CONFIG_DIR_NAME = "optimus-cost-agent"
 
@@ -128,6 +132,52 @@ def resolve_operator_paths(
         environ=environ,
         platform_name=platform_name,
     )
+    runtime_root = resolved_workspace / ".optimus"
+    return OperatorPaths(
+        workspace_root=resolved_workspace,
+        config_root=config_root,
+        runtime_root=runtime_root,
+        debug_log_path=runtime_root / "debug-acp.ndjson",
+        gateway_log_path=runtime_root / "local-gateway.log",
+    )
+
+
+def resolve_operator_paths_from_trusted(
+    *,
+    workspace_root: Path | str,
+    trusted_roots: TrustedOperatorRoots,
+    validated_config_root: Path | None = None,
+    platform_name: str | None = None,
+) -> OperatorPaths:
+    """Resolve operator paths from already-validated trusted roots.
+
+    Plan 9.96, Task 2: This function receives pre-validated inputs from the
+    launch gate. It does NOT read inherited APPDATA/HOME/XDG_CONFIG_HOME or
+    OPTIMUS_CONFIG_ROOT from the environment — those are resolved and validated
+    earlier in the launch authorization flow.
+
+    If validated_config_root is provided, it has already passed containment,
+    permission, and approval checks. Otherwise, the OS-derived default from
+    trusted_roots is used.
+
+    The workspace .optimus runtime root (debug/Gateway logs) remains inside the
+    workspace, separate from the external approval runtime root.
+    """
+    resolved_workspace = Path(workspace_root).resolve()
+
+    if validated_config_root is not None:
+        config_root = validated_config_root.resolve()
+    else:
+        config_root = trusted_roots.default_config_root
+
+    # Containment check: config_root must not be inside the workspace.
+    windows = _is_windows(platform_name)
+    if _is_at_or_below(config_root, resolved_workspace, windows=windows):
+        raise OperatorPathConfigurationError(
+            f"Validated config root {config_root} is inside workspace {resolved_workspace}. "
+            "This should have been caught during launch authorization."
+        )
+
     runtime_root = resolved_workspace / ".optimus"
     return OperatorPaths(
         workspace_root=resolved_workspace,
