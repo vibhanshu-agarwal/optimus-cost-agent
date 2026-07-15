@@ -866,6 +866,22 @@ e265065147f505e56ed1ad8d60571f9d1f212fb8f8d192ec407121c0e7ac4195
 If the output differs, stop and request plan review. Do not edit the expected value or report to
 force a pass.
 
+> **Implementation Amendment (2026-07-15, reviewer-agent + operator approved):** Steps 7-8 originally
+> specified a single durable command combining `--require fu4a --require fu5` with the new digest/status
+> checks. Independent reviewer verification found `--require fu4a` and `--require fu5` already fail with
+> `implementation drift after <SHA>` against the real report — `CLAIM_WATCHED_PATHS` for both claims
+> covers the entire `src/optimus` tree, and `git merge-base --is-ancestor` confirmed the report's pinned
+> `fu4a` implementation SHA (`4bf20fffd9b067afa4db34d5ae021aca665f3acb`, committed 2026-07-13) predates
+> the Plan 9.95 branch-cut point (`7554c85`) with 34 files/1135 lines already drifted from unrelated
+> prior work (Plan 9.9 and others) before Plan 9.95 Task 1 ever ran. This is pre-existing evidence rot,
+> not something this plan's tasks caused. Re-establishing FU-4A/FU-5 evidence freshness would require
+> re-capturing live evidence, which is out of scope for Plan 9.95 (Global Constraint 1: exactly three
+> follow-ups; the Explicit Exceptions section authorizes only the digest amendment to this report) and
+> in tension with Global Constraint 16 (no paid failure fishing). Steps 7-8 below are amended to prove
+> only the digest/status gate Task 5 actually owns, and to transparently disclose the fu4a/fu5 drift
+> rather than silently drop it. Tracked separately: add a tracked-not-yet-scheduled roadmap backlog note
+> for re-pinning/re-capturing FU-4A/FU-5 evidence (not a Plan 9.95 deliverable).
+
 - [ ] **Step 7: Amend the ceremony report transparently**
 
 Retain the original `9122...` value labeled as the unpinned contemporaneous value. Add the pinned
@@ -875,14 +891,16 @@ and this durable command:
 ```bash
 uv run python tools/verify_plan987_acpx_evidence.py \
   --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md \
-  --require fu4a --require fu5 \
   --check-fu4b-ledger-status exhausted \
   --check-fu4b-ledger-digest e265065147f505e56ed1ad8d60571f9d1f212fb8f8d192ec407121c0e7ac4195 \
-  --max-completed-replan-attempts 3 \
-  --max-completed-refusal-attempts 3
+  --max-completed-replan-attempts 3
 ```
 
-Do not change the accepted-open disposition or make `--require fu4b` succeed.
+Do not change the accepted-open disposition or make `--require fu4b` succeed. Also add one transparent
+disclosure statement (per the Implementation Amendment above): `--require fu4a` and `--require fu5`
+independently fail today with `implementation drift after <SHA>` because unrelated `src/optimus`
+changes landed after their pinned implementation SHAs, predating Plan 9.95; re-establishing that
+freshness is out of scope for `P9.88-FU-2` and is tracked separately, not silently dropped.
 
 - [ ] **Step 8: Verify and commit the report amendment**
 
@@ -891,18 +909,16 @@ Run:
 ```bash
 uv run python tools/verify_plan987_acpx_evidence.py \
   --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md \
-  --require fu4a --require fu5 \
   --check-fu4b-ledger-status exhausted \
   --check-fu4b-ledger-digest e265065147f505e56ed1ad8d60571f9d1f212fb8f8d192ec407121c0e7ac4195 \
-  --max-completed-replan-attempts 3 \
-  --max-completed-refusal-attempts 3
+  --max-completed-replan-attempts 3
 uv run python tools/verify_plan987_acpx_evidence.py \
   --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md \
   --require fu4b
 ```
 
-Expected: unit suite PASS; durable pair-plus-exhaustion-and-digest gate PASS; the final command FAILS
-with `fu4b claim missing`. Record both the expected pass and expected non-qualifying failure. Then:
+Expected: unit suite PASS; the digest/status gate above PASSES; the final command FAILS with `fu4b
+claim missing`. Record both the expected pass and expected non-qualifying failure. Then:
 
 ```bash
 git diff --check
@@ -1009,6 +1025,8 @@ The report must contain:
 - the local HTTP integration command and result;
 - fixed-vector and ceremony digest values plus durable verifier command;
 - expected `--require fu4b` failure disclosure;
+- the pre-existing `--require fu4a`/`--require fu5` implementation-drift disclosure (Task 5 Steps 7-8
+  Implementation Amendment) — out of scope for Plan 9.95, tracked separately;
 - explicit statement that no real provider failure was provoked and no live-provider claim is made;
 - redaction scan and no-secret statement;
 - final Ruff, full pytest, coverage, and diff outputs.
@@ -1030,14 +1048,15 @@ uv run pytest tests/unit/gateway tests/unit/agent/test_planning_loop.py \
   tests/integration/retry/test_gateway_retry_flow.py -q
 uv run python tools/verify_plan987_acpx_evidence.py \
   --verify-report reports/plan-9-87-model-replanning-refusal-acpx-evidence.md \
-  --require fu4a --require fu5 \
   --check-fu4b-ledger-status exhausted \
   --check-fu4b-ledger-digest e265065147f505e56ed1ad8d60571f9d1f212fb8f8d192ec407121c0e7ac4195 \
-  --max-completed-replan-attempts 3 \
-  --max-completed-refusal-attempts 3
+  --max-completed-replan-attempts 3
 ```
 
-Expected: all focused tests and the durable verifier pass.
+Expected: all focused tests and the digest/status verifier gate pass. Per the Task 5 Steps 7-8
+Implementation Amendment, this closure gate does not include `--require fu4a --require fu5` — that
+combination independently fails on pre-existing, out-of-scope implementation drift and is not part of
+what Plan 9.95 closes.
 
 - [ ] **Step 3: Run full default tests and aggregate coverage**
 
