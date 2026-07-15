@@ -362,6 +362,8 @@ class AgentRunner:
                 tool_calls=(),
                 total_cost_usd=planning_result.total_cost_usd,
                 stop_reason=planning_result.stop_reason,
+                cost_complete=planning_result.cost_complete,
+                unknown_cost_attempt_count=planning_result.unknown_cost_attempt_count,
             )
 
         return self._finish_agent_planning(
@@ -375,6 +377,8 @@ class AgentRunner:
             gateway_request_ids=planning_result.gateway_request_ids,
             planning_turns=planning_result.settled_turns,
             provider=planning_result.provider or "glm",
+            cost_complete=planning_result.cost_complete,
+            unknown_cost_attempt_count=planning_result.unknown_cost_attempt_count,
         )
 
     def _finish_agent_planning(
@@ -390,6 +394,8 @@ class AgentRunner:
         gateway_request_ids: tuple[str, ...],
         planning_turns: int,
         provider: str,
+        cost_complete: bool = True,
+        unknown_cost_attempt_count: int = 0,
     ) -> AgentRunResult:
         if request.execution_mode is ExecutionMode.AGENT:
             try:
@@ -403,6 +409,8 @@ class AgentRunner:
                     tool_calls=tuple(tool_calls),
                     total_cost_usd=total_cost_usd,
                     stop_reason="UNPARSEABLE_PLAN",
+                    cost_complete=cost_complete,
+                    unknown_cost_attempt_count=unknown_cost_attempt_count,
                 )
         plan_hash = hashlib.sha256(output_text.encode("utf-8")).hexdigest()
         created_at_ms = self._clock_ms()
@@ -420,6 +428,8 @@ class AgentRunner:
                 total_cost_usd=total_cost_usd,
                 stop_reason="BUDGET_EXHAUSTED",
                 plan_hash=plan_hash,
+                cost_complete=cost_complete,
+                unknown_cost_attempt_count=unknown_cost_attempt_count,
             )
 
         if request.execution_mode in {ExecutionMode.PLAN, ExecutionMode.CHAT}:
@@ -431,6 +441,8 @@ class AgentRunner:
                 output_text=output_text,
                 tool_calls=tuple(tool_calls),
                 total_cost_usd=total_cost_usd,
+                cost_complete=cost_complete,
+                unknown_cost_attempt_count=unknown_cost_attempt_count,
             )
 
         if not request.approval.approved or request.approval.plan_hash != plan_hash:
@@ -463,6 +475,8 @@ class AgentRunner:
                 tool_calls=tuple(tool_calls),
                 total_cost_usd=total_cost_usd,
                 plan_hash=plan_hash,
+                cost_complete=cost_complete,
+                unknown_cost_attempt_count=unknown_cost_attempt_count,
             )
 
         context = self._transition(context, AgentState.AWAITING_APPROVAL)
@@ -511,6 +525,8 @@ class AgentRunner:
             total_cost_usd=total_cost_usd,
             mutation_count=mutation_count,
             plan_hash=plan_hash,
+            cost_complete=cost_complete,
+            unknown_cost_attempt_count=unknown_cost_attempt_count,
         )
 
     def _record_gateway_usage(
@@ -770,6 +786,8 @@ class AgentRunner:
         mutation_count: int = 0,
         plan_hash: str | None = None,
         stop_reason: str | None = None,
+        cost_complete: bool = True,
+        unknown_cost_attempt_count: int = 0,
     ) -> AgentRunResult:
         return AgentRunResult(
             run_id=request.run_id,
@@ -780,6 +798,8 @@ class AgentRunner:
             output_text=output_text,
             tool_calls=tool_calls,
             total_cost_usd=total_cost_usd,
+            cost_complete=cost_complete,
+            unknown_cost_attempt_count=unknown_cost_attempt_count,
             mutation_count=mutation_count,
             provider_keys_resolvable=(),
             plan_hash=plan_hash,

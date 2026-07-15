@@ -134,3 +134,67 @@ def test_configure_debug_trace_uses_provenance_root_for_git_sha(tmp_path, monkey
 
     assert debug_trace._git_sha() == "deadbeef"
     assert Path(str(captured["cwd"])).resolve() == provenance_root.resolve()
+
+
+# --- Plan 9.95 Task 3 Step 4: cost completeness in debug progress ---
+
+
+def test_log_planning_replan_event_includes_cost_completeness_fields(tmp_path, monkeypatch):
+    log_path = resolve_debug_log_path(workspace_root=tmp_path)
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+
+    log_planning_replan_event(
+        PlanningProgressEvent(
+            run_id="run-unknown-cost",
+            session_id="session-1",
+            settled_turn=1,
+            max_planning_turns=3,
+            total_cost_usd=Decimal("0.001"),
+            cost_complete=False,
+            unknown_cost_attempt_count=1,
+            remaining_budget_usd=Decimal("0.049"),
+            gateway_request_ids=("gw-1",),
+            wire_retry_count=0,
+        ),
+        stop_reason="PLANNING_GATEWAY_COST_UNKNOWN",
+    )
+
+    line = json.loads(log_path.read_text(encoding="utf-8").strip())
+    data = line["data"]
+    assert data["cost_complete"] is False
+    assert data["unknown_cost_attempt_count"] == 1
+    assert data["reported_aggregate_cost_usd"] == "0.001"
+    assert data["loop_stop"] == "PLANNING_GATEWAY_COST_UNKNOWN"
+    # Content-free: no prompt, response, credential, or exception body.
+    serialized = json.dumps(line)
+    assert "SENTINEL" not in serialized
+    assert "Bearer" not in serialized
+    assert "sk-live" not in serialized
+    assert "opt_live" not in serialized
+
+
+def test_log_planning_replan_event_complete_cost_has_true_fields(tmp_path, monkeypatch):
+    log_path = resolve_debug_log_path(workspace_root=tmp_path)
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+
+    log_planning_replan_event(
+        PlanningProgressEvent(
+            run_id="run-complete",
+            session_id="session-2",
+            settled_turn=2,
+            max_planning_turns=3,
+            total_cost_usd=Decimal("0.004"),
+            cost_complete=True,
+            unknown_cost_attempt_count=0,
+            remaining_budget_usd=Decimal("0.046"),
+            gateway_request_ids=("gw-1", "gw-2"),
+            wire_retry_count=1,
+        ),
+    )
+
+    line = json.loads(log_path.read_text(encoding="utf-8").strip())
+    data = line["data"]
+    assert data["cost_complete"] is True
+    assert data["unknown_cost_attempt_count"] == 0

@@ -82,6 +82,8 @@ class AgentRunResult(BaseModel):
     output_text: str = Field(min_length=1)
     tool_calls: tuple[AgentToolCall, ...] = ()
     total_cost_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    cost_complete: bool = True
+    unknown_cost_attempt_count: int = Field(default=0, ge=0)
     mutation_count: int = Field(default=0, ge=0)
     provider_keys_resolvable: tuple[str, ...] = ()
     plan_hash: str | None = None
