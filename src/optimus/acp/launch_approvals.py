@@ -118,7 +118,7 @@ def _creator_identity() -> str:
     return user
 
 
-def _compute_snapshot_digest(
+def compute_security_snapshot_digest(
     *,
     security_literals: Mapping[str, str],
     secret_fingerprints: Mapping[str, str],
@@ -126,7 +126,14 @@ def _compute_snapshot_digest(
     workspace_digest: str,
     registry_version: str,
 ) -> str:
-    """Compute a digest over all security-relevant content."""
+    """Compute a digest over all security-relevant content.
+
+    This is the SINGLE shared implementation used by both approval-record
+    construction (build_approval_record) and launch-candidate resolution
+    (launch_gate.resolve_launch_candidate). Both sides MUST call this exact
+    function with the same inputs, or the resulting digests can never match
+    and authorization becomes permanently impossible.
+    """
     hasher = hashlib.sha256()
     hasher.update(b"security-snapshot-v1\x00")
     hasher.update(workspace_digest.encode("utf-8"))
@@ -250,7 +257,7 @@ def build_approval_record(
     expires_at = (now + timedelta(seconds=ONE_SHOT_TTL_SECONDS)) if mode == "one-shot" else None
 
     registry_version = LAUNCH_POLICY_COMPATIBILITY
-    snapshot_digest = _compute_snapshot_digest(
+    snapshot_digest = compute_security_snapshot_digest(
         security_literals=security_literals,
         secret_fingerprints=secret_fingerprints,
         monotonic_grants=monotonic_grants,
