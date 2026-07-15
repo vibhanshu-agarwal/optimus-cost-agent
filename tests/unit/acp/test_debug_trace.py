@@ -198,3 +198,39 @@ def test_log_planning_replan_event_complete_cost_has_true_fields(tmp_path, monke
     data = line["data"]
     assert data["cost_complete"] is True
     assert data["unknown_cost_attempt_count"] == 0
+
+
+# --- Plan 9.95 Task 4 Step 4: debug trace association test ---
+
+
+def test_log_planning_replan_event_preserves_positional_association(tmp_path, monkeypatch):
+    """Each read_identities[i] corresponds to source_sha256s[i] and read_byte_counts[i]."""
+    log_path = resolve_debug_log_path(workspace_root=tmp_path)
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
+    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+
+    log_planning_replan_event(
+        PlanningProgressEvent(
+            run_id="run-assoc",
+            session_id="session-1",
+            settled_turn=1,
+            max_planning_turns=3,
+            read_request_count=2,
+            read_identities=("alpha.py#bytes=2:9", "zeta.py#bytes=0:3"),
+            source_sha256s=("a" * 64, "z" * 64),
+            read_byte_counts=(7, 3),
+            total_cost_usd=Decimal("0.001"),
+            remaining_budget_usd=Decimal("0.049"),
+            gateway_request_ids=("gw-1",),
+        ),
+    )
+
+    line = json.loads(log_path.read_text(encoding="utf-8").strip())
+    data = line["data"]
+    # Positional check: index 0 is alpha (7 bytes), index 1 is zeta (3 bytes).
+    assert data["read_identities"][0] == "alpha.py#bytes=2:9"
+    assert data["source_sha256s"][0] == "a" * 64
+    assert data["read_byte_counts"][0] == 7
+    assert data["read_identities"][1] == "zeta.py#bytes=0:3"
+    assert data["source_sha256s"][1] == "z" * 64
+    assert data["read_byte_counts"][1] == 3

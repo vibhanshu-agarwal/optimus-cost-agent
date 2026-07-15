@@ -9,7 +9,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from optimus.agent.directives import AgentDirectiveParseError, AgentPlanDirectives, parse_agent_plan
 from optimus.agent.prompts import build_multi_turn_planner_input
@@ -175,6 +175,49 @@ class PlanningProgressEvent(BaseModel):
     stop_reason: str | None = None
     """Set only on the final, settling event for a run; None on intermediate
     READ_MORE progress events."""
+
+    @model_validator(mode="after")
+    def check_read_telemetry_alignment(self) -> "PlanningProgressEvent":
+        n = self.read_request_count
+        if len(self.read_identities) != n:
+            raise ValueError(
+                f"read_identities length {len(self.read_identities)} "
+                f"does not match read_request_count {n}"
+            )
+        if len(self.source_sha256s) != n:
+            raise ValueError(
+                f"source_sha256s length {len(self.source_sha256s)} "
+                f"does not match read_request_count {n}"
+            )
+        if len(self.read_byte_counts) != n:
+            raise ValueError(
+                f"read_byte_counts length {len(self.read_byte_counts)} "
+                f"does not match read_request_count {n}"
+            )
+        return self
+
+
+def planning_read_telemetry_fields(
+    read_evidence: tuple[PlanningReadEvidence, ...],
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[int, ...]]:
+    """Derive aligned telemetry tuples from a canonical ordering of read evidence.
+
+    Returns (read_identities, source_sha256s, read_byte_counts) where each
+    position corresponds to the same read operation. The ordering is canonical
+    (path, start_byte, end_byte, source_sha256) so that telemetry is
+    deterministic regardless of read execution order.
+    """
+    ordered = tuple(
+        sorted(
+            read_evidence,
+            key=lambda item: (item.path, item.start_byte, item.end_byte, item.source_sha256),
+        )
+    )
+    return (
+        tuple(f"{item.path}#bytes={item.start_byte}:{item.end_byte}" for item in ordered),
+        tuple(item.source_sha256 for item in ordered),
+        tuple(item.end_byte - item.start_byte for item in ordered),
+    )
 
 
 PlanningProgressObserver = Callable[[PlanningProgressEvent], None]
@@ -1047,6 +1090,9 @@ class _PlanningIterationRunner:
             )
             self._current_reads = tuple(read_evidence)
             if self._progress_observer is not None:
+                identities, sha256s, byte_counts = planning_read_telemetry_fields(
+                    tuple(read_evidence)
+                )
                 self._progress_observer(
                     PlanningProgressEvent(
                         run_id=self._run_id,
@@ -1054,14 +1100,9 @@ class _PlanningIterationRunner:
                         settled_turn=planning_turn,
                         max_planning_turns=self._policy.max_planning_turns,
                         read_request_count=len(read_evidence),
-                        read_identities=tuple(
-                            sorted(
-                                f"{item.path}#bytes={item.start_byte}:{item.end_byte}"
-                                for item in read_evidence
-                            )
-                        ),
-                        source_sha256s=tuple(item.source_sha256 for item in read_evidence),
-                        read_byte_counts=tuple(item.end_byte - item.start_byte for item in read_evidence),
+                        read_identities=identities,
+                        source_sha256s=sha256s,
+                        read_byte_counts=byte_counts,
                         total_cost_usd=self._total_cost_usd,
                         remaining_budget_usd=max(
                             Decimal("0"),

@@ -682,3 +682,101 @@ def test_helper_source_does_not_implement_acp_protocol() -> None:
     assert "NdjsonSubprocessSession" not in source
     assert "subprocess.run" in source
     assert "acpx" in source
+
+
+# --- Plan 9.95 Task 4 Step 4: downstream association test ---
+
+
+def test_non_alphabetical_read_telemetry_preserves_association_in_evidence_summary(tmp_path: Path) -> None:
+    """Each current_read_ranges entry must associate the correct path with its own hash."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    debug_trace = workspace / "debug.ndjson"
+
+    # Non-alphabetical order in the telemetry: zeta before alpha (already canonicalized
+    # by planning_read_telemetry_fields so alpha comes first — testing that the downstream
+    # consumer correctly pairs position i of identities with position i of sha256s).
+    alpha_sha = "a" * 64
+    zeta_sha = "z" * 64
+    debug_trace.write_text(
+        json.dumps(
+            {
+                "hypothesisId": "P9.85-REPLAN",
+                "data": {
+                    "run_id": "sess-assoc:2",
+                    "session_id": "sess-assoc",
+                    "settled_turn": 1,
+                    "loop_stop": None,
+                    "gateway_request_ids": ["gw-1"],
+                    "reported_aggregate_cost_usd": "0.01",
+                    "read_identities": ["alpha.py#bytes=2:9", "zeta.py#bytes=0:3"],
+                    "source_sha256s": [alpha_sha, zeta_sha],
+                    "read_byte_counts": [7, 3],
+                },
+            }
+        )
+        + "\n"
+        + json.dumps(
+            {
+                "hypothesisId": "P9.85-REPLAN",
+                "data": {
+                    "run_id": "sess-assoc:2",
+                    "session_id": "sess-assoc",
+                    "settled_turn": 2,
+                    "loop_stop": "end_turn",
+                    "gateway_request_ids": ["gw-1", "gw-2"],
+                    "reported_aggregate_cost_usd": "0.02",
+                    "read_identities": [],
+                    "source_sha256s": [],
+                    "read_byte_counts": [],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = prepare_single_pass(workspace)
+    records = [
+        {"method": "session/new", "result": {"sessionId": "sess-assoc"}},
+        {
+            "method": "session/request_permission",
+            "params": {
+                "options": [{"metadata": {"planHash": "plan-hash-1"}}],
+                "_meta": {"runId": "sess-assoc:2"},
+            },
+        },
+        {"id": 1, "result": {"stopReason": "end_turn"}},
+        {
+            "method": "session/update",
+            "params": {
+                "update": {"sessionUpdate": "tool_call", "title": "write_file"},
+            },
+        },
+    ]
+    summary = build_evidence_summary_from_run(
+        scenario="single_pass",
+        attempt=1,
+        implementation_sha="abc123",
+        manifest=manifest,
+        records=records,
+        debug_trace_path=debug_trace,
+        transcript_locator="transcript: attempt-1",
+        debug_trace_locator="debug: attempt-1",
+        infrastructure_valid=True,
+        changed_dimension="none",
+        model="claude-haiku",
+    )
+
+    # The first turn should have read ranges with correct path/hash association.
+    turn1 = summary["turn_summaries"][0]
+    ranges = turn1["current_read_ranges"]
+    assert len(ranges) == 2
+    # Position 0 is alpha.py (alphabetical canonical order).
+    assert ranges[0]["path"] == "alpha.py"
+    assert ranges[0]["start_byte"] == 2
+    assert ranges[0]["end_byte"] == 9
+    assert ranges[0]["source_sha256"] == alpha_sha
+    # Position 1 is zeta.py.
+    assert ranges[1]["path"] == "zeta.py"
+    assert ranges[1]["start_byte"] == 0
+    assert ranges[1]["end_byte"] == 3
+    assert ranges[1]["source_sha256"] == zeta_sha

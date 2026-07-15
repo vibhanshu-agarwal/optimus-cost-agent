@@ -963,3 +963,52 @@ def test_unexpected_attempt_exception_logs_type_only_and_stops_cost_unknown(tmp_
 
     # Corrective text must not contain the exception message
     assert "SENTINEL-PAYLOAD-BUG" not in result.corrective_text
+
+
+# --- Plan 9.95 Task 4 Step 1: non-alphabetical multi-file read regression ---
+
+
+def test_non_alphabetical_multi_file_read_telemetry_preserves_association(tmp_path):
+    """Read execution order zeta.py then alpha.py must not misattribute hashes or byte counts."""
+    import hashlib as _hashlib
+
+    _write_file(tmp_path, "zeta.py", "ZZZ")              # read bytes=0:3 → 3 bytes
+    _write_file(tmp_path, "alpha.py", "xxAAAAAxx")       # read bytes=2:9 → 7 bytes
+
+    zeta_content = "ZZZ"
+    alpha_content = "xxAAAAAxx"
+    zeta_sha = _hashlib.sha256(zeta_content.encode("utf-8")).hexdigest()
+    alpha_sha = _hashlib.sha256(alpha_content.encode("utf-8")).hexdigest()
+
+    # The gateway response reads zeta.py first, then alpha.py (non-alphabetical execution order).
+    read_both = "OBSERVE: need both files\nREAD: zeta.py#bytes=0:3\nREAD: alpha.py#bytes=2:9\n"
+    gateway = ScriptingGateway(
+        [
+            (read_both, Decimal("0.001"), "gw-1"),
+            (FINAL_PLAN, Decimal("0.001"), "gw-2"),
+        ]
+    )
+    events: list[PlanningProgressEvent] = []
+    result = _runner(
+        tmp_path,
+        gateway=gateway,
+        policy=PlanningLoopPolicy(max_planning_turns=2),
+        progress_observer=events.append,
+    ).run(
+        run_id="run-assoc",
+        session_id=None,
+        task="Update zeta.py and alpha.py",
+        initial_workspace_context="",
+    )
+
+    assert result.stop_reason is None
+    # The first progress event is the READ_MORE turn.
+    event = events[0]
+    # Canonical order is alphabetical by (path, start_byte, end_byte, sha256).
+    # alpha.py comes before zeta.py.
+    assert event.read_identities == (
+        "alpha.py#bytes=2:9",
+        "zeta.py#bytes=0:3",
+    )
+    assert event.source_sha256s == (alpha_sha, zeta_sha)
+    assert event.read_byte_counts == (7, 3)

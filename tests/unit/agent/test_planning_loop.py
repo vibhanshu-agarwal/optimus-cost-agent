@@ -434,3 +434,66 @@ def test_pack_planning_evidence_rejects_current_read_budget_overflow():
     with pytest.raises(PlanningEvidenceBudgetError) as exc:
         pack_planning_evidence(observations=(), current_reads=current_reads)
     assert exc.value.code == "PLANNING_READ_BUDGET_EXHAUSTED"
+
+
+# --- Plan 9.95 Task 4 Step 2: cardinality invariant tests ---
+
+
+from optimus.agent.planning_loop import PlanningProgressEvent, planning_read_telemetry_fields
+
+
+@pytest.mark.parametrize(
+    "read_request_count, identities, sha256s, byte_counts, expected_field",
+    [
+        (3, ("a.py#bytes=0:1", "b.py#bytes=0:1", "c.py#bytes=0:1"), ("x", "y"), (1, 1, 1), "source_sha256s"),
+        (2, ("a.py#bytes=0:1",), ("x", "y"), (1, 1), "read_identities"),
+        (2, ("a.py#bytes=0:1", "b.py#bytes=0:1"), ("x", "y"), (1,), "read_byte_counts"),
+        (0, ("bogus.py#bytes=0:1",), (), (), "read_identities"),
+    ],
+)
+def test_progress_event_rejects_mismatched_read_telemetry_cardinality(
+    read_request_count, identities, sha256s, byte_counts, expected_field
+):
+    with pytest.raises(ValidationError, match=expected_field):
+        PlanningProgressEvent(
+            run_id="run-1",
+            session_id=None,
+            settled_turn=1,
+            max_planning_turns=3,
+            read_request_count=read_request_count,
+            read_identities=identities,
+            source_sha256s=sha256s,
+            read_byte_counts=byte_counts,
+        )
+
+
+def test_progress_event_accepts_zero_read_count_with_empty_tuples():
+    event = PlanningProgressEvent(
+        run_id="run-1",
+        session_id=None,
+        settled_turn=1,
+        max_planning_turns=3,
+        read_request_count=0,
+        read_identities=(),
+        source_sha256s=(),
+        read_byte_counts=(),
+    )
+    assert event.read_request_count == 0
+
+
+def test_planning_read_telemetry_fields_sorts_once_from_evidence():
+    """The helper derives all three tuples from one canonical sort, not three independent sorts."""
+    evidence = (
+        PlanningReadEvidence(
+            path="zeta.py", start_byte=0, end_byte=3, source_sha256="z" * 64, range_text="ZZZ"
+        ),
+        PlanningReadEvidence(
+            path="alpha.py", start_byte=2, end_byte=9, source_sha256="a" * 64, range_text="AAAAA"
+        ),
+    )
+    identities, sha256s, byte_counts = planning_read_telemetry_fields(evidence)
+
+    # Canonical order: alpha before zeta.
+    assert identities == ("alpha.py#bytes=2:9", "zeta.py#bytes=0:3")
+    assert sha256s == ("a" * 64, "z" * 64)
+    assert byte_counts == (7, 3)
