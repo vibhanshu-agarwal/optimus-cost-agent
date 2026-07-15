@@ -805,8 +805,9 @@ checks (`always_allow_external_agent_tools`, workspace-root `"."`, preflight, an
    (`toolCallId`, `kind`, `status`, `title`, `locations`). Plan 9.75 completed
    this wire-shape correction so IDEs such as Zed can render the approval UI.
 4. The IDE shows the plan and replies with the selected approval `optionId`.
-   Optimus retains the planning result and uses its plan hash when constructing
-   the approval; it does not require Zed to echo custom approval metadata.
+   Optimus generates an internal `approval_id` and binds it to the retained
+   `plan_hash` when constructing the approval; it does not require Zed to echo
+   either value or any other custom approval metadata.
 5. The runtime replays the stored plan from Redis and does not call the Gateway
    again for a new plan.
 6. If the user cancels the turn, the IDE sends `session/cancel`; the runtime
