@@ -2,6 +2,8 @@
 
 Status: Independent decision-support research; no adoption decision
 Date: 2026-07-15
+Revision: 2 (2026-07-15) - added use-case provenance, in-process/embedded storage option, and
+build/maintenance cost model
 Potential roadmap destination: Plan 11 or later
 Scope: GraphRAG concepts, tooling, coding-agent and reviewer use cases, and a candidate Optimus evaluation architecture
 
@@ -45,7 +47,9 @@ The representative use cases have different fits:
    source of truth.
 
 For the full set of use cases, a dedicated property-graph database is likely to have lower lifetime
-implementation complexity than building a general graph engine from Redis HASH structures. Neo4j
+implementation complexity than building a general graph engine from Redis HASH structures. An
+in-process graph library over collector-produced snapshots (for example NetworkX or rustworkx) is
+the low-operations middle option and the cheapest vehicle for the evaluation phase itself. Neo4j
 is the leading evaluation candidate because of its mature Cypher, constraints, visualization,
 vector/full-text support, and official Python GraphRAG package. FalkorDB is the leading alternative
 because of its Redis-like operating model, GraphRAG SDK, and Code-Graph tooling. Neither is selected
@@ -142,6 +146,7 @@ independently reproduced for Optimus.
 | LightRAG | Open-source graph-oriented RAG framework | Graph-based indexing/retrieval, multiple storage backends, server/UI | Broad framework and fast-moving surface; extraction and storage choices still require Optimus governance |
 | Graphiti / Zep | Temporal context-graph framework / managed platform | Incremental updates, validity windows, provenance episodes, hybrid retrieval | Better fit for evolving agent memory than dependency truth; model-extracted facts need authority controls |
 | Memgraph | Property-graph database with GraphRAG patterns | Cypher and database-side graph retrieval pipelines | Additional service; smaller direct Optimus fit than the two primary candidates |
+| NetworkX / rustworkx | In-process graph libraries | Build, traverse, and analyze graphs in memory from collector output; snapshot files instead of a server | No query language, constraints, or built-in vector/full-text retrieval; every ad hoc query and durability concern becomes application code |
 | Azure Cosmos AI Graph | Azure solution pattern | Document, vector, and relationship-aware retrieval | Cloud-managed direction is outside local-first Phase 1 unless the architecture changes |
 
 Primary references:
@@ -157,6 +162,8 @@ Primary references:
 - [Graphiti](https://github.com/getzep/graphiti)
 - [Memgraph GraphRAG](https://memgraph.com/graphrag)
 - [Azure Cosmos AI Graph](https://learn.microsoft.com/azure/cosmos-db/gen-ai/cosmos-ai-graph)
+- [NetworkX](https://networkx.org/)
+- [rustworkx](https://github.com/Qiskit/rustworkx)
 
 ### 2.1 Tools not recommended as the primary Optimus graph backend
 
@@ -166,7 +173,12 @@ Primary references:
 - **RedisGraph:** Redis documents it as deprecated, and Redis states that it reached end of life on
   2025-01-31. New architecture should not depend on it.
 - **Kuzu:** its repository was archived by its owner on 2025-10-10. It should not be selected for a
-  new long-lived Optimus dependency without a credible maintained successor.
+  new long-lived Optimus dependency without a credible maintained successor. Its archival also
+  removes the leading *embedded* graph-database option, which is why the in-process-library option
+  in section 9.2 matters: no mature embedded middle ground currently exists.
+- **DuckPGQ and similar embedded SQL-graph extensions:** DuckDB's property-graph querying comes
+  from a community/research extension, not the core engine. It would need its own maturity,
+  stability, and maintenance review before becoming a load-bearing dependency.
 - **Managed cloud graph services:** potentially appropriate later, but inconsistent with the Phase 1
   local-first and gateway-only operating contract.
 
@@ -175,8 +187,16 @@ References:
 - [Redis Graph deprecated feature documentation](https://redis.io/docs/latest/operate/oss_and_stack/stack-with-enterprise/deprecated-features/graph/)
 - [RedisGraph end-of-life notice](https://redis.io/docs/latest/operate/rs/release-notes/rs-7-4-2-releases/rs-7-4-6-279/)
 - [Archived Kuzu repository](https://github.com/kuzudb/kuzu)
+- [DuckPGQ extension](https://github.com/cwida/duckpgq-extension)
 
 ## 3. Representative Use Cases
+
+The four use cases below are operator-selected, not hypothetical. Use cases 3.1 and 3.2 in
+particular come from the operator's direct experience in the companion Spring Boot project
+`wealthmgmtandtracker`, where wrong dependency versions, version-mismatched APIs, and incorrect
+imports were the most common recurring coding-agent failures. A GraphRAG adoption decision should
+therefore be judged primarily against those observed failure modes, not against generic RAG
+benchmarks.
 
 ### 3.1 Spring Boot dependency resolution
 
@@ -222,7 +242,7 @@ References:
 
 - [Spring Boot build-system dependency management](https://docs.spring.io/spring-boot/reference/using/build-systems.html)
 - [Spring Boot dependency versions](https://docs.spring.io/spring-boot/appendix/dependency-versions/index.html)
-- [Maven Resolver dependency graph](https://maven.apache.org/resolver-archives/resolver-2.0.8/dependency-graph.html)
+- [Maven Resolver dependency graph](https://maven.apache.org/resolver/dependency-graph.html)
 - [How Maven Resolver works](https://maven.apache.org/resolver/how-resolver-works.html)
 - [Maven Resolver API](https://maven.apache.org/resolver/maven-resolver-api/apidocs/)
 
@@ -349,7 +369,8 @@ References:
 ### 4.2 Failure modes GraphRAG introduces
 
 - LLM extraction can create false nodes, false edges, or misleading summaries.
-- A stale graph can be more persuasive than an obviously missing context.
+- A stale graph can be more dangerous than obviously missing context, because it still looks
+  authoritative.
 - Incorrect entity resolution can merge distinct versions, symbols, or tasks.
 - Graph expansion can retrieve a large but irrelevant neighborhood and crowd out direct evidence.
 - Community summaries can hide disagreement or lose exact version qualifiers.
@@ -563,7 +584,40 @@ Disadvantages:
 If used, it should expose a narrow backend-neutral `GraphStore`/`EvidenceGraph` contract and contain
 an explicit stop condition against implementing a general query engine.
 
-### 9.2 Neo4j candidate
+### 9.2 In-process graph library (NetworkX or rustworkx)
+
+A third option sits between the Redis projection and a dedicated server: build the evidence graph
+in process with a graph library, persist it as versioned snapshot files keyed by workspace/commit
+hash, and rebuild or patch it from collector output.
+
+Advantages:
+
+- no new operator service, port, credential, or health surface; the best fit for the Phase 1
+  local-first contract;
+- collectors already produce the graph data, so construction is direct and fully unit-testable;
+- traversal, path, and impact algorithms are library-provided rather than hand-written
+  (rustworkx adds a fast Rust core for larger graphs);
+- snapshot-per-commit persistence gives natural temporal semantics: rebuild per snapshot instead of
+  mutating shared state; and
+- it is the cheapest harness for the evaluation itself, because schema and query design can be
+  iterated quickly before any database commitment.
+
+Disadvantages:
+
+- no declarative query language; every reviewer or ad hoc impact query is application code;
+- no constraints, deduplication, or migration facilities; consistency is entirely Optimus's job;
+- no built-in full-text or vector retrieval; hybrid retrieval must be orchestrated with the
+  existing Redis and gateway machinery;
+- single-process and memory-bound; very large graphs or concurrent writers need a different
+  answer; and
+- the same scope risk as the Redis pilot: it can silently grow into an in-house graph database.
+
+An embedded graph database would be the natural middle ground between this option and a server,
+but the leading embedded candidate (Kuzu) is archived and SQL-embedded alternatives such as
+DuckPGQ are community/research projects (section 2.1), so no mature embedded option currently
+exists.
+
+### 9.3 Neo4j candidate
 
 Advantages:
 
@@ -583,7 +637,7 @@ Disadvantages:
 - provider adapters in `neo4j-graphrag` cannot be used with direct vendor credentials and must be
   replaced or wrapped by Optimus Gateway adapters.
 
-### 9.3 FalkorDB candidate
+### 9.4 FalkorDB candidate
 
 Advantages:
 
@@ -601,29 +655,48 @@ Disadvantages:
 - separate persistence, security, health, and evidence-tier obligations; and
 - license, SDK maturity, and provider integration require review.
 
-### 9.4 Relative implementation complexity
+### 9.5 Relative implementation complexity
 
-| Work area | Redis HASH implementation | Dedicated graph database |
-| --- | --- | --- |
-| Domain ontology and collectors | High; required either way | High; required either way |
-| Basic one-hop lookup | Low | Low |
-| Multi-hop/path traversal | High custom work | Native query capability |
-| Version/conflict/impact queries | High custom work | Medium schema/query work |
-| Constraints and deduplication | Custom | Native facilities |
-| Full-text/vector plus traversal | Extra modules and orchestration | Usually integrated |
-| Temporal/snapshot behavior | Custom | Schema work; some database support |
-| Visualization and query inspection | Must be built | Existing tools |
-| Runtime operations | Reuses Redis | Adds a service |
-| Testing | Custom traversal algorithm tests | Query tests plus real database tier |
-| Long-term complexity for all four use cases | High to very high | Medium to high |
+| Work area | Redis HASH implementation | In-process library snapshot | Dedicated graph database |
+| --- | --- | --- | --- |
+| Domain ontology and collectors | High; required either way | High; required either way | High; required either way |
+| Basic one-hop lookup | Low | Low | Low |
+| Multi-hop/path traversal | High custom work | Library algorithms; low to medium | Native query capability |
+| Version/conflict/impact queries | High custom work | Medium; queries live in application code | Medium schema/query work |
+| Constraints and deduplication | Custom | Custom | Native facilities |
+| Full-text/vector plus traversal | Extra modules and orchestration | Orchestrated via existing Redis/gateway | Usually integrated |
+| Temporal/snapshot behavior | Custom | Natural snapshot-per-commit rebuild | Schema work; some database support |
+| Visualization and query inspection | Must be built | Export (GraphML/DOT) to external tools | Existing tools |
+| Runtime operations | Reuses Redis | None beyond snapshot files | Adds a service |
+| Testing | Custom traversal algorithm tests | Pure in-process unit tests | Query tests plus real database tier |
+| Long-term complexity for all four use cases | High to very high | High; ad hoc query code accumulates | Medium to high |
 
 The dedicated database does not remove the hardest correctness work: collectors, schema, authority,
 freshness, provenance, gateway integration, prompt selection, and executable verification. It does
 remove much of the undifferentiated storage, traversal, indexing, and visualization work.
 
-For a small repo-map pilot, Redis may have lower total complexity. For versioned dependency graphs,
-API graphs, project memory, task networks, and ad hoc reviewer queries together, a dedicated graph
-database is likely to have lower lifetime complexity.
+For a small repo-map pilot, the in-process snapshot or Redis projection has the lowest total
+complexity, and the in-process option is the cheapest vehicle for running the evaluation itself.
+For versioned dependency graphs, API graphs, project memory, task networks, and ad hoc reviewer
+queries together, a dedicated graph database is likely to have lower lifetime complexity.
+
+### 9.6 Build and maintenance cost model
+
+Backend choice mostly changes operations cost. Most graph cost is backend-independent and
+recurring, and a later evaluation should price these components separately:
+
+| Cost component | Driver | Notes |
+| --- | --- | --- |
+| One-time construction | Corpus size and extraction method | Deterministic collectors cost compute and wall time but zero gateway tokens; LLM extraction, summarization, and embeddings cost gateway tokens roughly proportional to corpus size |
+| Incremental update | Commits, branch switches, dependency changes | The dominant recurring cost for coding agents; full rebuild per snapshot is simple but expensive, incremental invalidation is cheap but correctness-critical |
+| Community/global summaries | Microsoft GraphRAG-style indexing | Must be re-summarized as the corpus changes; expensive for fast-moving repositories, more defensible for slow-moving long-form docs |
+| Storage and provenance | Nodes, edges, per-edge provenance, version history | Version history multiplies volume; a retention policy is required |
+| Staleness window | Update latency versus the freshness gate | A cheap pipeline that lags the workspace forces frequent fail-closed refreshes, transferring the cost to query time |
+
+Because every model-mediated step (extraction, embedding, reranking, summarization) is
+gateway-billed, the deterministic-collector-first design in section 7 is also the cost-minimizing
+design: the graph's recurring token cost approaches zero when its edges come from resolvers, ASTs,
+git, and plan syntax rather than model inference.
 
 ## 10. Provisional Evaluation Recommendation
 
@@ -633,9 +706,11 @@ immediately:
 1. **Null baseline:** current task-aware context and Plan 11's simplest non-graph selection.
 2. **Deterministic repo map:** symbols/paths plus lexical ranking, without a graph database.
 3. **Redis bounded projection:** fixed graph relationships and query templates only.
-4. **Neo4j evidence graph:** deterministic collectors plus reviewed Cypher/hybrid retrieval.
-5. **FalkorDB evidence graph:** equivalent schema/queries where feasible.
-6. **Optional document-global method:** Microsoft GraphRAG-style community/global retrieval only for
+4. **In-process library graph:** collector snapshots traversed with NetworkX/rustworkx, no new
+   service (section 9.2); also the natural harness for prototyping the other variants' schema.
+5. **Neo4j evidence graph:** deterministic collectors plus reviewed Cypher/hybrid retrieval.
+6. **FalkorDB evidence graph:** equivalent schema/queries where feasible.
+7. **Optional document-global method:** Microsoft GraphRAG-style community/global retrieval only for
    questions that genuinely require corpus-wide synthesis.
 
 The same backend-neutral evidence bundle and query cases should be used across variants. This avoids
@@ -669,6 +744,8 @@ Reuse Plan 11 concepts and add graph-specific measures:
 - evidence citation validity;
 - graph extraction precision by authority class;
 - query latency and index/update latency;
+- one-time graph construction cost (gateway tokens and wall time) and incremental update cost per
+  commit or branch switch;
 - fully-loaded cost per successful task;
 - graph storage and operator-startup overhead; and
 - reviewer acceptance and time-to-verified-finding.
@@ -711,8 +788,13 @@ Any later design should preserve these non-negotiable constraints:
 - Does Plan/Chat mode read only a prebuilt graph, or may an explicitly authorized internal indexer
   update derived state?
 - Is Neo4j/FalkorDB operator startup acceptable for the local-first product experience?
-- Can a bounded Redis projection deliver most of the benefit without becoming a custom graph engine?
-- What graph size and query patterns cause the dedicated database to win materially?
+- Can a bounded Redis projection or in-process snapshot deliver most of the benefit without
+  becoming a custom graph engine?
+- What graph size and query patterns cause the dedicated database to win materially, and where
+  does the in-process snapshot stop being viable?
+- What per-commit incremental update cost and staleness window are acceptable, and is incremental
+  invalidation provably correct across rebases and branch switches (or is rebuild-per-snapshot the
+  only safe policy)?
 - Which accepted eval threshold would justify an HLD/LLD storage-boundary amendment?
 
 ## 13. Conclusion
@@ -727,8 +809,9 @@ materialize fresh cited evidence, and pass candidates into Plan 11's Intelligent
 
 For all four use cases together, Neo4j is the strongest initial dedicated-database candidate and
 FalkorDB is the strongest alternative. A bounded Redis projection remains a valid compatibility
-pilot, but building a general graph engine on HASH structures is unlikely to be the simplest
-long-term solution.
+pilot, and an in-process library snapshot (NetworkX/rustworkx) is the cheapest way to run the
+evaluation without committing to a new service, but building a general graph engine on either is
+unlikely to be the simplest long-term solution.
 
 No adoption decision should be made until the candidate architecture beats the non-graph baseline
 on correctness, unsupported claims, stale-evidence handling, reviewer value, latency, operator
@@ -753,7 +836,7 @@ burden, and fully-loaded cost.
 
 - [Spring Boot dependency management](https://docs.spring.io/spring-boot/reference/using/build-systems.html)
 - [Spring Boot managed dependency versions](https://docs.spring.io/spring-boot/appendix/dependency-versions/index.html)
-- [Maven Resolver dependency graph](https://maven.apache.org/resolver-archives/resolver-2.0.8/dependency-graph.html)
+- [Maven Resolver dependency graph](https://maven.apache.org/resolver/dependency-graph.html)
 - [How Maven Resolver works](https://maven.apache.org/resolver/how-resolver-works.html)
 - [Maven Resolver API](https://maven.apache.org/resolver/maven-resolver-api/apidocs/)
 
@@ -768,6 +851,12 @@ burden, and fully-loaded cost.
 - [Graphiti](https://github.com/getzep/graphiti)
 - [Memgraph GraphRAG](https://memgraph.com/graphrag)
 - [Azure Cosmos AI Graph](https://learn.microsoft.com/azure/cosmos-db/gen-ai/cosmos-ai-graph)
+
+### In-process and embedded options
+
+- [NetworkX](https://networkx.org/)
+- [rustworkx](https://github.com/Qiskit/rustworkx)
+- [DuckPGQ extension](https://github.com/cwida/duckpgq-extension)
 
 ### Lifecycle cautions
 
