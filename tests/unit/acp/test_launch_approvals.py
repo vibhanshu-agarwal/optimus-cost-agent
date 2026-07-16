@@ -592,6 +592,73 @@ class TestPolicyAndKeyRotation:
             store.read_durable(ws_digest)
         assert exc_info.value.code == "INTEGRITY_FAILURE"
 
+    def test_store_ignores_keyring_hmac_entry_changed_after_construction(self, tmp_path: Path) -> None:
+        """Plan 9.96, Task 5 Step 7 (TOCTOU matrix): KeyringApprovalStore
+        loads/generates its HMAC integrity key exactly once, inside
+        __init__ -> _ensure_hmac_key(), and caches it on self._hmac_key for
+        the store's entire lifetime (store.hmac_key never rereads the
+        keyring). This asserts that overwriting the keyring's
+        hmac_integrity_key entry AFTER a store instance already exists has
+        NO EFFECT on that instance -- it keeps using the key it loaded at
+        construction time.
+
+        This is the correct TOCTOU proof, not "a later read would fail":
+        nothing in KeyringApprovalStore rereads the keyring for its own
+        integrity key after construction, so there is no reread-and-detect
+        path here by design -- mirroring the os.environ/`.env.gateway`
+        single-capture cases elsewhere in this matrix. A NEW store
+        constructed afterward, by contrast, legitimately picks up the new
+        key (proven separately below) -- the guarantee is per-instance
+        stability, not global immutability of the keyring entry.
+        """
+        keyring = FakeKeyring()
+        original_key = b"original-hmac-key-32-bytes-long"
+        store = KeyringApprovalStore(keyring_backend=keyring, runtime_root=tmp_path, hmac_key=original_key)
+        # Persist the original key into the keyring, mirroring what the real
+        # _ensure_hmac_key() would have done on first construction with no
+        # explicit hmac_key override.
+        import base64 as base64_mod
+
+        keyring.set_password(
+            "optimus-cost-agent-approvals",
+            "hmac_integrity_key",
+            base64_mod.urlsafe_b64encode(original_key).decode("ascii"),
+        )
+        record = _sample_approval_record(hmac_key=original_key)
+        store.write_durable(record)
+
+        # Overwrite the keyring's HMAC key entry AFTER the store instance
+        # already exists and already has original_key cached.
+        replacement_key = b"ATTACKER-REPLACED-hmac-key-32!!"
+        keyring.set_password(
+            "optimus-cost-agent-approvals",
+            "hmac_integrity_key",
+            base64_mod.urlsafe_b64encode(replacement_key).decode("ascii"),
+        )
+
+        # The existing store instance is unaffected: it still verifies
+        # (and would still sign) with the key it loaded at construction.
+        assert store.hmac_key == original_key
+        retrieved = store.read_durable(record.workspace_identity.digest)
+        assert retrieved is not None
+        assert retrieved.approval_id == record.approval_id
+
+    def test_new_store_picks_up_keyring_hmac_entry_written_by_another_instance(self, tmp_path: Path) -> None:
+        """Companion to the no-effect test above: the per-instance caching
+        guarantee is deliberately NOT global keyring immutability. A
+        freshly constructed store (no explicit hmac_key override) legitimately
+        loads whatever key currently sits in the keyring -- this is by design
+        (key rotation must be visible to future launches) and distinguishes
+        the "cached per instance" claim from "the keyring entry can never
+        change effective behavior at all," which would be a stronger and
+        incorrect claim."""
+        keyring = FakeKeyring()
+        first_store = KeyringApprovalStore(keyring_backend=keyring, runtime_root=tmp_path)
+        loaded_key = first_store.hmac_key
+
+        second_store = KeyringApprovalStore(keyring_backend=keyring, runtime_root=tmp_path)
+        assert second_store.hmac_key == loaded_key
+
 
 def _build_padded_record(*, target_bytes: int, hmac_key: bytes) -> ApprovalRecord:
     """Build a record padded to exactly target_bytes when serialized."""

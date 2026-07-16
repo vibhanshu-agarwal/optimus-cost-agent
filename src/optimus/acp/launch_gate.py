@@ -26,6 +26,8 @@ from optimus.acp.launch_approvals import (
     compute_secret_fingerprint,
 )
 from optimus.acp.launch_policy import (
+    DEFAULT_LIVE_MAX_COST_USD,
+    DEFAULT_MAX_PLANNING_TURNS,
     LAUNCH_VARIABLE_POLICIES,
     LOCAL_GATEWAY_PREFIX,
     LaunchEnvironmentSnapshot,
@@ -44,6 +46,15 @@ from optimus.acp.local_gateway_secrets import (
 from optimus.acp.operator_paths import OperatorPaths
 from optimus.acp.trusted_paths import WorkspaceIdentity
 from optimus_security.sanitization import mask_uri_userinfo
+
+# Plan 9.96, Task 5 Batch 3 Step 5: the reviewed default each monotonic-tier
+# name is compared against in _authorize_monotonic_grants(). Values <= this
+# default are a tightening (or exact match) and require no approval; values
+# above it require an exact matching grant in the approval record.
+_MONOTONIC_DEFAULTS: Mapping[str, object] = {
+    "OPTIMUS_LIVE_MAX_COST_USD": DEFAULT_LIVE_MAX_COST_USD,
+    "OPTIMUS_MAX_PLANNING_TURNS": DEFAULT_MAX_PLANNING_TURNS,
+}
 
 
 @dataclass(frozen=True)
@@ -479,6 +490,10 @@ def resolve_launch_candidate(
             else:
                 security_literals[name] = value.strip()
         elif policy.tier == LaunchVariableTier.MONOTONIC_LIMIT:
+            try:
+                policy.parser(value)
+            except ValueError as exc:
+                raise LaunchGateError(code="MONOTONIC_VALUE_INVALID", detail=name) from exc
             monotonic_grants[name] = value.strip()
 
     # Also check non-OPTIMUS provider keys that are in the registry.
@@ -503,6 +518,19 @@ def resolve_launch_candidate(
     # 2. Detect model observation.
     model_value = snapshot.values.get("OPTIMUS_AGENT_MODEL", "").strip()
     model_observation = model_value or None
+
+    # 2a. Validate .env.gateway permissions BEFORE it is parsed. This lives
+    # here — inside resolve_launch_candidate, the single place that actually
+    # calls resolve_provider_credentials/resolve_shared_secret below — rather
+    # than in each caller, so every caller (the optimus-trust CLI, __main__.py's
+    # authorized launch path, or any future caller) gets this check
+    # structurally and cannot bypass it by calling resolve_launch_candidate
+    # directly without remembering to validate first. Two independent
+    # "remember to call the permission check" call sites is exactly the
+    # duplicated-security-check shape that produced the Task 4 digest bug.
+    env_gateway_path = operator_paths.config_root / ".env.gateway"
+    if env_gateway_path.is_file():
+        validate_config_file_permissions(env_gateway_path)
 
     # 2b. Single-read credential resolution (Step 3). Resolve provider
     # credentials and the shared secret exactly once here, using only the
@@ -565,7 +593,6 @@ def resolve_launch_candidate(
     snapshot_digest = compute_security_snapshot_digest(
         security_literals=security_literals,
         secret_fingerprints=secret_fingerprints,
-        monotonic_grants=monotonic_grants,
         workspace_digest=workspace_identity.digest,
         registry_version=LAUNCH_POLICY_COMPATIBILITY,
     )
@@ -639,12 +666,43 @@ def authorize_launch(
             detail="effective configuration changed since approval",
         )
 
+    _authorize_monotonic_grants(candidate=candidate, record_monotonic_grants=record.monotonic_grants)
+
     return AuthorizedLaunch(
         candidate=candidate,
         approval_id=record.approval_id,
         approval_mode="durable",
         launch_session_id=launch_session_id,
     )
+
+
+def _authorize_monotonic_grants(
+    *,
+    candidate: LaunchCandidate,
+    record_monotonic_grants: Mapping[str, str],
+) -> None:
+    """Enforce Global Constraint 12 for monotonic-limit variables.
+
+    Plan 9.96, Task 5 Batch 3 Step 5: monotonic_grants is no longer part of
+    security_snapshot_digest (digest equality cannot express direction —
+    only "changed or unchanged" — so it wrongly forced re-approval on a pure
+    tightening). This function performs the actual comparison instead: for
+    each present monotonic-tier name, a value <= the reviewed default is
+    always allowed (tightening/equal is free); a value > the default
+    requires an EXACT matching entry in the approval record's own
+    monotonic_grants (the reviewed, approved value) — not merely "any
+    higher value was once approved." Any parseable-but-unmatched loosening
+    fails closed with MONOTONIC_LOOSENING_UNAPPROVED.
+    """
+    for name, raw_value in candidate.monotonic_grants.items():
+        policy = LAUNCH_VARIABLE_POLICIES[name]
+        parsed_value = policy.parser(raw_value)
+        default_value = _MONOTONIC_DEFAULTS[name]
+        if parsed_value <= default_value:
+            continue  # Tightening or equal-to-default: free, no approval needed.
+        approved_raw = record_monotonic_grants.get(name)
+        if approved_raw is None or approved_raw.strip() != raw_value:
+            raise LaunchGateError(code="MONOTONIC_LOOSENING_UNAPPROVED", detail=name)
 
 
 def _compute_decision(policy: LaunchVariablePolicy, value: str) -> str:

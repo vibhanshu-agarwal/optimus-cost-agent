@@ -46,7 +46,9 @@ def test_gateway_service_config_from_env_defaults_to_openrouter():
         {
             "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "secret",
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "or-key",
-        }
+        },
+        bind_host="127.0.0.1",
+        bind_port=8765,
     )
     assert config.provider == "openrouter"
     assert config.base_url == "https://openrouter.ai/api/v1"
@@ -58,7 +60,26 @@ def test_gateway_service_config_from_env_anthropic_requires_native_key():
             "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "secret",
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "anthropic",
             "ANTHROPIC_API_KEY": "sk-ant",
-        }
+        },
+        bind_host="127.0.0.1",
+        bind_port=8765,
     )
     assert config.provider == "anthropic"
     assert config.base_url is None
+
+
+def test_gateway_service_config_from_env_never_reads_bind_env_vars():
+    """Plan 9.96 Task 5 Step 4: bind_host/bind_port are explicit parameters,
+    never read from OPTIMUS_LOCAL_GATEWAY_BIND_HOST/PORT even if present."""
+    config = GatewayServiceConfig.from_env(
+        {
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "secret",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "or-key",
+            "OPTIMUS_LOCAL_GATEWAY_BIND_HOST": "0.0.0.0",
+            "OPTIMUS_LOCAL_GATEWAY_PORT": "9999",
+        },
+        bind_host="127.0.0.1",
+        bind_port=8765,
+    )
+    assert config.bind_host == "127.0.0.1"
+    assert config.bind_port == 8765

@@ -8,6 +8,7 @@ tests and launch.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -200,11 +201,45 @@ def _parse_monotonic_turns(value: str) -> int:
     return result
 
 
+_MODEL_USERINFO_RE = re.compile(r"^[^/\s@]+:[^/\s@]+@")
+
+
+def _model_value_has_userinfo(value: str) -> bool:
+    """Detect a userinfo/credential-shaped segment in a model value.
+
+    Two independent checks, because neither alone covers both shapes:
+
+    1. `_MODEL_USERINFO_RE` catches the SCHEMELESS leading form
+       ("user:pass@host", no "scheme://" prefix) — this is the shape
+       urlparse() cannot detect at all (with no scheme, urlparse treats the
+       whole string as an opaque path and never populates
+       .username/.password), and it's exactly the shape the existing
+       optimus_security.sanitization._URL_USERINFO_RE would miss too (that
+       regex requires a scheme-colon-slash-slash prefix).
+    2. `urlparse(value).username/.password` catches the SCHEMED form
+       ("scheme://user:pass@host") — the regex above deliberately excludes
+       "/" from both sides of the ":", so it does not match past a "://".
+    """
+    if _MODEL_USERINFO_RE.match(value):
+        return True
+    parsed = urlparse(value)
+    return bool(parsed.scheme) and (parsed.username is not None or parsed.password is not None)
+
+
 def _parse_model(value: str) -> str:
-    """Parse model name — operational, ceremony-free under bounded conditions."""
+    """Parse model name — operational, ceremony-free under bounded conditions.
+
+    Frozen contract, Tier 4 condition 4: "The model value is logged only as
+    non-secret configuration and cannot contain URI user information or
+    credentials." Rejects a userinfo-shaped segment BEFORE the value is ever
+    displayed (_display_literal echoes it verbatim) or stored in
+    model_observation/the approval record/the audit event.
+    """
     stripped = value.strip()
     if not stripped:
         raise ValueError("Model name must not be empty")
+    if _model_value_has_userinfo(stripped):
+        raise ValueError("Model name must not contain URI user information or credentials")
     return stripped
 
 
@@ -339,7 +374,16 @@ _register(
 _register(
     "OPTIMUS_PRODUCTION_MODE",
     tier=LaunchVariableTier.SECURITY,
-    propagation=frozenset({PropagationTarget.AGENT_CHILD, PropagationTarget.GATEWAY_CHILD}),
+    # Plan 9.96, Task 5 review: GATEWAY_CHILD was removed from this
+    # propagation set. optimus_gateway/models.py's GatewayServiceConfig.from_env()
+    # has no code path that reads OPTIMUS_PRODUCTION_MODE at all, and Task 5
+    # Step 3's Gateway-child projection list ("provider, one provider key,
+    # base URL when applicable, shared secret, and code-derived loopback
+    # bind values") does not include it either — only the agent-child list
+    # mentions "production/origin settings when applicable." Propagating a
+    # value with zero consumers on the Gateway side violates least privilege
+    # and was a registry error, not an intentional dual-propagation design.
+    propagation=frozenset({PropagationTarget.AGENT_CHILD}),
     parser=_parse_bool_like,
     display=_display_literal,
     approval="exact_literal",

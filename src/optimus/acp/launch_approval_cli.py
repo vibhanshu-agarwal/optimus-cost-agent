@@ -18,21 +18,32 @@ import sys
 from pathlib import Path
 
 from optimus.acp.launch_approvals import (
+    LAUNCH_POLICY_COMPATIBILITY,
     ApprovalError,
     KeyringApprovalStore,
     build_approval_record,
+    compute_secret_fingerprint,
 )
 from optimus.acp.launch_gate import (
     LaunchCandidate,
     LaunchGateError,
     resolve_launch_candidate,
+    validate_config_file_permissions,
 )
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
+from optimus.acp.local_gateway_secrets import (
+    ProviderCredentialConfigurationError,
+    resolve_provider_credentials,
+    resolve_shared_secret,
+)
+from optimus.acp.operator_paths import resolve_authorized_operator_paths
 from optimus.acp.trusted_paths import (
+    TrustedOperatorRoots,
     TrustedPathError,
     resolve_trusted_operator_roots,
     resolve_workspace_identity,
 )
+from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 
 
 class CliError(SystemExit):
@@ -137,6 +148,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_setup_credentials(workspace_root)
         if args.command == "run":
             return _cmd_run(workspace_root, target_argv=args.target_argv, elevated_debug=args.elevated_debug)
+        if args.command == "run-gateway":
+            return _cmd_run_gateway_default(workspace_root)
     except CliError as exc:
         print(exc.message, file=sys.stderr)
         return exc.code
@@ -154,11 +167,17 @@ def main(argv: list[str] | None = None) -> int:
     return 2
 
 
+def _resolve_trusted_roots() -> TrustedOperatorRoots:
+    """Resolve OS-derived trusted roots. NEVER reads inherited APPDATA/HOME/
+    XDG_CONFIG_HOME (Plan 9.96 Global Constraint 8)."""
+    return resolve_trusted_operator_roots(platform_name=sys.platform)
+
+
 def _resolve_store(workspace_root: Path) -> tuple[KeyringApprovalStore, Path]:
     """Resolve the approval store from trusted roots."""
     import keyring as keyring_backend
 
-    roots = resolve_trusted_operator_roots(platform_name=sys.platform)
+    roots = _resolve_trusted_roots()
     store = KeyringApprovalStore(
         keyring_backend=keyring_backend,
         runtime_root=roots.approval_runtime_root,
@@ -167,18 +186,45 @@ def _resolve_store(workspace_root: Path) -> tuple[KeyringApprovalStore, Path]:
 
 
 def _resolve_candidate(workspace_root: Path, store: KeyringApprovalStore) -> LaunchCandidate:
-    """Resolve the full launch candidate from the current environment."""
-    from optimus.acp.operator_paths import resolve_operator_paths
+    """Resolve the full launch candidate from the current environment.
 
+    Plan 9.96, Task 5 cutover: uses resolve_authorized_operator_paths() —
+    the single shared helper composing trusted-root resolution and
+    OPTIMUS_CONFIG_ROOT override validation — exclusively. Never the legacy
+    resolve_operator_paths(), which bootstraps from inherited
+    APPDATA/HOME/XDG_CONFIG_HOME. __main__.py's authorized launch path calls
+    the same shared helper, so there is exactly one implementation of this
+    security-relevant resolution rather than two independently-maintained
+    ones.
+
+    Global Constraint 6: os.environ is read exactly once, into the snapshot.
+    Every downstream decision — including the OPTIMUS_CONFIG_ROOT override
+    used to resolve operator paths — reads from snapshot.values, never
+    os.environ again. A second direct os.environ read here would let the
+    approval's digest (bound to the snapshot's OPTIMUS_CONFIG_ROOT) diverge
+    from the config root this function actually resolves and reads
+    .env.gateway from — the same credential-swap shape as the Task 4 digest
+    hole, reintroduced through an ambient re-read.
+
+    .env.gateway's permissions are validated by resolve_launch_candidate()
+    itself (validate_config_file_permissions(), POSIX owner/mode bits or real
+    Windows DACL enumeration) before it is parsed — that check lives inside
+    resolve_launch_candidate rather than here, so every caller gets it
+    structurally rather than by remembering to call it.
+    """
     snapshot = LaunchEnvironmentSnapshot.capture(os.environ)
     workspace_identity = resolve_workspace_identity(workspace_root)
-    paths = resolve_operator_paths(workspace_root=workspace_root, environ=os.environ)
+    paths = resolve_authorized_operator_paths(
+        workspace_root=workspace_root,
+        snapshot_values=snapshot.values,
+        platform_name=sys.platform,
+    )
 
     candidate = resolve_launch_candidate(
         snapshot=snapshot,
         workspace_identity=workspace_identity,
         operator_paths=paths,
-        hmac_key=store._hmac_key,
+        hmac_key=store.hmac_key,
     )
     return candidate
 
@@ -219,7 +265,7 @@ def _cmd_approve(workspace_root: Path, *, mode: str, target_argv: list[str]) -> 
     # that build_approval_record()'s digest computation matches
     # candidate.security_snapshot_digest exactly — both call the same shared
     # compute_security_snapshot_digest() with identical inputs.
-    hmac_key = store._hmac_key
+    hmac_key = store.hmac_key
 
     record = build_approval_record(
         mode=mode,
@@ -381,4 +427,153 @@ def _cmd_run(workspace_root: Path, *, target_argv: list[str], elevated_debug: bo
         print(f"optimus-trust run: spawn failed: {exc}", file=sys.stderr)
         return 3
 
+    return result.returncode
+
+
+_DEFAULT_GATEWAY_BIND_HOST = "127.0.0.1"
+_DEFAULT_GATEWAY_BIND_PORT = 8765
+
+
+def _cmd_run_gateway_default(workspace_root: Path) -> int:
+    """Entry point for `optimus-trust run-gateway` with real trusted roots
+    and the real OS keyring (no injectable parameters) — the production
+    call path. _cmd_run_gateway itself takes explicit trusted_roots/
+    credential_keyring_backend parameters so tests never touch either the
+    real filesystem-derived roots or the real OS keychain.
+    """
+    import keyring as keyring_backend
+
+    return _cmd_run_gateway(
+        workspace_root,
+        bind_host=_DEFAULT_GATEWAY_BIND_HOST,
+        bind_port=_DEFAULT_GATEWAY_BIND_PORT,
+        trusted_roots=_resolve_trusted_roots(),
+        credential_keyring_backend=keyring_backend,
+    )
+
+
+def _cmd_run_gateway(
+    workspace_root: Path,
+    *,
+    bind_host: str,
+    bind_port: int,
+    trusted_roots: TrustedOperatorRoots,
+    credential_keyring_backend: object,
+) -> int:
+    """Start the local Gateway with the approval ceremony, reading the
+    repository's own .env.gateway as untrusted DATA — never sourced or
+    executed.
+
+    Plan 9.96, Task 5 Batch 3 Step 4: `tools/run_local_gateway.sh`/`.ps1`
+    previously did `source .env.gateway` (bash) or hand-parsed it into the
+    invoking shell's own environment (PowerShell) — either way, executing
+    or copying repository-controlled file content into the operator's
+    shell. This command replaces that: .env.gateway is parsed the same way
+    resolve_provider_credentials/resolve_shared_secret parse any other
+    .env.gateway (as key=value data, never `source`d), its permissions are
+    validated first, the safe snapshot is displayed, and a short-lived
+    HMAC-signed GatewayChildManifest is built and passed to the real
+    optimus_gateway subprocess via --bind-host/--port/--manifest — never
+    through OPTIMUS_LOCAL_GATEWAY_BIND_HOST/PORT env vars.
+    """
+    _require_tty()
+
+    config_root = workspace_root.resolve()
+    env_gateway_path = config_root / ".env.gateway"
+    if not env_gateway_path.is_file():
+        print(
+            "optimus-trust run-gateway: no .env.gateway found at "
+            f"{env_gateway_path}. Copy .env.gateway.example and add your provider key.",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        validate_config_file_permissions(env_gateway_path)
+    except LaunchGateError as exc:
+        print(f"optimus-trust run-gateway: {exc.code}: .env.gateway permissions are too open.", file=sys.stderr)
+        return 2
+
+    try:
+        provider_credentials = resolve_provider_credentials(
+            os.environ,
+            config_root=config_root,
+            keyring_backend=credential_keyring_backend,
+        )
+    except ProviderCredentialConfigurationError as exc:
+        print(f"optimus-trust run-gateway: {exc.user_message}", file=sys.stderr)
+        return 2
+
+    shared_secret = resolve_shared_secret(
+        os.environ,
+        config_root=config_root,
+        keyring_backend=credential_keyring_backend,
+    )
+
+    provider_secrets = provider_credentials.secrets
+    if provider_secrets is None or not shared_secret:
+        print(
+            "optimus-trust run-gateway: no compatible local gateway credentials found in "
+            f"{env_gateway_path}. Run `optimus-trust setup-credentials` or edit .env.gateway.",
+            file=sys.stderr,
+        )
+        return 2
+
+    # Display the safe (non-secret) snapshot before starting anything.
+    print("optimus-trust run-gateway: effective gateway configuration:")
+    print(f"  Provider: {provider_secrets.provider}")
+    print(f"  Base URL: {provider_secrets.base_url or '(provider default)'}")
+    print(f"  Bind: {bind_host}:{bind_port}")
+    print()
+
+    workspace_identity = resolve_workspace_identity(workspace_root)
+    hmac_key_source = KeyringApprovalStore(
+        keyring_backend=credential_keyring_backend, runtime_root=trusted_roots.approval_runtime_root
+    )
+    security_snapshot_digest = compute_secret_fingerprint(
+        provider_secrets.model_provider_api_key + "\x00" + shared_secret,
+        field_name="run_gateway_snapshot",
+        hmac_key=hmac_key_source.hmac_key,
+    )
+
+    manifest = build_gateway_child_manifest(
+        workspace_digest=workspace_identity.digest,
+        security_snapshot_digest=security_snapshot_digest,
+        provider=provider_secrets.provider,
+        base_url=provider_secrets.base_url,
+        bind_host=bind_host,
+        bind_port=bind_port,
+        provider_api_key=provider_secrets.model_provider_api_key,
+        shared_secret=shared_secret,
+        hmac_key=hmac_key_source.hmac_key,
+        policy_version=LAUNCH_POLICY_COMPATIBILITY,
+    )
+    serialized_manifest = serialize_gateway_child_manifest(manifest)
+
+    child_env: dict[str, str] = {
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER": provider_secrets.provider,
+        "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": shared_secret,
+        **provider_secrets.as_gateway_child_env(),
+    }
+    for key in ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "PATH", "TEMP", "TMP"):
+        value = os.environ.get(key, "")
+        if value:
+            child_env[key] = value
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "optimus_gateway",
+            "--bind-host",
+            bind_host,
+            "--port",
+            str(bind_port),
+            "--manifest",
+            serialized_manifest,
+        ],
+        env=child_env,
+        shell=False,
+        check=False,
+    )
     return result.returncode

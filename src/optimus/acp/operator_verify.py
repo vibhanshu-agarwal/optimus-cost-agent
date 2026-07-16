@@ -1,3 +1,21 @@
+"""Operator live-agent sign-off session driver.
+
+Plan 9.96, Task 5 Batch 3 (`operator_verify.py` threading): the spawned
+`python -m optimus.acp` child now runs through the gated __main__.py launch
+gate. Before running this tool for the first time, author a durable
+approval for the scratch verify workspace (`reports/.verify-live-agent-workspace`
+under the repository root, by default) in a TTY so you can review the
+effective configuration before it launches:
+
+    optimus-trust --workspace-root reports/.verify-live-agent-workspace approve --mode durable
+
+Deliberately NOT auto-approved: creating the approval from inside this tool
+(from the same environment it is about to launch) would make the approval
+tautological — it would always match, so the gate's actual purpose (a human
+reviewing the effective configuration before launch) would be defeated. This
+tool is therefore "just another gated launch," per Task 5's design.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -71,7 +89,13 @@ class OperatorLiveSessionResult:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Verify the Optimus live agent end to end.")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Verify the Optimus live agent end to end. Requires a one-time durable approval "
+            "for the verify workspace first: optimus-trust --workspace-root "
+            "reports/.verify-live-agent-workspace approve --mode durable"
+        )
+    )
     parser.add_argument(
         "--workspace-root",
         type=Path,

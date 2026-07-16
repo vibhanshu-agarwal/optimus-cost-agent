@@ -122,7 +122,6 @@ def compute_security_snapshot_digest(
     *,
     security_literals: Mapping[str, str],
     secret_fingerprints: Mapping[str, str],
-    monotonic_grants: Mapping[str, str],
     workspace_digest: str,
     registry_version: str,
 ) -> str:
@@ -133,9 +132,23 @@ def compute_security_snapshot_digest(
     (launch_gate.resolve_launch_candidate). Both sides MUST call this exact
     function with the same inputs, or the resulting digests can never match
     and authorization becomes permanently impossible.
+
+    Plan 9.96, Task 5 Batch 3 (Step 5 monotonic pinning): monotonic_grants is
+    deliberately NOT hashed into this digest. An earlier version folded
+    monotonic values in, which made ANY change to them — including a pure
+    tightening, which Global Constraint 12 explicitly allows without
+    approval — trigger SNAPSHOT_MISMATCH and force re-approval. Digest
+    equality can only express "changed or unchanged," never "looser or
+    tighter," so it cannot correctly gate a monotonic comparison.
+    authorize_launch() enforces the actual tighten-or-equal-is-free /
+    loosen-requires-exact-approval comparison directly against
+    ApprovalRecord.monotonic_grants, which remains protected by
+    compute_record_hmac (unaffected by this change) — approved loosenings
+    still cannot be tampered with, they are just no longer part of THIS
+    digest.
     """
     hasher = hashlib.sha256()
-    hasher.update(b"security-snapshot-v1\x00")
+    hasher.update(b"security-snapshot-v2\x00")
     hasher.update(workspace_digest.encode("utf-8"))
     hasher.update(b"\x00")
     hasher.update(registry_version.encode("utf-8"))
@@ -149,11 +162,6 @@ def compute_security_snapshot_digest(
         hasher.update(key.encode("utf-8"))
         hasher.update(b"=")
         hasher.update(secret_fingerprints[key].encode("utf-8"))
-        hasher.update(b"\x00")
-    for key in sorted(monotonic_grants):
-        hasher.update(key.encode("utf-8"))
-        hasher.update(b"=")
-        hasher.update(monotonic_grants[key].encode("utf-8"))
         hasher.update(b"\x00")
     return hasher.hexdigest()
 
@@ -260,7 +268,6 @@ def build_approval_record(
     snapshot_digest = compute_security_snapshot_digest(
         security_literals=security_literals,
         secret_fingerprints=secret_fingerprints,
-        monotonic_grants=monotonic_grants,
         workspace_digest=workspace_identity.digest,
         registry_version=registry_version,
     )
@@ -387,6 +394,19 @@ class KeyringApprovalStore:
         self._keyring = keyring_backend
         self._runtime_root = runtime_root
         self._hmac_key = hmac_key or self._ensure_hmac_key()
+
+    @property
+    def hmac_key(self) -> bytes:
+        """Public accessor for the approval-store HMAC integrity key.
+
+        Callers outside this module (the optimus-trust CLI, __main__.py's
+        authorized launch path, and anything that needs to sign a
+        GatewayChildManifest with the same root key) should use this
+        property rather than reaching into the private _hmac_key attribute
+        across a module boundary — that pattern reads fine today but quietly
+        becomes load-bearing and brittle as more call sites accumulate.
+        """
+        return self._hmac_key
 
     def _ensure_hmac_key(self) -> bytes:
         """Load or create the HMAC integrity key."""

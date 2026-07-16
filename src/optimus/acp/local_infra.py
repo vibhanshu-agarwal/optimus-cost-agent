@@ -10,12 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from optimus.acp.local_gateway_secrets import (
-    ProviderCredentialConfigurationError,
-    resolve_provider_credentials,
-    resolve_shared_secret,
-)
+from optimus.acp.local_gateway_secrets import ProviderCredentialResolution
 from optimus.config.gateway import _LOOPBACK_HOSTS, LOCAL_PROVIDER_KEY_NAMES
+from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 
 # _LOOPBACK_HOSTS reused from optimus.config.gateway (agent-side package, already imported
 # elsewhere in bootstrap.py) rather than src/optimus_gateway/models.py's own separate copy of the
@@ -48,6 +45,7 @@ _DEFAULT_REDIS_URL = "redis://127.0.0.1:6379/0"
 _DEFAULT_GATEWAY_URL = "http://127.0.0.1:8765"
 _DEFAULT_LOCAL_AGENT_MODEL = "claude-haiku"
 _SYSTEM_ENV_KEYS = ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "PATH", "TEMP", "TMP")
+_EMPTY_MAPPING: Mapping[str, str] = {}
 
 
 def _noop_log(_message: str) -> None:
@@ -58,7 +56,22 @@ def _is_loopback(host: str | None) -> bool:
     return (host or "").lower() in _LOOPBACK_HOSTS
 
 
-def apply_local_defaults(environ: Mapping[str, str], *, config_root: Path) -> dict[str, str]:
+def apply_local_defaults(
+    environ: Mapping[str, str],
+    *,
+    config_root: Path,
+    resolved_shared_secret: str | None = None,
+) -> dict[str, str]:
+    """Fill in loopback defaults for URLs/production mode/model.
+
+    Plan 9.96, Task 5: credential resolution (the shared secret projected to
+    OPTIMUS_API_KEY) is no longer performed here by re-reading
+    .env.gateway/keyring — the launch gate's resolve_launch_candidate()
+    resolves it exactly once and the caller passes the result in via
+    resolved_shared_secret. This function's own config_root/environ inputs
+    are used only for the URL/mode/model default-filling that has nothing to
+    do with credentials.
+    """
     resolved = dict(environ)
 
     if not resolved.get("OPTIMUS_REDIS_URL", "").strip():
@@ -73,10 +86,8 @@ def apply_local_defaults(environ: Mapping[str, str], *, config_root: Path) -> di
         resolved["OPTIMUS_PRODUCTION_MODE"] = "false"
     if not resolved.get("OPTIMUS_AGENT_MODEL", "").strip():
         resolved["OPTIMUS_AGENT_MODEL"] = _DEFAULT_LOCAL_AGENT_MODEL
-    if not resolved.get("OPTIMUS_API_KEY", "").strip():
-        shared_secret = resolve_shared_secret(resolved, config_root=config_root)
-        if shared_secret:
-            resolved["OPTIMUS_API_KEY"] = shared_secret
+    if not resolved.get("OPTIMUS_API_KEY", "").strip() and resolved_shared_secret:
+        resolved["OPTIMUS_API_KEY"] = resolved_shared_secret
 
     return resolved
 
@@ -184,14 +195,28 @@ class LocalGatewayProcess:
 
 def ensure_local_gateway(
     *,
-    environ: Mapping[str, str],
-    config_root: Path,
+    gateway_url: str,
+    provider_credentials: ProviderCredentialResolution | None,
+    shared_secret: str | None,
+    workspace_digest: str,
+    security_snapshot_digest: str,
+    manifest_hmac_key: bytes,
+    policy_version: str,
     runtime_root: Path,
+    system_env: Mapping[str, str] = _EMPTY_MAPPING,
     log: Callable[[str], None] = _noop_log,
 ) -> LocalGatewayProcess | None:
-    gateway_url = environ.get("OPTIMUS_GATEWAY_URL", "").strip()
-    if not gateway_url:
-        return None
+    """Start the local Gateway child using ALREADY-RESOLVED credentials.
+
+    Plan 9.96, Task 5 Step 3/4: this function no longer re-resolves provider
+    credentials or the shared secret from .env.gateway/keyring/environment —
+    the caller (the authorized launch gate) resolved them exactly once and
+    passes the resulting immutable objects in directly. This function builds
+    a short-lived HMAC-signed GatewayChildManifest bound to the caller's
+    workspace/security-snapshot digests and passes bind_host/bind_port as
+    explicit CLI arguments — never through OPTIMUS_LOCAL_GATEWAY_BIND_HOST/
+    PORT — closing the standalone bind seam from the parent side.
+    """
     parsed = urlparse(gateway_url)
     host = parsed.hostname or "127.0.0.1"
     port = parsed.port or 8765
@@ -200,35 +225,47 @@ def ensure_local_gateway(
     if _tcp_reachable(host, port):
         return None  # already up - ours from an earlier session, or someone else's; don't own it
 
-    try:
-        resolution = resolve_provider_credentials(environ, config_root=config_root)
-    except ProviderCredentialConfigurationError as exc:
-        log(exc.user_message)
+    if provider_credentials is None:
+        log(
+            "optimus-agent: no compatible local gateway credentials found "
+            "(run `optimus-trust setup-credentials`); leaving Gateway pre-flight to fail closed."
+        )
         return None
-    for warning in resolution.warnings:
+    for warning in provider_credentials.warnings:
         log(warning)
 
-    provider_secrets = resolution.secrets
-    shared_secret = resolve_shared_secret(environ, config_root=config_root)
+    provider_secrets = provider_credentials.secrets
     if provider_secrets is None or not shared_secret:
         log(
             "optimus-agent: no compatible local gateway credentials found "
-            f"(run `optimus-agent --setup` or configure {config_root / '.env.gateway'}); "
-            "leaving Gateway pre-flight to fail closed."
+            "(run `optimus-trust setup-credentials`); leaving Gateway pre-flight to fail closed."
         )
         return None
 
     child_env: dict[str, str] = {
         "OPTIMUS_LOCAL_GATEWAY_PROVIDER": provider_secrets.provider,
         "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": shared_secret,
-        "OPTIMUS_LOCAL_GATEWAY_BIND_HOST": host,
-        "OPTIMUS_LOCAL_GATEWAY_PORT": str(port),
         **provider_secrets.as_gateway_child_env(),
     }
     for key in _SYSTEM_ENV_KEYS:
-        value = environ.get(key, "")
+        value = system_env.get(key, "")
         if value:
             child_env[key] = value
+
+    manifest = build_gateway_child_manifest(
+        workspace_digest=workspace_digest,
+        security_snapshot_digest=security_snapshot_digest,
+        provider=provider_secrets.provider,
+        base_url=provider_secrets.base_url,
+        bind_host=host,
+        bind_port=port,
+        provider_api_key=provider_secrets.model_provider_api_key,
+        shared_secret=shared_secret,
+        hmac_key=manifest_hmac_key,
+        policy_version=policy_version,
+    )
+    serialized_manifest = serialize_gateway_child_manifest(manifest)
+
     log_path = runtime_root / "local-gateway.log"
     try:
         runtime_root.mkdir(parents=True, exist_ok=True)
@@ -239,7 +276,17 @@ def ensure_local_gateway(
 
     try:
         process = subprocess.Popen(
-            [sys.executable, "-m", "optimus_gateway"],
+            [
+                sys.executable,
+                "-m",
+                "optimus_gateway",
+                "--bind-host",
+                host,
+                "--port",
+                str(port),
+                "--manifest",
+                serialized_manifest,
+            ],
             env=child_env,
             stdin=subprocess.DEVNULL,
             stdout=log_file,

@@ -45,6 +45,98 @@ def _sample_operator_paths(tmp_path: Path) -> OperatorPaths:
     )
 
 
+class TestResolveLaunchCandidateValidatesEnvGatewayPermissions:
+    """Review finding (Task 5 Batch 2): validate_config_file_permissions()
+    must be enforced structurally inside resolve_launch_candidate itself —
+    the one place that actually parses .env.gateway via
+    resolve_provider_credentials/resolve_shared_secret — rather than relying
+    on each caller (the optimus-trust CLI, __main__.py, or any future caller)
+    to remember to call it first. This is the canonical enforcement point;
+    test_launch_approval_cli.py's tests prove callers still trigger it
+    transitively."""
+
+    def test_missing_env_gateway_skips_check_and_resolves_normally(self, tmp_path: Path) -> None:
+        env = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+        }
+        snapshot = LaunchEnvironmentSnapshot.capture(env)
+        paths = _sample_operator_paths(tmp_path)
+        assert not (paths.config_root / ".env.gateway").exists()
+
+        candidate = resolve_launch_candidate(
+            snapshot=snapshot,
+            workspace_identity=_sample_workspace_identity(),
+            operator_paths=paths,
+            hmac_key=_HMAC_KEY,
+        )
+        assert isinstance(candidate, LaunchCandidate)
+
+    @pytest.mark.skipif(
+        __import__("sys").platform == "win32",
+        reason="POSIX-only: permission bit checks",
+    )
+    def test_group_readable_env_gateway_fails_closed_before_credential_parsing(self, tmp_path: Path) -> None:
+        paths = _sample_operator_paths(tmp_path)
+        paths.config_root.mkdir(parents=True)
+        env_gateway = paths.config_root / ".env.gateway"
+        env_gateway.write_text(
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-should-never-be-read\n",
+            encoding="utf-8",
+        )
+        env_gateway.chmod(0o640)  # group-readable — must be rejected
+
+        env = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+        }
+        snapshot = LaunchEnvironmentSnapshot.capture(env)
+
+        with pytest.raises(LaunchGateError) as exc_info:
+            resolve_launch_candidate(
+                snapshot=snapshot,
+                workspace_identity=_sample_workspace_identity(),
+                operator_paths=paths,
+                hmac_key=_HMAC_KEY,
+            )
+        assert exc_info.value.code == "CONFIG_FILE_PERMISSIONS_TOO_OPEN"
+
+    @pytest.mark.skipif(
+        __import__("sys").platform == "win32",
+        reason="POSIX-only: permission bit checks",
+    )
+    def test_owner_only_env_gateway_passes_and_credentials_resolve(self, tmp_path: Path) -> None:
+        paths = _sample_operator_paths(tmp_path)
+        paths.config_root.mkdir(parents=True)
+        env_gateway = paths.config_root / ".env.gateway"
+        env_gateway.write_text(
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-test-value\n",
+            encoding="utf-8",
+        )
+        env_gateway.chmod(0o600)  # owner-only — must pass
+
+        env = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+        }
+        snapshot = LaunchEnvironmentSnapshot.capture(env)
+
+        candidate = resolve_launch_candidate(
+            snapshot=snapshot,
+            workspace_identity=_sample_workspace_identity(),
+            operator_paths=paths,
+            hmac_key=_HMAC_KEY,
+        )
+        assert candidate.provider_credentials is not None
+        assert candidate.provider_credentials.secrets is not None
+        assert candidate.provider_credentials.secrets.model_provider_api_key == "sk-or-test-value"
+
+
 class TestCandidateResolution:
     """Resolve launch candidate from immutable snapshot."""
 
@@ -674,6 +766,143 @@ class TestSingleReadCredentialResolution:
         assert candidate.shared_secret == "captured-secret"
 
 
+    def test_candidate_ignores_env_gateway_bytes_changed_after_resolution(self, tmp_path: Path) -> None:
+        """Plan 9.96, Task 5 Step 7 (TOCTOU matrix): .env.gateway is read
+        exactly once inside resolve_launch_candidate() (via
+        resolve_provider_credentials/resolve_shared_secret), and the result
+        is baked into the already-returned LaunchCandidate's
+        provider_credentials/shared_secret fields. Rewriting the file on
+        disk AFTER resolve_launch_candidate() has already returned must have
+        NO EFFECT on the candidate object already held -- there is no
+        "reread and detect" path for this by design (mirroring Constraint
+        6's os.environ single-capture rule), so the correct TOCTOU proof is
+        that the already-resolved candidate is unaffected, not that a
+        second resolution call would fail. A test expecting failure here
+        would require code that doesn't exist and shouldn't: the whole
+        point of Task 5 Step 3 (single-read credential resolution) is that
+        nothing downstream ever reopens .env.gateway."""
+        paths = _sample_operator_paths(tmp_path)
+        paths.config_root.mkdir(parents=True)
+        env_gateway = paths.config_root / ".env.gateway"
+        env_gateway.write_text(
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-original\n",
+            encoding="utf-8",
+        )
+        env = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+        }
+        snapshot = LaunchEnvironmentSnapshot.capture(env)
+
+        candidate = resolve_launch_candidate(
+            snapshot=snapshot,
+            workspace_identity=_sample_workspace_identity(),
+            operator_paths=paths,
+            hmac_key=_HMAC_KEY,
+        )
+
+        # Rewrite the file AFTER resolve_launch_candidate() already returned.
+        env_gateway.write_text(
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-ATTACKER-INJECTED\n",
+            encoding="utf-8",
+        )
+
+        # The candidate object already held is unaffected -- it never
+        # rereads the file.
+        assert candidate.provider_credentials.secrets.model_provider_api_key == "sk-or-original"
+
+    def test_authorized_launch_ignores_durable_record_altered_after_authorize(self, tmp_path: Path) -> None:
+        """Plan 9.96, Task 5 Step 7 (TOCTOU matrix), 'approval record
+        altered' case. Deliberately a documented NO-EFFECT case, not an
+        active-revalidation one:
+
+        1. Nothing spawned reaches the child from the approval record.
+           authorize_launch() only VALIDATES the candidate against the
+           record; every value that reaches the agent/Gateway child
+           (candidate.agent_environ, .provider_credentials, .shared_secret,
+           .gateway_environ, the monotonic values) is snapshot-derived, not
+           record-derived. AuthorizedLaunch.approval_id is an audit
+           identifier, never a spawn input. So altering/deleting the
+           durable keyring record after authorize_launch() has already
+           returned has no injection path into the spawn -- there is
+           nothing left for a fresh read to protect.
+        2. The threat this would defend (a same-user attacker with keyring
+           write access rewriting the durable record mid-launch) is
+           explicitly outside the Phase 1 threat boundary: the frozen
+           contract states same-user malware/OS-session compromise remain
+           out of scope, and that "approval write/read separation is code
+           architecture, not an OS privilege boundary."
+        3. A durable approval is a standing authorization by design (the
+           whole point of the headless/scheduled path); treating a
+           mid-launch record deletion as a launch failure would be
+           denial-of-service on an already-legitimately-authorized launch,
+           not a security improvement.
+
+        (One-shot mode is unaffected by this reasoning: it is already
+        TOCTOU-safe via the existing lock + delete-before-use sequence in
+        KeyringApprovalStore.consume_one_shot, which is a completely
+        separate code path from this durable-mode test.)
+        """
+        from optimus.acp.launch_approvals import KeyringApprovalStore, build_approval_record
+
+        class FakeKeyring:
+            def __init__(self) -> None:
+                self._store: dict[tuple[str, str], str] = {}
+
+            def get_password(self, service: str, key: str) -> str | None:
+                return self._store.get((service, key))
+
+            def set_password(self, service: str, key: str, value: str) -> None:
+                self._store[(service, key)] = value
+
+            def delete_password(self, service: str, key: str) -> None:
+                self._store.pop((service, key), None)
+
+        env = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+        }
+        snapshot = LaunchEnvironmentSnapshot.capture(env)
+        ws_identity = _sample_workspace_identity()
+        candidate = resolve_launch_candidate(
+            snapshot=snapshot,
+            workspace_identity=ws_identity,
+            operator_paths=_sample_operator_paths(tmp_path),
+            hmac_key=_HMAC_KEY,
+        )
+
+        fake_keyring = FakeKeyring()
+        store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path, hmac_key=_HMAC_KEY)
+        record = build_approval_record(
+            mode="durable",
+            workspace_identity=candidate.workspace_identity,
+            security_literals=candidate.security_literals,
+            secret_fingerprints=candidate.secret_fingerprints,
+            monotonic_grants=candidate.monotonic_grants,
+            model_observation=candidate.model_observation,
+            hmac_key=_HMAC_KEY,
+        )
+        store.write_durable(record)
+
+        authorized = authorize_launch(candidate=candidate, store=store, launch_session_id="sess_toctou")
+        assert authorized.approval_mode == "durable"
+
+        # Delete the durable record from the keyring AFTER authorize_launch()
+        # already returned -- simulating a same-user attacker (or, more
+        # realistically, an operator running `optimus-trust revoke`)
+        # racing the launch.
+        store.revoke_workspace(ws_identity.digest)
+
+        # The already-returned AuthorizedLaunch is unaffected: what reaches
+        # the child is still exactly the snapshot-derived candidate.
+        assert authorized.candidate.agent_environ == candidate.agent_environ
+        assert authorized.candidate.provider_credentials == candidate.provider_credentials
+        assert authorized.candidate.shared_secret == candidate.shared_secret
+
     def test_digest_changes_when_env_gateway_credential_changes(self, tmp_path: Path) -> None:
         """Changing a .env.gateway-sourced provider key changes the digest.
 
@@ -748,3 +977,309 @@ class TestSingleReadCredentialResolution:
             "Digest must change when the resolved .env.gateway credential changes — "
             "otherwise a stale durable approval remains valid after a credential swap."
         )
+
+
+# --- Task 5 Batch 3 Step 5: monotonic tighten/loosen authorization ---
+# Global Constraint 12: an unapproved tightening (or exact-equal value) of
+# OPTIMUS_LIVE_MAX_COST_USD/OPTIMUS_MAX_PLANNING_TURNS must be allowed
+# WITHOUT requiring re-approval. Only a loosening beyond the approved/default
+# value requires an exact matching approval grant.
+
+
+class TestMonotonicTightenIsFreeAfterApproval:
+    """An operator who approves a launch, then tightens
+    OPTIMUS_MAX_PLANNING_TURNS/OPTIMUS_LIVE_MAX_COST_USD below the approved
+    value, must NOT be forced to re-approve — Global Constraint 12 makes
+    tightening free. Today, monotonic_grants is folded into
+    security_snapshot_digest, so ANY change (including a tightening)
+    changes the digest and produces SNAPSHOT_MISMATCH. This test currently
+    FAILS, proving the bug; fixing it requires stopping digest identity from
+    gating monotonic values and instead comparing them directly in
+    authorize_launch()."""
+
+    def test_tightening_max_planning_turns_after_approval_does_not_require_reapproval(
+        self, tmp_path: Path
+    ) -> None:
+        from optimus.acp.launch_approvals import KeyringApprovalStore, build_approval_record
+
+        class FakeKeyring:
+            def __init__(self) -> None:
+                self._store: dict[tuple[str, str], str] = {}
+
+            def get_password(self, service: str, key: str) -> str | None:
+                return self._store.get((service, key))
+
+            def set_password(self, service: str, key: str, value: str) -> None:
+                self._store[(service, key)] = value
+
+            def delete_password(self, service: str, key: str) -> None:
+                self._store.pop((service, key), None)
+
+        # Approve WITHOUT setting OPTIMUS_MAX_PLANNING_TURNS at all (implicit default).
+        approved_env = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+        }
+        ws_identity = _sample_workspace_identity()
+        approved_snapshot = LaunchEnvironmentSnapshot.capture(approved_env)
+        approved_candidate = resolve_launch_candidate(
+            snapshot=approved_snapshot,
+            workspace_identity=ws_identity,
+            operator_paths=_sample_operator_paths(tmp_path),
+            hmac_key=_HMAC_KEY,
+        )
+
+        fake_keyring = FakeKeyring()
+        store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path, hmac_key=_HMAC_KEY)
+        record = build_approval_record(
+            mode="durable",
+            workspace_identity=approved_candidate.workspace_identity,
+            security_literals=approved_candidate.security_literals,
+            secret_fingerprints=approved_candidate.secret_fingerprints,
+            monotonic_grants=approved_candidate.monotonic_grants,
+            model_observation=approved_candidate.model_observation,
+            hmac_key=_HMAC_KEY,
+        )
+        store.write_durable(record)
+
+        # Operator TIGHTENS: sets OPTIMUS_MAX_PLANNING_TURNS=2 (below the
+        # reviewed default of 3) after the approval was authored. Global
+        # Constraint 12 requires this to be allowed without re-approval.
+        tightened_env = {**approved_env, "OPTIMUS_MAX_PLANNING_TURNS": "2"}
+        tightened_snapshot = LaunchEnvironmentSnapshot.capture(tightened_env)
+        tightened_candidate = resolve_launch_candidate(
+            snapshot=tightened_snapshot,
+            workspace_identity=ws_identity,
+            operator_paths=_sample_operator_paths(tmp_path),
+            hmac_key=_HMAC_KEY,
+        )
+
+        # Must NOT raise LaunchGateError(code="SNAPSHOT_MISMATCH").
+        authorized = authorize_launch(
+            candidate=tightened_candidate,
+            store=store,
+            launch_session_id="sess_tighten_test",
+        )
+        assert authorized.approval_mode == "durable"
+
+
+class TestMonotonicLoosenRequiresExactApproval:
+    """The security-critical direction: an UNAPPROVED loosening of a
+    monotonic-limit variable beyond the approved/default value must still be
+    rejected. Removing monotonic_grants from the digest (the tightening fix)
+    must not silently permit loosening — that would be the classic
+    "fixed the false positive by disabling the check" failure mode. This
+    test currently FAILS because authorize_launch() has no monotonic
+    comparison at all yet; it only compares (now monotonic-blind) digests."""
+
+    def test_loosening_max_planning_turns_beyond_default_without_approval_is_rejected(
+        self, tmp_path: Path
+    ) -> None:
+        from optimus.acp.launch_approvals import KeyringApprovalStore, build_approval_record
+
+        class FakeKeyring:
+            def __init__(self) -> None:
+                self._store: dict[tuple[str, str], str] = {}
+
+            def get_password(self, service: str, key: str) -> str | None:
+                return self._store.get((service, key))
+
+            def set_password(self, service: str, key: str, value: str) -> None:
+                self._store[(service, key)] = value
+
+            def delete_password(self, service: str, key: str) -> None:
+                self._store.pop((service, key), None)
+
+        # Approve WITHOUT setting OPTIMUS_MAX_PLANNING_TURNS (implicit default of 3).
+        approved_env = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+        }
+        ws_identity = _sample_workspace_identity()
+        approved_snapshot = LaunchEnvironmentSnapshot.capture(approved_env)
+        approved_candidate = resolve_launch_candidate(
+            snapshot=approved_snapshot,
+            workspace_identity=ws_identity,
+            operator_paths=_sample_operator_paths(tmp_path),
+            hmac_key=_HMAC_KEY,
+        )
+
+        fake_keyring = FakeKeyring()
+        store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path, hmac_key=_HMAC_KEY)
+        record = build_approval_record(
+            mode="durable",
+            workspace_identity=approved_candidate.workspace_identity,
+            security_literals=approved_candidate.security_literals,
+            secret_fingerprints=approved_candidate.secret_fingerprints,
+            monotonic_grants=approved_candidate.monotonic_grants,
+            model_observation=approved_candidate.model_observation,
+            hmac_key=_HMAC_KEY,
+        )
+        store.write_durable(record)
+
+        # Operator (or an attacker who can set env vars) LOOSENS: sets
+        # OPTIMUS_MAX_PLANNING_TURNS=9, above the reviewed default of 3,
+        # with NO matching grant in the approval record's monotonic_grants.
+        loosened_env = {**approved_env, "OPTIMUS_MAX_PLANNING_TURNS": "9"}
+        loosened_snapshot = LaunchEnvironmentSnapshot.capture(loosened_env)
+        loosened_candidate = resolve_launch_candidate(
+            snapshot=loosened_snapshot,
+            workspace_identity=ws_identity,
+            operator_paths=_sample_operator_paths(tmp_path),
+            hmac_key=_HMAC_KEY,
+        )
+
+        with pytest.raises(LaunchGateError) as exc_info:
+            authorize_launch(
+                candidate=loosened_candidate,
+                store=store,
+                launch_session_id="sess_loosen_test",
+            )
+        assert exc_info.value.code == "MONOTONIC_LOOSENING_UNAPPROVED"
+
+    def test_loosening_with_exact_matching_approved_grant_succeeds(self, tmp_path: Path) -> None:
+        """A loosening IS allowed when the durable approval's
+        monotonic_grants contains an exact matching entry for the name."""
+        from optimus.acp.launch_approvals import KeyringApprovalStore, build_approval_record
+
+        class FakeKeyring:
+            def __init__(self) -> None:
+                self._store: dict[tuple[str, str], str] = {}
+
+            def get_password(self, service: str, key: str) -> str | None:
+                return self._store.get((service, key))
+
+            def set_password(self, service: str, key: str, value: str) -> None:
+                self._store[(service, key)] = value
+
+            def delete_password(self, service: str, key: str) -> None:
+                self._store.pop((service, key), None)
+
+        # Approve WITH OPTIMUS_MAX_PLANNING_TURNS=9 explicitly present —
+        # the approval's own monotonic_grants records this as the reviewed,
+        # approved value.
+        approved_env = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+            "OPTIMUS_MAX_PLANNING_TURNS": "9",
+        }
+        ws_identity = _sample_workspace_identity()
+        approved_snapshot = LaunchEnvironmentSnapshot.capture(approved_env)
+        approved_candidate = resolve_launch_candidate(
+            snapshot=approved_snapshot,
+            workspace_identity=ws_identity,
+            operator_paths=_sample_operator_paths(tmp_path),
+            hmac_key=_HMAC_KEY,
+        )
+        assert approved_candidate.monotonic_grants.get("OPTIMUS_MAX_PLANNING_TURNS") == "9"
+
+        fake_keyring = FakeKeyring()
+        store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path, hmac_key=_HMAC_KEY)
+        record = build_approval_record(
+            mode="durable",
+            workspace_identity=approved_candidate.workspace_identity,
+            security_literals=approved_candidate.security_literals,
+            secret_fingerprints=approved_candidate.secret_fingerprints,
+            monotonic_grants=approved_candidate.monotonic_grants,
+            model_observation=approved_candidate.model_observation,
+            hmac_key=_HMAC_KEY,
+        )
+        store.write_durable(record)
+
+        # Re-resolve the SAME candidate (same launch, same value) and authorize.
+        relaunch_candidate = resolve_launch_candidate(
+            snapshot=approved_snapshot,
+            workspace_identity=ws_identity,
+            operator_paths=_sample_operator_paths(tmp_path),
+            hmac_key=_HMAC_KEY,
+        )
+        authorized = authorize_launch(
+            candidate=relaunch_candidate,
+            store=store,
+            launch_session_id="sess_approved_loosen_test",
+        )
+        assert authorized.approval_mode == "durable"
+
+    def test_loosening_beyond_the_approved_grant_is_still_rejected(self, tmp_path: Path) -> None:
+        """An approval granting OPTIMUS_MAX_PLANNING_TURNS=9 does not
+        authorize an even-higher unapproved value like 20 — the grant is an
+        exact match, not a new ceiling."""
+        from optimus.acp.launch_approvals import KeyringApprovalStore, build_approval_record
+
+        class FakeKeyring:
+            def __init__(self) -> None:
+                self._store: dict[tuple[str, str], str] = {}
+
+            def get_password(self, service: str, key: str) -> str | None:
+                return self._store.get((service, key))
+
+            def set_password(self, service: str, key: str, value: str) -> None:
+                self._store[(service, key)] = value
+
+            def delete_password(self, service: str, key: str) -> None:
+                self._store.pop((service, key), None)
+
+        approved_env = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+            "OPTIMUS_MAX_PLANNING_TURNS": "9",
+        }
+        ws_identity = _sample_workspace_identity()
+        approved_snapshot = LaunchEnvironmentSnapshot.capture(approved_env)
+        approved_candidate = resolve_launch_candidate(
+            snapshot=approved_snapshot,
+            workspace_identity=ws_identity,
+            operator_paths=_sample_operator_paths(tmp_path),
+            hmac_key=_HMAC_KEY,
+        )
+
+        fake_keyring = FakeKeyring()
+        store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path, hmac_key=_HMAC_KEY)
+        record = build_approval_record(
+            mode="durable",
+            workspace_identity=approved_candidate.workspace_identity,
+            security_literals=approved_candidate.security_literals,
+            secret_fingerprints=approved_candidate.secret_fingerprints,
+            monotonic_grants=approved_candidate.monotonic_grants,
+            model_observation=approved_candidate.model_observation,
+            hmac_key=_HMAC_KEY,
+        )
+        store.write_durable(record)
+
+        escalated_env = {**approved_env, "OPTIMUS_MAX_PLANNING_TURNS": "20"}
+        escalated_snapshot = LaunchEnvironmentSnapshot.capture(escalated_env)
+        escalated_candidate = resolve_launch_candidate(
+            snapshot=escalated_snapshot,
+            workspace_identity=ws_identity,
+            operator_paths=_sample_operator_paths(tmp_path),
+            hmac_key=_HMAC_KEY,
+        )
+
+        with pytest.raises(LaunchGateError) as exc_info:
+            authorize_launch(
+                candidate=escalated_candidate,
+                store=store,
+                launch_session_id="sess_escalated_test",
+            )
+        assert exc_info.value.code == "MONOTONIC_LOOSENING_UNAPPROVED"
+
+    def test_unparseable_monotonic_value_fails(self, tmp_path: Path) -> None:
+        """An unparseable monotonic value must fail, not silently pass."""
+        env = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+            "OPTIMUS_MAX_PLANNING_TURNS": "not-a-number",
+        }
+        snapshot = LaunchEnvironmentSnapshot.capture(env)
+        with pytest.raises(LaunchGateError):
+            resolve_launch_candidate(
+                snapshot=snapshot,
+                workspace_identity=_sample_workspace_identity(),
+                operator_paths=_sample_operator_paths(tmp_path),
+                hmac_key=_HMAC_KEY,
+            )

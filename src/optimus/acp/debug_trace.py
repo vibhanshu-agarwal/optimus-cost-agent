@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
@@ -18,6 +18,28 @@ from optimus.telemetry.redaction import redact_for_telemetry
 _DEBUG_SESSION_ID = "c66f94"
 _PROVENANCE_LOGGED = False
 DEFAULT_DEBUG_LOG_RELATIVE_PATH = Path(".optimus/debug-acp.ndjson")
+
+
+@dataclass(frozen=True)
+class DebugTraceContext:
+    """Process-local ACP debug trace configuration.
+
+    Plan 9.96, Task 5 Step 2: debug trace state is an authorized in-memory
+    context threaded explicitly through configure_debug_trace(), not through
+    OPTIMUS_ACP_DEBUG_TRACE/OPTIMUS_ACP_DEBUG_LOG/OPTIMUS_ACP_PROVENANCE_ROOT
+    environment variable mutation. Those three names are INTERNAL_ONLY in the
+    launch_policy registry and must fail closed if inherited from the parent
+    environment — a module that itself wrote to os.environ to enable tracing
+    would be indistinguishable, from the gate's point of view, from a hostile
+    inherited value.
+    """
+
+    enabled: bool
+    log_path: Path | None = None
+    provenance_root: Path | None = None
+
+
+_ACTIVE_CONTEXT: DebugTraceContext | None = None
 
 
 def resolve_debug_log_path(*, workspace_root: str | Path, log_path: str | Path | None = None) -> Path:
@@ -37,23 +59,39 @@ def configure_debug_trace(
     log_path: str | Path | None = None,
     provenance_root: str | Path | None = None,
 ) -> None:
-    """Enable ACP debug tracing via CLI (sets process env before serve_ndjson starts)."""
-    if enabled:
-        os.environ["OPTIMUS_ACP_DEBUG_TRACE"] = "1"
-    if log_path is not None:
-        os.environ["OPTIMUS_ACP_DEBUG_LOG"] = str(Path(log_path).resolve())
-    if provenance_root is not None:
-        os.environ["OPTIMUS_ACP_PROVENANCE_ROOT"] = str(Path(provenance_root).resolve())
+    """Set the process-local debug trace context.
+
+    Replaces the prior os.environ mutation with an explicit in-memory
+    DebugTraceContext. Callers (the authorized __main__ entrypoint) invoke
+    this exactly once, after authorization, with typed/validated inputs —
+    never in response to an inherited environment variable.
+    """
+    global _ACTIVE_CONTEXT
+    _ACTIVE_CONTEXT = DebugTraceContext(
+        enabled=enabled,
+        log_path=Path(log_path).resolve() if log_path is not None else None,
+        provenance_root=Path(provenance_root).resolve() if provenance_root is not None else None,
+    )
+
+
+def reset_debug_trace_context() -> None:
+    """Clear the process-local debug trace context.
+
+    Test isolation helper: without this, DebugTraceContext set by one test
+    would leak into the next since the context is process-local module state
+    rather than per-call-site.
+    """
+    global _ACTIVE_CONTEXT
+    _ACTIVE_CONTEXT = None
 
 
 def debug_trace_enabled() -> bool:
-    return os.environ.get("OPTIMUS_ACP_DEBUG_TRACE", "").strip().lower() in {"1", "true", "yes"}
+    return _ACTIVE_CONTEXT is not None and _ACTIVE_CONTEXT.enabled
 
 
 def _log_path() -> Path:
-    configured = os.environ.get("OPTIMUS_ACP_DEBUG_LOG", "").strip()
-    if configured:
-        return Path(configured).resolve()
+    if _ACTIVE_CONTEXT is not None and _ACTIVE_CONTEXT.log_path is not None:
+        return _ACTIVE_CONTEXT.log_path
     return (Path.cwd() / DEFAULT_DEBUG_LOG_RELATIVE_PATH).resolve()
 
 
@@ -61,10 +99,11 @@ def _git_sha() -> str:
     git_executable = shutil.which("git")
     if git_executable is None:
         return "unknown"
+    provenance_root = _ACTIVE_CONTEXT.provenance_root if _ACTIVE_CONTEXT is not None else None
     try:
         completed = subprocess.run(
             [git_executable, "rev-parse", "HEAD"],
-            cwd=os.environ.get("OPTIMUS_ACP_PROVENANCE_ROOT") or Path.cwd(),
+            cwd=provenance_root or Path.cwd(),
             check=True,
             capture_output=True,
             text=True,

@@ -5,12 +5,10 @@ import secrets
 from dataclasses import dataclass
 from typing import Mapping
 
+from optimus_security.launch_manifest import resolve_effective_base_url
+
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 _SUPPORTED_PROVIDERS = frozenset({"openai", "openrouter", "anthropic"})
-_DEFAULT_BASE_URLS = {
-    "openai": "https://api.openai.com/v1",
-    "openrouter": "https://openrouter.ai/api/v1",
-}
 
 
 @dataclass(frozen=True)
@@ -35,7 +33,24 @@ class GatewayServiceConfig:
             raise ValueError(f"base_url is required for provider {self.provider!r}")
 
     @classmethod
-    def from_env(cls, environ: Mapping[str, str] | None = None) -> GatewayServiceConfig:
+    def from_env(
+        cls,
+        environ: Mapping[str, str] | None = None,
+        *,
+        bind_host: str,
+        bind_port: int,
+    ) -> GatewayServiceConfig:
+        """Build config from credential/provider env plus EXPLICIT bind values.
+
+        Plan 9.96, Task 5 Step 4: bind_host/bind_port are never read from
+        OPTIMUS_LOCAL_GATEWAY_BIND_HOST/PORT — the standalone entrypoint no
+        longer trusts those inherited names at all. The authorized parent
+        (or the operator via an explicit --bind-host/--port CLI argument)
+        supplies bind_host/bind_port directly; this closes the standalone
+        bind seam. Provider/credential fields still come from `environ`
+        because that mapping is the authorized parent's explicit child
+        environment construction, not ambient inherited state.
+        """
         env = os.environ if environ is None else environ
         provider = env.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER", "openrouter").strip().lower()
         if provider not in _SUPPORTED_PROVIDERS:
@@ -44,14 +59,17 @@ class GatewayServiceConfig:
         base_url = env.get("OPTIMUS_LOCAL_GATEWAY_BASE_URL", "").strip()
         if provider == "anthropic":
             provider_api_key = _required_env(env, "ANTHROPIC_API_KEY")
-            resolved_base_url = None
         else:
             provider_api_key = _required_env(env, "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY")
-            resolved_base_url = base_url or _DEFAULT_BASE_URLS[provider]
+        # Single shared resolver (optimus_security.launch_manifest) — the
+        # parent side (ProviderSecrets / resolve_provider_credentials) calls
+        # this exact function too, so an omitted OPTIMUS_LOCAL_GATEWAY_BASE_URL
+        # resolves to the SAME concrete value on both sides.
+        resolved_base_url = resolve_effective_base_url(provider=provider, base_url=base_url or None)
 
         return cls(
-            bind_host=env.get("OPTIMUS_LOCAL_GATEWAY_BIND_HOST", "127.0.0.1"),
-            bind_port=int(env.get("OPTIMUS_LOCAL_GATEWAY_PORT", "8765")),
+            bind_host=bind_host,
+            bind_port=bind_port,
             shared_secret=_required_env(env, "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"),
             provider=provider,
             provider_api_key=provider_api_key,

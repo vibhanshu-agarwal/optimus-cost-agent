@@ -228,6 +228,58 @@ class TestMonotonicAndModelDecisions:
         policy = LAUNCH_VARIABLE_POLICIES["OPTIMUS_AGENT_MODEL"]
         assert policy.tier == LaunchVariableTier.OPERATIONAL
 
+    @pytest.mark.parametrize(
+        "credential_shaped_value",
+        [
+            "user:token@evil.example",
+            "user:s3cr3t-token@evil.example/model",
+            "redis://u:p@h",
+            "http://user:pass@host/path",
+            "x:y@z/model",
+            "admin:hunter2@internal-gateway.example.com",
+        ],
+    )
+    def test_model_parser_rejects_credential_shaped_values(self, credential_shaped_value: str) -> None:
+        """Frozen contract, Tier 4 condition 4 (bounded-model exception):
+        'The model value is logged only as non-secret configuration and
+        cannot contain URI user information or credentials.' _parse_model
+        must fail closed on a userinfo-shaped model string BEFORE it is
+        ever displayed (_display_literal echoes it verbatim) or stored in
+        model_observation/the approval record/the audit event — a value
+        rejected at parse time never reaches those sinks. Covers both the
+        schemed form (scheme://user:pass@host) AND the schemeless form
+        (user:pass@host) deliberately: the sanitizer's existing
+        _URL_USERINFO_RE requires a `\\w+://` scheme prefix and would MISS
+        the schemeless case entirely, so this parser cannot simply reuse
+        that regex as-is."""
+        policy = LAUNCH_VARIABLE_POLICIES["OPTIMUS_AGENT_MODEL"]
+        with pytest.raises(ValueError):
+            policy.parser(credential_shaped_value)
+
+    @pytest.mark.parametrize(
+        "legitimate_model_value",
+        [
+            "claude-haiku-4-5",
+            "claude-haiku",
+            "anthropic/claude-3.5-sonnet",
+            "openrouter/meta-llama/llama-3.1-70b",
+            "gpt-4o",
+            "gpt-4o-mini",
+            "z-ai/glm-5.2",
+            "ft:gpt-4o-mini:acme::abc123",
+        ],
+    )
+    def test_model_parser_accepts_legitimate_model_names(self, legitimate_model_value: str) -> None:
+        """Companion accept-matrix to the reject test above: the credential
+        detection must not false-positive on real model identifiers,
+        including slash-namespaced (provider/model), versioned
+        (claude-3.5-sonnet), and fine-tune-suffixed (ft:...) forms — all of
+        which contain '/' or ':' but no userinfo-shaped '<user>:<pass>@'
+        segment."""
+        policy = LAUNCH_VARIABLE_POLICIES["OPTIMUS_AGENT_MODEL"]
+        result = policy.parser(legitimate_model_value)
+        assert result == legitimate_model_value
+
 
 class TestImmutableSnapshot:
     """LaunchEnvironmentSnapshot captures once and is immutable."""

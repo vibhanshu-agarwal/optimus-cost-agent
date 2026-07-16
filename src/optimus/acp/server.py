@@ -186,8 +186,12 @@ class AcpStreamServer:
         requests and route them to the correct handling functions.
     :type dispatcher: JsonRpcDispatcher
     """
-    def __init__(self, dispatcher: JsonRpcDispatcher | None = None) -> None:
+    def __init__(self, dispatcher: JsonRpcDispatcher | None = None, *, max_planning_turns: int | None = None) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
+        # Plan 9.96, Task 5 Step 2: resolved once by build_configured_server()
+        # from the authorized agent environ and threaded down into
+        # AcpDuplexAdapter via serve_ndjson — never read from os.environ here.
+        self._max_planning_turns = max_planning_turns
 
     async def handle_one(self, reader: AsyncByteReader, writer: AsyncByteWriter) -> None:
         # reader/writer are typed by Protocol: no shared base class required.
@@ -232,6 +236,7 @@ class AcpStreamServer:
             workspace_root=workspace_root,
             sessions=InMemoryAcpSpecSessionStore(),
             outbound=outbound,
+            max_planning_turns=self._max_planning_turns,
         )
         message_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 

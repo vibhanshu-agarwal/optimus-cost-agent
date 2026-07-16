@@ -1,10 +1,26 @@
 from __future__ import annotations
 
 import json
-import os
 
 from optimus.acp import __main__ as acp_main
 from optimus.acp.debug_trace import DEFAULT_DEBUG_LOG_RELATIVE_PATH, debug_trace_enabled, resolve_debug_log_path
+from tests.unit.acp.conftest import FakeKeyring, authorize_workspace_for_test
+
+
+def _base_env() -> dict[str, str]:
+    return {
+        "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+        "OPTIMUS_API_KEY": "test-key",
+        "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+    }
+
+
+def _authorize(monkeypatch, tmp_path, env):
+    fake_keyring = FakeKeyring()
+    authorize_workspace_for_test(env=env, workspace_root=tmp_path, fake_keyring=fake_keyring)
+    monkeypatch.setattr(acp_main, "keyring", fake_keyring)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
 
 
 def test_parse_args_accepts_debug_trace_flags():
@@ -24,20 +40,11 @@ def test_resolve_debug_log_path_supports_relative_workspace_paths(tmp_path):
 
 
 def test_check_config_with_debug_trace_writes_default_provenance_log(monkeypatch, tmp_path):
-    monkeypatch.delenv("OPTIMUS_ACP_DEBUG_TRACE", raising=False)
-    monkeypatch.delenv("OPTIMUS_ACP_DEBUG_LOG", raising=False)
     import optimus.acp.debug_trace as debug_trace_module
 
     monkeypatch.setattr(debug_trace_module, "_PROVENANCE_LOGGED", False)
-    monkeypatch.setattr(
-        acp_main,
-        "apply_local_defaults",
-        lambda environ, *, config_root: {
-            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
-            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
-        },
-    )
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
     monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
     monkeypatch.setattr(acp_main, "run_preflight", lambda environ, **kwargs: "redis://127.0.0.1:6379/0")
 
@@ -46,7 +53,7 @@ def test_check_config_with_debug_trace_writes_default_provenance_log(monkeypatch
     log_path = (tmp_path / DEFAULT_DEBUG_LOG_RELATIVE_PATH).resolve()
     assert exit_code == 0
     assert debug_trace_enabled()
-    assert os.environ["OPTIMUS_ACP_DEBUG_LOG"] == str(log_path)
+    assert debug_trace_module._ACTIVE_CONTEXT.log_path == log_path
     lines = log_path.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1
     payload = json.loads(lines[0])
@@ -54,10 +61,11 @@ def test_check_config_with_debug_trace_writes_default_provenance_log(monkeypatch
     assert payload["data"]["log_path"] == str(log_path)
 
 
-def test_log_workspace_context_result_redacts_source_content(monkeypatch, tmp_path):
+def test_log_workspace_context_result_redacts_source_content(tmp_path):
     log_path = tmp_path / "trace.ndjson"
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+    from optimus.acp.debug_trace import configure_debug_trace
+
+    configure_debug_trace(enabled=True, log_path=log_path)
 
     from optimus.acp.debug_trace import log_workspace_context_result
     from optimus.agent.models import AgentRunRequest
@@ -90,20 +98,11 @@ def test_log_workspace_context_result_redacts_source_content(monkeypatch, tmp_pa
 
 
 def test_check_config_with_relative_debug_log_path(monkeypatch, tmp_path):
-    monkeypatch.delenv("OPTIMUS_ACP_DEBUG_TRACE", raising=False)
-    monkeypatch.delenv("OPTIMUS_ACP_DEBUG_LOG", raising=False)
     import optimus.acp.debug_trace as debug_trace_module
 
     monkeypatch.setattr(debug_trace_module, "_PROVENANCE_LOGGED", False)
-    monkeypatch.setattr(
-        acp_main,
-        "apply_local_defaults",
-        lambda environ, *, config_root: {
-            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
-            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
-        },
-    )
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
     monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
     monkeypatch.setattr(acp_main, "run_preflight", lambda environ, **kwargs: "redis://127.0.0.1:6379/0")
 

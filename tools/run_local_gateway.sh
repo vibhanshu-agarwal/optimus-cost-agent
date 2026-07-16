@@ -1,28 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="${ROOT}/.env.gateway"
+# Plan 9.96, Task 5 Batch 3 Step 4: this script no longer sources
+# .env.gateway. It delegates entirely to `optimus-trust run-gateway`, which
+# parses .env.gateway as untrusted key=value DATA (never `source`d/executed),
+# validates its file permissions, displays the complete safe (non-secret)
+# configuration snapshot for review, builds a short-lived HMAC-signed
+# GatewayChildManifest, and spawns the real optimus_gateway subprocess with
+# --bind-host/--port/--manifest as explicit CLI arguments — never through
+# OPTIMUS_LOCAL_GATEWAY_BIND_HOST/PORT env vars. This script's own shell
+# session never sees the provider API key or shared secret.
 
-if [[ ! -f "${ENV_FILE}" ]]; then
-  echo "Missing ${ENV_FILE}. Copy .env.gateway.example and add your provider key." >&2
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [[ ! -f "${ROOT}/.env.gateway" ]]; then
+  echo "Missing ${ROOT}/.env.gateway. Copy .env.gateway.example and add your provider key." >&2
   exit 1
 fi
 
 cd "${ROOT}"
 
-if [[ -x "${ROOT}/.venv/Scripts/python.exe" ]]; then
-  PYTHON="${ROOT}/.venv/Scripts/python.exe"
-elif [[ -x "${ROOT}/.venv/bin/python" ]]; then
-  PYTHON="${ROOT}/.venv/bin/python"
+if [[ -x "${ROOT}/.venv/Scripts/optimus-trust.exe" ]]; then
+  OPTIMUS_TRUST="${ROOT}/.venv/Scripts/optimus-trust.exe"
+elif [[ -x "${ROOT}/.venv/bin/optimus-trust" ]]; then
+  OPTIMUS_TRUST="${ROOT}/.venv/bin/optimus-trust"
 else
-  PYTHON=python
+  OPTIMUS_TRUST=optimus-trust
 fi
 
-(
-  set -a
-  # shellcheck disable=SC1090
-  source "${ENV_FILE}"
-  set +a
-  exec "${PYTHON}" -m optimus_gateway "$@"
-)
+exec "${OPTIMUS_TRUST}" --workspace-root "${ROOT}" run-gateway

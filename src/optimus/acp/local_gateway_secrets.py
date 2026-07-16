@@ -11,6 +11,8 @@ from typing import Any
 
 import keyring
 
+from optimus_security.launch_manifest import resolve_effective_base_url
+
 _KEYRING_SERVICE = "optimus-cost-agent"
 _KEY_MODEL_PROVIDER = "model_provider"
 _KEY_MODEL_PROVIDER_API_KEY = "model_provider_api_key"
@@ -263,16 +265,24 @@ def resolve_provider_credentials(
             "OPTIMUS_LOCAL_GATEWAY_BASE_URL",
         )
     if not base_url:
-        base_url = None
         base_url_provenance = CredentialProvenance(
             CredentialLayer.DEFAULT,
             "OPTIMUS_LOCAL_GATEWAY_BASE_URL",
         )
+    # Resolve the EFFECTIVE base_url through the single shared resolver
+    # (optimus_security.launch_manifest.resolve_effective_base_url) rather
+    # than leaving it None when unset. GatewayServiceConfig.from_env() on
+    # the Gateway side applies its own default independently when no
+    # explicit base_url is present in its child env — if this side left it
+    # None, the manifest signed here would never match what the Gateway
+    # actually constructs (review finding: MANIFEST_BASE_URL_MISMATCH on
+    # every legitimate default-base_url launch).
+    resolved_base_url = resolve_effective_base_url(provider=provider, base_url=base_url or None)
     resolved_secrets = (
         ProviderSecrets(
             provider=provider,
             model_provider_api_key=api_key,
-            base_url=base_url,
+            base_url=resolved_base_url,
         )
         if api_key
         else None

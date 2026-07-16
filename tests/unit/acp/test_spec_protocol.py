@@ -12,7 +12,7 @@ from optimus.acp.spec import (
     AcpDuplexAdapter,
     InMemoryAcpSpecSessionStore,
     RecordingOutboundChannel,
-    _max_planning_turns_from_env,
+    resolve_max_planning_turns,
 )
 from optimus.agent.models import AgentRunResult, AgentRunStatus, AgentToolCall
 from optimus.agent.planning_loop import PlanningProgressEvent
@@ -55,30 +55,26 @@ class FakeRunner:
         )
 
 
-def test_max_planning_turns_from_env_returns_none_when_unset(monkeypatch):
-    monkeypatch.delenv("OPTIMUS_MAX_PLANNING_TURNS", raising=False)
-    assert _max_planning_turns_from_env() is None
+def test_resolve_max_planning_turns_returns_none_when_unset():
+    assert resolve_max_planning_turns({}) is None
 
 
-def test_max_planning_turns_from_env_returns_none_when_blank(monkeypatch):
-    monkeypatch.setenv("OPTIMUS_MAX_PLANNING_TURNS", "   ")
-    assert _max_planning_turns_from_env() is None
+def test_resolve_max_planning_turns_returns_none_when_blank():
+    assert resolve_max_planning_turns({"OPTIMUS_MAX_PLANNING_TURNS": "   "}) is None
 
 
 def test_gateway_failure_is_a_terminal_planning_stop() -> None:
     assert "PLANNING_GATEWAY_FAILURE" in _PLANNING_TERMINAL_STOP_REASONS
 
 
-def test_max_planning_turns_from_env_parses_valid_value(monkeypatch):
-    monkeypatch.setenv("OPTIMUS_MAX_PLANNING_TURNS", "1")
-    assert _max_planning_turns_from_env() == 1
+def test_resolve_max_planning_turns_parses_valid_value():
+    assert resolve_max_planning_turns({"OPTIMUS_MAX_PLANNING_TURNS": "1"}) == 1
 
 
 @pytest.mark.parametrize("raw", ["0", "-1", "abc"])
-def test_max_planning_turns_from_env_rejects_invalid_values(monkeypatch, raw):
-    monkeypatch.setenv("OPTIMUS_MAX_PLANNING_TURNS", raw)
+def test_resolve_max_planning_turns_rejects_invalid_values(raw):
     with pytest.raises(ValueError, match="OPTIMUS_MAX_PLANNING_TURNS"):
-        _max_planning_turns_from_env()
+        resolve_max_planning_turns({"OPTIMUS_MAX_PLANNING_TURNS": raw})
 
 
 class _RecordingCompletedRunner:
@@ -104,14 +100,14 @@ class _RecordingCompletedRunner:
         )
 
 
-async def test_session_prompt_applies_max_planning_turns_env_override(tmp_path, monkeypatch):
-    monkeypatch.setenv("OPTIMUS_MAX_PLANNING_TURNS", "1")
+async def test_session_prompt_applies_max_planning_turns_override(tmp_path):
     runner = _RecordingCompletedRunner()
     adapter = AcpDuplexAdapter(
         runner=runner,
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=RecordingOutboundChannel(),
+        max_planning_turns=resolve_max_planning_turns({"OPTIMUS_MAX_PLANNING_TURNS": "1"}),
     )
     session_id = (
         await adapter.handle_client_request(
@@ -131,14 +127,14 @@ async def test_session_prompt_applies_max_planning_turns_env_override(tmp_path, 
     assert runner.requests[0].max_planning_turns == 1
 
 
-async def test_session_prompt_uses_default_max_planning_turns_when_env_unset(tmp_path, monkeypatch):
-    monkeypatch.delenv("OPTIMUS_MAX_PLANNING_TURNS", raising=False)
+async def test_session_prompt_uses_default_max_planning_turns_when_unset(tmp_path):
     runner = _RecordingCompletedRunner()
     adapter = AcpDuplexAdapter(
         runner=runner,
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=RecordingOutboundChannel(),
+        max_planning_turns=resolve_max_planning_turns({}),
     )
     session_id = (
         await adapter.handle_client_request(
@@ -156,6 +152,63 @@ async def test_session_prompt_uses_default_max_planning_turns_when_env_unset(tmp
     )
 
     assert runner.requests[0].max_planning_turns == 3
+
+
+async def test_session_prompt_never_lets_optimus_live_max_cost_usd_override_agent_run_request(tmp_path):
+    """Plan 9.96, Task 5 Step 5 (bounded-model exception, condition 1):
+    'The effective cost ceiling remains the approved or monotonic-safe Tier
+    3 value' -- OPTIMUS_LIVE_MAX_COST_USD must never override
+    AgentRunRequest.max_cost_usd (Global Constraint 12: 'The live-cost
+    variable remains an evidence ceiling; this plan does not replace
+    AgentRunRequest.max_cost_usd's existing runtime budget').
+
+    Unlike OPTIMUS_MAX_PLANNING_TURNS, AcpDuplexAdapter has NO
+    max_cost_usd/live_max_cost_usd constructor parameter at all -- there is
+    no threading path for OPTIMUS_LIVE_MAX_COST_USD to reach
+    AgentRunRequest through this adapter, by construction. This test locks
+    that absence in as a regression guard: every AgentRunRequest actually
+    constructed by _handle_session_prompt keeps max_cost_usd at its
+    Pydantic default (Decimal("0.05")) regardless of what
+    OPTIMUS_LIVE_MAX_COST_USD is set to in the process environment --
+    proving the negative Step 5 explicitly asks for, not just asserting it
+    by inspection."""
+    import os
+
+    runner = _RecordingCompletedRunner()
+    adapter = AcpDuplexAdapter(
+        runner=runner,
+        workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(),
+        outbound=RecordingOutboundChannel(),
+    )
+    session_id = (
+        await adapter.handle_client_request(
+            {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
+        )
+    )["result"]["sessionId"]
+
+    # Set an aggressive OPTIMUS_LIVE_MAX_COST_USD in the real process
+    # environment -- if any code path threaded it into AgentRunRequest, it
+    # would show up here. os.environ is used deliberately (not passed to
+    # the adapter) to prove there is no ambient-read path either.
+    previous = os.environ.get("OPTIMUS_LIVE_MAX_COST_USD")
+    os.environ["OPTIMUS_LIVE_MAX_COST_USD"] = "999.00"
+    try:
+        await adapter.handle_client_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/prompt",
+                "params": {"sessionId": session_id, "prompt": [{"type": "text", "text": "Add a docstring"}]},
+            }
+        )
+    finally:
+        if previous is None:
+            os.environ.pop("OPTIMUS_LIVE_MAX_COST_USD", None)
+        else:
+            os.environ["OPTIMUS_LIVE_MAX_COST_USD"] = previous
+
+    assert runner.requests[0].max_cost_usd == Decimal("0.05")
 
 
 async def test_initialize_returns_spec_capabilities(tmp_path):

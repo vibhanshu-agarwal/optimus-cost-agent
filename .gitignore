@@ -78,6 +78,8 @@ reports/.plan*-workspace/
 .vscode/
 *.sublime-project
 *.sublime-workspace
+.air/
+.kiro/
 
 # --- OS ---
 .DS_Store

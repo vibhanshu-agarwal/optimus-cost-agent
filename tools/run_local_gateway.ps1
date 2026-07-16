@@ -1,8 +1,13 @@
-# Fallback launcher — prefer `bash tools/run_local_gateway.sh` (Git Bash) per AGENTS.md.
-# PowerShell cannot scope env vars to a child process the way a bash subshell can: this
-# script sets them in the CURRENT session and restores them in `finally`. If the process
-# is hard-killed (window closed, Stop-Process), the provider API key stays in this
-# session's environment until the window closes.
+# Plan 9.96, Task 5 Batch 3 Step 4: this script no longer parses .env.gateway
+# into PowerShell variables or copies its values into the invoking session's
+# environment via SetEnvironmentVariable. It delegates entirely to
+# `optimus-trust run-gateway`, which parses .env.gateway as untrusted
+# key=value DATA, validates its file permissions, displays the complete safe
+# (non-secret) configuration snapshot for review, builds a short-lived
+# HMAC-signed GatewayChildManifest, and spawns the real optimus_gateway
+# subprocess with --bind-host/--port/--manifest as explicit CLI arguments —
+# never through OPTIMUS_LOCAL_GATEWAY_BIND_HOST/PORT env vars. This
+# PowerShell session never sees the provider API key or shared secret.
 
 $ErrorActionPreference = "Stop"
 
@@ -13,58 +18,15 @@ if (-not (Test-Path $EnvFile)) {
     Write-Error "Missing $EnvFile. Copy .env.gateway.example and add your provider key."
 }
 
-function Read-DotEnvFile {
-    param([string]$Path)
+Set-Location $Root
 
-    $result = @{}
-    Get-Content -Path $Path | ForEach-Object {
-        $line = $_.Trim()
-        if ($line -eq "" -or $line.StartsWith("#")) {
-            return
-        }
-        $equals = $line.IndexOf("=")
-        if ($equals -lt 1) {
-            return
-        }
-        $key = $line.Substring(0, $equals).Trim()
-        $value = $line.Substring($equals + 1).Trim()
-        if (
-            ($value.StartsWith('"') -and $value.EndsWith('"')) -or
-            ($value.StartsWith("'") -and $value.EndsWith("'"))
-        ) {
-            $value = $value.Substring(1, $value.Length - 2)
-        }
-        $result[$key] = $value
-    }
-    return $result
+$OptimusTrust = Join-Path $Root ".venv\Scripts\optimus-trust.exe"
+if (-not (Test-Path $OptimusTrust)) {
+    $OptimusTrust = Join-Path $Root ".venv/bin/optimus-trust"
+}
+if (-not (Test-Path $OptimusTrust)) {
+    $OptimusTrust = "optimus-trust"
 }
 
-$overrides = Read-DotEnvFile -Path $EnvFile
-$saved = @{}
-foreach ($key in $overrides.Keys) {
-    $saved[$key] = [Environment]::GetEnvironmentVariable($key, "Process")
-    [Environment]::SetEnvironmentVariable($key, $overrides[$key], "Process")
-}
-
-try {
-    Set-Location $Root
-    $VenvPython = Join-Path $Root ".venv\Scripts\python.exe"
-    if (-not (Test-Path $VenvPython)) {
-        $VenvPython = Join-Path $Root ".venv/bin/python"
-    }
-    if (-not (Test-Path $VenvPython)) {
-        $VenvPython = "python"
-    }
-    & $VenvPython -m optimus_gateway @args
-    exit $LASTEXITCODE
-}
-finally {
-    foreach ($key in $saved.Keys) {
-        if ($null -eq $saved[$key]) {
-            [Environment]::SetEnvironmentVariable($key, $null, "Process")
-        }
-        else {
-            [Environment]::SetEnvironmentVariable($key, $saved[$key], "Process")
-        }
-    }
-}
+& $OptimusTrust --workspace-root $Root run-gateway
+exit $LASTEXITCODE
