@@ -8,6 +8,7 @@ A fake keyring is permitted in this unit task.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -24,12 +25,31 @@ from optimus.acp.launch_approvals import (
     DiagnosticGrant,
     KeyringApprovalStore,
     build_approval_record,
+    compute_grant_hmac,
     compute_record_hmac,
     compute_secret_fingerprint,
     derive_one_shot_handle,
     serialize_approval_record,
 )
 from optimus.acp.trusted_paths import WorkspaceIdentity
+
+
+def _sample_diagnostic_grant(
+    hmac_key: bytes, *, grant_id: str, launch_session_id: str, workspace_digest: str = "a" * 64
+) -> DiagnosticGrant:
+    """Build a DiagnosticGrant with a REAL, correctly signed record_hmac —
+    tests that write a grant through the store and expect it to be
+    consumable must sign it properly (Batch 2 makes signature verification
+    real), unlike the old "placeholder" stub value."""
+    unsigned = DiagnosticGrant(
+        grant_id=grant_id,
+        workspace_digest=workspace_digest,
+        approval_id="appr_test",
+        launch_session_id=launch_session_id,
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=DIAGNOSTIC_TTL_SECONDS),
+        record_hmac="",
+    )
+    return replace(unsigned, record_hmac=compute_grant_hmac(unsigned, hmac_key=hmac_key))
 
 # --- Fake keyring backend for unit testing ---
 
@@ -372,6 +392,122 @@ class TestKeyringApprovalStore:
         assert exc_info.value.code == "INTEGRITY_FAILURE"
 
 
+class TestComputeGrantHmac:
+    """Plan 9.96, Task 6 Batch 2: DiagnosticGrant.record_hmac was left as an
+    unenforced "" / "placeholder" stub in Task 5's launch_approval_cli.py
+    (explicitly commented "Grant HMAC computed separately in Task 6") --
+    this closes that stub with a real, keyed, tamper-evident binding over
+    every field of the grant except record_hmac itself."""
+
+    def test_hmac_is_deterministic(self) -> None:
+        hmac_key = b"test-hmac-key-32-bytes-long!!!!"
+        grant = DiagnosticGrant(
+            grant_id="diag_001",
+            workspace_digest="a" * 64,
+            approval_id="appr_test",
+            launch_session_id="sess_test",
+            expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            record_hmac="",
+        )
+        h1 = compute_grant_hmac(grant, hmac_key=hmac_key)
+        h2 = compute_grant_hmac(grant, hmac_key=hmac_key)
+        assert h1 == h2
+
+    def test_hmac_changes_with_grant_id(self) -> None:
+        hmac_key = b"test-hmac-key-32-bytes-long!!!!"
+        base = DiagnosticGrant(
+            grant_id="diag_001",
+            workspace_digest="a" * 64,
+            approval_id="appr_test",
+            launch_session_id="sess_test",
+            expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            record_hmac="",
+        )
+        other = replace(base, grant_id="diag_002")
+        assert compute_grant_hmac(base, hmac_key=hmac_key) != compute_grant_hmac(other, hmac_key=hmac_key)
+
+    def test_hmac_changes_with_launch_session_id(self) -> None:
+        """The launch_session_id binding matters most: it is what
+        consume_diagnostic_grant's session check relies on being tamper-
+        evident -- a grant whose session ID was swapped after signing must
+        produce a different HMAC."""
+        hmac_key = b"test-hmac-key-32-bytes-long!!!!"
+        base = DiagnosticGrant(
+            grant_id="diag_001",
+            workspace_digest="a" * 64,
+            approval_id="appr_test",
+            launch_session_id="sess_original",
+            expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            record_hmac="",
+        )
+        tampered = replace(base, launch_session_id="sess_attacker_swapped")
+        assert compute_grant_hmac(base, hmac_key=hmac_key) != compute_grant_hmac(tampered, hmac_key=hmac_key)
+
+    def test_hmac_changes_with_workspace_digest(self) -> None:
+        hmac_key = b"test-hmac-key-32-bytes-long!!!!"
+        base = DiagnosticGrant(
+            grant_id="diag_001",
+            workspace_digest="a" * 64,
+            approval_id="appr_test",
+            launch_session_id="sess_test",
+            expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            record_hmac="",
+        )
+        tampered = replace(base, workspace_digest="b" * 64)
+        assert compute_grant_hmac(base, hmac_key=hmac_key) != compute_grant_hmac(tampered, hmac_key=hmac_key)
+
+    def test_hmac_changes_with_expiry(self) -> None:
+        """A tampered expiry (e.g. extending a grant's lifetime past its
+        original TTL) must be detectable."""
+        hmac_key = b"test-hmac-key-32-bytes-long!!!!"
+        base = DiagnosticGrant(
+            grant_id="diag_001",
+            workspace_digest="a" * 64,
+            approval_id="appr_test",
+            launch_session_id="sess_test",
+            expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            record_hmac="",
+        )
+        tampered = replace(base, expires_at=datetime(2030, 1, 1, tzinfo=timezone.utc))
+        assert compute_grant_hmac(base, hmac_key=hmac_key) != compute_grant_hmac(tampered, hmac_key=hmac_key)
+
+    def test_hmac_changes_with_key(self) -> None:
+        grant = DiagnosticGrant(
+            grant_id="diag_001",
+            workspace_digest="a" * 64,
+            approval_id="appr_test",
+            launch_session_id="sess_test",
+            expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            record_hmac="",
+        )
+        h1 = compute_grant_hmac(grant, hmac_key=b"key-one-32-bytes-long-aaaaaaaaa!")
+        h2 = compute_grant_hmac(grant, hmac_key=b"key-two-32-bytes-long-bbbbbbbbb!")
+        assert h1 != h2
+
+    def test_hmac_is_domain_separated_from_record_hmac(self) -> None:
+        """compute_grant_hmac must use a distinct domain-separation prefix
+        from compute_record_hmac (approval records) -- otherwise a grant
+        and an approval record with coincidentally matching field content
+        could produce colliding HMACs, weakening the cross-type integrity
+        guarantee this module relies on."""
+        hmac_key = b"test-hmac-key-32-bytes-long!!!!"
+        grant = DiagnosticGrant(
+            grant_id="diag_001",
+            workspace_digest="a" * 64,
+            approval_id="appr_test",
+            launch_session_id="sess_test",
+            expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            record_hmac="",
+        )
+        grant_hmac = compute_grant_hmac(grant, hmac_key=hmac_key)
+        # Not asserting equality with a record hash (types are unrelated),
+        # just proving the function produces a real, well-formed hex digest
+        # distinct from an all-placeholder value.
+        assert grant_hmac != ""
+        assert grant_hmac != "placeholder"
+        int(grant_hmac, 16)  # must be valid hex
+
+
 class TestDiagnosticGrant:
     """Diagnostic grant write/consume semantics."""
 
@@ -381,14 +517,7 @@ class TestDiagnosticGrant:
             keyring_backend=keyring,
             runtime_root=tmp_path,
         )
-        grant = DiagnosticGrant(
-            grant_id="diag_test_001",
-            workspace_digest="a" * 64,
-            approval_id="appr_test",
-            launch_session_id="sess_test",
-            expires_at=datetime.now(timezone.utc) + timedelta(seconds=DIAGNOSTIC_TTL_SECONDS),
-            record_hmac="placeholder",
-        )
+        grant = _sample_diagnostic_grant(store.hmac_key, grant_id="diag_test_001", launch_session_id="sess_test")
 
         store.write_diagnostic_grant(grant)
         consumed = store.consume_diagnostic_grant("diag_test_001", "sess_test")
@@ -406,19 +535,42 @@ class TestDiagnosticGrant:
             keyring_backend=keyring,
             runtime_root=tmp_path,
         )
-        grant = DiagnosticGrant(
-            grant_id="diag_test_002",
-            workspace_digest="a" * 64,
-            approval_id="appr_test",
-            launch_session_id="sess_correct",
-            expires_at=datetime.now(timezone.utc) + timedelta(seconds=DIAGNOSTIC_TTL_SECONDS),
-            record_hmac="placeholder",
-        )
+        grant = _sample_diagnostic_grant(store.hmac_key, grant_id="diag_test_002", launch_session_id="sess_correct")
         store.write_diagnostic_grant(grant)
 
         with pytest.raises(ApprovalError) as exc_info:
             store.consume_diagnostic_grant("diag_test_002", "sess_wrong")
         assert exc_info.value.code == "GRANT_SESSION_MISMATCH"
+
+    def test_diagnostic_grant_rejects_tampered_hmac(self, tmp_path: Path) -> None:
+        """Plan 9.96, Task 6 Batch 2: consume_diagnostic_grant must verify
+        record_hmac against the store's own hmac_key -- a grant whose
+        launch_session_id was rewritten AFTER signing (e.g. a same-process
+        attacker editing the raw keyring entry, or a serialization bug that
+        silently mismatches the signed fields) must be rejected, not
+        silently accepted with the tampered field trusted."""
+        keyring = FakeKeyring()
+        store = KeyringApprovalStore(
+            keyring_backend=keyring,
+            runtime_root=tmp_path,
+        )
+        grant = _sample_diagnostic_grant(store.hmac_key, grant_id="diag_test_003", launch_session_id="sess_original")
+        store.write_diagnostic_grant(grant)
+
+        # Tamper with the raw keyring entry: swap launch_session_id after
+        # the record was signed and written, without recomputing the HMAC.
+        raw = keyring.get_password("optimus-cost-agent-approvals", "grant:diag_test_003")
+        tampered_data = json.loads(raw)
+        tampered_data["launch_session_id"] = "sess_attacker_swapped"
+        keyring.set_password(
+            "optimus-cost-agent-approvals",
+            "grant:diag_test_003",
+            json.dumps(tampered_data, sort_keys=True, separators=(",", ":")),
+        )
+
+        with pytest.raises(ApprovalError) as exc_info:
+            store.consume_diagnostic_grant("diag_test_003", "sess_attacker_swapped")
+        assert exc_info.value.code == "GRANT_INTEGRITY_FAILURE"
 
 
 

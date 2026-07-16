@@ -7,9 +7,15 @@ raise or contain canaries.
 
 from __future__ import annotations
 
+import pytest
+
 from optimus_security.sanitization import (
+    MAX_SECRET_TEXT_CHARS,
+    StreamingTextSanitizer,
     mask_uri_userinfo,
     sanitize_for_persistence,
+    session_correlation_tag,
+    validate_secret_length,
 )
 
 
@@ -271,6 +277,194 @@ class TestMaskUriUserinfo:
     def test_password_only_masked(self) -> None:
         masked = mask_uri_userinfo("redis://:secret@host:6379")
         assert "secret" not in masked
+
+
+class TestValidateSecretLength:
+    """Plan 9.96, Task 6 Batch 1: pure length-cap helper. The actual launch-time
+    REJECTION of an over-long configured secret is Batch 2 (it needs
+    AuthorizedLaunch's resolved secrets to exist first) -- this batch only
+    proves the helper's own logic, since the streaming guarantee below is
+    designed against this same cap and must not silently assume it holds."""
+
+    def test_secret_at_max_length_is_accepted(self) -> None:
+        validate_secret_length("x" * MAX_SECRET_TEXT_CHARS)  # must not raise
+
+    def test_secret_over_max_length_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="exceeds"):
+            validate_secret_length("x" * (MAX_SECRET_TEXT_CHARS + 1))
+
+    def test_custom_max_chars_override(self) -> None:
+        validate_secret_length("x" * 10, max_chars=10)
+        with pytest.raises(ValueError, match="exceeds"):
+            validate_secret_length("x" * 11, max_chars=10)
+
+    def test_empty_secret_is_accepted(self) -> None:
+        validate_secret_length("")
+
+
+class TestStreamingTextSanitizer:
+    """Plan 9.96, Task 6 Batch 1: bounded cross-chunk overlap must catch a
+    known secret split at ANY chunk boundary, including the worst case (a
+    single character in one chunk, the remainder in the next, and the
+    mirror image) -- not just an evenly-split middle case, which is the
+    representative-but-incomplete test this matrix is designed to avoid.
+    """
+
+    def test_secret_entirely_within_a_single_chunk(self) -> None:
+        sanitizer = StreamingTextSanitizer(known_secrets=["sk-ant-secret123"])
+        out = sanitizer.feed("key is sk-ant-secret123 here") + sanitizer.finalize()
+        assert "sk-ant-secret123" not in out
+
+    def test_secret_split_evenly_across_two_chunks(self) -> None:
+        secret = "sk-ant-secret123456789"
+        sanitizer = StreamingTextSanitizer(known_secrets=[secret])
+        mid = len(secret) // 2
+        out = sanitizer.feed("prefix " + secret[:mid])
+        out += sanitizer.feed(secret[mid:] + " suffix")
+        out += sanitizer.finalize()
+        assert secret not in out
+
+    def test_secret_split_worst_case_one_char_then_rest(self) -> None:
+        """The specific edge a naive 'split in the middle' test would miss:
+        exactly ONE character of the secret arrives in the first chunk, and
+        the remaining (length - 1) characters arrive in the second."""
+        secret = "sk-ant-secret123456789"
+        sanitizer = StreamingTextSanitizer(known_secrets=[secret], max_secret_chars=len(secret))
+        out = sanitizer.feed("prefix " + secret[:1])
+        out += sanitizer.feed(secret[1:] + " suffix")
+        out += sanitizer.finalize()
+        assert secret not in out
+
+    def test_secret_split_worst_case_rest_then_one_char(self) -> None:
+        """Mirror image of the case above: all but the LAST character
+        arrives in the first chunk, and the final character arrives alone
+        in the second chunk."""
+        secret = "sk-ant-secret123456789"
+        sanitizer = StreamingTextSanitizer(known_secrets=[secret], max_secret_chars=len(secret))
+        out = sanitizer.feed("prefix " + secret[:-1])
+        out += sanitizer.feed(secret[-1:] + " suffix")
+        out += sanitizer.finalize()
+        assert secret not in out
+
+    def test_secret_split_across_many_single_character_chunks(self) -> None:
+        """Every character fed in its own separate chunk -- the extreme
+        version of the worst-case split, one character at a time."""
+        secret = "sk-ant-secret123456789"
+        sanitizer = StreamingTextSanitizer(known_secrets=[secret], max_secret_chars=len(secret))
+        out = sanitizer.feed("prefix ")
+        for ch in secret:
+            out += sanitizer.feed(ch)
+        out += sanitizer.feed(" suffix")
+        out += sanitizer.finalize()
+        assert secret not in out
+
+    def test_multiple_secrets_across_many_chunks(self) -> None:
+        secrets = ["sk-ant-aaaaaaaaaaaaaaa", "sk-or-bbbbbbbbbbbbbbb"]
+        sanitizer = StreamingTextSanitizer(known_secrets=secrets, max_secret_chars=len(secrets[0]))
+        text = f"first={secrets[0]} second={secrets[1]}"
+        out = ""
+        for i in range(0, len(text), 3):
+            out += sanitizer.feed(text[i : i + 3])
+        out += sanitizer.finalize()
+        assert secrets[0] not in out
+        assert secrets[1] not in out
+
+    def test_finalize_flushes_remaining_pending_buffer(self) -> None:
+        secret = "sk-ant-secret123456789"
+        sanitizer = StreamingTextSanitizer(known_secrets=[secret], max_secret_chars=len(secret))
+        sanitizer.feed(secret)
+        final_out = sanitizer.finalize()
+        assert secret not in final_out
+
+    def test_finalize_with_no_input_returns_empty(self) -> None:
+        sanitizer = StreamingTextSanitizer(known_secrets=["irrelevant"])
+        assert sanitizer.finalize() == ""
+
+    def test_no_secret_present_passes_text_through(self) -> None:
+        sanitizer = StreamingTextSanitizer(known_secrets=["sk-ant-unused-secret"])
+        out = sanitizer.feed("just ") + sanitizer.feed("plain text") + sanitizer.finalize()
+        assert out == "just plain text"
+
+    def test_rule_counts_accumulate_across_feeds(self) -> None:
+        secret = "sk-ant-secret123456789"
+        sanitizer = StreamingTextSanitizer(known_secrets=[secret], max_secret_chars=len(secret))
+        sanitizer.feed(f"one={secret} ")
+        sanitizer.feed(f"two={secret}")
+        sanitizer.finalize()
+        assert sanitizer.rule_counts.get("exact_secret_replacement", 0) == 2
+
+    def test_default_overlap_matches_max_secret_text_chars(self) -> None:
+        """Without an explicit max_secret_chars override, the sanitizer must
+        be as conservative as the module-wide cap -- the global correctness
+        bound this whole guarantee is designed against, per Constraint 19
+        ('overlap equal to the supported maximum secret length')."""
+        sanitizer = StreamingTextSanitizer(known_secrets=["short-secret"])
+        assert sanitizer.overlap_chars == MAX_SECRET_TEXT_CHARS - 1
+
+
+class TestSessionCorrelationTag:
+    """Plan 9.96, Task 6 Batch 1: non-derivable, session-scoped correlation
+    tags. Emission at a real diagnostic sink is Batch 2/3 -- this batch
+    only proves the primitive's own cryptographic properties."""
+
+    def test_matches_frozen_contract_hmac_construction_and_binds_value_length(self) -> None:
+        """Pin the exact contract construction, not merely its properties."""
+        import hashlib
+        import hmac
+
+        session_key = b"session-key-bytes-32-long-abcd!!"
+        field_name = "OPTIMUS_API_KEY"
+        secret = "my-secret"
+        secret_bytes = secret.encode("utf-8")
+        domain = b"p996-correlation-tag-v1"
+        message = domain + b"\x00" + field_name.encode("utf-8") + b"\x00" + len(secret_bytes).to_bytes(8, "big") + secret_bytes
+        expected = hmac.new(session_key, message, hashlib.sha256).digest()[:16].hex()
+
+        assert session_correlation_tag(secret, field_name=field_name, session_key=session_key) == expected
+
+        message_without_length = domain + b"\x00" + field_name.encode("utf-8") + b"\x00" + secret_bytes
+        without_length = hmac.new(session_key, message_without_length, hashlib.sha256).digest()[:16].hex()
+        assert expected != without_length
+
+    def test_same_secret_and_session_produces_same_tag(self) -> None:
+        session_key = b"session-key-bytes-32-long-abcd!!"
+        tag1 = session_correlation_tag("my-secret", field_name="OPTIMUS_API_KEY", session_key=session_key)
+        tag2 = session_correlation_tag("my-secret", field_name="OPTIMUS_API_KEY", session_key=session_key)
+        assert tag1 == tag2
+
+    def test_different_secrets_same_session_produce_different_tags(self) -> None:
+        session_key = b"session-key-bytes-32-long-abcd!!"
+        tag1 = session_correlation_tag("secret-one", field_name="OPTIMUS_API_KEY", session_key=session_key)
+        tag2 = session_correlation_tag("secret-two", field_name="OPTIMUS_API_KEY", session_key=session_key)
+        assert tag1 != tag2
+
+    def test_same_secret_different_sessions_produce_unlinkable_tags(self) -> None:
+        """The core non-derivability property: without the session key, an
+        observer of tags across two sessions cannot tell they correspond to
+        the same secret -- proven at the testable boundary by asserting the
+        tags differ (a shared secret does NOT leak through a matching tag
+        across session boundaries)."""
+        tag1 = session_correlation_tag("same-secret", field_name="OPTIMUS_API_KEY", session_key=b"session-key-A---")
+        tag2 = session_correlation_tag("same-secret", field_name="OPTIMUS_API_KEY", session_key=b"session-key-B---")
+        assert tag1 != tag2
+
+    def test_different_field_names_same_secret_and_session_differ(self) -> None:
+        session_key = b"session-key-bytes-32-long-abcd!!"
+        tag1 = session_correlation_tag("shared-value", field_name="OPTIMUS_API_KEY", session_key=session_key)
+        tag2 = session_correlation_tag("shared-value", field_name="OPTIMUS_GATEWAY_URL", session_key=session_key)
+        assert tag1 != tag2
+
+    def test_tag_never_contains_the_secret_substring(self) -> None:
+        session_key = b"session-key-bytes-32-long-abcd!!"
+        secret = "hunter2-canary-value"
+        tag = session_correlation_tag(secret, field_name="OPTIMUS_API_KEY", session_key=session_key)
+        assert secret not in tag
+
+    def test_tag_is_128_bits_hex_encoded(self) -> None:
+        session_key = b"session-key-bytes-32-long-abcd!!"
+        tag = session_correlation_tag("value", field_name="field", session_key=session_key)
+        assert len(tag) == 32  # 16 bytes = 128 bits, hex-encoded
+        int(tag, 16)  # must be valid hex
 
 
 class TestPrimitivePassthrough:

@@ -38,6 +38,7 @@ _HMAC_KEY_ENTRY = "hmac_integrity_key"
 _HANDLE_DOMAIN = b"p996-one-shot-handle-v1"
 _FINGERPRINT_DOMAIN = b"p996-secret-fingerprint-v1"
 _RECORD_HMAC_DOMAIN = b"p996-record-hmac-v1"
+_GRANT_HMAC_DOMAIN = b"p996-diagnostic-grant-hmac-v1"
 
 
 # --- Error type ---
@@ -245,6 +246,42 @@ def compute_record_hmac(record: ApprovalRecord, *, hmac_key: bytes) -> str:
     # Model observation.
     parts.append((record.model_observation or "").encode())
 
+    msg = b"".join(parts)
+    return hmac.new(hmac_key, msg, hashlib.sha256).hexdigest()
+
+
+def compute_grant_hmac(grant: DiagnosticGrant, *, hmac_key: bytes) -> str:
+    """Compute HMAC-SHA-256 over every DiagnosticGrant field except
+    record_hmac itself.
+
+    Plan 9.96, Task 6 Batch 2: closes the "" / "placeholder" record_hmac
+    stub left in Task 5's launch_approval_cli.py (_cmd_run's --elevated-debug
+    branch, explicitly commented "Grant HMAC computed separately in
+    Task 6"). Uses a domain-separation prefix (_GRANT_HMAC_DOMAIN) distinct
+    from _RECORD_HMAC_DOMAIN so a DiagnosticGrant and an ApprovalRecord with
+    coincidentally matching field content can never produce colliding
+    HMACs — the two types must remain cryptographically unrelated even
+    though both are signed with the same underlying store hmac_key.
+
+    launch_session_id is the field consume_diagnostic_grant's session check
+    depends on being tamper-evident: without this HMAC, a same-process
+    attacker (or a serialization bug) could rewrite the raw keyring entry's
+    launch_session_id to match an attacker-controlled session and the grant
+    would still verify.
+    """
+    parts: list[bytes] = [
+        _GRANT_HMAC_DOMAIN,
+        b"\x00",
+        grant.grant_id.encode(),
+        b"\x00",
+        grant.workspace_digest.encode(),
+        b"\x00",
+        grant.approval_id.encode(),
+        b"\x00",
+        grant.launch_session_id.encode(),
+        b"\x00",
+        grant.expires_at.isoformat().encode(),
+    ]
     msg = b"".join(parts)
     return hmac.new(hmac_key, msg, hashlib.sha256).hexdigest()
 
@@ -581,6 +618,10 @@ class KeyringApprovalStore:
             )
         except (json.JSONDecodeError, KeyError, ValueError) as exc:
             raise ApprovalError(code="GRANT_CORRUPT") from exc
+
+        expected_hmac = compute_grant_hmac(grant, hmac_key=self._hmac_key)
+        if not hmac.compare_digest(grant.record_hmac, expected_hmac):
+            raise ApprovalError(code="GRANT_INTEGRITY_FAILURE", detail="grant HMAC mismatch")
 
         if grant.launch_session_id != launch_session_id:
             raise ApprovalError(code="GRANT_SESSION_MISMATCH")

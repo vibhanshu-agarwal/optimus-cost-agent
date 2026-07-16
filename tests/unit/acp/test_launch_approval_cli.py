@@ -53,6 +53,92 @@ class TestCliParsing:
         assert result != 0  # Should fail gracefully, not crash.
 
 
+class TestElevatedDebugGrantSigning:
+    """Plan 9.96, Task 6 Batch 2: _cmd_run's --elevated-debug branch must
+    write a DiagnosticGrant that its OWN store's consume_diagnostic_grant
+    will later accept -- i.e. it must be signed with compute_grant_hmac
+    using the store's real hmac_key, not left at the Task 5 "" stub (which
+    would now be rejected by Batch 2's own HMAC verification added to
+    consume_diagnostic_grant)."""
+
+    def test_elevated_debug_writes_a_grant_that_verifies_against_its_own_store(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import sys as _sys
+
+        from optimus.acp import launch_approval_cli as cli_module
+        from tests.unit.acp.conftest import FakeKeyring, authorize_workspace_for_test
+
+        workspace_root = tmp_path / "workspace"
+        workspace_root.mkdir()
+        env = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+        }
+        fake_keyring = FakeKeyring()
+        authorize_workspace_for_test(env=env, workspace_root=workspace_root, fake_keyring=fake_keyring)
+
+        # Patch _resolve_store to return a store backed by the SAME fake
+        # keyring the durable approval was authored into, and patch
+        # os.environ so _resolve_candidate resolves the matching candidate.
+        for name, value in env.items():
+            monkeypatch.setenv(name, value)
+
+        def fake_resolve_store(_workspace_root):
+            from optimus.acp.launch_approvals import KeyringApprovalStore
+
+            store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path / ".runtime")
+            return store, tmp_path / ".runtime"
+
+        monkeypatch.setattr(cli_module, "_resolve_store", fake_resolve_store)
+
+        fake_process = type("FakeResult", (), {"returncode": 0})()
+        captured_argv: list[list[str]] = []
+        real_subprocess_run = cli_module.subprocess.run
+
+        def selective_subprocess_run(argv, **kwargs):
+            # Only intercept the target-command spawn (recognizable by the
+            # -c "pass" marker this test's target_argv uses); pass every
+            # other subprocess.run call (e.g. resolve_workspace_identity's
+            # internal `git rev-parse` probe) through to the REAL
+            # subprocess.run, since patching the shared subprocess module
+            # object affects every caller, not just this test's target spawn.
+            if "-c" in argv and "pass" in argv:
+                captured_argv.append(argv)
+                return fake_process
+            return real_subprocess_run(argv, **kwargs)
+
+        monkeypatch.setattr(cli_module.subprocess, "run", selective_subprocess_run)
+        monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
+
+        exit_code = cli_module._cmd_run(
+            workspace_root,
+            target_argv=[
+                _sys.executable,
+                "-c",
+                "pass",
+                "--grant={diagnostic_grant_id}",
+                "--session={launch_session_id}",
+            ],
+            elevated_debug=True,
+        )
+
+        assert exit_code == 0
+        # Recover the grant_id/session_id substituted into the spawned argv
+        # and prove the SAME store's consume_diagnostic_grant accepts it --
+        # the real end-to-end proof that the grant was signed with the
+        # store's own hmac_key, not left unsigned/placeholder.
+        spawned_argv = captured_argv[0]
+        grant_arg = next(arg for arg in spawned_argv if arg.startswith("--grant="))
+        session_arg = next(arg for arg in spawned_argv if arg.startswith("--session="))
+        grant_id = grant_arg.removeprefix("--grant=")
+        session_id = session_arg.removeprefix("--session=")
+        store, _ = fake_resolve_store(workspace_root)
+        consumed = store.consume_diagnostic_grant(grant_id, session_id)
+        assert consumed.grant_id == grant_id
+
+
 class TestHeadlessBehavior:
     """Headless processes cannot author approvals."""
 

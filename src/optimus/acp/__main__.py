@@ -5,14 +5,20 @@ import asyncio
 import os
 import secrets
 import sys
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
 import keyring
 
 from optimus.acp.bootstrap import StartupConfigurationError, build_configured_server
-from optimus.acp.debug_trace import configure_debug_trace, log_provenance_once, resolve_debug_log_path
-from optimus.acp.launch_approvals import LAUNCH_POLICY_COMPATIBILITY, KeyringApprovalStore
+from optimus.acp.debug_trace import (
+    configure_debug_trace,
+    log_authorized_launch_comparison,
+    log_provenance_once,
+    resolve_debug_log_path,
+)
+from optimus.acp.launch_approvals import LAUNCH_POLICY_COMPATIBILITY, ApprovalError, KeyringApprovalStore
 from optimus.acp.launch_audit import LaunchAuditError, LaunchAuditEvent, append_launch_audit_event
 from optimus.acp.launch_gate import AuthorizedLaunch, LaunchCandidate, LaunchGateError, authorize_launch, resolve_launch_candidate
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
@@ -82,6 +88,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     # {launch_session_id} placeholders into the target argv it spawns.
     parser.add_argument("--launch-approval-id", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--launch-session-id", default=None, help=argparse.SUPPRESS)
+    # Plan 9.96, Task 6 Batch 2: same internal-only slot pattern as the two
+    # arguments above. The only intended caller is optimus-trust's
+    # `run --elevated-debug`, which substitutes {diagnostic_grant_id} into
+    # the argv it spawns.
+    parser.add_argument("--diagnostic-grant-id", default=None, help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
 
@@ -194,6 +205,28 @@ def _authorize_or_exit(
         else:
             print(f"optimus-agent: {exc.code}" + (f": {exc.detail}" if exc.detail else ""), file=sys.stderr)
         return 2
+
+    # Plan 9.96, Task 6 Batch 2: consume the diagnostic grant, if one was
+    # named, AFTER the launch itself is already authorized above. Unlike
+    # authorize_launch's own fail-closed behavior, an invalid/expired/
+    # mismatched diagnostic grant must SILENTLY DOWNGRADE to ordinary mode
+    # (diagnostic_grant stays None, no tags emitted downstream) rather than
+    # fail the launch — ordinary is the SAFE mode here, and failing an
+    # otherwise fully-authorized launch over a diagnostics feature that
+    # isn't itself security-critical would be a pure denial-of-service.
+    # Every ApprovalError code (GRANT_NOT_FOUND, GRANT_SESSION_MISMATCH,
+    # GRANT_EXPIRED, GRANT_INTEGRITY_FAILURE, GRANT_CORRUPT) is treated
+    # identically: silent downgrade, no stderr noise for what is, from the
+    # operator's perspective, just "elevated diagnostics didn't turn on."
+    diagnostic_grant = None
+    if args.diagnostic_grant_id:
+        try:
+            diagnostic_grant = store.consume_diagnostic_grant(args.diagnostic_grant_id, launch_session_id)
+        except ApprovalError:
+            diagnostic_grant = None
+
+    if diagnostic_grant is not None:
+        authorized = replace(authorized, diagnostic_grant=diagnostic_grant)
 
     return authorized, store
 
@@ -316,6 +349,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     if debug_log_path is not None:
         _print_log(f"ACP debug trace: {debug_log_path}")
+        log_authorized_launch_comparison(authorized)
 
     # candidate.agent_environ is the registry projection of only the
     # AGENT_CHILD-authorized names actually PRESENT in the snapshot — it does

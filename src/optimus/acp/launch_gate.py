@@ -22,6 +22,7 @@ from pathlib import Path
 
 from optimus.acp.launch_approvals import (
     ApprovalError,
+    DiagnosticGrant,
     KeyringApprovalStore,
     compute_secret_fingerprint,
 )
@@ -45,7 +46,7 @@ from optimus.acp.local_gateway_secrets import (
 )
 from optimus.acp.operator_paths import OperatorPaths
 from optimus.acp.trusted_paths import WorkspaceIdentity
-from optimus_security.sanitization import mask_uri_userinfo
+from optimus_security.sanitization import mask_uri_userinfo, validate_secret_length
 
 # Plan 9.96, Task 5 Batch 3 Step 5: the reviewed default each monotonic-tier
 # name is compared against in _authorize_monotonic_grants(). Values <= this
@@ -104,7 +105,7 @@ class AuthorizedLaunch:
     approval_id: str
     approval_mode: str
     launch_session_id: str
-    diagnostic_grant: object | None = None
+    diagnostic_grant: DiagnosticGrant | None = None
 
 
 class LaunchGateError(ValueError):
@@ -480,6 +481,18 @@ def resolve_launch_candidate(
 
         # Accumulate for snapshot digest.
         if policy.tier == LaunchVariableTier.SECRET:
+            # Plan 9.96, Task 6 Batch 2: enforce the MAX_SECRET_TEXT_CHARS
+            # cap Batch 1 deliberately deferred. StreamingTextSanitizer's
+            # cross-chunk overlap bound assumes every configured secret is
+            # <= MAX_SECRET_TEXT_CHARS; an over-length secret would exceed
+            # that bound and could leak across a chunk boundary the overlap
+            # window can't cover. Fail closed before authorization, not a
+            # silent downgrade -- this is a correctness precondition for a
+            # security guarantee, not a diagnostics nicety.
+            try:
+                validate_secret_length(value)
+            except ValueError as exc:
+                raise LaunchGateError(code="SECRET_TOO_LONG", detail=name) from exc
             secret_inventory.append(name)
             fp = compute_secret_fingerprint(value, field_name=name, hmac_key=hmac_key)
             secret_fingerprints[name] = fp

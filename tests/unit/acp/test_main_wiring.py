@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 from unittest.mock import Mock
 
@@ -517,6 +518,132 @@ def test_audit_append_failure_stops_startup_before_any_side_effect(monkeypatch, 
     assert exit_code == 2
     assert redis_calls == []
     assert gateway_calls == []
+
+
+def test_diagnostic_grant_id_consumed_and_attached_to_authorized_launch(monkeypatch, tmp_path) -> None:
+    """Plan 9.96, Task 6 Batch 2: --diagnostic-grant-id is the internal-only
+    argument optimus-trust's `run --elevated-debug` substitutes into the
+    argv it spawns (same slot pattern as --launch-approval-id/
+    --launch-session-id). When present and valid, _authorize_or_exit must
+    consume the grant (delete-on-consume, via
+    KeyringApprovalStore.consume_diagnostic_grant) and thread a real
+    DiagnosticGrant onto AuthorizedLaunch.diagnostic_grant -- not leave it
+    permanently None as Task 5 left it."""
+    from dataclasses import replace as dc_replace
+    from datetime import datetime, timedelta, timezone
+
+    from optimus.acp.launch_approvals import DIAGNOSTIC_TTL_SECONDS, DiagnosticGrant, compute_grant_hmac
+
+    env = _base_env()
+    fake_keyring = FakeKeyring()
+    authorize_workspace_for_test(env=env, workspace_root=tmp_path, fake_keyring=fake_keyring)
+    monkeypatch.setattr(acp_main, "keyring", fake_keyring)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    # Author a diagnostic grant matching the launch-session-id this test
+    # will pass via --launch-session-id, signed with the SAME store's
+    # hmac_key so it verifies for real (not a placeholder).
+    from optimus.acp.launch_approvals import KeyringApprovalStore
+
+    store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path / ".optimus-runtime")
+    unsigned = DiagnosticGrant(
+        grant_id="diag_test_wiring",
+        workspace_digest="placeholder",  # overwritten below once workspace identity is known
+        approval_id="appr_placeholder",
+        launch_session_id="sess_fixed_for_test",
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=DIAGNOSTIC_TTL_SECONDS),
+        record_hmac="",
+    )
+    from optimus.acp.trusted_paths import resolve_workspace_identity
+
+    ws_identity = resolve_workspace_identity(tmp_path)
+    unsigned = dc_replace(unsigned, workspace_digest=ws_identity.digest)
+    signed = dc_replace(unsigned, record_hmac=compute_grant_hmac(unsigned, hmac_key=store.hmac_key))
+    store.write_diagnostic_grant(signed)
+
+    captured_server_kwargs: dict[str, object] = {}
+
+    def fake_build_configured_server(**kwargs):
+        captured_server_kwargs.update(kwargs)
+
+        class FakeServer:
+            def serve_ndjson(self, *_a, **_k):
+                async def _noop():
+                    return None
+
+                return _noop()
+
+        return FakeServer()
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: None)
+    monkeypatch.setattr(acp_main, "build_configured_server", fake_build_configured_server)
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineReader", lambda *_a, **_k: object())
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineWriter", lambda *_a, **_k: object())
+
+    exit_code = acp_main.main(
+        [
+            "--workspace-root",
+            str(tmp_path),
+            "--launch-session-id",
+            "sess_fixed_for_test",
+            "--diagnostic-grant-id",
+            "diag_test_wiring",
+            "--debug-trace",
+        ]
+    )
+
+    assert exit_code == 0
+    log_entries = [
+        json.loads(line)
+        for line in (tmp_path / ".optimus" / "debug-acp.ndjson").read_text(encoding="utf-8").splitlines()
+    ]
+    comparison_entries = [
+        entry for entry in log_entries if entry["location"] == "launch_authorization_comparison"
+    ]
+    assert len(comparison_entries) == 1
+    tags = comparison_entries[0]["data"]["correlation_tags"]
+    assert tags == [{"field_name": "OPTIMUS_API_KEY", "tag": tags[0]["tag"]}]
+    assert len(tags[0]["tag"]) == 32
+    assert "test-key" not in json.dumps(comparison_entries)
+    # Grant is consumed exactly once: the entry must no longer exist in the
+    # keyring after the launch (delete-before-use semantics), proving
+    # consume_diagnostic_grant (not just a read) was actually called.
+    assert fake_keyring.get_password("optimus-cost-agent-approvals", "grant:diag_test_wiring") is None
+
+
+def test_invalid_diagnostic_grant_id_downgrades_to_ordinary_not_launch_failure(monkeypatch, tmp_path) -> None:
+    """Plan 9.96, Task 6 Batch 2: expiry/mismatch/not-found for a diagnostic
+    grant must SILENTLY DOWNGRADE the launch to ordinary mode (no tags), not
+    fail the launch closed -- the opposite of the launch gate's own
+    fail-closed default. Ordinary mode is the SAFE mode here; failing the
+    whole launch over an invalid diagnostic grant would be a
+    denial-of-service on an otherwise fully-authorized launch, for a
+    diagnostics feature that isn't security-critical to have.
+
+    This test passes a --diagnostic-grant-id that was never written to the
+    keyring at all -- the simplest invalid-grant case -- and asserts the
+    launch proceeds to completion (exit_code == 0) exactly as it would with
+    no --diagnostic-grant-id at all.
+    """
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: None)
+    _patch_common(monkeypatch)
+
+    exit_code = acp_main.main(
+        [
+            "--workspace-root",
+            str(tmp_path),
+            "--diagnostic-grant-id",
+            "diag_never_written",
+        ]
+    )
+
+    assert exit_code == 0
 
 
 def test_workspace_relocated_after_authorization_fails_closed_before_side_effect(

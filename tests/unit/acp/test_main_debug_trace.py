@@ -59,6 +59,7 @@ def test_check_config_with_debug_trace_writes_default_provenance_log(monkeypatch
     payload = json.loads(lines[0])
     assert payload["hypothesisId"] == "PROVENANCE"
     assert payload["data"]["log_path"] == str(log_path)
+    assert "correlation_tags" not in payload["data"]
 
 
 def test_log_workspace_context_result_redacts_source_content(tmp_path):

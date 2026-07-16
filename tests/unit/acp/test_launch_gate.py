@@ -45,6 +45,73 @@ def _sample_operator_paths(tmp_path: Path) -> OperatorPaths:
     )
 
 
+class TestResolveLaunchCandidateEnforcesSecretLengthCap:
+    """Plan 9.96, Task 6 Batch 2: the MAX_SECRET_TEXT_CHARS cap deferred from
+    Batch 1 must now be enforced at launch time -- rejecting a configured
+    secret longer than the cap BEFORE authorization, not merely documented.
+    This closes the one gap Batch 1 deliberately left open: until this
+    enforcement exists, an over-long secret could in principle exceed
+    StreamingTextSanitizer's overlap window, since that guarantee assumes
+    every secret is <= MAX_SECRET_TEXT_CHARS. A rejected secret is a
+    launch-blocker (LaunchGateError), not a silent downgrade -- unlike the
+    diagnostic-grant case, secret-length is a hard correctness precondition
+    for a security-sensitive guarantee, not a diagnostics nicety."""
+
+    def test_over_length_secret_fails_closed_before_authorization(self, tmp_path: Path) -> None:
+        from optimus_security.sanitization import MAX_SECRET_TEXT_CHARS
+
+        env = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "x" * (MAX_SECRET_TEXT_CHARS + 1),
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+        }
+        snapshot = LaunchEnvironmentSnapshot.capture(env)
+
+        with pytest.raises(LaunchGateError) as exc_info:
+            resolve_launch_candidate(
+                snapshot=snapshot,
+                workspace_identity=_sample_workspace_identity(),
+                operator_paths=_sample_operator_paths(tmp_path),
+                hmac_key=_HMAC_KEY,
+            )
+        assert exc_info.value.code == "SECRET_TOO_LONG"
+        assert "OPTIMUS_API_KEY" in exc_info.value.detail
+
+    def test_secret_at_exact_max_length_is_accepted(self, tmp_path: Path) -> None:
+        from optimus_security.sanitization import MAX_SECRET_TEXT_CHARS
+
+        env = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "x" * MAX_SECRET_TEXT_CHARS,
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+        }
+        snapshot = LaunchEnvironmentSnapshot.capture(env)
+
+        # Must not raise.
+        resolve_launch_candidate(
+            snapshot=snapshot,
+            workspace_identity=_sample_workspace_identity(),
+            operator_paths=_sample_operator_paths(tmp_path),
+            hmac_key=_HMAC_KEY,
+        )
+
+    def test_ordinary_length_secret_is_unaffected(self, tmp_path: Path) -> None:
+        env = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "test-key-normal-length",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+        }
+        snapshot = LaunchEnvironmentSnapshot.capture(env)
+
+        candidate = resolve_launch_candidate(
+            snapshot=snapshot,
+            workspace_identity=_sample_workspace_identity(),
+            operator_paths=_sample_operator_paths(tmp_path),
+            hmac_key=_HMAC_KEY,
+        )
+        assert "OPTIMUS_API_KEY" in candidate.secret_inventory
+
+
 class TestResolveLaunchCandidateValidatesEnvGatewayPermissions:
     """Review finding (Task 5 Batch 2): validate_config_file_permissions()
     must be enforced structurally inside resolve_launch_candidate itself —

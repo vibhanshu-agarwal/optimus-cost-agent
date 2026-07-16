@@ -102,6 +102,65 @@ def test_acp_debug_log_redacts_secret_shaped_fields_and_free_text_by_default(tmp
     assert line["data"]["safe_field"] == "run-1"
 
 
+def test_acp_debug_log_serializes_unsupported_objects_as_safe_type_metadata(tmp_path):
+    """The debug sink must persist unsupported values without invoking user
+    serialization code or dropping the log line."""
+    from optimus.acp.debug_trace import _json_default_handler
+
+    class HostileObject:
+        def __repr__(self) -> str:
+            raise AssertionError("repr must not run")
+
+        def __str__(self) -> str:
+            raise AssertionError("str must not run")
+
+    value = HostileObject()
+    expected_type_metadata = f"<{type(value).__module__}.{type(value).__qualname__}>"
+    assert _json_default_handler(value) == expected_type_metadata
+
+    log_path = resolve_debug_log_path(workspace_root=tmp_path)
+    configure_debug_trace(enabled=True, log_path=log_path)
+    acp_debug_log(location="test:unsupported", message="safe", data={"value": value})
+
+    line = json.loads(log_path.read_text(encoding="utf-8").strip())
+    assert line["data"]["value"] == expected_type_metadata
+
+
+
+def test_acp_debug_log_has_no_redaction_opt_out_parameters():
+    """The debug sink must never expose a caller-controlled raw-write mode."""
+    import ast
+
+    tree = ast.parse(Path(debug_trace.__file__).read_text(encoding="utf-8"))
+    function = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "acp_debug_log"
+    )
+    parameter_names = {
+        argument.arg
+        for argument in function.args.posonlyargs + function.args.args + function.args.kwonlyargs
+    }
+    assert not parameter_names.intersection({"raw", "redact", "unsafe", "skip_redaction", "no_redact"})
+
+
+def test_authorized_launch_comparison_accepts_no_caller_supplied_secret():
+    """Tags may be derived only from an AuthorizedLaunch comparison point."""
+    import ast
+
+    tree = ast.parse(Path(debug_trace.__file__).read_text(encoding="utf-8"))
+    function = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "log_authorized_launch_comparison"
+    )
+    parameter_names = [
+        argument.arg
+        for argument in function.args.posonlyargs + function.args.args + function.args.kwonlyargs
+    ]
+    assert parameter_names == ["authorized_launch"]
+
+
 def test_configure_debug_trace_uses_provenance_root_for_git_sha(tmp_path, monkeypatch):
     provenance_root = tmp_path / "workspace"
     provenance_root.mkdir()

@@ -398,19 +398,25 @@ def _cmd_run(workspace_root: Path, *, target_argv: list[str], elevated_debug: bo
     diagnostic_grant_id = ""
     if elevated_debug:
         _require_tty()
+        from dataclasses import replace
         from datetime import datetime, timedelta, timezone
 
-        from optimus.acp.launch_approvals import DIAGNOSTIC_TTL_SECONDS, DiagnosticGrant
+        from optimus.acp.launch_approvals import DIAGNOSTIC_TTL_SECONDS, DiagnosticGrant, compute_grant_hmac
 
         diagnostic_grant_id = f"diag_{secrets.token_hex(12)}"
-        grant = DiagnosticGrant(
+        unsigned_grant = DiagnosticGrant(
             grant_id=diagnostic_grant_id,
             workspace_digest=ws_digest,
             approval_id=record.approval_id,
             launch_session_id=launch_session_id,
             expires_at=datetime.now(timezone.utc) + timedelta(seconds=DIAGNOSTIC_TTL_SECONDS),
-            record_hmac="",  # Grant HMAC computed separately in Task 6.
+            record_hmac="",
         )
+        # Plan 9.96, Task 6 Batch 2: sign the grant with the store's own
+        # HMAC key before persisting it, closing the Task 5 stub. Without
+        # this, consume_diagnostic_grant's own HMAC verification (added in
+        # the same batch) would reject every grant this CLI writes.
+        grant = replace(unsigned_grant, record_hmac=compute_grant_hmac(unsigned_grant, hmac_key=store.hmac_key))
         store.write_diagnostic_grant(grant)
 
     # Substitute placeholders — never print identifiers.
