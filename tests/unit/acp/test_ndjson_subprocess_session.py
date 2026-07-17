@@ -14,7 +14,27 @@ the prefix its siblings all use).
 
 from __future__ import annotations
 
-from optimus.acp.ndjson_subprocess_session import _extract_gate_rejection_message
+import io
+from types import SimpleNamespace
+
+from optimus.acp.ndjson_subprocess_session import (
+    NdjsonSubprocessSession,
+    _extract_gate_rejection_message,
+)
+
+
+def test_stderr_is_sanitized_before_retention_without_breaking_gate_detection() -> None:
+    canary = "ndjson-stderr-canary"
+    stderr_line = f"optimus-agent: NO_APPROVAL: token={canary}\n"
+    session = object.__new__(NdjsonSubprocessSession)
+    session._process = SimpleNamespace(stderr=io.StringIO(stderr_line))
+    session._stderr_lines = []
+
+    session._read_stderr()
+
+    retained = session.stderr_text()
+    assert canary not in retained
+    assert _extract_gate_rejection_message(retained) is not None
 
 
 class TestGateRejectionDetectorCoversEveryPrefixedFamily:

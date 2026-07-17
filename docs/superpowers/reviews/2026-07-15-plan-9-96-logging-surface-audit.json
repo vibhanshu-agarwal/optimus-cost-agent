@@ -1081,6 +1081,70 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.run_plan996_acpx_security_evidence:_compute_evidence_manifest_hmac:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_plan996_acpx_security_evidence:_compute_evidence_manifest_hmac:json_serialization serializes manifest fields (sanitizer version, rule counts, artifact SHA-256, joined-scan result, timestamp) for HMAC computation. No secret material is present in the manifest fields; the HMAC key is never serialized.",
+      "sanitizer": "schema-limited functional path; manifest contains no secret material",
+      "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_evidence_manifest_hmac_is_deterministic_and_domain_separated",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan996_acpx_security_evidence:_reject_legacy_locator:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_plan996_acpx_security_evidence:_reject_legacy_locator:stderr_export prints only the matched legacy locator pattern and the controlled capture command name with no credential or diagnostic content.",
+      "sanitizer": "schema-limited functional path; value-free pattern identifiers only",
+      "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_verify_rejects_plan987_locator_by_name",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan996_acpx_security_evidence:_stream_sanitized:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at tools.run_plan996_acpx_security_evidence:_stream_sanitized:file_open before this persistence or export boundary; sanitizer failure has no raw fallback. The file_open opens the transcript destination for writing; content is fed through StreamingTextSanitizer(known_secrets) before every write, and known_secrets is populated from the gated launch candidate (provider API key + shared secret + projected env secrets) so keyring-sourced credentials are covered.",
+      "sanitizer": "optimus_security.sanitization.StreamingTextSanitizer",
+      "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_stream_sanitized_redacts_known_secret_before_persisting_to_disk",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan996_acpx_security_evidence:_stream_sanitized:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at tools.run_plan996_acpx_security_evidence:_stream_sanitized:text_write before this persistence or export boundary; sanitizer failure has no raw fallback. Each stream.write call receives sanitizer.feed(chunk) or sanitizer.finalize() output, never raw child stdout/stderr; the sanitizer is constructed with known_secrets from the gated launch candidate so resolved keyring credentials are redacted.",
+      "sanitizer": "optimus_security.sanitization.StreamingTextSanitizer",
+      "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_stream_sanitized_redacts_known_secret_before_persisting_to_disk",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan996_acpx_security_evidence:_verify_evidence_manifest:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_plan996_acpx_security_evidence:_verify_evidence_manifest:stderr_export prints only verification result codes (EVIDENCE_HMAC_MISMATCH, EVIDENCE_DIGEST_MISMATCH, EVIDENCE_PATTERN_HIT, EVIDENCE_SCAN_HIT, or success message) with no credential or diagnostic content.",
+      "sanitizer": "schema-limited functional path; value-free result codes only",
+      "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_verify_rejects_tampered_manifest_hmac",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan996_acpx_security_evidence:_write_evidence_manifest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_plan996_acpx_security_evidence:_write_evidence_manifest:json_serialization serializes the manifest fields to JSON for writing. The manifest contains only sanitizer version, rule counts, artifact SHA-256 digests, joined-scan result, timestamp, and HMAC \u2014 never secret material.",
+      "sanitizer": "schema-limited functional path; manifest contains no secret material",
+      "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_evidence_manifest_contains_no_secret_material",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan996_acpx_security_evidence:_write_evidence_manifest:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_plan996_acpx_security_evidence:_write_evidence_manifest:text_file_write writes the JSON manifest to disk. The manifest contains only sanitizer version, rule counts, artifact SHA-256 digests, joined-scan result, timestamp, and HMAC \u2014 never secret material.",
+      "sanitizer": "schema-limited functional path; manifest contains no secret material",
+      "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_evidence_manifest_contains_no_secret_material",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan996_acpx_security_evidence:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_plan996_acpx_security_evidence:main:stderr_export prints only controlled operational, status, or typed failure text to stderr (acpx-not-found, gate-rejection remediation, grant-failure codes, and provenance messages with no credential or diagnostic content) and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_elevated_capture_fails_closed_on_missing_diagnostic_grant",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.verify_plan987_acpx_evidence:ledger_digest:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: ledger_digest canonicalizes supplied ledger records only to calculate a SHA-256 evidence digest; it does not persist or export the record content.",

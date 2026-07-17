@@ -9,6 +9,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from optimus.acp.e2e_transcript import E2eAcpTranscriptWriter
+from optimus_security.sanitization import sanitize_for_persistence
 
 
 class LiveSessionError(Exception):
@@ -150,7 +151,10 @@ class NdjsonSubprocessSession:
     def _read_stderr(self) -> None:
         assert self._process.stderr is not None
         for line in self._process.stderr:
-            self._stderr_lines.append(line)
+            sanitized = sanitize_for_persistence(line).value
+            if not isinstance(sanitized, str):
+                raise LiveSessionError("stderr sanitizer returned non-text output")
+            self._stderr_lines.append(sanitized)
 
     def _fail_subprocess_exited(self, error_message: str) -> None:
         code = self._process.poll()

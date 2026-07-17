@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES
+from optimus_security.sanitization import sanitize_for_persistence
 
 PLAN_9_6_E2E_TRANSCRIPT_PATH = Path("reports/plan-9-6-e2e-acp-transcript.json")
 PLAN_9_6_LIVE_AGENT_TRANSCRIPT_PATH = Path("reports/plan-9-6-live-agent-transcript.json")
@@ -44,7 +45,10 @@ class E2eAcpTranscriptWriter:
     def _append(self, direction: str, message: Mapping[str, Any]) -> None:
         serializable = json.loads(json.dumps(dict(message)))
         assert_transcript_payload_safe(serializable)
-        self.lines.append({"direction": direction, "message": serializable})
+        sanitized = sanitize_for_persistence(serializable).value
+        if not isinstance(sanitized, dict):
+            raise E2eTranscriptSerializationError("transcript sanitizer returned a non-mapping record")
+        self.lines.append({"direction": direction, "message": sanitized})
 
 
 def assert_transcript_payload_safe(value: object) -> None:
