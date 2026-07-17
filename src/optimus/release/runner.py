@@ -87,10 +87,14 @@ class ReleaseGateReport:
         return all(result.passed for result in self.results)
 
     def to_json_dict(self) -> dict[str, object]:
-        return {
+        payload = {
             "passed": self.passed,
             "results": [result.to_json_dict() for result in self.results],
         }
+        sanitized = redact_for_telemetry(payload)
+        if not isinstance(sanitized, dict):
+            raise RuntimeError("release report sanitization produced an invalid payload")
+        return sanitized
 
     def to_json(self) -> str:
         return json.dumps(self.to_json_dict(), sort_keys=True, indent=2)

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from optimus.gateway.models import parse_gateway_response
+from optimus_gateway import responses
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.responses import handle_responses_request
 
@@ -143,6 +144,38 @@ def test_handle_responses_request_rejects_unsupported_model():
 
     assert status == 400
     assert "unsupported gateway model" in str(body)
+
+
+def test_handle_responses_request_sanitizes_upstream_error_and_fails_closed(monkeypatch):
+    class FailingUpstreamClient:
+        def create_message(self, *, model: str, input_text: str) -> FakeProviderResult:
+            raise RuntimeError("OPTIMUS_API_KEY=top-secret-canary redis://user:top-secret-canary@host/0")
+
+    status, body = handle_responses_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={"model": "claude-haiku", "input": "hello"},
+        config=_anthropic_config(),
+        upstream_client=FailingUpstreamClient(),
+    )
+
+    assert status == 502
+    assert body["error"]
+    assert "top-secret-canary" not in str(body)
+
+    monkeypatch.setattr(
+        responses,
+        "sanitize_for_persistence",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("sanitizer failure")),
+    )
+    failed_status, failed_body = handle_responses_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={"model": "claude-haiku", "input": "hello"},
+        config=_anthropic_config(),
+        upstream_client=FailingUpstreamClient(),
+    )
+
+    assert failed_status == 502
+    assert failed_body == {"error": "internal gateway error"}
 
 
 def test_handle_responses_request_rejects_unpriced_passthrough_before_upstream_call():

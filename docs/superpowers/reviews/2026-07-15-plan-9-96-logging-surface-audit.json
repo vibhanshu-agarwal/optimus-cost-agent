@@ -1,0 +1,1188 @@
+{
+  "surfaces": [
+    {
+      "key": "optimus.acp.__main__:_append_audit_or_exit:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.__main__:_append_audit_or_exit:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_main_wiring.py::test_unapproved_workspace_fails_closed_before_any_side_effect",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.__main__:_authorize_or_exit:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.__main__:_authorize_or_exit:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_main_wiring.py::test_unapproved_workspace_fails_closed_before_any_side_effect",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.__main__:_print_log:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.__main__:_print_log:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_main_wiring.py::test_unapproved_workspace_fails_closed_before_any_side_effect",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.__main__:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.__main__:main:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_main_wiring.py::test_unapproved_workspace_fails_closed_before_any_side_effect",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.debug_trace:acp_debug_log:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.debug_trace:acp_debug_log:file_open before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.debug_trace:acp_debug_log:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.debug_trace:acp_debug_log:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.debug_trace:acp_debug_log:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.debug_trace:acp_debug_log:text_write before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.dispatcher:JsonRpcDispatcher.dispatch:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.dispatcher:JsonRpcDispatcher.dispatch:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.dispatcher:JsonRpcDispatcher.dispatch:jsonrpc_error_response",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.dispatcher:JsonRpcDispatcher.dispatch:jsonrpc_error_response before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.e2e_transcript:E2eAcpTranscriptWriter._append:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.e2e_transcript:E2eAcpTranscriptWriter._append:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.e2e_transcript:E2eAcpTranscriptWriter.write:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.e2e_transcript:E2eAcpTranscriptWriter.write:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.e2e_transcript:E2eAcpTranscriptWriter.write:text_file_write",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.e2e_transcript:E2eAcpTranscriptWriter.write:text_file_write before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.framing:encode_message:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus.acp.framing:encode_message:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_cmd_approve:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.launch_approval_cli:_cmd_approve:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_piped_approve_fails",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_cmd_approve:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.launch_approval_cli:_cmd_approve:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_piped_approve_fails",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_cmd_inspect:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.launch_approval_cli:_cmd_inspect:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_inspect_on_nonexistent_workspace_fails_gracefully",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_cmd_revoke:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.launch_approval_cli:_cmd_revoke:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_piped_revoke_fails",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_cmd_rotate_key:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.launch_approval_cli:_cmd_rotate_key:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_piped_rotate_key_fails",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_cmd_run:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.launch_approval_cli:_cmd_run:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_run_command_accepts_elevated_debug",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_cmd_run_gateway:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.launch_approval_cli:_cmd_run_gateway:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_run_gateway_builds_manifest_and_spawns_with_expected_args",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_cmd_run_gateway:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.launch_approval_cli:_cmd_run_gateway:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_run_gateway_builds_manifest_and_spawns_with_expected_args",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_display_candidate:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.launch_approval_cli:_display_candidate:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_run_command_accepts_elevated_debug",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.launch_approval_cli:main:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_run_command_accepts_elevated_debug",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approvals:KeyringApprovalStore.consume_one_shot:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.launch_approvals:KeyringApprovalStore.consume_one_shot:file_open opens only a trusted lock, audit, log, or read-hash path for its stated functional operation, not a diagnostic-retention payload.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approvals.py::test_consume_one_shot_returns_record_and_deletes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approvals:KeyringApprovalStore.write_diagnostic_grant:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: write_diagnostic_grant serializes the fixed DiagnosticGrant record\u2014IDs, workspace digest, expiry, and record HMAC\u2014for keyring storage; it contains no credential literal fields.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_elevated_debug_writes_a_grant_that_verifies_against_its_own_store",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approvals:serialize_approval_record:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serialize_approval_record emits the fixed approval schema, whose secret-bearing inputs are stored as domain-separated fingerprints and whose remaining fields are reviewed literals.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approvals.py::test_serialized_record_contains_no_canary_secret",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_audit:_append_with_restrictive_permissions:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Launch-audit append opens the trusted runtime audit file only after append_launch_audit_event has sanitized rejected_names, setting_decisions, and non-integer rule counts; this file boundary is covered by that shared sanitizer path.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/acp/test_launch_audit.py::test_canary_in_rejected_name_is_sanitized",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_audit:_append_with_restrictive_permissions:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "Launch-audit append writes the JSON line constructed after append_launch_audit_event sanitizes rejected_names, setting_decisions, and non-integer rule counts; no raw fallback is available at this write boundary.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/acp/test_launch_audit.py::test_canary_in_rejected_name_is_sanitized",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_audit:append_launch_audit_event:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "append_launch_audit_event serializes its value-safe schema only after applying sanitize_for_persistence to rejected_names, setting_decisions, and malformed rule-count values; JSON failure raises AUDIT_SERIALIZATION_FAILED without a raw write.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/acp/test_launch_audit.py::test_canary_in_rejected_name_is_sanitized",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.local_infra:ensure_local_gateway:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.local_infra:ensure_local_gateway:file_open opens only a trusted lock, audit, log, or read-hash path for its stated functional operation, not a diagnostic-retention payload.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_local_infra.py::test_ensure_local_gateway_spawns_with_exact_cli_args_and_manifest",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.ndjson_subprocess_session:NdjsonSubprocessSession.send:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus.acp.ndjson_subprocess_session:NdjsonSubprocessSession.send:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.ndjson_subprocess_session:NdjsonSubprocessSession.send:text_write",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus.acp.ndjson_subprocess_session:NdjsonSubprocessSession.send:text_write sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.operator_verify:_resolve_approval:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.operator_verify:_resolve_approval:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/integration/release/test_verify_live_agent_cli.py::test_verify_live_agent_success_exits_0",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.operator_verify:ensure_verify_workspace:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.operator_verify:ensure_verify_workspace:text_file_write writes only a fixed fixture, wrapper, report, or transcript functional artifact.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/integration/release/test_verify_live_agent_cli.py::test_verify_live_agent_success_exits_0",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.operator_verify:main:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.operator_verify:main:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/integration/release/test_verify_live_agent_cli.py::test_verify_live_agent_success_exits_0",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.operator_verify:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.operator_verify:main:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/integration/release/test_verify_live_agent_cli.py::test_verify_live_agent_success_exits_0",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.operator_verify:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.operator_verify:main:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/integration/release/test_verify_live_agent_cli.py::test_verify_live_agent_success_exits_0",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.operator_verify:main:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.operator_verify:main:text_write writes only an already constrained functional artifact rather than raw diagnostic content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/integration/release/test_verify_live_agent_cli.py::test_verify_live_agent_success_exits_0",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.preflight:_require_gateway_auth:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.preflight:_require_gateway_auth:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_preflight.py::test_preflight_strict_gateway_probe_reports_unreachable_for_network_failure",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.preflight:_require_redis_url:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.preflight:_require_redis_url:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_preflight.py::test_preflight_strict_gateway_probe_reports_unreachable_for_network_failure",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.preflight:collect_preflight_checks:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.preflight:collect_preflight_checks:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_preflight.py::test_preflight_strict_gateway_probe_reports_unreachable_for_network_failure",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:AcpStreamServer.handle_one:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.server:AcpStreamServer.handle_one:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:AcpStreamServer.handle_one:text_write",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus.acp.server:AcpStreamServer.handle_one:text_write sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:AcpStreamServer.process_request:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.server:AcpStreamServer.process_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:AcpStreamServer.process_request:stderr_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.server:AcpStreamServer.process_request:stderr_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:AcpStreamServer.process_request:structured_exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.server:AcpStreamServer.process_request:structured_exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:AcpStreamServer.read_lines:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.server:AcpStreamServer.read_lines:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:AcpStreamServer.read_lines:stderr_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.server:AcpStreamServer.read_lines:stderr_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:AcpStreamServer.serve:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.server:AcpStreamServer.serve:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:AcpStreamServer.serve:text_write",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus.acp.server:AcpStreamServer.serve:text_write sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:StdioByteWriter.write:text_write",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus.acp.server:StdioByteWriter.write:text_write sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:StdioNdjsonLineWriter.write_line:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus.acp.server:StdioNdjsonLineWriter.write_line:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:AcpDuplexAdapter._handle_session_prompt:structured_exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.spec:AcpDuplexAdapter._handle_session_prompt:structured_exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:RecordingOutboundChannel.request:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.spec:RecordingOutboundChannel.request:redis_hash_write is an AST-overmatch with no sink call in its scoped body.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_spec_protocol.py::test_session_prompt_sends_permission_request_and_keeps_prompt_pending",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.planning_loop:_PlanningIterationRunner.run_iteration:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.agent.planning_loop:_PlanningIterationRunner.run_iteration:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/agent/test_planning_loop_runner.py::test_unexpected_attempt_exception_logs_type_only_and_stops_cost_unknown",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.runner:AgentRunner._finish_agent_planning:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.agent.runner:AgentRunner._finish_agent_planning:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/agent/test_runner.py::test_approved_agent_run_replays_stored_plan_without_second_gateway_call",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.runner:AgentRunner._run_approved_from_store:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.agent.runner:AgentRunner._run_approved_from_store:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/agent/test_runner.py::test_approved_agent_run_replays_stored_plan_without_second_gateway_call",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.state_store:AsyncRedisAgentStateStore.ping:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.agent.state_store:AsyncRedisAgentStateStore.ping:exception_export is an AST-overmatch with no sink call in its scoped body.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/agent/test_state_store.py::test_redis_store_ping_fails_closed_when_redis_is_down",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.state_store:AsyncRedisAgentStateStore.save_plan:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "optimus.agent.state_store:AsyncRedisAgentStateStore.save_plan:redis_hash_write performs short-TTL functional plan replay; task, plan_text, and workspace_root require exact round-trip fidelity, so diagnostic sanitization would break replay.",
+      "sanitizer": "functional replay schema and TTL; no diagnostic sanitization",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.state_store:RedisAgentStateStore.ping:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.agent.state_store:RedisAgentStateStore.ping:exception_export is an AST-overmatch with no sink call in its scoped body.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/agent/test_state_store.py::test_redis_store_ping_fails_closed_when_redis_is_down",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.state_store:RedisAgentStateStore.save_plan:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "optimus.agent.state_store:RedisAgentStateStore.save_plan:redis_hash_write performs short-TTL functional plan replay; task, plan_text, and workspace_root require exact round-trip fidelity, so diagnostic sanitization would break replay.",
+      "sanitizer": "functional replay schema and TTL; no diagnostic sanitization",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.state_store:_record_to_mapping:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "optimus.agent.state_store:_record_to_mapping:json_serialization performs short-TTL functional plan replay; task, plan_text, and workspace_root require exact round-trip fidelity, so diagnostic sanitization would break replay.",
+      "sanitizer": "functional replay schema and TTL; no diagnostic sanitization",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.tools:AgentToolbox.write_file:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.agent.tools:AgentToolbox.write_file:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/agent/test_tools.py::test_toolbox_blocks_secret_file_write",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.evidence.gateway_io:_parse_gateway_usage:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.evidence.gateway_io:_parse_gateway_usage:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence/test_gateway_io.py::test_parse_web_search_response_wraps_malformed_result_as_gateway_response_error",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.evidence.gateway_io:parse_web_extract_response:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.evidence.gateway_io:parse_web_extract_response:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence/test_gateway_io.py::test_parse_web_search_response_wraps_malformed_result_as_gateway_response_error",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.evidence.gateway_io:parse_web_search_response:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.evidence.gateway_io:parse_web_search_response:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence/test_gateway_io.py::test_parse_web_search_response_wraps_malformed_result_as_gateway_response_error",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.gates.fitness:FitnessGateRunner.run:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.gates.fitness:FitnessGateRunner.run:logger_export is an AST-overmatch with no sink call in its scoped body.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/gates/test_fitness.py::test_composite_gate_passes_when_required_checks_pass",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.gates.shadow_workspace:_sha256_file:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.gates.shadow_workspace:_sha256_file:file_open opens only a trusted lock, audit, log, or read-hash path for its stated functional operation, not a diagnostic-retention payload.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/gates/test_mutation_flow.py::test_shadow_changes_promote_only_after_gates_pass",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.gateway.client:GatewayRequest.body_bytes:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus.gateway.client:GatewayRequest.body_bytes:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.gateway.models:parse_gateway_usage:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.gateway.models:parse_gateway_usage:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/gateway/test_models.py::test_parse_gateway_response_fails_closed_for_malformed_usage",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.guardrails.mcp_trust:MCPServerManifest.descriptor_text:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: MCPServerManifest.descriptor_text canonicalizes the local structural descriptor, replacing environment values with digests before deriving the trust descriptor.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/guardrails/test_mcp_trust.py::test_manifest_hash_change_forces_reapproval",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.guardrails.mcp_trust:MCPServerManifest.manifest_hash:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: MCPServerManifest.manifest_hash hashes the canonical structural descriptor whose environment values are already digested, not raw environment content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/guardrails/test_mcp_trust.py::test_manifest_hash_change_forces_reapproval",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.guardrails.mcp_trust:_derive_side_effect_class:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _derive_side_effect_class serializes only declared MCP input-schema metadata to classify the tool as read, write, or network; it neither persists nor exports runtime diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/guardrails/test_mcp_trust.py::test_manifest_hash_change_forces_reapproval",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.guardrails.pre_tool:PreToolGuard._validate_surface:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.guardrails.pre_tool:PreToolGuard._validate_surface:text_write is an AST-overmatch with no sink call in its scoped body.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/guardrails/test_pre_tool_guard.py::test_pre_tool_guard_blocks_shell_command_and_records_audit",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.guardrails.prompt_injection:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.guardrails.prompt_injection:main:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/guardrails/test_prompt_injection.py::test_poisoned_agent_config_instruction_is_blocked",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.loops.ledger:JsonlProgressLedger.append:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.loops.ledger:JsonlProgressLedger.append:file_open before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.loops.ledger:JsonlProgressLedger.append:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.loops.ledger:JsonlProgressLedger.append:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.loops.ledger:JsonlProgressLedger.append:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.loops.ledger:JsonlProgressLedger.append:text_write before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.loops.ledger:JsonlProgressLedger.entries:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.loops.ledger:JsonlProgressLedger.entries:file_open before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.redis.runtime:RedisRuntime._ping_async:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.redis.runtime:RedisRuntime._ping_async:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/agent/test_state_store.py::test_redis_store_ping_fails_closed_when_redis_is_down",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.release.agent_smoke_transcript:SmokeTranscriptRecorder.write:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.release.agent_smoke_transcript:SmokeTranscriptRecorder.write:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.release.agent_smoke_transcript:SmokeTranscriptRecorder.write:text_file_write",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.release.agent_smoke_transcript:SmokeTranscriptRecorder.write:text_file_write before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.release.runner:CommandGate.run:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.release.runner:CommandGate.run:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.release.runner:ReleaseGateReport.to_json:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.release.runner:ReleaseGateReport.to_json:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.retry.policy:_classification:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.retry.policy:_classification:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/retry/test_policy.py::test_named_failure_classes_map_to_expected_kinds",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.telemetry.events:TelemetryEvent.to_json_line:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "TelemetryEvent.to_json_line serializes to_json_dict(), which applies redact_for_telemetry to the complete encoded event before json_safe and JSON encoding; this is the shared diagnostic sanitizer boundary.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/telemetry/test_events.py::test_secret_values_are_redacted_from_event_payload",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.telemetry.jsonl:JsonlTelemetryWriter.append:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.telemetry.jsonl:JsonlTelemetryWriter.append:file_open before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.telemetry.jsonl:JsonlTelemetryWriter.append:jsonl_append",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.telemetry.jsonl:JsonlTelemetryWriter.append:jsonl_append before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.telemetry.jsonl:JsonlTelemetryWriter.append:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.telemetry.jsonl:JsonlTelemetryWriter.append:text_write before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.telemetry.redis_adapter:RedisTelemetryAdapter.ensure_series:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.telemetry.redis_adapter:RedisTelemetryAdapter.ensure_series:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/telemetry/test_redis_adapter.py::test_ensure_series_alters_existing_key",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.telemetry.redis_adapter:RedisTelemetryAdapter.write_run_metadata:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.telemetry.redis_adapter:RedisTelemetryAdapter.write_run_metadata:redis_hash_write writes an explicit allowlisted functional mapping to Redis rather than raw diagnostic content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/telemetry/test_redis_adapter.py::test_write_run_metadata_sets_hash_and_ttl",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.tools.mutation_tools:write_file:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "optimus.tools.mutation_tools:write_file:text_file_write is the authorized write_file mutation payload; sanitization would alter approved content rather than protect a diagnostic artifact.",
+      "sanitizer": "MutationGuard and PreToolGuard authorization; no diagnostic sanitization",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.__main__:main:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus_gateway.__main__:main:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_main_entrypoint.py::test_valid_manifest_with_matching_inputs_passes_gate",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.__main__:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus_gateway.__main__:main:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_main_entrypoint.py::test_valid_manifest_with_matching_inputs_passes_gate",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.__main__:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus_gateway.__main__:main:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_main_entrypoint.py::test_valid_manifest_with_matching_inputs_passes_gate",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.responses:handle_responses_request:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.responses:handle_responses_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.responses:handle_responses_request:http_error_response",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.responses:handle_responses_request:http_error_response before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.server:OptimusGatewayHandler._send_json:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus_gateway.server:OptimusGatewayHandler._send_json:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.server:OptimusGatewayHandler._send_json:text_write",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus_gateway.server:OptimusGatewayHandler._send_json:text_write sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:UrllibAnthropicClient.create_message:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus_gateway.upstream_client:UrllibAnthropicClient.create_message:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_message:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_message:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.launch_manifest:_compute_signature:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _compute_signature canonicalizes the already value-safe gateway-child manifest solely as the HMAC input and returns a signature digest, not retained diagnostic content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/security/test_launch_manifest.py::test_manifest_contains_no_raw_secret",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.launch_manifest:serialize_gateway_child_manifest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serialize_gateway_child_manifest emits the fixed child-manifest schema with provider/shared-secret fingerprints rather than credential literals.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/security/test_launch_manifest.py::test_manifest_contains_no_raw_secret",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_local_gateway:script:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_local_gateway:script:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_local_gateway_scripts.py::test_script_delegates_to_optimus_trust_run_gateway",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_phase1_release_gate:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_phase1_release_gate:main:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_accepts_golden_results_argument",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_phase1_release_gate:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_phase1_release_gate:main:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_accepts_golden_results_argument",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_phase1_release_gate:main:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_phase1_release_gate:main:text_write writes only an already constrained functional artifact rather than raw diagnostic content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_accepts_golden_results_argument",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan987_acpx_live_evidence:_append_report:file_open",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan987_acpx_live_evidence:_append_report:file_open remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan987_acpx_live_evidence:_append_report:json_serialization",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan987_acpx_live_evidence:_append_report:json_serialization remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan987_acpx_live_evidence:_append_report:text_write",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan987_acpx_live_evidence:_append_report:text_write remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan987_acpx_live_evidence:_write_agent_wrapper:text_file_write",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan987_acpx_live_evidence:_write_agent_wrapper:text_file_write remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan987_acpx_live_evidence:classify_attempt_file:json_serialization",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan987_acpx_live_evidence:classify_attempt_file:json_serialization remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan987_acpx_live_evidence:classify_attempt_file:text_file_write",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan987_acpx_live_evidence:classify_attempt_file:text_file_write remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan987_acpx_live_evidence:fixture_manifest_sha256:json_serialization",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan987_acpx_live_evidence:fixture_manifest_sha256:json_serialization remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan987_acpx_live_evidence:main:exception_export",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan987_acpx_live_evidence:main:exception_export remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan987_acpx_live_evidence:main:json_serialization",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan987_acpx_live_evidence:main:json_serialization remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan987_acpx_live_evidence:main:logger_export",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan987_acpx_live_evidence:main:logger_export remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan987_acpx_live_evidence:main:stderr_export",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan987_acpx_live_evidence:main:stderr_export remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan987_acpx_live_evidence:main:stdout_export",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan987_acpx_live_evidence:main:stdout_export remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan987_acpx_live_evidence:main:text_file_write",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan987_acpx_live_evidence:main:text_file_write remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan987_acpx_live_evidence:prepare_single_pass:text_file_write",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan987_acpx_live_evidence:prepare_single_pass:text_file_write remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan988_fu4b_live_evidence:_classify_attempt_file:json_serialization",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan988_fu4b_live_evidence:_classify_attempt_file:json_serialization remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan988_fu4b_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan988_fu4b_live_evidence:_classify_attempt_file:text_file_write",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan988_fu4b_live_evidence:_classify_attempt_file:text_file_write remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan988_fu4b_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan988_fu4b_live_evidence:_lane_header_sha_from_report:json_serialization",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan988_fu4b_live_evidence:_lane_header_sha_from_report:json_serialization remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan988_fu4b_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan988_fu4b_live_evidence:_write_agent_wrapper:text_file_write",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan988_fu4b_live_evidence:_write_agent_wrapper:text_file_write remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan988_fu4b_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan988_fu4b_live_evidence:append_plan988_record:file_open",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan988_fu4b_live_evidence:append_plan988_record:file_open remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan988_fu4b_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan988_fu4b_live_evidence:append_plan988_record:json_serialization",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan988_fu4b_live_evidence:append_plan988_record:json_serialization remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan988_fu4b_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan988_fu4b_live_evidence:append_plan988_record:text_write",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan988_fu4b_live_evidence:append_plan988_record:text_write remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan988_fu4b_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan988_fu4b_live_evidence:main:exception_export",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan988_fu4b_live_evidence:main:exception_export remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan988_fu4b_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan988_fu4b_live_evidence:main:json_serialization",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan988_fu4b_live_evidence:main:json_serialization remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan988_fu4b_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan988_fu4b_live_evidence:main:logger_export",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan988_fu4b_live_evidence:main:logger_export remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan988_fu4b_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan988_fu4b_live_evidence:main:stderr_export",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan988_fu4b_live_evidence:main:stderr_export remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan988_fu4b_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan988_fu4b_live_evidence:main:stdout_export",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan988_fu4b_live_evidence:main:stdout_export remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan988_fu4b_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan988_fu4b_live_evidence:main:text_file_write",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan988_fu4b_live_evidence:main:text_file_write remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan988_fu4b_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan988_fu4b_live_evidence:registration_sha256:json_serialization",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Frozen legacy helper surface tools.run_plan988_fu4b_live_evidence:registration_sha256:json_serialization remains byte-frozen and is excluded from Plan 9.96-qualified evidence; this exclusion is not a sanitization success.",
+      "sanitizer": "exclusion only: frozen raw-capture helper; no successful sanitization claim",
+      "test_node": "tests/unit/tools/test_run_plan988_fu4b_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan987_acpx_evidence:ledger_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: ledger_digest canonicalizes supplied ledger records only to calculate a SHA-256 evidence digest; it does not persist or export the record content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan987_acpx_evidence.py::test_ledger_digest_has_fixed_canonical_vector",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan987_acpx_evidence:main:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.verify_plan987_acpx_evidence:main:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan987_acpx_evidence.py::test_post_capture_verifier_is_directly_executable",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan987_acpx_evidence:main:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.verify_plan987_acpx_evidence:main:logger_export is an AST-overmatch with no sink call in its scoped body.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan987_acpx_evidence.py::test_post_capture_verifier_is_directly_executable",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan987_acpx_evidence:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.verify_plan987_acpx_evidence:main:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan987_acpx_evidence.py::test_post_capture_verifier_is_directly_executable",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan996_logging_surfaces:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.verify_plan996_logging_surfaces:main:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan99_noneditable_install:_live:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.verify_plan99_noneditable_install:_live:text_file_write writes only a fixed fixture, wrapper, report, or transcript functional artifact.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_sanitized_evidence_rejects_secret_values",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan99_noneditable_install:_offline:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.verify_plan99_noneditable_install:_offline:text_file_write writes only a fixed fixture, wrapper, report, or transcript functional artifact.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_sanitized_evidence_rejects_secret_values",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan99_noneditable_install:_write_agent_wrapper:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.verify_plan99_noneditable_install:_write_agent_wrapper:text_file_write writes only a fixed fixture, wrapper, report, or transcript functional artifact.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_sanitized_evidence_rejects_secret_values",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan99_noneditable_install:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main serializes the evidence dictionary only after its secret-value validation rejects hostile fixture or ambient credential values.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_sanitized_evidence_rejects_secret_values",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan99_noneditable_install:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.verify_plan99_noneditable_install:main:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_sanitized_evidence_rejects_secret_values",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan99_noneditable_install:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.verify_plan99_noneditable_install:main:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_sanitized_evidence_rejects_secret_values",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan99_noneditable_install:main:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.verify_plan99_noneditable_install:main:text_file_write writes only a fixed fixture, wrapper, report, or transcript functional artifact.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_sanitized_evidence_rejects_secret_values",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan99_noneditable_install:parse_live_output:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: parse_live_output parses ACPX JSON only to verify required end_turn and approval evidence in memory; it does not persist a diagnostic artifact.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_parse_live_output_requires_end_turn_and_permission_evidence",
+      "evidence_tier": "unit"
+    }
+  ]
+}

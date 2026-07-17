@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from optimus.release.runner import CallableGate, CommandGate, ReleaseGateRunner
+import pytest
+
+from optimus.release import runner
+from optimus.release.runner import CallableGate, CommandGate, ReleaseGateReport, ReleaseGateResult, ReleaseGateRunner
 
 
 def test_release_runner_executes_gates_in_order_and_reports_pass():
@@ -44,6 +47,29 @@ def test_command_gate_uses_injected_executor_and_redacts_output():
     assert commands == [("python", "-c", "print('x')")]
     assert "sk-test" not in result.output_summary
     assert "**********" in result.output_summary
+
+
+def test_release_report_sanitizes_externally_constructed_result_before_serialization(monkeypatch):
+    report = ReleaseGateReport(
+        results=(
+            ReleaseGateResult(
+                name="gate",
+                passed=False,
+                output_summary="OPTIMUS_API_KEY=top-secret-canary redis://user:top-secret-canary@host/0",
+                duration_ms=1,
+            ),
+        )
+    )
+
+    assert "top-secret-canary" not in report.to_json()
+
+    monkeypatch.setattr(
+        runner,
+        "redact_for_telemetry",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("sanitizer failure")),
+    )
+    with pytest.raises(RuntimeError, match="sanitizer failure"):
+        report.to_json()
 
 
 def test_release_report_serializes_to_json_dict():

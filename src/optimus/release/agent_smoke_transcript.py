@@ -7,6 +7,7 @@ from typing import Any
 
 from optimus.agent.models import AgentRunRequest, AgentRunResult
 from optimus.agent.prompts import AGENT_PLANNER_PROMPT_VERSION
+from optimus_security.sanitization import sanitize_for_persistence
 
 PLAN_9_5_SMOKE_TRANSCRIPT_PATH = Path("reports/plan-9-5-working-agent-smoke-transcript.json")
 
@@ -27,13 +28,16 @@ class SmokeTranscriptRecorder:
         self.observations.append(AgentRunObservation(task_id=task_id, request=request, result=result))
 
     def write(self, path: Path = PLAN_9_5_SMOKE_TRANSCRIPT_PATH) -> Path:
-        path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "prompt_version": AGENT_PLANNER_PROMPT_VERSION,
             "model": self.model,
             "runs": [_observation_payload(self.model, observation) for observation in self.observations],
         }
-        path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        sanitized = sanitize_for_persistence(payload).value
+        if not isinstance(sanitized, dict):
+            raise RuntimeError("smoke transcript sanitization produced an invalid payload")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(sanitized, indent=2, sort_keys=True), encoding="utf-8")
         return path
 
 

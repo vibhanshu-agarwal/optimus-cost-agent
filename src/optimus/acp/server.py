@@ -9,7 +9,13 @@ from typing import Any, Protocol
 
 from optimus.acp.debug_trace import acp_debug_log, log_provenance_once
 from optimus.acp.dispatcher import JsonRpcDispatcher
-from optimus.acp.errors import INTERNAL_ERROR, AcpOutboundError, JsonRpcError, error_response
+from optimus.acp.errors import (
+    INTERNAL_ERROR,
+    AcpOutboundError,
+    JsonRpcError,
+    error_response,
+    sanitize_protocol_error_message,
+)
 from optimus.acp.framing import FramingError, encode_message, read_message
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore
 
@@ -253,11 +259,11 @@ class AcpStreamServer:
                     try:
                         await message_queue.put(json.loads(stripped.decode("utf-8")))
                     except json.JSONDecodeError as exc:
-                        print(f"optimus.acp: invalid ndjson line: {exc}", file=sys.stderr)
+                        print(f"optimus.acp: invalid ndjson line: {sanitize_protocol_error_message(str(exc))}", file=sys.stderr)
                         await message_queue.put(None)
                         return
             except Exception as exc:
-                print(f"optimus.acp: ndjson reader failed: {exc}", file=sys.stderr)
+                print(f"optimus.acp: ndjson reader failed: {sanitize_protocol_error_message(str(exc))}", file=sys.stderr)
                 await message_queue.put(None)
 
         async def process_request(message: dict[str, Any]) -> None:
@@ -313,7 +319,7 @@ class AcpStreamServer:
                 # endregion
                 print(
                     f"optimus.acp: process_request failed id={request_id!r} method={method!r} "
-                    f"pending_permission_id={pending_permission_id!r}: {exc}",
+                    f"pending_permission_id={pending_permission_id!r}: {sanitize_protocol_error_message(str(exc))}",
                     file=sys.stderr,
                 )
                 await writer.write_line(
