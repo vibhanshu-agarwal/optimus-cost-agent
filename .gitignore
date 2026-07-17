@@ -91,3 +91,6 @@ Desktop.ini
 *.spec
 pip-log.txt
 pip-delete-this-directory.txt
+
+# Reviewer checkpoint logs (handoff continuity; never committed into task commits)
+docs/superpowers/reviews/*-review-checkpoints.md
