@@ -4,27 +4,26 @@
 > plan task-by-task and `superpowers:test-driven-development` for every behavior change. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Draft for reviewer-agent and operator review. **This line is a permanent, unedited
-artifact of the pristine hashed content approved in Task 0 Step 1 — it is never updated to say
-"Approved" after the fact, mirroring Plan 9.96's own frozen "Draft" header
-(`docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md`), whose
-own note states plainly: "The embedded Draft header is retained because it is part of the frozen
-bytes." Approval status is never determined by this sentence.** The single authoritative source of
-truth is: **approval is absent until
-`docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval.md` exists and its
-recorded digest matches the PRISTINE bytes committed in Task 0 Step 2's planning commit — never the
-live, currently-checked-out file, which legitimately diverges via checkbox ticks per Task 0's own
-deferral rule.** (Retrieve those pristine bytes for comparison via `git show
-<planning-commit-SHA>:docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md`, not
-by reading the working-tree file directly.) Once that record exists and matches the planning-commit
-blob, approval is in effect and no header edit is required or expected — checkbox ticks afterward
-never affect this.
+**Status:** Draft for reviewer-agent and operator review. **This line is retained from the pristine
+v1 bytes approved in Task 0 and is never updated to say "Approved" after the fact, mirroring Plan
+9.96's own frozen "Draft" header. Approval status is determined only by the digest-pinned approval
+records and their matching committed plan blobs, never by this sentence or by the live,
+checkbox-mutated working file.** The v1 approval record
+`docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval.md` remains the immutable
+historical approval for the pristine plan blob committed at `424940e`. The empirical Task 1 finding
+required a substantive agile revision, so **no work after Task 1 Step 1 may proceed until Task 0A
+commits these revised bytes together with
+`docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md`, whose recorded
+digest matches the revised plan blob in that amendment commit.** After that commit, later checkbox
+ticks do not invalidate v2 approval; any further substantive change requires another reviewed,
+digest-pinned amendment.
 
 **Goal:** Give `tools/run_plan996_acpx_security_evidence.py` the ability to drive one real,
 independently-authored-`acpx` ordinary session and one real elevated session against the actual
 Optimus agent, and prove Plan 9.96 Task 9 Step 2's required properties (mode, tools, cost band,
-terminal state/`end_turn`, zero pre-approval mutation, exact child-key manifest, ordinary no-tags
-behavior, elevated allowlisted provenance/tags) from that real evidence — without editing Plan
+terminal state/`end_turn`, zero pre-approval mutation, exact child-key manifest, ordinary absence of
+an elevated comparison record, elevated run-scoped allowlisted provenance/comparison evidence, and
+zero-or-more sanitized correlation tags) from that real evidence — without editing Plan
 9.96's frozen plan file, security contract, approval records, or either frozen Plan 9.87/9.88
 helper.
 
@@ -112,10 +111,15 @@ snapshot/freshness/mutation-proof evidence design each carry real risk; this is 
 - `src/optimus/acp/spec.py` (multiple sites, e.g. lines 580/584/586) — `"end_turn"` is the real ACP
   `stopReason` value for a completed turn; `src/optimus/acp/operator_verify.py:357-359` already
   contains a verified pattern for asserting it from a captured `session/prompt` response.
-- `src/optimus/acp/debug_trace.py:19,24,170` — elevated-diagnostics evidence lives at
-  `.optimus/debug-acp.ndjson` under the workspace root and is tagged via
-  `optimus_security.sanitization.session_correlation_tag`; this is the locator for the "elevated
-  allowlisted provenance/tags" assertion.
+- `src/optimus/acp/debug_trace.py:19,24,78,160-181` — elevated-diagnostics evidence lives at
+  `.optimus/debug-acp.ndjson` under the workspace root. A diagnostic grant causes exactly one
+  `launch_authorization_comparison` record at the single `__main__.py:352` call site; an ordinary
+  launch with no grant emits none. Its `correlation_tags` array contains zero or more values produced
+  by `optimus_security.sanitization.session_correlation_tag`. The array is legitimately empty when
+  the shared secret was resolved from keyring/`.env.gateway`, because that secret is fingerprinted as
+  `_resolved_shared_secret` but is not present in the inherited-environment `secret_inventory` the
+  tag loop examines. Task 1's run-scoped record count — not tag-array cardinality — is therefore the
+  elevated oracle.
 - `src/optimus/acp/launch_audit.py` / the settled ruling that `runtime_root` = `workspace/.optimus` —
   the workspace's own `launch-audit.ndjson` carries `child_propagation_decisions.agent_child`
   (child-key names, never values) for whichever process's gate wrote it; Task 1 must determine which
@@ -132,8 +136,9 @@ plan; do not reinterpret either plan's contract in code.
    `tools/run_plan987_acpx_live_evidence.py`, `tools/run_plan988_fu4b_live_evidence.py`,
    `src/optimus/acp/operator_verify.py`, `tests/e2e/acp/test_spawned_agent_live.py`,
    `src/optimus/acp/e2e_transcript.py`'s existing `PLAN_9_6_*` constants and writer behavior, and
-   Plan 9.96's own plan file, security-contract spec, and both approval records. This plan reads all
-   of the above for precedent only.
+   Plan 9.96's own plan file, security-contract spec, and both approval records. The original Plan
+   9.98 approval record is also immutable; after Task 0A lands, its v2 approval record is immutable
+   too. This plan reads all of the above for precedent only.
 2. **No FU-1/2/3/4/5/7 source changes.** Per the 2026-07-18 checkpoint-log ruling, those follow-ups
    are disclosed-and-backlogged by Plan 9.96 Task 9, not fixed. This plan must not touch
    `src/optimus/acp/__main__.py`, `src/optimus/agent/defaults.py`,
@@ -143,8 +148,8 @@ plan; do not reinterpret either plan's contract in code.
    `src/optimus/acp/bootstrap.py` for any reason. If evidence work seems to require touching one of
    these, stop and report — do not fold an FU fix into this plan's diff.
 3. **Single sanctioned diagnostic-grant consumption per real elevated launch.** The grant is
-   consumed exactly once, by whichever process's gate decision the "elevated allowlisted
-   provenance/tags" claim actually depends on. Task 1 determines and empirically proves which one;
+   consumed exactly once, by whichever process's gate decision the elevated run-scoped comparison
+   record actually depends on. Task 1 determines and empirically proves which one;
    no code may consume the grant a second time defensively "just in case."
 4. **RED before GREEN, specifically at the capability boundary.** A test proving the *currently
    committed* `acpx --version` capture path cannot satisfy Step 2's session assertions must exist,
@@ -170,11 +175,11 @@ plan; do not reinterpret either plan's contract in code.
    commit): the task's named tests, `uv run ruff check .`, `uv run python
    tools/verify_plan996_logging_surfaces.py --manifest
    docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json`, and `git diff --check`.
-   For **docs-only** commits (the Task 0 planning commit, the Task 8 evidence/docs commit, and the
-   Task 8 plan-closure commit — none of which change Python or the logging-surface inventory): the
-   full-frozen-path `git diff --quiet HEAD` gate plus `git diff --cached --check` only; the test/Ruff/
-   surface-verifier gates are vacuous for a Markdown-only change and are deliberately not required
-   there. Every commit runs the frozen-path HEAD gate regardless.
+   For **docs-only** commits (the Task 0 planning commit, the Task 0A v2 amendment commit, the Task 8
+   evidence/docs commit, and the Task 8 plan-closure commit — none of which change Python or the
+   logging-surface inventory): the full-frozen-path `git diff --quiet HEAD` gate plus `git diff
+   --cached --check` only; the test/Ruff/surface-verifier gates are vacuous for a Markdown-only change
+   and are deliberately not required there. Every commit runs the frozen-path HEAD gate regardless.
 
 ---
 
@@ -182,6 +187,9 @@ plan; do not reinterpret either plan's contract in code.
 
 - Create: `docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval.md` — this
   plan's own digest-pinned approval record (Task 0 Step 1), before any other step.
+- Create: `docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md` — the
+  digest-pinned two-signature approval record for this agile revision (Task 0A). The original record
+  and `424940e` plan blob stay untouched as the v1 historical baseline.
 - Modify: `tools/run_plan996_acpx_security_evidence.py` — add the `exec`-mode command construction,
   agent-invocation resolution, session-result parsing, the grammar-validated `--evidence-run-nonce`
   argument, the distinct real-session deadline + drive-session-only process-tree termination, the
@@ -204,13 +212,13 @@ plan; do not reinterpret either plan's contract in code.
   Task 9 dependency in the existing Plan 9.96 section.
 - Modify: `README.md` — one-sentence planning-status paragraph, mirroring the pattern used for every
   other plan.
-- Modify (checkbox-only, at closure): `docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md`
-  itself — committed pristine in the Task 0 planning commit, then re-committed with its accumulated
-  `- [ ]`→`- [x]` ticks in the Task 8 Step 4 plan-closure commit, mechanically proven to contain no
-  substantive-text change.
-- Note the four commits this plan produces: (1) Task 0 planning (plan + approval record), (2) Task 6
-  implementation, (3) Task 8 Step 3 evidence/docs (report + roadmap + README, no plan file), (4) Task
-  8 Step 4 plan-closure (plan-file checkbox diff only).
+- Modify: `docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md` itself — first
+  committed pristine in Task 0; substantively revised once in Task 0A with a new digest and approval
+  record; then re-committed with only its accumulated post-v2 `- [ ]`→`- [x]` ticks in Task 8 Step 4.
+- Note the five commits this plan produces: (1) Task 0 v1 planning (plan + v1 approval record), (2)
+  Task 0A agile amendment (revised plan + v2 approval record), (3) Task 6 implementation, (4) Task 8
+  Step 3 evidence/docs (report + roadmap + README, no plan file), (5) Task 8 Step 4 plan-closure
+  (plan-file checkbox diff only versus the v2 amendment commit).
 - Do not modify: anything listed under Global Constraint 1, or any FU-1/2/3/4/5/7 file listed under
   Global Constraint 2.
 
@@ -222,7 +230,7 @@ plan; do not reinterpret either plan's contract in code.
 (the approval record). Commit this file and the plan file itself as their own docs-only "planning
 commit" before Task 1 begins — see Step 2.
 
-- [ ] **Step 1: Pin this plan's own approval identity ONCE, over the pristine (unchecked) plan — checkbox ticks afterward do not invalidate it**
+- [x] **Step 1: Pin this plan's own approval identity ONCE, over the pristine (unchecked) plan — checkbox ticks afterward do not invalidate it**
 
 This plan itself needs the same digest-pinned approval discipline Plan 9.96 required of its own plan
 file (Plan 9.96 Task 0 Global Constraint 1). Two things the first draft got wrong, both fixed here:
@@ -266,7 +274,7 @@ Task 8 Step 4 closure commit along with everything else. Every step from Task 1 
 as usual — this special handling applies ONLY to these first two steps, because they are the ones
 that establish and then commit the pristine baseline.
 
-- [ ] **Step 2: Commit the approved plan and its approval record — the contract must exist in repository history before implementation starts**
+- [x] **Step 2: Commit the approved plan and its approval record — the contract must exist in repository history before implementation starts**
 
 The first draft never staged the plan file or its approval record in any commit — both would have
 remained untracked forever while implementation proceeded, meaning the repository history would
@@ -307,7 +315,7 @@ and a mechanical proof that no substantive text changed — see Task 8 Step 4. T
 re-committed here, and NOT in the Task 8 Step 3 evidence/docs commit (which deliberately excludes the
 plan file to avoid the self-reference).
 
-- [ ] **Step 3: Verify the exact foundation state before any further mutation**
+- [x] **Step 3: Verify the exact foundation state before any further mutation**
 
 ```bash
 git -C . rev-parse HEAD
@@ -330,13 +338,113 @@ has moved further because Plan 9.96 Task 9 Step 1 (the OS-store ceremony) has al
 evidence, that is expected and fine — Step 1 does not touch any file this plan also touches;
 re-verify the frozen-path diffs against the new HEAD before continuing.
 
-- [ ] **Step 4: Confirm no FU-1/2/3/4/5/7 file has drifted since the checkpoint-log ruling**
+- [x] **Step 4: Confirm no FU-1/2/3/4/5/7 file has drifted since the checkpoint-log ruling**
 
 ```bash
 git -C . diff --stat HEAD -- src/optimus/acp/__main__.py src/optimus/agent/defaults.py src/optimus/acp/trusted_paths.py src/optimus/acp/subprocess_env.py src/optimus/acp/launch_policy.py src/optimus/acp/errors.py src/optimus/acp/bootstrap.py tools/verify_plan996_logging_surfaces.py
 ```
 
 Expected: no output (nothing staged/modified). This plan's diff must never touch these files.
+
+---
+
+### Task 0A: Agile Revision and V2 Approval Gate (required before Task 1 Step 2)
+
+Task 1 Step 1 was completed under the approved v1 contract and exposed a real conflict between the
+planned non-empty correlation-tag oracle and the committed source/live artifact. That completed investigation is
+preserved. This task revises only incomplete or directly affected contract text; it does not rewrite
+the v1 approval record or the immutable plan baseline at commit `424940e`.
+
+**Files:**
+- Modify: `docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md`
+- Create: `docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md`
+
+- [ ] **Step 1: Prove the revision is grounded in the immutable v1 baseline and confined to the affected incomplete work**
+
+Use `424940e` instead of a stash: it is already the immutable, digest-pinned v1 plan in repository
+history and cannot accidentally entangle the unrelated `.claude/` or `uv.lock` working-tree state.
+Review the complete plan delta and perform the stale-terminology sweep:
+
+```bash
+git diff 424940e -- docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md
+rg -n "elevated_(tag)_present|contains an allowlisted.*session_correlation_(tag)|(?i:tag (presence|absence))|ordinary no[- ]tags" docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md
+```
+
+The first command may show the already-valid Task 0 and Task 1 Step 1 checkbox ticks, this Task 0A
+approval machinery, and the affected incomplete oracle/manifest/E2E/DoD/commit-accounting text. It
+must not silently rewrite the completed Task 0 or Task 1 Step 1 procedures. The second command must
+print nothing; any remaining `session_correlation_tag` reference elsewhere in the document must say
+explicitly that tags are zero-or-more sanitized metadata and are not the elevated oracle.
+
+- [ ] **Step 2: Obtain reviewer-agent and operator approval of the exact revised bytes, then compute the v2 digest with the literal required command**
+
+The reviewer independently checks the full diff against `424940e`, the terminology sweep, and the
+frozen Plan 9.96 Task 9 wording. The record-presence design satisfies the parent's "elevated
+allowlisted provenance/tags" intent as follows: the run-scoped allowlisted
+`launch_authorization_comparison` record proves the inner gate activated elevated diagnostics;
+`correlation_tags` remains a zero-or-more, allowlisted/sanitized field within that record; and an
+empty array is the required honest result when no eligible inherited secret can be tagged. The plan
+must never manufacture a tag merely to make the array non-empty.
+
+After both reviewer-agent and operator approve these exact revised bytes, run this literal command
+in a terminal where `uv` is genuinely on PATH — no substitute hashing command:
+
+```bash
+uv run python -c "from pathlib import Path; import hashlib; p=Path('docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md'); print(hashlib.sha256(p.read_bytes()).hexdigest().upper())"
+```
+
+Create `docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md` with the
+same two-signature shape as v1: the exact digest, date, Codex reviewer approval, operator approval,
+the v1 baseline commit `424940e`, and a statement that the digest covers the exact revised plan bytes
+committed with this record. Leave the original v1 approval record untouched.
+
+**Do not tick Steps 1, 2, or 3 before the amendment commit lands.** Ticking any of them would change
+the bytes after approval and before the commit intended to pin them. The revised approval snapshot
+truthfully includes the Task 0 and Task 1 Step 1 checkboxes already completed under v1, while every
+Task 0A checkbox remains unchecked.
+
+- [ ] **Step 3: Commit the revised plan and v2 approval record as their own docs-only amendment commit**
+
+Before staging, verify the original record and every parent frozen path are unchanged, and inspect
+the complete working tree so unrelated state cannot enter the commit:
+
+```bash
+git diff --quiet HEAD -- tools/run_plan987_acpx_live_evidence.py tools/run_plan988_fu4b_live_evidence.py src/optimus/acp/operator_verify.py tests/e2e/acp/test_spawned_agent_live.py src/optimus/acp/e2e_transcript.py docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md docs/superpowers/reviews/2026-07-15-plan-9-96-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval.md
+git status --porcelain --untracked-files=all
+git diff 424940e -- docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md
+cat docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md
+```
+
+After reviewer and operator approval only:
+
+```bash
+git add docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md
+git diff --cached -- docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md
+git diff --cached --check
+git commit -m "Amend Plan 9.98 elevated evidence oracle"
+git rev-parse HEAD
+```
+
+Immediately after that commit exists, while the working plan still byte-matches the committed v2
+blob, rerun Step 2's literal `uv run python ...` digest command and confirm the result equals the v2
+record. Only then tick Steps 1, 2, and 3 in the working tree. They remain ordinary checkbox tracking
+to be persisted by the final closure commit.
+
+- [ ] **Step 4: Verify the committed v2 identity, then resume at Task 1 Step 2**
+
+Mechanically locate the amendment commit by the commit that first added the v2 approval record. Also
+verify neither approval record drifted in the working tree and that the live plan differs from the
+v2 committed blob only by the Task 0A checkbox ticks just authorized in Step 3. Record the amendment
+SHA in the execution notes. Only then may Task 1 Step 2 continue.
+
+```bash
+AMENDED_PLANNING_SHA=$(git log --diff-filter=A --format=%H -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md | tail -1)
+echo "V2 amendment commit: $AMENDED_PLANNING_SHA"
+git diff --quiet -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md
+git diff "$AMENDED_PLANNING_SHA" -- docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md | grep '^[+-]' | grep -v '^[+-]\{3\}' | grep -vE '^\+- \[x\]' | grep -vE '^-- \[ \]'
+```
+
+The last two commands must print nothing.
 
 ---
 
@@ -348,7 +456,7 @@ failure class Plan 9.96 has repeatedly guarded against elsewhere.
 
 **Files:** none yet (investigation and a short written ruling; code changes start at Task 2/3).
 
-- [ ] **Step 1: Establish the ruling in writing, grounded in the cited source**
+- [x] **Step 1: Establish the ruling in writing, grounded in the cited source**
 
 `optimus-agent` (`pyproject.toml:17` → `optimus.acp.__main__:main`) performs its own complete
 `resolve_launch_candidate`/`authorize_launch`/grant-consumption gate whenever it is spawned as a
@@ -365,10 +473,15 @@ does today), the grant is already gone by the time `optimus-agent` tries to cons
 silently downgrades to ordinary per its documented fail-open-to-safe behavior, and the "elevated"
 claim becomes false while every test still passes.
 
+This completed Step 1 establishes only which process owns the elevated diagnostic decision. Task 1
+Step 2's empirical correction controls the observable oracle: `correlation_tags` is zero-or-more
+allowlisted/sanitized metadata and may be empty; the current-run comparison-record count proves
+ordinary versus elevated.
+
 Write this ruling down verbatim in the plan execution notes before Step 2, so it is falsifiable
 rather than assumed.
 
-- [ ] **Step 2: Empirically prove the failure mode and the fix — using the store's own API as the oracle, never `optimus-agent`'s exit behavior**
+- [ ] **Step 2: Empirically prove the failure mode and the fix — using the store API plus the run-scoped comparison-record count, never `optimus-agent`'s exit behavior**
 
 A diagnostic grant is bound to a specific `launch_session_id` (`launch_approvals.py:626-627`:
 `consume_diagnostic_grant` raises `GRANT_SESSION_MISMATCH`, not `GRANT_NOT_FOUND`, when the supplied
@@ -391,9 +504,22 @@ oracles instead of trying to read `optimus-agent`'s own behavior as a report:
    harness** (not through the `optimus-agent` CLI) — this genuinely raises/returns observably, since
    it's your own test code calling the store API, not something routed through `__main__.py`'s
    swallow layer.
-2. **The presence or absence of an allowlisted `session_correlation_tag` entry in
-   `.optimus/debug-acp.ndjson`** as the *indirect* signal that `optimus-agent` actually turned on
-   elevated diagnostics for that launch (per Step 3 below, this requires `--debug-trace`).
+2. **The count of `launch_authorization_comparison` records appended by this specific run to
+   `.optimus/debug-acp.ndjson`** as the *indirect* signal that `optimus-agent` actually received a
+   diagnostic grant and turned on elevated diagnostics (per Step 3 below, this requires
+   `--debug-trace`). The single call site is unconditional when a debug log path exists, while
+   `log_authorized_launch_comparison` early-returns only when `diagnostic_grant is None`: exactly one
+   current-run record means elevated; zero means ordinary. Scope the count by the pre-invocation file
+   offset and validate the appended suffix's single process-local `sessionId`; never ask whether the
+   shared append-only file contains such a record anywhere in its history.
+
+**Do not use non-empty `correlation_tags` as the oracle.** The empirical artifact and source trace
+proved that keyring/`.env.gateway` credentials are structurally invisible to the tag loop:
+`launch_gate.py:442-529` populates `secret_inventory` only from raw inherited `os.environ`, while the
+resolved shared secret enters only `secret_fingerprints["_resolved_shared_secret"]` at lines 590-595;
+`debug_trace.py:167-181` iterates only `secret_inventory ∩ inherited.values`. A genuine elevated
+record can therefore contain `"correlation_tags": []`. That is valid zero-or-more allowlisted
+metadata, not evidence of downgrade.
 
 In a scratch workspace with a durable approval, construct one `DiagnosticGrant` directly (reuse the
 existing test pattern `_sample_diagnostic_grant` at `tests/unit/acp/test_launch_approvals.py:37-52`,
@@ -422,19 +548,27 @@ this direct call succeeds once. Then call `store.consume_diagnostic_grant(grant_
 non-swallowed proof that the grant is genuinely gone). Then run `optimus-agent --workspace-root <ws>
 --launch-session-id <same id> --diagnostic-grant-id <same grant id> --debug-trace --check-config
 --no-auto-start` (bounded, `stdin=DEVNULL`, as above) — confirm exit 0 (ordinary, silently
-downgraded) and that `.optimus/debug-acp.ndjson` contains **no** `session_correlation_tag` entry,
-proving the downgrade happened even though nothing printed it.
+downgraded) and that the debug file's current-run suffix contains **zero**
+`launch_authorization_comparison` records, proving the downgrade happened even though nothing
+printed it.
 
 (b) **Inner-consumes case (the fix):** with a freshly written, unconsumed grant (same fixed session
 ID), run the identical bounded `optimus-agent --check-config --no-auto-start` invocation *first* —
-confirm `.optimus/debug-acp.ndjson` **does** contain an allowlisted `session_correlation_tag` entry
-(proving elevated diagnostics turned on, which is only possible if the grant was actually consumed).
+confirm the debug file's current-run suffix contains **exactly one**
+`launch_authorization_comparison` record (proving elevated diagnostics turned on, which is only
+possible if the grant was actually consumed). Accept `correlation_tags: []`; validate that the field
+is an array containing zero or more allowlisted/sanitized values rather than requiring a fabricated
+non-empty tag.
 Then call `store.consume_diagnostic_grant(grant_id, session_id)` directly in the probe — confirm it
 now raises `ApprovalError(code="GRANT_NOT_FOUND")`, proving the grant was consumed exactly once by
 `optimus-agent` itself and not left over for a second, redundant consumption.
 
-Record both runs' observed outcomes (the two direct-store results, the tag presence/absence, the
-`optimus-agent` exit codes) as this task's evidence; do not proceed on code-reading alone.
+Record both runs' observed outcomes (the direct-store results, the run-scoped comparison-record
+counts, each record's zero-or-more sanitized `correlation_tags`, and the `optimus-agent` exit codes)
+as this task's evidence; do not proceed on code-reading alone. The already-observed artifact at
+`C:/tmp/optimus-plan998-task1-topology-probe/.optimus/debug-acp.ndjson` produced zero comparison
+records for outer-consumes-first and exactly one record with `correlation_tags: []` for each
+inner-consumes run; preserve that empirical ruling in the evidence report.
 
 **Cleanup — grounded in what the store actually exposes, not an assumed "delete" method, and not an
 assumed passive expiry either.** Checked `launch_approvals.py`: `KeyringApprovalStore` has no
@@ -491,13 +625,15 @@ form). Construct it as `optimus-agent --workspace-root <workspace> --launch-sess
 path, matching Plan 9.96's own settled ruling that `authorize_launch` takes the durable path when
 `approval_id is None`). **`--debug-trace` is required, not optional:** it is the only path that
 creates `.optimus/debug-acp.ndjson` at all (`__main__.py:99-111`, `_apply_debug_trace_args` returns
-early when `args.debug_trace` is falsy) — without it, elevated correlation tags can never be observed
+early when `args.debug_trace` is falsy) — without it, the comparison record cannot be observed
 regardless of grant handling. Note also (`debug_trace.py:160-164`,
-`log_authorized_launch_comparison`): tags require **both** `--debug-trace` enabled **and** a present
-diagnostic grant — `context.enabled` alone with no grant emits nothing. This means the Task 5
-"ordinary no-tags" proof must run ordinary **with `--debug-trace` also enabled** (not simply omit the
-flag), so the negative control proves the absence of a grant suppresses tags, not the absence of the
-flag. Whatever form `acpx` requires, the *outer* `Popen` invocation of `acpx` itself remains
+`log_authorized_launch_comparison`): record emission requires **both** `--debug-trace` enabled and a
+present diagnostic grant — `context.enabled` alone with no grant emits nothing. This means the Task
+5 ordinary negative control must run **with `--debug-trace` also enabled** (not simply omit the flag),
+so zero current-run comparison records proves the absence of a grant, not merely the absence of the
+flag. The elevated positive control requires exactly one current-run record; its
+`correlation_tags` array may contain zero or more allowlisted/sanitized values. Whatever form `acpx`
+requires, the *outer* `Popen` invocation of `acpx` itself remains
 `shell=False` with an explicit argument list; only investigate whether the `--agent` value itself
 needs internal quoting for `acpx`'s own parser.
 
@@ -914,8 +1050,10 @@ text lists "final state" and terminal `end_turn` as two *separate* required clai
 - `child_key_names` (tuple of names only, sourced from the workspace's **outer** — evidence tool's
   own — audit entry per Task 1 Step 4's corrected ruling, not the inner `optimus-agent` entry; see
   the mechanical selection rule below)
-- `elevated_tag_present` (bool, sourced from the current run's debug-trace snapshot per Task 1 Step
-  3's pinned `--debug-trace` requirement; see the mechanical selection rule below)
+- `elevated_comparison_record_present` (bool, sourced from the current run's debug-trace snapshot
+  per Task 1 Steps 2-3; `True` only when the run-scoped suffix contains exactly one
+  `launch_authorization_comparison` record, `False` only when it contains zero; see the mechanical
+  selection rule below)
 - `evidence_run_nonce` (str) — a content-free freshness anchor the caller supplies via a new
   `--evidence-run-nonce` argument (see Task 5 Step 3's freshness redesign). It is a random token the
   E2E test generated, recorded verbatim into the manifest and thus HMAC-signed; it is NOT the
@@ -937,9 +1075,10 @@ possible:**
   **same** `launch_session_id` (the inner agent must receive that exact value to consume the grant),
   so matching on it cannot distinguish outer from inner.
 - Debug records carry NO `launch_session_id` at all — `acp_debug_log()` writes a process-local random
-  `sessionId` (`debug_trace.py:78`), unrelated to the gate's session id — and an ordinary run
-  intentionally has NO correlation tag, so "entries carrying this run's correlation tag" selects
-  *nothing* for the ordinary case, which is precisely the case that needs to prove tag ABSENCE.
+  `sessionId` (`debug_trace.py:78`), unrelated to the gate's session id — and a valid elevated run
+  may have an empty `correlation_tags` array when the credential was resolved outside the inherited
+  environment. Selecting by a tag would therefore discard precisely the valid record this plan must
+  retain and would make the ordinary negative control impossible to scope honestly.
 
 Use a non-circular, offset-based boundary instead. In the capture tool, **before** appending the
 outer audit entry (i.e. before `append_authorized_audit`) and **before** spawning the child, record
@@ -955,15 +1094,17 @@ child run) — never by looking for the desired five-key result, which would be 
 `_TRANSCRIPT_ARTIFACTS` (or a parallel tuple) to include these two immutable snapshot files so they
 get the same SHA-256 digest-in-manifest and joined-scan treatment; `verify` re-checks the snapshots,
 never the mutable `.optimus/` originals. `child_key_names` comes from that first audit-snapshot
-record; `elevated_tag_present` is whether any allowlisted `session_correlation_tag` entry appears
-anywhere in the debug snapshot.
+record. `elevated_comparison_record_present` is derived from the exact count of
+`launch_authorization_comparison` records in the current-run debug snapshot: zero for ordinary,
+exactly one for elevated. Each such record's `correlation_tags` must be an array of zero or more
+allowlisted/sanitized tags; non-empty content is never required.
 
 **The offset boundary is only sound if the workspace is single-writer for the run — declare it, and
 validate the suffix mechanically, failing closed on any foreign writer.** The offset→EOF suffix
 equals "this run's records" ONLY if nothing else appended between offset capture and readback. If an
 unrelated capture (or a second elevated-tracing process) appended concurrently, a foreign audit
-record could become the first record (corrupting `child_key_names`) or a foreign
-`session_correlation_tag` could falsely validate an ordinary run as elevated. Two guards, both
+record could become the first record (corrupting `child_key_names`) or a foreign comparison record
+could falsely validate an ordinary run as elevated. Two guards, both
 required:
 1. **Single-writer by construction:** the controlled evidence workspace runs exactly one capture at a
    time — document this operational constraint in Task 5's runbook (the ordered ceremony already
@@ -983,8 +1124,11 @@ required:
    code's control flow (confirmed once, empirically, in Task 1 Step 4's investigation), not something
    re-verified per snapshot via content. The two REAL, implementable checks — exact count (2) and
    matching `launch_session_id` on every record — are what catch a foreign writer; assert every debug
-   record in the debug suffix shares exactly ONE `sessionId` value. On any mismatch — wrong record
-   count, a foreign `launch_session_id`, multiple debug `sessionId`s — quarantine and fail closed
+   record in the debug suffix shares exactly ONE `sessionId` value when the suffix is non-empty, and
+   enforce zero `launch_authorization_comparison` records for ordinary / exactly one for elevated.
+   Validate any `correlation_tags` array as zero-or-more allowlisted/sanitized values. On any mismatch
+   — wrong record count, a foreign `launch_session_id`, multiple debug `sessionId`s, or malformed tag
+   content — quarantine and fail closed
    (nonzero exit, no manifest), because a foreign writer means the snapshot boundary is unsound and
    the evidence cannot be trusted. Test this: construct a suffix with an injected foreign audit record
    / a second debug `sessionId` and assert the tool quarantines rather than promoting.
@@ -1020,9 +1164,12 @@ its own confirmation.
 
 Add a test analogous to Task 8's `test_verify_rejects_tampered_manifest_field`, mutating one of the
 *new* fields while keeping the stored HMAC, asserting `EVIDENCE_HMAC_MISMATCH` and quarantine. Add a
-test that a genuinely elevated run's manifest has `elevated_tag_present=True` and an ordinary run's
-has `False` — the "ordinary no-tags / elevated allowlisted tags" property, pinned at the manifest
-layer. Add the nonce-grammar rejection tests from Task 3 Step 3 (malformed / oversized / secret-shaped
+test that a genuinely elevated run's manifest has
+`elevated_comparison_record_present=True` with exactly one comparison record and an ordinary run's
+has `False` with zero — the run-scoped elevated/ordinary property, pinned at the manifest layer. Add
+cases proving `correlation_tags: []` is valid for elevated and that any present tags are
+allowlisted/sanitized. Add the nonce-grammar rejection tests from Task 3 Step 3 (malformed /
+oversized / secret-shaped
 `--evidence-run-nonce` rejected pre-authorization) if not already added there.
 
 - [ ] **Step 5: Classify any new sink in the logging-surface manifest**
@@ -1270,16 +1417,18 @@ here. Generate `nonce = f"run_{secrets.token_hex(12)}"` in the test, then drive 
 --output-dir C:/tmp/optimus-plan998-artifacts/ordinary --mode ordinary --evidence-run-nonce <nonce>
 --drive-session` as a real subprocess (the fixture file itself created by this test, immediately
 before the capture command, per Task 3 Step 1), with the underlying `optimus-agent` invocation still
-passing `--debug-trace` (per Task 1 Step 3's finding that tags require a present grant *and* the flag
-— running ordinary with the flag enabled is the genuine negative control; omitting the flag would
-only prove the flag was off, not that ordinary mode itself suppresses tags). Assert, from the
+passing `--debug-trace` (per Task 1 Step 3's finding that comparison-record emission requires a
+present grant *and* the flag — running ordinary with the flag enabled is the genuine negative
+control; omitting the flag would only prove the flag was off, not that ordinary mode itself has no
+elevated comparison record). Assert, from the
 resulting manifest and the immutable snapshot artifacts in `output_dir` (per Task 4 Step 3's
 redesign): `manifest["evidence_run_nonce"] == nonce` (freshness), `session_mode == "ordinary"`,
 `tool_names` non-empty and matching the expected tool for this fixed task, `tool_call_count > 0`,
 `0 < total_cost_usd <= DEFAULT_LIVE_MAX_COST_USD` (or the operator's `OPTIMUS_LIVE_MAX_COST_USD`
 override), `stop_reason == "end_turn"`, the `final_agent_state` field (if Task 1 Step 5 confirmed one
-exists) matches its expected successful value, `elevated_tag_present is False`, and — per Task 1 Step
-4's pinned source — the **first record** of the `audit-snapshot.ndjson` (the outer, evidence-tool
+exists) matches its expected successful value, `elevated_comparison_record_present is False`, the
+run-scoped debug snapshot contains zero `launch_authorization_comparison` records, and — per Task 1
+Step 4's pinned source — the **first record** of the `audit-snapshot.ndjson` (the outer, evidence-tool
 audit entry, selected by document order, never by matching the desired result) has its
 `child_propagation_decisions.agent_child` naming exactly the 5 registry-authorized names:
 `OPTIMUS_AGENT_MODEL`, `OPTIMUS_API_KEY`, `OPTIMUS_GATEWAY_URL`, `OPTIMUS_PRODUCTION_MODE`,
@@ -1362,8 +1511,12 @@ uv run optimus-trust --workspace-root C:/tmp/optimus-plan998-evidence run --elev
 consumes the artifacts at `C:/tmp/optimus-plan998-artifacts/elevated`, runs the tool's own `verify`
 subcommand (asserting exit 0 → HMAC + digest integrity), and asserts `manifest["evidence_run_nonce"]`
 **equals the marker-file value** (a stale prior capture carries a different nonce → fails), plus
-everything Step 2 asserts, plus `elevated_tag_present is True` and that the allowlisted provenance/tag
-content contains no secret material (reuse `_joined_scan`/`verify` — no second scanner). It does NOT
+everything Step 2 asserts except the ordinary negative-control values, plus
+`elevated_comparison_record_present is True`, exactly one run-scoped
+`launch_authorization_comparison` record, and a `correlation_tags` array containing zero or more
+allowlisted/sanitized values. Empty is valid for a keyring/`.env.gateway`-resolved credential; any
+present provenance/tag content contains no secret material (reuse `_joined_scan`/`verify` — no
+second scanner). It does NOT
 invoke `optimus-trust run --elevated-debug` itself. **It must be run as a single targeted node, never
 the whole E2E file** (see Step 4's ordering rule).
 
@@ -1431,11 +1584,12 @@ security-contract approval record was checked, not the separate implementation-p
 record). Both are now included below. The check compares against **HEAD** (`git diff --quiet HEAD --
 ...`), not the unstaged-only form, so a frozen-path change that was already `git add`-ed cannot pass
 silently. Since Global Constraint 1 applies "at every commit," this same HEAD comparison runs before
-all four commits — the Task 0 planning commit, this implementation commit, and Task 8's evidence/docs
-and plan-closure commits:
+all five commits — the Task 0 v1 planning commit, Task 0A v2 amendment, this implementation commit,
+and Task 8's evidence/docs and plan-closure commits. From Task 0A onward, both Plan 9.98 approval
+records are included too:
 
 ```bash
-git diff --quiet HEAD -- tools/run_plan987_acpx_live_evidence.py tools/run_plan988_fu4b_live_evidence.py src/optimus/acp/operator_verify.py tests/e2e/acp/test_spawned_agent_live.py src/optimus/acp/e2e_transcript.py docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md docs/superpowers/reviews/2026-07-15-plan-9-96-implementation-plan-approval.md
+git diff --quiet HEAD -- tools/run_plan987_acpx_live_evidence.py tools/run_plan988_fu4b_live_evidence.py src/optimus/acp/operator_verify.py tests/e2e/acp/test_spawned_agent_live.py src/optimus/acp/e2e_transcript.py docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md docs/superpowers/reviews/2026-07-15-plan-9-96-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md
 git diff --stat HEAD -- src/optimus/acp/__main__.py src/optimus/agent/defaults.py src/optimus/acp/trusted_paths.py src/optimus/acp/subprocess_env.py src/optimus/acp/launch_policy.py src/optimus/acp/errors.py src/optimus/acp/bootstrap.py tools/verify_plan996_logging_surfaces.py
 ```
 
@@ -1477,11 +1631,13 @@ report; record both roles explicitly").
 
 - [ ] **Step 1: Write the claim-to-evidence report**
 
-Record: this plan's own approval digest (Task 0 Step 1), the foundation SHA, the Task 1 ruling and
+Record: this plan's v1 historical approval digest (Task 0 Step 1), the controlling v2 approval
+digest and amendment SHA (Task 0A), the foundation SHA, the Task 1 ruling and
 its empirical proofs, **the Task 6 Step 3 implementation commit's full SHA** (not a SHA this same
 report's own commit will only receive later), exact test node names/commands/results, the real
 ordinary and elevated run outcomes (session mode, tool names, cost, stop reason, child-key names, tag
-presence/absence, evidence-run nonce, the pre-authorization fixture-digest proof) with artifact
+arrays as zero-or-more sanitized metadata, run-scoped comparison-record count, evidence-run nonce,
+the pre-authorization fixture-digest proof) with artifact
 SHA-256s (of the immutable per-capture snapshot files `transcript.stdout`/`.stderr`/
 `audit-snapshot.ndjson`/`debug-snapshot.ndjson` — NOT the live `launch-audit.ndjson`/`debug-acp.ndjson`
 workspace files, which Task 4 Step 3 deliberately replaced with those snapshots), the manifest HMAC
@@ -1521,7 +1677,7 @@ depend on Plan 9.98's evidence report.
 
 One sentence, mirroring the pattern used for every other plan.
 
-- [ ] **Step 3: Commit the evidence report + roadmap + README — the THIRD commit; the plan file is NOT in it**
+- [ ] **Step 3: Commit the evidence report + roadmap + README — the FOURTH commit; the plan file is NOT in it**
 
 This commit deliberately does **not** include the Plan 9.98 plan file, to avoid the self-reference
 Codex identified: a commit cannot include the plan file with "Step 3 done" ticked before Step 3's own
@@ -1530,7 +1686,7 @@ checkbox ticks are committed separately in Step 4. This is a docs-only commit (G
 frozen-path HEAD gate + `git diff --cached --check` only).
 
 ```bash
-git diff --quiet HEAD -- tools/run_plan987_acpx_live_evidence.py tools/run_plan988_fu4b_live_evidence.py src/optimus/acp/operator_verify.py tests/e2e/acp/test_spawned_agent_live.py src/optimus/acp/e2e_transcript.py docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md docs/superpowers/reviews/2026-07-15-plan-9-96-implementation-plan-approval.md
+git diff --quiet HEAD -- tools/run_plan987_acpx_live_evidence.py tools/run_plan988_fu4b_live_evidence.py src/optimus/acp/operator_verify.py tests/e2e/acp/test_spawned_agent_live.py src/optimus/acp/e2e_transcript.py docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md docs/superpowers/reviews/2026-07-15-plan-9-96-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md
 git status --porcelain --untracked-files=all
 git diff -- reports/plan-9-98-real-acpx-session-evidence.md docs/superpowers/plans/2026-07-01-phase-1-roadmap.md README.md
 ```
@@ -1544,22 +1700,21 @@ git commit -m "Record Plan 9.98 real acpx session evidence"
 git rev-parse HEAD
 ```
 
-- [ ] **Step 4: Persist the checkbox-updated plan file — the FOURTH (plan-closure) commit; resolves the self-reference**
+- [ ] **Step 4: Persist the checkbox-updated plan file — the FIFTH (plan-closure) commit; resolves the self-reference**
 
 Every substantive step through Step 3 is now genuinely complete, so every task-step and Definition-of-
 Done checkbox except this closing action can be ticked truthfully. Tick them all now (including a tick
 for this Step 4 as it is performed — the single irreducible self-reference every plan's final action
-carries), then mechanically prove ONLY checkboxes changed versus the pinned planning commit and commit
-the plan file alone:
+carries), then mechanically prove ONLY checkboxes changed versus the approved v2 amendment commit and
+commit the plan file alone:
 
 ```bash
-# Find the Task 0 Step 2 planning commit mechanically — it is, by construction, the commit that
-# FIRST added this plan file to history (nothing earlier in this plan's lineage commits it), so no
-# manually-carried-forward SHA is needed:
-PLANNING_SHA=$(git log --diff-filter=A --follow --format=%H -- docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md | tail -1)
-echo "Planning commit: $PLANNING_SHA"
-# Prove the plan file changed only in checkbox characters vs that approved planning commit:
-git diff "$PLANNING_SHA" -- docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md | grep '^[+-]' | grep -v '^[+-]\{3\}' | grep -vE '^\+- \[x\]' | grep -vE '^-- \[ \]'
+# Find the Task 0A amendment commit mechanically — it is the commit that FIRST added the v2 approval
+# record, so no manually-carried-forward SHA is needed:
+AMENDED_PLANNING_SHA=$(git log --diff-filter=A --format=%H -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md | tail -1)
+echo "V2 amendment commit: $AMENDED_PLANNING_SHA"
+# Prove the plan file changed only in checkbox characters vs that approved v2 plan blob:
+git diff "$AMENDED_PLANNING_SHA" -- docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md | grep '^[+-]' | grep -v '^[+-]\{3\}' | grep -vE '^\+- \[x\]' | grep -vE '^-- \[ \]'
 ```
 
 That pipeline must print **nothing** — every changed line is a `- [ ]` → `- [x]` flip. If it prints
@@ -1567,7 +1722,7 @@ any line, substantive text drifted and the plan needs re-approval + a new pinned
 closure. Then, after approval:
 
 ```bash
-git diff --quiet HEAD -- tools/run_plan987_acpx_live_evidence.py tools/run_plan988_fu4b_live_evidence.py src/optimus/acp/operator_verify.py tests/e2e/acp/test_spawned_agent_live.py src/optimus/acp/e2e_transcript.py docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md docs/superpowers/reviews/2026-07-15-plan-9-96-implementation-plan-approval.md
+git diff --quiet HEAD -- tools/run_plan987_acpx_live_evidence.py tools/run_plan988_fu4b_live_evidence.py src/optimus/acp/operator_verify.py tests/e2e/acp/test_spawned_agent_live.py src/optimus/acp/e2e_transcript.py docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md docs/superpowers/reviews/2026-07-15-plan-9-96-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md
 git add docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md
 git diff --cached --check
 git commit -m "Close Plan 9.98: mark all steps complete (checkbox-only)"
@@ -1582,13 +1737,19 @@ frozen-content change — the one deliberate exception).
 
 ## Definition of Done
 
-- [ ] This plan's own digest is pinned exactly once, over the pristine plan (Task 0 Step 1) — not
+- [ ] This plan's v1 digest is pinned exactly once, over the pristine plan (Task 0 Step 1) — not
   re-verified against a live, checkbox-mutated file at every later step — and both the plan file and
   its approval record are committed in their own docs-only planning commit (Task 0 Step 2) **while
   still entirely `- [ ]`, including Steps 1 and 2's own checkboxes**, which are ticked only after that
   commit lands, before Task 1 begins.
+- [ ] The empirical Task 1 finding is incorporated through Task 0A's reviewed agile amendment: the
+  v1 plan blob at `424940e` and its approval record remain immutable history; the exact revised plan
+  bytes and a same-shape, two-signature v2 approval record land together in their own docs-only
+  amendment commit before Task 1 Step 2 resumes; and all later substantive-drift checks use that v2
+  commit as the controlling baseline.
 - [ ] Task 1's grant-consumption-topology ruling is empirically proven using the keyring store's own
-  `consume_diagnostic_grant` calls and debug-trace tag presence as the observable oracles — never
+  `consume_diagnostic_grant` calls and the run-scoped `launch_authorization_comparison` record count
+  as the observable oracles — never
   `optimus-agent`'s own exit behavior, which silently swallows every `ApprovalError` code identically
   and cannot report `GRANT_NOT_FOUND` to an outside observer. Every direct `optimus-agent` invocation
   in the probe runs in a terminating mode (`--check-config --no-auto-start`) with bounded,
@@ -1660,14 +1821,18 @@ frozen-content change — the one deliberate exception).
   pre-authorization mutation proof is deliberately NOT a manifest field (a self-asserted boolean there
   would be unverifiable) — it is its own independently-runnable E2E test against a genuinely
   UNAPPROVED, separate workspace (not the fixed evidence workspace, which is approved).
-  `child_key_names`/`elevated_tag_present` are sourced from new, immutable, per-capture snapshot files
+  `child_key_names`/`elevated_comparison_record_present` are sourced from new, immutable, per-capture
+  snapshot files
   inside `output_dir`, extracted from each log file's pre-launch-offset SUFFIX (never the live shared
   append-only originals, and never selected by `launch_session_id` — which both audit entries share —
-  nor by correlation tag, which ordinary runs lack; the outer audit entry is the FIRST record of the
+  nor by correlation tag, which may be empty even for elevated; the outer audit entry is the FIRST
+  record of the
   audit snapshot by document order). The offset boundary's single-writer assumption is enforced: the
   controlled workspace runs one capture at a time, and the tool mechanically validates the suffix at
   snapshot time (every audit record carries this run's `launch_session_id`; exactly the expected
-  record count; all debug records share one `sessionId`), failing closed on any foreign writer. Those
+  record count; all debug records share one `sessionId`; zero comparison records for ordinary and
+  exactly one for elevated), failing closed on any foreign writer. A comparison record's
+  `correlation_tags` array contains zero or more allowlisted/sanitized values. Those
   snapshots get the same digest-in-manifest and joined-scan coverage as `transcript.stdout`/`.stderr`
   today.
 - [ ] Real ordinary and real elevated sessions both run through independently-authored `acpx`
@@ -1676,7 +1841,8 @@ frozen-content change — the one deliberate exception).
   ordinary; the elevated command additionally carries a fresh single-use diagnostic grant), and both
   are asserted for mode, tools (by name, not just count), cost band, final agent state (if defined),
   terminal state (`end_turn`), zero pre-approval mutation, exact child-key manifest (the first
-  audit-snapshot record), ordinary no-tags behavior, and elevated allowlisted provenance/tags — the
+  audit-snapshot record), zero run-scoped comparison records for ordinary, exactly one allowlisted
+  comparison/provenance record for elevated, and zero-or-more sanitized tags — the
   elevated E2E test consumes artifacts from a fixed, discoverable root produced by an operator-run TTY
   command with the correct `uv run` prefix, corrected global argument order, all three literal
   `{approval_id}`/`{launch_session_id}`/`{diagnostic_grant_id}` substitution tokens PRESERVED (the
@@ -1712,24 +1878,27 @@ frozen-content change — the one deliberate exception).
   records, `src/optimus/acp/e2e_transcript.py`'s existing behavior, and both frozen Plan 9.87/9.88
   helpers remain byte-unchanged; `operator_verify.py` and `test_spawned_agent_live.py` remain
   byte-unchanged — checked against the FULL declared list from Global Constraint 1, before EVERY
-  commit (planning, implementation, evidence/docs, and plan-closure), not a partial list checked once.
+  commit (v1 planning, v2 amendment, implementation, evidence/docs, and plan-closure), not a partial
+  list checked once. Both Plan 9.98 approval records are byte-unchanged after the v2 amendment lands.
 - [ ] Full default test suite passes, aggregate coverage across `optimus`/`optimus_gateway`/
   `optimus_security` is at least 80%, Ruff is clean, the logging-surface verifier is green, and
   `git diff --check` is clean.
 - [ ] Every `uv` command in this plan's verification steps was run from a terminal with `uv` actually
   on PATH; no checkbox reflects a substitute computation.
-- [ ] FOUR separate operator-approved commits: (1) the Task 0 docs-only planning commit (plan +
-  approval record, pristine); (2) the Task 6 implementation commit; (3) the Task 8 Step 3 evidence/docs
-  commit (evidence report + roadmap + README), which cites the implementation commit's already-landed
-  SHA, never its own, and does NOT include the plan file; (4) the Task 8 Step 4 plan-closure commit,
-  which persists the plan file's checkbox-only diff — mechanically proven to contain no
-  substantive-text change vs the pinned planning commit — resolving the self-reference of a plan file
-  that would otherwise have to record its own not-yet-existing closing commit.
+- [ ] FIVE separate operator-approved commits: (1) the Task 0 docs-only v1 planning commit (pristine
+  plan + v1 approval record); (2) the Task 0A docs-only agile amendment commit (revised plan + v2
+  approval record); (3) the Task 6 implementation commit; (4) the Task 8 Step 3 evidence/docs commit
+  (evidence report + roadmap + README), which cites the implementation commit's already-landed SHA,
+  never its own, and does NOT include the plan file; (5) the Task 8 Step 4 plan-closure commit, which
+  persists the plan file's checkbox-only diff — mechanically proven to contain no substantive-text
+  change versus the v2 amendment commit — resolving the self-reference of a plan file that would
+  otherwise have to record its own not-yet-existing closing commit.
 - [ ] This plan's evidence report explicitly states that Plan 9.96 Task 9 Steps 2/3/5 depended on
   this plan's implementation commit and were blocked until it landed.
 - [ ] Final `git status` is a clean tree (modulo disclosed tool-config noise) — no dangling
-  uncommitted plan-file checkbox drift; the plan file and its approval record are tracked in
-  repository history from Task 0 Step 2 onward, never left untracked through to closure.
+  uncommitted plan-file checkbox drift; the plan file and both approval records are tracked in
+  repository history from their respective Task 0/Task 0A commits onward, never left untracked
+  through to closure.
 
 ## Implementation Handoff After Plan Approval
 
