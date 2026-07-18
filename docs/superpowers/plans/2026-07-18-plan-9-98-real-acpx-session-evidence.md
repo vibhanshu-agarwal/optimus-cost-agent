@@ -2376,7 +2376,7 @@ closure comparison rebased from v6 to v7.
 - Modify: `docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md`
 - Create: `docs/superpowers/reviews/2026-07-19-plan-9-98-implementation-plan-approval-v7.md`
 
-- [ ] **Step 1: Prove the v7 amendment contains only the two reviewed corrections and closure/accounting mechanics**
+- [x] **Step 1: Prove the v7 amendment contains only the two reviewed corrections and closure/accounting mechanics**
 
 Use `2ab3bcb8b4e870e9896174e342cf485a20080068` as the immutable v6 baseline. The complete plan diff
 may contain already-earned post-v6 checkbox ticks; the two reviewed corrections named above; and only
@@ -2395,7 +2395,7 @@ the controlling closure comparison, final commit accounting, latest immutable-re
 post-amendment checkbox baseline must say v7/seven/ten as applicable. Confirm the v6-baseline diff has
 no third substantive correction hidden among the checkbox ticks or v7 mechanics.
 
-- [ ] **Step 2: Obtain reviewer-agent and operator approval of the exact v7 bytes, then compute the v7 digest literally**
+- [x] **Step 2: Obtain reviewer-agent and operator approval of the exact v7 bytes, then compute the v7 digest literally**
 
 The reviewer's prior approval of the two corrections and the operator's authorization to draft v7 do
 not substitute for approval of the exact revised bytes. The reviewer independently checks Step 1's
@@ -2414,7 +2414,7 @@ Create the v7 approval record with that exact digest, both approvals, immutable 
 design or implementation. Do not tick Task 8A Steps 1-4, Task 8 Step 4, or the still-open Definition
 of Done items before the v7 amendment commit lands.
 
-- [ ] **Step 3: Commit the exact v7 plan and v7 approval record as the NINTH, docs-only commit**
+- [x] **Step 3: Commit the exact v7 plan and v7 approval record as the NINTH, docs-only commit**
 
 Before staging, prove every frozen/core read-only path and every v1-v6 approval record is
 byte-unchanged. Inspect the complete worktree so `uv.lock`, `.claude/`, the reviewer checkpoint log,
@@ -2436,7 +2436,7 @@ git commit -m "Formalize Plan 9.98 closure integrity"
 git rev-parse HEAD
 ```
 
-- [ ] **Step 4: Verify the committed v7 identity before allowing checkbox-only closure**
+- [x] **Step 4: Verify the committed v7 identity before allowing checkbox-only closure**
 
 Before ticking any v7-gated checkbox, rerun Step 2's literal digest command against the still-exact
 working plan and match it to the v7 record. Locate the v7 commit mechanically, verify it changed
@@ -2455,7 +2455,7 @@ git diff --quiet "$V7_AMENDMENT_SHA" -- tools/run_plan987_acpx_live_evidence.py 
 
 ### Task 8 (continued): Final Plan Closure
 
-- [ ] **Step 4: Persist the checkbox-updated plan file — the TENTH (plan-closure) commit; resolves the self-reference**
+- [x] **Step 4: Persist the checkbox-updated plan file — the TENTH (plan-closure) commit; resolves the self-reference**
 
 Every substantive step through Task 8A is now genuinely complete, so every task-step and Definition-of-
 Done checkbox except this closing action can be ticked truthfully. Tick them all now (including a tick
@@ -2647,7 +2647,7 @@ frozen-content change — the one deliberate exception).
   reach. None of the three ban a protocol field-name substring a compliant parser might legitimately
   read
   from real `acpx` output.
-- [ ] No FU-1/2/3/4/5/7 file is touched; Plan 9.96's plan file, security contract, both approval
+- [x] No FU-1/2/3/4/5/7 file is touched; Plan 9.96's plan file, security contract, both approval
   records, `src/optimus/acp/e2e_transcript.py`'s existing behavior, and both frozen Plan 9.87/9.88
   helpers remain byte-unchanged; `operator_verify.py` and `test_spawned_agent_live.py` remain
   byte-unchanged — checked against the FULL declared list from Global Constraint 1, before EVERY
@@ -2658,14 +2658,14 @@ frozen-content change — the one deliberate exception).
 - [x] Full default test suite passes, aggregate coverage across `optimus`/`optimus_gateway`/
   `optimus_security` is at least 80%, Ruff is clean, the logging-surface verifier is green, and
   `git diff --check` is clean.
-- [ ] Every `uv` command in this plan's verification steps was run from a terminal with `uv` actually
+- [x] Every `uv` command in this plan's verification steps was run from a terminal with `uv` actually
   on PATH; no checkbox reflects a substitute computation.
-- [ ] The two post-v6 implementation-time text corrections are formally incorporated through Task
+- [x] The two post-v6 implementation-time text corrections are formally incorporated through Task
   8A's reviewed v7 amendment: their prior technical review remains valid, the exact combined v7 bytes
   receive a fresh two-signature digest-pinned approval, all v1-v6 records remain immutable history,
   v6 remains the controlling implementation/security-design amendment, and v7 becomes only the
   controlling checkbox-closure baseline.
-- [ ] TEN separate operator-approved commits: (1) the Task 0 docs-only v1 planning commit (pristine
+- [x] TEN separate operator-approved commits: (1) the Task 0 docs-only v1 planning commit (pristine
   plan + v1 approval record); (2) the Task 0A docs-only agile amendment commit (revised plan + v2
   approval record); (3) the Task 2A docs-only TDD-sequencing amendment (revised plan + v3 approval
   record); (4) the Task 2B Redis-cost-evidence amendment (revised plan + v4 approval record); (5) the
@@ -2683,7 +2683,7 @@ frozen-content change — the one deliberate exception).
 - [x] The distinct URI-userinfo digest/display conformance finding is not silently waived or folded
   into v6: the report and roadmap assign it to Plan 9.99 (Tracked, Not Yet Scheduled), with its own
   reviewed security-contract/implementation work required before Plan 9.96 closes.
-- [ ] Final `git status` is a clean tree (modulo disclosed tool-config noise) — no dangling
+- [x] Final `git status` is a clean tree (modulo disclosed tool-config noise) — no dangling
   uncommitted plan-file checkbox drift; the plan file and all seven approval records are tracked in
   repository history from their respective Task 0/Task 0A/Task 2A/Task 2B/Task 2C/Task 2D/Task 8A
   commits onward, never left untracked through to closure.
