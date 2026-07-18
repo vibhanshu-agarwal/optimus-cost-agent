@@ -28,6 +28,15 @@ with `docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval
 recorded digest matches that committed v4 plan blob.** This is a Plan 9.98 evidence-collection change,
 not a reinterpretation or amendment of frozen Plan 9.96.
 
+The completed Task 1 investigation also established a bounded structural completion inference, but
+the incomplete Task 4/5/7 and Definition-of-Done wording still assumed only a distinct domain-state
+field or a parent-plan amendment. Therefore **no Task 4 Step 2 or later work may proceed until Task
+2C commits the v5 revised bytes together with
+`docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v5.md`, whose recorded
+digest matches that committed v5 plan blob.** This v5 correction preserves the frozen Plan 9.96
+contract: for this plan's fixed normal ACP path only, it records the independently observable proof of
+`COMPLETED`; it does not treat `end_turn` alone as final-state evidence or generalize the inference.
+
 **Goal:** Give `tools/run_plan996_acpx_security_evidence.py` the ability to drive one real,
 independently-authored-`acpx` ordinary session and one real elevated session against the actual
 Optimus agent, and prove Plan 9.96 Task 9 Step 2's required properties (mode, tools, cost band,
@@ -147,8 +156,8 @@ plan; do not reinterpret either plan's contract in code.
    `src/optimus/acp/operator_verify.py`, `tests/e2e/acp/test_spawned_agent_live.py`,
    `src/optimus/acp/e2e_transcript.py`'s existing `PLAN_9_6_*` constants and writer behavior, and
    Plan 9.96's own plan file, security-contract spec, and both approval records. Every landed Plan
-   9.98 approval record is immutable: v1 after Task 0, v2 after Task 0A, v3 after Task 2A, and v4
-   after Task 2B. This plan reads all of the above for precedent only.
+   9.98 approval record is immutable: v1 after Task 0, v2 after Task 0A, v3 after Task 2A, v4
+   after Task 2B, and v5 after Task 2C. This plan reads all of the above for precedent only.
 2. **No FU-1/2/3/4/5/7 source changes.** Per the 2026-07-18 checkpoint-log ruling, those follow-ups
    are disclosed-and-backlogged by Plan 9.96 Task 9, not fixed. This plan must not touch
    `src/optimus/acp/__main__.py`, `src/optimus/agent/defaults.py`,
@@ -185,7 +194,7 @@ plan; do not reinterpret either plan's contract in code.
    commit): the task's named tests, `uv run ruff check .`, `uv run python
    tools/verify_plan996_logging_surfaces.py --manifest
    docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json`, and `git diff --check`.
-   For **docs-only** commits (the Task 0 planning commit, the Task 0A v2 amendment commit, the Task 2A v3 amendment commit, the Task 2B v4 amendment commit, and the Task 8
+   For **docs-only** commits (the Task 0 planning commit, the Task 0A v2 amendment commit, the Task 2A v3 amendment commit, the Task 2B v4 amendment commit, the Task 2C v5 amendment commit, and the Task 8
    evidence/docs commit, and the Task 8 plan-closure commit — none of which change Python or the
    logging-surface inventory): the full-frozen-path `git diff --quiet HEAD` gate plus `git diff
    --cached --check` only; the test/Ruff/surface-verifier gates are vacuous for a Markdown-only change
@@ -206,6 +215,9 @@ plan; do not reinterpret either plan's contract in code.
 - Create: `docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v4.md` — the
   digest-pinned two-signature approval record for Task 2B's Redis-backed cost-evidence amendment. The
   v1/v2/v3 records, and their committed plan blobs, remain immutable history.
+- Create: `docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v5.md` — the
+  digest-pinned two-signature approval record for Task 2C's bounded-final-state-inference amendment.
+  The v1/v2/v3/v4 records, and their committed plan blobs, remain immutable history.
 - Modify: `tools/run_plan996_acpx_security_evidence.py` — add the `exec`-mode command construction,
   agent-invocation resolution, session-result parsing, the grammar-validated `--evidence-run-nonce`
   argument, the distinct real-session deadline + drive-session-only process-tree termination, the
@@ -229,14 +241,15 @@ plan; do not reinterpret either plan's contract in code.
 - Modify: `README.md` — one-sentence planning-status paragraph, mirroring the pattern used for every
   other plan.
 - Modify: `docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md` itself — first
-  committed pristine in Task 0; substantively revised in Task 0A, Task 2A, and Task 2B, each with a
-  new digest and approval record; then re-committed with only its accumulated post-v4 `- [ ]`→`- [x]` ticks in
+  committed pristine in Task 0; substantively revised in Task 0A, Task 2A, Task 2B, and Task 2C,
+  each with a new digest and approval record; then re-committed with only its accumulated post-v5 `- [ ]`→`- [x]` ticks in
   Task 8 Step 4.
-- Note the seven commits this plan produces: (1) Task 0 v1 planning (plan + v1 approval record), (2)
+- Note the eight commits this plan produces: (1) Task 0 v1 planning (plan + v1 approval record), (2)
   Task 0A agile amendment (revised plan + v2 approval record), (3) Task 2A TDD-sequencing amendment
   (revised plan + v3 approval record), (4) Task 2B Redis-cost-evidence amendment (revised plan + v4
-  approval record), (5) Task 6 implementation, (6) Task 8 Step 3 evidence/docs (report + roadmap +
-  README, no plan file), (7) Task 8 Step 4 plan-closure (plan-file checkbox diff only versus the v4
+  approval record), (5) Task 2C bounded-final-state-inference amendment (revised plan + v5 approval
+  record), (6) Task 6 implementation, (7) Task 8 Step 3 evidence/docs (report + roadmap + README,
+  no plan file), (8) Task 8 Step 4 plan-closure (plan-file checkbox diff only versus the v5
   amendment commit).
 - Do not modify: anything listed under Global Constraint 1, or any FU-1/2/3/4/5/7 file listed under
   Global Constraint 2.
@@ -706,19 +719,16 @@ agent state store (Redis `RedisAgentStateStore` — the agent's own ledger/compl
 where a genuine domain "final state" distinct from the protocol stop reason would live if anywhere),
 and the sanitized transcript. Do not fabricate a field name for something unverified.
 
-**If a real, named signal is found, pin its exact source and expected successful value here for Task
-4 to consume. If no such distinct signal exists, STOP AND REPORT — and understand that the
-resolution is NOT within this plan's authority to decide.** Plan 9.96's frozen Task 9 Step 2 lists
-"final state" as a distinct required claim; this separate plan cannot unilaterally decide that
-`stop_reason` also satisfies that separately-enumerated claim, because doing so would reinterpret the
-frozen parent contract in exactly the way this plan's own Source-Anchors conflict rule ("do not
-reinterpret either plan's contract in code") forbids. If Task 1 finds no distinct final-state source,
-the only valid resolutions are (a) a reviewed amendment to Plan 9.96's own contract explicitly
-collapsing the two claims (an operator/reviewer decision on the *parent* plan, recorded there — not
-a disclosure buried in this plan's evidence report), or (b) locating another genuinely independent
-final-state evidence source. Task 4 must NOT omit the `final_agent_state` field on the strength of a
-this-plan-local disclosure alone; that path is closed. This is a real, live risk that could block
-this plan pending a parent-contract decision — surface it as such, do not paper over it.
+**Task 1 resolution, recorded by the reviewed v5 amendment:** no real, named distinct domain-state
+signal was found. The normal ACP path for this plan's fixed write-fixture task nevertheless has a
+bounded, independently observable completion proof: `stop_reason == "end_turn"`,
+`tool_call_count > 0`, and `tool_names` contains `"write_file"`. The source-level construction proof
+pins that conjunction to `AgentRunStatus.COMPLETED`; the pre-execution terminal cases that also
+produce `end_turn` cannot produce any tool call. Task 4 therefore sets `final_agent_state` to
+`"COMPLETED"` only when all three predicates hold. It omits the field when they do not, rather than
+fabricating a value or treating `end_turn` alone as proof. This inference is limited to the normal ACP
+path without `completion_condition` and this fixed fixture task; it is neither a general completion
+rule nor a parent-plan amendment.
 
 - [x] **Step 6: Report findings before Task 2 begins**
 
@@ -853,7 +863,7 @@ uv run pytest tests/unit/tools/test_run_plan996_acpx_security_evidence.py -k "ag
 Expected: FAIL because the named builders, drive-session CLI path, and nonce validation do not yet
 exist; failure must not be repaired by adding production code before this command is observed.
 
-- [ ] **Step 7: Write Task 4's parser, external-evidence collector, and manifest/snapshot RED tests against pinned interfaces**
+- [x] **Step 7: Write Task 4's parser, external-evidence collector, and manifest/snapshot RED tests against pinned interfaces**
 
 Before Task 4 Step 1 and Step 3, add content-free synthetic sanitized-transcript tests for
 `_parse_session_result(transcript: str) -> SessionResultEvidence`, where the immutable result exposes
@@ -873,7 +883,7 @@ tags, foreign audit writers, multiple debug `sessionId`s, and nonzero child exit
 These are the fail-closed tests previously deferred to Task 4 Step 4; they are now the required RED
 foundation, not post-implementation coverage.
 
-- [ ] **Step 8: Run and confirm the Task 4 parser and manifest/snapshot tests are RED**
+- [x] **Step 8: Run and confirm the Task 4 parser and manifest/snapshot tests are RED**
 
 ```bash
 uv run pytest tests/unit/tools/test_run_plan996_acpx_security_evidence.py -k "session_result or manifest or snapshot or comparison_record" -v
@@ -898,7 +908,7 @@ still met from a real dependency, now using the same run rather than an unavaila
 - Modify: `docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md`
 - Create: `docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v4.md`
 
-- [ ] **Step 1: Prove the v4 amendment is limited to the unified external-evidence collector and affected accounting**
+- [x] **Step 1: Prove the v4 amendment is limited to the unified external-evidence collector and affected accounting**
 
 Use `4e009380c54b56ec8f93bd8f9e06ae61de193864` as the immutable v3 baseline. The diff may add this
 Task 2B gate; the v4 record; Redis-cost collector/test/snapshot instructions; the explicit Step 1
@@ -911,7 +921,7 @@ git diff 4e009380c54b56ec8f93bd8f9e06ae61de193864 -- docs/superpowers/plans/2026
 rg -n "total_cost_usd.*transcript|final-state-snapshot|three Plan|all three|six commits|SIX |SIXTH|v3 amendment commit|approval-v3" docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md
 ```
 
-- [ ] **Step 2: Obtain reviewer-agent and operator approval of the exact v4 bytes, then compute the v4 digest literally**
+- [x] **Step 2: Obtain reviewer-agent and operator approval of the exact v4 bytes, then compute the v4 digest literally**
 
 The reviewer independently checks the full diff against `4e00938`, the single-collector design,
 parser-before-collector ordering, sanctioned Redis URL path, the stale-reference sweep, and all
@@ -925,7 +935,7 @@ Create the v4 record with that exact digest, both approvals, the v3 amendment co
 statement approving these exact revised bytes. Do not tick Task 2B Steps 1-4 until the docs-only
 amendment commit lands.
 
-- [ ] **Step 3: Commit the exact v4 plan and v4 approval record as a docs-only amendment**
+- [x] **Step 3: Commit the exact v4 plan and v4 approval record as a docs-only amendment**
 
 Before staging, prove every frozen path and the v1/v2/v3 approval records are byte-unchanged; inspect
 the complete worktree so the existing RED tests, `uv.lock`, `.claude/`, and reviewer checkpoint log
@@ -939,7 +949,7 @@ git commit -m "Amend Plan 9.98 Redis cost evidence"
 Immediately rerun Step 2's literal digest command against the committed v4 blob, confirm it matches
 the v4 record, then tick only Steps 1-3 in the working plan.
 
-- [ ] **Step 4: Verify the v4 identity and frozen baseline before Task 2A Step 7**
+- [x] **Step 4: Verify the v4 identity and frozen baseline before Task 2A Step 7**
 
 Locate the commit that first added the v4 record; verify all four approval records are unchanged and
 the live plan differs from that v4 blob only by permitted checkbox ticks. Only then may Task 2A Step 7
@@ -949,6 +959,84 @@ write the external-evidence RED tests or any Task 3 Step 2/Task 4 behavior begin
 V4_AMENDMENT_SHA=$(git log --diff-filter=A --format=%H -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v4.md | tail -1)
 git diff --quiet -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v3.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v4.md
 git diff "$V4_AMENDMENT_SHA" -- docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md | grep '^[+-]' | grep -v '^[+-]\{3\}' | grep -vE '^\+- \[x\]' | grep -vE '^-- \[ \]'
+```
+
+---
+
+### Task 2C: Bounded-Final-State-Inference V5 Amendment Gate (required before Task 4 Step 2 resumes)
+
+Task 1 Step 5 proved that the fixed normal ACP path reaches `AgentRunStatus.COMPLETED` when, and
+only when for this evidence fixture, the already-captured facts satisfy all three predicates:
+`stop_reason == "end_turn"`, `tool_call_count > 0`, and `"write_file" in tool_names`. This is a
+bounded inference from independent observable evidence, not a new persisted/transcribed field and
+not a general rule that `end_turn` alone means completion. The v4 plan still has six affected
+locations that only anticipate a real distinct signal or a Plan 9.96 parent-contract amendment. This
+task corrects those locations and the resulting approval/commit accounting without modifying Plan
+9.96 or any completed empirical procedure.
+
+**Files:**
+- Modify: `docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md`
+- Create: `docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v5.md`
+
+- [ ] **Step 1: Prove the v5 amendment is limited to the settled bounded inference and affected accounting**
+
+Use `3e04c29fe09b4ec038fa851e24ac187ea9071ba2` as the immutable v4 baseline. The complete diff may
+add this Task 2C gate; the v5 record; the explicit three-predicate `COMPLETED` rule and its
+fixed-path boundary; the six affected Task 1/4/5/7/DoD references plus the downstream E2E DoD wording;
+v5 frozen-record references; and eight-commit accounting. It must not alter the Task 1 empirical
+facts, any Plan 9.96 frozen path, a prior approval record, an existing RED/GREEN test, or production
+code.
+
+```bash
+git diff 3e04c29fe09b4ec038fa851e24ac187ea9071ba2 -- docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md
+rg -n -i "final.?agent.?state|final agent state|real distinct.*state|parent-contract|parent contract|all four Plan 9.98|seven commits|SIXTH|SEVENTH|v4 amendment commit|approval-v4" docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md
+```
+
+Every final-state hit must either state the exact three-predicate, fixed-normal-ACP-path rule or be a
+legitimate historical v4 citation in the Task 2B procedure. In particular, no later requirement may
+say that `end_turn` alone proves completion, require a distinct signal, or demand a Plan 9.96
+amendment. A manifest sets `final_agent_state` to `"COMPLETED"` only when all three predicates hold;
+when they do not, it omits the field rather than fabricating a value or reclassifying the run.
+
+- [ ] **Step 2: Obtain reviewer-agent and operator approval of the exact v5 bytes, then compute the v5 digest literally**
+
+The reviewer independently checks the full diff against `3e04c29`, the six final-state locations and
+the downstream E2E DoD wording, all commit/frozen-record accounting, the absence of changes to the
+settled Task 1 findings, and every v1/v2/v3/v4 record. After both approvals, run this exact command
+in a terminal where `uv` is on `PATH`:
+
+```bash
+uv run python -c "from pathlib import Path; import hashlib; p=Path('docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md'); print(hashlib.sha256(p.read_bytes()).hexdigest().upper())"
+```
+
+Create the v5 record with that exact digest, both approvals, the v4 amendment commit `3e04c29`, and a
+statement approving these exact revised bytes. Do not tick Task 2C Steps 1-4 until the docs-only
+amendment commit lands.
+
+- [ ] **Step 3: Commit the exact v5 plan and v5 approval record as a docs-only amendment**
+
+Before staging, prove every frozen path and the v1/v2/v3/v4 approval records are byte-unchanged;
+inspect the complete worktree so the existing implementation changes, `uv.lock`, `.claude/`, and the
+reviewer checkpoint log cannot enter this commit. After approval, stage exactly the plan and v5
+record, show the staged diff, run `git diff --cached --check`, and commit with:
+
+```bash
+git commit -m "Amend Plan 9.98 bounded final-state evidence"
+```
+
+Immediately rerun Step 2's literal digest command against the committed v5 blob, confirm it matches
+the v5 record, then tick only Steps 1-3 in the working plan.
+
+- [ ] **Step 4: Verify the v5 identity and frozen baseline before Task 4 Step 2 resumes**
+
+Locate the commit that first added the v5 record; verify all five approval records are unchanged and
+the live plan differs from that v5 blob only by permitted checkbox ticks. Only then may Task 4 Step 2
+resume its collector/digest integration or any later Task 4 behavior begin.
+
+```bash
+V5_AMENDMENT_SHA=$(git log --diff-filter=A --format=%H -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v5.md | tail -1)
+git diff --quiet -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v3.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v4.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v5.md
+git diff "$V5_AMENDMENT_SHA" -- docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md | grep '^[+-]' | grep -v '^[+-]\{3\}' | grep -vE '^\+- \[x\]' | grep -vE '^-- \[ \]'
 ```
 
 ---
@@ -1004,7 +1092,7 @@ implementer must not be able to silently pass it to the wrong parser. Without it
 the session can stall on a pending/denied permission and never produce the tool-call or mutation
 evidence this plan exists to gather.
 
-- [ ] **Step 2: Implement `_build_agent_invocation()` resolution — optimus-agent arguments ONLY**
+- [x] **Step 2: Implement `_build_agent_invocation()` resolution — optimus-agent arguments ONLY**
 
 Task 2A Steps 5-6 already established the RED tests for this interface. Define
 `_build_agent_invocation(*, optimus_agent: str, workspace: Path, launch_session_id: str,
@@ -1018,7 +1106,7 @@ this agent-invocation string** — it is not an `optimus-agent` argument at all.
 only `optimus-agent`'s own arguments. Never reference the retired `run-optimus-agent.cmd`/`.sh`
 wrapper scripts.
 
-- [ ] **Step 3: Implement the new capture mode's command construction and a distinct real-session deadline in `main()`**
+- [x] **Step 3: Implement the new capture mode's command construction and a distinct real-session deadline in `main()`**
 
 Task 2A Steps 5-6 already established the RED tests for this behavior. Add an additive CLI flag (e.g. `--drive-session`) that, when present, builds the outer `acpx` argv
 `[acpx, "--format", "json", <permission flag from Step 1 if confirmed>, "--cwd", str(args.workspace),
@@ -1080,7 +1168,7 @@ discipline and its frozen `OPTIMUS_*` registry scope (an unregistered override i
 scope). The RED test in Step 4 forces its short bound through that parameter, never through the
 environment. The `--version` smoke's behavior and timeout must not change at all.
 
-- [ ] **Step 4: Fix the capture pipeline's timeout ordering before it can safely run a real, potentially long-running or hung session**
+- [x] **Step 4: Fix the capture pipeline's timeout ordering before it can safely run a real, potentially long-running or hung session**
 
 **Do not reuse `_capture_to_disk` unchanged for real sessions — it has a real, confirmed hang risk
 that the `--version` smoke never exposed because that child exits almost immediately.** Read
@@ -1176,7 +1264,7 @@ Then implement a bounded, fail-closed fix with two independent parts:
 manifest that looks like a completed, verified capture. Confirm both the timeout RED test and a new
 nonzero-exit-code test are resolved by the fix.
 
-- [ ] **Step 5: Run the Task 2A construction/CLI tests as GREEN regression coverage**
+- [x] **Step 5: Run the Task 2A construction/CLI tests as GREEN regression coverage**
 
 Run the direct command-shape, default-path, nonce-rejection, and no-outer-consumption tests written
 in Task 2A Step 5. They must now pass. Any newly discovered Task 3 behavior requires its own failing
@@ -1203,7 +1291,7 @@ mode).
 - Modify: `tools/run_plan996_acpx_security_evidence.py`
 - Modify: `tests/unit/tools/test_run_plan996_acpx_security_evidence.py`
 
-- [ ] **Step 1: Implement the RED-pinned session-result parser against Task 1 Step 5's observed shape**
+- [x] **Step 1: Implement the RED-pinned session-result parser against Task 1 Step 5's observed shape**
 
 Task 2A Steps 7-8 already established the RED parser test. Implement
 `_parse_session_result(transcript: str) -> SessionResultEvidence` (new code, not reusing the frozen
@@ -1248,13 +1336,13 @@ text lists "final state" and terminal `end_turn` as two *separate* required clai
   `external-session-evidence.json` snapshot after its run-ID-keyed real Redis lookup; never from an
   unavailable ACP transcript field or a new ambient environment read.
 - `stop_reason` (str, the ACP-level `stopReason`, expecting `"end_turn"`)
-- `final_agent_state` (str) — **only if Task 1 Step 5 confirmed a real, distinct domain-state signal
-  exists**, populated from the Step 1 transcript parser if the signal lives in the transcript, or from
-  the Step 2 separate typed collector if it lives outside (e.g. Redis). If Task 1 Step 5 found none,
-  this field is NOT omitted by local decision: per Task 1 Step 5's ruling this plan cannot waive Plan
-  9.96's separately-enumerated "final state" claim itself; the resolution is a reviewed Plan 9.96
-  parent-contract amendment or another independent final-state source, decided outside this plan. Do
-  not fabricate a value and do not silently drop the claim.
+- `final_agent_state` (str) — set to `"COMPLETED"` only when this fixed normal ACP-path fixture's
+  already-parsed evidence satisfies all three Task 1 predicates: `stop_reason == "end_turn"`,
+  `tool_call_count > 0`, and `"write_file" in tool_names`. It is a bounded inference from those
+  HMAC-covered manifest facts, not an ACP/Redis field and not a new collector input. When the
+  conjunction does not hold, omit this field rather than fabricate a value. Never treat `end_turn`
+  alone as completion, and never apply this inference to a request with `completion_condition` or to
+  a different task without a new source-level proof.
 - `child_key_names` (tuple of names only, sourced from the workspace's **outer** — evidence tool's
   own — audit entry per Task 1 Step 4's corrected ruling, not the inner `optimus-agent` entry; see
   the mechanical selection rule below)
@@ -1636,8 +1724,9 @@ redesign): `manifest["evidence_run_nonce"] == nonce` (freshness), `session_mode 
 `tool_names` non-empty and matching the expected tool for this fixed task, `tool_call_count > 0`,
 `0 < total_cost_usd <= DEFAULT_LIVE_MAX_COST_USD` (or the operator's `OPTIMUS_LIVE_MAX_COST_USD`
 override) **from the HMAC-covered `external-session-evidence.json` whose run ID equals the parsed
-session ID/request-ID pair**, `stop_reason == "end_turn"`, the `final_agent_state` field (if Task 1 Step 5 confirmed one
-exists) matches its expected successful value, `elevated_comparison_record_present is False`, the
+session ID/request-ID pair**, `stop_reason == "end_turn"`, `final_agent_state == "COMPLETED"` under
+the same fixed-fixture conjunction (`tool_call_count > 0` and `"write_file" in tool_names`), and the
+field is absent rather than fabricated if that conjunction does not hold; `elevated_comparison_record_present is False`, the
 run-scoped debug snapshot contains zero `launch_authorization_comparison` records, and — per Task 1
 Step 4's pinned source — the **first record** of the `audit-snapshot.ndjson` (the outer, evidence-tool
 audit entry, selected by document order, never by matching the desired result) has its
@@ -1795,14 +1884,15 @@ security-contract approval record was checked, not the separate implementation-p
 record). Both are now included below. The check compares against **HEAD** (`git diff --quiet HEAD --
 ...`), not the unstaged-only form, so a frozen-path change that was already `git add`-ed cannot pass
 silently. Since Global Constraint 1 applies "at every commit," this same HEAD comparison runs before
-all seven commits — the Task 0 v1 planning commit, Task 0A v2 amendment, Task 2A v3 amendment,
-Task 2B v4 amendment, this implementation commit, and Task 8's evidence/docs and plan-closure
-commits. From Task 2B onward, all four Plan 9.98 approval records are included too:
+all eight commits — the Task 0 v1 planning commit, Task 0A v2 amendment, Task 2A v3 amendment,
+Task 2B v4 amendment, Task 2C v5 amendment, this implementation commit, and Task 8's evidence/docs
+and plan-closure commits. From Task 2C onward, all five Plan 9.98 approval records are included too:
 
 ```bash
 git diff --quiet HEAD -- tools/run_plan987_acpx_live_evidence.py tools/run_plan988_fu4b_live_evidence.py src/optimus/acp/operator_verify.py tests/e2e/acp/test_spawned_agent_live.py src/optimus/acp/e2e_transcript.py docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md docs/superpowers/reviews/2026-07-15-plan-9-96-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md
 git diff --quiet HEAD -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v3.md
 git diff --quiet HEAD -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v4.md
+git diff --quiet HEAD -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v5.md
 git diff --stat HEAD -- src/optimus/acp/__main__.py src/optimus/agent/defaults.py src/optimus/acp/trusted_paths.py src/optimus/acp/subprocess_env.py src/optimus/acp/launch_policy.py src/optimus/acp/errors.py src/optimus/acp/bootstrap.py tools/verify_plan996_logging_surfaces.py
 ```
 
@@ -1844,8 +1934,8 @@ report; record both roles explicitly").
 
 - [ ] **Step 1: Write the claim-to-evidence report**
 
-Record: this plan's v1 historical approval digest (Task 0 Step 1), the controlling v4 approval
-digest and amendment SHA (Task 2B), the foundation SHA, the Task 1 ruling and
+Record: this plan's v1 historical approval digest (Task 0 Step 1), the controlling v5 approval
+digest and amendment SHA (Task 2C), the foundation SHA, the Task 1 ruling and
 its empirical proofs, **the Task 6 Step 3 implementation commit's full SHA** (not a SHA this same
 report's own commit will only receive later), exact test node names/commands/results, the real
 ordinary and elevated run outcomes (session mode, tool names, cost, stop reason, child-key names, tag
@@ -1856,11 +1946,11 @@ SHA-256s (of the immutable per-capture snapshot files `transcript.stdout`/`.stde
 `launch-audit.ndjson`/`debug-acp.ndjson` workspace files or the live Redis record, which Task 4
 Steps 2–3 deliberately replace with those snapshots), the manifest HMAC
 verification results, the documented one-time durable-approval prerequisite for the ordinary
-workspace, coverage, Ruff, and `git diff --check` results. **Final-state handling:** if Task 1 Step 5
-found a real distinct `final_agent_state` source, record its outcome; if it did NOT and the resolution
-was a reviewed Plan 9.96 parent-contract amendment (per Task 1 Step 5's ruling — this plan cannot
-waive that claim by local disclosure), cite that amendment. Do not include secret or workspace
-content.
+workspace, coverage, Ruff, and `git diff --check` results. **Final-state handling:** record
+`final_agent_state == "COMPLETED"` only with the three content-free, observed predicates that justify
+the bounded Task 1 inference (`stop_reason == "end_turn"`, `tool_call_count > 0`, and `"write_file"`
+in `tool_names`); if the conjunction does not hold, record the field as absent, never fabricated. Do
+not include secret or workspace content.
 
 - [ ] **Step 2: State the Plan 9.96 Task 9 dependency explicitly**
 
@@ -1891,7 +1981,7 @@ depend on Plan 9.98's evidence report.
 
 One sentence, mirroring the pattern used for every other plan.
 
-- [ ] **Step 3: Commit the evidence report + roadmap + README — the SIXTH commit; the plan file is NOT in it**
+- [ ] **Step 3: Commit the evidence report + roadmap + README — the SEVENTH commit; the plan file is NOT in it**
 
 This commit deliberately does **not** include the Plan 9.98 plan file, to avoid the self-reference
 Codex identified: a commit cannot include the plan file with "Step 3 done" ticked before Step 3's own
@@ -1903,6 +1993,7 @@ frozen-path HEAD gate + `git diff --cached --check` only).
 git diff --quiet HEAD -- tools/run_plan987_acpx_live_evidence.py tools/run_plan988_fu4b_live_evidence.py src/optimus/acp/operator_verify.py tests/e2e/acp/test_spawned_agent_live.py src/optimus/acp/e2e_transcript.py docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md docs/superpowers/reviews/2026-07-15-plan-9-96-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md
 git diff --quiet HEAD -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v3.md
 git diff --quiet HEAD -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v4.md
+git diff --quiet HEAD -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v5.md
 git status --porcelain --untracked-files=all
 git diff -- reports/plan-9-98-real-acpx-session-evidence.md docs/superpowers/plans/2026-07-01-phase-1-roadmap.md README.md
 ```
@@ -1916,20 +2007,20 @@ git commit -m "Record Plan 9.98 real acpx session evidence"
 git rev-parse HEAD
 ```
 
-- [ ] **Step 4: Persist the checkbox-updated plan file — the SEVENTH (plan-closure) commit; resolves the self-reference**
+- [ ] **Step 4: Persist the checkbox-updated plan file — the EIGHTH (plan-closure) commit; resolves the self-reference**
 
 Every substantive step through Step 3 is now genuinely complete, so every task-step and Definition-of-
 Done checkbox except this closing action can be ticked truthfully. Tick them all now (including a tick
 for this Step 4 as it is performed — the single irreducible self-reference every plan's final action
-carries), then mechanically prove ONLY checkboxes changed versus the approved v4 amendment commit and
+carries), then mechanically prove ONLY checkboxes changed versus the approved v5 amendment commit and
 commit the plan file alone:
 
 ```bash
-# Find the Task 2B amendment commit mechanically — it is the commit that FIRST added the v4 approval
+# Find the Task 2C amendment commit mechanically — it is the commit that FIRST added the v5 approval
 # record, so no manually-carried-forward SHA is needed:
-AMENDED_PLANNING_SHA=$(git log --diff-filter=A --format=%H -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v4.md | tail -1)
-echo "V4 amendment commit: $AMENDED_PLANNING_SHA"
-# Prove the plan file changed only in checkbox characters vs that approved v4 plan blob:
+AMENDED_PLANNING_SHA=$(git log --diff-filter=A --format=%H -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v5.md | tail -1)
+echo "V5 amendment commit: $AMENDED_PLANNING_SHA"
+# Prove the plan file changed only in checkbox characters vs that approved v5 plan blob:
 git diff "$AMENDED_PLANNING_SHA" -- docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md | grep '^[+-]' | grep -v '^[+-]\{3\}' | grep -vE '^\+- \[x\]' | grep -vE '^-- \[ \]'
 ```
 
@@ -1941,6 +2032,7 @@ closure. Then, after approval:
 git diff --quiet HEAD -- tools/run_plan987_acpx_live_evidence.py tools/run_plan988_fu4b_live_evidence.py src/optimus/acp/operator_verify.py tests/e2e/acp/test_spawned_agent_live.py src/optimus/acp/e2e_transcript.py docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md docs/superpowers/reviews/2026-07-15-plan-9-96-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval.md docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v2.md
 git diff --quiet HEAD -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v3.md
 git diff --quiet HEAD -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v4.md
+git diff --quiet HEAD -- docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval-v5.md
 git add docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md
 git diff --cached --check
 git commit -m "Close Plan 9.98: mark all steps complete (checkbox-only)"
@@ -1983,12 +2075,11 @@ frozen-content change — the one deliberate exception).
   both required unconditionally, never optional or "TTL will handle it."
 - [ ] `acpx --format json ... exec`'s real output shape is pinned by an actual run (Task 1 Step 5),
   inspected ephemerally with no raw discovery artifact retained, before Task 4's parser or Task 5's
-  source-level test is written against it. The same investigation determines whether a real, distinct
-  `final_agent_state` domain signal exists (in acpx output, the real Redis agent state store, or the
-  sanitized transcript). If none exists, this plan CANNOT waive Plan 9.96's separately-enumerated
-  "final state" claim by local disclosure — the only valid resolutions are a reviewed amendment to
-  Plan 9.96's own contract or another independent final-state source; this is a live risk that can
-  block the plan pending a parent-contract decision.
+  source-level test is written against it. No real distinct `final_agent_state` domain signal exists
+  in acpx output, the real Redis agent state store, or the sanitized transcript. For this plan's fixed
+  normal ACP path only, the source-level construction proof instead pins `COMPLETED` to the conjunction
+  of `stop_reason == "end_turn"`, `tool_call_count > 0`, and `"write_file" in tool_names`; `end_turn`
+  alone is never sufficient, and a failed conjunction omits rather than fabricates the field.
 - [ ] `acpx`'s real permission-granting mechanism for file-write tool calls (e.g. `--approve-all` or
   an empirically confirmed equivalent) is pinned in the correct command layer — the outer `acpx`
   argv, never folded into the `--agent` invocation string — and included in the real invocation; a
@@ -2029,10 +2120,10 @@ frozen-content change — the one deliberate exception).
   agent.
 - [ ] Every new manifest field is content-free (no raw secret, no full environment, no raw prompt or
   file content), including `tool_names`/`tool_call_count` (consistent everywhere this plan references
-  them); a `final_agent_state` field only if Task 1 Step 5 proved a real distinct source (otherwise
-  handled per the parent-contract ruling above, never fabricated) — and if that source is OUTSIDE the
-  transcript (e.g. Redis), it is produced by a separate typed final-state collector with its own
-  content-free snapshot, digest, and test, NOT by the stdout parser (which cannot reach it); and
+  them); `final_agent_state == "COMPLETED"` only when the fixed-fixture, normal-ACP-path conjunction
+  of `stop_reason == "end_turn"`, `tool_call_count > 0`, and `"write_file" in `tool_names` holds;
+  otherwise the field is omitted, never fabricated. It is a bounded inference from existing
+  HMAC-covered fields, not a transcript/Redis field or a separate final-state collector; and
   `evidence_run_nonce`, whose caller-supplied value is grammar-validated (`^run_[0-9a-f]{24}$`) and
   rejected pre-authorization on any mismatch, because it is written verbatim into the HMAC-signed
   manifest bypassing the sanitizer and "content-free" must be enforced, not merely asserted. The
@@ -2059,8 +2150,8 @@ frozen-content change — the one deliberate exception).
   0.12.0+, driving the real Optimus agent, real Redis, and real Gateway credentials, against the SAME
   fixed, externally pre-approved workspace (a documented one-time durable-approval prerequisite for
   ordinary; the elevated command additionally carries a fresh single-use diagnostic grant), and both
-  are asserted for mode, tools (by name, not just count), cost band, final agent state (if defined),
-  terminal state (`end_turn`), zero pre-approval mutation, exact child-key manifest (the first
+  are asserted for mode, tools (by name, not just count), cost band, the bounded `COMPLETED` inference
+  when its three predicates hold, terminal state (`end_turn`), zero pre-approval mutation, exact child-key manifest (the first
   audit-snapshot record), zero run-scoped comparison records for ordinary, exactly one allowlisted
   comparison/provenance record for elevated, and zero-or-more sanitized tags — the
   elevated E2E test consumes artifacts from a fixed, discoverable root produced by an operator-run TTY
@@ -2098,30 +2189,31 @@ frozen-content change — the one deliberate exception).
   records, `src/optimus/acp/e2e_transcript.py`'s existing behavior, and both frozen Plan 9.87/9.88
   helpers remain byte-unchanged; `operator_verify.py` and `test_spawned_agent_live.py` remain
   byte-unchanged — checked against the FULL declared list from Global Constraint 1, before EVERY
-  commit (v1 planning, v2 amendment, v3 amendment, v4 amendment, implementation, evidence/docs, and
-  plan-closure), not a partial list checked once. All four Plan 9.98 approval records are
-  byte-unchanged after the v4 amendment lands.
+  commit (v1 planning, v2 amendment, v3 amendment, v4 amendment, v5 amendment, implementation,
+  evidence/docs, and plan-closure), not a partial list checked once. All five Plan 9.98 approval
+  records are byte-unchanged after the v5 amendment lands.
 - [ ] Full default test suite passes, aggregate coverage across `optimus`/`optimus_gateway`/
   `optimus_security` is at least 80%, Ruff is clean, the logging-surface verifier is green, and
   `git diff --check` is clean.
 - [ ] Every `uv` command in this plan's verification steps was run from a terminal with `uv` actually
   on PATH; no checkbox reflects a substitute computation.
-- [ ] SEVEN separate operator-approved commits: (1) the Task 0 docs-only v1 planning commit (pristine
+- [ ] EIGHT separate operator-approved commits: (1) the Task 0 docs-only v1 planning commit (pristine
   plan + v1 approval record); (2) the Task 0A docs-only agile amendment commit (revised plan + v2
   approval record); (3) the Task 2A docs-only TDD-sequencing amendment (revised plan + v3 approval
   record); (4) the Task 2B Redis-cost-evidence amendment (revised plan + v4 approval record); (5) the
-  Task 6 implementation commit; (6) the Task 8 Step 3 evidence/docs commit (evidence report + roadmap
-  + README), which cites the implementation commit's already-landed SHA, never its own, and does NOT
-  include the plan file; (7) the Task 8 Step 4 plan-closure commit, which
+  Task 2C bounded-final-state-inference amendment (revised plan + v5 approval record); (6) the Task 6
+  implementation commit; (7) the Task 8 Step 3 evidence/docs commit (evidence report + roadmap +
+  README), which cites the implementation commit's already-landed SHA, never its own, and does NOT
+  include the plan file; (8) the Task 8 Step 4 plan-closure commit, which
   persists the plan file's checkbox-only diff — mechanically proven to contain no substantive-text
-  change versus the v4 amendment commit — resolving the self-reference of a plan file that would
+  change versus the v5 amendment commit — resolving the self-reference of a plan file that would
   otherwise have to record its own not-yet-existing closing commit.
 - [ ] This plan's evidence report explicitly states that Plan 9.96 Task 9 Steps 2/3/5 depended on
   this plan's implementation commit and were blocked until it landed.
 - [ ] Final `git status` is a clean tree (modulo disclosed tool-config noise) — no dangling
-  uncommitted plan-file checkbox drift; the plan file and all four approval records are tracked in
-  repository history from their respective Task 0/Task 0A/Task 2A/Task 2B commits onward, never left untracked
-  through to closure.
+  uncommitted plan-file checkbox drift; the plan file and all five approval records are tracked in
+  repository history from their respective Task 0/Task 0A/Task 2A/Task 2B/Task 2C commits onward,
+  never left untracked through to closure.
 
 ## Implementation Handoff After Plan Approval
 
