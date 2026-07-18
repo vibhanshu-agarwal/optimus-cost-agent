@@ -1081,11 +1081,27 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.run_plan996_acpx_security_evidence:_collect_external_session_evidence:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _collect_external_session_evidence serializes only the ACP run ID and the run-ID-keyed Redis plan's positive Decimal cost into a fixed content-free schema; it never includes prompt text, file contents, environment mappings, or credential fields, and the serialized value is then persisted only through _stream_sanitized.",
+      "sanitizer": "schema-limited content-free snapshot followed by optimus_security.sanitization.StreamingTextSanitizer",
+      "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_external_session_evidence_snapshot_collector_reads_the_run_bound_redis_plan_once",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.run_plan996_acpx_security_evidence:_compute_evidence_manifest_hmac:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: tools.run_plan996_acpx_security_evidence:_compute_evidence_manifest_hmac:json_serialization serializes manifest fields (sanitizer version, rule counts, artifact SHA-256, joined-scan result, timestamp) for HMAC computation. No secret material is present in the manifest fields; the HMAC key is never serialized.",
+      "rationale": "Inspection: _compute_evidence_manifest_hmac serializes the complete evidence manifest minus hmac: sanitizer metadata, artifact digests, joined-scan result, timestamp, and the content-free session mode/tool names/count/cost/stop reason/bounded final state/child-key names/comparison-record boolean/run nonce. It never serializes prompt text, file contents, environment values, credential material, or the HMAC key.",
       "sanitizer": "schema-limited functional path; manifest contains no secret material",
       "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_evidence_manifest_hmac_is_deterministic_and_domain_separated",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan996_acpx_security_evidence:_read_log_suffix:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _read_log_suffix opens only the controlled workspace's append-only launch-audit/debug source at a pre-capture byte offset for in-memory validation; it never writes or exports the raw suffix, and any promoted copy is produced separately through _stream_sanitized after run-scoped validation succeeds.",
+      "sanitizer": "read-only offset-bounded source; downstream persistence uses optimus_security.sanitization.StreamingTextSanitizer",
+      "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_run_scoped_log_snapshot_uses_offsets_and_accepts_elevated_empty_tags",
       "evidence_tier": "unit"
     },
     {
@@ -1123,17 +1139,17 @@
     {
       "key": "tools.run_plan996_acpx_security_evidence:_write_evidence_manifest:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: tools.run_plan996_acpx_security_evidence:_write_evidence_manifest:json_serialization serializes the manifest fields to JSON for writing. The manifest contains only sanitizer version, rule counts, artifact SHA-256 digests, joined-scan result, timestamp, and HMAC \u2014 never secret material.",
+      "rationale": "Inspection: _write_evidence_manifest serializes only sanitizer metadata, artifact digests, joined-scan result, timestamp/HMAC, and the validated content-free session fields (mode, tool identifiers/count, Decimal cost, stop reason, bounded final state, child-key names, comparison-record boolean, and run nonce). Raw prompts, file contents, environment values, and credentials are excluded by schema.",
       "sanitizer": "schema-limited functional path; manifest contains no secret material",
-      "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_evidence_manifest_contains_no_secret_material",
+      "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_manifest_hmac_and_verify_cover_all_run_bound_session_evidence",
       "evidence_tier": "unit"
     },
     {
       "key": "tools.run_plan996_acpx_security_evidence:_write_evidence_manifest:text_file_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: tools.run_plan996_acpx_security_evidence:_write_evidence_manifest:text_file_write writes the JSON manifest to disk. The manifest contains only sanitizer version, rule counts, artifact SHA-256 digests, joined-scan result, timestamp, and HMAC \u2014 never secret material.",
+      "rationale": "Inspection: _write_evidence_manifest writes only the schema-limited JSON described above: sanitizer metadata, artifact digests, joined-scan result, timestamp/HMAC, and validated content-free session evidence. No raw prompt, file-content, environment-value, or credential field has a manifest path.",
       "sanitizer": "schema-limited functional path; manifest contains no secret material",
-      "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_evidence_manifest_contains_no_secret_material",
+      "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_manifest_hmac_and_verify_cover_all_run_bound_session_evidence",
       "evidence_tier": "unit"
     },
     {

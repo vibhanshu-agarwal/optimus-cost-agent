@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import ast
+import inspect
 import io
 import json
 import os
+import subprocess
 import sys
-from pathlib import Path
+import textwrap
+from decimal import Decimal
+from pathlib import Path, PureWindowsPath
+from types import SimpleNamespace
 
 import pytest
 
@@ -22,7 +28,9 @@ from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
 from optimus.acp.operator_paths import resolve_authorized_operator_paths
 from optimus.acp.trusted_paths import TrustedPathError, resolve_workspace_identity
 from tools.run_plan996_acpx_security_evidence import (
+    SESSION_TASK,
     CaptureResult,
+    _build_capture_command,
     _capture_to_disk,
     _compute_evidence_manifest_hmac,
     _joined_scan,
@@ -89,6 +97,15 @@ def _environment_without_env_credentials(config_root: Path) -> dict[str, str]:
     }
 
 
+def _system_environment() -> dict[str, str]:
+    """Return only non-empty bootstrap keys from the sanctioned snapshot allowlist."""
+    return {
+        name: value
+        for name in capture_tool._SYSTEM_ENV_KEYS
+        if (value := os.environ.get(name, ""))
+    }
+
+
 def _keyring_with_credentials(*, shared_secret: str, provider_api_key: str, provider: str = "openrouter") -> FakeKeyring:
     """Populate a FakeKeyring with the same key names the real Windows
     Credential Manager store uses (service `optimus-cost-agent`), so the
@@ -141,6 +158,75 @@ def _write_durable_approval(
             hmac_key=store.hmac_key,
         )
     )
+
+
+def _resolve_candidate_for_test(
+    *,
+    workspace: Path,
+    environment: dict[str, str],
+    keyring: FakeKeyring,
+    approval_runtime_root: Path,
+) -> object:
+    snapshot = LaunchEnvironmentSnapshot.capture(environment)
+    identity = resolve_workspace_identity(workspace)
+    paths = resolve_authorized_operator_paths(
+        workspace_root=workspace,
+        snapshot_values=snapshot.values,
+    )
+    store = KeyringApprovalStore(
+        keyring_backend=keyring,
+        runtime_root=approval_runtime_root,
+    )
+    return resolve_launch_candidate(
+        snapshot=snapshot,
+        workspace_identity=identity,
+        operator_paths=paths,
+        hmac_key=store.hmac_key,
+        credential_keyring_backend=keyring,
+    )
+
+
+def test_nested_agent_snapshot_uses_clean_predefault_environment(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    keyring = _keyring_with_credentials(
+        shared_secret="nested-snapshot-shared-secret",
+        provider_api_key="nested-snapshot-provider-key",
+    )
+    approval_runtime_root = tmp_path / "approval-runtime"
+    environment = _system_environment()
+    _write_durable_approval(
+        workspace=workspace,
+        environment=environment,
+        keyring=keyring,
+        approval_runtime_root=approval_runtime_root,
+    )
+    capture = authorize_capture(
+        workspace=workspace,
+        environment=environment,
+        keyring_backend=keyring,
+        approval_runtime_root=approval_runtime_root,
+        launch_session_id="sess_clean_nested_snapshot",
+    )
+
+    acpx_client_environ = getattr(capture, "acpx_client_environ", None)
+    assert acpx_client_environ is not None, "missing ACPX client environment role"
+    clean_nested = _resolve_candidate_for_test(
+        workspace=workspace,
+        environment=dict(acpx_client_environ),
+        keyring=keyring,
+        approval_runtime_root=approval_runtime_root,
+    )
+    postdefault_nested = _resolve_candidate_for_test(
+        workspace=workspace,
+        environment={**acpx_client_environ, **capture.agent_environ},
+        keyring=keyring,
+        approval_runtime_root=approval_runtime_root,
+    )
+
+    outer_digest = capture.authorized.candidate.security_snapshot_digest
+    assert postdefault_nested.security_snapshot_digest != outer_digest
+    assert clean_nested.security_snapshot_digest == outer_digest
 
 
 def test_capture_rejects_absent_durable_approval_before_audit_or_spawn(tmp_path: Path) -> None:
@@ -279,7 +365,9 @@ def test_capture_revalidates_workspace_after_successful_audit_before_spawn(tmp_p
         spawn_authorized_capture(audited, command=[sys.executable, "-c", "raise SystemExit(0)"])
 
 
-def test_capture_spawns_child_with_only_exact_authorized_projection(tmp_path: Path) -> None:
+def test_spawn_uses_acpx_client_environment_not_effective_agent_environment(
+    tmp_path: Path,
+) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     config_root = tmp_path / "config"
@@ -298,7 +386,7 @@ def test_capture_spawns_child_with_only_exact_authorized_projection(tmp_path: Pa
         environment=environment,
         keyring_backend=keyring,
         approval_runtime_root=approval_runtime_root,
-        launch_session_id="sess_positive",
+        launch_session_id="sess_acpx_client_boundary",
     )
     audited = append_authorized_audit(capture)
 
@@ -310,23 +398,147 @@ def test_capture_spawns_child_with_only_exact_authorized_projection(tmp_path: Pa
 
     assert process.returncode == 0, stderr
     child_environment = json.loads(stdout)
-    assert "UNRELATED_SENTINEL" not in child_environment
-    expected = {
-        "OPTIMUS_AGENT_MODEL": "claude-haiku",
-        "OPTIMUS_API_KEY": "test-authorized-api-key",
-        "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-        "OPTIMUS_PRODUCTION_MODE": "false",
-        "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
-    }
-    # System keys a real Windows process needs, merged from the gate's
-    # sanctioned snapshot via the same allowlist as the committed Task 5
-    # launcher (local_infra._SYSTEM_ENV_KEYS). UNRELATED_SENTINEL is NOT on
-    # the allowlist, so the no-passthrough property survives.
-    for key in ("PATH", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP"):
-        value = os.environ.get(key, "")
-        if value:
-            expected[key] = value
+    expected = _system_environment()
+    # Compare names first so a RED failure never renders the synthetic secret
+    # values from the effective agent mapping in pytest's assertion output.
+    assert set(child_environment) == set(expected)
     assert child_environment == expected
+
+
+def test_capture_tool_does_not_import_or_instantiate_project_acp_client() -> None:
+    """The evidence tool delegates ACP driving to acpx and only parses its output."""
+    tree = ast.parse(Path(capture_tool.__file__).read_text(encoding="utf-8"))
+    forbidden_symbol = "NdjsonSubprocessSession"
+    forbidden_module = "ndjson_subprocess_session"
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                assert forbidden_module not in alias.name
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            assert forbidden_module not in module
+            for alias in node.names:
+                assert alias.name != forbidden_symbol
+                assert forbidden_module not in alias.name
+        elif isinstance(node, ast.Call):
+            function = node.func
+            assert not (
+                isinstance(function, ast.Name) and function.id == forbidden_symbol
+            )
+            assert not (
+                isinstance(function, ast.Attribute) and function.attr == forbidden_symbol
+            )
+
+
+def test_spawn_authorized_capture_uses_devnull_stdin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The real spawn path cannot write ACP requests to the supplied child."""
+    captured: dict[str, object] = {}
+    real_popen = subprocess.Popen
+
+    def spy_popen(
+        command: list[str], *args: object, **kwargs: object
+    ) -> subprocess.Popen[str]:
+        captured.update(kwargs)
+        return real_popen(command, *args, **kwargs)
+
+    monkeypatch.setattr(capture_tool.subprocess, "Popen", spy_popen)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    config_root = tmp_path / "config"
+    config_root.mkdir()
+    keyring = FakeKeyring()
+    approval_runtime_root = tmp_path / "approval-runtime"
+    environment = _environment(config_root)
+    _write_durable_approval(
+        workspace=workspace,
+        environment=environment,
+        keyring=keyring,
+        approval_runtime_root=approval_runtime_root,
+    )
+    capture = authorize_capture(
+        workspace=workspace,
+        environment=environment,
+        keyring_backend=keyring,
+        approval_runtime_root=approval_runtime_root,
+        launch_session_id="sess_stdin_devnull",
+    )
+    audited = append_authorized_audit(capture)
+
+    process = spawn_authorized_capture(
+        audited,
+        command=[sys.executable, "-c", "pass"],
+    )
+    process.communicate(timeout=10)
+
+    assert process.returncode == 0
+    assert captured["stdin"] is subprocess.DEVNULL
+
+
+def test_build_capture_command_places_supplied_acpx_path_first() -> None:
+    command = _build_capture_command(
+        acpx="/fake/bin/acpx",
+        workspace=Path("C:/tmp/fake-workspace"),
+        agent_invocation=(
+            "optimus-agent --workspace-root C:/tmp/fake-workspace "
+            "--launch-session-id sess_x --debug-trace"
+        ),
+        drive_session=True,
+    )
+
+    assert command[0] == "/fake/bin/acpx"
+    assert command[-2:] == ["exec", SESSION_TASK]
+
+
+def test_main_default_path_never_resolves_optimus_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queried_names: list[str] = []
+
+    def which_spy(name: str) -> str | None:
+        queried_names.append(name)
+        return "acpx" if name == "acpx" else None
+
+    monkeypatch.setattr(capture_tool.shutil, "which", which_spy)
+    monkeypatch.setattr(capture_tool, "authorize_capture", lambda **_kwargs: object())
+    monkeypatch.setattr(capture_tool, "append_authorized_audit", lambda _capture: object())
+    monkeypatch.setattr(
+        capture_tool,
+        "_capture_to_disk",
+        lambda *_args, **_kwargs: CaptureResult(exit_code=0, rule_counts={}),
+    )
+    monkeypatch.setattr(capture_tool, "_known_secrets", lambda _capture: ())
+    monkeypatch.setattr(
+        capture_tool,
+        "_joined_scan",
+        lambda *_args, **_kwargs: {
+            "hit": False,
+            "rules_fired": [],
+            "scanned_artifacts": [],
+        },
+    )
+    monkeypatch.setattr(
+        capture_tool,
+        "_write_evidence_manifest",
+        lambda *_args, **_kwargs: None,
+    )
+
+    exit_code = main(
+        [
+            "capture",
+            "--workspace",
+            "workspace",
+            "--output-dir",
+            "output",
+            "--mode",
+            "ordinary",
+        ]
+    )
+
+    assert exit_code == 0
+    assert "acpx" in queried_names
+    assert "optimus-agent" not in queried_names
 
 
 def test_known_secrets_folds_resolved_shared_secret_when_credentials_sourced_from_keyring(
@@ -806,6 +1018,21 @@ def test_stream_sanitized_uses_fixed_size_reads(tmp_path: Path) -> None:
     assert set(source.read_sizes) == {8192}
 
 
+def test_stream_sanitized_preserves_crlf_without_doubling_carriage_returns(
+    tmp_path: Path,
+) -> None:
+    source_text = '{"record":1}\r\n{"record":2}\r\n'
+    destination = tmp_path / "snapshot.ndjson"
+
+    _stream_sanitized(io.StringIO(source_text), destination, known_secrets=())
+
+    assert destination.read_bytes() == source_text.encode("utf-8")
+    assert [json.loads(line) for line in destination.read_text(encoding="utf-8").splitlines()] == [
+        {"record": 1},
+        {"record": 2},
+    ]
+
+
 def test_stream_sanitized_redacts_known_secret_before_persisting_to_disk(
     tmp_path: Path,
 ) -> None:
@@ -957,18 +1184,1142 @@ def test_main_generates_launch_session_id_when_absent(
     assert len(captured_session_ids[0]) == 29
 
 
-def test_spawn_authorized_capture_merges_system_env_keys(tmp_path: Path) -> None:
-    """The child env must include the system keys a real Windows process needs
-    (PATH, SYSTEMROOT, etc.), merged from the gate's sanctioned snapshot,
-    not a bare OPTIMUS_* set that nothing real could execute in. Follows the
-    committed Task 5 launcher precedent (local_infra._SYSTEM_ENV_KEYS)."""
+def test_capability_gap_default_capture_remains_version_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default ``acpx --version`` path never masquerades as a real session."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     config_root = tmp_path / "config"
     config_root.mkdir()
     keyring = FakeKeyring()
-    approval_runtime_root = tmp_path / "approval-runtime"
     environment = _environment(config_root)
+    _write_durable_approval(
+        workspace=workspace,
+        environment=environment,
+        keyring=keyring,
+        approval_runtime_root=tmp_path / "approval-runtime",
+    )
+    _patch_keyring(monkeypatch, keyring)
+    monkeypatch.setattr(capture_tool.os, "environ", environment)
+    monkeypatch.setattr(
+        capture_tool.shutil,
+        "which",
+        lambda name: sys.executable if name == "acpx" else None,
+    )
+
+    output_dir = tmp_path / "output"
+    assert main(
+        [
+            "capture",
+            "--workspace",
+            str(workspace),
+            "--output-dir",
+            str(output_dir),
+            "--mode",
+            "ordinary",
+        ]
+    ) == 0
+
+    manifest = json.loads((output_dir / "sanitizer-manifest.json").read_text(encoding="utf-8"))
+    assert "stop_reason" not in manifest
+    assert "tool_names" not in manifest
+    assert "tool_call_count" not in manifest
+    assert not (output_dir / "external-session-evidence.json").exists()
+
+
+def _observed_session_transcript() -> str:
+    """Content-free synthetic JSON-RPC shape observed in Task 1 Step 5."""
+    records = (
+        {"jsonrpc": "2.0", "id": 1, "result": {"sessionId": "session_unit"}},
+        {"jsonrpc": "2.0", "id": 2, "method": "session/prompt", "params": {}},
+        {
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {"update": {"sessionUpdate": "tool_call", "title": "file_reader"}},
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {"update": {"sessionUpdate": "tool_call", "title": "write_file"}},
+        },
+        {"jsonrpc": "2.0", "id": 2, "result": {"stopReason": "end_turn"}},
+    )
+    return "\n".join(json.dumps(record) for record in records)
+
+
+def test_parse_session_result_extracts_the_observed_run_identity_and_tool_evidence() -> None:
+    """Task 4 RED: only actual ACP JSON-RPC fields become session evidence."""
+    parser = getattr(capture_tool, "_parse_session_result", None)
+    assert parser is not None, "missing capability: Task 4 session-result parser"
+
+    result = parser(_observed_session_transcript())
+
+    assert result.session_id == "session_unit"
+    assert result.prompt_request_id == 2
+    assert result.run_id == "session_unit:2"
+    assert result.stop_reason == "end_turn"
+    assert result.tool_names == ("file_reader", "write_file")
+    assert result.tool_call_count == 2
+    assert not hasattr(result, "total_cost_usd"), "ACP transcript must not invent a cost field"
+
+
+def test_external_session_evidence_snapshot_collector_reads_the_run_bound_redis_plan_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Task 4 RED: Redis cost is one sanitized, run-bound external snapshot."""
+    collector = getattr(capture_tool, "_collect_external_session_evidence", None)
+    assert collector is not None, "missing capability: unified external-session collector"
+
+    class FakeStateStore:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def latest_plan_for_run(self, *, run_id: str) -> SimpleNamespace:
+            self.calls.append(run_id)
+            return SimpleNamespace(
+                run_id=run_id,
+                cost_usd=Decimal("0.003538"),
+                plan_text="never persist this task text",
+                gateway_request_id="never persist this gateway identifier",
+                provider="never persist this provider",
+            )
+
+    store = FakeStateStore()
+    urls: list[str] = []
+
+    class FakeRedisAgentStateStore:
+        @classmethod
+        def from_url(cls, url: str) -> FakeStateStore:
+            urls.append(url)
+            return store
+
+    monkeypatch.setattr(capture_tool, "RedisAgentStateStore", FakeRedisAgentStateStore, raising=False)
+    monkeypatch.setattr(capture_tool.os, "environ", {"OPTIMUS_REDIS_URL": "redis://ambient-must-not-be-read"})
+
+    evidence = collector(
+        capture=SimpleNamespace(agent_environ={"OPTIMUS_REDIS_URL": "redis://authorized/0"}),
+        session_result=SimpleNamespace(run_id="session_unit:2"),
+        output_dir=tmp_path,
+        known_secrets=("never persist",),
+    )
+
+    assert urls == ["redis://authorized/0"]
+    assert store.calls == ["session_unit:2"]
+    assert str(evidence.total_cost_usd) == "0.003538"
+    snapshot_text = (tmp_path / "external-session-evidence.json").read_text(encoding="utf-8")
+    assert json.loads(snapshot_text) == {"run_id": "session_unit:2", "total_cost_usd": "0.003538"}
+    assert "plan_text" not in snapshot_text
+    assert "gateway_request_id" not in snapshot_text
+    assert "provider" not in snapshot_text
+
+
+@pytest.mark.parametrize(
+    "record",
+    (
+        None,
+        SimpleNamespace(run_id="different:2", cost_usd=Decimal("0.003538")),
+        SimpleNamespace(run_id="session_unit:2", cost_usd=Decimal("0")),
+    ),
+)
+def test_external_session_evidence_snapshot_collector_fails_closed_on_absent_mismatched_or_nonpositive_cost(
+    record: SimpleNamespace | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No manifest-promotable external evidence exists without a valid run-bound cost."""
+    collector = getattr(capture_tool, "_collect_external_session_evidence", None)
+    assert collector is not None, "missing capability: unified external-session collector"
+
+    class FakeStateStore:
+        def latest_plan_for_run(self, *, run_id: str) -> SimpleNamespace | None:
+            assert run_id == "session_unit:2"
+            return record
+
+    class FakeRedisAgentStateStore:
+        @classmethod
+        def from_url(cls, _url: str) -> FakeStateStore:
+            return FakeStateStore()
+
+    monkeypatch.setattr(capture_tool, "RedisAgentStateStore", FakeRedisAgentStateStore, raising=False)
+
+    with pytest.raises(ValueError):
+        collector(
+            capture=SimpleNamespace(agent_environ={"OPTIMUS_REDIS_URL": "redis://authorized/0"}),
+            session_result=SimpleNamespace(run_id="session_unit:2"),
+            output_dir=tmp_path,
+            known_secrets=(),
+        )
+
+    assert not (tmp_path / "external-session-evidence.json").exists()
+
+
+def test_drive_session_collects_external_evidence_before_promotion_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A driven session snapshots only post-offset logs before scan and promotion."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    runtime_root = workspace / ".optimus"
+    runtime_root.mkdir()
+    audit_path = runtime_root / "launch-audit.ndjson"
+    debug_path = runtime_root / "debug-acp.ndjson"
+    audit_path.write_text(json.dumps({"launch_session_id": "old"}) + "\n", encoding="utf-8")
+    debug_path.write_text(json.dumps({"sessionId": "old"}) + "\n", encoding="utf-8")
+    expected_audit_offset = audit_path.stat().st_size
+    expected_debug_offset = debug_path.stat().st_size
+    output_dir = tmp_path / "output"
+    capture = SimpleNamespace(
+        agent_environ={"OPTIMUS_REDIS_URL": "redis://authorized/0"},
+        authorized=SimpleNamespace(
+            launch_session_id="sess_current",
+            candidate=SimpleNamespace(operator_paths=SimpleNamespace(runtime_root=runtime_root)),
+        ),
+    )
+    session_result = SimpleNamespace(run_id="session_unit:2")
+    external_evidence = SimpleNamespace(run_id="session_unit:2", total_cost_usd=Decimal("0.003538"))
+    log_evidence = SimpleNamespace(
+        child_key_names=("OPTIMUS_API_KEY", "OPTIMUS_REDIS_URL"),
+        elevated_comparison_record_present=False,
+    )
+    events: list[str] = []
+
+    monkeypatch.setattr(capture_tool.shutil, "which", lambda name: name)
+    monkeypatch.setattr(capture_tool, "authorize_capture", lambda **_kwargs: capture)
+
+    def append_audit(_capture: object) -> SimpleNamespace:
+        with audit_path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "launch_session_id": "sess_current",
+                        "child_propagation_decisions": {
+                            "agent_child": ["OPTIMUS_API_KEY", "OPTIMUS_REDIS_URL"],
+                            "acpx_client": [],
+                        },
+                    }
+                )
+                + "\n"
+            )
+        events.append("audit")
+        return SimpleNamespace(capture=capture)
+
+    monkeypatch.setattr(capture_tool, "append_authorized_audit", append_audit)
+
+    def capture_to_disk(
+        _audited: object, *, command: list[str], output_dir: Path, drive_session: bool
+    ) -> CaptureResult:
+        assert drive_session is True
+        assert command[-2:] == ["exec", capture_tool.SESSION_TASK]
+        with audit_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"launch_session_id": "sess_current"}) + "\n")
+        with debug_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"sessionId": "debug_current", "location": "other"}) + "\n")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "transcript.stdout").write_text(_observed_session_transcript(), encoding="utf-8")
+        events.append("capture")
+        return CaptureResult(exit_code=0, rule_counts={})
+
+    def parse_session(transcript: str) -> SimpleNamespace:
+        assert transcript == _observed_session_transcript()
+        events.append("parse")
+        return session_result
+
+    def collect_external(
+        *, capture: object, session_result: object, output_dir: Path, known_secrets: tuple[str, ...]
+    ) -> SimpleNamespace:
+        assert capture is not None
+        assert session_result is not None
+        assert known_secrets == ()
+        events.append("collect")
+        (output_dir / "external-session-evidence.json").write_text(
+            '{"run_id":"session_unit:2","total_cost_usd":"0.003538"}', encoding="utf-8"
+        )
+        return external_evidence
+
+    def snapshot_logs(
+        *,
+        workspace: Path,
+        output_dir: Path,
+        audit_offset: int,
+        debug_offset: int,
+        launch_session_id: str,
+        session_mode: str,
+        known_secrets: tuple[str, ...],
+    ) -> SimpleNamespace:
+        assert workspace == tmp_path / "workspace"
+        assert audit_offset == expected_audit_offset
+        assert debug_offset == expected_debug_offset
+        assert launch_session_id == "sess_current"
+        assert session_mode == "ordinary"
+        assert known_secrets == ()
+        assert events == ["audit", "capture", "parse", "collect"]
+        (output_dir / "audit-snapshot.ndjson").write_text(
+            audit_path.read_bytes()[audit_offset:].decode("utf-8"), encoding="utf-8"
+        )
+        (output_dir / "debug-snapshot.ndjson").write_text(
+            debug_path.read_bytes()[debug_offset:].decode("utf-8"), encoding="utf-8"
+        )
+        events.append("snapshot")
+        return log_evidence
+
+    def joined_scan(artifact_dir: Path, known_secrets: tuple[str, ...]) -> dict[str, object]:
+        assert events == ["audit", "capture", "parse", "collect", "snapshot"]
+        assert known_secrets == ()
+        assert (artifact_dir / "external-session-evidence.json").is_file()
+        assert (artifact_dir / "audit-snapshot.ndjson").is_file()
+        assert (artifact_dir / "debug-snapshot.ndjson").is_file()
+        events.append("scan")
+        return {"hit": False, "rules_fired": [], "scanned_artifacts": []}
+
+    def write_manifest(
+        _output_dir: Path,
+        *,
+        session_mode: str,
+        session_result: object,
+        external_evidence: object,
+        log_evidence: object,
+        evidence_run_nonce: str,
+        **_kwargs: object,
+    ) -> None:
+        assert session_mode == "ordinary"
+        assert session_result is not None
+        assert external_evidence is not None
+        assert log_evidence is not None
+        assert evidence_run_nonce == "run_0123456789abcdef01234567"
+        events.append("manifest")
+
+    monkeypatch.setattr(capture_tool, "_capture_to_disk", capture_to_disk)
+    monkeypatch.setattr(capture_tool, "_parse_session_result", parse_session)
+    monkeypatch.setattr(capture_tool, "_collect_external_session_evidence", collect_external)
+    monkeypatch.setattr(capture_tool, "_snapshot_run_scoped_launch_logs", snapshot_logs, raising=False)
+    monkeypatch.setattr(capture_tool, "_known_secrets", lambda _capture: ())
+    monkeypatch.setattr(capture_tool, "_joined_scan", joined_scan)
+    monkeypatch.setattr(
+        capture_tool,
+        "resolve_trusted_operator_roots",
+        lambda **_kwargs: SimpleNamespace(approval_runtime_root=tmp_path / "approval-runtime"),
+    )
+    monkeypatch.setattr(
+        capture_tool,
+        "KeyringApprovalStore",
+        lambda **_kwargs: SimpleNamespace(hmac_key=b"test-hmac-key-32-bytes-long!!!!"),
+    )
+    monkeypatch.setattr(
+        capture_tool,
+        "_write_evidence_manifest",
+        write_manifest,
+    )
+
+    assert main([
+        "capture",
+        "--workspace", str(workspace),
+        "--output-dir", str(output_dir),
+        "--mode", "ordinary",
+        "--drive-session",
+        "--evidence-run-nonce", "run_0123456789abcdef01234567",
+    ]) == 0
+    assert events == ["audit", "capture", "parse", "collect", "snapshot", "scan", "manifest"]
+
+
+def test_drive_session_quarantines_when_external_evidence_collection_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An invalid run-bound Redis record cannot promote a driven-session manifest."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    output_dir = tmp_path / "output"
+    events: list[str] = []
+    capture = SimpleNamespace(
+        agent_environ={"OPTIMUS_REDIS_URL": "redis://authorized/0"},
+        authorized=SimpleNamespace(launch_session_id="sess_failure"),
+    )
+
+    monkeypatch.setattr(capture_tool.shutil, "which", lambda name: name)
+    monkeypatch.setattr(capture_tool, "authorize_capture", lambda **_kwargs: capture)
+    monkeypatch.setattr(
+        capture_tool,
+        "append_authorized_audit",
+        lambda _capture: SimpleNamespace(capture=capture),
+    )
+    monkeypatch.setattr(
+        capture_tool,
+        "_capture_to_disk",
+        lambda *_args, output_dir, **_kwargs: (
+            output_dir.mkdir(parents=True, exist_ok=True),
+            (output_dir / "transcript.stdout").write_text(_observed_session_transcript(), encoding="utf-8"),
+            CaptureResult(exit_code=0, rule_counts={}),
+        )[-1],
+    )
+    monkeypatch.setattr(capture_tool, "_parse_session_result", lambda _text: SimpleNamespace(run_id="session_unit:2"))
+
+    def reject_collection(**_kwargs: object) -> None:
+        events.append("collect")
+        raise ValueError("external session evidence cost must be positive")
+
+    monkeypatch.setattr(capture_tool, "_collect_external_session_evidence", reject_collection)
+    monkeypatch.setattr(capture_tool, "_known_secrets", lambda _capture: ())
+    monkeypatch.setattr(capture_tool, "_joined_scan", lambda *_args: {"hit": False, "rules_fired": [], "scanned_artifacts": []})
+    monkeypatch.setattr(capture_tool, "_write_evidence_manifest", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(capture_tool, "_quarantine_artifacts", lambda _path: events.append("quarantine"))
+
+    assert main([
+        "capture",
+        "--workspace", str(workspace),
+        "--output-dir", str(output_dir),
+        "--mode", "ordinary",
+        "--drive-session",
+        "--evidence-run-nonce", "run_0123456789abcdef01234567",
+    ]) == 1
+    assert events == ["collect", "quarantine"]
+
+
+def _assert_manifest_extension_interface() -> None:
+    required = {
+        "session_mode",
+        "session_result",
+        "external_evidence",
+        "log_evidence",
+        "evidence_run_nonce",
+    }
+    missing = sorted(required - set(inspect.signature(_write_evidence_manifest).parameters))
+    assert not missing, f"missing capability: manifest evidence inputs {missing}"
+
+
+def _write_session_evidence_artifacts(output_dir: Path) -> None:
+    _write_clean_artifacts(output_dir, stdout_text="safe output")
+    (output_dir / "external-session-evidence.json").write_text(
+        json.dumps({"run_id": "session_unit:2", "total_cost_usd": "0.003538"}),
+        encoding="utf-8",
+    )
+    (output_dir / "audit-snapshot.ndjson").write_text(
+        json.dumps({"launch_session_id": "sess_current"}) + "\n",
+        encoding="utf-8",
+    )
+    (output_dir / "debug-snapshot.ndjson").write_text("", encoding="utf-8")
+
+
+def _manifest_evidence_inputs(
+    *, tool_names: tuple[str, ...], elevated_comparison_record_present: bool
+) -> tuple[object, object, object]:
+    session_type = getattr(capture_tool, "SessionResultEvidence", None)
+    external_type = getattr(capture_tool, "ExternalSessionEvidence", None)
+    assert session_type is not None, "missing capability: typed session-result evidence"
+    assert external_type is not None, "missing capability: typed external-session evidence"
+    session = session_type(
+        session_id="session_unit",
+        prompt_request_id=2,
+        run_id="session_unit:2",
+        stop_reason="end_turn",
+        tool_names=tool_names,
+        tool_call_count=len(tool_names),
+    )
+    external = external_type(run_id="session_unit:2", total_cost_usd=Decimal("0.003538"))
+    log_evidence = SimpleNamespace(
+        child_key_names=("OPTIMUS_API_KEY", "OPTIMUS_REDIS_URL"),
+        elevated_comparison_record_present=elevated_comparison_record_present,
+    )
+    return session, external, log_evidence
+
+
+def test_manifest_hmac_and_verify_cover_all_run_bound_session_evidence(tmp_path: Path) -> None:
+    """Task 4 RED: all content-free session fields and snapshots are signed."""
+    _assert_manifest_extension_interface()
+    _write_session_evidence_artifacts(tmp_path)
+    session, external, log_evidence = _manifest_evidence_inputs(
+        tool_names=("file_reader", "write_file"),
+        elevated_comparison_record_present=False,
+    )
+    hmac_key = b"test-hmac-key-32-bytes-long!!!!"
+
+    manifest_path = _write_evidence_manifest(
+        tmp_path,
+        rule_counts={},
+        joined_scan_result={"hit": False, "rules_fired": [], "scanned_artifacts": []},
+        hmac_key=hmac_key,
+        session_mode="ordinary",
+        session_result=session,
+        external_evidence=external,
+        log_evidence=log_evidence,
+        evidence_run_nonce="run_0123456789abcdef01234567",
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["session_mode"] == "ordinary"
+    assert manifest["stop_reason"] == "end_turn"
+    assert manifest["tool_names"] == ["file_reader", "write_file"]
+    assert manifest["tool_call_count"] == 2
+    assert manifest["total_cost_usd"] == "0.003538"
+    assert manifest["final_agent_state"] == "COMPLETED"
+    assert manifest["child_key_names"] == ["OPTIMUS_API_KEY", "OPTIMUS_REDIS_URL"]
+    assert manifest["elevated_comparison_record_present"] is False
+    assert manifest["evidence_run_nonce"] == "run_0123456789abcdef01234567"
+    assert "external-session-evidence.json" in manifest["artifact_sha256"]
+    assert "audit-snapshot.ndjson" in manifest["artifact_sha256"]
+    assert "debug-snapshot.ndjson" in manifest["artifact_sha256"]
+
+    fake_keyring = FakeKeyring()
+    _store_hmac_key(fake_keyring, hmac_key)
+    assert _verify_evidence_manifest(manifest_path, artifact_dir=tmp_path, keyring_backend=fake_keyring) == 0
+
+
+def test_manifest_omits_final_agent_state_without_the_bounded_completion_proof(
+    tmp_path: Path,
+) -> None:
+    """``end_turn`` alone must never be generalized into agent completion."""
+    _assert_manifest_extension_interface()
+    _write_session_evidence_artifacts(tmp_path)
+    session, external, log_evidence = _manifest_evidence_inputs(
+        tool_names=("file_reader",),
+        elevated_comparison_record_present=False,
+    )
+
+    manifest_path = _write_evidence_manifest(
+        tmp_path,
+        rule_counts={},
+        joined_scan_result={"hit": False, "rules_fired": [], "scanned_artifacts": []},
+        hmac_key=b"test-hmac-key-32-bytes-long!!!!",
+        session_mode="ordinary",
+        session_result=session,
+        external_evidence=external,
+        log_evidence=log_evidence,
+        evidence_run_nonce="run_0123456789abcdef01234567",
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["stop_reason"] == "end_turn"
+    assert manifest["tool_call_count"] == 1
+    assert "final_agent_state" not in manifest
+
+
+def test_manifest_records_elevated_comparison_presence(tmp_path: Path) -> None:
+    """Exactly one run-scoped elevated comparison becomes a signed boolean."""
+    _assert_manifest_extension_interface()
+    _write_session_evidence_artifacts(tmp_path)
+    session, external, log_evidence = _manifest_evidence_inputs(
+        tool_names=("file_reader", "write_file"),
+        elevated_comparison_record_present=True,
+    )
+
+    manifest_path = _write_evidence_manifest(
+        tmp_path,
+        rule_counts={},
+        joined_scan_result={"hit": False, "rules_fired": [], "scanned_artifacts": []},
+        hmac_key=b"test-hmac-key-32-bytes-long!!!!",
+        session_mode="elevated",
+        session_result=session,
+        external_evidence=external,
+        log_evidence=log_evidence,
+        evidence_run_nonce="run_0123456789abcdef01234567",
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["session_mode"] == "elevated"
+    assert manifest["elevated_comparison_record_present"] is True
+
+
+def test_verify_rejects_tampered_evidence_run_nonce(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The new nonce field is covered by the existing whole-manifest HMAC."""
+    _assert_manifest_extension_interface()
+    _write_session_evidence_artifacts(tmp_path)
+    session, external, log_evidence = _manifest_evidence_inputs(
+        tool_names=("file_reader", "write_file"),
+        elevated_comparison_record_present=False,
+    )
+    hmac_key = b"test-hmac-key-32-bytes-long!!!!"
+    manifest_path = _write_evidence_manifest(
+        tmp_path,
+        rule_counts={},
+        joined_scan_result={"hit": False, "rules_fired": [], "scanned_artifacts": []},
+        hmac_key=hmac_key,
+        session_mode="ordinary",
+        session_result=session,
+        external_evidence=external,
+        log_evidence=log_evidence,
+        evidence_run_nonce="run_0123456789abcdef01234567",
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["evidence_run_nonce"] = "run_89abcdef0123456789abcdef"
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    fake_keyring = FakeKeyring()
+    _store_hmac_key(fake_keyring, hmac_key)
+    assert _verify_evidence_manifest(
+        manifest_path, artifact_dir=tmp_path, keyring_backend=fake_keyring
+    ) == 1
+    assert "EVIDENCE_HMAC_MISMATCH" in capsys.readouterr().err
+    assert (tmp_path / "quarantine" / "sanitizer-manifest.json").is_file()
+
+
+def _valid_run_audit_records(
+    launch_session_id: str = "sess_current",
+) -> list[dict[str, object]]:
+    return [
+        {
+            "launch_session_id": launch_session_id,
+            "child_propagation_decisions": {
+                "agent_child": ["OPTIMUS_API_KEY", "OPTIMUS_REDIS_URL"],
+                "acpx_client": [],
+            },
+        },
+        {"launch_session_id": launch_session_id},
+    ]
+
+
+def _comparison_record(tags: list[object], *, session_id: str = "debug_current") -> dict[str, object]:
+    return {
+        "sessionId": session_id,
+        "location": "launch_authorization_comparison",
+        "data": {"correlation_tags": tags},
+    }
+
+
+def _write_run_logs(
+    runtime_root: Path,
+    *,
+    audit_records: list[dict[str, object]],
+    debug_records: list[dict[str, object]],
+) -> None:
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    (runtime_root / "launch-audit.ndjson").write_text(
+        "".join(json.dumps(record) + "\n" for record in audit_records), encoding="utf-8"
+    )
+    (runtime_root / "debug-acp.ndjson").write_text(
+        "".join(json.dumps(record) + "\n" for record in debug_records), encoding="utf-8"
+    )
+
+
+def test_run_scoped_log_snapshot_uses_offsets_and_accepts_elevated_empty_tags(tmp_path: Path) -> None:
+    """Task 4 RED: only this run's suffix becomes immutable audit/debug evidence."""
+    snapshotter = getattr(capture_tool, "_snapshot_run_scoped_launch_logs", None)
+    assert snapshotter is not None, "missing capability: run-scoped audit/debug snapshotter"
+
+    runtime_root = tmp_path / ".optimus"
+    runtime_root.mkdir()
+    audit_path = runtime_root / "launch-audit.ndjson"
+    debug_path = runtime_root / "debug-acp.ndjson"
+    audit_path.write_text(json.dumps({"launch_session_id": "old"}) + "\n", encoding="utf-8")
+    debug_path.write_text(json.dumps({"sessionId": "old"}) + "\n", encoding="utf-8")
+    audit_offset = audit_path.stat().st_size
+    debug_offset = debug_path.stat().st_size
+    audit_path.write_text(
+        audit_path.read_text(encoding="utf-8")
+        + "".join(json.dumps(record) + "\n" for record in _valid_run_audit_records()),
+        encoding="utf-8",
+    )
+    debug_path.write_text(
+        debug_path.read_text(encoding="utf-8")
+        + json.dumps(_comparison_record([]))
+        + "\n",
+        encoding="utf-8",
+    )
+
+    evidence = snapshotter(
+        workspace=tmp_path,
+        output_dir=tmp_path / "output",
+        audit_offset=audit_offset,
+        debug_offset=debug_offset,
+        launch_session_id="sess_current",
+        session_mode="elevated",
+        known_secrets=(),
+    )
+
+    assert evidence.child_key_names == ("OPTIMUS_API_KEY", "OPTIMUS_REDIS_URL")
+    assert evidence.elevated_comparison_record_present is True
+    assert "old" not in (tmp_path / "output" / "audit-snapshot.ndjson").read_text(encoding="utf-8")
+    assert "old" not in (tmp_path / "output" / "debug-snapshot.ndjson").read_text(encoding="utf-8")
+
+
+def test_run_scoped_log_snapshot_accepts_ordinary_zero_comparison_records(tmp_path: Path) -> None:
+    """Ordinary mode is proven by zero comparison records in this run's suffix."""
+    snapshotter = getattr(capture_tool, "_snapshot_run_scoped_launch_logs", None)
+    assert snapshotter is not None, "missing capability: run-scoped audit/debug snapshotter"
+    runtime_root = tmp_path / ".optimus"
+    _write_run_logs(
+        runtime_root,
+        audit_records=_valid_run_audit_records(),
+        debug_records=[{"sessionId": "debug_current", "location": "other"}],
+    )
+
+    evidence = snapshotter(
+        workspace=tmp_path,
+        output_dir=tmp_path / "output",
+        audit_offset=0,
+        debug_offset=0,
+        launch_session_id="sess_current",
+        session_mode="ordinary",
+        known_secrets=(),
+    )
+
+    assert evidence.elevated_comparison_record_present is False
+    assert (tmp_path / "output" / "debug-snapshot.ndjson").is_file()
+
+
+def test_run_scoped_log_snapshot_accepts_elevated_allowlisted_nonempty_tags(
+    tmp_path: Path,
+) -> None:
+    """A real-shaped, allowlisted name plus a 128-bit hex tag is valid evidence."""
+    snapshotter = getattr(capture_tool, "_snapshot_run_scoped_launch_logs", None)
+    assert snapshotter is not None, "missing capability: run-scoped audit/debug snapshotter"
+    runtime_root = tmp_path / ".optimus"
+    allowed_tag = {
+        "field_name": "OPTIMUS_API_KEY",
+        "tag": "0123456789abcdef0123456789abcdef",
+    }
+    _write_run_logs(
+        runtime_root,
+        audit_records=_valid_run_audit_records(),
+        debug_records=[_comparison_record([allowed_tag])],
+    )
+
+    evidence = snapshotter(
+        workspace=tmp_path,
+        output_dir=tmp_path / "output",
+        audit_offset=0,
+        debug_offset=0,
+        launch_session_id="sess_current",
+        session_mode="elevated",
+        known_secrets=(),
+    )
+
+    assert evidence.elevated_comparison_record_present is True
+    snapshot = (tmp_path / "output" / "debug-snapshot.ndjson").read_text(encoding="utf-8")
+    assert allowed_tag["tag"] in snapshot
+
+
+@pytest.mark.parametrize(
+    "audit_records,debug_records,session_mode",
+    (
+        (_valid_run_audit_records("foreign"), [], "ordinary"),
+        (_valid_run_audit_records(), [{"sessionId": "one"}, {"sessionId": "two"}], "ordinary"),
+        (_valid_run_audit_records(), [_comparison_record([], session_id="one")], "ordinary"),
+        (_valid_run_audit_records(), [_comparison_record([42], session_id="one")], "elevated"),
+        (
+            _valid_run_audit_records(),
+            [
+                _comparison_record(
+                    [
+                        {
+                            "field_name": "UNRELATED_SENTINEL",
+                            "tag": "0123456789abcdef0123456789abcdef",
+                        }
+                    ]
+                )
+            ],
+            "elevated",
+        ),
+        (
+            _valid_run_audit_records(),
+            [_comparison_record([{"field_name": "OPTIMUS_API_KEY", "tag": "not-hex"}])],
+            "elevated",
+        ),
+        (
+            [
+                {
+                    "launch_session_id": "sess_current",
+                    "child_propagation_decisions": {
+                        "agent_child": ["OPTIMUS_API_KEY", "OPTIMUS_REDIS_URL"],
+                        "acpx_client": ["OPTIMUS_API_KEY"],
+                    },
+                },
+                {"launch_session_id": "sess_current"},
+            ],
+            [],
+            "ordinary",
+        ),
+        (
+            [
+                {
+                    "launch_session_id": "sess_current",
+                    "child_propagation_decisions": {
+                        "agent_child": ["OPTIMUS_API_KEY", "OPTIMUS_REDIS_URL"],
+                    },
+                },
+                {"launch_session_id": "sess_current"},
+            ],
+            [],
+            "ordinary",
+        ),
+    ),
+)
+def test_run_scoped_log_snapshot_fails_closed_on_foreign_or_malformed_suffix(
+    audit_records: list[dict[str, object]],
+    debug_records: list[dict[str, object]],
+    session_mode: str,
+    tmp_path: Path,
+) -> None:
+    """Foreign writers, wrong mode, and malformed tags cannot become evidence."""
+    snapshotter = getattr(capture_tool, "_snapshot_run_scoped_launch_logs", None)
+    assert snapshotter is not None, "missing capability: run-scoped audit/debug snapshotter"
+
+    runtime_root = tmp_path / ".optimus"
+    _write_run_logs(
+        runtime_root,
+        audit_records=audit_records,
+        debug_records=debug_records,
+    )
+
+    with pytest.raises(ValueError):
+        snapshotter(
+            workspace=tmp_path,
+            output_dir=tmp_path / "output",
+            audit_offset=0,
+            debug_offset=0,
+            launch_session_id="sess_current",
+            session_mode=session_mode,
+            known_secrets=(),
+        )
+
+    assert not (tmp_path / "output" / "audit-snapshot.ndjson").exists()
+    assert not (tmp_path / "output" / "debug-snapshot.ndjson").exists()
+
+
+def test_nonzero_capture_result_blocks_manifest_promotion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed child may not produce an apparently verified manifest."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    config_root = tmp_path / "config"
+    config_root.mkdir()
+    keyring = FakeKeyring()
+    environment = _environment(config_root)
+    _write_durable_approval(
+        workspace=workspace,
+        environment=environment,
+        keyring=keyring,
+        approval_runtime_root=tmp_path / "approval-runtime",
+    )
+    _patch_keyring(monkeypatch, keyring)
+    monkeypatch.setattr(capture_tool.os, "environ", environment)
+    real_which = capture_tool.shutil.which
+
+    def which(name: str) -> str | None:
+        if name in {"acpx", "optimus-agent"}:
+            return sys.executable
+        return real_which(name)
+
+    monkeypatch.setattr(capture_tool.shutil, "which", which)
+    monkeypatch.setattr(capture_tool, "_capture_to_disk", lambda *_args, **_kwargs: CaptureResult(17, {}))
+
+    def manifest_must_not_be_written(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("nonzero capture result must block manifest promotion")
+
+    monkeypatch.setattr(capture_tool, "_write_evidence_manifest", manifest_must_not_be_written)
+
+    assert main([
+        "capture",
+        "--workspace", str(workspace),
+        "--output-dir", str(tmp_path / "output"),
+        "--mode", "ordinary",
+    ]) == 17
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Task 3's exercised tree-kill path is Windows taskkill")
+def test_capture_timeout_terminates_parent_and_descendant_in_an_isolated_probe(tmp_path: Path) -> None:
+    """Task 3 Step 4 RED: bounded capture must not orphan an acpx-style tree."""
+    pids_path = tmp_path / "sleeping-pids.json"
+    probe_path = tmp_path / "capture-probe.py"
+    target_path = tmp_path / "sleeping-parent.py"
+    repo_root = Path(__file__).resolve().parents[3]
+    target_path.write_text(
+        textwrap.dedent(
+            f"""
+            import json
+            import os
+            import subprocess
+            import sys
+            import time
+            from pathlib import Path
+
+            descendant = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+            Path({str(pids_path)!r}).write_text(
+                json.dumps({{"parent": os.getpid(), "descendant": descendant.pid}}), encoding="utf-8"
+            )
+            time.sleep(60)
+            """
+        ),
+        encoding="utf-8",
+    )
+    probe_path.write_text(
+        textwrap.dedent(
+            f"""
+            import json
+            import subprocess
+            import sys
+            from pathlib import Path
+
+            import tools.run_plan996_acpx_security_evidence as tool
+
+            pids_path = Path({str(pids_path)!r})
+            target = subprocess.Popen([sys.executable, {str(target_path)!r}], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+            class Audited:
+                capture = object()
+
+            tool.spawn_authorized_capture = lambda *_args, **_kwargs: target
+            tool._known_secrets = lambda _capture: ()
+            result = tool._capture_to_disk(Audited(), command=['acpx'], output_dir=Path({str(tmp_path / 'artifacts')!r}), drive_session=True, wait_timeout_seconds=1.0)
+            raise SystemExit(0 if result.exit_code != 0 else 1)
+            """
+        ),
+        encoding="utf-8",
+    )
+    probe = subprocess.Popen(
+        [sys.executable, str(probe_path)],
+        cwd=repo_root,
+        env={**os.environ, "PYTHONPATH": str(repo_root)},
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+    )
+    pids: dict[str, int] = {}
+    try:
+        try:
+                assert probe.wait(timeout=4.5) == 0
+        except subprocess.TimeoutExpired:
+            pytest.fail("capture timeout never reached because reader joins blocked first")
+        assert pids_path.is_file(), "the sleeping parent must record its descendant PID"
+        pids = json.loads(pids_path.read_text(encoding="utf-8"))
+    finally:
+        for pid in (probe.pid, *pids.values()):
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, check=False)
+
+    for pid in pids.values():
+        with pytest.raises(OSError):
+            os.kill(pid, 0)
+
+
+def test_agent_invocation_session_fixture_constants_are_pinned() -> None:
+    """Task 3's fixed session task stays concrete and single-file scoped."""
+    assert capture_tool._SESSION_FIXTURE_FILENAME == "plan998_fixture.py"
+    assert capture_tool._SESSION_FIXTURE_PRISTINE_CONTENT == "def status():\n    return 'pending'\n"
+    assert capture_tool.SESSION_TASK == (
+        "Add a module docstring to `plan998_fixture.py` describing its function. "
+        "Modify only `plan998_fixture.py`; do not create any other files or tests."
+    )
+
+
+def test_build_agent_invocation_contains_only_pinned_inner_agent_arguments(tmp_path: Path) -> None:
+    """The outer acpx permission flag must never leak into ``--agent``."""
+    invocation = capture_tool._build_agent_invocation(
+        optimus_agent="optimus-agent",
+        workspace=tmp_path / "workspace",
+        launch_session_id="sess_pinned",
+        diagnostic_grant_id="grant_pinned",
+    )
+
+    assert invocation == (
+        f"optimus-agent --workspace-root {(tmp_path / 'workspace').as_posix()} "
+        "--launch-session-id sess_pinned --debug-trace "
+        "--diagnostic-grant-id grant_pinned"
+    )
+    assert "--approve-all" not in invocation
+
+
+def test_build_agent_invocation_serializes_windows_paths_for_acpx_raw_command_parser() -> None:
+    """Raw ``--agent`` text must not leave backslashes for ACPX to consume."""
+    invocation = capture_tool._build_agent_invocation(
+        optimus_agent=r"D:\Projects\Optimus\.venv\Scripts\optimus-agent.EXE",
+        workspace=PureWindowsPath(r"C:\tmp\approved-workspace"),
+        launch_session_id="sess_pinned",
+        diagnostic_grant_id=None,
+    )
+
+    assert invocation == (
+        "D:/Projects/Optimus/.venv/Scripts/optimus-agent.EXE "
+        "--workspace-root C:/tmp/approved-workspace "
+        "--launch-session-id sess_pinned --debug-trace"
+    )
+
+
+def test_build_capture_command_keeps_default_or_builds_outer_approved_exec_argv(tmp_path: Path) -> None:
+    """Default capture is unchanged; a driven session gets the outer approval flag."""
+    assert capture_tool._build_capture_command(
+        acpx="acpx",
+        workspace=tmp_path / "workspace",
+        agent_invocation=None,
+        drive_session=False,
+    ) == ["acpx", "--version"]
+
+    assert capture_tool._build_capture_command(
+        acpx="acpx",
+        workspace=tmp_path / "workspace",
+        agent_invocation="optimus-agent --workspace-root workspace",
+        drive_session=True,
+    ) == [
+        "acpx",
+        "--format",
+        "json",
+        "--approve-all",
+        "--cwd",
+        str(tmp_path / "workspace"),
+        "--agent",
+        "optimus-agent --workspace-root workspace",
+        "exec",
+        capture_tool.SESSION_TASK,
+    ]
+
+
+def test_default_version_spawn_uses_system_only_client_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The unchanged smoke command receives only sanctioned system bootstrap keys."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    config_root = tmp_path / "config"
+    config_root.mkdir()
+    keyring = FakeKeyring()
+    environment = _environment(config_root)
+    _write_durable_approval(
+        workspace=workspace,
+        environment=environment,
+        keyring=keyring,
+        approval_runtime_root=tmp_path / "approval-runtime",
+    )
+    _patch_keyring(monkeypatch, keyring)
+    monkeypatch.setattr(capture_tool.os, "environ", environment)
+
+    def which(name: str) -> str | None:
+        if name == "optimus-agent":
+            pytest.fail("default capture must not resolve optimus-agent")
+        return sys.executable if name == "acpx" else None
+
+    monkeypatch.setattr(capture_tool.shutil, "which", which)
+
+    real_popen = subprocess.Popen
+    popen_calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def spy_popen(command: list[str], *args: object, **kwargs: object) -> subprocess.Popen[str]:
+        popen_calls.append((list(command), dict(kwargs)))
+        return real_popen(command, *args, **kwargs)
+
+    monkeypatch.setattr(capture_tool.subprocess, "Popen", spy_popen)
+
+    assert main([
+        "capture",
+        "--workspace", str(workspace),
+        "--output-dir", str(tmp_path / "output"),
+        "--mode", "ordinary",
+    ]) == 0
+    assert len(popen_calls) == 1
+    command, kwargs = popen_calls[0]
+    assert command == [sys.executable, "--version"]
+    assert set(kwargs["env"]) == set(_system_environment())
+    assert kwargs["env"] == _system_environment()
+    assert kwargs["stdin"] is subprocess.DEVNULL
+    assert "creationflags" not in kwargs
+    assert "start_new_session" not in kwargs
+    assert capture_tool._CAPTURE_WAIT_TIMEOUT_SECONDS == 30.0
+
+
+def test_agent_invocation_drive_session_fails_closed_when_optimus_agent_is_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The driven mode needs a resolvable inner-agent executable."""
+    monkeypatch.setattr(
+        capture_tool.shutil,
+        "which",
+        lambda name: "acpx" if name == "acpx" else None,
+    )
+
+    assert main([
+        "capture",
+        "--workspace", str(tmp_path / "workspace"),
+        "--output-dir", str(tmp_path / "output"),
+        "--mode", "ordinary",
+        "--drive-session",
+    ]) == 2
+    assert "optimus-agent is required" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "nonce",
+    ("", "bad nonce", "run_" + "a" * 257, "sk-secret-shaped-nonce"),
+)
+def test_evidence_run_nonce_is_rejected_before_authorize(
+    nonce: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Malformed nonces cannot reach the launch gate or consume a grant."""
+    monkeypatch.setattr(capture_tool, "authorize_capture", pytest.fail)
+    monkeypatch.setattr(capture_tool.shutil, "which", lambda _name: "acpx")
+
+    assert main([
+        "capture",
+        "--workspace", str(tmp_path / "workspace"),
+        "--output-dir", str(tmp_path / "output"),
+        "--mode", "ordinary",
+        "--evidence-run-nonce", nonce,
+    ]) == 2
+    assert "evidence-run-nonce" in capsys.readouterr().err
+
+
+def test_agent_invocation_elevated_drive_session_passes_grant_only_to_inner_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The outer gate stays ordinary; the inner invocation receives the grant."""
+    calls: list[dict[str, object]] = []
+
+    def spy_authorize(**kwargs: object) -> object:
+        calls.append(dict(kwargs))
+        return SimpleNamespace(
+            authorized=SimpleNamespace(launch_session_id=kwargs["launch_session_id"])
+        )
+
+    def fake_capture(*_args: object, output_dir: Path, **_kwargs: object) -> CaptureResult:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "transcript.stdout").write_text("{}\n", encoding="utf-8")
+        return CaptureResult(0, {})
+
+    monkeypatch.setattr(capture_tool, "authorize_capture", spy_authorize)
+    monkeypatch.setattr(capture_tool, "append_authorized_audit", lambda _capture: object())
+    monkeypatch.setattr(capture_tool, "_capture_to_disk", fake_capture)
+    monkeypatch.setattr(capture_tool, "_parse_session_result", lambda _transcript: object())
+    monkeypatch.setattr(capture_tool, "_collect_external_session_evidence", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        capture_tool,
+        "_snapshot_run_scoped_launch_logs",
+        lambda **_kwargs: SimpleNamespace(
+            child_key_names=(),
+            elevated_comparison_record_present=True,
+            rule_counts={},
+        ),
+    )
+    monkeypatch.setattr(capture_tool, "_known_secrets", lambda _capture: ())
+    monkeypatch.setattr(capture_tool, "_joined_scan", lambda *_a, **_k: {"hit": False, "rules_fired": [], "scanned_artifacts": []})
+    monkeypatch.setattr(capture_tool, "_write_evidence_manifest", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        capture_tool.shutil,
+        "which",
+        lambda name: name if name in {"acpx", "optimus-agent"} else None,
+    )
+
+    assert main([
+        "capture",
+        "--workspace", str(tmp_path / "workspace"),
+        "--output-dir", str(tmp_path / "output"),
+        "--mode", "elevated",
+        "--diagnostic-grant-id", "grant_inner_only",
+        "--drive-session",
+        "--evidence-run-nonce", "run_0123456789abcdef01234567",
+    ]) == 0
+    assert calls == [{
+        "workspace": tmp_path / "workspace",
+        "environment": capture_tool.os.environ,
+        "launch_approval_id": None,
+        "launch_session_id": calls[0]["launch_session_id"],
+        "diagnostic_grant_id": None,
+        "drive_session": True,
+    }]
+
+
+def test_capture_launch_builds_system_only_acpx_client_environment(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    keyring = _keyring_with_credentials(
+        shared_secret="client-role-shared-secret",
+        provider_api_key="client-role-provider-key",
+    )
+    approval_runtime_root = tmp_path / "approval-runtime"
+    environment = _system_environment()
     _write_durable_approval(
         workspace=workspace,
         environment=environment,
@@ -980,22 +2331,165 @@ def test_spawn_authorized_capture_merges_system_env_keys(tmp_path: Path) -> None
         environment=environment,
         keyring_backend=keyring,
         approval_runtime_root=approval_runtime_root,
-        launch_session_id="sess_system_keys",
+        launch_session_id="sess_client_role",
     )
-    audited = append_authorized_audit(capture)
+    expected_agent_names = {
+        "OPTIMUS_AGENT_MODEL",
+        "OPTIMUS_API_KEY",
+        "OPTIMUS_GATEWAY_URL",
+        "OPTIMUS_PRODUCTION_MODE",
+        "OPTIMUS_REDIS_URL",
+    }
+    assert set(capture.agent_environ) == expected_agent_names
+    acpx_client_environ = getattr(capture, "acpx_client_environ", None)
+    assert acpx_client_environ is not None, "missing ACPX client environment role"
+    assert dict(acpx_client_environ) == _system_environment()
+    assert not any(name.startswith("OPTIMUS_") for name in acpx_client_environ)
+    assert "OPTIMUS_API_KEY" not in acpx_client_environ
 
-    process = spawn_authorized_capture(
-        audited,
-        command=[sys.executable, "-c", "import json, os; print(json.dumps(dict(os.environ), sort_keys=True))"],
+
+def test_launch_audit_adds_acpx_client_role_without_changing_agent_child_manifest(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    keyring = _keyring_with_credentials(
+        shared_secret="audit-role-shared-secret",
+        provider_api_key="audit-role-provider-key",
     )
-    stdout, stderr = process.communicate(timeout=10)
+    approval_runtime_root = tmp_path / "approval-runtime"
+    environment = _system_environment()
+    _write_durable_approval(
+        workspace=workspace,
+        environment=environment,
+        keyring=keyring,
+        approval_runtime_root=approval_runtime_root,
+    )
+    capture = authorize_capture(
+        workspace=workspace,
+        environment=environment,
+        keyring_backend=keyring,
+        approval_runtime_root=approval_runtime_root,
+        launch_session_id="sess_audit_client_role",
+    )
 
-    assert process.returncode == 0, stderr
-    child_environment = json.loads(stdout)
-    # System keys from the allowlist must be present (sourced from the snapshot)
-    assert "PATH" in child_environment
-    assert "SYSTEMROOT" in child_environment
-    assert "UNRELATED_SENTINEL" not in child_environment
+    append_authorized_audit(capture)
+
+    audit_path = workspace / ".optimus" / "launch-audit.ndjson"
+    records = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
+    assert len(records) == 1
+    decisions = records[0]["child_propagation_decisions"]
+    assert decisions["agent_child"] == [
+        "OPTIMUS_AGENT_MODEL",
+        "OPTIMUS_API_KEY",
+        "OPTIMUS_GATEWAY_URL",
+        "OPTIMUS_PRODUCTION_MODE",
+        "OPTIMUS_REDIS_URL",
+    ]
+    assert decisions["gateway_child"] == sorted(capture.authorized.candidate.gateway_environ)
+    assert decisions.get("acpx_client") == []
+
+
+@pytest.mark.parametrize(
+    "setting_name,setting_kind",
+    (
+        ("OPTIMUS_API_KEY", "secret"),
+        ("OPTIMUS_CONFIG_ROOT", "parent_only_security"),
+        ("OPENAI_API_KEY", "provider_secret"),
+    ),
+)
+def test_drive_session_rejects_inherited_classified_launch_settings_before_audit_or_spawn(
+    setting_name: str,
+    setting_kind: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    config_root = tmp_path / "config"
+    config_root.mkdir()
+    dirty_value = (
+        str(config_root)
+        if setting_name == "OPTIMUS_CONFIG_ROOT"
+        else f"sentinel-{setting_kind}-value"
+    )
+    environment = {**_system_environment(), setting_name: dirty_value}
+    keyring = _keyring_with_credentials(
+        shared_secret="dirty-boundary-shared-secret",
+        provider_api_key="dirty-boundary-provider-key",
+    )
+    approval_runtime_root = tmp_path / "approval-runtime"
+    _write_durable_approval(
+        workspace=workspace,
+        environment=environment,
+        keyring=keyring,
+        approval_runtime_root=approval_runtime_root,
+    )
+    _patch_keyring(monkeypatch, keyring)
+    monkeypatch.setattr(capture_tool.os, "environ", environment)
+    monkeypatch.setattr(capture_tool.shutil, "which", lambda _name: sys.executable)
+
+    real_authorize = authorize_capture
+
+    def authorize_with_test_store(**kwargs: object) -> object:
+        assert kwargs.get("drive_session") is True, "main did not forward driven-session authorization mode"
+        return real_authorize(
+            workspace=kwargs["workspace"],
+            environment=environment,
+            keyring_backend=keyring,
+            approval_runtime_root=approval_runtime_root,
+            launch_approval_id=kwargs.get("launch_approval_id"),
+            launch_session_id=kwargs["launch_session_id"],
+            diagnostic_grant_id=kwargs.get("diagnostic_grant_id"),
+            drive_session=True,
+        )
+
+    monkeypatch.setattr(capture_tool, "authorize_capture", authorize_with_test_store)
+    monkeypatch.setattr(
+        capture_tool,
+        "append_authorized_audit",
+        lambda _capture: pytest.fail("dirty ACPX client environment reached audit"),
+    )
+    real_popen = subprocess.Popen
+    observed_commands: list[object] = []
+
+    def spy_popen(command: object, *args: object, **kwargs: object) -> subprocess.Popen[str]:
+        observed_commands.append(command)
+        if isinstance(command, (list, tuple)) and "--agent" in command:
+            pytest.fail("dirty ACPX client environment reached spawn")
+        return real_popen(command, *args, **kwargs)
+
+    monkeypatch.setattr(capture_tool.subprocess, "Popen", spy_popen)
+
+    exit_code = main([
+        "capture",
+        "--workspace", str(workspace),
+        "--output-dir", str(tmp_path / "output"),
+        "--mode", "ordinary",
+        "--drive-session",
+        "--evidence-run-nonce", "run_0123456789abcdef01234567",
+    ])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "ACPX_CLIENT_ENV_NOT_CLEAN" in captured.err
+    assert dirty_value not in captured.err
+
+    with pytest.raises(LaunchGateError, match="ACPX_CLIENT_ENV_NOT_CLEAN"):
+        capture_acpx(
+            workspace=workspace,
+            environment=environment,
+            keyring_backend=keyring,
+            approval_runtime_root=approval_runtime_root,
+            launch_session_id="sess_dirty_complete_walk",
+            command=[sys.executable, "--version"],
+            drive_session=True,
+        )
+    assert not any(
+        isinstance(command, (list, tuple)) and "--agent" in command
+        for command in observed_commands
+    )
 
 
 def test_main_returns_exit_2_with_clean_message_on_unapproved_workspace(

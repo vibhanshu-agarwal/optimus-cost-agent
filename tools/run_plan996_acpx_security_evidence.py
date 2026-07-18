@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import hmac
+import io
 import json
 import os
 import re
@@ -19,9 +20,11 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -39,7 +42,11 @@ from optimus.acp.launch_gate import (
     authorize_launch,
     resolve_launch_candidate,
 )
-from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
+from optimus.acp.launch_policy import (
+    LAUNCH_VARIABLE_POLICIES,
+    LaunchEnvironmentSnapshot,
+    LaunchVariableTier,
+)
 from optimus.acp.local_infra import _SYSTEM_ENV_KEYS, apply_local_defaults
 from optimus.acp.operator_paths import resolve_authorized_operator_paths
 from optimus.acp.trusted_paths import (
@@ -48,6 +55,7 @@ from optimus.acp.trusted_paths import (
     resolve_workspace_identity,
     revalidate_workspace_identity,
 )
+from optimus.agent.state_store import RedisAgentStateStore
 from optimus_security.launch_manifest import LaunchManifestError, read_manifest_hmac_key
 from optimus_security.sanitization import StreamingTextSanitizer
 
@@ -58,6 +66,7 @@ class CaptureLaunch:
 
     authorized: AuthorizedLaunch
     agent_environ: Mapping[str, str]
+    acpx_client_environ: Mapping[str, str]
 
 
 @dataclass(frozen=True)
@@ -67,12 +76,151 @@ class AuditedLaunch:
     capture: CaptureLaunch
 
 
+@dataclass(frozen=True)
+class SessionResultEvidence:
+    session_id: str
+    prompt_request_id: int
+    run_id: str
+    stop_reason: str
+    tool_names: tuple[str, ...]
+    tool_call_count: int
+
+
+@dataclass(frozen=True)
+class ExternalSessionEvidence:
+    run_id: str
+    total_cost_usd: Decimal
+
+
+@dataclass(frozen=True)
+class RunScopedLogEvidence:
+    child_key_names: tuple[str, ...]
+    elevated_comparison_record_present: bool
+    rule_counts: Mapping[str, int]
+
+
+def _parse_session_result(transcript: str) -> SessionResultEvidence:
+    """Reduce the observed ACP JSON-RPC session shape to content-free fields."""
+    session_id: str | None = None
+    prompt_request_id: int | None = None
+    stop_reason: str | None = None
+    tool_names: list[str] = []
+    for line in transcript.splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        result = record.get("result")
+        if isinstance(result, dict) and isinstance(result.get("sessionId"), str):
+            session_id = result["sessionId"]
+        if record.get("method") == "session/prompt" and isinstance(record.get("id"), int):
+            prompt_request_id = record["id"]
+        if isinstance(result, dict) and isinstance(result.get("stopReason"), str):
+            stop_reason = result["stopReason"]
+        update = record.get("params", {}).get("update", {}) if isinstance(record.get("params"), dict) else {}
+        if isinstance(update, dict) and update.get("sessionUpdate") == "tool_call" and isinstance(update.get("title"), str):
+            tool_names.append(update["title"])
+    if session_id is None or prompt_request_id is None or stop_reason is None:
+        raise ValueError("incomplete ACP session result")
+    return SessionResultEvidence(session_id, prompt_request_id, f"{session_id}:{prompt_request_id}", stop_reason, tuple(tool_names), len(tool_names))
+
+
+def _collect_external_session_evidence(
+    *, capture: CaptureLaunch, session_result: SessionResultEvidence, output_dir: Path, known_secrets: tuple[str, ...]
+) -> ExternalSessionEvidence:
+    """Read the run-bound Redis plan once and persist its content-free cost only."""
+    redis_url = capture.agent_environ["OPTIMUS_REDIS_URL"]
+    store = RedisAgentStateStore.from_url(redis_url)
+    record = store.latest_plan_for_run(run_id=session_result.run_id)
+    if record is None or record.run_id != session_result.run_id:
+        raise ValueError("external session evidence is absent or run-ID mismatched")
+    try:
+        cost = Decimal(str(record.cost_usd))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError("external session evidence has invalid cost") from exc
+    if cost <= 0:
+        raise ValueError("external session evidence cost must be positive")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    snapshot = json.dumps({"run_id": session_result.run_id, "total_cost_usd": str(cost)}, sort_keys=True)
+    _stream_sanitized(io.StringIO(snapshot), output_dir / "external-session-evidence.json", known_secrets=known_secrets)
+    return ExternalSessionEvidence(run_id=session_result.run_id, total_cost_usd=cost)
+
+
 _STREAM_READ_SIZE = 8192
 _CAPTURE_WAIT_TIMEOUT_SECONDS = 30.0
+_DRIVE_SESSION_WAIT_TIMEOUT_SECONDS = 600.0
+_TERMINATION_CLEANUP_GRACE_SECONDS = 3.0
 _SANITIZER_VERSION = "p996-streaming-sanitizer-v1"
 _EVIDENCE_MANIFEST_HMAC_DOMAIN = b"p996-evidence-manifest-hmac-v1"
 _EVIDENCE_MANIFEST_FILENAME = "sanitizer-manifest.json"
-_TRANSCRIPT_ARTIFACTS = ("transcript.stdout", "transcript.stderr")
+_TRANSCRIPT_ARTIFACTS = (
+    "transcript.stdout",
+    "transcript.stderr",
+    "external-session-evidence.json",
+    "audit-snapshot.ndjson",
+    "debug-snapshot.ndjson",
+)
+_SESSION_FIXTURE_FILENAME = "plan998_fixture.py"
+_SESSION_FIXTURE_PRISTINE_CONTENT = "def status():\n    return 'pending'\n"
+SESSION_TASK = (
+    "Add a module docstring to `plan998_fixture.py` describing its function. "
+    "Modify only `plan998_fixture.py`; do not create any other files or tests."
+)
+_EVIDENCE_RUN_NONCE_RE = re.compile(r"^run_[0-9a-f]{24}$")
+_CORRELATION_TAG_RE = re.compile(r"^[0-9a-f]{32}$")
+_ALLOWED_CORRELATION_TAG_FIELDS = frozenset(
+    name
+    for name, policy in LAUNCH_VARIABLE_POLICIES.items()
+    if policy.tier is LaunchVariableTier.SECRET
+)
+
+
+def _build_agent_invocation(
+    *,
+    optimus_agent: str,
+    workspace: Path,
+    launch_session_id: str,
+    diagnostic_grant_id: str | None,
+) -> str:
+    """Build only the inner Optimus-agent invocation for an acpx session."""
+    arguments = [
+        # ACPX parses --agent as raw command text and treats backslashes as
+        # escapes, so Windows paths embedded here must use forward slashes.
+        optimus_agent.replace("\\", "/"),
+        "--workspace-root",
+        workspace.as_posix(),
+        "--launch-session-id",
+        launch_session_id,
+        "--debug-trace",
+    ]
+    if diagnostic_grant_id is not None:
+        arguments.extend(("--diagnostic-grant-id", diagnostic_grant_id))
+    return " ".join(arguments)
+
+
+def _build_capture_command(
+    *,
+    acpx: str,
+    workspace: Path,
+    agent_invocation: str | None,
+    drive_session: bool,
+) -> list[str]:
+    """Build the unchanged smoke command or the independently driven session."""
+    if not drive_session:
+        return [acpx, "--version"]
+    if agent_invocation is None:
+        raise ValueError("agent invocation is required for --drive-session")
+    return [
+        acpx,
+        "--format",
+        "json",
+        "--approve-all",
+        "--cwd",
+        str(workspace),
+        "--agent",
+        agent_invocation,
+        "exec",
+        SESSION_TASK,
+    ]
 
 
 
@@ -85,6 +233,7 @@ def authorize_capture(
     launch_approval_id: str | None = None,
     launch_session_id: str,
     diagnostic_grant_id: str | None = None,
+    drive_session: bool = False,
 ) -> CaptureLaunch:
     """Capture once, resolve, and authorize a controlled ACP capture launch.
 
@@ -119,6 +268,12 @@ def authorize_capture(
         approval_id=launch_approval_id,
         launch_session_id=launch_session_id,
     )
+    if drive_session and candidate.display_rows:
+        classified_names = ",".join(row.name for row in candidate.display_rows)
+        raise LaunchGateError(
+            code="ACPX_CLIENT_ENV_NOT_CLEAN",
+            detail=f"classified inherited settings: {classified_names}",
+        )
     if diagnostic_grant_id is not None:
         # Fail CLOSED: an invalid/expired/wrong-session grant must not silently
         # downgrade to ordinary. The serving process (__main__.py) downgrades
@@ -138,7 +293,16 @@ def authorize_capture(
         config_root=authorized.candidate.operator_paths.config_root,
         resolved_shared_secret=authorized.candidate.shared_secret,
     )
-    return CaptureLaunch(authorized=authorized, agent_environ=agent_environ)
+    acpx_client_environ = {
+        name: value
+        for name in _SYSTEM_ENV_KEYS
+        if (value := authorized.candidate.inherited.values.get(name, ""))
+    }
+    return CaptureLaunch(
+        authorized=authorized,
+        agent_environ=agent_environ,
+        acpx_client_environ=acpx_client_environ,
+    )
 
 
 def append_authorized_audit(capture: CaptureLaunch) -> AuditedLaunch:
@@ -170,6 +334,13 @@ def append_authorized_audit(capture: CaptureLaunch) -> AuditedLaunch:
         child_propagation_decisions={
             "agent_child": tuple(sorted(capture.agent_environ)),
             "gateway_child": tuple(sorted(candidate.gateway_environ)),
+            "acpx_client": tuple(
+                sorted(
+                    name
+                    for name in capture.acpx_client_environ
+                    if name not in _SYSTEM_ENV_KEYS
+                )
+            ),
         },
         diagnostic_grant_state="none" if authorized.diagnostic_grant is None else "granted",
         sanitizer_rule_counts={},
@@ -179,34 +350,33 @@ def append_authorized_audit(capture: CaptureLaunch) -> AuditedLaunch:
     return AuditedLaunch(capture=capture)
 
 
-def spawn_authorized_capture(audited: AuditedLaunch, *, command: Sequence[str]) -> subprocess.Popen[str]:
+def spawn_authorized_capture(
+    audited: AuditedLaunch, *, command: Sequence[str], drive_session: bool = False
+) -> subprocess.Popen[str]:
     """Revalidate the workspace and start the authorized capture child."""
     if not command:
         raise ValueError("capture command must not be empty")
     capture = audited.capture
     candidate = capture.authorized.candidate
     revalidate_workspace_identity(candidate.workspace_identity)
-    # Merge the same system-env allowlist the committed Task 5 launcher uses
-    # (local_infra._SYSTEM_ENV_KEYS), sourced from the gate's sanctioned
-    # one-time snapshot (candidate.inherited.values) — never an ambient
-    # os.environ read. Without PATH/SYSTEMROOT/COMSPEC a real Windows child
-    # cannot start; the registry-authorized OPTIMUS_* set plus this allowlist
-    # is what "children contain exactly registry-authorized names" means in
-    # practice (Task 5 precedent, already reviewer-approved).
-    child_env = dict(capture.agent_environ)
-    for key in _SYSTEM_ENV_KEYS:
-        value = candidate.inherited.values.get(key, "")
-        if value:
-            child_env[key] = value
+    # ACPX is only a transport client. The effective agent mapping belongs to
+    # the independently launched inner agent and must never be inherited here.
+    spawn_kwargs: dict[str, Any] = {}
+    if drive_session:
+        if sys.platform == "win32":
+            spawn_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            spawn_kwargs["start_new_session"] = True
     return subprocess.Popen(
         list(command),
         cwd=candidate.workspace_identity.canonical_path,
-        env=child_env,
+        env=capture.acpx_client_environ,
         shell=False,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        **spawn_kwargs,
     )
 
 
@@ -220,6 +390,7 @@ def capture_acpx(
     launch_session_id: str,
     command: Sequence[str],
     diagnostic_grant_id: str | None = None,
+    drive_session: bool = False,
 ) -> subprocess.Popen[str]:
     """Run the complete authorization, audit, revalidation, and spawn walk."""
     capture = authorize_capture(
@@ -230,9 +401,14 @@ def capture_acpx(
         launch_approval_id=launch_approval_id,
         launch_session_id=launch_session_id,
         diagnostic_grant_id=diagnostic_grant_id,
+        drive_session=drive_session,
     )
     audited = append_authorized_audit(capture)
-    return spawn_authorized_capture(audited, command=command)
+    return spawn_authorized_capture(
+        audited,
+        command=command,
+        drive_session=drive_session,
+    )
 
 
 def _known_secrets(capture: CaptureLaunch) -> tuple[str, ...]:
@@ -271,11 +447,168 @@ def _stream_sanitized(
     """Stream-sanitize source to destination. Returns the sanitizer's rule
     counts (content-free metadata for the evidence manifest)."""
     sanitizer = StreamingTextSanitizer(known_secrets=known_secrets)
-    with destination.open("w", encoding="utf-8") as stream:
+    with destination.open("w", encoding="utf-8", newline="") as stream:
         while chunk := source.read(_STREAM_READ_SIZE):
             stream.write(sanitizer.feed(chunk))
         stream.write(sanitizer.finalize())
     return dict(sanitizer.rule_counts)
+
+
+def _current_log_size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except FileNotFoundError:
+        return 0
+
+
+def _read_log_suffix(path: Path, *, offset: int) -> str:
+    """Read one append-only log suffix from an already-captured byte offset."""
+    if offset < 0:
+        raise ValueError("run-scoped log offset must be nonnegative")
+    if not path.exists():
+        if offset == 0:
+            return ""
+        raise ValueError("run-scoped log disappeared after offset capture")
+    size = path.stat().st_size
+    if size < offset:
+        raise ValueError("run-scoped log shrank after offset capture")
+    with path.open("rb") as stream:
+        stream.seek(offset)
+        encoded = stream.read()
+    try:
+        return encoded.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("run-scoped log suffix is not UTF-8") from exc
+
+
+def _parse_ndjson_suffix(suffix: str, *, source_name: str) -> tuple[dict[str, object], ...]:
+    """Parse a complete append-only NDJSON suffix without exposing its values."""
+    if not suffix:
+        return ()
+    if not suffix.endswith("\n"):
+        raise ValueError(f"{source_name} suffix ended with a partial record")
+    records: list[dict[str, object]] = []
+    for line in suffix.splitlines():
+        if not line:
+            raise ValueError(f"{source_name} suffix contains an empty record")
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{source_name} suffix contains malformed JSON") from exc
+        if not isinstance(record, dict):
+            raise ValueError(f"{source_name} suffix record is not an object")
+        records.append(record)
+    return tuple(records)
+
+
+def _validate_correlation_tags(tags: object) -> None:
+    if not isinstance(tags, list):
+        raise ValueError("comparison correlation_tags must be an array")
+    for item in tags:
+        if not isinstance(item, dict) or set(item) != {"field_name", "tag"}:
+            raise ValueError("comparison correlation tag has malformed fields")
+        field_name = item["field_name"]
+        tag = item["tag"]
+        if not isinstance(field_name, str) or field_name not in _ALLOWED_CORRELATION_TAG_FIELDS:
+            raise ValueError("comparison correlation tag field is not allowlisted")
+        if not isinstance(tag, str) or _CORRELATION_TAG_RE.fullmatch(tag) is None:
+            raise ValueError("comparison correlation tag is not sanitized 128-bit hex")
+
+
+def _snapshot_run_scoped_launch_logs(
+    *,
+    workspace: Path,
+    output_dir: Path,
+    audit_offset: int,
+    debug_offset: int,
+    launch_session_id: str,
+    session_mode: str,
+    known_secrets: tuple[str, ...],
+) -> RunScopedLogEvidence:
+    """Validate and sanitize only this capture's append-only audit/debug suffixes."""
+    runtime_root = workspace / ".optimus"
+    audit_suffix = _read_log_suffix(
+        runtime_root / "launch-audit.ndjson",
+        offset=audit_offset,
+    )
+    debug_suffix = _read_log_suffix(
+        runtime_root / "debug-acp.ndjson",
+        offset=debug_offset,
+    )
+    audit_records = _parse_ndjson_suffix(audit_suffix, source_name="launch audit")
+    debug_records = _parse_ndjson_suffix(debug_suffix, source_name="debug trace")
+
+    if len(audit_records) != 2:
+        raise ValueError("run-scoped launch audit suffix must contain exactly two records")
+    if any(record.get("launch_session_id") != launch_session_id for record in audit_records):
+        raise ValueError("run-scoped launch audit suffix contains a foreign session")
+
+    outer_decisions = audit_records[0].get("child_propagation_decisions")
+    if not isinstance(outer_decisions, dict):
+        raise ValueError("outer launch audit record lacks child propagation decisions")
+    agent_child = outer_decisions.get("agent_child")
+    if (
+        not isinstance(agent_child, list)
+        or any(not isinstance(name, str) for name in agent_child)
+        or len(agent_child) != len(set(agent_child))
+    ):
+        raise ValueError("outer launch audit agent_child names are malformed")
+    acpx_client = outer_decisions.get("acpx_client")
+    if not isinstance(acpx_client, list) or acpx_client:
+        raise ValueError("outer launch audit acpx_client role must exist and be empty")
+
+    if debug_records:
+        debug_session_ids = {record.get("sessionId") for record in debug_records}
+        if (
+            len(debug_session_ids) != 1
+            or any(not isinstance(session_id, str) or not session_id for session_id in debug_session_ids)
+        ):
+            raise ValueError("run-scoped debug suffix contains multiple or malformed sessions")
+
+    comparison_records = tuple(
+        record
+        for record in debug_records
+        if record.get("location") == "launch_authorization_comparison"
+    )
+    expected_comparisons = 1 if session_mode == "elevated" else 0
+    if session_mode not in {"ordinary", "elevated"}:
+        raise ValueError("session mode must be ordinary or elevated")
+    if len(comparison_records) != expected_comparisons:
+        raise ValueError("run-scoped comparison-record count does not match session mode")
+    for record in comparison_records:
+        data = record.get("data")
+        if not isinstance(data, dict):
+            raise ValueError("comparison record data is malformed")
+        _validate_correlation_tags(data.get("correlation_tags"))
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    audit_snapshot = output_dir / "audit-snapshot.ndjson"
+    debug_snapshot = output_dir / "debug-snapshot.ndjson"
+    try:
+        audit_counts = _stream_sanitized(
+            io.StringIO(audit_suffix),
+            audit_snapshot,
+            known_secrets=known_secrets,
+        )
+        debug_counts = _stream_sanitized(
+            io.StringIO(debug_suffix),
+            debug_snapshot,
+            known_secrets=known_secrets,
+        )
+    except Exception:
+        audit_snapshot.unlink(missing_ok=True)
+        debug_snapshot.unlink(missing_ok=True)
+        raise
+
+    rule_counts: dict[str, int] = {}
+    for counts in (audit_counts, debug_counts):
+        for name, count in counts.items():
+            rule_counts[name] = rule_counts.get(name, 0) + count
+    return RunScopedLogEvidence(
+        child_key_names=tuple(agent_child),
+        elevated_comparison_record_present=bool(comparison_records),
+        rule_counts=rule_counts,
+    )
 
 
 @dataclass(frozen=True)
@@ -287,10 +620,11 @@ class CaptureResult:
 
 
 def _capture_to_disk(
-    audited: AuditedLaunch, *, command: Sequence[str], output_dir: Path
+    audited: AuditedLaunch, *, command: Sequence[str], output_dir: Path, drive_session: bool = False,
+    wait_timeout_seconds: float | None = None,
 ) -> CaptureResult:
     output_dir.mkdir(parents=True, exist_ok=True)
-    process = spawn_authorized_capture(audited, command=command)
+    process = spawn_authorized_capture(audited, command=command, drive_session=drive_session)
     assert process.stdout is not None
     assert process.stderr is not None
     secrets = _known_secrets(audited.capture)
@@ -316,13 +650,38 @@ def _capture_to_disk(
     ]
     for worker in workers:
         worker.start()
+    timeout = wait_timeout_seconds or (
+        _DRIVE_SESSION_WAIT_TIMEOUT_SECONDS if drive_session else _CAPTURE_WAIT_TIMEOUT_SECONDS
+    )
+    deadline = time.monotonic() + timeout
+    timed_out = False
     for worker in workers:
-        worker.join()
+        worker.join(timeout=max(0.0, deadline - time.monotonic()))
+        timed_out = timed_out or worker.is_alive()
     try:
-        exit_code = process.wait(timeout=_CAPTURE_WAIT_TIMEOUT_SECONDS)
+        if timed_out:
+            raise subprocess.TimeoutExpired(command, timeout)
+        exit_code = process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
+        if drive_session and sys.platform == "win32":
+            try:
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                    check=False,
+                    capture_output=True,
+                    timeout=_TERMINATION_CLEANUP_GRACE_SECONDS,
+                )
+            except subprocess.TimeoutExpired:
+                pass
+        else:
+            process.kill()
+        try:
+            process.wait(timeout=_TERMINATION_CLEANUP_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            pass
+        cleanup_deadline = time.monotonic() + _TERMINATION_CLEANUP_GRACE_SECONDS
+        for worker in workers:
+            worker.join(timeout=max(0.0, cleanup_deadline - time.monotonic()))
         exit_code = process.returncode or 1
     return CaptureResult(exit_code=exit_code, rule_counts=dict(rule_counts))
 
@@ -536,6 +895,11 @@ def _write_evidence_manifest(
     rule_counts: Mapping[str, int],
     joined_scan_result: dict[str, object],
     hmac_key: bytes,
+    session_mode: str | None = None,
+    session_result: SessionResultEvidence | None = None,
+    external_evidence: ExternalSessionEvidence | None = None,
+    log_evidence: RunScopedLogEvidence | None = None,
+    evidence_run_nonce: str | None = None,
 ) -> Path:
     """Write the compact evidence manifest with HMAC. Never includes secret
     material — only SHA-256 digests, rule counts, scan result, and HMAC."""
@@ -552,6 +916,78 @@ def _write_evidence_manifest(
         "joined_scan": joined_scan_result,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+
+    session_inputs = (
+        session_mode,
+        session_result,
+        external_evidence,
+        log_evidence,
+        evidence_run_nonce,
+    )
+    if any(value is not None for value in session_inputs):
+        if any(value is None for value in session_inputs):
+            raise ValueError("driven-session manifest evidence inputs must be complete")
+        assert session_mode is not None
+        assert session_result is not None
+        assert external_evidence is not None
+        assert log_evidence is not None
+        assert evidence_run_nonce is not None
+        if session_mode not in {"ordinary", "elevated"}:
+            raise ValueError("session mode must be ordinary or elevated")
+        if _EVIDENCE_RUN_NONCE_RE.fullmatch(evidence_run_nonce) is None:
+            raise ValueError("evidence run nonce is malformed")
+        if session_result.run_id != external_evidence.run_id:
+            raise ValueError("session and external evidence run IDs differ")
+        if (
+            not isinstance(session_result.tool_names, tuple)
+            or any(not isinstance(name, str) or not name for name in session_result.tool_names)
+            or session_result.tool_call_count != len(session_result.tool_names)
+        ):
+            raise ValueError("session tool evidence is malformed")
+        if not isinstance(log_evidence.elevated_comparison_record_present, bool):
+            raise ValueError("comparison-record evidence must be boolean")
+        if log_evidence.elevated_comparison_record_present != (session_mode == "elevated"):
+            raise ValueError("comparison-record evidence does not match session mode")
+        if (
+            not isinstance(log_evidence.child_key_names, tuple)
+            or any(not isinstance(name, str) or not name for name in log_evidence.child_key_names)
+            or len(log_evidence.child_key_names) != len(set(log_evidence.child_key_names))
+        ):
+            raise ValueError("child-key evidence is malformed")
+        try:
+            total_cost_usd = Decimal(str(external_evidence.total_cost_usd))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ValueError("external session evidence cost is invalid") from exc
+        if not total_cost_usd.is_finite() or total_cost_usd <= 0:
+            raise ValueError("external session evidence cost must be positive")
+        required_artifacts = {
+            "external-session-evidence.json",
+            "audit-snapshot.ndjson",
+            "debug-snapshot.ndjson",
+        }
+        if not required_artifacts.issubset(artifact_sha256s):
+            raise ValueError("driven-session evidence snapshots are incomplete")
+
+        manifest_fields.update(
+            {
+                "session_mode": session_mode,
+                "tool_names": list(session_result.tool_names),
+                "tool_call_count": session_result.tool_call_count,
+                "total_cost_usd": str(total_cost_usd),
+                "stop_reason": session_result.stop_reason,
+                "child_key_names": list(log_evidence.child_key_names),
+                "elevated_comparison_record_present": (
+                    log_evidence.elevated_comparison_record_present
+                ),
+                "evidence_run_nonce": evidence_run_nonce,
+            }
+        )
+        if (
+            session_result.stop_reason == "end_turn"
+            and session_result.tool_call_count > 0
+            and "write_file" in session_result.tool_names
+        ):
+            manifest_fields["final_agent_state"] = "COMPLETED"
     manifest_fields["hmac"] = _compute_evidence_manifest_hmac(manifest_fields, hmac_key)
 
     manifest_path = output_dir / _EVIDENCE_MANIFEST_FILENAME
@@ -653,6 +1089,8 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     capture_parser.add_argument("--agent-approval-id")
     capture_parser.add_argument("--launch-session-id")
     capture_parser.add_argument("--diagnostic-grant-id")
+    capture_parser.add_argument("--drive-session", action="store_true")
+    capture_parser.add_argument("--evidence-run-nonce")
     verify_parser = subcommands.add_parser("verify")
     verify_parser.add_argument("--manifest", type=Path, required=True)
     verify_parser.add_argument("--artifact-dir", type=Path, required=True)
@@ -736,15 +1174,40 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    if args.evidence_run_nonce is not None and _EVIDENCE_RUN_NONCE_RE.fullmatch(args.evidence_run_nonce) is None:
+        print("optimus-agent: --evidence-run-nonce must match run_ followed by 24 lowercase hex characters", file=sys.stderr)
+        return 2
     launch_session_id = args.launch_session_id or f"sess_{secrets.token_hex(12)}"
+    agent_invocation: str | None = None
+    if args.drive_session:
+        optimus_agent = shutil.which("optimus-agent")
+        if optimus_agent is None:
+            print("optimus-agent is required for --drive-session", file=sys.stderr)
+            return 2
+        if args.evidence_run_nonce is None:
+            print("optimus-agent: --drive-session requires --evidence-run-nonce", file=sys.stderr)
+            return 2
+        agent_invocation = _build_agent_invocation(
+            optimus_agent=optimus_agent,
+            workspace=args.workspace,
+            launch_session_id=launch_session_id,
+            diagnostic_grant_id=args.diagnostic_grant_id,
+        )
     try:
         capture = authorize_capture(
             workspace=args.workspace,
             environment=os.environ,
             launch_approval_id=args.agent_approval_id,
             launch_session_id=launch_session_id,
-            diagnostic_grant_id=args.diagnostic_grant_id,
+            diagnostic_grant_id=None if args.drive_session else args.diagnostic_grant_id,
+            drive_session=args.drive_session,
         )
+        audit_offset = 0
+        debug_offset = 0
+        if args.drive_session:
+            runtime_root = args.workspace / ".optimus"
+            audit_offset = _current_log_size(runtime_root / "launch-audit.ndjson")
+            debug_offset = _current_log_size(runtime_root / "debug-acp.ndjson")
         audited = append_authorized_audit(capture)
         # The gated smoke command is ``acpx --version``: it exits cleanly, ignores
         # stdin, and produces capturable output. Bare ``acpx`` reads a prompt from
@@ -755,11 +1218,51 @@ def main(argv: Sequence[str] | None = None) -> int:
         # vector (workspace relocated between authorize and spawn). Without this,
         # a workspace relocation would propagate as an uncaught traceback with
         # exit 1, same defect class as the NO_APPROVAL gap fixed in FIX 5.
-        result = _capture_to_disk(audited, command=[acpx, "--version"], output_dir=args.output_dir)
+        command = _build_capture_command(
+            acpx=acpx,
+            workspace=args.workspace,
+            agent_invocation=agent_invocation,
+            drive_session=args.drive_session,
+        )
+        result = _capture_to_disk(
+            audited, command=command, output_dir=args.output_dir, drive_session=args.drive_session
+        )
+        if result.exit_code != 0:
+            _quarantine_artifacts(args.output_dir)
+            return result.exit_code
         # Joined promotion scan: while current secrets are still in memory,
         # join decoded transcript records and scan for exact known values plus
         # canaries/patterns. A hit quarantines the artifact.
         known = _known_secrets(capture)
+        session_result: SessionResultEvidence | None = None
+        external_evidence: ExternalSessionEvidence | None = None
+        log_evidence: RunScopedLogEvidence | None = None
+        if args.drive_session:
+            try:
+                transcript = (args.output_dir / "transcript.stdout").read_text(encoding="utf-8")
+                session_result = _parse_session_result(transcript)
+                external_evidence = _collect_external_session_evidence(
+                    capture=capture,
+                    session_result=session_result,
+                    output_dir=args.output_dir,
+                    known_secrets=known,
+                )
+                log_evidence = _snapshot_run_scoped_launch_logs(
+                    workspace=args.workspace,
+                    output_dir=args.output_dir,
+                    audit_offset=audit_offset,
+                    debug_offset=debug_offset,
+                    launch_session_id=capture.authorized.launch_session_id,
+                    session_mode=args.mode,
+                    known_secrets=known,
+                )
+            except Exception:
+                print(
+                    "optimus-agent: SESSION_EVIDENCE_UNAVAILABLE: driven-session evidence could not be collected",
+                    file=sys.stderr,
+                )
+                _quarantine_artifacts(args.output_dir)
+                return 1
         scan_result = _joined_scan(args.output_dir, known)
         if scan_result["hit"]:
             print(
@@ -776,12 +1279,33 @@ def main(argv: Sequence[str] | None = None) -> int:
             keyring_backend=keyring,
             runtime_root=approval_runtime_root,
         )
-        _write_evidence_manifest(
-            args.output_dir,
-            rule_counts=result.rule_counts,
-            joined_scan_result=scan_result,
-            hmac_key=manifest_store.hmac_key,
-        )
+        manifest_rule_counts = dict(result.rule_counts)
+        if log_evidence is not None:
+            for name, count in getattr(log_evidence, "rule_counts", {}).items():
+                manifest_rule_counts[name] = manifest_rule_counts.get(name, 0) + count
+        if args.drive_session:
+            assert session_result is not None
+            assert external_evidence is not None
+            assert log_evidence is not None
+            assert args.evidence_run_nonce is not None
+            _write_evidence_manifest(
+                args.output_dir,
+                rule_counts=manifest_rule_counts,
+                joined_scan_result=scan_result,
+                hmac_key=manifest_store.hmac_key,
+                session_mode=args.mode,
+                session_result=session_result,
+                external_evidence=external_evidence,
+                log_evidence=log_evidence,
+                evidence_run_nonce=args.evidence_run_nonce,
+            )
+        else:
+            _write_evidence_manifest(
+                args.output_dir,
+                rule_counts=manifest_rule_counts,
+                joined_scan_result=scan_result,
+                hmac_key=manifest_store.hmac_key,
+            )
     except LaunchGateError as exc:
         if exc.code == "NO_APPROVAL":
             print(
