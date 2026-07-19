@@ -378,7 +378,7 @@ class TestApprovalTimeRuntimeBootstrap:
             runtime_root=tmp_path / "approval-runtime",
         )
         runtime_root = workspace / ".optimus"
-        runtime_root.mkdir()
+        assert runtime_root.is_dir()
         runtime_root.rmdir()
         store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path / "approval-runtime")
         prepare_context = getattr(cli_module, "_prepare_candidate_context", None)
