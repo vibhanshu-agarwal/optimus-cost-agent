@@ -115,15 +115,15 @@ Expected: exactly these three docs in one commit. Do not stage uv.lock, .claude/
 
 **Pristine-byte safeguard:** Do not tick any Task 0A checkbox until its amendment commit lands. The amendment commit must contain this plan exactly as freshly reviewed and hashed, including the completed Task 0 checkbox history, the reset Task 1 checkboxes below, and all Task 0A checkboxes still unchecked.
 
-- [ ] **Step 1: Obtain reviewer and operator approval for exact amended bytes.**
+- [x] **Step 1: Obtain reviewer and operator approval for exact amended bytes.**
 
 The reviewer must verify that only the completed Task 0 checkbox history, Task 0A, Task 1, Task 2, File Map, and Definition of Done change. The operator approval must follow the reviewer approval. Both statements go in the v2 record.
 
-- [ ] **Step 2: Compute and record the amended plan digest.**
+- [x] **Step 2: Compute and record the amended plan digest.**
 
 Run the same literal command from Task 0 Step 4. Record its uppercase output, the reviewer statement, operator statement, baseline planning commit d250003, and scope limited to the POSIX mutation test, Windows lexical normalization, and related wording in the v2 record.
 
-- [ ] **Step 3: Commit the amended plan and v2 record only.**
+- [x] **Step 3: Commit the amended plan and v2 record only.**
 
 Run git diff --check, stage this plan plus the v2 record only, and commit with message docs: amend Plan 9.98-FU-1 identity tests. Do not stage source or test files. After the commit, tick Task 0A checkboxes as ordinary checkbox-only progress.
 
@@ -139,7 +139,7 @@ Run git diff --check, stage this plan plus the v2 record only, and commit with m
 
 **Amendment reset:** The uncommitted Task 2 production draft and its Task-2-only fixture adaptations were written before the corrected RED tests existed. Before this amended Task 1 begins, discard those draft-only changes with `apply_patch` back to the `d250003` content. Retain or revise only the Task 1 test additions below. This is not a revert of committed work; it enforces the plan's TDD constraint that the corrected tests fail against the committed baseline behavior.
 
-- [ ] **Step 1: Add lexical-path and platform-specific change-time RED tests.**
+- [x] **Step 1: Add lexical-path and platform-specific change-time RED tests.**
 
 In test_trusted_paths.py, import os (alongside the existing sys import) and add:
 
@@ -174,7 +174,7 @@ def test_revalidation_fails_after_workspace_directory_metadata_change(tmp_path: 
 
 Keep the existing post-authorization symlink-repoint and delete/recreate tests; both must continue to require WORKSPACE_IDENTITY_CHANGED.
 
-- [ ] **Step 2: Add durable-record and exception RED tests.**
+- [x] **Step 2: Add durable-record and exception RED tests.**
 
 Add a durable store round trip in test_launch_approvals.py that asserts:
 
@@ -197,7 +197,7 @@ def test_trusted_path_error_propagates_as_its_own_type() -> None:
 
 Mark TestWindowsCaseNormalization.test_case_variants_produce_same_identity with pytest.mark.skipif(sys.platform != "win32", reason="Windows-only: case-insensitive filesystem identity"), then assert both id_upper.lexical_path == id_lower.lexical_path and id_upper.digest == id_lower.digest.
 
-- [ ] **Step 3: Run the identity RED selector.**
+- [x] **Step 3: Run the identity RED selector.**
 
 Run:
 
@@ -219,7 +219,7 @@ Expected before Task 2: genuine missing-field failures, the POSIX metadata-mutat
 - resolve_workspace_identity(workspace_root: Path) -> WorkspaceIdentity remains public.
 - revalidate_workspace_identity(identity: WorkspaceIdentity) -> None still raises TrustedPathError(code="WORKSPACE_IDENTITY_CHANGED") on a mismatch.
 
-- [ ] **Step 1: Replace the frozen trusted-path exception and expand identity.**
+- [x] **Step 1: Replace the frozen trusted-path exception and expand identity.**
 
 Use the established ApprovalError pattern:
 
@@ -249,7 +249,7 @@ git_common_dir: str | None
 digest: str
 ~~~
 
-- [ ] **Step 2: Bind lexical path and change time into the digest.**
+- [x] **Step 2: Bind lexical path and change time into the digest.**
 
 Import os and sys in trusted_paths.py. At the start of resolve_workspace_identity, preserve symlinks while normalizing Windows caller casing:
 
@@ -262,7 +262,7 @@ resolved = Path(lexical_path).resolve()
 
 After stat = resolved.stat(), include lexical_path and stat.st_ctime_ns in the NUL-delimited _compute_identity_digest input and returned WorkspaceIdentity. Preserve existing canonical-path, device, inode, and Git inputs; do not read environment variables or create directories.
 
-- [ ] **Step 3: Revalidate from the lexical path.**
+- [x] **Step 3: Revalidate from the lexical path.**
 
 Replace direct Path(identity.canonical_path) restatting with:
 
@@ -284,7 +284,7 @@ if current.digest != identity.digest:
 
 The serialized record placeholder must never reach this function; callers revalidate only the fresh identity from the current LaunchCandidate.
 
-- [ ] **Step 4: Preserve digest-only durable record reads.**
+- [x] **Step 4: Preserve digest-only durable record reads.**
 
 In _deserialize_approval_record, construct:
 
@@ -303,7 +303,7 @@ workspace_identity = WorkspaceIdentity(
 
 Update every direct WorkspaceIdentity fixture in test_launch_approvals.py and test_launch_gate.py with synthetic lexical path and change-time values. Do not add dataclass defaults.
 
-- [ ] **Step 5: Run the identity suite GREEN and commit.**
+- [x] **Step 5: Run the identity suite GREEN and commit.**
 
 Run:
 
@@ -325,11 +325,11 @@ Expected: the POSIX metadata-mutation test is skipped on Windows, the Windows ca
 
 **Produces:** A nonexistent inspect workspace fails before any real keyring access.
 
-- [ ] **Step 1: Write the CLI ordering RED test.**
+- [x] **Step 1: Write the CLI ordering RED test.**
 
 Give test_inspect_on_nonexistent_workspace_fails_gracefully a monkeypatch parameter. Patch optimus.acp.launch_approval_cli._resolve_store to call pytest.fail("keyring store must not be opened for a missing workspace"); invoke main with nonexistent workspace and inspect; assert a nonzero result and WORKSPACE_NOT_FOUND in stderr. Update test_error_messages_contain_no_raw_values with the same no-store assertion while retaining the no-secret check.
 
-- [ ] **Step 2: Run the CLI RED selector.**
+- [x] **Step 2: Run the CLI RED selector.**
 
 Run:
 
@@ -339,7 +339,7 @@ uv run pytest tests/unit/acp/test_launch_approval_cli.py::TestCliParsing::test_i
 
 Expected before implementation: patched store failure proves the old ordering opens a keyring-backed store first.
 
-- [ ] **Step 3: Resolve identity before opening the store.**
+- [x] **Step 3: Resolve identity before opening the store.**
 
 Make _cmd_inspect begin:
 
@@ -352,7 +352,7 @@ def _cmd_inspect(workspace_root: Path) -> int:
 
 Leave store.read_durable(workspace_identity.digest) and behavior for existing workspaces unchanged. Do not add a fallback keyring.
 
-- [ ] **Step 4: Run the CLI suite GREEN and commit.**
+- [x] **Step 4: Run the CLI suite GREEN and commit.**
 
 Run:
 
@@ -373,7 +373,7 @@ git commit -m "fix: validate inspect workspace before keyring access"
 
 **Produces:** Unit tests that preserve security coverage without Redis, a system keyring backend, POSIX umask assumptions, or Python locale coercion.
 
-- [ ] **Step 1: Make permission invocation a recorder/no-op.**
+- [x] **Step 1: Make permission invocation a recorder/no-op.**
 
 In test_env_gateway_permission_check_is_actually_invoked, replace the wrapper that calls the original validator with:
 
@@ -384,7 +384,7 @@ def recording_validate(path: Path, **_kwargs: object) -> None:
 
 Retain the assertion that exactly the .env.gateway path was passed. In both TestSingleReadCredentialResolution tests that write a real .env.gateway, add env_gateway.chmod(0o600) immediately after write_text when sys.platform != "win32".
 
-- [ ] **Step 2: Use fake keyring at every main test boundary.**
+- [x] **Step 2: Use fake keyring at every main test boundary.**
 
 Extend _patch_keyring:
 
@@ -397,7 +397,7 @@ monkeypatch.setattr(capture_tool, "keyring", fake)
 
 Call _patch_keyring(monkeypatch, FakeKeyring()) in test_main_default_path_never_resolves_optimus_agent, test_main_generates_launch_session_id_when_absent, test_agent_invocation_elevated_drive_session_passes_grant_only_to_inner_agent, test_main_returns_exit_2_with_clean_message_on_unapproved_workspace, and test_main_returns_exit_2_on_workspace_relocation_between_audit_and_spawn.
 
-- [ ] **Step 3: Assert the actual Popen environment.**
+- [x] **Step 3: Assert the actual Popen environment.**
 
 In test_spawn_uses_acpx_client_environment_not_effective_agent_environment, spy on capture_tool.subprocess.Popen, save kwargs["env"], and run a child that exits zero. Replace child JSON environment inspection with:
 
@@ -408,7 +408,7 @@ assert not any(name.startswith("OPTIMUS_") for name in observed_env)
 
 This tests the supplied mapping and is not affected by Python adding LC_CTYPE inside a Linux child.
 
-- [ ] **Step 4: Run portability tests GREEN and commit.**
+- [x] **Step 4: Run portability tests GREEN and commit.**
 
 Run:
 
@@ -444,7 +444,7 @@ Run:
 
 ~~~
 uv run ruff check .
-uv run python tools/verify_plan996_logging_surfaces.py
+uv run python tools/verify_plan996_logging_surfaces.py --manifest docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json
 git diff --check 9f2ddd7697e99cc977cc7b5897155127734af12a
 git diff --name-only 9f2ddd7697e99cc977cc7b5897155127734af12a -- docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md src/optimus/acp/launch_gate.py src/optimus/acp/launch_policy.py src/optimus/acp/local_infra.py src/optimus/acp/local_gateway_secrets.py
 git status --short
