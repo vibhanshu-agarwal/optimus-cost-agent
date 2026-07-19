@@ -25,7 +25,7 @@ from optimus.acp.launch_approvals import KeyringApprovalStore, build_approval_re
 from optimus.acp.launch_audit import LaunchAuditError
 from optimus.acp.launch_gate import LaunchGateError, resolve_launch_candidate
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
-from optimus.acp.operator_paths import resolve_authorized_operator_paths
+from optimus.acp.operator_paths import bootstrap_workspace_runtime_root, resolve_authorized_operator_paths
 from optimus.acp.trusted_paths import TrustedPathError, resolve_workspace_identity
 from tools.run_plan996_acpx_security_evidence import (
     SESSION_TASK,
@@ -138,8 +138,9 @@ def _write_durable_approval(
     approval_runtime_root: Path,
 ) -> None:
     snapshot = LaunchEnvironmentSnapshot.capture(environment)
-    identity = resolve_workspace_identity(workspace)
     paths = resolve_authorized_operator_paths(workspace_root=workspace, snapshot_values=snapshot.values)
+    bootstrap_workspace_runtime_root(paths)
+    identity = resolve_workspace_identity(workspace)
     store = KeyringApprovalStore(keyring_backend=keyring, runtime_root=approval_runtime_root)
     candidate = resolve_launch_candidate(
         snapshot=snapshot,
@@ -290,6 +291,7 @@ def test_capture_stops_when_real_audit_runtime_root_is_a_regular_file(tmp_path: 
         keyring=keyring,
         approval_runtime_root=approval_runtime_root,
     )
+    (workspace / ".optimus").rmdir()
     (workspace / ".optimus").write_text("not a directory", encoding="utf-8")
 
     capture = authorize_capture(
@@ -318,6 +320,7 @@ def test_capture_acpx_blocks_child_when_composed_audit_fails(tmp_path: Path, mon
         keyring=keyring,
         approval_runtime_root=approval_runtime_root,
     )
+    (workspace / ".optimus").rmdir()
     (workspace / ".optimus").write_text("not a directory", encoding="utf-8")
 
     def child_must_not_start(*_args: object, **_kwargs: object) -> None:
@@ -334,6 +337,48 @@ def test_capture_acpx_blocks_child_when_composed_audit_fails(tmp_path: Path, mon
             launch_session_id="sess_composed_audit_failure",
             command=[sys.executable, "-c", "raise SystemExit(0)"],
         )
+
+
+def test_capture_acpx_missing_approved_runtime_root_never_spawns_or_recreates_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    config_root = tmp_path / "config"
+    config_root.mkdir()
+    keyring = FakeKeyring()
+    approval_runtime_root = tmp_path / "approval-runtime"
+    environment = _environment(config_root)
+    _write_durable_approval(
+        workspace=workspace,
+        environment=environment,
+        keyring=keyring,
+        approval_runtime_root=approval_runtime_root,
+    )
+    runtime_root = workspace / ".optimus"
+    runtime_root.rmdir()
+
+    real_popen = capture_tool.subprocess.Popen
+    expected_command = [sys.executable, "-c", "raise SystemExit(0)"]
+
+    def fail_only_capture_spawn(command: list[str], *args: object, **kwargs: object) -> object:
+        if command == expected_command:
+            pytest.fail("missing runtime root must block child spawn")
+        return real_popen(command, *args, **kwargs)
+
+    monkeypatch.setattr(capture_tool.subprocess, "Popen", fail_only_capture_spawn)
+
+    with pytest.raises(LaunchAuditError, match="AUDIT_DIR_UNAVAILABLE"):
+        capture_acpx(
+            workspace=workspace,
+            environment=environment,
+            keyring_backend=keyring,
+            approval_runtime_root=approval_runtime_root,
+            launch_session_id="sess_missing_root",
+            command=expected_command,
+        )
+
+    assert not runtime_root.exists()
 
 
 def test_capture_revalidates_workspace_after_successful_audit_before_spawn(tmp_path: Path) -> None:

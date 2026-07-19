@@ -46,7 +46,7 @@ from optimus.acp.launch_gate import (
 )
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot, PropagationTarget
 from optimus.acp.local_infra import apply_local_defaults
-from optimus.acp.operator_paths import resolve_authorized_operator_paths
+from optimus.acp.operator_paths import bootstrap_workspace_runtime_root, resolve_authorized_operator_paths
 from optimus.acp.trusted_paths import (
     TrustedPathError,
     resolve_workspace_identity,
@@ -92,18 +92,25 @@ def _base_env(*, workspace_root: Path) -> dict[str, str]:
 
 
 def _real_launch_pipeline(
-    *, env: dict[str, str], workspace_root: Path, keyring: FakeKeyring, runtime_root: Path
+    *,
+    env: dict[str, str],
+    workspace_root: Path,
+    keyring: FakeKeyring,
+    runtime_root: Path,
+    authoring: bool = False,
 ) -> tuple[LaunchCandidate, KeyringApprovalStore]:
     """Run the real capture -> resolve steps shared by both authoring and
     re-authorizing a launch (mirrors what main() does before it ever touches
     the approval store)."""
     snapshot = LaunchEnvironmentSnapshot.capture(env)
-    workspace_identity = resolve_workspace_identity(workspace_root)
     operator_paths = resolve_authorized_operator_paths(
         workspace_root=workspace_root,
         snapshot_values=snapshot.values,
         platform_name=sys.platform,
     )
+    if authoring:
+        bootstrap_workspace_runtime_root(operator_paths)
+    workspace_identity = resolve_workspace_identity(workspace_root)
     store = KeyringApprovalStore(keyring_backend=keyring, runtime_root=runtime_root)
     candidate = resolve_launch_candidate(
         snapshot=snapshot,
@@ -140,7 +147,7 @@ def test_full_launch_trust_flow_connects_every_real_seam(tmp_path: Path) -> None
 
     # --- Step 1: author the durable approval (the "optimus-trust approve" side) ---
     authoring_candidate, store = _real_launch_pipeline(
-        env=env, workspace_root=workspace_root, keyring=keyring, runtime_root=runtime_root
+        env=env, workspace_root=workspace_root, keyring=keyring, runtime_root=runtime_root, authoring=True
     )
     record = build_approval_record(
         mode="durable",
@@ -175,13 +182,7 @@ def test_full_launch_trust_flow_connects_every_real_seam(tmp_path: Path) -> None
     assert authorized.approval_mode == "durable"
     assert authorized.approval_id == record.approval_id
 
-    # --- Step 3: real workspace-identity revalidation, the TOCTOU guard
-    # wired into __main__.py between authorization and the first side
-    # effect (Task 5 Step 7). Proven here against the REAL directory, not a
-    # hand-built WorkspaceIdentity. ---
-    revalidate_workspace_identity(authorized.candidate.workspace_identity)  # must not raise
-
-    # --- Step 4: real audit append + real read-back from disk. ---
+    # --- Step 3: real audit append + real read-back from disk. ---
     candidate = authorized.candidate
     setting_decisions = tuple(
         {
@@ -211,9 +212,13 @@ def test_full_launch_trust_flow_connects_every_real_seam(tmp_path: Path) -> None
         sanitizer_rule_counts={},
         final_reason_code="AUTHORIZED",
     )
-    append_launch_audit_event(event, runtime_root=runtime_root)
+    append_launch_audit_event(event, runtime_root=candidate.operator_paths.runtime_root)
 
-    audit_path = runtime_root / "launch-audit.ndjson"
+    # --- Step 4: audit must not self-invalidate the already bootstrapped
+    # workspace identity. ---
+    revalidate_workspace_identity(authorized.candidate.workspace_identity)
+
+    audit_path = candidate.operator_paths.runtime_root / "launch-audit.ndjson"
     assert audit_path.is_file()
     lines = audit_path.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1
@@ -257,6 +262,80 @@ def test_full_launch_trust_flow_connects_every_real_seam(tmp_path: Path) -> None
     assert agent_environ["OPTIMUS_API_KEY"] == env["OPTIMUS_API_KEY"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only: directory ctime lifecycle proof")
+def test_approval_bootstrap_allows_audit_then_revalidation_but_later_mutation_fails(tmp_path: Path) -> None:
+    """The approved root predates identity capture; unrelated later writes do not."""
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    (workspace_root.parent / "operator-config").mkdir()
+    approval_runtime_root = tmp_path / "approval-runtime"
+    keyring = FakeKeyring()
+    env = _base_env(workspace_root=workspace_root)
+
+    authoring_snapshot = LaunchEnvironmentSnapshot.capture(env)
+    authoring_paths = resolve_authorized_operator_paths(
+        workspace_root=workspace_root,
+        snapshot_values=authoring_snapshot.values,
+        platform_name=sys.platform,
+    )
+    bootstrap_workspace_runtime_root(authoring_paths)
+    authoring_identity = resolve_workspace_identity(workspace_root)
+    authoring_store = KeyringApprovalStore(keyring_backend=keyring, runtime_root=approval_runtime_root)
+    authoring_candidate = resolve_launch_candidate(
+        snapshot=authoring_snapshot,
+        workspace_identity=authoring_identity,
+        operator_paths=authoring_paths,
+        hmac_key=authoring_store.hmac_key,
+    )
+    authoring_store.write_durable(
+        build_approval_record(
+            mode="durable",
+            workspace_identity=authoring_identity,
+            security_literals=authoring_candidate.security_literals,
+            secret_fingerprints=authoring_candidate.secret_fingerprints,
+            monotonic_grants=authoring_candidate.monotonic_grants,
+            model_observation=authoring_candidate.model_observation,
+            hmac_key=authoring_store.hmac_key,
+        )
+    )
+
+    launch_candidate, launch_store = _real_launch_pipeline(
+        env=env,
+        workspace_root=workspace_root,
+        keyring=keyring,
+        runtime_root=approval_runtime_root,
+    )
+    authorized = authorize_launch(
+        candidate=launch_candidate,
+        store=launch_store,
+        launch_session_id="sess_bootstrap_lifecycle",
+    )
+    append_launch_audit_event(
+        LaunchAuditEvent(
+            timestamp=datetime.now(timezone.utc),
+            workspace_digest=launch_candidate.workspace_identity.digest,
+            launch_session_id=authorized.launch_session_id,
+            approval_id=authorized.approval_id,
+            approval_mode=authorized.approval_mode,
+            registry_version=LAUNCH_POLICY_COMPATIBILITY,
+            policy_version=LAUNCH_POLICY_COMPATIBILITY,
+            setting_decisions=(),
+            monotonic_dispositions=(),
+            rejected_names=(),
+            child_propagation_decisions={"agent_child": (), "gateway_child": ()},
+            diagnostic_grant_state="none",
+            sanitizer_rule_counts={},
+            final_reason_code="AUTHORIZED",
+        ),
+        runtime_root=launch_candidate.operator_paths.runtime_root,
+    )
+    revalidate_workspace_identity(launch_candidate.workspace_identity)
+
+    (workspace_root / "unrelated-post-approval-entry").write_text("synthetic", encoding="utf-8")
+    with pytest.raises(TrustedPathError, match="WORKSPACE_IDENTITY_CHANGED"):
+        revalidate_workspace_identity(launch_candidate.workspace_identity)
+
+
 def test_full_launch_trust_flow_relocated_workspace_fails_revalidation(tmp_path: Path) -> None:
     """Same real chain as above, up through authorization, but proves the
     TOCTOU guard genuinely rejects a real post-authorization relocation —
@@ -274,7 +353,7 @@ def test_full_launch_trust_flow_relocated_workspace_fails_revalidation(tmp_path:
     env = _base_env(workspace_root=workspace_root)
 
     authoring_candidate, store = _real_launch_pipeline(
-        env=env, workspace_root=workspace_root, keyring=keyring, runtime_root=runtime_root
+        env=env, workspace_root=workspace_root, keyring=keyring, runtime_root=runtime_root, authoring=True
     )
     record = build_approval_record(
         mode="durable",
@@ -318,7 +397,7 @@ def test_full_launch_trust_flow_snapshot_mismatch_fails_closed(tmp_path: Path) -
     env = _base_env(workspace_root=workspace_root)
 
     authoring_candidate, store = _real_launch_pipeline(
-        env=env, workspace_root=workspace_root, keyring=keyring, runtime_root=runtime_root
+        env=env, workspace_root=workspace_root, keyring=keyring, runtime_root=runtime_root, authoring=True
     )
     record = build_approval_record(
         mode="durable",

@@ -18,7 +18,7 @@ from pathlib import Path
 from optimus.acp.launch_approvals import KeyringApprovalStore, build_approval_record
 from optimus.acp.launch_gate import LaunchCandidate, resolve_launch_candidate
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
-from optimus.acp.operator_paths import resolve_authorized_operator_paths
+from optimus.acp.operator_paths import bootstrap_workspace_runtime_root, resolve_authorized_operator_paths
 from optimus.acp.trusted_paths import resolve_workspace_identity
 
 
@@ -51,12 +51,13 @@ def authorize_workspace_for_test(
     the identical digest. Returns the resolved candidate for convenience.
     """
     snapshot = LaunchEnvironmentSnapshot.capture(env)
-    workspace_identity = resolve_workspace_identity(workspace_root)
     paths = resolve_authorized_operator_paths(
         workspace_root=workspace_root,
         snapshot_values=snapshot.values,
         platform_name=sys.platform,
     )
+    bootstrap_workspace_runtime_root(paths)
+    workspace_identity = resolve_workspace_identity(workspace_root)
     store = KeyringApprovalStore(
         keyring_backend=fake_keyring,
         runtime_root=runtime_root or (workspace_root / ".optimus-runtime"),

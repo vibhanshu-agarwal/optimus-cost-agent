@@ -157,6 +157,77 @@ def test_unapproved_workspace_fails_closed_before_any_side_effect(monkeypatch, t
     assert redis_calls == []
     assert gateway_calls == []
     assert server_calls == []
+    assert not (tmp_path / ".optimus").exists()
+
+
+def test_approved_fresh_workspace_audits_and_revalidates_after_approval_ceremony(
+    monkeypatch, tmp_path
+) -> None:
+    """A completed TTY approval creates the root before identity capture.
+
+    This deliberately drives the real approval preparation boundary rather
+    than the direct-record helper used by older unit tests.
+    """
+    from optimus.acp import launch_approval_cli as cli_module
+    from optimus.acp.launch_approvals import KeyringApprovalStore
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    env = _base_env()
+    fake_keyring = FakeKeyring()
+    approval_runtime = tmp_path / "approval-runtime"
+    store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=approval_runtime)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
+    monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: (store, approval_runtime))
+    monkeypatch.setattr(acp_main, "keyring", fake_keyring)
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **_kwargs: None)
+    _patch_common(monkeypatch)
+
+    assert cli_module._cmd_approve(workspace, mode="durable", target_argv=[]) == 0
+    assert (workspace / ".optimus").is_dir()
+    assert acp_main.main(["--no-auto-start", "--workspace-root", str(workspace)]) == 0
+
+    audit_lines = (workspace / ".optimus" / "launch-audit.ndjson").read_text(encoding="utf-8").splitlines()
+    assert len(audit_lines) == 1
+
+
+def test_legacy_approved_workspace_missing_root_fails_without_recreating_it(monkeypatch, tmp_path, capsys) -> None:
+    """A launch consumes a completed approval but never repairs its root."""
+    from optimus.acp import launch_approval_cli as cli_module
+    from optimus.acp.launch_approvals import KeyringApprovalStore
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    env = _base_env()
+    fake_keyring = FakeKeyring()
+    approval_runtime = tmp_path / "approval-runtime"
+    store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=approval_runtime)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
+    monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: (store, approval_runtime))
+    assert cli_module._cmd_approve(workspace, mode="durable", target_argv=[]) == 0
+    (workspace / ".optimus").rmdir()
+
+    redis = Mock()
+    gateway = Mock()
+    server = Mock()
+    monkeypatch.setattr(acp_main, "keyring", fake_keyring)
+    monkeypatch.setattr(acp_main, "ensure_local_redis", redis)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", gateway)
+    monkeypatch.setattr(acp_main, "build_configured_server", server)
+
+    assert acp_main.main(["--workspace-root", str(workspace)]) == 2
+    assert "AUDIT_DIR_UNAVAILABLE" in capsys.readouterr().err
+    assert not (workspace / ".optimus").exists()
+    redis.assert_not_called()
+    gateway.assert_not_called()
+    server.assert_not_called()
 
 
 def test_unclassified_variable_fails_closed_before_any_side_effect(monkeypatch, tmp_path) -> None:
