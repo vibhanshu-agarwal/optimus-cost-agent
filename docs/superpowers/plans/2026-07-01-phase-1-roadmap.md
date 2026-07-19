@@ -557,6 +557,33 @@ Plan 9.98 is necessary but not sufficient for Plan 9.96 closure because Plan 9.9
 
 **Status:** Implemented and real-dependency verified on 2026-07-19.
 
+### P9.98-FU-3 (Tracked, Not Yet Scheduled): POSIX Runtime-Root Failure-Path Test Alignment
+
+**Raised:** 2026-07-19 by GitHub Actions `clean-environment-recheck` on PR #60
+([run 29690328862](https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/29690328862)).
+
+**Known CI status:** The Windows-local full suite passed, but the clean Linux run failed five
+runtime-root tests.  On POSIX, removing or replacing the direct child `.optimus` after a durable
+approval changes the workspace directory's bound `st_ctime_ns`.  The durable-approval lookup then
+correctly fails closed as `NO_APPROVAL` before the audit consumer can emit
+`AUDIT_DIR_UNAVAILABLE`.  Windows does not expose this test setup because its `st_ctime` has
+creation-time semantics.
+
+**Owned follow-up:** Reconcile the test contracts without weakening FU-1's lexical-path,
+device/inode, or change-time identity binding.  Launch and evidence flows that mutate `.optimus`
+before reauthorization must prove the earlier `NO_APPROVAL` failure, no runtime-root recreation,
+and no child/infra side effect.  Direct audit-consumer tests must independently prove
+`AUDIT_DIR_UNAVAILABLE` for a missing or unsafe already-authorized runtime root.  Do not skip,
+deselect, or platform-xfail the Linux tests.
+
+**Acceptance boundary:** A fresh, separately reviewed plan must name all five failures from run
+29690328862, keep the direct audit-root failure coverage, preserve the POSIX mutation-detection
+proof, and finish with an unskipped clean Linux CI run.  No production-code defect is assumed by
+this entry; the next plan must re-establish that conclusion from current source and CI evidence.
+
+**Status:** Tracked, not yet scheduled.  PR #60 is intentionally paused and not merge-ready until
+this follow-up receives fresh planning, review, implementation, and Linux CI verification.
+
 ## Plan 9.99 (Tracked, Not Yet Scheduled): Credential URI Security-Snapshot Canonicalization
 
 **Raised:** 2026-07-18 by the Plan 9.98 v6 security audit.
