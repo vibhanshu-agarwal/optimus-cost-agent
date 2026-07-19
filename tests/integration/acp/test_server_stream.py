@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from optimus.acp import errors
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.errors import PARSE_ERROR
 from optimus.acp.framing import encode_message
@@ -372,3 +373,115 @@ async def test_ndjson_spec_session_prompt_and_permission_flow(tmp_path):
     assert configured.fake_gateway_call_count == 1
     reader.close()
     await serve_task
+
+
+async def test_ndjson_permission_rejection_sanitizes_live_outbound_error(tmp_path):
+    configured = configured_test_agent_server(tmp_path, output_text="WRITE example.py\ncontent")
+    reader = InteractiveLineReader()
+    writer = MemoryLineWriter()
+    serve_task = asyncio.create_task(configured.server.serve_ndjson(reader, writer))
+
+    try:
+        await reader.send(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": 1,
+                    "clientCapabilities": {"fs": {"readTextFile": True, "writeTextFile": True}, "terminal": True},
+                    "clientInfo": {"name": "zed", "version": "1.0.0"},
+                },
+            }
+        )
+        await writer.wait_for_response(1)
+        await reader.send(
+            {"jsonrpc": "2.0", "id": 2, "method": "session/new", "params": {"cwd": str(tmp_path.resolve()), "mcpServers": []}}
+        )
+        session_id = (await writer.wait_for_response(2))["result"]["sessionId"]
+        await reader.send(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "session/prompt",
+                "params": {"sessionId": session_id, "prompt": [{"type": "text", "text": "Add a docstring"}]},
+            }
+        )
+        permission_request = await writer.wait_for_request("session/request_permission")
+        await reader.send(
+            {
+                "jsonrpc": "2.0",
+                "id": permission_request["id"],
+                "error": {
+                    "code": -32099,
+                    "message": "OPTIMUS_API_KEY=top-secret-canary",
+                    "data": {
+                        "nested": {
+                            "url": "redis://user:top-secret-canary@host/0",
+                            "items": ["Bearer top-secret-canary"],
+                        }
+                    },
+                },
+            }
+        )
+        response = await writer.wait_for_response(3)
+
+        assert response["error"]["code"] == -32099
+        assert response["error"]["message"]
+        assert "top-secret-canary" not in json.dumps(response)
+        assert response["error"]["data"]["nested"]["url"] == "redis://**********@host/0"
+    finally:
+        reader.close()
+        await serve_task
+
+
+async def test_ndjson_permission_rejection_drops_data_when_sanitizer_fails(tmp_path, monkeypatch):
+    configured = configured_test_agent_server(tmp_path, output_text="WRITE example.py\ncontent")
+    reader = InteractiveLineReader()
+    writer = MemoryLineWriter()
+    serve_task = asyncio.create_task(configured.server.serve_ndjson(reader, writer))
+    monkeypatch.setattr(errors, "sanitize_for_persistence", lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("failure")))
+
+    try:
+        await reader.send(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": 1,
+                    "clientCapabilities": {"fs": {"readTextFile": True, "writeTextFile": True}, "terminal": True},
+                    "clientInfo": {"name": "zed", "version": "1.0.0"},
+                },
+            }
+        )
+        await writer.wait_for_response(1)
+        await reader.send(
+            {"jsonrpc": "2.0", "id": 2, "method": "session/new", "params": {"cwd": str(tmp_path.resolve()), "mcpServers": []}}
+        )
+        session_id = (await writer.wait_for_response(2))["result"]["sessionId"]
+        await reader.send(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "session/prompt",
+                "params": {"sessionId": session_id, "prompt": [{"type": "text", "text": "Add a docstring"}]},
+            }
+        )
+        permission_request = await writer.wait_for_request("session/request_permission")
+        payload = {
+            "message": "OPTIMUS_API_KEY=top-secret-canary",
+            "nested": {"url": "redis://user:top-secret-canary@host/0"},
+        }
+        await reader.send(
+            {"jsonrpc": "2.0", "id": permission_request["id"], "error": {"code": -32099, "message": payload["message"], "data": payload}}
+        )
+        response = await writer.wait_for_response(3)
+
+        assert response["error"]["code"] == -32099
+        assert response["error"]["message"] == "internal error"
+        assert "data" not in response["error"]
+        assert "top-secret-canary" not in json.dumps(response)
+    finally:
+        reader.close()
+        await serve_task

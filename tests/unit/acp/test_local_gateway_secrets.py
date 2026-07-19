@@ -100,7 +100,14 @@ def test_resolve_provider_credentials_defaults_provider_to_openrouter_when_unset
         keyring_backend=FakeKeyring(),
     )
 
-    assert resolved.secrets == ProviderSecrets(provider="openrouter", model_provider_api_key="sk-or-implicit")
+    # base_url resolves to the shared default (review finding fix) rather
+    # than staying None -- GatewayServiceConfig.from_env() applies the same
+    # default independently, so both sides must agree on the concrete value.
+    assert resolved.secrets == ProviderSecrets(
+        provider="openrouter",
+        model_provider_api_key="sk-or-implicit",
+        base_url="https://openrouter.ai/api/v1",
+    )
 
 
 def test_provider_secrets_includes_base_url_when_set(tmp_path) -> None:
@@ -202,7 +209,11 @@ def test_config_provider_and_matching_keyring_provider_pass_without_conflict(tmp
 
     result = resolve_provider_credentials({}, config_root=tmp_path, keyring_backend=fake_keyring)
 
-    assert result.secrets == ProviderSecrets(provider="openai", model_provider_api_key="sk-private-value")
+    assert result.secrets == ProviderSecrets(
+        provider="openai",
+        model_provider_api_key="sk-private-value",
+        base_url="https://api.openai.com/v1",
+    )
     assert result.warnings == ()
     assert "sk-private-value" not in repr(result)
 
@@ -229,7 +240,11 @@ def test_env_provider_and_config_generic_key_warns_unprovable_split(tmp_path) ->
         keyring_backend=FakeKeyring(),
     )
 
-    assert result.secrets == ProviderSecrets(provider="openrouter", model_provider_api_key="sk-private-value")
+    assert result.secrets == ProviderSecrets(
+        provider="openrouter",
+        model_provider_api_key="sk-private-value",
+        base_url="https://openrouter.ai/api/v1",
+    )
     assert any("layer" in warning.lower() or "unprovable" in warning.lower() for warning in result.warnings)
     assert "sk-private-value" not in repr(result)
     assert "sk-private-value" not in repr(result.warnings)
@@ -285,7 +300,11 @@ def test_keyring_key_without_stored_provider_warns_and_resolves(tmp_path) -> Non
         keyring_backend=fake_keyring,
     )
 
-    assert result.secrets == ProviderSecrets(provider="openrouter", model_provider_api_key="sk-private-value")
+    assert result.secrets == ProviderSecrets(
+        provider="openrouter",
+        model_provider_api_key="sk-private-value",
+        base_url="https://openrouter.ai/api/v1",
+    )
     assert result.api_key_provenance.layer is CredentialLayer.KEYRING
     assert result.warnings == (
         "optimus-agent: provider key came from keyring but keyring has no stored model_provider; "
@@ -329,7 +348,11 @@ def test_keyring_provider_resolves_keyring_pair(tmp_path) -> None:
 
     result = resolve_provider_credentials({}, config_root=tmp_path, keyring_backend=fake_keyring)
 
-    assert result.secrets == ProviderSecrets(provider="openrouter", model_provider_api_key="sk-private-value")
+    assert result.secrets == ProviderSecrets(
+        provider="openrouter",
+        model_provider_api_key="sk-private-value",
+        base_url="https://openrouter.ai/api/v1",
+    )
 
 
 @pytest.mark.parametrize(

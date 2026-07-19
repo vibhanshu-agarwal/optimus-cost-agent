@@ -176,15 +176,22 @@ def _probe(
     config_root: Path,
     secret_values: Sequence[str],
 ) -> dict[str, str]:
+    # Plan 9.96, Task 5 cutover: resolve_operator_paths() bootstrapped from
+    # inherited APPDATA/HOME/XDG_CONFIG_HOME/OPTIMUS_CONFIG_ROOT and is being
+    # retired in favor of resolve_authorized_operator_paths() — the SINGLE
+    # shared helper (composing trusted-root resolution + OPTIMUS_CONFIG_ROOT
+    # override validation) that every gated caller (this probe, the
+    # optimus-trust CLI, and __main__.py's authorized launch path) must use,
+    # rather than each caller reimplementing the same three-call sequence.
     code = (
-        "import json, optimus, optimus_gateway; "
-        "from optimus.acp.operator_paths import resolve_operator_paths; "
+        "import json, os, sys, optimus, optimus_gateway; "
         "from pathlib import Path; "
-        "p=resolve_operator_paths(workspace_root=Path.cwd(), environ=__import__('os').environ); "
+        "from optimus.acp.operator_paths import resolve_authorized_operator_paths; "
+        "p=resolve_authorized_operator_paths(workspace_root=Path.cwd(), snapshot_values=os.environ, platform_name=sys.platform); "
         "from optimus.acp.local_gateway_secrets import resolve_provider_credentials, resolve_shared_secret; "
         "empty_keyring=type('EmptyKeyring', (), {'get_password': lambda self, service, key: None})(); "
-        "credentials=resolve_provider_credentials(__import__('os').environ, config_root=Path(__import__('os').environ['OPTIMUS_CONFIG_ROOT']), keyring_backend=empty_keyring); "
-        "shared=resolve_shared_secret(__import__('os').environ, config_root=Path(__import__('os').environ['OPTIMUS_CONFIG_ROOT']), keyring_backend=empty_keyring); "
+        "credentials=resolve_provider_credentials(os.environ, config_root=Path(os.environ['OPTIMUS_CONFIG_ROOT']), keyring_backend=empty_keyring); "
+        "shared=resolve_shared_secret(os.environ, config_root=Path(os.environ['OPTIMUS_CONFIG_ROOT']), keyring_backend=empty_keyring); "
         "print(json.dumps({'optimus': optimus.__file__, 'gateway': optimus_gateway.__file__, "
         "'config': str(p.config_root), 'runtime': str(p.runtime_root), "
         "'debug': str(p.debug_log_path), 'gateway_log': str(p.gateway_log_path), "

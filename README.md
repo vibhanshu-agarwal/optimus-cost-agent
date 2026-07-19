@@ -295,6 +295,11 @@ approval recorded in
 Implementation begins only after the docs-only planning branch merges, from a
 fresh branch/worktree based on the latest `origin/main`.
 
+**Plan 9.98** is implemented at `74d4ff21173a597c3b274cf6e6cbdf8a7eb43697`, with real ordinary
+and elevated ACPX evidence in `reports/plan-9-98-real-acpx-session-evidence.md` unblocking Plan 9.96
+Task 9 Steps 2, 3, and 5; **Plan 9.99** remains tracked, not yet scheduled, and must land its
+credential-URI security-snapshot correction before Plan 9.96 closes.
+
 **Plan 10** (tracked, not yet scheduled) is the Unified Gateway Capabilities
 Broker — web search and observability routes on the local gateway stub. Out of
 scope for Plans 9.6, 9.7, and 9.75.

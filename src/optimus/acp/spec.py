@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import itertools
-import os
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -27,14 +27,21 @@ from optimus.runtime.modes import ExecutionMode
 ACP_PROTOCOL_VERSION = 1
 
 
-def _max_planning_turns_from_env() -> int | None:
+def resolve_max_planning_turns(environ: Mapping[str, str]) -> int | None:
     """Operator-only testing override for AgentRunRequest.max_planning_turns.
 
     Not part of the ACP wire contract: session/prompt has no client-facing field
     for this, so live evidence gathering (Plan 9.85 Task 8) sets this env var on
     the agent process itself to force turn-limit scenarios.
+
+    Plan 9.96, Task 5 Step 2: takes an explicit ``environ`` mapping rather than
+    reading ``os.environ`` implicitly. Callers resolve this exactly once
+    (typically alongside launch authorization, before the ACP server starts
+    serving requests) and thread the typed result through
+    AcpDuplexAdapter/JsonRpcDispatcher/AcpStreamServer — no per-request or
+    per-call-site ambient environment read.
     """
-    raw = os.environ.get("OPTIMUS_MAX_PLANNING_TURNS")
+    raw = environ.get("OPTIMUS_MAX_PLANNING_TURNS")
     if raw is None or raw.strip() == "":
         return None
     try:
@@ -164,12 +171,17 @@ class AcpDuplexAdapter:
         workspace_root: str | Path,
         sessions: InMemoryAcpSpecSessionStore,
         outbound: AcpOutboundChannel,
+        max_planning_turns: int | None = None,
     ) -> None:
         self._runner = runner
         self._workspace_root = Path(workspace_root).resolve()
         self._sessions = sessions
         self._outbound = outbound
         self._active_turns: dict[str, AcpPromptTurn] = {}
+        # Plan 9.96, Task 5 Step 2: resolved once by the caller (typically via
+        # resolve_max_planning_turns(authorized_launch.candidate.agent_environ))
+        # and threaded in here, rather than read from os.environ per prompt.
+        self._max_planning_turns = max_planning_turns
 
     async def handle_client_request(self, request: dict[str, Any]) -> dict[str, Any]:
         request_id = request.get("id")
@@ -279,9 +291,8 @@ class AcpDuplexAdapter:
                 "execution_mode": session.execution_mode,
                 "workspace_root": session.cwd,
             }
-            max_planning_turns = _max_planning_turns_from_env()
-            if max_planning_turns is not None:
-                planning_fields["max_planning_turns"] = max_planning_turns
+            if self._max_planning_turns is not None:
+                planning_fields["max_planning_turns"] = self._max_planning_turns
             planning_request = AgentRunRequest(**planning_fields)
             loop = asyncio.get_running_loop()
             default_observer = (

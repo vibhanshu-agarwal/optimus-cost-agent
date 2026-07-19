@@ -9,12 +9,43 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from optimus.acp.e2e_transcript import E2eAcpTranscriptWriter
+from optimus_security.sanitization import sanitize_for_persistence
 
 
 class LiveSessionError(Exception):
     def __init__(self, message: str, *, stderr: str = "") -> None:
         super().__init__(message)
         self.stderr = stderr
+
+
+_GATE_REJECTION_PREFIX = "optimus-agent: "
+
+
+def _extract_gate_rejection_message(stderr_text: str) -> str | None:
+    """If stderr contains a value-free launch-gate rejection (printed by
+    __main__.py's _authorize_or_exit/main() before any Redis/Gateway/agent/
+    ACP-protocol activity), return that message CLEANLY — with no
+    "timed out"/"exited early" wrapper prepended, since the gate rejection
+    happens before the ACP protocol handshake even begins and is not a
+    timeout in any meaningful sense.
+
+    All of __main__.py's own error prints use this exact "optimus-agent: "
+    prefix (LaunchGateError codes, NO_APPROVAL/SNAPSHOT_MISMATCH
+    remediation, OperatorPathConfigurationError messages, TrustedPathError
+    messages) — this checks for the prefix rather than a specific code so a
+    newly added rejection message is picked up automatically without this
+    function needing to enumerate every current and future LaunchGateError
+    code by hand.
+    """
+    for line in stderr_text.splitlines():
+        if line.startswith(_GATE_REJECTION_PREFIX):
+            # Return from the first matching line through the end of
+            # stderr, since remediation messages span multiple lines (e.g.
+            # NO_APPROVAL's "Review the effective configuration and author
+            # one with:\n  optimus-trust ... approve --mode durable").
+            start = stderr_text.index(line)
+            return stderr_text[start:].rstrip("\n")
+    return None
 
 
 class NdjsonSubprocessSession:
@@ -120,13 +151,33 @@ class NdjsonSubprocessSession:
     def _read_stderr(self) -> None:
         assert self._process.stderr is not None
         for line in self._process.stderr:
-            self._stderr_lines.append(line)
+            sanitized = sanitize_for_persistence(line).value
+            if not isinstance(sanitized, str):
+                raise LiveSessionError("stderr sanitizer returned non-text output")
+            self._stderr_lines.append(sanitized)
 
     def _fail_subprocess_exited(self, error_message: str) -> None:
         code = self._process.poll()
         code_text = "closing" if code is None else str(code)
+        stderr_text = self.stderr_text()
+        # Plan 9.96, Task 5 Batch 3 (operator_verify.py threading): if the
+        # child exited because the launch gate (__main__.py's
+        # _authorize_or_exit) rejected it before ever starting the ACP
+        # protocol, surface that value-free remediation CLEANLY rather than
+        # burying it behind a misleading "timed out waiting for JSON-RPC
+        # response" wrapper — the child never even reached a point where a
+        # JSON-RPC response could have been expected. This is detected by a
+        # stable prefix ("optimus-agent: ") the gate's own remediation
+        # messages always use (see __main__.py's _no_approval_remediation /
+        # _snapshot_mismatch_remediation and the generic LaunchGateError
+        # print), not by string-matching a specific error code, so any
+        # current or future gate rejection message is surfaced cleanly.
+        gate_rejection = _extract_gate_rejection_message(stderr_text)
+        if gate_rejection is not None:
+            raise LiveSessionError(gate_rejection, stderr=stderr_text)
         raise LiveSessionError(
-            f"{error_message}\nACP subprocess exited early (code={code_text}).\nstderr:\n{self.stderr_text()}"
+            f"{error_message}\nACP subprocess exited early (code={code_text}).\nstderr:\n{stderr_text}",
+            stderr=stderr_text,
         )
 
     def _fail_timeout(self, error_message: str) -> None:

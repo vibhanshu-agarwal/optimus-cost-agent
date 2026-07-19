@@ -24,6 +24,23 @@ def test_transcript_writer_records_stdio_lines(tmp_path):
     assert payload["stdio_lines"][1]["direction"] == "inbound"
 
 
+def test_transcript_writer_sanitizes_records_before_retaining_or_writing(tmp_path):
+    canary = "transcript-canary-secret"
+    writer = E2eAcpTranscriptWriter()
+
+    writer.record_outbound(
+        {
+            "jsonrpc": "2.0",
+            "method": "session/prompt",
+            "params": {"authorization": f"Bearer {canary}"},
+        }
+    )
+
+    assert canary not in json.dumps(writer.lines)
+    path = writer.write(tmp_path / "transcript.json")
+    assert canary not in path.read_text(encoding="utf-8")
+
+
 def test_transcript_writer_rejects_process_env_mapping():
     with pytest.raises(E2eTranscriptSerializationError, match="process environment"):
         assert_transcript_payload_safe({"environ": {"OPTIMUS_API_KEY": "secret"}})

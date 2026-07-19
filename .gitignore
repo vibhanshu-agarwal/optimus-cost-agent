@@ -78,6 +78,8 @@ reports/.plan*-workspace/
 .vscode/
 *.sublime-project
 *.sublime-workspace
+.air/
+.kiro/
 
 # --- OS ---
 .DS_Store
@@ -89,3 +91,6 @@ Desktop.ini
 *.spec
 pip-log.txt
 pip-delete-this-directory.txt
+
+# Reviewer checkpoint logs (handoff continuity; never committed into task commits)
+docs/superpowers/reviews/*-review-checkpoints.md

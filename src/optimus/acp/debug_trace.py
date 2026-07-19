@@ -1,23 +1,51 @@
 from __future__ import annotations
 
 import json
-import os
+import secrets
 import shutil
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
+from decimal import Decimal
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from optimus.agent.models import AgentRunRequest
 from optimus.agent.planning_loop import PlanningProgressEvent
 from optimus.agent.workspace_context import WorkspaceContextResult
 from optimus.telemetry.redaction import redact_for_telemetry
+from optimus_security.sanitization import session_correlation_tag
 
-_DEBUG_SESSION_ID = "c66f94"
+if TYPE_CHECKING:
+    from optimus.acp.launch_gate import AuthorizedLaunch
 _PROVENANCE_LOGGED = False
 DEFAULT_DEBUG_LOG_RELATIVE_PATH = Path(".optimus/debug-acp.ndjson")
+
+
+@dataclass(frozen=True)
+class DebugTraceContext:
+    """Process-local ACP debug trace configuration.
+
+    Plan 9.96, Task 5 Step 2: debug trace state is an authorized in-memory
+    context threaded explicitly through configure_debug_trace(), not through
+    OPTIMUS_ACP_DEBUG_TRACE/OPTIMUS_ACP_DEBUG_LOG/OPTIMUS_ACP_PROVENANCE_ROOT
+    environment variable mutation. Those three names are INTERNAL_ONLY in the
+    launch_policy registry and must fail closed if inherited from the parent
+    environment — a module that itself wrote to os.environ to enable tracing
+    would be indistinguishable, from the gate's point of view, from a hostile
+    inherited value.
+    """
+
+    enabled: bool
+    session_id: str
+    session_hmac_key: bytes
+    log_path: Path | None = None
+    provenance_root: Path | None = None
+
+
+_ACTIVE_CONTEXT: DebugTraceContext | None = None
 
 
 def resolve_debug_log_path(*, workspace_root: str | Path, log_path: str | Path | None = None) -> Path:
@@ -37,23 +65,41 @@ def configure_debug_trace(
     log_path: str | Path | None = None,
     provenance_root: str | Path | None = None,
 ) -> None:
-    """Enable ACP debug tracing via CLI (sets process env before serve_ndjson starts)."""
-    if enabled:
-        os.environ["OPTIMUS_ACP_DEBUG_TRACE"] = "1"
-    if log_path is not None:
-        os.environ["OPTIMUS_ACP_DEBUG_LOG"] = str(Path(log_path).resolve())
-    if provenance_root is not None:
-        os.environ["OPTIMUS_ACP_PROVENANCE_ROOT"] = str(Path(provenance_root).resolve())
+    """Set the process-local debug trace context.
+
+    Replaces the prior os.environ mutation with an explicit in-memory
+    DebugTraceContext. Callers (the authorized __main__ entrypoint) invoke
+    this exactly once, after authorization, with typed/validated inputs —
+    never in response to an inherited environment variable.
+    """
+    global _ACTIVE_CONTEXT
+    _ACTIVE_CONTEXT = DebugTraceContext(
+        enabled=enabled,
+        session_id=f"debug_{secrets.token_hex(12)}",
+        session_hmac_key=secrets.token_bytes(32),
+        log_path=Path(log_path).resolve() if log_path is not None else None,
+        provenance_root=Path(provenance_root).resolve() if provenance_root is not None else None,
+    )
+
+
+def reset_debug_trace_context() -> None:
+    """Clear the process-local debug trace context.
+
+    Test isolation helper: without this, DebugTraceContext set by one test
+    would leak into the next since the context is process-local module state
+    rather than per-call-site.
+    """
+    global _ACTIVE_CONTEXT
+    _ACTIVE_CONTEXT = None
 
 
 def debug_trace_enabled() -> bool:
-    return os.environ.get("OPTIMUS_ACP_DEBUG_TRACE", "").strip().lower() in {"1", "true", "yes"}
+    return _ACTIVE_CONTEXT is not None and _ACTIVE_CONTEXT.enabled
 
 
 def _log_path() -> Path:
-    configured = os.environ.get("OPTIMUS_ACP_DEBUG_LOG", "").strip()
-    if configured:
-        return Path(configured).resolve()
+    if _ACTIVE_CONTEXT is not None and _ACTIVE_CONTEXT.log_path is not None:
+        return _ACTIVE_CONTEXT.log_path
     return (Path.cwd() / DEFAULT_DEBUG_LOG_RELATIVE_PATH).resolve()
 
 
@@ -61,10 +107,11 @@ def _git_sha() -> str:
     git_executable = shutil.which("git")
     if git_executable is None:
         return "unknown"
+    provenance_root = _ACTIVE_CONTEXT.provenance_root if _ACTIVE_CONTEXT is not None else None
     try:
         completed = subprocess.run(
             [git_executable, "rev-parse", "HEAD"],
-            cwd=os.environ.get("OPTIMUS_ACP_PROVENANCE_ROOT") or Path.cwd(),
+            cwd=provenance_root or Path.cwd(),
             check=True,
             capture_output=True,
             text=True,
@@ -102,6 +149,40 @@ def log_provenance_once() -> None:
     )
 
 
+
+def _json_default_handler(value: Any) -> str:
+    """Serialize only safe numeric values or non-invoking type metadata."""
+    if isinstance(value, Decimal):
+        return str(value)
+    return f"<{type(value).__module__}.{type(value).__qualname__}>"
+
+
+def log_authorized_launch_comparison(authorized_launch: "AuthorizedLaunch") -> None:
+    """Emit tags only for the completed, predeclared launch comparison."""
+    context = _ACTIVE_CONTEXT
+    if context is None or not context.enabled or authorized_launch.diagnostic_grant is None:
+        return
+
+    candidate = authorized_launch.candidate
+    tags = [
+        {
+            "field_name": field_name,
+            "tag": session_correlation_tag(
+                candidate.inherited.values[field_name],
+                field_name=field_name,
+                session_key=context.session_hmac_key,
+            ),
+        }
+        for field_name in candidate.secret_inventory
+        if candidate.inherited.values.get(field_name)
+    ]
+    acp_debug_log(
+        location="launch_authorization_comparison",
+        message="authorized launch secret comparison",
+        data={"correlation_tags": tags},
+    )
+
+
 def acp_debug_log(
     *,
     location: str,
@@ -121,7 +202,7 @@ def acp_debug_log(
     if not debug_trace_enabled():
         return
     payload = {
-        "sessionId": _DEBUG_SESSION_ID,
+        "sessionId": _ACTIVE_CONTEXT.session_id if _ACTIVE_CONTEXT is not None else "",
         "timestamp": int(time.time() * 1000),
         "location": location,
         "message": redact_for_telemetry(message),
@@ -133,7 +214,7 @@ def acp_debug_log(
         log_path = _log_path()
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, separators=(",", ":"), default=str) + "\n")
+            handle.write(json.dumps(payload, separators=(",", ":"), default=_json_default_handler) + "\n")
     except Exception:
         return
 

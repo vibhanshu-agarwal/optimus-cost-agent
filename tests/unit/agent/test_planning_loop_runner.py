@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from optimus.acp.debug_trace import resolve_debug_log_path
+from optimus.acp.debug_trace import configure_debug_trace, resolve_debug_log_path
 from optimus.agent.planning_loop import (
     PlanningLoopPolicy,
     PlanningLoopRunner,
@@ -640,10 +640,9 @@ def test_planning_loop_stop_precedence_favors_repeated_failure(tmp_path):
     assert result.stop_reason == "PLANNING_REPEATED_READ_REQUEST"
 
 
-def test_planning_loop_logs_rejected_read_path_to_debug_trace(tmp_path, monkeypatch):
+def test_planning_loop_logs_rejected_read_path_to_debug_trace(tmp_path):
     log_path = resolve_debug_log_path(workspace_root=tmp_path)
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+    configure_debug_trace(enabled=True, log_path=log_path)
 
     read_missing = "OBSERVE: need policy\nREAD: policy.txt#bytes=0:1024\n"
     gateway = ScriptingGateway([(read_missing, Decimal("0.001"), "gw-1")])
@@ -926,10 +925,9 @@ def test_reported_failed_attempt_at_budget_cap_stops_before_retry(tmp_path):
     assert result.plan_hash is None
 
 
-def test_unexpected_attempt_exception_logs_type_only_and_stops_cost_unknown(tmp_path, monkeypatch):
+def test_unexpected_attempt_exception_logs_type_only_and_stops_cost_unknown(tmp_path):
     log_path = resolve_debug_log_path(workspace_root=tmp_path)
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+    configure_debug_trace(enabled=True, log_path=log_path)
 
     gateway = UnexpectedExceptionGateway()
 

@@ -154,3 +154,69 @@ def test_resolution_does_not_create_directories(tmp_path, monkeypatch) -> None:
     assert not mkdir_called
     assert not workspace.exists()
     assert not config.exists()
+
+
+# --- Task 2 Step 4: Tests for resolve_operator_paths_from_trusted ---
+
+
+def test_trusted_paths_uses_validated_config_root(tmp_path) -> None:
+    from optimus.acp.operator_paths import resolve_operator_paths_from_trusted
+    from optimus.acp.trusted_paths import TrustedOperatorRoots
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    validated_config = tmp_path / "validated-config"
+
+    roots = TrustedOperatorRoots(
+        default_config_root=tmp_path / "os-default-config",
+        approval_runtime_root=tmp_path / "os-runtime",
+    )
+    paths = resolve_operator_paths_from_trusted(
+        workspace_root=workspace,
+        trusted_roots=roots,
+        validated_config_root=validated_config,
+    )
+    assert paths.config_root == validated_config.resolve()
+    assert paths.runtime_root == workspace.resolve() / ".optimus"
+
+
+def test_trusted_paths_falls_back_to_os_default(tmp_path) -> None:
+    from optimus.acp.operator_paths import resolve_operator_paths_from_trusted
+    from optimus.acp.trusted_paths import TrustedOperatorRoots
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    os_config = tmp_path / "os-default-config"
+
+    roots = TrustedOperatorRoots(
+        default_config_root=os_config,
+        approval_runtime_root=tmp_path / "os-runtime",
+    )
+    paths = resolve_operator_paths_from_trusted(
+        workspace_root=workspace,
+        trusted_roots=roots,
+    )
+    assert paths.config_root == os_config
+
+
+def test_trusted_paths_rejects_workspace_contained_config(tmp_path) -> None:
+    from optimus.acp.operator_paths import (
+        OperatorPathConfigurationError,
+        resolve_operator_paths_from_trusted,
+    )
+    from optimus.acp.trusted_paths import TrustedOperatorRoots
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    inside_workspace = workspace / "inside-config"
+
+    roots = TrustedOperatorRoots(
+        default_config_root=tmp_path / "os-default-config",
+        approval_runtime_root=tmp_path / "os-runtime",
+    )
+    with pytest.raises(OperatorPathConfigurationError):
+        resolve_operator_paths_from_trusted(
+            workspace_root=workspace,
+            trusted_roots=roots,
+            validated_config_root=inside_workspace,
+        )

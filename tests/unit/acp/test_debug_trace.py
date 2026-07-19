@@ -14,8 +14,7 @@ from optimus.agent.planning_loop import PlanningProgressEvent
 
 def test_log_planning_replan_event_writes_content_free_fields(tmp_path, monkeypatch):
     log_path = resolve_debug_log_path(workspace_root=tmp_path)
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+    configure_debug_trace(enabled=True, log_path=log_path)
 
     log_planning_replan_event(
         PlanningProgressEvent(
@@ -48,8 +47,7 @@ def test_log_planning_replan_event_writes_content_free_fields(tmp_path, monkeypa
 
 def test_log_planning_replan_event_uses_event_stop_reason_when_not_overridden(tmp_path, monkeypatch):
     log_path = resolve_debug_log_path(workspace_root=tmp_path)
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+    configure_debug_trace(enabled=True, log_path=log_path)
 
     log_planning_replan_event(
         PlanningProgressEvent(
@@ -66,22 +64,22 @@ def test_log_planning_replan_event_uses_event_stop_reason_when_not_overridden(tm
     assert line["data"]["loop_stop"] == "PLANNING_TURN_LIMIT_EXHAUSTED"
 
 
-def test_acp_debug_log_noop_when_disabled(tmp_path, monkeypatch):
+def test_acp_debug_log_noop_when_disabled(tmp_path):
     log_path = resolve_debug_log_path(workspace_root=tmp_path)
-    monkeypatch.delenv("OPTIMUS_ACP_DEBUG_TRACE", raising=False)
+    # No configure_debug_trace() call: context defaults to disabled per the
+    # autouse reset_debug_trace_context() fixture.
 
     acp_debug_log(location="test", message="ignored", data={"secret": "value"})
 
     assert not log_path.exists()
 
 
-def test_acp_debug_log_redacts_secret_shaped_fields_and_free_text_by_default(tmp_path, monkeypatch):
+def test_acp_debug_log_redacts_secret_shaped_fields_and_free_text_by_default(tmp_path):
     """Every acp_debug_log call is redacted at the sink, regardless of what an
     individual call site (including a generic `except Exception: ...str(exc)`
     handler) happens to pass in."""
     log_path = resolve_debug_log_path(workspace_root=tmp_path)
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+    configure_debug_trace(enabled=True, log_path=log_path)
 
     acp_debug_log(
         location="test:leaky_call_site",
@@ -104,12 +102,68 @@ def test_acp_debug_log_redacts_secret_shaped_fields_and_free_text_by_default(tmp
     assert line["data"]["safe_field"] == "run-1"
 
 
-def test_configure_debug_trace_uses_provenance_root_for_git_sha(tmp_path, monkeypatch):
-    import os
+def test_acp_debug_log_serializes_unsupported_objects_as_safe_type_metadata(tmp_path):
+    """The debug sink must persist unsupported values without invoking user
+    serialization code or dropping the log line."""
+    from optimus.acp.debug_trace import _json_default_handler
 
+    class HostileObject:
+        def __repr__(self) -> str:
+            raise AssertionError("repr must not run")
+
+        def __str__(self) -> str:
+            raise AssertionError("str must not run")
+
+    value = HostileObject()
+    expected_type_metadata = f"<{type(value).__module__}.{type(value).__qualname__}>"
+    assert _json_default_handler(value) == expected_type_metadata
+
+    log_path = resolve_debug_log_path(workspace_root=tmp_path)
+    configure_debug_trace(enabled=True, log_path=log_path)
+    acp_debug_log(location="test:unsupported", message="safe", data={"value": value})
+
+    line = json.loads(log_path.read_text(encoding="utf-8").strip())
+    assert line["data"]["value"] == expected_type_metadata
+
+
+
+def test_acp_debug_log_has_no_redaction_opt_out_parameters():
+    """The debug sink must never expose a caller-controlled raw-write mode."""
+    import ast
+
+    tree = ast.parse(Path(debug_trace.__file__).read_text(encoding="utf-8"))
+    function = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "acp_debug_log"
+    )
+    parameter_names = {
+        argument.arg
+        for argument in function.args.posonlyargs + function.args.args + function.args.kwonlyargs
+    }
+    assert not parameter_names.intersection({"raw", "redact", "unsafe", "skip_redaction", "no_redact"})
+
+
+def test_authorized_launch_comparison_accepts_no_caller_supplied_secret():
+    """Tags may be derived only from an AuthorizedLaunch comparison point."""
+    import ast
+
+    tree = ast.parse(Path(debug_trace.__file__).read_text(encoding="utf-8"))
+    function = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "log_authorized_launch_comparison"
+    )
+    parameter_names = [
+        argument.arg
+        for argument in function.args.posonlyargs + function.args.args + function.args.kwonlyargs
+    ]
+    assert parameter_names == ["authorized_launch"]
+
+
+def test_configure_debug_trace_uses_provenance_root_for_git_sha(tmp_path, monkeypatch):
     provenance_root = tmp_path / "workspace"
     provenance_root.mkdir()
-    monkeypatch.delenv("OPTIMUS_ACP_PROVENANCE_ROOT", raising=False)
 
     configure_debug_trace(
         enabled=True,
@@ -117,7 +171,9 @@ def test_configure_debug_trace_uses_provenance_root_for_git_sha(tmp_path, monkey
         provenance_root=provenance_root,
     )
 
-    assert Path(os.environ["OPTIMUS_ACP_PROVENANCE_ROOT"]).resolve() == provenance_root.resolve()
+    context = debug_trace._ACTIVE_CONTEXT
+    assert context is not None
+    assert context.provenance_root == provenance_root.resolve()
 
     captured: dict[str, object] = {}
 
@@ -139,10 +195,9 @@ def test_configure_debug_trace_uses_provenance_root_for_git_sha(tmp_path, monkey
 # --- Plan 9.95 Task 3 Step 4: cost completeness in debug progress ---
 
 
-def test_log_planning_replan_event_includes_cost_completeness_fields(tmp_path, monkeypatch):
+def test_log_planning_replan_event_includes_cost_completeness_fields(tmp_path):
     log_path = resolve_debug_log_path(workspace_root=tmp_path)
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+    configure_debug_trace(enabled=True, log_path=log_path)
 
     log_planning_replan_event(
         PlanningProgressEvent(
@@ -174,10 +229,9 @@ def test_log_planning_replan_event_includes_cost_completeness_fields(tmp_path, m
     assert "opt_live" not in serialized
 
 
-def test_log_planning_replan_event_complete_cost_has_true_fields(tmp_path, monkeypatch):
+def test_log_planning_replan_event_complete_cost_has_true_fields(tmp_path):
     log_path = resolve_debug_log_path(workspace_root=tmp_path)
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+    configure_debug_trace(enabled=True, log_path=log_path)
 
     log_planning_replan_event(
         PlanningProgressEvent(
@@ -203,11 +257,10 @@ def test_log_planning_replan_event_complete_cost_has_true_fields(tmp_path, monke
 # --- Plan 9.95 Task 4 Step 4: debug trace association test ---
 
 
-def test_log_planning_replan_event_preserves_positional_association(tmp_path, monkeypatch):
+def test_log_planning_replan_event_preserves_positional_association(tmp_path):
     """Each read_identities[i] corresponds to source_sha256s[i] and read_byte_counts[i]."""
     log_path = resolve_debug_log_path(workspace_root=tmp_path)
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_TRACE", "1")
-    monkeypatch.setenv("OPTIMUS_ACP_DEBUG_LOG", str(log_path))
+    configure_debug_trace(enabled=True, log_path=log_path)
 
     log_planning_replan_event(
         PlanningProgressEvent(

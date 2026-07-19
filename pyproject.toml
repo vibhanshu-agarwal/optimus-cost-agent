@@ -16,6 +16,7 @@ dependencies = [
 [project.scripts]
 optimus-agent = "optimus.acp.__main__:main"
 optimus-local-gateway = "optimus_gateway.__main__:main"
+optimus-trust = "optimus.acp.launch_approval_cli:main"
 
 [project.optional-dependencies]
 dev = [
@@ -50,7 +51,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["src/optimus", "src/optimus_gateway"]
+source = ["src/optimus", "src/optimus_gateway", "src/optimus_security"]
 
 [tool.coverage.report]
 show_missing = true

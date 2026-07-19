@@ -7,6 +7,7 @@ from pathlib import Path
 from optimus.acp.debug_trace import log_planning_replan_event, log_workspace_context_result
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.server import AcpStreamServer
+from optimus.acp.spec import resolve_max_planning_turns
 from optimus.agent.defaults import resolve_agent_model
 from optimus.agent.runner import AgentRunner
 from optimus.config.gateway import OptimusGatewaySettings
@@ -123,4 +124,8 @@ def build_configured_server(
         pre_tool_guard=guard,
         workspace_root=resolved_workspace,
     )
-    return AcpStreamServer(dispatcher=dispatcher)
+    # Plan 9.96, Task 5 Step 2: resolved once here from the (already
+    # authorized/sanitized) agent environ passed into this function, rather
+    # than read from os.environ per-request deep inside AcpDuplexAdapter.
+    max_planning_turns = resolve_max_planning_turns(environ)
+    return AcpStreamServer(dispatcher=dispatcher, max_planning_turns=max_planning_turns)

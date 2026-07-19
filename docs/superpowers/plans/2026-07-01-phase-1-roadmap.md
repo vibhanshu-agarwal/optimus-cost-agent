@@ -521,6 +521,10 @@ plan-approval record is
 this docs-only planning branch to merge, then begin from a fresh branch/worktree based on the latest
 `origin/main`.
 
+Plan 9.96 Task 9 Steps 2, 3, and 5 depend on Plan 9.98's implementation commit
+`74d4ff21173a597c3b274cf6e6cbdf8a7eb43697` and its real-dependency evidence report at
+`reports/plan-9-98-real-acpx-session-evidence.md`.
+
 ## Plan 9.97 (Tracked, Not Yet Scheduled): Mechanical Current-Raw-Evidence Grounding
 
 **Raised:** 2026-07-14 by the approved Plan 9.95 lane split.
@@ -533,6 +537,71 @@ This lane must not absorb or be absorbed by Plan 11.
 **Status:** Tracked, not yet scheduled; no implementation plan exists on this branch. Its future
 design must preserve the current-raw-evidence boundary independently of Plan 11's intelligent
 selection and compression work.
+
+## Plan 9.98 (Implemented): Real ACPX Session Evidence for Plan 9.96 Task 9
+
+**Raised:** 2026-07-18 when Plan 9.96 Task 9's committed `acpx --version` capture helper proved
+structurally unable to drive the real sessions required by Steps 2, 3, and 5.
+
+**Foundation:** Plan 9.96 Tasks 0-8 at
+`d0c467041015b5f3630c7d4b984c0a2b396a8bb8`.
+
+**Implementation and evidence:** Implemented at
+`74d4ff21173a597c3b274cf6e6cbdf8a7eb43697`. The independently verified ordinary and elevated
+real-ACPX evidence, immutable artifact SHA-256 values, bounded completion rule, Redis-derived cost,
+and exact environment-role audit are recorded in
+`reports/plan-9-98-real-acpx-session-evidence.md`.
+
+**Dependency:** Plan 9.96 Task 9 may now run its Step 2 capture commands with `--drive-session`.
+Plan 9.98 is necessary but not sufficient for Plan 9.96 closure because Plan 9.99 remains open.
+
+**Status:** Implemented and real-dependency verified on 2026-07-19.
+
+### P9.98-FU-3 (Tracked, Not Yet Scheduled): POSIX Runtime-Root Failure-Path Test Alignment
+
+**Raised:** 2026-07-19 by GitHub Actions `clean-environment-recheck` on PR #60
+([run 29690328862](https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/29690328862)).
+
+**Known CI status:** The Windows-local full suite passed, but the clean Linux run failed five
+runtime-root tests.  On POSIX, removing or replacing the direct child `.optimus` after a durable
+approval changes the workspace directory's bound `st_ctime_ns`.  The durable-approval lookup then
+correctly fails closed as `NO_APPROVAL` before the audit consumer can emit
+`AUDIT_DIR_UNAVAILABLE`.  Windows does not expose this test setup because its `st_ctime` has
+creation-time semantics.
+
+**Owned follow-up:** Reconcile the test contracts without weakening FU-1's lexical-path,
+device/inode, or change-time identity binding.  Launch and evidence flows that mutate `.optimus`
+before reauthorization must prove the earlier `NO_APPROVAL` failure, no runtime-root recreation,
+and no child/infra side effect.  Direct audit-consumer tests must independently prove
+`AUDIT_DIR_UNAVAILABLE` for a missing or unsafe already-authorized runtime root.  Do not skip,
+deselect, or platform-xfail the Linux tests.
+
+**Acceptance boundary:** A fresh, separately reviewed plan must name all five failures from run
+29690328862, keep the direct audit-root failure coverage, preserve the POSIX mutation-detection
+proof, and finish with an unskipped clean Linux CI run.  No production-code defect is assumed by
+this entry; the next plan must re-establish that conclusion from current source and CI evidence.
+
+**Status:** Tracked, not yet scheduled.  PR #60 is intentionally paused and not merge-ready until
+this follow-up receives fresh planning, review, implementation, and Linux CI verification.
+
+## Plan 9.99 (Tracked, Not Yet Scheduled): Credential URI Security-Snapshot Canonicalization
+
+**Raised:** 2026-07-18 by the Plan 9.98 v6 security audit.
+
+**Owned finding:** SECURITY-tier URI values currently enter the launch security snapshot only after
+URI-userinfo masking, so changing only userinfo can leave the digest unchanged despite Plan 9.96's
+URI-userinfo-HMAC requirement. Literal display of `OPTIMUS_GATEWAY_URL` can also expose URI userinfo
+during approval.
+
+**Acceptance boundary:** Produce a separately reviewed security contract and implementation plan;
+bind URI userinfo into the security snapshot without logging or displaying it; make approval display
+userinfo-safe; and add fail-closed tests for digest sensitivity, display redaction, and unchanged
+non-credential URI behavior.
+
+**Dependency:** Plan 9.99 must land before Plan 9.96 closes. Plan 9.98 v6 does not implement,
+reinterpret, or waive this finding.
+
+**Status:** Tracked, not yet scheduled; no implementation plan exists.
 
 ## Backlog: Re-pin FU-4A/FU-5 Live Evidence (Tracked, Not Yet Scheduled)
 
@@ -681,8 +750,13 @@ backlog entry above.
     record SHA-256 `A7DD28190FAC6859B6FED451E4CC89F64035EA0581CE3AB9A5D3BA1C89E8C6DB`.
 22. Plan 9.97: Mechanical current-raw-evidence grounding — tracked, not yet scheduled; remains
     isolated from Plan 11; no implementation plan exists.
-23. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
-24. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
+23. Plan 9.98: Real ACPX session evidence for Plan 9.96 Task 9 — **implemented and
+    real-dependency verified** at `74d4ff21173a597c3b274cf6e6cbdf8a7eb43697`; evidence in
+    `reports/plan-9-98-real-acpx-session-evidence.md`.
+24. Plan 9.99: Credential URI security-snapshot canonicalization — tracked, not yet scheduled;
+    must land before Plan 9.96 closes.
+25. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
+26. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
     starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden
     harness are stable.
 

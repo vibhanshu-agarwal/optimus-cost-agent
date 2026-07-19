@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pytest
 
+from optimus.acp.debug_trace import reset_debug_trace_context
 from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.agent.state_store import RedisAgentStateStore
 from optimus.gateway.models import GatewayResponse, GatewayUsage
@@ -19,6 +20,17 @@ from optimus.telemetry.redis_adapter import RedisTelemetryAdapter
 def _shutdown_redis_bridge_after_session() -> None:
     yield
     shutdown_background_loop()
+
+
+@pytest.fixture(autouse=True)
+def _reset_debug_trace_context_between_tests() -> Iterator[None]:
+    """Plan 9.96, Task 5: DebugTraceContext is process-local module state (it
+    replaced os.environ mutation, which pytest's monkeypatch used to undo
+    automatically). Without this reset, a context set by one test would leak
+    into every subsequent test in the same process."""
+    reset_debug_trace_context()
+    yield
+    reset_debug_trace_context()
 
 
 @pytest.fixture

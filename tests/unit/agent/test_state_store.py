@@ -57,7 +57,9 @@ def test_in_memory_store_replays_exact_plan_text():
 
     loaded = store.load_plan(run_id="run-1", plan_hash="hash-1")
     assert loaded == record
-    assert loaded.plan_text == "WRITE example.py\ncontent"
+    assert loaded.task == record.task
+    assert loaded.workspace_root == record.workspace_root
+    assert loaded.plan_text == record.plan_text
 
 
 def test_in_memory_store_rejects_missing_plan_hash():
@@ -80,6 +82,33 @@ def test_validate_redis_url_accepts_redis_and_rediss_without_credentials():
 def test_validate_redis_url_rejects_non_redis_schemes():
     with pytest.raises(ValueError, match="must use redis:// or rediss://"):
         validate_redis_url("http://localhost:6379/0")
+
+
+def test_plan_record_schema_and_persisted_mapping_are_functional_only():
+    record = plan_record()
+
+    assert set(AgentPlanRecord.model_fields) == {
+        "run_id",
+        "session_id",
+        "task",
+        "execution_mode",
+        "workspace_root",
+        "plan_hash",
+        "plan_text",
+        "gateway_request_id",
+        "gateway_request_ids",
+        "planning_turns",
+        "model",
+        "provider",
+        "cost_usd",
+        "created_at_ms",
+        "expires_at_ms",
+    }
+
+    fake = FakeRedis()
+    RedisAgentStateStore(client=fake).save_plan(record)
+    persisted_fields = set(fake.hsets[0][1])
+    assert persisted_fields == set(AgentPlanRecord.model_fields)
 
 
 def test_redis_store_writes_hash_and_ttl():
