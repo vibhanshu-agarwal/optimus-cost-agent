@@ -75,9 +75,11 @@ class FakeKeyring:
 
 def _sample_workspace_identity() -> WorkspaceIdentity:
     return WorkspaceIdentity(
+        lexical_path="/tmp/test-workspace",
         canonical_path="/tmp/test-workspace",
         device=1,
         inode=12345,
+        change_time_ns=1,
         repository_root="/tmp/test-workspace",
         git_common_dir="/tmp/test-workspace/.git",
         digest="a" * 64,
@@ -224,9 +226,11 @@ class TestRecordHmac:
         from dataclasses import replace
 
         tampered_ws = WorkspaceIdentity(
+            lexical_path="/tmp/evil",
             canonical_path="/tmp/evil",
             device=1,
             inode=99999,
+            change_time_ns=1,
             repository_root=None,
             git_common_dir=None,
             digest="b" * 64,
@@ -300,6 +304,8 @@ class TestKeyringApprovalStore:
         assert retrieved is not None
         assert retrieved.approval_id == record.approval_id
         assert retrieved.workspace_identity.digest == ws_digest
+        assert retrieved.workspace_identity.lexical_path == ""
+        assert retrieved.workspace_identity.change_time_ns == 0
 
     def test_read_durable_returns_none_when_absent(self, tmp_path: Path) -> None:
         store, _, _ = self._make_store_and_record(tmp_path)

@@ -26,9 +26,11 @@ _HMAC_KEY = b"test-gate-hmac-key-32-bytes!!!!"
 
 def _sample_workspace_identity() -> WorkspaceIdentity:
     return WorkspaceIdentity(
+        lexical_path="/tmp/test-workspace",
         canonical_path="/tmp/test-workspace",
         device=1,
         inode=12345,
+        change_time_ns=1,
         repository_root="/tmp/test-workspace",
         git_common_dir="/tmp/test-workspace/.git",
         digest="a" * 64,

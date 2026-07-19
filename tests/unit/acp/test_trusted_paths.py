@@ -8,7 +8,9 @@ XDG_CONFIG_HOME, or gated OPTIMUS_CONFIG_ROOT.
 
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -195,6 +197,22 @@ class TestWorkspaceIdentity:
         # Digest is a hex string.
         assert len(identity.digest) == 64  # SHA-256 hex
 
+    def test_identity_binds_lexical_path_and_target_change_time(self, tmp_path: Path) -> None:
+        target = tmp_path / "target"
+        target.mkdir()
+        link = tmp_path / "workspace-link"
+        try:
+            link.symlink_to(target, target_is_directory=True)
+        except OSError:
+            pytest.skip("symlink creation requires elevated privileges")
+
+        identity = resolve_workspace_identity(link)
+
+        expected_lexical = os.path.normcase(str(link.absolute())) if sys.platform == "win32" else str(link.absolute())
+        assert identity.lexical_path == expected_lexical
+        assert identity.canonical_path == str(target.resolve())
+        assert identity.change_time_ns == target.stat().st_ctime_ns
+
     def test_identity_includes_git_root_when_present(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
@@ -224,6 +242,12 @@ class TestWorkspaceIdentity:
         workspace = tmp_path / "nonexistent"
         with pytest.raises(TrustedPathError) as exc_info:
             resolve_workspace_identity(workspace)
+        assert exc_info.value.code == "WORKSPACE_NOT_FOUND"
+
+    def test_trusted_path_error_propagates_as_its_own_type(self) -> None:
+        with pytest.raises(TrustedPathError) as exc_info:
+            raise TrustedPathError(code="WORKSPACE_NOT_FOUND", detail="synthetic")
+
         assert exc_info.value.code == "WORKSPACE_NOT_FOUND"
 
     def test_digest_changes_with_path(self, tmp_path: Path) -> None:
@@ -290,10 +314,25 @@ class TestWorkspaceIdentityRevalidation:
             revalidate_workspace_identity(identity)
         assert exc_info.value.code == "WORKSPACE_IDENTITY_CHANGED"
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only: directory ctime changes on entry creation")
+    def test_revalidation_fails_after_workspace_directory_metadata_change(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        identity = resolve_workspace_identity(workspace)
+        (workspace / "added-after-authorization").write_text("synthetic", encoding="utf-8")
+
+        with pytest.raises(TrustedPathError) as exc_info:
+            revalidate_workspace_identity(identity)
+        assert exc_info.value.code == "WORKSPACE_IDENTITY_CHANGED"
+
 
 class TestWindowsCaseNormalization:
     """Windows case normalization for workspace paths."""
 
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason="Windows-only: case-insensitive filesystem identity",
+    )
     def test_case_variants_produce_same_identity(self, tmp_path: Path) -> None:
         workspace = tmp_path / "WorkSpace"
         workspace.mkdir()
@@ -306,6 +345,7 @@ class TestWindowsCaseNormalization:
         # On case-sensitive, they'd be different dirs (and one wouldn't exist).
         if id_upper.canonical_path.lower() == id_lower.canonical_path.lower():
             # Case-insensitive: digests should match.
+            assert id_upper.lexical_path == id_lower.lexical_path
             assert id_upper.digest == id_lower.digest
 
 

@@ -9,8 +9,10 @@ filesystem path and inode, detecting relocation and symlink changes.
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -21,17 +23,16 @@ _CONFIG_DIR_NAME = "optimus-cost-agent"
 # --- Error type ---
 
 
-@dataclass(frozen=True)
 class TrustedPathError(ValueError):
     """Raised when trusted path resolution or workspace identity fails."""
 
-    code: str
-    detail: str = ""
+    def __init__(self, *, code: str, detail: str = "") -> None:
+        self.code = code
+        self.detail = detail
+        super().__init__(f"{code}: {detail}" if detail else code)
 
     def __str__(self) -> str:
-        if self.detail:
-            return f"{self.code}: {self.detail}"
-        return self.code
+        return f"{self.code}: {self.detail}" if self.detail else self.code
 
 
 # --- Dataclasses ---
@@ -59,9 +60,11 @@ class WorkspaceIdentity:
     the path, inode, device, or git state invalidate existing approvals.
     """
 
+    lexical_path: str
     canonical_path: str
     device: int
     inode: int
+    change_time_ns: int
     repository_root: str | None
     git_common_dir: str | None
     digest: str
@@ -262,7 +265,10 @@ def resolve_workspace_identity(workspace_root: Path) -> WorkspaceIdentity:
 
     Raises TrustedPathError with code WORKSPACE_NOT_FOUND if the path doesn't exist.
     """
-    resolved = workspace_root.resolve()
+    lexical_path = str(workspace_root.absolute())
+    if sys.platform == "win32":
+        lexical_path = os.path.normcase(lexical_path)
+    resolved = Path(lexical_path).resolve()
 
     if not resolved.exists():
         raise TrustedPathError(
@@ -286,17 +292,21 @@ def resolve_workspace_identity(workspace_root: Path) -> WorkspaceIdentity:
 
     # Compute identity digest from all binding fields.
     digest = _compute_identity_digest(
+        lexical_path=lexical_path,
         canonical_path=str(resolved),
         device=device,
         inode=inode,
+        change_time_ns=stat.st_ctime_ns,
         repository_root=repository_root,
         git_common_dir=git_common_dir,
     )
 
     return WorkspaceIdentity(
+        lexical_path=lexical_path,
         canonical_path=str(resolved),
         device=device,
         inode=inode,
+        change_time_ns=stat.st_ctime_ns,
         repository_root=repository_root,
         git_common_dir=git_common_dir,
         digest=digest,
@@ -306,35 +316,20 @@ def resolve_workspace_identity(workspace_root: Path) -> WorkspaceIdentity:
 def revalidate_workspace_identity(identity: WorkspaceIdentity) -> None:
     """Revalidate a previously captured workspace identity.
 
-    Checks that the workspace still exists, has the same device/inode, and
-    the same git state. Raises TrustedPathError with code
-    WORKSPACE_IDENTITY_CHANGED if anything differs.
+    Reconstructs identity from the original lexical path and compares the
+    full digest. Raises TrustedPathError with code WORKSPACE_IDENTITY_CHANGED
+    if the path no longer resolves to the authorized target or any bound
+    identity field differs.
     """
-    path = Path(identity.canonical_path)
-
-    if not path.exists():
-        raise TrustedPathError(
-            code="WORKSPACE_IDENTITY_CHANGED",
-            detail="workspace directory no longer exists",
-        )
-
     try:
-        stat = path.stat()
-    except OSError as exc:
+        current = resolve_workspace_identity(Path(identity.lexical_path))
+    except TrustedPathError as exc:
         raise TrustedPathError(
             code="WORKSPACE_IDENTITY_CHANGED",
-            detail="cannot stat workspace directory",
+            detail="workspace directory no longer resolves to the authorized identity",
         ) from exc
 
-    current_digest = _compute_identity_digest(
-        canonical_path=str(path),
-        device=stat.st_dev,
-        inode=stat.st_ino,
-        repository_root=_git_repository_root(path),
-        git_common_dir=_git_common_dir(path) if _git_repository_root(path) else None,
-    )
-
-    if current_digest != identity.digest:
+    if current.digest != identity.digest:
         raise TrustedPathError(
             code="WORKSPACE_IDENTITY_CHANGED",
             detail="workspace identity digest mismatch",
@@ -395,9 +390,11 @@ def _git_common_dir(workspace: Path) -> str | None:
 
 def _compute_identity_digest(
     *,
+    lexical_path: str,
     canonical_path: str,
     device: int,
     inode: int,
+    change_time_ns: int,
     repository_root: str | None,
     git_common_dir: str | None,
 ) -> str:
@@ -408,12 +405,16 @@ def _compute_identity_digest(
     or git common-dir changes.
     """
     hasher = hashlib.sha256()
-    hasher.update(b"workspace-identity-v1\x00")
+    hasher.update(b"workspace-identity-v2\x00")
+    hasher.update(lexical_path.encode("utf-8"))
+    hasher.update(b"\x00")
     hasher.update(canonical_path.encode("utf-8"))
     hasher.update(b"\x00")
     hasher.update(str(device).encode("utf-8"))
     hasher.update(b"\x00")
     hasher.update(str(inode).encode("utf-8"))
+    hasher.update(b"\x00")
+    hasher.update(str(change_time_ns).encode("utf-8"))
     hasher.update(b"\x00")
     hasher.update((repository_root or "").encode("utf-8"))
     hasher.update(b"\x00")

@@ -370,9 +370,11 @@ def _deserialize_approval_record(raw: str, *, hmac_key: bytes) -> ApprovalRecord
 
     try:
         workspace_identity = WorkspaceIdentity(
+            lexical_path="",  # Not stored in serialized form for size.
             canonical_path="",  # Not stored in serialized form for size.
             device=0,
             inode=0,
+            change_time_ns=0,
             repository_root=None,
             git_common_dir=None,
             digest=data["workspace_digest"],
