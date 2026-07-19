@@ -7,6 +7,7 @@ masked; secret rows show name/presence/provenance/length only.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -858,6 +859,8 @@ class TestSingleReadCredentialResolution:
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-original\n",
             encoding="utf-8",
         )
+        if sys.platform != "win32":
+            env_gateway.chmod(0o600)
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
             "OPTIMUS_API_KEY": "test-key",
@@ -997,11 +1000,14 @@ class TestSingleReadCredentialResolution:
 
         config_root_alpha = tmp_path / "config-alpha"
         config_root_alpha.mkdir()
-        (config_root_alpha / ".env.gateway").write_text(
+        env_gateway_alpha = config_root_alpha / ".env.gateway"
+        env_gateway_alpha.write_text(
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-SECRET-ALPHA-111\n",
             encoding="utf-8",
         )
+        if sys.platform != "win32":
+            env_gateway_alpha.chmod(0o600)
         paths_alpha = OperatorPaths(
             workspace_root=tmp_path,
             config_root=config_root_alpha,
@@ -1012,11 +1018,14 @@ class TestSingleReadCredentialResolution:
 
         config_root_beta = tmp_path / "config-beta"
         config_root_beta.mkdir()
-        (config_root_beta / ".env.gateway").write_text(
+        env_gateway_beta = config_root_beta / ".env.gateway"
+        env_gateway_beta.write_text(
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-SECRET-BETA-222\n",
             encoding="utf-8",
         )
+        if sys.platform != "win32":
+            env_gateway_beta.chmod(0o600)
         paths_beta = OperatorPaths(
             workspace_root=tmp_path,
             config_root=config_root_beta,

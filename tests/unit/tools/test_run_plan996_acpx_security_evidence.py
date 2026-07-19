@@ -127,6 +127,7 @@ def _patch_keyring(monkeypatch: pytest.MonkeyPatch, fake: FakeKeyring) -> None:
     monkeypatch.setattr(real_keyring, "get_password", fake.get_password)
     monkeypatch.setattr(real_keyring, "set_password", fake.set_password)
     monkeypatch.setattr(real_keyring, "delete_password", fake.delete_password)
+    monkeypatch.setattr(capture_tool, "keyring", fake)
 
 
 def _write_durable_approval(
@@ -367,6 +368,7 @@ def test_capture_revalidates_workspace_after_successful_audit_before_spawn(tmp_p
 
 def test_spawn_uses_acpx_client_environment_not_effective_agent_environment(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -390,19 +392,26 @@ def test_spawn_uses_acpx_client_environment_not_effective_agent_environment(
     )
     audited = append_authorized_audit(capture)
 
+    observed_env: dict[str, str] = {}
+    real_popen = subprocess.Popen
+
+    def spy_popen(command: list[str], *args: object, **kwargs: object) -> subprocess.Popen[str]:
+        if "env" in kwargs:
+            observed_env.update(kwargs["env"])
+        return real_popen(command, *args, **kwargs)
+
+    monkeypatch.setattr(capture_tool.subprocess, "Popen", spy_popen)
+
     process = spawn_authorized_capture(
         audited,
-        command=[sys.executable, "-c", "import json, os; print(json.dumps(dict(os.environ), sort_keys=True))"],
+        command=[sys.executable, "-c", "raise SystemExit(0)"],
     )
     stdout, stderr = process.communicate(timeout=10)
 
     assert process.returncode == 0, stderr
-    child_environment = json.loads(stdout)
-    expected = _system_environment()
-    # Compare names first so a RED failure never renders the synthetic secret
-    # values from the effective agent mapping in pytest's assertion output.
-    assert set(child_environment) == set(expected)
-    assert child_environment == expected
+    assert stdout == ""
+    assert observed_env == _system_environment()
+    assert not any(name.startswith("OPTIMUS_") for name in observed_env)
 
 
 def test_capture_tool_does_not_import_or_instantiate_project_acp_client() -> None:
@@ -494,6 +503,7 @@ def test_build_capture_command_places_supplied_acpx_path_first() -> None:
 def test_main_default_path_never_resolves_optimus_agent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _patch_keyring(monkeypatch, FakeKeyring())
     queried_names: list[str] = []
 
     def which_spy(name: str) -> str | None:
@@ -1151,6 +1161,7 @@ def test_main_generates_launch_session_id_when_absent(
     ``sess_{secrets.token_hex(12)}``, mirroring the committed _cmd_run
     precedent (launch_approval_cli.py:395)."""
     captured_session_ids: list[str] = []
+    _patch_keyring(monkeypatch, FakeKeyring())
 
     def spy_authorize(**kwargs: object) -> object:
         captured_session_ids.append(str(kwargs.get("launch_session_id", "")))
@@ -2257,6 +2268,7 @@ def test_agent_invocation_elevated_drive_session_passes_grant_only_to_inner_agen
 ) -> None:
     """The outer gate stays ordinary; the inner invocation receives the grant."""
     calls: list[dict[str, object]] = []
+    _patch_keyring(monkeypatch, FakeKeyring())
 
     def spy_authorize(**kwargs: object) -> object:
         calls.append(dict(kwargs))
@@ -2510,6 +2522,7 @@ def test_main_returns_exit_2_with_clean_message_on_unapproved_workspace(
     config_root = tmp_path / "config"
     config_root.mkdir()
     environment = _environment(config_root)
+    _patch_keyring(monkeypatch, FakeKeyring())
     monkeypatch.setattr(capture_tool.shutil, "which", lambda _name: "acpx")
     monkeypatch.setattr(capture_tool.os, "environ", environment)
     monkeypatch.setattr(capture_tool, "_capture_to_disk", pytest.fail)
@@ -2560,6 +2573,7 @@ def test_main_returns_exit_2_on_workspace_relocation_between_audit_and_spawn(
         keyring=keyring,
         approval_runtime_root=approval_runtime_root,
     )
+    _patch_keyring(monkeypatch, keyring)
     monkeypatch.setattr(capture_tool.shutil, "which", lambda _name: "acpx")
     monkeypatch.setattr(capture_tool.os, "environ", environment)
 

@@ -387,11 +387,8 @@ class TestConfigFilePermissionsWiredIntoResolution:
         store = KeyringApprovalStore(keyring_backend=FakeKeyring(), runtime_root=tmp_path / "runtime")
 
         calls: list[Path] = []
-        original = launch_gate_module.validate_config_file_permissions
-
-        def recording_validate(path, **kwargs):
+        def recording_validate(path: Path, **_kwargs: object) -> None:
             calls.append(path)
-            return original(path, **kwargs)
 
         monkeypatch.setattr(launch_gate_module, "validate_config_file_permissions", recording_validate)
 
