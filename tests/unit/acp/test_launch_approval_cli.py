@@ -171,6 +171,69 @@ class TestHeadlessBehavior:
             assert result == 2
 
 
+class TestWorkspaceRuntimeRootBootstrap:
+    """The approval-only bootstrap targets the resolved workspace root."""
+
+    @staticmethod
+    def _resolved_paths_from_workspace_symlink(tmp_path: Path):
+        from optimus.acp import operator_paths
+
+        target = tmp_path / "workspace-target"
+        target.mkdir()
+        workspace_link = tmp_path / "workspace-link"
+        try:
+            workspace_link.symlink_to(target, target_is_directory=True)
+        except OSError:
+            pytest.skip("symlink creation unavailable")
+
+        paths = operator_paths.resolve_operator_paths(
+            workspace_root=workspace_link,
+            environ={"HOME": str(tmp_path / "home")},
+            platform_name="linux",
+        )
+        assert paths.workspace_root == target.resolve()
+        return operator_paths, paths, target
+
+    def test_bootstrap_creates_runtime_root_at_resolved_workspace_target(self, tmp_path: Path) -> None:
+        operator_paths, paths, target = self._resolved_paths_from_workspace_symlink(tmp_path)
+        bootstrap = getattr(operator_paths, "bootstrap_workspace_runtime_root", None)
+
+        assert callable(bootstrap), "missing capability: approval-time runtime-root bootstrap"
+        runtime_root = bootstrap(paths)
+
+        assert runtime_root == target.resolve() / ".optimus"
+        assert runtime_root.is_dir()
+        assert not runtime_root.is_symlink()
+
+    def test_bootstrap_rejects_regular_file_runtime_root(self, tmp_path: Path) -> None:
+        operator_paths, paths, _target = self._resolved_paths_from_workspace_symlink(tmp_path)
+        paths.runtime_root.write_text("not a directory", encoding="utf-8")
+        bootstrap = getattr(operator_paths, "bootstrap_workspace_runtime_root", None)
+        error_type = getattr(operator_paths, "WorkspaceRuntimeRootError", None)
+
+        assert callable(bootstrap), "missing capability: approval-time runtime-root bootstrap"
+        assert isinstance(error_type, type), "missing capability: runtime-root error"
+        with pytest.raises(error_type, match="RUNTIME_ROOT_UNSAFE"):
+            bootstrap(paths)
+
+        assert paths.runtime_root.is_file()
+
+    def test_bootstrap_rejects_final_symlink_without_writing_target(self, tmp_path: Path) -> None:
+        operator_paths, paths, _target = self._resolved_paths_from_workspace_symlink(tmp_path)
+        redirected_target = tmp_path / "redirected-target"
+        redirected_target.mkdir()
+        paths.runtime_root.symlink_to(redirected_target, target_is_directory=True)
+        bootstrap = getattr(operator_paths, "bootstrap_workspace_runtime_root", None)
+        error_type = getattr(operator_paths, "WorkspaceRuntimeRootError", None)
+
+        assert callable(bootstrap), "missing capability: approval-time runtime-root bootstrap"
+        assert isinstance(error_type, type), "missing capability: runtime-root error"
+        with pytest.raises(error_type, match="RUNTIME_ROOT_UNSAFE"):
+            bootstrap(paths)
+
+        assert not (redirected_target / "launch-audit.ndjson").exists()
+
+
 class TestOneShotArgvSpawning:
     """One-shot approval with argv substitution."""
 

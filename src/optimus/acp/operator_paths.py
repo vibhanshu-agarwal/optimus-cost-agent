@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import stat
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -17,6 +18,15 @@ class OperatorPathConfigurationError(ValueError):
         self.exit_code = exit_code
 
 
+class WorkspaceRuntimeRootError(ValueError):
+    """Raised when the workspace-local runtime root is unsafe or unavailable."""
+
+    def __init__(self, *, code: str, detail: str = "") -> None:
+        self.code = code
+        self.detail = detail
+        super().__init__(f"{code}: {detail}" if detail else code)
+
+
 @dataclass(frozen=True)
 class OperatorPaths:
     workspace_root: Path
@@ -24,6 +34,40 @@ class OperatorPaths:
     runtime_root: Path
     debug_log_path: Path
     gateway_log_path: Path
+
+
+def require_workspace_runtime_root(runtime_root: Path) -> Path:
+    """Return a pre-existing, non-symlink workspace runtime directory.
+
+    Launch-side consumers must not create this directory.  It is initialized
+    only during the TTY-gated approval ceremony, before workspace identity is
+    captured.
+    """
+    try:
+        metadata = runtime_root.lstat()
+    except OSError as exc:
+        raise WorkspaceRuntimeRootError(code="RUNTIME_ROOT_UNAVAILABLE") from exc
+
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+        raise WorkspaceRuntimeRootError(code="RUNTIME_ROOT_UNSAFE")
+
+    return runtime_root
+
+
+def bootstrap_workspace_runtime_root(paths: OperatorPaths) -> Path:
+    """Create and validate the approval-time resolved workspace runtime root."""
+    runtime_root = paths.runtime_root
+    if runtime_root.parent != paths.workspace_root:
+        raise WorkspaceRuntimeRootError(code="RUNTIME_ROOT_UNSAFE")
+
+    try:
+        runtime_root.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+    except OSError as exc:
+        raise WorkspaceRuntimeRootError(code="RUNTIME_ROOT_UNAVAILABLE") from exc
+
+    return require_workspace_runtime_root(runtime_root)
 
 
 def _is_at_or_below(candidate: Path, workspace: Path, *, windows: bool) -> bool:

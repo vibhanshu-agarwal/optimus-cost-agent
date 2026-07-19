@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from optimus.acp.operator_paths import WorkspaceRuntimeRootError, require_workspace_runtime_root
 from optimus_security.sanitization import sanitize_for_persistence
 
 _AUDIT_FILENAME = "launch-audit.ndjson"
@@ -70,9 +71,9 @@ def append_launch_audit_event(event: LaunchAuditEvent, *, runtime_root: Path) ->
     fatal and stop startup; there is no raw fallback write.
     """
     try:
-        runtime_root.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        raise LaunchAuditError(code="AUDIT_DIR_UNAVAILABLE", detail="cannot create runtime root") from exc
+        require_workspace_runtime_root(runtime_root)
+    except WorkspaceRuntimeRootError as exc:
+        raise LaunchAuditError(code="AUDIT_DIR_UNAVAILABLE", detail="runtime root is unavailable") from exc
 
     path = _audit_path(runtime_root)
 

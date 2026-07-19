@@ -75,11 +75,27 @@ class TestAuditAppend:
         assert json.loads(lines[0])["launch_session_id"] == "sess_1"
         assert json.loads(lines[1])["launch_session_id"] == "sess_2"
 
-    def test_creates_runtime_root_if_missing(self, tmp_path: Path) -> None:
-        nested_root = tmp_path / "does" / "not" / "exist" / "yet"
-        event = _sample_event()
-        append_launch_audit_event(event, runtime_root=nested_root)
-        assert (nested_root / "launch-audit.ndjson").exists()
+    def test_missing_runtime_root_fails_without_creating_it(self, tmp_path: Path) -> None:
+        runtime_root = tmp_path / "missing-runtime-root"
+
+        with pytest.raises(LaunchAuditError, match="AUDIT_DIR_UNAVAILABLE"):
+            append_launch_audit_event(_sample_event(), runtime_root=runtime_root)
+
+        assert not runtime_root.exists()
+
+    def test_symlink_runtime_root_fails_without_writing_target(self, tmp_path: Path) -> None:
+        target = tmp_path / "target"
+        target.mkdir()
+        runtime_root = tmp_path / ".optimus"
+        try:
+            runtime_root.symlink_to(target, target_is_directory=True)
+        except OSError:
+            pytest.skip("symlink creation unavailable")
+
+        with pytest.raises(LaunchAuditError, match="AUDIT_DIR_UNAVAILABLE"):
+            append_launch_audit_event(_sample_event(), runtime_root=runtime_root)
+
+        assert not (target / "launch-audit.ndjson").exists()
 
     @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only: file mode check")
     def test_created_file_has_restrictive_permissions(self, tmp_path: Path) -> None:
