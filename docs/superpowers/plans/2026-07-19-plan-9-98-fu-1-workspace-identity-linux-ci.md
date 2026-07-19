@@ -28,6 +28,7 @@
 | docs/superpowers/specs/2026-07-19-plan-9-98-fu-1-workspace-identity-ci-design.md | Approved design basis; committed only in Task 0. |
 | docs/superpowers/plans/2026-07-19-plan-9-98-fu-1-workspace-identity-linux-ci.md | This digest-pinned implementation plan. |
 | docs/superpowers/reviews/2026-07-19-plan-9-98-fu-1-implementation-plan-approval.md | Task 0 approval record; not a checkpoint log. |
+| docs/superpowers/reviews/2026-07-19-plan-9-98-fu-1-implementation-plan-approval-v2.md | Amendment approval record for the revised Task 1/2 identity behavior. |
 | src/optimus/acp/trusted_paths.py | Lexical/resolved workspace identity and propagatable TrustedPathError. |
 | src/optimus/acp/launch_approvals.py | Digest-only durable-record placeholders for expanded identities. |
 | src/optimus/acp/launch_approval_cli.py | Inspect validates workspace before opening a keyring-backed store. |
@@ -51,7 +52,7 @@
 
 **Pristine-byte safeguard:** Do not tick the checkboxes for Task 0 Steps 1-4 until after the Step 5 planning commit lands. Ticking any of them earlier changes this plan file before Step 4 hashes it, so the approval record would no longer attest to the pristine bytes the reviewer and operator approved. Step 5 must commit this plan with all five Task 0 checkboxes still `- [ ]`. Once that pristine planning commit has landed, all five Task 0 checkboxes may be ticked as ordinary working-tree progress tracking; those later checkbox-only changes do not invalidate the approval, but any later substantive plan-text change requires fresh review, operator approval, and a new digest.
 
-- [ ] **Step 1: Verify baseline and pristine scope.**
+- [x] **Step 1: Verify baseline and pristine scope.**
 
 Run:
 
@@ -63,15 +64,15 @@ git diff --name-only 9f2ddd7697e99cc977cc7b5897155127734af12a -- docs/superpower
 
 Expected: HEAD is the stated baseline, only the new design/plan documents plus pre-existing uv.lock and .claude/ appear, and the frozen-path command prints nothing.
 
-- [ ] **Step 2: Obtain reviewer approval for the exact plan bytes.**
+- [x] **Step 2: Obtain reviewer approval for the exact plan bytes.**
 
 The reviewer reads the whole plan, verifies RED-before-GREEN ordering and scope, and records their identity and exact approval statement in the Task 0 approval record.
 
-- [ ] **Step 3: Obtain operator approval for the same exact bytes.**
+- [x] **Step 3: Obtain operator approval for the same exact bytes.**
 
 Record operator identity and exact approval statement in the same approval record. Do not begin Task 1 until both approvals exist.
 
-- [ ] **Step 4: Compute the pristine digest using literal uv run python.**
+- [x] **Step 4: Compute the pristine digest using literal uv run python.**
 
 Run in a terminal where uv is genuinely on PATH:
 
@@ -92,7 +93,7 @@ Create the approval record:
 - Scope: workspace identity TOCTOU repair and default-Linux-CI isolation only
 ~~~
 
-- [ ] **Step 5: Commit only the reviewed planning artifacts.**
+- [x] **Step 5: Commit only the reviewed planning artifacts.**
 
 Run:
 
@@ -104,6 +105,28 @@ git commit -m "docs: approve Plan 9.98-FU-1 corrective work"
 
 Expected: exactly these three docs in one commit. Do not stage uv.lock, .claude/, or a checkpoint log.
 
+### Task 0A: Freeze the v2 Identity-Test Amendment
+
+**Files:**
+- Create: docs/superpowers/reviews/2026-07-19-plan-9-98-fu-1-implementation-plan-approval-v2.md
+- Modify: this plan only
+
+**Produces:** A reviewer- and operator-approved amended plan before replacing the Task 1 RED test or continuing Task 2.
+
+**Pristine-byte safeguard:** Do not tick any Task 0A checkbox until its amendment commit lands. The amendment commit must contain this plan exactly as freshly reviewed and hashed, including the completed Task 0 checkbox history, the reset Task 1 checkboxes below, and all Task 0A checkboxes still unchecked.
+
+- [ ] **Step 1: Obtain reviewer and operator approval for exact amended bytes.**
+
+The reviewer must verify that only the completed Task 0 checkbox history, Task 0A, Task 1, Task 2, File Map, and Definition of Done change. The operator approval must follow the reviewer approval. Both statements go in the v2 record.
+
+- [ ] **Step 2: Compute and record the amended plan digest.**
+
+Run the same literal command from Task 0 Step 4. Record its uppercase output, the reviewer statement, operator statement, baseline planning commit d250003, and scope limited to the POSIX mutation test, Windows lexical normalization, and related wording in the v2 record.
+
+- [ ] **Step 3: Commit the amended plan and v2 record only.**
+
+Run git diff --check, stage this plan plus the v2 record only, and commit with message docs: amend Plan 9.98-FU-1 identity tests. Do not stage source or test files. After the commit, tick Task 0A checkboxes as ordinary checkbox-only progress.
+
 ### Task 1: Establish the Workspace-Identity RED Suite
 
 **Files:**
@@ -114,9 +137,11 @@ Expected: exactly these three docs in one commit. Do not stage uv.lock, .claude/
 
 **Produces:** Failing tests for missing lexical path, change-time binding, propagatable exception behavior, and durable-record placeholders.
 
-- [ ] **Step 1: Add lexical-path and change-time RED tests.**
+**Amendment reset:** The uncommitted Task 2 production draft and its Task-2-only fixture adaptations were written before the corrected RED tests existed. Before this amended Task 1 begins, discard those draft-only changes with `apply_patch` back to the `d250003` content. Retain or revise only the Task 1 test additions below. This is not a revert of committed work; it enforces the plan's TDD constraint that the corrected tests fail against the committed baseline behavior.
 
-In test_trusted_paths.py, import replace from dataclasses and add:
+- [ ] **Step 1: Add lexical-path and platform-specific change-time RED tests.**
+
+In test_trusted_paths.py, import os (alongside the existing sys import) and add:
 
 ~~~python
 def test_identity_binds_lexical_path_and_target_change_time(tmp_path: Path) -> None:
@@ -130,19 +155,21 @@ def test_identity_binds_lexical_path_and_target_change_time(tmp_path: Path) -> N
 
     identity = resolve_workspace_identity(link)
 
-    assert identity.lexical_path == str(link.absolute())
+    expected_lexical = os.path.normcase(str(link.absolute())) if sys.platform == "win32" else str(link.absolute())
+    assert identity.lexical_path == expected_lexical
     assert identity.canonical_path == str(target.resolve())
     assert identity.change_time_ns == target.stat().st_ctime_ns
 
 
-def test_revalidation_fails_when_change_time_token_differs(tmp_path: Path) -> None:
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only: directory ctime changes on entry creation")
+def test_revalidation_fails_after_workspace_directory_metadata_change(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     identity = resolve_workspace_identity(workspace)
-    stale_identity = replace(identity, change_time_ns=identity.change_time_ns - 1)
+    (workspace / "added-after-authorization").write_text("synthetic", encoding="utf-8")
 
     with pytest.raises(TrustedPathError, match="WORKSPACE_IDENTITY_CHANGED"):
-        revalidate_workspace_identity(stale_identity)
+        revalidate_workspace_identity(identity)
 ~~~
 
 Keep the existing post-authorization symlink-repoint and delete/recreate tests; both must continue to require WORKSPACE_IDENTITY_CHANGED.
@@ -168,7 +195,7 @@ def test_trusted_path_error_propagates_as_its_own_type() -> None:
     assert exc_info.value.code == "WORKSPACE_NOT_FOUND"
 ~~~
 
-Mark TestWindowsCaseNormalization.test_case_variants_produce_same_identity with pytest.mark.skipif(sys.platform != "win32", reason="Windows-only: case-insensitive filesystem identity").
+Mark TestWindowsCaseNormalization.test_case_variants_produce_same_identity with pytest.mark.skipif(sys.platform != "win32", reason="Windows-only: case-insensitive filesystem identity"), then assert both id_upper.lexical_path == id_lower.lexical_path and id_upper.digest == id_lower.digest.
 
 - [ ] **Step 3: Run the identity RED selector.**
 
@@ -178,7 +205,7 @@ Run:
 uv run pytest tests/unit/acp/test_trusted_paths.py tests/unit/acp/test_launch_approvals.py tests/integration/acp/test_launch_trust_flow.py::test_full_launch_trust_flow_relocated_workspace_fails_revalidation tests/unit/acp/test_main_wiring.py::test_workspace_relocated_after_authorization_fails_closed_before_side_effect -q
 ~~~
 
-Expected before Task 2: genuine missing-field failures, DID NOT RAISE, or the current FrozenInstanceError. Do not proceed on collection errors or vacuous passes.
+Expected before Task 2: genuine missing-field failures, the POSIX metadata-mutation DID NOT RAISE failure, or the current FrozenInstanceError. Do not proceed on collection errors or vacuous passes.
 
 ### Task 2: Implement Fail-Closed Lexical Workspace Revalidation
 
@@ -224,10 +251,12 @@ digest: str
 
 - [ ] **Step 2: Bind lexical path and change time into the digest.**
 
-At the start of resolve_workspace_identity, use:
+Import os and sys in trusted_paths.py. At the start of resolve_workspace_identity, preserve symlinks while normalizing Windows caller casing:
 
 ~~~python
 lexical_path = str(workspace_root.absolute())
+if sys.platform == "win32":
+    lexical_path = os.path.normcase(lexical_path)
 resolved = Path(lexical_path).resolve()
 ~~~
 
@@ -286,7 +315,7 @@ git add src/optimus/acp/trusted_paths.py src/optimus/acp/launch_approvals.py tes
 git commit -m "fix: harden workspace identity revalidation"
 ~~~
 
-Expected: all selected tests pass; Windows-only case testing is skipped on Linux; Ruff and diff checks are clean.
+Expected: the POSIX metadata-mutation test is skipped on Windows, the Windows case-normalization test is skipped on POSIX, all other selected tests pass, and Ruff/diff checks are clean.
 
 ### Task 3: Make optimus-trust inspect Headless-Safe
 
@@ -435,6 +464,7 @@ After explicit operator push authorization, push the existing PR branch and wait
 
 - [ ] The Plan 9.98-FU-1 record pins the exact plan digest and both approvals before source mutation.
 - [ ] Revalidation detects symlink retargeting and same-path workspace replacement before any spawn-side effect.
+- [ ] On POSIX, creating an entry in the workspace directory after authorization invalidates the change-time-bound identity; on Windows, case variants of one lexical workspace path produce one identity digest.
 - [ ] Digest-only durable records deserialize with inert expanded-identity placeholders; placeholders never reach revalidation.
 - [ ] optimus-trust inspect fails a nonexistent workspace before touching the keyring.
 - [ ] Host-keyring, POSIX-permission, Windows-case, and LC_CTYPE CI failures are eliminated without adding CI services.
