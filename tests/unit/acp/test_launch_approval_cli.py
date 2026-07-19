@@ -8,6 +8,7 @@ never display, and CLI output/exception paths contain no canaries.
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -234,6 +235,172 @@ class TestWorkspaceRuntimeRootBootstrap:
         assert not (redirected_target / "launch-audit.ndjson").exists()
 
 
+class TestApprovalTimeRuntimeBootstrap:
+    """Approval, unlike launch and run, initializes the runtime root first."""
+
+    @staticmethod
+    def _configure_approval_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+        config_root = tmp_path / "config"
+        config_root.mkdir()
+        environment = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+            "OPTIMUS_CONFIG_ROOT": str(config_root),
+        }
+        for name, value in environment.items():
+            monkeypatch.setenv(name, value)
+        return environment
+
+    def test_durable_approval_bootstraps_before_workspace_identity_capture(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import launch_approval_cli as cli_module
+        from optimus.acp.launch_approvals import KeyringApprovalStore
+        from tests.unit.acp.conftest import FakeKeyring
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        self._configure_approval_environment(tmp_path, monkeypatch)
+        fake_keyring = FakeKeyring()
+        store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path / "approval-runtime")
+        observations: list[bool] = []
+        original_resolve_identity = cli_module.resolve_workspace_identity
+
+        def observe_identity(path: Path):
+            observations.append((path.resolve() / ".optimus").is_dir())
+            return original_resolve_identity(path)
+
+        monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
+        monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: (store, tmp_path / "approval-runtime"))
+        monkeypatch.setattr(cli_module, "resolve_workspace_identity", observe_identity)
+
+        assert cli_module._cmd_approve(workspace, mode="durable", target_argv=[]) == 0
+        assert observations == [True]
+        assert store.read_durable(original_resolve_identity(workspace).digest) is not None
+
+    def test_one_shot_approval_bootstraps_before_workspace_identity_capture(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import launch_approval_cli as cli_module
+        from optimus.acp.launch_approvals import KeyringApprovalStore
+        from tests.unit.acp.conftest import FakeKeyring
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        self._configure_approval_environment(tmp_path, monkeypatch)
+        fake_keyring = FakeKeyring()
+        store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path / "approval-runtime")
+        observations: list[bool] = []
+        original_resolve_identity = cli_module.resolve_workspace_identity
+
+        def observe_identity(path: Path):
+            observations.append((path.resolve() / ".optimus").is_dir())
+            return original_resolve_identity(path)
+
+        monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
+        monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: (store, tmp_path / "approval-runtime"))
+        monkeypatch.setattr(cli_module, "resolve_workspace_identity", observe_identity)
+
+        assert cli_module._cmd_approve(workspace, mode="one-shot", target_argv=[]) == 0
+        assert observations == [True]
+
+    def test_bootstrap_failure_exits_before_store_or_record_write(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import launch_approval_cli as cli_module
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        self._configure_approval_environment(tmp_path, monkeypatch)
+        bootstrap = getattr(cli_module, "bootstrap_workspace_runtime_root", None)
+        error_type = getattr(cli_module, "WorkspaceRuntimeRootError", None)
+
+        assert callable(bootstrap), "missing capability: approval-time bootstrap context"
+        assert isinstance(error_type, type), "missing capability: runtime-root error mapping"
+
+        def fail_bootstrap(_paths: object) -> None:
+            raise error_type(code="RUNTIME_ROOT_UNAVAILABLE")
+
+        monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
+        monkeypatch.setattr(cli_module, "bootstrap_workspace_runtime_root", fail_bootstrap)
+        monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: pytest.fail("store must not open"))
+        monkeypatch.setattr(cli_module, "build_approval_record", lambda **_kwargs: pytest.fail("record must not build"))
+        monkeypatch.setattr(cli_module.subprocess, "run", lambda *_args, **_kwargs: pytest.fail("must not spawn"))
+
+        assert cli_module.main(["--workspace-root", str(workspace), "approve", "--mode", "durable"]) == 2
+
+    def test_prepared_context_keeps_snapshot_value_when_live_environment_changes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import launch_approval_cli as cli_module
+        from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        environment = self._configure_approval_environment(tmp_path, monkeypatch)
+        approved_config_root = Path(environment["OPTIMUS_CONFIG_ROOT"])
+        attacker_config_root = tmp_path / "attacker-config"
+        attacker_config_root.mkdir()
+        prepare_context = getattr(cli_module, "_prepare_approval_context", None)
+
+        assert callable(prepare_context), "missing capability: single-snapshot approval context"
+
+        original_capture = LaunchEnvironmentSnapshot.capture
+
+        def capture_then_mutate(environ: object) -> LaunchEnvironmentSnapshot:
+            snapshot = original_capture(environ)  # type: ignore[arg-type]
+            monkeypatch.setenv("OPTIMUS_CONFIG_ROOT", str(attacker_config_root))
+            return snapshot
+
+        monkeypatch.setattr(LaunchEnvironmentSnapshot, "capture", staticmethod(capture_then_mutate))
+        snapshot, paths = prepare_context(workspace)
+
+        assert snapshot.values["OPTIMUS_CONFIG_ROOT"] == str(approved_config_root)
+        assert paths.config_root == approved_config_root.resolve()
+        assert paths.config_root != attacker_config_root.resolve()
+
+    def test_run_does_not_bootstrap_a_missing_runtime_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import launch_approval_cli as cli_module
+        from optimus.acp.launch_approvals import KeyringApprovalStore
+        from tests.unit.acp.conftest import FakeKeyring, authorize_workspace_for_test
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        environment = self._configure_approval_environment(tmp_path, monkeypatch)
+        fake_keyring = FakeKeyring()
+        authorize_workspace_for_test(
+            env=environment,
+            workspace_root=workspace,
+            fake_keyring=fake_keyring,
+            runtime_root=tmp_path / "approval-runtime",
+        )
+        runtime_root = workspace / ".optimus"
+        runtime_root.mkdir()
+        runtime_root.rmdir()
+        store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path / "approval-runtime")
+        prepare_context = getattr(cli_module, "_prepare_candidate_context", None)
+        bootstrap = getattr(cli_module, "bootstrap_workspace_runtime_root", None)
+
+        assert callable(prepare_context), "missing capability: non-bootstrapping candidate context"
+        assert callable(bootstrap), "missing capability: approval-only bootstrap"
+        monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: (store, tmp_path / "approval-runtime"))
+        monkeypatch.setattr(cli_module, "bootstrap_workspace_runtime_root", lambda _paths: pytest.fail("run must not bootstrap"))
+        real_subprocess_run = cli_module.subprocess.run
+
+        def selective_subprocess_run(argv: list[str], **kwargs: object) -> object:
+            if "-c" in argv and "pass" in argv:
+                return type("Result", (), {"returncode": 0})()
+            return real_subprocess_run(argv, **kwargs)
+
+        monkeypatch.setattr(cli_module.subprocess, "run", selective_subprocess_run)
+
+        assert cli_module._cmd_run(workspace, target_argv=[sys.executable, "-c", "pass"], elevated_debug=False) == 0
+        assert not runtime_root.exists()
+
+
 class TestOneShotArgvSpawning:
     """One-shot approval with argv substitution."""
 
@@ -279,7 +446,7 @@ class TestResolveConfigRootUsesSnapshotNotOsEnviron:
     ambient re-read instead of a stale approval."""
 
     def test_config_root_resolution_uses_captured_snapshot_value(self, tmp_path, monkeypatch) -> None:
-        from optimus.acp.launch_approval_cli import _resolve_candidate
+        from optimus.acp.launch_approval_cli import _prepare_candidate_context, _resolve_candidate
         from optimus.acp.launch_approvals import KeyringApprovalStore
 
         approved_root = tmp_path / "approved_config"
@@ -329,7 +496,8 @@ class TestResolveConfigRootUsesSnapshotNotOsEnviron:
 
         store = KeyringApprovalStore(keyring_backend=FakeKeyring(), runtime_root=tmp_path / "runtime")
 
-        candidate = _resolve_candidate(workspace, store)
+        snapshot, paths = _prepare_candidate_context(workspace)
+        candidate = _resolve_candidate(workspace, store, snapshot=snapshot, operator_paths=paths)
 
         # The resolved config root must be the SNAPSHOT value (approved_root),
         # not whatever os.environ held by the time a later read might occur.
@@ -347,7 +515,7 @@ class TestConfigFilePermissionsWiredIntoResolution:
         reason="POSIX-only: permission bit checks",
     )
     def test_group_readable_env_gateway_fails_closed(self, tmp_path, monkeypatch) -> None:
-        from optimus.acp.launch_approval_cli import _resolve_candidate
+        from optimus.acp.launch_approval_cli import _prepare_candidate_context, _resolve_candidate
         from optimus.acp.launch_approvals import KeyringApprovalStore
         from optimus.acp.launch_gate import LaunchGateError
 
@@ -374,8 +542,9 @@ class TestConfigFilePermissionsWiredIntoResolution:
 
         store = KeyringApprovalStore(keyring_backend=FakeKeyring(), runtime_root=tmp_path / "runtime")
 
+        snapshot, paths = _prepare_candidate_context(workspace)
         with pytest.raises(LaunchGateError) as exc_info:
-            _resolve_candidate(workspace, store)
+            _resolve_candidate(workspace, store, snapshot=snapshot, operator_paths=paths)
         assert exc_info.value.code == "CONFIG_FILE_PERMISSIONS_TOO_OPEN"
 
     @pytest.mark.skipif(
@@ -383,7 +552,7 @@ class TestConfigFilePermissionsWiredIntoResolution:
         reason="POSIX-only: permission bit checks",
     )
     def test_owner_only_env_gateway_passes(self, tmp_path, monkeypatch) -> None:
-        from optimus.acp.launch_approval_cli import _resolve_candidate
+        from optimus.acp.launch_approval_cli import _prepare_candidate_context, _resolve_candidate
         from optimus.acp.launch_approvals import KeyringApprovalStore
 
         config_root = tmp_path / "config"
@@ -410,7 +579,8 @@ class TestConfigFilePermissionsWiredIntoResolution:
         store = KeyringApprovalStore(keyring_backend=FakeKeyring(), runtime_root=tmp_path / "runtime")
 
         # Should not raise.
-        candidate = _resolve_candidate(workspace, store)
+        snapshot, paths = _prepare_candidate_context(workspace)
+        candidate = _resolve_candidate(workspace, store, snapshot=snapshot, operator_paths=paths)
         assert candidate.operator_paths.config_root == config_root.resolve()
 
     def test_env_gateway_permission_check_is_actually_invoked(self, tmp_path, monkeypatch) -> None:
@@ -424,7 +594,7 @@ class TestConfigFilePermissionsWiredIntoResolution:
         structural, not something each caller remembers to call), so the
         patch target is launch_gate, not launch_approval_cli."""
         import optimus.acp.launch_gate as launch_gate_module
-        from optimus.acp.launch_approval_cli import _resolve_candidate
+        from optimus.acp.launch_approval_cli import _prepare_candidate_context, _resolve_candidate
         from optimus.acp.launch_approvals import KeyringApprovalStore
 
         config_root = tmp_path / "config"
@@ -455,13 +625,14 @@ class TestConfigFilePermissionsWiredIntoResolution:
 
         monkeypatch.setattr(launch_gate_module, "validate_config_file_permissions", recording_validate)
 
-        _resolve_candidate(workspace, store)
+        snapshot, paths = _prepare_candidate_context(workspace)
+        _resolve_candidate(workspace, store, snapshot=snapshot, operator_paths=paths)
 
         assert calls == [env_gateway.resolve()] or calls == [env_gateway]
 
     def test_missing_env_gateway_skips_permission_check(self, tmp_path, monkeypatch) -> None:
         """No .env.gateway present -> nothing to validate, resolution proceeds."""
-        from optimus.acp.launch_approval_cli import _resolve_candidate
+        from optimus.acp.launch_approval_cli import _prepare_candidate_context, _resolve_candidate
         from optimus.acp.launch_approvals import KeyringApprovalStore
 
         config_root = tmp_path / "config"
@@ -483,7 +654,8 @@ class TestConfigFilePermissionsWiredIntoResolution:
 
         store = KeyringApprovalStore(keyring_backend=FakeKeyring(), runtime_root=tmp_path / "runtime")
 
-        candidate = _resolve_candidate(workspace, store)
+        snapshot, paths = _prepare_candidate_context(workspace)
+        candidate = _resolve_candidate(workspace, store, snapshot=snapshot, operator_paths=paths)
         assert candidate.operator_paths.config_root == config_root.resolve()
 
 

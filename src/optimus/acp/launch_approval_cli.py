@@ -36,7 +36,12 @@ from optimus.acp.local_gateway_secrets import (
     resolve_provider_credentials,
     resolve_shared_secret,
 )
-from optimus.acp.operator_paths import resolve_authorized_operator_paths
+from optimus.acp.operator_paths import (
+    OperatorPaths,
+    WorkspaceRuntimeRootError,
+    bootstrap_workspace_runtime_root,
+    resolve_authorized_operator_paths,
+)
 from optimus.acp.trusted_paths import (
     TrustedOperatorRoots,
     TrustedPathError,
@@ -162,6 +167,9 @@ def main(argv: list[str] | None = None) -> int:
     except LaunchGateError as exc:
         print(f"optimus-trust: {exc}", file=sys.stderr)
         return 2
+    except WorkspaceRuntimeRootError as exc:
+        print(f"optimus-trust: {exc.code}", file=sys.stderr)
+        return 2
 
     print(f"optimus-trust: unknown command '{args.command}'", file=sys.stderr)
     return 2
@@ -185,8 +193,37 @@ def _resolve_store(workspace_root: Path) -> tuple[KeyringApprovalStore, Path]:
     return store, roots.approval_runtime_root
 
 
-def _resolve_candidate(workspace_root: Path, store: KeyringApprovalStore) -> LaunchCandidate:
-    """Resolve the full launch candidate from the current environment.
+def _prepare_candidate_context(workspace_root: Path) -> tuple[LaunchEnvironmentSnapshot, OperatorPaths]:
+    """Capture the one authorization snapshot and resolve its operator paths.
+
+    This common preparation is deliberately non-bootstrapping so headless
+    durable-record consumers such as ``optimus-trust run`` cannot initialize
+    a workspace runtime root.
+    """
+    snapshot = LaunchEnvironmentSnapshot.capture(os.environ)
+    paths = resolve_authorized_operator_paths(
+        workspace_root=workspace_root,
+        snapshot_values=snapshot.values,
+        platform_name=sys.platform,
+    )
+    return snapshot, paths
+
+
+def _prepare_approval_context(workspace_root: Path) -> tuple[LaunchEnvironmentSnapshot, OperatorPaths]:
+    """Prepare the TTY-gated approval ceremony and initialize its root."""
+    snapshot, paths = _prepare_candidate_context(workspace_root)
+    bootstrap_workspace_runtime_root(paths)
+    return snapshot, paths
+
+
+def _resolve_candidate(
+    workspace_root: Path,
+    store: KeyringApprovalStore,
+    *,
+    snapshot: LaunchEnvironmentSnapshot,
+    operator_paths: OperatorPaths,
+) -> LaunchCandidate:
+    """Resolve the full launch candidate from an already-captured context.
 
     Plan 9.96, Task 5 cutover: uses resolve_authorized_operator_paths() —
     the single shared helper composing trusted-root resolution and
@@ -212,18 +249,12 @@ def _resolve_candidate(workspace_root: Path, store: KeyringApprovalStore) -> Lau
     resolve_launch_candidate rather than here, so every caller gets it
     structurally rather than by remembering to call it.
     """
-    snapshot = LaunchEnvironmentSnapshot.capture(os.environ)
     workspace_identity = resolve_workspace_identity(workspace_root)
-    paths = resolve_authorized_operator_paths(
-        workspace_root=workspace_root,
-        snapshot_values=snapshot.values,
-        platform_name=sys.platform,
-    )
 
     candidate = resolve_launch_candidate(
         snapshot=snapshot,
         workspace_identity=workspace_identity,
-        operator_paths=paths,
+        operator_paths=operator_paths,
         hmac_key=store.hmac_key,
     )
     return candidate
@@ -253,8 +284,9 @@ def _cmd_approve(workspace_root: Path, *, mode: str, target_argv: list[str]) -> 
     _require_tty()
     target_argv = _strip_separator(target_argv)
 
+    snapshot, paths = _prepare_approval_context(workspace_root)
     store, _ = _resolve_store(workspace_root)
-    candidate = _resolve_candidate(workspace_root, store)
+    candidate = _resolve_candidate(workspace_root, store, snapshot=snapshot, operator_paths=paths)
 
     # Display the effective configuration for operator review.
     _display_candidate(candidate)
@@ -379,8 +411,9 @@ def _cmd_run(workspace_root: Path, *, target_argv: list[str], elevated_debug: bo
         print("optimus-trust run: no target command specified.", file=sys.stderr)
         return 2
 
+    snapshot, paths = _prepare_candidate_context(workspace_root)
     store, _ = _resolve_store(workspace_root)
-    candidate = _resolve_candidate(workspace_root, store)
+    candidate = _resolve_candidate(workspace_root, store, snapshot=snapshot, operator_paths=paths)
 
     # Verify the durable approval exists and matches.
     ws_digest = candidate.workspace_identity.digest
