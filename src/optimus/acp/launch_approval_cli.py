@@ -320,8 +320,8 @@ def _cmd_approve(workspace_root: Path, *, mode: str, target_argv: list[str]) -> 
 
 def _cmd_inspect(workspace_root: Path) -> int:
     """Display approval metadata (no secrets, no handles)."""
-    store, _ = _resolve_store(workspace_root)
     workspace_identity = resolve_workspace_identity(workspace_root)
+    store, _ = _resolve_store(workspace_root)
 
     record = store.read_durable(workspace_identity.digest)
     if record is None:

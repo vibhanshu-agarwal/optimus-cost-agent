@@ -48,7 +48,11 @@ class TestCliParsing:
         with pytest.raises(SystemExit):
             main(["approve"])
 
-    def test_inspect_on_nonexistent_workspace_fails_gracefully(self) -> None:
+    def test_inspect_on_nonexistent_workspace_fails_gracefully(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "optimus.acp.launch_approval_cli._resolve_store",
+            lambda _workspace_root: pytest.fail("keyring store must not be opened for a missing workspace"),
+        )
         result = main(["--workspace-root", "/nonexistent/path", "inspect"])
         assert result != 0  # Should fail gracefully, not crash.
 
@@ -627,8 +631,12 @@ class TestRunGatewayCommand:
 class TestOutputContainsNoSecrets:
     """CLI output and exception paths contain no canary secrets."""
 
-    def test_error_messages_contain_no_raw_values(self) -> None:
+    def test_error_messages_contain_no_raw_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Error messages from the CLI contain codes, not secret values."""
+        monkeypatch.setattr(
+            "optimus.acp.launch_approval_cli._resolve_store",
+            lambda _workspace_root: pytest.fail("keyring store must not be opened for a missing workspace"),
+        )
         # Trigger a workspace-not-found error.
         import io
         from contextlib import redirect_stderr
