@@ -201,3 +201,54 @@ class TestSendAndCloseStdinSurviveAnAlreadyExitedChild:
         session.close_stdin()
 
         assert closed == [True]
+
+
+class TestFailSubprocessExitedWaitsForTheStderrReaderToDrain:
+    """Plan 9.99 follow-up finding, from real CI evidence (run 29933994440,
+    after the send()/close_stdin() broken-pipe fix landed): _fail_subprocess_
+    exited() reads stderr_text() with no guarantee the background
+    _read_stderr thread has actually drained the child's already-printed
+    gate-rejection line yet. wait_for()'s poll()-check
+    (ndjson_subprocess_session.py:112-113) fires on the very first loop
+    iteration with zero delay, so on a child that exits before the ACP
+    handshake begins, it can call _fail_subprocess_exited() before the
+    reader thread has appended anything -- producing the generic "exited
+    early, empty stderr" fallback instead of the real remediation message.
+    The fix belongs inside _fail_subprocess_exited() itself, since wait_for(),
+    read_next(), and send() all share this one call, not duplicated at each
+    caller."""
+
+    def _make_session(
+        self, *, poll_result: int | None, stderr_after_join: list[str]
+    ) -> NdjsonSubprocessSession:
+        session = object.__new__(NdjsonSubprocessSession)
+        session._stderr_lines = []
+
+        def _join(timeout: float | None = None) -> None:
+            # Simulates the real background thread: nothing is in
+            # _stderr_lines until the thread actually finishes draining,
+            # which is exactly what join() waits for.
+            session._stderr_lines.extend(stderr_after_join)
+
+        session._process = SimpleNamespace(
+            poll=lambda: poll_result,
+            wait=lambda timeout=None: poll_result,
+        )
+        session._stderr_reader = SimpleNamespace(join=_join)
+        return session
+
+    def test_gate_rejection_that_lands_only_during_join_is_still_detected(self) -> None:
+        session = self._make_session(
+            poll_result=2,
+            stderr_after_join=[
+                "optimus-agent: no launch approval found for this workspace. Review the effective "
+                "configuration and author one with:\n",
+                "  optimus-trust --workspace-root /tmp/ws approve --mode durable\n",
+            ],
+        )
+
+        with pytest.raises(LiveSessionError) as exc_info:
+            session._fail_subprocess_exited("timed out waiting for JSON-RPC response id=1")
+
+        assert "no launch approval found" in str(exc_info.value)
+        assert "timed out" not in str(exc_info.value)
