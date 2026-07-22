@@ -291,9 +291,6 @@ def test_capture_stops_when_real_audit_runtime_root_is_a_regular_file(tmp_path: 
         keyring=keyring,
         approval_runtime_root=approval_runtime_root,
     )
-    (workspace / ".optimus").rmdir()
-    (workspace / ".optimus").write_text("not a directory", encoding="utf-8")
-
     capture = authorize_capture(
         workspace=workspace,
         environment=environment,
@@ -302,8 +299,16 @@ def test_capture_stops_when_real_audit_runtime_root_is_a_regular_file(tmp_path: 
         launch_session_id="sess_audit_failure",
     )
 
+    runtime_root = workspace / ".optimus"
+    assert runtime_root.is_dir()
+    runtime_root.rmdir()
+    runtime_root.write_text("not a directory", encoding="utf-8")
+
     with pytest.raises(LaunchAuditError, match="AUDIT_DIR_UNAVAILABLE"):
         append_authorized_audit(capture)
+
+    assert runtime_root.is_file()
+    assert runtime_root.read_text(encoding="utf-8") == "not a directory"
 
 
 def test_capture_acpx_blocks_child_when_composed_audit_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
