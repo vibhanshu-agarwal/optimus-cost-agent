@@ -287,8 +287,9 @@ the post-#36 shapes, and PR #42 closed the parent Plan 9.6 sign-off gate.
 
 **Separate client-stability custody:** Plan 9.8 later raised `P9.8-FU-5` for a Zed 1.10.2 panic
 after correctly rendering the ambiguous-refusal text. That is not a regression or reopened item in
-this completed lane; it is owned by the standalone tracked backlog entry below and must not be
-folded into Plan 11.
+this completed lane; it is owned by the
+[Consolidated Deferred Follow-Ups backlog](2026-07-23-consolidated-deferred-followups-backlog.md)
+and must not be folded into Plan 11.
 
 ## Plan 9.8: Task-Aware Workspace Context for Planning
 
@@ -308,8 +309,9 @@ Plan 11 intelligent selection and does not prove mutation tasks generally.
 **Known limitation (P9.8-FU-5):** On Zed 1.10.2, the ambiguous-refusal corrective text can flash and
 then panic the client (`range end index 3 out of range for slice of length 2`). Agent-side refusal
 contract and independent `acpx` durable UI remain proven; durable Zed stay-up on that path is
-deferred, not claimed. Sole custody is the standalone tracked backlog entry below; this work must
-not be folded into Plan 11 or the completed Plan 9.75 lane.
+deferred, not claimed. Sole custody is the
+[Consolidated Deferred Follow-Ups backlog](2026-07-23-consolidated-deferred-followups-backlog.md);
+this work must not be folded into Plan 11 or the completed Plan 9.75 lane.
 
 **P9.8-FU-6 (substantively resolved, no discrete closing commit):** the acceptance criteria —
 a documented operator/pre-GUI evidence path uses independently authored `acpx` exclusively, and
@@ -729,22 +731,32 @@ approval record is `docs/superpowers/reviews/2026-07-22-plan-9-99-implementation
 Docs merged in PR #63 (commit `b6ab9b6`). Implementation must begin from a fresh branch/worktree based
 on the latest `origin/main`, not the Plan 9.98 branch.
 
-## Backlog: P9.85-FU-3 Cross-Run/Session Spend Policy (Tracked, Not Yet Scheduled)
+## Backlog: Consolidated Deferred Follow-Ups (Tracked, Not Yet Scheduled)
 
-**Raised:** 2026-07-11, in Plan 9.85's own Deferred Follow-Ups section
-(`docs/superpowers/plans/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`), disclosed as
-owned by an unnamed future budget-governance plan rather than silently dropped.
+**What this is:** Every currently open, unscheduled `P#-FU-#` follow-up from the Plan 9-series lives
+in one place —
+[`docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md`](2026-07-23-consolidated-deferred-followups-backlog.md) —
+instead of being scattered across each originating plan's own Deferred Follow-Ups section with only
+a one-line roadmap mention (or none at all — that gap is exactly what happened to Plan 9.98-FU-1/FU-2
+before a manual audit caught it). That document is the single source of reference for planning and
+implementing these items; this entry is only a pointer, not a duplicate.
 
-**Owned follow-up:** Define an operator-configurable cumulative session/project spend ceiling above
-the existing per-run `max_cost_usd` monotonic limit and the Plan 7 usage ledger. Plan 9.85 records
-all usage completely and accurately but does not itself invent any cross-run denial policy.
+**Currently holds (7 items):** `P9.8-FU-2` (intelligent ambiguous-reference ranking, owner Plan 11),
+`P9.8-FU-3` (dynamic context budgets, owner Plan 11), `P9.8-FU-5` (Zed refusal-rendering stability,
+unscheduled), `P9.85-FU-1` (intelligent observation compression, owner Plan 11), `P9.85-FU-2`
+(dynamic planning-evidence partition, owner Plan 11), `P9.85-FU-3` (cross-run/session spend policy,
+unscheduled), and `P9.87-FU-1` (mechanical current-raw-evidence grounding guard, owner Plan 9.97).
 
-**Acceptance criteria:** A new cross-run/session ceiling must not weaken or duplicate the existing
-per-run monotonic-tighten-or-exact approval contract (Plan 9.96), must be enforced from the same
-reconciled Plan 7 usage ledger rather than a new parallel accounting path, and must fail closed
-rather than silently permit overspend when ledger data is unavailable.
+**Adding future items:** Any new follow-up emerging from Plan 9.96 or Plan 9.97 (once either
+actually lands and produces genuinely deferred, unscheduled work) gets added to the same document
+rather than a new scattered roadmap entry. Plan 9.96's own imminent Task 9 closures
+(`P9.85-FU-7`, `P9.9-FU-1`) and the pending `P9.96-FU-1..7` disclosures are explicitly not in this
+list yet — they already have an active, scheduled closure path; see that document's "Explicitly out
+of scope" section.
 
-**Status:** Tracked, not yet scheduled. No implementation plan exists.
+**Status:** Tracked, not yet scheduled. Each item is promoted out of the consolidated document into
+its own real numbered plan (or folded into Plan 11 / Plan 9.97 when either is scheduled), never
+implemented in place here.
 
 ## Backlog: Re-pin FU-4A/FU-5 Live Evidence (Tracked, Not Yet Scheduled)
 
@@ -761,28 +773,6 @@ Plan 9.87/9.88 raw-capture helpers as non-qualifying while introducing a sanitiz
 The future re-pin must be prioritized with that change in mind and explicitly choose its capture
 path (expected to be the reviewed Plan 9.96 tool if that implementation has landed); it must not
 assume the frozen helpers remain an acceptable current-evidence path.
-
-**Status:** Tracked, not yet scheduled. No implementation plan exists.
-
-## Backlog: P9.8-FU-5 Zed Refusal-Rendering Stability (Tracked, Not Yet Scheduled)
-
-**Raised:** 2026-07-11 during Plan 9.8 live evidence. Zed 1.10.2 correctly received and briefly
-rendered the ambiguous-refusal corrective text, then panicked in native client code with
-`range end index 3 out of range for slice of length 2`. The agent wire contract and independent
-`acpx` durable refusal UI remain proven.
-
-**Sole custody:** This backlog entry. Plan 9.75 was already complete when the client-stability issue
-was discovered, and its evidence report classifies the panic as separate from the ACP conformance
-fix. Do not reopen Plan 9.75 and do not silently fold this work into Plan 11.
-
-**Acceptance boundary:** Reproduce against a supported current Zed build, separate agent payload
-correctness from client rendering behavior, preserve the existing fail-closed refusal contract,
-and produce durable operator-visible refusal evidence or an explicit externally owned Zed defect
-disposition. Any agent-side workaround requires its own reviewed plan and must not weaken ACP
-conformance.
-
-**Evidence anchors:** `reports/plan-9-8-task-aware-context-evidence.md`,
-`reports/plan-9-75-zed-hitl-runtime-evidence.md`, and the Plan 9.8 `P9.8-FU-5` acceptance criteria.
 
 **Status:** Tracked, not yet scheduled. No implementation plan exists.
 
@@ -971,9 +961,15 @@ pattern.
   fail-closed threshold.
 - `P9.8-FU-3` — dynamic, model-aware context budgets and injection-safe required-file
   summarization with measured quality/cost trade-offs.
+- `P9.85-FU-1` — intelligent observation compression replacing fixed fail-closed carryover.
+- `P9.85-FU-2` — dynamic planning-evidence partition replacing the fixed 4 KiB/12 KiB split.
 
-`P9.8-FU-5` is explicitly excluded; its Zed client-stability custody remains in the standalone
-backlog entry above.
+Full acceptance criteria for all four live in the
+[Consolidated Deferred Follow-Ups backlog](2026-07-23-consolidated-deferred-followups-backlog.md);
+this list is a pointer, not a duplicate.
+
+`P9.8-FU-5` is explicitly excluded; its Zed client-stability custody remains in that same
+consolidated backlog document, not owned by Plan 11.
 
 **Expected deliverables:**
 - Selection/scoring engine implementing the utility function (weighted relevance, dependency-coverage gain, authority, recency, user pin, failure recurrence, evidence-diversity gain, minus redundancy penalty), dependency-closure resolution, and budget-constrained packing.
