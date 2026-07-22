@@ -671,7 +671,7 @@ conformance.
 
 **Status:** Tracked, not yet scheduled. No implementation plan exists.
 
-## Backlog: NDJSON Session Initial-Send Broken-Pipe Race (Tracked, Not Yet Scheduled)
+## Backlog: NDJSON Session Initial-Send Broken-Pipe Race (Resolved)
 
 **Raised:** 2026-07-22, after `test_run_operator_live_session_surfaces_no_approval_remediation`
 failed with `BrokenPipeError: [Errno 32] Broken pipe` on three separate `main`-branch CI runs within
@@ -691,6 +691,16 @@ handshake begins), the raw `BrokenPipeError` propagates instead of ever reaching
 path. This is not test-only flakiness: any real operator hitting this exact timing would see a bare
 traceback instead of the intended "run `optimus-trust ... approve --mode durable`" guidance.
 
+**Second race found during implementation:** Fixing the above exposed a related, pre-existing race:
+`_fail_subprocess_exited()` (shared by `send()`, `wait_for()`, and `read_next()`) read
+`stderr_text()` with no guarantee the background `_read_stderr` thread had drained the child's
+already-printed gate-rejection line yet. `wait_for()`'s `poll()` check fires on its very first loop
+iteration with zero delay, so it could call `_fail_subprocess_exited()` before the reader thread had
+appended anything, falling through to the generic "exited early, empty stderr" message instead of the
+real remediation text — confirmed on real CI (run `29933994440`) immediately after the first fix
+landed. The synchronization was centralized inside `_fail_subprocess_exited()` itself rather than
+duplicated per caller.
+
 **Scope clarity:** This is a Plan 9.96 follow-up, not a Plan 9.8 or Plan 9.98 one. The affected code
 (`NdjsonSubprocessSession`, `operator_verify.py`) is Plan 9.96 Task 5 Batch 3's own work — every
 attribution comment in the affected files says so (`ndjson_subprocess_session.py:163`,
@@ -708,11 +718,21 @@ detection already used for read-time exits, so a send-time pipe closure produces
 `LiveSessionError` an operator gets today from a read-time exit. Preserve the test's real (non-mocked)
 subprocess design. Demonstrate the fix with repeated runs showing zero flakes before closing.
 
+**Resolution:** Fixed in PR #65 (commits `aef45e9`, `a806c06`), merged to `main` at `39c7992` on
+2026-07-22. `send()`/`close_stdin()` now convert an already-exited child's broken pipe into the same
+clean `LiveSessionError` a read-time exit produces, and `_fail_subprocess_exited()` waits for the
+process and drains the stderr reader before building its message, closing both races. Five new
+deterministic unit tests in `tests/unit/acp/test_ndjson_subprocess_session.py` reproduce each race
+without relying on OS-scheduling timing; the previously-flaky integration test passed 25/25 local
+repeated runs and green on real `clean-environment-recheck` CI (run `29934807930`) before merge.
+
 **Evidence anchors:** `docs/superpowers/reviews/plan-9-98-fu-3-review-checkpoints.md:245-279`
 (first documented occurrence); CI runs `29921106279`, `29922900606`, `29930887488` (failures) and
-`29923341465` (clean pass, same test, same day).
+`29923341465` (clean pass, same test, same day); CI run `29933994440` (the second race, exposed after
+the first fix); CI run `29934807930` and post-merge `main` run `29935529847` (clean, both fixes
+applied).
 
-**Status:** Tracked, not yet scheduled. No implementation plan exists.
+**Status:** Resolved 2026-07-22.
 
 ## Plan 10 (Tracked, Not Yet Scheduled): Unified Gateway Capabilities Broker
 
