@@ -557,6 +557,92 @@ Plan 9.98 is necessary but not sufficient for Plan 9.96 closure because Plan 9.9
 
 **Status:** Implemented and real-dependency verified on 2026-07-19.
 
+### P9.98-FU-1 (Implemented): Workspace Identity TOCTOU Repair and Linux CI Isolation
+
+**Raised:** 2026-07-19, by Linux CI failures on PR #60 discovered before that PR merged. Two
+defects: (1) workspace revalidation remembered only the resolved target path, so a symlink
+retargeted after authorization, or a delete-and-recreate that happened to reuse an inode, could
+evade detection; (2) the default Linux CI suite implicitly depended on host keyring availability,
+POSIX file-creation defaults, and Python locale coercion that do not hold in a clean CI environment.
+
+**Root cause and fix:** `WorkspaceIdentity` (`src/optimus/acp/trusted_paths.py`) now binds the
+original absolute lexical input path alongside the resolved canonical path, device, inode, and a
+`st_ctime_ns` change-time token. Revalidation reconstructs a fresh identity from the stored lexical
+path -- not the previously-resolved target -- and compares the complete digest, so a retargeted
+symlink or a same-path replacement fails closed with `WORKSPACE_IDENTITY_CHANGED` before spawn.
+`optimus-trust inspect` now resolves workspace identity before opening the keyring-backed approval
+store, so a nonexistent workspace fails before any keyring access. Default-suite tests were made
+host-independent (fake keyring at every boundary, permission checks recorded rather than exercised
+against the real filesystem, explicit Popen-environment assertions) without adding a Redis, Gateway,
+ACPX, or keyring dependency to CI.
+
+**Design and plan:**
+`docs/superpowers/specs/2026-07-19-plan-9-98-fu-1-workspace-identity-ci-design.md`; implementation
+plan `docs/superpowers/plans/2026-07-19-plan-9-98-fu-1-workspace-identity-linux-ci.md`, approved and
+amended twice (v2 widened Task 1's identity-test scope, v3 corrected the verifier invocation) via
+`docs/superpowers/reviews/2026-07-19-plan-9-98-fu-1-implementation-plan-approval.md` and its
+`-v2`/`-v3` amendment records.
+
+**Implementation:** Commits `e77904257e647bdbdf4df85fc64155426df07a8e` ("fix: harden workspace
+identity revalidation"), `3079de205c1509599b36518f60fe97844406a7b6` ("fix: validate inspect
+workspace before keyring"), and `4818533c43202441152de42364b66f54aa5cdd31` ("test: make launch
+trust checks portable in CI") -- all merged as part of PR #60 (`agent/kiro/plan-9-96`, 2026-07-19),
+the same documented operator exception that bundled Plan 9.96 Tasks 0-8 and all of Plan 9.98 into
+one PR ahead of a weekly usage-limit reset. This plan's own Task 5 (an independent push, reviewer
+sign-off, and GitHub Actions verification cycle written assuming its own dedicated PR) was
+superseded by that bundling decision rather than skipped; the code and tests it specifies are the
+same code and tests live on `main` today.
+
+**Status:** Implemented. Re-verified 2026-07-23: `tests/unit/acp/test_trusted_paths.py` and the
+related launch-trust suites pass on current `main` (aside from the separately tracked Windows
+subprocess handle-duplication flake below, which is unrelated). This plan's own Task 5 and
+Definition-of-Done checkboxes remain unticked because that closure ceremony never ran as its own PR;
+this entry is the closure record this roadmap was missing.
+
+### P9.98-FU-2 (Implemented): Approval-Time Runtime Bootstrap
+
+**Raised:** 2026-07-19, as an immediate follow-up to Plan 9.98-FU-1, on the same pre-merge PR #60.
+FU-1's own `st_ctime_ns` workspace-identity binding introduced a self-invalidation defect: the first
+time a `.optimus` runtime-root directory was created inside the resolved workspace -- whether by an
+agent launch or the evidence tooling -- that creation itself changed the *parent* workspace
+directory's own change-time on POSIX, immediately invalidating the identity FU-1 had captured at
+approval time. A durable approval could pass authoring and then never actually be reusable.
+
+**Root cause and fix:** The TTY-gated `optimus-trust approve` ceremony
+(`src/optimus/acp/launch_approval_cli.py`) now creates and validates the empty resolved-workspace
+`.optimus` directory itself, before it captures the identity bound into the approval, so the
+directory's own creation can no longer retroactively change a stored identity's change-time.
+`append_launch_audit_event()` (`src/optimus/acp/launch_audit.py`) became a strict read-only consumer
+of that directory: it never creates it, and treats a missing, non-directory, or symlinked runtime
+root as fatal instead of silently bootstrapping one. Only the approve path, after `_require_tty()`,
+may create `.optimus`; `optimus-agent`, `optimus-trust run`, the evidence tool, `inspect`, `revoke`,
+and verification commands must never initialize it, preserving the no-launch-side-runtime-root-
+creation boundary the design set.
+
+**Design and plan:** `docs/superpowers/specs/2026-07-19-workspace-runtime-bootstrap-ci-design.md`;
+implementation plan
+`docs/superpowers/plans/2026-07-19-plan-9-98-fu-2-approval-time-runtime-bootstrap.md`, approved via
+`docs/superpowers/reviews/2026-07-19-plan-9-98-fu-2-implementation-plan-approval.md`.
+
+**Implementation:** Commits `16cc68c7b3233945cbb17654b4d91a9b42dc9c01` ("fix: require initialized
+workspace runtime root"), `d31f93e4d46175e882cf0d5cc5fb2bf9e7c60610` ("fix: bootstrap runtime root
+during approval"), `cbe7b1d17291475ec286cf7e984a847d18286a78` ("test: cover approved runtime root
+lifecycle"), and `900edfe159429b19b05449efae4382bddb72f21d` ("test: preserve missing runtime root
+regression") -- all merged as part of the same bundled PR #60. As with FU-1, this plan's own
+checkboxes were never ticked in-file because progress tracking did not go back through the plan
+document during the bundled push; the underlying work is real, live, and tested.
+
+**Downstream connection:** Discovering and fixing this exact class of POSIX change-time mutation is
+what led directly to a later CI run surfacing a related but distinct test-alignment gap -- five
+runtime-root failure-path tests whose fixtures did not yet account for the new fail-closed
+behavior this FU introduced -- tracked and separately closed as **Plan 9.98-FU-3** immediately below.
+That is why FU-3 already existed in this roadmap while FU-1 and FU-2, the causal work, did not.
+
+**Status:** Implemented. Re-verified 2026-07-23: `tests/unit/acp/test_launch_approval_cli.py` and
+`tests/unit/acp/test_launch_audit.py` pass on current `main` (aside from the separately tracked
+Windows subprocess handle-duplication flake below, which is unrelated). This entry is the closure
+record this roadmap was missing.
+
 ### P9.98-FU-3 (Complete): POSIX Runtime-Root Failure-Path Test Alignment
 
 **Raised:** 2026-07-19 by GitHub Actions `clean-environment-recheck` on PR #60
