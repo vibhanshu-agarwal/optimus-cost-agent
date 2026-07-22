@@ -1361,3 +1361,241 @@ class TestMonotonicLoosenRequiresExactApproval:
                 operator_paths=_sample_operator_paths(tmp_path),
                 hmac_key=_HMAC_KEY,
             )
+
+
+# --- Plan 9.99 Task 3: security recorder for registry + resolved URIs ---
+
+_URI_CANARY_OLD = "uri-userinfo-canary-OLD"
+_URI_CANARY_NEW = "uri-userinfo-canary-NEW"
+
+_REGISTRY_URI_SHAPES: dict[str, dict[str, str]] = {
+    "OPTIMUS_GATEWAY_URL": {
+        "none": "http://127.0.0.1:8765/acp",
+        "old": f"http://user:{_URI_CANARY_OLD}@127.0.0.1:8765/acp",
+        "new": f"http://user:{_URI_CANARY_NEW}@127.0.0.1:8765/acp",
+        "bare_at": "http://@127.0.0.1:8765/acp",
+        "normalized": "http://127.0.0.1:8765/acp",
+    },
+    "OPTIMUS_REDIS_URL": {
+        "none": "redis://127.0.0.1:6379/0",
+        "old": f"redis://user:{_URI_CANARY_OLD}@127.0.0.1:6379/0",
+        "new": f"redis://user:{_URI_CANARY_NEW}@127.0.0.1:6379/0",
+        "bare_at": "redis://@127.0.0.1:6379/0",
+        "normalized": "redis://127.0.0.1:6379/0",
+    },
+    "OPTIMUS_LOCAL_GATEWAY_BASE_URL": {
+        "none": "https://api.openrouter.ai/v1",
+        "old": f"https://user:{_URI_CANARY_OLD}@api.openrouter.ai/v1",
+        "new": f"https://user:{_URI_CANARY_NEW}@api.openrouter.ai/v1",
+        "bare_at": "https://@api.openrouter.ai/v1",
+        "normalized": "https://api.openrouter.ai/v1",
+    },
+}
+
+
+def _base_env_for_registry_uri(name: str, uri: str) -> dict[str, str]:
+    """Build a minimal valid env with one registry URI variable substituted."""
+    env = {
+        "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+        "OPTIMUS_API_KEY": "test-key",
+        "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+    }
+    env[name] = uri
+    return env
+
+
+def _resolve_from_env(tmp_path: Path, env: dict[str, str]) -> LaunchCandidate:
+    return resolve_launch_candidate(
+        snapshot=LaunchEnvironmentSnapshot.capture(env),
+        workspace_identity=_sample_workspace_identity(),
+        operator_paths=_sample_operator_paths(tmp_path),
+        hmac_key=_HMAC_KEY,
+    )
+
+
+def _assert_canary_absent_from_candidate(candidate: LaunchCandidate, *canaries: str) -> None:
+    for canary in canaries:
+        for value in candidate.security_literals.values():
+            assert canary not in value
+        for row in candidate.display_rows:
+            assert canary not in row.display_value
+
+
+class TestRegistryUriSecurityRecorder:
+    """Plan 9.99 Task 3: registry URI vars go through _record_security_value."""
+
+    @pytest.mark.parametrize("name", sorted(_REGISTRY_URI_SHAPES))
+    def test_four_source_digest_and_leak_canary(self, tmp_path: Path, name: str) -> None:
+        shapes = _REGISTRY_URI_SHAPES[name]
+        fp_key = f"{name}::uri_userinfo"
+
+        candidate_none = _resolve_from_env(tmp_path, _base_env_for_registry_uri(name, shapes["none"]))
+        candidate_old = _resolve_from_env(tmp_path, _base_env_for_registry_uri(name, shapes["old"]))
+        candidate_new = _resolve_from_env(tmp_path, _base_env_for_registry_uri(name, shapes["new"]))
+        candidate_bare = _resolve_from_env(tmp_path, _base_env_for_registry_uri(name, shapes["bare_at"]))
+
+        assert candidate_none.security_literals[name] == shapes["normalized"]
+        assert candidate_old.security_literals[name] == shapes["normalized"]
+        assert candidate_new.security_literals[name] == shapes["normalized"]
+        assert candidate_bare.security_literals[name] == shapes["normalized"]
+        assert candidate_none.security_literals[name] == candidate_old.security_literals[name]
+        assert candidate_none.security_literals[name] == candidate_bare.security_literals[name]
+
+        assert fp_key not in candidate_none.secret_fingerprints
+        assert fp_key in candidate_old.secret_fingerprints
+        assert fp_key in candidate_new.secret_fingerprints
+        assert fp_key in candidate_bare.secret_fingerprints
+
+        assert (
+            candidate_old.secret_fingerprints[fp_key]
+            != candidate_new.secret_fingerprints[fp_key]
+        )
+        assert candidate_old.security_snapshot_digest != candidate_new.security_snapshot_digest
+
+        _assert_canary_absent_from_candidate(
+            candidate_old, _URI_CANARY_OLD, _URI_CANARY_NEW
+        )
+        _assert_canary_absent_from_candidate(
+            candidate_new, _URI_CANARY_OLD, _URI_CANARY_NEW
+        )
+
+
+class TestResolvedBaseUrlSecurityRecorder:
+    """Plan 9.99 Task 3: _resolved_base_url uses the same security recorder."""
+
+    def test_resolved_base_url_userinfo_transition(self, tmp_path: Path) -> None:
+        class FixedKeyring:
+            """Empty keyring so only .env.gateway values are in play."""
+
+            def get_password(self, service: str, key: str) -> str | None:
+                return None
+
+        env = {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+        }
+        snapshot = LaunchEnvironmentSnapshot.capture(env)
+        ws_identity = _sample_workspace_identity()
+
+        raw_old = f"https://user:{_URI_CANARY_OLD}@api.openrouter.ai/v1"
+        raw_new = f"https://user:{_URI_CANARY_NEW}@api.openrouter.ai/v1"
+        normalized = "https://api.openrouter.ai/v1"
+        fp_key = "_resolved_base_url::uri_userinfo"
+
+        config_root_old = tmp_path / "config-old"
+        config_root_old.mkdir()
+        env_gateway_old = config_root_old / ".env.gateway"
+        env_gateway_old.write_text(
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-fixed-test-key\n"
+            f"OPTIMUS_LOCAL_GATEWAY_BASE_URL={raw_old}\n",
+            encoding="utf-8",
+        )
+        if sys.platform != "win32":
+            env_gateway_old.chmod(0o600)
+        paths_old = OperatorPaths(
+            workspace_root=tmp_path,
+            config_root=config_root_old,
+            runtime_root=tmp_path / ".optimus",
+            debug_log_path=tmp_path / ".optimus" / "debug-acp.ndjson",
+            gateway_log_path=tmp_path / ".optimus" / "local-gateway.log",
+        )
+
+        config_root_new = tmp_path / "config-new"
+        config_root_new.mkdir()
+        env_gateway_new = config_root_new / ".env.gateway"
+        env_gateway_new.write_text(
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-fixed-test-key\n"
+            f"OPTIMUS_LOCAL_GATEWAY_BASE_URL={raw_new}\n",
+            encoding="utf-8",
+        )
+        if sys.platform != "win32":
+            env_gateway_new.chmod(0o600)
+        paths_new = OperatorPaths(
+            workspace_root=tmp_path,
+            config_root=config_root_new,
+            runtime_root=tmp_path / ".optimus",
+            debug_log_path=tmp_path / ".optimus" / "debug-acp.ndjson",
+            gateway_log_path=tmp_path / ".optimus" / "local-gateway.log",
+        )
+
+        candidate_old = resolve_launch_candidate(
+            snapshot=snapshot,
+            workspace_identity=ws_identity,
+            operator_paths=paths_old,
+            hmac_key=_HMAC_KEY,
+            credential_keyring_backend=FixedKeyring(),
+        )
+        candidate_new = resolve_launch_candidate(
+            snapshot=snapshot,
+            workspace_identity=ws_identity,
+            operator_paths=paths_new,
+            hmac_key=_HMAC_KEY,
+            credential_keyring_backend=FixedKeyring(),
+        )
+
+        assert candidate_old.provider_credentials is not None
+        assert candidate_old.provider_credentials.secrets is not None
+        assert candidate_old.provider_credentials.secrets.base_url == raw_old
+        assert candidate_new.provider_credentials.secrets.base_url == raw_new
+
+        assert candidate_old.security_literals["_resolved_base_url"] == normalized
+        assert candidate_new.security_literals["_resolved_base_url"] == normalized
+        assert fp_key in candidate_old.secret_fingerprints
+        assert fp_key in candidate_new.secret_fingerprints
+        assert (
+            candidate_old.secret_fingerprints[fp_key]
+            != candidate_new.secret_fingerprints[fp_key]
+        )
+        assert candidate_old.security_snapshot_digest != candidate_new.security_snapshot_digest
+
+        _assert_canary_absent_from_candidate(
+            candidate_old, _URI_CANARY_OLD, _URI_CANARY_NEW
+        )
+        _assert_canary_absent_from_candidate(
+            candidate_new, _URI_CANARY_OLD, _URI_CANARY_NEW
+        )
+
+    def test_child_propagation_retains_raw_uri(self, tmp_path: Path) -> None:
+        raw_gateway = f"http://user:{_URI_CANARY_OLD}@127.0.0.1:8765/acp"
+        raw_base = f"https://user:{_URI_CANARY_OLD}@api.openrouter.ai/v1"
+        env = {
+            "OPTIMUS_GATEWAY_URL": raw_gateway,
+            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "openrouter",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-or-test",
+            "OPTIMUS_LOCAL_GATEWAY_BASE_URL": raw_base,
+        }
+        candidate = _resolve_from_env(tmp_path, env)
+
+        assert candidate.inherited.values["OPTIMUS_GATEWAY_URL"] == raw_gateway
+        assert candidate.agent_environ["OPTIMUS_GATEWAY_URL"] == raw_gateway
+        assert candidate.provider_credentials is not None
+        assert candidate.provider_credentials.secrets is not None
+        assert candidate.provider_credentials.secrets.base_url == raw_base
+
+    def test_approval_json_excludes_uri_canary(self, tmp_path: Path) -> None:
+        from optimus.acp.launch_approvals import (
+            build_approval_record,
+            serialize_approval_record,
+        )
+
+        raw = f"redis://user:{_URI_CANARY_OLD}@127.0.0.1:6379/0"
+        candidate = _resolve_from_env(
+            tmp_path,
+            _base_env_for_registry_uri("OPTIMUS_REDIS_URL", raw),
+        )
+        record = build_approval_record(
+            mode="durable",
+            workspace_identity=candidate.workspace_identity,
+            security_literals=candidate.security_literals,
+            secret_fingerprints=candidate.secret_fingerprints,
+            monotonic_grants=candidate.monotonic_grants,
+            model_observation=candidate.model_observation,
+            hmac_key=_HMAC_KEY,
+        )
+        serialized = serialize_approval_record(record)
+        assert _URI_CANARY_OLD not in serialized

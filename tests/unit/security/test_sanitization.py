@@ -12,6 +12,7 @@ import pytest
 from optimus_security.sanitization import (
     MAX_SECRET_TEXT_CHARS,
     StreamingTextSanitizer,
+    canonicalize_credential_uri,
     mask_uri_userinfo,
     sanitize_for_persistence,
     session_correlation_tag,
@@ -259,6 +260,38 @@ class TestRuleCounts:
     def test_no_rules_fired_returns_empty_counts(self) -> None:
         result = sanitize_for_persistence("safe text", known_secrets=[])
         assert result.rule_counts == {}
+
+
+@pytest.mark.parametrize(
+    ("uri", "normalized", "display", "present"),
+    [
+        ("redis://user:pass@host:6379/0", "redis://host:6379/0", "redis://**********@host:6379/0", True),
+        ("redis://@host:6379/0", "redis://host:6379/0", "redis://**********@host:6379/0", True),
+        ("redis://:pass@host:6379/0", "redis://host:6379/0", "redis://**********@host:6379/0", True),
+        ("redis://user:@host:6379/0", "redis://host:6379/0", "redis://**********@host:6379/0", True),
+        ("redis://user@host:6379/0", "redis://host:6379/0", "redis://**********@host:6379/0", True),
+        ("redis://host:6379/0", "redis://host:6379/0", "redis://host:6379/0", False),
+    ],
+)
+def test_canonicalize_credential_uri_preserves_presence_and_display(
+    uri: str, normalized: str, display: str, present: bool
+) -> None:
+    result = canonicalize_credential_uri(uri)
+    assert result.normalized_uri == normalized
+    assert result.display_uri == display
+    assert result.userinfo_present is present
+
+
+def test_canonicalize_credential_uri_preserves_ipv6_brackets() -> None:
+    result = canonicalize_credential_uri("redis://user:pass@[::1]:6379/0")
+    assert result.normalized_uri == "redis://[::1]:6379/0"
+    assert result.display_uri == "redis://**********@[::1]:6379/0"
+
+
+def test_canonicalize_credential_uri_preserves_mixed_case_host() -> None:
+    result = canonicalize_credential_uri("redis://user:pass@MyHost.EXAMPLE.com/0")
+    assert result.normalized_uri == "redis://MyHost.EXAMPLE.com/0"
+    assert result.display_uri == "redis://**********@MyHost.EXAMPLE.com/0"
 
 
 class TestMaskUriUserinfo:

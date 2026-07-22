@@ -17,6 +17,7 @@ from types import MappingProxyType
 from urllib.parse import urlparse
 
 from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES
+from optimus_security.sanitization import mask_uri_userinfo
 
 # --- Enumerations ---
 
@@ -54,6 +55,7 @@ class LaunchVariablePolicy:
     parser: Callable[[str], object]
     display: Callable[[str], str]
     approval: str
+    uri_userinfo: bool
 
 
 # --- Error type ---
@@ -263,14 +265,7 @@ def _display_literal(value: str) -> str:
 
 def _display_uri_masked(value: str) -> str:
     """URI values mask user information but show structure."""
-    parsed = urlparse(value.strip())
-    if parsed.username or parsed.password:
-        # Reconstruct without userinfo.
-        netloc = parsed.hostname or ""
-        if parsed.port:
-            netloc += f":{parsed.port}"
-        return parsed._replace(netloc=netloc).geturl()
-    return value.strip()
+    return mask_uri_userinfo(value)
 
 
 def _display_internal(_value: str) -> str:
@@ -292,6 +287,7 @@ def _register(
     parser: Callable[[str], object],
     display: Callable[[str], str],
     approval: str,
+    uri_userinfo: bool,
 ) -> None:
     _POLICIES[name] = LaunchVariablePolicy(
         name=name,
@@ -300,6 +296,7 @@ def _register(
         parser=parser,
         display=display,
         approval=approval,
+        uri_userinfo=uri_userinfo,
     )
 
 
@@ -313,6 +310,7 @@ for _provider_key in sorted(LOCAL_PROVIDER_KEY_NAMES):
         parser=_parse_secret,
         display=_display_redacted,
         approval="exact_hmac",
+        uri_userinfo=False,
     )
 
 # --- Tier: Secret (OPTIMUS_API_KEY) ---
@@ -324,6 +322,7 @@ _register(
     parser=_parse_secret,
     display=_display_redacted,
     approval="exact_hmac",
+    uri_userinfo=False,
 )
 
 # --- Tier: Secret (Gateway-internal credentials) ---
@@ -335,6 +334,7 @@ _register(
     parser=_parse_secret,
     display=_display_redacted,
     approval="exact_hmac",
+    uri_userinfo=False,
 )
 _register(
     "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET",
@@ -343,6 +343,7 @@ _register(
     parser=_parse_secret,
     display=_display_redacted,
     approval="exact_hmac",
+    uri_userinfo=False,
 )
 
 # --- Tier: Security ---
@@ -352,8 +353,9 @@ _register(
     tier=LaunchVariableTier.SECURITY,
     propagation=frozenset({PropagationTarget.AGENT_CHILD}),
     parser=_parse_url,
-    display=_display_literal,
-    approval="exact_literal",
+    display=_display_uri_masked,
+    approval="exact_hmac_uri",
+    uri_userinfo=True,
 )
 _register(
     "OPTIMUS_REDIS_URL",
@@ -362,6 +364,7 @@ _register(
     parser=_parse_redis_url,
     display=_display_uri_masked,
     approval="exact_hmac_uri",
+    uri_userinfo=True,
 )
 _register(
     "OPTIMUS_CONFIG_ROOT",
@@ -370,6 +373,7 @@ _register(
     parser=_parse_config_root,
     display=_display_literal,
     approval="exact_literal",
+    uri_userinfo=False,
 )
 _register(
     "OPTIMUS_PRODUCTION_MODE",
@@ -387,6 +391,7 @@ _register(
     parser=_parse_bool_like,
     display=_display_literal,
     approval="exact_literal",
+    uri_userinfo=False,
 )
 _register(
     "OPTIMUS_EXTRA_GATEWAY_ORIGINS",
@@ -395,6 +400,7 @@ _register(
     parser=_parse_origins,
     display=_display_literal,
     approval="exact_literal",
+    uri_userinfo=False,
 )
 _register(
     "OPTIMUS_LOCAL_GATEWAY_PROVIDER",
@@ -403,14 +409,16 @@ _register(
     parser=_parse_provider,
     display=_display_literal,
     approval="exact_literal",
+    uri_userinfo=False,
 )
 _register(
     "OPTIMUS_LOCAL_GATEWAY_BASE_URL",
     tier=LaunchVariableTier.SECURITY,
     propagation=frozenset({PropagationTarget.GATEWAY_CHILD}),
     parser=_parse_base_url,
-    display=_display_literal,
-    approval="exact_literal",
+    display=_display_uri_masked,
+    approval="exact_hmac_uri",
+    uri_userinfo=True,
 )
 
 # --- Tier: Monotonic Limit ---
@@ -422,6 +430,7 @@ _register(
     parser=_parse_monotonic_cost,
     display=_display_literal,
     approval="monotonic_tighten_or_exact",
+    uri_userinfo=False,
 )
 _register(
     "OPTIMUS_MAX_PLANNING_TURNS",
@@ -430,6 +439,7 @@ _register(
     parser=_parse_monotonic_turns,
     display=_display_literal,
     approval="monotonic_tighten_or_exact",
+    uri_userinfo=False,
 )
 
 # --- Tier: Operational ---
@@ -441,6 +451,7 @@ _register(
     parser=_parse_model,
     display=_display_literal,
     approval="bounded_model_predicate",
+    uri_userinfo=False,
 )
 
 # --- Tier: Internal-only ---
@@ -452,6 +463,7 @@ _register(
     parser=_parse_internal_only,
     display=_display_internal,
     approval="reject_inherited",
+    uri_userinfo=False,
 )
 _register(
     "OPTIMUS_LOCAL_GATEWAY_PORT",
@@ -460,6 +472,7 @@ _register(
     parser=_parse_internal_only,
     display=_display_internal,
     approval="reject_inherited",
+    uri_userinfo=False,
 )
 _register(
     "OPTIMUS_ACP_DEBUG_TRACE",
@@ -468,6 +481,7 @@ _register(
     parser=_parse_internal_only,
     display=_display_internal,
     approval="reject_inherited",
+    uri_userinfo=False,
 )
 _register(
     "OPTIMUS_ACP_DEBUG_LOG",
@@ -476,6 +490,7 @@ _register(
     parser=_parse_internal_only,
     display=_display_internal,
     approval="reject_inherited",
+    uri_userinfo=False,
 )
 _register(
     "OPTIMUS_ACP_PROVENANCE_ROOT",
@@ -484,6 +499,7 @@ _register(
     parser=_parse_internal_only,
     display=_display_internal,
     approval="reject_inherited",
+    uri_userinfo=False,
 )
 
 # --- Exported immutable registry ---

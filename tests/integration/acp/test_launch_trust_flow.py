@@ -36,6 +36,7 @@ from optimus.acp.launch_approvals import (
     LAUNCH_POLICY_COMPATIBILITY,
     KeyringApprovalStore,
     build_approval_record,
+    serialize_approval_record,
 )
 from optimus.acp.launch_audit import LaunchAuditEvent, append_launch_audit_event
 from optimus.acp.launch_gate import (
@@ -424,5 +425,115 @@ def test_full_launch_trust_flow_snapshot_mismatch_fails_closed(tmp_path: Path) -
             candidate=changed_candidate,
             store=changed_store,
             launch_session_id="sess_integration_mismatch",
+        )
+    assert exc_info.value.code == "SNAPSHOT_MISMATCH"
+
+
+_URI_TRUST_CANARY_OLD = "uri-trust-canary-OLD"
+_URI_TRUST_CANARY_NEW = "uri-trust-canary-NEW"
+
+
+def test_full_launch_trust_flow_authorizes_identical_credential_uri(tmp_path: Path) -> None:
+    """Durable approval authorizes when the credential-bearing URI is unchanged.
+
+    Proves end-to-end that URI userinfo is fingerprint-bound (not masking-only):
+    two independent resolutions of the same credential URI produce matching
+    digests, authorize successfully, and never persist the synthetic canary.
+    """
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    (workspace_root.parent / "operator-config").mkdir()
+    runtime_root = workspace_root / ".optimus-runtime"
+    keyring = FakeKeyring()
+    env = _base_env(workspace_root=workspace_root)
+    env["OPTIMUS_REDIS_URL"] = (
+        f"redis://{_URI_TRUST_CANARY_OLD}:pass@127.0.0.1:6379/0"
+    )
+
+    authoring_candidate, store = _real_launch_pipeline(
+        env=env, workspace_root=workspace_root, keyring=keyring, runtime_root=runtime_root, authoring=True
+    )
+    record = build_approval_record(
+        mode="durable",
+        workspace_identity=authoring_candidate.workspace_identity,
+        security_literals=authoring_candidate.security_literals,
+        secret_fingerprints=authoring_candidate.secret_fingerprints,
+        monotonic_grants=authoring_candidate.monotonic_grants,
+        model_observation=authoring_candidate.model_observation,
+        hmac_key=store.hmac_key,
+    )
+    store.write_durable(record)
+
+    serialized = serialize_approval_record(record)
+    assert _URI_TRUST_CANARY_OLD not in serialized
+    for value in record.security_literals.values():
+        assert _URI_TRUST_CANARY_OLD not in value
+
+    launch_candidate, launch_store = _real_launch_pipeline(
+        env=env, workspace_root=workspace_root, keyring=keyring, runtime_root=runtime_root
+    )
+    assert launch_candidate.security_snapshot_digest == authoring_candidate.security_snapshot_digest
+
+    authorized = authorize_launch(
+        candidate=launch_candidate,
+        store=launch_store,
+        launch_session_id="sess_integration_uri_identical",
+    )
+    assert authorized.approval_mode == "durable"
+    assert authorized.approval_id == record.approval_id
+
+
+def test_full_launch_trust_flow_uri_userinfo_mutation_fails_closed(tmp_path: Path) -> None:
+    """Userinfo-only URI mutation is rejected with SNAPSHOT_MISMATCH.
+
+    Changes only the Redis URI userinfo between authoring and launch; host and
+    path stay identical. Digests must diverge and authorize_launch must fail
+    closed before any audit append or child side effect is invoked.
+    """
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    (workspace_root.parent / "operator-config").mkdir()
+    runtime_root = workspace_root / ".optimus-runtime"
+    keyring = FakeKeyring()
+    env = _base_env(workspace_root=workspace_root)
+    env["OPTIMUS_REDIS_URL"] = (
+        f"redis://{_URI_TRUST_CANARY_OLD}:pass@127.0.0.1:6379/0"
+    )
+
+    authoring_candidate, store = _real_launch_pipeline(
+        env=env, workspace_root=workspace_root, keyring=keyring, runtime_root=runtime_root, authoring=True
+    )
+    record = build_approval_record(
+        mode="durable",
+        workspace_identity=authoring_candidate.workspace_identity,
+        security_literals=authoring_candidate.security_literals,
+        secret_fingerprints=authoring_candidate.secret_fingerprints,
+        monotonic_grants=authoring_candidate.monotonic_grants,
+        model_observation=authoring_candidate.model_observation,
+        hmac_key=store.hmac_key,
+    )
+    store.write_durable(record)
+
+    serialized = serialize_approval_record(record)
+    assert _URI_TRUST_CANARY_OLD not in serialized
+    for value in record.security_literals.values():
+        assert _URI_TRUST_CANARY_OLD not in value
+
+    changed_env = dict(env)
+    changed_env["OPTIMUS_REDIS_URL"] = (
+        f"redis://{_URI_TRUST_CANARY_NEW}:pass@127.0.0.1:6379/0"
+    )
+    changed_candidate, changed_store = _real_launch_pipeline(
+        env=changed_env, workspace_root=workspace_root, keyring=keyring, runtime_root=runtime_root
+    )
+    assert changed_candidate.security_snapshot_digest != authoring_candidate.security_snapshot_digest
+
+    # Rejection path: never invoke audit append or child construction — only
+    # authorize_launch, which must fail closed before those seams.
+    with pytest.raises(LaunchGateError) as exc_info:
+        authorize_launch(
+            candidate=changed_candidate,
+            store=changed_store,
+            launch_session_id="sess_integration_uri_mismatch",
         )
     assert exc_info.value.code == "SNAPSHOT_MISMATCH"

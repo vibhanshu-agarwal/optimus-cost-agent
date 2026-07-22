@@ -28,6 +28,7 @@ from optimus.acp.launch_approvals import (
     compute_grant_hmac,
     compute_record_hmac,
     compute_secret_fingerprint,
+    compute_security_snapshot_digest,
     derive_one_shot_handle,
     serialize_approval_record,
 )
@@ -685,8 +686,70 @@ class TestRecordSizeBoundary:
         assert exc_info.value.code == "RECORD_TOO_LARGE"
 
 
+def test_plan_999_compatibility_version_is_current() -> None:
+    assert LAUNCH_POLICY_COMPATIBILITY == "P9.99-v1"
+
+
+class TestSecuritySnapshotDigest:
+    """Plan 9.99 Task 4: security-snapshot-v3 digest domain and regression."""
+
+    def _base_inputs(self) -> dict[str, object]:
+        return {
+            "security_literals": {"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765"},
+            "secret_fingerprints": {"OPTIMUS_REDIS_URL::uri_userinfo": "fp_redis_userinfo"},
+            "workspace_digest": "a" * 64,
+            "registry_version": LAUNCH_POLICY_COMPATIBILITY,
+        }
+
+    def test_digest_is_deterministic_for_identical_inputs(self) -> None:
+        inputs = self._base_inputs()
+        digest_a = compute_security_snapshot_digest(**inputs)
+        digest_b = compute_security_snapshot_digest(**inputs)
+        assert digest_a == digest_b
+
+    def test_digest_changes_when_uri_userinfo_fingerprint_value_changes(self) -> None:
+        base = self._base_inputs()
+        changed = dict(base)
+        changed["secret_fingerprints"] = {
+            "OPTIMUS_REDIS_URL::uri_userinfo": "fp_different_userinfo",
+        }
+        assert compute_security_snapshot_digest(**base) != compute_security_snapshot_digest(**changed)
+
+    def test_digest_changes_when_uri_userinfo_fingerprint_key_changes(self) -> None:
+        base = self._base_inputs()
+        changed = dict(base)
+        changed["secret_fingerprints"] = {
+            "OTHER_REDIS_URL::uri_userinfo": base["secret_fingerprints"]["OPTIMUS_REDIS_URL::uri_userinfo"],
+        }
+        assert compute_security_snapshot_digest(**base) != compute_security_snapshot_digest(**changed)
+
+
 class TestPolicyAndKeyRotation:
     """Wrong-policy rejection and rotated-key invalidation."""
+
+    def test_legacy_p996_policy_compatibility_is_rejected_on_read(self, tmp_path: Path) -> None:
+        """A valid HMAC-signed record with legacy P9.96-v1 policy fails on read."""
+        hmac_key = b"shared-test-hmac-key-32-bytes!!"
+        keyring = FakeKeyring()
+        store = KeyringApprovalStore(
+            keyring_backend=keyring,
+            runtime_root=tmp_path,
+            hmac_key=hmac_key,
+        )
+        record = _sample_approval_record(hmac_key=hmac_key)
+        ws_digest = record.workspace_identity.digest
+
+        legacy_record = replace(record, policy_compatibility="P9.96-v1", record_hmac="")
+        legacy_record = replace(
+            legacy_record,
+            record_hmac=compute_record_hmac(legacy_record, hmac_key=hmac_key),
+        )
+        service = store._service_name
+        keyring.set_password(service, f"durable:{ws_digest}", serialize_approval_record(legacy_record))
+
+        with pytest.raises(ApprovalError) as exc_info:
+            store.read_durable(ws_digest)
+        assert exc_info.value.code == "POLICY_MISMATCH"
 
     def test_wrong_policy_compatibility_is_rejected_on_read(self, tmp_path: Path) -> None:
         """A record with mismatched policy_compatibility fails."""

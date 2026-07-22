@@ -126,6 +126,13 @@ class TestRegistryInventory:
             assert callable(policy.parser), f"Non-callable parser for {name}"
             assert callable(policy.display), f"Non-callable display for {name}"
             assert policy.approval, f"Empty approval rule for {name}"
+            assert isinstance(policy.uri_userinfo, bool), f"Missing uri_userinfo for {name}"
+
+
+def test_every_url_named_security_variable_declares_uri_userinfo() -> None:
+    for name, policy in LAUNCH_VARIABLE_POLICIES.items():
+        if policy.tier == LaunchVariableTier.SECURITY and (name.endswith("_URL") or name.endswith("_URI")):
+            assert policy.uri_userinfo is True, f"URI policy metadata missing for {name}"
 
 
 class TestFailClosedBehavior:
