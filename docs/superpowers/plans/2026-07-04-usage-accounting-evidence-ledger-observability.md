@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** Implemented (Phase 1). See README.md's "Phase 1 Usage Accounting and Observability" feature section and this plan's entry under Plan 7 in `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md` for current build status. This plan predates this project's per-step checkbox-tracking convention, so its steps below were never intended to be individually ticked.
+
 **Goal:** Persist and reconcile every billable gateway call from gateway response fields into provider usage, evidence audit records, Redis telemetry, JSONL events, and Gateway-managed observability traces.
 
 **Architecture:** Extend the existing gateway/evidence seam instead of creating a parallel cost path. `GatewayUsage` remains the wire-level response envelope copied from the Optimus Gateway; `ProviderUsage` becomes the canonical persisted normalized cost record and joins to `EvidenceLedgerEntry` on `gateway_request_id`; telemetry writers emit append-only JSONL locally and send trace batches to the Optimus Gateway, which owns LangSmith credentials. Redis integration is isolated behind adapter boundaries so unit tests use fake clients while production can use Redis HASH and RedisTimeSeries commands.

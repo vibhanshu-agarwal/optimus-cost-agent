@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** Implemented (Phase 1). See README.md's "Phase 1 Mode Boundary Foundation" feature section and this plan's entry under Plan 2 in `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md` for current build status. This plan predates this project's per-step checkbox-tracking convention, so its steps below were never intended to be individually ticked.
+
 **Goal:** Build the Phase 1 mode boundary, deterministic lifecycle state machine, AwaitingApproval gate, and mutation primitive that prevents repository or shell mutation outside approved Agent mode.
 
 **Architecture:** Add a focused `optimus.runtime` package that owns execution modes, generation-scope classification, lifecycle states, transition validation, approval records, and `MutationGuard`. Add a small `optimus.tools` mutation-wrapper package so file writes, shell execution, and shadow-apply paths must call `assert_mutation_allowed()` before any I/O. Integrate the runtime exception with the existing ACP JSON-RPC error helpers so forbidden mutations return code `-32002`.
