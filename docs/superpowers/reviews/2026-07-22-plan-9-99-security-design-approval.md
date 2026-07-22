@@ -1,6 +1,6 @@
 # Plan 9.99 Security Design Approval Record
 
-**Status:** Reviewer-agent approved on 2026-07-22; operator approval pending.
+**Status:** Reviewer-agent and operator approved on 2026-07-22.
 
 **Contract:** `docs/superpowers/specs/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization-design.md`
 
@@ -17,7 +17,7 @@
   IPv6-bracket-loss and host-case-folding bug in the existing `mask_uri_userinfo`, confirming the
   `_project_child_env` raw-propagation path is unaffected by normalization, and identifying the
   additional `run-gateway` literal base-URL print (`launch_approval_cli.py:564`) as in-scope.
-- **Operator:** Pending.
+- **Operator:** Approved on 2026-07-22.
 
 ## Freeze Semantics
 

@@ -1,6 +1,6 @@
 # Plan 9.99 Implementation Plan Approval Record
 
-**Status:** Reviewer-agent approved on 2026-07-22; implementation has not started; operator approval pending.
+**Status:** Reviewer-agent and operator approved on 2026-07-22; implementation has not started.
 
 **Implementation plan:** `docs/superpowers/plans/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md`
 
@@ -16,7 +16,7 @@
   state, and noting two non-blocking observations (the `_record_security_value` private-naming
   refinement, and manual interpretation needed for Task 7 Step 5's version-string grep against the
   Explicit Exceptions clause).
-- **Operator:** Pending.
+- **Operator:** Approved on 2026-07-22.
 
 ## Freeze Semantics
 

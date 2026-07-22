@@ -613,7 +613,7 @@ non-credential URI behavior.
 **Dependency:** Plan 9.99 must land before Plan 9.96 closes. Plan 9.98 v6 does not implement,
 reinterpret, or waive this finding.
 
-**Design-entry gate:** Reviewer-agent approved on 2026-07-22; operator approval pending. The review
+**Design-entry gate:** Reviewer-agent and operator approved on 2026-07-22. The review
 broadened the finding to every SECURITY-tier URI-bearing value (`OPTIMUS_GATEWAY_URL`,
 `OPTIMUS_REDIS_URL`, `OPTIMUS_LOCAL_GATEWAY_BASE_URL`, and the resolved `_resolved_base_url`),
 required original-text userinfo slicing to preserve IPv6 bracket and host-case fidelity, and required
@@ -623,8 +623,8 @@ classification. The frozen contract is
 at SHA-256 `B2B236EEF191EC74046A9FF32EA63F91A08E6519BA30ADF8FA3599F4DBC77CF8`; its adjacent approval
 record is `docs/superpowers/reviews/2026-07-22-plan-9-99-security-design-approval.md`.
 
-**Status:** Reviewer-agent approved the implementation plan on 2026-07-22; operator approval pending;
-implementation has not started.
+**Status:** Reviewer-agent and operator approved the implementation plan on 2026-07-22; implementation
+has not started.
 `docs/superpowers/plans/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md` is
 frozen at SHA-256 `BEDF2340F8473F2FDCB2E582255E4A09C42B0B9017AFAC5847FD962C2FD6AFA1`; its adjacent
 approval record is `docs/superpowers/reviews/2026-07-22-plan-9-99-implementation-plan-approval.md`.
