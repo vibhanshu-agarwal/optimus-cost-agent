@@ -76,12 +76,28 @@ class NdjsonSubprocessSession:
             raise LiveSessionError("subprocess stdin is not available")
         payload = dict(message)
         self._transcript.record_outbound(payload)
-        self._process.stdin.write(json.dumps(payload, separators=(",", ":")) + "\n")
-        self._process.stdin.flush()
+        try:
+            self._process.stdin.write(json.dumps(payload, separators=(",", ":")) + "\n")
+            self._process.stdin.flush()
+        except OSError:
+            # The child already exited and closed its end of the pipe before
+            # this write landed -- the same race wait_for()/read_next()
+            # detect via poll() after the fact. Delegate to the shared
+            # _fail_subprocess_exited(), which itself waits for the process
+            # and drains the stderr reader before building its message, so a
+            # send-time pipe closure produces the identical clean,
+            # value-free LiveSessionError a read-time exit already
+            # produces, instead of letting a raw OSError escape.
+            self._fail_subprocess_exited("ACP subprocess stdin closed while sending an ndjson message")
 
     def close_stdin(self) -> None:
         if self._process.stdin is not None:
-            self._process.stdin.close()
+            try:
+                self._process.stdin.close()
+            except OSError:
+                # Best-effort cleanup only: a child that already closed its
+                # end of the pipe makes this close() redundant, not an error.
+                pass
 
     def wait_for(
         self,
@@ -157,6 +173,19 @@ class NdjsonSubprocessSession:
             self._stderr_lines.append(sanitized)
 
     def _fail_subprocess_exited(self, error_message: str) -> None:
+        # wait_for()'s and read_next()'s poll() checks (and send()'s
+        # broken-pipe handler) can reach this the instant the child exits,
+        # before the background _read_stderr thread has drained the child's
+        # already-printed gate-rejection line. Wait for the process to be
+        # reapable and join the reader thread FIRST -- both return
+        # near-instantly once the child has actually exited -- so
+        # stderr_text() below reflects the complete output instead of
+        # whatever had been read by pure luck at the moment of the check.
+        try:
+            self._process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        self._stderr_reader.join(timeout=5)
         code = self._process.poll()
         code_text = "closing" if code is None else str(code)
         stderr_text = self.stderr_text()
