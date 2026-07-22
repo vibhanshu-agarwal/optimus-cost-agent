@@ -17,7 +17,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 
 # Maximum length of a secret that the sanitizer guarantees to catch in streaming
 # mode. Secrets longer than this are rejected at launch time (Task 6).
@@ -361,17 +361,47 @@ def session_correlation_tag(secret: str, *, field_name: str, session_key: bytes)
     return digest[:16].hex()
 
 
+@dataclass(frozen=True)
+class CredentialUriCanonicalization:
+    """Original-text credential URI canonicalization for security snapshots."""
+
+    normalized_uri: str
+    display_uri: str
+    userinfo_present: bool
+
+
+def canonicalize_credential_uri(uri: str) -> CredentialUriCanonicalization:
+    """Canonicalize a credential-bearing URI using original-text slicing."""
+    stripped = uri.strip()
+    parsed = urlparse(stripped)
+    userinfo_present = parsed.username is not None or parsed.password is not None
+
+    if not userinfo_present:
+        return CredentialUriCanonicalization(
+            normalized_uri=stripped,
+            display_uri=stripped,
+            userinfo_present=False,
+        )
+
+    _, _, hostport = parsed.netloc.rpartition("@")
+    normalized_netloc = hostport
+    display_netloc = f"{_REDACTED}@{hostport}"
+
+    netloc_index = stripped.find(parsed.netloc)
+    prefix = stripped[:netloc_index]
+    suffix = stripped[netloc_index + len(parsed.netloc) :]
+
+    return CredentialUriCanonicalization(
+        normalized_uri=prefix + normalized_netloc + suffix,
+        display_uri=prefix + display_netloc + suffix,
+        userinfo_present=True,
+    )
+
+
 def mask_uri_userinfo(uri: str) -> str:
     """Mask user information in a URI, preserving structure.
 
     Returns the URI with username:password replaced by **********.
     If no userinfo is present, returns the URI unchanged.
     """
-    parsed = urlparse(uri)
-    if not parsed.username and not parsed.password:
-        return uri
-    # Rebuild netloc without userinfo.
-    host = parsed.hostname or ""
-    port_suffix = f":{parsed.port}" if parsed.port else ""
-    clean_netloc = f"{host}{port_suffix}"
-    return urlunparse(parsed._replace(netloc=clean_netloc))
+    return canonicalize_credential_uri(uri).display_uri

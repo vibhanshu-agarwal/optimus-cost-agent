@@ -28,7 +28,7 @@ from optimus.acp.trusted_paths import WorkspaceIdentity
 # --- Constants ---
 
 APPROVAL_SCHEMA_VERSION = 1
-LAUNCH_POLICY_COMPATIBILITY = "P9.96-v1"
+LAUNCH_POLICY_COMPATIBILITY = "P9.99-v1"
 MAX_APPROVAL_RECORD_BYTES = 1800
 ONE_SHOT_TTL_SECONDS = 300
 DIAGNOSTIC_TTL_SECONDS = 900
@@ -149,7 +149,7 @@ def compute_security_snapshot_digest(
     digest.
     """
     hasher = hashlib.sha256()
-    hasher.update(b"security-snapshot-v2\x00")
+    hasher.update(b"security-snapshot-v3\x00")
     hasher.update(workspace_digest.encode("utf-8"))
     hasher.update(b"\x00")
     hasher.update(registry_version.encode("utf-8"))

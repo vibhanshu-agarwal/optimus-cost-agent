@@ -64,7 +64,7 @@ Interfaces:
 - Produces canonicalize_credential_uri(uri: str) -> CredentialUriCanonicalization.
 - Keeps mask_uri_userinfo(uri: str) -> str as the public wrapper returning display_uri.
 
-- [ ] Step 1: Write the failing canonicalizer tests
+- [x] Step 1: Write the failing canonicalizer tests
 
 Add a parameterized test covering every required authority shape:
 
@@ -104,7 +104,7 @@ def test_canonicalize_credential_uri_preserves_mixed_case_host() -> None:
 
 Retain the no-userinfo mask_uri_userinfo test and assert byte-for-byte equality. Import the new type and helper before implementation so the first run fails.
 
-- [ ] Step 2: Run the canonicalizer tests to verify failure
+- [x] Step 2: Run the canonicalizer tests to verify failure
 
 Run:
 
@@ -114,7 +114,7 @@ uv run pytest tests/unit/security/test_sanitization.py -q
 
 Expected: FAIL during collection or assertions because canonicalize_credential_uri and CredentialUriCanonicalization do not exist and the current masking helper drops the marker.
 
-- [ ] Step 3: Implement the minimum original-text canonicalizer
+- [x] Step 3: Implement the minimum original-text canonicalizer
 
 Add the frozen result type and helper. The implementation must:
 
@@ -126,7 +126,7 @@ Add the frozen result type and helper. The implementation must:
 
 Change mask_uri_userinfo to return canonicalize_credential_uri(uri).display_uri. Do not call urlunparse, parsed.hostname, or parsed.port in the new output path.
 
-- [ ] Step 4: Run the canonicalizer tests to verify success
+- [x] Step 4: Run the canonicalizer tests to verify success
 
 Run:
 
@@ -136,7 +136,7 @@ uv run pytest tests/unit/security/test_sanitization.py -q
 
 Expected: all sanitization tests pass, including all five userinfo forms, the bare-empty case, IPv6 brackets, mixed-case host, and no-userinfo identity.
 
-- [ ] Step 5: Run the task lint gate
+- [x] Step 5: Run the task lint gate
 
 Run:
 
@@ -157,7 +157,7 @@ Interfaces:
 - _register requires the same keyword so every policy entry is explicit.
 - The three current URL entries set uri_userinfo=True; every other policy sets False.
 
-- [ ] Step 1: Write the failing registry invariant test
+- [x] Step 1: Write the failing registry invariant test
 
 Add this test beside test_every_policy_has_parser_display_approval_and_propagation:
 
@@ -170,7 +170,7 @@ def test_every_url_named_security_variable_declares_uri_userinfo() -> None:
 
 Also extend the existing all-policy test to assert isinstance(policy.uri_userinfo, bool).
 
-- [ ] Step 2: Run the registry tests to verify failure
+- [x] Step 2: Run the registry tests to verify failure
 
 Run:
 
@@ -180,7 +180,7 @@ uv run pytest tests/unit/acp/test_launch_policy.py -q
 
 Expected: FAIL because LaunchVariablePolicy has no uri_userinfo field and registrations do not provide the required metadata.
 
-- [ ] Step 3: Add required URI metadata to every registration
+- [x] Step 3: Add required URI metadata to every registration
 
 Add the required frozen dataclass field and make _register require the uri_userinfo: bool keyword argument for every registration. Set uri_userinfo=True and URI-safe display/approval descriptors for:
 
@@ -192,7 +192,7 @@ OPTIMUS_LOCAL_GATEWAY_BASE_URL
 
 Set uri_userinfo=False for every non-URI registration. Do not use a launch-path condition such as "url" in name.lower().
 
-- [ ] Step 4: Run the registry tests to verify success
+- [x] Step 4: Run the registry tests to verify success
 
 Run:
 
@@ -202,7 +202,7 @@ uv run pytest tests/unit/acp/test_launch_policy.py -q
 
 Expected: all registry, fail-closed, parser, and policy metadata tests pass.
 
-- [ ] Step 5: Run the task lint gate
+- [x] Step 5: Run the task lint gate
 
 Run:
 
@@ -223,7 +223,7 @@ Interfaces:
 - The helper mutates only the two maps supplied by the caller and never returns raw URI data.
 - The URI fingerprint map key and HMAC field name are exactly f"{field_name}::uri_userinfo".
 
-- [ ] Step 1: Write failing four-source digest and leak-canary tests
+- [x] Step 1: Write failing four-source digest and leak-canary tests
 
 Add parameterized candidate tests for each registry URI variable. For each source, construct candidates for:
 
@@ -240,7 +240,7 @@ Add the same transition test for _resolved_base_url by creating two owner-only .
 
 Add a child-propagation regression asserting candidate.inherited.values, candidate.agent_environ, and candidate.provider_credentials.secrets.base_url retain the raw effective URI. Add a record-building test that serializes the candidate approval and asserts the URI canary is absent from the complete JSON string.
 
-- [ ] Step 2: Run the launch-gate tests to verify failure
+- [x] Step 2: Run the launch-gate tests to verify failure
 
 Run:
 
@@ -250,7 +250,7 @@ uv run pytest tests/unit/acp/test_launch_gate.py -q
 
 Expected: FAIL because the current gate masks URI literals without adding a userinfo fingerprint, directly stores _resolved_base_url, and cannot satisfy the new transition/canary assertions.
 
-- [ ] Step 3: Implement the shared recorder and integrate both call sites
+- [x] Step 3: Implement the shared recorder and integrate both call sites
 
 Implement _record_security_value so that:
 
@@ -269,7 +269,7 @@ else:
 
 Replace the current SECURITY-tier "url" in name.lower() branch with the helper using policy.uri_userinfo. Replace the direct _resolved_base_url assignment with the same helper using field_name="_resolved_base_url" and uri_userinfo=True. Remove imports that are no longer used.
 
-- [ ] Step 4: Run the launch-gate tests to verify success
+- [x] Step 4: Run the launch-gate tests to verify success
 
 Run:
 
@@ -279,7 +279,7 @@ uv run pytest tests/unit/acp/test_launch_gate.py -q
 
 Expected: all candidate resolution, authorization, digest-transition, canary, and raw-child-propagation tests pass.
 
-- [ ] Step 5: Run the task lint gate
+- [x] Step 5: Run the task lint gate
 
 Run:
 
@@ -301,7 +301,7 @@ Interfaces:
 - compute_security_snapshot_digest uses the security-snapshot-v3 domain.
 - APPROVAL_SCHEMA_VERSION == 1 remains unchanged.
 
-- [ ] Step 1: Write failing compatibility and digest-version tests
+- [x] Step 1: Write failing compatibility and digest-version tests
 
 Add a current-version assertion:
 
@@ -314,7 +314,7 @@ Add a legacy-record test using the existing fake keyring and sample record helpe
 
 Add a digest regression that computes the same input twice and asserts byte-identical output, while a URI-userinfo fingerprint value or key change produces a different digest. Do not assert a hardcoded digest tied to a canary.
 
-- [ ] Step 2: Run approval tests to verify failure
+- [x] Step 2: Run approval tests to verify failure
 
 Run:
 
@@ -324,11 +324,11 @@ uv run pytest tests/unit/acp/test_launch_approvals.py tests/unit/acp/test_launch
 
 Expected: FAIL because the compatibility constant and digest domain remain at their Plan 9.96 values.
 
-- [ ] Step 3: Update only the compatibility and digest namespace
+- [x] Step 3: Update only the compatibility and digest namespace
 
 Change the constant and digest domain exactly as specified. Keep the sorted security_literals and secret_fingerprints serialization, HMAC field list, schema version, size limit, and deserialization structure unchanged.
 
-- [ ] Step 4: Run approval and launch-gate tests to verify success
+- [x] Step 4: Run approval and launch-gate tests to verify success
 
 Run:
 
@@ -338,7 +338,7 @@ uv run pytest tests/unit/acp/test_launch_approvals.py tests/unit/acp/test_launch
 
 Expected: current records authorize, legacy records fail with POLICY_MISMATCH, and all existing record integrity/size/one-shot tests pass.
 
-- [ ] Step 5: Run the task lint gate
+- [x] Step 5: Run the task lint gate
 
 Run:
 
@@ -358,7 +358,7 @@ Interfaces:
 - Direct run-gateway output prints mask_uri_userinfo(provider_secrets.base_url) when a base URL exists.
 - ProviderSecrets.base_url, the child environment, and serialized Gateway manifest transport remain raw and unchanged.
 
-- [ ] Step 1: Write the failing output leak-canary test
+- [x] Step 1: Write the failing output leak-canary test
 
 Extend TestRunGatewayCommand with a successful synthetic .env.gateway case whose base URL contains a distinctive synthetic userinfo canary. Capture stdout around _cmd_run_gateway() while keeping the existing fake subprocess/keyring seams. Assert:
 
@@ -370,7 +370,7 @@ assert "**********" in output
 
 Also assert the captured child environment or manifest transport still contains the raw effective base URL where the current transport contract requires it; distinguish display redaction from transport normalization.
 
-- [ ] Step 2: Run the CLI test to verify failure
+- [x] Step 2: Run the CLI test to verify failure
 
 Run:
 
@@ -380,11 +380,11 @@ uv run pytest tests/unit/acp/test_launch_approval_cli.py::TestRunGatewayCommand 
 
 Expected: FAIL because the current code prints provider_secrets.base_url literally.
 
-- [ ] Step 3: Apply the display-only fix
+- [x] Step 3: Apply the display-only fix
 
 Import mask_uri_userinfo and change only the display expression. Do not modify manifest construction, child environment construction, provider credential resolution, or subprocess arguments.
 
-- [ ] Step 4: Run the CLI tests to verify success
+- [x] Step 4: Run the CLI tests to verify success
 
 Run:
 
@@ -394,7 +394,7 @@ uv run pytest tests/unit/acp/test_launch_approval_cli.py -q
 
 Expected: all CLI tests pass and the synthetic URI userinfo canary is absent from direct operator output.
 
-- [ ] Step 5: Run the task lint gate
+- [x] Step 5: Run the task lint gate
 
 Run:
 
@@ -413,11 +413,11 @@ Interfaces:
 - Use the existing real candidate -> approval-record -> keyring-store -> authorize_launch() seams.
 - Use only synthetic in-memory/fake-keyring data; no live Redis, Gateway, or ACPX process is introduced.
 
-- [ ] Step 1: Write the failing integration regressions
+- [x] Step 1: Write the failing integration regressions
 
 Add one test that authors a durable approval for a candidate containing a credential-bearing URI, independently re-resolves the identical URI, and asserts authorization succeeds. Add a second test that changes only URI userinfo after authoring and asserts authorize_launch() raises LaunchGateError with code SNAPSHOT_MISMATCH before any audit or child side effect. Assert the serialized record and audit-safe fields contain no canary.
 
-- [ ] Step 2: Run the integration selectors to verify failure
+- [x] Step 2: Run the integration selectors to verify failure
 
 Run:
 
@@ -427,11 +427,11 @@ uv run pytest tests/integration/acp/test_launch_trust_flow.py -q
 
 Expected: the new userinfo mutation or serialization assertions fail against the current masking-only implementation.
 
-- [ ] Step 3: Align the integration fixtures with the completed implementation
+- [x] Step 3: Align the integration fixtures with the completed implementation
 
 Use the existing _real_launch_pipeline() and build_approval_record() helpers. Do not stub resolve_launch_candidate(), authorize_launch(), digest computation, or record HMAC verification. Keep synthetic URI canaries local to test memory and output assertions.
 
-- [ ] Step 4: Run the integration selectors to verify success
+- [x] Step 4: Run the integration selectors to verify success
 
 Run:
 
@@ -441,7 +441,7 @@ uv run pytest tests/integration/acp/test_launch_trust_flow.py -q
 
 Expected: unchanged URI inputs authorize, userinfo-only changes fail with SNAPSHOT_MISMATCH, and no side-effect seam is reached on rejection.
 
-- [ ] Step 5: Run the integration lint gate
+- [x] Step 5: Run the integration lint gate
 
 Run:
 
@@ -488,7 +488,7 @@ uv run pytest --cov=optimus --cov=optimus_gateway --cov=optimus_security --cov-b
 
 Expected: aggregate production coverage is at least 80% and the command exits successfully.
 
-- [ ] Step 4: Run Ruff and whitespace verification
+- [x] Step 4: Run Ruff and whitespace verification
 
 Run:
 
@@ -499,7 +499,7 @@ git diff --check
 
 Expected: Ruff is clean and git diff --check produces no output.
 
-- [ ] Step 5: Verify scope and working-tree safety
+- [x] Step 5: Verify scope and working-tree safety
 
 Run:
 
@@ -511,7 +511,7 @@ rg -n 'P9\.96-v1|security-snapshot-v2|urlunparse|parsed\.hostname|parsed\.port' 
 
 Expected: only planned source/test/spec/plan files are changed; existing uv.lock and .claude/ state remains untouched; no forbidden component-reconstruction path remains in the new canonicalization/recording implementation; and no frozen Plan 9.96 file is modified.
 
-- [ ] Step 6: Update the reviewer checkpoint log and stop for explicit commit authorization
+- [x] Step 6: Update the reviewer checkpoint log and stop for explicit commit authorization
 
 Record focused/full/coverage/Ruff results, changed-file scope, and remaining handoff state in docs/superpowers/reviews/plan-9-99-review-checkpoints.md. Do not stage or commit the log. Do not claim Plan 9.99 complete until the user reviews the implementation diff and explicitly authorizes any commit or PR action.
 

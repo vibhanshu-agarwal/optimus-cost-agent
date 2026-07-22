@@ -46,7 +46,7 @@ from optimus.acp.local_gateway_secrets import (
 )
 from optimus.acp.operator_paths import OperatorPaths
 from optimus.acp.trusted_paths import WorkspaceIdentity
-from optimus_security.sanitization import mask_uri_userinfo, validate_secret_length
+from optimus_security.sanitization import canonicalize_credential_uri, validate_secret_length
 
 # Plan 9.96, Task 5 Batch 3 Step 5: the reviewed default each monotonic-tier
 # name is compared against in _authorize_monotonic_grants(). Values <= this
@@ -497,11 +497,14 @@ def resolve_launch_candidate(
             fp = compute_secret_fingerprint(value, field_name=name, hmac_key=hmac_key)
             secret_fingerprints[name] = fp
         elif policy.tier == LaunchVariableTier.SECURITY:
-            # For URI fields, store masked literal.
-            if "url" in name.lower():
-                security_literals[name] = mask_uri_userinfo(value.strip())
-            else:
-                security_literals[name] = value.strip()
+            _record_security_value(
+                field_name=name,
+                value=value,
+                uri_userinfo=policy.uri_userinfo,
+                security_literals=security_literals,
+                secret_fingerprints=secret_fingerprints,
+                hmac_key=hmac_key,
+            )
         elif policy.tier == LaunchVariableTier.MONOTONIC_LIMIT:
             try:
                 policy.parser(value)
@@ -586,7 +589,14 @@ def resolve_launch_candidate(
         )
         security_literals["_resolved_provider"] = resolved.provider
         if resolved.base_url:
-            security_literals["_resolved_base_url"] = resolved.base_url
+            _record_security_value(
+                field_name="_resolved_base_url",
+                value=resolved.base_url,
+                uri_userinfo=True,
+                security_literals=security_literals,
+                secret_fingerprints=secret_fingerprints,
+                hmac_key=hmac_key,
+            )
     if resolved_shared_secret:
         secret_fingerprints["_resolved_shared_secret"] = compute_secret_fingerprint(
             resolved_shared_secret,
@@ -716,6 +726,35 @@ def _authorize_monotonic_grants(
         approved_raw = record_monotonic_grants.get(name)
         if approved_raw is None or approved_raw.strip() != raw_value:
             raise LaunchGateError(code="MONOTONIC_LOOSENING_UNAPPROVED", detail=name)
+
+
+def _record_security_value(
+    *,
+    field_name: str,
+    value: str,
+    uri_userinfo: bool,
+    security_literals: dict[str, str],
+    secret_fingerprints: dict[str, str],
+    hmac_key: bytes,
+) -> None:
+    """Record one SECURITY-tier value into digest inputs.
+
+    Mutates only the caller-supplied maps. When uri_userinfo is True, stores
+    the credential-free normalized URI and, if userinfo was present, an HMAC
+    fingerprint of the complete stripped raw URI under
+    ``{field_name}::uri_userinfo``. Never returns raw URI data.
+    """
+    if uri_userinfo is False:
+        security_literals[field_name] = value.strip()
+        return
+
+    canonical = canonicalize_credential_uri(value)
+    security_literals[field_name] = canonical.normalized_uri
+    if canonical.userinfo_present:
+        key = f"{field_name}::uri_userinfo"
+        secret_fingerprints[key] = compute_secret_fingerprint(
+            value.strip(), field_name=key, hmac_key=hmac_key
+        )
 
 
 def _compute_decision(policy: LaunchVariablePolicy, value: str) -> str:

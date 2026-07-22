@@ -874,6 +874,77 @@ class TestRunGatewayCommand:
             assert "OPTIMUS_LOCAL_GATEWAY_BIND_HOST" not in env_passed
             assert "OPTIMUS_LOCAL_GATEWAY_PORT" not in env_passed
 
+    def test_run_gateway_masks_base_url_userinfo_in_display(self, tmp_path, monkeypatch) -> None:
+        """Direct run-gateway stdout must redact URI userinfo while transport
+        (child env + signed manifest) keeps the raw effective base URL."""
+        import io
+
+        from optimus.acp.launch_approval_cli import _cmd_run_gateway
+        from optimus.acp.trusted_paths import TrustedOperatorRoots
+
+        canary = "uri-display-canary-XYZ"
+        raw_base_url = f"https://{canary}:pass@api.example.com/v1"
+
+        env_gateway = tmp_path / ".env.gateway"
+        env_gateway.write_text(
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-CANARY-SECRET-VALUE\n"
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=CANARY-SHARED-SECRET\n"
+            f"OPTIMUS_LOCAL_GATEWAY_BASE_URL={raw_base_url}\n",
+            encoding="utf-8",
+        )
+        if _sys_platform_is_posix():
+            env_gateway.chmod(0o600)
+
+        captured: dict[str, object] = {}
+
+        class FakeCompletedProcess:
+            returncode = 0
+            stdout = ""
+
+        real_subprocess_run = subprocess.run
+
+        def fake_run(args, **kwargs):
+            if args and isinstance(args, list) and "optimus_gateway" in args:
+                captured["args"] = args
+                captured["kwargs"] = kwargs
+                return FakeCompletedProcess()
+            return real_subprocess_run(args, **kwargs)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        class CapturingStdout(io.StringIO):
+            def isatty(self) -> bool:
+                return True
+
+        stdout_capture = CapturingStdout()
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            with patch("sys.stdout", stdout_capture):
+                result = _cmd_run_gateway(
+                    tmp_path,
+                    bind_host="127.0.0.1",
+                    bind_port=8765,
+                    trusted_roots=TrustedOperatorRoots(
+                        default_config_root=tmp_path / "config",
+                        approval_runtime_root=tmp_path / "runtime",
+                    ),
+                    credential_keyring_backend=_FakeKeyring(),
+                )
+
+        assert result == 0
+        output = stdout_capture.getvalue()
+        assert canary not in output
+        assert "**********" in output
+
+        child_env = captured["kwargs"]["env"]
+        assert child_env["OPTIMUS_LOCAL_GATEWAY_BASE_URL"] == raw_base_url
+
+        args = captured["args"]
+        manifest_arg = args[args.index("--manifest") + 1]
+        assert canary in manifest_arg
+        assert raw_base_url in manifest_arg
+
 
 class TestOutputContainsNoSecrets:
     """CLI output and exception paths contain no canary secrets."""

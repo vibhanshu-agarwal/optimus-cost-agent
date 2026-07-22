@@ -49,6 +49,7 @@ from optimus.acp.trusted_paths import (
     resolve_workspace_identity,
 )
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
+from optimus_security.sanitization import mask_uri_userinfo
 
 
 class CliError(SystemExit):
@@ -561,7 +562,9 @@ def _cmd_run_gateway(
     # Display the safe (non-secret) snapshot before starting anything.
     print("optimus-trust run-gateway: effective gateway configuration:")
     print(f"  Provider: {provider_secrets.provider}")
-    print(f"  Base URL: {provider_secrets.base_url or '(provider default)'}")
+    print(
+        f"  Base URL: {mask_uri_userinfo(provider_secrets.base_url) if provider_secrets.base_url else '(provider default)'}"
+    )
     print(f"  Bind: {bind_host}:{bind_port}")
     print()
 
