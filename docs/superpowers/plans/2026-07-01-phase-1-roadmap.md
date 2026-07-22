@@ -691,9 +691,16 @@ handshake begins), the raw `BrokenPipeError` propagates instead of ever reaching
 path. This is not test-only flakiness: any real operator hitting this exact timing would see a bare
 traceback instead of the intended "run `optimus-trust ... approve --mode durable`" guidance.
 
-**Scope clarity:** This does not block or reopen Plan 9.98 (already closed) or Plan 9.99 (docs-only,
-unaffected by this test). It is an independent, narrow robustness gap confined to
-`ndjson_subprocess_session.py`'s send path.
+**Scope clarity:** This is a Plan 9.96 follow-up, not a Plan 9.8 or Plan 9.98 one. The affected code
+(`NdjsonSubprocessSession`, `operator_verify.py`) is Plan 9.96 Task 5 Batch 3's own work — every
+attribution comment in the affected files says so (`ndjson_subprocess_session.py:163`,
+`operator_verify.py:3`, `test_verify_live_agent_cli.py:39,225,323`). Plan 9.98 and Plan 9.99 never
+touched this file; they are only the contexts where this pre-existing flake happened to surface in
+CI, since the full suite runs on every commit regardless of what changed. Plan 9.96 itself remains
+open — only Task 9 (real launch-trust evidence, gated behind Plan 9.99) is outstanding — so this
+flake is a real risk to Plan 9.96's own eventual Task 9 closure-evidence run, which will need a clean
+full-suite pass. It does not block or reopen Plan 9.98 (already closed) or Plan 9.99 (docs-only,
+unaffected by this test).
 
 **Acceptance boundary:** Wrap the initial `send()` write/flush against `BrokenPipeError`/`OSError`;
 on that failure, route through the same `_fail_subprocess_exited()` / gate-rejection-message
