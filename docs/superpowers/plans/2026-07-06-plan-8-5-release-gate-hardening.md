@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** Implemented (Phase 1). See README.md's "Phase 1 Retry, Fitness Gates, Golden Tasks, and Release Gate" feature section and this plan's entry under Plan 8.5 in `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md` for current build status. This plan predates this project's per-step checkbox-tracking convention, so its steps below were never intended to be individually ticked.
+
 **Goal:** Close the Plan 8 release-gate hardening gaps so shadow promotion matches the state evaluated by gates, one-key scanning covers the release runner's local artifact surface, golden tasks are wired through a real CLI harness path, command gates cannot hang forever, shadow copies are bounded, and fitness-gate telemetry carries reconcilable cost.
 
 **Architecture:** Keep this as a focused hardening layer over the Plan 8 modules already present in `src/optimus/gates`, `src/optimus/retry`, `src/optimus/golden`, and `src/optimus/release`. Use small compatibility-preserving model changes where needed: represent shadow changes explicitly as writes or deletes, snapshot copied shadow files with content digests, centralize release credential scan paths, add bounded command execution, and wire golden-task execution through JSON `GoldenTaskResult` evidence rather than manual in-process injection. Do not reopen Plan 7 usage accounting, Plan 9 bounded loops/skills, or Plan 11 context-window optimization gates.

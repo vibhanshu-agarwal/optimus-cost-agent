@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** Implemented (Phase 1). See README.md's "Phase 1 Plan 6.5 Guardrail Hardening" feature section and this plan's entry under Plan 6.5 in `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md` for current build status. This plan predates this project's per-step checkbox-tracking convention, so its steps below were never intended to be individually ticked.
+
 **Goal:** Close the actionable Plan 6 CI/review follow-ups before Plan 7 depends on stable guardrail, prompt-injection, command-safety, and MCP trust telemetry.
 
 **Architecture:** Keep Plan 6.5 inside the guardrail/runtime trust boundary. Patch the existing Plan 6 scanner and MCP ingestion seams, add environment-aware shell/git bypass detection to the Plan 5/6 pre-tool boundary, replace the tiny hand-curated Unicode confusable set with a maintained TR39-style detector, and add a minimal runtime MCP trust context so loader, descriptor exposure, and tool execution paths use the same `MCPTrustRegistry` and `PreToolGuard` by default. MCP runtime execution must preserve the separation between one-time server/tool registration and per-call human approval. Plan 7 may persist the audit events these components emit, but Plan 7 must not implement these trust controls.

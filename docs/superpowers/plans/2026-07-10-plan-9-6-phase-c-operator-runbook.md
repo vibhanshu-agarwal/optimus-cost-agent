@@ -7,6 +7,12 @@
 
 **Parent:** [Execution checklist](2026-07-10-plan-9-6-live-signoff-execution.md) · [Plan 9.6](2026-07-07-plan-9-6-live-verification-and-lld-alignment.md)
 
+**Status:** Completed. Evidence captured in
+[`reports/plan-9-7-manual-e2e-evidence.md`](../../../reports/plan-9-7-manual-e2e-evidence.md) —
+every `(paste)` placeholder replaced with real command output. This runbook predates this project's
+per-step checkbox-tracking convention, so its own checklist items below were never intended to be
+individually ticked; the evidence report is the completion record.
+
 **Prerequisite:** Phase D merged on `main` (PR #40, commit `8aa9776` or later). Rows 6–7 closed.
 
 ---

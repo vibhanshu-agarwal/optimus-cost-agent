@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** Implemented (Phase 1). See README.md's "Phase 1 Prompt-Injection, MCP Trust, and CI Parity" feature section and this plan's entry under Plan 6 in `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md` for current build status. This plan predates this project's per-step checkbox-tracking convention, so its steps below were never intended to be individually ticked.
+
 **Goal:** Build deterministic prompt-injection scanning, explicit MCP trust registration, cloned-repo MCP autoload denial, guarded MCP descriptor exposure, and local/CI guardrail parity so poisoned repo or MCP metadata cannot widen trust or bypass the Plan 5 guardrails.
 
 **Architecture:** Extend the existing `optimus.guardrails` package added by Plan 5. Add a deterministic `ConfigTrustScanner` for agent config and tool descriptor text, an `MCPTrustRegistry` that requires explicit approval and manifest-hash stability before MCP tools can be exposed to the planner or executed, and a single guardrail rule-set definition consumed by pre-commit, CI, and parity tests. Keep this plan focused on local deterministic controls, MCP trust ingestion, and configuration parity; Plan 8 still owns the composite release-gate runner.

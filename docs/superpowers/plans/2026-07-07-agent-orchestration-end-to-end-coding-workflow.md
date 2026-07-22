@@ -2,7 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Approved for implementation.
+**Status:** Implemented (Phase 1). See README.md's "Phase 1 Agent Orchestration" feature section and
+this plan's entry under Plan 9.5 in `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md` for
+current build status. This plan predates this project's per-step checkbox-tracking convention, so
+its steps below were never intended to be individually ticked.
 
 **Goal:** Compose the existing Phase 1 primitives into a working local-first coding agent that can plan, request approval, execute guarded mutations, validate outcomes, and produce real golden-task evidence before Plan 11 adds context-window intelligence.
 

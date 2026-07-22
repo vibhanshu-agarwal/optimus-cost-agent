@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** Implemented (Phase 1). See README.md's "Phase 1 Tool Policy and Evidence Foundation" feature section and this plan's entry under Plan 4 in `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md` for current build status. This plan predates this project's per-step checkbox-tracking convention, so its steps below were never intended to be individually ticked.
+
 **Goal:** Build deterministic Phase 1 tool authorization and gateway-backed web evidence acquisition with auditable evidence ledger records.
 
 **Architecture:** Add a focused tool-policy layer that decides whether an evidence tool call is allowed before any gateway action can occur, then records authorized calls atomically against per-run caps. Add an evidence package that models search/extract requests, builds and parses gateway web-evidence payloads, records gateway usage fields directly in immutable evidence entries, and wraps web search/extract through the existing Optimus Gateway transport seam instead of exposing Tavily or provider credentials locally. Keep the dependency direction one-way: `optimus.evidence` may depend on `optimus.gateway`, but `optimus.gateway` must not import or name evidence-domain types.
