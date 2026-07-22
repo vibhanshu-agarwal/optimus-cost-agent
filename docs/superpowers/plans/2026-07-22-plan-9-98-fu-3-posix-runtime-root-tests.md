@@ -69,7 +69,7 @@ The frozen production files are not implementation targets because the approved 
 
 **Produces:** A digest-pinned implementation plan and a durable reviewer checkpoint before test mutation.
 
-- [ ] **Step 1: Verify baseline and the intentionally dirty workspace.**
+- [x] **Step 1: Verify baseline and the intentionally dirty workspace.**
 
 Run from the Codex worktree:
 
@@ -87,11 +87,11 @@ Expected:
 - The approved design spec and this plan are the only new FU-3 documents.
 - No source or test file has changed before Task 1.
 
-- [ ] **Step 2: Record reviewer and operator approval for the exact plan bytes.**
+- [x] **Step 2: Record reviewer and operator approval for the exact plan bytes.**
 
 The reviewer must read this entire plan, verify the exact remediation strings, confirm that the composed-test wrapper calls the real authorization and audit functions, and record an approval statement in docs/superpowers/reviews/2026-07-22-plan-9-98-fu-3-implementation-plan-approval.md. The operator must approve the same bytes before any test edit.
 
-- [ ] **Step 3: Compute and record the design and plan digests.**
+- [x] **Step 3: Compute and record the design and plan digests.**
 
 Run inside WSL2 Ubuntu-24.04:
 
@@ -103,11 +103,11 @@ sha256sum docs/superpowers/specs/2026-07-22-plan-9-98-fu-3-posix-runtime-root-te
 
 Record both exact SHA-256 outputs, the baseline commit, reviewer statement, operator statement, and the scope limited to POSIX runtime-root failure-path test alignment in the approval record.
 
-- [ ] **Step 4: Record the initial reviewer checkpoint.**
+- [x] **Step 4: Record the initial reviewer checkpoint.**
 
 The checkpoint log must start with a Current State section stating that Task 0 is awaiting the digest-pinned approval, that uv.lock and .claude/ are preserved user state, and that no source/test implementation has begun. Record the WSL baseline command and its 5 failed result as the first evidence entry.
 
-- [ ] **Step 5: Commit only the approved planning artifacts after explicit commit authorization.**
+- [x] **Step 5: Commit only the approved planning artifacts after explicit commit authorization.**
 
 Run:
 
@@ -134,7 +134,7 @@ Expected staged paths are exactly the design spec, implementation plan, and appr
 - Consumes: Existing authorize_workspace_for_test(), _cmd_run(), acp_main.main(), and fake keyring fixtures.
 - Produces: Platform-explicit assertions for the pre-authorization NO_APPROVAL path with exact per-entrypoint remediation text and no side effects.
 
-- [ ] **Step 1: Run the Bucket-A RED selectors in WSL2.**
+- [x] **Step 1: Run the Bucket-A RED selectors in WSL2.**
 
 Run:
 
@@ -147,7 +147,7 @@ uv run pytest \
 
 Expected: both tests fail because the current assertions expect success or AUDIT_DIR_UNAVAILABLE, while the real POSIX path returns NO_APPROVAL before audit.
 
-- [ ] **Step 2: Update the _cmd_run() test with its exact remediation string.**
+- [x] **Step 2: Update the _cmd_run() test with its exact remediation string.**
 
 Keep the current setup that authorizes the workspace, asserts the approval-time .optimus directory exists, removes it, patches bootstrap_workspace_runtime_root() to fail if called, and intercepts the target child command. Add capsys to the signature, add a child-start flag, and replace the unconditional success assertion with:
 
@@ -181,7 +181,7 @@ assert not runtime_root.exists()
 
 The Windows branch preserves the existing creation-time behavior while the Linux branch directly proves NO_APPROVAL, no bootstrap, and no child spawn. Do not assert the __main__.py message in this test; _cmd_run() emits the exact inline string above.
 
-- [ ] **Step 3: Update the full agent entrypoint test with its distinct remediation prefix.**
+- [x] **Step 3: Update the full agent entrypoint test with its distinct remediation prefix.**
 
 Add import sys to the test module's standard-library imports. Keep the current setup and side-effect sentinels. Replace the single AUDIT_DIR_UNAVAILABLE assertion with:
 
@@ -203,13 +203,13 @@ server.assert_not_called()
 
 The POSIX assertion must use the __main__.py remediation prefix optimus-agent: no launch approval found for this workspace. and must not reuse _cmd_run()'s optimus-trust: no durable approval found for this workspace. string.
 
-- [ ] **Step 4: Run the corrected Bucket-A selectors in WSL2.**
+- [x] **Step 4: Run the corrected Bucket-A selectors in WSL2.**
 
 Run the same command from Step 1.
 
 Expected: 2 passed, with the POSIX assertions proving NO_APPROVAL, no runtime-root recreation, and no Redis/Gateway/server calls.
 
-- [ ] **Step 5: Run the corrected Bucket-A selectors on Windows.**
+- [x] **Step 5: Run the corrected Bucket-A selectors on Windows.**
 
 Run from PowerShell with the repository's configured Python runtime:
 
@@ -219,7 +219,7 @@ uv run pytest tests/unit/acp/test_launch_approval_cli.py::TestApprovalTimeRuntim
 
 Expected: 2 passed; Windows follows its existing st_ctime creation-time semantics without weakening the Linux assertions.
 
-- [ ] **Step 6: Record the Bucket-A checkpoint and commit only its tests.**
+- [x] **Step 6: Record the Bucket-A checkpoint and commit only its tests.**
 
 Run:
 
@@ -243,7 +243,7 @@ Expected staged paths are exactly the two Bucket-A test files. Update the checkp
 - Consumes: Real _write_durable_approval(), authorize_capture(), append_authorized_audit(), and LaunchAuditError.
 - Produces: Direct-audit coverage that mutates the runtime root only after a real authorized capture exists.
 
-- [ ] **Step 1: Run the regular-file RED selector in WSL2.**
+- [x] **Step 1: Run the regular-file RED selector in WSL2.**
 
 Run:
 
@@ -253,7 +253,7 @@ uv run pytest tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_
 
 Expected: fail with LaunchGateError(NO_APPROVAL) from launch_gate.py:670 because the current test mutates .optimus before authorize_capture().
 
-- [ ] **Step 2: Move the mutation after real authorization.**
+- [x] **Step 2: Move the mutation after real authorization.**
 
 Keep _write_durable_approval() unchanged. Replace the current pre-authorization removal/replacement block with this sequence:
 
@@ -280,13 +280,13 @@ assert runtime_root.read_text(encoding="utf-8") == "not a directory"
 
 Do not call spawn_authorized_capture() in this direct-audit test; the assertion is that the real audit consumer rejects the unsafe final component before any later step.
 
-- [ ] **Step 3: Run the corrected regular-file selector in WSL2.**
+- [x] **Step 3: Run the corrected regular-file selector in WSL2.**
 
 Run the same command from Step 1.
 
 Expected: 1 passed; the exception comes from the real require_workspace_runtime_root()/lstat() path, and the regular file remains unchanged.
 
-- [ ] **Step 4: Record the direct-audit checkpoint and commit the test correction.**
+- [x] **Step 4: Record the direct-audit checkpoint and commit the test correction.**
 
 Run:
 
@@ -310,7 +310,7 @@ Expected staged path: only tests/unit/tools/test_run_plan996_acpx_security_evide
 - Consumes: Module-level capture_tool.authorize_capture, real capture_acpx(), real append_authorized_audit(), and the existing child-spawn sentinels.
 - Produces: Two composed tests that prove the real sequence stops at AUDIT_DIR_UNAVAILABLE after authorization and before child spawn.
 
-- [ ] **Step 1: Run the two composed RED selectors in WSL2.**
+- [x] **Step 1: Run the two composed RED selectors in WSL2.**
 
 Run:
 
@@ -323,7 +323,7 @@ uv run pytest \
 
 Expected: both fail at authorize_launch() with LaunchGateError(NO_APPROVAL) before the audit layer.
 
-- [ ] **Step 2: Add the test-only post-authorization mutation helper.**
+- [x] **Step 2: Add the test-only post-authorization mutation helper.**
 
 Add Callable to the standard-library imports and add this helper near the existing evidence-test helpers:
 
@@ -348,7 +348,7 @@ def _patch_authorize_capture_after_real_authorization(
 
 The wrapper must call the real authorize_capture() first and must not replace or patch any audit function, gate function, or exception. capture_acpx() resolves its module-level authorize_capture name at call time, so this wrapper is the only injected seam.
 
-- [ ] **Step 3: Rewrite the regular-file composed test to use the real wrapper.**
+- [x] **Step 3: Rewrite the regular-file composed test to use the real wrapper.**
 
 Keep the existing durable-approval authoring setup and child sentinel. Replace the pre-authorization mutation with:
 
@@ -378,7 +378,7 @@ assert (workspace / ".optimus").is_file()
 
 The existing spawn_authorized_capture sentinel must remain. If the real audit path returns instead of raising, the sentinel fails the test; the audit layer itself is never mocked.
 
-- [ ] **Step 4: Rewrite the missing-root composed test to use the real wrapper.**
+- [x] **Step 4: Rewrite the missing-root composed test to use the real wrapper.**
 
 Keep the existing child-spawn guard and replace the pre-authorization runtime_root.rmdir() with:
 
@@ -407,13 +407,13 @@ assert not runtime_root.exists()
 
 The real capture_acpx() call must perform authorization first, then the wrapper mutation, then the real audit append. The missing root must remain absent and the child command must never reach Popen.
 
-- [ ] **Step 5: Run the two corrected composed selectors in WSL2.**
+- [x] **Step 5: Run the two corrected composed selectors in WSL2.**
 
 Run the same command from Step 1.
 
 Expected: 2 passed; both failures are LaunchAuditError(AUDIT_DIR_UNAVAILABLE), and neither child sentinel is reached.
 
-- [ ] **Step 6: Run the entire evidence-tool unit module in WSL2.**
+- [x] **Step 6: Run the entire evidence-tool unit module in WSL2.**
 
 Run:
 
@@ -423,7 +423,7 @@ uv run pytest tests/unit/tools/test_run_plan996_acpx_security_evidence.py -q
 
 Expected: the module passes with no FU-3-specific skip, xfail, or deselection. Existing WORKSPACE_IDENTITY_CHANGED post-audit coverage remains green.
 
-- [ ] **Step 7: Record the composed-path checkpoint and commit the test correction.**
+- [x] **Step 7: Record the composed-path checkpoint and commit the test correction.**
 
 Run:
 
@@ -448,7 +448,7 @@ Expected staged path: only the evidence-tool test module. Update the checkpoint 
 - Consumes: Tasks 1-3 test corrections.
 - Produces: A clean affected suite, Ruff result, and frozen-scope evidence.
 
-- [ ] **Step 1: Run the affected unit and direct-audit selectors in WSL2.**
+- [x] **Step 1: Run the affected unit and direct-audit selectors in WSL2.**
 
 Run:
 
@@ -463,7 +463,7 @@ uv run pytest \
 
 Expected: zero failures; direct missing, symlink, regular-file, pre-authorization, composed-audit, and post-audit revalidation cases all remain represented.
 
-- [ ] **Step 2: Run Ruff in WSL2.**
+- [x] **Step 2: Run Ruff in WSL2.**
 
 Run:
 
@@ -473,7 +473,7 @@ uv run ruff check .
 
 Expected: exit code 0 with no diagnostics.
 
-- [ ] **Step 3: Prove no production or tool file changed.**
+- [x] **Step 3: Prove no production or tool file changed.**
 
 Run:
 
@@ -484,7 +484,7 @@ git diff --check
 
 Expected: the first command prints nothing, and the second exits 0. If any source or tool file is modified, stop and return to scope review; do not stage it.
 
-- [ ] **Step 4: Verify staged scope before each test commit.**
+- [x] **Step 4: Verify staged scope before each test commit.**
 
 Run:
 
@@ -495,7 +495,7 @@ git diff --cached --name-only
 
 Expected: only the intended test files are staged for their task commit. uv.lock, .claude/, and the checkpoint log are never staged.
 
-- [ ] **Step 5: Record the fitness-gate checkpoint.**
+- [x] **Step 5: Record the fitness-gate checkpoint.**
 
 Record the exact WSL commands, exit statuses, affected-suite result, Ruff result, frozen-source proof, and current commit sequence in docs/superpowers/reviews/plan-9-98-fu-3-review-checkpoints.md.
 
@@ -511,7 +511,7 @@ Record the exact WSL commands, exit statuses, affected-suite result, Ruff result
 - Consumes: The complete test-only implementation from Tasks 1-3.
 - Produces: Interim full-suite POSIX evidence before final CI.
 
-- [ ] **Step 1: Run the full clean-environment-recheck equivalent in WSL.**
+- [x] **Step 1: Run the full clean-environment-recheck equivalent in WSL.**
 
 Run from WSL2 Ubuntu-24.04:
 
@@ -536,11 +536,11 @@ uv run pytest --cov=optimus --cov-branch --cov-report=term-missing -v
 
 The `node --version` check is a local precondition for the repository's Node-backed hooks; the workflow installs Node 22 before running this block, so WSL must provide the equivalent Node 22 toolchain. Expected: every command passes, the noneditable wheel check succeeds, the full default suite passes, aggregate coverage is at least 80%, and the five FU-3 tests execute rather than being skipped or xfailed. Live-dependency deselection from the repository's existing pytest configuration is allowed only for its named live markers and is unrelated to FU-3.
 
-- [ ] **Step 2: Record interim evidence.**
+- [x] **Step 2: Record interim evidence.**
 
 Record the WSL distro/version, Linux uv version, exact command, pass count, coverage percentage, and the five FU-3 test node IDs in the checkpoint log. This record is interim evidence and does not replace GitHub Actions.
 
-- [ ] **Step 3: Confirm the worktree before final push authorization.**
+- [x] **Step 3: Confirm the worktree before final push authorization.**
 
 Run:
 
@@ -563,11 +563,11 @@ Expected: only the intentionally preserved uv.lock/.claude state and the task's 
 - Consumes: Tasks 1-5 and their WSL evidence.
 - Produces: The required final GitHub Actions evidence artifact.
 
-- [ ] **Step 1: Obtain explicit operator authorization to push.**
+- [x] **Step 1: Obtain explicit operator authorization to push.**
 
 Do not infer push or pull-request permission from the plan or from prior PR #60 authorization. The operator must authorize both this FU-3 branch push and opening a PR targeting `main`, after the WSL full CI-equivalent gate is green. A branch push alone is not a workflow trigger for this repository.
 
-- [ ] **Step 2: Update the branch from the latest origin/main without rewriting history.**
+- [x] **Step 2: Update the branch from the latest origin/main without rewriting history.**
 
 Run:
 
@@ -578,7 +578,7 @@ git merge --ff-only origin/main
 
 Expected: either a fast-forward to the current origin/main or an explicit stop if the branch has diverged. Do not force-push or rebase shared history without separate authorization.
 
-- [ ] **Step 3: Run the pre-push gates again.**
+- [x] **Step 3: Run the pre-push gates again.**
 
 Run:
 
@@ -604,7 +604,7 @@ uv run pytest --cov=optimus --cov-branch --cov-report=term-missing -v
 
 Expected: all commands pass before push, including the noneditable-package check, all four hygiene hooks, Ruff, Bandit, AST-grep, prompt-injection scan, secret scan, and pytest with coverage. The final local WSL run must be recorded separately from the earlier interim run. Preserve the disclosed `uv.lock` and `.claude/` state; do not stage generated or unrelated changes.
 
-- [ ] **Step 4: Push the named branch after authorization.**
+- [x] **Step 4: Push the named branch after authorization.**
 
 Run:
 
@@ -614,7 +614,7 @@ git push --set-upstream origin agent/codex/plan-9-98-fu-3-posix-runtime-root-tes
 
 Expected: the push succeeds without `--force`. It does not, by itself, trigger `.github/workflows/guardrails.yml`: this workflow runs for `pull_request` events or pushes to `main` only.
 
-- [ ] **Step 5: Open and verify the PR that triggers the workflow.**
+- [x] **Step 5: Open and verify the PR that triggers the workflow.**
 
 After the operator authorizes the PR, create a draft PR targeting `main` if one does not already exist:
 
@@ -635,7 +635,7 @@ gh pr view --json number,url,baseRefName,headRefName,isDraft
 
 Expected: the PR is open with `baseRefName` equal to `main` and `headRefName` equal to `agent/codex/plan-9-98-fu-3-posix-runtime-root-tests`. Opening or updating this PR is the event that causes `.github/workflows/guardrails.yml` to run.
 
-- [ ] **Step 6: Verify the actual clean-environment-recheck job.**
+- [x] **Step 6: Verify the actual clean-environment-recheck job.**
 
 Inspect the GitHub Actions run and record its URL and run ID. Confirm all of the following from the actual job output:
 
@@ -651,11 +651,11 @@ Inspect the GitHub Actions run and record its URL and run ID. Confirm all of the
 - All five FU-3 tests executed and passed; none was skipped, deselected as a FU-3 workaround, or platform-xfailed.
 - Coverage met the repository's 80% threshold.
 
-- [ ] **Step 7: Record final evidence and closure ruling.**
+- [x] **Step 7: Record final evidence and closure ruling.**
 
 Update the checkpoint log with the final CI URL/run ID, exact test and coverage summary, frozen-scope proof, and reviewer ruling that the roadmap acceptance boundary is satisfied. Do not claim FU-3 complete before this artifact exists.
 
-- [ ] **Step 8: Close the plan with a checkbox-only commit.**
+- [x] **Step 8: Close the plan with a checkbox-only commit.**
 
 Every prior task and Definition-of-Done row must already be genuinely complete. As the irreducible self-reference of a final closure action, mark this Step 8 checkbox complete immediately before the sweep below; then mechanically prove that no unchecked task remains and that the plan changed since the Task 0 planning commit only by checkbox transitions. Run from WSL2 Ubuntu-24.04:
 
