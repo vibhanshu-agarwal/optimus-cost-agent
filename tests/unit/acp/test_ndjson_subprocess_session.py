@@ -17,7 +17,10 @@ from __future__ import annotations
 import io
 from types import SimpleNamespace
 
+import pytest
+
 from optimus.acp.ndjson_subprocess_session import (
+    LiveSessionError,
     NdjsonSubprocessSession,
     _extract_gate_rejection_message,
 )
@@ -109,3 +112,92 @@ class TestGateRejectionDetectorCoversEveryPrefixedFamily:
 
     def test_empty_stderr_is_not_detected(self) -> None:
         assert _extract_gate_rejection_message("") is None
+
+
+class _BrokenPipeStdin:
+    """A fake stdin that reproduces the real race: the child already closed
+    its end of the pipe, so the write itself raises before any bytes land."""
+
+    def write(self, _data: str) -> int:
+        raise BrokenPipeError(32, "Broken pipe")
+
+    def flush(self) -> None:
+        raise AssertionError("flush() must not run after write() already raised")
+
+
+class TestSendAndCloseStdinSurviveAnAlreadyExitedChild:
+    """Reproduces, deterministically, the race the real subprocess-backed
+    test_run_operator_live_session_surfaces_no_approval_remediation only hits
+    by timing luck: the launch-gate child exits (and closes stdin) before the
+    parent's first send() completes. Real CI evidence
+    (runs 29932232804 and 29932708043 on branch
+    agent/claude/plan-9-99-backlog-broken-pipe) shows this raising a raw
+    BrokenPipeError from send() at ndjson_subprocess_session.py:79, and then a
+    SECOND BrokenPipeError from the unconditional operator_verify.py
+    finally-block close_stdin() call at line 84 -- both call sites must
+    convert the pipe closure into the same clean, value-free LiveSessionError
+    read_next()/_fail_subprocess_exited() already produce for a read-time
+    exit, not let a raw OSError escape."""
+
+    def test_send_broken_pipe_surfaces_the_gate_rejection_cleanly(self) -> None:
+        session = object.__new__(NdjsonSubprocessSession)
+        session._process = SimpleNamespace(
+            stdin=_BrokenPipeStdin(),
+            poll=lambda: 2,
+            wait=lambda timeout=None: 2,
+        )
+        session._transcript = SimpleNamespace(record_outbound=lambda _payload: None)
+        session._stderr_reader = SimpleNamespace(join=lambda timeout=None: None)
+        session._stderr_lines = [
+            "optimus-agent: no launch approval found for this workspace. Review the effective "
+            "configuration and author one with:\n",
+            "  optimus-trust --workspace-root /tmp/ws approve --mode durable\n",
+        ]
+
+        with pytest.raises(LiveSessionError) as exc_info:
+            session.send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+
+        assert "no launch approval found" in str(exc_info.value)
+        assert "timed out" not in str(exc_info.value)
+
+    def test_send_broken_pipe_without_a_gate_rejection_still_raises_cleanly(self) -> None:
+        """No stderr at all (a bare crash, not a gate rejection) must still
+        convert to a LiveSessionError -- never a raw BrokenPipeError."""
+        session = object.__new__(NdjsonSubprocessSession)
+        session._process = SimpleNamespace(
+            stdin=_BrokenPipeStdin(),
+            poll=lambda: 1,
+            wait=lambda timeout=None: 1,
+        )
+        session._transcript = SimpleNamespace(record_outbound=lambda _payload: None)
+        session._stderr_reader = SimpleNamespace(join=lambda timeout=None: None)
+        session._stderr_lines = []
+
+        with pytest.raises(LiveSessionError) as exc_info:
+            session.send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+
+        assert "exited early" in str(exc_info.value)
+
+    def test_close_stdin_swallows_an_already_broken_pipe(self) -> None:
+        class _AlreadyClosedStdin:
+            def close(self) -> None:
+                raise BrokenPipeError(32, "Broken pipe")
+
+        session = object.__new__(NdjsonSubprocessSession)
+        session._process = SimpleNamespace(stdin=_AlreadyClosedStdin())
+
+        session.close_stdin()  # must not raise
+
+    def test_close_stdin_still_closes_a_healthy_pipe(self) -> None:
+        closed = []
+
+        class _HealthyStdin:
+            def close(self) -> None:
+                closed.append(True)
+
+        session = object.__new__(NdjsonSubprocessSession)
+        session._process = SimpleNamespace(stdin=_HealthyStdin())
+
+        session.close_stdin()
+
+        assert closed == [True]

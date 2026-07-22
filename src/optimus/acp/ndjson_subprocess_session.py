@@ -76,12 +76,30 @@ class NdjsonSubprocessSession:
             raise LiveSessionError("subprocess stdin is not available")
         payload = dict(message)
         self._transcript.record_outbound(payload)
-        self._process.stdin.write(json.dumps(payload, separators=(",", ":")) + "\n")
-        self._process.stdin.flush()
+        try:
+            self._process.stdin.write(json.dumps(payload, separators=(",", ":")) + "\n")
+            self._process.stdin.flush()
+        except OSError:
+            # The child already exited and closed its end of the pipe before
+            # this write landed -- the same race read_next() detects via
+            # poll() after the fact. Wait for the exit to be reapable and let
+            # the stderr reader thread catch up before delegating to the
+            # shared _fail_subprocess_exited() path, so a send-time pipe
+            # closure produces the identical clean, value-free
+            # LiveSessionError a read-time exit already produces, instead of
+            # letting a raw OSError escape.
+            self._process.wait(timeout=5)
+            self._stderr_reader.join(timeout=5)
+            self._fail_subprocess_exited("ACP subprocess stdin closed while sending an ndjson message")
 
     def close_stdin(self) -> None:
         if self._process.stdin is not None:
-            self._process.stdin.close()
+            try:
+                self._process.stdin.close()
+            except OSError:
+                # Best-effort cleanup only: a child that already closed its
+                # end of the pipe makes this close() redundant, not an error.
+                pass
 
     def wait_for(
         self,
