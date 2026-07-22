@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 import textwrap
+from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
@@ -188,6 +189,22 @@ def _resolve_candidate_for_test(
     )
 
 
+def _patch_authorize_capture_after_real_authorization(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    workspace: Path,
+    mutate: Callable[[Path], None],
+) -> None:
+    real_authorize_capture = capture_tool.authorize_capture
+
+    def authorize_then_mutate(**kwargs: object) -> capture_tool.CaptureLaunch:
+        capture = real_authorize_capture(**kwargs)
+        mutate(workspace / ".optimus")
+        return capture
+
+    monkeypatch.setattr(capture_tool, "authorize_capture", authorize_then_mutate)
+
+
 def test_nested_agent_snapshot_uses_clean_predefault_environment(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -291,9 +308,6 @@ def test_capture_stops_when_real_audit_runtime_root_is_a_regular_file(tmp_path: 
         keyring=keyring,
         approval_runtime_root=approval_runtime_root,
     )
-    (workspace / ".optimus").rmdir()
-    (workspace / ".optimus").write_text("not a directory", encoding="utf-8")
-
     capture = authorize_capture(
         workspace=workspace,
         environment=environment,
@@ -302,8 +316,16 @@ def test_capture_stops_when_real_audit_runtime_root_is_a_regular_file(tmp_path: 
         launch_session_id="sess_audit_failure",
     )
 
+    runtime_root = workspace / ".optimus"
+    assert runtime_root.is_dir()
+    runtime_root.rmdir()
+    runtime_root.write_text("not a directory", encoding="utf-8")
+
     with pytest.raises(LaunchAuditError, match="AUDIT_DIR_UNAVAILABLE"):
         append_authorized_audit(capture)
+
+    assert runtime_root.is_file()
+    assert runtime_root.read_text(encoding="utf-8") == "not a directory"
 
 
 def test_capture_acpx_blocks_child_when_composed_audit_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -320,8 +342,16 @@ def test_capture_acpx_blocks_child_when_composed_audit_fails(tmp_path: Path, mon
         keyring=keyring,
         approval_runtime_root=approval_runtime_root,
     )
-    (workspace / ".optimus").rmdir()
-    (workspace / ".optimus").write_text("not a directory", encoding="utf-8")
+
+    def replace_runtime_root_with_file(runtime_root: Path) -> None:
+        runtime_root.rmdir()
+        runtime_root.write_text("not a directory", encoding="utf-8")
+
+    _patch_authorize_capture_after_real_authorization(
+        monkeypatch,
+        workspace=workspace,
+        mutate=replace_runtime_root_with_file,
+    )
 
     def child_must_not_start(*_args: object, **_kwargs: object) -> None:
         pytest.fail("child startup must not follow a failed audit append")
@@ -337,6 +367,8 @@ def test_capture_acpx_blocks_child_when_composed_audit_fails(tmp_path: Path, mon
             launch_session_id="sess_composed_audit_failure",
             command=[sys.executable, "-c", "raise SystemExit(0)"],
         )
+
+    assert (workspace / ".optimus").is_file()
 
 
 def test_capture_acpx_missing_approved_runtime_root_never_spawns_or_recreates_it(
@@ -356,7 +388,15 @@ def test_capture_acpx_missing_approved_runtime_root_never_spawns_or_recreates_it
         approval_runtime_root=approval_runtime_root,
     )
     runtime_root = workspace / ".optimus"
-    runtime_root.rmdir()
+
+    def remove_runtime_root(runtime_root: Path) -> None:
+        runtime_root.rmdir()
+
+    _patch_authorize_capture_after_real_authorization(
+        monkeypatch,
+        workspace=workspace,
+        mutate=remove_runtime_root,
+    )
 
     real_popen = capture_tool.subprocess.Popen
     expected_command = [sys.executable, "-c", "raise SystemExit(0)"]
