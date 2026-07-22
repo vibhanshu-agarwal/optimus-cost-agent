@@ -557,7 +557,7 @@ Plan 9.98 is necessary but not sufficient for Plan 9.96 closure because Plan 9.9
 
 **Status:** Implemented and real-dependency verified on 2026-07-19.
 
-### P9.98-FU-3 (Tracked, Not Yet Scheduled): POSIX Runtime-Root Failure-Path Test Alignment
+### P9.98-FU-3 (Complete): POSIX Runtime-Root Failure-Path Test Alignment
 
 **Raised:** 2026-07-19 by GitHub Actions `clean-environment-recheck` on PR #60
 ([run 29690328862](https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/29690328862)).
@@ -581,8 +581,20 @@ deselect, or platform-xfail the Linux tests.
 proof, and finish with an unskipped clean Linux CI run.  No production-code defect is assumed by
 this entry; the next plan must re-establish that conclusion from current source and CI evidence.
 
-**Status:** Tracked, not yet scheduled.  PR #60 is intentionally paused and not merge-ready until
-this follow-up receives fresh planning, review, implementation, and Linux CI verification.
+**Status:** Complete.  Resolved by a fresh, separately reviewed design spec and implementation plan
+(`docs/superpowers/specs/2026-07-22-plan-9-98-fu-3-posix-runtime-root-tests-design.md`,
+`docs/superpowers/plans/2026-07-22-plan-9-98-fu-3-posix-runtime-root-tests.md`), implemented and
+merged via [PR #61](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/61)
+(`06937d334b6fbc614ca3054d5da793c7290d6f32`) on 2026-07-22.  All five named failures from run
+29690328862 are resolved: the two full-entrypoint tests now assert POSIX `NO_APPROVAL` at durable
+lookup, and the three evidence-tool tests mutate the runtime root only after a real authorization
+succeeds, proving `AUDIT_DIR_UNAVAILABLE` from the real audit consumer.  FU-1's lexical-path,
+device/inode, and `st_ctime_ns` identity binding is unchanged; no file under `src/` or `tools/`
+was modified.  The final clean Ubuntu `clean-environment-recheck` run
+([29921106279](https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/29921106279))
+passed with `1452 passed, 0 failed, 9 skipped, 25 deselected` and 85.57% coverage, unskipped and
+unmodified with respect to the five named tests.  PR #60 merged 2026-07-19 under a documented
+operator exception because this follow-up was still outstanding; that exception is now resolved.
 
 ## Plan 9.99 (Tracked, Not Yet Scheduled): Credential URI Security-Snapshot Canonicalization
 
