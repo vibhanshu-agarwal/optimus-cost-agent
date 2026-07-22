@@ -734,6 +734,81 @@ applied).
 
 **Status:** Resolved 2026-07-22.
 
+## Backlog: Windows Subprocess Handle-Duplication Flake, WinError 6/50 (Tracked, Not Yet Scheduled)
+
+**Raised:** 2026-07-22, during Plan 9.99 Task 7 repository-wide verification. Independently reproduced
+by both the implementing agent (Cursor) and the reviewing agent (Claude) on the same Windows
+development host, in two separate full-suite runs taken minutes apart.
+
+**Signature:** `uv run pytest -q` intermittently fails with `OSError: [WinError 6] The handle is
+invalid` or `[WinError 50] The request is not supported`. Every occurrence raises inside CPython's own
+`subprocess.py`, at `Popen.__init__` -> `_get_handles` -> `_make_inheritable` ->
+`_winapi.DuplicateHandle`, for a THIRD-PARTY child process spawned directly via stdlib
+`subprocess.run`/`Popen` (`git.exe`, `icacls.exe`, or the real subprocess launched by
+`tests/integration/release/test_verify_live_agent_cli.py`, which exercises the real
+`NdjsonSubprocessSession`/`operator_verify.ensure_verify_workspace` machinery). The failure occurs
+before any Optimus-authored code gets control of the child process. Two independent full-suite runs on
+the same host produced: one completely clean pass (1469 passed, 0 failed) and one run failing an
+identical set of 11 tests (see Evidence anchors).
+
+**Explicitly distinct from the just-resolved NDJSON broken-pipe race above:** that bug was a genuine
+logic defect inside `NdjsonSubprocessSession` itself -- two real races in Optimus's own code, confirmed
+on real Linux CI, fixed in PR #65. This entry must NOT be assumed to be the same kind of problem merely
+because it is also subprocess-related and also intermittent. Treating a reproducible failure as "just
+flaky" without root-causing it is exactly the mistake the broken-pipe entry above shows this project
+has made before real evidence corrected it; this entry exists so the same mistake is not repeated here
+by default.
+
+**Root cause: not yet established.** Plausible causes, none yet confirmed:
+- Windows handle-table growth/exhaustion within a single long-lived `uv run pytest` process across
+  roughly 1500 tests, many of which spawn subprocesses -- potentially aggravated by
+  `NdjsonSubprocessSession`'s background reader threads holding pipe handles alive longer than
+  strictly necessary across unrelated later tests.
+- A known class of CPython-on-Windows `subprocess` race between one call's handle duplication and
+  concurrent garbage collection of a previously-exited `Popen` object under load.
+- Restrictions specific to the sandboxed Bash-tool shell this evidence was collected through (job
+  objects / handle-inheritance limits) that may not reproduce in a native terminal, in WSL2, or in
+  real CI.
+
+**Acceptance boundary:** This may only be closed as environment-only noise after:
+1. Reproducing (or failing to reproduce) the identical failure set on a plain native Windows terminal,
+   outside any sandboxed tool shell, with the result recorded.
+2. Reproducing (or failing to reproduce) on the project's WSL2 Ubuntu-24.04 substitute (see the
+   "WSL2 = local Linux CI substitute" operating note) and checking real GitHub Actions CI history, to
+   establish whether this is Windows-general, sandbox-specific, or already absent on the Linux runners
+   CI actually uses.
+3. Auditing whether any Optimus-owned code -- in particular `NdjsonSubprocessSession`'s reader threads,
+   and any other call site constructing `subprocess.Popen`/`subprocess.run` without promptly closing
+   pipes or joining reader threads -- leaves handles alive longer than necessary in a way that could
+   contribute to handle-table pressure, even though the failure itself surfaces inside stdlib rather
+   than in Optimus's own code.
+4. Only classifying this as a pure OS/sandbox environment limitation once (1) and (2) point away from
+   an Optimus code defect. If (3) turns up a real resource-lifecycle issue, it must be fixed with a real
+   PR, the same way the NDJSON broken-pipe race was, not suppressed or skip-marked away.
+
+**Evidence anchors:** Plan 9.99 Task 7 handoff checkpoint log
+(`docs/superpowers/reviews/plan-9-99-review-checkpoints.md` -- gitignored, cite by content since it is
+not in git history). Two full-suite runs on the same host: one clean (1469 passed, 0 failed, 20
+skipped, 25 deselected) and one reproducing exactly this set --
+`tests/integration/release/test_verify_live_agent_cli.py` (`test_verify_live_agent_defaults_to_scratch_workspace`,
+`test_verify_live_agent_preflight_failure_exits_2`, `test_verify_live_agent_success_exits_0`,
+`test_verify_live_agent_runtime_failure_exits_3`),
+`tests/unit/acp/test_launch_gate.py::TestRealWindowsDaclEnumeration` (all 3 cases),
+`tests/unit/acp/test_trusted_paths.py::TestWorkspaceIdentity::test_identity_includes_git_root_when_present`,
+`tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_capture_timeout_terminates_parent_and_descendant_in_an_isolated_probe`,
+`tests/unit/tools/test_verify_plan987_acpx_evidence.py::test_post_capture_verifier_is_directly_executable`,
+`tests/unit/tools/test_verify_plan987_acpx_evidence.py::test_cli_digest_gate_rejects_non_lowercase_or_non_sha256_value`.
+
+**Scope clarity:** None of the affected tests overlap with any file Plan 9.99 changed
+(`src/optimus_security/sanitization.py`, `src/optimus/acp/launch_policy.py`,
+`src/optimus/acp/launch_gate.py`, `src/optimus/acp/launch_approvals.py`,
+`src/optimus/acp/launch_approval_cli.py`, and their test files); the failure set and signature are
+identical whether or not Plan 9.99's changes are present in the working tree. This does not block
+Plan 9.99 completion, commit, or PR -- it is an unrelated, pre-existing, environment-surfaced flake,
+tracked here rather than inside the Plan 9.99 plan file.
+
+**Status:** Tracked, not yet scheduled. No implementation plan exists.
+
 ## Plan 10 (Tracked, Not Yet Scheduled): Unified Gateway Capabilities Broker
 
 **Raised:** 2026-07-08, during Plan 9.7 review. The client-side one-key contract is already
