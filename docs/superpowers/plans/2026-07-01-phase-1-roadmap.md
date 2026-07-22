@@ -596,7 +596,7 @@ passed with `1452 passed, 0 failed, 9 skipped, 25 deselected` and 85.57% coverag
 unmodified with respect to the five named tests.  PR #60 merged 2026-07-19 under a documented
 operator exception because this follow-up was still outstanding; that exception is now resolved.
 
-## Plan 9.99 (Tracked, Not Yet Scheduled): Credential URI Security-Snapshot Canonicalization
+## Plan 9.99 (Planning Approved; Implementation Not Started): Credential URI Security-Snapshot Canonicalization
 
 **Raised:** 2026-07-18 by the Plan 9.98 v6 security audit.
 
@@ -613,7 +613,23 @@ non-credential URI behavior.
 **Dependency:** Plan 9.99 must land before Plan 9.96 closes. Plan 9.98 v6 does not implement,
 reinterpret, or waive this finding.
 
-**Status:** Tracked, not yet scheduled; no implementation plan exists.
+**Design-entry gate:** Reviewer-agent approved on 2026-07-22; operator approval pending. The review
+broadened the finding to every SECURITY-tier URI-bearing value (`OPTIMUS_GATEWAY_URL`,
+`OPTIMUS_REDIS_URL`, `OPTIMUS_LOCAL_GATEWAY_BASE_URL`, and the resolved `_resolved_base_url`),
+required original-text userinfo slicing to preserve IPv6 bracket and host-case fidelity, and required
+a registry-wide invariant so a future `_URL`/`_URI` SECURITY-tier name cannot omit URI
+classification. The frozen contract is
+`docs/superpowers/specs/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization-design.md`
+at SHA-256 `B2B236EEF191EC74046A9FF32EA63F91A08E6519BA30ADF8FA3599F4DBC77CF8`; its adjacent approval
+record is `docs/superpowers/reviews/2026-07-22-plan-9-99-security-design-approval.md`.
+
+**Status:** Reviewer-agent approved the implementation plan on 2026-07-22; operator approval pending;
+implementation has not started.
+`docs/superpowers/plans/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md` is
+frozen at SHA-256 `BEDF2340F8473F2FDCB2E582255E4A09C42B0B9017AFAC5847FD962C2FD6AFA1`; its adjacent
+approval record is `docs/superpowers/reviews/2026-07-22-plan-9-99-implementation-plan-approval.md`.
+Docs merged in PR #63 (commit `b6ab9b6`). Implementation must begin from a fresh branch/worktree based
+on the latest `origin/main`, not the Plan 9.98 branch.
 
 ## Backlog: Re-pin FU-4A/FU-5 Live Evidence (Tracked, Not Yet Scheduled)
 
@@ -765,8 +781,8 @@ backlog entry above.
 23. Plan 9.98: Real ACPX session evidence for Plan 9.96 Task 9 — **implemented and
     real-dependency verified** at `74d4ff21173a597c3b274cf6e6cbdf8a7eb43697`; evidence in
     `reports/plan-9-98-real-acpx-session-evidence.md`.
-24. Plan 9.99: Credential URI security-snapshot canonicalization — tracked, not yet scheduled;
-    must land before Plan 9.96 closes.
+24. Plan 9.99: Credential URI security-snapshot canonicalization — planning approved 2026-07-22,
+    implementation not started; must land before Plan 9.96 closes.
 25. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
 26. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
     starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden
