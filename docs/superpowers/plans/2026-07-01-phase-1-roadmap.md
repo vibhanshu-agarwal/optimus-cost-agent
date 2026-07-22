@@ -311,6 +311,18 @@ contract and independent `acpx` durable UI remain proven; durable Zed stay-up on
 deferred, not claimed. Sole custody is the standalone tracked backlog entry below; this work must
 not be folded into Plan 11 or the completed Plan 9.75 lane.
 
+**P9.8-FU-6 (substantively resolved, no discrete closing commit):** the acceptance criteria —
+a documented operator/pre-GUI evidence path uses independently authored `acpx` exclusively, and
+hand-rolled Plan 9.8 harnesses are removed or clearly marked non-evidence — are met in practice.
+`tools/run_plan98_live_evidence.py`, the hand-rolled harness named in this follow-up's original
+trigger, no longer exists in the repository; every live-evidence tool added since
+(`tools/run_plan987_acpx_live_evidence.py`, `tools/run_plan988_fu4b_live_evidence.py`, and Plan
+9.96/9.98's real-`acpx` capture tooling) drives real `acpx` exclusively, and "use real `acpx`, never
+a hand-rolled ACP client fake" has been the enforced integration-evidence policy across every plan
+since. Unlike other closed follow-ups in this document, this resolution happened gradually as
+adopted practice across Plans 9.87, 9.88, 9.96, and 9.98 rather than through one dedicated PR, so
+there is no single commit to cite; recorded here as the closure this roadmap was missing.
+
 ## Plan 9.85: Multi-Turn Read-Observe-Replan Workflow
 
 **Raised:** Deferred from Plan 9.8 as `P9.8-FU-1` (2026-07-10 draft); formalized as its own
@@ -716,6 +728,23 @@ frozen at SHA-256 `BEDF2340F8473F2FDCB2E582255E4A09C42B0B9017AFAC5847FD962C2FD6A
 approval record is `docs/superpowers/reviews/2026-07-22-plan-9-99-implementation-plan-approval.md`.
 Docs merged in PR #63 (commit `b6ab9b6`). Implementation must begin from a fresh branch/worktree based
 on the latest `origin/main`, not the Plan 9.98 branch.
+
+## Backlog: P9.85-FU-3 Cross-Run/Session Spend Policy (Tracked, Not Yet Scheduled)
+
+**Raised:** 2026-07-11, in Plan 9.85's own Deferred Follow-Ups section
+(`docs/superpowers/plans/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`), disclosed as
+owned by an unnamed future budget-governance plan rather than silently dropped.
+
+**Owned follow-up:** Define an operator-configurable cumulative session/project spend ceiling above
+the existing per-run `max_cost_usd` monotonic limit and the Plan 7 usage ledger. Plan 9.85 records
+all usage completely and accurately but does not itself invent any cross-run denial policy.
+
+**Acceptance criteria:** A new cross-run/session ceiling must not weaken or duplicate the existing
+per-run monotonic-tighten-or-exact approval contract (Plan 9.96), must be enforced from the same
+reconciled Plan 7 usage ledger rather than a new parallel accounting path, and must fail closed
+rather than silently permit overspend when ledger data is unavailable.
+
+**Status:** Tracked, not yet scheduled. No implementation plan exists.
 
 ## Backlog: Re-pin FU-4A/FU-5 Live Evidence (Tracked, Not Yet Scheduled)
 
