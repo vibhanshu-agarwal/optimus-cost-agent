@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from unittest.mock import Mock
 
 import pytest
@@ -223,7 +224,14 @@ def test_legacy_approved_workspace_missing_root_fails_without_recreating_it(monk
     monkeypatch.setattr(acp_main, "build_configured_server", server)
 
     assert acp_main.main(["--workspace-root", str(workspace)]) == 2
-    assert "AUDIT_DIR_UNAVAILABLE" in capsys.readouterr().err
+    stderr = capsys.readouterr().err
+    if sys.platform == "win32":
+        assert "AUDIT_DIR_UNAVAILABLE" in stderr
+    else:
+        assert stderr.startswith(
+            "optimus-agent: no launch approval found for this workspace."
+        )
+        assert "optimus-trust --workspace-root" in stderr
     assert not (workspace / ".optimus").exists()
     redis.assert_not_called()
     gateway.assert_not_called()
