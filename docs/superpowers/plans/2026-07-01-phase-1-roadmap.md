@@ -486,7 +486,7 @@ FU-4B accepted-open is deliberately not in this entry: it is a closed dispositio
 9.88 ceremony, not a TODO. **Status:** Implemented; `P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3`
 closed with evidence. Remaining deferred follow-ups owned by Plans 9.96 and 9.97.
 
-## Plan 9.96 (Planning Approved; Implementation Not Started): Operator-Controlled Debug and Launch Trust
+## Plan 9.96 (Implemented): Operator-Controlled Debug and Launch Trust
 
 **Raised:** 2026-07-14 by the approved Plan 9.95 lane split.
 
@@ -499,43 +499,26 @@ prior plan document, are the dependency contract for this lane.
 `docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md`
 at SHA-256 `8B67FC187B92F0B66A9932AAAD9A013C476C19C165A1044F57F338245A01786C`; its adjacent approval record
 is `docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md` at SHA-256
-`63F2200FE3A4540A4455CF737B42E042D9613648454736B543846A6CB4BD211D`. The review fixed the
-authorization, scope, expiry, audit, storage, transcript, workspace-origin, and launch-setting
-trust boundaries before implementation planning began.
+`63F2200FE3A4540A4455CF737B42E042D9613648454736B543846A6CB4BD211D`.
 
-**Owned follow-ups (sole custody):**
+**Owned follow-ups (closed by Task 9):**
 
-- `P9.85-FU-7` — deliberate-access design for session- or time-scoped access to unredacted debug
-  traces, a broader audit of every logging/telemetry surface for the same class of gap, and an
-  explicit decision on whether real `acpx` client transcripts can or should be brought under the
-  same redaction guarantee rather than relying on human review before committed excerpts.
-- **Sole custody — `P9.9-FU-1`: Workspace-influenced agent launch environment.** Scope wording is
-  retained from the landed follow-up's Deferred Follow-Ups section; that is scope provenance, not
-  this lane's dependency anchor.
+- `P9.85-FU-7` — deliberate-access design for session-scoped elevated diagnostics, sink audit, and
+  sanitized real-`acpx` transcripts — **closed** with
+  `reports/plan-9-96-operator-debug-launch-trust-evidence.md`.
+- `P9.9-FU-1` — workspace-influenced agent launch environment / exact launch-trust ceremony —
+  **closed** with the same evidence report.
 
-  **Risk:** The config-root containment guard prevents implicit or explicitly redirected config
-  files from resolving inside the workspace. It cannot prove that top-precedence environment values
-  are operator-authored when an IDE merges project-local settings into the external agent launch
-  environment. A malicious workspace could therefore influence provider, base-URL, or credential
-  environment fields even though `.env.gateway` discovery is safe.
+**Status:** Implemented. Tasks 0–8 merged via PR #60; Task 9 real-dependency evidence verified
+2026-07-23 against base `031fc651dbc6b1d21cd714a0c8f5db9ea006b028`. Plan 9.98
+(`74d4ff21173a597c3b274cf6e6cbdf8a7eb43697`) and Plan 9.99 (`f2b6b21`, PR #66) were prerequisites
+for Task 9 Steps 2/3/5 and URI-snapshot fidelity respectively.
 
-  **Acceptance criteria:** Define and implement a trust boundary that distinguishes
-  operator-approved agent environment overrides from workspace-provided launch settings; fail
-  closed or require an explicit approval ceremony before workspace-originated settings can affect
-  local-Gateway provider, base URL, or credentials. Preserve legitimate shell/admin deployment
-  flows and do not log values.
+**Disclosed follow-ups (tracked, not yet scheduled; not fixed in Plan 9.96):** `P9.96-FU-1` through
+`P9.96-FU-7` plus the Plan 9.98 inner-audit ordering observation — see the backlog entries below and
+the Task 9 evidence report limitations table.
 
-**Status:** Planning approved on 2026-07-15; implementation has not started. The reviewer-agent and
-operator approved
-`docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md` at
-SHA-256 `E47701358596D0D31E6CD7FDF21438D529C65F0190889058C936FB9A0B00E721`. The authoritative adjacent
-plan-approval record is
-`docs/superpowers/reviews/2026-07-15-plan-9-96-implementation-plan-approval.md` at SHA-256
-`A7DD28190FAC6859B6FED451E4CC89F64035EA0581CE3AB9A5D3BA1C89E8C6DB`. Implementation must wait for
-this docs-only planning branch to merge, then begin from a fresh branch/worktree based on the latest
-`origin/main`.
-
-Plan 9.96 Task 9 Steps 2, 3, and 5 depend on Plan 9.98's implementation commit
+Plan 9.96 Task 9 Steps 2, 3, and 5 depended on Plan 9.98's implementation commit
 `74d4ff21173a597c3b274cf6e6cbdf8a7eb43697` and its real-dependency evidence report at
 `reports/plan-9-98-real-acpx-session-evidence.md`.
 
@@ -567,7 +550,7 @@ and exact environment-role audit are recorded in
 `reports/plan-9-98-real-acpx-session-evidence.md`.
 
 **Dependency:** Plan 9.96 Task 9 may now run its Step 2 capture commands with `--drive-session`.
-Plan 9.98 is necessary but not sufficient for Plan 9.96 closure because Plan 9.99 remains open.
+Plan 9.98 was necessary but not sufficient for Plan 9.96 closure until Plan 9.99 also landed.
 
 **Status:** Implemented and real-dependency verified on 2026-07-19.
 
@@ -696,40 +679,18 @@ passed with `1452 passed, 0 failed, 9 skipped, 25 deselected` and 85.57% coverag
 unmodified with respect to the five named tests.  PR #60 merged 2026-07-19 under a documented
 operator exception because this follow-up was still outstanding; that exception is now resolved.
 
-## Plan 9.99 (Planning Approved; Implementation Not Started): Credential URI Security-Snapshot Canonicalization
+## Plan 9.99 (Implemented): Credential URI Security-Snapshot Canonicalization
 
 **Raised:** 2026-07-18 by the Plan 9.98 v6 security audit.
 
-**Owned finding:** SECURITY-tier URI values currently enter the launch security snapshot only after
-URI-userinfo masking, so changing only userinfo can leave the digest unchanged despite Plan 9.96's
-URI-userinfo-HMAC requirement. Literal display of `OPTIMUS_GATEWAY_URL` can also expose URI userinfo
+**Owned finding:** SECURITY-tier URI values previously entered the launch security snapshot only after
+URI-userinfo masking, so changing only userinfo could leave the digest unchanged despite Plan 9.96's
+URI-userinfo-HMAC requirement. Literal display of `OPTIMUS_GATEWAY_URL` could also expose URI userinfo
 during approval.
 
-**Acceptance boundary:** Produce a separately reviewed security contract and implementation plan;
-bind URI userinfo into the security snapshot without logging or displaying it; make approval display
-userinfo-safe; and add fail-closed tests for digest sensitivity, display redaction, and unchanged
-non-credential URI behavior.
-
-**Dependency:** Plan 9.99 must land before Plan 9.96 closes. Plan 9.98 v6 does not implement,
-reinterpret, or waive this finding.
-
-**Design-entry gate:** Reviewer-agent and operator approved on 2026-07-22. The review
-broadened the finding to every SECURITY-tier URI-bearing value (`OPTIMUS_GATEWAY_URL`,
-`OPTIMUS_REDIS_URL`, `OPTIMUS_LOCAL_GATEWAY_BASE_URL`, and the resolved `_resolved_base_url`),
-required original-text userinfo slicing to preserve IPv6 bracket and host-case fidelity, and required
-a registry-wide invariant so a future `_URL`/`_URI` SECURITY-tier name cannot omit URI
-classification. The frozen contract is
-`docs/superpowers/specs/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization-design.md`
-at SHA-256 `B2B236EEF191EC74046A9FF32EA63F91A08E6519BA30ADF8FA3599F4DBC77CF8`; its adjacent approval
-record is `docs/superpowers/reviews/2026-07-22-plan-9-99-security-design-approval.md`.
-
-**Status:** Reviewer-agent and operator approved the implementation plan on 2026-07-22; implementation
-has not started.
-`docs/superpowers/plans/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md` is
-frozen at SHA-256 `BEDF2340F8473F2FDCB2E582255E4A09C42B0B9017AFAC5847FD962C2FD6AFA1`; its adjacent
-approval record is `docs/superpowers/reviews/2026-07-22-plan-9-99-implementation-plan-approval.md`.
-Docs merged in PR #63 (commit `b6ab9b6`). Implementation must begin from a fresh branch/worktree based
-on the latest `origin/main`, not the Plan 9.98 branch.
+**Status:** Implemented. Merged via PR #66 at `f2b6b21` (`feat: canonicalize credential URI userinfo
+in launch security snapshots`). Required before Plan 9.96 Task 9 closure; Task 9 evidence used
+policy compatibility `P9.99-v1`.
 
 ## Backlog: Consolidated Deferred Follow-Ups (Tracked, Not Yet Scheduled)
 
@@ -747,12 +708,10 @@ unscheduled), `P9.85-FU-1` (intelligent observation compression, owner Plan 11),
 (dynamic planning-evidence partition, owner Plan 11), `P9.85-FU-3` (cross-run/session spend policy,
 unscheduled), and `P9.87-FU-1` (mechanical current-raw-evidence grounding guard, owner Plan 9.97).
 
-**Adding future items:** Any new follow-up emerging from Plan 9.96 or Plan 9.97 (once either
-actually lands and produces genuinely deferred, unscheduled work) gets added to the same document
-rather than a new scattered roadmap entry. Plan 9.96's own imminent Task 9 closures
-(`P9.85-FU-7`, `P9.9-FU-1`) and the pending `P9.96-FU-1..7` disclosures are explicitly not in this
-list yet — they already have an active, scheduled closure path; see that document's "Explicitly out
-of scope" section.
+**Adding future items:** Any new follow-up emerging from Plan 9.97 (or later) gets added to the same
+document rather than a new scattered roadmap entry. Plan 9.96's Task 9 closures (`P9.85-FU-7`,
+`P9.9-FU-1`) are done; the disclosed `P9.96-FU-1..7` items have dedicated backlog entries below and
+are also eligible for consolidation into this document when scheduled.
 
 **Status:** Tracked, not yet scheduled. Each item is promoted out of the consolidated document into
 its own real numbered plan (or folded into Plan 11 / Plan 9.97 when either is scheduled), never
@@ -838,6 +797,29 @@ the first fix); CI run `29934807930` and post-merge `main` run `29935529847` (cl
 applied).
 
 **Status:** Resolved 2026-07-22.
+
+## Backlog: Plan 9.96 Disclosed Follow-Ups P9.96-FU-1..7 (Tracked, Not Yet Scheduled)
+
+**Raised:** Disclosed by Plan 9.96 Task 9 (2026-07-23) under the 2026-07-18 scope-conflict ruling:
+Plan 9.96 may close only `P9.85-FU-7` and `P9.9-FU-1`; these items are named custody, not silent drops.
+
+| ID | Summary |
+|---|---|
+| `P9.96-FU-1` | `StartupConfigurationError` missing `optimus-agent:` prefix in `acp/__main__.py` |
+| `P9.96-FU-2` | Duplicated TOCTOU comment block in `acp/__main__.py` |
+| `P9.96-FU-3` | `append_launch_audit_event` docstring vs `workspace/.optimus` runtime root |
+| `P9.96-FU-4` | Latent unroutable `DEFAULT_AGENT_MODEL = "glm-5.2"` in `agent/defaults.py` |
+| `P9.96-FU-5` | Frozen dataclass exceptions mask real codes via `@contextmanager` |
+| `P9.96-FU-6` | Frozen plan Task 9 CLI arg-order / PATH drift (execution correction only; applied) |
+| `P9.96-FU-7` | Approve ceremony lacks y/N confirm; bare-shell display rows may be empty |
+
+**Also disclosed (Plan 9.98 custody handoff):** inner `optimus-agent` launch-audit `agent_child` may
+omit keyring-resolved `OPTIMUS_API_KEY` because audit precedes `apply_local_defaults`; outer
+post-default audit remains the authoritative child-key evidence source.
+
+**Evidence:** `reports/plan-9-96-operator-debug-launch-trust-evidence.md` limitations table.
+
+**Status:** Tracked, not yet scheduled.
 
 ## Backlog: Windows Subprocess Handle-Duplication Flake, WinError 6/50 (Tracked, Not Yet Scheduled)
 
@@ -1019,19 +1001,17 @@ consolidated backlog document, not owned by Plan 11.
 20. Plan 9.95: Usage, telemetry, and evidence-tooling correctness — implemented;
     `P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3` closed; evidence in
     `reports/plan-9-95-usage-telemetry-evidence.md`.
-21. Plan 9.96: Operator-controlled debug and launch trust — **planning approved 2026-07-15;
-    implementation not started.** Frozen security contract SHA-256
-    `8B67FC187B92F0B66A9932AAAD9A013C476C19C165A1044F57F338245A01786C`, security-contract approval
-    record SHA-256 `63F2200FE3A4540A4455CF737B42E042D9613648454736B543846A6CB4BD211D`, and approved implementation
-    plan SHA-256 `E47701358596D0D31E6CD7FDF21438D529C65F0190889058C936FB9A0B00E721`; adjacent plan-approval
-    record SHA-256 `A7DD28190FAC6859B6FED451E4CC89F64035EA0581CE3AB9A5D3BA1C89E8C6DB`.
+21. Plan 9.96: Operator-controlled debug and launch trust — **implemented**; Task 9 evidence
+    verified 2026-07-23 against base `031fc651dbc6b1d21cd714a0c8f5db9ea006b028`; closes
+    `P9.85-FU-7` and `P9.9-FU-1`; evidence in
+    `reports/plan-9-96-operator-debug-launch-trust-evidence.md`.
 22. Plan 9.97: Mechanical current-raw-evidence grounding — tracked, not yet scheduled; remains
     isolated from Plan 11; no implementation plan exists.
 23. Plan 9.98: Real ACPX session evidence for Plan 9.96 Task 9 — **implemented and
     real-dependency verified** at `74d4ff21173a597c3b274cf6e6cbdf8a7eb43697`; evidence in
     `reports/plan-9-98-real-acpx-session-evidence.md`.
-24. Plan 9.99: Credential URI security-snapshot canonicalization — planning approved 2026-07-22,
-    implementation not started; must land before Plan 9.96 closes.
+24. Plan 9.99: Credential URI security-snapshot canonicalization — **implemented** at `f2b6b21`
+    (PR #66); prerequisite for Plan 9.96 Task 9 closure.
 25. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
 26. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
     starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden
