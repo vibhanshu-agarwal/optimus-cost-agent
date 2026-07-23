@@ -314,7 +314,7 @@ Expected: the focused suite passes; the TOCTOU marker occurs once; git diff --ch
 - Both the module and function documentation call the location a workspace-local runtime root.
 - No claim remains that the audit file lives under an external runtime root.
 
-- [ ] **Step 1: Add the failing documentation contract test.**
+- [x] **Step 1: Add the failing documentation contract test.**
 
 Add:
 
@@ -340,13 +340,13 @@ uv run --locked pytest tests/unit/acp/test_launch_audit.py::test_launch_audit_do
 
 Expected: FAIL against the current wording.
 
-- [ ] **Step 2: Correct only the two misleading phrases.**
+- [x] **Step 2: Correct only the two misleading phrases.**
 
 Use workspace-local runtime root in the module docstring and in the
 append_launch_audit_event() docstring. Keep the existing security properties and the
 require_workspace_runtime_root() call unchanged.
 
-- [ ] **Step 3: Verify the narrow documentation change.**
+- [x] **Step 3: Verify the narrow documentation change.**
 
 Run:
 
