@@ -374,7 +374,7 @@ Expected: all launch-audit unit tests, Ruff, and diff hygiene pass.
 - Explicit OPTIMUS_AGENT_MODEL and CLI values, including explicit glm-5.2 test values used by
   direct runner fixtures, remain unchanged.
 
-- [ ] **Step 1: Pin the routing evidence and add the RED default assertion.**
+- [x] **Step 1: Pin the routing evidence and add the RED default assertion.**
 
 Change the default test to assert the reviewed routable value while keeping the public constant
 assertion:
@@ -405,7 +405,7 @@ Expected: the RED default assertion fails against glm-5.2 and the mapping select
 the existing routing table. Add the imports before running this command; a collection error is not
 an acceptable substitute for the intended assertion failure.
 
-- [ ] **Step 2: Make the smallest fix and make invalid-model tests explicit.**
+- [x] **Step 2: Make the smallest fix and make invalid-model tests explicit.**
 
 Set:
 
@@ -418,7 +418,7 @@ model failure, add OPTIMUS_AGENT_MODEL: glm-5.2 to that test's input mapping so 
 explicit invalid request rather than depending on a dead default. Do not mass-rewrite direct runner
 fixtures that intentionally use glm-5.2 as a fake model string.
 
-- [ ] **Step 3: Verify model resolution, preflight, and pricing compatibility.**
+- [x] **Step 3: Verify model resolution, preflight, and pricing compatibility.**
 
 Run:
 

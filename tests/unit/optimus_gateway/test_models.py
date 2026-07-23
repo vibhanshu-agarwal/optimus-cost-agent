@@ -1,5 +1,6 @@
 import pytest
 
+from optimus.agent.defaults import DEFAULT_AGENT_MODEL
 from optimus_gateway.model_mapping import is_plausible_passthrough, resolve_model_id
 from optimus_gateway.models import GatewayServiceConfig
 
@@ -14,6 +15,12 @@ def test_resolve_model_id_openrouter_alias():
 
 def test_resolve_model_id_openai_alias():
     assert resolve_model_id(provider="openai", model="claude-haiku") == "gpt-4o-mini"
+
+
+def test_resolve_model_id_accepts_shared_agent_default_for_every_provider():
+    assert resolve_model_id(provider="anthropic", model=DEFAULT_AGENT_MODEL) == "claude-haiku-4-5-20251001"
+    assert resolve_model_id(provider="openrouter", model=DEFAULT_AGENT_MODEL) == "anthropic/claude-haiku-4.5"
+    assert resolve_model_id(provider="openai", model=DEFAULT_AGENT_MODEL) == "gpt-4o-mini"
 
 
 def test_resolve_model_id_openrouter_passthrough():
