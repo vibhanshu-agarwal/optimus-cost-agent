@@ -325,17 +325,6 @@ def main(argv: list[str] | None = None) -> int:
     # completely undetected without an explicit revalidation call. This is
     # the one TOCTOU vector that needs active re-checking, placed as early
     # as possible after audit and before any Redis/Gateway/agent probe.
-    # Plan 9.96, Task 5 Step 7 (TOCTOU matrix): workspace identity is a
-    # filesystem BINDING consumed again at spawn time (the child cwd's into
-    # workspace_root), not a value captured once into the immutable
-    # snapshot/candidate. Unlike os.environ, .env.gateway bytes, and the
-    # keyring HMAC key -- all read exactly once and never reread, so
-    # tampering with them after authorization has no effect by construction
-    # -- a workspace relocation or symlink retarget in the window between
-    # authorize_launch() succeeding and the first side effect below would go
-    # completely undetected without an explicit revalidation call. This is
-    # the one TOCTOU vector that needs active re-checking, placed as early
-    # as possible after audit and before any Redis/Gateway/agent probe.
     try:
         revalidate_workspace_identity(candidate.workspace_identity)
     except TrustedPathError as exc:
@@ -376,7 +365,7 @@ def main(argv: list[str] | None = None) -> int:
                 require_timeseries=True,
             )
         except PreflightFailure as exc:
-            print(exc.user_message, file=sys.stderr)
+            print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
             return exc.exit_code
         log_provenance_once()
         print("Optimus ACP agent configuration OK.", file=sys.stderr)
@@ -408,7 +397,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             server = build_configured_server(environ=agent_environ, workspace_root=workspace_root, model=args.model)
         except StartupConfigurationError as exc:
-            print(exc.user_message, file=sys.stderr)
+            print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
             return exc.exit_code
 
         if args.framed:

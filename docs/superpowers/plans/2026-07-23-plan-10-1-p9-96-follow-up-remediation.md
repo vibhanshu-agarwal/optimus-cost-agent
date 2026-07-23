@@ -113,7 +113,7 @@ store, pytest, pytest-asyncio, pytest-cov, coverage.py, Ruff, and uv. No new dep
 **Produces:** A digest-pinned, reviewer- and operator-approved Plan 10.1 scope with proof that no
 other Plan 10.x number existed on the allocation baseline.
 
-- [ ] **Step 1: Verify the branch, baseline, and preserved user changes.**
+- [x] **Step 1: Verify the branch, baseline, and preserved user changes.**
 
 Run:
 
@@ -129,7 +129,7 @@ Expected: branch agent/codex/plan-10-1-p996-remediation tracks origin/main; both
 commands return 21220209421145b583eaca9a65b19cf6b5128caa; the pre-existing uv.lock modification
 and .claude/ untracked path remain visible; no plan task stages them.
 
-- [ ] **Step 2: Confirm no Plan 10.x slot was allocated on origin/main.**
+- [x] **Step 2: Confirm no Plan 10.x slot was allocated on origin/main.**
 
 Run:
 
@@ -141,14 +141,14 @@ git grep -n -E 'Plan 10\.[0-9]' origin/main -- docs/superpowers/plans README.md
 Expected: no output from either command. The existing Plan 10 umbrella and its sequential-slot
 allocation rule remain; this pickup assigns the first actual slot, Plan 10.1.
 
-- [ ] **Step 3: Obtain review and operator approval for these exact plan bytes.**
+- [x] **Step 3: Obtain review and operator approval for these exact plan bytes.**
 
 The reviewer verifies the FU-5 split trigger, FU-7 confirmation-gate safety boundary, explicit
 statement that the effective-row display gap remains open under FU-7, task-level evidence, and
 explicit exclusions. The operator approves the same scope. Record both
 statements and the exact plan path in docs/superpowers/reviews/2026-07-23-plan-10-1-implementation-plan-approval.md.
 
-- [ ] **Step 4: Freeze the approved plan digest before implementation.**
+- [x] **Step 4: Freeze the approved plan digest before implementation.**
 
 Run:
 
@@ -161,7 +161,7 @@ in the approval record. Any substantive plan-text change after this step require
 new approval record; checkbox-only progress is allowed only under the repository's established plan
 protocol.
 
-- [ ] **Step 5: Start the implementation lane only after the approval record exists.**
+- [x] **Step 5: Start the implementation lane only after the approval record exists.**
 
 Implementation must begin from a fresh branch based on the latest origin/main, and the implementing
 agent must first read this plan's checkpoint log and verify it against git status, the plan digest,
@@ -183,7 +183,7 @@ that handoff.
 - Produces exactly one of: a closure disposition for FU-5; a contained fix landed inside Plan 10.1;
   or a reviewed split-out Plan 10.2-or-later design for FU-5 while the rest of this plan remains Plan 10.1.
 
-- [ ] **Step 1: Run the static recurrence inventory.**
+- [x] **Step 1: Run the static recurrence inventory.**
 
 Run:
 
@@ -196,7 +196,7 @@ src; StartupConfigurationError and AcpOutboundError remain the candidate frozen 
 classes; the Plan 9.98-FU-1 trusted-path exception correction is already represented by its own
 non-frozen error contract. Record the actual output, not a narration of it.
 
-- [ ] **Step 2: Run the behavior selectors before changing code.**
+- [x] **Step 2: Run the behavior selectors before changing code.**
 
 Run:
 
@@ -208,7 +208,7 @@ Expected: the selector collects and passes or exposes a concrete failure; a coll
 missing dependency, or generic environment error is not evidence of FU-5. If a failure occurs,
 reduce it to a named constructor/catch/str()/attribute assertion before deciding that FU-5 is live.
 
-- [ ] **Step 3: Classify the result using the explicit split boundary.**
+- [x] **Step 3: Classify the result using the explicit split boundary.**
 
 Close FU-5 with a checkpoint-log disposition and no source/test change when the inventory and behavior
 selectors show no current recurrence and the existing types preserve their codes/messages through
@@ -221,7 +221,7 @@ policy, or cross-layer changes, stop this task. Create the next unused single-de
 for FU-5, obtain separate review, and leave FU-5 out of the Plan 10.1 implementation lane. Do not
 renumber the remaining Plan 10.1 tasks.
 
-- [ ] **Step 4: Verify the selected disposition.**
+- [x] **Step 4: Verify the selected disposition.**
 
 For closure, run the exact focused selector from Step 2 again and record the passing output plus the
 static-inventory result. For a contained fix, run the new named RED selector, then the Step 2 selector,
@@ -243,7 +243,7 @@ the new plan path, allocation evidence, and the fact that no Plan 10.1 source/te
   begins with the exact optimus-agent: prefix.
 - The TOCTOU explanation remains once, with no runtime behavior change.
 
-- [ ] **Step 1: Add the failing prefix regressions.**
+- [x] **Step 1: Add the failing prefix regressions.**
 
 In tests/unit/acp/test_main_check_config.py, extend the existing
 test_check_config_prints_preflight_failure assertion:
@@ -277,7 +277,7 @@ uv run --locked pytest tests/unit/acp/test_main_check_config.py::test_check_conf
 
 Expected: the new/strengthened assertions fail only because the two production prints omit the prefix.
 
-- [ ] **Step 2: Apply the minimal production correction and delete one comment copy.**
+- [x] **Step 2: Apply the minimal production correction and delete one comment copy.**
 
 Change only these two prints:
 
@@ -289,7 +289,7 @@ Use it in both the PreflightFailure and StartupConfigurationError handlers. Dele
 verbatim 11-line TOCTOU block, retaining the first block immediately before
 revalidate_workspace_identity(candidate.workspace_identity).
 
-- [ ] **Step 3: Verify behavior and source hygiene.**
+- [x] **Step 3: Verify behavior and source hygiene.**
 
 Run:
 

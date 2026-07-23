@@ -288,6 +288,19 @@ def test_snapshot_mismatch_fails_closed_with_remediation(monkeypatch, tmp_path, 
     assert "approve" in err
 
 
+def test_startup_configuration_error_has_agent_prefix(monkeypatch, tmp_path, capsys):
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+
+    def fail_build(**_kwargs):
+        raise acp_main.StartupConfigurationError(exit_code=2, user_message="startup configuration failed")
+
+    monkeypatch.setattr(acp_main, "build_configured_server", fail_build)
+
+    assert acp_main.main(["--no-auto-start", "--workspace-root", str(tmp_path)]) == 2
+    assert capsys.readouterr().err == "optimus-agent: startup configuration failed\n"
+
+
 def test_no_auto_start_skips_redis_and_gateway_in_real_serve_path(monkeypatch, tmp_path) -> None:
     env = _base_env()
     _authorize(monkeypatch, tmp_path, env)
