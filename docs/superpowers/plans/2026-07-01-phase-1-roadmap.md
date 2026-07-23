@@ -717,12 +717,14 @@ digests, and file paths; never rely on a plan number alone.
 and this Plan 10 pool unless it is explicitly designated to Plan 12. Plan 9.96's
 `P9.85-FU-7` and `P9.9-FU-1` are closed and must not be reintroduced here.
 
-**Status:** The first pool item, Plan 10.1, is implemented (2026-07-23; see the entry immediately
-below for exact FU-by-FU dispositions). The rest of the pool remains tracked, not yet scheduled.
-The pool itself is not an implementation plan; each item is promoted when scheduled or folded into
-its designated Plan 12 scope.
+**Status:** The first pool item, Plan 10.1, has FU-level implementation complete (2026-07-23; see
+the entry immediately below for exact FU-by-FU dispositions); Task 7 repository-wide
+fitness/handoff gate is still pending before the plan closes. The rest of the pool remains tracked,
+not yet scheduled. The pool itself is not an implementation plan; each item is promoted when
+scheduled or folded into its designated Plan 12 scope.
 
-**Plan 10.1 (implemented 2026-07-23):** Drafted and approved 2026-07-23; frozen plan SHA-256:
+**Plan 10.1 (FU-level implementation complete 2026-07-23; Task 7 handoff pending):** Drafted and
+approved 2026-07-23; frozen plan SHA-256:
 `44041F0423584530BEE101C7917E5569757DD9E639069AD2BCF1F62646EE74B4`. Scope: six items closed
 (`P9.96-FU-1`, `FU-2`, `FU-3`, `FU-4` by implementation commit; `FU-5` by evidence; `FU-6` by
 no-code disposition) plus the confirmation-gate half of `FU-7` (remains partially open under its
@@ -735,7 +737,8 @@ original row for the effective-row display gap). Implementation commits:
 FU-by-FU disposition table and named tests. [PR #72](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/72)
 was the documentation-only freeze merge; implementation landed on
 `agent/cursor/plan-10-1-p996-remediation` afterward. The remaining Plan 10 pool items (see Open
-items above) stay tracked, not yet scheduled — Plan 10.1's completion does not close the pool.
+items above) stay tracked, not yet scheduled — Plan 10.1's FU-level work does not close the pool,
+and the plan itself remains open until Task 7 passes.
 
 ## Backlog: Re-pin FU-4A/FU-5 Live Evidence (Tracked, Not Yet Scheduled)
 
@@ -1009,10 +1012,12 @@ consolidated backlog document, not owned by Plan 12.
     (PR #66); prerequisite for Plan 9.96 Task 9 closure.
 24. Plan 10: Consolidated deferred follow-ups pool — tracked, not yet scheduled; items receive
     Plan 10.x numbers only when picked up, in scheduling order rather than priority order.
-    **Plan 10.1**, the pool's first allocated slot, is **implemented** (2026-07-23): closes
-    `P9.96-FU-1..FU-4` and `FU-6`, closes `FU-5` by evidence, and partially addresses `FU-7`
-    (confirmation gate landed; effective-row display gap remains open under the same row). The
-    rest of the Plan 10 pool remains tracked, not yet scheduled — Plan 10.1 does not close the pool.
+    **Plan 10.1**, the pool's first allocated slot, has **FU-level implementation complete**
+    (2026-07-23; Task 7 handoff gate pending): closes `P9.96-FU-1..FU-4` and `FU-6`, closes
+    `FU-5` by evidence, and partially addresses `FU-7` (confirmation gate landed; effective-row
+    display gap remains open under the same row). The rest of the Plan 10 pool remains tracked,
+    not yet scheduled — Plan 10.1 does not close the pool, and the plan itself remains open until
+    Task 7 passes.
 25. Plan 11: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
 26. Plan 12: Context window optimization and intelligent selection — tracked, not yet scheduled;
     starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden
