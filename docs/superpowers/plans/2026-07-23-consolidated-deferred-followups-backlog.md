@@ -170,12 +170,43 @@ up.
 explicit closure record resolves it with evidence. `P9.96-FU-6` is an applied execution correction,
 not a code defect, and may close only through an explicit reviewed disposition.
 
+**Plan 10.1 dispositions (updated 2026-07-23; the pool's first allocated slot):**
+
+| ID | Disposition |
+|---|---|
+| `P9.96-FU-1` | **Closed** by Plan 10.1, commit `daccb0d7469814930922eae67a86552435258cf6` ("fix(acp): prefix PreflightFailure and StartupConfigurationError stderr"). Named tests: `tests/unit/acp/test_main_check_config.py::test_check_config_prints_preflight_failure`, `tests/unit/acp/test_main_wiring.py::test_startup_configuration_error_has_agent_prefix`. |
+| `P9.96-FU-2` | **Closed** by Plan 10.1, same commit `daccb0d7469814930922eae67a86552435258cf6` (duplicate TOCTOU comment block removed; one copy retained, verified via `rg -n -F "Plan 9.96, Task 5 Step 7 (TOCTOU matrix): workspace identity is a" src/optimus/acp/__main__.py` returning a single hit). |
+| `P9.96-FU-3` | **Closed** by Plan 10.1, commit `d83953880a15419097e91da262678f736905cccd` ("docs(acp): align launch-audit docstrings with workspace-local runtime root"). Named test: `tests/unit/acp/test_launch_audit.py::test_launch_audit_docs_describe_workspace_local_runtime_root`. |
+| `P9.96-FU-4` | **Closed** by Plan 10.1, commit `cc66d660cd8580eb3b821d0eb25ed04b27605dc0` ("fix(agent): use routable shared default"). Named tests: `tests/unit/agent/test_defaults.py::test_resolve_agent_model_falls_back_to_routable_shared_default`, `tests/unit/optimus_gateway/test_models.py::test_resolve_model_id_accepts_shared_agent_default_for_every_provider`. |
+| `P9.96-FU-5` | **Closed** by Plan 10.1 evidence; no source or test change. Static inventory found zero `@contextmanager`/`FrozenInstanceError` occurrences in `src`/`tests`; the two candidate frozen exceptions (`StartupConfigurationError`, `AcpOutboundError`) only ever construct once via `raise ... from` / `future.set_exception(...)` and never reassign a field post-construction on any real call path. Behavior selector (`tests/unit/acp/test_bootstrap.py`, `test_outbound_errors.py`, `test_trusted_paths.py`, `test_preflight.py`) passed 36 passed, 5 skipped (environment-legitimate skips). Full record: `docs/superpowers/reviews/plan-10-1-review-checkpoints.md`, 2026-07-23T13:20:00Z entry. |
+| `P9.96-FU-6` | **Closed** by reviewed Plan 10.1 disposition; execution correction only, no code change — see the disposition paragraph below. |
+| `P9.96-FU-7` | **Partially addressed** by Plan 10.1, commit `278d95bec4e9a62c55c5de1237a61af1ca661309` ("feat(acp): add FU-7 explicit confirmation gate to optimus-trust approve"). Named tests: `tests/unit/acp/test_launch_approval_cli.py::TestConfirmationGate` (parametrized decline/explicit-yes cases plus a one-shot decline case). The confirmation-gate half is closed; the effective-row display gap for keyring/config/default-sourced settings **remains open** under this same stable ID — no new catalog ID or plan document was created. |
+
+**`P9.96-FU-6` disposition paragraph:** `P9.96-FU-6` named the frozen Plan 9.96 Task 9 plan's own CLI
+arg-order assumption against `optimus-trust`'s `argparse` contract. `--workspace-root`
+(`src/optimus/acp/launch_approval_cli.py:78-82`) is declared on the top-level `ArgumentParser`
+*before* `subparsers = parser.add_subparsers(dest="command")` (line 84), so under normal `argparse`
+semantics it must be supplied before the subcommand token — e.g.
+`optimus-trust --workspace-root <path> approve --mode durable`, not after. The corrected command
+shape (`uv run` plus global options such as `--workspace-root` preceding the subcommand) was already
+applied during Plan 9.96 Task 9's own real-`acpx` evidence capture
+(`reports/plan-9-96-operator-debug-launch-trust-evidence.md`), not by Plan 10.1. Plan 10.1 (Task 6,
+2026-07-23) re-verified this reviewed disposition by re-reading the current `argparse` source and
+confirming the contract is unchanged. `P9.96-FU-6` was never a source-code defect and required no
+production or test change under Plan 10.1 or any prior plan; no commit is recorded for this
+disposition.
+
 **Also disclosed (Plan 9.98 custody handoff):** inner `optimus-agent` launch-audit `agent_child`
 may omit keyring-resolved `OPTIMUS_API_KEY` because audit precedes `apply_local_defaults`; outer
 post-default audit remains the authoritative child-key evidence source. This is a custody note, not
 an additional Plan 10 item.
 
-**Status:** Tracked, not yet scheduled.
+**Status:** `P9.96-FU-1` through `P9.96-FU-4` and `P9.96-FU-6` are closed by Plan 10.1 (see the
+dispositions table above); `P9.96-FU-5` is closed by Plan 10.1 evidence with no source/test change;
+`P9.96-FU-7` is partially addressed by Plan 10.1 (confirmation-gate half only) and remains open under
+its original stable ID for the effective-row display gap. No new catalog ID or Plan 10.x plan
+document was created by this pickup. The rest of the Plan 10 pool (see Open items above) remains
+tracked, not yet scheduled.
 
 ## Closed custody excluded from the open pool
 

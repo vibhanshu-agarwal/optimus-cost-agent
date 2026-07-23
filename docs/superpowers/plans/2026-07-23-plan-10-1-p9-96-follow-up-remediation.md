@@ -604,7 +604,7 @@ environment, and all pre-existing FU-7 display behavior remain unchanged.
 - The documentation records exact implementation commit/evidence identifiers obtained from the
   completed task, not prose-only completion claims.
 
-- [ ] **Step 1: Record task-level evidence before editing status.**
+- [x] **Step 1: Record task-level evidence before editing status.**
 
 Update the checkpoint log with each task's focused test command, pass result, changed-file list,
 and the full implementation commit SHA once the implementation lane has committed. For FU-5, record
@@ -612,7 +612,7 @@ the static inventory and behavior-selector result and the selected closure/split
 FU-6, record that the already-applied correction was verified as uv run plus global options before
 the subcommand and required no code change.
 
-- [ ] **Step 2: Promote or close each catalog entry without deleting history.**
+- [x] **Step 2: Promote or close each catalog entry without deleting history.**
 
 In the P9.96 Task 9 Disclosed Follow-Ups section, update the statuses as follows after evidence is
 complete:
@@ -630,7 +630,7 @@ Keep each stable ID and its original summary. Add a short Plan 10.1 disposition 
 that states the corrected command shape, the applied date/evidence, and that FU-6 was not a source
 defect. Do not invent a commit for the no-code disposition.
 
-- [ ] **Step 3: Update roadmap and README consistently.**
+- [x] **Step 3: Update roadmap and README consistently.**
 
 In 2026-07-01-phase-1-roadmap.md, retain the Plan 10 umbrella allocation rule, add a dated
 Plan 10.1 entry linked to this plan, and replace the Plan 9.96 sentence that says all seven
@@ -643,7 +643,7 @@ In README.md, keep the Plan 10 pool description and add one concise sentence lin
 its six-item scope, FU-7's partial confirmation-gate status, and the FU-6 no-code disposition. Do
 not duplicate the full catalog or create a separate Plan 10 backlog document.
 
-- [ ] **Step 4: Verify cross-document custody and no accidental scope.**
+- [x] **Step 4: Verify cross-document custody and no accidental scope.**
 
 Run:
 

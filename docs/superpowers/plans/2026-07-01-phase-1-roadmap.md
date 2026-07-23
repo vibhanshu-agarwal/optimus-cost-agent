@@ -514,9 +514,17 @@ is `docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md`
 (`74d4ff21173a597c3b274cf6e6cbdf8a7eb43697`) and Plan 9.99 (`f2b6b21`, PR #66) were prerequisites
 for Task 9 Steps 2/3/5 and URI-snapshot fidelity respectively.
 
-**Disclosed follow-ups (tracked, not yet scheduled; not fixed in Plan 9.96):** `P9.96-FU-1` through
-`P9.96-FU-7` plus the Plan 9.98 inner-audit ordering observation — see the backlog entries below and
-the Task 9 evidence report limitations table.
+**Disclosed follow-ups (Plan 9.96 Task 9; Plan 10.1 dispositions recorded 2026-07-23):**
+`P9.96-FU-1` through `P9.96-FU-4` and `P9.96-FU-6` are **closed by Plan 10.1** (implementation
+commits `daccb0d7469814930922eae67a86552435258cf6`, `d83953880a15419097e91da262678f736905cccd`,
+`cc66d660cd8580eb3b821d0eb25ed04b27605dc0`, and a no-code disposition for `FU-6`); `P9.96-FU-5` is
+**closed by Plan 10.1 evidence** with no source/test change; `P9.96-FU-7` is **partially addressed**
+by Plan 10.1 (commit `278d95bec4e9a62c55c5de1237a61af1ca661309` landed the confirmation-gate half)
+and **remains open** under its original stable ID for the effective-row display gap. The Plan 9.98
+inner-audit ordering observation is unaffected by Plan 10.1 and remains a custody note, not a Plan
+10 catalog item. Full evidence and named tests are in the
+[consolidated backlog](2026-07-23-consolidated-deferred-followups-backlog.md) and
+`docs/superpowers/reviews/plan-10-1-review-checkpoints.md`.
 
 Plan 9.96 Task 9 Steps 2, 3, and 5 depended on Plan 9.98's implementation commit
 `74d4ff21173a597c3b274cf6e6cbdf8a7eb43697` and its real-dependency evidence report at
@@ -709,18 +717,25 @@ digests, and file paths; never rely on a plan number alone.
 and this Plan 10 pool unless it is explicitly designated to Plan 12. Plan 9.96's
 `P9.85-FU-7` and `P9.9-FU-1` are closed and must not be reintroduced here.
 
-**Status:** The first pool item, Plan 10.1, has been drafted and approved; implementation is pending.
-The rest of the pool remains tracked, not yet scheduled. The pool itself is not an implementation
-plan; each item is promoted when scheduled or folded into its designated Plan 12 scope.
+**Status:** The first pool item, Plan 10.1, is implemented (2026-07-23; see the entry immediately
+below for exact FU-by-FU dispositions). The rest of the pool remains tracked, not yet scheduled.
+The pool itself is not an implementation plan; each item is promoted when scheduled or folded into
+its designated Plan 12 scope.
 
-**Plan 10.1 (frozen/approved; implementation pending):** Drafted and approved on 2026-07-23.
-Frozen plan SHA-256: `44041F0423584530BEE101C7917E5569757DD9E639069AD2BCF1F62646EE74B4`.
-Scope: `P9.96-FU-1`, `FU-2`, `FU-3`, `FU-4`, `FU-5`, plus the confirmation-gate half of `FU-7`;
-`FU-6` is a no-code disposition. See the
-[`Plan 10.1 implementation plan`](2026-07-23-plan-10-1-p9-96-follow-up-remediation.md).
-Implementation has not started; [PR #72](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/72)
-is documentation-only. Full FU-by-FU disposition updates land through Plan 10.1 Task 6 once
-implementation evidence exists.
+**Plan 10.1 (implemented 2026-07-23):** Drafted and approved 2026-07-23; frozen plan SHA-256:
+`44041F0423584530BEE101C7917E5569757DD9E639069AD2BCF1F62646EE74B4`. Scope: six items closed
+(`P9.96-FU-1`, `FU-2`, `FU-3`, `FU-4` by implementation commit; `FU-5` by evidence; `FU-6` by
+no-code disposition) plus the confirmation-gate half of `FU-7` (remains partially open under its
+original row for the effective-row display gap). Implementation commits:
+`daccb0d7469814930922eae67a86552435258cf6` (FU-1/FU-2), `d83953880a15419097e91da262678f736905cccd`
+(FU-3), `cc66d660cd8580eb3b821d0eb25ed04b27605dc0` (FU-4), `278d95bec4e9a62c55c5de1237a61af1ca661309`
+(FU-7 confirmation gate). See the
+[`Plan 10.1 implementation plan`](2026-07-23-plan-10-1-p9-96-follow-up-remediation.md) and the
+[consolidated backlog](2026-07-23-consolidated-deferred-followups-backlog.md) for the full
+FU-by-FU disposition table and named tests. [PR #72](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/72)
+was the documentation-only freeze merge; implementation landed on
+`agent/cursor/plan-10-1-p996-remediation` afterward. The remaining Plan 10 pool items (see Open
+items above) stay tracked, not yet scheduled — Plan 10.1's completion does not close the pool.
 
 ## Backlog: Re-pin FU-4A/FU-5 Live Evidence (Tracked, Not Yet Scheduled)
 
@@ -994,6 +1009,10 @@ consolidated backlog document, not owned by Plan 12.
     (PR #66); prerequisite for Plan 9.96 Task 9 closure.
 24. Plan 10: Consolidated deferred follow-ups pool — tracked, not yet scheduled; items receive
     Plan 10.x numbers only when picked up, in scheduling order rather than priority order.
+    **Plan 10.1**, the pool's first allocated slot, is **implemented** (2026-07-23): closes
+    `P9.96-FU-1..FU-4` and `FU-6`, closes `FU-5` by evidence, and partially addresses `FU-7`
+    (confirmation gate landed; effective-row display gap remains open under the same row). The
+    rest of the Plan 10 pool remains tracked, not yet scheduled — Plan 10.1 does not close the pool.
 25. Plan 11: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
 26. Plan 12: Context window optimization and intelligent selection — tracked, not yet scheduled;
     starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden
