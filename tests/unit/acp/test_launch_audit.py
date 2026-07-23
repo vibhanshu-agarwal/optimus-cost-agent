@@ -7,6 +7,7 @@ value-safe audit schema before child startup, and audit failure is fatal
 
 from __future__ import annotations
 
+import inspect
 import json
 import stat
 import sys
@@ -15,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+import optimus.acp.launch_audit as launch_audit
 from optimus.acp.launch_audit import (
     LaunchAuditError,
     LaunchAuditEvent,
@@ -45,6 +47,14 @@ def _sample_event(**overrides: object) -> LaunchAuditEvent:
     }
     defaults.update(overrides)
     return LaunchAuditEvent(**defaults)  # type: ignore[arg-type]
+
+
+def test_launch_audit_docs_describe_workspace_local_runtime_root() -> None:
+    assert "workspace-local runtime root" in (launch_audit.__doc__ or "")
+    function_doc = inspect.getdoc(launch_audit.append_launch_audit_event) or ""
+    assert "workspace-local runtime root" in function_doc
+    assert "trusted external runtime root" not in (launch_audit.__doc__ or "")
+    assert "trusted external runtime root" not in function_doc
 
 
 class TestAuditAppend:

@@ -58,7 +58,8 @@ def test_check_config_prints_preflight_failure(monkeypatch, tmp_path, capsys):
     )
 
     assert acp_main.main(["--workspace-root", str(tmp_path), "--check-config"]) == 2
-    assert "Redis is not reachable." in capsys.readouterr().err
+    stderr = capsys.readouterr().err
+    assert stderr == "optimus-agent: Redis is not reachable.\n"
 
 
 def test_check_config_without_approval_fails_closed_before_redis_or_preflight(monkeypatch, tmp_path, capsys):

@@ -274,6 +274,7 @@ class TestApprovalTimeRuntimeBootstrap:
         monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
         monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: (store, tmp_path / "approval-runtime"))
         monkeypatch.setattr(cli_module, "resolve_workspace_identity", observe_identity)
+        monkeypatch.setattr("builtins.input", lambda _prompt: "y")
 
         assert cli_module._cmd_approve(workspace, mode="durable", target_argv=[]) == 0
         assert observations == [True]
@@ -301,6 +302,7 @@ class TestApprovalTimeRuntimeBootstrap:
         monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
         monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: (store, tmp_path / "approval-runtime"))
         monkeypatch.setattr(cli_module, "resolve_workspace_identity", observe_identity)
+        monkeypatch.setattr("builtins.input", lambda _prompt: "y")
 
         assert cli_module._cmd_approve(workspace, mode="one-shot", target_argv=[]) == 0
         assert observations == [True]
@@ -414,6 +416,101 @@ class TestApprovalTimeRuntimeBootstrap:
             )
             assert not child_started
         assert not runtime_root.exists()
+
+
+def _approval_cli_case(tmp_path, monkeypatch):
+    from optimus.acp import launch_approval_cli as cli_module
+    from optimus.acp.launch_approvals import KeyringApprovalStore
+    from tests.unit.acp.conftest import FakeKeyring
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    config_root = tmp_path / "config"
+    config_root.mkdir()
+    for name, value in {
+        "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+        "OPTIMUS_API_KEY": "test-key",
+        "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+        "OPTIMUS_CONFIG_ROOT": str(config_root),
+    }.items():
+        monkeypatch.setenv(name, value)
+    fake_keyring = FakeKeyring()
+    runtime_root = tmp_path / "approval-runtime"
+    store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=runtime_root)
+    monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: (store, runtime_root))
+    return cli_module, workspace, store
+
+
+class TestConfirmationGate:
+    """Plan 9.96-FU-7 (confirmation-gate half only): approve must ask an
+    explicit y/yes confirmation after displaying the effective configuration
+    and before building or writing any approval record."""
+
+    def test_approve_decline_does_not_build_or_write_record(self, monkeypatch, tmp_path, capsys) -> None:
+        cli_module, workspace, store = _approval_cli_case(tmp_path, monkeypatch)
+        monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
+        monkeypatch.setattr("builtins.input", lambda _prompt: "n")
+        build_calls: list[object] = []
+        write_calls: list[object] = []
+        real_build = cli_module.build_approval_record
+
+        def observe_build(**kwargs):
+            build_calls.append(kwargs)
+            return real_build(**kwargs)
+
+        monkeypatch.setattr(cli_module, "build_approval_record", observe_build)
+        monkeypatch.setattr(store, "write_durable", lambda record: write_calls.append(record))
+
+        assert cli_module._cmd_approve(workspace, mode="durable", target_argv=[]) == 1
+        assert build_calls == []
+        assert write_calls == []
+        assert "cancel" in capsys.readouterr().out.lower()
+
+    @pytest.mark.parametrize("answer", ["", "n", "no", "anything"])
+    def test_approve_decline_does_not_build_or_write_for_non_yes(self, monkeypatch, tmp_path, answer) -> None:
+        cli_module, workspace, store = _approval_cli_case(tmp_path, monkeypatch)
+        monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
+        monkeypatch.setattr("builtins.input", lambda _prompt: answer)
+        monkeypatch.setattr(cli_module, "build_approval_record", lambda **_: pytest.fail("record must not build"))
+        monkeypatch.setattr(store, "write_durable", lambda _record: pytest.fail("durable record must not write"))
+
+        assert cli_module._cmd_approve(workspace, mode="durable", target_argv=[]) == 1
+
+    @pytest.mark.parametrize("answer", ["y", "Y", "yes", "YES"])
+    def test_approve_accepts_only_explicit_yes_answers(self, monkeypatch, tmp_path, answer) -> None:
+        cli_module, workspace, store = _approval_cli_case(tmp_path, monkeypatch)
+        monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
+        monkeypatch.setattr("builtins.input", lambda _prompt: answer)
+        written: list[object] = []
+        monkeypatch.setattr(store, "write_durable", lambda record: written.append(record))
+
+        assert cli_module._cmd_approve(workspace, mode="durable", target_argv=[]) == 0
+        assert len(written) == 1
+
+    def test_approve_one_shot_decline_does_not_write_or_spawn(self, monkeypatch, tmp_path) -> None:
+        cli_module, workspace, store = _approval_cli_case(tmp_path, monkeypatch)
+        monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
+        monkeypatch.setattr("builtins.input", lambda _prompt: "n")
+        monkeypatch.setattr(
+            store, "write_one_shot", lambda *_a, **_k: pytest.fail("one-shot record must not write")
+        )
+        real_subprocess_run = cli_module.subprocess.run
+
+        def selective_subprocess_run(argv, **kwargs):
+            # Only fail on the actual one-shot target spawn (recognizable by
+            # its -c "pass" marker); pass every other subprocess.run call
+            # (e.g. resolve_workspace_identity's internal `git rev-parse`
+            # probe) through to the real implementation.
+            if "-c" in argv and "pass" in argv:
+                pytest.fail("must not spawn")
+            return real_subprocess_run(argv, **kwargs)
+
+        monkeypatch.setattr(cli_module.subprocess, "run", selective_subprocess_run)
+
+        assert (
+            cli_module._cmd_approve(workspace, mode="one-shot", target_argv=[sys.executable, "-c", "pass"])
+            == 1
+        )
 
 
 class TestOneShotArgvSpawning:

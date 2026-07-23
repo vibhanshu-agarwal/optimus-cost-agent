@@ -1,7 +1,7 @@
 """Append-only, value-safe launch authorization audit.
 
 Plan 9.96, Task 5 Step 6: Before any child/network startup, append one
-LaunchAuditEvent under the trusted external runtime root with timestamp,
+LaunchAuditEvent under the workspace-local runtime root with timestamp,
 workspace digest, launch/session/approval metadata, registry/policy
 versions, setting names/tiers/source classes, display-safe non-secret
 decisions, monotonic dispositions, unknown/internal rejection names,
@@ -60,7 +60,7 @@ def _audit_path(runtime_root: Path) -> Path:
 
 
 def append_launch_audit_event(event: LaunchAuditEvent, *, runtime_root: Path) -> None:
-    """Append one audit event under the trusted external runtime root.
+    """Append one audit event under the workspace-local runtime root.
 
     Opens with append semantics and restrictive current-user permissions.
     Sanitizes the payload through the shared sanitizer before writing (a

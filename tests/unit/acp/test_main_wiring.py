@@ -187,6 +187,7 @@ def test_approved_fresh_workspace_audits_and_revalidates_after_approval_ceremony
     monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **_kwargs: None)
     _patch_common(monkeypatch)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
 
     assert cli_module._cmd_approve(workspace, mode="durable", target_argv=[]) == 0
     assert (workspace / ".optimus").is_dir()
@@ -212,6 +213,7 @@ def test_legacy_approved_workspace_missing_root_fails_without_recreating_it(monk
 
     monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
     monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: (store, approval_runtime))
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
     assert cli_module._cmd_approve(workspace, mode="durable", target_argv=[]) == 0
     (workspace / ".optimus").rmdir()
 
@@ -286,6 +288,19 @@ def test_snapshot_mismatch_fails_closed_with_remediation(monkeypatch, tmp_path, 
     assert "changed since" in err
     assert "optimus-trust" in err
     assert "approve" in err
+
+
+def test_startup_configuration_error_has_agent_prefix(monkeypatch, tmp_path, capsys):
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+
+    def fail_build(**_kwargs):
+        raise acp_main.StartupConfigurationError(exit_code=2, user_message="startup configuration failed")
+
+    monkeypatch.setattr(acp_main, "build_configured_server", fail_build)
+
+    assert acp_main.main(["--no-auto-start", "--workspace-root", str(tmp_path)]) == 2
+    assert capsys.readouterr().err == "optimus-agent: startup configuration failed\n"
 
 
 def test_no_auto_start_skips_redis_and_gateway_in_real_serve_path(monkeypatch, tmp_path) -> None:

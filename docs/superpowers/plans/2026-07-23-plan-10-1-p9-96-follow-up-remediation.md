@@ -113,7 +113,7 @@ store, pytest, pytest-asyncio, pytest-cov, coverage.py, Ruff, and uv. No new dep
 **Produces:** A digest-pinned, reviewer- and operator-approved Plan 10.1 scope with proof that no
 other Plan 10.x number existed on the allocation baseline.
 
-- [ ] **Step 1: Verify the branch, baseline, and preserved user changes.**
+- [x] **Step 1: Verify the branch, baseline, and preserved user changes.**
 
 Run:
 
@@ -129,7 +129,7 @@ Expected: branch agent/codex/plan-10-1-p996-remediation tracks origin/main; both
 commands return 21220209421145b583eaca9a65b19cf6b5128caa; the pre-existing uv.lock modification
 and .claude/ untracked path remain visible; no plan task stages them.
 
-- [ ] **Step 2: Confirm no Plan 10.x slot was allocated on origin/main.**
+- [x] **Step 2: Confirm no Plan 10.x slot was allocated on origin/main.**
 
 Run:
 
@@ -141,14 +141,14 @@ git grep -n -E 'Plan 10\.[0-9]' origin/main -- docs/superpowers/plans README.md
 Expected: no output from either command. The existing Plan 10 umbrella and its sequential-slot
 allocation rule remain; this pickup assigns the first actual slot, Plan 10.1.
 
-- [ ] **Step 3: Obtain review and operator approval for these exact plan bytes.**
+- [x] **Step 3: Obtain review and operator approval for these exact plan bytes.**
 
 The reviewer verifies the FU-5 split trigger, FU-7 confirmation-gate safety boundary, explicit
 statement that the effective-row display gap remains open under FU-7, task-level evidence, and
 explicit exclusions. The operator approves the same scope. Record both
 statements and the exact plan path in docs/superpowers/reviews/2026-07-23-plan-10-1-implementation-plan-approval.md.
 
-- [ ] **Step 4: Freeze the approved plan digest before implementation.**
+- [x] **Step 4: Freeze the approved plan digest before implementation.**
 
 Run:
 
@@ -161,7 +161,7 @@ in the approval record. Any substantive plan-text change after this step require
 new approval record; checkbox-only progress is allowed only under the repository's established plan
 protocol.
 
-- [ ] **Step 5: Start the implementation lane only after the approval record exists.**
+- [x] **Step 5: Start the implementation lane only after the approval record exists.**
 
 Implementation must begin from a fresh branch based on the latest origin/main, and the implementing
 agent must first read this plan's checkpoint log and verify it against git status, the plan digest,
@@ -183,7 +183,7 @@ that handoff.
 - Produces exactly one of: a closure disposition for FU-5; a contained fix landed inside Plan 10.1;
   or a reviewed split-out Plan 10.2-or-later design for FU-5 while the rest of this plan remains Plan 10.1.
 
-- [ ] **Step 1: Run the static recurrence inventory.**
+- [x] **Step 1: Run the static recurrence inventory.**
 
 Run:
 
@@ -196,7 +196,7 @@ src; StartupConfigurationError and AcpOutboundError remain the candidate frozen 
 classes; the Plan 9.98-FU-1 trusted-path exception correction is already represented by its own
 non-frozen error contract. Record the actual output, not a narration of it.
 
-- [ ] **Step 2: Run the behavior selectors before changing code.**
+- [x] **Step 2: Run the behavior selectors before changing code.**
 
 Run:
 
@@ -208,7 +208,7 @@ Expected: the selector collects and passes or exposes a concrete failure; a coll
 missing dependency, or generic environment error is not evidence of FU-5. If a failure occurs,
 reduce it to a named constructor/catch/str()/attribute assertion before deciding that FU-5 is live.
 
-- [ ] **Step 3: Classify the result using the explicit split boundary.**
+- [x] **Step 3: Classify the result using the explicit split boundary.**
 
 Close FU-5 with a checkpoint-log disposition and no source/test change when the inventory and behavior
 selectors show no current recurrence and the existing types preserve their codes/messages through
@@ -221,7 +221,7 @@ policy, or cross-layer changes, stop this task. Create the next unused single-de
 for FU-5, obtain separate review, and leave FU-5 out of the Plan 10.1 implementation lane. Do not
 renumber the remaining Plan 10.1 tasks.
 
-- [ ] **Step 4: Verify the selected disposition.**
+- [x] **Step 4: Verify the selected disposition.**
 
 For closure, run the exact focused selector from Step 2 again and record the passing output plus the
 static-inventory result. For a contained fix, run the new named RED selector, then the Step 2 selector,
@@ -243,7 +243,7 @@ the new plan path, allocation evidence, and the fact that no Plan 10.1 source/te
   begins with the exact optimus-agent: prefix.
 - The TOCTOU explanation remains once, with no runtime behavior change.
 
-- [ ] **Step 1: Add the failing prefix regressions.**
+- [x] **Step 1: Add the failing prefix regressions.**
 
 In tests/unit/acp/test_main_check_config.py, extend the existing
 test_check_config_prints_preflight_failure assertion:
@@ -277,7 +277,7 @@ uv run --locked pytest tests/unit/acp/test_main_check_config.py::test_check_conf
 
 Expected: the new/strengthened assertions fail only because the two production prints omit the prefix.
 
-- [ ] **Step 2: Apply the minimal production correction and delete one comment copy.**
+- [x] **Step 2: Apply the minimal production correction and delete one comment copy.**
 
 Change only these two prints:
 
@@ -289,7 +289,7 @@ Use it in both the PreflightFailure and StartupConfigurationError handlers. Dele
 verbatim 11-line TOCTOU block, retaining the first block immediately before
 revalidate_workspace_identity(candidate.workspace_identity).
 
-- [ ] **Step 3: Verify behavior and source hygiene.**
+- [x] **Step 3: Verify behavior and source hygiene.**
 
 Run:
 
@@ -314,7 +314,7 @@ Expected: the focused suite passes; the TOCTOU marker occurs once; git diff --ch
 - Both the module and function documentation call the location a workspace-local runtime root.
 - No claim remains that the audit file lives under an external runtime root.
 
-- [ ] **Step 1: Add the failing documentation contract test.**
+- [x] **Step 1: Add the failing documentation contract test.**
 
 Add:
 
@@ -340,13 +340,13 @@ uv run --locked pytest tests/unit/acp/test_launch_audit.py::test_launch_audit_do
 
 Expected: FAIL against the current wording.
 
-- [ ] **Step 2: Correct only the two misleading phrases.**
+- [x] **Step 2: Correct only the two misleading phrases.**
 
 Use workspace-local runtime root in the module docstring and in the
 append_launch_audit_event() docstring. Keep the existing security properties and the
 require_workspace_runtime_root() call unchanged.
 
-- [ ] **Step 3: Verify the narrow documentation change.**
+- [x] **Step 3: Verify the narrow documentation change.**
 
 Run:
 
@@ -374,7 +374,7 @@ Expected: all launch-audit unit tests, Ruff, and diff hygiene pass.
 - Explicit OPTIMUS_AGENT_MODEL and CLI values, including explicit glm-5.2 test values used by
   direct runner fixtures, remain unchanged.
 
-- [ ] **Step 1: Pin the routing evidence and add the RED default assertion.**
+- [x] **Step 1: Pin the routing evidence and add the RED default assertion.**
 
 Change the default test to assert the reviewed routable value while keeping the public constant
 assertion:
@@ -405,7 +405,7 @@ Expected: the RED default assertion fails against glm-5.2 and the mapping select
 the existing routing table. Add the imports before running this command; a collection error is not
 an acceptable substitute for the intended assertion failure.
 
-- [ ] **Step 2: Make the smallest fix and make invalid-model tests explicit.**
+- [x] **Step 2: Make the smallest fix and make invalid-model tests explicit.**
 
 Set:
 
@@ -418,7 +418,7 @@ model failure, add OPTIMUS_AGENT_MODEL: glm-5.2 to that test's input mapping so 
 explicit invalid request rather than depending on a dead default. Do not mass-rewrite direct runner
 fixtures that intentionally use glm-5.2 as a fake model string.
 
-- [ ] **Step 3: Verify model resolution, preflight, and pricing compatibility.**
+- [x] **Step 3: Verify model resolution, preflight, and pricing compatibility.**
 
 Run:
 
@@ -451,7 +451,7 @@ changes appear in the diff.
   keyring/config/default-sourced settings remains open under P9.96-FU-7; it is not a new catalog ID,
   new plan document, or scope of this task.
 
-- [ ] **Step 1: Add RED tests for confirmation ordering and no-write decline.**
+- [x] **Step 1: Add RED tests for confirmation ordering and no-write decline.**
 
 In tests/unit/acp/test_launch_approval_cli.py, add a small private helper beside the existing
 approval tests. It must create tmp_path / "workspace", create tmp_path / "config", set
@@ -544,7 +544,7 @@ acceptance test fails because no input is read. Update the existing durable and 
 tests in this file to feed an explicit y answer before rerunning the suite; otherwise they would
 block on captured stdin rather than test the intended behavior.
 
-- [ ] **Step 2: Implement the confirmation gate after display and before record construction.**
+- [x] **Step 2: Implement the confirmation gate after display and before record construction.**
 
 Add a small helper in launch_approval_cli.py:
 
@@ -604,7 +604,7 @@ environment, and all pre-existing FU-7 display behavior remain unchanged.
 - The documentation records exact implementation commit/evidence identifiers obtained from the
   completed task, not prose-only completion claims.
 
-- [ ] **Step 1: Record task-level evidence before editing status.**
+- [x] **Step 1: Record task-level evidence before editing status.**
 
 Update the checkpoint log with each task's focused test command, pass result, changed-file list,
 and the full implementation commit SHA once the implementation lane has committed. For FU-5, record
@@ -612,7 +612,7 @@ the static inventory and behavior-selector result and the selected closure/split
 FU-6, record that the already-applied correction was verified as uv run plus global options before
 the subcommand and required no code change.
 
-- [ ] **Step 2: Promote or close each catalog entry without deleting history.**
+- [x] **Step 2: Promote or close each catalog entry without deleting history.**
 
 In the P9.96 Task 9 Disclosed Follow-Ups section, update the statuses as follows after evidence is
 complete:
@@ -630,7 +630,7 @@ Keep each stable ID and its original summary. Add a short Plan 10.1 disposition 
 that states the corrected command shape, the applied date/evidence, and that FU-6 was not a source
 defect. Do not invent a commit for the no-code disposition.
 
-- [ ] **Step 3: Update roadmap and README consistently.**
+- [x] **Step 3: Update roadmap and README consistently.**
 
 In 2026-07-01-phase-1-roadmap.md, retain the Plan 10 umbrella allocation rule, add a dated
 Plan 10.1 entry linked to this plan, and replace the Plan 9.96 sentence that says all seven
@@ -643,7 +643,7 @@ In README.md, keep the Plan 10 pool description and add one concise sentence lin
 its six-item scope, FU-7's partial confirmation-gate status, and the FU-6 no-code disposition. Do
 not duplicate the full catalog or create a separate Plan 10 backlog document.
 
-- [ ] **Step 4: Verify cross-document custody and no accidental scope.**
+- [x] **Step 4: Verify cross-document custody and no accidental scope.**
 
 Run:
 
@@ -667,7 +667,7 @@ and no frozen Plan 9.96 file appears in the diff.
 
 **Produces:** A complete, evidence-backed Plan 10.1 handoff with no unverified checkbox or scope claim.
 
-- [ ] **Step 1: Run the affected unit suites and default suite.**
+- [x] **Step 1: Run the affected unit suites and default suite.**
 
 Run:
 
@@ -679,7 +679,7 @@ uv run --locked pytest -q
 Expected: both commands pass under the repository's default marker policy, with live Redis/Gateway,
 ACPX, and E2E tests still deselected unless explicitly requested by their markers.
 
-- [ ] **Step 2: Run coverage, Ruff, and diff hygiene.**
+- [x] **Step 2: Run coverage, Ruff, and diff hygiene.**
 
 Run:
 
@@ -694,7 +694,7 @@ Expected: aggregate production coverage is at least 80%, Ruff is clean, diff hyg
 the final status shows only intentional Plan 10.1 files plus the pre-existing uv.lock and .claude/
 state. Do not stage the checkpoint log, uv.lock, or .claude/.
 
-- [ ] **Step 3: Perform the final safety audit.**
+- [x] **Step 3: Perform the final safety audit.**
 
 Run:
 
@@ -709,7 +709,7 @@ second has no output because the corrected docstrings contain only the workspace
 terms in the third command appear only if the investigation found a real recurrence and its
 disposition records the owning Plan 10.x split.
 
-- [ ] **Step 4: Complete the handoff.**
+- [x] **Step 4: Complete the handoff.**
 
 Update the checkpoint log with the final full commit SHA, all passing command outputs, coverage
 percentage, Ruff result, catalog/roadmap status, FU-5 outcome, FU-6 disposition, and the intentional

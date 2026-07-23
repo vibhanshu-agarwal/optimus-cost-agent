@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-DEFAULT_AGENT_MODEL = "glm-5.2"
+DEFAULT_AGENT_MODEL = "claude-haiku"
 
 
 def resolve_agent_model(environ: Mapping[str, str], *, cli_model: str | None = None) -> str:
