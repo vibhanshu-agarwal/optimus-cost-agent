@@ -1,0 +1,11 @@
+# Normalize line endings to LF for all text files regardless of the checkout
+# platform's core.autocrlf setting. Without this, Windows core.autocrlf=true
+# silently rewrites LF blobs to CRLF on every fresh checkout/branch/worktree,
+# which breaks any raw-bytes SHA-256 check (frozen security contracts, plan
+# approval records) with zero real content change. Every text file in this
+# repository is already stored LF-only, so this is a no-op for existing
+# content and only prevents future drift.
+* text=auto eol=lf
+
+# Explicitly binary; skip line-ending normalization and text diffing.
+*.pdf binary
