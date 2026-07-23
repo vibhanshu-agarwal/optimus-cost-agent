@@ -667,7 +667,7 @@ and no frozen Plan 9.96 file appears in the diff.
 
 **Produces:** A complete, evidence-backed Plan 10.1 handoff with no unverified checkbox or scope claim.
 
-- [ ] **Step 1: Run the affected unit suites and default suite.**
+- [x] **Step 1: Run the affected unit suites and default suite.**
 
 Run:
 
@@ -679,7 +679,7 @@ uv run --locked pytest -q
 Expected: both commands pass under the repository's default marker policy, with live Redis/Gateway,
 ACPX, and E2E tests still deselected unless explicitly requested by their markers.
 
-- [ ] **Step 2: Run coverage, Ruff, and diff hygiene.**
+- [x] **Step 2: Run coverage, Ruff, and diff hygiene.**
 
 Run:
 
@@ -694,7 +694,7 @@ Expected: aggregate production coverage is at least 80%, Ruff is clean, diff hyg
 the final status shows only intentional Plan 10.1 files plus the pre-existing uv.lock and .claude/
 state. Do not stage the checkpoint log, uv.lock, or .claude/.
 
-- [ ] **Step 3: Perform the final safety audit.**
+- [x] **Step 3: Perform the final safety audit.**
 
 Run:
 
@@ -709,7 +709,7 @@ second has no output because the corrected docstrings contain only the workspace
 terms in the third command appear only if the investigation found a real recurrence and its
 disposition records the owning Plan 10.x split.
 
-- [ ] **Step 4: Complete the handoff.**
+- [x] **Step 4: Complete the handoff.**
 
 Update the checkpoint log with the final full commit SHA, all passing command outputs, coverage
 percentage, Ruff result, catalog/roadmap status, FU-5 outcome, FU-6 disposition, and the intentional

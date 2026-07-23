@@ -718,13 +718,16 @@ and this Plan 10 pool unless it is explicitly designated to Plan 12. Plan 9.96's
 `P9.85-FU-7` and `P9.9-FU-1` are closed and must not be reintroduced here.
 
 **Status:** The first pool item, Plan 10.1, has FU-level implementation complete (2026-07-23; see
-the entry immediately below for exact FU-by-FU dispositions); Task 7 repository-wide
-fitness/handoff gate is still pending before the plan closes. The rest of the pool remains tracked,
-not yet scheduled. The pool itself is not an implementation plan; each item is promoted when
-scheduled or folded into its designated Plan 12 scope.
+the entry immediately below for exact FU-by-FU dispositions); Task 7's repository-wide
+fitness/handoff gate passed 2026-07-23 (all affected/default suites, coverage, Ruff, diff hygiene,
+and safety audits green on Windows, with a WSL2 cross-check of the previously-failing
+logging-surface test and Ruff also green), pending reviewer/operator sign-off before the plan
+closes. The rest of the pool remains tracked, not yet scheduled. The pool itself is not an
+implementation plan; each item is promoted when scheduled or folded into its designated Plan 12
+scope.
 
-**Plan 10.1 (FU-level implementation complete 2026-07-23; Task 7 handoff pending):** Drafted and
-approved 2026-07-23; frozen plan SHA-256:
+**Plan 10.1 (FU-level implementation complete 2026-07-23; Task 7 gate passed 2026-07-23, pending
+reviewer/operator sign-off):** Drafted and approved 2026-07-23; frozen plan SHA-256:
 `44041F0423584530BEE101C7917E5569757DD9E639069AD2BCF1F62646EE74B4`. Scope: six items closed
 (`P9.96-FU-1`, `FU-2`, `FU-3`, `FU-4` by implementation commit; `FU-5` by evidence; `FU-6` by
 no-code disposition) plus the confirmation-gate half of `FU-7` (remains partially open under its
@@ -736,9 +739,11 @@ original row for the effective-row display gap). Implementation commits:
 [consolidated backlog](2026-07-23-consolidated-deferred-followups-backlog.md) for the full
 FU-by-FU disposition table and named tests. [PR #72](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/72)
 was the documentation-only freeze merge; implementation landed on
-`agent/cursor/plan-10-1-p996-remediation` afterward. The remaining Plan 10 pool items (see Open
-items above) stay tracked, not yet scheduled — Plan 10.1's FU-level work does not close the pool,
-and the plan itself remains open until Task 7 passes.
+`agent/cursor/plan-10-1-p996-remediation` afterward, with Task 7's fitness/handoff gate passing at
+`cb059db` (manifest entry for `optimus.acp.launch_approval_cli:_confirm_approval:stdout_export`
+added under operator-ruled Option 1). The remaining Plan 10 pool items (see Open items above) stay
+tracked, not yet scheduled — Plan 10.1's FU-level work does not close the pool, and the plan itself
+remains open pending reviewer/operator sign-off on the Task 7 evidence.
 
 ## Backlog: Re-pin FU-4A/FU-5 Live Evidence (Tracked, Not Yet Scheduled)
 
@@ -1013,11 +1018,11 @@ consolidated backlog document, not owned by Plan 12.
 24. Plan 10: Consolidated deferred follow-ups pool — tracked, not yet scheduled; items receive
     Plan 10.x numbers only when picked up, in scheduling order rather than priority order.
     **Plan 10.1**, the pool's first allocated slot, has **FU-level implementation complete**
-    (2026-07-23; Task 7 handoff gate pending): closes `P9.96-FU-1..FU-4` and `FU-6`, closes
-    `FU-5` by evidence, and partially addresses `FU-7` (confirmation gate landed; effective-row
-    display gap remains open under the same row). The rest of the Plan 10 pool remains tracked,
-    not yet scheduled — Plan 10.1 does not close the pool, and the plan itself remains open until
-    Task 7 passes.
+    (2026-07-23; Task 7 handoff gate **passed** 2026-07-23, pending reviewer/operator sign-off):
+    closes `P9.96-FU-1..FU-4` and `FU-6`, closes `FU-5` by evidence, and partially addresses `FU-7`
+    (confirmation gate landed; effective-row display gap remains open under the same row). The
+    rest of the Plan 10 pool remains tracked, not yet scheduled — Plan 10.1 does not close the
+    pool, and the plan itself remains open pending sign-off.
 25. Plan 11: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
 26. Plan 12: Context window optimization and intelligent selection — tracked, not yet scheduled;
     starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden
