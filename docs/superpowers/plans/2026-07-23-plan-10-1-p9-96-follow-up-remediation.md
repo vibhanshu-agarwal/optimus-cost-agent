@@ -451,7 +451,7 @@ changes appear in the diff.
   keyring/config/default-sourced settings remains open under P9.96-FU-7; it is not a new catalog ID,
   new plan document, or scope of this task.
 
-- [ ] **Step 1: Add RED tests for confirmation ordering and no-write decline.**
+- [x] **Step 1: Add RED tests for confirmation ordering and no-write decline.**
 
 In tests/unit/acp/test_launch_approval_cli.py, add a small private helper beside the existing
 approval tests. It must create tmp_path / "workspace", create tmp_path / "config", set
@@ -544,7 +544,7 @@ acceptance test fails because no input is read. Update the existing durable and 
 tests in this file to feed an explicit y answer before rerunning the suite; otherwise they would
 block on captured stdin rather than test the intended behavior.
 
-- [ ] **Step 2: Implement the confirmation gate after display and before record construction.**
+- [x] **Step 2: Implement the confirmation gate after display and before record construction.**
 
 Add a small helper in launch_approval_cli.py:
 

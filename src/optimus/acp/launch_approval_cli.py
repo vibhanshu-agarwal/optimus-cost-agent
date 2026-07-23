@@ -273,6 +273,17 @@ def _display_candidate(candidate: LaunchCandidate) -> None:
     print()
 
 
+def _confirm_approval() -> bool:
+    try:
+        answer = input("optimus-trust: approve this exact launch configuration? [y/N]: ")
+    except EOFError:
+        answer = ""
+    if answer.strip().casefold() in {"y", "yes"}:
+        return True
+    print("optimus-trust: approval cancelled; no record was written.")
+    return False
+
+
 def _strip_separator(argv: list[str]) -> list[str]:
     """Strip the leading '--' from REMAINDER-captured argv."""
     if argv and argv[0] == "--":
@@ -291,6 +302,11 @@ def _cmd_approve(workspace_root: Path, *, mode: str, target_argv: list[str]) -> 
 
     # Display the effective configuration for operator review.
     _display_candidate(candidate)
+
+    # P9.96-FU-7: the confirmation gate is enforced here; the effective-row display gap
+    # for keyring/config/default-sourced settings remains open under this same finding.
+    if not _confirm_approval():
+        return 1
 
     # Build the approval record by REUSING the candidate's exact
     # security_literals/secret_fingerprints/monotonic_grants/model_observation.

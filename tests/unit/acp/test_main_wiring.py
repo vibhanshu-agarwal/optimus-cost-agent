@@ -187,6 +187,7 @@ def test_approved_fresh_workspace_audits_and_revalidates_after_approval_ceremony
     monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **_kwargs: None)
     _patch_common(monkeypatch)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
 
     assert cli_module._cmd_approve(workspace, mode="durable", target_argv=[]) == 0
     assert (workspace / ".optimus").is_dir()
@@ -212,6 +213,7 @@ def test_legacy_approved_workspace_missing_root_fails_without_recreating_it(monk
 
     monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
     monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: (store, approval_runtime))
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
     assert cli_module._cmd_approve(workspace, mode="durable", target_argv=[]) == 0
     (workspace / ".optimus").rmdir()
 
