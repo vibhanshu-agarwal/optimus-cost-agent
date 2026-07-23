@@ -272,33 +272,28 @@ wheel outside the checkout; operator credentials resolve from an
 operator-owned config directory that can never be inside the workspace. See
 `reports/plan-9-9-operator-packaging-evidence.md` for the real `acpx`
 packaging evidence. `P9.9-FU-1` (workspace-influenced agent launch
-environment) remains open and is tracked under Plan 9.96.
+environment) is closed under Plan 9.96.
 
 **Plan 9.95** (implemented) closed `P9.85-FU-6` (billable failed-retry
 aggregation and unknown transport cost), `P9.88-FU-2` (ledger digest
 specification), and `P9.88-FU-3` (read-range telemetry misattribution).
 Implementation SHA `41a9cddddbacad766d8a432b7129a18d8976b54a`; evidence in
-`reports/plan-9-95-usage-telemetry-evidence.md`. Remaining open follow-ups
-are owned by Plan 9.96 (`P9.85-FU-7`, `P9.9-FU-1`) and Plan 9.97
-(`P9.87-FU-1`). FU-4B accepted-open is deliberately not included — it is a
-closed disposition, not a TODO.
+`reports/plan-9-95-usage-telemetry-evidence.md`. Remaining open Plan 9.9x
+custody for deferred debug/launch follow-ups moved to Plan 9.96's disclosed
+`P9.96-FU-*` backlog; Plan 9.97 retains `P9.87-FU-1`. FU-4B accepted-open is
+deliberately not included — it is a closed disposition, not a TODO.
 
-**Plan 9.96** planning is approved (2026-07-15); implementation has not started.
-The operator-controlled debug and launch-trust security contract is frozen at
-SHA-256 `8B67FC187B92F0B66A9932AAAD9A013C476C19C165A1044F57F338245A01786C`, with
-approval recorded in
-`docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md`.
-The implementation plan is separately frozen and reviewer/operator-approved at
-SHA-256 `E47701358596D0D31E6CD7FDF21438D529C65F0190889058C936FB9A0B00E721`, with
-approval recorded in
-`docs/superpowers/reviews/2026-07-15-plan-9-96-implementation-plan-approval.md`.
-Implementation begins only after the docs-only planning branch merges, from a
-fresh branch/worktree based on the latest `origin/main`.
+**Plan 9.96** is implemented. Tasks 0–8 landed via PR #60; Task 9 real-dependency
+evidence verified 2026-07-23 against implementation base
+`031fc651dbc6b1d21cd714a0c8f5db9ea006b028`. Evidence:
+`reports/plan-9-96-operator-debug-launch-trust-evidence.md`. Closes
+`P9.85-FU-7` and `P9.9-FU-1`. The frozen security contract remains
+SHA-256 `8B67FC187B92F0B66A9932AAAD9A013C476C19C165A1044F57F338245A01786C`.
 
 **Plan 9.98** is implemented at `74d4ff21173a597c3b274cf6e6cbdf8a7eb43697`, with real ordinary
-and elevated ACPX evidence in `reports/plan-9-98-real-acpx-session-evidence.md` unblocking Plan 9.96
-Task 9 Steps 2, 3, and 5; **Plan 9.99** remains tracked, not yet scheduled, and must land its
-credential-URI security-snapshot correction before Plan 9.96 closes.
+and elevated ACPX evidence in `reports/plan-9-98-real-acpx-session-evidence.md` (unblocked Plan 9.96
+Task 9). **Plan 9.99** is implemented at `f2b6b21` (PR #66) for credential-URI security-snapshot
+canonicalization and was a prerequisite for Plan 9.96 closure.
 
 **Plan 10** (tracked, not yet scheduled) is the Unified Gateway Capabilities
 Broker — web search and observability routes on the local gateway stub. Out of

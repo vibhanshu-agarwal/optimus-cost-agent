@@ -45,6 +45,15 @@ _ARTIFACT_ROOT = Path("C:/tmp/optimus-plan998-artifacts")
 _ORDINARY_ARTIFACTS = _ARTIFACT_ROOT / "ordinary"
 _ELEVATED_ARTIFACTS = _ARTIFACT_ROOT / "elevated"
 _NONCE_MARKER = _EVIDENCE_WORKSPACE / ".evidence-run-nonce"
+
+# Plan 9.96 Task 9 owns the 996-path verification nodes below. The 998-path
+# constants above remain Plan 9.98's already-verified evidence surface.
+_P996_EVIDENCE_WORKSPACE = Path("C:/tmp/optimus-plan996-evidence")
+_P996_ARTIFACT_ROOT = Path("C:/tmp/optimus-plan996-artifacts")
+_P996_ORDINARY_ARTIFACTS = _P996_ARTIFACT_ROOT / "ordinary"
+_P996_ELEVATED_ARTIFACTS = _P996_ARTIFACT_ROOT / "elevated"
+_P996_ORDINARY_NONCE_MARKER = _P996_EVIDENCE_WORKSPACE / ".evidence-run-nonce-ordinary"
+_P996_ELEVATED_NONCE_MARKER = _P996_EVIDENCE_WORKSPACE / ".evidence-run-nonce"
 _MANIFEST_FILENAME = "sanitizer-manifest.json"
 _EXPECTED_AGENT_CHILD_KEYS = {
     "OPTIMUS_AGENT_MODEL",
@@ -321,6 +330,58 @@ def test_elevated_session_evidence_verification() -> None:
 
     manifest, debug_records = _assert_common_session_evidence(
         output_dir=_ELEVATED_ARTIFACTS,
+        expected_mode="elevated",
+        expected_nonce=nonce,
+    )
+    comparison_records = [
+        record
+        for record in debug_records
+        if record.get("location") == "launch_authorization_comparison"
+    ]
+    assert manifest["elevated_comparison_record_present"] is True
+    assert len(comparison_records) == 1
+
+    tags = comparison_records[0]["data"]["correlation_tags"]
+    assert isinstance(tags, list)
+    for tag in tags:
+        assert isinstance(tag, dict)
+        assert set(tag) == {"field_name", "tag"}
+        assert tag["field_name"] in _ALLOWED_CORRELATION_TAG_FIELDS
+        assert _TAG_RE.fullmatch(tag["tag"])
+
+
+def test_plan996_ordinary_session_evidence_verification() -> None:
+    """Verify Plan 9.96 Task 9 ordinary artifacts; does not drive a new session."""
+    assert _P996_ORDINARY_ARTIFACTS.is_dir(), (
+        "create C:/tmp/optimus-plan996-artifacts/ordinary via Task 9 ordinary capture first"
+    )
+    nonce = _P996_ORDINARY_NONCE_MARKER.read_text(encoding="utf-8").strip()
+    assert _NONCE_RE.fullmatch(nonce), "ordinary nonce marker is absent or malformed"
+
+    manifest, debug_records = _assert_common_session_evidence(
+        output_dir=_P996_ORDINARY_ARTIFACTS,
+        expected_mode="ordinary",
+        expected_nonce=nonce,
+    )
+    comparison_records = [
+        record
+        for record in debug_records
+        if record.get("location") == "launch_authorization_comparison"
+    ]
+    assert manifest["elevated_comparison_record_present"] is False
+    assert comparison_records == []
+
+
+def test_plan996_elevated_session_evidence_verification() -> None:
+    """Verify Plan 9.96 Task 9 elevated artifacts; does not author or consume a grant."""
+    assert _P996_ELEVATED_ARTIFACTS.is_dir(), (
+        "create C:/tmp/optimus-plan996-artifacts/elevated via Task 9 elevated capture first"
+    )
+    nonce = _P996_ELEVATED_NONCE_MARKER.read_text(encoding="utf-8").strip()
+    assert _NONCE_RE.fullmatch(nonce), "elevated nonce marker is absent or malformed"
+
+    manifest, debug_records = _assert_common_session_evidence(
+        output_dir=_P996_ELEVATED_ARTIFACTS,
         expected_mode="elevated",
         expected_nonce=nonce,
     )

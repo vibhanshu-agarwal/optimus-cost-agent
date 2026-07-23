@@ -3,10 +3,9 @@
 > **For agentic workers:** REQUIRED SUB-SKILLS: Use `superpowers:executing-plans` to execute this
 > plan task-by-task and `superpowers:test-driven-development` for every behavior change. Do not use
 > `superpowers:subagent-driven-development` unless the operator explicitly authorizes subagents for
-> the implementation session. Steps use checkbox (`- [ ]`) syntax for tracking.
+> the implementation session. Steps use checkbox (`- [x]`) syntax for tracking.
 
-**Status:** Draft for reviewer-agent and operator review. The security contract is approved and
-frozen; this implementation plan is not yet approved, and no implementation work is authorized.
+**Status:** Implemented. Tasks 0-8 landed via PR #60; Task 9 real-dependency evidence verified 2026-07-23. Closes P9.85-FU-7 and P9.9-FU-1.
 
 **Goal:** Close `P9.85-FU-7` and `P9.9-FU-1` by authorizing the exact effective launch configuration
 outside workspace control, providing useful session-scoped credential diagnostics without a
@@ -256,7 +255,7 @@ foundation, or stops without changing a file.
 
 **Files:** Read-only: frozen contract, approval record, roadmap, and Git object database.
 
-- [ ] **Step 1: Verify the contract bytes**
+- [x] **Step 1: Verify the contract bytes**
 
 Run:
 
@@ -270,7 +269,7 @@ Expected exact output:
 8B67FC187B92F0B66A9932AAAD9A013C476C19C165A1044F57F338245A01786C
 ```
 
-- [ ] **Step 2: Verify both approvals and foundation identity**
+- [x] **Step 2: Verify both approvals and foundation identity**
 
 Run:
 
@@ -281,7 +280,7 @@ git cat-file -t f120a5afde39e3b3a8a405211ae71653b6e75665
 
 Expected: all four approval fields are present and Git prints `commit`.
 
-- [ ] **Step 3: Prove the gate was read-only**
+- [x] **Step 3: Prove the gate was read-only**
 
 Run `git status --short` and compare with the pre-task status. Expected: no new or modified file.
 If any verification fails, stop and request a reviewed correction; do not continue to Task 1.
@@ -345,7 +344,7 @@ class LaunchPolicyError(ValueError):
     variable_name: str | None = None
 ```
 
-- [ ] **Step 1: Write failing registry-inventory tests**
+- [x] **Step 1: Write failing registry-inventory tests**
 
 Add exact nodes:
 
@@ -359,20 +358,20 @@ Add exact nodes:
 The AST scan covers `src/**/*.py`; a concrete literal name ending in `_` is a prefix rule, not a
 variable. Expected initial failure: `launch_policy` or the required registry is absent.
 
-- [ ] **Step 2: Implement the exact five-tier table**
+- [x] **Step 2: Implement the exact five-tier table**
 
 Enumerate the secret, security, monotonic, operational, and internal-only settings exactly as the
 contract does. URI normalization must return `(masked_literal, secret_subfield_present,
 full_value_hmac_required)`. Unknown `OPTIMUS_*` and unenumerated `OPTIMUS_LOCAL_GATEWAY_*` names
 raise `LaunchPolicyError(code="LAUNCH_VARIABLE_UNCLASSIFIED", variable_name=name)` without value.
 
-- [ ] **Step 3: Pin monotonic and model decisions**
+- [x] **Step 3: Pin monotonic and model decisions**
 
 Add boundary tests for absent, malformed, zero, negative, non-finite, below/equal/above default
 values. Assert that a model is operational only when Gateway routing, pricing recognition,
 protected Tier 3 ceiling, and the existing `AgentRunRequest.max_cost_usd` budget are present.
 
-- [ ] **Step 4: Run and review Task 1**
+- [x] **Step 4: Run and review Task 1**
 
 ```bash
 uv run pytest tests/unit/acp/test_launch_policy.py tests/unit/config/test_gateway_settings.py -q
@@ -425,34 +424,34 @@ def resolve_workspace_identity(workspace_root: Path) -> WorkspaceIdentity: ...
 def revalidate_workspace_identity(identity: WorkspaceIdentity) -> None: ...
 ```
 
-- [ ] **Step 1: Write failing Windows/POSIX root tests**
+- [x] **Step 1: Write failing Windows/POSIX root tests**
 
 Mock Windows Known Folder results for RoamingAppData and LocalAppData, and POSIX authenticated
 account home. Set hostile inherited `APPDATA`, `LOCALAPPDATA`, `HOME`, and `XDG_CONFIG_HOME`; assert
 none changes the result. Missing OS resolution fails with `TRUSTED_OPERATOR_ROOT_UNAVAILABLE` and
 does not create a workspace path.
 
-- [ ] **Step 2: Implement platform-derived roots**
+- [x] **Step 2: Implement platform-derived roots**
 
 Use `SHGetKnownFolderPath(FOLDERID_RoamingAppData)` for Windows config and
 `SHGetKnownFolderPath(FOLDERID_LocalAppData)` for Windows approval runtime through a small
 injectable adapter; use `pwd.getpwuid(os.getuid()).pw_dir` on POSIX with `.config/optimus-cost-agent`
 and `.local/state/optimus-cost-agent`. `OPTIMUS_CONFIG_ROOT` is not an input to this function.
 
-- [ ] **Step 3: Implement identity and revalidation**
+- [x] **Step 3: Implement identity and revalidation**
 
 Canonicalize path plus `os.stat().st_dev/st_ino`; when Git is present, resolve repository root and
 common dir with argument-list subprocess calls and `shell=False`. Tests cover relocation,
 symlink/junction target change, repository common-dir change, missing workspace, Windows case
 normalization, and non-Git workspaces.
 
-- [ ] **Step 4: Refactor operator paths to require validated inputs**
+- [x] **Step 4: Refactor operator paths to require validated inputs**
 
 `resolve_operator_paths()` receives `trusted_roots` and an already validated optional config-root
 override. Remove inherited APPDATA/HOME/XDG bootstrap. Keep workspace `.optimus` debug/Gateway logs
 separate from the external approval runtime root.
 
-- [ ] **Step 5: Run and review Task 2**
+- [x] **Step 5: Run and review Task 2**
 
 ```bash
 uv run pytest tests/unit/acp/test_trusted_paths.py tests/unit/acp/test_operator_paths.py -q
@@ -531,33 +530,33 @@ class KeyringApprovalStore:
     def rotate_hmac_key(self) -> None: ...
 ```
 
-- [ ] **Step 1: Write failing record and fingerprint vectors**
+- [x] **Step 1: Write failing record and fingerprint vectors**
 
 Test canonical JSON, domain-separated secret HMACs, URI-userinfo HMAC, workspace/policy/version
 binding, non-secret literal storage, no raw SHA, and an exact 1,800-byte acceptance/1,801-byte
 rejection boundary. Inspect serialized JSON to prove canary secrets and URI user information are
 absent.
 
-- [ ] **Step 2: Implement the keyring namespace and integrity key**
+- [x] **Step 2: Implement the keyring namespace and integrity key**
 
 Use a dedicated service namespace distinct from existing provider credentials. Store the HMAC key,
 durable workspace record, and one-shot record as separate entries. Reader failures map to stable
 value-free codes; never fall back to an unverified record.
 
-- [ ] **Step 3: Implement nonce handle and lock**
+- [x] **Step 3: Implement nonce handle and lock**
 
 Generate 32 random bytes and derive exactly `p996_` plus unpadded base64url SHA-256 over the contract
 domain and nonce. Lock a workspace-digest file under `approval_runtime_root` with `msvcrt.locking`
 on Windows or `fcntl.flock` on POSIX. Under the lock, verify handle/HMAC/snapshot/expiry, delete the
 record, confirm deletion, then return it. Crash or deletion failure leaves startup unauthorized.
 
-- [ ] **Step 4: Prove concurrency and replay behavior**
+- [x] **Step 4: Prove concurrency and replay behavior**
 
 Tests synchronize two consumers and assert exactly one succeeds; cover expired, corrupt,
 wrong-workspace, wrong-policy, rotated-key, revoked, already-consumed, failed-delete, and lock-failure
 paths. A fake keyring is permitted only in this unit task.
 
-- [ ] **Step 5: Run and review Task 3**
+- [x] **Step 5: Run and review Task 3**
 
 ```bash
 uv run pytest tests/unit/acp/test_launch_approvals.py -q
@@ -640,7 +639,7 @@ class SanitizationResult:
 def sanitize_for_persistence(value: object, *, known_secrets: Sequence[str] = ()) -> SanitizationResult: ...
 ```
 
-- [ ] **Step 1: Write failing candidate-resolution tests**
+- [x] **Step 1: Write failing candidate-resolution tests**
 
 Cover environment > external `.env.gateway` > keyring > default precedence without rereading
 ambient env. Exact provider/base URL are displayed; Redis/Gateway URI user information is masked;
@@ -648,7 +647,7 @@ secret rows show name/presence/provenance/length only. The complete snapshot dig
 exact source representation, credential, workspace identity, registry version, or policy version
 changes.
 
-- [ ] **Step 2: Make config-root resolution two-phase**
+- [x] **Step 2: Make config-root resolution two-phase**
 
 Before reading a custom `OPTIMUS_CONFIG_ROOT`, compare its exact literal/identity with the selected
 approval metadata. During interactive authoring, require a separate value-visible consent to read
@@ -661,13 +660,13 @@ SYSTEM, and Administrators, and reject read/write allow ACEs for Everyone, Users
 Users, or an unknown principal. A platform that cannot prove these checks fails closed with a
 value-free remediation code.
 
-- [ ] **Step 3: Refactor credential resolution to be single-read**
+- [x] **Step 3: Refactor credential resolution to be single-read**
 
 Return immutable provider/shared-secret resolution objects from `resolve_launch_candidate`.
 Downstream Gateway startup receives those objects; it must not reread `.env.gateway`, keyring, or
 ambient environment after authorization.
 
-- [ ] **Step 4: Add the shared sanitizer core before any ceremony output**
+- [x] **Step 4: Add the shared sanitizer core before any ceremony output**
 
 Implement structured/free-text redaction, exact current-secret replacement, URI-userinfo masking,
 rule counts, and safe unsupported-object type metadata in the neutral package. Keep
@@ -677,7 +676,7 @@ containers, bearer/header/assignment forms, URI schemes, and objects whose `__re
 raise or contain canaries. Add `src/optimus_security` to `[tool.coverage.run].source` in
 `pyproject.toml` so the new production package participates in the 80% gate.
 
-- [ ] **Step 5: Implement `optimus-trust` writer commands**
+- [x] **Step 5: Implement `optimus-trust` writer commands**
 
 Add the console script:
 
@@ -696,13 +695,13 @@ trusted OS roots, requires a TTY, and creates no launch approval. The legacy `op
 path delegates to this writer behavior or exits with the exact migration command; it may not use an
 inherited unapproved config root.
 
-- [ ] **Step 6: Prove headless and display behavior**
+- [x] **Step 6: Prove headless and display behavior**
 
 Tests assert piped input cannot author, headless can read an existing durable record, one-shot uses
 dedicated argv fields and no environment token, provider/base are literal, URI userinfo is masked,
 credentials never display, and CLI output/exception paths contain no canaries.
 
-- [ ] **Step 7: Run and review Task 4**
+- [x] **Step 7: Run and review Task 4**
 
 ```bash
 uv run pytest tests/unit/security/test_sanitization.py tests/unit/acp/test_launch_gate.py tests/unit/acp/test_launch_approval_cli.py tests/unit/acp/test_local_gateway_secrets.py tests/unit/acp/test_entrypoint.py -q
@@ -749,7 +748,7 @@ boundary.
 - Modify corresponding existing unit tests under `tests/unit/acp/`
 - Create: `tests/integration/acp/test_launch_trust_flow.py`
 
-- [ ] **Step 1: Write the fail-before-side-effect matrix**
+- [x] **Step 1: Write the fail-before-side-effect matrix**
 
 Parameterize unknown name, inherited internal name, unapproved provider/base/key/Redis/config root,
 loosened cost/turn limit, corrupt/expired approval, changed workspace, and snapshot mismatch. Instrument
@@ -758,7 +757,7 @@ server construction; assert every external probe remains untouched and the error
 stable code plus variable name. Separately assert keyring/lock/audit access is confined to the
 trusted external root and the rejection audit contains no value.
 
-- [ ] **Step 2: Capture once and thread typed inputs**
+- [x] **Step 2: Capture once and thread typed inputs**
 
 `main()` captures `LaunchEnvironmentSnapshot` immediately after parsing argv/workspace, accepts only
 the internal `--launch-approval-id` and `--launch-session-id` as new internal arguments, resolves/authorizes,
@@ -767,14 +766,14 @@ debug-trace env mutation and `_max_planning_turns_from_env()` ambient reads with
 values. Task 5 establishes the ordinary process-local debug context; Task 6 adds elevated grant
 behavior without restoring environment control.
 
-- [ ] **Step 3: Replace duplicated child allowlists with registry projections**
+- [x] **Step 3: Replace duplicated child allowlists with registry projections**
 
 Gateway child projection includes only authorized provider, one provider key, base URL when
 applicable, shared secret, and code-derived loopback bind values. Agent projection includes only
 Gateway URL, Optimus shared key, Redis URL, bounded model, validated limits, production/origin
 settings when applicable, and existing system keys. Provider/Gateway-internal secrets remain absent.
 
-- [ ] **Step 4: Close the standalone bind seam**
+- [x] **Step 4: Close the standalone bind seam**
 
 The standalone Gateway entrypoint rejects inherited `OPTIMUS_LOCAL_GATEWAY_BIND_HOST` and
 `OPTIMUS_LOCAL_GATEWAY_PORT`. The authorized parent passes code-derived bind host/port as explicit
@@ -794,14 +793,14 @@ with the approval-store HMAC key under a distinct domain; `optimus_gateway` read
 dedicated keyring namespace through the neutral module and rejects missing, expired, mismatched, or
 invalid manifests. The same-user keyring limitation remains the contract's accepted boundary.
 
-- [ ] **Step 5: Pin monotonic and model behavior**
+- [x] **Step 5: Pin monotonic and model behavior**
 
 Assert unapproved lower/equal cost/turn values pass, higher values require a matching approval,
 invalid values fail, and a more expensive recognized model still runs under the existing request
 budget and protected evidence ceiling. Do not make `OPTIMUS_LIVE_MAX_COST_USD` override
 `AgentRunRequest.max_cost_usd`.
 
-- [ ] **Step 6: Append the authorization audit before startup**
+- [x] **Step 6: Append the authorization audit before startup**
 
 Before any child/network startup, append one `LaunchAuditEvent` under the trusted external runtime
 root with timestamp, workspace digest, launch/session/approval metadata, registry/policy versions,
@@ -811,13 +810,13 @@ rule counts, and final value-free reason code. Open with append semantics and re
 permissions. Audit path, permission, serialization, sanitization, or append failure stops startup;
 there is no raw fallback.
 
-- [ ] **Step 7: Prove TOCTOU and exact children**
+- [x] **Step 7: Prove TOCTOU and exact children**
 
 Mutate `os.environ`, config bytes, keyring value, workspace identity, symlink target, and approval
 record between candidate creation and spawn. Every case fails before spawn. Assert no gated helper
 reads `os.environ` and exact child-key sets equal registry projections.
 
-- [ ] **Step 8: Run and review Task 5**
+- [x] **Step 8: Run and review Task 5**
 
 ```bash
 uv run pytest tests/unit/security/test_launch_manifest.py tests/unit/acp/test_main_wiring.py tests/unit/acp/test_main_check_config.py tests/unit/acp/test_main_debug_trace.py tests/unit/acp/test_debug_trace.py tests/unit/acp/test_local_infra.py tests/unit/acp/test_acp_subprocess_env.py tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_launch_audit.py tests/integration/acp/test_launch_trust_flow.py -q
@@ -866,18 +865,18 @@ class StreamingTextSanitizer:
     def finalize(self) -> str: ...
 ```
 
-- [ ] **Step 1: Write the complete canary matrix**
+- [x] **Step 1: Write the complete canary matrix**
 
 Extend the core canary matrix with exceptions, same-secret reviewed comparison points, cross-session
 tags, and secrets split at every chunk boundary. Reject configured secrets longer than
 `MAX_SECRET_TEXT_CHARS` at launch so the overlap guarantee is complete.
 
-- [ ] **Step 2: Implement streaming and correlation extensions**
+- [x] **Step 2: Implement streaming and correlation extensions**
 
 Retain the Task 4 rules and wrapper. Add the bounded overlap stream and correlation-tag functions;
 known current secrets are passed from `AuthorizedLaunch`, and neither function reads ambient env.
 
-- [ ] **Step 3: Replace debug environment state with authorized context**
+- [x] **Step 3: Replace debug environment state with authorized context**
 
 Generate the debug session ID and session HMAC key in memory. Ordinary mode emits no tags. A
 consumed diagnostic grant enables only the contract's metadata allowlist and 128-bit truncated
@@ -889,12 +888,12 @@ serving path consumes the grant once through an internal `--diagnostic-grant-id`
 Extend `AuthorizedLaunch` with `diagnostic_grant: DiagnosticGrant | None`; ordinary and failed-grant
 paths set `None` and emit no correlation tags.
 
-- [ ] **Step 4: Prove no opt-out exists**
+- [x] **Step 4: Prove no opt-out exists**
 
 AST/tests fail if `acp_debug_log` exposes `redact=False`, `raw=True`, or any branch that writes the
 unsanitized input. Sink serialization cannot use `default=str`.
 
-- [ ] **Step 5: Run and review Task 6**
+- [x] **Step 5: Run and review Task 6**
 
 ```bash
 uv run pytest tests/unit/security/test_sanitization.py tests/unit/telemetry/test_serialization.py tests/unit/acp/test_launch_gate.py tests/unit/acp/test_launch_approval_cli.py tests/unit/acp/test_debug_trace.py tests/unit/acp/test_main_debug_trace.py -q
@@ -928,7 +927,7 @@ sanitized or mechanically justified as safe-by-construction.
   `src/optimus_gateway/responses.py`
 - Modify corresponding existing unit tests
 
-- [ ] **Step 1: Write a failing AST surface verifier**
+- [x] **Step 1: Write a failing AST surface verifier**
 
 Inventory calls to `print`, logger methods, `open`/`Path.open`, `write`/`write_text`, JSON
 serialization at a sink, Redis/state serialization, stderr/stdout retention, and `str(exc)` or
@@ -938,27 +937,27 @@ entry or a manifest entry no longer resolves. Scan all `src/**/*.py` and `tools/
 explicit command/text patterns to `tools/**/*.sh` and `tools/**/*.ps1` so manual launchers and raw
 capture cannot sit outside the inventory.
 
-- [ ] **Step 2: Classify every live surface**
+- [x] **Step 2: Classify every live surface**
 
 Each JSON manifest entry records `policy` (`shared-sanitize`, `safe-by-construction`,
 `protocol-only`, or `frozen-nonqualifying`), rationale, sanitizer call/validator, named test node,
 and evidence tier. The two frozen legacy capture helpers are `frozen-nonqualifying`; this is an
 exclusion, not a pass.
 
-- [ ] **Step 3: Apply the shared sanitizer at unsafe sinks**
+- [x] **Step 3: Apply the shared sanitizer at unsafe sinks**
 
 Sanitize before JSONL append, observability export, JSON-RPC/stderr exception emission, progress
 ledger append, serialized agent state write, release transcript/runner retention, and Gateway error
 response. Preserve required protocol content that is safe-by-construction; do not sanitize source
 mutation payloads as if they were diagnostic logs.
 
-- [ ] **Step 4: Test fail-closed sink behavior**
+- [x] **Step 4: Test fail-closed sink behavior**
 
 For each changed sink, inject nested, free-text, URI, split, and unsupported-object canaries. Assert
 the raw value is absent, rule identifiers/counts are content-free, and sanitizer/audit failure does
 not fall back to raw `str(exc)` or `repr`.
 
-- [ ] **Step 5: Run and review Task 7**
+- [x] **Step 5: Run and review Task 7**
 
 ```bash
 uv run python tools/verify_plan996_logging_surfaces.py --manifest docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json
@@ -999,13 +998,13 @@ run_plan996_acpx_security_evidence.py verify
   --transcript PATH --manifest PATH
 ```
 
-- [ ] **Step 1: Write failing pre-persistence transcript tests**
+- [x] **Step 1: Write failing pre-persistence transcript tests**
 
 Assert inbound/outbound records and stderr are sanitized before entering retained lists. Keep the
 process-environment structural rejection. Split one canary across every adjacent line/chunk pair and
 assert no prefix or suffix reaches disk.
 
-- [ ] **Step 2: Implement a streaming `acpx` capture**
+- [x] **Step 2: Implement a streaming `acpx` capture**
 
 Use `subprocess.Popen` with argument lists and `shell=False`. Feed stdout/stderr incrementally into
 `StreamingTextSanitizer`; write only released sanitized text. Do not use `capture_output=True`,
@@ -1014,7 +1013,7 @@ records installed `acpx --version` and accepts independently authored `acpx` 0.1
 whose provenance/version is explicitly reviewed and recorded; a project-authored ACP client fails
 the evidence preflight.
 
-- [ ] **Step 3: Add joined promotion scanning and signed manifest**
+- [x] **Step 3: Add joined promotion scanning and signed manifest**
 
 Before secrets leave memory, join decoded transcript records and scan exact known values plus
 canaries/patterns. Write a compact manifest containing sanitizer version, rule counts, artifact
@@ -1025,12 +1024,12 @@ promotion decision. Evidence cleanup occurs only after this verification; the du
 the artifact/manifest SHA-256s and observed HMAC-verification result. A hit quarantines the artifact
 and exits nonzero.
 
-- [ ] **Step 4: Prove the legacy exclusion**
+- [x] **Step 4: Prove the legacy exclusion**
 
 The tool/verifier rejects a Plan 9.87/9.88 raw transcript locator as Plan 9.96 evidence and names the
 controlled Plan 9.96 capture command. Assert neither frozen helper has a Git diff.
 
-- [ ] **Step 5: Run and review Task 8**
+- [x] **Step 5: Run and review Task 8**
 
 ```bash
 uv run pytest tests/unit/acp/test_e2e_transcript.py tests/unit/acp/test_live_fixture_policy.py tests/unit/tools/test_run_plan996_acpx_security_evidence.py -q
@@ -1061,7 +1060,7 @@ evidence maps every Plan 9.96 claim to a named artifact; living docs close only 
 - Modify: `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`
 - Modify: this plan's checkboxes/status only after the corresponding gates pass
 
-- [ ] **Step 1: Run the real OS-store one-shot/durable ceremony**
+- [x] **Step 1: Run the real OS-store one-shot/durable ceremony**
 
 In an external scratch workspace, use the real installed `optimus-trust` and OS keyring. Prove:
 
@@ -1074,7 +1073,7 @@ In an external scratch workspace, use the real installed `optimus-trust` and OS 
 Record approval IDs/digests and result codes only, never values/nonces. A fake keyring cannot satisfy
 this step.
 
-- [ ] **Step 2: Run real Redis/Gateway/agent/`acpx` ordinary and elevated sessions**
+- [x] **Step 2: Run real Redis/Gateway/agent/`acpx` ordinary and elevated sessions**
 
 Use only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` in the agent child, real TimeSeries Redis, real
 Gateway credentials, and independently authored `acpx`. The controlled Task 8 helper captures both
@@ -1094,7 +1093,7 @@ uv run pytest tests/e2e/acp/test_plan996_authorized_launch.py -m e2e -q
 Expected: both controlled sessions complete through real `acpx`; the elevated command substitutes
 identifiers without printing them; the E2E node passes with the real process and dependencies.
 
-- [ ] **Step 3: Verify promotion and secret absence**
+- [x] **Step 3: Verify promotion and secret absence**
 
 Run the capture helper's standalone verify mode on every promoted transcript/manifest. Then scan the
 log, transcript, audit, report draft, Gateway log, telemetry export fixture, and state/ledger
@@ -1110,7 +1109,7 @@ optimus-trust revoke --workspace-root C:/tmp/optimus-plan996-evidence
 Expected: both verifications pass before revocation; revocation removes durable approval and
 diagnostic residue without deleting evidence artifacts.
 
-- [ ] **Step 4: Run focused and full automated gates**
+- [x] **Step 4: Run focused and full automated gates**
 
 ```bash
 uv run pytest tests/unit/acp tests/unit/security tests/unit/telemetry tests/unit/tools/test_verify_plan996_logging_surfaces.py tests/unit/tools/test_run_plan996_acpx_security_evidence.py tests/integration/acp/test_launch_trust_flow.py -q
@@ -1124,7 +1123,7 @@ git diff --check
 Expected: all selected/default tests pass, aggregate production coverage is at least 80%, Ruff and
 audit verifier pass, and the diff is clean.
 
-- [ ] **Step 5: Create the claim-to-evidence report**
+- [x] **Step 5: Create the claim-to-evidence report**
 
 Record the Task 0 digest/approvals, implementation SHA before report/docs closure, registry and sink
 manifest digests, exact test nodes/commands/results, OS-store backend identity, one-shot/durable
@@ -1132,13 +1131,13 @@ outcomes, TOCTOU matrix, exact child-key names, real dependency provenance, tran
 locators and SHA-256s, joined promotion result, secret-scan command/result, coverage, Ruff, and
 limitations. Do not include secret or workspace content.
 
-- [ ] **Step 6: Update living custody only after evidence passes**
+- [x] **Step 6: Update living custody only after evidence passes**
 
 Close `P9.85-FU-7` and `P9.9-FU-1` in README/roadmap with the implementation SHA and evidence report.
 Preserve Plan 9.97 and its exact isolation sentence. Do not edit the security contract, approval
 record, Plan 9.87/9.88 plans/helpers, or later-plan scope.
 
-- [ ] **Step 7: Run final custody/freeze checks**
+- [x] **Step 7: Run final custody/freeze checks**
 
 ```bash
 uv run python -c "from pathlib import Path; import hashlib; p=Path('docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md'); print(hashlib.sha256(p.read_bytes()).hexdigest().upper())"
@@ -1152,7 +1151,7 @@ Expected: exact frozen digest, Plan 9.96 FUs closed with evidence, Plan 9.97 sen
 paths unchanged, zero unchecked-checkbox matches, and status contains only reviewed Plan 9.96 files
 plus separately disclosed operator-owned noise.
 
-- [ ] **Step 8: Request final sign-off and commit only after approval**
+- [x] **Step 8: Request final sign-off and commit only after approval**
 
 Show the evidence report, exact diff, all gate outputs, and status to the reviewer-agent and
 operator. Commit closure files only after both approve. Do not stage `.idea`, `.claude`, `.cursor`,
@@ -1167,40 +1166,40 @@ git commit -m "Record Plan 9.96 launch trust evidence"
 
 ## Definition of Done
 
-- [ ] Task 0 proves the exact frozen contract, both approvals, and Plan 9.9 commit before mutation.
-- [ ] Every source-referenced Optimus/provider setting has exactly one mechanically checked policy.
-- [ ] Unknown and inherited internal-only settings fail before workspace/config writes,
+- [x] Task 0 proves the exact frozen contract, both approvals, and Plan 9.9 commit before mutation.
+- [x] Every source-referenced Optimus/provider setting has exactly one mechanically checked policy.
+- [x] Unknown and inherited internal-only settings fail before workspace/config writes,
   debug/telemetry persistence, network, Redis, Gateway, agent, or subprocess side effects; the
   mandatory value-safe rejection audit is the only persisted outcome.
-- [ ] Trusted roots ignore inherited APPDATA/LOCALAPPDATA/HOME/XDG and gated config-root values.
-- [ ] Workspace identity detects path, file identity, Git common-dir, symlink/junction, and relocation
+- [x] Trusted roots ignore inherited APPDATA/LOCALAPPDATA/HOME/XDG and gated config-root values.
+- [x] Workspace identity detects path, file identity, Git common-dir, symlink/junction, and relocation
   changes.
-- [ ] Approval records contain no literal secret/URI userinfo, fit 1,800 bytes, and fail on integrity,
+- [x] Approval records contain no literal secret/URI userinfo, fit 1,800 bytes, and fail on integrity,
   expiry, revocation, version, workspace, or exact-value mismatch.
-- [ ] One-shot records use 256-bit nonce handles, a real OS lock, delete-before-use, and no replay.
-- [ ] Headless launches consume only previously interactive durable approvals.
-- [ ] Provider/base URL are displayed literally; Redis and other URI user information is masked.
-- [ ] Monotonic cost/turn controls tighten without approval and cannot loosen without exact approval.
-- [ ] Agent model selection remains bounded by authorized routing/endpoint/credentials, recognized
+- [x] One-shot records use 256-bit nonce handles, a real OS lock, delete-before-use, and no replay.
+- [x] Headless launches consume only previously interactive durable approvals.
+- [x] Provider/base URL are displayed literally; Redis and other URI user information is masked.
+- [x] Monotonic cost/turn controls tighten without approval and cannot loosen without exact approval.
+- [x] Agent model selection remains bounded by authorized routing/endpoint/credentials, recognized
   pricing, protected ceiling, and the existing runtime request budget.
-- [ ] Gateway and agent children contain exactly registry-authorized names; the agent remains one-key.
-- [ ] No gated startup path performs a late ambient-environment/config/keyring reread.
-- [ ] Every launch decision appends the complete value-safe audit schema before child startup, and
+- [x] Gateway and agent children contain exactly registry-authorized names; the agent remains one-key.
+- [x] No gated startup path performs a late ambient-environment/config/keyring reread.
+- [x] Every launch decision appends the complete value-safe audit schema before child startup, and
   audit failure is fatal.
-- [ ] No literal-secret debug opt-out exists; elevated diagnostics expose only allowlisted metadata
+- [x] No literal-secret debug opt-out exists; elevated diagnostics expose only allowlisted metadata
   and session-local tags.
-- [ ] Every discovered persistence/export surface has one verified audit disposition and no stale or
+- [x] Every discovered persistence/export surface has one verified audit disposition and no stale or
   unclassified manifest entry.
-- [ ] Structured, free-text, unsupported-object, URI, exception, line-split, and chunk-split canaries
+- [x] Structured, free-text, unsupported-object, URI, exception, line-split, and chunk-split canaries
   are sanitized before persistence.
-- [ ] Controlled real-`acpx` capture writes no raw interim artifact and joined promotion scans pass.
-- [ ] Frozen Plan 9.87/9.88 helpers remain unchanged and non-qualifying for Plan 9.96.
-- [ ] Real OS keyring, Redis, Gateway, agent, and independent-`acpx` evidence maps every claim to a
+- [x] Controlled real-`acpx` capture writes no raw interim artifact and joined promotion scans pass.
+- [x] Frozen Plan 9.87/9.88 helpers remain unchanged and non-qualifying for Plan 9.96.
+- [x] Real OS keyring, Redis, Gateway, agent, and independent-`acpx` evidence maps every claim to a
   named sanitized artifact.
-- [ ] Full default tests pass, aggregate coverage across all production packages is at least 80%,
+- [x] Full default tests pass, aggregate coverage across all production packages is at least 80%,
   Ruff/audit/diff checks pass, and secret scans have zero hits.
-- [ ] Only `P9.85-FU-7` and `P9.9-FU-1` close; Plan 9.97 retains its Plan 11 isolation sentence.
-- [ ] Final reviewed commit excludes all unrelated worktree and operator-local artifacts.
+- [x] Only `P9.85-FU-7` and `P9.9-FU-1` close; Plan 9.97 retains its Plan 11 isolation sentence.
+- [x] Final reviewed commit excludes all unrelated worktree and operator-local artifacts.
 
 ## Implementation Handoff After Plan Approval
 
