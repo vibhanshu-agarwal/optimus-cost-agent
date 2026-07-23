@@ -177,6 +177,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.launch_approval_cli:_confirm_approval:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.launch_approval_cli:_confirm_approval:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_approve_decline_does_not_build_or_write_record",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.launch_approval_cli:main:stderr_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.acp.launch_approval_cli:main:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",

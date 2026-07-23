@@ -208,6 +208,18 @@ its original stable ID for the effective-row display gap. No new catalog ID or P
 document was created by this pickup. The rest of the Plan 10 pool (see Open items above) remains
 tracked, not yet scheduled.
 
+## Tracked, Not Yet Scheduled (lightweight notes)
+
+### Tools: `SurfaceAuditError` frozen-dataclass CI wart (disclosed 2026-07-23 during Plan 10.1 Task 7)
+
+`tools/verify_plan996_logging_surfaces.py` raises a `@dataclass(frozen=True)` `SurfaceAuditError`.
+When that exception is raised under pytest's generator-based failure capture, pytest teardown can
+attempt to attach `.__traceback__` and surface a secondary `FrozenInstanceError` in the CI log.
+Standalone `main()` outside pytest raises `SurfaceAuditError` cleanly with no crash — this is a
+pytest-harness wart, not a production or `src`/`tests` FU-5 recurrence. Trivial later fix: drop
+`frozen=True` on that tools-only exception class (nothing in that type needs immutability). Not a
+Plan 10.1 blocker; not scheduled.
+
 ## Closed custody excluded from the open pool
 
 Plan 9.96's two sole-custody follow-ups (`P9.85-FU-7`, `P9.9-FU-1`) are closed with the Plan 9.96
