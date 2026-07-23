@@ -238,7 +238,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 rows and Phases A-F complete. Phase D alignment/evidence merged through PR #40
 (`8aa9776411e6f433463c1493b118435520fc6f3c`); final Phase F sign-off merged through PR #42
 (`3ac2f914e14dcf62045375faae5c85908e73c075`). The Phase 1 working-agent gate passed, so this
-Plan 11 prerequisite is no longer open.
+Plan 12 prerequisite is no longer open.
 
 ### Plan 9.6 closure — complete
 
@@ -289,7 +289,7 @@ the post-#36 shapes, and PR #42 closed the parent Plan 9.6 sign-off gate.
 after correctly rendering the ambiguous-refusal text. That is not a regression or reopened item in
 this completed lane; it is owned by the
 [Consolidated Deferred Follow-Ups backlog](2026-07-23-consolidated-deferred-followups-backlog.md)
-and must not be folded into Plan 11.
+and must not be folded into Plan 12.
 
 ## Plan 9.8: Task-Aware Workspace Context for Planning
 
@@ -304,14 +304,14 @@ the context budget.
 
 Plan 9.8 guarantees context inclusion for exact relative paths and unique basenames and visibly
 rejects ambiguous/oversized required references. It does not provide multi-turn replanning or
-Plan 11 intelligent selection and does not prove mutation tasks generally.
+Plan 12 intelligent selection and does not prove mutation tasks generally.
 
 **Known limitation (P9.8-FU-5):** On Zed 1.10.2, the ambiguous-refusal corrective text can flash and
 then panic the client (`range end index 3 out of range for slice of length 2`). Agent-side refusal
 contract and independent `acpx` durable UI remain proven; durable Zed stay-up on that path is
 deferred, not claimed. Sole custody is the
 [Consolidated Deferred Follow-Ups backlog](2026-07-23-consolidated-deferred-followups-backlog.md);
-this work must not be folded into Plan 11 or the completed Plan 9.75 lane.
+this work must not be folded into Plan 12 or the completed Plan 9.75 lane.
 
 **P9.8-FU-6 (substantively resolved, no discrete closing commit):** the acceptance criteria —
 a documented operator/pre-GUI evidence path uses independently authored `acpx` exclusively, and
@@ -356,7 +356,7 @@ as a supplementary artifact and is credited to Plan 9.87's scope, not claimed as
 
 **Known limitations (retained, not claimed live-proven beyond this scope):**
 
-- Fixed 4 KiB/12 KiB observation-vs-current-read partition; no intelligent compression (Plan 11).
+- Fixed 4 KiB/12 KiB observation-vs-current-read partition; no intelligent compression (Plan 12).
 - Raw evidence is visible for one turn only; earlier evidence carries forward as untrusted
   observations with path/range/hash provenance, never silently re-read as if complete.
 - Superseded/wrong plan-hash rejection (`PLAN_NOT_FOUND_OR_EXPIRED`) is proven by unit and ACP
@@ -388,7 +388,7 @@ oversized-required-context workflow.
 `fec114b7fc79da35ea399f4d66e22e776e6b76a3`, operator `vibhanshu-agarwal`, timestamp
 `2026-07-14T08:13:56Z`; pair-plus-exhaustion gate PASS; `--require fu4b` correctly FAIL.
 Accepted-open is not qualifying FU-4B evidence. This planning-loop lane remains separate from
-Plan 9.9 packaging/credential diagnostics and from Plan 11 intelligent selection/compression —
+Plan 9.9 packaging/credential diagnostics and from Plan 12 intelligent selection/compression —
 do not fold this scope into either.
 
 ## Plan 9.88 (Closed): FU-4B Evidence Remediation and Plan 9.87 Closure
@@ -480,11 +480,11 @@ was approved by the reviewer-agent and operator on 2026-07-14. Implemented 2026-
 
 - `P9.85-FU-7` moved from Plan 9.95 to Plan 9.96.
 - `P9.9-FU-1` moved from Plan 9.95 to Plan 9.96.
-- `P9.87-FU-1` moved from Plan 9.95 to Plan 9.97.
+- `P9.87-FU-1` moved from Plan 9.95 into the consolidated Plan 10 backlog pool.
 
 FU-4B accepted-open is deliberately not in this entry: it is a closed disposition under the Plan
 9.88 ceremony, not a TODO. **Status:** Implemented; `P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3`
-closed with evidence. Remaining deferred follow-ups owned by Plans 9.96 and 9.97.
+closed with evidence. Remaining deferred follow-ups are owned by Plan 9.96 and the Plan 10 pool.
 
 ## Plan 9.96 (Implemented): Operator-Controlled Debug and Launch Trust
 
@@ -521,19 +521,6 @@ the Task 9 evidence report limitations table.
 Plan 9.96 Task 9 Steps 2, 3, and 5 depended on Plan 9.98's implementation commit
 `74d4ff21173a597c3b274cf6e6cbdf8a7eb43697` and its real-dependency evidence report at
 `reports/plan-9-98-real-acpx-session-evidence.md`.
-
-## Plan 9.97 (Tracked, Not Yet Scheduled): Mechanical Current-Raw-Evidence Grounding
-
-**Raised:** 2026-07-14 by the approved Plan 9.95 lane split.
-
-**Owned follow-up:** `P9.87-FU-1` — define a mechanical provenance guard between final WRITE
-content and current-turn raw ranges without logging source bodies.
-
-This lane must not absorb or be absorbed by Plan 11.
-
-**Status:** Tracked, not yet scheduled; no implementation plan exists on this branch. Its future
-design must preserve the current-raw-evidence boundary independently of Plan 11's intelligent
-selection and compression work.
 
 ## Plan 9.98 (Implemented): Real ACPX Session Evidence for Plan 9.96 Task 9
 
@@ -692,30 +679,38 @@ during approval.
 in launch security snapshots`). Required before Plan 9.96 Task 9 closure; Task 9 evidence used
 policy compatibility `P9.99-v1`.
 
-## Backlog: Consolidated Deferred Follow-Ups (Tracked, Not Yet Scheduled)
+## Plan 10 (Tracked, Not Yet Scheduled): Consolidated Deferred Follow-Ups Pool
 
-**What this is:** Every currently open, unscheduled `P#-FU-#` follow-up from the Plan 9-series lives
-in one place —
-[`docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md`](2026-07-23-consolidated-deferred-followups-backlog.md) —
-instead of being scattered across each originating plan's own Deferred Follow-Ups section with only
-a one-line roadmap mention (or none at all — that gap is exactly what happened to Plan 9.98-FU-1/FU-2
-before a manual audit caught it). That document is the single source of reference for planning and
-implementing these items; this entry is only a pointer, not a duplicate.
+**What this is:** The
+[`consolidated deferred follow-ups backlog`](2026-07-23-consolidated-deferred-followups-backlog.md)
+is the stable-ID catalog for the open, unscheduled Plan 9-series follow-ups. Plan 10 is the umbrella
+for the entries not designated to Plan 12, plus the seven disclosures from Plan 9.96 Task 9 that are
+now folded into the same pool. This section is a routing and allocation rule, not a list of future
+Plan 10.x stubs.
 
-**Currently holds (7 items):** `P9.8-FU-2` (intelligent ambiguous-reference ranking, owner Plan 11),
-`P9.8-FU-3` (dynamic context budgets, owner Plan 11), `P9.8-FU-5` (Zed refusal-rendering stability,
-unscheduled), `P9.85-FU-1` (intelligent observation compression, owner Plan 11), `P9.85-FU-2`
-(dynamic planning-evidence partition, owner Plan 11), `P9.85-FU-3` (cross-run/session spend policy,
-unscheduled), and `P9.87-FU-1` (mechanical current-raw-evidence grounding guard, owner Plan 9.97).
+The catalog's existing seven entries remain keyed by their source IDs. `P9.8-FU-2`, `P9.8-FU-3`,
+`P9.85-FU-1`, and `P9.85-FU-2` remain designated to Plan 12. `P9.8-FU-5`, `P9.85-FU-3`, and
+`P9.87-FU-1` are in the Plan 10 pool; the last item is folded here from the retired Plan 9.97 lane.
 
-**Adding future items:** Any new follow-up emerging from Plan 9.97 (or later) gets added to the same
-document rather than a new scattered roadmap entry. Plan 9.96's Task 9 closures (`P9.85-FU-7`,
-`P9.9-FU-1`) are done; the disclosed `P9.96-FU-1..7` items have dedicated backlog entries below and
-are also eligible for consolidation into this document when scheduled.
+The catalog now contains the seven `P9.96-FU-1..7` rows and the attached Plan 9.98 custody note;
+it is the sole detailed ledger for those entries.
 
-**Status:** Tracked, not yet scheduled. Each item is promoted out of the consolidated document into
-its own real numbered plan (or folded into Plan 11 / Plan 9.97 when either is scheduled), never
-implemented in place here.
+**Allocation rule:** Do not reserve Plan 10.x numbers for unscheduled work. When a catalog item is
+actually picked up, assign the next unused sequential plain-integer/single-decimal slot and mark its
+catalog status as `Promoted -> Plan 10.N` with the date and plan-file link. The number records
+pickup/scheduling order, not priority; the source ID, commit SHA, approval digest, and file paths
+remain the evidence identifiers.
+
+**Operator provenance warning:** Plan numbers are scheduling labels, not stable or immutable evidence
+identifiers. For evidence, approvals, and historical claims, use commit SHAs, approval-record
+digests, and file paths; never rely on a plan number alone.
+
+**Adding future items:** Add each genuinely deferred, unscheduled follow-up to the stable-ID catalog
+and this Plan 10 pool unless it is explicitly designated to Plan 12. Plan 9.96's
+`P9.85-FU-7` and `P9.9-FU-1` are closed and must not be reintroduced here.
+
+**Status:** Tracked, not yet scheduled. The pool itself is not an implementation plan; each item is
+promoted when scheduled or folded into its designated Plan 12 scope.
 
 ## Backlog: Re-pin FU-4A/FU-5 Live Evidence (Tracked, Not Yet Scheduled)
 
@@ -798,29 +793,6 @@ applied).
 
 **Status:** Resolved 2026-07-22.
 
-## Backlog: Plan 9.96 Disclosed Follow-Ups P9.96-FU-1..7 (Tracked, Not Yet Scheduled)
-
-**Raised:** Disclosed by Plan 9.96 Task 9 (2026-07-23) under the 2026-07-18 scope-conflict ruling:
-Plan 9.96 may close only `P9.85-FU-7` and `P9.9-FU-1`; these items are named custody, not silent drops.
-
-| ID | Summary |
-|---|---|
-| `P9.96-FU-1` | `StartupConfigurationError` missing `optimus-agent:` prefix in `acp/__main__.py` |
-| `P9.96-FU-2` | Duplicated TOCTOU comment block in `acp/__main__.py` |
-| `P9.96-FU-3` | `append_launch_audit_event` docstring vs `workspace/.optimus` runtime root |
-| `P9.96-FU-4` | Latent unroutable `DEFAULT_AGENT_MODEL = "glm-5.2"` in `agent/defaults.py` |
-| `P9.96-FU-5` | Frozen dataclass exceptions mask real codes via `@contextmanager` |
-| `P9.96-FU-6` | Frozen plan Task 9 CLI arg-order / PATH drift (execution correction only; applied) |
-| `P9.96-FU-7` | Approve ceremony lacks y/N confirm; bare-shell display rows may be empty |
-
-**Also disclosed (Plan 9.98 custody handoff):** inner `optimus-agent` launch-audit `agent_child` may
-omit keyring-resolved `OPTIMUS_API_KEY` because audit precedes `apply_local_defaults`; outer
-post-default audit remains the authoritative child-key evidence source.
-
-**Evidence:** `reports/plan-9-96-operator-debug-launch-trust-evidence.md` limitations table.
-
-**Status:** Tracked, not yet scheduled.
-
 ## Backlog: Windows Subprocess Handle-Duplication Flake, WinError 6/50 (Tracked, Not Yet Scheduled)
 
 **Raised:** 2026-07-22, during Plan 9.99 Task 7 repository-wide verification. Independently reproduced
@@ -896,7 +868,7 @@ tracked here rather than inside the Plan 9.99 plan file.
 
 **Status:** Tracked, not yet scheduled. No implementation plan exists.
 
-## Plan 10 (Tracked, Not Yet Scheduled): Unified Gateway Capabilities Broker
+## Plan 11 (Tracked, Not Yet Scheduled): Unified Gateway Capabilities Broker
 
 **Raised:** 2026-07-08, during Plan 9.7 review. The client-side one-key contract is already
 shaped for this: `src/optimus/evidence/acquisition.py` posts to `/v1/tools/web/search` and
@@ -924,7 +896,7 @@ env/`.env.gateway`/keyring precedence, independent of Plan 9.7's agent-side equi
 normalized `gateway_usage`/cost fields for non-model calls, matching the existing model-call
 pattern.
 
-## Plan 11 (Tracked, Not Yet Scheduled): Context Window Optimization and Intelligent Selection
+## Plan 12 (Tracked, Not Yet Scheduled): Context Window Optimization and Intelligent Selection
 
 **Design source:** `docs/context-window-optimization-strategy.md` (standalone canonical design note; no HLD/LLD/Test Strategy anchors yet - see the Cross-Cutting section above)
 
@@ -951,7 +923,7 @@ Full acceptance criteria for all four live in the
 this list is a pointer, not a duplicate.
 
 `P9.8-FU-5` is explicitly excluded; its Zed client-stability custody remains in that same
-consolidated backlog document, not owned by Plan 11.
+consolidated backlog document, not owned by Plan 12.
 
 **Expected deliverables:**
 - Selection/scoring engine implementing the utility function (weighted relevance, dependency-coverage gain, authority, recency, user pin, failure recurrence, evidence-diversity gain, minus redundancy penalty), dependency-closure resolution, and budget-constrained packing.
@@ -1005,19 +977,19 @@ consolidated backlog document, not owned by Plan 11.
     verified 2026-07-23 against base `031fc651dbc6b1d21cd714a0c8f5db9ea006b028`; closes
     `P9.85-FU-7` and `P9.9-FU-1`; evidence in
     `reports/plan-9-96-operator-debug-launch-trust-evidence.md`.
-22. Plan 9.97: Mechanical current-raw-evidence grounding — tracked, not yet scheduled; remains
-    isolated from Plan 11; no implementation plan exists.
-23. Plan 9.98: Real ACPX session evidence for Plan 9.96 Task 9 — **implemented and
+22. Plan 9.98: Real ACPX session evidence for Plan 9.96 Task 9 — **implemented and
     real-dependency verified** at `74d4ff21173a597c3b274cf6e6cbdf8a7eb43697`; evidence in
     `reports/plan-9-98-real-acpx-session-evidence.md`.
-24. Plan 9.99: Credential URI security-snapshot canonicalization — **implemented** at `f2b6b21`
+23. Plan 9.99: Credential URI security-snapshot canonicalization — **implemented** at `f2b6b21`
     (PR #66); prerequisite for Plan 9.96 Task 9 closure.
-25. Plan 10: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
-26. Plan 11: Context window optimization and intelligent selection — tracked, not yet scheduled;
+24. Plan 10: Consolidated deferred follow-ups pool — tracked, not yet scheduled; items receive
+    Plan 10.x numbers only when picked up, in scheduling order rather than priority order.
+25. Plan 11: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
+26. Plan 12: Context window optimization and intelligent selection — tracked, not yet scheduled;
     starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden
     harness are stable.
 
-The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, one-key scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 9.5 composes the Phase 1 primitives into a working local-first coding agent; Plan 9.8 establishes the specific task-aware context correctness floor before Plan 11 adds context-window intelligence. Plan 11 stays last regardless: it depends on Plan 9.8 and inputs from Plans 4, 5, 6, 6.5, 7, 9, and 9.5, and its PDF fold-in is explicitly deferred until calibration is accepted.
+The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, one-key scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 9.5 composes the Phase 1 primitives into a working local-first coding agent; Plan 9.8 establishes the specific task-aware context correctness floor before Plan 12 adds context-window intelligence. Plan 12 stays last regardless: it depends on Plan 9.8 and inputs from Plans 4, 5, 6, 6.5, 7, 9, and 9.5, and its PDF fold-in is explicitly deferred until calibration is accepted.
 
 Plan 9.9 follows Plan 9.8 as a separate operator-runtime hardening lane. It owns the two deferred
 Plan 9.7 packaging/credential diagnostics and does not expand Plan 9.8's context-selection scope.
@@ -1034,4 +1006,4 @@ and closed Plan 9.87 (Outcome B accepted-open) before Plan 9.9 in the sequence a
 and Plan 9.88 are closed; Plan 9.9 is now itself implemented and live-verified (implementation SHA
 `f120a5afde39e3b3a8a405211ae71653b6e75665`).
 
-Plans 9.6 and 9.7 sit alongside each other, not in a strict dependency order: Plan 9.6 owns the Phase 1 working-agent sign-off gate (live Redis/Gateway/e2e proof plus the real-IDE HITL artifact) and Plan 11 does not start until it passes; Plan 9.7 only changes how an operator's local Redis/Gateway dependencies get started before a session and does not touch what Plan 9.6 proves or gate. Plan 9.7 merged independently of Plan 9.6's remaining open HITL item. **Plan 9.75** follows Plan 9.7 in the recommended sequence: it fixes the open Zed HITL / `toolCall` permission payload and closes Plan 9.7's deferred planning-bar DoD using the Plan 9.7 operator PATH install for manual verification. Plan 10 is tracked separately and not yet scheduled or designed; do not fold its gateway-capability-broker scope into 9.6, 9.7, or 9.75 when picking up either.
+Plans 9.6 and 9.7 sit alongside each other, not in a strict dependency order: Plan 9.6 owns the Phase 1 working-agent sign-off gate (live Redis/Gateway/e2e proof plus the real-IDE HITL artifact) and Plan 12 does not start until it passes; Plan 9.7 only changes how an operator's local Redis/Gateway dependencies get started before a session and does not touch what Plan 9.6 proves or gate. Plan 9.7 merged independently of Plan 9.6's remaining open HITL item. **Plan 9.75** follows Plan 9.7 in the recommended sequence: it fixes the open Zed HITL / `toolCall` permission payload and closes Plan 9.7's deferred planning-bar DoD using the Plan 9.7 operator PATH install for manual verification. Plan 11 is tracked separately and not yet scheduled or designed; do not fold its gateway-capability-broker scope into 9.6, 9.7, or 9.75 when picking up either.
