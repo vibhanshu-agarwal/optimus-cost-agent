@@ -163,7 +163,7 @@ run, or the release evidence must state that staging Gateway E2E was not run.
 The final go/no-go rule is strict: a Plan-mode and Agent-mode release run must
 complete with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` available locally.
 Provider keys such as Tavily, OpenAI, OpenRouter, GLM, Anthropic, and LangSmith
-must remain Gateway-side. Plan 9 bounded loops and skill loading, and Plan 11
+must remain Gateway-side. Plan 9 bounded loops and skill loading, and Plan 12
 context-window optimization gates, are out of scope for the Phase 1 golden
 fixture set described above.
 
@@ -219,7 +219,7 @@ Plan 9.75.
 defects section, `reports/plan-9-75-zed-hitl-runtime-evidence.md`, and
 `reports/plan-9-75-zed-hitl-defect-notes.md`. The later Zed 1.10.2 refusal-rendering
 panic (`P9.8-FU-5`) has its own tracked roadmap backlog and does not reopen this
-completed lane or belong to Plan 11.
+completed lane or belong to Plan 12.
 
 **Plan 9.8** (task-aware workspace context) guarantees the planner receives an
 explicitly referenced file's content even when task-blind workspace filler
@@ -228,7 +228,7 @@ and unique basenames resolve deterministically; ambiguous or oversized
 required references fail closed with a visible corrective message instead of
 silently truncating or guessing. Implemented and live-verified 2026-07-11 —
 see `reports/plan-9-8-task-aware-context-evidence.md`. Plan 9.8 does not add
-multi-turn replanning (Plan 9.85) or Plan 11 intelligent selection.
+multi-turn replanning (Plan 9.85) or Plan 12 intelligent selection.
 
 **Plan 9.85** (multi-turn read-observe-replan) extends Plan 9.8: when a
 required file's complete content exceeds the single-pass context budget, the
@@ -280,7 +280,7 @@ specification), and `P9.88-FU-3` (read-range telemetry misattribution).
 Implementation SHA `41a9cddddbacad766d8a432b7129a18d8976b54a`; evidence in
 `reports/plan-9-95-usage-telemetry-evidence.md`. Remaining open Plan 9.9x
 custody for deferred debug/launch follow-ups moved to Plan 9.96's disclosed
-`P9.96-FU-*` backlog; Plan 9.97 retains `P9.87-FU-1`. FU-4B accepted-open is
+`P9.96-FU-*` backlog; `P9.87-FU-1` is now in the consolidated Plan 10 pool. FU-4B accepted-open is
 deliberately not included — it is a closed disposition, not a TODO.
 
 **Plan 9.96** is implemented. Tasks 0–8 landed via PR #60; Task 9 real-dependency
@@ -295,11 +295,21 @@ and elevated ACPX evidence in `reports/plan-9-98-real-acpx-session-evidence.md` 
 Task 9). **Plan 9.99** is implemented at `f2b6b21` (PR #66) for credential-URI security-snapshot
 canonicalization and was a prerequisite for Plan 9.96 closure.
 
-**Plan 10** (tracked, not yet scheduled) is the Unified Gateway Capabilities
+**Plan 10** (tracked, not yet scheduled) is the consolidated deferred-follow-ups
+pool. Items remain keyed by stable source IDs; a `Plan 10.x` number is assigned
+only when an item is picked up, using the next sequential slot in scheduling order,
+not priority order. The Plan 9.96 disclosures and Plan 9.98 audit-ordering note
+are folded into the same pool.
+
+Plan numbers are scheduling labels, not stable or immutable evidence identifiers.
+Use commit SHAs, approval-record digests, and file paths for evidence and historical
+claims; never rely on a plan number alone.
+
+**Plan 11** (tracked, not yet scheduled) is the Unified Gateway Capabilities
 Broker — web search and observability routes on the local gateway stub. Out of
 scope for Plans 9.6, 9.7, and 9.75.
 
-Plan 11 context-window optimization builds on this runner. It does not create
+Plan 12 context-window optimization builds on this runner. It does not create
 the task lifecycle, approval boundary, tool adapters, or golden harness.
 
 ## Prerequisites

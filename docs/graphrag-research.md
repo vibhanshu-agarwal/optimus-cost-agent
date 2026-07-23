@@ -4,7 +4,7 @@ Status: Independent decision-support research; no adoption decision
 Date: 2026-07-15
 Revision: 2 (2026-07-15) - added use-case provenance, in-process/embedded storage option, and
 build/maintenance cost model
-Potential roadmap destination: Plan 11 or later
+Potential roadmap destination: Plan 12 or later
 Scope: GraphRAG concepts, tooling, coding-agent and reviewer use cases, and a candidate Optimus evaluation architecture
 
 ## Decision Boundary
@@ -12,14 +12,14 @@ Scope: GraphRAG concepts, tooling, coding-agent and reviewer use cases, and a ca
 This document gathers context for a later architecture decision. It does not:
 
 - select GraphRAG for Optimus;
-- start, schedule, or amend Plan 11;
+- start, schedule, or amend Plan 12;
 - amend the HLD, LLD, Test Strategy, roadmap, or
   `docs/context-window-optimization-strategy.md`;
 - authorize an implementation plan or implementation work; or
 - select Neo4j, FalkorDB, Microsoft GraphRAG, or any other dependency.
 
 If GraphRAG survives evaluation, its accepted design would first need to be reconciled with the
-authoritative architecture documents and then planned under Plan 11 or a later roadmap entry.
+authoritative architecture documents and then planned under Plan 12 or a later roadmap entry.
 
 ## Executive Summary
 
@@ -440,16 +440,16 @@ GraphRAG is directionally aligned with existing Optimus design goals:
   structural signatures, summaries, and relative paths;
 - the current context-window strategy already calls for freshness-gated intelligent selection,
   dependency closure, provenance, cost attribution, context regret, and fail-closed behavior; and
-- roadmap Plan 11 already owns intelligent selection, dependency closure, and retrieval/packing
+- roadmap Plan 12 already owns intelligent selection, dependency closure, and retrieval/packing
   evaluation after prerequisite evidence and cost signals are stable.
 
-Graph retrieval could therefore be one candidate mechanism inside Plan 11's Intelligent Selection
-control plane. It should not replace that control plane. Plan 11 still owns trust, freshness,
+Graph retrieval could therefore be one candidate mechanism inside Plan 12's Intelligent Selection
+control plane. It should not replace that control plane. Plan 12 still owns trust, freshness,
 authority, marginal utility, budget-constrained packing, cost attribution, and runtime guardrails.
 
 ### 6.2 Why it should not be included yet
 
-- Plan 11 is tracked but not scheduled.
+- Plan 12 is tracked but not scheduled.
 - The current architecture's structural-memory storage boundary is Redis HASH, not a dedicated graph
   database.
 - No Optimus evaluation yet proves that graph retrieval beats the current baseline on task success,
@@ -479,7 +479,7 @@ flowchart LR
     J --> K["Authority and freshness gate"]
     K --> L["Live source and artifact refresh"]
     L --> M["Cited evidence bundle"]
-    M --> N["Plan 11 Intelligent Selection and packing"]
+    M --> N["Plan 12 Intelligent Selection and packing"]
     N --> O["Optimus Gateway"]
     O --> P["Answer, plan, or reviewer report"]
     P --> Q["Compiler, tests, fitness and human review"]
@@ -532,9 +532,9 @@ Graph nodes are pointers. Before prompt assembly, the materializer reopens the c
 resolved artifact, plan, doc, or evidence record and verifies its hash/version. Stale required
 evidence is refreshed or the request fails closed.
 
-#### Plan 11 integration seam
+#### Plan 12 integration seam
 
-Graph retrieval returns candidates and dependency relationships to Intelligent Selection. Plan 11
+Graph retrieval returns candidates and dependency relationships to Intelligent Selection. Plan 12
 then applies authority, freshness, utility, token budget, diversity, dependency closure, packing,
 and context-regret policy. Graph retrieval does not directly write the final prompt.
 
@@ -700,10 +700,10 @@ git, and plan syntax rather than model inference.
 
 ## 10. Provisional Evaluation Recommendation
 
-If GraphRAG reaches a Plan 11 evaluation, compare these variants rather than adopting a product
+If GraphRAG reaches a Plan 12 evaluation, compare these variants rather than adopting a product
 immediately:
 
-1. **Null baseline:** current task-aware context and Plan 11's simplest non-graph selection.
+1. **Null baseline:** current task-aware context and Plan 12's simplest non-graph selection.
 2. **Deterministic repo map:** symbols/paths plus lexical ranking, without a graph database.
 3. **Redis bounded projection:** fixed graph relationships and query templates only.
 4. **In-process library graph:** collector snapshots traversed with NetworkX/rustworkx, no new
@@ -730,7 +730,7 @@ mistaking a richer prompt, a stronger model, or a different corpus for a graph-b
 
 ### 10.2 Suggested measurements
 
-Reuse Plan 11 concepts and add graph-specific measures:
+Reuse Plan 12 concepts and add graph-specific measures:
 
 - task/patch correctness;
 - dependency-resolution agreement with Maven/Gradle;
@@ -750,7 +750,7 @@ Reuse Plan 11 concepts and add graph-specific measures:
 - graph storage and operator-startup overhead; and
 - reviewer acceptance and time-to-verified-finding.
 
-No fixed promotion threshold is proposed here. Thresholds belong to Plan 11 calibration after the
+No fixed promotion threshold is proposed here. Thresholds belong to Plan 12 calibration after the
 baseline and evidence harness exist.
 
 ## 11. Security, Governance, and Operational Requirements
@@ -805,7 +805,7 @@ state, approvals, and verification must remain deterministic.
 
 The most promising evaluation design is a versioned evidence graph built from Maven/Gradle, resolved
 artifacts, AST/git metadata, docs/plans/tasks, tests, and evidence. GraphRAG would query that graph,
-materialize fresh cited evidence, and pass candidates into Plan 11's Intelligent Selection pipeline.
+materialize fresh cited evidence, and pass candidates into Plan 12's Intelligent Selection pipeline.
 
 For all four use cases together, Neo4j is the strongest initial dedicated-database candidate and
 FalkorDB is the strongest alternative. A bounded Redis projection remains a valid compatibility
