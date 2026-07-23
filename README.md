@@ -295,28 +295,12 @@ and elevated ACPX evidence in `reports/plan-9-98-real-acpx-session-evidence.md` 
 Task 9). **Plan 9.99** is implemented at `f2b6b21` (PR #66) for credential-URI security-snapshot
 canonicalization and was a prerequisite for Plan 9.96 closure.
 
-**Plan 10** (tracked, not yet scheduled) is the consolidated deferred-follow-ups
-pool. Items remain keyed by stable source IDs; a `Plan 10.x` number is assigned
-only when an item is picked up, using the next sequential slot in scheduling order,
-not priority order. The Plan 9.96 disclosures and Plan 9.98 audit-ordering note
-are folded into the same pool. **Plan 10.1**, the pool's first allocated slot, is
-implemented and closes six of the seven Plan 9.96 disclosures (`P9.96-FU-1..FU-4`,
-`FU-5` by evidence, `FU-6` by a no-code disposition) while `FU-7` stays partially
-open under its original row (confirmation gate landed; effective-row display gap
-remains) — see the
+**Plan 10.1** is implemented and closes six of the seven Plan 9.96 disclosures
+(`P9.96-FU-1..FU-4` by implementation commit, `FU-5` by evidence, `FU-6` by a
+no-code disposition); `FU-7` stays partially open under its original row
+(confirmation gate landed; the effective-row display gap remains) — see the
 [Plan 10.1 implementation plan](docs/superpowers/plans/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md)
 and the [consolidated backlog](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md).
-
-Plan numbers are scheduling labels, not stable or immutable evidence identifiers.
-Use commit SHAs, approval-record digests, and file paths for evidence and historical
-claims; never rely on a plan number alone.
-
-**Plan 11** (tracked, not yet scheduled) is the Unified Gateway Capabilities
-Broker — web search and observability routes on the local gateway stub. Out of
-scope for Plans 9.6, 9.7, and 9.75.
-
-Plan 12 context-window optimization builds on this runner. It does not create
-the task lifecycle, approval boundary, tool adapters, or golden harness.
 
 ## Prerequisites
 
