@@ -709,8 +709,18 @@ digests, and file paths; never rely on a plan number alone.
 and this Plan 10 pool unless it is explicitly designated to Plan 12. Plan 9.96's
 `P9.85-FU-7` and `P9.9-FU-1` are closed and must not be reintroduced here.
 
-**Status:** Tracked, not yet scheduled. The pool itself is not an implementation plan; each item is
-promoted when scheduled or folded into its designated Plan 12 scope.
+**Status:** The first pool item, Plan 10.1, has been drafted and approved; implementation is pending.
+The rest of the pool remains tracked, not yet scheduled. The pool itself is not an implementation
+plan; each item is promoted when scheduled or folded into its designated Plan 12 scope.
+
+**Plan 10.1 (frozen/approved; implementation pending):** Drafted and approved on 2026-07-23.
+Frozen plan SHA-256: `44041F0423584530BEE101C7917E5569757DD9E639069AD2BCF1F62646EE74B4`.
+Scope: `P9.96-FU-1`, `FU-2`, `FU-3`, `FU-4`, `FU-5`, plus the confirmation-gate half of `FU-7`;
+`FU-6` is a no-code disposition. See the
+[`Plan 10.1 implementation plan`](2026-07-23-plan-10-1-p9-96-follow-up-remediation.md).
+Implementation has not started; [PR #72](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/72)
+is documentation-only. Full FU-by-FU disposition updates land through Plan 10.1 Task 6 once
+implementation evidence exists.
 
 ## Backlog: Re-pin FU-4A/FU-5 Live Evidence (Tracked, Not Yet Scheduled)
 
