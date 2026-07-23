@@ -13,6 +13,12 @@ The PDFs under `docs/*.pdf` remain authoritative. This file is a planning compan
 - Do not introduce local Tavily, OpenAI, OpenRouter, GLM, LangSmith, or provider keys.
 - If HLD, LLD, and Test Strategy conflict, stop and resolve the conflict before coding.
 
+## Operator Provenance
+
+Plan numbers are scheduling labels, not stable or immutable evidence identifiers. For evidence,
+approvals, and historical claims, use commit SHAs, approval-record digests, and file paths; never
+rely on a plan number alone.
+
 ## Cross-Cutting: Context Window Optimization & Intelligent Selection
 
 Context Window Optimization - with Intelligent Selection as the primary control plane and Intelligent Pruning as one named strategy inside it - is core Phase 1 architecture, not an optional later-phase optimization. It governs how evidence, tool output, and conversation state get selected, packed, compacted, and evicted across the plans below, and it is tracked here so it stays visible even though it is not yet scheduled as its own plan.
@@ -709,10 +715,6 @@ catalog status as `Promoted -> Plan 10.N` with the date and plan-file link. The 
 pickup/scheduling order, not priority; the source ID, commit SHA, approval digest, and file paths
 remain the evidence identifiers.
 
-**Operator provenance warning:** Plan numbers are scheduling labels, not stable or immutable evidence
-identifiers. For evidence, approvals, and historical claims, use commit SHAs, approval-record
-digests, and file paths; never rely on a plan number alone.
-
 **Adding future items:** Add each genuinely deferred, unscheduled follow-up to the stable-ID catalog
 and this Plan 10 pool unless it is explicitly designated to Plan 12. Plan 9.96's
 `P9.85-FU-7` and `P9.9-FU-1` are closed and must not be reintroduced here.
@@ -744,6 +746,19 @@ was the documentation-only freeze merge; implementation landed on
 added under operator-ruled Option 1). The remaining Plan 10 pool items (see Open items above) stay
 tracked, not yet scheduled — Plan 10.1's FU-level work does not close the pool, and the plan itself
 remains open pending reviewer/operator sign-off on the Task 7 evidence.
+
+**Plan 10.2 (frozen/approved; implementation pending):** Drafted and approved 2026-07-23. Frozen
+plan SHA-256: `4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771` (approval record:
+[`2026-07-23-plan-10-2-implementation-plan-approval.md`](../reviews/2026-07-23-plan-10-2-implementation-plan-approval.md)).
+Approved design spec SHA-256: `30C0554C720D50E6F2CF198A21627E9441FAEBA9D632C405E90F334964538897`.
+Scope: closes the remaining effective-row display half of `P9.96-FU-7` (the confirmation-gate half
+is already closed by Plan 10.1, above); stays under the original `P9.96-FU-7` stable ID, with no
+new catalog ID or second Plan 10 backlog document. See the
+[`Plan 10.2 implementation plan`](2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md)
+and its [design spec](../specs/2026-07-23-plan-10-2-fu7-display-provenance-design.md).
+Implementation has not started; Task 0 baseline verification passed on branch
+`agent/codex/plan-10-2-effective-row-display` from `origin/main` at
+`971c5227db1a326b72f3f544f85907a4457ec3d0`.
 
 ## Backlog: Re-pin FU-4A/FU-5 Live Evidence (Tracked, Not Yet Scheduled)
 
