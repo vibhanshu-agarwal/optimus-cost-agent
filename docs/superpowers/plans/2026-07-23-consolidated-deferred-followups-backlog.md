@@ -210,6 +210,29 @@ tracked, not yet scheduled.
 
 ## Tracked, Not Yet Scheduled (lightweight notes)
 
+### `uv.lock` missing direct dependencies: `keyring`, `redis`, and their transitive chain (disclosed 2026-07-23 during Plan 10.1 Task 1)
+
+The committed `uv.lock` is out of sync with `pyproject.toml`, not just stale: `uv lock --dry-run`
+shows 13 packages a regeneration would add, including `keyring` and `redis` (both **direct**
+dependencies declared in `pyproject.toml`, not stray transitives) and the Linux SecretStorage
+keyring-backend chain (`cryptography`, `jeepney`, `secretstorage`, `cffi`, `pycparser`, `jaraco-*`).
+`uv run --locked` and `uv lock --check` both fail on current `main`. Confirmed `cryptography` is
+genuinely unimportable in a `--frozen`-synced venv on both Windows and a fresh WSL2 environment
+(`ModuleNotFoundError`); `keyring`/`redis` only appear to work locally because of packages left over
+from an older install, not because the lock is sound — a fresh clone or Linux CI doing
+`uv sync --frozen` gets exactly the lock's packages and nothing else, so `keyring`'s SecretStorage
+backend would fail to import there. Traced via `git log`: the lock was last regenerated at `9c1206d`
+(2026-07-04) while `pyproject.toml` changed again at `1f7116b` (2026-07-15, Plan 9.9's approval-
+ceremony work) — the drift predates Plan 10.1 and passed through several already-merged,
+already-reviewed plans undetected.
+
+**Fix:** regenerate the lock (`uv lock`), review the diff for anything beyond the expected
+keyring/redis/dotenv chain, then re-run the default test suite and a WSL2 cross-check to confirm
+`keyring`/`redis`/`cryptography` all import cleanly from a fresh sync. Not a Plan 10.1 blocker —
+Plan 10.1 used `uv run --frozen` as a standing substitute for the plan's literal `--locked` command
+text rather than regenerate the lock mid-plan, since that would have been its own scope change; not
+scheduled.
+
 ### Tools: `SurfaceAuditError` frozen-dataclass CI wart (disclosed 2026-07-23 during Plan 10.1 Task 7)
 
 `tools/verify_plan996_logging_surfaces.py` raises a `@dataclass(frozen=True)` `SurfaceAuditError`.
