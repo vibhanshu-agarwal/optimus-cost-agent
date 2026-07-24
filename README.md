@@ -304,6 +304,9 @@ gap at `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef` without changing the approval
 digest contract — see the
 [Plan 10.2 implementation plan](docs/superpowers/plans/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md)
 and the [consolidated backlog](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md).
+**Plan 10.3** closes the frozen dependency lock drift and the traceback-safe tools
+`SurfaceAuditError` exception — see the
+[Plan 10.3 implementation plan](docs/superpowers/plans/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).
 
 ## Prerequisites
 

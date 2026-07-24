@@ -15,7 +15,7 @@ _VALID_POLICIES = frozenset(
 _REQUIRED_ENTRY_FIELDS = frozenset({"key", "policy", "rationale", "sanitizer", "test_node", "evidence_tier"})
 
 
-@dataclass(frozen=True)
+@dataclass
 class SurfaceAuditError(ValueError):
     code: str
     key: str = ""

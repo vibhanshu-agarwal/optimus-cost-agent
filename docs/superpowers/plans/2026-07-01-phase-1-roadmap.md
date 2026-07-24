@@ -765,6 +765,20 @@ and its [design spec](../specs/2026-07-23-plan-10-2-fu7-display-provenance-desig
 gitignored `docs/superpowers/reviews/plan-10-2-review-checkpoints.md`. The remaining Plan 10 pool
 items stay tracked, not yet scheduled — Plan 10.2 does not close the pool.
 
+**Plan 10.3 (implementation complete 2026-07-24; pending Task 4 fitness/handoff
+reviewer/operator sign-off):** Drafted and approved 2026-07-24. Frozen plan SHA-256:
+`E66ECA48C588E7DB618D4850FDF0CEE901B4966BC0AB405E21C857AE6BE24F32` (approval record:
+[`2026-07-24-plan-10-3-implementation-plan-approval.md`](../reviews/2026-07-24-plan-10-3-implementation-plan-approval.md)).
+Scope: closes the two Tracked, Not Yet Scheduled lightweight notes — `uv.lock` missing direct
+`keyring`/`redis` chain, and the tools-only `SurfaceAuditError` frozen-dataclass CI wart — without
+closing the remaining Plan 10 pool. Implementation commits:
+`1b152a8` ("chore: refresh uv lock for declared gateway dependencies") and
+`4d1f086` ("fix(tools): allow surface audit errors to carry tracebacks") on branch
+`agent/cursor/plan-10-3-uv-lock-surface-audit`. See the
+[`Plan 10.3 implementation plan`](2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).
+Evidence: gitignored `docs/superpowers/reviews/plan-10-3-review-checkpoints.md`. The remaining Plan
+10 pool items stay tracked, not yet scheduled — Plan 10.3 does not close the pool.
+
 ## Backlog: Re-pin FU-4A/FU-5 Live Evidence (Tracked, Not Yet Scheduled)
 
 **Raised:** 2026-07-15 by Plan 9.95 Task 5 Implementation Amendment. The Plan 9.87 evidence
@@ -1042,8 +1056,10 @@ consolidated backlog document, not owned by Plan 12.
     closes `P9.96-FU-1..FU-4` and `FU-6`, closes `FU-5` by evidence, and lands the confirmation-gate
     half of `FU-7`. **Plan 10.2** (implementation commit `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef`,
     2026-07-24; pending Task 6 fitness/handoff sign-off) closes the remaining `FU-7` effective-row
-    display provenance half under the same stable ID. The rest of the Plan 10 pool remains tracked,
-    not yet scheduled — neither Plan 10.1 nor Plan 10.2 closes the pool.
+    display provenance half under the same stable ID. **Plan 10.3** (commits `1b152a8` and
+    `4d1f086`, 2026-07-24; pending Task 4 fitness/handoff sign-off) closes the `uv.lock` drift and
+    tools `SurfaceAuditError` frozen-dataclass notes. The rest of the Plan 10 pool remains tracked,
+    not yet scheduled — Plans 10.1–10.3 do not close the pool.
 25. Plan 11: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
 26. Plan 12: Context window optimization and intelligent selection — tracked, not yet scheduled;
     starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden

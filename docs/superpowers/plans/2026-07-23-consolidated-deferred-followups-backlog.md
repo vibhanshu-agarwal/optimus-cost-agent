@@ -233,6 +233,16 @@ Plan 10.1 used `uv run --frozen` as a standing substitute for the plan's literal
 text rather than regenerate the lock mid-plan, since that would have been its own scope change; not
 scheduled.
 
+**Promoted -> Plan 10.3** (2026-07-24): Closed by
+[`2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md`](2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).
+Lock commit `1b152a8` ("chore: refresh uv lock for declared gateway dependencies") adds exactly the
+reviewed 13-package chain (`cffi`, `cryptography`, `jaraco-classes`, `jaraco-context`,
+`jaraco-functools`, `jeepney`, `keyring`, `more-itertools`, `pycparser`, `python-dotenv`,
+`pywin32-ctypes`, `redis`, `secretstorage`); `pyproject.toml` unchanged; `uv lock --check` exits 0.
+Windows acceptance: `uv run --frozen pytest -q` → 1495 passed, 20 skipped, 27 deselected.
+WSL2 Ubuntu-24.04 disposable fresh-sync import printed `keyring redis cryptography`. No new catalog
+ID; this note is closed by Plan 10.3.
+
 ### Tools: `SurfaceAuditError` frozen-dataclass CI wart (disclosed 2026-07-23 during Plan 10.1 Task 7)
 
 `tools/verify_plan996_logging_surfaces.py` raises a `@dataclass(frozen=True)` `SurfaceAuditError`.
@@ -242,6 +252,14 @@ Standalone `main()` outside pytest raises `SurfaceAuditError` cleanly with no cr
 pytest-harness wart, not a production or `src`/`tests` FU-5 recurrence. Trivial later fix: drop
 `frozen=True` on that tools-only exception class (nothing in that type needs immutability). Not a
 Plan 10.1 blocker; not scheduled.
+
+**Promoted -> Plan 10.3** (2026-07-24): Closed by
+[`2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md`](2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).
+Tools commit `4d1f086` ("fix(tools): allow surface audit errors to carry tracebacks") drops only
+`frozen=True` from `SurfaceAuditError`. Named regression:
+`tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_surface_audit_error_allows_pytest_traceback_attachment`
+(RED `FrozenInstanceError` → GREEN); full tools unit file 13 passed; standalone `main()` still exits
+0 with `Plan 9.96 logging-surface audit passed`. No new catalog ID; this note is closed by Plan 10.3.
 
 ## Closed custody excluded from the open pool
 
