@@ -108,6 +108,14 @@ def test_discovers_unexpected_python_and_shell_sink_kinds(tmp_path) -> None:
     assert "example.unexpected:render:exception_export" not in discovered
 
 
+def test_surface_audit_error_allows_pytest_traceback_attachment() -> None:
+    error = SurfaceAuditError(code="TRACEBACK_CAPTURE")
+
+    error.__traceback__ = None
+
+    assert str(error) == "TRACEBACK_CAPTURE"
+
+
 def test_rejects_discovered_sink_without_manifest_entry() -> None:
     discovered = {"example.module:emit:stderr_export"}
 
