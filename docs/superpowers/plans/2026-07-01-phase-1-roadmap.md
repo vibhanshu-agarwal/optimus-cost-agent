@@ -520,17 +520,19 @@ is `docs/superpowers/reviews/2026-07-15-plan-9-96-security-contract-approval.md`
 (`74d4ff21173a597c3b274cf6e6cbdf8a7eb43697`) and Plan 9.99 (`f2b6b21`, PR #66) were prerequisites
 for Task 9 Steps 2/3/5 and URI-snapshot fidelity respectively.
 
-**Disclosed follow-ups (Plan 9.96 Task 9; Plan 10.1 dispositions recorded 2026-07-23):**
+**Disclosed follow-ups (Plan 9.96 Task 9; Plan 10.1 dispositions recorded 2026-07-23; Plan 10.2
+closed the remaining FU-7 half 2026-07-24):**
 `P9.96-FU-1` through `P9.96-FU-4` and `P9.96-FU-6` are **closed by Plan 10.1** (implementation
 commits `daccb0d7469814930922eae67a86552435258cf6`, `d83953880a15419097e91da262678f736905cccd`,
 `cc66d660cd8580eb3b821d0eb25ed04b27605dc0`, and a no-code disposition for `FU-6`); `P9.96-FU-5` is
-**closed by Plan 10.1 evidence** with no source/test change; `P9.96-FU-7` is **partially addressed**
-by Plan 10.1 (commit `278d95bec4e9a62c55c5de1237a61af1ca661309` landed the confirmation-gate half)
-and **remains open** under its original stable ID for the effective-row display gap. The Plan 9.98
-inner-audit ordering observation is unaffected by Plan 10.1 and remains a custody note, not a Plan
-10 catalog item. Full evidence and named tests are in the
+**closed by Plan 10.1 evidence** with no source/test change; `P9.96-FU-7` is **closed** under its
+original stable ID — Plan 10.1 commit `278d95bec4e9a62c55c5de1237a61af1ca661309` landed the
+confirmation-gate half, and Plan 10.2 commit `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef` closed the
+effective-row display provenance half without changing the approval digest contract. The Plan 9.98
+inner-audit ordering observation is unaffected by Plan 10.1/10.2 and remains a custody note, not a
+Plan 10 catalog item. Full evidence and named tests are in the
 [consolidated backlog](2026-07-23-consolidated-deferred-followups-backlog.md) and
-`docs/superpowers/reviews/plan-10-1-review-checkpoints.md`.
+`docs/superpowers/reviews/plan-10-*-review-checkpoints.md`.
 
 Plan 9.96 Task 9 Steps 2, 3, and 5 depended on Plan 9.98's implementation commit
 `74d4ff21173a597c3b274cf6e6cbdf8a7eb43697` and its real-dependency evidence report at
@@ -747,18 +749,21 @@ added under operator-ruled Option 1). The remaining Plan 10 pool items (see Open
 tracked, not yet scheduled — Plan 10.1's FU-level work does not close the pool, and the plan itself
 remains open pending reviewer/operator sign-off on the Task 7 evidence.
 
-**Plan 10.2 (frozen/approved; implementation pending):** Drafted and approved 2026-07-23. Frozen
-plan SHA-256: `4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771` (approval record:
+**Plan 10.2 (FU-level implementation complete 2026-07-24; pending Task 6 fitness/handoff
+reviewer/operator sign-off):** Drafted and approved 2026-07-23. Frozen plan SHA-256:
+`4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771` (approval record:
 [`2026-07-23-plan-10-2-implementation-plan-approval.md`](../reviews/2026-07-23-plan-10-2-implementation-plan-approval.md)).
 Approved design spec SHA-256: `30C0554C720D50E6F2CF198A21627E9441FAEBA9D632C405E90F334964538897`.
 Scope: closes the remaining effective-row display half of `P9.96-FU-7` (the confirmation-gate half
 is already closed by Plan 10.1, above); stays under the original `P9.96-FU-7` stable ID, with no
-new catalog ID or second Plan 10 backlog document. See the
+new catalog ID or second Plan 10 backlog document. Implementation commit:
+`4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef` on branch `agent/cursor/plan-10-2-effective-row-display`
+(plan/approval text named `agent/codex/plan-10-2-effective-row-display`, which was already checked
+out in another worktree). See the
 [`Plan 10.2 implementation plan`](2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md)
-and its [design spec](../specs/2026-07-23-plan-10-2-fu7-display-provenance-design.md).
-Implementation has not started; Task 0 baseline verification passed on branch
-`agent/codex/plan-10-2-effective-row-display` from `origin/main` at
-`971c5227db1a326b72f3f544f85907a4457ec3d0`.
+and its [design spec](../specs/2026-07-23-plan-10-2-fu7-display-provenance-design.md). Evidence:
+gitignored `docs/superpowers/reviews/plan-10-2-review-checkpoints.md`. The remaining Plan 10 pool
+items stay tracked, not yet scheduled — Plan 10.2 does not close the pool.
 
 ## Backlog: Re-pin FU-4A/FU-5 Live Evidence (Tracked, Not Yet Scheduled)
 
@@ -1034,10 +1039,11 @@ consolidated backlog document, not owned by Plan 12.
     Plan 10.x numbers only when picked up, in scheduling order rather than priority order.
     **Plan 10.1**, the pool's first allocated slot, has **FU-level implementation complete**
     (2026-07-23; Task 7 handoff gate **passed** 2026-07-23, pending reviewer/operator sign-off):
-    closes `P9.96-FU-1..FU-4` and `FU-6`, closes `FU-5` by evidence, and partially addresses `FU-7`
-    (confirmation gate landed; effective-row display gap remains open under the same row). The
-    rest of the Plan 10 pool remains tracked, not yet scheduled — Plan 10.1 does not close the
-    pool, and the plan itself remains open pending sign-off.
+    closes `P9.96-FU-1..FU-4` and `FU-6`, closes `FU-5` by evidence, and lands the confirmation-gate
+    half of `FU-7`. **Plan 10.2** (implementation commit `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef`,
+    2026-07-24; pending Task 6 fitness/handoff sign-off) closes the remaining `FU-7` effective-row
+    display provenance half under the same stable ID. The rest of the Plan 10 pool remains tracked,
+    not yet scheduled — neither Plan 10.1 nor Plan 10.2 closes the pool.
 25. Plan 11: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
 26. Plan 12: Context window optimization and intelligent selection — tracked, not yet scheduled;
     starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden
