@@ -247,8 +247,8 @@ class TestCandidateResolution:
             credential_keyring_backend=_FakeCredentialKeyring(),
         )
         base_url_rows = [r for r in candidate.display_rows if r.name == "OPTIMUS_LOCAL_GATEWAY_BASE_URL"]
-        assert len(base_url_rows) >= 1
-        assert all(r.display_value == "https://api.openrouter.ai/v1" for r in base_url_rows)
+        assert len(base_url_rows) == 1
+        assert base_url_rows[0].display_value == "https://api.openrouter.ai/v1"
 
     def test_redis_uri_userinfo_masked_in_display(self, tmp_path: Path) -> None:
         """Redis URI user information is masked in display."""
