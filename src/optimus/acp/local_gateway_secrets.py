@@ -106,21 +106,54 @@ def _safe_get_password(keyring_backend: Any, key: str) -> str | None:
     return value or None
 
 
+def _resolve_env_config_keyring(
+    environ: Mapping[str, str],
+    *,
+    dotenv_values: Mapping[str, str],
+    env_name: str,
+    keyring_name: str,
+    keyring_backend: Any,
+) -> tuple[str | None, CredentialProvenance]:
+    environment_value = environ.get(env_name, "").strip()
+    if environment_value:
+        return environment_value, CredentialProvenance(CredentialLayer.ENVIRONMENT, env_name)
+    config_value = dotenv_values.get(env_name, "").strip()
+    if config_value:
+        return config_value, CredentialProvenance(CredentialLayer.CONFIG_FILE, env_name)
+    keyring_value = _safe_get_password(keyring_backend, keyring_name)
+    if keyring_value:
+        return keyring_value, CredentialProvenance(CredentialLayer.KEYRING, keyring_name)
+    return None, CredentialProvenance(CredentialLayer.MISSING, env_name)
+
+
+def resolve_shared_secret_with_provenance(
+    environ: Mapping[str, str],
+    *,
+    config_root: Path,
+    keyring_backend: Any = keyring,
+) -> tuple[str | None, CredentialProvenance]:
+    dotenv_values = _parse_env_gateway_file(config_root / ".env.gateway")
+    return _resolve_env_config_keyring(
+        environ,
+        dotenv_values=dotenv_values,
+        env_name="OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET",
+        keyring_name=_KEY_SHARED_SECRET,
+        keyring_backend=keyring_backend,
+    )
+
+
 def resolve_shared_secret(
     environ: Mapping[str, str],
     *,
     config_root: Path,
     keyring_backend: Any = keyring,
 ) -> str | None:
-    env_value = environ.get("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET", "").strip()
-    if env_value:
-        return env_value
-    dotenv_value = _parse_env_gateway_file(config_root / ".env.gateway").get(
-        "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET", ""
-    ).strip()
-    if dotenv_value:
-        return dotenv_value
-    return _safe_get_password(keyring_backend, _KEY_SHARED_SECRET)
+    value, _provenance = resolve_shared_secret_with_provenance(
+        environ,
+        config_root=config_root,
+        keyring_backend=keyring_backend,
+    )
+    return value
 
 
 def _provider_error(provider: str, *, keyring: bool = False) -> ProviderCredentialConfigurationError:
@@ -138,23 +171,13 @@ def resolve_provider_credentials(
     keyring_backend: Any = keyring,
 ) -> ProviderCredentialResolution:
     dotenv_values = _parse_env_gateway_file(config_root / ".env.gateway")
-    provider_raw = environ.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER", "").strip()
-    provider_provenance = CredentialProvenance(
-        CredentialLayer.ENVIRONMENT,
-        "OPTIMUS_LOCAL_GATEWAY_PROVIDER",
+    provider_raw, provider_provenance = _resolve_env_config_keyring(
+        environ,
+        dotenv_values=dotenv_values,
+        env_name="OPTIMUS_LOCAL_GATEWAY_PROVIDER",
+        keyring_name=_KEY_MODEL_PROVIDER,
+        keyring_backend=keyring_backend,
     )
-    if not provider_raw:
-        provider_raw = dotenv_values.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER", "").strip()
-        provider_provenance = CredentialProvenance(
-            CredentialLayer.CONFIG_FILE,
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER",
-        )
-    if not provider_raw:
-        provider_raw = _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER)
-        provider_provenance = CredentialProvenance(
-            CredentialLayer.KEYRING,
-            _KEY_MODEL_PROVIDER,
-        )
     if provider_raw is None:
         provider = _DEFAULT_PROVIDER
         provider_provenance = CredentialProvenance(
@@ -179,19 +202,13 @@ def resolve_provider_credentials(
         if provider == "anthropic"
         else "ANTHROPIC_API_KEY"
     )
-    api_key = environ.get(expected_key_name, "").strip()
-    api_key_provenance = CredentialProvenance(CredentialLayer.ENVIRONMENT, expected_key_name)
-    if not api_key:
-        api_key = dotenv_values.get(expected_key_name, "").strip()
-        api_key_provenance = CredentialProvenance(CredentialLayer.CONFIG_FILE, expected_key_name)
-    if not api_key:
-        keyring_api_key = _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER_API_KEY)
-        if keyring_api_key:
-            api_key = keyring_api_key
-            api_key_provenance = CredentialProvenance(
-                CredentialLayer.KEYRING,
-                _KEY_MODEL_PROVIDER_API_KEY,
-            )
+    api_key, api_key_provenance = _resolve_env_config_keyring(
+        environ,
+        dotenv_values=dotenv_values,
+        env_name=expected_key_name,
+        keyring_name=_KEY_MODEL_PROVIDER_API_KEY,
+        keyring_backend=keyring_backend,
+    )
     warnings: list[str] = []
     if (
         api_key_provenance.layer is CredentialLayer.KEYRING

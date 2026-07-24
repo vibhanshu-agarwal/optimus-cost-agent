@@ -8,6 +8,7 @@ from optimus.acp.local_gateway_secrets import (
     ProviderSecrets,
     resolve_provider_credentials,
     resolve_shared_secret,
+    resolve_shared_secret_with_provenance,
     run_setup_wizard,
 )
 
@@ -51,6 +52,55 @@ def test_resolve_shared_secret_falls_back_dotenv_then_keyring(tmp_path) -> None:
         encoding="utf-8",
     )
     assert resolve_shared_secret({}, config_root=tmp_path, keyring_backend=fake_keyring) == "from-dotenv"
+
+
+@pytest.mark.parametrize(
+    ("environment", "dotenv", "keyring_value", "expected", "layer"),
+    [
+        ("from-env", "from-dotenv", "from-keyring", "from-env", CredentialLayer.ENVIRONMENT),
+        ("", "from-dotenv", "from-keyring", "from-dotenv", CredentialLayer.CONFIG_FILE),
+        ("", "", "from-keyring", "from-keyring", CredentialLayer.KEYRING),
+        ("", "", "", None, CredentialLayer.MISSING),
+    ],
+)
+def test_resolve_shared_secret_with_provenance_reports_precedence(
+    tmp_path,
+    environment,
+    dotenv,
+    keyring_value,
+    expected,
+    layer,
+) -> None:
+    if dotenv:
+        (tmp_path / ".env.gateway").write_text(
+            f"OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET={dotenv}\n",
+            encoding="utf-8",
+        )
+    fake_keyring = FakeKeyring()
+    if keyring_value:
+        fake_keyring.set_password("optimus-cost-agent", "local_gateway_shared_secret", keyring_value)
+
+    environ = {"OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": environment} if environment else {}
+    value, provenance = resolve_shared_secret_with_provenance(
+        environ,
+        config_root=tmp_path,
+        keyring_backend=fake_keyring,
+    )
+
+    assert value == expected
+    assert provenance.layer is layer
+
+
+def test_resolve_shared_secret_wrapper_returns_provenance_resolver_value(tmp_path) -> None:
+    fake_keyring = FakeKeyring()
+    fake_keyring.set_password("optimus-cost-agent", "local_gateway_shared_secret", "from-keyring")
+
+    value, provenance = resolve_shared_secret_with_provenance(
+        {}, config_root=tmp_path, keyring_backend=fake_keyring
+    )
+
+    assert resolve_shared_secret({}, config_root=tmp_path, keyring_backend=fake_keyring) == value
+    assert provenance.layer is CredentialLayer.KEYRING
 
 
 def test_setup_wizard_stores_provider_key_and_generated_shared_secret(tmp_path) -> None:
@@ -140,6 +190,26 @@ def test_resolve_provider_credentials_passes_through_base_url_from_dotenv(tmp_pa
         model_provider_api_key="sk-test",
         base_url="https://custom.example.com/v1",
     )
+
+
+def test_base_url_ignores_keyring_and_falls_through_to_default(tmp_path) -> None:
+    fake_keyring = FakeKeyring()
+    fake_keyring.set_password(
+        "optimus-cost-agent",
+        "local_gateway_base_url",
+        "https://attacker.example/v1",
+    )
+
+    resolved = resolve_provider_credentials(
+        {"OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-or-implicit"},
+        config_root=tmp_path,
+        keyring_backend=fake_keyring,
+    )
+
+    assert resolved.secrets is not None
+    assert resolved.secrets.base_url == "https://openrouter.ai/api/v1"
+    assert resolved.base_url_provenance.layer is CredentialLayer.DEFAULT
+    assert "attacker.example" not in (resolved.secrets.base_url or "")
 
 
 def test_provider_secrets_maps_anthropic_to_anthropic_api_key_only(tmp_path) -> None:

@@ -7,6 +7,7 @@ masked; secret rows show name/presence/provenance/length only.
 
 from __future__ import annotations
 
+import copy
 import sys
 from pathlib import Path
 
@@ -14,6 +15,7 @@ import pytest
 
 from optimus.acp.launch_gate import (
     LaunchCandidate,
+    LaunchDisplayRow,
     LaunchGateError,
     authorize_launch,
     resolve_launch_candidate,
@@ -242,6 +244,7 @@ class TestCandidateResolution:
             workspace_identity=_sample_workspace_identity(),
             operator_paths=_sample_operator_paths(tmp_path),
             hmac_key=_HMAC_KEY,
+            credential_keyring_backend=_FakeCredentialKeyring(),
         )
         base_url_rows = [r for r in candidate.display_rows if r.name == "OPTIMUS_LOCAL_GATEWAY_BASE_URL"]
         assert len(base_url_rows) == 1
@@ -1599,3 +1602,299 @@ class TestResolvedBaseUrlSecurityRecorder:
         )
         serialized = serialize_approval_record(record)
         assert _URI_CANARY_OLD not in serialized
+
+
+def _rows(candidate: LaunchCandidate, name: str) -> list[LaunchDisplayRow]:
+    return [row for row in candidate.display_rows if row.name == name]
+
+
+class _FakeCredentialKeyring:
+    def __init__(self) -> None:
+        self._store: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, key: str) -> str | None:
+        return self._store.get((service, key))
+
+    def set_password(self, service: str, key: str, value: str) -> None:
+        self._store[(service, key)] = value
+
+
+_REQUIRED_LAUNCH_ENV = {
+    "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+    "OPTIMUS_API_KEY": "test-key",
+    "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+}
+
+
+def _write_owner_only_env_gateway(config_root: Path, content: str) -> None:
+    config_root.mkdir(parents=True, exist_ok=True)
+    env_gateway = config_root / ".env.gateway"
+    env_gateway.write_text(content, encoding="utf-8")
+    env_gateway.chmod(0o600)
+
+
+class TestEffectiveCredentialDisplayRows:
+    """Plan 10.2 Task 2: effective credential rows after unchanged digest."""
+
+    def test_effective_config_source_rows(self, tmp_path: Path) -> None:
+        provider_canary = "sk-config-canary-provider-key"
+        shared_canary = "config-canary-shared-secret"
+        paths = _sample_operator_paths(tmp_path)
+        _write_owner_only_env_gateway(
+            paths.config_root,
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openai\n"
+            f"OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY={provider_canary}\n"
+            "OPTIMUS_LOCAL_GATEWAY_BASE_URL=https://custom.example.com/v1\n"
+            f"OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET={shared_canary}\n",
+        )
+        snapshot = LaunchEnvironmentSnapshot.capture(_REQUIRED_LAUNCH_ENV)
+
+        candidate = resolve_launch_candidate(
+            snapshot=snapshot,
+            workspace_identity=_sample_workspace_identity(),
+            operator_paths=paths,
+            hmac_key=_HMAC_KEY,
+            credential_keyring_backend=_FakeCredentialKeyring(),
+        )
+
+        assert _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_PROVIDER")[-1].source_class == "config_file"
+        assert (
+            _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY")[-1].source_class
+            == "config_file"
+        )
+        assert _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_BASE_URL")[-1].source_class == "config_file"
+        assert (
+            _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET")[-1].source_class
+            == "config_file"
+        )
+        for row in candidate.display_rows:
+            assert provider_canary not in row.display_value
+            assert shared_canary not in row.display_value
+
+    def test_effective_keyring_source_rows(self, tmp_path: Path) -> None:
+        fake_keyring = _FakeCredentialKeyring()
+        fake_keyring.set_password("optimus-cost-agent", "model_provider", "openrouter")
+        fake_keyring.set_password(
+            "optimus-cost-agent",
+            "model_provider_api_key",
+            "sk-keyring-canary-provider",
+        )
+        fake_keyring.set_password(
+            "optimus-cost-agent",
+            "local_gateway_shared_secret",
+            "keyring-canary-shared",
+        )
+        snapshot = LaunchEnvironmentSnapshot.capture(_REQUIRED_LAUNCH_ENV)
+
+        candidate = resolve_launch_candidate(
+            snapshot=snapshot,
+            workspace_identity=_sample_workspace_identity(),
+            operator_paths=_sample_operator_paths(tmp_path),
+            hmac_key=_HMAC_KEY,
+            credential_keyring_backend=fake_keyring,
+        )
+
+        assert _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_PROVIDER")[-1].source_class == "keyring"
+        assert (
+            _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY")[-1].source_class
+            == "keyring"
+        )
+        # Base URL has no keyring source (Task 1 ruling): env → dotenv → DEFAULT only.
+        base_rows = _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_BASE_URL")
+        assert base_rows[-1].source_class == "default"
+        assert base_rows[-1].display_value == "https://openrouter.ai/api/v1"
+        assert (
+            _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET")[-1].source_class
+            == "keyring"
+        )
+        for name in (
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY",
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET",
+        ):
+            assert _rows(candidate, name)[-1].display_value == "**********"
+        for row in candidate.display_rows:
+            assert "sk-keyring-canary-provider" not in row.display_value
+            assert "keyring-canary-shared" not in row.display_value
+
+    def test_effective_default_source_rows(self, tmp_path: Path) -> None:
+        env = {
+            **_REQUIRED_LAUNCH_ENV,
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-default-canary-provider",
+        }
+        snapshot = LaunchEnvironmentSnapshot.capture(env)
+
+        candidate = resolve_launch_candidate(
+            snapshot=snapshot,
+            workspace_identity=_sample_workspace_identity(),
+            operator_paths=_sample_operator_paths(tmp_path),
+            hmac_key=_HMAC_KEY,
+            credential_keyring_backend=_FakeCredentialKeyring(),
+        )
+
+        provider_rows = _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_PROVIDER")
+        assert provider_rows[-1].display_value == "openrouter"
+        assert provider_rows[-1].source_class == "default"
+        base_rows = _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_BASE_URL")
+        assert base_rows[-1].display_value == "https://openrouter.ai/api/v1"
+        assert base_rows[-1].source_class == "default"
+        key_rows = _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY")
+        assert key_rows[-1].display_value == "**********"
+        for row in candidate.display_rows:
+            assert "sk-default-canary-provider" not in row.display_value
+
+    def test_effective_environment_rows_coexist_with_inherited(self, tmp_path: Path) -> None:
+        env = {
+            **_REQUIRED_LAUNCH_ENV,
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "openrouter",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-env-canary-provider",
+            "OPTIMUS_LOCAL_GATEWAY_BASE_URL": "https://openrouter.ai/api/v1",
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "env-canary-shared",
+        }
+        snapshot = LaunchEnvironmentSnapshot.capture(env)
+
+        candidate = resolve_launch_candidate(
+            snapshot=snapshot,
+            workspace_identity=_sample_workspace_identity(),
+            operator_paths=_sample_operator_paths(tmp_path),
+            hmac_key=_HMAC_KEY,
+            credential_keyring_backend=_FakeCredentialKeyring(),
+        )
+
+        for name in (
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY",
+            "OPTIMUS_LOCAL_GATEWAY_BASE_URL",
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET",
+        ):
+            classes = {row.source_class for row in _rows(candidate, name)}
+            assert classes == {"inherited", "environment"}, name
+        for row in candidate.display_rows:
+            assert "sk-env-canary-provider" not in row.display_value
+            assert "env-canary-shared" not in row.display_value
+
+
+_GOLDEN_DISPLAY_DIGEST = "f7af89af0acce664b27825e5af9823c25b11579490bccc73e8f82d4ec316f248"
+_GOLDEN_ENV = {
+    "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+    "OPTIMUS_API_KEY": "agent-key",
+    "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+    "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "openrouter",
+    "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "provider-key",
+    "OPTIMUS_LOCAL_GATEWAY_BASE_URL": "https://api.openrouter.ai/v1",
+    "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "shared-secret",
+}
+
+
+class TestMissingKeyNonDisclosureAndGoldenDigest:
+    """Plan 10.2 Task 3: missing-key non-disclosure and digest byte identity."""
+
+    def test_missing_provider_api_key_row_is_provider_family_identical(
+        self, tmp_path: Path
+    ) -> None:
+        anthropic_root = tmp_path / "anthropic"
+        openrouter_root = tmp_path / "openrouter"
+        _write_owner_only_env_gateway(
+            anthropic_root / "config",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=anthropic\n",
+        )
+        _write_owner_only_env_gateway(
+            openrouter_root / "config",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n",
+        )
+        snapshot = LaunchEnvironmentSnapshot.capture(_REQUIRED_LAUNCH_ENV)
+        fake_keyring = _FakeCredentialKeyring()
+
+        anthropic_candidate = resolve_launch_candidate(
+            snapshot=snapshot,
+            workspace_identity=_sample_workspace_identity(),
+            operator_paths=_sample_operator_paths(anthropic_root),
+            hmac_key=_HMAC_KEY,
+            credential_keyring_backend=fake_keyring,
+        )
+        openrouter_candidate = resolve_launch_candidate(
+            snapshot=snapshot,
+            workspace_identity=_sample_workspace_identity(),
+            operator_paths=_sample_operator_paths(openrouter_root),
+            hmac_key=_HMAC_KEY,
+            credential_keyring_backend=fake_keyring,
+        )
+
+        anthropic_missing = [
+            row
+            for row in anthropic_candidate.display_rows
+            if row.source_class == "missing" and row.name == "provider_api_key"
+        ]
+        openrouter_missing = [
+            row
+            for row in openrouter_candidate.display_rows
+            if row.source_class == "missing" and row.name == "provider_api_key"
+        ]
+
+        assert len(anthropic_missing) == 1
+        assert len(openrouter_missing) == 1
+        assert anthropic_missing[0] == openrouter_missing[0]
+        assert "ANTHROPIC_API_KEY" not in repr(anthropic_missing[0])
+        assert "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY" not in repr(anthropic_missing[0])
+        assert anthropic_missing[0].display_value == "**********"
+
+    def test_golden_display_digest_unchanged_by_effective_rows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import launch_approvals
+        from optimus.acp.launch_approvals import compute_security_snapshot_digest
+
+        captured_args: dict[str, object] = {}
+        real_digest = launch_approvals.compute_security_snapshot_digest
+
+        def _capturing_digest(**kwargs: object) -> str:
+            captured_args.clear()
+            captured_args.update(copy.deepcopy(kwargs))
+            return real_digest(**kwargs)
+
+        monkeypatch.setattr(
+            launch_approvals,
+            "compute_security_snapshot_digest",
+            _capturing_digest,
+        )
+
+        snapshot = LaunchEnvironmentSnapshot.capture(_GOLDEN_ENV)
+        paths = _sample_operator_paths(tmp_path)
+        assert not (paths.config_root / ".env.gateway").exists()
+
+        candidate = resolve_launch_candidate(
+            snapshot=snapshot,
+            workspace_identity=_sample_workspace_identity(),
+            operator_paths=paths,
+            hmac_key=_HMAC_KEY,
+            credential_keyring_backend=_FakeCredentialKeyring(),
+        )
+
+        assert candidate.security_snapshot_digest == _GOLDEN_DISPLAY_DIGEST
+        assert candidate.security_snapshot_digest == compute_security_snapshot_digest(
+            **captured_args
+        )
+        assert dict(candidate.security_literals) == dict(captured_args["security_literals"])
+        assert dict(candidate.secret_fingerprints) == dict(
+            captured_args["secret_fingerprints"]
+        )
+        assert any(row.source_class == "environment" for row in candidate.display_rows)
+        assert _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_PROVIDER")
+        assert _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY")
+        assert _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_BASE_URL")
+        assert _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET")
+        assert any(
+            row.source_class == "environment"
+            for row in _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_PROVIDER")
+        )
+        assert any(
+            row.source_class == "environment"
+            for row in _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY")
+        )
+        assert any(
+            row.source_class == "environment"
+            for row in _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_BASE_URL")
+        )
+        assert any(
+            row.source_class == "environment"
+            for row in _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET")
+        )

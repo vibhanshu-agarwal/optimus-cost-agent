@@ -180,7 +180,7 @@ not a code defect, and may close only through an explicit reviewed disposition.
 | `P9.96-FU-4` | **Closed** by Plan 10.1, commit `cc66d660cd8580eb3b821d0eb25ed04b27605dc0` ("fix(agent): use routable shared default"). Named tests: `tests/unit/agent/test_defaults.py::test_resolve_agent_model_falls_back_to_routable_shared_default`, `tests/unit/optimus_gateway/test_models.py::test_resolve_model_id_accepts_shared_agent_default_for_every_provider`. |
 | `P9.96-FU-5` | **Closed** by Plan 10.1 evidence; no source or test change. Static inventory found zero `@contextmanager`/`FrozenInstanceError` occurrences in `src`/`tests`; the two candidate frozen exceptions (`StartupConfigurationError`, `AcpOutboundError`) only ever construct once via `raise ... from` / `future.set_exception(...)` and never reassign a field post-construction on any real call path. Behavior selector (`tests/unit/acp/test_bootstrap.py`, `test_outbound_errors.py`, `test_trusted_paths.py`, `test_preflight.py`) passed 36 passed, 5 skipped (environment-legitimate skips). Full record: `docs/superpowers/reviews/plan-10-1-review-checkpoints.md`, 2026-07-23T13:20:00Z entry. |
 | `P9.96-FU-6` | **Closed** by reviewed Plan 10.1 disposition; execution correction only, no code change — see the disposition paragraph below. |
-| `P9.96-FU-7` | **Partially addressed** by Plan 10.1, commit `278d95bec4e9a62c55c5de1237a61af1ca661309` ("feat(acp): add FU-7 explicit confirmation gate to optimus-trust approve"). Named tests: `tests/unit/acp/test_launch_approval_cli.py::TestConfirmationGate` (parametrized decline/explicit-yes cases plus a one-shot decline case). The confirmation-gate half is closed; the effective-row display gap for keyring/config/default-sourced settings **remains open** under this same stable ID — no new catalog ID or plan document was created. |
+| `P9.96-FU-7` | **Closed** by Plan 10.2 for the remaining effective-row display provenance gap, while Plan 10.1's confirmation-gate half remains part of the same stable finding (commit `278d95bec4e9a62c55c5de1237a61af1ca661309`). Plan 10.2 implementation commit `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef` ("feat(acp): display effective credential provenance in optimus-trust approve"). Named tests: `tests/unit/acp/test_local_gateway_secrets.py` (shared-secret provenance / wrapper / base-URL keyring ignore), `tests/unit/acp/test_launch_gate.py::TestEffectiveCredentialDisplayRows`, `TestMissingKeyNonDisclosureAndGoldenDigest`, `tests/unit/acp/test_launch_approval_cli.py::test_display_candidate_prints_source_class`. Frozen plan: `docs/superpowers/plans/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md` (SHA-256 `4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771`). Approval: `docs/superpowers/reviews/2026-07-23-plan-10-2-implementation-plan-approval.md`. Evidence: gitignored `docs/superpowers/reviews/plan-10-2-review-checkpoints.md`. Plan 10.2 does **not** change the approval digest contract; golden digest `f7af89af0acce664b27825e5af9823c25b11579490bccc73e8f82d4ec316f248` remains byte-identical. |
 
 **`P9.96-FU-6` disposition paragraph:** `P9.96-FU-6` named the frozen Plan 9.96 Task 9 plan's own CLI
 arg-order assumption against `optimus-trust`'s `argparse` contract. `--workspace-root`
@@ -203,10 +203,10 @@ an additional Plan 10 item.
 
 **Status:** `P9.96-FU-1` through `P9.96-FU-4` and `P9.96-FU-6` are closed by Plan 10.1 (see the
 dispositions table above); `P9.96-FU-5` is closed by Plan 10.1 evidence with no source/test change;
-`P9.96-FU-7` is partially addressed by Plan 10.1 (confirmation-gate half only) and remains open under
-its original stable ID for the effective-row display gap. No new catalog ID or Plan 10.x plan
-document was created by this pickup. The rest of the Plan 10 pool (see Open items above) remains
-tracked, not yet scheduled.
+`P9.96-FU-7` is **closed** under its original stable ID: Plan 10.1 closed the confirmation-gate half
+and Plan 10.2 (commit `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef`) closed the effective-row display
+provenance half. No new catalog ID or Plan 10.x plan document was created by either pickup. The rest
+of the Plan 10 pool (see Open items above) remains tracked, not yet scheduled.
 
 ## Tracked, Not Yet Scheduled (lightweight notes)
 

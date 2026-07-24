@@ -297,9 +297,12 @@ canonicalization and was a prerequisite for Plan 9.96 closure.
 
 **Plan 10.1** is implemented and closes six of the seven Plan 9.96 disclosures
 (`P9.96-FU-1..FU-4` by implementation commit, `FU-5` by evidence, `FU-6` by a
-no-code disposition); `FU-7` stays partially open under its original row
-(confirmation gate landed; the effective-row display gap remains) — see the
-[Plan 10.1 implementation plan](docs/superpowers/plans/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md)
+no-code disposition) plus the confirmation-gate half of `FU-7` — see the
+[Plan 10.1 implementation plan](docs/superpowers/plans/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md).
+**Plan 10.2** closes the remaining `P9.96-FU-7` effective-row display provenance
+gap at `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef` without changing the approval
+digest contract — see the
+[Plan 10.2 implementation plan](docs/superpowers/plans/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md)
 and the [consolidated backlog](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md).
 
 ## Prerequisites
