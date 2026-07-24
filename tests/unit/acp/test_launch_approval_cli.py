@@ -441,6 +441,41 @@ def _approval_cli_case(tmp_path, monkeypatch):
     return cli_module, workspace, store
 
 
+def test_display_candidate_prints_source_class(capsys) -> None:
+    from types import SimpleNamespace
+
+    from optimus.acp.launch_approval_cli import _display_candidate
+    from optimus.acp.launch_gate import LaunchDisplayRow
+    from optimus.acp.launch_policy import LaunchVariableTier
+
+    candidate = SimpleNamespace(
+        workspace_identity=SimpleNamespace(canonical_path="/tmp/workspace"),
+        security_snapshot_digest="a" * 64,
+        display_rows=(
+            LaunchDisplayRow(
+                name="OPTIMUS_LOCAL_GATEWAY_PROVIDER",
+                tier=LaunchVariableTier.SECURITY,
+                source_class="inherited",
+                display_value="openrouter",
+                decision="requires exact approval",
+            ),
+            LaunchDisplayRow(
+                name="OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY",
+                tier=LaunchVariableTier.SECRET,
+                source_class="keyring",
+                display_value="**********",
+                decision="requires exact HMAC approval",
+            ),
+        ),
+    )
+
+    _display_candidate(candidate)
+    output = capsys.readouterr().out
+    assert "source: inherited" in output
+    assert "source: keyring" in output
+    assert "a" * 16 in output
+
+
 class TestConfirmationGate:
     """Plan 9.96-FU-7 (confirmation-gate half only): approve must ask an
     explicit y/yes confirmation after displaying the effective configuration

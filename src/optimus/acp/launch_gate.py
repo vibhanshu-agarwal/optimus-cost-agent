@@ -39,10 +39,12 @@ from optimus.acp.launch_policy import (
     classify_variable,
 )
 from optimus.acp.local_gateway_secrets import (
+    CredentialLayer,
+    CredentialProvenance,
     ProviderCredentialConfigurationError,
     ProviderCredentialResolution,
     resolve_provider_credentials,
-    resolve_shared_secret,
+    resolve_shared_secret_with_provenance,
 )
 from optimus.acp.operator_paths import OperatorPaths
 from optimus.acp.trusted_paths import WorkspaceIdentity
@@ -565,7 +567,7 @@ def resolve_launch_candidate(
         )
     except ProviderCredentialConfigurationError:
         provider_credentials = None
-    resolved_shared_secret = resolve_shared_secret(
+    resolved_shared_secret, shared_secret_provenance = resolve_shared_secret_with_provenance(
         snapshot.values,
         config_root=operator_paths.config_root,
         keyring_backend=keyring_backend,
@@ -618,6 +620,16 @@ def resolve_launch_candidate(
         secret_fingerprints=secret_fingerprints,
         workspace_digest=workspace_identity.digest,
         registry_version=LAUNCH_POLICY_COMPATIBILITY,
+    )
+
+    # Plan 10.2: effective credential display rows are presentation-only and
+    # must be appended only AFTER the digest returns so they cannot affect
+    # authorization inputs.
+    _append_effective_credential_display_rows(
+        display_rows,
+        provider_credentials=provider_credentials,
+        shared_secret=resolved_shared_secret,
+        shared_secret_provenance=shared_secret_provenance,
     )
 
     # 4. Project child environments from registry.
@@ -755,6 +767,84 @@ def _record_security_value(
         secret_fingerprints[key] = compute_secret_fingerprint(
             value.strip(), field_name=key, hmac_key=hmac_key
         )
+
+
+def _append_display_row(
+    display_rows: list[LaunchDisplayRow],
+    *,
+    policy_name: str,
+    row_name: str,
+    raw_value: str,
+    provenance: CredentialProvenance,
+) -> None:
+    policy = LAUNCH_VARIABLE_POLICIES[policy_name]
+    display_rows.append(
+        LaunchDisplayRow(
+            name=row_name,
+            tier=policy.tier,
+            source_class=provenance.layer.value,
+            display_value=policy.display(raw_value),
+            decision=_compute_decision(policy, raw_value),
+        )
+    )
+
+
+def _append_effective_credential_display_rows(
+    display_rows: list[LaunchDisplayRow],
+    *,
+    provider_credentials: ProviderCredentialResolution | None,
+    shared_secret: str | None,
+    shared_secret_provenance: CredentialProvenance,
+) -> None:
+    if provider_credentials is not None and provider_credentials.secrets is not None:
+        secrets = provider_credentials.secrets
+        _append_display_row(
+            display_rows,
+            policy_name="OPTIMUS_LOCAL_GATEWAY_PROVIDER",
+            row_name="OPTIMUS_LOCAL_GATEWAY_PROVIDER",
+            raw_value=secrets.provider,
+            provenance=provider_credentials.provider_provenance,
+        )
+        key_policy = (
+            "ANTHROPIC_API_KEY"
+            if secrets.provider == "anthropic"
+            else "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"
+        )
+        _append_display_row(
+            display_rows,
+            policy_name=key_policy,
+            row_name=key_policy,
+            raw_value=secrets.model_provider_api_key,
+            provenance=provider_credentials.api_key_provenance,
+        )
+        if secrets.base_url is not None:
+            _append_display_row(
+                display_rows,
+                policy_name="OPTIMUS_LOCAL_GATEWAY_BASE_URL",
+                row_name="OPTIMUS_LOCAL_GATEWAY_BASE_URL",
+                raw_value=secrets.base_url,
+                provenance=provider_credentials.base_url_provenance,
+            )
+    elif (
+        provider_credentials is not None
+        and provider_credentials.secrets is None
+        and provider_credentials.api_key_provenance.layer is CredentialLayer.MISSING
+    ):
+        _append_display_row(
+            display_rows,
+            policy_name="OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY",
+            row_name="provider_api_key",
+            raw_value="",
+            provenance=provider_credentials.api_key_provenance,
+        )
+
+    _append_display_row(
+        display_rows,
+        policy_name="OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET",
+        row_name="OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET",
+        raw_value=shared_secret or "",
+        provenance=shared_secret_provenance,
+    )
 
 
 def _compute_decision(policy: LaunchVariablePolicy, value: str) -> str:

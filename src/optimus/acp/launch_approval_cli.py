@@ -270,6 +270,7 @@ def _display_candidate(candidate: LaunchCandidate) -> None:
     for row in candidate.display_rows:
         print(f"  [{row.tier.value:>15}] {row.name} = {row.display_value}")
         print(f"  {'':>17} decision: {row.decision}")
+        print(f"  {'':>17} source: {row.source_class}")
     print()
 
 
