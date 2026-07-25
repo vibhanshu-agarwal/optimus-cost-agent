@@ -13,14 +13,14 @@ removed from here first.
 
 This document does not itself implement anything. Every entry below either becomes its own
 numbered plan (following [[plan-numbering-convention]]-style sequential allocation) or gets folded
-into an already-designated future plan (e.g. Plan 12 or the Plan 10 pool) when that plan is actually
-scheduled. The roadmap's `## Plan 10: Consolidated Deferred Follow-Ups Pool` section links here; it does
+into an already-designated future plan (e.g. Plan 12 or the Plan 11 backlog) when that plan is actually
+scheduled. The roadmap's Plan 11 v1.0 milestone section links here; it does
 not duplicate this content.
 
 ## How to use this document
 
 - **Adding a new item:** When a plan's implementation or review surfaces a new deferred follow-up
-  (including ones emerging from Plan 9.96 Task 9 or the Plan 10 pool, once either actually lands), add it
+  (including ones emerging from Plan 9.96 Task 9 or Plan 11 feature work), add it
   here with the same fields every other entry uses (Raised / Origin / Designated future plan /
   Trigger or acceptance criteria / Status), rather than leaving it only inside that plan's own
   Deferred Follow-Ups section or a scattered roadmap backlog entry.
@@ -65,10 +65,9 @@ rendered the ambiguous-refusal corrective text, then panicked in native client c
 `range end index 3 out of range for slice of length 2`. The agent wire contract and independent
 `acpx` durable refusal UI remain proven.
 
-**Designated future plan:** None yet — sole custody is this entry. Plan 9.75 was already complete
+**Designated future plan:** Plan 11 backlog. Plan 9.75 was already complete
 when the client-stability issue was discovered, and its evidence report classifies the panic as
-separate from the ACP conformance fix. Do not reopen Plan 9.75 and do not silently fold this work
-into Plan 12.
+separate from the ACP conformance fix. Do not reopen Plan 9.75 and do not fold this work into Plan 12.
 
 **Acceptance criteria:** Reproduce against a supported current Zed build, separate agent payload
 correctness from client rendering behavior, preserve the existing fail-closed refusal contract, and
@@ -130,6 +129,9 @@ logic. This item is therefore blocked on an operator decision about the Gateway 
 roadmap and authority boundary; it is not a spec-readiness gap. The designated future plan remains
 none/unassigned pending that decision.
 
+**Plan 11 disposition:** Parked and undecided; not part of Plan 11's initial scope. Revisit only if
+Plan 11 Gateway work organically reaches budget or cost policy.
+
 **Status:** Open, not yet scheduled.
 
 ### P9.87-FU-1: Mechanical Current-Raw-Evidence Grounding Guard
@@ -138,9 +140,8 @@ none/unassigned pending that decision.
 (`docs/superpowers/plans/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md`). Carried
 forward, unresolved, through Plan 9.88's closure ceremony and Plan 9.95's custody-transfer record.
 
-**Designated future plan:** Plan 10 (Consolidated Deferred Follow-Ups Pool). This item was formerly
-the sole follow-up in the retired Plan 9.97 lane and now receives a Plan 10.x slot only when picked
-up.
+**Designated future plan:** Plan 11 backlog. This item was formerly the sole follow-up in the retired
+Plan 9.97 lane and is now carried by Plan 11 without a Plan 10.x slot.
 
 **Trigger:** A content-correct FU-5 final plan or later evidence shows exact policy bytes can pass
 through observations despite the prompt prohibition.
@@ -149,10 +150,10 @@ through observations despite the prompt prohibition.
 raw ranges without logging source bodies or silently absorbing Plan 12's intelligent-selection
 scope. This lane must not absorb or be absorbed by Plan 12.
 
-**Status:** Open, not yet scheduled. The Plan 10 pool assigns its next unused sequential
-plain-integer/single-decimal slot at pickup time; no slot is reserved now.
+**Status:** Open, not yet scheduled. The Plan 11 backlog records promotion and disposition when this
+item is picked up; no Plan 10.x slot is reserved.
 
-## P9.96 Task 9 Disclosed Follow-Ups (Tracked, Not Yet Scheduled)
+## P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)
 
 **Raised:** Disclosed by Plan 9.96 Task 9 on 2026-07-23 under the 2026-07-18 scope-conflict ruling.
 Plan 9.96 closes only `P9.85-FU-7` and `P9.9-FU-1`; these seven disclosures are named custody, not
@@ -160,9 +161,8 @@ silent drops.
 
 **Origin:** `reports/plan-9-96-operator-debug-launch-trust-evidence.md`, limitations table.
 
-**Designated future plan:** Plan 10 (Consolidated Deferred Follow-Ups Pool). These are seven
-distinct stable-ID catalog entries; no Plan 10.x slot is reserved until an item is actually picked
-up.
+**Historical designated future plan:** Plan 10 (retired). These seven distinct stable-ID catalog
+entries are now closed; no Plan 10.x slot or new Plan 10 work remains.
 
 | ID | Summary |
 |---|---|
@@ -174,9 +174,9 @@ up.
 | `P9.96-FU-6` | Frozen plan Task 9 CLI arg-order / PATH assumptions; execution uses `uv run` plus `--workspace-root` before the subcommand (applied; not a code defect) |
 | `P9.96-FU-7` | Approve ceremony writes durable approval with no y/N confirm; bare-shell display rows may be empty when settings are keyring/default-sourced |
 
-**Acceptance / disposition:** Each row remains open until a reviewed Plan 10.x implementation or an
-explicit closure record resolves it with evidence. `P9.96-FU-6` is an applied execution correction,
-not a code defect, and may close only through an explicit reviewed disposition.
+**Acceptance / disposition:** The rows were open until a reviewed implementation or explicit closure
+record resolved each one with evidence. `P9.96-FU-6` is an applied execution correction, not a code
+defect, and closed through the explicit reviewed disposition below.
 
 **Plan 10.1 dispositions (updated 2026-07-23; the pool's first allocated slot):**
 
@@ -213,10 +213,11 @@ an additional Plan 10 item.
 dispositions table above); `P9.96-FU-5` is closed by Plan 10.1 evidence with no source/test change;
 `P9.96-FU-7` is **closed** under its original stable ID: Plan 10.1 closed the confirmation-gate half
 and Plan 10.2 (commit `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef`) closed the effective-row display
-provenance half. No new catalog ID or Plan 10.x plan document was created by either pickup. The rest
-of the Plan 10 pool (see Open items above) remains tracked, not yet scheduled.
+provenance half. No new catalog ID or Plan 10.x plan document was created by either pickup. The
+remaining open items are now carried by the Plan 11 backlog, except for the parked, undecided
+`P9.85-FU-3` entry above.
 
-## Tracked, Not Yet Scheduled (lightweight notes)
+## Closed Historical Follow-Ups (formerly tracked lightweight notes)
 
 ### `uv.lock` missing direct dependencies: `keyring`, `redis`, and their transitive chain (disclosed 2026-07-23 during Plan 10.1 Task 1)
 

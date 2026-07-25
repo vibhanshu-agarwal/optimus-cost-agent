@@ -280,7 +280,7 @@ specification), and `P9.88-FU-3` (read-range telemetry misattribution).
 Implementation SHA `41a9cddddbacad766d8a432b7129a18d8976b54a`; evidence in
 `reports/plan-9-95-usage-telemetry-evidence.md`. Remaining open Plan 9.9x
 custody for deferred debug/launch follow-ups moved to Plan 9.96's disclosed
-`P9.96-FU-*` backlog; `P9.87-FU-1` is now in the consolidated Plan 10 pool. FU-4B accepted-open is
+`P9.96-FU-*` backlog; `P9.87-FU-1` is now in the Plan 11 backlog. FU-4B accepted-open is
 deliberately not included — it is a closed disposition, not a TODO.
 
 **Plan 9.96** is implemented. Tasks 0–8 landed via PR #60; Task 9 real-dependency
