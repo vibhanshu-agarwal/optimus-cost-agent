@@ -885,24 +885,45 @@ flaky" without root-causing it is exactly the mistake the broken-pipe entry abov
 has made before real evidence corrected it; this entry exists so the same mistake is not repeated here
 by default.
 
-**Root cause: not yet established.** Plausible causes, none yet confirmed:
+**Root cause: not yet established.** Plausible causes as originally recorded 2026-07-22, each now
+annotated with the 2026-07-25 investigation result (see "Investigation update" below):
 - Windows handle-table growth/exhaustion within a single long-lived `uv run pytest` process across
   roughly 1500 tests, many of which spawn subprocesses -- potentially aggravated by
   `NdjsonSubprocessSession`'s background reader threads holding pipe handles alive longer than
   strictly necessary across unrelated later tests.
+  **-- DISPROVEN as stated (2026-07-25):** `NdjsonSubprocessSession` already joins both reader
+  threads and calls `process.wait()` in `_fail_subprocess_exited`
+  (`src/optimus/acp/ndjson_subprocess_session.py`), and the ctypes DACL path
+  `_current_user_sid_string` (`src/optimus/acp/launch_gate.py`) releases its token via `CloseHandle`
+  and `LocalFree` in `finally`. No handle leak found in Optimus-owned code.
 - A known class of CPython-on-Windows `subprocess` race between one call's handle duplication and
   concurrent garbage collection of a previously-exited `Popen` object under load.
+  **-- NOT SUPPORTED (2026-07-25):** the suite has no `pytest-xdist` and runs strictly serially, so
+  there is no concurrent-spawn race to exploit. Related stale-std-handle variants were tested
+  directly and also fail to explain it: on Python 3.14.4/UCRT, `os.dup2` over fds 0-2 keeps the
+  Win32 std handle in sync, and `os.close(0)` (or an already-closed stdin) makes `GetStdHandle`
+  return `None`, which CPython handles via its documented `CreatePipe` fallback.
 - Restrictions specific to the sandboxed Bash-tool shell this evidence was collected through (job
   objects / handle-inheritance limits) that may not reproduce in a native terminal, in WSL2, or in
   real CI.
+  **-- STILL OPEN, BUT UNSUPPORTED (2026-07-25):** the flake did not reproduce in the sandboxed
+  shell either, so a clean native-terminal result does not discriminate between "sandbox-specific"
+  and "rare everywhere." This hypothesis is neither confirmed nor excluded.
 
 **Acceptance boundary:** This may only be closed as environment-only noise after:
 1. Reproducing (or failing to reproduce) the identical failure set on a plain native Windows terminal,
    outside any sandboxed tool shell, with the result recorded.
+   **-- SATISFIED 2026-07-25 (failed to reproduce):** 4 consecutive native Windows PowerShell
+   full-suite runs, all clean.
 2. Reproducing (or failing to reproduce) on the project's WSL2 Ubuntu-24.04 substitute (see the
    "WSL2 = local Linux CI substitute" operating note) and checking real GitHub Actions CI history, to
    establish whether this is Windows-general, sandbox-specific, or already absent on the Linux runners
    CI actually uses.
+   **-- PARTLY UNSATISFIABLE AS WRITTEN (2026-07-25):** there is no Windows CI history to check.
+   `.github/workflows/guardrails.yml` is the repository's only workflow and runs solely on
+   `runs-on: ubuntu-latest`, so this failure mode can never surface in CI as currently configured;
+   it is a local-Windows-developer concern only. Any future pickup must drop the CI-history clause
+   or replace it with an explicit decision about whether Windows CI should exist at all.
 3. Auditing whether any Optimus-owned code -- in particular `NdjsonSubprocessSession`'s reader threads,
    and any other call site constructing `subprocess.Popen`/`subprocess.run` without promptly closing
    pipes or joining reader threads -- leaves handles alive longer than necessary in a way that could
@@ -933,7 +954,49 @@ identical whether or not Plan 9.99's changes are present in the working tree. Th
 Plan 9.99 completion, commit, or PR -- it is an unrelated, pre-existing, environment-surfaced flake,
 tracked here rather than inside the Plan 9.99 plan file.
 
-**Status:** Tracked, not yet scheduled. No implementation plan exists.
+**Investigation update (2026-07-25, reviewer-agent, baseline `8f80b97`):** A feasibility pass was
+run before any implementation work was scoped, specifically to establish whether this item is
+actionable. It is not yet actionable as a reproduce-and-fix exercise, but the pass surfaced a
+separate, independently provable defect that should not be lost.
+
+- **Not reproducible: 10 consecutive clean full-suite runs, zero failures** (1496 passed, 20 skipped,
+  27 deselected each) -- 6 through the sandboxed agent shell and 4 in a plain native Windows
+  PowerShell window. The 2026-07-22 signature did not recur in either environment.
+- **No change explains the disappearance.** The NDJSON broken-pipe fix is not the cure: PR #65
+  (`39c7992`, 2026-07-22 21:23) is an ancestor of Plan 9.99's implementation commit (`f2b6b21`,
+  23:59 the same day), during whose Task 7 verification this flake was observed -- so that fix was
+  already present when the failures occurred. Characterize this item as rare and latent, not
+  resolved.
+- **Existing in-repo mitigation precedent, not referenced when this entry was raised:**
+  `tests/integration/release/test_phase1_release_gate_cli.py` already documents this exact failure
+  ("File-backed pipes avoid WinError 6 when pytest captures stdio on Windows") and mitigates it with
+  `stdin=subprocess.DEVNULL` plus file-backed stdout/stderr. The tests in the failure set above are
+  precisely the call sites that do not use that pattern.
+- **Separate latent defect found while auditing acceptance item 3 -- this is the actionable part.**
+  13 of 15 `subprocess` call sites under `src/` pass no explicit `stdin`, so they inherit and reach
+  the same `GetStdHandle` -> `_make_inheritable` -> `DuplicateHandle` frame that fails here. Two of
+  them matter beyond test noise: `_git_repository_root` and `_git_common_dir`
+  (`src/optimus/acp/trusted_paths.py`) swallow `OSError` with a bare `pass` and return `None`. Those
+  values feed `_compute_identity_digest` in the same module; that digest is HMAC'd into the durable
+  approval record and is the durable lookup key (`durable:{digest}`) in
+  `src/optimus/acp/launch_approvals.py`, and is revalidated on every launch via
+  `revalidate_workspace_identity` in `src/optimus/acp/__main__.py`. A single transient `WinError 6`
+  in either git call therefore changes the workspace identity digest silently, invalidating the
+  operator's durable launch approval and producing a spurious `NO_APPROVAL`. This needs no test
+  harness to occur, is security-adjacent, and -- unlike the flake itself -- is provable
+  deterministically by fault injection (forcing `subprocess.run` to raise `OSError` with
+  `winerror=6`), with no dependence on reproducing the original flake.
+- **Consequence for any future pickup:** the flake itself can only receive an evidenced
+  non-reproduction disposition, not a fix. The durable-approval defect above is the part carrying
+  real value, and because correcting it touches the workspace-identity/approval-digest contract, it
+  needs an explicit position on whether any digest input changes and what that means for approvals
+  already issued -- a careless fix could itself invalidate them, which is the exact failure being
+  prevented.
+
+**Status:** Tracked, not yet scheduled. No implementation plan exists. Deliberately not picked up as
+of 2026-07-25: with no reproduction available, the flake half cannot be closed by a fix, and other
+backlog work takes precedence. The findings above are recorded so the investigation does not have to
+be repeated when it is eventually scheduled.
 
 ## Plan 11 (Tracked, Not Yet Scheduled): Unified Gateway Capabilities Broker
 
