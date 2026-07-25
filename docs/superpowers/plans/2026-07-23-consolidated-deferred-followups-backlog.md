@@ -65,7 +65,7 @@ rendered the ambiguous-refusal corrective text, then panicked in native client c
 `range end index 3 out of range for slice of length 2`. The agent wire contract and independent
 `acpx` durable refusal UI remain proven.
 
-**Designated future plan:** Plan 11 backlog. Plan 9.75 was already complete
+**Designated future plan:** Plan 11.2 (Zed integration fixes and session resume). Plan 9.75 was already complete
 when the client-stability issue was discovered, and its evidence report classifies the panic as
 separate from the ACP conformance fix. Do not reopen Plan 9.75 and do not fold this work into Plan 12.
 
@@ -152,6 +152,39 @@ scope. This lane must not absorb or be absorbed by Plan 12.
 
 **Status:** Open, not yet scheduled. The Plan 11 backlog records promotion and disposition when this
 item is picked up; no Plan 10.x slot is reserved.
+
+### P11-FU-1: ACP Session Resume Capability
+
+**Raised:** 2026-07-25 during Plan 11 scoping. The current ACP adapter dispatches `initialize`,
+`session/new`, and `session/prompt`, but has no `session/load` handler. Its initialization response
+advertises an empty `sessionCapabilities` object, so the client correctly concludes that resume is
+unsupported and starts a new session on every connection.
+
+**Origin:** `src/optimus/acp/spec.py` (`AcpDuplexAdapter.handle_client_request` and
+`_handle_initialize`), with the live server wiring `InMemoryAcpSpecSessionStore` in
+`src/optimus/acp/server.py`.
+
+**Designated future plan:** Plan 11.2 (Zed integration fixes and session resume). This item is
+owned by 11.2, not parked or deferred to a later milestone.
+
+**Acceptance criteria:** The reviewed 11.2 design and implementation must:
+
+- implement ACP `session/load` and advertise `loadSession` only when its semantics are supported;
+- define the session identity, workspace binding, conversation/history, and relevant run metadata
+  that persist across client/process boundaries;
+- select and document a durable storage mechanism, TTL/expiry, deletion, migration/versioning,
+  retention, and storage-failure behavior as a first-class design decision;
+- restore the session in the protocol-required shape, including conversation replay or the exact
+  supported load semantics, without silently substituting `session/new`; and
+- cover successful load, unknown/expired sessions, workspace mismatch, malformed or unavailable
+  storage, capability negotiation, and history replay with unit/integration/live ACP evidence.
+
+`InMemoryAcpSpecSessionStore` is process-local. `RedisAgentStateStore` stores expiring agent plans
+(`AgentPlanRecord`), not ACP session or conversation state, and cannot be treated as an existing
+resume store without an explicit design and migration decision.
+
+**Status:** Owned by Plan 11.2; open and not yet scheduled. This is an unimplemented protocol
+capability, not a flaky regression or a parked architecture blocker.
 
 ## P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)
 

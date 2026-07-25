@@ -992,7 +992,7 @@ of 2026-07-25: with no reproduction available, the flake half cannot be closed b
 backlog work takes precedence. The findings above are recorded so the investigation does not have to
 be repeated when it is eventually scheduled.
 
-## Plan 11 (v1.0 Milestone; Unified Gateway Capabilities Broker, Multi-IDE ACP, and Registry Readiness)
+## Plan 11 (v1.0 Milestone; Unified Gateway Capabilities Broker and ACP Release)
 
 **Raised:** 2026-07-08, during Plan 9.7 review. The client-side one-key contract is already
 shaped for this: `src/optimus/evidence/acquisition.py` posts to `/v1/tools/web/search` and
@@ -1009,32 +1009,40 @@ brokers web search, web extract, and observability export the same way it alread
 calls — vendor keys for those capabilities live gateway-side only, never in the agent's own
 environment.
 
+**Charter:** [`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md).
+
 **Milestone charter:** Plan 11 is the v1.0 milestone. It retains the Gateway Capabilities Broker
 scope above while expanding the completion target to a fully working, feature-complete agent except
-for Plan 12's context-window and intelligent-selection work. The v1.0 release must prove the ACP
-integration across multiple IDE clients, including Zed and JetBrains's AI assistant, plus any
-additional IDEs the operator names when those integrations are scoped. It must finish in a shape
-that can be published to the ACP registry as v1.0.
+for Plan 12's context-window and intelligent-selection work. Zed is the v1.0 IDE proof; ACP registry
+registration is expected to satisfy the broader multi-IDE distribution requirement. IDE-specific
+testing is conditional and is not an unconditional v1.0 gate. JetBrains Air and JetBrains AI
+Assistant remain legitimate future or conditional candidates, not required v1.0 integrations.
+The release must finish in a shape ready for ACP registry registration and the v1.0 cut; outward
+publication requires explicit operator approval at execution time.
 
-**Backlog rule:** `P9.8-FU-5` and `P9.87-FU-1` are carried into the single Plan 11 backlog. New
-follow-ups discovered during Plan 11 feature development join that same backlog. `P9.85-FU-3`
+**Backlog rule:** `P9.8-FU-5` and `P9.87-FU-1` are carried into the single Plan 11 backlog; the
+new `P11-FU-1` session-resume capability item is owned by 11.2, not parked. New follow-ups
+discovered during Plan 11 feature development join that same backlog. `P9.85-FU-3`
 remains parked and undecided outside Plan 11's initial scope; revisit it only if Plan 11 Gateway
 work organically reaches budget or cost policy.
 
 **Completion gate:** Complete the primary Plan 11 feature work first, then work through and close
 the combined Plan 11 backlog before v1.0 sign-off. Plan 11 does not ship with open backlog items.
-Plan 12 is not a v1.0 prerequisite and begins only as the post-launch v1.x phase.
+Plan 12 is not a v1.0 prerequisite and begins only as the post-launch v1.x phase. Conditional IDE
+testing does not become a gate unless an explicit charter amendment says so.
 
-**Status:** Tracked, not yet scheduled; charter expanded to the v1.0 milestone and no implementation
-plan exists yet. Explicitly out of scope for Plan 9.7 (a local-startup-ergonomics plan, not a
-gateway-capability-surface redesign) and for Plan 9.6 (live-verification proof of the existing
-model-call path). Design questions to resolve when scheduled: whether to implement web search and
-observability together as one gateway-capability slice (same secret-boundary and route pattern
-serves both) versus web search first with observability staying a no-op/local-JSONL sink until a
-later slice; the gateway-side secret resolution shape (own env/`.env.gateway`/keyring precedence,
-independent of Plan 9.7's agent-side equivalent); normalized `gateway_usage`/cost fields for
-non-model calls, matching the existing model-call pattern; and the operator-named IDE set beyond
-the initial Zed and JetBrains integrations.
+**Status:** Tracked, not yet scheduled; the charter and four-slice sequencing map are recorded in
+[`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md), and no
+implementation sub-plan exists yet. Explicitly out of scope for Plan 9.7 (a local-startup-
+ergonomics plan, not a gateway-capability-surface redesign) and for Plan 9.6 (live-verification
+proof of the existing model-call path). The 11.1 specification must resolve the Gateway route,
+provider, secret-boundary, failure, normalized usage/cost, and observability contracts. The 11.2
+specification must resolve Zed's `P9.8-FU-5` disposition and the session-resume storage/durability
+decision for owned `P11-FU-1`; the existing plan-only Redis state store is not sufficient by
+assumption. The 11.3 specification must research ACP registry requirements before freezing
+registration scope and must align both `pyproject.toml` and ACP `agentInfo.version` at the v1.0
+cut. The 11.4 slice remains conditional if registry registration does not satisfy the broader
+multi-IDE expectation.
 
 ## Plan 12 (Post-v1.0 v1.x Phase; Context Window Optimization and Intelligent Selection)
 
@@ -1133,8 +1141,9 @@ consolidated backlog document, not owned by Plan 12.
     custody is carried by the single Plan 11 backlog, with Plan 12 retaining its explicitly owned
     context-intelligence follow-ups.
 25. Plan 11: Unified Gateway Capabilities Broker — **v1.0 milestone**: feature-complete agent
-    except for Plan 12, multi-IDE ACP proof including Zed and JetBrains's AI assistant, ACP registry
-    publication readiness, and closure of the combined Plan 11 backlog before sign-off.
+    except for Plan 12, Zed ACP proof, ACP registry registration/readiness, and closure of the
+    combined Plan 11 backlog before sign-off. Registry registration is expected to satisfy the
+    broader multi-IDE requirement; IDE-specific testing is conditional and not an unconditional gate.
 26. Plan 12: Context window optimization and intelligent selection — explicit **post-v1.0 v1.x**
     phase; starts only after Plan 11's feature and backlog-closure gates, Plan 9.8, Plan 9.5
     task-level agent orchestration, and the real golden harness are stable.
