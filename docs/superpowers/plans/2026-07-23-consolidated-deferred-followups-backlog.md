@@ -186,6 +186,60 @@ resume store without an explicit design and migration decision.
 **Status:** Owned by `P11-FEAT-ZED-RESUME`; open and not yet scheduled. This is an unimplemented protocol
 capability, not a flaky regression or a parked architecture blocker.
 
+### P11-FU-2: Package Lookup and Security Advisory Gateway Capability
+
+**Raised:** 2026-07-25 during the Plan 11 Gateway requirement review. The pinned LLD names
+`POST /v1/tools/package/lookup` and `POST /v1/tools/security/advisory` as Gateway-facing typed
+endpoints, and §9A/§9B define their package/advisory tool class and routing signals. The local
+repository does not yet implement these Gateway routes as dedicated endpoints. Existing policy
+behavior is not absent: `src/optimus/tools/policy.py:85-93` routes `DEPENDENCY_VERSION_CHECK` and
+`SECURITY_OR_CVE_CHECK` into `WEB_SEARCH_TRIGGERS`, while LLD §9B's `DEFAULT_POLICY_MATRIX`
+(p.26) maps both signals to `ToolClass.PACKAGE_AND_ADVISORY_METADATA`. Dependency and CVE
+evidence is therefore served today via generic web search, against a different tool class than
+the LLD specifies. Picking up FU-2 changes existing, tested policy behavior, not merely adding
+routes.
+
+**Origin:** `docs/Optimus-Cost-Agent-LLD-v2.38.pdf`, §0.D (p.3), §9A (p.24), and §9B (p.25).
+
+**Designated slice:** `P11-FEAT-GATEWAY-TOOLS` (plan number assigned at pickup). This is an
+unimplemented capability owned by the Tools slice; it is not part of the parked `P9.85-FU-3`
+budget-enforcement decision.
+
+**Acceptance criteria:** The reviewed `P11-FEAT-GATEWAY-TOOLS` design and implementation must:
+
+- define and serve the package-registry lookup and security-advisory request/response contracts;
+- route `PACKAGE_AND_ADVISORY_METADATA` using `PACKAGE_VERSION` and `SECURITY_ADVISORY` signals;
+- preserve the one-key boundary, Gateway-side provider secrets, policy revalidation, usage/cost
+  envelope, and evidence/provenance contracts; and
+- provide named unit, integration, and real-Gateway evidence for both endpoint families.
+
+**Status:** Owned by `P11-FEAT-GATEWAY-TOOLS`; open and not yet scheduled. This is an unimplemented
+capability, not a parked architecture blocker.
+
+### P11-FU-3: LLD Source Repair — §0.B Component Flow and MCP Endpoint Shape
+
+**Raised:** 2026-07-25 during the Plan 11 Gateway requirement review. LLD §0.B is clipped at the
+rendered page boundary around `/v1/tools/web/extract`, and LLD §0.C names MCP tool brokering without
+an MCP endpoint or Gateway request/response shape in §0.D.
+
+**Origin:** `docs/Optimus-Cost-Agent-LLD-v2.38.pdf`, §0.B (rendered p.2), §0.C (p.3), and §0.D
+(p.3); the source-contract gap was confirmed against the pinned SHA-256.
+
+**Designated future plan:** `LLD source repair` (documentation-owner work; no Plan 11 feature or
+plan number is assigned by this entry).
+
+**Acceptance criteria:** The authoritative LLD source must be repaired or replaced by an explicitly
+reviewed authoritative source that:
+
+- restores the complete §0.B component-flow text without reconstructing the clipped continuation;
+- defines whether MCP brokering is supported and, if so, supplies its Gateway route and typed
+  request/response contract; and
+- triggers fresh source digest verification and a new requirement extraction before any affected
+  Gateway requirement is promoted into a specification.
+
+**Status:** Open, not yet scheduled, and owned by `LLD source repair`. This is a documentation/source
+contract repair item, not an inferred MCP implementation requirement.
+
 ## P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)
 
 **Raised:** Disclosed by Plan 9.96 Task 9 on 2026-07-23 under the 2026-07-18 scope-conflict ruling.

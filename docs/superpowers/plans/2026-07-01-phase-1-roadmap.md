@@ -1020,10 +1020,18 @@ brokers web search, web extract, and observability export the same way it alread
 calls — vendor keys for those capabilities live gateway-side only, never in the agent's own
 environment.
 
+The Gateway capability is ratified as three identities: `P11-FEAT-GATEWAY-CORE` (Plan 11.1,
+including `/v1/observability/traces`), `P11-FEAT-GATEWAY-TOOLS` (web and package/advisory tool
+routes), and `P11-FEAT-GATEWAY-COST-OBS` (normalization, ledger, and observability-cost concerns).
+Plan numbers for the latter two identities are assigned at pickup. Plan 11.1 does not include
+budget enforcement; `P9.85-FU-3` remains parked pending the operator decision.
+
 **Charter:** [`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md).
 
-**Milestone charter:** Plan 11 is the v1.0 milestone. It retains the Gateway Capabilities Broker
-scope above while expanding the completion target to a fully working, feature-complete agent except
+**Milestone charter:** Plan 11 is the v1.0 milestone. `P11-FEAT-GATEWAY-CORE` (Plan 11.1)
+closes the Gateway core and observability-route gate; the ratified TOOLS and COST-OBS identities
+are accounted for separately. The milestone retains the Gateway Capabilities Broker scope above
+while expanding the completion target to a fully working, feature-complete agent except
 for Plan 12's context-window and intelligent-selection work. Zed is the v1.0 IDE proof; ACP registry
 registration is expected to satisfy the broader multi-IDE distribution requirement. IDE-specific
 testing is conditional and is not an unconditional v1.0 gate. JetBrains Air and JetBrains AI
@@ -1033,21 +1041,26 @@ publication requires explicit operator approval at execution time.
 
 **Backlog rule:** `P9.8-FU-5` and `P9.87-FU-1` are carried into the single Plan 11 backlog; the
 new `P11-FU-1` session-resume capability item is owned by `P11-FEAT-ZED-RESUME` (plan number assigned at pickup), not parked. New follow-ups
-discovered during Plan 11 feature development join that same backlog. `P9.85-FU-3`
-remains parked and undecided outside Plan 11's initial scope; revisit it only if Plan 11 Gateway
+discovered during Plan 11 feature development join that same backlog. `P11-FU-2` is owned by
+`P11-FEAT-GATEWAY-TOOLS` for the unimplemented package/advisory capability, and `P11-FU-3` is
+owned by LLD source repair for the clipped section 0.B and missing MCP endpoint contract. `P9.85-FU-3`
+remains parked and undecided outside Plan 11.1's initial scope; revisit it only if Plan 11 Gateway
 work organically reaches budget or cost policy.
 
-**Completion gate:** Complete the primary Plan 11 feature work first, then work through and close
-the combined Plan 11 backlog before v1.0 sign-off. Plan 11 does not ship with open backlog items.
+**Completion gate:** Complete `P11-FEAT-GATEWAY-CORE` and its observability route as Plan 11.1's
+first gate, then assign and close the ratified TOOLS and COST-OBS slices and work through the
+combined Plan 11 backlog before v1.0 sign-off. Plan 11 does not ship with open backlog items.
 Plan 12 is not a v1.0 prerequisite and begins only as the post-launch v1.x phase. Conditional IDE
 testing does not become a gate unless an explicit charter amendment says so.
 
-**Status:** Tracked, not yet scheduled; the charter and four-slice sequencing map are recorded in
-[`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md), and no
-implementation sub-plan exists yet. Explicitly out of scope for Plan 9.7 (a local-startup-
+**Status:** Plan 11.1 is the active scoped feature gate; the charter and ratified three-identity
+sequencing map are recorded in [`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md),
+and no implementation sub-plan exists yet. Explicitly out of scope for Plan 9.7 (a local-startup-
 ergonomics plan, not a gateway-capability-surface redesign) and for Plan 9.6 (live-verification
-proof of the existing model-call path). The `P11-FEAT-GATEWAY` specification must resolve the Gateway route,
+proof of the existing model-call path). The `P11-FEAT-GATEWAY-CORE` specification must resolve the Gateway route,
 provider, secret-boundary, failure, normalized usage/cost, and observability contracts. The
+`P11-FEAT-GATEWAY-TOOLS` and `P11-FEAT-GATEWAY-COST-OBS` identities are ratified, with plan numbers
+assigned at pickup; they do not widen Plan 11.1. The
 `P11-FEAT-ZED-RESUME` specification must resolve Zed's `P9.8-FU-5` disposition and the session-resume storage/durability
 decision for owned `P11-FU-1`; the existing plan-only Redis state store is not sufficient by
 assumption. The `P11-FEAT-REGISTRY` specification must research ACP registry requirements before freezing
