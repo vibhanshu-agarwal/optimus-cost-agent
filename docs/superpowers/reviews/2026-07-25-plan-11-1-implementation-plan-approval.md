@@ -21,7 +21,7 @@ This record makes no replacement approval claim.
 | Implementation plan | `FD76E35C9D38932D3ACC0C8FA0982F2238AB7C2DEB7E76953CAAB7F40F0C29F9` |
 | Requirement inventory | `AC7C9443C9F4A1373BB3808A8781EAAD9A62FEE67C46A7B8118C72DE1BED02EC` at commit `4638b19` |
 
-## Approvals
+## Historical approvals recorded by the invalidated approval
 
 - **Operator scope authorization:** The Stage 3 handoff explicitly authorized the P11-FEAT-GATEWAY
   CORE specification and implementation-plan lane. That scope authorization is recorded separately
