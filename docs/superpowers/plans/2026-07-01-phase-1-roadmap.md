@@ -486,11 +486,12 @@ was approved by the reviewer-agent and operator on 2026-07-14. Implemented 2026-
 
 - `P9.85-FU-7` moved from Plan 9.95 to Plan 9.96.
 - `P9.9-FU-1` moved from Plan 9.95 to Plan 9.96.
-- `P9.87-FU-1` moved from Plan 9.95 into the consolidated Plan 10 backlog pool.
+- `P9.87-FU-1` moved from Plan 9.95 into the consolidated deferred-follow-ups backlog, now owned
+  by Plan 11.
 
 FU-4B accepted-open is deliberately not in this entry: it is a closed disposition under the Plan
 9.88 ceremony, not a TODO. **Status:** Implemented; `P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3`
-closed with evidence. Remaining deferred follow-ups are owned by Plan 9.96 and the Plan 10 pool.
+closed with evidence. Remaining deferred follow-ups are owned by Plan 12 or the Plan 11 backlog.
 
 ## Plan 9.96 (Implemented): Operator-Controlled Debug and Launch Trust
 
@@ -695,43 +696,39 @@ during approval.
 in launch security snapshots`). Required before Plan 9.96 Task 9 closure; Task 9 evidence used
 policy compatibility `P9.99-v1`.
 
-## Plan 10 (Tracked, Not Yet Scheduled): Consolidated Deferred Follow-Ups Pool
+## Plan 10 (Retired): Consolidated Deferred Follow-Ups Pool
 
 **What this is:** The
 [`consolidated deferred follow-ups backlog`](2026-07-23-consolidated-deferred-followups-backlog.md)
-is the stable-ID catalog for the open, unscheduled Plan 9-series follow-ups. Plan 10 is the umbrella
-for the entries not designated to Plan 12, plus the seven disclosures from Plan 9.96 Task 9 that are
-now folded into the same pool. This section is a routing and allocation rule, not a list of future
-Plan 10.x stubs.
+remains the stable-ID catalog for open, unscheduled Plan 9-series follow-ups. The former Plan 10
+pool is retired as a numbered planning lane: Plans 10.1, 10.2, and 10.3 are closed, Plan 10.4 was
+never allocated, and no future item receives a Plan 10.x slot. Plan 11 now owns the single combined
+backlog for the carried-over items and any follow-ups discovered during Plan 11 feature work.
 
 The catalog's existing seven entries remain keyed by their source IDs. `P9.8-FU-2`, `P9.8-FU-3`,
-`P9.85-FU-1`, and `P9.85-FU-2` remain designated to Plan 12. `P9.8-FU-5`, `P9.85-FU-3`, and
-`P9.87-FU-1` are in the Plan 10 pool; the last item is folded here from the retired Plan 9.97 lane.
+`P9.85-FU-1`, and `P9.85-FU-2` remain designated to Plan 12. `P9.8-FU-5` and `P9.87-FU-1` are
+carried into the Plan 11 backlog. `P9.85-FU-3` remains parked and undecided outside Plan 11's
+initial scope pending the Gateway budget-enforcement authority decision. `P9.87-FU-1` is folded
+here from the retired Plan 9.97 lane.
 
 The catalog now contains the seven `P9.96-FU-1..7` rows and the attached Plan 9.98 custody note;
 it is the sole detailed ledger for those entries.
 
-**Allocation rule:** Do not reserve Plan 10.x numbers for unscheduled work. When a catalog item is
-actually picked up, assign the next unused sequential plain-integer/single-decimal slot and mark its
-catalog status as `Promoted -> Plan 10.N` with the date and plan-file link. The number records
-pickup/scheduling order, not priority; the source ID, commit SHA, approval digest, and file paths
-remain the evidence identifiers.
+**Retired allocation rule:** Do not reserve or allocate Plan 10.x numbers. When a Plan 11 backlog
+item is scheduled into a concrete implementation plan, keep its stable source ID and record the
+promotion, date, plan-file link, evidence, and disposition in this backlog.
 
 **Adding future items:** Add each genuinely deferred, unscheduled follow-up to the stable-ID catalog
-and this Plan 10 pool unless it is explicitly designated to Plan 12. Plan 9.96's
-`P9.85-FU-7` and `P9.9-FU-1` are closed and must not be reintroduced here.
+and the Plan 11 backlog unless it is explicitly designated to Plan 12. Follow-ups discovered during
+Plan 11 feature development use this same catalog; do not create a second Plan 11 pool or a new
+Plan 10 lane. Plan 9.96's `P9.85-FU-7` and `P9.9-FU-1` are closed and must not be reintroduced here.
 
-**Status:** The first pool item, Plan 10.1, has FU-level implementation complete (2026-07-23; see
-the entry immediately below for exact FU-by-FU dispositions); Task 7's repository-wide
-fitness/handoff gate passed 2026-07-23 (all affected/default suites, coverage, Ruff, diff hygiene,
-and safety audits green on Windows, with a WSL2 cross-check of the previously-failing
-logging-surface test and Ruff also green), pending reviewer/operator sign-off before the plan
-closes. The rest of the pool remains tracked, not yet scheduled. The pool itself is not an
-implementation plan; each item is promoted when scheduled or folded into its designated Plan 12
+**Status:** The former Plan 10.1, Plan 10.2, and Plan 10.3 lanes are closed with their evidence
+recorded below. Plan 10.4 was never consumed. The consolidated backlog remains active under Plan 11
+custody, and its items are promoted only when scheduled or folded into their designated Plan 12
 scope.
 
-**Plan 10.1 (FU-level implementation complete 2026-07-23; Task 7 gate passed 2026-07-23, pending
-reviewer/operator sign-off):** Drafted and approved 2026-07-23; frozen plan SHA-256:
+**Plan 10.1 (Closed 2026-07-23; Task 7 gate passed):** Drafted and approved 2026-07-23; frozen plan SHA-256:
 `44041F0423584530BEE101C7917E5569757DD9E639069AD2BCF1F62646EE74B4`. Scope: six items closed
 (`P9.96-FU-1`, `FU-2`, `FU-3`, `FU-4` by implementation commit; `FU-5` by evidence; `FU-6` by
 no-code disposition) plus the confirmation-gate half of `FU-7` (remains partially open under its
@@ -745,12 +742,10 @@ FU-by-FU disposition table and named tests. [PR #72](https://github.com/vibhansh
 was the documentation-only freeze merge; implementation landed on
 `agent/cursor/plan-10-1-p996-remediation` afterward, with Task 7's fitness/handoff gate passing at
 `cb059db` (manifest entry for `optimus.acp.launch_approval_cli:_confirm_approval:stdout_export`
-added under operator-ruled Option 1). The remaining Plan 10 pool items (see Open items above) stay
-tracked, not yet scheduled — Plan 10.1's FU-level work does not close the pool, and the plan itself
-remains open pending reviewer/operator sign-off on the Task 7 evidence.
+added under operator-ruled Option 1). The Plan 10.1 lane is closed; its remaining catalog custody is
+now governed by the Plan 11 backlog.
 
-**Plan 10.2 (FU-level implementation complete 2026-07-24; pending Task 6 fitness/handoff
-reviewer/operator sign-off):** Drafted and approved 2026-07-23. Frozen plan SHA-256:
+**Plan 10.2 (Closed 2026-07-24; Task 6 fitness/handoff complete):** Drafted and approved 2026-07-23. Frozen plan SHA-256:
 `4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771` (approval record:
 [`2026-07-23-plan-10-2-implementation-plan-approval.md`](../reviews/2026-07-23-plan-10-2-implementation-plan-approval.md)).
 Approved design spec SHA-256: `30C0554C720D50E6F2CF198A21627E9441FAEBA9D632C405E90F334964538897`.
@@ -762,22 +757,21 @@ new catalog ID or second Plan 10 backlog document. Implementation commit:
 out in another worktree). See the
 [`Plan 10.2 implementation plan`](2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md)
 and its [design spec](../specs/2026-07-23-plan-10-2-fu7-display-provenance-design.md). Evidence:
-gitignored `docs/superpowers/reviews/plan-10-2-review-checkpoints.md`. The remaining Plan 10 pool
-items stay tracked, not yet scheduled — Plan 10.2 does not close the pool.
+gitignored `docs/superpowers/reviews/plan-10-2-review-checkpoints.md`. The Plan 10.2 lane is closed;
+its historical catalog work remains recorded here and open custody is now governed by Plan 11.
 
-**Plan 10.3 (implementation complete 2026-07-24; pending Task 4 fitness/handoff
-reviewer/operator sign-off):** Drafted and approved 2026-07-24. Frozen plan SHA-256:
+**Plan 10.3 (Closed 2026-07-24; Task 4 fitness/handoff complete):** Drafted and approved 2026-07-24. Frozen plan SHA-256:
 `E66ECA48C588E7DB618D4850FDF0CEE901B4966BC0AB405E21C857AE6BE24F32` (approval record:
 [`2026-07-24-plan-10-3-implementation-plan-approval.md`](../reviews/2026-07-24-plan-10-3-implementation-plan-approval.md)).
-Scope: closes the two Tracked, Not Yet Scheduled lightweight notes — `uv.lock` missing direct
+Scope: closes the two formerly tracked lightweight notes — `uv.lock` missing direct
 `keyring`/`redis` chain, and the tools-only `SurfaceAuditError` frozen-dataclass CI wart — without
-closing the remaining Plan 10 pool. Implementation commits:
+with open follow-up custody carried by Plan 11. Implementation commits:
 `1b152a8` ("chore: refresh uv lock for declared gateway dependencies") and
 `4d1f086` ("fix(tools): allow surface audit errors to carry tracebacks") on branch
 `agent/cursor/plan-10-3-uv-lock-surface-audit`. See the
 [`Plan 10.3 implementation plan`](2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).
-Evidence: gitignored `docs/superpowers/reviews/plan-10-3-review-checkpoints.md`. The remaining Plan
-10 pool items stay tracked, not yet scheduled — Plan 10.3 does not close the pool.
+Evidence: gitignored `docs/superpowers/reviews/plan-10-3-review-checkpoints.md`. The Plan 10.3 lane
+is closed; open follow-ups are now governed by the Plan 11 backlog.
 
 ## Backlog: Re-pin FU-4A/FU-5 Live Evidence (Tracked, Not Yet Scheduled)
 
@@ -998,7 +992,7 @@ of 2026-07-25: with no reproduction available, the flake half cannot be closed b
 backlog work takes precedence. The findings above are recorded so the investigation does not have to
 be repeated when it is eventually scheduled.
 
-## Plan 11 (Tracked, Not Yet Scheduled): Unified Gateway Capabilities Broker
+## Plan 11 (v1.0 Milestone; Unified Gateway Capabilities Broker, Multi-IDE ACP, and Registry Readiness)
 
 **Raised:** 2026-07-08, during Plan 9.7 review. The client-side one-key contract is already
 shaped for this: `src/optimus/evidence/acquisition.py` posts to `/v1/tools/web/search` and
@@ -1015,26 +1009,48 @@ brokers web search, web extract, and observability export the same way it alread
 calls — vendor keys for those capabilities live gateway-side only, never in the agent's own
 environment.
 
-**Status:** Tracked, not yet scheduled; no design work done yet. Explicitly out of scope for Plan
-9.7 (a local-startup-ergonomics plan, not a gateway-capability-surface redesign) and for Plan 9.6
-(live-verification proof of the existing model-call path). The one confirmed decision so far:
-this is its own plan, not folded into 9.7. Design questions to resolve when scheduled: whether to
-implement web search and observability together as one gateway-capability slice (same
-secret-boundary and route pattern serves both) versus web search first with observability staying
-a no-op/local-JSONL sink until a later slice; the gateway-side secret resolution shape (own
-env/`.env.gateway`/keyring precedence, independent of Plan 9.7's agent-side equivalent); and
-normalized `gateway_usage`/cost fields for non-model calls, matching the existing model-call
-pattern.
+**Milestone charter:** Plan 11 is the v1.0 milestone. It retains the Gateway Capabilities Broker
+scope above while expanding the completion target to a fully working, feature-complete agent except
+for Plan 12's context-window and intelligent-selection work. The v1.0 release must prove the ACP
+integration across multiple IDE clients, including Zed and JetBrains's AI assistant, plus any
+additional IDEs the operator names when those integrations are scoped. It must finish in a shape
+that can be published to the ACP registry as v1.0.
 
-## Plan 12 (Tracked, Not Yet Scheduled): Context Window Optimization and Intelligent Selection
+**Backlog rule:** `P9.8-FU-5` and `P9.87-FU-1` are carried into the single Plan 11 backlog. New
+follow-ups discovered during Plan 11 feature development join that same backlog. `P9.85-FU-3`
+remains parked and undecided outside Plan 11's initial scope; revisit it only if Plan 11 Gateway
+work organically reaches budget or cost policy.
+
+**Completion gate:** Complete the primary Plan 11 feature work first, then work through and close
+the combined Plan 11 backlog before v1.0 sign-off. Plan 11 does not ship with open backlog items.
+Plan 12 is not a v1.0 prerequisite and begins only as the post-launch v1.x phase.
+
+**Status:** Tracked, not yet scheduled; charter expanded to the v1.0 milestone and no implementation
+plan exists yet. Explicitly out of scope for Plan 9.7 (a local-startup-ergonomics plan, not a
+gateway-capability-surface redesign) and for Plan 9.6 (live-verification proof of the existing
+model-call path). Design questions to resolve when scheduled: whether to implement web search and
+observability together as one gateway-capability slice (same secret-boundary and route pattern
+serves both) versus web search first with observability staying a no-op/local-JSONL sink until a
+later slice; the gateway-side secret resolution shape (own env/`.env.gateway`/keyring precedence,
+independent of Plan 9.7's agent-side equivalent); normalized `gateway_usage`/cost fields for
+non-model calls, matching the existing model-call pattern; and the operator-named IDE set beyond
+the initial Zed and JetBrains integrations.
+
+## Plan 12 (Post-v1.0 v1.x Phase; Context Window Optimization and Intelligent Selection)
 
 **Design source:** `docs/context-window-optimization-strategy.md` (standalone canonical design note; no HLD/LLD/Test Strategy anchors yet - see the Cross-Cutting section above)
 
-**Future implementation plan:** create `docs/superpowers/plans/YYYY-MM-DD-context-window-optimization-intelligent-selection.md` after Plan 9.8 and the prerequisite plans (7, 8, 8.5, and the input-supplying Plans 4, 5, 6, 6.5, 9) are stable.
+**Future implementation plan:** create `docs/superpowers/plans/YYYY-MM-DD-context-window-optimization-intelligent-selection.md`
+after Plan 11 has reached the v1.0 completion gate and the prerequisite plans (7, 8, 8.5, and the
+input-supplying Plans 4, 5, 6, 6.5, 9) are stable.
 
 **User story:** As the agent runtime, I select, pack, summarize, invalidate, evict, and measure context under a cost- and freshness-aware policy, so the agent gets smarter while fully-loaded cost goes down, without ever silently dropping required evidence to fit a budget.
 
-**Status:** Tracked, not yet scheduled. This plan comes after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden harness are stable, since selection policy depends on the cost-attribution, evidence, trust, freshness, loop/skill, and agent-run signals those plans establish. Do not start this plan early just because it is architecturally core - its inputs need to exist first.
+**Status:** Explicitly the post-v1.0 v1.x phase; tracked, not yet scheduled. This plan comes after
+Plan 11's v1.0 feature and backlog-closure gates, as well as Plan 9.8, Plan 9.5 task-level agent
+orchestration, and the real golden harness, since selection policy depends on the cost-attribution,
+evidence, trust, freshness, loop/skill, and agent-run signals those plans establish. Do not start
+this plan early just because it is architecturally core - its inputs need to exist first.
 
 **Source anchors:**
 - `docs/context-window-optimization-strategy.md` - Context Type x Mechanism Matrix, Selection Pipeline, Selection Model, Freshness and Dependency Precedence, Prompt Packing and Cost Controls, Compaction, Offline Promotion Gates, Online Guardrails, Context Regret, Baseline and Ablation Plan, Calibration Items.
@@ -1112,21 +1128,16 @@ consolidated backlog document, not owned by Plan 12.
     `reports/plan-9-98-real-acpx-session-evidence.md`.
 23. Plan 9.99: Credential URI security-snapshot canonicalization — **implemented** at `f2b6b21`
     (PR #66); prerequisite for Plan 9.96 Task 9 closure.
-24. Plan 10: Consolidated deferred follow-ups pool — tracked, not yet scheduled; items receive
-    Plan 10.x numbers only when picked up, in scheduling order rather than priority order.
-    **Plan 10.1**, the pool's first allocated slot, has **FU-level implementation complete**
-    (2026-07-23; Task 7 handoff gate **passed** 2026-07-23, pending reviewer/operator sign-off):
-    closes `P9.96-FU-1..FU-4` and `FU-6`, closes `FU-5` by evidence, and lands the confirmation-gate
-    half of `FU-7`. **Plan 10.2** (implementation commit `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef`,
-    2026-07-24; pending Task 6 fitness/handoff sign-off) closes the remaining `FU-7` effective-row
-    display provenance half under the same stable ID. **Plan 10.3** (commits `1b152a8` and
-    `4d1f086`, 2026-07-24; pending Task 4 fitness/handoff sign-off) closes the `uv.lock` drift and
-    tools `SurfaceAuditError` frozen-dataclass notes. The rest of the Plan 10 pool remains tracked,
-    not yet scheduled — Plans 10.1–10.3 do not close the pool.
-25. Plan 11: Unified Gateway Capabilities Broker — tracked, not yet scheduled.
-26. Plan 12: Context window optimization and intelligent selection — tracked, not yet scheduled;
-    starts only after Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden
-    harness are stable.
+24. Plan 10: Consolidated deferred follow-ups pool — **retired** after Plans 10.1–10.3 closed;
+    Plan 10.4 was never allocated. No future Plan 10.x slot will be created. The remaining open
+    custody is carried by the single Plan 11 backlog, with Plan 12 retaining its explicitly owned
+    context-intelligence follow-ups.
+25. Plan 11: Unified Gateway Capabilities Broker — **v1.0 milestone**: feature-complete agent
+    except for Plan 12, multi-IDE ACP proof including Zed and JetBrains's AI assistant, ACP registry
+    publication readiness, and closure of the combined Plan 11 backlog before sign-off.
+26. Plan 12: Context window optimization and intelligent selection — explicit **post-v1.0 v1.x**
+    phase; starts only after Plan 11's feature and backlog-closure gates, Plan 9.8, Plan 9.5
+    task-level agent orchestration, and the real golden harness are stable.
 
 The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, one-key scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 9.5 composes the Phase 1 primitives into a working local-first coding agent; Plan 9.8 establishes the specific task-aware context correctness floor before Plan 12 adds context-window intelligence. Plan 12 stays last regardless: it depends on Plan 9.8 and inputs from Plans 4, 5, 6, 6.5, 7, 9, and 9.5, and its PDF fold-in is explicitly deferred until calibration is accepted.
 
@@ -1145,4 +1156,4 @@ and closed Plan 9.87 (Outcome B accepted-open) before Plan 9.9 in the sequence a
 and Plan 9.88 are closed; Plan 9.9 is now itself implemented and live-verified (implementation SHA
 `f120a5afde39e3b3a8a405211ae71653b6e75665`).
 
-Plans 9.6 and 9.7 sit alongside each other, not in a strict dependency order: Plan 9.6 owns the Phase 1 working-agent sign-off gate (live Redis/Gateway/e2e proof plus the real-IDE HITL artifact) and Plan 12 does not start until it passes; Plan 9.7 only changes how an operator's local Redis/Gateway dependencies get started before a session and does not touch what Plan 9.6 proves or gate. Plan 9.7 merged independently of Plan 9.6's remaining open HITL item. **Plan 9.75** follows Plan 9.7 in the recommended sequence: it fixes the open Zed HITL / `toolCall` permission payload and closes Plan 9.7's deferred planning-bar DoD using the Plan 9.7 operator PATH install for manual verification. Plan 11 is tracked separately and not yet scheduled or designed; do not fold its gateway-capability-broker scope into 9.6, 9.7, or 9.75 when picking up either.
+Plans 9.6 and 9.7 sit alongside each other, not in a strict dependency order: Plan 9.6 owns the Phase 1 working-agent sign-off gate (live Redis/Gateway/e2e proof plus the real-IDE HITL artifact) and Plan 12 does not start until it passes; Plan 9.7 only changes how an operator's local Redis/Gateway dependencies get started before a session and does not touch what Plan 9.6 proves or gate. Plan 9.7 merged independently of Plan 9.6's remaining open HITL item. **Plan 9.75** follows Plan 9.7 in the recommended sequence: it fixes the open Zed HITL / `toolCall` permission payload and closes Plan 9.7's deferred planning-bar DoD using the Plan 9.7 operator PATH install for manual verification. Plan 11 is tracked separately as the v1.0 milestone and is not yet scheduled; do not fold its gateway-capability-broker scope into 9.6, 9.7, or 9.75 when picking up either.
