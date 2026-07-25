@@ -68,19 +68,19 @@ Run this block in Git Bash from the repository root:
 
 ```bash
 git status --short --branch
-git show HEAD:docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md | sha256sum
-git show HEAD:docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md | sha256sum
-git show HEAD:docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md | sha256sum
-[ "$(sha256sum docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md | cut -d' ' -f1)" = "$(git show HEAD:docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md | sha256sum | cut -d' ' -f1)" ]
-[ "$(sha256sum docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md | cut -d' ' -f1)" = "$(git show HEAD:docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md | sha256sum | cut -d' ' -f1)" ]
-[ "$(sha256sum docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md | cut -d' ' -f1)" = "$(git show HEAD:docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md | sha256sum | cut -d' ' -f1)" ]
+git show HEAD:docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md | sha256sum | cut -d' ' -f1
+git show HEAD:docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md | sha256sum | cut -d' ' -f1
+git show HEAD:docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md | sha256sum | cut -d' ' -f1
+[ "$(sha256sum docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md | cut -d' ' -f1)" = "$(git show HEAD:docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md | sha256sum | cut -d' ' -f1)" ] || echo MISMATCH
+[ "$(sha256sum docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md | cut -d' ' -f1)" = "$(git show HEAD:docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md | sha256sum | cut -d' ' -f1)" ] || echo MISMATCH
+[ "$(sha256sum docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md | cut -d' ' -f1)" = "$(git show HEAD:docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md | sha256sum | cut -d' ' -f1)" ] || echo MISMATCH
 git diff --check
 ```
 
 Expected committed-blob output:
 
 ```text
-937FB654399B8E25217B38E6450F7CF871B7CFF5C73BCB2752C044458862F7F6
-254A6ACC56511BBCCEB8FC101B190F213FD65450327145C88979077D845D6D3E
-7DD4FA40916B2306C55492B36D37FC0178798CC20552B6E73CF13CBF5B69FDC5
+937fb654399b8e25217b38e6450f7cf871b7cff5c73bcb2752c044458862f7f6
+254a6acc56511bbcceb8fc101b190f213fd65450327145c88979077d845d6d3e
+7dd4fa40916b2306c55492b36d37fc0178798cc20552b6e73cf13cbf5b69fdc5
 ```
