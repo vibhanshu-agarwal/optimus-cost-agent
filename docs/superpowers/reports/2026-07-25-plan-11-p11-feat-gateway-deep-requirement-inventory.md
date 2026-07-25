@@ -519,4 +519,3 @@ The Tier 3 rows below are limited to Gateway-relevant intersections, as requeste
 - Stage 1/2 custody and partition: `P11-FU-2` and `P11-FU-3` are owned backlog entries; the
   charter and roadmap ratify CORE, TOOLS, and COST-OBS without minting new IDs or plan numbers.
 - No frozen specification or implementation file was changed; the charter and roadmap amendment is recorded separately by Stage 1 of this handoff.
-
