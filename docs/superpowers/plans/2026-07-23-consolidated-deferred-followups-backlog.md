@@ -1,35 +1,54 @@
-# Consolidated Deferred Follow-Ups Backlog
+# Consolidated Open Work Pool
 
 ## Purpose
 
-This document is the single source of truth for every currently open, unscheduled `P#-FU-#`
-follow-up raised across the Plan 9-series (Plan 9 through Plan 9.99). Before this document existed,
-each follow-up lived only inside the "Deferred Follow-Ups" section of whichever plan originally
-raised it, cross-referenced (if at all) by a one-line mention in the roadmap. Two of them
-(Plan 9.98-FU-1 and FU-2) were fully implemented and merged without ever getting a roadmap entry at
-all, discovered only by manual audit. This document exists so that stops happening: everything
-still open lives in exactly one place, and nothing gets promoted into a real plan without being
-removed from here first.
+This document is the single source of truth for all currently open work: charter-ratified feature
+slices, deferred follow-ups, parked items, and tracked defects. It owns each item's existence and
+state; the relevant charter or source document owns scope, sequencing, and detailed acceptance
+criteria. Anything not listed here is not tracked.
 
-This document does not itself implement anything. Every entry below either becomes its own
+Before this document existed, each follow-up lived only inside the "Deferred Follow-Ups" section of
+whichever plan originally raised it, cross-referenced (if at all) by a one-line mention in the
+roadmap. Two of them (Plan 9.98-FU-1 and FU-2) were fully implemented and merged without ever
+getting a roadmap entry at all, discovered only by manual audit. This document exists so that stops
+happening: everything still open lives in exactly one place, and nothing gets promoted into a real
+plan without being removed from the open pool first.
+
+This document does not itself implement anything. Every open entry below either becomes its own
 numbered plan (following [[plan-numbering-convention]]-style sequential allocation) or gets folded
-into an already-designated future plan (e.g. Plan 12 or the Plan 11 backlog) when that plan is actually
+into an already-designated future plan (e.g. Plan 12 or a reviewed Plan 11 feature slice) when that plan is actually
 scheduled. The roadmap's Plan 11 v1.0 milestone section links here; it does
 not duplicate this content.
 
 ## How to use this document
 
 - **Adding a new item:** When a plan's implementation or review surfaces a new deferred follow-up
-  (including ones emerging from Plan 9.96 Task 9 or Plan 11 feature work), add it
-  here with the same fields every other entry uses (Raised / Origin / Designated future plan /
-  Trigger or acceptance criteria / Status), rather than leaving it only inside that plan's own
-  Deferred Follow-Ups section or a scattered roadmap backlog entry.
+  (including ones emerging from Plan 9.96 Task 9 or Plan 11 feature work), record it here first
+  with the same fields every other entry uses (Raised / Origin / Designated future plan /
+  Trigger or acceptance criteria / Status). Other documents may link to the entry, but must not
+  carry its live open-item status or become a second pool.
 - **Promoting an item:** When an item is scheduled into a real numbered plan, mark its Status as
   `Promoted -> Plan N` with the date and a link to the new plan file, and leave the entry in place
   (do not delete history) rather than removing the row.
 - **Closing an item:** When an item is fully implemented, mark Status as `Closed` with the
   implementation commit/PR and evidence citation, the same way other closed follow-ups are recorded
   elsewhere in this project's roadmap.
+
+## Feature slices
+
+The pool owns each feature's existence and state; the [Plan 11 v1.0 milestone charter](2026-07-25-plan-11-v1-milestone-charter.md)
+owns feature scope and sequencing. Plan 12 is listed so its post-v1.0 custody cannot fall off the
+open-work inventory.
+
+| Identity | State | Scope detail |
+|---|---|---|
+| `P11-FEAT-GATEWAY-CORE` | Plan 11.1 — approved and frozen at `e9b077b`; implementation not started | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route) |
+| `P11-FEAT-GATEWAY-TOOLS` | Ratified, unscheduled; carries `P11-FU-2` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs) |
+| `P11-FEAT-GATEWAY-COST-OBS` | Ratified, unscheduled | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs) |
+| `P11-FEAT-ZED-RESUME` | Ratified, unscheduled; carries `P11-FU-1` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume) |
+| `P11-FEAT-REGISTRY` | Ratified, unscheduled; blocked on its research gate — no authoritative source exists in any of the four pinned documents. Also owns the v1.0 release-version contract | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut) |
+| `P11-FEAT-IDE` | Conditional — opens only by explicit amendment if REGISTRY surfaces an unmet multi-IDE expectation | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing) |
+| `Plan 12` | Post-v1.0 context-window and intelligent-selection lane; outside the v1.0 cut | [Charter boundary](2026-07-25-plan-11-v1-milestone-charter.md#explicit-exclusions-and-unresolved-inputs) |
 
 ## Open items
 
@@ -140,8 +159,9 @@ Plan 11 Gateway work organically reaches budget or cost policy.
 (`docs/superpowers/plans/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md`). Carried
 forward, unresolved, through Plan 9.88's closure ceremony and Plan 9.95's custody-transfer record.
 
-**Designated future plan:** Plan 11 backlog. This item was formerly the sole follow-up in the retired
-Plan 9.97 lane and is now carried by Plan 11 without a Plan 10.x slot.
+**Designated future plan:** Plan 11 feature work; no feature slice or plan number is assigned yet.
+This item was formerly the sole follow-up in the retired Plan 9.97 lane and is now carried by this
+pool without a Plan 10.x slot.
 
 **Trigger:** A content-correct FU-5 final plan or later evidence shows exact policy bytes can pass
 through observations despite the prompt prohibition.
@@ -150,8 +170,8 @@ through observations despite the prompt prohibition.
 raw ranges without logging source bodies or silently absorbing Plan 12's intelligent-selection
 scope. This lane must not absorb or be absorbed by Plan 12.
 
-**Status:** Open, not yet scheduled. The Plan 11 backlog records promotion and disposition when this
-item is picked up; no Plan 10.x slot is reserved.
+**Status:** Open, not yet scheduled. This pool records promotion and disposition when this item is
+picked up; no Plan 10.x slot is reserved.
 
 ### P11-FU-1: ACP Session Resume Capability
 
@@ -185,6 +205,96 @@ resume store without an explicit design and migration decision.
 
 **Status:** Owned by `P11-FEAT-ZED-RESUME`; open and not yet scheduled. This is an unimplemented protocol
 capability, not a flaky regression or a parked architecture blocker.
+
+### P11-FU-2: Package Lookup and Security Advisory Gateway Capability
+
+**Raised:** 2026-07-25 during the Plan 11 Gateway requirement review. The pinned LLD names
+`POST /v1/tools/package/lookup` and `POST /v1/tools/security/advisory` as Gateway-facing typed
+endpoints, and §9A/§9B define their package/advisory tool class and routing signals. The local
+repository does not yet implement these Gateway routes as dedicated endpoints. Existing policy
+behavior is not absent: `src/optimus/tools/policy.py:85-93` routes `DEPENDENCY_VERSION_CHECK` and
+`SECURITY_OR_CVE_CHECK` into `WEB_SEARCH_TRIGGERS`, while LLD §9B's `DEFAULT_POLICY_MATRIX`
+(p.26) maps both signals to `ToolClass.PACKAGE_AND_ADVISORY_METADATA`. Dependency and CVE
+evidence is therefore served today via generic web search, against a different tool class than
+the LLD specifies. Picking up FU-2 changes existing, tested policy behavior, not merely adding
+routes.
+
+**Origin:** `docs/Optimus-Cost-Agent-LLD-v2.38.pdf`, §0.D (p.3), §9A (p.24), and §9B (p.25).
+
+**Designated slice:** `P11-FEAT-GATEWAY-TOOLS` (plan number assigned at pickup). This is an
+unimplemented capability owned by the Tools slice; it is not part of the parked `P9.85-FU-3`
+budget-enforcement decision.
+
+**Acceptance criteria:** The reviewed `P11-FEAT-GATEWAY-TOOLS` design and implementation must:
+
+- define and serve the package-registry lookup and security-advisory request/response contracts;
+- route `PACKAGE_AND_ADVISORY_METADATA` using `PACKAGE_VERSION` and `SECURITY_ADVISORY` signals;
+- preserve the one-key boundary, Gateway-side provider secrets, policy revalidation, usage/cost
+  envelope, and evidence/provenance contracts; and
+- provide named unit, integration, and real-Gateway evidence for both endpoint families.
+
+**Status:** Owned by `P11-FEAT-GATEWAY-TOOLS`; open and not yet scheduled. This is an unimplemented
+capability, not a parked architecture blocker.
+
+### P11-FU-3: LLD Source Repair — §0.B Component Flow and MCP Endpoint Shape
+
+**Raised:** 2026-07-25 during the Plan 11 Gateway requirement review. LLD §0.B is clipped at the
+rendered page boundary around `/v1/tools/web/extract`, and LLD §0.C names MCP tool brokering without
+an MCP endpoint or Gateway request/response shape in §0.D.
+
+**Origin:** `docs/Optimus-Cost-Agent-LLD-v2.38.pdf`, §0.B (rendered p.2), §0.C (p.3), and §0.D
+(p.3); the source-contract gap was confirmed against the pinned SHA-256.
+
+**Designated future plan:** `LLD source repair` (documentation-owner work; no Plan 11 feature or
+plan number is assigned by this entry).
+
+**Acceptance criteria:** The authoritative LLD source must be repaired or replaced by an explicitly
+reviewed authoritative source that:
+
+- restores the complete §0.B component-flow text without reconstructing the clipped continuation;
+- defines whether MCP brokering is supported and, if so, supplies its Gateway route and typed
+  request/response contract; and
+- triggers fresh source digest verification and a new requirement extraction before any affected
+  Gateway requirement is promoted into a specification.
+
+**Status:** Open, not yet scheduled, and owned by `LLD source repair`. This is a documentation/source
+contract repair item, not an inferred MCP implementation requirement.
+
+### P11-FU-4: Re-pin FU-4A/FU-5 Live Evidence
+
+**Raised:** 2026-07-15 by the Plan 9.95 Task 5 implementation amendment.
+
+**Origin:** `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`, historical backlog section §776.
+The Plan 9.87 `fu4a` and `fu5` evidence gates fail with implementation drift against the current
+codebase, so fresh live evidence must be captured and re-pinned.
+
+**Designated slice:** Coordinate with `P11-FEAT-ZED-RESUME` where the Zed live-evidence
+capture path overlaps; no Plan 11.x plan number is allocated by this entry.
+
+**Acceptance criteria:** Re-capture fresh real-`acpx` FU-4A and FU-5 evidence against the current
+codebase, select the reviewed sanitized capture path, record the exact evidence and implementation
+SHAs, and close or explicitly disposition the freshness gap before the v1.0 cut.
+
+**Status:** Tracked, not yet scheduled; no implementation plan exists. Evidence-freshness class.
+
+### P11-FU-5: Windows Subprocess Handle-Duplication Flake (WinError 6/50)
+
+**Raised:** 2026-07-22 during Plan 9.99 Task 7 repository-wide verification.
+
+**Origin:** `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`, historical backlog section §861.
+The feasibility findings, including the no-reproduction result and the separately identified
+durable-approval identity concern, remain in that roadmap entry.
+
+**Designated slice:** Future Windows investigation; no plan number is allocated.
+
+**Acceptance criteria:** A future pickup must preserve the distinction between the unreproduced
+Windows flake and the actionable durable-approval identity concern, establish the applicable
+reproduction or non-reproduction disposition, and receive a reviewed custody decision before any
+fix or exclusion is claimed.
+
+**Status:** Tracked, not yet scheduled; root cause is not established. The feasibility findings
+live in the roadmap entry, and no plan number was allocated. Deliberately not picked up after the
+feasibility pass.
 
 ## P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)
 
@@ -247,10 +357,17 @@ dispositions table above); `P9.96-FU-5` is closed by Plan 10.1 evidence with no 
 `P9.96-FU-7` is **closed** under its original stable ID: Plan 10.1 closed the confirmation-gate half
 and Plan 10.2 (commit `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef`) closed the effective-row display
 provenance half. No new catalog ID or Plan 10.x plan document was created by either pickup. The
-remaining open items are now carried by the Plan 11 backlog, except for the parked, undecided
+remaining open items are now carried by this pool, except for the parked, undecided
 `P9.85-FU-3` entry above.
 
 ## Closed Historical Follow-Ups (formerly tracked lightweight notes)
+
+### Plan 10.3 frozen-plan status correction (historical)
+
+The frozen Plan 10.3 implementation plan retains its pre-approval draft status because its
+approval record pins the plan bytes. The digest-pinned approval record and the roadmap's closed
+Plan 10.3 entry are authoritative for the lane's closed state; this pool records the closure
+without editing the historical frozen plan.
 
 ### `uv.lock` missing direct dependencies: `keyring`, `redis`, and their transitive chain (disclosed 2026-07-23 during Plan 10.1 Task 1)
 

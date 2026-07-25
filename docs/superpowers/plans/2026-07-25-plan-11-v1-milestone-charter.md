@@ -4,10 +4,10 @@
 
 **Status:** Charter draft for review; no implementation sub-plan is authorized by this document.
 
-**Baseline:** `origin/main` at `9d366c0` (merged Plan 11 roadmap expansion). The living roadmap and
-the [consolidated deferred follow-ups backlog](2026-07-23-consolidated-deferred-followups-backlog.md)
-remain the custody records. This charter defines the v1.0 milestone and its sequencing; detailed
-sub-plan specifications land in separate reviewed PRs.
+**Baseline:** `origin/main` at `b5fdc655` (merged Plan 11 roadmap expansion). The [consolidated open-work
+pool](2026-07-23-consolidated-deferred-followups-backlog.md) is the single source of truth for all
+open work. This charter defines feature scope and sequencing; detailed sub-plan specifications land
+in separate reviewed PRs.
 
 ## Milestone objective
 
@@ -15,7 +15,7 @@ Plan 11 is the v1.0 milestone for the local-first Optimus agent. It retains the 
 Gateway Capabilities Broker scope and expands the completion target to a fully working,
 feature-complete agent except for Plan 12's context-window optimization and intelligent-selection
 work. v1.0 proves the ACP path with Zed, prepares the agent for ACP registry registration, and
-closes the Plan 11 backlog before sign-off.
+closes the consolidated open-work pool before sign-off.
 
 Registry registration is expected to satisfy the multi-IDE requirement without making a specific
 second IDE an unconditional v1.0 gate. JetBrains Air and JetBrains AI Assistant are legitimate
@@ -25,12 +25,19 @@ separate from approval of this charter or a sub-plan.
 
 ## Scope retained from the existing Plan 11 entry
 
-The Gateway Capabilities Broker remains the first primary slice:
+The Gateway capability partition remains the first primary slice:
 
-- broker web search, web extract, and observability export through the Gateway;
-- preserve the one-key local credential boundary, with vendor keys owned and resolved gateway-side;
-- add the Gateway routes and upstream adapters needed by the existing agent-side seams; and
-- normalize usage, cost, and observability fields for non-model calls consistently with model calls.
+- `P11-FEAT-GATEWAY-CORE` (Plan 11.1) owns the one-key boundary, origin/secrets, model routing,
+  both model wire shapes, retries, normalized response-envelope validation, and the
+  `/v1/observability/traces` route;
+- `P11-FEAT-GATEWAY-TOOLS` owns web search/extract adapters, provenance/domain revalidation, and
+  the typed-tool envelope; package/advisory endpoints remain owned by `P11-FU-2` until pickup; and
+- `P11-FEAT-GATEWAY-COST-OBS` owns provider-native usage normalization, ledger reconciliation,
+  LangSmith trace export, and observability-field compatibility.
+
+All three slices preserve the one-key local credential boundary, with vendor keys owned and resolved
+gateway-side. `P9.85-FU-3` budget enforcement remains outside the Plan 11.1 scope pending the
+operator decision recorded in the consolidated backlog.
 
 The Gateway design must continue to respect the authoritative HLD/LLD/Guardrails boundary. The
 parked `P9.85-FU-3` budget-enforcement question is not pulled into this charter's initial scope.
@@ -39,7 +46,9 @@ parked `P9.85-FU-3` budget-enforcement question is not pulled into this charter'
 
 | Feature ID | Scope | Intended order | v1.0 relationship |
 |---|---|---|---|
-| `P11-FEAT-GATEWAY` | Gateway Capabilities Broker | 1st | First primary feature slice; required. |
+| `P11-FEAT-GATEWAY-CORE` | Gateway core and `/v1/observability/traces` route | Plan 11.1 | First active feature slice; required. |
+| `P11-FEAT-GATEWAY-TOOLS` | Gateway web/evidence tool capability partition | Assigned at pickup | Ratified feature identity; plan number is not reserved. |
+| `P11-FEAT-GATEWAY-COST-OBS` | Gateway normalized cost and observability capability partition | Assigned at pickup | Ratified feature identity; plan number is not reserved. |
 | `P11-FEAT-ZED-RESUME` | Zed integration fixes: `P9.8-FU-5` panic plus ACP session resume | 2nd | Required Zed proof slice; includes owned `P11-FU-1`. |
 | `P11-FEAT-REGISTRY` | ACP registry requirements, registration, and v1.0 cut | 3rd | Required release slice; outward publication requires separate operator approval. |
 | `P11-FEAT-IDE` | IDE-specific testing if registry registration does not surface or satisfy multi-IDE expectations | Conditional | Conditional; not an unconditional v1.0 gate. |
@@ -61,16 +70,30 @@ Feature IDs (`P11-FEAT-*`) and source IDs (`P9.8-FU-5`, `P11-FU-1`, and other st
 are the durable identifiers; plan numbers are not. Promotion is recorded as `Promoted -> Plan 11.N`
 with the date and plan-file link, matching the consolidated backlog's existing promotion rule.
 
-## P11-FEAT-GATEWAY - Gateway Capabilities Broker
+## P11-FEAT-GATEWAY-CORE - Gateway Core and Observability Route
 
-P11-FEAT-GATEWAY carries forward the existing Gateway broker scope unchanged from the roadmap. Its design must
-resolve the route contract, upstream/provider adapter boundary, gateway-side secret resolution,
-failure and retry behavior, normalized usage/cost accounting, and observability export. It must not
-move vendor keys into the agent runtime or silently create a second local provider path.
+`P11-FEAT-GATEWAY-CORE` is Plan 11.1. Its scope is the Gateway core plus the
+`/v1/observability/traces` route. Its design must resolve the one-key/origin boundary, the
+`/v1/responses` and served `/v1/chat/completions` route contracts, upstream/provider adapter boundary,
+gateway-side secret resolution, failure and retry behavior, normalized response-envelope validation,
+and the Gateway-to-observability ingress contract. It must not move vendor keys into the agent runtime
+or silently create a second local provider path.
 
-The `P11-FEAT-GATEWAY` specification must identify the capability-level release evidence needed for web search,
-web extract, observability export, one-key scans, provider failure behavior, and cost/usage
-attribution. The specification must also identify any new follow-ups in the consolidated backlog.
+The `P11-FEAT-GATEWAY-CORE` specification must identify the capability-level release evidence needed
+for the model routes, observability ingress, one-key scans, provider failure behavior, response-envelope
+fail-closed behavior, and the preserved ledger/trace interfaces. It must also identify any new follow-ups
+in the consolidated backlog. Budget enforcement is not part of this scope; all such inventory rows
+remain deferred to `P9.85-FU-3 (parked; operator decision pending)`.
+
+## P11-FEAT-GATEWAY-TOOLS and P11-FEAT-GATEWAY-COST-OBS
+
+`P11-FEAT-GATEWAY-TOOLS` is the ratified owner for web search/extract adapters, domain/provenance
+revalidation, typed-tool envelopes, and the unscheduled `P11-FU-2` package/advisory capability. Its
+Plan 11.x number is assigned at pickup.
+
+`P11-FEAT-GATEWAY-COST-OBS` is the ratified owner for provider-native usage normalization, ledger
+reconciliation, LangSmith export, amortized observability cost, and Plan 7 telemetry compatibility.
+Its Plan 11.x number is assigned at pickup. Neither identity expands Plan 11.1's implementation scope.
 
 ## P11-FEAT-ZED-RESUME - Zed integration fixes and session resume
 
@@ -145,22 +168,27 @@ than inferred from the existence of a second IDE candidate.
 
 ## Backlog and completion gates
 
-The Plan 11 backlog is one pool. It contains the carried `P9.8-FU-5` and `P9.87-FU-1` items, the
-roadmap's **Re-pin FU-4A/FU-5 Live Evidence** freshness item, and follow-ups discovered during Plan
-11 feature work. `P11-FU-1` is owned by `P11-FEAT-ZED-RESUME`, not parked. The `P11-FEAT-ZED-RESUME` Zed live-evidence work should
+The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md) is the
+single source of truth for the carried `P9.8-FU-5` and `P9.87-FU-1` items, `P11-FU-4` evidence-
+freshness work, and follow-ups discovered during Plan 11 feature work. `P11-FU-1` is owned by
+`P11-FEAT-ZED-RESUME`, not parked. `P11-FU-2` is owned by
+`P11-FEAT-GATEWAY-TOOLS` as an unimplemented, unscheduled package/advisory capability, and `P11-FU-3`
+is owned by `LLD source repair` for the clipped §0.B and missing MCP endpoint contract. The
+`P11-FEAT-ZED-RESUME` Zed live-evidence work should
 coordinate with the re-pin, but the freshness item still needs explicit fresh-evidence closure or
 a reviewed disposition. The budget-enforcement item `P9.85-FU-3` remains parked and undecided
-outside Plan 11's initial scope; revisit it only if Gateway work organically reaches budget or cost
+outside Plan 11.1's initial scope; revisit it only if Gateway work organically reaches budget or cost
 policy.
 
-Primary `P11-FEAT-GATEWAY`, `P11-FEAT-ZED-RESUME`, and `P11-FEAT-REGISTRY` work is sequenced first. Before v1.0 sign-off, every item in the Plan 11 backlog
+Primary `P11-FEAT-GATEWAY-CORE`, `P11-FEAT-ZED-RESUME`, and `P11-FEAT-REGISTRY` work is sequenced first. Before v1.0 sign-off, every item in the consolidated open-work pool
 must be closed with evidence or an explicit reviewed disposition; v1.0 does not ship with an open
-Plan 11 backlog. Conditional `P11-FEAT-IDE` is handled according to its explicit amendment and does not
+consolidated open-work pool. Conditional `P11-FEAT-IDE` is handled according to its explicit amendment and does not
 become a v1.0 gate merely because an IDE candidate exists.
 
 The v1.0 Definition of Done is therefore:
 
-- Gateway broker functionality is complete within the one-key architecture;
+- Gateway capability work is complete within the one-key architecture, with Plan 11.1 closing the
+  CORE plus observability-route gate and the ratified TOOLS/COST-OBS slices accounted for separately;
 - the agent is feature-complete against the Phase 1 charter except for Plan 12's context/intelligence
   work, with every excluded capability named rather than implied;
 - Zed ACP evidence proves the supported v1.0 interaction, including the `P11-FEAT-ZED-RESUME` session-resume and
@@ -168,7 +196,7 @@ The v1.0 Definition of Done is therefore:
 - registry requirements are researched, the two version declarations are aligned, and the
   registration/release artifact and `P11-FEAT-REGISTRY` excluded-capability inventory are ready for explicit
   operator-approved execution; and
-- the consolidated Plan 11 backlog is closed or has a reviewed, recorded disposition before the
+- the consolidated open-work pool is closed or has a reviewed, recorded disposition before the
   v1.0 cut.
 
 ## Explicit exclusions and unresolved inputs
@@ -177,11 +205,11 @@ The v1.0 Definition of Done is therefore:
 - `P9.85-FU-3` remains outside the initial Plan 11 scope pending the Gateway budget authority
   decision.
 - The **Windows Subprocess Handle-Duplication Flake, WinError 6/50** remains explicitly excluded
-  from the initial Plan 11 backlog and v1.0 gate. Its existing roadmap entry remains the owner for
-  future Windows investigation; the no-reproduction result, lack of a deterministic fix, and lack
-  of a v1.0 capability/ACP-evidence dependency are the rationale. The same existing roadmap entry
-  owns the separately identified durable-approval identity concern until a separate plan is
-  designated; any scheduling requires its own reviewed custody decision.
+  from the initial Plan 11 feature scope and v1.0 gate. The `P11-FU-5` entry in the consolidated open-work
+  pool owns its future Windows investigation state; the no-reproduction result, lack of a
+  deterministic fix, and lack of a v1.0 capability/ACP-evidence dependency are the rationale. The
+  separately identified durable-approval identity concern remains in that entry until a separate
+  reviewed custody decision is made.
 - JetBrains Air and JetBrains AI Assistant are conditional/post-v1.0 candidates, not unconditional
   v1.0 gates.
 - ACP registry requirements remain an open research input; this charter does not assume them or

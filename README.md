@@ -218,8 +218,8 @@ Plan 9.75.
 `toolCall`, approval handling, and visible completion. See the plan's Verified
 defects section, `reports/plan-9-75-zed-hitl-runtime-evidence.md`, and
 `reports/plan-9-75-zed-hitl-defect-notes.md`. The later Zed 1.10.2 refusal-rendering
-panic (`P9.8-FU-5`) has its own tracked roadmap backlog and does not reopen this
-completed lane or belong to Plan 12.
+panic (`P9.8-FU-5`) is tracked in the [consolidated open-work pool](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md)
+and does not reopen this completed lane or belong to Plan 12.
 
 **Plan 9.8** (task-aware workspace context) guarantees the planner receives an
 explicitly referenced file's content even when task-blind workspace filler
@@ -252,8 +252,8 @@ needs more evidence before a safe WRITE, plus a live model-emitted `REFUSE:` dem
 deferred from Plan 9.85 as `P9.85-FU-4` and `P9.85-FU-5`.
 The FU-4A/FU-5 claims remain valid at their pinned implementation SHAs, but the durable verifier's
 current `--require fu4a` / `--require fu5` freshness checks fail with `implementation drift`.
-Re-capture and re-pinning are tracked in the roadmap backlog, which must account for Plan 9.96's
-additional watched-path drift and sanitized-capture decision.
+Re-capture and re-pinning are tracked as `P11-FU-4` in the [consolidated open-work pool](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md),
+which accounts for Plan 9.96's additional watched-path drift and sanitized-capture decision.
 
 **Plan 9.88** is **closed** (Outcome B accepted-open). It used a new capture helper and a
 capped, anti-fishing FU-4B ledger to remediate the known filename-hallucination failure without
@@ -280,7 +280,7 @@ specification), and `P9.88-FU-3` (read-range telemetry misattribution).
 Implementation SHA `41a9cddddbacad766d8a432b7129a18d8976b54a`; evidence in
 `reports/plan-9-95-usage-telemetry-evidence.md`. Remaining open Plan 9.9x
 custody for deferred debug/launch follow-ups moved to Plan 9.96's disclosed
-`P9.96-FU-*` backlog; `P9.87-FU-1` is now in the Plan 11 backlog. FU-4B accepted-open is
+`P9.96-FU-*` backlog; `P9.87-FU-1` is now in the consolidated open-work pool. FU-4B accepted-open is
 deliberately not included — it is a closed disposition, not a TODO.
 
 **Plan 9.96** is implemented. Tasks 0–8 landed via PR #60; Task 9 real-dependency
@@ -303,7 +303,7 @@ no-code disposition) plus the confirmation-gate half of `FU-7` — see the
 gap at `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef` without changing the approval
 digest contract — see the
 [Plan 10.2 implementation plan](docs/superpowers/plans/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md)
-and the [consolidated backlog](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md).
+and the [consolidated open-work pool](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md).
 **Plan 10.3** closes the frozen dependency lock drift and the traceback-safe tools
 `SurfaceAuditError` exception — see the
 [Plan 10.3 implementation plan](docs/superpowers/plans/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).
