@@ -42,6 +42,13 @@ The approval authorizes execution of the approved implementation plan in the exi
 only. It does not claim that implementation or test evidence exists, and it does not unpark
 `P9.85-FU-3` budget enforcement.
 
+## Status-line precedence
+
+The `Pending reviewer-agent and operator approval; implementation is not authorized.` status lines
+in the frozen design spec and implementation plan predate approval and are intentionally retained
+to preserve their approved digests. This approval record supersedes those pre-approval status lines
+for execution authority; Task 0 must read this record before implementation begins.
+
 ## Mechanical verification
 
 Run from the repository root:
