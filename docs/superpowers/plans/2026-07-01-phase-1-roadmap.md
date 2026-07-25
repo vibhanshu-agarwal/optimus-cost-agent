@@ -791,6 +791,10 @@ assume the frozen helpers remain an acceptable current-evidence path.
 
 **Status:** Tracked, not yet scheduled. No implementation plan exists.
 
+**Plan 11 disposition:** Included in the Plan 11 backlog as an evidence-freshness item. The 11.2
+Zed/acpx evidence work should coordinate with this re-pin where its capture path overlaps, but the
+item still requires an explicit fresh-evidence closure or reviewed disposition before v1.0.
+
 ## Backlog: NDJSON Session Initial-Send Broken-Pipe Race (Resolved)
 
 **Raised:** 2026-07-22, after `test_run_operator_live_session_surfaces_no_approval_remediation`
@@ -991,6 +995,13 @@ separate, independently provable defect that should not be lost.
 of 2026-07-25: with no reproduction available, the flake half cannot be closed by a fix, and other
 backlog work takes precedence. The findings above are recorded so the investigation does not have to
 be repeated when it is eventually scheduled.
+
+**Plan 11 disposition:** Explicitly excluded from the initial Plan 11 backlog and v1.0 gate. The
+existing roadmap entry remains the owner for the future Windows investigation and its separately
+identified durable-approval concern; the exclusion is based on the no-reproduction result, the
+absence of a deterministic fix, and the fact that this is not a
+v1.0 capability or ACP evidence requirement. The separately identified durable-approval identity
+concern must receive its own reviewed custody decision if it is ever scheduled.
 
 ## Plan 11 (v1.0 Milestone; Unified Gateway Capabilities Broker and ACP Release)
 

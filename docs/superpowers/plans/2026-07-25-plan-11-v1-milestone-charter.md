@@ -104,7 +104,10 @@ for the v1.0 gate.
 yet known and must be researched against the current registry process before the implementation
 scope is frozen. The research record must identify package metadata, naming/identity, protocol and
 version declarations, validation, discoverability, release artifacts, ownership, and rollback or
-withdrawal expectations that actually apply.
+withdrawal expectations that actually apply. 11.3 also owns the v1.0 release inventory: a named
+list of every capability excluded from the cut, with its rationale, custody, and next-phase or
+conditional destination. That inventory is the authoritative answer to the DoD's
+"feature-complete except Plan 12" boundary and must be reviewed before sign-off.
 
 The v1.0 cut must update both known version locations together:
 
@@ -128,10 +131,13 @@ than inferred from the existence of a second IDE candidate.
 
 ## Backlog and completion gates
 
-The Plan 11 backlog is one pool. It contains the carried `P9.8-FU-5` and `P9.87-FU-1` items and
-follow-ups discovered during Plan 11 feature work. `P11-FU-1` is owned by 11.2, not parked. The
-budget-enforcement item `P9.85-FU-3` remains parked and undecided outside Plan 11's initial scope;
-revisit it only if Gateway work organically reaches budget or cost policy.
+The Plan 11 backlog is one pool. It contains the carried `P9.8-FU-5` and `P9.87-FU-1` items, the
+roadmap's **Re-pin FU-4A/FU-5 Live Evidence** freshness item, and follow-ups discovered during Plan
+11 feature work. `P11-FU-1` is owned by 11.2, not parked. The 11.2 Zed/acpx evidence work should
+coordinate with the re-pin, but the freshness item still needs explicit fresh-evidence closure or
+a reviewed disposition. The budget-enforcement item `P9.85-FU-3` remains parked and undecided
+outside Plan 11's initial scope; revisit it only if Gateway work organically reaches budget or cost
+policy.
 
 Primary 11.1-11.3 work is sequenced first. Before v1.0 sign-off, every item in the Plan 11 backlog
 must be closed with evidence or an explicit reviewed disposition; v1.0 does not ship with an open
@@ -146,7 +152,8 @@ The v1.0 Definition of Done is therefore:
 - Zed ACP evidence proves the supported v1.0 interaction, including the 11.2 session-resume and
   refusal-rendering dispositions;
 - registry requirements are researched, the two version declarations are aligned, and the
-  registration/release artifact is ready for explicit operator-approved execution; and
+  registration/release artifact and 11.3 excluded-capability inventory are ready for explicit
+  operator-approved execution; and
 - the consolidated Plan 11 backlog is closed or has a reviewed, recorded disposition before the
   v1.0 cut.
 
@@ -155,6 +162,12 @@ The v1.0 Definition of Done is therefore:
 - Plan 12's context-window optimization and intelligent selection remain post-v1.0 v1.x work.
 - `P9.85-FU-3` remains outside the initial Plan 11 scope pending the Gateway budget authority
   decision.
+- The **Windows Subprocess Handle-Duplication Flake, WinError 6/50** remains explicitly excluded
+  from the initial Plan 11 backlog and v1.0 gate. Its existing roadmap entry remains the owner for
+  future Windows investigation; the no-reproduction result, lack of a deterministic fix, and lack
+  of a v1.0 capability/ACP-evidence dependency are the rationale. The same existing roadmap entry
+  owns the separately identified durable-approval identity concern until a separate plan is
+  designated; any scheduling requires its own reviewed custody decision.
 - JetBrains Air and JetBrains AI Assistant are conditional/post-v1.0 candidates, not unconditional
   v1.0 gates.
 - ACP registry requirements remain an open research input; this charter does not assume them or
