@@ -122,6 +122,14 @@ Plan 7 usage ledger rather than a new parallel accounting path, and must fail cl
 silently permit overspend when ledger data is unavailable. Plan 9.85 records all usage completely
 and accurately but does not itself invent any cross-run denial policy.
 
+**Verified blocker (2026-07-25):** Independent review confirms an unresolved architecture conflict.
+HLD v2.15 §§5A and 11, LLD v2.38 §§0A, 9D, and 10A, and Guardrails v1.0 §§7.2 and 9 assign
+budget enforcement to the Gateway and describe local budget state as informational. The current
+`src/optimus_gateway/` implementation contains no budget, spend, cap, quota, or wallet-enforcement
+logic. This item is therefore blocked on an operator decision about the Gateway budget-enforcement
+roadmap and authority boundary; it is not a spec-readiness gap. The designated future plan remains
+none/unassigned pending that decision.
+
 **Status:** Open, not yet scheduled.
 
 ### P9.87-FU-1: Mechanical Current-Raw-Evidence Grounding Guard
