@@ -491,7 +491,7 @@ was approved by the reviewer-agent and operator on 2026-07-14. Implemented 2026-
 
 FU-4B accepted-open is deliberately not in this entry: it is a closed disposition under the Plan
 9.88 ceremony, not a TODO. **Status:** Implemented; `P9.85-FU-6`, `P9.88-FU-2`, and `P9.88-FU-3`
-closed with evidence. Remaining deferred follow-ups are owned by Plan 12 or the Plan 11 backlog.
+closed with evidence. Remaining deferred follow-ups are owned by Plan 12 or the consolidated open-work pool.
 
 ## Plan 9.96 (Implemented): Operator-Controlled Debug and Launch Trust
 
@@ -707,19 +707,23 @@ backlog for the carried-over items and any follow-ups discovered during Plan 11 
 
 The catalog's existing seven entries remain keyed by their source IDs. `P9.8-FU-2`, `P9.8-FU-3`,
 `P9.85-FU-1`, and `P9.85-FU-2` remain designated to Plan 12. `P9.8-FU-5` and `P9.87-FU-1` are
-carried into the Plan 11 backlog. `P9.85-FU-3` remains parked and undecided outside Plan 11's
+carried into the consolidated open-work pool. `P9.85-FU-3` remains parked and undecided outside Plan 11's
 initial scope pending the Gateway budget-enforcement authority decision. `P9.87-FU-1` is folded
 here from the retired Plan 9.97 lane.
 
 The catalog now contains the seven `P9.96-FU-1..7` rows and the attached Plan 9.98 custody note;
 it is the sole detailed ledger for those entries.
 
-**Retired allocation rule:** Do not reserve or allocate Plan 10.x numbers. When a Plan 11 backlog
+**Retired allocation rule:** Do not reserve or allocate Plan 10.x numbers. When a pool item
 item is scheduled into a concrete implementation plan, keep its stable source ID and record the
 promotion, date, plan-file link, evidence, and disposition in this backlog.
 
+**Open-work source of truth:** The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md)
+is the single source of truth for all open work; this roadmap preserves milestone scope, sequencing,
+historical narrative, and pointers rather than live open-item status.
+
 **Adding future items:** Add each genuinely deferred, unscheduled follow-up to the stable-ID catalog
-and the Plan 11 backlog unless it is explicitly designated to Plan 12. Follow-ups discovered during
+and this pool unless it is explicitly designated to Plan 12. Follow-ups discovered during
 Plan 11 feature development use this same catalog; do not create a second Plan 11 pool or a new
 Plan 10 lane. Plan 9.96's `P9.85-FU-7` and `P9.9-FU-1` are closed and must not be reintroduced here.
 
@@ -743,7 +747,7 @@ was the documentation-only freeze merge; implementation landed on
 `agent/cursor/plan-10-1-p996-remediation` afterward, with Task 7's fitness/handoff gate passing at
 `cb059db` (manifest entry for `optimus.acp.launch_approval_cli:_confirm_approval:stdout_export`
 added under operator-ruled Option 1). The Plan 10.1 lane is closed; its remaining catalog custody is
-now governed by the Plan 11 backlog.
+now governed by the consolidated open-work pool.
 
 **Plan 10.2 (Closed 2026-07-24; Task 6 fitness/handoff complete):** Drafted and approved 2026-07-23. Frozen plan SHA-256:
 `4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771` (approval record:
@@ -763,17 +767,19 @@ its historical catalog work remains recorded here and open custody is now govern
 **Plan 10.3 (Closed 2026-07-24; Task 4 fitness/handoff complete):** Drafted and approved 2026-07-24. Frozen plan SHA-256:
 `E66ECA48C588E7DB618D4850FDF0CEE901B4966BC0AB405E21C857AE6BE24F32` (approval record:
 [`2026-07-24-plan-10-3-implementation-plan-approval.md`](../reviews/2026-07-24-plan-10-3-implementation-plan-approval.md)).
-Scope: closes the two formerly tracked lightweight notes — `uv.lock` missing direct
-`keyring`/`redis` chain, and the tools-only `SurfaceAuditError` frozen-dataclass CI wart — without
-with open follow-up custody carried by Plan 11. Implementation commits:
+Scope: closes the two formerly tracked lightweight notes: `uv.lock` missing direct
+`keyring`/`redis` chain, and the tools-only `SurfaceAuditError` frozen-dataclass CI wart; no open
+follow-up custody is carried by Plan 11. Implementation commits:
 `1b152a8` ("chore: refresh uv lock for declared gateway dependencies") and
 `4d1f086` ("fix(tools): allow surface audit errors to carry tracebacks") on branch
 `agent/cursor/plan-10-3-uv-lock-surface-audit`. See the
 [`Plan 10.3 implementation plan`](2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).
 Evidence: gitignored `docs/superpowers/reviews/plan-10-3-review-checkpoints.md`. The Plan 10.3 lane
-is closed; open follow-ups are now governed by the Plan 11 backlog.
+is closed; open follow-ups are now governed by the consolidated open-work pool. The frozen Plan 10.3 plan
+header retains its pre-approval draft wording because its approval record pins the plan bytes; this
+closed roadmap entry and that approval record govern the lane's state.
 
-## Backlog: Re-pin FU-4A/FU-5 Live Evidence (Tracked, Not Yet Scheduled)
+## Backlog: Re-pin FU-4A/FU-5 Live Evidence
 
 **Raised:** 2026-07-15 by Plan 9.95 Task 5 Implementation Amendment. The Plan 9.87 evidence
 report's `--require fu4a` and `--require fu5` gates fail with `implementation drift` because
@@ -789,11 +795,11 @@ The future re-pin must be prioritized with that change in mind and explicitly ch
 path (expected to be the reviewed Plan 9.96 tool if that implementation has landed); it must not
 assume the frozen helpers remain an acceptable current-evidence path.
 
-**Status:** Tracked, not yet scheduled. No implementation plan exists.
-
-**Plan 11 disposition:** Included in the Plan 11 backlog as an evidence-freshness item. The
-`P11-FEAT-ZED-RESUME` Zed live-evidence work should coordinate with this re-pin where its capture path overlaps, but the
-item still requires an explicit fresh-evidence closure or reviewed disposition before v1.0.
+**Open-work custody:** The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md)
+entry [`P11-FU-4`](2026-07-23-consolidated-deferred-followups-backlog.md#p11-fu-4-re-pin-fu-4a-fu-5-live-evidence)
+owns the live state. The `P11-FEAT-ZED-RESUME` Zed live-evidence work should coordinate with this
+re-pin where its capture path overlaps; this roadmap section retains the historical origin and
+analysis.
 
 ## Backlog: NDJSON Session Initial-Send Broken-Pipe Race (Resolved)
 
@@ -858,7 +864,7 @@ applied).
 
 **Status:** Resolved 2026-07-22.
 
-## Backlog: Windows Subprocess Handle-Duplication Flake, WinError 6/50 (Tracked, Not Yet Scheduled)
+## Backlog: Windows Subprocess Handle-Duplication Flake, WinError 6/50
 
 **Raised:** 2026-07-22, during Plan 9.99 Task 7 repository-wide verification. Independently reproduced
 by both the implementing agent (Cursor) and the reviewing agent (Claude) on the same Windows
@@ -991,17 +997,11 @@ separate, independently provable defect that should not be lost.
   already issued -- a careless fix could itself invalidate them, which is the exact failure being
   prevented.
 
-**Status:** Tracked, not yet scheduled. No implementation plan exists. Deliberately not picked up as
-of 2026-07-25: with no reproduction available, the flake half cannot be closed by a fix, and other
-backlog work takes precedence. The findings above are recorded so the investigation does not have to
-be repeated when it is eventually scheduled.
-
-**Plan 11 disposition:** Explicitly excluded from the initial Plan 11 backlog and v1.0 gate. The
-existing roadmap entry remains the owner for the future Windows investigation and its separately
-identified durable-approval concern; the exclusion is based on the no-reproduction result, the
-absence of a deterministic fix, and the fact that this is not a
-v1.0 capability or ACP evidence requirement. The separately identified durable-approval identity
-concern must receive its own reviewed custody decision if it is ever scheduled.
+**Open-work custody:** The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md)
+entry [`P11-FU-5`](2026-07-23-consolidated-deferred-followups-backlog.md#p11-fu-5-windows-subprocess-handle-duplication-flake-winerror-650)
+owns the live state. This remains excluded from the initial Plan 11 feature scope and v1.0 gate because
+the flake has no reproduction or deterministic fix; the pool records that state and the future
+custody decision. This roadmap section retains the feasibility findings and historical analysis.
 
 ## Plan 11 (v1.0 Milestone; Unified Gateway Capabilities Broker and ACP Release)
 
@@ -1039,7 +1039,7 @@ Assistant remain legitimate future or conditional candidates, not required v1.0 
 The release must finish in a shape ready for ACP registry registration and the v1.0 cut; outward
 publication requires explicit operator approval at execution time.
 
-**Backlog rule:** `P9.8-FU-5` and `P9.87-FU-1` are carried into the single Plan 11 backlog; the
+**Backlog rule:** `P9.8-FU-5` and `P9.87-FU-1` are carried into the consolidated open-work pool; the
 new `P11-FU-1` session-resume capability item is owned by `P11-FEAT-ZED-RESUME` (plan number assigned at pickup), not parked. New follow-ups
 discovered during Plan 11 feature development join that same backlog. `P11-FU-2` is owned by
 `P11-FEAT-GATEWAY-TOOLS` for the unimplemented package/advisory capability, and `P11-FU-3` is
@@ -1049,7 +1049,7 @@ work organically reaches budget or cost policy.
 
 **Completion gate:** Complete `P11-FEAT-GATEWAY-CORE` and its observability route as Plan 11.1's
 first gate, then assign and close the ratified TOOLS and COST-OBS slices and work through the
-combined Plan 11 backlog before v1.0 sign-off. Plan 11 does not ship with open backlog items.
+consolidated open-work pool before v1.0 sign-off. Plan 11 does not ship with open backlog items.
 Plan 12 is not a v1.0 prerequisite and begins only as the post-launch v1.x phase. Conditional IDE
 testing does not become a gate unless an explicit charter amendment says so.
 
@@ -1162,11 +1162,11 @@ consolidated backlog document, not owned by Plan 12.
     (PR #66); prerequisite for Plan 9.96 Task 9 closure.
 24. Plan 10: Consolidated deferred follow-ups pool — **retired** after Plans 10.1–10.3 closed;
     Plan 10.4 was never allocated. No future Plan 10.x slot will be created. The remaining open
-    custody is carried by the single Plan 11 backlog, with Plan 12 retaining its explicitly owned
+    custody is carried by the consolidated open-work pool, with Plan 12 retaining its explicitly owned
     context-intelligence follow-ups.
 25. Plan 11: Unified Gateway Capabilities Broker — **v1.0 milestone**: feature-complete agent
     except for Plan 12, Zed ACP proof, ACP registry registration/readiness, and closure of the
-    combined Plan 11 backlog before sign-off. Registry registration is expected to satisfy the
+    consolidated open-work pool before sign-off. Registry registration is expected to satisfy the
     broader multi-IDE requirement; IDE-specific testing is conditional and not an unconditional gate.
 26. Plan 12: Context window optimization and intelligent selection — explicit **post-v1.0 v1.x**
     phase; starts only after Plan 11's feature and backlog-closure gates, Plan 9.8, Plan 9.5

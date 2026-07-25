@@ -4,10 +4,10 @@
 
 **Status:** Charter draft for review; no implementation sub-plan is authorized by this document.
 
-**Baseline:** `origin/main` at `b5fdc655` (merged Plan 11 roadmap expansion). The living roadmap and
-the [consolidated deferred follow-ups backlog](2026-07-23-consolidated-deferred-followups-backlog.md)
-remain the custody records. This charter defines the v1.0 milestone and its sequencing; detailed
-sub-plan specifications land in separate reviewed PRs.
+**Baseline:** `origin/main` at `b5fdc655` (merged Plan 11 roadmap expansion). The [consolidated open-work
+pool](2026-07-23-consolidated-deferred-followups-backlog.md) is the single source of truth for all
+open work. This charter defines feature scope and sequencing; detailed sub-plan specifications land
+in separate reviewed PRs.
 
 ## Milestone objective
 
@@ -15,7 +15,7 @@ Plan 11 is the v1.0 milestone for the local-first Optimus agent. It retains the 
 Gateway Capabilities Broker scope and expands the completion target to a fully working,
 feature-complete agent except for Plan 12's context-window optimization and intelligent-selection
 work. v1.0 proves the ACP path with Zed, prepares the agent for ACP registry registration, and
-closes the Plan 11 backlog before sign-off.
+closes the consolidated open-work pool before sign-off.
 
 Registry registration is expected to satisfy the multi-IDE requirement without making a specific
 second IDE an unconditional v1.0 gate. JetBrains Air and JetBrains AI Assistant are legitimate
@@ -168,9 +168,10 @@ than inferred from the existence of a second IDE candidate.
 
 ## Backlog and completion gates
 
-The Plan 11 backlog is one pool. It contains the carried `P9.8-FU-5` and `P9.87-FU-1` items, the
-roadmap's **Re-pin FU-4A/FU-5 Live Evidence** freshness item, and follow-ups discovered during Plan
-11 feature work. `P11-FU-1` is owned by `P11-FEAT-ZED-RESUME`, not parked. `P11-FU-2` is owned by
+The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md) is the
+single source of truth for the carried `P9.8-FU-5` and `P9.87-FU-1` items, `P11-FU-4` evidence-
+freshness work, and follow-ups discovered during Plan 11 feature work. `P11-FU-1` is owned by
+`P11-FEAT-ZED-RESUME`, not parked. `P11-FU-2` is owned by
 `P11-FEAT-GATEWAY-TOOLS` as an unimplemented, unscheduled package/advisory capability, and `P11-FU-3`
 is owned by `LLD source repair` for the clipped §0.B and missing MCP endpoint contract. The
 `P11-FEAT-ZED-RESUME` Zed live-evidence work should
@@ -179,9 +180,9 @@ a reviewed disposition. The budget-enforcement item `P9.85-FU-3` remains parked 
 outside Plan 11.1's initial scope; revisit it only if Gateway work organically reaches budget or cost
 policy.
 
-Primary `P11-FEAT-GATEWAY-CORE`, `P11-FEAT-ZED-RESUME`, and `P11-FEAT-REGISTRY` work is sequenced first. Before v1.0 sign-off, every item in the Plan 11 backlog
+Primary `P11-FEAT-GATEWAY-CORE`, `P11-FEAT-ZED-RESUME`, and `P11-FEAT-REGISTRY` work is sequenced first. Before v1.0 sign-off, every item in the consolidated open-work pool
 must be closed with evidence or an explicit reviewed disposition; v1.0 does not ship with an open
-Plan 11 backlog. Conditional `P11-FEAT-IDE` is handled according to its explicit amendment and does not
+consolidated open-work pool. Conditional `P11-FEAT-IDE` is handled according to its explicit amendment and does not
 become a v1.0 gate merely because an IDE candidate exists.
 
 The v1.0 Definition of Done is therefore:
@@ -195,7 +196,7 @@ The v1.0 Definition of Done is therefore:
 - registry requirements are researched, the two version declarations are aligned, and the
   registration/release artifact and `P11-FEAT-REGISTRY` excluded-capability inventory are ready for explicit
   operator-approved execution; and
-- the consolidated Plan 11 backlog is closed or has a reviewed, recorded disposition before the
+- the consolidated open-work pool is closed or has a reviewed, recorded disposition before the
   v1.0 cut.
 
 ## Explicit exclusions and unresolved inputs
@@ -204,11 +205,11 @@ The v1.0 Definition of Done is therefore:
 - `P9.85-FU-3` remains outside the initial Plan 11 scope pending the Gateway budget authority
   decision.
 - The **Windows Subprocess Handle-Duplication Flake, WinError 6/50** remains explicitly excluded
-  from the initial Plan 11 backlog and v1.0 gate. Its existing roadmap entry remains the owner for
-  future Windows investigation; the no-reproduction result, lack of a deterministic fix, and lack
-  of a v1.0 capability/ACP-evidence dependency are the rationale. The same existing roadmap entry
-  owns the separately identified durable-approval identity concern until a separate plan is
-  designated; any scheduling requires its own reviewed custody decision.
+  from the initial Plan 11 feature scope and v1.0 gate. The `P11-FU-5` entry in the consolidated open-work
+  pool owns its future Windows investigation state; the no-reproduction result, lack of a
+  deterministic fix, and lack of a v1.0 capability/ACP-evidence dependency are the rationale. The
+  separately identified durable-approval identity concern remains in that entry until a separate
+  reviewed custody decision is made.
 - JetBrains Air and JetBrains AI Assistant are conditional/post-v1.0 candidates, not unconditional
   v1.0 gates.
 - ACP registry requirements remain an open research input; this charter does not assume them or
