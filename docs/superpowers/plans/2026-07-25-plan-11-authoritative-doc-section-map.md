@@ -29,6 +29,15 @@ The PDF metadata title fields for the HLD, LLD, and Test Strategy lag their file
 cover versions by one revision. The digest, filename, and cover-page version together are the
 stable pin for this map; a future refresh must recompute all three checks.
 
+## Diagram and render-survey scope
+
+The targeted render-defect survey covered the four HLD figures, Guardrails v1.0 Figure 1, and the
+rendered-only/diagram-heavy LLD pages. The four HLD figures and Guardrails Figure 1 rendered
+cleanly. The LLD v2.38 §0.B component-flow code block remains recorded as a source-document defect
+because it is clipped at the page boundary around `/v1/tools/web/extract`. This survey does not
+claim full diagram-fidelity certification for every Test Strategy figure or page; those require a
+separate visual review if their diagrams become normative inputs to a feature specification.
+
 ## Ownership findings requiring follow-up
 
 These are the rows that matter most. They are intentionally surfaced before the full bookkeeping
@@ -80,7 +89,7 @@ No requirement-level rows are created in this section map.
 | HLD v2.15 §7 | Agent Operating Modes & Trust Framework | Plan/Chat, Agent mode, and generation-scope classification | Implemented by Plan 2 | Guardrail sections refine this boundary. |
 | HLD v2.15 §8 | Tool Governance & Evidence Acquisition | Evidence-first policy, typed tools, and external-call authorization | Implemented by Plan 4 | P11 Gateway must preserve the Gateway-side policy boundary. |
 | HLD v2.15 §9 | Adaptive Agent Execution Strategy & Rigor Policy | Rigor tiers, strategy selection, and bounded reflection | Implemented by Plan 9 | Plan 12 may optimize selection but does not replace this Phase 1 contract. |
-| HLD v2.15 §10 | Architectural Control Flow | End-to-end control flow and the A-E architecture diagrams | Cross-cutting | The diagrams are covered by this row; they are not additional normative numbered sections. |
+| HLD v2.15 §10 | Architectural Control Flow | End-to-end control flow, the A-C architecture diagrams, and the D-E normative control tables | Cross-cutting | A-C are diagrams; D enumerates four cost-control points and E enumerates five hallucination-control layers. All are covered by this row and are not additional numbered sections. |
 | HLD v2.15 §11 | Optimus AI Gateway - Phase 1 Mandatory | Mandatory Gateway boundary, routing, policy, and provider isolation | P11-FEAT-GATEWAY | Gateway route, failure, usage, cost, and observability requirements must be extracted here. |
 | HLD v2.15 §11A | Trace Observability | Gateway-managed trace export and observability cost allocation | P11-FEAT-GATEWAY | Cross-reference with LLD §0A, §10A, and Test Strategy §8A. |
 | HLD v2.15 §12 | Testing & Quality Gates | Release validation and quality-gate contract | Cross-cutting | HLD defers coverage authority to Test Strategy §8A. |
