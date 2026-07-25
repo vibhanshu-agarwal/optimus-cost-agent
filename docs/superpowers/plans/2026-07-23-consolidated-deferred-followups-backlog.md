@@ -65,7 +65,7 @@ rendered the ambiguous-refusal corrective text, then panicked in native client c
 `range end index 3 out of range for slice of length 2`. The agent wire contract and independent
 `acpx` durable refusal UI remain proven.
 
-**Designated future plan:** Plan 11.2 (Zed integration fixes and session resume). Plan 9.75 was already complete
+**Designated slice:** `P11-FEAT-ZED-RESUME` (plan number assigned at pickup). Plan 9.75 was already complete
 when the client-stability issue was discovered, and its evidence report classifies the panic as
 separate from the ACP conformance fix. Do not reopen Plan 9.75 and do not fold this work into Plan 12.
 
@@ -164,10 +164,10 @@ unsupported and starts a new session on every connection.
 `_handle_initialize`), with the live server wiring `InMemoryAcpSpecSessionStore` in
 `src/optimus/acp/server.py`.
 
-**Designated future plan:** Plan 11.2 (Zed integration fixes and session resume). This item is
-owned by 11.2, not parked or deferred to a later milestone.
+**Designated slice:** `P11-FEAT-ZED-RESUME` (plan number assigned at pickup). This item is
+owned by `P11-FEAT-ZED-RESUME`, not parked or deferred to a later milestone.
 
-**Acceptance criteria:** The reviewed 11.2 design and implementation must:
+**Acceptance criteria:** The reviewed `P11-FEAT-ZED-RESUME` design and implementation must:
 
 - implement ACP `session/load` and advertise `loadSession` only when its semantics are supported;
 - define the session identity, workspace binding, conversation/history, and relevant run metadata
@@ -183,7 +183,7 @@ owned by 11.2, not parked or deferred to a later milestone.
 (`AgentPlanRecord`), not ACP session or conversation state, and cannot be treated as an existing
 resume store without an explicit design and migration decision.
 
-**Status:** Owned by Plan 11.2; open and not yet scheduled. This is an unimplemented protocol
+**Status:** Owned by `P11-FEAT-ZED-RESUME`; open and not yet scheduled. This is an unimplemented protocol
 capability, not a flaky regression or a parked architecture blocker.
 
 ## P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)

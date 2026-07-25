@@ -791,8 +791,8 @@ assume the frozen helpers remain an acceptable current-evidence path.
 
 **Status:** Tracked, not yet scheduled. No implementation plan exists.
 
-**Plan 11 disposition:** Included in the Plan 11 backlog as an evidence-freshness item. The 11.2
-Zed/acpx evidence work should coordinate with this re-pin where its capture path overlaps, but the
+**Plan 11 disposition:** Included in the Plan 11 backlog as an evidence-freshness item. The
+`P11-FEAT-ZED-RESUME` Zed live-evidence work should coordinate with this re-pin where its capture path overlaps, but the
 item still requires an explicit fresh-evidence closure or reviewed disposition before v1.0.
 
 ## Backlog: NDJSON Session Initial-Send Broken-Pipe Race (Resolved)
@@ -1032,7 +1032,7 @@ The release must finish in a shape ready for ACP registry registration and the v
 publication requires explicit operator approval at execution time.
 
 **Backlog rule:** `P9.8-FU-5` and `P9.87-FU-1` are carried into the single Plan 11 backlog; the
-new `P11-FU-1` session-resume capability item is owned by 11.2, not parked. New follow-ups
+new `P11-FU-1` session-resume capability item is owned by `P11-FEAT-ZED-RESUME` (plan number assigned at pickup), not parked. New follow-ups
 discovered during Plan 11 feature development join that same backlog. `P9.85-FU-3`
 remains parked and undecided outside Plan 11's initial scope; revisit it only if Plan 11 Gateway
 work organically reaches budget or cost policy.
@@ -1046,13 +1046,13 @@ testing does not become a gate unless an explicit charter amendment says so.
 [`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md), and no
 implementation sub-plan exists yet. Explicitly out of scope for Plan 9.7 (a local-startup-
 ergonomics plan, not a gateway-capability-surface redesign) and for Plan 9.6 (live-verification
-proof of the existing model-call path). The 11.1 specification must resolve the Gateway route,
-provider, secret-boundary, failure, normalized usage/cost, and observability contracts. The 11.2
-specification must resolve Zed's `P9.8-FU-5` disposition and the session-resume storage/durability
+proof of the existing model-call path). The `P11-FEAT-GATEWAY` specification must resolve the Gateway route,
+provider, secret-boundary, failure, normalized usage/cost, and observability contracts. The
+`P11-FEAT-ZED-RESUME` specification must resolve Zed's `P9.8-FU-5` disposition and the session-resume storage/durability
 decision for owned `P11-FU-1`; the existing plan-only Redis state store is not sufficient by
-assumption. The 11.3 specification must research ACP registry requirements before freezing
+assumption. The `P11-FEAT-REGISTRY` specification must research ACP registry requirements before freezing
 registration scope and must align both `pyproject.toml` and ACP `agentInfo.version` at the v1.0
-cut. The 11.4 slice remains conditional if registry registration does not satisfy the broader
+cut. The `P11-FEAT-IDE` slice remains conditional if registry registration does not satisfy the broader
 multi-IDE expectation.
 
 ## Plan 12 (Post-v1.0 v1.x Phase; Context Window Optimization and Intelligent Selection)
