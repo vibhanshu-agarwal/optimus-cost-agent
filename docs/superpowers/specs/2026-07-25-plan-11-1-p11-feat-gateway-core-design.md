@@ -11,7 +11,7 @@ Stage 0–2 inventory baseline at `4638b195dc345c695560f4ec248f92948a8480a0`.
 
 **Authoritative inventory:**
 `docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md`
-(SHA-256 `AC7C9443C9F4A1373BB3808A8781EAAD9A62FEE67C46A7B8118C72DE1BED02EC`).
+(SHA-256 `7DD4FA40916B2306C55492B36D37FC0178798CC20552B6E73CF13CBF5B69FDC5`).
 
 ## Goal
 

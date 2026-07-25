@@ -18,7 +18,7 @@ docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md
 
 **Requirement inventory:**
 docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md
-(SHA-256 AC7C9443C9F4A1373BB3808A8781EAAD9A62FEE67C46A7B8118C72DE1BED02EC).
+(SHA-256 7DD4FA40916B2306C55492B36D37FC0178798CC20552B6E73CF13CBF5B69FDC5).
 
 ## Goal
 
@@ -98,18 +98,26 @@ wallet mapping, or COST-OBS normalization/amortization depth.
 digests match the approval record.
 
 - [ ] Verify branch, HEAD, origin/main, inventory commit, spec SHA-256, and this plan SHA-256.
+- [ ] Confirm working-tree bytes equal committed-blob bytes for every pinned artifact before trusting any digest.
 - [ ] Confirm no implementation or test path is dirty before starting.
 - [ ] Read the reviewer/operator approval record and the checkpoint log Current State section.
 - [ ] Do not modify source or tests until these checks and the approval record pass.
 
 Verification:
 
-~~~powershell
+~~~bash
 git status --short --branch
 git rev-parse HEAD
 git rev-parse origin/main
-(Get-FileHash -Algorithm SHA256 docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md).Hash
-(Get-FileHash -Algorithm SHA256 docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md).Hash
+sha256sum docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md
+sha256sum docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md
+sha256sum docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md
+git show HEAD:docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md | sha256sum
+git show HEAD:docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md | sha256sum
+git show HEAD:docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md | sha256sum
+[ "$(sha256sum docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md | cut -d' ' -f1)" = "$(git show HEAD:docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md | sha256sum | cut -d' ' -f1)" ]
+[ "$(sha256sum docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md | cut -d' ' -f1)" = "$(git show HEAD:docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md | sha256sum | cut -d' ' -f1)" ]
+[ "$(sha256sum docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md | cut -d' ' -f1)" = "$(git show HEAD:docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md | sha256sum | cut -d' ' -f1)" ]
 ~~~
 
 ## Task 1: Put the three-route dispatch surface in place first
