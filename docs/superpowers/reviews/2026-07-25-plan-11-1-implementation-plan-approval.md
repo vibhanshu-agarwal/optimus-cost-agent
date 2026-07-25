@@ -1,7 +1,10 @@
 # Plan 11.1 Implementation Plan Approval Record
 
-**Status:** Reviewer-agent and operator approved on 2026-07-25 for the exact frozen artifact
-digests below; implementation is authorized but has not started.
+**Status:** INVALIDATED on 2026-07-25. This historical record no longer authorizes implementation.
+The inventory digest recorded below is not reproducible from the committed blob, and the design
+spec, implementation plan, and inventory have since been repinned. Implementation is not
+authorized pending fresh reviewer-agent and operator approval of the replacement digests.
+This record makes no replacement approval claim.
 
 **Design spec:** `docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md`
 
@@ -10,7 +13,7 @@ digests below; implementation is authorized but has not started.
 **Requirement inventory:**
 `docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md`
 
-## Approved digests
+## Historical digests recorded by the invalidated approval
 
 | Artifact | SHA-256 |
 |---|---|
@@ -49,7 +52,11 @@ in the frozen design spec and implementation plan predate approval and are inten
 to preserve their approved digests. This approval record supersedes those pre-approval status lines
 for execution authority; Task 0 must read this record before implementation begins.
 
-## Mechanical verification
+## Historical mechanical verification (invalidated)
+
+These are the working-tree verification commands and outputs used by the now-invalidated record;
+they are retained for audit history and are not a valid current freeze check. The replacement
+approval record must verify committed blob bytes instead.
 
 Run from the repository root:
 
