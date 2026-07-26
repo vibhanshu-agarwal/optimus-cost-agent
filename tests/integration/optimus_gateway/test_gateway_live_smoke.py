@@ -205,3 +205,24 @@ def test_live_local_gateway_observability_traces_fails_closed_on_malformed_batch
     body = json.loads(excinfo.value.read().decode("utf-8"))
     assert "event" in body["error"]
     assert "status" not in body
+
+
+@pytest.mark.parametrize("path", ("/v1/tools/web/search", "/v1/tools/web/extract"))
+def test_live_local_gateway_tools_routes_remain_outside_core(live_local_gateway_url, path: str):
+    gateway_url, shared_secret, _provider = live_local_gateway_url
+    request = urllib.request.Request(
+        f"{gateway_url}{path}",
+        data=json.dumps({"q": "should-not-be-served"}).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {shared_secret}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        urllib.request.urlopen(request, timeout=30)
+
+    assert excinfo.value.code == 404
+    body = json.loads(excinfo.value.read().decode("utf-8"))
+    assert body == {"error": "not found"}
