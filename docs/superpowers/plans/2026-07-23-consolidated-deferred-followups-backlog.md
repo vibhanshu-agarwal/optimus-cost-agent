@@ -42,7 +42,7 @@ open-work inventory.
 
 | Identity | State | Scope detail |
 |---|---|---|
-| `P11-FEAT-GATEWAY-CORE` | Plan 11.1 — approved and frozen at `e9b077b`; implementation not started | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route) |
+| `P11-FEAT-GATEWAY-CORE` | Plan 11.1 — closed; merged to `main` as PR #85 (`6ae6997`, tip `6c39599`) | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route) |
 | `P11-FEAT-GATEWAY-TOOLS` | Ratified, unscheduled; carries `P11-FU-2` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs) |
 | `P11-FEAT-GATEWAY-COST-OBS` | Ratified, unscheduled | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs) |
 | `P11-FEAT-ZED-RESUME` | Ratified, unscheduled; carries `P11-FU-1` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume) |
@@ -295,6 +295,39 @@ fix or exclusion is claimed.
 **Status:** Tracked, not yet scheduled; root cause is not established. The feasibility findings
 live in the roadmap entry, and no plan number was allocated. Deliberately not picked up after the
 feasibility pass.
+
+### P11-FU-6: Gateway `test_server` Full-Suite Port/Teardown Flake
+
+**Raised:** 2026-07-26 during Plan 11.1 Task 7 final sign-off (PR #85 / `P11-FEAT-GATEWAY-CORE`).
+
+**Origin:** Intermittent failure of
+`tests/unit/optimus_gateway/test_server.py::test_tools_routes_remain_not_found` observed once in
+five consecutive full-suite runs (`uv run --frozen pytest -q` and the same suite under `--cov`).
+The same test passed every isolation run (single node and the full 24-test `test_server.py` file).
+Not connected to Plan 11.1 CORE-route feature correctness — focused and live CORE evidence stayed
+green throughout review.
+
+**Suspected cause:** Shared `_start_server()` / `_stop_server()` helpers spin a real
+`ThreadingHTTPServer` on an OS-assigned loopback port (`socket.bind(("127.0.0.1", 0))`) per test
+(~20 siblings in the file). Likely a Windows-specific port-reuse or thread-teardown race
+(`server.shutdown()` / `thread.join(timeout=5)` racing the next test's bind), not an assertion
+defect in the failing test.
+
+**Related prior art:** Same Windows test-infra flake class as `P11-FU-5` (WinError 6/50) and the
+`agent/cursor/windows-subprocess-handle-flake-backlog` branch. Before scoping a numbered plan,
+check whether this shares that root cause; do a feasibility pass before any scoped plan, not
+before.
+
+**Designated slice:** Future Windows / gateway unit-harness investigation; no plan number is
+allocated (lazy numbering — assign only if/when picked up for scoping).
+
+**Acceptance criteria:** Reproduce or disposition under full-suite load on Windows; determine
+whether this is the same root cause as `P11-FU-5` or a distinct bind/teardown race; harden
+`_start_server`/`_stop_server` (or equivalent) only after a reviewed feasibility pass; preserve
+the CORE-route unit coverage that already passes in isolation.
+
+**Status:** Tracked, not yet scheduled; no implementation plan exists. Feasibility pass required
+before promotion.
 
 ## P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)
 
