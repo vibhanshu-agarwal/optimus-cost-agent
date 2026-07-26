@@ -337,3 +337,44 @@ def test_gateway_observability_exporter_reaches_served_route():
         assert "gateway_usage" not in response
     finally:
         _stop_server(server, thread)
+
+
+@pytest.mark.parametrize(
+    "path",
+    ("/v1/responses", "/v1/chat/completions", "/v1/observability/traces"),
+)
+def test_all_core_routes_reject_missing_and_wrong_bearer(path: str):
+    bodies = {
+        "/v1/responses": {"model": "claude-haiku", "input": "hello"},
+        "/v1/chat/completions": {
+            "model": "claude-haiku",
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+        "/v1/observability/traces": {"events": []},
+    }
+    server, thread, host, port = _start_server()
+    try:
+        missing_status, missing_body = _post_json(
+            host,
+            port,
+            path,
+            body=json.dumps(bodies[path]),
+            headers={"Content-Type": "application/json"},
+        )
+        wrong_status, wrong_body = _post_json(
+            host,
+            port,
+            path,
+            body=json.dumps(bodies[path]),
+            headers={
+                "Authorization": "Bearer wrong-secret",
+                "Content-Type": "application/json",
+            },
+        )
+        assert missing_status == 401, path
+        assert wrong_status == 401, path
+        assert missing_body == {"error": "unauthorized"}
+        assert wrong_body == {"error": "unauthorized"}
+        assert "or-test" not in str(missing_body) + str(wrong_body)
+    finally:
+        _stop_server(server, thread)

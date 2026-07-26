@@ -5,6 +5,7 @@ from optimus_gateway.model_mapping import is_plausible_passthrough, resolve_mode
 from optimus_gateway.models import (
     GatewayServiceConfig,
     ModelRequestValidationError,
+    authorize_bearer,
     validate_chat_completions_envelope,
     validate_responses_envelope,
 )
@@ -160,3 +161,30 @@ def test_validate_chat_completions_envelope_rejects_missing_or_empty_messages():
         validate_chat_completions_envelope({"model": "claude-haiku"})
     with pytest.raises(ModelRequestValidationError, match="messages"):
         validate_chat_completions_envelope({"model": "claude-haiku", "messages": []})
+
+
+@pytest.mark.parametrize(
+    ("header", "secret", "expected"),
+    (
+        (None, "secret", False),
+        ("", "secret", False),
+        ("Basic secret", "secret", False),
+        ("Bearer wrong", "secret", False),
+        ("Bearer secret", "secret", True),
+        ("Bearer  secret  ", "secret", True),
+    ),
+)
+def test_authorize_bearer_missing_and_wrong_token(header: str | None, secret: str, expected: bool):
+    assert authorize_bearer(authorization_header=header, shared_secret=secret) is expected
+
+
+def test_authorize_bearer_uses_constant_time_compare(monkeypatch):
+    calls: list[tuple[str, str]] = []
+
+    def tracking_compare(left: str, right: str) -> bool:
+        calls.append((left, right))
+        return left == right
+
+    monkeypatch.setattr("optimus_gateway.models.secrets.compare_digest", tracking_compare)
+    assert authorize_bearer(authorization_header="Bearer token-a", shared_secret="token-b") is False
+    assert calls == [("token-a", "token-b")]

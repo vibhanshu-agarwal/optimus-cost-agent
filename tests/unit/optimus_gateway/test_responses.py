@@ -375,3 +375,67 @@ def test_run_model_completion_fails_closed_when_usage_envelope_is_incomplete(mon
     assert "error" in body
     assert "gateway_usage" not in body
     assert client.calls  # upstream already ran; fail closed before emitting envelope
+
+
+def test_core_does_not_reject_budget_org_or_plan_mode_metadata():
+    """CORE authenticates and preserves metadata; it does not enforce TOOLS/budget policy."""
+    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 2, 1))
+    status, body = handle_responses_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={
+            "model": "claude-haiku",
+            "input": "hello",
+            "metadata": {
+                "run_id": "run-1",
+                "session_id": "session-1",
+                "execution_mode": "plan",
+                "org_id": "org-future",
+                "project_id": "proj-future",
+                "budget_usd": "0.01",
+                "model_permission": "denied",
+            },
+        },
+        config=_openrouter_config(),
+        upstream_client=client,
+    )
+    assert status == 200
+    assert body["output_text"] == "hi"
+    assert client.calls
+    assert "or-test" not in str(body)
+
+
+def test_permanent_validation_and_pricing_failures_do_not_call_upstream():
+    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1))
+    mixed_status, _ = handle_responses_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={
+            "model": "claude-haiku",
+            "input": "hello",
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+        config=_anthropic_config(),
+        upstream_client=client,
+    )
+    unpriced_status, _ = handle_responses_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={"model": "gpt-4o", "input": "hello"},
+        config=_openai_config(),
+        upstream_client=client,
+    )
+    assert mixed_status == 400
+    assert unpriced_status == 500
+    assert client.calls == []
+
+
+def test_error_bodies_never_echo_provider_api_key():
+    config = _openrouter_config()
+    assert config.provider_api_key == "or-test"
+    status, body = handle_responses_request(
+        authorization_header="Bearer wrong",
+        request_body={"model": "claude-haiku", "input": "hello"},
+        config=config,
+        upstream_client=FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1)),
+    )
+    assert status == 401
+    assert "or-test" not in str(body)
+    assert "provider_api_key" not in str(body)

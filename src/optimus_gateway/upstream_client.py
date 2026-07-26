@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import json
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+T = TypeVar("T")
+
+_MAX_UPSTREAM_ATTEMPTS = 4
+_TRANSIENT_HTTP_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+_DEFAULT_BACKOFF_SECONDS = (0.05, 0.1, 0.2)
 
 
 @dataclass(frozen=True)
@@ -20,11 +28,62 @@ class UpstreamClient(Protocol):
         """Call an upstream LLM API and return normalized text + usage."""
 
 
+class RetryableUpstreamError(Exception):
+    """Transient gateway→provider fault eligible for local retry before RuntimeError."""
+
+
+def is_retryable_upstream_fault(exc: BaseException) -> bool:
+    """Classify gateway→provider faults while HTTP/network shape is still visible."""
+    if isinstance(exc, RetryableUpstreamError):
+        return True
+    if isinstance(exc, TimeoutError):
+        return True
+    if isinstance(exc, HTTPError):
+        return exc.code in _TRANSIENT_HTTP_STATUS_CODES
+    if isinstance(exc, URLError):
+        return True
+    return False
+
+
+def call_with_upstream_retry(
+    operation: Callable[[], T],
+    *,
+    max_attempts: int = _MAX_UPSTREAM_ATTEMPTS,
+    sleep: Callable[[float], None] | None = None,
+    on_retry: Callable[[int], None] | None = None,
+    backoff_seconds: tuple[float, ...] = _DEFAULT_BACKOFF_SECONDS,
+) -> T:
+    """Retry only transient upstream faults; reraise the final failure as RuntimeError."""
+    sleeper = sleep or time.sleep
+    attempt = 1
+    while True:
+        try:
+            return operation()
+        except RetryableUpstreamError as exc:
+            if attempt >= max_attempts:
+                raise RuntimeError(str(exc)) from exc
+            if on_retry is not None:
+                on_retry(attempt)
+            delay = backoff_seconds[min(attempt - 1, len(backoff_seconds) - 1)]
+            sleeper(delay)
+            attempt += 1
+
+
 class UrllibOpenAICompatibleClient:
-    def __init__(self, *, api_key: str, base_url: str, timeout_seconds: float = 60.0) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        timeout_seconds: float = 60.0,
+        sleep: Callable[[float], None] | None = None,
+        on_retry: Callable[[int], None] | None = None,
+    ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
+        self._sleep = sleep
+        self._on_retry = on_retry
 
     def create_message(self, *, model: str, input_text: str) -> ProviderMessageResult:
         payload = {
@@ -40,22 +99,27 @@ class UrllibOpenAICompatibleClient:
             },
             method="POST",
         )
-        try:
-            with urlopen(request, timeout=self._timeout_seconds) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"upstream request failed ({exc.code}): {detail}") from exc
-        except URLError as exc:
-            raise RuntimeError(f"upstream request failed: {exc.reason}") from exc
-
+        body = call_with_upstream_retry(
+            lambda: _urlopen_json(request, timeout_seconds=self._timeout_seconds, label="upstream"),
+            sleep=self._sleep,
+            on_retry=self._on_retry,
+        )
         return parse_openai_chat_completion(body)
 
 
 class UrllibAnthropicClient:
-    def __init__(self, *, api_key: str, timeout_seconds: float = 60.0) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        timeout_seconds: float = 60.0,
+        sleep: Callable[[float], None] | None = None,
+        on_retry: Callable[[int], None] | None = None,
+    ) -> None:
         self._api_key = api_key
         self._timeout_seconds = timeout_seconds
+        self._sleep = sleep
+        self._on_retry = on_retry
 
     def create_message(self, *, model: str, input_text: str) -> ProviderMessageResult:
         payload = {
@@ -73,16 +137,32 @@ class UrllibAnthropicClient:
             },
             method="POST",
         )
-        try:
-            with urlopen(request, timeout=self._timeout_seconds) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"anthropic request failed ({exc.code}): {detail}") from exc
-        except URLError as exc:
-            raise RuntimeError(f"anthropic request failed: {exc.reason}") from exc
-
+        body = call_with_upstream_retry(
+            lambda: _urlopen_json(request, timeout_seconds=self._timeout_seconds, label="anthropic"),
+            sleep=self._sleep,
+            on_retry=self._on_retry,
+        )
         return parse_anthropic_message(body)
+
+
+def _urlopen_json(request: Request, *, timeout_seconds: float, label: str) -> dict[str, Any]:
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        message = f"{label} request failed ({exc.code}): {detail}"
+        if is_retryable_upstream_fault(exc):
+            raise RetryableUpstreamError(message) from exc
+        raise RuntimeError(message) from exc
+    except URLError as exc:
+        message = f"{label} request failed: {exc.reason}"
+        if is_retryable_upstream_fault(exc):
+            raise RetryableUpstreamError(message) from exc
+        raise RuntimeError(message) from exc
+    except TimeoutError as exc:
+        message = f"{label} request failed: timed out"
+        raise RetryableUpstreamError(message) from exc
 
 
 def parse_openai_chat_completion(body: dict[str, Any]) -> ProviderMessageResult:
