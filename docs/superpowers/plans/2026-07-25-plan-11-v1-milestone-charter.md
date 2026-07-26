@@ -2,9 +2,10 @@
 
 ## Status and baseline
 
-**Status:** Charter draft for review; no implementation sub-plan is authorized by this document.
+**Status:** Charter amendment draft for review; no implementation sub-plan is authorized by this document.
 
-**Baseline:** `origin/main` at `b5fdc655` (merged Plan 11 roadmap expansion). The [consolidated open-work
+**Baseline:** `origin/main` at `bd216388c0da995e04df254ec198a00e4aab23d4` (current main after the
+merged Plan 11.1 CORE implementation and the `P11-FU-6` flake entry). The [consolidated open-work
 pool](2026-07-23-consolidated-deferred-followups-backlog.md) is the single source of truth for all
 open work. This charter defines feature scope and sequencing; detailed sub-plan specifications land
 in separate reviewed PRs.
@@ -31,7 +32,10 @@ The Gateway capability partition remains the first primary slice:
   both model wire shapes, retries, normalized response-envelope validation, and the
   `/v1/observability/traces` route;
 - `P11-FEAT-GATEWAY-TOOLS` owns web search/extract adapters, provenance/domain revalidation, and
-  the typed-tool envelope; package/advisory endpoints remain owned by `P11-FU-2` until pickup; and
+  the typed-tool envelope; the package/advisory capability is carried by `P11-FU-2` within this slice;
+- `P11-FEAT-GATEWAY-MCP` owns MCP tool-call brokering through the Gateway, including transport,
+  trust-registry integration with the existing `optimus/mcp/runtime.py` guardrail layer, and the
+  typed request/response contract; and
 - `P11-FEAT-GATEWAY-COST-OBS` owns provider-native usage normalization, ledger reconciliation,
   LangSmith trace export, and observability-field compatibility.
 
@@ -47,8 +51,9 @@ parked `P9.85-FU-3` budget-enforcement question is not pulled into this charter'
 | Feature ID | Scope | Intended order | v1.0 relationship |
 |---|---|---|---|
 | `P11-FEAT-GATEWAY-CORE` | Gateway core and `/v1/observability/traces` route | Plan 11.1 | First active feature slice; required. |
-| `P11-FEAT-GATEWAY-TOOLS` | Gateway web/evidence tool capability partition | Assigned at pickup | Ratified feature identity; plan number is not reserved. |
+| `P11-FEAT-GATEWAY-TOOLS` | Gateway web/evidence tool capability partition | Plan 11.2 | Ratified feature identity; implementation remains gated on review of the drafted spec and plan. |
 | `P11-FEAT-GATEWAY-COST-OBS` | Gateway normalized cost and observability capability partition | Assigned at pickup | Ratified feature identity; plan number is not reserved. |
+| `P11-FEAT-GATEWAY-MCP` | Gateway MCP tool-call brokering, transport, trust-registry integration, and typed request/response contract | Assigned at pickup | Ratified but gated; blocked on `P11-FU-3`, and no implementation scope may be frozen before the repaired LLD §0.D contract exists. |
 | `P11-FEAT-ZED-RESUME` | Zed integration fixes: `P9.8-FU-5` panic plus ACP session resume | 2nd | Required Zed proof slice; includes owned `P11-FU-1`. |
 | `P11-FEAT-REGISTRY` | ACP registry requirements, registration, and v1.0 cut | 3rd | Required release slice; outward publication requires separate operator approval. |
 | `P11-FEAT-IDE` | IDE-specific testing if registry registration does not surface or satisfy multi-IDE expectations | Conditional | Conditional; not an unconditional v1.0 gate. |
@@ -88,12 +93,26 @@ remain deferred to `P9.85-FU-3 (parked; operator decision pending)`.
 ## P11-FEAT-GATEWAY-TOOLS and P11-FEAT-GATEWAY-COST-OBS
 
 `P11-FEAT-GATEWAY-TOOLS` is the ratified owner for web search/extract adapters, domain/provenance
-revalidation, typed-tool envelopes, and the unscheduled `P11-FU-2` package/advisory capability. Its
-Plan 11.x number is assigned at pickup.
+revalidation, typed-tool envelopes, and the `P11-FU-2` package/advisory capability. It is picked up
+as Plan 11.2 for the drafted design and implementation plan; implementation remains unauthorized
+until the frozen artifacts receive their review approvals.
 
 `P11-FEAT-GATEWAY-COST-OBS` is the ratified owner for provider-native usage normalization, ledger
 reconciliation, LangSmith export, amortized observability cost, and Plan 7 telemetry compatibility.
 Its Plan 11.x number is assigned at pickup. Neither identity expands Plan 11.1's implementation scope.
+
+## P11-FEAT-GATEWAY-MCP - Gateway MCP tool-call brokering
+
+`P11-FEAT-GATEWAY-MCP` is the ratified but gated owner for MCP tool-call brokering through the
+Gateway. Its scope will cover the Gateway transport, integration with the existing local trust and
+pre-tool guardrail layer in `src/optimus/mcp/runtime.py`, and the typed Gateway request/response
+contract once that contract is authoritative.
+
+This feature is blocked on `P11-FU-3`, which owns repair or replacement of the clipped LLD §0.B
+component-flow source and the missing MCP endpoint shape in §0.D. No MCP implementation scope,
+route, payload, or response envelope may be inferred or frozen before that source repair and its
+fresh digest-pinned requirement extraction complete. The Plan 11.x number is assigned at pickup
+under the same next-unused-single-decimal convention used for TOOLS, COST-OBS, and ZED-RESUME.
 
 ## P11-FEAT-ZED-RESUME - Zed integration fixes and session resume
 
@@ -172,8 +191,9 @@ The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-bac
 single source of truth for the carried `P9.8-FU-5` and `P9.87-FU-1` items, `P11-FU-4` evidence-
 freshness work, and follow-ups discovered during Plan 11 feature work. `P11-FU-1` is owned by
 `P11-FEAT-ZED-RESUME`, not parked. `P11-FU-2` is owned by
-`P11-FEAT-GATEWAY-TOOLS` as an unimplemented, unscheduled package/advisory capability, and `P11-FU-3`
+`P11-FEAT-GATEWAY-TOOLS` as an unimplemented package/advisory capability, and `P11-FU-3`
 is owned by `LLD source repair` for the clipped §0.B and missing MCP endpoint contract. The
+source-repair item blocks `P11-FEAT-GATEWAY-MCP` and prevents MCP implementation scoping. The
 `P11-FEAT-ZED-RESUME` Zed live-evidence work should
 coordinate with the re-pin, but the freshness item still needs explicit fresh-evidence closure or
 a reviewed disposition. The budget-enforcement item `P9.85-FU-3` remains parked and undecided
@@ -204,6 +224,9 @@ The v1.0 Definition of Done is therefore:
 - Plan 12's context-window optimization and intelligent selection remain post-v1.0 v1.x work.
 - `P9.85-FU-3` remains outside the initial Plan 11 scope pending the Gateway budget authority
   decision.
+- MCP Gateway brokering remains outside the CORE and TOOLS scopes. It is carried by the ratified
+  `P11-FEAT-GATEWAY-MCP` identity but is gated on `P11-FU-3`; no MCP endpoint or transport contract
+  is assumed from the clipped or missing LLD source.
 - The **Windows Subprocess Handle-Duplication Flake, WinError 6/50** remains explicitly excluded
   from the initial Plan 11 feature scope and v1.0 gate. The `P11-FU-5` entry in the consolidated open-work
   pool owns its future Windows investigation state; the no-reproduction result, lack of a
