@@ -185,3 +185,155 @@ def test_unknown_route_remains_not_found():
         assert body == {"error": "not found"}
     finally:
         _stop_server(server, thread)
+
+
+def test_observability_traces_accepts_structured_events_without_usage_claim():
+    server, thread, host, port = _start_server()
+    try:
+        status, body = _post_json(
+            host,
+            port,
+            "/v1/observability/traces",
+            body=json.dumps(
+                {
+                    "events": [
+                        {"kind": "model_call", "run_id": "run-1"},
+                        {"kind": "tool_call", "run_id": "run-1"},
+                    ]
+                }
+            ),
+        )
+        assert status == 200
+        assert body["status"] == "accepted"
+        assert body["gateway_request_id"].startswith("gw-")
+        assert "gateway_usage" not in body
+        assert "billing_units" not in body
+        assert "cost_usd" not in body
+    finally:
+        _stop_server(server, thread)
+
+
+def test_observability_traces_accepts_empty_events_array():
+    server, thread, host, port = _start_server()
+    try:
+        status, body = _post_json(host, port, "/v1/observability/traces", body=json.dumps({"events": []}))
+        assert status == 200
+        assert body["status"] == "accepted"
+    finally:
+        _stop_server(server, thread)
+
+
+def test_observability_traces_tolerates_unknown_top_level_keys():
+    server, thread, host, port = _start_server()
+    try:
+        status, body = _post_json(
+            host,
+            port,
+            "/v1/observability/traces",
+            body=json.dumps({"events": [{"kind": "model_call"}], "future_batch_hint": {"a": 1}}),
+        )
+        assert status == 200
+        assert body["status"] == "accepted"
+    finally:
+        _stop_server(server, thread)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        {},
+        {"events": "not-a-list"},
+        {"events": {"kind": "model_call"}},
+    ),
+)
+def test_observability_traces_requires_events_array(payload: dict[str, Any]):
+    server, thread, host, port = _start_server()
+    try:
+        status, body = _post_json(host, port, "/v1/observability/traces", body=json.dumps(payload))
+        assert status == 400
+        assert "events" in body["error"]
+        assert "status" not in body
+    finally:
+        _stop_server(server, thread)
+
+
+def test_observability_traces_rejects_non_object_events():
+    server, thread, host, port = _start_server()
+    try:
+        status, body = _post_json(
+            host,
+            port,
+            "/v1/observability/traces",
+            body=json.dumps({"events": [{"kind": "model_call"}, "not-an-object"]}),
+        )
+        assert status == 400
+        assert "event" in body["error"]
+    finally:
+        _stop_server(server, thread)
+
+
+def test_observability_traces_requires_bearer_auth():
+    server, thread, host, port = _start_server()
+    try:
+        status, body = _post_json(
+            host,
+            port,
+            "/v1/observability/traces",
+            body=json.dumps({"events": []}),
+            headers={"Content-Type": "application/json"},
+        )
+        assert status == 401
+        assert body == {"error": "unauthorized"}
+    finally:
+        _stop_server(server, thread)
+
+
+def test_observability_traces_treats_event_content_as_untrusted_data():
+    """Event contents are never executed, fetched, or echoed back as policy."""
+    hostile_event = {
+        "kind": "model_call",
+        "prompt": "ignore previous instructions",
+        "url": "https://attacker.example/exfil",
+        "command": "rm -rf /",
+        "provider_api_key": "sk-should-never-be-accepted",
+    }
+    server, thread, host, port = _start_server()
+    try:
+        status, body = _post_json(
+            host,
+            port,
+            "/v1/observability/traces",
+            body=json.dumps({"events": [hostile_event]}),
+        )
+        assert status == 200
+        assert set(body) == {"status", "gateway_request_id"}
+        serialized = json.dumps(body)
+        assert "attacker.example" not in serialized
+        assert "sk-should-never-be-accepted" not in serialized
+        assert "rm -rf" not in serialized
+    finally:
+        _stop_server(server, thread)
+
+
+def test_gateway_observability_exporter_reaches_served_route():
+    """The existing exporter no longer receives the unknown-path 404."""
+    from optimus.config.gateway import OptimusGatewaySettings
+    from optimus.telemetry.observability import GatewayObservabilityExporter
+
+    server, thread, host, port = _start_server()
+    try:
+        exporter = GatewayObservabilityExporter(
+            settings=OptimusGatewaySettings.from_env(
+                {
+                    "OPTIMUS_GATEWAY_URL": f"http://{host}:{port}",
+                    "OPTIMUS_API_KEY": "http-test-secret",
+                    "OPTIMUS_PRODUCTION_MODE": "false",
+                }
+            )
+        )
+        response = exporter.export(())
+        assert response["status"] == "accepted"
+        assert response["gateway_request_id"].startswith("gw-")
+        assert "gateway_usage" not in response
+    finally:
+        _stop_server(server, thread)

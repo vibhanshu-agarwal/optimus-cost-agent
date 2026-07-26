@@ -7,6 +7,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -14,6 +15,8 @@ import pytest
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.client import GatewayClient
 from optimus.gateway.models import build_chat_completions_payload, parse_gateway_usage
+from optimus.telemetry.events import TelemetryEvent
+from optimus.telemetry.observability import GatewayObservabilityExporter
 from tests.integration.optimus_gateway.gateway_env import (
     build_signed_child_manifest,
     merge_gateway_subprocess_env,
@@ -143,3 +146,62 @@ def test_live_local_gateway_chat_completions_returns_real_usage(live_local_gatew
     assert usage.cost_usd > Decimal("0")
     assert usage.billing_units > 0
     assert usage.gateway_request_id
+
+
+def test_live_local_gateway_observability_traces_accepts_real_exporter_batch(live_local_gateway_url):
+    gateway_url, shared_secret, _provider = live_local_gateway_url
+    exporter = GatewayObservabilityExporter(
+        settings=OptimusGatewaySettings.from_env(
+            {
+                "OPTIMUS_GATEWAY_URL": gateway_url,
+                "OPTIMUS_API_KEY": shared_secret,
+                "OPTIMUS_PRODUCTION_MODE": "false",
+            }
+        )
+    )
+    event = TelemetryEvent.model_call(
+        run_id="run-live-obs-1",
+        session_id="session-live-obs-1",
+        request_id="req-live-obs-1",
+        occurred_at=datetime(2026, 7, 26, tzinfo=UTC),
+        model="claude-haiku",
+        model_version="2026-07-01",
+        provider="openrouter",
+        cache_hit=False,
+        billing_units=10,
+        cost_usd=Decimal("0.001"),
+        latency_ms=20,
+        prompt="live observability smoke",
+        response="ok",
+        input_tokens=3,
+        output_tokens=2,
+    )
+
+    response = exporter.export((event,))
+
+    assert response["status"] == "accepted"
+    assert response["gateway_request_id"]
+    assert "gateway_usage" not in response
+    assert "billing_units" not in response
+    assert "cost_usd" not in response
+
+
+def test_live_local_gateway_observability_traces_fails_closed_on_malformed_batch(live_local_gateway_url):
+    gateway_url, shared_secret, _provider = live_local_gateway_url
+    request = urllib.request.Request(
+        f"{gateway_url}/v1/observability/traces",
+        data=json.dumps({"events": ["not-an-object"]}).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {shared_secret}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        urllib.request.urlopen(request, timeout=30)
+
+    assert excinfo.value.code == 400
+    body = json.loads(excinfo.value.read().decode("utf-8"))
+    assert "event" in body["error"]
+    assert "status" not in body
