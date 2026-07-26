@@ -84,7 +84,35 @@ def run_model_completion(
         "model_version": provider_model,
         "price_snapshot_id": price_snapshot_id,
     }
+    try:
+        assert_gateway_usage_contract(gateway_usage)
+    except ValueError as exc:
+        return 500, {"error": sanitize_error_message(str(exc))}
     return 200, build_success(provider_result=provider_result, gateway_usage=gateway_usage)
+
+
+def assert_gateway_usage_contract(gateway_usage: dict[str, Any]) -> None:
+    """Fail closed before emitting a model success envelope with incomplete usage."""
+    required = ("gateway_request_id", "provider", "cache_hit", "billing_units", "cost_usd")
+    for field in required:
+        if field not in gateway_usage:
+            raise ValueError(f"gateway_usage missing required field: {field}")
+    request_id = gateway_usage["gateway_request_id"]
+    if not isinstance(request_id, str) or not request_id.strip():
+        raise ValueError("gateway_request_id must be a non-empty string")
+    if not isinstance(gateway_usage["provider"], str) or not gateway_usage["provider"].strip():
+        raise ValueError("provider must be a non-empty string")
+    if gateway_usage["cost_usd"] is None:
+        raise ValueError("cost_usd must be non-null")
+    try:
+        cost = Decimal(str(gateway_usage["cost_usd"]))
+    except Exception as exc:
+        raise ValueError("cost_usd must be decimal-parseable") from exc
+    if cost < Decimal("0"):
+        raise ValueError("cost_usd must be non-negative")
+    billing = gateway_usage["billing_units"]
+    if not isinstance(billing, int) or isinstance(billing, bool) or billing < 0:
+        raise ValueError("billing_units must be a non-negative integer")
 
 
 def _build_responses_success(

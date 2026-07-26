@@ -278,3 +278,54 @@ def test_handle_chat_completions_request_uses_shared_bearer_auth():
     )
     assert status == 401
     assert "error" in body
+
+
+def test_successful_model_responses_carry_required_usage_contract_fields():
+    responses_client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 3, 2))
+    status, body = handle_responses_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={"model": "claude-haiku", "input": "hello"},
+        config=_openrouter_config(),
+        upstream_client=responses_client,
+    )
+    assert status == 200
+    usage = body["gateway_usage"]
+    assert usage["gateway_request_id"]
+    assert usage["provider"] == "openrouter"
+    assert usage["cache_hit"] is False
+    assert usage["billing_units"] == 5
+    assert usage["cost_usd"] is not None
+    assert Decimal(usage["cost_usd"]) >= Decimal("0")
+
+    chat_client = FakeUpstreamClient(FakeProviderResult("msg-2", "hi", 4, 1))
+    status, body = handle_chat_completions_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={"model": "claude-haiku", "messages": [{"role": "user", "content": "hello"}]},
+        config=_openrouter_config(),
+        upstream_client=chat_client,
+    )
+    assert status == 200
+    usage = body["gateway_usage"]
+    assert usage["gateway_request_id"]
+    assert usage["provider"] == "openrouter"
+    assert usage["billing_units"] == 5
+    assert usage["cost_usd"] is not None
+
+
+def test_run_model_completion_fails_closed_when_usage_envelope_is_incomplete(monkeypatch):
+    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1))
+
+    def _broken_format(_cost: Decimal) -> None:
+        return None  # type: ignore[return-value]
+
+    monkeypatch.setattr(responses, "format_cost_usd", _broken_format)
+    status, body = handle_responses_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={"model": "claude-haiku", "input": "hello"},
+        config=_openrouter_config(),
+        upstream_client=client,
+    )
+    assert status == 500
+    assert "error" in body
+    assert "gateway_usage" not in body
+    assert client.calls  # upstream already ran; fail closed before emitting envelope
