@@ -5,7 +5,9 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from optimus_gateway.chat_completions import handle_chat_completions_request
 from optimus_gateway.models import GatewayServiceConfig
+from optimus_gateway.observability import handle_observability_traces_request
 from optimus_gateway.providers import build_upstream_client
 from optimus_gateway.responses import handle_responses_request
 from optimus_gateway.upstream_client import UpstreamClient
@@ -19,7 +21,13 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
         return
 
     def do_POST(self) -> None:
-        if self.path != "/v1/responses":
+        if self.path == "/v1/responses":
+            handler = handle_responses_request
+        elif self.path == "/v1/chat/completions":
+            handler = handle_chat_completions_request
+        elif self.path == "/v1/observability/traces":
+            handler = handle_observability_traces_request
+        else:
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
 
@@ -34,7 +42,7 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": "request body must be a JSON object"})
             return
 
-        status, body = handle_responses_request(
+        status, body = handler(
             authorization_header=self.headers.get("Authorization"),
             request_body=request_body,
             config=self.config,
