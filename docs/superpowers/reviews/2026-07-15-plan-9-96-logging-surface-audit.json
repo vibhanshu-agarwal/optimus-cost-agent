@@ -773,7 +773,7 @@
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.chat_completions:handle_chat_completions_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
-      "test_node": "tests/unit/optimus_gateway/test_responses.py::test_handle_chat_completions_request_rejects_input_field",
+      "test_node": "tests/unit/optimus_gateway/test_responses.py::test_handle_chat_completions_request_sanitizes_validation_errors",
       "evidence_tier": "unit"
     },
     {
@@ -789,7 +789,7 @@
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.responses:handle_responses_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
-      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "test_node": "tests/unit/optimus_gateway/test_responses.py::test_handle_responses_request_sanitizes_validation_errors",
       "evidence_tier": "unit"
     },
     {
@@ -797,7 +797,7 @@
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.responses:handle_responses_request:http_error_response before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
-      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "test_node": "tests/unit/optimus_gateway/test_responses.py::test_handle_responses_request_sanitizes_validation_errors",
       "evidence_tier": "unit"
     },
     {

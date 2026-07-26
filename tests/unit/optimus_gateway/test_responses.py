@@ -210,6 +210,29 @@ def test_handle_responses_request_rejects_messages_field():
     assert client.calls == []
 
 
+def test_handle_responses_request_sanitizes_validation_errors(monkeypatch):
+    """ModelRequestValidationError must go through sanitize_error_message, not bare str(exc)."""
+    monkeypatch.setattr(
+        responses,
+        "sanitize_for_persistence",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("sanitizer failure")),
+    )
+    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1))
+    status, body = handle_responses_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={
+            "model": "claude-haiku",
+            "input": "hello",
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+        config=_anthropic_config(),
+        upstream_client=client,
+    )
+    assert status == 400
+    assert body == {"error": "internal gateway error"}
+    assert client.calls == []
+
+
 def test_handle_responses_request_tolerates_unknown_top_level_and_metadata_keys():
     client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1))
     status, body = handle_responses_request(
@@ -266,6 +289,29 @@ def test_handle_chat_completions_request_rejects_input_field():
     )
     assert status == 400
     assert "input" in str(body)
+    assert client.calls == []
+
+
+def test_handle_chat_completions_request_sanitizes_validation_errors(monkeypatch):
+    """ModelRequestValidationError must go through sanitize_error_message, not bare str(exc)."""
+    monkeypatch.setattr(
+        responses,
+        "sanitize_for_persistence",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("sanitizer failure")),
+    )
+    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1))
+    status, body = handle_chat_completions_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={
+            "model": "claude-haiku",
+            "messages": [{"role": "user", "content": "hello"}],
+            "input": "nope",
+        },
+        config=_openrouter_config(),
+        upstream_client=client,
+    )
+    assert status == 400
+    assert body == {"error": "internal gateway error"}
     assert client.calls == []
 
 

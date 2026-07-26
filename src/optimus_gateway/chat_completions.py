@@ -10,7 +10,7 @@ from optimus_gateway.models import (
     flatten_messages_to_input_text,
     validate_chat_completions_envelope,
 )
-from optimus_gateway.responses import run_model_completion
+from optimus_gateway.responses import run_model_completion, sanitize_error_message
 from optimus_gateway.upstream_client import ProviderMessageResult, UpstreamClient
 
 
@@ -28,7 +28,7 @@ def handle_chat_completions_request(
         model, messages, _metadata = validate_chat_completions_envelope(request_body)
         input_text = flatten_messages_to_input_text(messages)
     except ModelRequestValidationError as exc:
-        return 400, {"error": str(exc)}
+        return 400, {"error": sanitize_error_message(str(exc))}
 
     return run_model_completion(
         model=model,

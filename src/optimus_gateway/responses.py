@@ -29,7 +29,7 @@ def handle_responses_request(
     try:
         model, input_text, _metadata = validate_responses_envelope(request_body)
     except ModelRequestValidationError as exc:
-        return 400, {"error": str(exc)}
+        return 400, {"error": sanitize_error_message(str(exc))}
 
     return run_model_completion(
         model=model,
