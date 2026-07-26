@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import secrets
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Any, Mapping
 
 from optimus_security.launch_manifest import resolve_effective_base_url
 
@@ -77,6 +77,10 @@ class GatewayServiceConfig:
         )
 
 
+class ModelRequestValidationError(ValueError):
+    """Strict known-field validation failure for model route envelopes."""
+
+
 def authorize_bearer(*, authorization_header: str | None, shared_secret: str) -> bool:
     if authorization_header is None:
         return False
@@ -85,6 +89,67 @@ def authorize_bearer(*, authorization_header: str | None, shared_secret: str) ->
         return False
     token = authorization_header[len(prefix) :].strip()
     return secrets.compare_digest(token, shared_secret)
+
+
+def validate_responses_envelope(
+    request_body: Mapping[str, Any],
+) -> tuple[str, str, dict[str, Any] | None]:
+    model, metadata = _validate_common_model_fields(request_body)
+    if "messages" in request_body:
+        raise ModelRequestValidationError("messages is not allowed on /v1/responses")
+    input_text = request_body.get("input")
+    if not isinstance(input_text, str) or not input_text.strip():
+        raise ModelRequestValidationError("input is required")
+    return model, input_text, metadata
+
+
+def validate_chat_completions_envelope(
+    request_body: Mapping[str, Any],
+) -> tuple[str, list[Any], dict[str, Any] | None]:
+    model, metadata = _validate_common_model_fields(request_body)
+    if "input" in request_body:
+        raise ModelRequestValidationError("input is not allowed on /v1/chat/completions")
+    messages = request_body.get("messages")
+    if not isinstance(messages, list) or not messages:
+        raise ModelRequestValidationError("messages is required")
+    return model, messages, metadata
+
+
+def flatten_messages_to_input_text(messages: list[Any]) -> str:
+    parts: list[str] = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if isinstance(content, str) and content.strip():
+            parts.append(content.strip())
+            continue
+        if isinstance(content, list):
+            for part in content:
+                if isinstance(part, str) and part.strip():
+                    parts.append(part.strip())
+                elif isinstance(part, dict):
+                    text = part.get("text")
+                    if isinstance(text, str) and text.strip():
+                        parts.append(text.strip())
+    flattened = "\n".join(parts).strip()
+    if not flattened:
+        raise ModelRequestValidationError("messages must contain text content")
+    return flattened
+
+
+def _validate_common_model_fields(
+    request_body: Mapping[str, Any],
+) -> tuple[str, dict[str, Any] | None]:
+    model = request_body.get("model")
+    if not isinstance(model, str) or not model.strip():
+        raise ModelRequestValidationError("model is required")
+    metadata = request_body.get("metadata")
+    if metadata is None:
+        return model.strip(), None
+    if not isinstance(metadata, dict):
+        raise ModelRequestValidationError("metadata must be a JSON object")
+    return model.strip(), metadata
 
 
 def _required_env(env: Mapping[str, str], name: str) -> str:

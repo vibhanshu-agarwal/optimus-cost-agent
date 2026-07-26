@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from optimus.gateway.models import parse_gateway_response
+from optimus.gateway.models import parse_gateway_response, parse_gateway_usage
 from optimus_gateway import responses
+from optimus_gateway.chat_completions import handle_chat_completions_request
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.responses import handle_responses_request
 
@@ -190,3 +191,90 @@ def test_handle_responses_request_rejects_unpriced_passthrough_before_upstream_c
     assert status == 500
     assert "no pricing snapshot" in str(body)
     assert client.calls == []
+
+
+def test_handle_responses_request_rejects_messages_field():
+    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1))
+    status, body = handle_responses_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={
+            "model": "claude-haiku",
+            "input": "hello",
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+        config=_anthropic_config(),
+        upstream_client=client,
+    )
+    assert status == 400
+    assert "messages" in str(body)
+    assert client.calls == []
+
+
+def test_handle_responses_request_tolerates_unknown_top_level_and_metadata_keys():
+    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1))
+    status, body = handle_responses_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={
+            "model": "claude-haiku",
+            "input": "hello",
+            "metadata": {"run_id": "r1", "org_id": "future"},
+            "stream": False,
+        },
+        config=_anthropic_config(),
+        upstream_client=client,
+    )
+    assert status == 200
+    assert body["output_text"] == "hi"
+    assert client.calls
+
+
+def test_handle_chat_completions_request_returns_openai_compatible_payload():
+    client = FakeUpstreamClient(FakeProviderResult("msg-chat-1", "assistant-hi", 4, 2))
+    status, body = handle_chat_completions_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={
+            "model": "claude-haiku",
+            "messages": [{"role": "user", "content": "hello"}],
+            "metadata": {"session_id": "s1", "extra": "ok"},
+            "temperature": 0.1,
+        },
+        config=_openrouter_config(),
+        upstream_client=client,
+    )
+
+    assert status == 200
+    assert body["object"] == "chat.completion"
+    assert body["choices"][0]["message"] == {"role": "assistant", "content": "assistant-hi"}
+    usage = parse_gateway_usage(body["gateway_usage"])
+    assert usage.provider == "openrouter"
+    assert usage.billing_units == 6
+    assert usage.cost_usd > Decimal("0")
+    assert client.calls == [{"model": "anthropic/claude-haiku-4.5", "input_text": "hello"}]
+
+
+def test_handle_chat_completions_request_rejects_input_field():
+    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1))
+    status, body = handle_chat_completions_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={
+            "model": "claude-haiku",
+            "messages": [{"role": "user", "content": "hello"}],
+            "input": "nope",
+        },
+        config=_openrouter_config(),
+        upstream_client=client,
+    )
+    assert status == 400
+    assert "input" in str(body)
+    assert client.calls == []
+
+
+def test_handle_chat_completions_request_uses_shared_bearer_auth():
+    status, body = handle_chat_completions_request(
+        authorization_header="Bearer wrong",
+        request_body={"model": "claude-haiku", "messages": [{"role": "user", "content": "hello"}]},
+        config=_openrouter_config(),
+        upstream_client=FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1)),
+    )
+    assert status == 401
+    assert "error" in body
