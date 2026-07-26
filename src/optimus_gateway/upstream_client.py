@@ -157,9 +157,7 @@ def _urlopen_json(request: Request, *, timeout_seconds: float, label: str) -> di
         raise RuntimeError(message) from exc
     except URLError as exc:
         message = f"{label} request failed: {exc.reason}"
-        if is_retryable_upstream_fault(exc):
-            raise RetryableUpstreamError(message) from exc
-        raise RuntimeError(message) from exc
+        raise RetryableUpstreamError(message) from exc
     except TimeoutError as exc:
         message = f"{label} request failed: timed out"
         raise RetryableUpstreamError(message) from exc

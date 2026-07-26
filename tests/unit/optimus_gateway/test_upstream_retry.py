@@ -6,6 +6,7 @@ from urllib.error import HTTPError, URLError
 import pytest
 
 from optimus_gateway.upstream_client import (
+    UrllibAnthropicClient,
     UrllibOpenAICompatibleClient,
     is_retryable_upstream_fault,
 )
@@ -156,3 +157,90 @@ def test_upstream_does_not_retry_malformed_success_body(monkeypatch):
 
     assert attempts == [1]
     assert retries == []
+
+
+def _anthropic_success_body() -> bytes:
+    return (
+        b'{"id":"msg-ok","content":[{"type":"text","text":"ok"}],'
+        b'"usage":{"input_tokens":2,"output_tokens":1}}'
+    )
+
+
+def test_anthropic_upstream_retries_transient_503_then_succeeds(monkeypatch):
+    attempts: list[int] = []
+    retries: list[int] = []
+    slept: list[float] = []
+
+    def fake_urlopen(request: object, timeout: float = 0):
+        attempts.append(len(attempts) + 1)
+        if len(attempts) < 3:
+            raise _http_error(503, b"temporary")
+        return _FakeResponse(_anthropic_success_body())
+
+    monkeypatch.setattr("optimus_gateway.upstream_client.urlopen", fake_urlopen)
+    client = UrllibAnthropicClient(
+        api_key="sk-ant-test",
+        sleep=slept.append,
+        on_retry=retries.append,
+    )
+
+    result = client.create_message(model="claude-haiku-4-5-20251001", input_text="hi")
+
+    assert result.output_text == "ok"
+    assert result.input_tokens == 2
+    assert result.output_tokens == 1
+    assert attempts == [1, 2, 3]
+    assert retries == [1, 2]
+    assert slept == [0.05, 0.1]
+
+
+def test_upstream_retries_raw_timeout_error_then_succeeds(monkeypatch):
+    """Exercise _urlopen_json's TimeoutError branch through the retry loop, not just the classifier."""
+    attempts: list[int] = []
+    retries: list[int] = []
+
+    def fake_urlopen(request: object, timeout: float = 0):
+        attempts.append(len(attempts) + 1)
+        if len(attempts) < 2:
+            raise TimeoutError("timed out")
+        return _FakeResponse(_success_body())
+
+    monkeypatch.setattr("optimus_gateway.upstream_client.urlopen", fake_urlopen)
+    client = UrllibOpenAICompatibleClient(
+        api_key="or-test",
+        base_url="https://openrouter.ai/api/v1",
+        sleep=lambda _delay: None,
+        on_retry=retries.append,
+    )
+
+    result = client.create_message(model="anthropic/claude-haiku-4.5", input_text="hi")
+
+    assert result.output_text == "ok"
+    assert attempts == [1, 2]
+    assert retries == [1]
+
+
+def test_upstream_retries_url_error_then_succeeds(monkeypatch):
+    """Exercise _urlopen_json's URLError branch through the retry loop."""
+    attempts: list[int] = []
+    retries: list[int] = []
+
+    def fake_urlopen(request: object, timeout: float = 0):
+        attempts.append(len(attempts) + 1)
+        if len(attempts) < 2:
+            raise URLError("connection refused")
+        return _FakeResponse(_success_body())
+
+    monkeypatch.setattr("optimus_gateway.upstream_client.urlopen", fake_urlopen)
+    client = UrllibOpenAICompatibleClient(
+        api_key="or-test",
+        base_url="https://openrouter.ai/api/v1",
+        sleep=lambda _delay: None,
+        on_retry=retries.append,
+    )
+
+    result = client.create_message(model="anthropic/claude-haiku-4.5", input_text="hi")
+
+    assert result.output_text == "ok"
+    assert attempts == [1, 2]
+    assert retries == [1]
