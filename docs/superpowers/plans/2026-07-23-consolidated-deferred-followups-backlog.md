@@ -43,8 +43,9 @@ open-work inventory.
 | Identity | State | Scope detail |
 |---|---|---|
 | `P11-FEAT-GATEWAY-CORE` | Plan 11.1 — closed; merged to `main` as PR #85 (`6ae6997`, tip `6c39599`) | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route) |
-| `P11-FEAT-GATEWAY-TOOLS` | Ratified, unscheduled; carries `P11-FU-2` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs) |
+| `P11-FEAT-GATEWAY-TOOLS` | Plan 11.2 design and implementation plan drafted; pending review; implementation not started; carries `P11-FU-2` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs) |
 | `P11-FEAT-GATEWAY-COST-OBS` | Ratified, unscheduled | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs) |
+| `P11-FEAT-GATEWAY-MCP` | Ratified but gated; blocked on `P11-FU-3`; plan number assigned at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
 | `P11-FEAT-ZED-RESUME` | Ratified, unscheduled; carries `P11-FU-1` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume) |
 | `P11-FEAT-REGISTRY` | Ratified, unscheduled; blocked on its research gate — no authoritative source exists in any of the four pinned documents. Also owns the v1.0 release-version contract | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut) |
 | `P11-FEAT-IDE` | Conditional — opens only by explicit amendment if REGISTRY surfaces an unmet multi-IDE expectation | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing) |
@@ -221,9 +222,10 @@ routes.
 
 **Origin:** `docs/Optimus-Cost-Agent-LLD-v2.38.pdf`, §0.D (p.3), §9A (p.24), and §9B (p.25).
 
-**Designated slice:** `P11-FEAT-GATEWAY-TOOLS` (plan number assigned at pickup). This is an
+**Designated slice:** `P11-FEAT-GATEWAY-TOOLS` (Plan 11.2 at this pickup). This is an
 unimplemented capability owned by the Tools slice; it is not part of the parked `P9.85-FU-3`
-budget-enforcement decision.
+budget-enforcement decision. The drafted artifacts are the [design specification](../specs/2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md)
+and [implementation plan](2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md).
 
 **Acceptance criteria:** The reviewed `P11-FEAT-GATEWAY-TOOLS` design and implementation must:
 
@@ -233,8 +235,9 @@ budget-enforcement decision.
   envelope, and evidence/provenance contracts; and
 - provide named unit, integration, and real-Gateway evidence for both endpoint families.
 
-**Status:** Owned by `P11-FEAT-GATEWAY-TOOLS`; open and not yet scheduled. This is an unimplemented
-capability, not a parked architecture blocker.
+**Status:** Owned by `P11-FEAT-GATEWAY-TOOLS`; Plan 11.2 design/plan drafted and pending review;
+implementation is not started. This is an unimplemented capability, not a parked architecture
+blocker.
 
 ### P11-FU-3: LLD Source Repair — §0.B Component Flow and MCP Endpoint Shape
 
@@ -245,8 +248,10 @@ an MCP endpoint or Gateway request/response shape in §0.D.
 **Origin:** `docs/Optimus-Cost-Agent-LLD-v2.38.pdf`, §0.B (rendered p.2), §0.C (p.3), and §0.D
 (p.3); the source-contract gap was confirmed against the pinned SHA-256.
 
-**Designated future plan:** `LLD source repair` (documentation-owner work; no Plan 11 feature or
-plan number is assigned by this entry).
+**Designated future plan:** `LLD source repair` (documentation-owner work). This item blocks the
+ratified `P11-FEAT-GATEWAY-MCP`; its Plan 11.x number is assigned only when that feature is picked
+up after the repaired source contract exists. No Plan 11 MCP implementation scope or plan number is
+assigned by this entry.
 
 **Acceptance criteria:** The authoritative LLD source must be repaired or replaced by an explicitly
 reviewed authoritative source that:
@@ -257,8 +262,13 @@ reviewed authoritative source that:
 - triggers fresh source digest verification and a new requirement extraction before any affected
   Gateway requirement is promoted into a specification.
 
-**Status:** Open, not yet scheduled, and owned by `LLD source repair`. This is a documentation/source
-contract repair item, not an inferred MCP implementation requirement.
+- when the repair is accepted, hands the affected source requirements to
+  `P11-FEAT-GATEWAY-MCP` for a new design/specification gate; and
+- does not authorize implementation or endpoint inference while the source contract is absent.
+
+**Status:** Open, not yet scheduled, and owned by `LLD source repair`; blocks
+`P11-FEAT-GATEWAY-MCP`. This is a documentation/source contract repair item, not an inferred MCP
+implementation requirement.
 
 ### P11-FU-4: Re-pin FU-4A/FU-5 Live Evidence
 
