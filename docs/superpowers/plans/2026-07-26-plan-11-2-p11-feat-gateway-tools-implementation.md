@@ -101,7 +101,7 @@ origin/secrets, E8 server policy revalidation, E9 coverage/release, and E10 sour
 **Produces:** A freeze-input artifact proving that the worker is on the approved baseline and that
 the exact design/plan/inventory bytes match the pending or approved digest record.
 
-- [ ] **Step 1: Confirm branch and worktree state.**
+- [x] **Step 1: Confirm branch and worktree state.**
 
   Run from Git Bash at the repository root:
 
@@ -116,7 +116,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   `bd216388c0da995e04df254ec198a00e4aab23d4`, and no source or
   test path is dirty before implementation.
 
-- [ ] **Step 2: Verify all four authoritative PDF digests.**
+- [x] **Step 2: Verify all four authoritative PDF digests.**
 
   ```bash
   sha256sum docs/Optimus-Cost-Agent-Architecture-v2.15.pdf
@@ -128,7 +128,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   Expected: the four values equal the source pin table above. A mismatch stops the task and
   requires a new requirement extraction; it is not a reason to silently update the spec.
 
-- [ ] **Step 3: Verify the inventory and frozen artifact bytes.**
+- [x] **Step 3: Verify the inventory and frozen artifact bytes.**
 
   ```bash
   sha256sum docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md
@@ -143,7 +143,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   pinned artifacts contain zero CR bytes. If any byte changes, invalidate the old record and create
   a versioned replacement before continuing.
 
-- [ ] **Step 4: Read the approval record and reviewer checkpoint Current State.**
+- [x] **Step 4: Read the approval record and reviewer checkpoint Current State.**
 
   Do not begin source or test mutation until the approval record says reviewer-agent and operator
   approval exist for the exact bytes, and the checkpoint log confirms no conflicting ruling.
@@ -178,14 +178,14 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   `SECURITY_OR_CVE_CHECK + SECURITY_ADVISORY` are removed from generic web triggers and placed in a
   dedicated package/advisory trigger set.
 
-- [ ] **Step 1: Write failing contract tests.**
+- [x] **Step 1: Write failing contract tests.**
 
   Add tests that reject empty queries and identifiers, unsupported ecosystems, duplicate extract
   URLs, non-HTTPS URLs, mixed `url`/`urls` forms, result caps outside 1–10, extraction limits
   outside 1–20,000, and malformed/null `gateway_usage`. Add tests that accept the exact web,
   package, and advisory success envelopes and preserve `Decimal` cost values.
 
-- [ ] **Step 2: Run the focused tests and confirm RED.**
+- [x] **Step 2: Run the focused tests and confirm RED.**
 
   ```powershell
   uv run --frozen pytest tests/unit/gateway/test_tool_models.py tests/unit/tools/test_tool_policy.py tests/unit/evidence/test_models.py -q
@@ -195,14 +195,14 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   yet exist; existing tests may fail only where the intentional package-signal ownership changes
   their expected class.
 
-- [ ] **Step 3: Implement the minimum shared contracts and policy taxonomy.**
+- [x] **Step 3: Implement the minimum shared contracts and policy taxonomy.**
 
   Add frozen Pydantic v2 models with bounded fields and explicit HTTPS validation. Keep existing
   `GatewayUsage` parsing as the single usage parser. Update `ToolInvocationPolicy.authorize` so
   web and package/advisory classes have separate branches and reason-code requirements. Do not add
   MCP to the taxonomy or change `optimus/mcp/runtime.py`.
 
-- [ ] **Step 4: Run the focused tests and confirm GREEN.**
+- [x] **Step 4: Run the focused tests and confirm GREEN.**
 
   ```powershell
   uv run --frozen pytest tests/unit/gateway/test_tool_models.py tests/unit/tools/test_tool_policy.py tests/unit/evidence/test_models.py -q

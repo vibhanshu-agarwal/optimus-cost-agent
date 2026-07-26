@@ -569,6 +569,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.gateway.tool_models:parse_gateway_tool_envelope:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.gateway.tool_models:parse_gateway_tool_envelope:exception_export uses exception text only to construct or return a typed in-memory GatewayResponseError failure result, mirroring parse_gateway_usage; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/gateway/test_tool_models.py::test_parse_gateway_tool_envelope_wraps_malformed_envelope_as_gateway_response_error",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.guardrails.mcp_trust:MCPServerManifest.descriptor_text:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: MCPServerManifest.descriptor_text canonicalizes the local structural descriptor, replacing environment values with digests before deriving the trust descriptor.",
