@@ -822,6 +822,19 @@ class RejectedPackageAdvisoryService(FakePackageAdvisoryService):
             )
         )
 
+    def security_advisory(self, request, *, execution_mode):
+        from optimus.tools.policy import PolicyDecision, ToolInvocationDecision
+
+        raise ToolCallRejected(
+            ToolInvocationDecision(
+                decision=PolicyDecision.REJECT,
+                reason="max_calls_per_run exceeded",
+                tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
+                policy_signal=ToolPolicySignal.SECURITY_OR_CVE_CHECK,
+                reason_code=EvidenceReasonCode.SECURITY_ADVISORY,
+            )
+        )
+
 
 def test_dispatcher_maps_package_lookup_tool_call_rejected_to_invalid_request():
     dispatcher = JsonRpcDispatcher(package_advisory_service=RejectedPackageAdvisoryService())
@@ -837,6 +850,27 @@ def test_dispatcher_maps_package_lookup_tool_call_rejected_to_invalid_request():
                 "ecosystem": "pypi",
                 "reason": "PACKAGE_VERSION",
                 "policy_signal": "DEPENDENCY_VERSION_CHECK",
+            },
+        }
+    )
+
+    assert response["error"]["code"] == -32600
+    assert response["error"]["message"] == "max_calls_per_run exceeded"
+
+
+def test_dispatcher_maps_security_advisory_tool_call_rejected_to_invalid_request():
+    dispatcher = JsonRpcDispatcher(package_advisory_service=RejectedPackageAdvisoryService())
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "adv-rejected",
+            "method": "optimus.evidence.security_advisory",
+            "params": {
+                "run_id": "run-1",
+                "identifier": "CVE-2026-12345",
+                "reason": "SECURITY_ADVISORY",
+                "policy_signal": "SECURITY_OR_CVE_CHECK",
             },
         }
     )

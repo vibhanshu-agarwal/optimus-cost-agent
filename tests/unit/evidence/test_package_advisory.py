@@ -109,6 +109,35 @@ class MalformedBodyGatewayClient(FakeGatewayClient):
                     "cost_usd": "0.0005",
                 },
             }
+        if path == "/v1/tools/security/advisory":
+            return {
+                "tool_class": "package_and_advisory_metadata",
+                "policy_signal": "SECURITY_OR_CVE_CHECK",
+                "run_id": "run-1",
+                "result": {
+                    "identifier": "CVE-2026-12345",
+                    "ecosystem": "npm",
+                    "version": "1.2.3",
+                    "advisories": [
+                        {
+                            "advisory_id": "GHSA-xxxx-yyyy-zzzz",
+                            "summary": "Untrusted summary text",
+                            "severity": "high",
+                            "affected_ranges": ["<1.2.4"],
+                            "fixed_versions": ["1.2.4"],
+                            "citations": ["not-a-url"],
+                        }
+                    ],
+                },
+                "provenance": {"search_id": None, "source_urls": [], "trust": "untrusted"},
+                "gateway_usage": {
+                    "gateway_request_id": "gw-adv-bad",
+                    "provider": "osv",
+                    "cache_hit": False,
+                    "billing_units": 1,
+                    "cost_usd": "0.0007",
+                },
+            }
         raise AssertionError(f"unexpected path: {path}")
 
 
@@ -192,6 +221,24 @@ def test_package_lookup_malformed_body_records_usage_before_error():
     assert len(service.ledger.entries) == 1
     assert service.ledger.entries[0].gateway_request_id == "gw-pkg-bad"
     assert service.ledger.entries[0].cost_usd == Decimal("0.0005")
+
+
+def test_security_advisory_malformed_body_records_usage_before_error():
+    gateway = MalformedBodyGatewayClient()
+    service = PackageAdvisoryService(
+        gateway_client=gateway,
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+    )
+    request = SecurityAdvisoryRequest(context=_context(), identifier="CVE-2026-12345")
+
+    with pytest.raises(GatewayResponseError):
+        service.security_advisory(request, execution_mode=ExecutionMode.PLAN)
+
+    assert service.registry.call_count("run-1") == 1
+    assert len(service.ledger.entries) == 1
+    assert service.ledger.entries[0].gateway_request_id == "gw-adv-bad"
+    assert service.ledger.entries[0].cost_usd == Decimal("0.0007")
 
 
 class BlockingPreToolGuard:
