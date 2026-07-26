@@ -5,9 +5,14 @@ from decimal import Decimal
 from typing import Any
 
 from optimus_gateway.model_mapping import resolve_model_id
-from optimus_gateway.models import GatewayServiceConfig, authorize_bearer
+from optimus_gateway.models import (
+    GatewayServiceConfig,
+    ModelRequestValidationError,
+    authorize_bearer,
+    validate_responses_envelope,
+)
 from optimus_gateway.pricing import billing_units, compute_cost_usd, lookup_model_rate
-from optimus_gateway.upstream_client import UpstreamClient
+from optimus_gateway.upstream_client import ProviderMessageResult, UpstreamClient
 from optimus_security.sanitization import sanitize_for_persistence
 
 
@@ -21,27 +26,43 @@ def handle_responses_request(
     if not authorize_bearer(authorization_header=authorization_header, shared_secret=config.shared_secret):
         return 401, {"error": "unauthorized"}
 
-    model = request_body.get("model")
-    input_text = request_body.get("input")
-    if not isinstance(model, str) or not model.strip():
-        return 400, {"error": "model is required"}
-    if not isinstance(input_text, str) or not input_text.strip():
-        return 400, {"error": "input is required"}
+    try:
+        model, input_text, _metadata = validate_responses_envelope(request_body)
+    except ModelRequestValidationError as exc:
+        return 400, {"error": sanitize_error_message(str(exc))}
 
+    return run_model_completion(
+        model=model,
+        input_text=input_text,
+        config=config,
+        upstream_client=upstream_client,
+        build_success=_build_responses_success,
+    )
+
+
+def run_model_completion(
+    *,
+    model: str,
+    input_text: str,
+    config: GatewayServiceConfig,
+    upstream_client: UpstreamClient,
+    build_success,
+) -> tuple[int, dict[str, Any]]:
+    """Shared auth-complete provider path for Responses and Chat Completions."""
     try:
         provider_model = resolve_model_id(provider=config.provider, model=model)
     except ValueError as exc:
-        return 400, {"error": _sanitize_error_message(str(exc))}
+        return 400, {"error": sanitize_error_message(str(exc))}
 
     try:
         lookup_model_rate(provider=config.provider, resolved_model=provider_model)
     except ValueError as exc:
-        return 500, {"error": _sanitize_error_message(str(exc))}
+        return 500, {"error": sanitize_error_message(str(exc))}
 
     try:
         provider_result = upstream_client.create_message(model=provider_model, input_text=input_text)
     except RuntimeError as exc:
-        return 502, {"error": _sanitize_error_message(str(exc))}
+        return 502, {"error": sanitize_error_message(str(exc))}
 
     cost_usd, price_snapshot_id = compute_cost_usd(
         provider=config.provider,
@@ -49,32 +70,64 @@ def handle_responses_request(
         input_tokens=provider_result.input_tokens,
         output_tokens=provider_result.output_tokens,
     )
+    gateway_usage = {
+        "gateway_request_id": f"gw-{uuid.uuid4().hex}",
+        "provider": config.provider,
+        "provider_request_id": provider_result.message_id,
+        "billing_units": billing_units(
+            input_tokens=provider_result.input_tokens,
+            output_tokens=provider_result.output_tokens,
+        ),
+        "cost_usd": format_cost_usd(cost_usd),
+        "cache_hit": False,
+        "model": model,
+        "model_version": provider_model,
+        "price_snapshot_id": price_snapshot_id,
+    }
+    try:
+        assert_gateway_usage_contract(gateway_usage)
+    except ValueError as exc:
+        return 500, {"error": sanitize_error_message(str(exc))}
+    return 200, build_success(provider_result=provider_result, gateway_usage=gateway_usage)
 
-    gateway_request_id = f"gw-{uuid.uuid4().hex}"
-    response_id = f"resp-{uuid.uuid4().hex}"
-    total_billing_units = billing_units(
-        input_tokens=provider_result.input_tokens,
-        output_tokens=provider_result.output_tokens,
-    )
 
-    return 200, {
-        "id": response_id,
+def assert_gateway_usage_contract(gateway_usage: dict[str, Any]) -> None:
+    """Fail closed before emitting a model success envelope with incomplete usage."""
+    required = ("gateway_request_id", "provider", "cache_hit", "billing_units", "cost_usd")
+    for field in required:
+        if field not in gateway_usage:
+            raise ValueError(f"gateway_usage missing required field: {field}")
+    request_id = gateway_usage["gateway_request_id"]
+    if not isinstance(request_id, str) or not request_id.strip():
+        raise ValueError("gateway_request_id must be a non-empty string")
+    if not isinstance(gateway_usage["provider"], str) or not gateway_usage["provider"].strip():
+        raise ValueError("provider must be a non-empty string")
+    if gateway_usage["cost_usd"] is None:
+        raise ValueError("cost_usd must be non-null")
+    try:
+        cost = Decimal(str(gateway_usage["cost_usd"]))
+    except Exception as exc:
+        raise ValueError("cost_usd must be decimal-parseable") from exc
+    if cost < Decimal("0"):
+        raise ValueError("cost_usd must be non-negative")
+    billing = gateway_usage["billing_units"]
+    if not isinstance(billing, int) or isinstance(billing, bool) or billing < 0:
+        raise ValueError("billing_units must be a non-negative integer")
+
+
+def _build_responses_success(
+    *,
+    provider_result: ProviderMessageResult,
+    gateway_usage: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "id": f"resp-{uuid.uuid4().hex}",
         "output_text": provider_result.output_text,
-        "gateway_usage": {
-            "gateway_request_id": gateway_request_id,
-            "provider": config.provider,
-            "provider_request_id": provider_result.message_id,
-            "billing_units": total_billing_units,
-            "cost_usd": _format_cost_usd(cost_usd),
-            "cache_hit": False,
-            "model": model,
-            "model_version": provider_model,
-            "price_snapshot_id": price_snapshot_id,
-        },
+        "gateway_usage": gateway_usage,
     }
 
 
-def _sanitize_error_message(message: str) -> str:
+def sanitize_error_message(message: str) -> str:
     """Return a sanitized Gateway error message without a raw fallback."""
     try:
         sanitized = sanitize_for_persistence(message).value
@@ -83,6 +136,6 @@ def _sanitize_error_message(message: str) -> str:
     return sanitized if isinstance(sanitized, str) and sanitized else "internal gateway error"
 
 
-def _format_cost_usd(cost_usd: Decimal) -> str:
+def format_cost_usd(cost_usd: Decimal) -> str:
     normalized = cost_usd.normalize()
     return format(normalized, "f")

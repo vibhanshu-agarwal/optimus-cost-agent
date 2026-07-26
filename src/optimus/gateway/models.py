@@ -70,9 +70,32 @@ def parse_gateway_usage(body: Mapping[str, Any]) -> GatewayUsage:
     Raises GatewayResponseError on missing or invalid usage data.
     This is the canonical entry point for usage parsing—called by both
     the success-response path and the error-body path.
+
+    Null or absent ``cost_usd`` (when billing_units is present) raises with
+    ``audit_code="GATEWAY_COST_MISSING"``. Completely absent usage metrics
+    raise with ``audit_code="GATEWAY_USAGE_MISSING"``.
     """
     if not isinstance(body, Mapping):
-        raise GatewayResponseError("gateway_usage missing")
+        raise GatewayResponseError("gateway_usage missing", audit_code="GATEWAY_USAGE_MISSING")
+
+    has_billing_units = "billing_units" in body
+    has_cost_usd = "cost_usd" in body
+    if not has_billing_units and not has_cost_usd:
+        raise GatewayResponseError(
+            "gateway usage fields missing",
+            audit_code="GATEWAY_USAGE_MISSING",
+        )
+    if has_cost_usd and body.get("cost_usd") is None:
+        raise GatewayResponseError(
+            "cost_usd is required and must be non-null",
+            audit_code="GATEWAY_COST_MISSING",
+        )
+    if has_billing_units and not has_cost_usd:
+        raise GatewayResponseError(
+            "cost_usd is required and must be non-null",
+            audit_code="GATEWAY_COST_MISSING",
+        )
+
     try:
         return GatewayUsage.model_validate(body)
     except ValidationError as exc:
@@ -82,7 +105,7 @@ def parse_gateway_usage(body: Mapping[str, Any]) -> GatewayUsage:
 def parse_gateway_response(body: dict[str, Any]) -> GatewayResponse:
     usage_body = body.get("gateway_usage")
     if not isinstance(usage_body, dict):
-        raise GatewayResponseError("gateway_usage missing")
+        raise GatewayResponseError("gateway_usage missing", audit_code="GATEWAY_USAGE_MISSING")
     try:
         usage = parse_gateway_usage(usage_body)
     except GatewayResponseError:

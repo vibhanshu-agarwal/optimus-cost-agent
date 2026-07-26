@@ -769,11 +769,27 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.chat_completions:handle_chat_completions_request:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.chat_completions:handle_chat_completions_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_responses.py::test_handle_chat_completions_request_sanitizes_validation_errors",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.observability:handle_observability_traces_request:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.observability:handle_observability_traces_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_server.py::test_observability_traces_rejects_non_object_events",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.responses:handle_responses_request:exception_export",
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.responses:handle_responses_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
-      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "test_node": "tests/unit/optimus_gateway/test_responses.py::test_handle_responses_request_sanitizes_validation_errors",
       "evidence_tier": "unit"
     },
     {
@@ -781,7 +797,15 @@
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.responses:handle_responses_request:http_error_response before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
-      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "test_node": "tests/unit/optimus_gateway/test_responses.py::test_handle_responses_request_sanitizes_validation_errors",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.responses:run_model_completion:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.responses:run_model_completion:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_responses.py::test_handle_responses_request_sanitizes_upstream_error_and_fails_closed",
       "evidence_tier": "unit"
     },
     {
@@ -798,6 +822,14 @@
       "rationale": "Functional protocol serialization at optimus_gateway.server:OptimusGatewayHandler._send_json:text_write sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
       "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:call_with_upstream_retry:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: call_with_upstream_retry uses str(exc) only to rewrap a RetryableUpstreamError as RuntimeError in memory after attempt exhaustion; no sanitizer runs at this site. The message is sanitized at the existing run_model_completion RuntimeError→502 boundary (sanitize_error_message) before any HTTP response export. Callers that reuse this helper without that outer catch must add their own sanitizing boundary.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_upstream_retry.py::test_upstream_exhausts_four_attempts_and_reraises",
       "evidence_tier": "unit"
     },
     {
