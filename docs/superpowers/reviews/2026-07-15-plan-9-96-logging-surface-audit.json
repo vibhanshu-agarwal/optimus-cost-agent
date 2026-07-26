@@ -513,30 +513,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.evidence.gateway_io:_parse_gateway_usage:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.evidence.gateway_io:_parse_gateway_usage:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/evidence/test_gateway_io.py::test_parse_web_search_response_wraps_malformed_result_as_gateway_response_error",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus.evidence.gateway_io:parse_web_extract_response:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.evidence.gateway_io:parse_web_extract_response:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/evidence/test_gateway_io.py::test_parse_web_search_response_wraps_malformed_result_as_gateway_response_error",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus.evidence.gateway_io:parse_web_search_response:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.evidence.gateway_io:parse_web_search_response:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/evidence/test_gateway_io.py::test_parse_web_search_response_wraps_malformed_result_as_gateway_response_error",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "optimus.gates.fitness:FitnessGateRunner.run:logger_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.gates.fitness:FitnessGateRunner.run:logger_export is an AST-overmatch with no sink call in its scoped body.",

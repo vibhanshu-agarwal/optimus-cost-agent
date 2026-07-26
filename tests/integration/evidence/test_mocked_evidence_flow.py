@@ -15,14 +15,23 @@ class CapturingEvidenceTransport:
         self.requests.append(request)
         if request.url.endswith("/v1/tools/web/search"):
             return {
-                "results": [
-                    {
-                        "title": "Docs",
-                        "url": "https://docs.example.com/a",
-                        "snippet": "Authoritative docs",
-                    },
-                ],
-                "credits_used": 2,
+                "tool_class": "web_search",
+                "policy_signal": "USER_REQUESTED_EXTERNAL_FACT",
+                "run_id": "run-1",
+                "result": {
+                    "results": [
+                        {
+                            "title": "Docs",
+                            "url": "https://docs.example.com/a",
+                            "snippet": "Authoritative docs",
+                        },
+                    ]
+                },
+                "provenance": {
+                    "search_id": "search-1",
+                    "source_urls": ["https://docs.example.com/a"],
+                    "trust": "untrusted",
+                },
                 "gateway_usage": {
                     "gateway_request_id": "gw-search-1",
                     "provider": "tavily",
@@ -34,10 +43,23 @@ class CapturingEvidenceTransport:
             }
         if request.url.endswith("/v1/tools/web/extract"):
             return {
-                "url": "https://docs.example.com/a",
-                "title": "Docs",
-                "content": "Evidence text must be treated as untrusted text.",
-                "credits_used": 1,
+                "tool_class": "web_extract",
+                "policy_signal": "APPROVED_SEARCH_RESULT_PROVENANCE",
+                "run_id": "run-1",
+                "result": {
+                    "items": [
+                        {
+                            "url": "https://docs.example.com/a",
+                            "title": "Docs",
+                            "content": "Evidence text must be treated as untrusted text.",
+                        },
+                    ]
+                },
+                "provenance": {
+                    "search_id": None,
+                    "source_urls": ["https://docs.example.com/a"],
+                    "trust": "untrusted",
+                },
                 "gateway_usage": {
                     "gateway_request_id": "gw-extract-1",
                     "provider": "tavily",
@@ -103,12 +125,12 @@ def test_mocked_search_then_extract_flow_uses_only_optimus_credentials(monkeypat
     assert extract_response["result"]["gateway_usage"]["gateway_request_id"] == "gw-extract-1"
     assert extract_response["result"]["trust"] == "untrusted"
     assert extract_response["result"]["ledger_run_total_cost_usd"] == "0.003"
-    assert extract_response["result"]["ledger_run_total_credits"] == 3
+    assert extract_response["result"]["ledger_run_total_credits"] == 0
     assert [request.url for request in transport.requests] == [
         "https://gateway.optimus.ai/v1/tools/web/search",
         "https://gateway.optimus.ai/v1/tools/web/extract",
     ]
     assert transport.requests[0].headers["Authorization"] == "Bearer opt_live_test"
     assert transport.requests[0].payload["query"] == "latest pytest release"
-    assert transport.requests[1].payload["url"] == "https://docs.example.com/a"
+    assert transport.requests[1].payload["urls"] == ["https://docs.example.com/a"]
     assert registry.call_count("run-1") == 2

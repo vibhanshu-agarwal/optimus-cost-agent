@@ -238,7 +238,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
 - ACP methods `optimus.evidence.package_lookup` and `optimus.evidence.security_advisory` return
   typed result payloads using the same error mapping as existing evidence methods.
 
-- [ ] **Step 1: Write failing adapter tests.**
+- [x] **Step 1: Write failing adapter tests.**
 
   Prove that web builders preserve query verbatim, send reason only as metadata, map a legacy
   single `url` to `urls: [url]`, and reject duplicate or mixed forms. Prove that parsers unwrap
@@ -246,7 +246,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   `gateway_request_id`, billing units, cache status, and cost. Add package/advisory service tests
   for policy class, signal, Gateway path, typed result, and ledger join.
 
-- [ ] **Step 2: Run the client-focused tests and confirm RED.**
+- [x] **Step 2: Run the client-focused tests and confirm RED.**
 
   ```powershell
   uv run --frozen pytest tests/unit/evidence/test_gateway_io.py tests/unit/evidence/test_acquisition.py tests/unit/evidence/test_package_advisory.py tests/integration/evidence/test_mocked_evidence_flow.py -q
@@ -254,20 +254,20 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
 
   Expected: new envelope and package/advisory cases fail before adapter changes exist.
 
-- [ ] **Step 3: Implement the adapter/service changes.**
+- [x] **Step 3: Implement the adapter/service changes.**
 
   Keep local `EvidenceDomainPolicy`, `ToolRegistry`, `PreToolGuard`, and `EvidenceLedger` in the
   call path. Replace direct top-level result parsing with shared-envelope parsing and preserve the
   existing ACP single-URL compatibility mapping. Ensure package/advisory failures record usage only
   when the Gateway supplied a valid usage envelope, exactly as web failures do.
 
-- [ ] **Step 4: Wire the two ACP methods without weakening dispatcher validation.**
+- [x] **Step 4: Wire the two ACP methods without weakening dispatcher validation.**
 
   Add focused service construction to `JsonRpcDispatcher`; malformed params return `INVALID_REQUEST`,
   missing service returns `METHOD_NOT_FOUND`, and tool/policy/Gateway errors use the existing
   sanitized error path. Do not add an ACP MCP method.
 
-- [ ] **Step 5: Run the client-focused tests and confirm GREEN.**
+- [x] **Step 5: Run the client-focused tests and confirm GREEN.**
 
   ```powershell
   uv run --frozen pytest tests/unit/evidence/test_gateway_io.py tests/unit/evidence/test_acquisition.py tests/unit/evidence/test_package_advisory.py tests/unit/acp/test_dispatcher.py tests/integration/evidence/test_mocked_evidence_flow.py -q

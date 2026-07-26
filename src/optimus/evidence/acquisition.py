@@ -7,8 +7,8 @@ from optimus.evidence.domain_policy import EvidenceDomainPolicy
 from optimus.evidence.gateway_io import (
     build_web_extract_payload,
     build_web_search_payload,
-    parse_web_extract_response,
-    parse_web_search_response,
+    parse_web_extract_envelope,
+    parse_web_search_envelope,
 )
 from optimus.evidence.ledger import EvidenceLedger, EvidenceLedgerEntry
 from optimus.evidence.models import (
@@ -16,9 +16,11 @@ from optimus.evidence.models import (
     EvidenceExtractResponse,
     EvidenceRequest,
     EvidenceSearchResponse,
+    EvidenceSearchResult,
 )
 from optimus.gateway.client import GatewayClient
 from optimus.gateway.errors import GatewayResponseError
+from optimus.gateway.tool_models import GatewayToolContext
 from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolVerdict
 from optimus.runtime.modes import ExecutionMode
@@ -84,23 +86,18 @@ class EvidenceAcquisitionService:
             execution_mode=execution_mode,
             action=f"web_search:{request.query}",
         )
+        context = GatewayToolContext(
+            run_id=request.run_id,
+            session_id=request.session_id,
+            execution_mode=execution_mode.value,
+        )
+        effective_request = request.model_copy(update={"allowed_domains": effective_allowed_domains})
         body = self.gateway_client.post_tool_json(
             path="/v1/tools/web/search",
-            payload=build_web_search_payload(
-                query=request.query,
-                reason=request.reason,
-                allowed_domains=effective_allowed_domains,
-                result_cap=request.result_cap,
-                search_depth=request.search_depth,
-                metadata={
-                    "run_id": request.run_id,
-                    "session_id": request.session_id,
-                    "policy_signal": request.policy_signal.value,
-                },
-            ),
+            payload=build_web_search_payload(effective_request, context),
         )
         try:
-            response = parse_web_search_response(body)
+            envelope = parse_web_search_envelope(body)
         except GatewayResponseError as exc:
             self._record_parse_failure_usage(
                 request=request,
@@ -109,10 +106,18 @@ class EvidenceAcquisitionService:
                 exc=exc,
             )
             raise
-        urls = tuple(result.url_text for result in response.results)
+        urls = tuple(str(item.url) for item in envelope.result.results)
         for url in urls:
             self.domain_policy.assert_url_allowed(url, effective_allowed_domains)
         self.registry.record_search_results(run_id=request.run_id, urls=urls)
+        response = EvidenceSearchResponse(
+            results=tuple(
+                EvidenceSearchResult(title=item.title, url=str(item.url), snippet=item.snippet)
+                for item in envelope.result.results
+            ),
+            gateway_usage=envelope.gateway_usage,
+            credits_used=0,
+        )
         ledger = self._record_ledger_entry(
             EvidenceLedgerEntry.from_gateway_usage(
                 run_id=request.run_id,
@@ -121,7 +126,7 @@ class EvidenceAcquisitionService:
                 policy_signal=request.policy_signal.value,
                 tool_class=ToolClass.WEB_SEARCH,
                 sources=urls,
-                gateway_usage=response.gateway_usage,
+                gateway_usage=envelope.gateway_usage,
                 credits_used=response.credits_used,
                 queried_at=_utc_now(),
             )
@@ -155,21 +160,17 @@ class EvidenceAcquisitionService:
             action=f"web_extract:{request.url_text}",
             target_url=request.url_text,
         )
+        context = GatewayToolContext(
+            run_id=request.run_id,
+            session_id=request.session_id,
+            execution_mode=execution_mode.value,
+        )
         body = self.gateway_client.post_tool_json(
             path="/v1/tools/web/extract",
-            payload=build_web_extract_payload(
-                url=target_url,
-                reason=request.reason,
-                max_chars_per_source=request.max_chars_per_source,
-                metadata={
-                    "run_id": request.run_id,
-                    "session_id": request.session_id,
-                    "policy_signal": request.policy_signal.value,
-                },
-            ),
+            payload=build_web_extract_payload(request, context),
         )
         try:
-            response = parse_web_extract_response(body)
+            envelope = parse_web_extract_envelope(body)
         except GatewayResponseError as exc:
             self._record_parse_failure_usage(
                 request=request,
@@ -178,6 +179,24 @@ class EvidenceAcquisitionService:
                 exc=exc,
             )
             raise
+        if not envelope.result.items:
+            failure = GatewayResponseError("extract result items missing", gateway_usage=envelope.gateway_usage)
+            self._record_parse_failure_usage(
+                request=request,
+                tool_class=ToolClass.WEB_EXTRACT,
+                sources=(target_url,),
+                exc=failure,
+            )
+            raise failure
+        item = envelope.result.items[0]
+        response = EvidenceExtractResponse(
+            url=str(item.url),
+            title=item.title,
+            content=item.content,
+            trust="untrusted",
+            gateway_usage=envelope.gateway_usage,
+            credits_used=0,
+        )
         ledger = self._record_ledger_entry(
             EvidenceLedgerEntry.from_gateway_usage(
                 run_id=request.run_id,
