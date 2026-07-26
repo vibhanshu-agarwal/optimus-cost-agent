@@ -769,6 +769,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.chat_completions:handle_chat_completions_request:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.chat_completions:handle_chat_completions_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_responses.py::test_handle_chat_completions_request_rejects_input_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.observability:handle_observability_traces_request:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.observability:handle_observability_traces_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_server.py::test_observability_traces_rejects_non_object_events",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.responses:handle_responses_request:exception_export",
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.responses:handle_responses_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
@@ -782,6 +798,14 @@
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.responses:handle_responses_request:http_error_response before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.responses:run_model_completion:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.responses:run_model_completion:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_responses.py::test_handle_responses_request_sanitizes_upstream_error_and_fails_closed",
       "evidence_tier": "unit"
     },
     {
