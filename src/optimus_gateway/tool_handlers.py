@@ -226,6 +226,12 @@ def _handle_web_extract(body: Mapping[str, Any], deps: GatewayToolDependencies) 
     except Exception as exc:  # noqa: BLE001 - provider faults are always sanitized before export
         return _provider_error_response(exc)
 
+    if any(item.url not in fields.urls for item in provider_result.items):
+        return _policy_denied_response(
+            rule_id="RETURNED_URL_NOT_REQUESTED",
+            reason="extract provider returned a URL that was not requested",
+        )
+
     gateway_usage = _build_gateway_usage(provider_result.usage)
     try:
         assert_gateway_usage_contract(gateway_usage)

@@ -145,12 +145,12 @@ set before building the success envelope (handlers currently trust returned extr
 **Files:** `tool_handlers.py`, handler tests; optional local-process extension with real adapters
 behind env (not Task 6 staging).
 
-- [ ] **Step 1:** Failing test: extract provider returns a different URL than requested → reject
+- [x] **Step 1:** Failing test: extract provider returns a different URL than requested → reject
   before success envelope.
-- [ ] **Step 2:** RED.
-- [ ] **Step 3:** Implement membership check; keep status mapping consistent with existing
+- [x] **Step 2:** RED.
+- [x] **Step 3:** Implement membership check; keep status mapping consistent with existing
   policy/provenance failures.
-- [ ] **Step 4:** GREEN; rerun Task 4 local-process suite with deterministic providers still green;
+- [x] **Step 4:** GREEN; rerun Task 4 local-process suite with deterministic providers still green;
   optionally document a Gateway-env local smoke command if credentials exist (do not claim §9D).
 
 ---

@@ -264,6 +264,23 @@ def test_web_extract_succeeds_when_url_was_previously_searched():
     assert body["provenance"]["source_urls"] == ["https://python.org/a"]
 
 
+def test_web_extract_rejects_provider_returned_url_not_requested():
+    store = InMemoryGatewayToolStateStore()
+    store.record_search(run_id="run-1", source_urls=("https://python.org/a",))
+    web_provider = _FakeWebProvider(
+        search_result=_web_search_result(),
+        extract_result=_web_extract_result(urls=("https://python.org/b",)),
+    )
+    deps = _dependencies(web_provider=web_provider, state_store=store)
+
+    status, body = _call("/v1/tools/web/extract", _extract_body(), deps)
+
+    assert status == 403
+    assert body["rule_id"] == "RETURNED_URL_NOT_REQUESTED"
+    assert body["gateway_request_id"]
+    assert len(web_provider.extract_calls) == 1
+
+
 def test_search_then_extract_provenance_sequence_end_to_end():
     store = InMemoryGatewayToolStateStore()
     deps = _dependencies(state_store=store)
