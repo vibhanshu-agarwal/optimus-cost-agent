@@ -199,10 +199,10 @@ The successful Python documentation fetch used a 2,000,000-byte cap but consumed
 
 ## 7. Pricing note
 
-OpenRouter's official documentation currently lists Exa, Parallel, and Perplexity searches at
-$0.005 per request, with additional result/provider-specific terms, while native search is provider
-passthrough. The run intentionally omitted `engine` and made no pricing comparison. At this volume,
-engine-price optimization is not architecture work; authoritative accounting is the
+OpenRouter's official documentation currently lists Exa and Perplexity at $0.005 per request and
+Parallel at $0.001 per request, with additional result/provider-specific terms, while native search
+is provider passthrough. The run intentionally omitted `engine` and made no pricing comparison. At
+this volume, engine-price optimization is not architecture work; authoritative accounting is the
 provider-returned `usage.cost`.
 
 References:
