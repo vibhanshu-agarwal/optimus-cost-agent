@@ -471,35 +471,39 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
 - Modify: `tests/unit/evidence/test_ledger.py`
 - Modify: `tests/unit/gateway/test_client.py`
 
-- [ ] **Step 1: Write failing integration assertions.**
+- [x] **Step 1: Write failing integration assertions.**
 
   Extend the existing search-then-extract flow to assert the common envelope, Gateway-issued search
   provenance, untrusted content, one-key Authorization header, and ledger joins by
   `gateway_request_id`. Add package and advisory flows that prove their paths and tool class are
   dedicated and that usage/cost is recorded once per Gateway response.
 
-- [ ] **Step 2: Run the integration subset and confirm RED.**
+- [x] **Step 2: Run the integration subset and confirm RED.**
 
   ```powershell
   uv run --frozen pytest tests/integration/evidence/test_mocked_evidence_flow.py tests/integration/evidence/test_package_advisory_flow.py tests/integration/usage/test_evidence_provider_reconciliation.py tests/unit/evidence/test_ledger.py tests/unit/gateway/test_client.py -q
   ```
 
-  Expected: assertions fail against the pre-envelope or generic-web behavior.
+  Confirmed RED via `tests/integration/evidence/test_package_advisory_flow.py` not existing
+  (collection error) before this task; Tasks 1–4 had already implemented the common envelope,
+  Gateway-issued provenance, and ledger semantics, so the extended assertions on the pre-existing
+  files exercised already-correct behavior rather than surfacing a second defect. See
+  `.superpowers/sdd/task-5-report.md`.
 
-- [ ] **Step 3: Reconcile the integration fixtures and ledger assertions.**
+- [x] **Step 3: Reconcile the integration fixtures and ledger assertions.**
 
   Keep the transport fake limited to the client/integration tier. Assert no direct provider URL is
   requested by the local agent, no secret appears in `GatewayRequest.__repr__`, the search URL is
   recorded before extract, and malformed or usage-less responses never create a false ledger entry.
 
-- [ ] **Step 4: Run the integration subset and confirm GREEN.**
+- [x] **Step 4: Run the integration subset and confirm GREEN.**
 
   ```powershell
   uv run --frozen pytest tests/integration/evidence/test_mocked_evidence_flow.py tests/integration/evidence/test_package_advisory_flow.py tests/integration/usage/test_evidence_provider_reconciliation.py tests/unit/evidence/test_ledger.py tests/unit/gateway/test_client.py -q
   ```
 
-  Expected: local web/package/advisory flows preserve the one-key boundary, provenance, usage, and
-  cost reconciliation behavior.
+  Confirmed: `33 passed`. Full `tests/unit`: `1654 passed, 19 skipped`. Ruff clean on touched
+  files. No `src/` files changed (test-only reconciliation).
 
 ---
 

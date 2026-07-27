@@ -268,6 +268,22 @@ def test_post_tool_json_validates_trusted_gateway_before_transport():
     assert transport.requests == []
 
 
+def test_post_tool_json_request_repr_never_leaks_api_key():
+    """The same secret-redacting ``__repr__`` contract proven for
+    ``/v1/responses`` in ``test_urllib_transport_serializes_json_without_secret_leak_in_repr``
+    also holds for tool-path requests built by ``post_tool_json`` — the one-key
+    boundary must not regress for the newer web/package/advisory routes.
+    """
+    transport = FakeTransport(response={"ok": True})
+    client = GatewayClient(settings=settings(), transport=transport)
+
+    client.post_tool_json(path="/v1/tools/web/search", payload={"query": "latest pytest release"})
+
+    request = transport.requests[0]
+    assert "opt_live_abc" not in repr(request)
+    assert "Bearer **********" in repr(request)
+
+
 def test_post_tool_json_rejects_non_tool_path():
     client = GatewayClient(settings=settings(), transport=FakeTransport())
 
