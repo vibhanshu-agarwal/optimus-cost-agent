@@ -1,8 +1,7 @@
 # Plan 11.2 Implementation Plan Approval Record v2
 
-**Status:** Closing digests recorded after Plan 11.2 Tasks 0–7 + Plan 11.3 sibling lane.
-**Awaiting independent reviewer-agent and operator verification** of the digests below before
-final Plan 11.2 sign-off. This record does **not** amend v1 in place.
+**Status:** Approved by reviewer-agent and operator for the exact closing digests frozen below.
+Plan 11.2 closing sign-off is complete. This record does **not** amend v1 in place.
 
 **Feature:** `P11-FEAT-GATEWAY-TOOLS` (Plan 11.2 closing freeze)
 
@@ -77,12 +76,14 @@ Unchanged from v1:
 
 ## Approval state
 
-- **Reviewer-agent:** Pending independent re-verification of digests, Task 7 fitness commands,
-  safety-critical coverage rows, one-key scan, and exclusion custody.
-- **Operator:** Pending.
-- **Implementation / closing authority:** Task 7 evidence is recorded in
-  `reports/plan-11-2-gateway-tools-task7-fitness.md`. Final Plan 11.2 sign-off requires reviewer
-  and operator approval of **this** v2 digest set.
+- **Reviewer-agent:** Approved after independent re-verification of digests, Task 7 fitness
+  commands, safety-critical coverage rows, one-key scan, exclusion custody, and the
+  `request_bytes` sanitization remediation.
+- **Operator:** Approved by Vibhanshu (`vibhanshu-agarwal`) on 2026-07-27 for the exact closing
+  digests in this v2 record.
+- **Implementation / closing authority:** Granted. Task 7 evidence is recorded in
+  `reports/plan-11-2-gateway-tools-task7-fitness.md`. Plan 11.2 is formally signed off; MCP
+  brokering and budget enforcement remain unauthorized.
 
 ## Freeze semantics
 
