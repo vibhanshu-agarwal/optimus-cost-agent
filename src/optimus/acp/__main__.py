@@ -384,6 +384,7 @@ def main(argv: list[str] | None = None) -> int:
             policy_version=LAUNCH_POLICY_COMPATIBILITY,
             runtime_root=candidate.operator_paths.runtime_root,
             system_env=snapshot.values,
+            config_root=candidate.operator_paths.config_root,
             log=_print_log,
         )
 

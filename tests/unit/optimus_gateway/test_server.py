@@ -9,6 +9,18 @@ import pytest
 
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.server import serve_gateway
+from optimus_gateway.tool_handlers import GatewayToolDependencies
+from optimus_gateway.tool_models import (
+    AdvisoryProviderResult,
+    PackageProviderResult,
+    ProviderUsage,
+    WebExtractItem,
+    WebExtractProviderResult,
+    WebSearchProviderResult,
+    WebSearchResult,
+)
+from optimus_gateway.tool_policy import GatewayToolPolicy
+from optimus_gateway.tool_state import InMemoryGatewayToolStateStore
 from optimus_gateway.upstream_client import ProviderMessageResult
 
 
@@ -33,15 +45,68 @@ def _config() -> GatewayServiceConfig:
     )
 
 
-def _start_server(*, upstream_client: Any | None = None):
+def _start_server(*, upstream_client: Any | None = None, tool_dependencies: GatewayToolDependencies | None = None):
     server = serve_gateway(
         config=_config(),
         upstream_client=upstream_client if upstream_client is not None else _SmokeUpstreamClient(),
+        tool_dependencies=tool_dependencies,
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     host, port = server.server_address
     return server, thread, host, port
+
+
+def _usage(**overrides: Any) -> ProviderUsage:
+    fields: dict[str, Any] = {"provider": "tavily", "billing_units": 1, "cost_usd": "0.001", "cache_hit": False}
+    fields.update(overrides)
+    return ProviderUsage(**fields)
+
+
+class _FakeWebToolProvider:
+    def search(self, request):
+        return WebSearchProviderResult(
+            results=(WebSearchResult(url="https://python.org/a", title="Docs", snippet="s"),),
+            usage=_usage(),
+        )
+
+    def extract(self, request):
+        return WebExtractProviderResult(
+            items=tuple(WebExtractItem(url=url, title="Docs", content="body") for url in request.urls),
+            usage=_usage(),
+        )
+
+
+class _FakePackageToolProvider:
+    def lookup(self, request):
+        return PackageProviderResult(
+            package=request.package,
+            ecosystem=request.ecosystem,
+            usage=_usage(),
+            latest_version="1.0.0",
+            citations=("https://pypi.org/project/example/",),
+        )
+
+
+class _FakeAdvisoryToolProvider:
+    def lookup(self, request):
+        return AdvisoryProviderResult(identifier=request.identifier, usage=_usage(), ecosystem=request.ecosystem)
+
+
+def _fake_tool_dependencies() -> GatewayToolDependencies:
+    return GatewayToolDependencies(
+        web_provider=_FakeWebToolProvider(),
+        package_provider=_FakePackageToolProvider(),
+        advisory_provider=_FakeAdvisoryToolProvider(),
+        policy=GatewayToolPolicy(allowed_domains=("python.org", "pypi.org")),
+        state_store=InMemoryGatewayToolStateStore(),
+    )
+
+
+def _tool_context_body(**overrides: Any) -> dict[str, Any]:
+    body: dict[str, Any] = {"context": {"run_id": "run-http-1", "execution_mode": "agent"}}
+    body.update(overrides)
+    return body
 
 
 def _stop_server(server, thread) -> None:
@@ -138,13 +203,113 @@ def test_core_routes_dispatch_to_distinct_handlers(monkeypatch: pytest.MonkeyPat
         _stop_server(server, thread)
 
 
-def test_tools_routes_remain_not_found():
+def test_tools_routes_return_not_found_when_dependencies_are_not_configured():
+    """Absent an injected/configured GatewayToolDependencies, tool routes stay outside CORE."""
     server, thread, host, port = _start_server()
     try:
-        for path in ("/v1/tools/web/search", "/v1/tools/web/extract"):
+        for path in (
+            "/v1/tools/web/search",
+            "/v1/tools/web/extract",
+            "/v1/tools/package/lookup",
+            "/v1/tools/security/advisory",
+        ):
             status, body = _post_json(host, port, path, body=json.dumps({"q": "x"}))
             assert status == 404, path
             assert body == {"error": "not found"}
+    finally:
+        _stop_server(server, thread)
+
+
+def test_tool_routes_are_served_over_http_when_dependencies_are_injected():
+    server, thread, host, port = _start_server(tool_dependencies=_fake_tool_dependencies())
+    try:
+        search_status, search_body = _post_json(
+            host,
+            port,
+            "/v1/tools/web/search",
+            body=json.dumps(
+                _tool_context_body(
+                    query="latest release",
+                    allowed_domains=["python.org"],
+                    reason="CURRENT_FACT",
+                )
+            ),
+        )
+        assert search_status == 200
+        assert search_body["tool_class"] == "web_search"
+        assert search_body["gateway_usage"]["gateway_request_id"].startswith("gw-tool-")
+
+        extract_status, extract_body = _post_json(
+            host,
+            port,
+            "/v1/tools/web/extract",
+            body=json.dumps(_tool_context_body(urls=["https://python.org/a"])),
+        )
+        assert extract_status == 200
+        assert extract_body["tool_class"] == "web_extract"
+        assert extract_body["result"]["items"][0]["url"] == "https://python.org/a"
+
+        package_status, package_body = _post_json(
+            host,
+            port,
+            "/v1/tools/package/lookup",
+            body=json.dumps(_tool_context_body(package="example", ecosystem="pypi")),
+        )
+        assert package_status == 200
+        assert package_body["tool_class"] == "package_and_advisory_metadata"
+        assert package_body["policy_signal"] == "DEPENDENCY_VERSION_CHECK"
+
+        advisory_status, advisory_body = _post_json(
+            host,
+            port,
+            "/v1/tools/security/advisory",
+            body=json.dumps(_tool_context_body(identifier="example", ecosystem="pypi")),
+        )
+        assert advisory_status == 200
+        assert advisory_body["tool_class"] == "package_and_advisory_metadata"
+        assert advisory_body["policy_signal"] == "SECURITY_OR_CVE_CHECK"
+    finally:
+        _stop_server(server, thread)
+
+
+def test_tool_routes_require_bearer_auth_over_http():
+    server, thread, host, port = _start_server(tool_dependencies=_fake_tool_dependencies())
+    try:
+        status, body = _post_json(
+            host,
+            port,
+            "/v1/tools/web/search",
+            body=json.dumps(_tool_context_body(query="x", allowed_domains=["python.org"], reason="CURRENT_FACT")),
+            headers={"Content-Type": "application/json"},
+        )
+        assert status == 401
+        assert body == {"error": "unauthorized"}
+    finally:
+        _stop_server(server, thread)
+
+
+def test_tool_routes_reject_invalid_json_when_dependencies_are_injected():
+    server, thread, host, port = _start_server(tool_dependencies=_fake_tool_dependencies())
+    try:
+        status, body = _post_json(host, port, "/v1/tools/web/search", body="{not-json")
+        assert status == 400
+        assert body == {"error": "invalid JSON"}
+    finally:
+        _stop_server(server, thread)
+
+
+def test_core_routes_unaffected_when_tool_dependencies_are_injected():
+    """Injecting tool dependencies must not change CORE route behavior."""
+    server, thread, host, port = _start_server(tool_dependencies=_fake_tool_dependencies())
+    try:
+        status, body = _post_json(
+            host,
+            port,
+            "/v1/responses",
+            body=json.dumps({"model": "claude-haiku", "input": "ping"}),
+        )
+        assert status == 200
+        assert body["output_text"] == "echo:ping"
     finally:
         _stop_server(server, thread)
 

@@ -84,6 +84,36 @@ def test_ledger_totals_reconcile_gateway_usage_fields():
     assert ledger.total_cost_usd(run_id="other-run") == Decimal("0")
 
 
+def test_ledger_credits_used_stays_zero_when_gateway_envelope_carries_no_credit_field():
+    """``credits_used`` has no source of truth in the Gateway tool envelope
+    (only ``billing_units``/``cost_usd``/``optimus_credits_debited`` are
+    parsed from the response); every production call site passes
+    ``credits_used=0`` rather than inventing a value. This test locks in that
+    honest default so a future change cannot silently start estimating
+    credits post-hoc.
+    """
+    entry = EvidenceLedgerEntry.from_gateway_usage(
+        run_id="run-1",
+        session_id=None,
+        reason=EvidenceReasonCode.USER_REQUESTED,
+        policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT.value,
+        tool_class=ToolClass.WEB_SEARCH,
+        sources=("https://docs.example.com/a",),
+        gateway_usage=usage(),
+        credits_used=0,
+        queried_at=datetime(2026, 7, 3, tzinfo=UTC),
+    )
+
+    assert entry.credits_used == 0
+    ledger = EvidenceLedger().record(entry)
+    assert ledger.total_credits() == 0
+    assert ledger.total_credits(run_id="run-1") == 0
+    # The envelope's real billing signals (units/cost) are still preserved
+    # verbatim even though credits are honestly reported as unknown/zero.
+    assert ledger.total_billing_units() == 3
+    assert ledger.total_cost_usd() == Decimal("0.003")
+
+
 def test_ledger_record_returns_new_append_only_instance():
     ledger = EvidenceLedger()
     entry = EvidenceLedgerEntry.from_gateway_usage(

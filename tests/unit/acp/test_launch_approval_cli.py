@@ -1006,6 +1006,65 @@ class TestRunGatewayCommand:
             assert "OPTIMUS_LOCAL_GATEWAY_BIND_HOST" not in env_passed
             assert "OPTIMUS_LOCAL_GATEWAY_PORT" not in env_passed
 
+    def test_run_gateway_forwards_tool_provider_env_from_env_gateway(self, tmp_path, monkeypatch) -> None:
+        """Plan 11.2 Task 6 pre-work: tool-provider vars in .env.gateway must
+        reach the Gateway child. Registry GATEWAY_CHILD alone is not enough —
+        run-gateway previously hard-coded only CORE provider/shared-secret env.
+        """
+        from optimus.acp.launch_approval_cli import _cmd_run_gateway
+        from optimus.acp.trusted_paths import TrustedOperatorRoots
+
+        env_gateway = tmp_path / ".env.gateway"
+        env_gateway.write_text(
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-test\n"
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=shared-secret\n"
+            "TAVILY_API_KEY=tvly-forward-me\n"
+            "OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS=python.org,pypi.org\n"
+            "OPTIMUS_GATEWAY_TOOL_REDIS_URL=redis://127.0.0.1:6379/0\n"
+            "OPTIMUS_GATEWAY_OSV_API_KEY=osv-forward-me\n",
+            encoding="utf-8",
+        )
+        if _sys_platform_is_posix():
+            env_gateway.chmod(0o600)
+
+        captured: dict[str, object] = {}
+
+        class FakeCompletedProcess:
+            returncode = 0
+            stdout = ""
+
+        real_subprocess_run = subprocess.run
+
+        def fake_run(args, **kwargs):
+            if args and isinstance(args, list) and "optimus_gateway" in args:
+                captured["env"] = kwargs.get("env")
+                return FakeCompletedProcess()
+            return real_subprocess_run(args, **kwargs)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        with patch("sys.stdin") as mock_stdin, patch("sys.stdout") as mock_stdout:
+            mock_stdin.isatty.return_value = True
+            mock_stdout.isatty.return_value = True
+            result = _cmd_run_gateway(
+                tmp_path,
+                bind_host="127.0.0.1",
+                bind_port=8765,
+                trusted_roots=TrustedOperatorRoots(
+                    default_config_root=tmp_path / "config", approval_runtime_root=tmp_path / "runtime"
+                ),
+                credential_keyring_backend=_FakeKeyring(),
+            )
+
+        assert result == 0
+        child_env = captured["env"]
+        assert isinstance(child_env, dict)
+        assert child_env["TAVILY_API_KEY"] == "tvly-forward-me"
+        assert child_env["OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS"] == "python.org,pypi.org"
+        assert child_env["OPTIMUS_GATEWAY_TOOL_REDIS_URL"] == "redis://127.0.0.1:6379/0"
+        assert child_env["OPTIMUS_GATEWAY_OSV_API_KEY"] == "osv-forward-me"
+
     def test_run_gateway_masks_base_url_userinfo_in_display(self, tmp_path, monkeypatch) -> None:
         """Direct run-gateway stdout must redact URI userinfo while transport
         (child env + signed manifest) keeps the raw effective base URL."""

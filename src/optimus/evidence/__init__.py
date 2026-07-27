@@ -5,8 +5,8 @@ from optimus.evidence.domain_policy import EvidenceDomainPolicy, EvidenceDomainR
 from optimus.evidence.gateway_io import (
     build_web_extract_payload,
     build_web_search_payload,
-    parse_web_extract_response,
-    parse_web_search_response,
+    parse_web_extract_envelope,
+    parse_web_search_envelope,
 )
 from optimus.evidence.ledger import EvidenceLedger, EvidenceLedgerEntry
 from optimus.evidence.models import (
@@ -16,6 +16,7 @@ from optimus.evidence.models import (
     EvidenceSearchResponse,
     EvidenceSearchResult,
 )
+from optimus.evidence.package_advisory import PackageAdvisoryService
 
 __all__ = [
     "build_web_extract_payload",
@@ -30,6 +31,7 @@ __all__ = [
     "EvidenceRequest",
     "EvidenceSearchResponse",
     "EvidenceSearchResult",
-    "parse_web_extract_response",
-    "parse_web_search_response",
+    "PackageAdvisoryService",
+    "parse_web_extract_envelope",
+    "parse_web_search_envelope",
 ]

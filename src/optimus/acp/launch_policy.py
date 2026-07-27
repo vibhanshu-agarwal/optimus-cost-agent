@@ -203,6 +203,11 @@ def _parse_monotonic_turns(value: str) -> int:
     return result
 
 
+def _parse_positive_int(value: str) -> int:
+    """Parse a positive integer (Gateway tool call-cap knobs)."""
+    return _parse_monotonic_turns(value)
+
+
 _MODEL_USERINFO_RE = re.compile(r"^[^/\s@]+:[^/\s@]+@")
 
 
@@ -345,6 +350,135 @@ _register(
     approval="exact_hmac",
     uri_userinfo=False,
 )
+# Plan 11.3 / Plan 11.2 Task 6: Gateway-owned tool-provider credentials and
+# policy inputs. These names are built by string concatenation inside
+# ``optimus_gateway.models`` (``_GATEWAY_TOOL_ENV_PREFIX + ...``), so the AST
+# inventory scanner cannot see them as literals — they must be registered
+# explicitly. ``GATEWAY_CHILD`` is required so ``optimus-trust run-gateway`` /
+# ``ensure_local_gateway`` can project them into the real Gateway process;
+# ``PARENT_ONLY`` would leave tool routes unconfigured (404) even when
+# ``.env.gateway`` is complete.
+#
+# ``TAVILY_API_KEY`` is already registered via ``LOCAL_PROVIDER_KEY_NAMES``
+# with ``GATEWAY_CHILD``; it is listed in ``GATEWAY_TOOL_CHILD_ENV_NAMES`` so
+# spawn paths can project it from ``.env.gateway`` alongside the OPTIMUS_*
+# tool knobs without pulling unrelated CORE provider keys.
+GATEWAY_TOOL_CHILD_ENV_NAMES: frozenset[str] = frozenset(
+    {
+        "TAVILY_API_KEY",
+        "OPTIMUS_GATEWAY_TAVILY_BASE_URL",
+        "OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS",
+        "OPTIMUS_GATEWAY_TOOL_REDIS_URL",
+        "OPTIMUS_GATEWAY_OSV_BASE_URL",
+        "OPTIMUS_GATEWAY_OSV_API_KEY",
+        "OPTIMUS_GATEWAY_PYPI_BASE_URL",
+        "OPTIMUS_GATEWAY_NPM_BASE_URL",
+        "OPTIMUS_GATEWAY_MAVEN_BASE_URL",
+        "OPTIMUS_GATEWAY_TOOL_MAX_CALLS_PER_TOOL",
+    }
+)
+
+_register(
+    "OPTIMUS_GATEWAY_OSV_API_KEY",
+    tier=LaunchVariableTier.SECRET,
+    propagation=frozenset({PropagationTarget.GATEWAY_CHILD}),
+    parser=_parse_secret,
+    display=_display_redacted,
+    approval="exact_hmac",
+    uri_userinfo=False,
+)
+_register(
+    "OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS",
+    tier=LaunchVariableTier.SECURITY,
+    propagation=frozenset({PropagationTarget.GATEWAY_CHILD}),
+    parser=_parse_origins,
+    display=_display_literal,
+    approval="exact_literal",
+    uri_userinfo=False,
+)
+_register(
+    "OPTIMUS_GATEWAY_TOOL_REDIS_URL",
+    tier=LaunchVariableTier.SECURITY,
+    propagation=frozenset({PropagationTarget.GATEWAY_CHILD}),
+    parser=_parse_redis_url,
+    display=_display_uri_masked,
+    approval="exact_hmac_uri",
+    uri_userinfo=True,
+)
+_register(
+    "OPTIMUS_GATEWAY_TAVILY_BASE_URL",
+    tier=LaunchVariableTier.SECURITY,
+    propagation=frozenset({PropagationTarget.GATEWAY_CHILD}),
+    parser=_parse_url,
+    display=_display_uri_masked,
+    approval="exact_hmac_uri",
+    uri_userinfo=True,
+)
+_register(
+    "OPTIMUS_GATEWAY_OSV_BASE_URL",
+    tier=LaunchVariableTier.SECURITY,
+    propagation=frozenset({PropagationTarget.GATEWAY_CHILD}),
+    parser=_parse_url,
+    display=_display_uri_masked,
+    approval="exact_hmac_uri",
+    uri_userinfo=True,
+)
+_register(
+    "OPTIMUS_GATEWAY_PYPI_BASE_URL",
+    tier=LaunchVariableTier.SECURITY,
+    propagation=frozenset({PropagationTarget.GATEWAY_CHILD}),
+    parser=_parse_url,
+    display=_display_uri_masked,
+    approval="exact_hmac_uri",
+    uri_userinfo=True,
+)
+_register(
+    "OPTIMUS_GATEWAY_NPM_BASE_URL",
+    tier=LaunchVariableTier.SECURITY,
+    propagation=frozenset({PropagationTarget.GATEWAY_CHILD}),
+    parser=_parse_url,
+    display=_display_uri_masked,
+    approval="exact_hmac_uri",
+    uri_userinfo=True,
+)
+_register(
+    "OPTIMUS_GATEWAY_MAVEN_BASE_URL",
+    tier=LaunchVariableTier.SECURITY,
+    propagation=frozenset({PropagationTarget.GATEWAY_CHILD}),
+    parser=_parse_url,
+    display=_display_uri_masked,
+    approval="exact_hmac_uri",
+    uri_userinfo=True,
+)
+_register(
+    "OPTIMUS_GATEWAY_TOOL_MAX_CALLS_PER_TOOL",
+    tier=LaunchVariableTier.MONOTONIC_LIMIT,
+    propagation=frozenset({PropagationTarget.GATEWAY_CHILD}),
+    parser=_parse_positive_int,
+    display=_display_literal,
+    approval="monotonic_tighten_or_exact",
+    uri_userinfo=False,
+)
+
+
+def project_gateway_tool_child_env(values: Mapping[str, str]) -> dict[str, str]:
+    """Project Gateway tool-provider env vars for a Gateway child process.
+
+    Only names in ``GATEWAY_TOOL_CHILD_ENV_NAMES`` that carry ``GATEWAY_CHILD``
+    propagation and a non-empty value are forwarded. CORE
+    ``OPTIMUS_LOCAL_GATEWAY_*`` / model-provider keys are excluded — callers
+    overlay those from the resolved credential objects.
+    """
+    child: dict[str, str] = {}
+    for name in sorted(GATEWAY_TOOL_CHILD_ENV_NAMES):
+        policy = LAUNCH_VARIABLE_POLICIES.get(name)
+        if policy is None or PropagationTarget.GATEWAY_CHILD not in policy.propagation:
+            continue
+        value = values.get(name, "").strip()
+        if value:
+            child[name] = value
+    return child
+
 
 # --- Tier: Security ---
 # "exact approval; URI user information is a secret subfield"

@@ -30,9 +30,10 @@ from optimus.acp.launch_gate import (
     resolve_launch_candidate,
     validate_config_file_permissions,
 )
-from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
+from optimus.acp.launch_policy import LaunchEnvironmentSnapshot, project_gateway_tool_child_env
 from optimus.acp.local_gateway_secrets import (
     ProviderCredentialConfigurationError,
+    _parse_env_gateway_file,
     resolve_provider_credentials,
     resolve_shared_secret,
 )
@@ -613,6 +614,7 @@ def _cmd_run_gateway(
         "OPTIMUS_LOCAL_GATEWAY_PROVIDER": provider_secrets.provider,
         "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": shared_secret,
         **provider_secrets.as_gateway_child_env(),
+        **project_gateway_tool_child_env(_parse_env_gateway_file(env_gateway_path)),
     }
     for key in ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "PATH", "TEMP", "TMP"):
         value = os.environ.get(key, "")

@@ -95,3 +95,110 @@ def test_local_repo_read_is_allowed_in_plan_chat_mode():
     )
 
     assert decision.decision is PolicyDecision.ALLOW
+
+
+def test_dependency_version_check_no_longer_authorizes_web_search():
+    """P11-FU-2: dependency/CVE signals must not route through generic web search."""
+    policy = ToolInvocationPolicy()
+
+    decision = policy.authorize(
+        ToolInvocationRequest(
+            run_id="run-1",
+            tool_class=ToolClass.WEB_SEARCH,
+            execution_mode=ExecutionMode.AGENT,
+            policy_signal=ToolPolicySignal.DEPENDENCY_VERSION_CHECK,
+            reason=EvidenceReasonCode.PACKAGE_VERSION,
+            allowed_domains=("pypi.org",),
+        )
+    )
+
+    assert decision.decision is PolicyDecision.REJECT
+    assert decision.reason == "no policy trigger matched"
+
+
+def test_security_or_cve_check_no_longer_authorizes_web_search():
+    """P11-FU-2: dependency/CVE signals must not route through generic web search."""
+    policy = ToolInvocationPolicy()
+
+    decision = policy.authorize(
+        ToolInvocationRequest(
+            run_id="run-1",
+            tool_class=ToolClass.WEB_SEARCH,
+            execution_mode=ExecutionMode.AGENT,
+            policy_signal=ToolPolicySignal.SECURITY_OR_CVE_CHECK,
+            reason=EvidenceReasonCode.SECURITY_ADVISORY,
+            allowed_domains=("osv.dev",),
+        )
+    )
+
+    assert decision.decision is PolicyDecision.REJECT
+    assert decision.reason == "no policy trigger matched"
+
+
+def test_dependency_version_check_authorizes_package_and_advisory_metadata():
+    policy = ToolInvocationPolicy()
+
+    decision = policy.authorize(
+        ToolInvocationRequest(
+            run_id="run-1",
+            tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
+            execution_mode=ExecutionMode.AGENT,
+            policy_signal=ToolPolicySignal.DEPENDENCY_VERSION_CHECK,
+            reason=EvidenceReasonCode.PACKAGE_VERSION,
+        )
+    )
+
+    assert decision.decision is PolicyDecision.ALLOW
+    assert decision.tool_class is ToolClass.PACKAGE_AND_ADVISORY_METADATA
+
+
+def test_security_or_cve_check_authorizes_package_and_advisory_metadata():
+    policy = ToolInvocationPolicy()
+
+    decision = policy.authorize(
+        ToolInvocationRequest(
+            run_id="run-1",
+            tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
+            execution_mode=ExecutionMode.AGENT,
+            policy_signal=ToolPolicySignal.SECURITY_OR_CVE_CHECK,
+            reason=EvidenceReasonCode.SECURITY_ADVISORY,
+        )
+    )
+
+    assert decision.decision is PolicyDecision.ALLOW
+    assert decision.tool_class is ToolClass.PACKAGE_AND_ADVISORY_METADATA
+
+
+def test_package_and_advisory_metadata_rejects_without_matching_trigger():
+    policy = ToolInvocationPolicy()
+
+    decision = policy.authorize(
+        ToolInvocationRequest(
+            run_id="run-1",
+            tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
+            execution_mode=ExecutionMode.AGENT,
+            policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT,
+            reason=EvidenceReasonCode.USER_REQUESTED,
+        )
+    )
+
+    assert decision.decision is PolicyDecision.REJECT
+    assert decision.reason == "no policy trigger matched"
+
+
+def test_package_and_advisory_metadata_rejects_mismatched_signal_reason_pair():
+    """Signal and reason must be from the same pair; cross-pairing must not authorize."""
+    policy = ToolInvocationPolicy()
+
+    decision = policy.authorize(
+        ToolInvocationRequest(
+            run_id="run-1",
+            tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
+            execution_mode=ExecutionMode.AGENT,
+            policy_signal=ToolPolicySignal.DEPENDENCY_VERSION_CHECK,
+            reason=EvidenceReasonCode.SECURITY_ADVISORY,
+        )
+    )
+
+    assert decision.decision is PolicyDecision.REJECT
+    assert decision.reason == "no policy trigger matched"

@@ -513,30 +513,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.evidence.gateway_io:_parse_gateway_usage:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.evidence.gateway_io:_parse_gateway_usage:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/evidence/test_gateway_io.py::test_parse_web_search_response_wraps_malformed_result_as_gateway_response_error",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus.evidence.gateway_io:parse_web_extract_response:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.evidence.gateway_io:parse_web_extract_response:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/evidence/test_gateway_io.py::test_parse_web_search_response_wraps_malformed_result_as_gateway_response_error",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus.evidence.gateway_io:parse_web_search_response:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.evidence.gateway_io:parse_web_search_response:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/evidence/test_gateway_io.py::test_parse_web_search_response_wraps_malformed_result_as_gateway_response_error",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "optimus.gates.fitness:FitnessGateRunner.run:logger_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.gates.fitness:FitnessGateRunner.run:logger_export is an AST-overmatch with no sink call in its scoped body.",
@@ -566,6 +542,14 @@
       "rationale": "Inspection: optimus.gateway.models:parse_gateway_usage:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/gateway/test_models.py::test_parse_gateway_response_fails_closed_for_malformed_usage",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.gateway.tool_models:parse_gateway_tool_envelope:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.gateway.tool_models:parse_gateway_tool_envelope:exception_export uses exception text only to construct or return a typed in-memory GatewayResponseError failure result, mirroring parse_gateway_usage; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/gateway/test_tool_models.py::test_parse_gateway_tool_envelope_wraps_malformed_envelope_as_gateway_response_error",
       "evidence_tier": "unit"
     },
     {
@@ -822,6 +806,62 @@
       "rationale": "Functional protocol serialization at optimus_gateway.server:OptimusGatewayHandler._send_json:text_write sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
       "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.tool_handlers:_cap_exceeded_response:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.tool_handlers:_cap_exceeded_response:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_tool_handlers.py::test_web_search_rejects_call_after_cap_reached",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.tool_handlers:_context_error_response:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.tool_handlers:_context_error_response:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_tool_handlers.py::test_web_search_rejects_malformed_context",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.tool_handlers:_malformed_provider_result_response:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.tool_handlers:_malformed_provider_result_response:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_tool_handlers.py::test_web_search_fails_closed_on_malformed_provider_usage",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.tool_handlers:_provider_error_response:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.tool_handlers:_provider_error_response:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_tool_handlers.py::test_web_search_sanitizes_provider_failure_and_never_leaks_secrets",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.tool_handlers:_validation_error_response:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.tool_handlers:_validation_error_response:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_tool_handlers.py::test_web_search_rejects_empty_query",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.tool_providers:OsvAdvisoryToolProvider.lookup:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus_gateway.tool_providers:OsvAdvisoryToolProvider.lookup:json_serialization sends a typed advisory query to the trusted OSV provider; it is not diagnostic retention and sanitizing it would corrupt the upstream request contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/optimus_gateway/test_tool_providers.py::test_osv_lookup_posts_query_and_normalizes_https_references",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.tool_state:_fail_closed.__exit__:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus_gateway.tool_state:_fail_closed.__exit__:exception_export uses exception text only to construct an in-memory GatewayToolStateUnavailable typed failure; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_tool_state.py::test_redis_store_fails_closed_on_search_recording_when_client_unavailable",
       "evidence_tier": "unit"
     },
     {
@@ -1302,6 +1342,14 @@
       "rationale": "Inspection: parse_live_output parses ACPX JSON only to verify required end_turn and approval evidence in memory; it does not persist a diagnostic artifact.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_parse_live_output_requires_end_turn_and_permission_evidence",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.tool_providers:TavilyWebToolProvider._post_json:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Functional provider request serialization sends the API key only in the HTTPS request body to the configured Gateway-owned Tavily endpoint; the adapter never logs or exports the serialized payload.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_tool_providers.py::test_search_normalizes_https_results_and_usage",
       "evidence_tier": "unit"
     }
   ]

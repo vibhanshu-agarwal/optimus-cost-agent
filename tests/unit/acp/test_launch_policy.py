@@ -18,6 +18,7 @@ import pytest
 from optimus.acp.launch_policy import (
     DEFAULT_LIVE_MAX_COST_USD,
     DEFAULT_MAX_PLANNING_TURNS,
+    GATEWAY_TOOL_CHILD_ENV_NAMES,
     LAUNCH_VARIABLE_POLICIES,
     LOCAL_GATEWAY_PREFIX,
     LaunchEnvironmentSnapshot,
@@ -25,6 +26,7 @@ from optimus.acp.launch_policy import (
     LaunchVariableTier,
     PropagationTarget,
     classify_variable,
+    project_gateway_tool_child_env,
 )
 from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES
 
@@ -303,3 +305,62 @@ class TestImmutableSnapshot:
         snapshot = LaunchEnvironmentSnapshot.capture(env)
         with pytest.raises(TypeError):
             snapshot.values["new_key"] = "value"  # type: ignore[index]
+
+
+class TestGatewayToolChildProjection:
+    """Plan 11.2 Task 6 pre-work: Gateway tool env must be inventoriable and
+    projectable into the Gateway child. Concatenated names in
+    ``optimus_gateway.models`` are invisible to the AST inventory scanner, so
+    these entries must be registered explicitly with GATEWAY_CHILD.
+    """
+
+    @pytest.mark.parametrize(
+        "name",
+        sorted(
+            {
+                "TAVILY_API_KEY",
+                "OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS",
+                "OPTIMUS_GATEWAY_TOOL_REDIS_URL",
+                "OPTIMUS_GATEWAY_OSV_API_KEY",
+                "OPTIMUS_GATEWAY_TAVILY_BASE_URL",
+                "OPTIMUS_GATEWAY_OSV_BASE_URL",
+                "OPTIMUS_GATEWAY_PYPI_BASE_URL",
+                "OPTIMUS_GATEWAY_NPM_BASE_URL",
+                "OPTIMUS_GATEWAY_MAVEN_BASE_URL",
+                "OPTIMUS_GATEWAY_TOOL_MAX_CALLS_PER_TOOL",
+            }
+        ),
+    )
+    def test_gateway_tool_env_names_are_gateway_child(self, name: str) -> None:
+        assert name in GATEWAY_TOOL_CHILD_ENV_NAMES
+        policy = LAUNCH_VARIABLE_POLICIES[name]
+        assert PropagationTarget.GATEWAY_CHILD in policy.propagation
+
+    def test_project_gateway_tool_child_env_forwards_present_tool_vars_only(self) -> None:
+        projected = project_gateway_tool_child_env(
+            {
+                "TAVILY_API_KEY": "tvly-test",
+                "OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS": "python.org,pypi.org",
+                "OPTIMUS_GATEWAY_TOOL_REDIS_URL": "redis://127.0.0.1:6379/0",
+                "OPTIMUS_GATEWAY_OSV_API_KEY": "osv-secret",
+                "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "must-not-appear",
+                "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "must-not-appear",
+                "OPENROUTER_API_KEY": "must-not-appear",
+                "OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS_UNUSED": "must-not-appear",
+            }
+        )
+        assert projected == {
+            "TAVILY_API_KEY": "tvly-test",
+            "OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS": "python.org,pypi.org",
+            "OPTIMUS_GATEWAY_TOOL_REDIS_URL": "redis://127.0.0.1:6379/0",
+            "OPTIMUS_GATEWAY_OSV_API_KEY": "osv-secret",
+        }
+
+    def test_project_gateway_tool_child_env_skips_blank_values(self) -> None:
+        projected = project_gateway_tool_child_env(
+            {
+                "TAVILY_API_KEY": " ",
+                "OPTIMUS_GATEWAY_TOOL_REDIS_URL": "redis://127.0.0.1:6379/0",
+            }
+        )
+        assert projected == {"OPTIMUS_GATEWAY_TOOL_REDIS_URL": "redis://127.0.0.1:6379/0"}

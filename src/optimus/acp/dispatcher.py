@@ -24,18 +24,29 @@ from optimus.evidence.ledger import EvidenceLedger
 from optimus.evidence.models import (
     EvidenceExtractRequest,
     EvidenceExtractResponse,
+    EvidencePackageLookupRequest,
     EvidenceRequest,
     EvidenceSearchResponse,
+    EvidenceSecurityAdvisoryRequest,
 )
+from optimus.evidence.package_advisory import PackageAdvisoryService
 from optimus.gateway.client import GatewayClient
 from optimus.gateway.errors import GatewayError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
+from optimus.gateway.tool_models import (
+    GatewayToolContext,
+    PackageLookupRequest,
+    PackageLookupResult,
+    SecurityAdvisoryRequest,
+    SecurityAdvisoryResult,
+)
 from optimus.guardrails.audit import ToolInvocationAuditEvent
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.mutation import MutationForbidden
 from optimus.runtime.state import AgentState, RuntimeContext
 from optimus.tools.mutation_tools import write_file
+from optimus.tools.policy import EvidenceReasonCode, ToolPolicySignal
 from optimus.tools.registry import ToolCallRejected
 
 
@@ -46,6 +57,7 @@ class JsonRpcDispatcher:
         runtime_context: RuntimeContext | None = None,
         gateway_client: GatewayClient | None = None,
         evidence_service: EvidenceAcquisitionService | None = None,
+        package_advisory_service: PackageAdvisoryService | None = None,
         agent_runner: AgentRunner | None = None,
         pre_tool_guard: PreToolGuard | None = None,
         workspace_root: str | Path | None = None,
@@ -58,6 +70,7 @@ class JsonRpcDispatcher:
         )
         self._gateway_client = gateway_client
         self._evidence_service = evidence_service
+        self._package_advisory_service = package_advisory_service
         self._agent_runner = agent_runner
         self._workspace_root = Path(workspace_root).resolve() if workspace_root is not None else None
         # One guard (and one audit sink) is built here, at the dispatcher's own
@@ -186,6 +199,88 @@ class JsonRpcDispatcher:
                     request_id=request_id,
                     result=_evidence_extract_payload(response, ledger, extract_request.run_id),
                 )
+            if method == "optimus.evidence.package_lookup":
+                if self._package_advisory_service is None:
+                    return error_response(
+                        request_id=request_id,
+                        error=JsonRpcError(
+                            code=METHOD_NOT_FOUND, message="package advisory service not configured"
+                        ),
+                    )
+                try:
+                    acp_request = EvidencePackageLookupRequest.model_validate(request.get("params"))
+                except ValidationError:
+                    return error_response(
+                        request_id=request_id,
+                        error=JsonRpcError(code=INVALID_REQUEST, message="invalid request"),
+                    )
+                if (
+                    acp_request.policy_signal is not ToolPolicySignal.DEPENDENCY_VERSION_CHECK
+                    or acp_request.reason is not EvidenceReasonCode.PACKAGE_VERSION
+                ):
+                    return error_response(
+                        request_id=request_id,
+                        error=JsonRpcError(code=INVALID_REQUEST, message="invalid request"),
+                    )
+                tool_request = PackageLookupRequest(
+                    context=GatewayToolContext(
+                        run_id=acp_request.run_id,
+                        session_id=acp_request.session_id,
+                        execution_mode=self._runtime_context.execution_mode.value,
+                    ),
+                    package=acp_request.package,
+                    ecosystem=acp_request.ecosystem,
+                    version=acp_request.version,
+                )
+                result, ledger = self._package_advisory_service.package_lookup(
+                    tool_request,
+                    execution_mode=self._runtime_context.execution_mode,
+                )
+                return success_response(
+                    request_id=request_id,
+                    result=_evidence_package_lookup_payload(result, ledger, acp_request.run_id),
+                )
+            if method == "optimus.evidence.security_advisory":
+                if self._package_advisory_service is None:
+                    return error_response(
+                        request_id=request_id,
+                        error=JsonRpcError(
+                            code=METHOD_NOT_FOUND, message="package advisory service not configured"
+                        ),
+                    )
+                try:
+                    acp_request = EvidenceSecurityAdvisoryRequest.model_validate(request.get("params"))
+                except ValidationError:
+                    return error_response(
+                        request_id=request_id,
+                        error=JsonRpcError(code=INVALID_REQUEST, message="invalid request"),
+                    )
+                if (
+                    acp_request.policy_signal is not ToolPolicySignal.SECURITY_OR_CVE_CHECK
+                    or acp_request.reason is not EvidenceReasonCode.SECURITY_ADVISORY
+                ):
+                    return error_response(
+                        request_id=request_id,
+                        error=JsonRpcError(code=INVALID_REQUEST, message="invalid request"),
+                    )
+                tool_request = SecurityAdvisoryRequest(
+                    context=GatewayToolContext(
+                        run_id=acp_request.run_id,
+                        session_id=acp_request.session_id,
+                        execution_mode=self._runtime_context.execution_mode.value,
+                    ),
+                    identifier=acp_request.identifier,
+                    ecosystem=acp_request.ecosystem,
+                    version=acp_request.version,
+                )
+                result, ledger = self._package_advisory_service.security_advisory(
+                    tool_request,
+                    execution_mode=self._runtime_context.execution_mode,
+                )
+                return success_response(
+                    request_id=request_id,
+                    result=_evidence_security_advisory_payload(result, ledger, acp_request.run_id),
+                )
             if method == "optimus.agent.run":
                 if self._agent_runner is None:
                     return error_response(
@@ -312,3 +407,46 @@ def _evidence_extract_payload(
         "ledger_run_total_cost_usd": str(ledger.total_cost_usd(run_id=run_id)),
         "ledger_run_total_credits": ledger.total_credits(run_id=run_id),
     }
+
+
+def _ledger_usage_payload(ledger: EvidenceLedger, run_id: str) -> dict[str, Any]:
+    """Reconstruct the last-recorded gateway usage fields for one run from the ledger.
+
+    Package/advisory results carry no ``gateway_usage`` field of their own
+    (unlike ``EvidenceSearchResponse``/``EvidenceExtractResponse``), so the ACP
+    payload copies the usage fields the service just recorded to the ledger.
+    """
+    entries = ledger.entries_for_run(run_id)
+    entry = entries[-1]
+    return {
+        "gateway_request_id": entry.gateway_request_id,
+        "provider": entry.provider,
+        "provider_request_id": entry.provider_request_id,
+        "cache_hit": entry.cache_hit,
+        "billing_units": entry.billing_units,
+        "cost_usd": str(entry.cost_usd),
+    }
+
+
+def _evidence_package_lookup_payload(
+    result: PackageLookupResult,
+    ledger: EvidenceLedger,
+    run_id: str,
+) -> dict[str, Any]:
+    payload = result.model_dump(mode="json")
+    payload["gateway_usage"] = _ledger_usage_payload(ledger, run_id)
+    payload["ledger_run_total_cost_usd"] = str(ledger.total_cost_usd(run_id=run_id))
+    payload["ledger_run_total_credits"] = ledger.total_credits(run_id=run_id)
+    return payload
+
+
+def _evidence_security_advisory_payload(
+    result: SecurityAdvisoryResult,
+    ledger: EvidenceLedger,
+    run_id: str,
+) -> dict[str, Any]:
+    payload = result.model_dump(mode="json")
+    payload["gateway_usage"] = _ledger_usage_payload(ledger, run_id)
+    payload["ledger_run_total_cost_usd"] = str(ledger.total_cost_usd(run_id=run_id))
+    payload["ledger_run_total_credits"] = ledger.total_credits(run_id=run_id)
+    return payload

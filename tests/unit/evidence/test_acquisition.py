@@ -28,10 +28,19 @@ class FakeGatewayClient:
         self.calls.append({"path": path, "payload": payload})
         if path == "/v1/tools/web/search":
             return {
-                "results": [
-                    {"title": "Docs", "url": "https://docs.example.com/a", "snippet": "A"},
-                ],
-                "credits_used": 2,
+                "tool_class": "web_search",
+                "policy_signal": "USER_REQUESTED_EXTERNAL_FACT",
+                "run_id": "run-1",
+                "result": {
+                    "results": [
+                        {"title": "Docs", "url": "https://docs.example.com/a", "snippet": "A"},
+                    ]
+                },
+                "provenance": {
+                    "search_id": "search-1",
+                    "source_urls": ["https://docs.example.com/a"],
+                    "trust": "untrusted",
+                },
                 "gateway_usage": {
                     "gateway_request_id": "gw-search-1",
                     "provider": "tavily",
@@ -43,10 +52,19 @@ class FakeGatewayClient:
             }
         if path == "/v1/tools/web/extract":
             return {
-                "url": "https://docs.example.com/a",
-                "title": "Docs",
-                "content": "Evidence text",
-                "credits_used": 1,
+                "tool_class": "web_extract",
+                "policy_signal": "APPROVED_SEARCH_RESULT_PROVENANCE",
+                "run_id": "run-1",
+                "result": {
+                    "items": [
+                        {"url": "https://docs.example.com/a", "title": "Docs", "content": "Evidence text"},
+                    ]
+                },
+                "provenance": {
+                    "search_id": None,
+                    "source_urls": ["https://docs.example.com/a"],
+                    "trust": "untrusted",
+                },
                 "gateway_usage": {
                     "gateway_request_id": "gw-extract-1",
                     "provider": "tavily",
@@ -62,7 +80,7 @@ class OffAllowlistGatewayClient(FakeGatewayClient):
     def post_tool_json(self, *, path: str, payload: dict[str, object]) -> dict[str, object]:
         body = super().post_tool_json(path=path, payload=payload)
         if path == "/v1/tools/web/search":
-            body["results"] = [{"title": "Bad", "url": "https://evil.com/a", "snippet": "bad"}]
+            body["result"] = {"results": [{"title": "Bad", "url": "https://evil.com/a", "snippet": "bad"}]}
         return body
 
 
@@ -72,13 +90,37 @@ class FailingGatewayClient(FakeGatewayClient):
         raise GatewayHttpError(502, "gateway unavailable")
 
 
+class EmptyExtractItemsGatewayClient(FakeGatewayClient):
+    def post_tool_json(self, *, path: str, payload: dict[str, object]) -> dict[str, object]:
+        self.calls.append({"path": path, "payload": payload})
+        if path == "/v1/tools/web/extract":
+            return {
+                "tool_class": "web_extract",
+                "policy_signal": "APPROVED_SEARCH_RESULT_PROVENANCE",
+                "run_id": "run-1",
+                "result": {"items": []},
+                "provenance": {"search_id": None, "source_urls": [], "trust": "untrusted"},
+                "gateway_usage": {
+                    "gateway_request_id": "gw-extract-empty",
+                    "provider": "tavily",
+                    "cache_hit": False,
+                    "billing_units": 1,
+                    "cost_usd": "0.001",
+                },
+            }
+        raise AssertionError(f"unexpected path: {path}")
+
+
 class MalformedBodyGatewayClient(FakeGatewayClient):
     def post_tool_json(self, *, path: str, payload: dict[str, object]) -> dict[str, object]:
         self.calls.append({"path": path, "payload": payload})
         if path == "/v1/tools/web/search":
             return {
-                "results": [{"title": "Bad", "url": "not-a-url", "snippet": "bad"}],
-                "credits_used": 2,
+                "tool_class": "web_search",
+                "policy_signal": "USER_REQUESTED_EXTERNAL_FACT",
+                "run_id": "run-1",
+                "result": {"results": [{"title": "Bad", "url": "not-a-url", "snippet": "bad"}]},
+                "provenance": {"search_id": None, "source_urls": [], "trust": "untrusted"},
                 "gateway_usage": {
                     "gateway_request_id": "gw-search-bad",
                     "provider": "tavily",
@@ -116,7 +158,7 @@ def test_search_authorizes_gateway_call_and_records_ledger_entry():
     assert ledger.entries[0].run_id == "run-1"
     assert ledger.entries[0].gateway_request_id == "gw-search-1"
     assert ledger.total_cost_usd() == Decimal("0.002")
-    assert ledger.total_credits() == 2
+    assert ledger.total_credits() == 0
 
 
 def test_search_intersects_request_domains_with_configured_allowlist():
@@ -308,11 +350,39 @@ def test_extract_requires_prior_search_result_and_records_separate_usage():
     assert response.content == "Evidence text"
     assert response.trust == "untrusted"
     assert gateway.calls[0]["path"] == "/v1/tools/web/extract"
-    assert gateway.calls[0]["payload"]["url"] == "https://docs.example.com/a"
+    assert gateway.calls[0]["payload"]["urls"] == ["https://docs.example.com/a"]
     assert ledger.entries[0].tool_class is ToolClass.WEB_EXTRACT
     assert ledger.entries[0].gateway_request_id == "gw-extract-1"
     assert ledger.total_billing_units() == 1
-    assert ledger.total_credits() == 1
+    assert ledger.total_credits() == 0
+
+
+def test_extract_empty_items_records_usage_and_fails_closed():
+    gateway = EmptyExtractItemsGatewayClient()
+    registry = ToolRegistry(max_calls_per_run=10)
+    registry.record_search_results(run_id="run-1", urls=("https://docs.example.com/a",))
+    service = EvidenceAcquisitionService(
+        gateway_client=gateway,
+        domain_policy=domain_policy(),
+        registry=registry,
+        ledger=EvidenceLedger(),
+    )
+    request = EvidenceExtractRequest(
+        run_id="run-1",
+        url="https://docs.example.com/a",
+        reason=EvidenceReasonCode.USER_REQUESTED,
+        policy_signal=ToolPolicySignal.APPROVED_SEARCH_RESULT_PROVENANCE,
+        allowed_domains=("docs.example.com",),
+    )
+
+    with pytest.raises(GatewayResponseError, match="items missing"):
+        service.extract(request, execution_mode=ExecutionMode.CHAT)
+
+    assert service.registry.call_count("run-1") == 1
+    assert len(service.ledger.entries) == 1
+    assert service.ledger.entries[0].tool_class is ToolClass.WEB_EXTRACT
+    assert service.ledger.entries[0].gateway_request_id == "gw-extract-empty"
+    assert service.ledger.entries[0].cost_usd == Decimal("0.001")
 
 
 def test_extract_rejects_unapproved_url_before_gateway_call():

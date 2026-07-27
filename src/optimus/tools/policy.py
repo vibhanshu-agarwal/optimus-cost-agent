@@ -12,6 +12,7 @@ class ToolClass(StrEnum):
     VALIDATION_GATE = "validation_gate"
     WEB_SEARCH = "web_search"
     WEB_EXTRACT = "web_extract"
+    PACKAGE_AND_ADVISORY_METADATA = "package_and_advisory_metadata"
 
 
 class EvidenceReasonCode(StrEnum):
@@ -77,6 +78,10 @@ class ToolInvocationPolicy:
 
     :ivar WEB_SEARCH_TRIGGERS: Set of conditions and reason code pairs required to authorize a web search tool.
     :type WEB_SEARCH_TRIGGERS: frozenset
+    :ivar PACKAGE_ADVISORY_TRIGGERS: Set of conditions and reason code pairs required to authorize
+        the dedicated package/advisory metadata tool class (``P11-FU-2``). Dependency-version and
+        security/CVE signals route here, never through generic web search.
+    :type PACKAGE_ADVISORY_TRIGGERS: frozenset
     """
     SUPPORTED_EXECUTION_MODES = frozenset(
         {ExecutionMode.PLAN, ExecutionMode.CHAT, ExecutionMode.AGENT}
@@ -87,6 +92,11 @@ class ToolInvocationPolicy:
             (ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT, EvidenceReasonCode.USER_REQUESTED),
             (ToolPolicySignal.CURRENT_OR_LATEST_FACT, EvidenceReasonCode.CURRENT_FACT),
             (ToolPolicySignal.API_OR_FRAMEWORK_FACT_NOT_IN_REPO, EvidenceReasonCode.API_DOCS_OUTDATED),
+        }
+    )
+
+    PACKAGE_ADVISORY_TRIGGERS = frozenset(
+        {
             (ToolPolicySignal.DEPENDENCY_VERSION_CHECK, EvidenceReasonCode.PACKAGE_VERSION),
             (ToolPolicySignal.SECURITY_OR_CVE_CHECK, EvidenceReasonCode.SECURITY_ADVISORY),
         }
@@ -101,6 +111,8 @@ class ToolInvocationPolicy:
             return self._authorize_web_search(request)
         if request.tool_class is ToolClass.WEB_EXTRACT:
             return self._authorize_web_extract(request)
+        if request.tool_class is ToolClass.PACKAGE_AND_ADVISORY_METADATA:
+            return self._authorize_package_advisory(request)
         return _reject(request, f"unsupported tool class: {request.tool_class}")
 
     def _authorize_web_search(self, request: ToolInvocationRequest) -> ToolInvocationDecision:
@@ -124,6 +136,11 @@ class ToolInvocationPolicy:
         if request.target_url not in request.prior_search_result_urls:
             return _reject(request, "URL not in approved search-result set")
         return _allow(request, "approved search result provenance matched")
+
+    def _authorize_package_advisory(self, request: ToolInvocationRequest) -> ToolInvocationDecision:
+        if (request.policy_signal, request.reason) not in self.PACKAGE_ADVISORY_TRIGGERS:
+            return _reject(request, "no policy trigger matched")
+        return _allow(request, "policy trigger matched")
 
 
 def _allow(request: ToolInvocationRequest, reason: str) -> ToolInvocationDecision:

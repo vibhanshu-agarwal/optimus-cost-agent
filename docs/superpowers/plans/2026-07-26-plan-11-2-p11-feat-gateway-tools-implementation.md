@@ -101,7 +101,7 @@ origin/secrets, E8 server policy revalidation, E9 coverage/release, and E10 sour
 **Produces:** A freeze-input artifact proving that the worker is on the approved baseline and that
 the exact design/plan/inventory bytes match the pending or approved digest record.
 
-- [ ] **Step 1: Confirm branch and worktree state.**
+- [x] **Step 1: Confirm branch and worktree state.**
 
   Run from Git Bash at the repository root:
 
@@ -116,7 +116,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   `bd216388c0da995e04df254ec198a00e4aab23d4`, and no source or
   test path is dirty before implementation.
 
-- [ ] **Step 2: Verify all four authoritative PDF digests.**
+- [x] **Step 2: Verify all four authoritative PDF digests.**
 
   ```bash
   sha256sum docs/Optimus-Cost-Agent-Architecture-v2.15.pdf
@@ -128,7 +128,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   Expected: the four values equal the source pin table above. A mismatch stops the task and
   requires a new requirement extraction; it is not a reason to silently update the spec.
 
-- [ ] **Step 3: Verify the inventory and frozen artifact bytes.**
+- [x] **Step 3: Verify the inventory and frozen artifact bytes.**
 
   ```bash
   sha256sum docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md
@@ -143,7 +143,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   pinned artifacts contain zero CR bytes. If any byte changes, invalidate the old record and create
   a versioned replacement before continuing.
 
-- [ ] **Step 4: Read the approval record and reviewer checkpoint Current State.**
+- [x] **Step 4: Read the approval record and reviewer checkpoint Current State.**
 
   Do not begin source or test mutation until the approval record says reviewer-agent and operator
   approval exist for the exact bytes, and the checkpoint log confirms no conflicting ruling.
@@ -178,14 +178,14 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   `SECURITY_OR_CVE_CHECK + SECURITY_ADVISORY` are removed from generic web triggers and placed in a
   dedicated package/advisory trigger set.
 
-- [ ] **Step 1: Write failing contract tests.**
+- [x] **Step 1: Write failing contract tests.**
 
   Add tests that reject empty queries and identifiers, unsupported ecosystems, duplicate extract
   URLs, non-HTTPS URLs, mixed `url`/`urls` forms, result caps outside 1–10, extraction limits
   outside 1–20,000, and malformed/null `gateway_usage`. Add tests that accept the exact web,
   package, and advisory success envelopes and preserve `Decimal` cost values.
 
-- [ ] **Step 2: Run the focused tests and confirm RED.**
+- [x] **Step 2: Run the focused tests and confirm RED.**
 
   ```powershell
   uv run --frozen pytest tests/unit/gateway/test_tool_models.py tests/unit/tools/test_tool_policy.py tests/unit/evidence/test_models.py -q
@@ -195,14 +195,14 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   yet exist; existing tests may fail only where the intentional package-signal ownership changes
   their expected class.
 
-- [ ] **Step 3: Implement the minimum shared contracts and policy taxonomy.**
+- [x] **Step 3: Implement the minimum shared contracts and policy taxonomy.**
 
   Add frozen Pydantic v2 models with bounded fields and explicit HTTPS validation. Keep existing
   `GatewayUsage` parsing as the single usage parser. Update `ToolInvocationPolicy.authorize` so
   web and package/advisory classes have separate branches and reason-code requirements. Do not add
   MCP to the taxonomy or change `optimus/mcp/runtime.py`.
 
-- [ ] **Step 4: Run the focused tests and confirm GREEN.**
+- [x] **Step 4: Run the focused tests and confirm GREEN.**
 
   ```powershell
   uv run --frozen pytest tests/unit/gateway/test_tool_models.py tests/unit/tools/test_tool_policy.py tests/unit/evidence/test_models.py -q
@@ -238,7 +238,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
 - ACP methods `optimus.evidence.package_lookup` and `optimus.evidence.security_advisory` return
   typed result payloads using the same error mapping as existing evidence methods.
 
-- [ ] **Step 1: Write failing adapter tests.**
+- [x] **Step 1: Write failing adapter tests.**
 
   Prove that web builders preserve query verbatim, send reason only as metadata, map a legacy
   single `url` to `urls: [url]`, and reject duplicate or mixed forms. Prove that parsers unwrap
@@ -246,7 +246,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   `gateway_request_id`, billing units, cache status, and cost. Add package/advisory service tests
   for policy class, signal, Gateway path, typed result, and ledger join.
 
-- [ ] **Step 2: Run the client-focused tests and confirm RED.**
+- [x] **Step 2: Run the client-focused tests and confirm RED.**
 
   ```powershell
   uv run --frozen pytest tests/unit/evidence/test_gateway_io.py tests/unit/evidence/test_acquisition.py tests/unit/evidence/test_package_advisory.py tests/integration/evidence/test_mocked_evidence_flow.py -q
@@ -254,20 +254,20 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
 
   Expected: new envelope and package/advisory cases fail before adapter changes exist.
 
-- [ ] **Step 3: Implement the adapter/service changes.**
+- [x] **Step 3: Implement the adapter/service changes.**
 
   Keep local `EvidenceDomainPolicy`, `ToolRegistry`, `PreToolGuard`, and `EvidenceLedger` in the
   call path. Replace direct top-level result parsing with shared-envelope parsing and preserve the
   existing ACP single-URL compatibility mapping. Ensure package/advisory failures record usage only
   when the Gateway supplied a valid usage envelope, exactly as web failures do.
 
-- [ ] **Step 4: Wire the two ACP methods without weakening dispatcher validation.**
+- [x] **Step 4: Wire the two ACP methods without weakening dispatcher validation.**
 
   Add focused service construction to `JsonRpcDispatcher`; malformed params return `INVALID_REQUEST`,
   missing service returns `METHOD_NOT_FOUND`, and tool/policy/Gateway errors use the existing
   sanitized error path. Do not add an ACP MCP method.
 
-- [ ] **Step 5: Run the client-focused tests and confirm GREEN.**
+- [x] **Step 5: Run the client-focused tests and confirm GREEN.**
 
   ```powershell
   uv run --frozen pytest tests/unit/evidence/test_gateway_io.py tests/unit/evidence/test_acquisition.py tests/unit/evidence/test_package_advisory.py tests/unit/acp/test_dispatcher.py tests/integration/evidence/test_mocked_evidence_flow.py -q
@@ -302,22 +302,24 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   direct Redis client. It must not import `optimus.*`, reuse `optimus.redis.*`, or call the agent-side
   `RedisAgentStateStore`/wrapper; the `optimus_gateway` package remains independently deployable.
 
-- [ ] **Step 1: Write failing policy/state tests.**
+- [x] **Step 1: Write failing policy/state tests.**
 
   Test missing `run_id`, malformed metadata, unsupported execution mode, missing required identity,
   empty effective domain intersection, HTTP/non-HTTPS URL rejection, subdomain matching, search
   URL recording, same-run lookup, cross-run rejection, atomic cap rejection, and state-store
   unavailability.
 
-- [ ] **Step 2: Run policy/state tests and confirm RED.**
+- [x] **Step 2: Run policy/state tests and confirm RED.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_tool_policy.py tests/unit/optimus_gateway/test_tool_state.py -q
   ```
 
   Expected: the new Gateway-owned policy and state interfaces are absent and the tests fail.
+  Confirmed: `ImportError: cannot import name 'GatewayToolContext' from 'optimus_gateway.models'`
+  (2 errors during collection). See `.superpowers/sdd/task-3-report.md`.
 
-- [ ] **Step 3: Implement independent Gateway checks.**
+- [x] **Step 3: Implement independent Gateway checks.**
 
   Normalize requested and resolved HTTPS hosts using the existing domain semantics, intersect them
   with the authenticated Gateway policy, and never accept local `approved_urls` as the authoritative
@@ -325,7 +327,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   bodies out of the state store. Return structured decisions with stable rule IDs for audit/error
   mapping.
 
-- [ ] **Step 4: Implement the Redis-backed state boundary.**
+- [x] **Step 4: Implement the Redis-backed state boundary.**
 
   Import the top-level `redis` package directly inside the Gateway state module and keep the client
   behind the narrow `GatewayToolStateStore` protocol. Use atomic Redis operations for the call
@@ -334,16 +336,22 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   silently fall back to `InMemoryGatewayToolStateStore` when the configured state store is
   unavailable. Unit tests may use the in-memory store only as a dependency double.
 
-- [ ] **Step 5: Run policy/state tests and confirm GREEN.**
+- [x] **Step 5a (unit half): Run policy/state tests and confirm GREEN.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_tool_policy.py tests/unit/optimus_gateway/test_tool_state.py -q
+  ```
+
+  Confirmed: `38 passed in 0.21s`.
+
+- [x] **Step 5b (live half): Run the real-Redis artifact and confirm GREEN.**
+
+  ```powershell
   uv run --frozen pytest tests/integration/optimus_gateway/test_gateway_tool_state_live.py -m requires_redis -q
   ```
 
-  Expected: all decisions fail closed on invalid context, blocked domains, cross-run provenance,
-  cap overflow, and state unavailability; the real-Redis artifact proves atomic call-cap and
-  provenance-TTL behavior without importing the agent-side Redis wrapper.
+  Confirmed after Docker Desktop + local `redis:7-alpine` on `OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0`:
+  `8 passed in 0.81s` (atomic call-cap, same-run provenance, cross-run isolation, TTL, fail-closed).
 
 ---
 
@@ -371,36 +379,38 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   `GatewayToolStateStore` for injection into `serve_gateway`.
 - `handle_tool_request(*, authorization_header: str | None, path: str, request_body: Mapping[str, Any], config: GatewayServiceConfig, dependencies: GatewayToolDependencies) -> tuple[int, dict[str, Any]]`.
 
-- [ ] **Step 1: Write failing handler tests.**
+- [x] **Step 1: Write failing handler tests.**
 
   Test all four paths with an injected deterministic provider bundle. Verify bearer auth happens
   before provider invocation; malformed typed bodies return 400; blocked domains and wrong class or
   signal return 403; missing extract provenance returns 403; cap overflow returns 429; state outage
   returns 503; successful responses contain only the common typed envelope and valid usage.
 
-- [ ] **Step 2: Run handler/server tests and confirm RED.**
+- [x] **Step 2: Run handler/server tests and confirm RED.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_tool_handlers.py tests/unit/optimus_gateway/test_server.py -q
   ```
 
   Expected: the four tool routes still return 404 because route dispatch and handlers do not exist.
+  Confirmed via `git stash` of the new/changed Task 4 files: `ModuleNotFoundError: No module named
+  'optimus_gateway.tool_handlers'` (collection errors) before restoring the implementation.
 
-- [ ] **Step 3: Implement provider protocols and server-side adapter boundaries.**
+- [x] **Step 3: Implement provider protocols and server-side adapter boundaries.**
 
   Keep credentials inside the Gateway provider bundle. Translate the typed web/package/advisory
   requests to provider calls without passing raw request metadata as provider instructions. Sanitize
   provider errors and normalize provider results into the shared result models; never return raw
   provider JSON, keys, or unbounded URLs.
 
-- [ ] **Step 4: Implement handlers in the prescribed order.**
+- [x] **Step 4: Implement handlers in the prescribed order.**
 
   Authenticate, validate, resolve context, apply policy/domain/provenance/call-cap checks, invoke
   the provider, record search provenance where applicable, and build the common envelope. Assign a
   `gateway_request_id` to accepted or policy-rejected requests and preserve the existing 404
   behavior for unknown paths.
 
-- [ ] **Step 5: Add explicit server dispatch.**
+- [x] **Step 5: Add explicit server dispatch.**
 
   Extend the current post-CORE `OptimusGatewayHandler.do_POST` dispatch for exactly:
 
@@ -418,16 +428,16 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   `GatewayToolDependencies` from `serve_gateway` without making the local agent aware of provider
   configuration.
 
-- [ ] **Step 6: Run handler/server tests and confirm GREEN.**
+- [x] **Step 6: Run handler/server tests and confirm GREEN.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_tool_handlers.py tests/unit/optimus_gateway/test_server.py -q
   ```
 
-  Expected: all four tool routes are served over HTTP with deterministic unit providers, while the
-  three existing CORE routes and unknown-route behavior remain green.
+  Confirmed: `62 passed`. All four tool routes are served over HTTP with deterministic unit
+  providers, while the three existing CORE routes and unknown-route behavior remain green.
 
-- [ ] **Step 7: Produce the Task 4 local-process artifact before closing the task.**
+- [x] **Step 7: Produce the Task 4 local-process artifact before closing the task.**
 
   Extend `tests/integration/optimus_gateway/test_gateway_tools_live.py` using the existing
   subprocess/fixture conventions. Start the real Gateway server process and inject only a
@@ -446,6 +456,9 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   responses before Task 4 is marked complete. It is local deterministic evidence, not the real
   staging policy evidence reserved for Task 6.
 
+  Confirmed: `7 passed in 3.84s`; see
+  `reports/plan-11-2-gateway-tools-local-process-evidence.md`.
+
 ---
 
 ### Task 5: Reconcile local integration flow and ledger/provenance behavior
@@ -458,35 +471,39 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
 - Modify: `tests/unit/evidence/test_ledger.py`
 - Modify: `tests/unit/gateway/test_client.py`
 
-- [ ] **Step 1: Write failing integration assertions.**
+- [x] **Step 1: Write failing integration assertions.**
 
   Extend the existing search-then-extract flow to assert the common envelope, Gateway-issued search
   provenance, untrusted content, one-key Authorization header, and ledger joins by
   `gateway_request_id`. Add package and advisory flows that prove their paths and tool class are
   dedicated and that usage/cost is recorded once per Gateway response.
 
-- [ ] **Step 2: Run the integration subset and confirm RED.**
+- [x] **Step 2: Run the integration subset and confirm RED.**
 
   ```powershell
   uv run --frozen pytest tests/integration/evidence/test_mocked_evidence_flow.py tests/integration/evidence/test_package_advisory_flow.py tests/integration/usage/test_evidence_provider_reconciliation.py tests/unit/evidence/test_ledger.py tests/unit/gateway/test_client.py -q
   ```
 
-  Expected: assertions fail against the pre-envelope or generic-web behavior.
+  Confirmed RED via `tests/integration/evidence/test_package_advisory_flow.py` not existing
+  (collection error) before this task; Tasks 1–4 had already implemented the common envelope,
+  Gateway-issued provenance, and ledger semantics, so the extended assertions on the pre-existing
+  files exercised already-correct behavior rather than surfacing a second defect. See
+  `.superpowers/sdd/task-5-report.md`.
 
-- [ ] **Step 3: Reconcile the integration fixtures and ledger assertions.**
+- [x] **Step 3: Reconcile the integration fixtures and ledger assertions.**
 
   Keep the transport fake limited to the client/integration tier. Assert no direct provider URL is
   requested by the local agent, no secret appears in `GatewayRequest.__repr__`, the search URL is
   recorded before extract, and malformed or usage-less responses never create a false ledger entry.
 
-- [ ] **Step 4: Run the integration subset and confirm GREEN.**
+- [x] **Step 4: Run the integration subset and confirm GREEN.**
 
   ```powershell
   uv run --frozen pytest tests/integration/evidence/test_mocked_evidence_flow.py tests/integration/evidence/test_package_advisory_flow.py tests/integration/usage/test_evidence_provider_reconciliation.py tests/unit/evidence/test_ledger.py tests/unit/gateway/test_client.py -q
   ```
 
-  Expected: local web/package/advisory flows preserve the one-key boundary, provenance, usage, and
-  cost reconciliation behavior.
+  Confirmed: `33 passed`. Full `tests/unit`: `1654 passed, 19 skipped`. Ruff clean on touched
+  files. No `src/` files changed (test-only reconciliation).
 
 ---
 
@@ -498,7 +515,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
 - Create: `reports/plan-11-2-gateway-tools-staging-evidence.md`
 - Modify: `docs/superpowers/reviews/plan-11-review-checkpoints.md` (gitignored; never stage)
 
-- [ ] **Step 1: Add real staging Gateway policy evidence.**
+- [x] **Step 1: Add real staging Gateway policy evidence.**
 
   Mark the staging tests `requires_gateway`. Use only real `OPTIMUS_GATEWAY_URL` and
   `OPTIMUS_API_KEY` credentials, send direct HTTP requests that bypass local `ToolRegistry`, and
@@ -513,7 +530,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   The tests must assert the Gateway status, structured error reason, and `gateway_request_id`.
   They must not use a fake server or claim §9D evidence from the local unit provider.
 
-- [ ] **Step 2: Add real success-path evidence for both package families.**
+- [x] **Step 2: Add real success-path evidence for both package families.**
 
   Use the staging Gateway's configured package-registry and advisory providers to record one
   successful package lookup and one successful security advisory lookup. Assert the dedicated paths,
@@ -521,13 +538,13 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   `gateway_usage`, and one-key credential boundary. Sanitize provider response bodies before writing
   the evidence report.
 
-- [ ] **Step 3: Write the named evidence report and checkpoint entry.**
+- [x] **Step 3: Write the named evidence report and checkpoint entry.**
 
   `reports/plan-11-2-gateway-tools-staging-evidence.md` must contain the exact test command, date,
   implementation SHA, Gateway environment class, status codes, request IDs, and sanitized response
   summaries. Update the gitignored checkpoint log with the same artifact path; do not stage the log.
 
-- [ ] **Step 4: Run the staging tier.**
+- [x] **Step 4: Run the staging tier.**
 
   ```powershell
   uv run --frozen pytest tests/integration/optimus_gateway/test_gateway_tools_live.py -m requires_gateway -q
@@ -543,13 +560,13 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
 
 **Files:** The affected source/tests, report, approval record, and checkpoint log; no MCP or budget files.
 
-- [ ] **Step 1: Run the affected unit and integration suites.**
+- [x] **Step 1: Run the affected unit and integration suites.**
 
   ```powershell
   uv run --frozen pytest tests/unit/tools tests/unit/evidence tests/unit/gateway tests/unit/optimus_gateway tests/unit/acp/test_dispatcher.py tests/integration/evidence tests/integration/usage/test_evidence_provider_reconciliation.py tests/integration/optimus_gateway/test_gateway_tools_live.py tests/integration/optimus_gateway/test_gateway_tool_state_live.py -q
   ```
 
-- [ ] **Step 2: Run the repository default suite and aggregate coverage.**
+- [x] **Step 2: Run the repository default suite and aggregate coverage.**
 
   ```powershell
   uv run --frozen pytest -q
@@ -559,7 +576,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   Expected: aggregate Python production-code coverage is at least 80%; safety-critical policy and
   trust modules do not regress.
 
-- [ ] **Step 3: Run Ruff and diff hygiene.**
+- [x] **Step 3: Run Ruff and diff hygiene.**
 
   ```powershell
   uv run --frozen ruff check .
@@ -570,18 +587,18 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   Expected: Ruff and diff checks pass, with no source/test path from MCP or budget enforcement in
   the implementation diff.
 
-- [ ] **Step 4: Run the one-key release scan.**
+- [x] **Step 4: Run the one-key release scan.**
 
   Use the repository's existing release-gate command and prove that only
   `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` are resolvable in the local agent process. Provider
   credentials may appear only in the Gateway deployment boundary used by the named live tier.
 
-- [ ] **Step 5: Reconcile every traceability row.**
+- [x] **Step 5: Reconcile every traceability row.**
 
   For every in-scope row in the spec, record its unit, local-process, staging, ledger, or release
   artifact. Record `P11-FU-3`/MCP and `P9.85-FU-3`/budget as explicit exclusions, not missing tests.
 
-- [ ] **Step 6: Freeze the final bytes.**
+- [x] **Step 6: Freeze the final bytes.**
 
   Recompute the design spec, implementation plan, and inventory committed-blob SHA-256 values.
   If any approved byte changed, invalidate the current approval record and create a new versioned
@@ -607,22 +624,22 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
 
 ## Definition of Done
 
-- [ ] The four typed Gateway tool routes are implemented with shared request/result/provenance/
+- [x] The four typed Gateway tool routes are implemented with shared request/result/provenance/
   usage envelopes and sanitized errors.
-- [ ] Task 4's real local-process HTTP artifact proves the four route responses before staging policy
+- [x] Task 4's real local-process HTTP artifact proves the four route responses before staging policy
   evidence is attempted.
-- [ ] Web search/extract use HTTPS/domain bounds, Gateway-owned search provenance, and bounded
+- [x] Web search/extract use HTTPS/domain bounds, Gateway-owned search provenance, and bounded
   extraction limits; local pre-tool and registry checks remain active.
-- [ ] `P11-FU-2` is closed by dedicated package/advisory routing, with signals no longer passing
+- [x] `P11-FU-2` is closed by dedicated package/advisory routing, with signals no longer passing
   through generic `WEB_SEARCH` policy.
-- [ ] Gateway-side tool, model, execution-mode, domain, provenance, and call-cap checks are
+- [x] Gateway-side tool, model, execution-mode, domain, provenance, and call-cap checks are
   independently proven with real staging Gateway evidence.
-- [ ] `RedisGatewayToolStateStore` uses the direct top-level Redis client, not an agent-side wrapper,
+- [x] `RedisGatewayToolStateStore` uses the direct top-level Redis client, not an agent-side wrapper,
   and real-Redis evidence proves atomic call caps and provenance TTL behavior.
-- [ ] Provider keys remain Gateway-side; local agent requests use only the two Optimus credentials.
-- [ ] Usage/cost is parsed from Gateway envelopes and joined to the evidence ledger by
+- [x] Provider keys remain Gateway-side; local agent requests use only the two Optimus credentials.
+- [x] Usage/cost is parsed from Gateway envelopes and joined to the evidence ledger by
   `gateway_request_id`; no budget enforcement or cost estimation is added.
-- [ ] `P11-FEAT-GATEWAY-MCP` and `P11-FU-3` remain outside the implementation diff and explicitly
+- [x] `P11-FEAT-GATEWAY-MCP` and `P11-FU-3` remain outside the implementation diff and explicitly
   linked in the charter/backlog.
-- [ ] The full affected suite, default suite, coverage >=80%, Ruff, diff hygiene, and one-key
+- [x] The full affected suite, default suite, coverage >=80%, Ruff, diff hygiene, and one-key
   release scan pass, with each checkbox backed by its stated artifact.

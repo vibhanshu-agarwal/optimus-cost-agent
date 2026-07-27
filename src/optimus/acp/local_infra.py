@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from optimus.acp.local_gateway_secrets import ProviderCredentialResolution
+from optimus.acp.launch_policy import project_gateway_tool_child_env
+from optimus.acp.local_gateway_secrets import ProviderCredentialResolution, _parse_env_gateway_file
 from optimus.config.gateway import _LOOPBACK_HOSTS, LOCAL_PROVIDER_KEY_NAMES
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 
@@ -204,6 +205,7 @@ def ensure_local_gateway(
     policy_version: str,
     runtime_root: Path,
     system_env: Mapping[str, str] = _EMPTY_MAPPING,
+    config_root: Path | None = None,
     log: Callable[[str], None] = _noop_log,
 ) -> LocalGatewayProcess | None:
     """Start the local Gateway child using ALREADY-RESOLVED credentials.
@@ -216,6 +218,11 @@ def ensure_local_gateway(
     workspace/security-snapshot digests and passes bind_host/bind_port as
     explicit CLI arguments — never through OPTIMUS_LOCAL_GATEWAY_BIND_HOST/
     PORT — closing the standalone bind seam from the parent side.
+
+    When ``config_root`` is provided, Gateway tool-provider variables from
+    ``.env.gateway`` (Tavily, domain allowlist, tool Redis URL, OSV, registry
+    base URLs, call caps) are projected into the child env so
+    ``build_tool_dependencies`` can return a real dependency bundle.
     """
     parsed = urlparse(gateway_url)
     host = parsed.hostname or "127.0.0.1"
@@ -242,10 +249,17 @@ def ensure_local_gateway(
         )
         return None
 
+    tool_env: dict[str, str] = {}
+    if config_root is not None:
+        tool_env = project_gateway_tool_child_env(_parse_env_gateway_file(config_root / ".env.gateway"))
+    # Allow inherited/snapshot values to fill gaps when .env.gateway omits them.
+    tool_env = {**project_gateway_tool_child_env(system_env), **tool_env}
+
     child_env: dict[str, str] = {
         "OPTIMUS_LOCAL_GATEWAY_PROVIDER": provider_secrets.provider,
         "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": shared_secret,
         **provider_secrets.as_gateway_child_env(),
+        **tool_env,
     }
     for key in _SYSTEM_ENV_KEYS:
         value = system_env.get(key, "")

@@ -545,3 +545,335 @@ def test_dispatcher_maps_gateway_trust_value_error_to_json_rpc_error():
 
     assert response["error"]["code"] == -32603
     assert "gateway origin not in trusted set" in response["error"]["message"]
+
+
+from optimus.gateway.tool_models import PackageLookupResult, SecurityAdvisoryResult
+
+
+class FakePackageAdvisoryService:
+    def __init__(self) -> None:
+        self.package_lookup_calls: list[dict[str, object]] = []
+        self.security_advisory_calls: list[dict[str, object]] = []
+
+    def package_lookup(self, request, *, execution_mode):
+        self.package_lookup_calls.append({"request": request, "execution_mode": execution_mode})
+        result = PackageLookupResult(
+            package="pytest-asyncio",
+            ecosystem="pypi",
+            requested_version=None,
+            latest_version="0.24.0",
+            versions=(),
+            citations=("https://pypi.org/project/pytest-asyncio/",),
+        )
+        ledger = EvidenceLedger().record(
+            _fake_ledger_entry(
+                run_id=request.context.run_id,
+                tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
+                gateway_request_id="gw-pkg-1",
+                provider="package-registry",
+                cost_usd=Decimal("0.0005"),
+            )
+        )
+        return result, ledger
+
+    def security_advisory(self, request, *, execution_mode):
+        self.security_advisory_calls.append({"request": request, "execution_mode": execution_mode})
+        result = SecurityAdvisoryResult(
+            identifier="CVE-2026-12345",
+            ecosystem="npm",
+            version="1.2.3",
+            advisories=(),
+        )
+        ledger = EvidenceLedger().record(
+            _fake_ledger_entry(
+                run_id=request.context.run_id,
+                tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
+                gateway_request_id="gw-adv-1",
+                provider="osv",
+                cost_usd=Decimal("0.0007"),
+            )
+        )
+        return result, ledger
+
+
+def _fake_ledger_entry(*, run_id, tool_class, gateway_request_id, provider, cost_usd):
+    from datetime import UTC, datetime
+
+    from optimus.evidence.ledger import EvidenceLedgerEntry
+
+    return EvidenceLedgerEntry.from_gateway_usage(
+        run_id=run_id,
+        session_id=None,
+        reason=EvidenceReasonCode.PACKAGE_VERSION,
+        policy_signal=ToolPolicySignal.DEPENDENCY_VERSION_CHECK.value,
+        tool_class=tool_class,
+        sources=(),
+        gateway_usage=GatewayUsage(
+            gateway_request_id=gateway_request_id,
+            provider=provider,
+            cache_hit=False,
+            billing_units=1,
+            cost_usd=cost_usd,
+        ),
+        credits_used=0,
+        queried_at=datetime(2026, 7, 26, tzinfo=UTC),
+    )
+
+
+def test_dispatcher_routes_evidence_package_lookup_to_service():
+    package_advisory_service = FakePackageAdvisoryService()
+    dispatcher = JsonRpcDispatcher(package_advisory_service=package_advisory_service)
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "pkg-1",
+            "method": "optimus.evidence.package_lookup",
+            "params": {
+                "run_id": "run-1",
+                "package": "pytest-asyncio",
+                "ecosystem": "pypi",
+                "reason": "PACKAGE_VERSION",
+                "policy_signal": "DEPENDENCY_VERSION_CHECK",
+            },
+        }
+    )
+
+    assert "error" not in response
+    assert response["result"]["package"] == "pytest-asyncio"
+    assert response["result"]["latest_version"] == "0.24.0"
+    assert response["result"]["gateway_usage"]["gateway_request_id"] == "gw-pkg-1"
+    call = package_advisory_service.package_lookup_calls[0]
+    assert call["request"].package == "pytest-asyncio"
+    assert call["request"].context.run_id == "run-1"
+    assert call["execution_mode"] is ExecutionMode.PLAN
+
+
+def test_dispatcher_routes_evidence_security_advisory_to_service():
+    package_advisory_service = FakePackageAdvisoryService()
+    dispatcher = JsonRpcDispatcher(package_advisory_service=package_advisory_service)
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "adv-1",
+            "method": "optimus.evidence.security_advisory",
+            "params": {
+                "run_id": "run-1",
+                "identifier": "CVE-2026-12345",
+                "ecosystem": "npm",
+                "version": "1.2.3",
+                "reason": "SECURITY_ADVISORY",
+                "policy_signal": "SECURITY_OR_CVE_CHECK",
+            },
+        }
+    )
+
+    assert "error" not in response
+    assert response["result"]["identifier"] == "CVE-2026-12345"
+    assert response["result"]["gateway_usage"]["gateway_request_id"] == "gw-adv-1"
+    call = package_advisory_service.security_advisory_calls[0]
+    assert call["request"].identifier == "CVE-2026-12345"
+    assert call["request"].context.run_id == "run-1"
+
+
+def test_dispatcher_rejects_malformed_evidence_package_lookup_request():
+    dispatcher = JsonRpcDispatcher(package_advisory_service=FakePackageAdvisoryService())
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "pkg-2",
+            "method": "optimus.evidence.package_lookup",
+            "params": {
+                "run_id": "run-1",
+                "package": "",
+                "ecosystem": "pypi",
+                "reason": "PACKAGE_VERSION",
+                "policy_signal": "DEPENDENCY_VERSION_CHECK",
+            },
+        }
+    )
+
+    assert response["error"]["code"] == -32600
+    assert response["error"]["message"] == "invalid request"
+
+
+def test_dispatcher_rejects_malformed_evidence_security_advisory_request():
+    dispatcher = JsonRpcDispatcher(package_advisory_service=FakePackageAdvisoryService())
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "adv-3",
+            "method": "optimus.evidence.security_advisory",
+            "params": {
+                "run_id": "run-1",
+                "identifier": "",
+                "ecosystem": "npm",
+                "version": "1.2.3",
+                "reason": "SECURITY_ADVISORY",
+                "policy_signal": "SECURITY_OR_CVE_CHECK",
+            },
+        }
+    )
+
+    assert response["error"]["code"] == -32600
+    assert response["error"]["message"] == "invalid request"
+
+
+def test_dispatcher_rejects_evidence_package_lookup_with_mismatched_signal_reason():
+    dispatcher = JsonRpcDispatcher(package_advisory_service=FakePackageAdvisoryService())
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "pkg-3",
+            "method": "optimus.evidence.package_lookup",
+            "params": {
+                "run_id": "run-1",
+                "package": "pytest-asyncio",
+                "ecosystem": "pypi",
+                "reason": "SECURITY_ADVISORY",
+                "policy_signal": "SECURITY_OR_CVE_CHECK",
+            },
+        }
+    )
+
+    assert response["error"]["code"] == -32600
+    assert response["error"]["message"] == "invalid request"
+
+
+def test_dispatcher_rejects_evidence_security_advisory_with_mismatched_signal_reason():
+    dispatcher = JsonRpcDispatcher(package_advisory_service=FakePackageAdvisoryService())
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "adv-2",
+            "method": "optimus.evidence.security_advisory",
+            "params": {
+                "run_id": "run-1",
+                "identifier": "CVE-2026-12345",
+                "reason": "PACKAGE_VERSION",
+                "policy_signal": "DEPENDENCY_VERSION_CHECK",
+            },
+        }
+    )
+
+    assert response["error"]["code"] == -32600
+    assert response["error"]["message"] == "invalid request"
+
+
+def test_dispatcher_reports_evidence_package_lookup_service_not_configured():
+    dispatcher = JsonRpcDispatcher()
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "pkg-missing",
+            "method": "optimus.evidence.package_lookup",
+            "params": {
+                "run_id": "run-1",
+                "package": "pytest-asyncio",
+                "ecosystem": "pypi",
+                "reason": "PACKAGE_VERSION",
+                "policy_signal": "DEPENDENCY_VERSION_CHECK",
+            },
+        }
+    )
+
+    assert response["error"]["code"] == -32601
+    assert response["error"]["message"] == "package advisory service not configured"
+
+
+def test_dispatcher_reports_evidence_security_advisory_service_not_configured():
+    dispatcher = JsonRpcDispatcher()
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "adv-missing",
+            "method": "optimus.evidence.security_advisory",
+            "params": {
+                "run_id": "run-1",
+                "identifier": "CVE-2026-12345",
+                "reason": "SECURITY_ADVISORY",
+                "policy_signal": "SECURITY_OR_CVE_CHECK",
+            },
+        }
+    )
+
+    assert response["error"]["code"] == -32601
+    assert response["error"]["message"] == "package advisory service not configured"
+
+
+class RejectedPackageAdvisoryService(FakePackageAdvisoryService):
+    def package_lookup(self, request, *, execution_mode):
+        from optimus.tools.policy import PolicyDecision, ToolInvocationDecision
+
+        raise ToolCallRejected(
+            ToolInvocationDecision(
+                decision=PolicyDecision.REJECT,
+                reason="max_calls_per_run exceeded",
+                tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
+                policy_signal=ToolPolicySignal.DEPENDENCY_VERSION_CHECK,
+                reason_code=EvidenceReasonCode.PACKAGE_VERSION,
+            )
+        )
+
+    def security_advisory(self, request, *, execution_mode):
+        from optimus.tools.policy import PolicyDecision, ToolInvocationDecision
+
+        raise ToolCallRejected(
+            ToolInvocationDecision(
+                decision=PolicyDecision.REJECT,
+                reason="max_calls_per_run exceeded",
+                tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
+                policy_signal=ToolPolicySignal.SECURITY_OR_CVE_CHECK,
+                reason_code=EvidenceReasonCode.SECURITY_ADVISORY,
+            )
+        )
+
+
+def test_dispatcher_maps_package_lookup_tool_call_rejected_to_invalid_request():
+    dispatcher = JsonRpcDispatcher(package_advisory_service=RejectedPackageAdvisoryService())
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "pkg-rejected",
+            "method": "optimus.evidence.package_lookup",
+            "params": {
+                "run_id": "run-1",
+                "package": "pytest-asyncio",
+                "ecosystem": "pypi",
+                "reason": "PACKAGE_VERSION",
+                "policy_signal": "DEPENDENCY_VERSION_CHECK",
+            },
+        }
+    )
+
+    assert response["error"]["code"] == -32600
+    assert response["error"]["message"] == "max_calls_per_run exceeded"
+
+
+def test_dispatcher_maps_security_advisory_tool_call_rejected_to_invalid_request():
+    dispatcher = JsonRpcDispatcher(package_advisory_service=RejectedPackageAdvisoryService())
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "adv-rejected",
+            "method": "optimus.evidence.security_advisory",
+            "params": {
+                "run_id": "run-1",
+                "identifier": "CVE-2026-12345",
+                "reason": "SECURITY_ADVISORY",
+                "policy_signal": "SECURITY_OR_CVE_CHECK",
+            },
+        }
+    )
+
+    assert response["error"]["code"] == -32600
+    assert response["error"]["message"] == "max_calls_per_run exceeded"
