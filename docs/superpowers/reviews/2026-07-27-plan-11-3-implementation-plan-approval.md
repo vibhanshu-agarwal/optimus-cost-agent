@@ -110,4 +110,3 @@ This differs from the originally frozen digests recorded above because, per the 
 the Plan 11.3 Tech Stack line was amended to add the intentional third-party addition `defusedxml`
 to safely parse untrusted Maven XML (entity-expansion DoS hardening). Task 5 then only updates
 checkbox progress markers, and no further scope or adapter semantics were changed.
-\n
