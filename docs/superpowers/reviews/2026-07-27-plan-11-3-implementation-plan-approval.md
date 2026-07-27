@@ -100,3 +100,14 @@ Expected: Plan 11.3 worktree and HEAD-blob digests both equal
 `F43883188306690AC737D6C42061D5B52A9291BF81D012DA6D9B4FD1B0750963`; Plan 11.2 implementation-plan
 diff is empty; zero CR bytes in the Plan 11.3 file. The checkpoint log is gitignored and must never
 be staged.
+
+## Closing digest reconciliation (Task 5 closure)
+
+Current `docs/superpowers/plans/2026-07-27-plan-11-3-real-provider-adapters.md` SHA-256 over LF-normalized bytes is:
+`46CB9A791098A9D0E3A81202910949D85AD9E8AF9948A1BF008108EE51DC7D7B`.
+
+This differs from the originally frozen digests recorded above because, per the Task 3 review,
+the Plan 11.3 Tech Stack line was amended to add the intentional third-party addition `defusedxml`
+to safely parse untrusted Maven XML (entity-expansion DoS hardening). Task 5 then only updates
+checkbox progress markers, and no further scope or adapter semantics were changed.
+\n
