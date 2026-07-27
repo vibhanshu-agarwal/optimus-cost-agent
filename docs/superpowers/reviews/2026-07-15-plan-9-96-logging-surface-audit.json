@@ -809,6 +809,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.tool_state:_fail_closed.__exit__:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus_gateway.tool_state:_fail_closed.__exit__:exception_export uses exception text only to construct an in-memory GatewayToolStateUnavailable typed failure; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_tool_state.py::test_redis_store_fails_closed_on_search_recording_when_client_unavailable",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.upstream_client:call_with_upstream_retry:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: call_with_upstream_retry uses str(exc) only to rewrap a RetryableUpstreamError as RuntimeError in memory after attempt exhaustion; no sanitizer runs at this site. The message is sanitized at the existing run_model_completion RuntimeError→502 boundary (sanitize_error_message) before any HTTP response export. Callers that reuse this helper without that outer catch must add their own sanitizing boundary.",

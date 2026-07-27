@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import secrets
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any, Mapping
 
 from optimus_security.launch_manifest import resolve_effective_base_url
@@ -157,3 +158,46 @@ def _required_env(env: Mapping[str, str], name: str) -> str:
     if not value:
         raise ValueError(f"{name} is required")
     return value
+
+
+# --- Plan 11.2 (P11-FEAT-GATEWAY-TOOLS): Gateway-owned tool taxonomy --------
+#
+# These are Gateway-local equivalents of the shared wire values defined in the
+# agent-side ``optimus.gateway.tool_models`` / ``optimus.tools.policy``
+# modules. ``optimus_gateway`` must remain independently deployable with zero
+# ``optimus.*`` imports, so the enum members are duplicated here rather than
+# imported; the string values are kept identical so requests/responses stay
+# wire-compatible with the agent-side contracts.
+
+
+class ToolClass(StrEnum):
+    WEB_SEARCH = "web_search"
+    WEB_EXTRACT = "web_extract"
+    PACKAGE_AND_ADVISORY_METADATA = "package_and_advisory_metadata"
+
+
+class ToolPolicySignal(StrEnum):
+    USER_REQUESTED_EXTERNAL_FACT = "USER_REQUESTED_EXTERNAL_FACT"
+    CURRENT_OR_LATEST_FACT = "CURRENT_OR_LATEST_FACT"
+    API_OR_FRAMEWORK_FACT_NOT_IN_REPO = "API_OR_FRAMEWORK_FACT_NOT_IN_REPO"
+    DEPENDENCY_VERSION_CHECK = "DEPENDENCY_VERSION_CHECK"
+    SECURITY_OR_CVE_CHECK = "SECURITY_OR_CVE_CHECK"
+    APPROVED_SEARCH_RESULT_PROVENANCE = "APPROVED_SEARCH_RESULT_PROVENANCE"
+
+
+@dataclass(frozen=True)
+class GatewayToolContext:
+    """Authenticated, server-resolved request context for a Gateway tool call.
+
+    This is the Gateway's own resolved context, built from ``authenticated_subject``
+    (the bearer-authenticated caller) plus the caller-supplied transport metadata.
+    The transport metadata is never treated as an authorization decision by itself.
+    """
+
+    run_id: str
+    authenticated_subject: str
+    session_id: str | None = None
+    execution_mode: str = ""
+    org_id: str | None = None
+    project_id: str | None = None
+    model: str | None = None

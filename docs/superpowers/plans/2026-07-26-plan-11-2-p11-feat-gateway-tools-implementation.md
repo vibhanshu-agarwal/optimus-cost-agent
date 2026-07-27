@@ -302,22 +302,24 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   direct Redis client. It must not import `optimus.*`, reuse `optimus.redis.*`, or call the agent-side
   `RedisAgentStateStore`/wrapper; the `optimus_gateway` package remains independently deployable.
 
-- [ ] **Step 1: Write failing policy/state tests.**
+- [x] **Step 1: Write failing policy/state tests.**
 
   Test missing `run_id`, malformed metadata, unsupported execution mode, missing required identity,
   empty effective domain intersection, HTTP/non-HTTPS URL rejection, subdomain matching, search
   URL recording, same-run lookup, cross-run rejection, atomic cap rejection, and state-store
   unavailability.
 
-- [ ] **Step 2: Run policy/state tests and confirm RED.**
+- [x] **Step 2: Run policy/state tests and confirm RED.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_tool_policy.py tests/unit/optimus_gateway/test_tool_state.py -q
   ```
 
   Expected: the new Gateway-owned policy and state interfaces are absent and the tests fail.
+  Confirmed: `ImportError: cannot import name 'GatewayToolContext' from 'optimus_gateway.models'`
+  (2 errors during collection). See `.superpowers/sdd/task-3-report.md`.
 
-- [ ] **Step 3: Implement independent Gateway checks.**
+- [x] **Step 3: Implement independent Gateway checks.**
 
   Normalize requested and resolved HTTPS hosts using the existing domain semantics, intersect them
   with the authenticated Gateway policy, and never accept local `approved_urls` as the authoritative
@@ -325,7 +327,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   bodies out of the state store. Return structured decisions with stable rule IDs for audit/error
   mapping.
 
-- [ ] **Step 4: Implement the Redis-backed state boundary.**
+- [x] **Step 4: Implement the Redis-backed state boundary.**
 
   Import the top-level `redis` package directly inside the Gateway state module and keep the client
   behind the narrow `GatewayToolStateStore` protocol. Use atomic Redis operations for the call
@@ -334,16 +336,27 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   silently fall back to `InMemoryGatewayToolStateStore` when the configured state store is
   unavailable. Unit tests may use the in-memory store only as a dependency double.
 
-- [ ] **Step 5: Run policy/state tests and confirm GREEN.**
+- [x] **Step 5a (unit half): Run policy/state tests and confirm GREEN.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_tool_policy.py tests/unit/optimus_gateway/test_tool_state.py -q
+  ```
+
+  Confirmed: `38 passed in 0.21s`.
+
+- [ ] **Step 5b (live half): Run the real-Redis artifact — BLOCKED, not DONE.**
+
+  ```powershell
   uv run --frozen pytest tests/integration/optimus_gateway/test_gateway_tool_state_live.py -m requires_redis -q
   ```
 
-  Expected: all decisions fail closed on invalid context, blocked domains, cross-run provenance,
-  cap overflow, and state unavailability; the real-Redis artifact proves atomic call-cap and
-  provenance-TTL behavior without importing the agent-side Redis wrapper.
+  `OPTIMUS_REDIS_URL` is unset and no local Redis is reachable in this environment (Docker Desktop
+  daemon not running: `docker ps` failed with "failed to connect to the docker API"). Result:
+  `1 passed, 7 errors in 0.84s` — the 7 fixture-gated tests fail fast via `pytest.fail(...)` with no
+  fake Redis substituted; the 1 test not requiring the fixture
+  (`test_live_redis_state_store_fails_closed_when_backend_unreachable`) passed. This box stays
+  unchecked until this command is rerun against a reachable `OPTIMUS_REDIS_URL` and passes in full.
+  See `.superpowers/sdd/task-3-report.md` for details.
 
 ---
 
