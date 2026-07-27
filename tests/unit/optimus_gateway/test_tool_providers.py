@@ -501,6 +501,45 @@ def test_maven_citations_are_url_encoded() -> None:
     )
 
 
+@pytest.mark.parametrize("failure", ["timeout", "http_transient", "http_permanent", "os_error"])
+def test_maven_request_bytes_upstream_failures_raise_sanitized_provider_error(failure: str) -> None:
+    """Maven metadata uses request_bytes; prove the same sanitization as request_json paths."""
+    secret = "maven-super-secret-token"
+
+    def fake_urlopen(request, *, timeout):
+        del timeout
+        assert "maven-metadata.xml" in request.full_url
+        if failure == "timeout":
+            raise TimeoutError(f"{secret} timed out")
+        if failure == "os_error":
+            raise OSError(f"socket blowup {secret}")
+        status = 503 if failure == "http_transient" else 404
+        raise HTTPError(
+            request.full_url,
+            status,
+            f"failure {secret}",
+            {},
+            BytesIO(f"raw body {secret}".encode()),
+        )
+
+    provider = PackageRegistryToolProvider(
+        pypi_base_url="https://pypi.example",
+        npm_base_url="https://npm.example",
+        maven_base_url="https://maven.example",
+        urlopen=fake_urlopen,
+        sleep=lambda _: None,
+    )
+
+    with pytest.raises(ToolProviderError) as exc_info:
+        provider.lookup(_package_request("maven", "com.example:demo"))
+
+    message = str(exc_info.value)
+    assert message == "Maven lookup failed"
+    assert secret not in message
+    assert "raw body" not in message
+    assert "socket blowup" not in message
+
+
 @pytest.mark.parametrize("provider_kind", ["registry", "osv"])
 def test_provider_upstream_faults_are_sanitized(provider_kind: str) -> None:
     secret = "provider-super-secret"

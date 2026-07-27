@@ -560,13 +560,13 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
 
 **Files:** The affected source/tests, report, approval record, and checkpoint log; no MCP or budget files.
 
-- [ ] **Step 1: Run the affected unit and integration suites.**
+- [x] **Step 1: Run the affected unit and integration suites.**
 
   ```powershell
   uv run --frozen pytest tests/unit/tools tests/unit/evidence tests/unit/gateway tests/unit/optimus_gateway tests/unit/acp/test_dispatcher.py tests/integration/evidence tests/integration/usage/test_evidence_provider_reconciliation.py tests/integration/optimus_gateway/test_gateway_tools_live.py tests/integration/optimus_gateway/test_gateway_tool_state_live.py -q
   ```
 
-- [ ] **Step 2: Run the repository default suite and aggregate coverage.**
+- [x] **Step 2: Run the repository default suite and aggregate coverage.**
 
   ```powershell
   uv run --frozen pytest -q
@@ -576,7 +576,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   Expected: aggregate Python production-code coverage is at least 80%; safety-critical policy and
   trust modules do not regress.
 
-- [ ] **Step 3: Run Ruff and diff hygiene.**
+- [x] **Step 3: Run Ruff and diff hygiene.**
 
   ```powershell
   uv run --frozen ruff check .
@@ -587,18 +587,18 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   Expected: Ruff and diff checks pass, with no source/test path from MCP or budget enforcement in
   the implementation diff.
 
-- [ ] **Step 4: Run the one-key release scan.**
+- [x] **Step 4: Run the one-key release scan.**
 
   Use the repository's existing release-gate command and prove that only
   `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` are resolvable in the local agent process. Provider
   credentials may appear only in the Gateway deployment boundary used by the named live tier.
 
-- [ ] **Step 5: Reconcile every traceability row.**
+- [x] **Step 5: Reconcile every traceability row.**
 
   For every in-scope row in the spec, record its unit, local-process, staging, ledger, or release
   artifact. Record `P11-FU-3`/MCP and `P9.85-FU-3`/budget as explicit exclusions, not missing tests.
 
-- [ ] **Step 6: Freeze the final bytes.**
+- [x] **Step 6: Freeze the final bytes.**
 
   Recompute the design spec, implementation plan, and inventory committed-blob SHA-256 values.
   If any approved byte changed, invalidate the current approval record and create a new versioned
@@ -624,22 +624,22 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
 
 ## Definition of Done
 
-- [ ] The four typed Gateway tool routes are implemented with shared request/result/provenance/
+- [x] The four typed Gateway tool routes are implemented with shared request/result/provenance/
   usage envelopes and sanitized errors.
-- [ ] Task 4's real local-process HTTP artifact proves the four route responses before staging policy
+- [x] Task 4's real local-process HTTP artifact proves the four route responses before staging policy
   evidence is attempted.
-- [ ] Web search/extract use HTTPS/domain bounds, Gateway-owned search provenance, and bounded
+- [x] Web search/extract use HTTPS/domain bounds, Gateway-owned search provenance, and bounded
   extraction limits; local pre-tool and registry checks remain active.
-- [ ] `P11-FU-2` is closed by dedicated package/advisory routing, with signals no longer passing
+- [x] `P11-FU-2` is closed by dedicated package/advisory routing, with signals no longer passing
   through generic `WEB_SEARCH` policy.
-- [ ] Gateway-side tool, model, execution-mode, domain, provenance, and call-cap checks are
+- [x] Gateway-side tool, model, execution-mode, domain, provenance, and call-cap checks are
   independently proven with real staging Gateway evidence.
-- [ ] `RedisGatewayToolStateStore` uses the direct top-level Redis client, not an agent-side wrapper,
+- [x] `RedisGatewayToolStateStore` uses the direct top-level Redis client, not an agent-side wrapper,
   and real-Redis evidence proves atomic call caps and provenance TTL behavior.
-- [ ] Provider keys remain Gateway-side; local agent requests use only the two Optimus credentials.
-- [ ] Usage/cost is parsed from Gateway envelopes and joined to the evidence ledger by
+- [x] Provider keys remain Gateway-side; local agent requests use only the two Optimus credentials.
+- [x] Usage/cost is parsed from Gateway envelopes and joined to the evidence ledger by
   `gateway_request_id`; no budget enforcement or cost estimation is added.
-- [ ] `P11-FEAT-GATEWAY-MCP` and `P11-FU-3` remain outside the implementation diff and explicitly
+- [x] `P11-FEAT-GATEWAY-MCP` and `P11-FU-3` remain outside the implementation diff and explicitly
   linked in the charter/backlog.
-- [ ] The full affected suite, default suite, coverage >=80%, Ruff, diff hygiene, and one-key
+- [x] The full affected suite, default suite, coverage >=80%, Ruff, diff hygiene, and one-key
   release scan pass, with each checkbox backed by its stated artifact.
