@@ -379,36 +379,38 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   `GatewayToolStateStore` for injection into `serve_gateway`.
 - `handle_tool_request(*, authorization_header: str | None, path: str, request_body: Mapping[str, Any], config: GatewayServiceConfig, dependencies: GatewayToolDependencies) -> tuple[int, dict[str, Any]]`.
 
-- [ ] **Step 1: Write failing handler tests.**
+- [x] **Step 1: Write failing handler tests.**
 
   Test all four paths with an injected deterministic provider bundle. Verify bearer auth happens
   before provider invocation; malformed typed bodies return 400; blocked domains and wrong class or
   signal return 403; missing extract provenance returns 403; cap overflow returns 429; state outage
   returns 503; successful responses contain only the common typed envelope and valid usage.
 
-- [ ] **Step 2: Run handler/server tests and confirm RED.**
+- [x] **Step 2: Run handler/server tests and confirm RED.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_tool_handlers.py tests/unit/optimus_gateway/test_server.py -q
   ```
 
   Expected: the four tool routes still return 404 because route dispatch and handlers do not exist.
+  Confirmed via `git stash` of the new/changed Task 4 files: `ModuleNotFoundError: No module named
+  'optimus_gateway.tool_handlers'` (collection errors) before restoring the implementation.
 
-- [ ] **Step 3: Implement provider protocols and server-side adapter boundaries.**
+- [x] **Step 3: Implement provider protocols and server-side adapter boundaries.**
 
   Keep credentials inside the Gateway provider bundle. Translate the typed web/package/advisory
   requests to provider calls without passing raw request metadata as provider instructions. Sanitize
   provider errors and normalize provider results into the shared result models; never return raw
   provider JSON, keys, or unbounded URLs.
 
-- [ ] **Step 4: Implement handlers in the prescribed order.**
+- [x] **Step 4: Implement handlers in the prescribed order.**
 
   Authenticate, validate, resolve context, apply policy/domain/provenance/call-cap checks, invoke
   the provider, record search provenance where applicable, and build the common envelope. Assign a
   `gateway_request_id` to accepted or policy-rejected requests and preserve the existing 404
   behavior for unknown paths.
 
-- [ ] **Step 5: Add explicit server dispatch.**
+- [x] **Step 5: Add explicit server dispatch.**
 
   Extend the current post-CORE `OptimusGatewayHandler.do_POST` dispatch for exactly:
 
@@ -426,16 +428,16 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   `GatewayToolDependencies` from `serve_gateway` without making the local agent aware of provider
   configuration.
 
-- [ ] **Step 6: Run handler/server tests and confirm GREEN.**
+- [x] **Step 6: Run handler/server tests and confirm GREEN.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_tool_handlers.py tests/unit/optimus_gateway/test_server.py -q
   ```
 
-  Expected: all four tool routes are served over HTTP with deterministic unit providers, while the
-  three existing CORE routes and unknown-route behavior remain green.
+  Confirmed: `62 passed`. All four tool routes are served over HTTP with deterministic unit
+  providers, while the three existing CORE routes and unknown-route behavior remain green.
 
-- [ ] **Step 7: Produce the Task 4 local-process artifact before closing the task.**
+- [x] **Step 7: Produce the Task 4 local-process artifact before closing the task.**
 
   Extend `tests/integration/optimus_gateway/test_gateway_tools_live.py` using the existing
   subprocess/fixture conventions. Start the real Gateway server process and inject only a
@@ -453,6 +455,9 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   sanitized response summaries. Expected: this local-process HTTP artifact records the four route
   responses before Task 4 is marked complete. It is local deterministic evidence, not the real
   staging policy evidence reserved for Task 6.
+
+  Confirmed: `7 passed in 3.84s`; see
+  `reports/plan-11-2-gateway-tools-local-process-evidence.md`.
 
 ---
 

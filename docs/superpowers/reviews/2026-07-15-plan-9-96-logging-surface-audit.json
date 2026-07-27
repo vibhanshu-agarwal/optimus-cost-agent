@@ -809,6 +809,46 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.tool_handlers:_cap_exceeded_response:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.tool_handlers:_cap_exceeded_response:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_tool_handlers.py::test_web_search_rejects_call_after_cap_reached",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.tool_handlers:_context_error_response:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.tool_handlers:_context_error_response:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_tool_handlers.py::test_web_search_rejects_malformed_context",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.tool_handlers:_malformed_provider_result_response:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.tool_handlers:_malformed_provider_result_response:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_tool_handlers.py::test_web_search_fails_closed_on_malformed_provider_usage",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.tool_handlers:_provider_error_response:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.tool_handlers:_provider_error_response:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_tool_handlers.py::test_web_search_sanitizes_provider_failure_and_never_leaks_secrets",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.tool_handlers:_validation_error_response:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.tool_handlers:_validation_error_response:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_tool_handlers.py::test_web_search_rejects_empty_query",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.tool_state:_fail_closed.__exit__:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus_gateway.tool_state:_fail_closed.__exit__:exception_export uses exception text only to construct an in-memory GatewayToolStateUnavailable typed failure; it does not persist raw diagnostics.",
