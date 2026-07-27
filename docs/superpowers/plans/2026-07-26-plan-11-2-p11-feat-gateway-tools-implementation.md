@@ -515,7 +515,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
 - Create: `reports/plan-11-2-gateway-tools-staging-evidence.md`
 - Modify: `docs/superpowers/reviews/plan-11-review-checkpoints.md` (gitignored; never stage)
 
-- [ ] **Step 1: Add real staging Gateway policy evidence.**
+- [x] **Step 1: Add real staging Gateway policy evidence.**
 
   Mark the staging tests `requires_gateway`. Use only real `OPTIMUS_GATEWAY_URL` and
   `OPTIMUS_API_KEY` credentials, send direct HTTP requests that bypass local `ToolRegistry`, and
@@ -530,7 +530,7 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   The tests must assert the Gateway status, structured error reason, and `gateway_request_id`.
   They must not use a fake server or claim §9D evidence from the local unit provider.
 
-- [ ] **Step 2: Add real success-path evidence for both package families.**
+- [x] **Step 2: Add real success-path evidence for both package families.**
 
   Use the staging Gateway's configured package-registry and advisory providers to record one
   successful package lookup and one successful security advisory lookup. Assert the dedicated paths,
@@ -538,13 +538,13 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
   `gateway_usage`, and one-key credential boundary. Sanitize provider response bodies before writing
   the evidence report.
 
-- [ ] **Step 3: Write the named evidence report and checkpoint entry.**
+- [x] **Step 3: Write the named evidence report and checkpoint entry.**
 
   `reports/plan-11-2-gateway-tools-staging-evidence.md` must contain the exact test command, date,
   implementation SHA, Gateway environment class, status codes, request IDs, and sanitized response
   summaries. Update the gitignored checkpoint log with the same artifact path; do not stage the log.
 
-- [ ] **Step 4: Run the staging tier.**
+- [x] **Step 4: Run the staging tier.**
 
   ```powershell
   uv run --frozen pytest tests/integration/optimus_gateway/test_gateway_tools_live.py -m requires_gateway -q
