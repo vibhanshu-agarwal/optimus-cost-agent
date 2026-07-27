@@ -116,12 +116,12 @@ set before building the success envelope (handlers currently trust returned extr
 
 **Files:** `tool_providers.py` and/or dedicated module; `test_tool_providers.py`.
 
-- [ ] **Step 1:** Failing tests for search/extract success normalization, HTTPS-only results,
+- [x] **Step 1:** Failing tests for search/extract success normalization, HTTPS-only results,
   sanitized `ToolProviderError` on upstream 5xx/timeout (no key leakage), advanced depth behavior
   compatible with handler caps.
-- [ ] **Step 2:** RED.
-- [ ] **Step 3:** Minimal Tavily adapters using bounded retry from `upstream_client`.
-- [ ] **Step 4:** GREEN + secret non-leak assertions.
+- [x] **Step 2:** RED.
+- [x] **Step 3:** Minimal Tavily adapters using bounded retry from `upstream_client`.
+- [x] **Step 4:** GREEN + secret non-leak assertions.
 
 ---
 

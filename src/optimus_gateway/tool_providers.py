@@ -1,26 +1,30 @@
-"""Server-side tool provider protocols for the Gateway tool routes.
-
-Plan 11.2 (``P11-FEAT-GATEWAY-TOOLS``), Task 4. These protocols are the
-adapter boundary between the typed Gateway tool handlers and the real
-upstream providers (Tavily, a package registry, an advisory database, and so
-on). Concrete network-calling adapters are out of scope for this task; only
-the injectable boundary is defined here, plus the sanitized failure type
-handlers use to map any provider fault to a 502 without leaking provider
-credentials, raw response bodies, or unbounded URLs.
-"""
+"""Server-side tool provider protocols and Gateway-owned provider adapters."""
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
 from typing import Protocol
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 from optimus_gateway.tool_models import (
     AdvisoryProviderResult,
     PackageLookupGatewayRequest,
     PackageProviderResult,
+    ProviderUsage,
     SecurityAdvisoryGatewayRequest,
     WebExtractGatewayRequest,
+    WebExtractItem,
     WebExtractProviderResult,
     WebSearchGatewayRequest,
     WebSearchProviderResult,
+    WebSearchResult,
+)
+from optimus_gateway.upstream_client import (
+    RetryableUpstreamError,
+    call_with_upstream_retry,
+    is_retryable_upstream_fault,
 )
 
 
@@ -49,23 +53,128 @@ class AdvisoryToolProvider(Protocol):
 
 
 class TavilyWebToolProvider:
-    """Gateway-owned Tavily adapter shell.
+    """Gateway-owned Tavily search and extract adapter."""
 
-    HTTP behavior is intentionally deferred to Plan 11.3 Task 2; construction
-    is available in Task 1 so complete Gateway configuration can be wired.
-    """
-
-    def __init__(self, *, api_key: str, base_url: str) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        urlopen: Callable[..., object] = urlopen,
+        timeout_seconds: float = 60.0,
+        sleep: Callable[[float], None] | None = None,
+        on_retry: Callable[[int], None] | None = None,
+    ) -> None:
         self.api_key = api_key
-        self.base_url = base_url
+        self.base_url = base_url.rstrip("/")
+        self._urlopen = urlopen
+        self._timeout_seconds = timeout_seconds
+        self._sleep = sleep
+        self._on_retry = on_retry
 
     def search(self, request: WebSearchGatewayRequest) -> WebSearchProviderResult:
-        del request
-        raise ToolProviderError("not implemented")
+        payload = {
+            "api_key": self.api_key,
+            "query": request.query,
+            "search_depth": request.search_depth,
+            "max_results": request.result_cap,
+            "include_domains": list(request.allowed_domains),
+        }
+        body = self._post_json("/search", payload, operation="search")
+        raw_results = body.get("results")
+        if not isinstance(raw_results, list):
+            raise ToolProviderError("Tavily search returned an invalid results field")
+
+        results: list[WebSearchResult] = []
+        for raw_result in raw_results:
+            if not isinstance(raw_result, dict):
+                raise ToolProviderError("Tavily search returned an invalid result")
+            url = raw_result.get("url")
+            if not isinstance(url, str):
+                raise ToolProviderError("Tavily search returned a result without a URL")
+            if not _is_https_url(url):
+                continue
+            title = raw_result.get("title", "")
+            snippet = raw_result.get("content", raw_result.get("snippet", ""))
+            if not isinstance(title, str) or not isinstance(snippet, str):
+                raise ToolProviderError("Tavily search returned an invalid result field")
+            results.append(WebSearchResult(url=url, title=title, snippet=snippet))
+            if len(results) >= request.result_cap:
+                break
+        return WebSearchProviderResult(results=tuple(results), usage=_usage())
 
     def extract(self, request: WebExtractGatewayRequest) -> WebExtractProviderResult:
-        del request
-        raise ToolProviderError("not implemented")
+        body = self._post_json(
+            "/extract",
+            {"api_key": self.api_key, "urls": list(request.urls)},
+            operation="extract",
+        )
+        raw_results = body.get("results")
+        if not isinstance(raw_results, list):
+            raise ToolProviderError("Tavily extract returned an invalid results field")
+
+        items: list[WebExtractItem] = []
+        for raw_result in raw_results:
+            if not isinstance(raw_result, dict):
+                raise ToolProviderError("Tavily extract returned an invalid result")
+            url = raw_result.get("url")
+            if not isinstance(url, str):
+                raise ToolProviderError("Tavily extract returned a result without a URL")
+            if not _is_https_url(url):
+                continue
+            title = raw_result.get("title", "")
+            content = raw_result.get("raw_content", raw_result.get("content", ""))
+            if not isinstance(title, str) or not isinstance(content, str):
+                raise ToolProviderError("Tavily extract returned an invalid result field")
+            items.append(
+                WebExtractItem(url=url, title=title, content=content[: request.max_chars_per_source])
+            )
+        return WebExtractProviderResult(items=tuple(items), usage=_usage())
+
+    def _post_json(self, path: str, payload: dict[str, object], *, operation: str) -> dict[str, object]:
+        request = Request(
+            f"{self.base_url}{path}",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"content-type": "application/json"},
+            method="POST",
+        )
+
+        def call() -> dict[str, object]:
+            try:
+                with self._urlopen(request, timeout=self._timeout_seconds) as response:
+                    body = json.loads(response.read().decode("utf-8"))
+            except HTTPError as exc:
+                if is_retryable_upstream_fault(exc):
+                    raise RetryableUpstreamError("Tavily transient HTTP failure") from exc
+                raise RuntimeError("Tavily HTTP failure") from exc
+            except (URLError, TimeoutError) as exc:
+                if is_retryable_upstream_fault(exc):
+                    raise RetryableUpstreamError("Tavily network failure") from None
+                raise RuntimeError("Tavily network failure") from None
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                raise RuntimeError("Tavily response failure") from None
+            if not isinstance(body, dict):
+                raise RuntimeError("Tavily response was not an object")
+            return body
+
+        try:
+            return call_with_upstream_retry(
+                call,
+                sleep=self._sleep,
+                on_retry=self._on_retry,
+            )
+        except Exception as exc:  # noqa: BLE001 - provider detail must not cross the adapter boundary
+            del exc
+            raise ToolProviderError(f"Tavily {operation} failed") from None
+
+
+def _usage() -> ProviderUsage:
+    return ProviderUsage(provider="tavily", billing_units=0, cost_usd="0")
+
+
+def _is_https_url(value: str) -> bool:
+    parsed = urlparse(value)
+    return parsed.scheme == "https" and bool(parsed.hostname)
 
 
 class PackageRegistryToolProvider:

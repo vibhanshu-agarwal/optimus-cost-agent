@@ -1335,6 +1335,14 @@
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_parse_live_output_requires_end_turn_and_permission_evidence",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.tool_providers:TavilyWebToolProvider._post_json:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Functional provider request serialization sends the API key only in the HTTPS request body to the configured Gateway-owned Tavily endpoint; the adapter never logs or exports the serialized payload.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_tool_providers.py::test_search_normalizes_https_results_and_usage",
+      "evidence_tier": "unit"
     }
   ]
 }
