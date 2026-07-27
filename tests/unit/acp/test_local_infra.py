@@ -623,6 +623,53 @@ def test_openrouter_gateway_child_env_exactly_matches_applicable_registry_projec
     assert not (inapplicable & child_env.keys())
 
 
+def test_ensure_local_gateway_forwards_tool_env_from_config_root_env_gateway(tmp_path, monkeypatch) -> None:
+    """Plan 11.2 Task 6 pre-work: tool vars from config_root/.env.gateway reach the child."""
+    reachable_calls = {"n": 0}
+
+    def fake_tcp_reachable(host, port, *, timeout=1.0):
+        reachable_calls["n"] += 1
+        return reachable_calls["n"] > 1
+
+    monkeypatch.setattr(local_infra, "_tcp_reachable", fake_tcp_reachable)
+    monkeypatch.setattr(local_infra.time, "sleep", lambda _seconds: None)
+
+    config_root = tmp_path / "config"
+    config_root.mkdir()
+    (config_root / ".env.gateway").write_text(
+        "TAVILY_API_KEY=tvly-from-config\n"
+        "OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS=python.org\n"
+        "OPTIMUS_GATEWAY_TOOL_REDIS_URL=redis://127.0.0.1:6379/0\n",
+        encoding="utf-8",
+    )
+
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        pid = 4444
+        returncode = None
+
+        def poll(self):
+            return None
+
+    def fake_popen(args, *, env, stdin, stdout, stderr):
+        captured["env"] = env
+        return FakeProcess()
+
+    monkeypatch.setattr(local_infra.subprocess, "Popen", fake_popen)
+
+    local_infra.ensure_local_gateway(
+        **_ensure_gateway_kwargs(),
+        runtime_root=tmp_path / ".optimus",
+        config_root=config_root,
+    )
+
+    child_env = captured["env"]
+    assert child_env["TAVILY_API_KEY"] == "tvly-from-config"
+    assert child_env["OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS"] == "python.org"
+    assert child_env["OPTIMUS_GATEWAY_TOOL_REDIS_URL"] == "redis://127.0.0.1:6379/0"
+
+
 def test_production_mode_never_reaches_gateway_child(tmp_path, monkeypatch) -> None:
     """OPTIMUS_PRODUCTION_MODE is AGENT_CHILD-only (review finding): it must
     never be projected into the Gateway child's env, since
