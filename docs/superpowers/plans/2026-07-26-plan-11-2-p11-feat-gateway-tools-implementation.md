@@ -344,19 +344,14 @@ the exact design/plan/inventory bytes match the pending or approved digest recor
 
   Confirmed: `38 passed in 0.21s`.
 
-- [ ] **Step 5b (live half): Run the real-Redis artifact — BLOCKED, not DONE.**
+- [x] **Step 5b (live half): Run the real-Redis artifact and confirm GREEN.**
 
   ```powershell
   uv run --frozen pytest tests/integration/optimus_gateway/test_gateway_tool_state_live.py -m requires_redis -q
   ```
 
-  `OPTIMUS_REDIS_URL` is unset and no local Redis is reachable in this environment (Docker Desktop
-  daemon not running: `docker ps` failed with "failed to connect to the docker API"). Result:
-  `1 passed, 7 errors in 0.84s` — the 7 fixture-gated tests fail fast via `pytest.fail(...)` with no
-  fake Redis substituted; the 1 test not requiring the fixture
-  (`test_live_redis_state_store_fails_closed_when_backend_unreachable`) passed. This box stays
-  unchecked until this command is rerun against a reachable `OPTIMUS_REDIS_URL` and passes in full.
-  See `.superpowers/sdd/task-3-report.md` for details.
+  Confirmed after Docker Desktop + local `redis:7-alpine` on `OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0`:
+  `8 passed in 0.81s` (atomic call-cap, same-run provenance, cross-run isolation, TTL, fail-closed).
 
 ---
 
