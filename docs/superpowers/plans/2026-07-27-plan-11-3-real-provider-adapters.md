@@ -17,7 +17,9 @@ Task 4 provider-result models. Extend `GatewayServiceConfig` / env loading for t
 secrets and allowlists; leave Plan 11.2 Task 6 as the sole owner of staging §9D evidence.
 
 **Tech Stack:** Python 3.11+, stdlib HTTP (or the existing urllib patterns in
-`upstream_client.py`), `redis>=5` already present for tool state, `pytest`, `pytest-asyncio`,
+`upstream_client.py`), `redis>=5` already present for tool state, `defusedxml` for
+parsing untrusted network-sourced Maven metadata XML (intentional third-party addition;
+stdlib `xml.etree` is unsafe against entity-expansion DoS), `pytest`, `pytest-asyncio`,
 `pytest-cov`, Ruff. Zero `optimus.*` imports inside `optimus_gateway`.
 
 **Baseline:** Branch `agent/cursor/plan-11-2-gateway-tools` after Plan 11.2 Task 5 commit
@@ -129,12 +131,12 @@ set before building the success envelope (handlers currently trust returned extr
 
 **Files:** same provider modules; unit tests.
 
-- [ ] **Step 1:** Failing tests for pypi/npm/maven lookup and OSV advisory success paths; unsupported
+- [x] **Step 1:** Failing tests for pypi/npm/maven lookup and OSV advisory success paths; unsupported
   ecosystem already rejected at request validation (do not re-break); sanitized faults.
-- [ ] **Step 2:** RED.
-- [ ] **Step 3:** Minimal registry + OSV adapters; citations HTTPS-only; no raw provider JSON in
+- [x] **Step 2:** RED.
+- [x] **Step 3:** Minimal registry + OSV adapters; citations HTTPS-only; no raw provider JSON in
   results.
-- [ ] **Step 4:** GREEN.
+- [x] **Step 4:** GREEN.
 
 ---
 

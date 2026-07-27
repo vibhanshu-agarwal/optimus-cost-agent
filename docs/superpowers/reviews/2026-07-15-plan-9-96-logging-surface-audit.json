@@ -849,6 +849,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.tool_providers:OsvAdvisoryToolProvider.lookup:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus_gateway.tool_providers:OsvAdvisoryToolProvider.lookup:json_serialization sends a typed advisory query to the trusted OSV provider; it is not diagnostic retention and sanitizing it would corrupt the upstream request contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/optimus_gateway/test_tool_providers.py::test_osv_lookup_posts_query_and_normalizes_https_references",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.tool_state:_fail_closed.__exit__:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus_gateway.tool_state:_fail_closed.__exit__:exception_export uses exception text only to construct an in-memory GatewayToolStateUnavailable typed failure; it does not persist raw diagnostics.",

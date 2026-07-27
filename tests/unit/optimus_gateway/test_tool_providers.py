@@ -3,17 +3,27 @@ from __future__ import annotations
 import json
 from io import BytesIO
 from urllib.error import HTTPError
+from urllib.parse import urlparse
 
 import pytest
 
 from optimus_gateway.models import GatewayToolContext
 from optimus_gateway.tool_models import (
+    AdvisoryProviderResult,
+    PackageLookupGatewayRequest,
+    PackageProviderResult,
+    SecurityAdvisoryGatewayRequest,
     WebExtractGatewayRequest,
     WebExtractProviderResult,
     WebSearchGatewayRequest,
     WebSearchProviderResult,
 )
-from optimus_gateway.tool_providers import TavilyWebToolProvider, ToolProviderError
+from optimus_gateway.tool_providers import (
+    OsvAdvisoryToolProvider,
+    PackageRegistryToolProvider,
+    TavilyWebToolProvider,
+    ToolProviderError,
+)
 
 
 class _Response:
@@ -28,6 +38,11 @@ class _Response:
 
     def read(self) -> bytes:
         return self._body
+
+
+class _RawResponse(_Response):
+    def __init__(self, body: bytes) -> None:
+        self._body = body
 
 
 def _request(*, query: str = "python", depth: str = "basic", cap: int = 5) -> WebSearchGatewayRequest:
@@ -172,3 +187,296 @@ def test_malformed_body_raises_sanitized_provider_error() -> None:
         provider.search(_request())
 
     assert api_key not in str(exc_info.value)
+
+
+def _package_request(ecosystem: str, package: str, version: str | None = None) -> PackageLookupGatewayRequest:
+    return PackageLookupGatewayRequest(
+        context=GatewayToolContext(run_id="run-1", authenticated_subject="gateway-client"),
+        package=package,
+        ecosystem=ecosystem,
+        version=version,
+    )
+
+
+def _advisory_request(
+    identifier: str = "demo-package",
+    ecosystem: str | None = "npm",
+    version: str | None = "1.2.3",
+) -> SecurityAdvisoryGatewayRequest:
+    return SecurityAdvisoryGatewayRequest(
+        context=GatewayToolContext(run_id="run-1", authenticated_subject="gateway-client"),
+        identifier=identifier,
+        ecosystem=ecosystem,
+        version=version,
+    )
+
+
+def test_package_lookup_normalizes_pypi_metadata_and_drops_http_citations() -> None:
+    def fake_urlopen(request, *, timeout):
+        assert request.full_url == "https://pypi.example/pypi/demo/json"
+        return _Response(
+            {
+                "info": {"version": "2.0.0", "project_urls": {"Docs": "https://docs.example/demo"}},
+                "releases": {
+                    "1.0.0": [{"upload_time_iso_8601": "2025-01-01T00:00:00Z", "url": "https://files.example/1"}],
+                    "2.0.0": [
+                        {"upload_time_iso_8601": "2025-02-01T00:00:00Z", "url": "http://files.example/2"},
+                    ],
+                },
+            }
+        )
+
+    provider = PackageRegistryToolProvider(
+        pypi_base_url="https://pypi.example",
+        npm_base_url="https://npm.example",
+        maven_base_url="https://maven.example",
+        urlopen=fake_urlopen,
+        sleep=lambda _: None,
+    )
+    result = provider.lookup(_package_request("pypi", "demo", "1.0.0"))
+
+    assert isinstance(result, PackageProviderResult)
+    assert result.latest_version == "2.0.0"
+    assert [record.version for record in result.versions] == ["1.0.0", "2.0.0"]
+    assert all(urlparse(url).scheme == "https" for url in result.citations)
+    assert result.usage.provider == "pypi"
+
+
+def test_package_lookup_normalizes_npm_scoped_metadata() -> None:
+    def fake_urlopen(request, *, timeout):
+        assert "%40scope%2Fdemo" in request.full_url
+        return _Response(
+            {
+                "dist-tags": {"latest": "3.0.0"},
+                "versions": {"2.0.0": {}, "3.0.0": {}},
+                "time": {"2.0.0": "2025-01-01T00:00:00Z", "3.0.0": "2025-03-01T00:00:00Z"},
+            }
+        )
+
+    provider = PackageRegistryToolProvider(
+        pypi_base_url="https://pypi.example",
+        npm_base_url="https://npm.example",
+        maven_base_url="https://maven.example",
+        urlopen=fake_urlopen,
+        sleep=lambda _: None,
+    )
+    result = provider.lookup(_package_request("npm", "@scope/demo"))
+
+    assert result.latest_version == "3.0.0"
+    assert [record.version for record in result.versions] == ["2.0.0", "3.0.0"]
+    assert result.usage.provider == "npm"
+
+
+def test_package_lookup_normalizes_maven_metadata() -> None:
+    def fake_urlopen(request, *, timeout):
+        assert request.full_url == "https://maven.example/org/demo/maven-metadata.xml"
+        return _RawResponse(
+            b"""<metadata><versioning><latest>1.1.0</latest><versions>
+            <version>1.0.0</version><version>1.1.0</version>
+            </versions></versioning></metadata>"""
+        )
+
+    provider = PackageRegistryToolProvider(
+        pypi_base_url="https://pypi.example",
+        npm_base_url="https://npm.example",
+        maven_base_url="https://maven.example",
+        urlopen=fake_urlopen,
+        sleep=lambda _: None,
+    )
+    result = provider.lookup(_package_request("maven", "org:demo"))
+
+    assert result.latest_version == "1.1.0"
+    assert [record.version for record in result.versions] == ["1.0.0", "1.1.0"]
+    assert result.usage.provider == "maven"
+
+
+def test_package_lookup_rejects_malformed_pypi_metadata() -> None:
+    def fake_urlopen(request, *, timeout):
+        return _Response({"info": "not-an-object", "releases": {}})
+
+    provider = PackageRegistryToolProvider(
+        pypi_base_url="https://pypi.example",
+        npm_base_url="https://npm.example",
+        maven_base_url="https://maven.example",
+        urlopen=fake_urlopen,
+        sleep=lambda _: None,
+    )
+    with pytest.raises(ToolProviderError, match="invalid"):
+        provider.lookup(_package_request("pypi", "demo"))
+
+
+def test_package_lookup_rejects_malformed_npm_metadata() -> None:
+    def fake_urlopen(request, *, timeout):
+        return _Response({"dist-tags": "not-an-object", "versions": {}})
+
+    provider = PackageRegistryToolProvider(
+        pypi_base_url="https://pypi.example",
+        npm_base_url="https://npm.example",
+        maven_base_url="https://maven.example",
+        urlopen=fake_urlopen,
+        sleep=lambda _: None,
+    )
+    with pytest.raises(ToolProviderError, match="invalid"):
+        provider.lookup(_package_request("npm", "demo"))
+
+
+def test_maven_lookup_rejects_entity_expansion_payload() -> None:
+    """Prove defusedxml hardening engages on untrusted Maven metadata XML."""
+
+    billion_laughs = b"""<?xml version="1.0"?>
+<!DOCTYPE lolz [
+  <!ENTITY lol "lol">
+  <!ENTITY lol1 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+  <!ENTITY lol2 "&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;">
+  <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+]>
+<metadata>&lol3;</metadata>
+"""
+
+    def fake_urlopen(request, *, timeout):
+        return _RawResponse(billion_laughs)
+
+    provider = PackageRegistryToolProvider(
+        pypi_base_url="https://pypi.example",
+        npm_base_url="https://npm.example",
+        maven_base_url="https://maven.example",
+        urlopen=fake_urlopen,
+        sleep=lambda _: None,
+    )
+    with pytest.raises(ToolProviderError, match="invalid"):
+        provider.lookup(_package_request("maven", "org:demo"))
+
+
+def test_osv_lookup_posts_query_and_normalizes_https_references() -> None:
+    captured: list[dict[str, object]] = []
+
+    def fake_urlopen(request, *, timeout):
+        captured.append(json.loads(request.data))
+        return _Response(
+            {
+                "vulns": [
+                    {
+                        "id": "GHSA-xxxx-yyyy-zzzz",
+                        "summary": "Untrusted advisory text",
+                        "severity": [{"type": "CVSS_V3", "score": "9.8"}],
+                        "affected": [
+                            {
+                                "ranges": [{"events": [{"introduced": "0"}, {"fixed": "1.2.4"}]}],
+                            }
+                        ],
+                        "references": [
+                            {"url": "https://github.com/advisories/GHSA-xxxx-yyyy-zzzz"},
+                            {"url": "http://insecure.example/advisory"},
+                        ],
+                    }
+                ]
+            }
+        )
+
+    provider = OsvAdvisoryToolProvider(
+        base_url="https://osv.example",
+        api_key="osv-secret",
+        urlopen=fake_urlopen,
+        sleep=lambda _: None,
+    )
+    result = provider.lookup(_advisory_request())
+
+    assert isinstance(result, AdvisoryProviderResult)
+    assert captured == [{"package": {"name": "demo-package", "ecosystem": "npm"}, "version": "1.2.3"}]
+    assert result.advisories[0].fixed_versions == ("1.2.4",)
+    assert result.advisories[0].citations == ("https://github.com/advisories/GHSA-xxxx-yyyy-zzzz",)
+    assert result.usage.provider == "osv"
+
+
+def test_osv_lookup_rejects_null_affected_and_references() -> None:
+    def fake_urlopen(request, *, timeout):
+        return _Response(
+            {
+                "vulns": [
+                    {
+                        "id": "GHSA-xxxx-yyyy-zzzz",
+                        "summary": "Broken nested fields",
+                        "affected": None,
+                        "references": None,
+                    }
+                ]
+            }
+        )
+
+    provider = OsvAdvisoryToolProvider(
+        base_url="https://osv.example",
+        urlopen=fake_urlopen,
+        sleep=lambda _: None,
+    )
+    with pytest.raises(ToolProviderError, match="invalid"):
+        provider.lookup(_advisory_request())
+
+
+def test_osv_lookup_rejects_non_object_advisory_entries() -> None:
+    def fake_urlopen(request, *, timeout):
+        return _Response({"vulns": ["not-an-object"]})
+
+    provider = OsvAdvisoryToolProvider(
+        base_url="https://osv.example",
+        urlopen=fake_urlopen,
+        sleep=lambda _: None,
+    )
+    with pytest.raises(ToolProviderError, match="invalid"):
+        provider.lookup(_advisory_request())
+
+
+def test_maven_citations_are_url_encoded() -> None:
+    def fake_urlopen(request, *, timeout):
+        return _RawResponse(
+            b"""<metadata><versioning><latest>1.0.0</latest><versions>
+            <version>1.0.0</version>
+            </versions></versioning></metadata>"""
+        )
+
+    provider = PackageRegistryToolProvider(
+        pypi_base_url="https://pypi.example",
+        npm_base_url="https://npm.example",
+        maven_base_url="https://maven.example",
+        urlopen=fake_urlopen,
+        sleep=lambda _: None,
+    )
+    result = provider.lookup(_package_request("maven", "com.example:demo artifact"))
+
+    assert result.citations == ("https://central.sonatype.com/artifact/com.example/demo%20artifact",)
+    assert result.versions[0].source_url == (
+        "https://central.sonatype.com/artifact/com.example/demo%20artifact/1.0.0"
+    )
+
+
+@pytest.mark.parametrize("provider_kind", ["registry", "osv"])
+def test_provider_upstream_faults_are_sanitized(provider_kind: str) -> None:
+    secret = "provider-super-secret"
+
+    def fake_urlopen(request, *, timeout):
+        raise HTTPError(request.full_url, 503, secret, {}, BytesIO(secret.encode()))
+
+    if provider_kind == "registry":
+        provider = PackageRegistryToolProvider(
+            pypi_base_url="https://pypi.example",
+            npm_base_url="https://npm.example",
+            maven_base_url="https://maven.example",
+            urlopen=fake_urlopen,
+            sleep=lambda _: None,
+        )
+        def operation():
+            return provider.lookup(_package_request("pypi", "demo"))
+    else:
+        provider = OsvAdvisoryToolProvider(
+            base_url="https://osv.example",
+            api_key=secret,
+            urlopen=fake_urlopen,
+            sleep=lambda _: None,
+        )
+        def operation():
+            return provider.lookup(_advisory_request())
+
+    with pytest.raises(ToolProviderError) as exc_info:
+        operation()
+
+    assert secret not in str(exc_info.value)
+    assert "provider-super-secret" not in str(exc_info.value)
