@@ -90,11 +90,11 @@ set before building the success envelope (handlers currently trust returned extr
 
 **Files:** This plan file; new approval record (after digests); checkpoint log (gitignored).
 
-- [ ] **Step 1:** Confirm branch/worktree and that Plan 11.2 Tasks 0–5 are committed on the baseline.
-- [ ] **Step 2:** Compute SHA-256 of this plan file (worktree + `git show HEAD:` after commit of the
+- [x] **Step 1:** Confirm branch/worktree and that Plan 11.2 Tasks 0–5 are committed on the baseline.
+- [x] **Step 2:** Compute SHA-256 of this plan file (worktree + `git show HEAD:` after commit of the
   docs batch) and record them in a **new** approval record
   `docs/superpowers/reviews/2026-07-27-plan-11-3-implementation-plan-approval.md`.
-- [ ] **Step 3:** Operator + reviewer-agent approve the exact digests. Do not begin adapter source
+- [x] **Step 3:** Operator + reviewer-agent approve the exact digests. Do not begin adapter source
   until that record grants authority.
 
 ---
@@ -103,12 +103,12 @@ set before building the success envelope (handlers currently trust returned extr
 
 **Files:** `models.py`, `providers.py`, unit tests, release credential scan.
 
-- [ ] **Step 1:** Write failing tests: incomplete config → `None`; complete config → non-`None`
+- [x] **Step 1:** Write failing tests: incomplete config → `None`; complete config → non-`None`
   dependencies with all four providers present; agent release scan still rejects Tavily/OSV keys.
-- [ ] **Step 2:** Confirm RED.
-- [ ] **Step 3:** Extend `GatewayServiceConfig` / `from_env` for Gateway-only tool credentials and
+- [x] **Step 2:** Confirm RED.
+- [x] **Step 3:** Extend `GatewayServiceConfig` / `from_env` for Gateway-only tool credentials and
   policy inputs; implement `build_tool_dependencies` without importing `optimus.*`.
-- [ ] **Step 4:** Confirm GREEN + Ruff on touched files.
+- [x] **Step 4:** Confirm GREEN + Ruff on touched files.
 
 ---
 

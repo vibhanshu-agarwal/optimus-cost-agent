@@ -345,6 +345,22 @@ _register(
     approval="exact_hmac",
     uri_userinfo=False,
 )
+# Plan 11.3 Task 1: Gateway-process OSV credential. Read only by
+# ``optimus_gateway.models.GatewayServiceConfig.from_env`` inside the Gateway
+# process itself. ACP launch does not project ``OPTIMUS_GATEWAY_*`` tool
+# secrets into gateway_child or agent_child today (unlike
+# ``OPTIMUS_LOCAL_GATEWAY_*`` / selected provider keys). PARENT_ONLY keeps the
+# name inventoried and redacted without authorizing silent child propagation;
+# moving to GATEWAY_CHILD would require an explicit projection-wiring change.
+_register(
+    "OPTIMUS_GATEWAY_OSV_API_KEY",
+    tier=LaunchVariableTier.SECRET,
+    propagation=frozenset({PropagationTarget.PARENT_ONLY}),
+    parser=_parse_secret,
+    display=_display_redacted,
+    approval="exact_hmac",
+    uri_userinfo=False,
+)
 
 # --- Tier: Security ---
 # "exact approval; URI user information is a secret subfield"

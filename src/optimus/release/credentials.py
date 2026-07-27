@@ -19,6 +19,8 @@ PROVIDER_CREDENTIAL_NAMES = frozenset(
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
         "TAVILY_API_KEY",
+        "OSV_API_KEY",
+        "OPTIMUS_GATEWAY_OSV_API_KEY",
         "GLM_API_KEY",
     }
 )

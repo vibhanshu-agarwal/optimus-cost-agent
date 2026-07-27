@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from optimus.release.credentials import (
     ALLOWED_LOCAL_CREDENTIAL_NAMES,
     PROVIDER_CREDENTIAL_NAMES,
@@ -33,6 +35,18 @@ def test_scanner_fails_when_provider_key_is_resolvable(monkeypatch):
 
     assert result.passed is False
     assert result.provider_keys_resolvable == ("OPENAI_API_KEY",)
+
+
+@pytest.mark.parametrize("key", ("TAVILY_API_KEY", "OSV_API_KEY", "OPTIMUS_GATEWAY_OSV_API_KEY"))
+def test_scanner_rejects_gateway_tool_provider_keys_on_agent_surface(monkeypatch, key):
+    for credential_name in PROVIDER_CREDENTIAL_NAMES | ALLOWED_LOCAL_CREDENTIAL_NAMES:
+        monkeypatch.delenv(credential_name, raising=False)
+    monkeypatch.setenv(key, "provider-secret")
+
+    result = scan_local_credentials()
+
+    assert result.passed is False
+    assert result.provider_keys_resolvable == (key,)
 
 
 def test_scanner_honors_explicit_empty_environment(monkeypatch):
