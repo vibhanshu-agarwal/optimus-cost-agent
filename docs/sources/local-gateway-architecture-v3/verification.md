@@ -22,16 +22,18 @@ The repository has no complete editable source for the pinned PDFs. Changed page
 from the Markdown, CSS, and SVG files in this directory. Unchanged pages were copied from the
 pinned PDFs.
 
-| Document | Final pages | Changed pages | Carried pages | Carried content-stream identity |
+| Document | Final pages | Changed pages | Carried pages | Body preservation below header |
 |---|---:|---:|---:|---:|
-| HLD v2.16 | 13 | 8 | 5 | 5/5 |
-| LLD v2.39 | 40 | 22 | 18 | 18/18 |
-| Test Strategy v1.5 | 14 | 10 | 4 | 4/4 |
-| Guardrails v1.1 | 16 | 4 | 12 | 12/12 |
+| HLD v2.16 | 13 | 8 | 5 | 4 identical; 1 declared inline version correction |
+| LLD v2.39 | 40 | 22 | 18 | 18/18 pixel-identical |
+| Test Strategy v1.5 | 14 | 10 | 4 | 4/4 pixel-identical |
+| Guardrails v1.1 | 16 | 4 | 12 | 12/12 pixel-identical |
 
-All 39 carried pages have SHA-256-identical decoded page-content streams to the corresponding
-pinned-source pages. The LLD's unchanged image-backed code pages were therefore preserved without
-OCR, retyping, or substitution from current implementation code.
+All 39 carried pages received corrected running headers. At 100 dpi, 38 pages are pixel-identical
+to their pinned sources below the header band. HLD page 2 differs only within the measured
+8 × 11-pixel bounding box for the manifest-declared `v2.15` to `v2.16` body self-reference.
+There were no unexpected below-header differences. The LLD's unchanged image-backed code pages
+were preserved without OCR, retyping, or substitution from current implementation code.
 
 ## Machine checks
 
@@ -42,6 +44,9 @@ For each final PDF:
 - embedded title metadata agrees with the output document and version;
 - critical architecture text extracts from the changed pages;
 - the cover reports the same version as the filename and metadata title.
+- the target version appears on every page;
+- the superseded version is absent outside the explicit Guardrails page-16 historical change-log
+  exception.
 
 Critical extraction anchors included OpenRouter as default aggregator, deterministic separate
 search, `UrllibOpenAICompatibleClient`, Tavily retirement custody, protocol-visible USD rename
@@ -50,6 +55,11 @@ control, and the blocked `P11-FEAT-GATEWAY-MCP` disposition.
 
 The consolidated redline contains 33 entries: 8 HLD, 14 LLD, 8 Test Strategy, and 3 Guardrails.
 
+The SVG validator measured 13 text bounds and 6 connectors in the HLD sequence, 25 text bounds and
+9 connectors in the HLD system context, and 39 text bounds and 16 connectors in the LLD component
+flow. Every text bound remained inside its canvas and containing box; no connector intersected a
+text bound.
+
 ## Visual inspection
 
 All 83 final pages were rendered with Poppler at 100 dpi and inspected in full-document contact
@@ -57,11 +67,15 @@ sheets. Covers, headers, footers, diagrams, tables, code blocks, and transitions
 and carried pages were legible and unclipped. The three SVG diagrams were also inspected in their
 final PDF context. The LLD component diagram exposes trace ingress but no MCP endpoint.
 
+The environment was synchronized from the locked project definition, installing the previously
+missing declared dependency `defusedxml==0.7.1`. Ruff passed. The full test suite passed with
+1,783 passed, 20 skipped, 54 deselected, and one pre-existing runtime warning.
+
 ## Output digests
 
 | Output | SHA-256 |
 |---|---|
-| `Optimus-Cost-Agent-Architecture-v2.16.pdf` | `BA18B539F99C1FDE06F85C9D601942E489D95268BB883811CC2BC47161CF85E4` |
-| `Optimus-Cost-Agent-LLD-v2.39.pdf` | `73D8CE4CB119BF32D8191CE30F848E2193C212D7CD81DE674307DBC7574C99ED` |
-| `Optimus-Cost-Agent-Test-Strategy-v1.5.pdf` | `64D90CEEA4CDAC3739F1D896D18227575CEC9348202BA3492A7E07C1715DCA2A` |
-| `Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.1.pdf` | `93523880576834F970E6401618E18280D45DFBF964CDBB11332D8412B167BF2D` |
+| `Optimus-Cost-Agent-Architecture-v2.16.pdf` | `B00F92DF7E50E4C642A5FEC3D2C3B5893BC05991E2BACA900FB9AAFD8F7CF564` |
+| `Optimus-Cost-Agent-LLD-v2.39.pdf` | `2F86FFD62EB153CCE0CFDDC98631F046202BC0E9CBB17FC5F35268E78627CAA8` |
+| `Optimus-Cost-Agent-Test-Strategy-v1.5.pdf` | `A5629907AC477880E86D7AA217FF01FCE92825E057F876AA5CCFBF6476018EBA` |
+| `Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.1.pdf` | `DE8987CF44897C47563FC48E2E43832180F117A0BBCBE45E4B6E26C68059035A` |

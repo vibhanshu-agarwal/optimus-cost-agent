@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="920" viewBox="0 0 1200 920" role="img" aria-labelledby="title desc">
   <title id="title">Gateway component flow</title>
-  <desc id="desc">All agent model, tool, and trace routes enter the loopback Gateway. Policy dispatches to model, search, extract, package, advisory, and trace adapters without an MCP endpoint.</desc>
+  <desc id="desc">All model, tool, and trace routes enter the loopback Gateway. Policy and budget controls dispatch to independent adapters without an MCP endpoint.</desc>
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
       <path d="M0,0 L0,6 L9,3 z" fill="#365f8d"/>
@@ -8,104 +8,111 @@
     <style>
       .gateway{fill:#f4f8fd;stroke:#2d73b9;stroke-width:3;rx:18}
       .agent{fill:#173b6c;stroke:#173b6c;stroke-width:2;rx:12}
+      .route{fill:#eef4fb;stroke:#8da7c3;stroke-width:1.5;rx:10}
       .box{fill:#fff;stroke:#365f8d;stroke-width:2;rx:10}
       .search{fill:#fff7df;stroke:#9a6700;stroke-width:2;rx:10}
       .trace{fill:#eaf7f0;stroke:#217a55;stroke-width:2;rx:10}
       .external{fill:#f8f5ff;stroke:#7653a6;stroke-width:2;rx:10}
-      .title{font:700 22px "DejaVu Sans",sans-serif;fill:#173b6c}
-      .white{font:600 18px "DejaVu Sans",sans-serif;fill:#fff}
-      .label{font:600 17px "DejaVu Sans",sans-serif;fill:#173b6c}
-      .small{font:14px "DejaVu Sans",sans-serif;fill:#27384d}
+      .title{font:700 21px "DejaVu Sans",sans-serif;fill:#173b6c}
+      .white{font:600 17px "DejaVu Sans",sans-serif;fill:#fff}
+      .smallwhite{font:13px "DejaVu Sans",sans-serif;fill:#fff}
+      .label{font:600 16px "DejaVu Sans",sans-serif;fill:#173b6c}
+      .small{font:13px "DejaVu Sans",sans-serif;fill:#27384d}
       .edge{stroke:#365f8d;stroke-width:2.2;fill:none;marker-end:url(#arrow)}
+      .bus{marker-end:none}
       .dash{stroke-dasharray:8 6}
     </style>
   </defs>
 
-  <rect class="agent" x="35" y="360" width="250" height="105"/>
-  <text class="white" x="72" y="395">Local Optimus agent</text>
-  <text class="white" x="58" y="425">Gateway URL + shared secret</text>
-  <text class="white" x="82" y="452">no upstream credentials</text>
+  <rect class="route" x="22" y="205" width="276" height="118"/>
+  <text class="label" text-anchor="middle" x="160" y="232">Documented ingress</text>
+  <text class="small" text-anchor="middle" x="160" y="256">/v1/responses</text>
+  <text class="small" text-anchor="middle" x="160" y="275">/v1/chat/completions</text>
+  <text class="small" text-anchor="middle" x="160" y="294">four typed tool routes</text>
+  <text class="small" text-anchor="middle" x="160" y="313">/v1/observability/traces</text>
 
-  <rect class="gateway" x="340" y="35" width="545" height="845"/>
-  <text class="title" x="440" y="75">Loopback Optimus Gateway - 127.0.0.1:8765</text>
+  <rect class="agent" x="35" y="365" width="225" height="100"/>
+  <text class="white" text-anchor="middle" x="148" y="398">Local Optimus agent</text>
+  <text class="white" text-anchor="middle" x="148" y="427">Gateway URL + secret</text>
+  <text class="smallwhite" text-anchor="middle" x="148" y="451">no upstream credentials</text>
 
-  <rect class="box" x="470" y="105" width="285" height="66"/>
-  <text class="label" x="509" y="133">Shared-secret authentication</text>
-  <text class="small" x="513" y="156">all seven documented routes</text>
+  <rect class="gateway" x="320" y="25" width="570" height="870"/>
+  <text class="title" text-anchor="middle" x="605" y="62">Loopback Optimus Gateway - 127.0.0.1:8765</text>
 
-  <rect class="box" x="470" y="205" width="285" height="80"/>
-  <text class="label" x="513" y="235">Policy + domain controls</text>
-  <text class="small" x="500" y="260">tool class, allowlist, call caps</text>
+  <rect class="box" x="430" y="90" width="350" height="60"/>
+  <text class="label" text-anchor="middle" x="605" y="117">Shared-secret authentication</text>
+  <text class="small" text-anchor="middle" x="605" y="139">all seven documented routes</text>
 
-  <rect class="box" x="470" y="320" width="285" height="70"/>
-  <text class="label" x="520" y="349">Budget + usage ledger</text>
-  <text class="small" x="523" y="373">provider-reported USD cost</text>
+  <rect class="box" x="430" y="175" width="350" height="65"/>
+  <text class="label" text-anchor="middle" x="605" y="203">Policy + domain controls</text>
+  <text class="small" text-anchor="middle" x="605" y="227">tool class, allowlist, call caps</text>
 
-  <rect class="box" x="385" y="445" width="210" height="72"/>
-  <text class="label" x="415" y="474">Model adapter</text>
-  <text class="small" x="401" y="499">OpenAI-compatible</text>
+  <rect class="box" x="430" y="265" width="350" height="65"/>
+  <text class="label" text-anchor="middle" x="605" y="293">Budget + usage ledger</text>
+  <text class="small" text-anchor="middle" x="605" y="317">provider-reported USD cost</text>
 
-  <rect class="search" x="630" y="445" width="210" height="72"/>
-  <text class="label" x="658" y="474">Search adapter</text>
-  <text class="small" x="649" y="499">separate low-output call</text>
+  <rect class="box" x="440" y="370" width="320" height="58"/>
+  <text class="label" text-anchor="middle" x="600" y="396">Model adapter</text>
+  <text class="small" text-anchor="middle" x="600" y="417">OpenAI-compatible transport</text>
 
-  <rect class="box" x="385" y="560" width="210" height="72"/>
-  <text class="label" x="421" y="589">Extract adapter</text>
-  <text class="small" x="401" y="614">bounded + provenance</text>
+  <rect class="search" x="440" y="455" width="320" height="58"/>
+  <text class="label" text-anchor="middle" x="600" y="481">Search adapter</text>
+  <text class="small" text-anchor="middle" x="600" y="502">separate low-output model call</text>
 
-  <rect class="box" x="630" y="560" width="210" height="72"/>
-  <text class="label" x="656" y="589">Package adapter</text>
-  <text class="small" x="652" y="614">PyPI / npm / Maven</text>
+  <rect class="box" x="440" y="540" width="320" height="58"/>
+  <text class="label" text-anchor="middle" x="600" y="566">Extract adapter</text>
+  <text class="small" text-anchor="middle" x="600" y="587">bounded fetch + provenance</text>
 
-  <rect class="box" x="385" y="675" width="210" height="72"/>
-  <text class="label" x="418" y="704">Advisory adapter</text>
-  <text class="small" x="468" y="729">OSV</text>
+  <rect class="box" x="440" y="625" width="320" height="58"/>
+  <text class="label" text-anchor="middle" x="600" y="651">Package adapter</text>
+  <text class="small" text-anchor="middle" x="600" y="672">PyPI / npm / Maven</text>
 
-  <rect class="trace" x="630" y="675" width="210" height="72"/>
-  <text class="label" x="665" y="704">Trace ingress</text>
-  <text class="small" x="650" y="729">OTel spans -> OTLP</text>
+  <rect class="box" x="440" y="710" width="320" height="58"/>
+  <text class="label" text-anchor="middle" x="600" y="736">Advisory adapter</text>
+  <text class="small" text-anchor="middle" x="600" y="757">OSV</text>
 
-  <rect class="external" x="940" y="155" width="225" height="78"/>
-  <text class="label" x="993" y="186">OpenRouter</text>
-  <text class="small" x="968" y="212">default model + search</text>
+  <rect class="trace" x="440" y="795" width="320" height="58"/>
+  <text class="label" text-anchor="middle" x="600" y="821">Trace ingress</text>
+  <text class="small" text-anchor="middle" x="600" y="842">OTel spans to OTLP</text>
 
-  <rect class="external" x="940" y="275" width="225" height="68"/>
-  <text class="label" x="975" y="305">Vercel AI Gateway</text>
-  <text class="small" x="1004" y="330">optional model</text>
+  <rect class="external" x="950" y="370" width="220" height="143"/>
+  <text class="label" text-anchor="middle" x="1060" y="410">OpenRouter</text>
+  <text class="small" text-anchor="middle" x="1060" y="435">default model route</text>
+  <text class="small" text-anchor="middle" x="1060" y="484">deterministic search route</text>
 
-  <rect class="external" x="940" y="430" width="225" height="68"/>
-  <text class="label" x="978" y="460">Public registries</text>
-  <text class="small" x="981" y="485">PyPI / npm / Maven</text>
+  <rect class="external" x="950" y="280" width="220" height="58"/>
+  <text class="label" text-anchor="middle" x="1060" y="306">Vercel AI Gateway</text>
+  <text class="small" text-anchor="middle" x="1060" y="327">optional model route</text>
 
-  <rect class="external" x="940" y="550" width="225" height="68"/>
-  <text class="label" x="1035" y="580">OSV</text>
-  <text class="small" x="991" y="605">security advisory</text>
+  <rect class="external" x="950" y="625" width="220" height="58"/>
+  <text class="label" text-anchor="middle" x="1060" y="651">Public registries</text>
+  <text class="small" text-anchor="middle" x="1060" y="672">PyPI / npm / Maven</text>
 
-  <rect class="trace" x="940" y="670" width="225" height="68"/>
-  <text class="label" x="1003" y="700">Phoenix</text>
-  <text class="small" x="987" y="725">default OTLP backend</text>
+  <rect class="external" x="950" y="710" width="220" height="58"/>
+  <text class="label" text-anchor="middle" x="1060" y="736">OSV</text>
+  <text class="small" text-anchor="middle" x="1060" y="757">security advisory</text>
 
-  <path class="edge" d="M285 412 H470"/>
-  <text class="small" x="300" y="330">/v1/responses</text>
-  <text class="small" x="300" y="350">/v1/chat/completions</text>
-  <text class="small" x="300" y="370">four typed tool routes</text>
-  <text class="small" x="300" y="390">/v1/observability/traces</text>
+  <rect class="trace" x="950" y="795" width="220" height="58"/>
+  <text class="label" text-anchor="middle" x="1060" y="821">Phoenix</text>
+  <text class="small" text-anchor="middle" x="1060" y="842">default OTLP backend</text>
 
-  <path class="edge" d="M612 171 V205"/>
-  <path class="edge" d="M612 285 V320"/>
-  <path class="edge" d="M550 390 V445"/>
-  <path class="edge" d="M675 390 V445"/>
-  <path class="edge" d="M550 390 C550 520,490 520,490 560"/>
-  <path class="edge" d="M675 390 C675 520,735 520,735 560"/>
-  <path class="edge" d="M550 390 C550 640,490 640,490 675"/>
-  <path class="edge" d="M675 171 C820 171,820 711,630 711"/>
+  <path class="edge" d="M260 415 H320"/>
+  <path class="edge" d="M605 150 V175"/>
+  <path class="edge" d="M605 240 V265"/>
+  <path class="edge bus" d="M605 330 V345 H390 V824"/>
+  <path class="edge" d="M390 399 H440"/>
+  <path class="edge" d="M390 484 H440"/>
+  <path class="edge" d="M390 569 H440"/>
+  <path class="edge" d="M390 654 H440"/>
+  <path class="edge" d="M390 739 H440"/>
+  <path class="edge" d="M390 824 H440"/>
 
-  <path class="edge" d="M595 480 C865 480,865 194,940 194"/>
-  <path class="edge" d="M840 480 C890 480,895 194,940 194"/>
-  <path class="edge dash" d="M595 495 C870 495,880 309,940 309"/>
-  <path class="edge" d="M840 596 C900 596,900 464,940 464"/>
-  <path class="edge" d="M595 711 C850 711,870 584,940 584"/>
-  <path class="edge" d="M840 711 H940"/>
+  <path class="edge" d="M760 399 H925 V410 H950"/>
+  <path class="edge" d="M760 484 H950"/>
+  <path class="edge dash" d="M600 370 V350 H925 V309 H950"/>
+  <path class="edge" d="M760 654 H950"/>
+  <path class="edge" d="M760 739 H950"/>
+  <path class="edge" d="M760 824 H950"/>
 
-  <text class="small" x="353" y="850">No MCP route or implied endpoint. P11-FU-3 remains open; P11-FEAT-GATEWAY-MCP remains blocked.</text>
+  <text class="small" text-anchor="middle" x="605" y="882">No MCP route or implied endpoint. P11-FU-3 open; P11-FEAT-GATEWAY-MCP blocked.</text>
 </svg>

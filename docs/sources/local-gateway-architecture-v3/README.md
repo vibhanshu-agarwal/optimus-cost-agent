@@ -58,8 +58,36 @@ Repeat for the LLD, Test Strategy, and Guardrails Markdown files. The Markdown u
 `build-manifest.json`.
 
 Final assembly copies untouched pages from the pinned source PDFs and replaces only the listed
-pages. The assembly is deliberately a one-time pypdf operation, not a committed bespoke PDF
-generator.
+pages. Carried pages receive an opaque header band, a corrected hyphen-style running header, and
+the original horizontal rule. The old header text objects are removed before the new header is
+merged so obsolete versions do not remain in text extraction.
+
+Copy the exact fonts used by the assembly step to a temporary build directory:
+
+```powershell
+New-Item -ItemType Directory -Force ../../../tmp/pdfs/fonts
+Copy-Item \\wsl.localhost\Ubuntu-24.04\usr\share\fonts\truetype\dejavu\DejaVuSans.ttf `
+  ../../../tmp/pdfs/fonts/
+Copy-Item \\wsl.localhost\Ubuntu-24.04\usr\share\fonts\truetype\dejavu\DejaVuSans-Bold.ttf `
+  ../../../tmp/pdfs/fonts/
+Copy-Item \\wsl.localhost\Ubuntu-24.04\usr\share\fonts\truetype\dejavu\DejaVuSans-Oblique.ttf `
+  ../../../tmp/pdfs/fonts/
+Copy-Item \\wsl.localhost\Ubuntu-24.04\usr\share\fonts\truetype\lato\Lato-Italic.ttf `
+  ../../../tmp/pdfs/fonts/
+```
+
+Render the four changed-page fragments as `hld.pdf`, `lld.pdf`, `test.pdf`, and `guard.pdf` in
+`tmp/pdfs/build`, then run the committed assembler from the repository root:
+
+```powershell
+python docs/sources/local-gateway-architecture-v3/tools/build_publication.py `
+  --fragment-dir tmp/pdfs/build `
+  --font-dir tmp/pdfs/fonts
+```
+
+The assembler validates replacement-page cardinality, requires an old header block on every
+carried page, applies the HLD page-2 self-reference correction declared in the manifest, writes
+metadata, and updates output SHA-256 values in `build-manifest.json`.
 
 ## Verification
 
@@ -69,7 +97,22 @@ For every final PDF:
 - confirm page count and page size;
 - confirm filename, cover version, and embedded metadata title agree;
 - confirm critical replacement text extracts successfully;
-- confirm every carried page has the same content-stream digest as its pinned source page;
+- confirm the target version appears on every page and the superseded version is absent outside
+  explicitly allowlisted historical change-log pages;
+- confirm every carried page is pixel-identical to its pinned source below the header except for
+  manifest-declared inline replacements;
+- confirm SVG text stays inside its canvas and boxes and connectors do not cross labels;
 - record SHA-256 in `build-manifest.json`.
+
+Run the committed publication validator from the repository root:
+
+```powershell
+python docs/sources/local-gateway-architecture-v3/tools/validate_publication.py `
+  --font-dir tmp/pdfs/fonts
+```
+
+Guardrails page 16 is the only historical-version exception: its change log legitimately records
+v1.0. The exception is explicit in `build-manifest.json`; it does not permit a stale running
+header.
 
 The completed verification record is in `verification.md`.
