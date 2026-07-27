@@ -157,11 +157,11 @@ behind env (not Task 6 staging).
 
 ### Task 5: Fitness gates for Plan 11.3 only
 
-- [ ] **Step 1:** Focused unit suites for providers/handlers/config + Plan 9.96 logging-surface gate
+- [x] **Step 1:** Focused unit suites for providers/handlers/config + Plan 9.96 logging-surface gate
   + full `tests/unit`.
-- [ ] **Step 2:** Ruff repo-wide; `git diff --check`; confirm zero `optimus.*` imports in
+- [x] **Step 2:** Ruff repo-wide; `git diff --check`; confirm zero `optimus.*` imports in
   `src/optimus_gateway`.
-- [ ] **Step 3:** Update gitignored Plan 11 checkpoint: Plan 11.3 complete; Plan 11.2 Task 6
+- [x] **Step 3:** Update gitignored Plan 11 checkpoint: Plan 11.3 complete; Plan 11.2 Task 6
   unblocked for staging credentials.
 
 ## Definition of Done (Plan 11.3)
