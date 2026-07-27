@@ -339,6 +339,48 @@ the CORE-route unit coverage that already passes in isolation.
 **Status:** Tracked, not yet scheduled; no implementation plan exists. Feasibility pass required
 before promotion.
 
+### P11-FU-7: Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test
+
+**Raised:** 2026-07-27 during the Plan 11.3 Task 1 independent review (operator Vibhanshu).
+The failure was observed once in a full-suite run for
+`tests/unit/acp/test_stdio_ndjson.py::test_serve_ndjson_sanitizes_request_processing_response_and_stderr`;
+the same test passed 2/2 when run in isolation. The same failure pattern has previously
+recurred during Plan 10.1 and Plan 11.1 verification.
+
+**Origin:** Repeated diagnosis identifies coverage instrumentation / `sys.settrace` timing
+sensitivity racing with the test's `asyncio.wait_for(..., timeout=1)`. This is a test-harness
+timing flake, not an identified defect in ACP stdio or NDJSON production behavior. The
+failure concerns the test's scheduling deadline under instrumentation and must not be
+re-diagnosed as an ACP protocol or sanitization regression at each plan pickup.
+
+**Designated slice:** Future Windows / test-infrastructure reliability work; no plan number is
+allocated (lazy numbering — assign only if/when picked up for scoping).
+
+**Acceptance criteria:** A future pickup must:
+
+- reproduce or disposition the failure under the relevant Windows full-suite and coverage
+  configurations, including a clean isolation comparison;
+- verify the diagnosis against the test's `asyncio.wait_for(..., timeout=1)` deadline and
+  coverage / `sys.settrace` instrumentation timing, distinguishing it from a production
+  stdio/NDJSON failure;
+- apply a reviewed, narrowly scoped test-infrastructure remedy (or document a durable
+  non-reproduction/disposition) without weakening the assertions that request-processing,
+  response, and stderr sanitization remain correct;
+- demonstrate that the remedy does not hide genuine ACP stdio/NDJSON regressions and record
+  the exact Windows, pytest, coverage, and test-suite conditions used; and
+- preserve the existing independent test evidence, with no production-code change claimed
+  unless new evidence establishes a separate production defect.
+
+**Related prior art:** Follow the Windows/test-infrastructure flake custody pattern used by
+`P11-FU-5` (WinError 6/50 subprocess handle-duplication) and `P11-FU-6` (gateway `test_server`
+port/teardown race). This item is distinct: its established mechanism is coverage
+instrumentation / `sys.settrace` scheduling pressure around an `asyncio.wait_for` deadline
+in a unit test, with no current evidence of a subprocess-handle or port-teardown defect.
+
+**Status:** Tracked, not yet scheduled; no implementation plan exists. Root cause is already
+diagnosed as coverage/trace instrumentation timing sensitivity; do not reopen ACP production
+debugging from scratch when this entry is picked up.
+
 ## P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)
 
 **Raised:** Disclosed by Plan 9.96 Task 9 on 2026-07-23 under the 2026-07-18 scope-conflict ruling.
