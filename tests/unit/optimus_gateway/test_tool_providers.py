@@ -388,6 +388,59 @@ def test_osv_lookup_posts_query_and_normalizes_https_references() -> None:
     assert result.usage.provider == "osv"
 
 
+@pytest.mark.parametrize(
+    ("wire_ecosystem", "osv_ecosystem"),
+    (
+        ("pypi", "PyPI"),
+        ("npm", "npm"),
+        ("maven", "Maven"),
+    ),
+)
+def test_osv_query_maps_ecosystem_casing_for_outgoing_payload_only(
+    wire_ecosystem: str,
+    osv_ecosystem: str,
+) -> None:
+    """OSV /v1/query needs mixed-case ecosystems; the wire/result contract stays lowercase."""
+    captured: list[dict[str, object]] = []
+
+    def fake_urlopen(request, *, timeout):
+        assert request.get_method() == "POST"
+        assert request.full_url.endswith("/v1/query")
+        captured.append(json.loads(request.data))
+        return _Response({"vulns": []})
+
+    provider = OsvAdvisoryToolProvider(
+        base_url="https://osv.example",
+        urlopen=fake_urlopen,
+        sleep=lambda _: None,
+    )
+    result = provider.lookup(_advisory_request(ecosystem=wire_ecosystem))
+
+    assert captured == [
+        {"package": {"name": "demo-package", "ecosystem": osv_ecosystem}, "version": "1.2.3"}
+    ]
+    assert result.ecosystem == wire_ecosystem
+
+
+def test_osv_vuln_id_lookup_does_not_send_ecosystem_field() -> None:
+    captured_urls: list[str] = []
+
+    def fake_urlopen(request, *, timeout):
+        captured_urls.append(request.full_url)
+        assert request.data is None
+        return _Response({"id": "GHSA-xxxx-yyyy-zzzz", "summary": "id path", "affected": [], "references": []})
+
+    provider = OsvAdvisoryToolProvider(
+        base_url="https://osv.example",
+        urlopen=fake_urlopen,
+        sleep=lambda _: None,
+    )
+    result = provider.lookup(_advisory_request(identifier="GHSA-xxxx-yyyy-zzzz", ecosystem="pypi"))
+
+    assert captured_urls == ["https://osv.example/vulns/GHSA-xxxx-yyyy-zzzz"]
+    assert result.ecosystem == "pypi"
+
+
 def test_osv_lookup_rejects_null_affected_and_references() -> None:
     def fake_urlopen(request, *, timeout):
         return _Response(

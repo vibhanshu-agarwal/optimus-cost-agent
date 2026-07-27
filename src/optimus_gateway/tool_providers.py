@@ -331,7 +331,10 @@ class OsvAdvisoryToolProvider:
             raw_vulns = [body]
         else:
             payload = {
-                "package": {"name": request.identifier, "ecosystem": request.ecosystem},
+                "package": {
+                    "name": request.identifier,
+                    "ecosystem": _osv_query_ecosystem(request.ecosystem),
+                },
                 "version": request.version,
             }
             body = request_json(
@@ -429,3 +432,19 @@ def _usage_for(provider: str) -> ProviderUsage:
 def _looks_like_osv_id(identifier: str) -> bool:
     upper = identifier.upper()
     return upper.startswith(("CVE-", "GHSA-", "OSV-"))
+
+
+# OSV /v1/query uses mixed-case ecosystem labels (PyPI/Maven/npm). The Gateway
+# wire contract keeps lowercase pypi/npm/maven; map only for the outgoing query
+# body and never echo OSV casing back on AdvisoryProviderResult.ecosystem.
+_OSV_QUERY_ECOSYSTEMS: dict[str, str] = {
+    "pypi": "PyPI",
+    "npm": "npm",
+    "maven": "Maven",
+}
+
+
+def _osv_query_ecosystem(ecosystem: str | None) -> str | None:
+    if ecosystem is None:
+        return None
+    return _OSV_QUERY_ECOSYSTEMS.get(ecosystem, ecosystem)
