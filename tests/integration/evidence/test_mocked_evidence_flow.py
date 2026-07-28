@@ -6,8 +6,7 @@ from optimus.evidence.ledger import EvidenceLedger
 from optimus.gateway.client import GatewayClient, GatewayRequest
 from optimus.tools.policy import ToolClass
 from optimus.tools.registry import ToolRegistry
-
-TRUSTED_GATEWAY_ORIGIN = "https://gateway.optimus.ai"
+from tests.support.gateway_settings import TRUSTED_GATEWAY_ORIGIN
 
 
 class CapturingEvidenceTransport:

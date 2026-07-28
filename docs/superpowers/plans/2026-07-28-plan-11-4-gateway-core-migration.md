@@ -593,7 +593,7 @@ Run the release credential/launch suites and the repository’s approved egress 
 - Consumes: green task-level tests and real-tier artifacts from Tasks 2–8.
 - Produces: release-gate verification record; no commit or push.
 
-- [ ] Step 1: Run the affected unit suites together
+- [x] Step 1: Run the affected unit suites together
 
 Run:
 
@@ -603,7 +603,7 @@ python -m pytest tests/unit/config tests/unit/gateway tests/unit/optimus_gateway
 
 Expected: PASS with no skipped test silently standing in for a required real dependency.
 
-- [ ] Step 2: Run integration suites allowed by the local environment
+- [x] Step 2: Run integration suites allowed by the local environment
 
 Run:
 
@@ -613,7 +613,7 @@ python -m pytest tests/integration/gateway tests/integration/optimus_gateway tes
 
 Run requires_redis, requires_gateway, requires_live_gateway, and e2e selections separately only when their real dependencies and credentials are available; report each unrun tier explicitly.
 
-- [ ] Step 3: Run coverage and static gates
+- [x] Step 3: Run coverage and static gates
 
 Run:
 
@@ -625,7 +625,7 @@ git diff --check
 
 Expected: aggregate production coverage is at least 80%, Ruff is clean, and git diff --check reports no whitespace errors.
 
-- [ ] Step 4: Re-run the retirement and custody searches
+- [x] Step 4: Re-run the retirement and custody searches
 
 Run:
 
@@ -636,7 +636,7 @@ rg -n "usage\.cost|billing_units|resolved_provider|X-OpenRouter-Metadata|X-OpenR
 
 Expected: no retired trust/direct-adapter/local-pricing production surface remains; provider accounting and metadata are covered by code/tests.
 
-- [ ] Step 5: Update the reviewer checkpoint log and hand off
+- [x] Step 5: Update the reviewer checkpoint log and hand off
 
 Record the exact test commands, dependency tiers run, coverage percentage, Ruff result, egress artifact paths, and any unrun release gates in docs/superpowers/reviews/plan-11-4-review-checkpoints.md. Do not mark a plan checkbox complete without the command named by that checkbox passing. Do not commit or push without a separate request.
 

@@ -11,8 +11,7 @@ from optimus.runtime.modes import ExecutionMode
 from optimus.tools.policy import EvidenceReasonCode, ToolClass, ToolPolicySignal
 from optimus.tools.registry import ToolRegistry
 from optimus.usage.accounting import UsageAccountingService, reconcile_evidence_provider_usage
-
-TRUSTED_GATEWAY_ORIGIN = "https://gateway.optimus.ai"
+from tests.support.gateway_settings import TRUSTED_GATEWAY_ORIGIN
 
 
 def usage() -> GatewayUsage:

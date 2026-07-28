@@ -53,6 +53,7 @@ from optimus.acp.trusted_paths import (
     resolve_workspace_identity,
     revalidate_workspace_identity,
 )
+from tests.support.gateway_settings import LOOPBACK_GATEWAY_URL
 
 
 class FakeKeyring:
@@ -82,7 +83,7 @@ class FakeKeyring:
 
 def _base_env(*, workspace_root: Path) -> dict[str, str]:
     return {
-        "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+        "OPTIMUS_GATEWAY_URL": LOOPBACK_GATEWAY_URL,
         "OPTIMUS_API_KEY": "test-shared-key",
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         # Exercises OPTIMUS_CONFIG_ROOT's own real containment validation
@@ -244,8 +245,18 @@ def test_full_launch_trust_flow_connects_every_real_seam(tmp_path: Path) -> None
         for name, policy in LAUNCH_VARIABLE_POLICIES.items()
         if PropagationTarget.GATEWAY_CHILD in policy.propagation and env.get(name, "").strip()
     }
+    # Plan 11.4: resolve_launch_candidate always overlays resolved OpenRouter
+    # provider credentials and the shared secret onto gateway_environ, even when
+    # those names were not present in the captured parent env.
+    expected_gateway_keys |= {
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER",
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY",
+        "OPTIMUS_LOCAL_GATEWAY_BASE_URL",
+        "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET",
+    }
     assert set(candidate.agent_environ) == expected_agent_keys
     assert set(candidate.gateway_environ) == expected_gateway_keys
+    assert candidate.gateway_environ["OPTIMUS_LOCAL_GATEWAY_PROVIDER"] == "openrouter"
     # OPTIMUS_CONFIG_ROOT is PARENT_ONLY -- must reach neither child, even
     # though it is present (and non-empty) in this test's environment.
     assert "OPTIMUS_CONFIG_ROOT" not in candidate.agent_environ
@@ -411,10 +422,11 @@ def test_full_launch_trust_flow_snapshot_mismatch_fails_closed(tmp_path: Path) -
     )
     store.write_durable(record)
 
-    # A genuinely different environment: OPTIMUS_PRODUCTION_MODE is
-    # SECURITY-tier, so it changes the real security_snapshot_digest.
+    # A genuinely different environment: OPTIMUS_GATEWAY_URL is SECURITY-tier,
+    # so changing it to another valid loopback URL changes the real
+    # security_snapshot_digest (retired OPTIMUS_PRODUCTION_MODE is unclassified).
     changed_env = dict(env)
-    changed_env["OPTIMUS_PRODUCTION_MODE"] = "true"
+    changed_env["OPTIMUS_GATEWAY_URL"] = "http://127.0.0.1:9876"
     changed_candidate, changed_store = _real_launch_pipeline(
         env=changed_env, workspace_root=workspace_root, keyring=keyring, runtime_root=runtime_root
     )
