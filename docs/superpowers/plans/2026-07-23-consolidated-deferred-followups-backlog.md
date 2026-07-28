@@ -44,7 +44,7 @@ open-work inventory.
 |---|---|---|
 | `P11-FEAT-GATEWAY-CORE` | Plan 11.1 — closed; merged to `main` as PR #85 (`6ae6997`, tip `6c39599`). Migration closed by **Plan 11.4**, merged to `main` as PR #91 (`d80e112`), 2026-07-28; no migration follow-ups remain open under this identity | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route); migration custody: strict-loopback completion, OpenRouter-default OpenAI-compatible aggregator transport, provider-reported accounting, and direct-adapter retirement — all implemented and independently re-verified task-by-task. The bounded Vercel Python transport check is complete as a design decision: Vercel is backlogged under this identity (its public OpenAI-compatible transport doesn't document the mandatory per-response provider-cost fields the settled `GatewayUsage` contract requires; no comparison matrix, no second endpoint added). Closure evidence: [design spec](../specs/2026-07-28-plan-11-4-p11-feat-gateway-core-migration-design.md), [implementation plan](2026-07-28-plan-11-4-gateway-core-migration.md) (all 36 checkboxes checked against their named verification commands) |
 | `P11-FEAT-GATEWAY-TOOLS` | Plan 11.2 — closed by PR #88 (merge `4590dbf`); migration follow-ups remain assigned here and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); migration custody: deterministic search/direct extract, route-specific dependency availability, replacement acceptance, and Tavily rollback-reviewed retirement; closure evidence: [Plan 11.2 approval](../reviews/2026-07-27-plan-11-2-implementation-plan-approval-v2.md), [local-process evidence](../../../reports/plan-11-2-gateway-tools-local-process-evidence.md), [staging evidence](../../../reports/plan-11-2-gateway-tools-staging-evidence.md), and [fitness report](../../../reports/plan-11-2-gateway-tools-task7-fitness.md) |
-| `P11-FEAT-GATEWAY-COST-OBS` | Ratified, unscheduled; migration follow-ups remain assigned here and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration |
+| `P11-FEAT-GATEWAY-COST-OBS` | Plan 11.5 — in progress on `agent/cursor/plan-11-5-gateway-cost-obs` (Tasks 0–4 landed locally; not yet merged); migration follow-ups remain assigned here | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); [implementation plan](2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration |
 | `P11-FEAT-GATEWAY-MCP` | Ratified but gated; blocked on `P11-FU-3`; no MCP endpoint is shown or implied; plan number assigned at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
 | `P11-FEAT-ZED-RESUME` | Ratified, unscheduled; carries `P11-FU-1` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume) |
 | `P11-FEAT-REGISTRY` | Ratified, unscheduled; blocked on its research gate — no authoritative source exists in any of the four pinned documents. Also owns the v1.0 release-version contract | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut) |
@@ -380,6 +380,55 @@ in a unit test, with no current evidence of a subprocess-handle or port-teardown
 **Status:** Tracked, not yet scheduled; no implementation plan exists. Root cause is already
 diagnosed as coverage/trace instrumentation timing sensitivity; do not reopen ACP production
 debugging from scratch when this entry is picked up.
+
+### P11.5-FU-1: Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics
+
+**Raised:** 2026-07-29 during Plan 11.5 Task 4 independent operator verification (and matching
+linked task review). Confirmed by reading installed
+`opentelemetry-exporter-otlp-proto-http` 1.44.0 `OTLPSpanExporter.export()`: every failure path,
+including the exporter's internal retry-with-backoff loop, ends in
+`return SpanExportResult.FAILURE` and never raises.
+
+**Origin:** Plan 11.5 Gateway `OpenTelemetryTraceExporter` / `_RetryTrackingSpanExporter` only
+classifies `exhausted_transient=True` (→ delivery state `queued`) when the delegate *raises*
+`TransientTraceExportError`. Against the real SDK exporter that path is unreachable; unit tests
+reach `QUEUED` only via an injected `_AlwaysTransientSpanExporter` double. Live collector
+outages therefore surface as `failed` rather than `queued`.
+
+**Severity / non-blocking rationale:** Does not crash the agent, does not mask failure as
+success, and does not invent cost/accounting. A genuinely transient network hiccup loses
+retry-worthiness signal but remains honest (`failed`). Accepted as non-blocking for Task 4
+sign-off; must retain named pool custody before Plan 11.5 close.
+
+**Designated slice:** `P11-FEAT-GATEWAY-COST-OBS` (follow-up plan number assigned at pickup —
+do not silently fold into an unfinished Task 4/5/8 checkpoint without a reviewed amendment).
+
+**Acceptance criteria:** A future pickup must:
+
+- preserve the four explicit delivery states (`delivered` / `queued` / `failed` /
+  `not_configured`) and the rule that a missing endpoint is never reported as successful
+  delivery;
+- map real `OTLPSpanExporter` / `SpanExportResult.FAILURE` (and any bounded transient class
+  the design chooses) into Gateway delivery results without requiring the SDK to raise;
+- keep agent-side code free of OTLP/Phoenix endpoints and credentials;
+- prove the path with focused unit evidence against a double that returns `FAILURE` (not only
+  a raising double), plus at least one live/Phoenix-tier check or an explicit documented
+  disposition if live evidence remains Task 8-owned;
+- never invent model failure, reverse a completed mutation, or add a model charge when export
+  fails.
+
+**Evidence anchors:** Plan 11.5 Task 4 brief/report/review
+(`.superpowers/sdd/task-4-*.md` on the Plan 11.5 branch),
+`src/optimus_gateway/observability.py`, and `opentelemetry.exporter.otlp.proto.http.trace_exporter`
+1.44.0 source for `OTLPSpanExporter.export`.
+
+**Related Task 8 watch (not this FU's scope):** `_emit_spans` starts a fresh empty `Context()`
+for every event with no `parent_span_id`, so multiple independent root-level events that share
+a wire `trace_id` may land as separate real OTel traces. Task 4 tests only exercise single-root
+batches; Plan 11.5 Task 8 real Phoenix evidence must prove or disposition this.
+
+**Status:** Tracked, not yet scheduled; no implementation plan exists. Drafted 2026-07-29 for
+operator review of pool custody wording.
 
 ## P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)
 
