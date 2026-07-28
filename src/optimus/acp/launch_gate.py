@@ -37,6 +37,7 @@ from optimus.acp.launch_policy import (
     LaunchVariableTier,
     PropagationTarget,
     classify_variable,
+    project_gateway_tool_child_env,
 )
 from optimus.acp.local_gateway_secrets import (
     CredentialLayer,
@@ -565,8 +566,8 @@ def resolve_launch_candidate(
             config_root=operator_paths.config_root,
             keyring_backend=keyring_backend,
         )
-    except ProviderCredentialConfigurationError:
-        provider_credentials = None
+    except ProviderCredentialConfigurationError as exc:
+        raise LaunchGateError(code="GATEWAY_PROVIDER_UNSUPPORTED", detail=exc.user_message) from exc
     resolved_shared_secret, shared_secret_provenance = resolve_shared_secret_with_provenance(
         snapshot.values,
         config_root=operator_paths.config_root,
@@ -633,7 +634,15 @@ def resolve_launch_candidate(
     )
 
     # 4. Project child environments from registry.
-    gateway_environ = _project_child_env(snapshot, PropagationTarget.GATEWAY_CHILD)
+    gateway_environ = project_gateway_tool_child_env(snapshot.values)
+    if provider_credentials is not None and provider_credentials.secrets is not None:
+        gateway_environ = {
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "openrouter",
+            **provider_credentials.secrets.as_gateway_child_env(),
+            **gateway_environ,
+        }
+    if resolved_shared_secret:
+        gateway_environ["OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"] = resolved_shared_secret
     agent_environ = _project_child_env(snapshot, PropagationTarget.AGENT_CHILD)
 
     return LaunchCandidate(
@@ -805,15 +814,10 @@ def _append_effective_credential_display_rows(
             raw_value=secrets.provider,
             provenance=provider_credentials.provider_provenance,
         )
-        key_policy = (
-            "ANTHROPIC_API_KEY"
-            if secrets.provider == "anthropic"
-            else "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"
-        )
         _append_display_row(
             display_rows,
-            policy_name=key_policy,
-            row_name=key_policy,
+            policy_name="OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY",
+            row_name="OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY",
             raw_value=secrets.model_provider_api_key,
             provenance=provider_credentials.api_key_provenance,
         )

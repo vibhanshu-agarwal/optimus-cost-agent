@@ -160,9 +160,32 @@ def test_resolve_provider_credentials_defaults_provider_to_openrouter_when_unset
     )
 
 
+def test_openrouter_is_the_only_supported_gateway_provider(tmp_path) -> None:
+    with pytest.raises(ProviderCredentialConfigurationError, match="OpenRouter"):
+        resolve_provider_credentials(
+            {
+                "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "anthropic",
+                "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-or-ignored",
+            },
+            config_root=tmp_path,
+            keyring_backend=FakeKeyring(),
+        )
+
+
+def test_ambient_anthropic_key_is_not_used_for_gateway_credentials(tmp_path) -> None:
+    resolved = resolve_provider_credentials(
+        {"ANTHROPIC_API_KEY": "sk-ant-never-read"},
+        config_root=tmp_path,
+        keyring_backend=FakeKeyring(),
+    )
+
+    assert resolved.secrets is None
+    assert "sk-ant-never-read" not in repr(resolved)
+
+
 def test_provider_secrets_includes_base_url_when_set(tmp_path) -> None:
     secrets_ = ProviderSecrets(
-        provider="openai",
+        provider="openrouter",
         model_provider_api_key="sk-test",
         base_url="https://custom.example.com/v1",
     )
@@ -177,7 +200,7 @@ def test_provider_secrets_includes_base_url_when_set(tmp_path) -> None:
 
 def test_resolve_provider_credentials_passes_through_base_url_from_dotenv(tmp_path) -> None:
     (tmp_path / ".env.gateway").write_text(
-        "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openai\n"
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
         "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-test\n"
         "OPTIMUS_LOCAL_GATEWAY_BASE_URL=https://custom.example.com/v1\n",
         encoding="utf-8",
@@ -186,7 +209,7 @@ def test_resolve_provider_credentials_passes_through_base_url_from_dotenv(tmp_pa
     resolved = resolve_provider_credentials({}, config_root=tmp_path, keyring_backend=FakeKeyring())
 
     assert resolved.secrets == ProviderSecrets(
-        provider="openai",
+        provider="openrouter",
         model_provider_api_key="sk-test",
         base_url="https://custom.example.com/v1",
     )
@@ -212,13 +235,9 @@ def test_base_url_ignores_keyring_and_falls_through_to_default(tmp_path) -> None
     assert "attacker.example" not in (resolved.secrets.base_url or "")
 
 
-def test_provider_secrets_maps_anthropic_to_anthropic_api_key_only(tmp_path) -> None:
-    secrets_ = ProviderSecrets(provider="anthropic", model_provider_api_key="sk-ant-test")
-
-    child_env = secrets_.as_gateway_child_env()
-
-    assert child_env == {"ANTHROPIC_API_KEY": "sk-ant-test"}
-    assert "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY" not in child_env
+def test_provider_secrets_rejects_non_openrouter_provider() -> None:
+    with pytest.raises(ValueError, match="OpenRouter"):
+        ProviderSecrets(provider="anthropic", model_provider_api_key="sk-ant-test")
 
 
 def test_provider_secrets_maps_openrouter_to_provider_api_key_var_only(tmp_path) -> None:
@@ -264,25 +283,25 @@ def test_env_provider_and_mismatched_keyring_provider_fails_closed(tmp_path) -> 
         )
 
     message = str(exc_info.value)
-    assert "openai" in message and "openrouter" in message
+    assert "openai" in message and "OpenRouter" in message
     assert "sk-private-value" not in message
 
 
 def test_config_provider_and_matching_keyring_provider_pass_without_conflict(tmp_path) -> None:
     (tmp_path / ".env.gateway").write_text(
-        "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openai\n",
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n",
         encoding="utf-8",
     )
     fake_keyring = FakeKeyring()
-    fake_keyring.set_password("optimus-cost-agent", "model_provider", "openai")
+    fake_keyring.set_password("optimus-cost-agent", "model_provider", "openrouter")
     fake_keyring.set_password("optimus-cost-agent", "model_provider_api_key", "sk-private-value")
 
     result = resolve_provider_credentials({}, config_root=tmp_path, keyring_backend=fake_keyring)
 
     assert result.secrets == ProviderSecrets(
-        provider="openai",
+        provider="openrouter",
         model_provider_api_key="sk-private-value",
-        base_url="https://api.openai.com/v1",
+        base_url="https://openrouter.ai/api/v1",
     )
     assert result.warnings == ()
     assert "sk-private-value" not in repr(result)
@@ -320,19 +339,17 @@ def test_env_provider_and_config_generic_key_warns_unprovable_split(tmp_path) ->
     assert "sk-private-value" not in repr(result.warnings)
 
 
-def test_config_anthropic_provider_uses_anthropic_key(tmp_path) -> None:
+def test_config_anthropic_provider_is_rejected_without_reading_anthropic_key(tmp_path) -> None:
     (tmp_path / ".env.gateway").write_text(
         "OPTIMUS_LOCAL_GATEWAY_PROVIDER=anthropic\nANTHROPIC_API_KEY=sk-private-value\n",
         encoding="utf-8",
     )
-    result = resolve_provider_credentials({}, config_root=tmp_path, keyring_backend=FakeKeyring())
-
-    assert result.secrets == ProviderSecrets(provider="anthropic", model_provider_api_key="sk-private-value")
-    assert "sk-private-value" not in repr(result)
+    with pytest.raises(ProviderCredentialConfigurationError, match="OpenRouter"):
+        resolve_provider_credentials({}, config_root=tmp_path, keyring_backend=FakeKeyring())
 
 
-def test_explicit_anthropic_provider_with_only_generic_key_fails_with_anthropic_remediation(tmp_path) -> None:
-    with pytest.raises(ProviderCredentialConfigurationError, match="ANTHROPIC_API_KEY") as exc_info:
+def test_explicit_anthropic_provider_fails_with_openrouter_remediation(tmp_path) -> None:
+    with pytest.raises(ProviderCredentialConfigurationError, match="OpenRouter") as exc_info:
         resolve_provider_credentials(
             {
                 "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "anthropic",
@@ -344,10 +361,10 @@ def test_explicit_anthropic_provider_with_only_generic_key_fails_with_anthropic_
     assert "sk-private-value" not in str(exc_info.value)
 
 
-def test_explicit_openai_provider_with_only_anthropic_key_fails_with_generic_remediation(tmp_path) -> None:
+def test_explicit_openai_provider_with_only_anthropic_key_fails_with_openrouter_remediation(tmp_path) -> None:
     with pytest.raises(
         ProviderCredentialConfigurationError,
-        match="OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY",
+        match="OpenRouter",
     ) as exc_info:
         resolve_provider_credentials(
             {
@@ -376,10 +393,7 @@ def test_keyring_key_without_stored_provider_warns_and_resolves(tmp_path) -> Non
         base_url="https://openrouter.ai/api/v1",
     )
     assert result.api_key_provenance.layer is CredentialLayer.KEYRING
-    assert result.warnings == (
-        "optimus-agent: provider key came from keyring but keyring has no stored model_provider; "
-        "run `optimus-agent --setup` to restore the provider/key pair.",
-    )
+    assert result.warnings == ()
     assert "sk-private-value" not in repr(result)
 
 
@@ -388,14 +402,14 @@ def test_stored_keyring_provider_without_key_does_not_trigger_pair_conflict(tmp_
     fake_keyring.set_password("optimus-cost-agent", "model_provider", "openrouter")
 
     result = resolve_provider_credentials(
-        {"OPTIMUS_LOCAL_GATEWAY_PROVIDER": "openai"},
+        {"OPTIMUS_LOCAL_GATEWAY_PROVIDER": "openrouter"},
         config_root=tmp_path,
         keyring_backend=fake_keyring,
     )
 
     assert result.secrets is None
     assert result.api_key_provenance.layer is CredentialLayer.MISSING
-    assert any("setup" in warning for warning in result.warnings)
+    assert result.warnings
 
 
 def test_default_provider_with_only_ambient_anthropic_key_returns_setup_pointer(tmp_path) -> None:
@@ -440,7 +454,7 @@ def test_explicit_unsupported_provider_names_supported_set(tmp_path, environ, do
         )
     with pytest.raises(
         ProviderCredentialConfigurationError,
-        match="anthropic, openai, openrouter",
+        match="OpenRouter",
     ) as exc_info:
         resolve_provider_credentials(environ, config_root=tmp_path, keyring_backend=FakeKeyring())
     assert "sk-private-value" not in str(exc_info.value)
@@ -452,6 +466,6 @@ def test_unsupported_keyring_provider_fails_closed_with_setup_remediation(tmp_pa
 
     with pytest.raises(
         ProviderCredentialConfigurationError,
-        match=r"anthropic, openai, openrouter.*optimus-agent --setup",
+        match=r"OpenRouter.*optimus-agent --setup",
     ):
         resolve_provider_credentials({}, config_root=tmp_path, keyring_backend=fake_keyring)

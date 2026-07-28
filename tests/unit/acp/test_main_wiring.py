@@ -262,17 +262,9 @@ def test_unclassified_variable_fails_closed_before_any_side_effect(monkeypatch, 
     assert redis_calls == []
 
 
-def test_snapshot_mismatch_fails_closed_with_remediation(monkeypatch, tmp_path, capsys) -> None:
-    """Changing the effective configuration after approval invalidates the
-    durable approval (SNAPSHOT_MISMATCH) and must still leave every
-    side-effect probe untouched, with a remediation message naming the exact
-    re-approval command."""
+def test_retired_production_mode_fails_closed_before_side_effects(monkeypatch, tmp_path, capsys) -> None:
     env = _base_env()
     _authorize(monkeypatch, tmp_path, env)
-    # Change the effective configuration after authoring the approval.
-    # OPTIMUS_PRODUCTION_MODE is SECURITY-tier, so it is folded into
-    # security_literals and therefore the security snapshot digest —
-    # OPERATIONAL-tier names like OPTIMUS_AGENT_MODEL are not.
     monkeypatch.setenv("OPTIMUS_PRODUCTION_MODE", "true")
 
     redis_calls: list[object] = []
@@ -285,9 +277,8 @@ def test_snapshot_mismatch_fails_closed_with_remediation(monkeypatch, tmp_path, 
     assert exit_code == 2
     assert redis_calls == []
     err = capsys.readouterr().err
-    assert "changed since" in err
-    assert "optimus-trust" in err
-    assert "approve" in err
+    assert "UNCLASSIFIED_VARIABLE" in err
+    assert "OPTIMUS_PRODUCTION_MODE" in err
 
 
 def test_startup_configuration_error_has_agent_prefix(monkeypatch, tmp_path, capsys):
@@ -483,11 +474,12 @@ def test_real_serve_path_calls_helpers_in_expected_order(monkeypatch, tmp_path) 
     ]
 
 
-def test_anthropic_provider_key_reaches_gateway_child_but_not_agent_settings(monkeypatch, tmp_path) -> None:
+def test_anthropic_provider_selection_fails_before_agent_or_gateway_start(monkeypatch, tmp_path, capsys) -> None:
     env = _base_env()
     env["OPTIMUS_LOCAL_GATEWAY_PROVIDER"] = "anthropic"
     env["ANTHROPIC_API_KEY"] = "sk-ant-real"
-    _authorize(monkeypatch, tmp_path, env)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
 
     gateway_call_seen: dict[str, object] = {}
     agent_environ_seen: dict[str, str] = {}
@@ -516,10 +508,10 @@ def test_anthropic_provider_key_reaches_gateway_child_but_not_agent_settings(mon
 
     exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
 
-    assert exit_code == 0
-    assert gateway_call_seen["provider_credentials"].secrets.provider == "anthropic"
-    assert gateway_call_seen["provider_credentials"].secrets.model_provider_api_key == "sk-ant-real"
-    assert "ANTHROPIC_API_KEY" not in agent_environ_seen
+    assert exit_code == 2
+    assert gateway_call_seen == {}
+    assert agent_environ_seen == {}
+    assert "OpenRouter" in capsys.readouterr().err
 
 
 def test_openrouter_provider_key_reaches_gateway_child_but_not_agent_settings(monkeypatch, tmp_path) -> None:

@@ -188,7 +188,7 @@ Expected: PASS, including secret masking and per-call client trust checks.
 - Consumes: ProviderCredentialResolution, ProviderSecrets.as_gateway_child_env, launch-variable registry, and the existing signed child-manifest construction.
 - Produces: an agent environment containing only OPTIMUS_GATEWAY_URL/OPTIMUS_API_KEY for Gateway access, plus a Gateway child environment containing the OpenRouter aggregator key and tool-only variables.
 
-- [ ] Step 1: Write failing environment-projection tests
+- [x] Step 1: Write failing environment-projection tests
 
 Add assertions that:
 
@@ -211,7 +211,7 @@ def test_agent_projection_excludes_every_provider_and_gateway_child_secret():
 
 Add credential-resolution cases showing the default provider is openrouter, only OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY is projected to the child, Anthropic-native credentials are rejected, and any non-OpenRouter provider selection fails with a remediation message.
 
-- [ ] Step 2: Run the ACP credential tests and verify failure
+- [x] Step 2: Run the ACP credential tests and verify failure
 
 Run:
 
@@ -221,7 +221,7 @@ python -m pytest tests/unit/acp/test_local_infra.py tests/unit/acp/test_acp_subp
 
 Expected: old production-mode/Anthropic projection tests fail before implementation.
 
-- [ ] Step 3: Implement the two-environment projection
+- [x] Step 3: Implement the two-environment projection
 
 1. Remove OPTIMUS_PRODUCTION_MODE default injection and all OPTIMUS_EXTRA_GATEWAY_ORIGINS/tenant-origin propagation from local_infra.py, subprocess_env.py, and launch_policy.py.
 2. Keep _AGENT_ENVIRON_EXCLUDED_KEYS broad enough to reject every LOCAL_PROVIDER_KEY_NAMES entry, OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY, and OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET.
@@ -230,7 +230,7 @@ Expected: old production-mode/Anthropic projection tests fail before implementat
 5. Update launch gate/approval CLI summaries to show the generic OpenRouter-owned Gateway credential without provider-specific branches or secret values.
 6. Update .env.example, .env.gateway.example, and README examples to show only the local agent variables plus the Gateway-child OpenRouter key boundary.
 
-- [ ] Step 4: Run the ACP and redaction tests
+- [x] Step 4: Run the ACP and redaction tests
 
 Run:
 

@@ -18,7 +18,7 @@ _KEY_MODEL_PROVIDER = "model_provider"
 _KEY_MODEL_PROVIDER_API_KEY = "model_provider_api_key"
 _KEY_SHARED_SECRET = "local_gateway_shared_secret"
 
-_SUPPORTED_PROVIDERS = ("anthropic", "openai", "openrouter")
+_SUPPORTED_PROVIDERS = ("openrouter",)
 SUPPORTED_GATEWAY_PROVIDERS = frozenset(_SUPPORTED_PROVIDERS)
 _DEFAULT_PROVIDER = "openrouter"
 
@@ -27,22 +27,17 @@ _ENV_LINE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 
 @dataclass(frozen=True)
 class ProviderSecrets:
-    provider: str  # "openai" | "openrouter" | "anthropic"
+    provider: str
     model_provider_api_key: str = field(repr=False)
     base_url: str | None = None
 
+    def __post_init__(self) -> None:
+        if self.provider != _DEFAULT_PROVIDER:
+            raise ValueError("ProviderSecrets supports the OpenRouter Gateway credential only.")
+
     def as_gateway_child_env(self) -> dict[str, str]:
-        """Map to the exact var names GatewayServiceConfig.from_env() reads for this provider
-        (src/optimus_gateway/models.py:45): ANTHROPIC_API_KEY for anthropic, else
-        OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY. Only ever sets the one name the resolved
-        provider needs. Also passes through OPTIMUS_LOCAL_GATEWAY_BASE_URL when set (models.py:44)
-        — harmless to include for anthropic too, since GatewayServiceConfig.from_env() always
-        forces base_url to None for that provider regardless of what's in its env."""
-        env = (
-            {"ANTHROPIC_API_KEY": self.model_provider_api_key}
-            if self.provider == "anthropic"
-            else {"OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": self.model_provider_api_key}
-        )
+        """Project the OpenRouter aggregator credential into the Gateway child only."""
+        env = {"OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": self.model_provider_api_key}
         if self.base_url:
             env["OPTIMUS_LOCAL_GATEWAY_BASE_URL"] = self.base_url
         return env
@@ -159,8 +154,8 @@ def resolve_shared_secret(
 def _provider_error(provider: str, *, keyring: bool = False) -> ProviderCredentialConfigurationError:
     suffix = " Run `optimus-agent --setup` to choose a supported provider." if keyring else ""
     return ProviderCredentialConfigurationError(
-        f"optimus-agent: unsupported provider {provider!r}; supported providers: "
-        f"{', '.join(_SUPPORTED_PROVIDERS)}.{suffix}"
+        f"optimus-agent: provider {provider!r} is not supported; configure the local Gateway "
+        f"for OpenRouter only.{suffix}"
     )
 
 
@@ -191,17 +186,7 @@ def resolve_provider_credentials(
             provider,
             keyring=provider_provenance.layer is CredentialLayer.KEYRING,
         )
-    stored_keyring_provider = _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER)
-    expected_key_name = (
-        "ANTHROPIC_API_KEY"
-        if provider == "anthropic"
-        else "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"
-    )
-    alternate_key_name = (
-        "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"
-        if provider == "anthropic"
-        else "ANTHROPIC_API_KEY"
-    )
+    expected_key_name = "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"
     api_key, api_key_provenance = _resolve_env_config_keyring(
         environ,
         dotenv_values=dotenv_values,
@@ -210,32 +195,6 @@ def resolve_provider_credentials(
         keyring_backend=keyring_backend,
     )
     warnings: list[str] = []
-    if (
-        api_key_provenance.layer is CredentialLayer.KEYRING
-        and stored_keyring_provider
-        and stored_keyring_provider.casefold() != provider.casefold()
-    ):
-        raise ProviderCredentialConfigurationError(
-            "optimus-agent: local gateway provider resolves to "
-            f"{provider!r} from {provider_provenance.layer.value}, but the keyring API key is paired "
-            f"with provider {stored_keyring_provider!r}; run `optimus-agent --setup` or remove the "
-            "higher-precedence provider override."
-        )
-    if provider_provenance.layer in {
-        CredentialLayer.ENVIRONMENT,
-        CredentialLayer.CONFIG_FILE,
-        CredentialLayer.KEYRING,
-    } and not api_key:
-        alternate_value = environ.get(alternate_key_name, "").strip() or dotenv_values.get(
-            alternate_key_name,
-            "",
-        ).strip()
-        if alternate_value:
-            raise ProviderCredentialConfigurationError(
-                f"optimus-agent: provider {provider!r} requires {expected_key_name}; "
-                f"found {alternate_key_name} instead. Configure {expected_key_name} or run "
-                "`optimus-agent --setup`."
-            )
     if not api_key:
         api_key_provenance = CredentialProvenance(CredentialLayer.MISSING, expected_key_name)
         if provider_provenance.layer is CredentialLayer.DEFAULT:
@@ -261,14 +220,6 @@ def resolve_provider_credentials(
         warnings.append(
             "optimus-agent: provider and API key came from different configuration layers; "
             "the provider/key pairing cannot be proven."
-        )
-    if (
-        api_key_provenance.layer is CredentialLayer.KEYRING
-        and stored_keyring_provider is None
-    ):
-        warnings.append(
-            "optimus-agent: provider key came from keyring but keyring has no stored model_provider; "
-            "run `optimus-agent --setup` to restore the provider/key pair."
         )
     base_url = environ.get("OPTIMUS_LOCAL_GATEWAY_BASE_URL", "").strip()
     base_url_provenance = CredentialProvenance(
@@ -321,10 +272,7 @@ def run_setup_wizard(
     getpass_fn: Callable[[str], str] = getpass.getpass,
     print_fn: Callable[..., None] = print,
 ) -> int:
-    provider = (input_fn(f"Provider [{_DEFAULT_PROVIDER}]: ").strip() or _DEFAULT_PROVIDER).lower()
-    if provider not in _SUPPORTED_PROVIDERS:
-        print_fn(f"Unsupported provider: {provider!r}. Choose one of {_SUPPORTED_PROVIDERS}.")
-        return 1
+    provider = _DEFAULT_PROVIDER
 
     existing_api_key = _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER_API_KEY)
     if existing_api_key:
@@ -333,7 +281,7 @@ def run_setup_wizard(
             print_fn("Setup cancelled; existing credentials unchanged.")
             return 1
 
-    api_key = getpass_fn(f"{provider} API key: ").strip()
+    api_key = getpass_fn("OpenRouter API key: ").strip()
     if not api_key:
         print_fn("No API key entered; aborting setup.")
         return 1

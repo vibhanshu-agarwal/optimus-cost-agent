@@ -22,7 +22,7 @@ def test_build_acp_subprocess_env_includes_required_keys_without_pythonpath(monk
     assert env["OPTIMUS_GATEWAY_URL"] == "http://127.0.0.1:8765"
     assert env["OPTIMUS_API_KEY"] == "shared-secret"
     assert env["OPTIMUS_REDIS_URL"] == "redis://127.0.0.1:6379/0"
-    assert env["OPTIMUS_PRODUCTION_MODE"] == "false"
+    assert "OPTIMUS_PRODUCTION_MODE" not in env
     assert "PYTHONPATH" not in env
     assert "OPENAI_API_KEY" not in env
 
@@ -81,7 +81,6 @@ def test_specially_handled_and_derived_optional_keys_equal_registry_exactly():
     }
     module_names = {
         *subprocess_env_module._REQUIRED_AGENT_ENV_KEYS,
-        subprocess_env_module._PRODUCTION_MODE_ENV_KEY,
         *subprocess_env_module._optional_agent_env_keys(),
     }
     assert module_names == registry_agent_child_names
@@ -96,7 +95,6 @@ def test_optional_agent_env_keys_is_derived_not_hand_maintained():
     registry_names = subprocess_env_module._agent_child_registry_names()
     specially_handled = {
         *subprocess_env_module._REQUIRED_AGENT_ENV_KEYS,
-        subprocess_env_module._PRODUCTION_MODE_ENV_KEY,
     }
     assert subprocess_env_module._optional_agent_env_keys() == registry_names - specially_handled
 
@@ -132,7 +130,7 @@ def test_extra_gateway_origins_reaches_agent_child(monkeypatch):
 
     env = build_acp_subprocess_env(operator_environ=os.environ)
 
-    assert env["OPTIMUS_EXTRA_GATEWAY_ORIGINS"] == "https://example.com"
+    assert "OPTIMUS_EXTRA_GATEWAY_ORIGINS" not in env
 
 
 def test_built_agent_child_env_exactly_matches_registry_projection_for_full_input(monkeypatch):
@@ -146,8 +144,6 @@ def test_built_agent_child_env_exactly_matches_registry_projection_for_full_inpu
     monkeypatch.setenv("OPTIMUS_AGENT_MODEL", "glm-5.2")
     monkeypatch.setenv("OPTIMUS_LIVE_MAX_COST_USD", "0.10")
     monkeypatch.setenv("OPTIMUS_MAX_PLANNING_TURNS", "2")
-    monkeypatch.setenv("OPTIMUS_EXTRA_GATEWAY_ORIGINS", "https://example.com")
-    monkeypatch.setenv("OPTIMUS_PRODUCTION_MODE", "true")
 
     env = build_acp_subprocess_env(operator_environ=os.environ)
 

@@ -34,9 +34,8 @@ violated.
 
 The gateway configuration foundation keeps the agent process on the one-key
 model: `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY`. `OptimusGatewaySettings`
-masks the Optimus API key in safe dumps and representations and rejects local
-provider keys. The current implementation still has a temporary origin-
-compatibility flag; the target contract is strict loopback. The gateway client
+masks the Optimus API key in safe dumps and representations, rejects local
+provider keys, and accepts strict loopback Gateway URLs only. The gateway client
 posts model requests to `/v1/responses` using the Responses API `input` shape and
 parses the GatewayUsage envelope before returning generated text.
 
@@ -521,7 +520,6 @@ Set the same shared secret in both files:
 Agent-side `.env` example:
 
 ```bash
-OPTIMUS_PRODUCTION_MODE=false
 OPTIMUS_GATEWAY_URL=http://127.0.0.1:8765
 OPTIMUS_API_KEY=<shared-secret-you-generate>
 OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0
@@ -582,11 +580,6 @@ curl -sS http://127.0.0.1:8765/v1/responses \
   -H "Content-Type: application/json" \
   -d '{"model":"claude-haiku","input":"Reply with one short word."}'
 ```
-
-`OPTIMUS_PRODUCTION_MODE=false` is a temporary current-implementation compatibility setting for
-the direct `OptimusGatewaySettings.from_env()` path. Keep it false for the loopback Gateway; remove
-the setting when the strict-loopback code change lands under `P11-FEAT-GATEWAY-CORE`. Do not use a
-hosted-origin override.
 
 ## Contributor development setup
 

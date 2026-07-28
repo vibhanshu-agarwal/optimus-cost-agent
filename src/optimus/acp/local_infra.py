@@ -32,10 +32,18 @@ from optimus_security.launch_manifest import build_gateway_child_manifest, seria
 # OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET: once apply_local_defaults() has copied its value into
 # OPTIMUS_API_KEY, the agent view should keep only that public contract name, not the
 # gateway-internal duplicate under its own name. Found in 2026-07-08 review, round 3.
+# Retired Plan 11.4 trust-seam names remain strip-only exclusions (not launch-registry
+# members); keep them as plain literals so Task 9 retirement rg can still see them.
+RETIRED_AGENT_ENVIRON_KEYS = frozenset(
+    {
+        "OPTIMUS_PRODUCTION_MODE",
+        "OPTIMUS_EXTRA_GATEWAY_ORIGINS",
+    }
+)
 _AGENT_ENVIRON_EXCLUDED_KEYS = LOCAL_PROVIDER_KEY_NAMES | {
     "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY",
     "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET",
-}
+} | RETIRED_AGENT_ENVIRON_KEYS
 
 _REDIS_CONTAINER_NAME = "optimus-redis"
 _REDIS_IMAGE = "redis:8"
@@ -63,14 +71,14 @@ def apply_local_defaults(
     config_root: Path,
     resolved_shared_secret: str | None = None,
 ) -> dict[str, str]:
-    """Fill in loopback defaults for URLs/production mode/model.
+    """Fill in loopback defaults for URLs and model.
 
     Plan 9.96, Task 5: credential resolution (the shared secret projected to
     OPTIMUS_API_KEY) is no longer performed here by re-reading
     .env.gateway/keyring — the launch gate's resolve_launch_candidate()
     resolves it exactly once and the caller passes the result in via
     resolved_shared_secret. This function's own config_root/environ inputs
-    are used only for the URL/mode/model default-filling that has nothing to
+    are used only for the URL/model default-filling that has nothing to
     do with credentials.
     """
     resolved = dict(environ)
@@ -83,8 +91,6 @@ def apply_local_defaults(
     if not _is_loopback(urlparse(resolved["OPTIMUS_GATEWAY_URL"]).hostname):
         return resolved
 
-    if not resolved.get("OPTIMUS_PRODUCTION_MODE", "").strip():
-        resolved["OPTIMUS_PRODUCTION_MODE"] = "false"
     if not resolved.get("OPTIMUS_AGENT_MODEL", "").strip():
         resolved["OPTIMUS_AGENT_MODEL"] = _DEFAULT_LOCAL_AGENT_MODEL
     if not resolved.get("OPTIMUS_API_KEY", "").strip() and resolved_shared_secret:

@@ -60,6 +60,25 @@ def test_strip_local_provider_keys_also_removes_openrouter_key_and_shared_secret
     }
 
 
+def test_agent_projection_excludes_every_provider_and_gateway_child_secret() -> None:
+    projected = local_infra.strip_local_provider_keys(
+        {
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "agent-secret",
+            "OPENROUTER_API_KEY": "or-secret",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "or-secret",
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "child-secret",
+            "OPTIMUS_PRODUCTION_MODE": "false",
+            "OPTIMUS_EXTRA_GATEWAY_ORIGINS": "https://example.com",
+        }
+    )
+
+    assert projected == {
+        "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+        "OPTIMUS_API_KEY": "agent-secret",
+    }
+
+
 # --- apply_local_defaults: Task 5 signature (resolved_shared_secret param,
 # no internal credential re-resolution) ---
 
@@ -69,7 +88,7 @@ def test_apply_local_defaults_fills_loopback_urls_when_unset(tmp_path) -> None:
 
     assert result["OPTIMUS_REDIS_URL"] == "redis://127.0.0.1:6379/0"
     assert result["OPTIMUS_GATEWAY_URL"] == "http://127.0.0.1:8765"
-    assert result["OPTIMUS_PRODUCTION_MODE"] == "false"
+    assert "OPTIMUS_PRODUCTION_MODE" not in result
     assert result["OPTIMUS_AGENT_MODEL"] == "claude-haiku"
 
 
@@ -401,7 +420,7 @@ def test_ensure_local_gateway_passes_through_custom_base_url(tmp_path, monkeypat
         **_ensure_gateway_kwargs(
             provider_credentials=_resolution(
                 ProviderSecrets(
-                    provider="openai",
+                    provider="openrouter",
                     model_provider_api_key="sk-test",
                     base_url="https://custom.example.com/v1",
                 )
@@ -522,55 +541,6 @@ def _gateway_child_registry_names() -> set[str]:
     return {name for name, policy in LAUNCH_VARIABLE_POLICIES.items() if PropagationTarget.GATEWAY_CHILD in policy.propagation}
 
 
-def test_anthropic_gateway_child_env_exactly_matches_applicable_registry_projection(tmp_path, monkeypatch) -> None:
-    reachable_calls = {"n": 0}
-
-    def fake_tcp_reachable(host, port, *, timeout=1.0):
-        reachable_calls["n"] += 1
-        return reachable_calls["n"] > 1
-
-    monkeypatch.setattr(local_infra, "_tcp_reachable", fake_tcp_reachable)
-    monkeypatch.setattr(local_infra.time, "sleep", lambda _seconds: None)
-
-    captured: dict[str, object] = {}
-
-    class FakeProcess:
-        pid = 2222
-        returncode = None
-
-        def poll(self):
-            return None
-
-    def fake_popen(args, *, env, stdin, stdout, stderr):
-        captured["env"] = env
-        return FakeProcess()
-
-    monkeypatch.setattr(local_infra.subprocess, "Popen", fake_popen)
-
-    local_infra.ensure_local_gateway(
-        **_ensure_gateway_kwargs(
-            provider_credentials=_resolution(
-                ProviderSecrets(provider="anthropic", model_provider_api_key="sk-ant-test")
-            )
-        ),
-        runtime_root=tmp_path / ".optimus",
-    )
-
-    registry_names = _gateway_child_registry_names()
-    # anthropic has no base_url and uses ANTHROPIC_API_KEY (not
-    # OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY) — the other provider-key names
-    # and OPTIMUS_LOCAL_GATEWAY_BASE_URL are not applicable for this launch.
-    inapplicable = (registry_names - {"OPTIMUS_LOCAL_GATEWAY_PROVIDER", "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"}) - {
-        "ANTHROPIC_API_KEY"
-    }
-    child_env = captured["env"]
-    assert child_env["OPTIMUS_LOCAL_GATEWAY_PROVIDER"] == "anthropic"
-    assert child_env["ANTHROPIC_API_KEY"] == "sk-ant-test"
-    assert "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY" not in child_env
-    assert "OPTIMUS_LOCAL_GATEWAY_BASE_URL" not in child_env
-    assert not (inapplicable & child_env.keys())
-
-
 def test_openrouter_gateway_child_env_exactly_matches_applicable_registry_projection(tmp_path, monkeypatch) -> None:
     reachable_calls = {"n": 0}
 
@@ -670,25 +640,15 @@ def test_ensure_local_gateway_forwards_tool_env_from_config_root_env_gateway(tmp
     assert child_env["OPTIMUS_GATEWAY_TOOL_REDIS_URL"] == "redis://127.0.0.1:6379/0"
 
 
-def test_production_mode_never_reaches_gateway_child(tmp_path, monkeypatch) -> None:
-    """OPTIMUS_PRODUCTION_MODE is AGENT_CHILD-only (review finding): it must
-    never be projected into the Gateway child's env, since
-    GatewayServiceConfig.from_env() has no code path that reads it."""
-    from optimus.acp.launch_policy import LAUNCH_VARIABLE_POLICIES, PropagationTarget
+def test_retired_origin_configuration_is_not_in_gateway_child_registry() -> None:
+    from optimus.acp.launch_policy import LAUNCH_VARIABLE_POLICIES
+    from optimus.acp.local_infra import RETIRED_AGENT_ENVIRON_KEYS
 
-    policy = LAUNCH_VARIABLE_POLICIES["OPTIMUS_PRODUCTION_MODE"]
-    assert PropagationTarget.GATEWAY_CHILD not in policy.propagation
-
-    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: False)
-    messages: list[str] = []
-
-    # ensure_local_gateway has no OPTIMUS_PRODUCTION_MODE parameter at all —
-    # there is no code path by which it could be injected into child_env.
-    local_infra.ensure_local_gateway(
-        **_ensure_gateway_kwargs(provider_credentials=None),
-        runtime_root=tmp_path / ".optimus",
-        log=messages.append,
+    assert "OPTIMUS_PRODUCTION_MODE" not in LAUNCH_VARIABLE_POLICIES
+    assert "OPTIMUS_EXTRA_GATEWAY_ORIGINS" not in LAUNCH_VARIABLE_POLICIES
+    assert RETIRED_AGENT_ENVIRON_KEYS == frozenset(
+        {
+            "OPTIMUS_PRODUCTION_MODE",
+            "OPTIMUS_EXTRA_GATEWAY_ORIGINS",
+        }
     )
-    # (Nothing further to assert here beyond the registry check above — this
-    # test exists to pin the registry decision, not to re-prove ensure_local_gateway's
-    # unrelated no-credentials early return.)
