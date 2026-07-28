@@ -24,12 +24,18 @@ class CapturingGatewayTransport:
                 "cache_hit": False,
                 "billing_units": 31,
                 "cost_usd": "0.0031",
+                "resolved_provider": "OpenRouter",
+                "resolved_model": "z-ai/glm-5.2",
+                "input_tokens": 20,
+                "output_tokens": 11,
+                "total_tokens": 31,
+                "cached_tokens": 5,
             },
         }
 
 
 def test_mocked_full_gateway_run_uses_only_optimus_credentials(monkeypatch):
-    monkeypatch.setenv("OPTIMUS_GATEWAY_URL", "https://gateway.optimus.ai")
+    monkeypatch.setenv("OPTIMUS_GATEWAY_URL", "http://127.0.0.1:8765")
     monkeypatch.setenv("OPTIMUS_API_KEY", "opt_live_test")
     for key in [
         "ANTHROPIC_API_KEY",
@@ -66,9 +72,12 @@ def test_mocked_full_gateway_run_uses_only_optimus_credentials(monkeypatch):
     assert "error" not in response
     assert response["result"]["output_text"] == "Plan-mode advisory response."
     assert response["result"]["gateway_usage"]["cost_usd"] == str(Decimal("0.0031"))
+    assert response["result"]["gateway_usage"]["resolved_provider"] == "OpenRouter"
+    assert response["result"]["gateway_usage"]["resolved_model"] == "z-ai/glm-5.2"
+    assert response["result"]["gateway_usage"]["total_tokens"] == 31
     assert len(transport.requests) == 1
     request = transport.requests[0]
-    assert request.url == "https://gateway.optimus.ai/v1/responses"
+    assert request.url == "http://127.0.0.1:8765/v1/responses"
     assert request.headers["Authorization"] == "Bearer opt_live_test"
     assert request.payload["input"] == "Create an advisory plan."
     assert "messages" not in request.payload

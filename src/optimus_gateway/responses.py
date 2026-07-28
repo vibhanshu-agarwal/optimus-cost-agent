@@ -11,7 +11,6 @@ from optimus_gateway.models import (
     authorize_bearer,
     validate_responses_envelope,
 )
-from optimus_gateway.pricing import billing_units, compute_cost_usd, lookup_model_rate
 from optimus_gateway.upstream_client import ProviderMessageResult, UpstreamClient
 from optimus_security.sanitization import sanitize_for_persistence
 
@@ -55,39 +54,33 @@ def run_model_completion(
         return 400, {"error": sanitize_error_message(str(exc))}
 
     try:
-        lookup_model_rate(provider=config.provider, resolved_model=provider_model)
-    except ValueError as exc:
-        return 500, {"error": sanitize_error_message(str(exc))}
-
-    try:
         provider_result = upstream_client.create_message(model=provider_model, input_text=input_text)
     except RuntimeError as exc:
         return 502, {"error": sanitize_error_message(str(exc))}
 
-    cost_usd, price_snapshot_id = compute_cost_usd(
-        provider=config.provider,
-        resolved_model=provider_model,
-        input_tokens=provider_result.input_tokens,
-        output_tokens=provider_result.output_tokens,
-    )
     gateway_usage = {
         "gateway_request_id": f"gw-{uuid.uuid4().hex}",
         "provider": config.provider,
         "provider_request_id": provider_result.message_id,
-        "billing_units": billing_units(
-            input_tokens=provider_result.input_tokens,
-            output_tokens=provider_result.output_tokens,
-        ),
-        "cost_usd": format_cost_usd(cost_usd),
-        "cache_hit": False,
+        "billing_units": provider_result.billing_units,
+        "cost_usd": provider_result.cost_usd,
+        "cache_hit": provider_result.cache_hit,
         "model": model,
-        "model_version": provider_model,
-        "price_snapshot_id": price_snapshot_id,
+        "resolved_provider": provider_result.resolved_provider,
+        "resolved_model": provider_result.resolved_model,
+        "model_version": provider_result.model_version,
+        "input_tokens": provider_result.input_tokens,
+        "output_tokens": provider_result.output_tokens,
+        "total_tokens": provider_result.total_tokens,
+        "reasoning_tokens": provider_result.reasoning_tokens,
+        "cached_tokens": provider_result.cached_tokens,
+        "cache_age_seconds": provider_result.cache_age_seconds,
     }
     try:
         assert_gateway_usage_contract(gateway_usage)
     except ValueError as exc:
-        return 500, {"error": sanitize_error_message(str(exc))}
+        return 502, {"error": sanitize_error_message(str(exc))}
+    gateway_usage["cost_usd"] = format_cost_usd(provider_result.cost_usd)
     return 200, build_success(provider_result=provider_result, gateway_usage=gateway_usage)
 
 
@@ -108,7 +101,7 @@ def assert_gateway_usage_contract(gateway_usage: dict[str, Any]) -> None:
         cost = Decimal(str(gateway_usage["cost_usd"]))
     except Exception as exc:
         raise ValueError("cost_usd must be decimal-parseable") from exc
-    if cost < Decimal("0"):
+    if not cost.is_finite() or cost < Decimal("0"):
         raise ValueError("cost_usd must be non-negative")
     billing = gateway_usage["billing_units"]
     if not isinstance(billing, int) or isinstance(billing, bool) or billing < 0:

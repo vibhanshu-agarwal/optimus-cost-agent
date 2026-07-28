@@ -43,6 +43,14 @@ def test_gateway_usage_accepts_normalized_cost_fields():
         model="glm-5.2",
         model_version="2026-06-01",
         price_snapshot_id="prices-2026-07-04",
+        resolved_provider="OpenRouter",
+        resolved_model="z-ai/glm-5.2",
+        input_tokens=100,
+        output_tokens=23,
+        total_tokens=123,
+        reasoning_tokens=10,
+        cached_tokens=7,
+        cache_age_seconds=30,
     )
 
     assert usage.service == "responses"
@@ -51,6 +59,10 @@ def test_gateway_usage_accepts_normalized_cost_fields():
     assert usage.model == "glm-5.2"
     assert usage.model_version == "2026-06-01"
     assert usage.price_snapshot_id == "prices-2026-07-04"
+    assert usage.resolved_provider == "OpenRouter"
+    assert usage.resolved_model == "z-ai/glm-5.2"
+    assert usage.total_tokens == 123
+    assert usage.cached_tokens == 7
 
 
 def test_parse_gateway_response_preserves_normalized_usage_fields():

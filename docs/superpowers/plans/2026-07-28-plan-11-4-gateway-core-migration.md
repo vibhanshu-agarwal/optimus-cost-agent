@@ -445,7 +445,7 @@ Expected: PASS; model calls stop at three total attempts, tool calls retain thei
 - Consumes: ProviderMessageResult from Task 5 and the existing run_model_completion callback shape.
 - Produces: gateway_usage with provider-reported cost_usd, billing_units, cache state, provider/model attribution, and optional token detail; both routes return their existing response shape.
 
-- [ ] Step 1: Write failing response/accounting tests
+- [x] Step 1: Write failing response/accounting tests
 
 Use a fake result with explicit provider accounting:
 
@@ -471,7 +471,7 @@ Assert GatewayUsage.provider == openrouter, resolved_provider == Anthropic, prov
 
 Add parametrized run_model_completion failures for each malformed cost/billing case. Assert status is a sanitized upstream failure, output is not emitted, and the fake client is called once because malformed accounting is permanent.
 
-- [ ] Step 2: Run response/accounting tests and verify failure
+- [x] Step 2: Run response/accounting tests and verify failure
 
 Run:
 
@@ -481,7 +481,7 @@ python -m pytest tests/unit/optimus_gateway/test_responses.py tests/unit/optimus
 
 Expected: old locally computed cost/cache assertions fail before implementation.
 
-- [ ] Step 3: Implement the provider-reported usage envelope
+- [x] Step 3: Implement the provider-reported usage envelope
 
 1. Remove lookup_model_rate, compute_cost_usd, and local token-sum billing from run_model_completion.
 2. Build gateway_usage from ProviderMessageResult; keep model as the agent alias, use the returned resolved model/version when available, and set provider to the aggregator identity.
@@ -490,7 +490,7 @@ Expected: old locally computed cost/cache assertions fail before implementation.
 5. Keep GatewayClient and ACP dispatcher parsing/serialization additive; existing tool envelopes and error-body usage parsing must continue to use the same strict parser.
 6. Reduce pricing.py to no settled-cost calculation. If a diagnostic snapshot helper remains, its output must be marked diagnostic, omitted from settled cost_usd, and never be used as a fallback.
 
-- [ ] Step 4: Run route and accounting tests
+- [x] Step 4: Run route and accounting tests
 
 Run:
 

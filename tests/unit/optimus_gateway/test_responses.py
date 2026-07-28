@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
+import pytest
+
 from optimus.gateway.models import parse_gateway_response, parse_gateway_usage
 from optimus_gateway import responses
 from optimus_gateway.chat_completions import handle_chat_completions_request
@@ -16,6 +18,18 @@ class FakeProviderResult:
     output_text: str
     input_tokens: int
     output_tokens: int
+    total_tokens: int | None
+    billing_units: int
+    cost_usd: Decimal
+    provider: str
+    resolved_provider: str | None
+    requested_model: str
+    resolved_model: str | None
+    model_version: str | None
+    cache_hit: bool
+    cached_tokens: int | None = None
+    reasoning_tokens: int | None = None
+    cache_age_seconds: int | None = None
 
 
 class FakeUpstreamClient:
@@ -26,17 +40,6 @@ class FakeUpstreamClient:
     def create_message(self, *, model: str, input_text: str) -> FakeProviderResult:
         self.calls.append({"model": model, "input_text": input_text})
         return self._result
-
-
-def _anthropic_config() -> GatewayServiceConfig:
-    return GatewayServiceConfig(
-        bind_host="127.0.0.1",
-        bind_port=8765,
-        shared_secret="local-shared-secret",
-        provider="anthropic",
-        provider_api_key="sk-ant-test",
-        base_url=None,
-    )
 
 
 def _openrouter_config() -> GatewayServiceConfig:
@@ -50,23 +53,32 @@ def _openrouter_config() -> GatewayServiceConfig:
     )
 
 
-def _openai_config() -> GatewayServiceConfig:
-    return GatewayServiceConfig(
-        bind_host="127.0.0.1",
-        bind_port=8765,
-        shared_secret="local-shared-secret",
-        provider="openai",
-        provider_api_key="oai-test",
-        base_url="https://api.openai.com/v1",
-    )
+def _provider_result(**overrides: object) -> FakeProviderResult:
+    fields: dict[str, object] = {
+        "message_id": "gen-1",
+        "output_text": "ok",
+        "input_tokens": 42,
+        "output_tokens": 18,
+        "total_tokens": 60,
+        "billing_units": 60,
+        "cost_usd": Decimal("0.00042"),
+        "provider": "openrouter",
+        "resolved_provider": "Anthropic",
+        "requested_model": "claude-haiku",
+        "resolved_model": "anthropic/claude-haiku-4.5",
+        "model_version": None,
+        "cache_hit": True,
+    }
+    fields.update(overrides)
+    return FakeProviderResult(**fields)  # type: ignore[arg-type]
 
 
 def test_handle_responses_request_rejects_missing_authorization():
     status, body = handle_responses_request(
         authorization_header=None,
         request_body={"model": "claude-haiku", "input": "hello"},
-        config=_anthropic_config(),
-        upstream_client=FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1)),
+        config=_openrouter_config(),
+        upstream_client=FakeUpstreamClient(_provider_result()),
     )
 
     assert status == 401
@@ -77,21 +89,22 @@ def test_handle_responses_request_rejects_wrong_shared_secret():
     status, body = handle_responses_request(
         authorization_header="Bearer wrong-secret",
         request_body={"model": "claude-haiku", "input": "hello"},
-        config=_anthropic_config(),
-        upstream_client=FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1)),
+        config=_openrouter_config(),
+        upstream_client=FakeUpstreamClient(_provider_result()),
     )
 
     assert status == 401
     assert "error" in body
 
 
-def test_handle_responses_request_returns_parseable_gateway_payload_for_anthropic():
+def test_handle_responses_request_uses_provider_reported_accounting():
     client = FakeUpstreamClient(
-        FakeProviderResult(
+        _provider_result(
             message_id="msg-provider-1",
             output_text="WRITE calculator.py\ndef add(a, b):\n    return a + b\n",
-            input_tokens=42,
-            output_tokens=18,
+            cached_tokens=7,
+            reasoning_tokens=5,
+            cache_age_seconds=30,
         )
     )
     status, body = handle_responses_request(
@@ -101,7 +114,7 @@ def test_handle_responses_request_returns_parseable_gateway_payload_for_anthropi
             "input": "Create calculator.py",
             "metadata": {"purpose": "unit-test"},
         },
-        config=_anthropic_config(),
+        config=_openrouter_config(),
         upstream_client=client,
     )
 
@@ -109,19 +122,31 @@ def test_handle_responses_request_returns_parseable_gateway_payload_for_anthropi
     parsed = parse_gateway_response(body)
     assert parsed.response_id
     assert parsed.output_text.startswith("WRITE calculator.py")
-    assert parsed.gateway_usage.provider == "anthropic"
+    assert parsed.gateway_usage.provider == "openrouter"
+    assert parsed.gateway_usage.resolved_provider == "Anthropic"
+    assert parsed.gateway_usage.provider_request_id == "msg-provider-1"
+    assert parsed.gateway_usage.model == "claude-haiku"
+    assert parsed.gateway_usage.resolved_model == "anthropic/claude-haiku-4.5"
+    assert parsed.gateway_usage.model_version is None
     assert parsed.gateway_usage.billing_units == 60
-    assert parsed.gateway_usage.cost_usd > Decimal("0")
+    assert parsed.gateway_usage.cost_usd == Decimal("0.00042")
+    assert parsed.gateway_usage.cache_hit is True
+    assert parsed.gateway_usage.input_tokens == 42
+    assert parsed.gateway_usage.output_tokens == 18
+    assert parsed.gateway_usage.total_tokens == 60
+    assert parsed.gateway_usage.cached_tokens == 7
+    assert parsed.gateway_usage.reasoning_tokens == 5
+    assert parsed.gateway_usage.cache_age_seconds == 30
     assert client.calls == [
         {
-            "model": "claude-haiku-4-5-20251001",
+            "model": "anthropic/claude-haiku-4.5",
             "input_text": "Create calculator.py",
         }
     ]
 
 
 def test_handle_responses_request_openrouter_alias_and_provider_field():
-    client = FakeUpstreamClient(FakeProviderResult("chatcmpl-1", "ok", 10, 5))
+    client = FakeUpstreamClient(_provider_result(message_id="chatcmpl-1"))
     status, body = handle_responses_request(
         authorization_header="Bearer local-shared-secret",
         request_body={"model": "claude-haiku", "input": "hello"},
@@ -140,7 +165,7 @@ def test_handle_responses_request_rejects_unsupported_model():
         authorization_header="Bearer local-shared-secret",
         request_body={"model": "unknown-model", "input": "hello"},
         config=_openrouter_config(),
-        upstream_client=FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1)),
+        upstream_client=FakeUpstreamClient(_provider_result()),
     )
 
     assert status == 400
@@ -155,7 +180,7 @@ def test_handle_responses_request_sanitizes_upstream_error_and_fails_closed(monk
     status, body = handle_responses_request(
         authorization_header="Bearer local-shared-secret",
         request_body={"model": "claude-haiku", "input": "hello"},
-        config=_anthropic_config(),
+        config=_openrouter_config(),
         upstream_client=FailingUpstreamClient(),
     )
 
@@ -171,7 +196,7 @@ def test_handle_responses_request_sanitizes_upstream_error_and_fails_closed(monk
     failed_status, failed_body = handle_responses_request(
         authorization_header="Bearer local-shared-secret",
         request_body={"model": "claude-haiku", "input": "hello"},
-        config=_anthropic_config(),
+        config=_openrouter_config(),
         upstream_client=FailingUpstreamClient(),
     )
 
@@ -179,22 +204,22 @@ def test_handle_responses_request_sanitizes_upstream_error_and_fails_closed(monk
     assert failed_body == {"error": "internal gateway error"}
 
 
-def test_handle_responses_request_rejects_unpriced_passthrough_before_upstream_call():
-    client = FakeUpstreamClient(FakeProviderResult("chatcmpl-1", "ok", 10, 5))
+def test_handle_responses_request_does_not_require_local_pricing_before_upstream_call():
+    client = FakeUpstreamClient(_provider_result())
     status, body = handle_responses_request(
         authorization_header="Bearer local-shared-secret",
-        request_body={"model": "gpt-4o", "input": "hello"},
-        config=_openai_config(),
+        request_body={"model": "claude-haiku", "input": "hello"},
+        config=_openrouter_config(),
         upstream_client=client,
     )
 
-    assert status == 500
-    assert "no pricing snapshot" in str(body)
-    assert client.calls == []
+    assert status == 200
+    assert body["gateway_usage"]["cost_usd"] == "0.00042"
+    assert client.calls == [{"model": "anthropic/claude-haiku-4.5", "input_text": "hello"}]
 
 
 def test_handle_responses_request_rejects_messages_field():
-    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1))
+    client = FakeUpstreamClient(_provider_result())
     status, body = handle_responses_request(
         authorization_header="Bearer local-shared-secret",
         request_body={
@@ -202,7 +227,7 @@ def test_handle_responses_request_rejects_messages_field():
             "input": "hello",
             "messages": [{"role": "user", "content": "hello"}],
         },
-        config=_anthropic_config(),
+        config=_openrouter_config(),
         upstream_client=client,
     )
     assert status == 400
@@ -217,7 +242,7 @@ def test_handle_responses_request_sanitizes_validation_errors(monkeypatch):
         "sanitize_for_persistence",
         lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("sanitizer failure")),
     )
-    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1))
+    client = FakeUpstreamClient(_provider_result())
     status, body = handle_responses_request(
         authorization_header="Bearer local-shared-secret",
         request_body={
@@ -225,7 +250,7 @@ def test_handle_responses_request_sanitizes_validation_errors(monkeypatch):
             "input": "hello",
             "messages": [{"role": "user", "content": "hello"}],
         },
-        config=_anthropic_config(),
+        config=_openrouter_config(),
         upstream_client=client,
     )
     assert status == 400
@@ -234,7 +259,7 @@ def test_handle_responses_request_sanitizes_validation_errors(monkeypatch):
 
 
 def test_handle_responses_request_tolerates_unknown_top_level_and_metadata_keys():
-    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1))
+    client = FakeUpstreamClient(_provider_result(output_text="hi"))
     status, body = handle_responses_request(
         authorization_header="Bearer local-shared-secret",
         request_body={
@@ -243,7 +268,7 @@ def test_handle_responses_request_tolerates_unknown_top_level_and_metadata_keys(
             "metadata": {"run_id": "r1", "org_id": "future"},
             "stream": False,
         },
-        config=_anthropic_config(),
+        config=_openrouter_config(),
         upstream_client=client,
     )
     assert status == 200
@@ -252,7 +277,16 @@ def test_handle_responses_request_tolerates_unknown_top_level_and_metadata_keys(
 
 
 def test_handle_chat_completions_request_returns_openai_compatible_payload():
-    client = FakeUpstreamClient(FakeProviderResult("msg-chat-1", "assistant-hi", 4, 2))
+    client = FakeUpstreamClient(
+        _provider_result(
+            message_id="msg-chat-1",
+            output_text="assistant-hi",
+            input_tokens=4,
+            output_tokens=2,
+            total_tokens=6,
+            billing_units=6,
+        )
+    )
     status, body = handle_chat_completions_request(
         authorization_header="Bearer local-shared-secret",
         request_body={
@@ -276,7 +310,7 @@ def test_handle_chat_completions_request_returns_openai_compatible_payload():
 
 
 def test_handle_chat_completions_request_rejects_input_field():
-    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1))
+    client = FakeUpstreamClient(_provider_result())
     status, body = handle_chat_completions_request(
         authorization_header="Bearer local-shared-secret",
         request_body={
@@ -299,7 +333,7 @@ def test_handle_chat_completions_request_sanitizes_validation_errors(monkeypatch
         "sanitize_for_persistence",
         lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("sanitizer failure")),
     )
-    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1))
+    client = FakeUpstreamClient(_provider_result())
     status, body = handle_chat_completions_request(
         authorization_header="Bearer local-shared-secret",
         request_body={
@@ -320,14 +354,16 @@ def test_handle_chat_completions_request_uses_shared_bearer_auth():
         authorization_header="Bearer wrong",
         request_body={"model": "claude-haiku", "messages": [{"role": "user", "content": "hello"}]},
         config=_openrouter_config(),
-        upstream_client=FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1)),
+        upstream_client=FakeUpstreamClient(_provider_result()),
     )
     assert status == 401
     assert "error" in body
 
 
 def test_successful_model_responses_carry_required_usage_contract_fields():
-    responses_client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 3, 2))
+    responses_client = FakeUpstreamClient(
+        _provider_result(message_id="msg-1", output_text="hi", input_tokens=3, output_tokens=2, billing_units=5)
+    )
     status, body = handle_responses_request(
         authorization_header="Bearer local-shared-secret",
         request_body={"model": "claude-haiku", "input": "hello"},
@@ -338,12 +374,14 @@ def test_successful_model_responses_carry_required_usage_contract_fields():
     usage = body["gateway_usage"]
     assert usage["gateway_request_id"]
     assert usage["provider"] == "openrouter"
-    assert usage["cache_hit"] is False
+    assert usage["cache_hit"] is True
     assert usage["billing_units"] == 5
     assert usage["cost_usd"] is not None
     assert Decimal(usage["cost_usd"]) >= Decimal("0")
 
-    chat_client = FakeUpstreamClient(FakeProviderResult("msg-2", "hi", 4, 1))
+    chat_client = FakeUpstreamClient(
+        _provider_result(message_id="msg-2", output_text="hi", input_tokens=4, output_tokens=1, billing_units=5)
+    )
     status, body = handle_chat_completions_request(
         authorization_header="Bearer local-shared-secret",
         request_body={"model": "claude-haiku", "messages": [{"role": "user", "content": "hello"}]},
@@ -358,28 +396,52 @@ def test_successful_model_responses_carry_required_usage_contract_fields():
     assert usage["cost_usd"] is not None
 
 
-def test_run_model_completion_fails_closed_when_usage_envelope_is_incomplete(monkeypatch):
-    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1))
-
-    def _broken_format(_cost: Decimal) -> None:
-        return None  # type: ignore[return-value]
-
-    monkeypatch.setattr(responses, "format_cost_usd", _broken_format)
+def test_run_model_completion_fails_closed_for_malformed_provider_accounting():
+    client = FakeUpstreamClient(_provider_result(cost_usd=Decimal("NaN")))
     status, body = handle_responses_request(
         authorization_header="Bearer local-shared-secret",
         request_body={"model": "claude-haiku", "input": "hello"},
         config=_openrouter_config(),
         upstream_client=client,
     )
-    assert status == 500
+    assert status == 502
     assert "error" in body
     assert "gateway_usage" not in body
-    assert client.calls  # upstream already ran; fail closed before emitting envelope
+    assert len(client.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    (
+        {"cost_usd": None},
+        {"cost_usd": "not-a-decimal"},
+        {"cost_usd": Decimal("Infinity")},
+        {"cost_usd": Decimal("-Infinity")},
+        {"cost_usd": Decimal("-0.00001")},
+        {"billing_units": None},
+        {"billing_units": True},
+        {"billing_units": -1},
+    ),
+)
+def test_malformed_provider_accounting_is_a_sanitized_permanent_failure(overrides: dict[str, object]):
+    client = FakeUpstreamClient(_provider_result(**overrides))
+
+    status, body = handle_responses_request(
+        authorization_header="Bearer local-shared-secret",
+        request_body={"model": "claude-haiku", "input": "hello"},
+        config=_openrouter_config(),
+        upstream_client=client,
+    )
+
+    assert status == 502
+    assert body["error"]
+    assert "gateway_usage" not in body
+    assert len(client.calls) == 1
 
 
 def test_core_does_not_reject_budget_org_or_plan_mode_metadata():
     """CORE authenticates and preserves metadata; it does not enforce TOOLS/budget policy."""
-    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 2, 1))
+    client = FakeUpstreamClient(_provider_result(message_id="msg-1", output_text="hi", input_tokens=2, output_tokens=1, billing_units=3))
     status, body = handle_responses_request(
         authorization_header="Bearer local-shared-secret",
         request_body={
@@ -404,8 +466,8 @@ def test_core_does_not_reject_budget_org_or_plan_mode_metadata():
     assert "or-test" not in str(body)
 
 
-def test_permanent_validation_and_pricing_failures_do_not_call_upstream():
-    client = FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1))
+def test_mixed_request_shape_does_not_call_upstream():
+    client = FakeUpstreamClient(_provider_result())
     mixed_status, _ = handle_responses_request(
         authorization_header="Bearer local-shared-secret",
         request_body={
@@ -413,17 +475,10 @@ def test_permanent_validation_and_pricing_failures_do_not_call_upstream():
             "input": "hello",
             "messages": [{"role": "user", "content": "hello"}],
         },
-        config=_anthropic_config(),
-        upstream_client=client,
-    )
-    unpriced_status, _ = handle_responses_request(
-        authorization_header="Bearer local-shared-secret",
-        request_body={"model": "gpt-4o", "input": "hello"},
-        config=_openai_config(),
+        config=_openrouter_config(),
         upstream_client=client,
     )
     assert mixed_status == 400
-    assert unpriced_status == 500
     assert client.calls == []
 
 
@@ -434,7 +489,7 @@ def test_error_bodies_never_echo_provider_api_key():
         authorization_header="Bearer wrong",
         request_body={"model": "claude-haiku", "input": "hello"},
         config=config,
-        upstream_client=FakeUpstreamClient(FakeProviderResult("msg-1", "hi", 1, 1)),
+        upstream_client=FakeUpstreamClient(_provider_result()),
     )
     assert status == 401
     assert "or-test" not in str(body)

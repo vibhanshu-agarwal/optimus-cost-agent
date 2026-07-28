@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any, Mapping
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from optimus.gateway.errors import GatewayResponseError
 
@@ -32,6 +32,28 @@ class GatewayUsage(BaseModel):
     model: str | None = None
     model_version: str | None = None
     price_snapshot_id: str | None = None
+    resolved_provider: str | None = None
+    resolved_model: str | None = None
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)
+    reasoning_tokens: int | None = Field(default=None, ge=0)
+    cached_tokens: int | None = Field(default=None, ge=0)
+    cache_age_seconds: int | None = Field(default=None, ge=0)
+
+    @field_validator("billing_units", mode="before")
+    @classmethod
+    def _billing_units_must_be_non_boolean_integer(cls, value: object) -> object:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError("billing_units must be a non-negative integer")
+        return value
+
+    @field_validator("cost_usd", "optimus_credits_debited")
+    @classmethod
+    def _decimal_must_be_finite(cls, value: Decimal | None) -> Decimal | None:
+        if value is not None and not value.is_finite():
+            raise ValueError("decimal values must be finite")
+        return value
 
 
 class GatewayResponse(BaseModel):
