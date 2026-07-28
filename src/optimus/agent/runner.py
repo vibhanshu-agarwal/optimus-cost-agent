@@ -138,12 +138,24 @@ class AgentRunner:
             else self._planning_progress_observer
         )
         matched_skills = self._match_skills(request)
-        if request.completion_condition:
-            result = self._run_bounded_loop(request, matched_skills=matched_skills)
-        else:
-            result = self._run_once(request, planning_progress_observer=observer)
-        self._emit_agent_run(request, result, matched_skills=matched_skills)
-        return result
+        try:
+            if request.completion_condition:
+                result = self._run_bounded_loop(request, matched_skills=matched_skills)
+            else:
+                result = self._run_once(request, planning_progress_observer=observer)
+            self._emit_agent_run(request, result, matched_skills=matched_skills)
+            return result
+        finally:
+            # Narrow flush() protocol: flush a batching event sink (e.g. TelemetryFanout)
+            # after the final agent_run event, and also on a controlled failure that
+            # raises out of this method, so buffered telemetry is not silently dropped.
+            # A trace-flush outcome must never affect what this method returns or raises.
+            self._flush_event_sink()
+
+    def _flush_event_sink(self) -> None:
+        flush = getattr(self._event_sink, "flush", None)
+        if callable(flush):
+            flush()
 
     def _match_skills(self, request: AgentRunRequest) -> tuple[str, ...]:
         if not request.skill_paths:

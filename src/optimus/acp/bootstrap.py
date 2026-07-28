@@ -14,6 +14,9 @@ from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.client import GatewayClient
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.redis.runtime import RedisRuntime
+from optimus.telemetry.fanout import TelemetryFanout
+from optimus.telemetry.jsonl import JsonlTelemetryWriter
+from optimus.telemetry.observability import GatewayObservabilityExporter
 from optimus.telemetry.redis_sink import RedisTelemetryEventSink
 
 _DEFAULT_REDIS_URL_HINT = "redis://localhost:6379/0"
@@ -70,7 +73,16 @@ def build_agent_runner_for_harness(
     guard = PreToolGuard.for_workspace(workspace_root=resolved_workspace, allowed_network_hosts=())
     gateway_client = GatewayClient(settings=settings)
     state_store = redis_runtime.sync_state_store()
-    telemetry_sink = RedisTelemetryEventSink(redis_runtime.telemetry_adapter())
+    # Plan 11.5, Task 5: one fanout writes every telemetry event to the local
+    # append-only JSONL log and the existing Redis sink unconditionally, and
+    # batches redacted events to the Gateway trace-ingress exporter. No
+    # Phoenix/OTLP endpoint or LangSmith credential is read or forwarded here --
+    # `GatewayObservabilityExporter` only ever talks to the one-key Gateway.
+    telemetry_sink = TelemetryFanout(
+        jsonl_writer=JsonlTelemetryWriter.for_workspace(resolved_workspace),
+        redis_sink=RedisTelemetryEventSink(redis_runtime.telemetry_adapter()),
+        gateway_exporter=GatewayObservabilityExporter(settings=settings),
+    )
 
     agent_model = resolve_agent_model(environ, cli_model=model)
     return AgentRunner(

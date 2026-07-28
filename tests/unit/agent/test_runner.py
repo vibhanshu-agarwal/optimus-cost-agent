@@ -2,6 +2,8 @@ import hashlib
 from decimal import Decimal
 from subprocess import CompletedProcess
 
+import pytest
+
 from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunStatus
 from optimus.agent.prompts import MULTI_TURN_PLANNER_PROMPT_VERSION
 from optimus.agent.runner import AgentRunner
@@ -1003,3 +1005,153 @@ def test_bounded_auto_fix_loop_still_completes_when_finishing_turn_cost_equals_b
 
     assert result.stop_reason == "COMPLETED"
     assert result.status is AgentRunStatus.COMPLETED
+
+
+class _FlushCountingEventSink:
+    """Narrow event-sink double exposing only the `flush()` protocol `AgentRunner.run` checks for."""
+
+    def __init__(self) -> None:
+        self.events: list[object] = []
+        self.flush_calls = 0
+
+    def __call__(self, event: object) -> None:
+        self.events.append(event)
+
+    def flush(self) -> None:
+        self.flush_calls += 1
+
+
+def test_run_flushes_event_sink_after_the_final_agent_run_event(tmp_path):
+    sink = _FlushCountingEventSink()
+    runner = AgentRunner(gateway_client=FakeGatewayClient(), model="glm-5.2", event_sink=sink)
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Plan only",
+            execution_mode=ExecutionMode.PLAN,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert sink.flush_calls == 1
+    assert [event.kind for event in sink.events] == [TelemetryEventKind.AGENT_RUN]
+    # flush() happens strictly after the final agent_run event is emitted.
+    assert sink.events[-1].kind is TelemetryEventKind.AGENT_RUN
+
+
+def test_run_flushes_event_sink_even_when_an_inner_run_raises_a_controlled_failure(tmp_path):
+    class _RaisingRunner(AgentRunner):
+        def _run_once(self, request, *, planning_progress_observer=None):
+            raise RuntimeError("controlled failure injected by test")
+
+    sink = _FlushCountingEventSink()
+    runner = _RaisingRunner(gateway_client=FakeGatewayClient(), model="glm-5.2", event_sink=sink)
+
+    with pytest.raises(RuntimeError, match="controlled failure injected by test"):
+        runner.run(
+            AgentRunRequest(
+                run_id="run-1",
+                task="Plan only",
+                execution_mode=ExecutionMode.PLAN,
+                workspace_root=tmp_path,
+            )
+        )
+
+    assert sink.flush_calls == 1
+    # The raise happened before the final agent_run event could be emitted.
+    assert sink.events == []
+
+
+def test_run_with_callable_only_event_sink_never_errors_on_missing_flush(tmp_path):
+    """Plain `Callable[[TelemetryEvent], None]` sinks (the pre-Task-5 contract) have no `flush`."""
+    events: list[object] = []
+    runner = AgentRunner(gateway_client=FakeGatewayClient(), model="glm-5.2", event_sink=events.append)
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Plan only",
+            execution_mode=ExecutionMode.PLAN,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert len(events) == 1
+
+
+def test_run_with_telemetry_fanout_isolates_gateway_trace_failure_from_agent_result(tmp_path):
+    """Full Task 5 isolation: a permanently-failing Gateway trace exporter must never change
+    the agent's completed status, USD total, or mutation count, and `flush()` must still run.
+    """
+    from optimus.telemetry.fanout import TelemetryFanout
+    from optimus.telemetry.jsonl import JsonlTelemetryWriter
+    from optimus.telemetry.observability import TraceDeliveryState
+
+    class _AlwaysTimingOutExporter:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def export(self, events):
+            self.calls += 1
+            raise TimeoutError("gateway trace ingress unreachable")
+
+    class _RecordingRedisSink:
+        def __init__(self) -> None:
+            self.events: list[object] = []
+
+        def __call__(self, event: object) -> None:
+            self.events.append(event)
+
+    target = tmp_path / "example.py"
+    target.write_text("def f():\n    return 1\n", encoding="utf-8")
+    jsonl_writer = JsonlTelemetryWriter(tmp_path / ".optimus" / "telemetry.jsonl")
+    redis_sink = _RecordingRedisSink()
+    gateway_exporter = _AlwaysTimingOutExporter()
+    fanout = TelemetryFanout(
+        jsonl_writer=jsonl_writer,
+        redis_sink=redis_sink,
+        gateway_exporter=gateway_exporter,
+        batch_size=100,
+    )
+    runner = AgentRunner(
+        gateway_client=FakeGatewayClient("WRITE example.py\ndef f():\n    \"\"\"Return one.\"\"\"\n    return 1\n"),
+        model="glm-5.2",
+        event_sink=fanout,
+    )
+
+    plan_result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Add a docstring to example.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="Add a docstring to example.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+            approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan_result.plan_hash),
+        )
+    )
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert result.mutation_count == 1
+    assert result.total_cost_usd == Decimal("0.002")
+    assert "Return one" in target.read_text(encoding="utf-8")
+
+    # `run()` called flush() after each of the two runs above, and every flush hit the
+    # permanently-failing exporter, so every recorded delivery result is FAILED -- the
+    # trace failure never changed the agent result asserted above.
+    assert gateway_exporter.calls == 2
+    assert len(fanout.delivery_results) == 2
+    assert all(result.delivery_state is TraceDeliveryState.FAILED for result in fanout.delivery_results)
+
+    # Local sinks received every event exactly once regardless of the trace failure.
+    assert jsonl_writer.path.read_text(encoding="utf-8").count("\n") == 2
+    assert [event.kind for event in redis_sink.events] == [TelemetryEventKind.AGENT_RUN, TelemetryEventKind.AGENT_RUN]

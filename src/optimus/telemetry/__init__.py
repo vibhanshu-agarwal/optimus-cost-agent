@@ -1,4 +1,5 @@
 from optimus.telemetry.events import TelemetryEvent, TelemetryEventKind
+from optimus.telemetry.fanout import TelemetryFanout
 from optimus.telemetry.jsonl import JsonlTelemetryWriter
 from optimus.telemetry.observability import (
     GatewayObservabilityExporter,
@@ -17,6 +18,7 @@ __all__ = [
     "RunMetadata",
     "TelemetryEvent",
     "TelemetryEventKind",
+    "TelemetryFanout",
     "TraceBatch",
     "TraceDeliveryState",
     "TraceEvent",

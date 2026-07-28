@@ -46,6 +46,12 @@ def test_jsonl_writer_appends_one_event_per_line(tmp_path):
     assert '"kind":"guardrail_audit"' in lines[1]
 
 
+def test_jsonl_writer_for_workspace_defaults_to_dot_optimus_telemetry_jsonl(tmp_path):
+    writer = JsonlTelemetryWriter.for_workspace(tmp_path)
+
+    assert writer.path == tmp_path / ".optimus" / "telemetry.jsonl"
+
+
 def test_jsonl_writer_sanitizes_nested_free_text_uri_and_unsupported_values(tmp_path):
     path = tmp_path / "telemetry.jsonl"
     writer = JsonlTelemetryWriter(path)
