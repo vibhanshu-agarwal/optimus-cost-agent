@@ -102,7 +102,6 @@ class PackageAdvisoryService:
                 tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
                 sources=tuple(str(citation) for citation in envelope.result.citations),
                 gateway_usage=envelope.gateway_usage,
-                credits_used=0,
                 queried_at=_utc_now(),
             )
         )
@@ -159,7 +158,6 @@ class PackageAdvisoryService:
                 tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
                 sources=sources,
                 gateway_usage=envelope.gateway_usage,
-                credits_used=0,
                 queried_at=_utc_now(),
             )
         )
@@ -218,7 +216,6 @@ class PackageAdvisoryService:
                 tool_class=tool_class,
                 sources=sources,
                 gateway_usage=exc.gateway_usage,
-                credits_used=exc.credits_used or 0,
                 queried_at=_utc_now(),
             )
         )

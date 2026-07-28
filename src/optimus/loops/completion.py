@@ -86,12 +86,13 @@ class GatewayCompletionEvaluator:
         except InvalidOperation as exc:
             raise ValueError("confidence must be a decimal") from exc
         usage = response.gateway_usage
-        credits = usage.optimus_credits_debited if usage.optimus_credits_debited is not None else Decimal("0")
         return CompletionEvaluation(
             completed=completed,
             reason=str(payload.get("reason") or "completion evaluator did not provide a reason"),
             confidence=confidence,
-            cost_credits=credits,
+            # Transitional (until Task 6): CompletionEvaluation.cost_credits is still
+            # populated from GatewayUsage.cost_usd, not renamed to a USD field yet.
+            cost_credits=usage.cost_usd,
             gateway_request_id=usage.gateway_request_id,
         )
 

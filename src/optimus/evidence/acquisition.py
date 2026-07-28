@@ -116,7 +116,6 @@ class EvidenceAcquisitionService:
                 for item in envelope.result.results
             ),
             gateway_usage=envelope.gateway_usage,
-            credits_used=0,
         )
         ledger = self._record_ledger_entry(
             EvidenceLedgerEntry.from_gateway_usage(
@@ -127,7 +126,6 @@ class EvidenceAcquisitionService:
                 tool_class=ToolClass.WEB_SEARCH,
                 sources=urls,
                 gateway_usage=envelope.gateway_usage,
-                credits_used=response.credits_used,
                 queried_at=_utc_now(),
             )
         )
@@ -195,7 +193,6 @@ class EvidenceAcquisitionService:
             content=item.content,
             trust="untrusted",
             gateway_usage=envelope.gateway_usage,
-            credits_used=0,
         )
         ledger = self._record_ledger_entry(
             EvidenceLedgerEntry.from_gateway_usage(
@@ -206,7 +203,6 @@ class EvidenceAcquisitionService:
                 tool_class=ToolClass.WEB_EXTRACT,
                 sources=(target_url,),
                 gateway_usage=response.gateway_usage,
-                credits_used=response.credits_used,
                 queried_at=_utc_now(),
             )
         )
@@ -272,7 +268,6 @@ class EvidenceAcquisitionService:
                 tool_class=tool_class,
                 sources=sources,
                 gateway_usage=exc.gateway_usage,
-                credits_used=exc.credits_used or 0,
                 queried_at=_utc_now(),
             )
         )

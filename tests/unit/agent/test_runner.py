@@ -93,7 +93,6 @@ class FlakyPlanningGateway:
                     cost_usd=Decimal("0.0005"),
                     service="responses",
                     native_unit="tokens",
-                    optimus_credits_debited=Decimal("0.05"),
                     price_snapshot_id="prices-test",
                 ),
             )
@@ -107,7 +106,6 @@ class FlakyPlanningGateway:
                 cost_usd=self._cost_usd,
                 service="responses",
                 native_unit="tokens",
-                optimus_credits_debited=Decimal("0.2"),
                 price_snapshot_id="prices-test",
             ),
             raw={"id": self._gateway_request_id},
@@ -772,11 +770,12 @@ def test_oversized_required_file_settles_after_read_more_then_final(tmp_path):
         ]
     )
     store = InMemoryAgentStateStore()
+    accounting = UsageAccountingService()
     runner = AgentRunner(
         gateway_client=gateway,
         model="glm-5.2",
         state_store=store,
-        usage_accounting=UsageAccountingService(),
+        usage_accounting=accounting,
     )
 
     result = runner.run(
@@ -797,6 +796,11 @@ def test_oversized_required_file_settles_after_read_more_then_final(tmp_path):
     assert stored.gateway_request_ids == ("gw-1", "gw-2")
     assert stored.cost_usd == Decimal("0.005")
     assert stored.plan_text == final_plan
+    # ScriptingGateway's usage envelopes carry no wire `service`/`native_unit`; every
+    # accepted envelope is still recorded with the caller-owned persistence context.
+    assert [entry.gateway_request_id for entry in accounting.provider_ledger.entries] == ["gw-1", "gw-2"]
+    assert all(entry.service == "agent.model" for entry in accounting.provider_ledger.entries)
+    assert all(entry.native_unit == "tokens" for entry in accounting.provider_ledger.entries)
 
 
 def test_oversized_required_file_honors_max_planning_turns_override(tmp_path):
@@ -855,6 +859,11 @@ def test_oversized_planning_retries_gateway_without_extra_settled_turn(tmp_path)
         "run-1:planning:1:3",
     ]
     assert accounting.provider_ledger.total_cost_usd() == Decimal("0.003")
+    assert all(entry.service == "agent.model" for entry in accounting.provider_ledger.entries)
+    assert all(entry.native_unit == "tokens" for entry in accounting.provider_ledger.entries)
+    # Plan 11.5 Task 2 review fix: the wire `price_snapshot_id` must be forwarded to
+    # UsageAccountingService, not dropped.
+    assert all(entry.price_snapshot_id == "prices-test" for entry in accounting.provider_ledger.entries)
 
 
 def test_fitting_context_planning_retries_gateway_without_extra_settled_turn(tmp_path):
@@ -899,6 +908,8 @@ def test_fitting_context_planning_retries_gateway_without_extra_settled_turn(tmp
     assert result.total_cost_usd == Decimal("0.003")
     assert result.cost_complete is True
     assert result.unknown_cost_attempt_count == 0
+    assert all(entry.service == "agent.model" for entry in accounting.provider_ledger.entries)
+    assert all(entry.native_unit == "tokens" for entry in accounting.provider_ledger.entries)
 
 
 def test_unknown_planning_cost_terminates_without_plan_or_usage_row(tmp_path):

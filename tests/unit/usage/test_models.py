@@ -16,12 +16,22 @@ def gateway_usage() -> GatewayUsage:
         cache_hit=True,
         billing_units=123,
         cost_usd=Decimal("0.0123"),
-        service="responses",
-        native_unit="tokens",
-        optimus_credits_debited=Decimal("1.23"),
         model="glm-5.2",
         model_version="2026-06-01",
-        price_snapshot_id="prices-2026-07-04",
+    )
+
+
+def gateway_usage_with_resolved_fields() -> GatewayUsage:
+    return GatewayUsage(
+        gateway_request_id="gw-resolved-1",
+        provider="openrouter",
+        billing_units=10,
+        cost_usd=Decimal("0.002"),
+        resolved_provider="provider-a",
+        resolved_model="model-v1",
+        input_tokens=3,
+        output_tokens=7,
+        total_tokens=10,
     )
 
 
@@ -32,6 +42,9 @@ def test_provider_usage_copies_gateway_fields_and_adds_run_attribution():
         session_id="session-1",
         request_id="req-1",
         occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
+        service="responses",
+        native_unit="tokens",
+        price_snapshot_id="prices-2026-07-04",
     )
 
     assert usage.run_id == "run-1"
@@ -44,24 +57,39 @@ def test_provider_usage_copies_gateway_fields_and_adds_run_attribution():
     assert usage.cost_usd == Decimal("0.0123")
     assert usage.service == "responses"
     assert usage.native_unit == "tokens"
-    assert usage.optimus_credits_debited == Decimal("1.23")
     assert usage.model == "glm-5.2"
     assert usage.model_version == "2026-06-01"
     assert usage.price_snapshot_id == "prices-2026-07-04"
 
 
-@pytest.mark.parametrize("field", ["service", "native_unit", "optimus_credits_debited", "price_snapshot_id"])
-def test_provider_usage_requires_normalized_fields_for_persistence(field):
-    incomplete = gateway_usage().model_copy(update={field: None})
+def test_provider_usage_uses_caller_context_when_gateway_fields_are_absent():
+    usage = ProviderUsage.from_gateway_usage(
+        GatewayUsage(
+            gateway_request_id="gw-1", provider="openrouter", billing_units=10,
+            cost_usd=Decimal("0.002"),
+        ),
+        run_id="run-1", session_id="session-1", request_id="req-1",
+        occurred_at=datetime(2026, 7, 28, tzinfo=UTC),
+        service="agent.model", native_unit="tokens",
+    )
+    assert usage.service == "agent.model"
+    assert usage.native_unit == "tokens"
+    assert usage.price_snapshot_id is None
+    assert not hasattr(usage, "optimus_credits_debited")
 
-    with pytest.raises(ValueError, match=field):
-        ProviderUsage.from_gateway_usage(
-            incomplete,
-            run_id="run-1",
-            session_id=None,
-            request_id="req-1",
-            occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
-        )
+
+def test_provider_usage_copies_resolved_provider_model_and_token_detail():
+    usage = ProviderUsage.from_gateway_usage(
+        gateway_usage_with_resolved_fields(),
+        run_id="run-1", session_id=None, request_id="req-1",
+        occurred_at=datetime(2026, 7, 28, tzinfo=UTC),
+        service="agent.model", native_unit="tokens",
+    )
+    assert usage.resolved_provider == "provider-a"
+    assert usage.resolved_model == "model-v1"
+    assert usage.input_tokens == 3
+    assert usage.output_tokens == 7
+    assert usage.total_tokens == 10
 
 
 def test_provider_usage_rejects_negative_values():
@@ -78,6 +106,21 @@ def test_provider_usage_rejects_negative_values():
             cost_usd=Decimal("0"),
             service="responses",
             native_unit="tokens",
-            optimus_credits_debited=Decimal("0"),
-            price_snapshot_id="prices-2026-07-04",
+        )
+
+
+def test_provider_usage_requires_service_and_native_unit():
+    with pytest.raises(ValidationError):
+        ProviderUsage(
+            run_id="run-1",
+            session_id=None,
+            request_id="req-1",
+            occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
+            gateway_request_id="gw-1",
+            provider="glm",
+            cache_hit=False,
+            billing_units=1,
+            cost_usd=Decimal("0.001"),
+            service="",
+            native_unit="",
         )

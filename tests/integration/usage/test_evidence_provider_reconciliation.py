@@ -23,7 +23,6 @@ def usage() -> GatewayUsage:
         cost_usd=Decimal("0.002"),
         service="web.search",
         native_unit="tavily_credits",
-        optimus_credits_debited=Decimal("0.2"),
         price_snapshot_id="prices-2026-07-04",
     )
 
@@ -39,7 +38,6 @@ def test_mocked_evidence_and_provider_ledgers_reconcile():
             tool_class=ToolClass.WEB_SEARCH,
             sources=("https://docs.example.com",),
             gateway_usage=gateway_usage,
-            credits_used=1,
             queried_at=datetime(2026, 7, 4, tzinfo=UTC),
         )
     )
@@ -49,6 +47,8 @@ def test_mocked_evidence_and_provider_ledgers_reconcile():
         session_id="session-1",
         request_id="req-1",
         occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
+        service="web.search",
+        native_unit="tavily_credits",
     )
 
     report = reconcile_evidence_provider_usage(evidence, provider, run_id="run-1")
@@ -96,7 +96,6 @@ class NormalizedCapturingTransport:
                     "cost_usd": "0.002",
                     "service": "web.search",
                     "native_unit": "tavily_credits",
-                    "optimus_credits_debited": "0.2",
                     "price_snapshot_id": "prices-2026-07-04",
                 },
             }
@@ -127,7 +126,6 @@ class NormalizedCapturingTransport:
                     "cost_usd": "0.001",
                     "service": "web.extract",
                     "native_unit": "tavily_credits",
-                    "optimus_credits_debited": "0.1",
                     "price_snapshot_id": "prices-2026-07-04",
                 },
             }
@@ -208,6 +206,8 @@ def test_full_mocked_search_and_extract_flow_reconciles_against_provider_ledger(
             session_id=None,
             request_id=f"req-{index}",
             occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
+            service="web.search",
+            native_unit="tavily_credits",
         )
 
     report = reconcile_evidence_provider_usage(evidence_ledger, accounting.provider_ledger, run_id="run-1")
@@ -234,6 +234,8 @@ def test_reconciliation_detects_provider_usage_missing_for_one_gateway_call(monk
         session_id=None,
         request_id="req-0",
         occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
+        service="web.search",
+        native_unit="tavily_credits",
     )
 
     report = reconcile_evidence_provider_usage(evidence_ledger, accounting.provider_ledger, run_id="run-1")

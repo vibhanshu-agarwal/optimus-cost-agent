@@ -11,10 +11,15 @@ from optimus.gateway.errors import GatewayResponseError
 class GatewayUsage(BaseModel):
     """Wire-level usage envelope copied from an Optimus Gateway response.
 
-    Normalized fields (service, native_unit, optimus_credits_debited, model,
-    model_version, price_snapshot_id) are optional here. ProviderUsage
-    persistence requires service, native_unit, optimus_credits_debited, and
-    price_snapshot_id; model and model_version are copied when present only.
+    Normalized fields (service, native_unit, model, model_version,
+    price_snapshot_id) are optional here. ``ProviderUsage`` persistence takes
+    ``service`` and ``native_unit`` from explicit caller-supplied context
+    instead of these optional wire fields; ``price_snapshot_id`` remains
+    optional diagnostic metadata at both layers. ``model`` and
+    ``model_version`` are copied through when present. The legacy
+    ``optimus_credits_debited`` field has been removed: provider-reported
+    ``cost_usd`` and ``billing_units`` are the only settled accounting
+    values, and nothing here estimates a credit balance.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -28,7 +33,6 @@ class GatewayUsage(BaseModel):
     # Normalized gateway extensions (all optional at parse time; see class docstring).
     service: str | None = None
     native_unit: str | None = None
-    optimus_credits_debited: Decimal | None = Field(default=None, ge=Decimal("0"))
     model: str | None = None
     model_version: str | None = None
     price_snapshot_id: str | None = None
@@ -48,10 +52,10 @@ class GatewayUsage(BaseModel):
             raise ValueError("billing_units must be a non-negative integer")
         return value
 
-    @field_validator("cost_usd", "optimus_credits_debited")
+    @field_validator("cost_usd")
     @classmethod
-    def _decimal_must_be_finite(cls, value: Decimal | None) -> Decimal | None:
-        if value is not None and not value.is_finite():
+    def _decimal_must_be_finite(cls, value: Decimal) -> Decimal:
+        if not value.is_finite():
             raise ValueError("decimal values must be finite")
         return value
 

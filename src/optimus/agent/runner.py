@@ -539,14 +539,15 @@ class AgentRunner:
     ) -> None:
         if self._usage_accounting is None:
             return
-        if gateway_usage.service is None:
-            return
         self._usage_accounting.record_gateway_usage(
             gateway_usage,
             run_id=request.run_id,
             session_id=request.session_id,
             request_id=f"{request.run_id}:planning:{settled_turn}:{wire_attempt}",
             occurred_at=datetime.now(tz=UTC),
+            service="agent.model",
+            native_unit="tokens",
+            price_snapshot_id=gateway_usage.price_snapshot_id,
         )
 
     def _run_approved_from_store(

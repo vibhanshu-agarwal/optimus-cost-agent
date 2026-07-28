@@ -57,13 +57,25 @@ class UsageAccountingService:
         session_id: str | None,
         request_id: str,
         occurred_at: datetime,
+        service: str,
+        native_unit: str,
+        price_snapshot_id: str | None = None,
     ) -> ProviderUsageLedger:
+        """Record settled provider usage under caller-supplied persistence context.
+
+        Idempotent on an identical ``gateway_usage.gateway_request_id``; a same-ID record
+        with divergent accounting or attribution raises
+        :class:`~optimus.usage.errors.DuplicateGatewayRequestError`.
+        """
         usage = ProviderUsage.from_gateway_usage(
             gateway_usage,
             run_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
+            service=service,
+            native_unit=native_unit,
+            price_snapshot_id=price_snapshot_id,
         )
         self.provider_ledger = self.provider_ledger.record(usage)
         return self.provider_ledger

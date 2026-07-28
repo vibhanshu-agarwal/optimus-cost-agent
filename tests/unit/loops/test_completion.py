@@ -54,10 +54,6 @@ def test_gateway_completion_evaluator_routes_through_gateway_and_returns_usage()
                 "provider": "openai",
                 "billing_units": 7,
                 "cost_usd": "0.002",
-                "optimus_credits_debited": "0.03",
-                "service": "responses",
-                "native_unit": "tokens",
-                "price_snapshot_id": "prices-1",
             },
         }
     )
@@ -70,7 +66,10 @@ def test_gateway_completion_evaluator_routes_through_gateway_and_returns_usage()
 
     assert result.completed is True
     assert result.reason == "tests pass"
-    assert result.cost_credits == Decimal("0.03")
+    # Transitional: the live path still writes CompletionEvaluation.cost_credits,
+    # but its source is now the surviving provider-reported GatewayUsage.cost_usd
+    # wire field. The public cost_credits rename itself is reserved for Task 6.
+    assert result.cost_credits == Decimal("0.002")
     assert result.gateway_request_id == "gw-1"
     assert transport.requests[0].headers["Authorization"] == "Bearer optimus-key"
     assert transport.requests[0].payload["metadata"]["purpose"] == "goal_loop_completion_evaluation"

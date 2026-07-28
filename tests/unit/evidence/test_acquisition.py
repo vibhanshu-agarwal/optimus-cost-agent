@@ -23,10 +23,12 @@ def domain_policy() -> EvidenceDomainPolicy:
 class FakeGatewayClient:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
+        self._search_call_count = 0
 
     def post_tool_json(self, *, path: str, payload: dict[str, object]) -> dict[str, object]:
         self.calls.append({"path": path, "payload": payload})
         if path == "/v1/tools/web/search":
+            self._search_call_count += 1
             return {
                 "tool_class": "web_search",
                 "policy_signal": "USER_REQUESTED_EXTERNAL_FACT",
@@ -42,7 +44,10 @@ class FakeGatewayClient:
                     "trust": "untrusted",
                 },
                 "gateway_usage": {
-                    "gateway_request_id": "gw-search-1",
+                    # A real Gateway issues a distinct gateway_request_id per call; the counter
+                    # here mirrors that so concurrent calls in the same test don't collide under
+                    # the idempotent-ledger's gateway_request_id key.
+                    "gateway_request_id": f"gw-search-{self._search_call_count}",
                     "provider": "tavily",
                     "provider_request_id": "provider-search-1",
                     "cache_hit": False,
@@ -158,7 +163,7 @@ def test_search_authorizes_gateway_call_and_records_ledger_entry():
     assert ledger.entries[0].run_id == "run-1"
     assert ledger.entries[0].gateway_request_id == "gw-search-1"
     assert ledger.total_cost_usd() == Decimal("0.002")
-    assert ledger.total_credits() == 0
+    assert ledger.total_billing_units() == 2
 
 
 def test_search_intersects_request_domains_with_configured_allowlist():
@@ -354,7 +359,6 @@ def test_extract_requires_prior_search_result_and_records_separate_usage():
     assert ledger.entries[0].tool_class is ToolClass.WEB_EXTRACT
     assert ledger.entries[0].gateway_request_id == "gw-extract-1"
     assert ledger.total_billing_units() == 1
-    assert ledger.total_credits() == 0
 
 
 def test_extract_empty_items_records_usage_and_fails_closed():
