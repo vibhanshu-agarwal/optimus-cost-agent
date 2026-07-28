@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from threading import Lock
+from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from optimus.evidence.ledger import EvidenceLedger, EvidenceLedgerEntry
 from optimus.gateway.client import GatewayClient
-from optimus.gateway.errors import GatewayResponseError
+from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
+from optimus.gateway.models import GatewayUsage
 from optimus.gateway.tool_models import (
     PackageLookupRequest,
     PackageLookupResult,
@@ -25,6 +28,16 @@ from optimus.tools.policy import (
     ToolPolicySignal,
 )
 from optimus.tools.registry import ToolCallRejected, ToolRegistry
+
+if TYPE_CHECKING:
+    # Deferred: see the matching note in optimus.evidence.acquisition -- importing
+    # optimus.usage.accounting at module load time here re-enters the still-loading
+    # optimus.evidence package via optimus.usage.accounting -> optimus.evidence.ledger.
+    from optimus.usage.accounting import UsageAccountingService
+
+PACKAGE_LOOKUP_SERVICE = "package.lookup"
+SECURITY_ADVISORY_SERVICE = "security.advisory"
+PACKAGE_ADVISORY_NATIVE_UNIT = "requests"
 
 
 class PackageAdvisoryService:
@@ -47,12 +60,14 @@ class PackageAdvisoryService:
         registry: ToolRegistry | None = None,
         ledger: EvidenceLedger | None = None,
         pre_tool_guard: PreToolGuard | None = None,
+        usage_accounting: UsageAccountingService | None = None,
     ) -> None:
         self.gateway_client = gateway_client
         self.registry = registry or ToolRegistry()
         self.ledger = ledger or EvidenceLedger()
         self._ledger_lock = Lock()
         self._pre_tool_guard = pre_tool_guard
+        self._usage_accounting = usage_accounting
 
     def package_lookup(
         self,
@@ -76,10 +91,26 @@ class PackageAdvisoryService:
             execution_mode=execution_mode,
             action=f"package_lookup:{request.package}",
         )
-        body = self.gateway_client.post_tool_json(
-            path="/v1/tools/package/lookup",
-            payload=request.model_dump(mode="json"),
-        )
+        request_id = _stable_request_id(context.run_id, PACKAGE_LOOKUP_SERVICE)
+        try:
+            body = self.gateway_client.post_tool_json(
+                path="/v1/tools/package/lookup",
+                payload=request.model_dump(mode="json"),
+            )
+        except GatewayHttpError as exc:
+            self._record_parse_failure_usage(
+                run_id=context.run_id,
+                session_id=context.session_id,
+                reason=EvidenceReasonCode.PACKAGE_VERSION,
+                policy_signal=ToolPolicySignal.DEPENDENCY_VERSION_CHECK,
+                tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
+                sources=(),
+                exc=exc,
+                service=PACKAGE_LOOKUP_SERVICE,
+                native_unit=PACKAGE_ADVISORY_NATIVE_UNIT,
+                request_id=request_id,
+            )
+            raise
         try:
             envelope = parse_gateway_tool_envelope(body, PackageLookupResult)
         except GatewayResponseError as exc:
@@ -91,8 +122,19 @@ class PackageAdvisoryService:
                 tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
                 sources=(),
                 exc=exc,
+                service=PACKAGE_LOOKUP_SERVICE,
+                native_unit=PACKAGE_ADVISORY_NATIVE_UNIT,
+                request_id=request_id,
             )
             raise
+        self._record_provider_usage(
+            run_id=context.run_id,
+            session_id=context.session_id,
+            request_id=request_id,
+            gateway_usage=envelope.gateway_usage,
+            service=PACKAGE_LOOKUP_SERVICE,
+            native_unit=PACKAGE_ADVISORY_NATIVE_UNIT,
+        )
         ledger = self._record_ledger_entry(
             EvidenceLedgerEntry.from_gateway_usage(
                 run_id=context.run_id,
@@ -129,10 +171,26 @@ class PackageAdvisoryService:
             execution_mode=execution_mode,
             action=f"security_advisory:{request.identifier}",
         )
-        body = self.gateway_client.post_tool_json(
-            path="/v1/tools/security/advisory",
-            payload=request.model_dump(mode="json"),
-        )
+        request_id = _stable_request_id(context.run_id, SECURITY_ADVISORY_SERVICE)
+        try:
+            body = self.gateway_client.post_tool_json(
+                path="/v1/tools/security/advisory",
+                payload=request.model_dump(mode="json"),
+            )
+        except GatewayHttpError as exc:
+            self._record_parse_failure_usage(
+                run_id=context.run_id,
+                session_id=context.session_id,
+                reason=EvidenceReasonCode.SECURITY_ADVISORY,
+                policy_signal=ToolPolicySignal.SECURITY_OR_CVE_CHECK,
+                tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
+                sources=(),
+                exc=exc,
+                service=SECURITY_ADVISORY_SERVICE,
+                native_unit=PACKAGE_ADVISORY_NATIVE_UNIT,
+                request_id=request_id,
+            )
+            raise
         try:
             envelope = parse_gateway_tool_envelope(body, SecurityAdvisoryResult)
         except GatewayResponseError as exc:
@@ -144,10 +202,21 @@ class PackageAdvisoryService:
                 tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
                 sources=(),
                 exc=exc,
+                service=SECURITY_ADVISORY_SERVICE,
+                native_unit=PACKAGE_ADVISORY_NATIVE_UNIT,
+                request_id=request_id,
             )
             raise
         sources = tuple(
             str(citation) for advisory in envelope.result.advisories for citation in advisory.citations
+        )
+        self._record_provider_usage(
+            run_id=context.run_id,
+            session_id=context.session_id,
+            request_id=request_id,
+            gateway_usage=envelope.gateway_usage,
+            service=SECURITY_ADVISORY_SERVICE,
+            native_unit=PACKAGE_ADVISORY_NATIVE_UNIT,
         )
         ledger = self._record_ledger_entry(
             EvidenceLedgerEntry.from_gateway_usage(
@@ -194,6 +263,28 @@ class PackageAdvisoryService:
             self.ledger = self.ledger.record(entry)
             return self.ledger
 
+    def _record_provider_usage(
+        self,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        gateway_usage: GatewayUsage,
+        service: str,
+        native_unit: str,
+    ) -> None:
+        if self._usage_accounting is None:
+            return
+        self._usage_accounting.record_gateway_usage(
+            gateway_usage,
+            run_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=_utc_now(),
+            service=service,
+            native_unit=native_unit,
+        )
+
     def _record_parse_failure_usage(
         self,
         *,
@@ -203,10 +294,28 @@ class PackageAdvisoryService:
         policy_signal: ToolPolicySignal,
         tool_class: ToolClass,
         sources: tuple[str, ...],
-        exc: GatewayResponseError,
+        exc: GatewayResponseError | GatewayHttpError,
+        service: str,
+        native_unit: str,
+        request_id: str,
     ) -> None:
+        """Record usage carried by a transport-level or parse-level failure.
+
+        Shared by the ``GatewayHttpError`` transport-failure path and the
+        ``GatewayResponseError`` envelope-parsing-failure path: both exception
+        types carry an optional ``gateway_usage`` for attempts the gateway
+        still billed despite the failure.
+        """
         if exc.gateway_usage is None:
             return
+        self._record_provider_usage(
+            run_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            gateway_usage=exc.gateway_usage,
+            service=service,
+            native_unit=native_unit,
+        )
         self._record_ledger_entry(
             EvidenceLedgerEntry.from_gateway_usage(
                 run_id=run_id,
@@ -233,3 +342,9 @@ def _rejected_package_advisory_decision(*, reason: str) -> ToolInvocationDecisio
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def _stable_request_id(run_id: str, service: str) -> str:
+    """One caller-generated ID per transport attempt, reused across the success
+    and parse-failure recording paths for that same attempt."""
+    return f"{run_id}:{service}:{uuid4().hex}"

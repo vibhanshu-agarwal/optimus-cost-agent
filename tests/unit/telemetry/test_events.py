@@ -67,12 +67,12 @@ def test_gateway_reconciliation_and_pricing_fallback_events_have_json_payloads()
         occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
         gateway_request_id="gw-1",
         provider="glm",
+        provider_request_id="provider-req-1",
         cache_hit=False,
         billing_units=123,
         cost_usd=Decimal("0.0123"),
         service="responses",
         native_unit="tokens",
-        optimus_credits_debited=Decimal("1.23"),
         model="glm-5.2",
         model_version="2026-06-01",
         price_snapshot_id="prices-2026-07-04",
@@ -104,6 +104,8 @@ def test_gateway_reconciliation_and_pricing_fallback_events_have_json_payloads()
 
     assert gateway_event.to_json_dict()["kind"] == TelemetryEventKind.GATEWAY_USAGE.value
     assert gateway_event.to_json_dict()["cost_usd"] == "0.0123"
+    assert gateway_event.to_json_dict()["provider_request_id"] == "provider-req-1"
+    assert "optimus_credits_debited" not in gateway_event.to_json_dict()
     assert reconciliation_event.to_json_dict()["matched_gateway_request_ids"] == ["gw-1"]
     assert reconciliation_event.to_json_dict()["reconciled"] is True
     assert fallback_event.to_json_dict()["kind"] == TelemetryEventKind.PRICING_FALLBACK.value

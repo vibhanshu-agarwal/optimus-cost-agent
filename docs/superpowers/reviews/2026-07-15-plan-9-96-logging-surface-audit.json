@@ -713,6 +713,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.telemetry.redis_adapter:RedisTelemetryAdapter.record_settled_usage:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: record_settled_usage serializes only the fixed provider-accounting fingerprint (gateway_request_id, provider, provider_request_id, billing_units, cost_usd) used for HSETNX duplicate-claim comparison; it contains no free-text diagnostic content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/telemetry/test_redis_adapter.py::test_record_settled_usage_writes_exact_ts_create_and_ts_add_sequence",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.telemetry.redis_adapter:RedisTelemetryAdapter._ensure_usage_series:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.telemetry.redis_adapter:RedisTelemetryAdapter._ensure_usage_series:exception_export mirrors RedisTelemetryAdapter.ensure_series -- it uses exception text only to detect an already-exists TS.CREATE failure and fall back to TS.ALTER; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/telemetry/test_redis_adapter.py::test_record_settled_usage_reuses_existing_series_for_second_request_in_same_run",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.telemetry.redis_adapter:RedisTelemetryAdapter.write_run_metadata:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.telemetry.redis_adapter:RedisTelemetryAdapter.write_run_metadata:redis_hash_write writes an explicit allowlisted functional mapping to Redis rather than raw diagnostic content.",

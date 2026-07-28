@@ -168,3 +168,111 @@ def test_reconciliation_reports_missing_provider_usage():
 
     assert report.reconciled is False
     assert report.missing_provider_usage_ids == frozenset({"gw-1"})
+
+
+def test_accounting_service_emits_gateway_usage_event_per_accepted_attempt():
+    events: list = []
+    service = UsageAccountingService(event_sink=events.append)
+    common = dict(
+        run_id="run-1",
+        session_id="session-1",
+        request_id="req-1",
+        occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
+        service="web.search",
+        native_unit="tavily_credits",
+    )
+
+    service.record_gateway_usage(gateway_usage("gw-1", "0.002", 10), **common)
+
+    assert len(events) == 1
+    event = events[0]
+    assert event.kind is TelemetryEventKind.GATEWAY_USAGE
+    payload = event.to_json_dict()
+    assert payload["gateway_request_id"] == "gw-1"
+    assert payload["provider"] == "tavily"
+    assert payload["billing_units"] == 10
+    assert payload["cost_usd"] == "0.002"
+    assert payload["service"] == "web.search"
+    assert payload["native_unit"] == "tavily_credits"
+
+
+def test_accounting_service_emits_one_event_per_attempt_even_on_identical_replay():
+    events: list = []
+    service = UsageAccountingService(event_sink=events.append)
+    usage = gateway_usage("gw-1", "0.003", 3)
+    common = dict(
+        run_id="run-1",
+        session_id="session-1",
+        request_id="req-1",
+        occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
+        service="web.search",
+        native_unit="tavily_credits",
+    )
+
+    service.record_gateway_usage(usage, **common)
+    ledger = service.record_gateway_usage(usage, **common)
+
+    assert len(events) == 2
+    assert len(ledger.entries) == 1
+
+
+def test_accounting_service_does_not_emit_event_for_rejected_divergent_duplicate():
+    events: list = []
+    service = UsageAccountingService(event_sink=events.append)
+    common = dict(
+        run_id="run-1",
+        session_id="session-1",
+        request_id="req-1",
+        occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
+        service="web.search",
+        native_unit="tavily_credits",
+    )
+    service.record_gateway_usage(gateway_usage("gw-1", "0.003", 3), **common)
+
+    with pytest.raises(DuplicateGatewayRequestError):
+        service.record_gateway_usage(gateway_usage("gw-1", "0.004", 3), **common)
+
+    assert len(events) == 1
+
+
+def test_accounting_service_records_web_extract_context():
+    service = UsageAccountingService()
+
+    ledger = service.record_gateway_usage(
+        gateway_usage("gw-extract-1", "0.001", 1),
+        run_id="run-1",
+        session_id="session-1",
+        request_id="req-1",
+        occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
+        service="web.extract",
+        native_unit="tavily_credits",
+    )
+
+    assert ledger.entries[0].service == "web.extract"
+    assert ledger.entries[0].native_unit == "tavily_credits"
+
+
+def test_accounting_service_records_zero_cost_package_advisory_context():
+    service = UsageAccountingService()
+    free_usage = GatewayUsage(
+        gateway_request_id="gw-pkg-1",
+        provider="package-registry",
+        cache_hit=False,
+        billing_units=0,
+        cost_usd=Decimal("0"),
+    )
+
+    ledger = service.record_gateway_usage(
+        free_usage,
+        run_id="run-1",
+        session_id="session-1",
+        request_id="req-1",
+        occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
+        service="package.lookup",
+        native_unit="requests",
+    )
+
+    assert ledger.entries[0].service == "package.lookup"
+    assert ledger.entries[0].native_unit == "requests"
+    assert ledger.entries[0].cost_usd == Decimal("0")
+    assert ledger.entries[0].billing_units == 0

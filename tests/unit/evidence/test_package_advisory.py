@@ -10,6 +10,7 @@ from optimus.guardrails.pre_tool import PreToolResult, PreToolVerdict
 from optimus.runtime.modes import ExecutionMode
 from optimus.tools.policy import ToolClass
 from optimus.tools.registry import ToolCallRejected, ToolRegistry
+from optimus.usage.accounting import UsageAccountingService
 
 
 def _context(**overrides) -> GatewayToolContext:
@@ -82,6 +83,34 @@ class FailingGatewayClient(FakeGatewayClient):
     def post_tool_json(self, *, path: str, payload: dict[str, object]) -> dict[str, object]:
         self.calls.append({"path": path, "payload": payload})
         raise GatewayHttpError(502, "gateway unavailable")
+
+
+class FailingWithUsageGatewayClient(FakeGatewayClient):
+    """A gateway HTTP error that still carries billed usage in the error body."""
+
+    def post_tool_json(self, *, path: str, payload: dict[str, object]) -> dict[str, object]:
+        from optimus.gateway.models import GatewayUsage
+
+        self.calls.append({"path": path, "payload": payload})
+        if path == "/v1/tools/package/lookup":
+            usage = GatewayUsage(
+                gateway_request_id="gw-pkg-http-error",
+                provider="package-registry",
+                cache_hit=False,
+                billing_units=1,
+                cost_usd=Decimal("0.0005"),
+            )
+        elif path == "/v1/tools/security/advisory":
+            usage = GatewayUsage(
+                gateway_request_id="gw-adv-http-error",
+                provider="osv",
+                cache_hit=False,
+                billing_units=1,
+                cost_usd=Decimal("0.0007"),
+            )
+        else:
+            raise AssertionError(f"unexpected path: {path}")
+        raise GatewayHttpError(502, "gateway unavailable", gateway_usage=usage)
 
 
 class MalformedBodyGatewayClient(FakeGatewayClient):
@@ -239,6 +268,159 @@ def test_security_advisory_malformed_body_records_usage_before_error():
     assert len(service.ledger.entries) == 1
     assert service.ledger.entries[0].gateway_request_id == "gw-adv-bad"
     assert service.ledger.entries[0].cost_usd == Decimal("0.0007")
+
+
+class FreePackageLookupGatewayClient(FakeGatewayClient):
+    def post_tool_json(self, *, path: str, payload: dict[str, object]) -> dict[str, object]:
+        self.calls.append({"path": path, "payload": payload})
+        if path == "/v1/tools/package/lookup":
+            return {
+                "tool_class": "package_and_advisory_metadata",
+                "policy_signal": "DEPENDENCY_VERSION_CHECK",
+                "run_id": "run-1",
+                "result": {
+                    "package": "pytest-asyncio",
+                    "ecosystem": "pypi",
+                    "requested_version": None,
+                    "latest_version": "0.24.0",
+                    "versions": [],
+                    "citations": [],
+                },
+                "provenance": {"search_id": None, "source_urls": [], "trust": "untrusted"},
+                "gateway_usage": {
+                    "gateway_request_id": "gw-pkg-free",
+                    "provider": "package-registry",
+                    "cache_hit": False,
+                    "billing_units": 0,
+                    "cost_usd": "0",
+                },
+            }
+        raise AssertionError(f"unexpected path: {path}")
+
+
+def test_package_lookup_records_provider_usage_with_fixed_service_and_requests_unit():
+    gateway = FreePackageLookupGatewayClient()
+    accounting = UsageAccountingService()
+    service = PackageAdvisoryService(
+        gateway_client=gateway,
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+        usage_accounting=accounting,
+    )
+    request = PackageLookupRequest(context=_context(), package="pytest-asyncio", ecosystem="pypi")
+
+    service.package_lookup(request, execution_mode=ExecutionMode.PLAN)
+
+    assert len(accounting.provider_ledger.entries) == 1
+    entry = accounting.provider_ledger.entries[0]
+    assert entry.gateway_request_id == "gw-pkg-free"
+    assert entry.service == "package.lookup"
+    assert entry.native_unit == "requests"
+    assert entry.cost_usd == Decimal("0")
+    assert entry.billing_units == 0
+
+
+def test_security_advisory_records_provider_usage_with_fixed_service_and_requests_unit():
+    gateway = FakeGatewayClient()
+    accounting = UsageAccountingService()
+    service = PackageAdvisoryService(
+        gateway_client=gateway,
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+        usage_accounting=accounting,
+    )
+    request = SecurityAdvisoryRequest(context=_context(), identifier="CVE-2026-12345")
+
+    service.security_advisory(request, execution_mode=ExecutionMode.PLAN)
+
+    assert len(accounting.provider_ledger.entries) == 1
+    entry = accounting.provider_ledger.entries[0]
+    assert entry.gateway_request_id == "gw-adv-1"
+    assert entry.service == "security.advisory"
+    assert entry.native_unit == "requests"
+
+
+def test_package_lookup_malformed_body_records_provider_usage_before_error():
+    gateway = MalformedBodyGatewayClient()
+    accounting = UsageAccountingService()
+    service = PackageAdvisoryService(
+        gateway_client=gateway,
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+        usage_accounting=accounting,
+    )
+    request = PackageLookupRequest(context=_context(), package="pytest-asyncio", ecosystem="pypi")
+
+    with pytest.raises(GatewayResponseError):
+        service.package_lookup(request, execution_mode=ExecutionMode.PLAN)
+
+    assert len(accounting.provider_ledger.entries) == 1
+    assert accounting.provider_ledger.entries[0].gateway_request_id == "gw-pkg-bad"
+
+
+def test_package_lookup_gateway_failure_without_usage_records_no_provider_usage():
+    gateway = FailingGatewayClient()
+    accounting = UsageAccountingService()
+    service = PackageAdvisoryService(
+        gateway_client=gateway,
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+        usage_accounting=accounting,
+    )
+    request = PackageLookupRequest(context=_context(), package="pytest-asyncio", ecosystem="pypi")
+
+    with pytest.raises(GatewayHttpError):
+        service.package_lookup(request, execution_mode=ExecutionMode.PLAN)
+
+    assert accounting.provider_ledger.entries == ()
+
+
+def test_package_lookup_http_error_with_usage_records_provider_usage_before_error():
+    gateway = FailingWithUsageGatewayClient()
+    accounting = UsageAccountingService()
+    service = PackageAdvisoryService(
+        gateway_client=gateway,
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+        usage_accounting=accounting,
+    )
+    request = PackageLookupRequest(context=_context(), package="pytest-asyncio", ecosystem="pypi")
+
+    with pytest.raises(GatewayHttpError):
+        service.package_lookup(request, execution_mode=ExecutionMode.PLAN)
+
+    assert len(accounting.provider_ledger.entries) == 1
+    entry = accounting.provider_ledger.entries[0]
+    assert entry.gateway_request_id == "gw-pkg-http-error"
+    assert entry.service == "package.lookup"
+    assert entry.native_unit == "requests"
+    assert entry.cost_usd == Decimal("0.0005")
+    assert len(service.ledger.entries) == 1
+    assert service.ledger.entries[0].gateway_request_id == "gw-pkg-http-error"
+
+
+def test_security_advisory_http_error_with_usage_records_provider_usage_before_error():
+    gateway = FailingWithUsageGatewayClient()
+    accounting = UsageAccountingService()
+    service = PackageAdvisoryService(
+        gateway_client=gateway,
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+        usage_accounting=accounting,
+    )
+    request = SecurityAdvisoryRequest(context=_context(), identifier="CVE-2026-12345")
+
+    with pytest.raises(GatewayHttpError):
+        service.security_advisory(request, execution_mode=ExecutionMode.PLAN)
+
+    assert len(accounting.provider_ledger.entries) == 1
+    entry = accounting.provider_ledger.entries[0]
+    assert entry.gateway_request_id == "gw-adv-http-error"
+    assert entry.service == "security.advisory"
+    assert entry.native_unit == "requests"
+    assert entry.cost_usd == Decimal("0.0007")
+    assert len(service.ledger.entries) == 1
+    assert service.ledger.entries[0].gateway_request_id == "gw-adv-http-error"
 
 
 class BlockingPreToolGuard:

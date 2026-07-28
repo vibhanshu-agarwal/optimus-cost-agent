@@ -146,16 +146,22 @@ class TelemetryEvent(BaseModel):
         occurred_at: datetime,
         gateway_request_id: str,
         provider: str,
+        provider_request_id: str | None = None,
         cache_hit: bool,
         billing_units: int,
         cost_usd: Decimal,
         service: str,
         native_unit: str,
-        optimus_credits_debited: Decimal,
         model: str | None,
         model_version: str | None,
-        price_snapshot_id: str,
+        price_snapshot_id: str | None = None,
     ) -> TelemetryEvent:
+        """Settled Gateway usage for one accounting attempt.
+
+        Carries only provider-reported fields plus caller-supplied attribution
+        (``service``/``native_unit``); there is no credit-balance estimate here
+        -- ``cost_usd`` and ``billing_units`` are the sole settled amounts.
+        """
         return cls(
             kind=TelemetryEventKind.GATEWAY_USAGE,
             run_id=run_id,
@@ -165,12 +171,12 @@ class TelemetryEvent(BaseModel):
             payload={
                 "gateway_request_id": gateway_request_id,
                 "provider": provider,
+                "provider_request_id": provider_request_id,
                 "cache_hit": cache_hit,
                 "billing_units": billing_units,
                 "cost_usd": cost_usd,
                 "service": service,
                 "native_unit": native_unit,
-                "optimus_credits_debited": optimus_credits_debited,
                 "model": model,
                 "model_version": model_version,
                 "price_snapshot_id": price_snapshot_id,

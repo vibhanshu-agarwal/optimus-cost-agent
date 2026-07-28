@@ -243,3 +243,30 @@ def test_reconciliation_detects_provider_usage_missing_for_one_gateway_call(monk
     assert report.reconciled is False
     assert report.missing_provider_usage_ids == {"gw-extract-1"}
     assert report.cost_delta_usd == Decimal("0.001")
+
+
+def test_injected_accounting_auto_records_provider_usage_reconciling_with_evidence_ledger(monkeypatch):
+    """With ``UsageAccountingService`` injected directly into the evidence
+    service (Task 3), ``search``/``extract`` must record provider usage
+    themselves -- no manual replay by the caller required.
+    """
+    settings = _settings_with_only_optimus_credentials(monkeypatch)
+    transport = NormalizedCapturingTransport()
+    accounting = UsageAccountingService()
+    service = EvidenceAcquisitionService(
+        gateway_client=GatewayClient(settings=settings, transport=transport),
+        domain_policy=EvidenceDomainPolicy(configured_allowed_domains=("docs.example.com",)),
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+        usage_accounting=accounting,
+    )
+
+    service.search(_search_request(), execution_mode=ExecutionMode.PLAN)
+    _, evidence_ledger = service.extract(_extract_request(), execution_mode=ExecutionMode.PLAN)
+
+    report = reconcile_evidence_provider_usage(evidence_ledger, accounting.provider_ledger, run_id="run-1")
+
+    assert report.reconciled is True
+    assert report.matched_gateway_request_ids == {"gw-search-1", "gw-extract-1"}
+    assert {entry.service for entry in accounting.provider_ledger.entries} == {"web.search", "web.extract"}
+    assert {entry.native_unit for entry in accounting.provider_ledger.entries} == {"tavily_credits"}

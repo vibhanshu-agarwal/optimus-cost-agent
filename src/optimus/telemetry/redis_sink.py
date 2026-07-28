@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from optimus.redis.async_bridge import sync_await
 from optimus.telemetry.events import TelemetryEvent, TelemetryEventKind
 from optimus.telemetry.redis_adapter import RedisTelemetryAdapter, RunMetadata
@@ -17,6 +19,20 @@ class RedisTelemetryEventSink:
             return
         if event.kind is TelemetryEventKind.AGENT_RUN:
             sync_await(self._handle_agent_run(event))
+            return
+        if event.kind is TelemetryEventKind.GATEWAY_USAGE:
+            sync_await(self._handle_gateway_usage(event))
+
+    async def _handle_gateway_usage(self, event: TelemetryEvent) -> None:
+        payload = event.payload
+        await self._adapter.record_settled_usage(
+            run_id=event.run_id,
+            gateway_request_id=payload["gateway_request_id"],
+            provider=payload["provider"],
+            provider_request_id=payload.get("provider_request_id"),
+            billing_units=payload["billing_units"],
+            cost_usd=Decimal(str(payload["cost_usd"])),
+        )
 
     async def _handle_model_call(self, event: TelemetryEvent) -> None:
         payload = event.payload
