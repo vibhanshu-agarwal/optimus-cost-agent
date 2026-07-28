@@ -43,6 +43,22 @@ def test_model_call_event_contains_required_audit_fields():
     assert "response_summary" not in payload
 
 
+def test_event_serialization_has_schema_and_correlation_ids():
+    event = TelemetryEvent.model_call(
+        run_id="run-1", session_id="session-1", request_id="req-1",
+        occurred_at=datetime(2026, 7, 28, tzinfo=UTC), model="glm-5.2",
+        model_version="v1", provider="openrouter", cache_hit=False,
+        billing_units=3, cost_usd=Decimal("0.001"), latency_ms=10,
+        prompt="hello", response="done", input_tokens=1, output_tokens=2,
+    )
+    payload = event.to_json_dict()
+    assert payload["schema_version"] == "1.0"
+    assert payload["event_id"]
+    assert payload["trace_id"] == "run-1"
+    assert payload["parent_span_id"] is None
+    assert payload["gateway_request_id"] is None
+
+
 def test_gateway_reconciliation_and_pricing_fallback_events_have_json_payloads():
     gateway_event = TelemetryEvent.gateway_usage(
         run_id="run-1",
