@@ -1,10 +1,11 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES, OptimusGatewaySettings
+from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES
 from optimus.gateway.client import GatewayRequest
 from optimus.telemetry.events import TelemetryEvent
 from optimus.telemetry.observability import GatewayObservabilityExporter
+from tests.support.gateway_settings import LOOPBACK_GATEWAY_URL, gateway_settings
 
 
 class FakeTransport:
@@ -20,7 +21,7 @@ def test_observability_export_posts_to_gateway_trace_endpoint(monkeypatch):
     for key in LOCAL_PROVIDER_KEY_NAMES:
         monkeypatch.delenv(key, raising=False)
     transport = FakeTransport()
-    settings = OptimusGatewaySettings(gateway_url="https://gateway.optimus.ai", optimus_api_key="opt-test")
+    settings = gateway_settings()
     exporter = GatewayObservabilityExporter(settings=settings, transport=transport)
     event = TelemetryEvent.model_call(
         run_id="run-1",
@@ -43,7 +44,7 @@ def test_observability_export_posts_to_gateway_trace_endpoint(monkeypatch):
     response = exporter.export((event,))
 
     assert response == {"accepted": True, "trace_batch_id": "trace-batch-1"}
-    assert transport.requests[0].url == "https://gateway.optimus.ai/v1/observability/traces"
+    assert transport.requests[0].url == f"{LOOPBACK_GATEWAY_URL}/v1/observability/traces"
     assert transport.requests[0].payload["events"][0]["run_id"] == "run-1"
 
 
@@ -51,7 +52,7 @@ def test_observability_export_does_not_require_local_provider_keys(monkeypatch):
     for key in LOCAL_PROVIDER_KEY_NAMES:
         monkeypatch.delenv(key, raising=False)
     transport = FakeTransport()
-    settings = OptimusGatewaySettings(gateway_url="https://gateway.optimus.ai", optimus_api_key="opt-test")
+    settings = gateway_settings()
     exporter = GatewayObservabilityExporter(settings=settings, transport=transport)
 
     response = exporter.export(())

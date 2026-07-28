@@ -579,7 +579,7 @@ def _cmd_run_gateway(
 
     # Display the safe (non-secret) snapshot before starting anything.
     print("optimus-trust run-gateway: effective gateway configuration:")
-    print(f"  Provider: {provider_secrets.provider}")
+    print("  Gateway credential: OpenRouter (configured)")
     print(
         f"  Base URL: {mask_uri_userinfo(provider_secrets.base_url) if provider_secrets.base_url else '(provider default)'}"
     )

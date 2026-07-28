@@ -2434,7 +2434,6 @@ def test_capture_launch_builds_system_only_acpx_client_environment(tmp_path: Pat
         "OPTIMUS_AGENT_MODEL",
         "OPTIMUS_API_KEY",
         "OPTIMUS_GATEWAY_URL",
-        "OPTIMUS_PRODUCTION_MODE",
         "OPTIMUS_REDIS_URL",
     }
     assert set(capture.agent_environ) == expected_agent_names
@@ -2480,7 +2479,6 @@ def test_launch_audit_adds_acpx_client_role_without_changing_agent_child_manifes
         "OPTIMUS_AGENT_MODEL",
         "OPTIMUS_API_KEY",
         "OPTIMUS_GATEWAY_URL",
-        "OPTIMUS_PRODUCTION_MODE",
         "OPTIMUS_REDIS_URL",
     ]
     assert decisions["gateway_child"] == sorted(capture.authorized.candidate.gateway_environ)

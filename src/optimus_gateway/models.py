@@ -9,7 +9,7 @@ from typing import Any, Mapping
 from optimus_security.launch_manifest import resolve_effective_base_url
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
-_SUPPORTED_PROVIDERS = frozenset({"openai", "openrouter", "anthropic"})
+_GATEWAY_PROVIDER = "openrouter"
 _GATEWAY_TOOL_ENV_PREFIX = "OPTIMUS_GATEWAY_"
 
 
@@ -37,11 +37,11 @@ class GatewayServiceConfig:
             raise ValueError(f"bind host must be loopback, got {self.bind_host!r}")
         if not self.shared_secret.strip():
             raise ValueError("shared_secret is required")
-        if self.provider not in _SUPPORTED_PROVIDERS:
-            raise ValueError(f"unsupported provider: {self.provider}")
+        if self.provider != _GATEWAY_PROVIDER:
+            raise ValueError(f"provider must be {_GATEWAY_PROVIDER!r}, got {self.provider!r}")
         if not self.provider_api_key.strip():
             raise ValueError("provider_api_key is required")
-        if self.provider != "anthropic" and not (self.base_url or "").strip():
+        if not (self.base_url or "").strip():
             raise ValueError(f"base_url is required for provider {self.provider!r}")
         if self.tool_max_calls_per_tool <= 0:
             raise ValueError("tool_max_calls_per_tool must be positive")
@@ -69,15 +69,12 @@ class GatewayServiceConfig:
         ``OPTIMUS_GATEWAY_*`` tool configuration variables.
         """
         env = os.environ if environ is None else environ
-        provider = env.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER", "openrouter").strip().lower()
-        if provider not in _SUPPORTED_PROVIDERS:
-            raise ValueError(f"unsupported provider: {provider}")
+        provider = env.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER", _GATEWAY_PROVIDER).strip().lower()
+        if provider != _GATEWAY_PROVIDER:
+            raise ValueError(f"provider must be {_GATEWAY_PROVIDER!r}, got {provider!r}")
 
         base_url = env.get("OPTIMUS_LOCAL_GATEWAY_BASE_URL", "").strip()
-        if provider == "anthropic":
-            provider_api_key = _required_env(env, "ANTHROPIC_API_KEY")
-        else:
-            provider_api_key = _required_env(env, "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY")
+        provider_api_key = _required_env(env, "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY")
         # Single shared resolver (optimus_security.launch_manifest) — the
         # parent side (ProviderSecrets / resolve_provider_credentials) calls
         # this exact function too, so an omitted OPTIMUS_LOCAL_GATEWAY_BASE_URL

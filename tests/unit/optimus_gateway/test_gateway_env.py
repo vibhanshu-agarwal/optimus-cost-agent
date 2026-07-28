@@ -56,7 +56,7 @@ def test_merge_gateway_subprocess_env_reads_provider_key_from_file(tmp_path, mon
 def test_merge_gateway_subprocess_env_preserves_existing_pythonpath(tmp_path, monkeypatch):
     monkeypatch.delenv("OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY", raising=False)
     (tmp_path / ".env.gateway").write_text(
-        "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openai\n"
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
         "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-test\n",
         encoding="utf-8",
     )

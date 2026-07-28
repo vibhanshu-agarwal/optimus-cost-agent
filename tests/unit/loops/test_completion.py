@@ -8,6 +8,7 @@ from optimus.gateway.client import GatewayClient
 from optimus.loops.completion import DeterministicCompletionEvaluator, GatewayCompletionEvaluator
 from optimus.loops.ledger import InMemoryProgressLedger, ProgressLedgerEntry
 from optimus.loops.models import CompletionEvaluation, IterationState, LoopStopReason
+from tests.support.gateway_settings import gateway_settings
 
 
 class FakeTransport:
@@ -31,11 +32,8 @@ def state() -> IterationState:
 
 
 def settings() -> OptimusGatewaySettings:
-    return OptimusGatewaySettings(
-        gateway_url="https://gateway.optimus.ai",
-        optimus_api_key="optimus-key",
-        production_mode=True,
-    )
+    # Prefer omitting gateway_url so the production loopback default applies.
+    return gateway_settings(optimus_api_key="optimus-key")
 
 
 def test_deterministic_completion_evaluator_is_zero_cost():

@@ -510,33 +510,6 @@ _register(
     uri_userinfo=False,
 )
 _register(
-    "OPTIMUS_PRODUCTION_MODE",
-    tier=LaunchVariableTier.SECURITY,
-    # Plan 9.96, Task 5 review: GATEWAY_CHILD was removed from this
-    # propagation set. optimus_gateway/models.py's GatewayServiceConfig.from_env()
-    # has no code path that reads OPTIMUS_PRODUCTION_MODE at all, and Task 5
-    # Step 3's Gateway-child projection list ("provider, one provider key,
-    # base URL when applicable, shared secret, and code-derived loopback
-    # bind values") does not include it either — only the agent-child list
-    # mentions "production/origin settings when applicable." Propagating a
-    # value with zero consumers on the Gateway side violates least privilege
-    # and was a registry error, not an intentional dual-propagation design.
-    propagation=frozenset({PropagationTarget.AGENT_CHILD}),
-    parser=_parse_bool_like,
-    display=_display_literal,
-    approval="exact_literal",
-    uri_userinfo=False,
-)
-_register(
-    "OPTIMUS_EXTRA_GATEWAY_ORIGINS",
-    tier=LaunchVariableTier.SECURITY,
-    propagation=frozenset({PropagationTarget.AGENT_CHILD}),
-    parser=_parse_origins,
-    display=_display_literal,
-    approval="exact_literal",
-    uri_userinfo=False,
-)
-_register(
     "OPTIMUS_LOCAL_GATEWAY_PROVIDER",
     tier=LaunchVariableTier.SECURITY,
     propagation=frozenset({PropagationTarget.GATEWAY_CHILD}),

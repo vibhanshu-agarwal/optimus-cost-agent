@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -359,7 +360,7 @@ def _agent_run_result_payload(result: AgentRunResult) -> dict[str, Any]:
 
 
 def _gateway_usage_payload(usage: GatewayUsage) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "gateway_request_id": usage.gateway_request_id,
         "provider": usage.provider,
         "provider_request_id": usage.provider_request_id,
@@ -367,6 +368,26 @@ def _gateway_usage_payload(usage: GatewayUsage) -> dict[str, Any]:
         "billing_units": usage.billing_units,
         "cost_usd": str(usage.cost_usd),
     }
+    for field in (
+        "service",
+        "native_unit",
+        "optimus_credits_debited",
+        "model",
+        "model_version",
+        "price_snapshot_id",
+        "resolved_provider",
+        "resolved_model",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "reasoning_tokens",
+        "cached_tokens",
+        "cache_age_seconds",
+    ):
+        value = getattr(usage, field)
+        if value is not None:
+            payload[field] = str(value) if isinstance(value, Decimal) else value
+    return payload
 
 
 def _gateway_response_payload(response: GatewayResponse) -> dict[str, Any]:

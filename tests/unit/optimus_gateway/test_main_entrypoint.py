@@ -139,14 +139,12 @@ class TestManifestValidation:
         assert "MANIFEST_BASE_URL_MISMATCH" in captured.err
 
     def test_manifest_provider_mismatch_fails_closed(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """A manifest signed for one provider must not verify against a
-        different provider's constructed config, even with matching
-        credentials/bind."""
+        """A non-OpenRouter Gateway provider is rejected before manifest validation."""
         monkeypatch.setenv("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET", "shared-secret-value")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-or-test-key")
+        monkeypatch.setenv("OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY", "sk-or-test-key")
         monkeypatch.setenv("OPTIMUS_LOCAL_GATEWAY_PROVIDER", "anthropic")
         monkeypatch.setattr(gateway_main, "_keyring_module", FakeKeyring())
-        manifest = _valid_manifest()  # Signed for provider="openrouter".
+        manifest = _valid_manifest()
 
         exit_code = gateway_main.main(["--bind-host", "127.0.0.1", "--port", "8765", "--manifest", manifest])
         assert exit_code == 2

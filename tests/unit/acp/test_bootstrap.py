@@ -14,7 +14,7 @@ def test_bootstrap_reports_missing_optimus_credentials(tmp_path):
 
 
 def test_bootstrap_reports_missing_redis_url(tmp_path):
-    env = {"OPTIMUS_GATEWAY_URL": "https://gateway.optimus.ai", "OPTIMUS_API_KEY": "opt-test"}
+    env = {"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765", "OPTIMUS_API_KEY": "opt-test"}
 
     with pytest.raises(StartupConfigurationError) as exc_info:
         build_configured_server(environ=env, workspace_root=tmp_path)
@@ -45,7 +45,7 @@ def test_bootstrap_builds_agent_configured_server(tmp_path, monkeypatch):
     monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: FakeRuntime())
     server = build_configured_server(
         environ={
-            "OPTIMUS_GATEWAY_URL": "https://gateway.optimus.ai",
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
             "OPTIMUS_API_KEY": "opt-test",
             "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
         },
@@ -65,7 +65,7 @@ def test_bootstrap_reports_unreachable_redis(tmp_path, monkeypatch):
     with pytest.raises(StartupConfigurationError) as exc_info:
         build_configured_server(
             environ={
-                "OPTIMUS_GATEWAY_URL": "https://gateway.optimus.ai",
+                "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
                 "OPTIMUS_API_KEY": "opt-test",
                 "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
             },
@@ -109,7 +109,7 @@ def test_bootstrap_wires_workspace_context_observer(monkeypatch, tmp_path):
 
     build_agent_runner_for_harness(
         environ={
-            "OPTIMUS_GATEWAY_URL": "https://gateway.optimus.ai",
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
             "OPTIMUS_API_KEY": "opt-test",
             "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
         },

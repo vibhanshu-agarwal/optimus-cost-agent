@@ -867,17 +867,9 @@
     {
       "key": "optimus_gateway.upstream_client:call_with_upstream_retry:exception_export",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: call_with_upstream_retry uses str(exc) only to rewrap a RetryableUpstreamError as RuntimeError in memory after attempt exhaustion; no sanitizer runs at this site. The message is sanitized at the existing run_model_completion RuntimeError→502 boundary (sanitize_error_message) before any HTTP response export. Callers that reuse this helper without that outer catch must add their own sanitizing boundary.",
+      "rationale": "Inspection (Plan 11.4 re-verified): call_with_upstream_retry uses str(exc) only to rewrap a RetryableUpstreamError as RuntimeError in memory after transient-attempt exhaustion; no sanitizer runs at this site. The message is sanitized at the existing run_model_completion RuntimeError→502 boundary (sanitize_error_message) before any HTTP response export. The on_attempt_failure callback added for model-path retry telemetry receives only attempt number, a literal transient/permanent classification string, latency, and disposition — never exception text, so it does not add a new exception_export surface. Non-retryable exceptions are re-raised as-is (bare raise, no str()/repr() conversion) and are outside this surface. Callers that reuse this helper without that outer catch must add their own sanitizing boundary.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_upstream_retry.py::test_upstream_exhausts_four_attempts_and_reraises",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.upstream_client:UrllibAnthropicClient.create_message:json_serialization",
-      "policy": "protocol-only",
-      "rationale": "Functional protocol serialization at optimus_gateway.upstream_client:UrllibAnthropicClient.create_message:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
-      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
-      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "test_node": "tests/unit/optimus_gateway/test_upstream_retry.py::test_model_retry_ceiling_is_three_attempts",
       "evidence_tier": "unit"
     },
     {

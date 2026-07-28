@@ -1,11 +1,12 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES, OptimusGatewaySettings
+from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES
 from optimus.gateway.client import GatewayRequest
 from optimus.telemetry.events import TelemetryEvent
 from optimus.telemetry.jsonl import JsonlTelemetryWriter
 from optimus.telemetry.observability import GatewayObservabilityExporter
+from tests.support.gateway_settings import gateway_settings
 
 
 class FakeTransport:
@@ -41,7 +42,7 @@ def test_usage_event_is_written_to_jsonl_and_exported_to_gateway(tmp_path, monke
     writer.append(event)
     transport = FakeTransport()
     exporter = GatewayObservabilityExporter(
-        settings=OptimusGatewaySettings(gateway_url="https://gateway.optimus.ai", optimus_api_key="opt-test"),
+        settings=gateway_settings(),
         transport=transport,
     )
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+from decimal import Decimal
 from http.client import HTTPConnection
 from typing import Any
 
@@ -31,6 +32,15 @@ class _SmokeUpstreamClient:
             output_text=f"echo:{input_text}",
             input_tokens=3,
             output_tokens=2,
+            total_tokens=5,
+            billing_units=5,
+            cost_usd=Decimal("0.00005"),
+            provider="openrouter",
+            resolved_provider=None,
+            requested_model=model,
+            resolved_model=model,
+            model_version=None,
+            cache_hit=False,
         )
 
 

@@ -4,6 +4,7 @@ from decimal import Decimal
 from urllib.error import HTTPError, URLError
 
 import pytest
+from pydantic import SecretStr
 
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.client import GatewayClient, GatewayRequest, UrllibGatewayTransport, _decode_gateway_json
@@ -36,7 +37,7 @@ class FakeTransport:
 
 def settings() -> OptimusGatewaySettings:
     return OptimusGatewaySettings(
-        gateway_url="https://gateway.optimus.ai",
+        gateway_url="http://127.0.0.1:8765",
         optimus_api_key="opt_live_abc",
     )
 
@@ -52,7 +53,7 @@ def test_create_response_posts_to_responses_endpoint_with_auth_and_json_headers(
     assert len(transport.requests) == 1
     request = transport.requests[0]
     assert request.method == "POST"
-    assert request.url == "https://gateway.optimus.ai/v1/responses"
+    assert request.url == "http://127.0.0.1:8765/v1/responses"
     assert request.headers == {
         "Authorization": "Bearer opt_live_abc",
         "Content-Type": "application/json",
@@ -65,14 +66,14 @@ def test_create_response_posts_to_responses_endpoint_with_auth_and_json_headers(
 def test_create_response_validates_trusted_gateway_before_transport_call():
     transport = FakeTransport()
     client = GatewayClient(
-        settings=OptimusGatewaySettings(
+        settings=OptimusGatewaySettings.model_construct(
             gateway_url="https://rogue.attacker.com",
-            optimus_api_key="opt_live_abc",
+            optimus_api_key=SecretStr("opt_live_abc"),
         ),
         transport=transport,
     )
 
-    with pytest.raises(ValueError, match="gateway origin not in trusted set"):
+    with pytest.raises(ValueError, match="loopback host"):
         client.create_response(model="glm-5.2", input_text="hello")
 
     assert transport.requests == []
@@ -99,7 +100,7 @@ def test_malformed_gateway_response_is_typed():
 def test_urllib_transport_serializes_json_without_secret_leak_in_repr():
     request = GatewayRequest(
         method="POST",
-        url="https://gateway.optimus.ai/v1/responses",
+        url="http://127.0.0.1:8765/v1/responses",
         headers={"Authorization": "Bearer opt_live_abc", "Content-Type": "application/json"},
         payload={"model": "glm-5.2", "input": "hello"},
         timeout_seconds=10.0,
@@ -149,7 +150,7 @@ def test_urllib_transport_posts_json_and_decodes_decimal_cost(monkeypatch):
     monkeypatch.setattr("optimus.gateway.client.urlopen", fake_urlopen)
     request = GatewayRequest(
         method="POST",
-        url="https://gateway.optimus.ai/v1/responses",
+        url="http://127.0.0.1:8765/v1/responses",
         headers={"Authorization": "Bearer opt_live_abc", "Content-Type": "application/json"},
         payload={"model": "glm-5.2", "input": "hello"},
         timeout_seconds=3.5,
@@ -164,7 +165,7 @@ def test_urllib_transport_posts_json_and_decodes_decimal_cost(monkeypatch):
 def test_urllib_transport_maps_http_error_to_gateway_http_error(monkeypatch):
     def fake_urlopen(request: object, timeout: float) -> FakeHttpResponse:
         raise HTTPError(
-            url="https://gateway.optimus.ai/v1/responses",
+            url="http://127.0.0.1:8765/v1/responses",
             code=503,
             msg="Service Unavailable",
             hdrs=None,
@@ -177,7 +178,7 @@ def test_urllib_transport_maps_http_error_to_gateway_http_error(monkeypatch):
         UrllibGatewayTransport().post_json(
             GatewayRequest(
                 method="POST",
-                url="https://gateway.optimus.ai/v1/responses",
+                url="http://127.0.0.1:8765/v1/responses",
                 headers={"Content-Type": "application/json"},
                 payload={"model": "glm-5.2", "input": "hello"},
             )
@@ -197,7 +198,7 @@ def test_urllib_transport_maps_url_error_to_gateway_http_error(monkeypatch):
         UrllibGatewayTransport().post_json(
             GatewayRequest(
                 method="POST",
-                url="https://gateway.optimus.ai/v1/responses",
+                url="http://127.0.0.1:8765/v1/responses",
                 headers={"Content-Type": "application/json"},
                 payload={"model": "glm-5.2", "input": "hello"},
             )
@@ -224,7 +225,7 @@ def test_urllib_transport_rejects_malformed_json_response(monkeypatch, body, mes
         UrllibGatewayTransport().post_json(
             GatewayRequest(
                 method="POST",
-                url="https://gateway.optimus.ai/v1/responses",
+                url="http://127.0.0.1:8765/v1/responses",
                 headers={"Content-Type": "application/json"},
                 payload={"model": "glm-5.2", "input": "hello"},
             )
@@ -243,7 +244,7 @@ def test_post_tool_json_posts_to_gateway_tool_endpoint():
     assert response == {"ok": True}
     request = transport.requests[0]
     assert request.method == "POST"
-    assert request.url == "https://gateway.optimus.ai/v1/tools/web/search"
+    assert request.url == "http://127.0.0.1:8765/v1/tools/web/search"
     assert request.headers == {
         "Authorization": "Bearer opt_live_abc",
         "Content-Type": "application/json",
@@ -255,14 +256,14 @@ def test_post_tool_json_posts_to_gateway_tool_endpoint():
 def test_post_tool_json_validates_trusted_gateway_before_transport():
     transport = FakeTransport()
     client = GatewayClient(
-        settings=OptimusGatewaySettings(
+        settings=OptimusGatewaySettings.model_construct(
             gateway_url="https://rogue.attacker.com",
-            optimus_api_key="opt_live_abc",
+            optimus_api_key=SecretStr("opt_live_abc"),
         ),
         transport=transport,
     )
 
-    with pytest.raises(ValueError, match="gateway origin not in trusted set"):
+    with pytest.raises(ValueError, match="loopback host"):
         client.post_tool_json(path="/v1/tools/web/search", payload={"query": "current fact"})
 
     assert transport.requests == []
@@ -311,7 +312,7 @@ def test_urllib_http_error_with_valid_gateway_usage_attaches_usage(monkeypatch):
 
     def fake_urlopen(request: object, timeout: float) -> FakeHttpResponse:
         raise HTTPError(
-            url="https://gateway.optimus.ai/v1/responses",
+            url="http://127.0.0.1:8765/v1/responses",
             code=503,
             msg="Service Unavailable",
             hdrs=None,
@@ -324,7 +325,7 @@ def test_urllib_http_error_with_valid_gateway_usage_attaches_usage(monkeypatch):
         UrllibGatewayTransport().post_json(
             GatewayRequest(
                 method="POST",
-                url="https://gateway.optimus.ai/v1/responses",
+                url="http://127.0.0.1:8765/v1/responses",
                 headers={"Authorization": "Bearer opt_live_secret", "Content-Type": "application/json"},
                 payload={"model": "glm-5.2", "input": "hello"},
             )
@@ -343,7 +344,7 @@ def test_urllib_http_error_without_gateway_usage_has_unknown_cost(monkeypatch):
 
     def fake_urlopen(request: object, timeout: float) -> FakeHttpResponse:
         raise HTTPError(
-            url="https://gateway.optimus.ai/v1/responses",
+            url="http://127.0.0.1:8765/v1/responses",
             code=503,
             msg="Service Unavailable",
             hdrs=None,
@@ -356,7 +357,7 @@ def test_urllib_http_error_without_gateway_usage_has_unknown_cost(monkeypatch):
         UrllibGatewayTransport().post_json(
             GatewayRequest(
                 method="POST",
-                url="https://gateway.optimus.ai/v1/responses",
+                url="http://127.0.0.1:8765/v1/responses",
                 headers={"Authorization": "Bearer opt_live_secret", "Content-Type": "application/json"},
                 payload={"model": "glm-5.2", "input": "hello"},
             )
@@ -384,7 +385,7 @@ def test_urllib_http_error_with_malformed_gateway_usage_has_unknown_cost(monkeyp
 
     def fake_urlopen(request: object, timeout: float) -> FakeHttpResponse:
         raise HTTPError(
-            url="https://gateway.optimus.ai/v1/responses",
+            url="http://127.0.0.1:8765/v1/responses",
             code=503,
             msg="Service Unavailable",
             hdrs=None,
@@ -397,7 +398,7 @@ def test_urllib_http_error_with_malformed_gateway_usage_has_unknown_cost(monkeyp
         UrllibGatewayTransport().post_json(
             GatewayRequest(
                 method="POST",
-                url="https://gateway.optimus.ai/v1/responses",
+                url="http://127.0.0.1:8765/v1/responses",
                 headers={"Authorization": "Bearer opt_live_secret", "Content-Type": "application/json"},
                 payload={"model": "glm-5.2", "input": "hello"},
             )
@@ -420,7 +421,7 @@ def test_urllib_url_error_has_unknown_cost(monkeypatch):
         UrllibGatewayTransport().post_json(
             GatewayRequest(
                 method="POST",
-                url="https://gateway.optimus.ai/v1/responses",
+                url="http://127.0.0.1:8765/v1/responses",
                 headers={"Authorization": "Bearer opt_live_secret", "Content-Type": "application/json"},
                 payload={"model": "glm-5.2", "input": "hello"},
             )

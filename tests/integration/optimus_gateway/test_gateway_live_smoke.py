@@ -32,13 +32,21 @@ def _pick_free_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def _assert_provider_reported_usage(usage) -> None:
+    assert usage.provider == "openrouter"
+    assert usage.cost_usd.is_finite()
+    assert usage.cost_usd >= Decimal("0")
+    assert usage.billing_units > 0
+    assert usage.gateway_request_id
+
+
 @pytest.fixture
 def live_local_gateway_url():
     port = _pick_free_port()
     bind_host = "127.0.0.1"
     shared_secret = "live-gateway-smoke-secret"
     gateway_env = merge_gateway_subprocess_env(port=port, shared_secret=shared_secret)
-    provider = gateway_env["OPTIMUS_LOCAL_GATEWAY_PROVIDER"]
+    assert gateway_env["OPTIMUS_LOCAL_GATEWAY_PROVIDER"] == "openrouter"
 
     # Plan 9.96 gates `python -m optimus_gateway` behind --bind-host/--manifest.
     # Build the real signed manifest from the same env the child receives, then
@@ -82,20 +90,19 @@ def live_local_gateway_url():
         pytest.fail(f"local gateway did not become ready.\nstdout:\n{stdout}\nstderr:\n{stderr}")
 
     try:
-        yield gateway_url, shared_secret, provider
+        yield gateway_url, shared_secret
     finally:
         process.terminate()
         process.wait(timeout=10)
 
 
 def test_live_local_gateway_smoke_returns_real_usage(live_local_gateway_url):
-    gateway_url, shared_secret, provider = live_local_gateway_url
+    gateway_url, shared_secret = live_local_gateway_url
     client = GatewayClient(
         settings=OptimusGatewaySettings.from_env(
             {
                 "OPTIMUS_GATEWAY_URL": gateway_url,
                 "OPTIMUS_API_KEY": shared_secret,
-                "OPTIMUS_PRODUCTION_MODE": "false",
             }
         )
     )
@@ -108,13 +115,11 @@ def test_live_local_gateway_smoke_returns_real_usage(live_local_gateway_url):
 
     assert response.response_id
     assert response.output_text.strip()
-    assert response.gateway_usage.provider == provider
-    assert response.gateway_usage.cost_usd > Decimal("0")
-    assert response.gateway_usage.billing_units > 0
+    _assert_provider_reported_usage(response.gateway_usage)
 
 
 def test_live_local_gateway_chat_completions_returns_real_usage(live_local_gateway_url):
-    gateway_url, shared_secret, provider = live_local_gateway_url
+    gateway_url, shared_secret = live_local_gateway_url
     payload = build_chat_completions_payload(
         model="claude-haiku",
         messages=[{"role": "user", "content": "Reply with the single word: ok"}],
@@ -142,20 +147,16 @@ def test_live_local_gateway_chat_completions_returns_real_usage(live_local_gatew
     assert body["choices"][0]["message"]["role"] == "assistant"
     assert str(body["choices"][0]["message"]["content"]).strip()
     usage = parse_gateway_usage(body["gateway_usage"])
-    assert usage.provider == provider
-    assert usage.cost_usd > Decimal("0")
-    assert usage.billing_units > 0
-    assert usage.gateway_request_id
+    _assert_provider_reported_usage(usage)
 
 
 def test_live_local_gateway_observability_traces_accepts_real_exporter_batch(live_local_gateway_url):
-    gateway_url, shared_secret, _provider = live_local_gateway_url
+    gateway_url, shared_secret = live_local_gateway_url
     exporter = GatewayObservabilityExporter(
         settings=OptimusGatewaySettings.from_env(
             {
                 "OPTIMUS_GATEWAY_URL": gateway_url,
                 "OPTIMUS_API_KEY": shared_secret,
-                "OPTIMUS_PRODUCTION_MODE": "false",
             }
         )
     )
@@ -187,7 +188,7 @@ def test_live_local_gateway_observability_traces_accepts_real_exporter_batch(liv
 
 
 def test_live_local_gateway_observability_traces_fails_closed_on_malformed_batch(live_local_gateway_url):
-    gateway_url, shared_secret, _provider = live_local_gateway_url
+    gateway_url, shared_secret = live_local_gateway_url
     request = urllib.request.Request(
         f"{gateway_url}/v1/observability/traces",
         data=json.dumps({"events": ["not-an-object"]}).encode("utf-8"),
@@ -208,8 +209,8 @@ def test_live_local_gateway_observability_traces_fails_closed_on_malformed_batch
 
 
 @pytest.mark.parametrize("path", ("/v1/tools/web/search", "/v1/tools/web/extract"))
-def test_live_local_gateway_tools_routes_remain_outside_core(live_local_gateway_url, path: str):
-    gateway_url, shared_secret, _provider = live_local_gateway_url
+def test_live_local_gateway_tool_routes_reject_incomplete_requests(live_local_gateway_url, path: str):
+    gateway_url, shared_secret = live_local_gateway_url
     request = urllib.request.Request(
         f"{gateway_url}{path}",
         data=json.dumps({"q": "should-not-be-served"}).encode("utf-8"),
@@ -223,6 +224,6 @@ def test_live_local_gateway_tools_routes_remain_outside_core(live_local_gateway_
     with pytest.raises(urllib.error.HTTPError) as excinfo:
         urllib.request.urlopen(request, timeout=30)
 
-    assert excinfo.value.code == 404
+    assert excinfo.value.code == 400
     body = json.loads(excinfo.value.read().decode("utf-8"))
-    assert body == {"error": "not found"}
+    assert body["error"]

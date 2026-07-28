@@ -217,7 +217,6 @@ class TestCandidateResolution:
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
             "OPTIMUS_API_KEY": "test-key",
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
-            "OPTIMUS_PRODUCTION_MODE": "false",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
         candidate = resolve_launch_candidate(
@@ -1642,7 +1641,7 @@ class TestEffectiveCredentialDisplayRows:
         paths = _sample_operator_paths(tmp_path)
         _write_owner_only_env_gateway(
             paths.config_root,
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openai\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
             f"OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY={provider_canary}\n"
             "OPTIMUS_LOCAL_GATEWAY_BASE_URL=https://custom.example.com/v1\n"
             f"OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET={shared_canary}\n",
@@ -1795,7 +1794,7 @@ class TestMissingKeyNonDisclosureAndGoldenDigest:
         openrouter_root = tmp_path / "openrouter"
         _write_owner_only_env_gateway(
             anthropic_root / "config",
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=anthropic\n",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n",
         )
         _write_owner_only_env_gateway(
             openrouter_root / "config",

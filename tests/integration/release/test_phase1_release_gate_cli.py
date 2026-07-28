@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from optimus.golden.tasks import load_golden_tasks
+from tests.support.gateway_settings import LOOPBACK_GATEWAY_URL
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RELEASE_CLI = PROJECT_ROOT / "tools" / "run_phase1_release_gate.py"
@@ -179,7 +180,7 @@ def test_release_cli_agent_harness_runs_preflight_before_golden_tasks(tmp_path, 
         preflight_calls.append(True)
         return "redis://127.0.0.1:6379/0"
 
-    monkeypatch.setenv("OPTIMUS_GATEWAY_URL", "https://gateway.optimus.ai")
+    monkeypatch.setenv("OPTIMUS_GATEWAY_URL", LOOPBACK_GATEWAY_URL)
     monkeypatch.setenv("OPTIMUS_API_KEY", "opt-test")
     monkeypatch.setenv("OPTIMUS_REDIS_URL", "redis://127.0.0.1:6379/0")
     monkeypatch.setattr("optimus.acp.preflight.run_preflight", _fake_preflight)

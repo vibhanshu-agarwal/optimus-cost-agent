@@ -28,6 +28,7 @@ from optimus.acp.launch_policy import (
     classify_variable,
     project_gateway_tool_child_env,
 )
+from optimus.acp.local_infra import RETIRED_AGENT_ENVIRON_KEYS
 from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES
 
 _SRC_ROOT = Path(__file__).resolve().parents[3] / "src"
@@ -67,7 +68,10 @@ class TestRegistryInventory:
         """Every OPTIMUS_* string literal in src/**/*.py is either:
         - a concrete key in LAUNCH_VARIABLE_POLICIES, OR
         - covered by the prefix rule (starts with OPTIMUS_LOCAL_GATEWAY_ and is not
-          separately enumerated).
+          separately enumerated), OR
+        - a Plan 11.4 retired strip-only name in RETIRED_AGENT_ENVIRON_KEYS (kept as
+          plain literals for retirement rg visibility, intentionally absent from the
+          launch registry).
 
         A literal ending in _ is a prefix rule token, not a variable name.
         """
@@ -84,11 +88,14 @@ class TestRegistryInventory:
             # rule covers it — but only if the prefix rule itself exists.
             if name.startswith(prefix):
                 continue
+            if name in RETIRED_AGENT_ENVIRON_KEYS:
+                continue
             missing.add(name)
 
         assert not missing, (
             f"Source-referenced OPTIMUS_* names with no policy entry: {sorted(missing)}"
         )
+        assert RETIRED_AGENT_ENVIRON_KEYS.isdisjoint(LAUNCH_VARIABLE_POLICIES)
 
     def test_local_gateway_prefix_literal_has_one_fail_closed_prefix_rule(self) -> None:
         """The literal 'OPTIMUS_LOCAL_GATEWAY_' prefix exists in source and the registry
