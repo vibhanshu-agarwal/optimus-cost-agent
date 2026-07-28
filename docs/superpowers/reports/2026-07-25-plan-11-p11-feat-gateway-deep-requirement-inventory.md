@@ -2,520 +2,508 @@
 
 **Status:** Read-only extraction report; not a Gateway specification and not implementation authority.
 
-**Baseline reviewed:** `origin/main` at `b5fdc65515410719bd03648ea3224bc7e2a9c07d`.
+**Extraction basis:** The four repaired publication PDFs were re-hashed and re-extracted on this branch. Changed-page statements were checked against the v3 redline, the approved aggregator design note, and the measured OpenRouter spike. A carried-page statement is retained only where the repaired PDF contains the body text.
 
-**Working branch:** `agent/codex/p11-authoritative-doc-map` (clean before this report was added).
+**Baseline reviewed:** `origin/main` at `4590dbf9e77a2bea11a9c28356fd59116568e50d`.
+
+**Working branch:** `agent/codex/local-gateway-architecture-v3` at `85852b3d4640fec5b79647685f0c35c52dbbff15` (working tree contains the repaired publication and traceability artifacts).
 
 ## Source pin verification
 
-The four source bytes were re-hashed before extraction. All four values match the section map:
+| Source | SHA-256 | Pages | Result |
+|---|---|---:|---|
+| `docs/Optimus-Cost-Agent-Architecture-v2.16.pdf` | `6C2C98FE2327A6C466CAD3EB1800335EB59F0E1F65B2CB8E1E3401D7CFA05801` | 13 | Match |
+| `docs/Optimus-Cost-Agent-LLD-v2.39.pdf` | `82513729FD1A6E87FAD310DD90A18C996981B68024204E56CCA65377495585DE` | 40 | Match |
+| `docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.1.pdf` | `27EF0657CCEC5568D3E3769C7320223D1BFE3CF6F4702564CBD0A8A391F11029` | 16 | Match |
+| `docs/Optimus-Cost-Agent-Test-Strategy-v1.5.pdf` | `F3D744EC175B1E18E8B1E4E271997A0BB12666CC33CA7154A40BF5298588DA8D` | 14 | Match |
 
-| Source | SHA-256 | Result |
-|---|---|---|
-| `docs/Optimus-Cost-Agent-Architecture-v2.15.pdf` | `A386EEE8463A169A20A18B59BA923CFA80C0F6707DF7FEA3DB91B83FE3386C0B` | Match |
-| `docs/Optimus-Cost-Agent-LLD-v2.38.pdf` | `0471DCAE8100F41340AD6F3FE30F19B7CA8042C2949A534973B2A8D9564944DB` | Match |
-| `docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.0.pdf` | `4669940B34C8C0CAAB5501C193213C3087C45FAE0CBA3011E1DBF87EB74B4D0C` | Match |
-| `docs/Optimus-Cost-Agent-Test-Strategy-v1.4.pdf` | `6F7EB2B48447F1CE3D882FC60E16DA8B41C1DD7C926C359F45185823492DA5DB` | Match |
+The hashes were checked with the bundled Python `pypdf` path and the text was independently spot-checked with WSL2 Poppler `pdftotext`. The repaired LLD §0.B route flow is extractable; it is not carried forward as the prior clipped-source exception.
 
-The map file still carries its historical `Baseline: origin/main at 5229036` prose. That metadata is stale relative to the handoff, but the source digests are unchanged and valid; extraction continued.
+The approved OpenRouter spike is the measured acceptance baseline for the search rows: one
+`google/gemini-2.5-flash-lite` model, default engine, `max_tokens=16`, and a deterministic web
+plugin. It measured 3 annotations on the minimal call, 3/3 allowed and 0/3 violating include-domain
+results, 0/3 excluded-domain violations, 9/9 structurally complete citations, 7,068.7 ms mean
+latency, `$0.0051584` mean provider-reported cost per search, and a 270,008-byte HTML fetch parsed to
+60,077 characters in 589.5 ms. These are evidence values, not permanent performance thresholds.
 
 ## Disposition and evidence conventions
 
-Each row below uses the requested shape. A row may contain several adjacent source sentences when they form one independently testable contract; the wording inside the **Normative statement** column is source wording, not a paraphrase.
+Every row has a disposition, owner, and named evidence target. `In scope` means the requirement is a current contract to be implemented or tested in its owning lane. `Deferred -> P9.85-FU-3 (architecture-unblocked; implementation unscheduled)` records the settled cross-run budget-policy custody; it does not reopen the architecture question. `P11-FU-2` remains the package/advisory backlog. `P11-FU-3` remains open for the MCP source/transport gap; the inventory never infers an MCP Gateway route.
 
-Evidence aliases expand to named artifacts:
+Evidence aliases:
 
-- **E1 one-key release:** `tests/integration/release/test_phase1_release_gate_cli.py`, `tests/integration/gateway/test_gateway_live.py`, and the Phase 1 real-gateway release artifact.
-- **E2 route/schema:** `tests/unit/gateway/test_client.py`, `tests/unit/gateway/test_models.py`, `tests/unit/optimus_gateway/test_server.py`, plus a new P11 route/schema integration target for the added shapes.
-- **E3 evidence wrappers:** `tests/unit/evidence/test_acquisition.py`, `tests/unit/evidence/test_gateway_io.py`, `tests/integration/evidence/test_mocked_evidence_flow.py`, plus real-gateway search/extract evidence.
-- **E4 ledger:** `tests/unit/usage/test_ledger.py`, `tests/unit/usage/test_accounting.py`, `tests/integration/usage/test_evidence_provider_reconciliation.py`.
-- **E5 telemetry:** `tests/unit/telemetry/test_observability.py`, `tests/integration/telemetry/test_usage_telemetry_flow.py`, and `reports/plan-9-95-usage-telemetry-evidence.md`.
-- **E6 retry:** `tests/unit/retry/test_policy.py` and `tests/integration/retry/test_gateway_retry_flow.py`.
-- **E7 origin/secrets:** `tests/unit/config/test_gateway_settings.py`, `tests/unit/security/test_gateway_base_url_resolution.py`, and the real one-key release scan.
-- **E8 policy revalidation:** a direct, real-staging-Gateway integration target covering the §9D checks; fake-only tests are insufficient for the named live tier.
-- **E9 coverage/release:** CI `coverage.py` + `pytest-cov` release output and the Phase 1 release-gate artifact.
-- **E10 source repair:** repaired authoritative LLD §0.B source or reviewed authoritative replacement, followed by a fresh extraction/digest review.
-- **E11 golden tasks:** `tests/fixtures/golden_tasks/phase1_golden_tasks.json` and `tests/integration/agent/test_golden_harness_real_runner.py` against the staging Gateway.
-- **E12 budget decision:** the reviewed operator decision and custody record for `P9.85-FU-3`; no Gateway budget-enforcement implementation is authorized by this inventory.
-
-The exact deferred disposition required by the handoff is used for Gateway budget authority rows: **`Deferred → P9.85-FU-3 (parked; operator decision pending)`**.
+- **E1 one-key release:** real Plan/Agent release evidence with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` in the agent process.
+- **E2 route/schema:** unit, contract, and live-route evidence for both completion shapes and validated `GatewayUsage`.
+- **E3 evidence wrappers:** harness-gated search, extract, package, and advisory evidence with provenance.
+- **E4 ledger:** provider-reported usage/cost, USD reconciliation, and append-only ledger evidence.
+- **E5 telemetry:** OTel/OTLP span and trace-ingress evidence, with Phoenix as the documented local default.
+- **E6 retry:** bounded transient retry, permanent-failure, and retry-telemetry evidence.
+- **E7 origin/secrets:** strict-loopback, secret-redaction, and agent/Gateway egress-scan evidence.
+- **E8 policy revalidation:** real-Gateway policy, domain, provenance, call-cap, and usage fail-closed evidence.
+- **E9 coverage/release:** `coverage.py`/`pytest-cov`, quality, and release-gate evidence.
+- **E10 source repair:** repaired publication source plus fresh extraction/digest review.
+- **E11 golden tasks:** real local Gateway golden-task and independent `acpx` protocol evidence.
+- **E12 budget custody:** reviewed custody record for `P9.85-FU-3`; no implementation is authorized by this inventory.
 
 ## Requirement counts
 
 | Tier | Section | Rows | Exhaustion result |
 |---|---|---:|---|
-| 1 | HLD §5A | 8 | Extracted to exhaustion |
-| 1 | HLD §11 | 10 | Extracted to exhaustion |
-| 1 | HLD §11A | 5 | Extracted to exhaustion |
-| 1 | LLD §0 | 3 | Extracted to exhaustion |
-| 1 | LLD §0.A | 3 | Extracted to exhaustion |
-| 1 | LLD §0A | 8 | Extracted to exhaustion |
-| 1 | LLD §0A named endpoint block | 5 | Extracted to exhaustion |
-| 1 | LLD §6 | 11 | Extracted to exhaustion |
-| 1 | LLD §9C settings and origin trust | 5 | Extracted to exhaustion |
-| 1 | LLD §9D | 7 | Extracted to exhaustion |
-| 1 | Guardrails §9 | 9 | Extracted to exhaustion |
-| 1 | Test Strategy §7 | 9 | Extracted to exhaustion |
-|  | **Tier 1 subtotal** | **83** | **All Tier 1 sections exhausted** |
-| 2 | LLD §0.B | 2 | Source defect retained; affected block is unextractable-pending-repair |
-| 2 | LLD §0.C | 10 | Extracted to exhaustion; package, MCP, and source gaps explicitly disposed |
-| 2 | LLD §0.D | 7 | Extracted to exhaustion; package/security and second shape explicitly disposed |
-|  | **Tier 2 subtotal** | **19** | **All Tier 2 sections exhausted** |
-| 3 | HLD §6 | 3 | Gateway intersection extracted |
-| 3 | HLD §10 | 8 | Gateway intersection extracted, including all four §10.D points |
-| 3 | HLD §12 | 2 | Gateway/observability intersection extracted |
-| 3 | LLD §9 | 2 | Gateway intersection extracted |
-| 3 | LLD §9E | 6 | Gateway/ledger intersection extracted |
-| 3 | LLD §10A | 7 | Gateway/cost/trace intersection extracted |
-| 3 | LLD §11A | 5 | Gateway coverage/observability intersection extracted |
-| 3 | LLD §12 | 2 | Model-touching Gateway boundary and budget boundary extracted |
-| 3 | Guardrails §7 | 1 | Gateway budget-policy intersection extracted |
-| 3 | Guardrails §7.2 | 5 | Gateway budget/evidence intersection extracted |
-| 3 | Test Strategy §8 | 6 | Gateway accounting intersection extracted |
-| 3 | Test Strategy §8A | 5 | Gateway coverage/trace intersection extracted |
-| 3 | Test Strategy §9 | 5 | Gateway failure intersection extracted |
-| 3 | Test Strategy §10 | 3 | Gateway schema intersection extracted |
-| 3 | Test Strategy §13 | 8 | Gateway release intersection extracted |
-|  | **Tier 3 subtotal** | **68** | **All requested intersections traced** |
-| 4 | HLD §5 | 2 | Preserved as Plan 7 ledger constraints |
-| 4 | HLD §8 | 3 | Preserved as Plan 4 evidence/tool constraints |
-| 4 | LLD §0.E | 1 | Preserved one-key boundary |
-| 4 | LLD §9A | 2 | Preserved Plan 4 package/advisory class and reason-code constraints |
-| 4 | LLD §9B | 1 | Preserved Plan 4 package/advisory routing constraint |
-| 4 | LLD §9C | 6 | Preserved Plan 4 wrapper surface |
-| 4 | LLD §10 | 3 | Preserved Plan 7 accounting/retention surface |
-| 4 | LLD §12C | 3 | Preserved bounded-loop/Gateway evaluator boundary |
-|  | **Tier 4 subtotal** | **21** | **All preserve-only constraints traced** |
-|  | **Total inventory rows** | **191** | **No blank dispositions** |
+| 1 | HLD §5A | 8 | Extracted from repaired page 3 |
+| 1 | HLD §11 | 10 | Extracted from repaired page 10 |
+| 1 | HLD §11A | 5 | Extracted from repaired page 12 |
+| 1 | LLD §0 | 3 | Extracted from repaired page 2 |
+| 1 | LLD §0.A | 3 | Extracted from repaired page 3 |
+| 1 | LLD §0A | 8 | Extracted from repaired page 4 |
+| 1 | LLD §0A named endpoint block | 5 | Extracted from repaired page 5 |
+| 1 | LLD §6 | 11 | Extracted from repaired pages 20-21 |
+| 1 | LLD §9C settings and origin trust | 5 | Extracted from repaired page 26 |
+| 1 | LLD §9D | 7 | Extracted from repaired page 30 |
+| 1 | Guardrails §9 | 9 | Extracted from repaired page 12 |
+| 1 | Test Strategy §7 | 9 | Extracted from repaired pages 5-6 |
+|  | **Tier 1 subtotal** | **83** | All Tier 1 sections exhausted |
+| 2 | LLD §0.B | 2 | Repaired component flow extracted; no MCP endpoint inferred |
+| 2 | LLD §0.C | 10 | Responsibilities extracted; MCP remains a source/transport gap |
+| 2 | LLD §0.D | 7 | Documented routes extracted; package/advisory retained as independent backlog |
+|  | **Tier 2 subtotal** | **19** | All Tier 2 sections exhausted |
+| 3 | HLD §6 | 3 | Gateway intersection extracted from restored step 6 and co-located flow |
+| 3 | HLD §10 | 8 | Restored system, phase, cost, and hallucination controls extracted |
+| 3 | HLD §12 | 2 | OTel/OTLP and quality-gate intersection extracted |
+| 3 | LLD §9 | 2 | Harness-first tool contract extracted |
+| 3 | LLD §9E | 6 | Evidence and usage reconciliation extracted |
+| 3 | LLD §10A | 7 | USD ledger and trace intersection extracted |
+| 3 | LLD §11A | 5 | Coverage and live-dependency intersection extracted |
+| 3 | LLD §12 | 2 | Model-touching guardrail boundary extracted |
+| 3 | Guardrails §7 | 1 | USD evaluator budget boundary extracted |
+| 3 | Guardrails §7.2 | 5 | Bounded-loop controls extracted |
+| 3 | Test Strategy §8 | 6 | Usage and retention intersection extracted |
+| 3 | Test Strategy §8A | 5 | OTel/OTLP and coverage intersection extracted |
+| 3 | Test Strategy §9 | 5 | Retry and budget-failure intersection extracted |
+| 3 | Test Strategy §10 | 3 | Schema-boundary intersection extracted |
+| 3 | Test Strategy §13 | 8 | Release intersection extracted |
+|  | **Tier 3 subtotal** | **68** | All requested intersections traced |
+| 4 | HLD §5 | 2 | Provider-reported accounting constraints preserved |
+| 4 | HLD §8 | 3 | Harness-first evidence constraints preserved |
+| 4 | LLD §0.E | 1 | Strict one-key/loopback boundary preserved |
+| 4 | LLD §9A | 2 | Package/advisory class constraints preserved |
+| 4 | LLD §9B | 3 | Package/advisory routing and reason constraints preserved |
+| 4 | LLD §9C | 4 | Typed wrapper/provenance constraints preserved |
+| 4 | LLD §10 | 3 | Retention and run-metadata constraints preserved |
+| 4 | LLD §12C | 3 | Bounded-loop state/evaluator constraints preserved |
+|  | **Tier 4 subtotal** | **21** | All preserve-only constraints traced |
+|  | **Total inventory rows** | **191** | No blank dispositions |
 
-## Tier 1 — owned by P11-FEAT-GATEWAY-CORE, with partitioned Gateway requirements
+## Tier 1 - owned by P11-FEAT-GATEWAY-CORE, with partitioned Gateway requirements
 
-### HLD v2.15 §5A — 8 rows
-
-| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
-|---|---|---|---|---|
-| HLD v2.15 §5A | “The Optimus API key is the only developer-facing credential.”<br>“It maps to an internal tenant/user/project budget wallet.” | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
-| HLD v2.15 §5A | “Upstream provider keys for LLMs, Tavily, LangSmith, and any other vendor are owned by the Optimus Gateway and are never configured locally.” | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
-| HLD v2.15 §5A | “Third-party vendors do not natively consume Optimus credits — each expects its own vendor credential — so the friction-free model is that developers never see those keys”<br>“OPTIMUS_API_KEY authenticates to the Optimus Gateway, and the Gateway owns all downstream provider keys, usage mapping, billing normalization, and budget enforcement.” | In scope | P11-FEAT-GATEWAY-CORE | E1, E4 |
-| HLD v2.15 §5A, p.3 | “Developer / IDE”<br>“uses only: OPTIMUS_GATEWAY_URL, OPTIMUS_API_KEY”<br>“Optimus Gateway”<br>“maps OPTIMUS_API_KEY → tenant / user / project / budget wallet”<br>“uses internal provider secrets:”<br>“TAVILY_API_KEY    LANGSMITH_SERVICE_KEY”<br>“OPENAI_API_KEY    OPENROUTER_API_KEY    …”<br>“Providers → bill Optimus / org account”<br>“Cost path: OPTIMUS_API_KEY → Optimus budget wallet”<br>“→ provider-native usage → normalized Optimus ledger” | In scope | P11-FEAT-GATEWAY-CORE | E1, E4, E5, E7 |
-| HLD v2.15 §5A | “OPTIMUS_API_KEY authenticates to the Optimus Gateway, and the Gateway owns all downstream provider keys, usage mapping, billing normalization, and budget enforcement.” | Deferred → P9.85-FU-3 (parked; operator decision pending) | P9.85-FU-3 | E12 |
-| HLD v2.15 §5A | “From a cost perspective, OPTIMUS_API_KEY is not a physical upstream key; it is an internal account / wallet key.”<br>“Optimus credits are an internal abstraction over real, heterogeneous vendor costs (LLM tokens, Tavily credits, and trace / observability allocation).”<br>“They do not remove the need for upstream vendor accounts, but they remove the need for every developer to configure and fund them.”<br>“The Gateway converts each provider's native usage into one normalized Optimus ledger.” | In scope | P11-FEAT-GATEWAY-CORE | E4 |
-| HLD v2.15 §5A | “This preserves the thesis: one key, one budget, one ledger, with many providers behind the curtain.”<br>“Tavily is treated as a first-class Gateway tool and LangSmith as a Gateway-managed observability sink; neither becomes a local developer dependency.” | In scope | P11-FEAT-GATEWAY-TOOLS | E1, E3, E5 |
-| HLD v2.15 §5A, pp.3–4 | “Executable mechanics — endpoint shapes and the normalized ledger schema — are specified in the LLD (§0A, §10A).” | In scope | P11-FEAT-GATEWAY-CORE | E2, E4 |
-
-### HLD v2.15 §11 — 10 rows
+### HLD v2.16 §5A - 8 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| HLD v2.15 §11 | “The Optimus AI Gateway is Phase 1 mandatory infrastructure. All traffic from the local agent — model completions and every tool call — flows through the gateway from day one. There is no supported configuration in which the local agent calls a provider directly.” | In scope | P11-FEAT-GATEWAY-CORE | E1 |
-| HLD v2.15 §11 | “The gateway holds all provider credentials server-side in a Vault. The local agent holds only two values: OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY.” | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
-| HLD v2.15 §11 | “Route model completion requests to the correct provider (GLM, Claude Haiku/Sonnet/Opus) based on the model alias in the request.”<br>“Inject provider API keys server-side from Vault; no key is ever transmitted to the local agent.” | In scope | P11-FEAT-GATEWAY-CORE | E2, E7 |
-| HLD v2.15 §11 | “Record gateway_request_id, provider, cache_hit, billing_units, and cost_usd in every response envelope.” | In scope | P11-FEAT-GATEWAY-CORE | E2, E4 |
-| HLD v2.15 §11 | “Enforce domain allowlists for web search and extract requests, independent of local agent policy.” | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
-| HLD v2.15 §11, p.10 | “Revalidate budgets, call caps, and tool policies server-side as a defence-in-depth layer (Section 9D of LLD).” | Deferred → P9.85-FU-3 (parked; operator decision pending) | P9.85-FU-3 | E12 |
-| HLD v2.15 §11, p.10 | “Revalidate budgets, call caps, and tool policies server-side as a defence-in-depth layer (Section 9D of LLD).” | In scope | P11-FEAT-GATEWAY-TOOLS | E8 |
-| HLD v2.15 §11 | “Enforce origin allowlist: local agent gateway_url must resolve to a trusted origin; rogue gateway attacks are blocked via production_mode + signed tenant profile.”<br>“Every model completion and tool call follows the same sequence: the local agent sends a single authenticated request to the gateway, which injects provider credentials server-side, forwards to the upstream provider, and returns a unified response envelope containing the model output plus GatewayUsage accounting fields.” | In scope | P11-FEAT-GATEWAY-CORE | E1, E2, E7 |
-| HLD v2.15 §11, p.10 | “# Local agent environment — the only credentials required”<br>“OPTIMUS_GATEWAY_URL=https://gateway.optimus.ai”<br>“OPTIMUS_API_KEY=opt_live_xxx”<br>“# Gateway holds (server-side, Vault) — never on local machine”<br>“OPENAI_API_KEY=sk-...”<br>“GLM_API_KEY=...”<br>“TAVILY_API_KEY=tvly-...”<br>“LANGSMITH_SERVICE_KEY=ls-...”<br>“OPENROUTER_API_KEY=...” | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
-| HLD v2.15 §11, p.11 | “The Local Agent writes this object to RedisTimeSeries for 30-day cost attribution.”<br>“No provider credentials ever leave the Gateway server.” | In scope | P11-FEAT-GATEWAY-CORE | E1, E4, E5 |
+| HLD v2.16 §5A, p.3 | `OPTIMUS_API_KEY` is the only agent-facing credential; it authenticates the agent to the loopback Gateway and is not an upstream key or tenant wallet. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| HLD v2.16 §5A, p.3 | The Gateway process holds one developer-owned aggregator credential in local configuration or OS credential storage. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| HLD v2.16 §5A, p.3 | OpenRouter is the default aggregator; Vercel AI Gateway is an allowed second OpenAI-compatible endpoint only when its Python integration is modest. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| HLD v2.16 §5A, p.3 | The developer funds the aggregator account directly; it supplies many models, routing, normalized usage/USD cost, and one developer-owned balance. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
+| HLD v2.16 §5A, p.3 | The local Gateway preserves the one-key, one-budget, one-ledger thesis by isolating the credential, enforcing policy/budget controls, and recording provider-reported usage. | In scope | P11-FEAT-GATEWAY-CORE | E1, E4 |
+| HLD v2.16 §5A, p.3 | No Optimus-hosted account, prepaid balance, subscription, tenant, org, project wallet, OAuth/device flow, or public Optimus Gateway is part of Phase 1. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| HLD v2.16 §5A, p.3 | Search shares the OpenRouter credential through a dedicated deterministic plugin request; package/OSV are free public APIs, and OTel export has no invented per-request charge. | In scope | P11-FEAT-GATEWAY-TOOLS / P11-FEAT-GATEWAY-COST-OBS | E3, E4, E5 |
+| HLD v2.16 §5A, p.3 | One-key-for-search is conditional because the deterministic plugin is deprecated; withdrawal requires a verified-or-fail successor or a standalone backend with a second key/balance. | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
 
-### HLD v2.15 §11A — 5 rows
+### HLD v2.16 §11 - 10 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| HLD v2.15 §11A | “Phase 1 uses LangSmith for trace observability across planning, gateway calls, tool invocation, validation, retries, and final response generation.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
-| HLD v2.15 §11A | “At the architectural level, LangSmith is the trace sink — but its credentials are managed by the Gateway / deployment layer to preserve one-key setup.”<br>“One-key principle. LangSmith — and every other vendor — credential lives in Gateway / deployment secrets, never in local developer config. Local dev requires only OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E1, E5, E7 |
-| HLD v2.15 §11A | “LangSmith is an observability and production-debugging tool, not a test-coverage tool, and does not contribute to the coverage release gate.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E5, E9 |
-| HLD v2.15 §11A | “LangSmith cost is recorded the same way as any other provider cost, but the commercial model varies.”<br>“Depending on the plan, the Gateway records either provider-native trace usage (e.g. trace / span / event counts) or an allocated / amortized observability cost where billing is seat- or subscription-based.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E5 |
-| HLD v2.15 §11A | “In all cases the figure is normalized into the same Optimus ledger as token and tool costs (see §5A; LLD §10A for field-level detail).” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E5 |
+| HLD v2.16 §11, p.10 | The Gateway is a deterministic loopback process run alongside the local agent, not a hosted service, tenant control plane, subscription product, or central wallet. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| HLD v2.16 §11, p.10 | It binds to strict loopback and authenticates the agent with a local shared secret. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| HLD v2.16 §11, p.10 | The Gateway isolates the developer's aggregator credential in Gateway-owned local configuration or OS credential storage. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| HLD v2.16 §11, p.10 | Approved model aliases route through the surviving OpenAI-compatible transport. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| HLD v2.16 §11, p.10 | Model/tool policy, domain rules, call caps, provenance, and the current run's USD budget are enforced at the Gateway. | In scope | P11-FEAT-GATEWAY-CORE / P11-FEAT-GATEWAY-TOOLS | E8 |
+| HLD v2.16 §11, p.10 | Provider-reported usage and cost return in a validated `GatewayUsage` envelope. | In scope | P11-FEAT-GATEWAY-COST-OBS | E2, E4 |
+| HLD v2.16 §11, p.10 | Deterministic search, bounded extract, package lookup, and OSV advisory are brokered independently. | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
+| HLD v2.16 §11, p.10 | Structured trace ingress is accepted, mapped to OpenTelemetry, and exported through OTLP. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
+| HLD v2.16 §11, p.10 | Usage attribution persists run, session, request, Gateway-request, and provider-request identities. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E5 |
+| HLD v2.16 §11, p.10 | The agent has only the loopback URL and local shared secret; the Gateway has the aggregator key, shared secret, allowed domains, Redis URL, and optional OTLP endpoint, with no non-loopback override. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
 
-### LLD v2.38 §0 — 3 rows
-
-| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
-|---|---|---|---|---|
-| LLD v2.38 §0, p.2 | “The Optimus AI Gateway is Phase 1 mandatory infrastructure, not future scope. All traffic from the local agent — model completions and every tool call — flows through the gateway from day one.”<br>“There is no supported configuration in which the local agent calls a provider directly.” | In scope | P11-FEAT-GATEWAY-CORE | E1 |
-| LLD v2.38 §0, p.2 | “Asking every developer to supply a Tavily key, an OpenAI key, and any other provider credential creates credential sprawl and undermines the cost-control story.”<br>“The correct model is single-credential access: the developer authenticates once with Optimus, and the gateway holds all provider credentials server-side in a Vault.” | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
-| LLD v2.38 §0, p.2 | “This mirrors the model used by Cursor, JetBrains AI, and similar developer tools, and it is the only architecture Optimus ships with.” | In scope | P11-FEAT-GATEWAY-CORE | E1 |
-
-### LLD v2.38 §0.A — 3 rows
+### HLD v2.16 §11A - 5 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| LLD v2.38 §0.A, p.2 | “The control plane is entirely on the gateway side. The local IDE plugin or local Optimus agent only knows two things:” | In scope | P11-FEAT-GATEWAY-CORE | E1 |
-| LLD v2.38 §0.A, p.2 | “OPTIMUS_GATEWAY_URL=https://gateway.optimus.ai”<br>“OPTIMUS_API_KEY=opt_live_xxx”<br>“# Or, for IDE integrations:”<br>“# Sign in with Optimus (OAuth / device flow)” | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
-| LLD v2.38 §0.A, p.2 | “The gateway then maps that credential to the org / user / project context and resolves budgets, allowed tools, provider routes, and backend secrets internally.” | In scope | P11-FEAT-GATEWAY-CORE | E2, E8, E12 |
+| HLD v2.16 §11A, p.12 | Phase 1 uses OpenTelemetry spans and OTLP as the vendor-neutral trace contract across planning, Gateway calls, tools, validation, retries, and final response generation. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
+| HLD v2.16 §11A, p.12 | Authenticated structured trace ingress is validated and redacted by the Gateway, mapped to OTel spans/events, and exported through OTLP. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5, E7 |
+| HLD v2.16 §11A, p.12 | Arize Phoenix is the documented local default; any OTLP-compatible backend may replace it without changing Optimus instrumentation. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
+| HLD v2.16 §11A, p.12 | Trace export is operational telemetry; no allocated or amortized observability `cost_usd` is added to the usage ledger. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E5 |
+| HLD v2.16 §11A, p.12 | Required attributes retain run/session/request and Gateway/provider IDs, execution mode, scope, model/provider, cache, USD cost, billing units, policy/tool, validation, retry, and failure attribution; secrets are redacted. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
 
-### LLD v2.38 §0A — 8 rows
-
-| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
-|---|---|---|---|---|
-| LLD v2.38 §0A, p.4 | “Phase 1 local runtime configuration allows only OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY (or an equivalent OAuth / device-flow session).” | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
-| LLD v2.38 §0A, p.4 | “Local TAVILY_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, and LANGSMITH_API_KEY (and any other provider or observability key) are rejected for Phase 1 runtime use.”<br>“These keys are owned by the Gateway / deployment layer and held server-side in Vault.” | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
-| LLD v2.38 §0A, p.4 | “OPTIMUS_API_KEY is not a physical upstream key; it is an internal account / wallet key.”<br>“The Gateway maps it to a tenant / user / project / budget wallet and converts heterogeneous upstream costs into one normalized Optimus ledger.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
-| LLD v2.38 §0A, p.4 | “Provider-native units are not hardcoded in the agent — they are whatever the provider reports, normalized by the Gateway adapter.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
-| LLD v2.38 §0A, p.4 | “gateway records: provider = openai \| openrouter \| anthropic \| glm \| …; native_unit = tokens; billing_units = input_tokens + output_tokens; cost_usd = price_snapshot(model) applied to usage; optimus_credits_debited = normalized internal charge.”<br>“gateway records: provider = tavily; native_unit = tavily_credits; billing_units = provider-reported Tavily credits, as normalized by the Gateway adapter; cost_usd = gateway-computed from the active price snapshot; optimus_credits_debited = normalized internal charge.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
-| LLD v2.38 §0A, p.4 | “LangSmith trace: upstream unit depends on the commercial model: • usage-based → trace / span / event counts • seat/subscription → allocated or amortized observability cost”<br>“gateway records native trace usage OR allocated observability cost accordingly; cost_usd is computed or amortized into the same ledger.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E5 |
-| LLD v2.38 §0A, p.4 | “Vendors such as Tavily, LangSmith, OpenAI, and OpenRouter each expect their own credential and bill the Optimus org account; they never consume Optimus credits directly.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E1, E4 |
-| LLD v2.38 §0A, p.4 | “This subsection extends Section 0 and the Developer-Facing vs. Server-Side Configuration Boundary (§0E). The architectural rationale is in the HLD (§5A); the coverage / observability target is owned by the Test Strategy (§8A).” | In scope | P11-FEAT-GATEWAY-CORE | E1, E5, E9 |
-
-### LLD v2.38 §0A named endpoint block — 5 rows
+### LLD v2.39 §0 - 3 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| LLD v2.38 §0A named block, p.5 | “The local agent never calls Tavily or LangSmith directly. It calls Gateway-owned adapters; the Gateway injects the server-side vendor key, records usage, normalizes cost, and returns a unified envelope (gateway_request_id, cost_usd, billing_units, cache_hit, citations where applicable).” | In scope | P11-FEAT-GATEWAY-CORE | E2, E3, E4, E5 |
-| LLD v2.38 §0A named block, p.5 | “POST /v1/responses”<br>“POST /v1/chat/completions” | In scope | P11-FEAT-GATEWAY-CORE | E2 |
-| LLD v2.38 §0A named block, p.5 | “POST /v1/tools/web/search”<br>“POST /v1/tools/web/extract” | In scope | P11-FEAT-GATEWAY-TOOLS | E3 |
-| LLD v2.38 §0A named block, p.5 | “POST /v1/observability/traces” | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
-| LLD v2.38 §0A named block, p.5 | “Canonical Phase 1 LangSmith wiring (single primary path). The local agent emits structured trace events to the Gateway at /v1/observability/traces; the Gateway exports to LangSmith using a server-side service key. Direct Gateway-native spans to LangSmith are retained only as an internal extension, not an equal option. If LangSmith is proxied, LANGSMITH_ENDPOINT is forced to the Optimus Gateway and the real LangSmith key exists server-side only.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E5, E7 |
+| LLD v2.39 §0, p.2 | The Gateway is a deterministic local loopback process separating the agent from upstream credentials, policy, budget authority, usage normalization, and controlled egress. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| LLD v2.39 §0, p.2 | The agent receives only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY`; the Gateway holds one developer-owned aggregator credential, with no hosted service, OAuth/device flow, tenant wallet, Vault, or public origin. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| LLD v2.39 §0, p.2 | OpenRouter is the default aggregator; Vercel is optional pending modest Python integration; direct single-provider adapters are removed. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
 
-### LLD v2.38 §6 — 11 rows
+### LLD v2.39 §0.A - 3 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| LLD v2.38 §6, p.20 | “All model completions route through the Optimus Gateway using the single Optimus credential. The local agent never calls an upstream LLM provider directly and never holds a provider API key.” | In scope | P11-FEAT-GATEWAY-CORE | E1, E2 |
-| LLD v2.38 §6, p.20 | “The gateway resolves the model alias, selects the upstream provider, injects its own Vault-held key, and returns a normalised response.” | In scope | P11-FEAT-GATEWAY-CORE | E2 |
-| LLD v2.38 §6, p.20 | “The gateway exposes two completion endpoints with distinct wire shapes.”<br>“Use /v1/responses for the OpenAI Responses API shape, where the request body uses "input" as the top-level content field.” | In scope | P11-FEAT-GATEWAY-CORE | E2 |
-| LLD v2.38 §6, p.20 | “Use /v1/chat/completions for the Chat Completions shape, where the request body uses a "messages" array.” | In scope | P11-FEAT-GATEWAY-CORE | E2 |
-| LLD v2.38 §6, p.20 | “The local agent must not mix these: sending a "messages" array to /v1/responses, or an "input" string to /v1/chat/completions, will be rejected by the gateway schema validator.” | In scope | P11-FEAT-GATEWAY-CORE | E2 |
-| LLD v2.38 §6, p.20 | “def is_retryable_provider_fault(exc: Exception) -> bool:”<br>“is_timeout = isinstance(exc, asyncio.TimeoutError)”<br>“is_tool_fault = isinstance(exc, OptimusToolError) and exc.code in { OptimusToolErrorCode.PROVIDER_ERROR, OptimusToolErrorCode.TIMEOUT_ERROR, }”<br>“return is_timeout or is_tool_fault” | In scope | P11-FEAT-GATEWAY-CORE | E6 |
-| LLD v2.38 §6, p.20 | “def log_retry_telemetry_state(retry_state):”<br>“telemetry[\"retry_count\"] = retry_state.attempt_number” | In scope | P11-FEAT-GATEWAY-CORE | E5, E6 |
-| LLD v2.38 §6, p.20 | “@retry(”<br>“reraise=True,”<br>“stop=stop_after_attempt(4),”<br>“wait=wait_random_exponential(min=1, max=12),”<br>“retry=retry_if_exception(is_retryable_provider_fault),”<br>“after=log_retry_telemetry_state,” | In scope | P11-FEAT-GATEWAY-CORE | E6 |
-| LLD v2.38 §6, p.21 | “return {”<br>“\"status\":        \"SUCCESS\",”<br>“\"generated_patch\": body.get(\"patch\", \"\"),”<br>“\"gateway_request_id\": body.get(\"gateway_request_id\", \"\"),”<br>“\"provider\":      body.get(\"provider\", \"\"),”<br>“\"cache_hit\":     body.get(\"cache_hit\", False),”<br>“}” | In scope | P11-FEAT-GATEWAY-CORE | E2, E4 |
-| LLD v2.38 §6, p.21 | “except httpx.HTTPError as h_err:”<br>“raise OptimusToolError(”<br>“OptimusToolErrorCode.PROVIDER_ERROR,”<br>“f\"Gateway communication failure: {str(h_err)}\",“<br>“)” | In scope | P11-FEAT-GATEWAY-CORE | E6 |
-| LLD v2.38 §6, p.20–21 | “Routes through the Optimus Gateway (POST /v1/responses). No provider URL or provider API key is present here. The gateway selects the upstream model, injects its Vault credentials, and returns a normalised completion response.”<br>“if response.status_code != 200: raise OptimusToolError(OptimusToolErrorCode.PROVIDER_ERROR, f\"Gateway returned non-200: {response.status_code}\")” | In scope | P11-FEAT-GATEWAY-CORE | E2, E6 |
+| LLD v2.39 §0.A, p.3 | The control plane is split between the agent's two-variable environment and the Gateway process configuration. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| LLD v2.39 §0.A, p.3 | The agent has `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY`; the Gateway has the OpenRouter provider/key and shared secret, with no upstream or OTel key in the agent. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| LLD v2.39 §0.A, p.3 | The boundary is strict loopback with domains, Redis, and optional OTLP configured on the Gateway; there is no hosted-origin, tenant-profile, or non-loopback override. | In scope | P11-FEAT-GATEWAY-CORE | E7 |
 
-### LLD v2.38 §9C settings and origin trust — 5 rows
+### LLD v2.39 §0A - 8 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| LLD v2.38 §9C, p.27 | “OPTIMUS_BUILTIN_TRUSTED_ORIGINS = frozenset({”<br>“\"https://gateway.optimus.ai\",”<br>“\"https://gateway.optimus-eu.ai\",  # Optimus-hosted EU region”<br>“})” | In scope | P11-FEAT-GATEWAY-CORE | E7 |
-| LLD v2.38 §9C, p.27 | “# Dev/test mode: OPTIMUS_EXTRA_GATEWAY_ORIGINS is accepted to allow local gateway stubs. This env var MUST be blocked at production build time (e.g. stripped by the installer or rejected when OPTIMUS_PRODUCTION_MODE=true).” | In scope | P11-FEAT-GATEWAY-CORE | E7 |
-| LLD v2.38 §9C, p.27 | “class OptimusGatewaySettings”<br>“def validate_trusted_gateway(self)” | In scope | P11-FEAT-GATEWAY-CORE | E7 |
-| LLD v2.38 §9C, p.27–28 | “_read_signed_tenant_profile_origins()”<br>“class GatewayProviderSecrets” | In scope | P11-FEAT-GATEWAY-CORE | E7 |
-| LLD v2.38 §9C, p.28 | “return {”<br>“\"Authorization\": f\"Bearer {self.optimus_api_key.get_secret_value()}\"”<br>“}” | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| LLD v2.39 §0A, p.4 | The agent runtime allows only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY`. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| LLD v2.39 §0A, p.4 | Local Tavily, OpenAI, OpenRouter, GLM, LangSmith, and other provider keys are rejected; the approved aggregator credential stays in the Gateway process. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| LLD v2.39 §0A, p.4 | `OPTIMUS_API_KEY` is a local shared secret, not a wallet key; the developer funds the aggregator account directly. | In scope | P11-FEAT-GATEWAY-COST-OBS | E1, E4 |
+| LLD v2.39 §0A, p.4 | Model completion accounting records aggregator/provider/model, tokens/cache, billing units, provider-reported `cost_usd`, and request IDs. | In scope | P11-FEAT-GATEWAY-COST-OBS | E2, E4 |
+| LLD v2.39 §0A, p.4 | Deterministic search uses a separate minimal model call, structured citations, search-use accounting, and provider-reported `cost_usd`. | In scope | P11-FEAT-GATEWAY-TOOLS / P11-FEAT-GATEWAY-COST-OBS | E3, E4 |
+| LLD v2.39 §0A, p.4 | Package/advisory requests record operational evidence and do not fabricate provider cost. | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E4 |
+| LLD v2.39 §0A, p.4 | Trace export records delivery state and trace IDs without an allocated or amortized request charge. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
+| LLD v2.39 §0A, p.4 | The separate USD rename removes legacy credit-named fields without changing existing USD semantics or adding cross-run policy. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E12 |
 
-### LLD v2.38 §9D — 7 rows
-
-| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
-|---|---|---|---|---|
-| LLD v2.38 §9D, p.30 | “The gateway must not trust the local agent's pre-validated parameters. Defense in depth requires the gateway to independently revalidate every policy constraint, regardless of what the local agent sends.”<br>“The local ToolRegistry and EvidenceRequest validators are client-side convenience gates; the gateway is the authoritative enforcement point.” | In scope | P11-FEAT-GATEWAY-CORE | E8 |
-| LLD v2.38 §9D, p.30 | “Allowed domains: the gateway re-applies the org/project domain whitelist against the fully-resolved request URL before dispatching to the upstream provider. A misconfigured or malicious local agent cannot bypass this.” | In scope | P11-FEAT-GATEWAY-TOOLS | E8 |
-| LLD v2.38 §9D, p.30 | “Extract URL provenance: the gateway re-checks that all extract URLs appeared in a preceding gateway-logged search response for the same run_id. The local agent's approved_urls set is advisory only.” | In scope | P11-FEAT-GATEWAY-TOOLS | E8, E3 |
-| LLD v2.38 §9D, p.30 | “Budgets: the gateway re-enforces per-org, per-user, and per-project spend caps against its Cost Ledger before dispatching any billable request. Local budget state is informational.” | Deferred → P9.85-FU-3 (parked; operator decision pending) | P9.85-FU-3 | E12 |
-| LLD v2.38 §9D, p.30 | “Call caps: the gateway independently tracks max_calls_per_run against its own Redis counter keyed by run_id + tool_name. It does not trust the local ToolRegistry counter.” | In scope | P11-FEAT-GATEWAY-TOOLS | E8 |
-| LLD v2.38 §9D, p.30 | “Tool policies: the gateway re-checks that the requested tool class and model are permitted for the authenticated org / project / execution mode. Plan-mode constraints are enforced server-side.” | In scope | P11-FEAT-GATEWAY-TOOLS | E8 |
-| LLD v2.38 §9D, p.30 | “Any request that fails a gateway-side policy check returns a structured error with a gateway_request_id, allowing the local agent to surface the rejection through the normal ToolResponse error path. The gateway never silently drops requests.” | In scope | P11-FEAT-GATEWAY-CORE | E8, E2 |
-
-### Guardrails v1.0 §9 — 9 rows
+### LLD v2.39 §0A named endpoint block - 5 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| Guardrails v1.0 §9 | “The governing rule is: rules first, a small-model classifier only when needed, and human approval for high-risk uncertainty.” | In scope | Implemented by Plan 5 / P11-FEAT-GATEWAY-CORE preserve | E8, E11 |
-| Guardrails v1.0 §9 | “Permission rules (§2) Allow/deny lists, mode overlay Zero LLM cost”<br>“Pre-tool guard (§3) Regex / rules / AST / path checks Zero LLM cost”<br>“Shell validation (§4) CommandSafetyValidator Zero LLM cost”<br>“Injection / MCP defense (§5) Registry, hashing, config scan Zero LLM cost”<br>“Pre-commit / CI (§6) Ruff, Bandit, AST-grep, tests Compute, not tokens” | In scope | Implemented by Plans 5 and 6.5 / P11-FEAT-GATEWAY-CORE preserve | E8, E9 |
-| Guardrails v1.0 §9 | “Bounded loops (§7) \| Cheap evaluator + hard budgets \| Net cost reduction under caps” | In scope | Implemented by Plan 9 / P11-FEAT-GATEWAY-CORE preserve | E6, E11 |
-| Guardrails v1.0 §9 | “Bounded loops (§7) \| Cheap evaluator + hard budgets \| Net cost reduction under caps” | Deferred → P9.85-FU-3 (parked; operator decision pending) | P9.85-FU-3 | E12 |
-| Guardrails v1.0 §9 | “Workflow skills (§8) On-demand procedure loading Token saving; smaller model viable” | In scope | Implemented by Plan 9 / P11-FEAT-GATEWAY-CORE preserve | E11 |
-| Guardrails v1.0 §9 | “Borderline classifier \| Cheap model via Optimus Gateway, strict budget \| Rare, budgeted, off the hot path” | In scope | P11-FEAT-GATEWAY-CORE | E2 |
-| Guardrails v1.0 §9 | “Borderline classifier \| Cheap model via Optimus Gateway, strict budget \| Rare, budgeted, off the hot path” | Deferred → P9.85-FU-3 (parked; operator decision pending) | P9.85-FU-3 | E12 |
-| Guardrails v1.0 §9 | “Every model-touching element in the strategy — the borderline permission/guard classifier and the loop completion evaluator — is routed through the Optimus Gateway under the same budget wallet, normalized ledger, and observability sink as all other calls (HLD §5A / §11; LLD §10, §10A). There is no second, ungoverned cost path introduced by guardrails.” | In scope | P11-FEAT-GATEWAY-CORE | E2, E4, E5 |
-| Guardrails v1.0 §9 | “Every model-touching element in the strategy — the borderline permission/guard classifier and the loop completion evaluator — is routed through the Optimus Gateway under the same budget wallet, normalized ledger, and observability sink as all other calls (HLD §5A / §11; LLD §10, §10A). There is no second, ungoverned cost path introduced by guardrails.” | Deferred → P9.85-FU-3 (parked; operator decision pending) | P9.85-FU-3 | E12 |
+| LLD v2.39 named block, p.5 | The agent calls typed loopback Gateway endpoints and never calls OpenRouter, Vercel, registries, OSV, Phoenix, or another OTLP backend directly. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| LLD v2.39 named block, p.5 | Completion routes are `POST /v1/responses` and `POST /v1/chat/completions`. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| LLD v2.39 named block, p.5 | Search/extract routes are `POST /v1/tools/web/search` and `POST /v1/tools/web/extract`; search is a separate authorized minimal plugin request. | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
+| LLD v2.39 named block, p.5 | Package/advisory routes are independent of paid-search configuration, and trace ingress is `POST /v1/observability/traces`. | In scope | P11-FEAT-GATEWAY-TOOLS / P11-FEAT-GATEWAY-COST-OBS | E3, E5 |
+| LLD v2.39 named block, p.5 | The observability path is authenticated trace ingress -> Gateway validation/redaction -> OTel/OTLP -> Phoenix by default; the route list has no MCP endpoint. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
 
-### Test Strategy v1.4 §7 — 9 rows
+### LLD v2.39 §6 - 11 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| Test Strategy v1.4 §7 | “gateway_url set to https://gateway.optimus.ai (built-in): validate_trusted_gateway() passes.”<br>“gateway_url set to https://rogue.attacker.com (not in any trusted set): validate_trusted_gateway() raises ValueError.”<br>“production_mode=True with extra_trusted_origins non-empty: raises ValueError(\"extra_trusted_origins must not be set in production_mode\")”<br>“production_mode=False with OPTIMUS_EXTRA_GATEWAY_ORIGINS=\"https://internal.corp.com\": origin accepted.”<br>“production_mode=True with OPTIMUS_EXTRA_GATEWAY_ORIGINS set: env var ignored; only built-in + signed tenant profile origins accepted.” | In scope | P11-FEAT-GATEWAY-CORE | E7 |
-| Test Strategy v1.4 §7 | “optimus_api_key appears in Authorization header as "Bearer <key>"; repr(settings) masks key as "**********".”<br>“str(settings) and model_dump() do not reveal optimus_api_key in plaintext.” | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
-| Test Strategy v1.4 §7 | “POST /v1/responses payload contains input field (not messages); Content-Type is application/json.”<br>“POST /v1/chat/completions payload contains messages array (not input); confirms the two endpoints are not mixed.”<br>“auth_headers() returns {"Authorization": "Bearer opt_live_xxx"} with no provider key present.” | In scope | P11-FEAT-GATEWAY-CORE | E2 |
-| Test Strategy v1.4 §7 | “Gateway revalidation (§9D): send policy-violating request (blocked domain) directly to staging gateway; confirm 403 response independent of local agent policy.” | In scope | P11-FEAT-GATEWAY-TOOLS | E8 |
-| Test Strategy v1.4 §7 | “Provider failover: primary provider returns 503; gateway routes to fallback; local agent receives successful response; GatewayUsage.provider reflects actual provider used.”<br>“Cache hit: repeated identical request returns cache_hit=True in GatewayUsage; cost_usd reflects cache pricing ($0.26/M).” | In scope | P11-FEAT-GATEWAY-CORE | E2, E6 |
-| Test Strategy v1.4 §7 | “RELEASE GATE: start agent with OPTIMUS_GATEWAY_URL + OPTIMUS_API_KEY only. Verify via environment scan, process inspection, and config file audit that no OPENAI_API_KEY, TAVILY_API_KEY, GLM_API_KEY, LANGSMITH_API_KEY, or any other provider key is resolvable at any point during a full Plan+Agent run.” | In scope | P11-FEAT-GATEWAY-CORE | E1 |
-| Test Strategy v1.4 §7 | “RELEASE GATE: instrument the test harness with an outbound HTTP intercept (e.g. respx or mitmproxy in CI). Run a full Plan+Agent cycle and assert that every HTTP request originates from OPTIMUS_GATEWAY_URL. Any direct connection to api.openai.com, api.anthropic.com, Tavily, OpenRouter, api.zhipuai.cn, LangSmith (api.smith.langchain.com), or any other provider host fails the test with error "forbidden egress: direct provider contact detected".” | In scope | P11-FEAT-GATEWAY-CORE | E1, E11 |
-| Test Strategy v1.4 §7 | “Verify that the egress gate fires even if a provider URL is injected via a crafted tool output (prompt injection vector): the test harness emits a fake tool response containing a direct API URL; the agent must not attempt to call it.” | In scope | P11-FEAT-GATEWAY-CORE | E8, E11 |
-| Test Strategy v1.4 §7 | “Gateway returns HTTP 200 with response body missing gateway_request_id: agent raises GatewayResponseError and transitions to Failed state; no model output is used; no file mutation occurs.”<br>“Gateway returns HTTP 200 with usage field absent (no billing_units, no cost_usd): agent fails closed with GatewayResponseError; EvidenceLedger records no entry for the call; telemetry emits GATEWAY_USAGE_MISSING audit signal.”<br>“Gateway returns HTTP 200 with billing_units present but cost_usd is null: agent fails closed; partial GatewayUsage (with null cost_usd) is NOT appended to the ledger; GATEWAY_COST_MISSING audit signal emitted.”<br>“Gateway returns HTTP 200 with gateway_request_id set to empty string: treated as malformed; agent fails closed identically to the missing-field case.”<br>“All four malformed-response cases above must fail closed before any generated content is applied to the working tree or persisted to RedisTimeSeries.” | In scope | P11-FEAT-GATEWAY-CORE | E2, E4, E5, E11 |
+| LLD v2.39 §6, p.20 | All model completions route from the agent to the strict-loopback Gateway using the local shared secret. | In scope | P11-FEAT-GATEWAY-CORE | E1, E2 |
+| LLD v2.39 §6, p.20 | The Gateway resolves an Optimus model alias to an aggregator model identifier and calls OpenRouter by default or Vercel if retained. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| LLD v2.39 §6, p.20 | The aggregator credential exists only in Gateway-owned local configuration or OS credential storage; there is no Vault, hosted account, or direct-provider adapter. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| LLD v2.39 §6, p.20 | `/v1/responses` accepts the Responses `input` field and `/v1/chat/completions` accepts a `messages` array. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| LLD v2.39 §6, p.20 | The validator rejects `messages` at `/v1/responses` and `input` at `/v1/chat/completions`; both converge on one authenticated completion service. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| LLD v2.39 §6, p.20 | Both agent-facing shapes use the surviving `UrllibOpenAICompatibleClient` transport. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| LLD v2.39 §6, p.20 | Transient network, timeout, rate-limit, and provider-availability failures may retry; permanent authentication, schema, policy, and malformed-usage failures do not. | In scope | P11-FEAT-GATEWAY-CORE | E6 |
+| LLD v2.39 §6, p.20 | A transient call has at most three attempts, with attempt number, classification, latency, and disposition recorded for every retry. | In scope | P11-FEAT-GATEWAY-CORE | E5, E6 |
+| LLD v2.39 §6, p.20 | Provider-reported `usage.cost` is authoritative; missing, null, negative, or malformed usage/cost fails closed before output is accepted. | In scope | P11-FEAT-GATEWAY-COST-OBS | E2, E4 |
+| LLD v2.39 §6.1, p.21 | `UrllibOpenAICompatibleClient` stores the Gateway-owned key/base URL, posts the OpenAI-compatible payload, and parses message plus usage. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| LLD v2.39 §6.1, p.21 | The parser validates output, provider request identity, billing units, token/cache detail, resolved model/version when present, USD cost, and returns the validated `GatewayUsage` contract. | In scope | P11-FEAT-GATEWAY-COST-OBS | E2, E4 |
 
-## Tier 2 — unowned rows resolved by this extraction
-
-### LLD v2.38 §0.B — 2 rows
-
-| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
-|---|---|---|---|---|
-| LLD v2.38 §0.B, rendered p.2 | “The following describes the request path from IDE plugin to downstream providers:” | Deferred → P11-FU-3 (unextractable-pending-repair) | P11-FU-3 | E10 |
-| LLD v2.38 §0.B, rendered p.2 | “Cost Ledger / Budget Engine (enforces spend caps, attribution)” | Deferred → P9.85-FU-3 (parked; operator decision pending) | P9.85-FU-3 | E12 |
-
-No clipped lines are reconstructed here. The visible component-flow content is not treated as a complete requirement, and no endpoint or downstream provider is inferred from the missing continuation.
-
-### LLD v2.38 §0.C — 10 rows
+### LLD v2.39 §9C settings and origin trust - 5 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| LLD v2.38 §0.C, p.3 | “Single developer authentication — one credential, one session.” | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
-| LLD v2.38 §0.C, p.3 | “Model routing across OpenAI / OpenRouter / Azure and other LLM providers.” | In scope | P11-FEAT-GATEWAY-CORE | E2 |
-| LLD v2.38 §0.C, p.3 | “Tool brokering for Tavily, OSV, package registries, and MCP tools.” | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
-| LLD v2.38 §0.C, p.3 | “Tool brokering for Tavily, OSV, package registries, and MCP tools.” | Deferred → P11-FU-2 | P11-FU-2 | E3, E10 |
-| LLD v2.38 §0.C, p.3 | “Tool brokering for Tavily, OSV, package registries, and MCP tools.” | Excluded → LLD source repair (missing MCP endpoint shape) | P11-FU-3 | E10 |
-| LLD v2.38 §0.C, p.3 | “Centralised prepaid balance or subscription billing.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
-| LLD v2.38 §0.C, p.3 | “Cost attribution by org_id, user_id, project_id, run_id.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E5 |
-| LLD v2.38 §0.C, p.3 | “Policy enforcement: Plan mode, Agent mode, tool call caps, allowed domains.” | In scope | P11-FEAT-GATEWAY-TOOLS | E8 |
-| LLD v2.38 §0.C, p.3 | “Secret isolation: provider keys live in Vault, never on developer machines.” | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
-| LLD v2.38 §0.C, p.3 | “Caching and de-duplication to amplify the cost-savings story.” | In scope | P11-FEAT-GATEWAY-CORE | E2, E11 |
+| LLD v2.39 §9C, p.26 | `OptimusGatewaySettings` defaults to `http://127.0.0.1:8765` and carries a secret `optimus_api_key`. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| LLD v2.39 §9C, p.26 | Gateway URLs must use HTTP(S), contain no userinfo, and resolve to `127.0.0.1`, `localhost`, or `::1`. | In scope | P11-FEAT-GATEWAY-CORE | E7 |
+| LLD v2.39 §9C, p.26 | The validator fails closed for non-HTTP(S), userinfo, and non-loopback hosts. | In scope | P11-FEAT-GATEWAY-CORE | E7 |
+| LLD v2.39 §9C, p.26 | There is no production-mode flag, built-in hosted origin, extra-origin override, signed tenant profile, or non-loopback trust seam. | In scope | P11-FEAT-GATEWAY-CORE | E7 |
+| LLD v2.39 §9C, p.26 | The final source must remain aligned with the separately reviewed strict-loopback implementation. | In scope | P11-FEAT-GATEWAY-CORE | E7 |
 
-### LLD v2.38 §0.D — 7 rows
+### LLD v2.39 §9D - 7 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| LLD v2.38 §0.D, p.3 | “The gateway exposes OpenAI-compatible model endpoints where possible, plus typed tool endpoints:” | In scope | P11-FEAT-GATEWAY-CORE | E2 |
-| LLD v2.38 §0.D, p.3 | “POST /v1/responses” and “Authorization: Bearer opt_live_xxx” with `{ "model": "optimus-default", "input": "..." }` | In scope | P11-FEAT-GATEWAY-CORE | E2 |
-| LLD v2.38 §0.D, p.3 | “POST /v1/chat/completions” and `{ "model": "optimus-default", "messages": [...] }` | In scope | P11-FEAT-GATEWAY-CORE | E2 |
-| LLD v2.38 §0.D, p.3 | “Do NOT mix shapes: "messages" at /v1/responses or "input" at /v1/chat/completions will be rejected by the gateway schema validator.” | In scope | P11-FEAT-GATEWAY-CORE | E2 |
-| LLD v2.38 §0.D, p.3 | “POST /v1/tools/web/search” and “POST /v1/tools/web/extract” | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
-| LLD v2.38 §0.D, p.3 | “POST /v1/tools/package/lookup” | Deferred → P11-FU-2 | P11-FU-2 | E10 |
-| LLD v2.38 §0.D, p.3 | “POST /v1/tools/security/advisory” | Deferred → P11-FU-2 | P11-FU-2 | E10 |
+| LLD v2.39 §9D, p.30 | The Gateway independently revalidates every privileged input; agent-side checks are defense in depth and never authoritative. | In scope | P11-FEAT-GATEWAY-CORE | E8 |
+| LLD v2.39 §9D, p.30 | Effective domains intersect the caller request with the local allowlist, and returned URLs outside it are rejected. | In scope | P11-FEAT-GATEWAY-TOOLS | E8 |
+| LLD v2.39 §9D, p.30 | Extract requires an exact prior search result for the same `run_id`, with redirect and final-URL revalidation. | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
+| LLD v2.39 §9D, p.30 | The current-run USD cap is enforced against the Gateway ledger before billable dispatch. | In scope | P11-FEAT-GATEWAY-CORE | E4, E8 |
+| LLD v2.39 §9D, p.30 | Call capacity is keyed by run and tool and does not share a paid-search configuration gate. | In scope | P11-FEAT-GATEWAY-TOOLS | E8 |
+| LLD v2.39 §9D, p.30 | Tool class, policy signal, execution mode, and authenticated local subject are rechecked. | In scope | P11-FEAT-GATEWAY-TOOLS | E8 |
+| LLD v2.39 §9D, p.30 | Missing, malformed, negative, or unparseable provider-reported cost is rejected before dispatch or ledger acceptance. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E8 |
 
-## Tier 3 — cross-cutting intersections
-
-The Tier 3 rows below are limited to Gateway-relevant intersections, as requested. They do not redefine the ownership of Plans 4, 7, 8, or 9.
-
-### HLD v2.15 §6 — 3 rows
+### Guardrails v1.1 §9 - 9 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| HLD v2.15 §6 | “[6] Delivery to Optimus AI Gateway → Frontier Model Providers (GLM-5.2 Primary Generation Loop), returning the raw unified diff patch alongside the API usage object.” | In scope | P11-FEAT-GATEWAY-CORE | E2, E4 |
-| HLD v2.15 §6 | “All provider calls flow through the Optimus AI Gateway; the local agent holds only a single Optimus credential.” | In scope | P11-FEAT-GATEWAY-CORE | E1 |
-| HLD v2.15 §6 | “Async TS.ADD Numeric Telemetry Tracking (RedisTimeSeries)” and “Real-Time FinOps Console Panel display for IDE Cost Dashboard Live Update Screen.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E5 |
+| Guardrails v1.1 §9, p.12 | The governing rule is rules first, a small-model classifier only when needed, and human approval for high-risk uncertainty. | In scope | P11-FEAT-GATEWAY-CORE | E8, E11 |
+| Guardrails v1.1 §9, p.12 | Permission rules, pre-tool guard, shell validation, and injection/MCP defense are deterministic and zero-LLM-cost controls. | In scope | P11-FEAT-GATEWAY-CORE | E8 |
+| Guardrails v1.1 §9, p.12 | Pre-commit/CI uses Ruff, Bandit, AST-grep, and tests; its cost profile is compute, not tokens. | In scope | P11-FEAT-GATEWAY-CORE | E9 |
+| Guardrails v1.1 §9, p.12 | Bounded loops use a cheap evaluator plus hard USD budgets for net cost reduction under caps. | In scope | P11-FEAT-GATEWAY-CORE / Plan 9 | E6, E11 |
+| Guardrails v1.1 §9, p.12 | Workflow skills load on demand to save tokens and permit a smaller model. | In scope | P11-FEAT-GATEWAY-CORE | E11 |
+| Guardrails v1.1 §9, p.12 | The borderline classifier is a cheap model via the Optimus Gateway with a strict budget, rare and off the hot path. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| Guardrails v1.1 §9, p.12 | The evaluator is routed through the same loopback Gateway, developer-owned aggregator account, USD ledger, and OTel/OTLP trace path as other calls. | In scope | P11-FEAT-GATEWAY-CORE / P11-FEAT-GATEWAY-COST-OBS | E2, E4, E5 |
+| Guardrails v1.1 §9, p.12 | There is no second, ungoverned cost path introduced by guardrails. | In scope | P11-FEAT-GATEWAY-CORE / P11-FEAT-GATEWAY-COST-OBS | E2, E4, E5 |
+| Guardrails v1.1 §9, p.12 | The evaluator fails closed when provider-reported usage/cost is missing or malformed. | In scope | P11-FEAT-GATEWAY-COST-OBS | E2, E4 |
 
-### HLD v2.15 §10 — 8 rows
-
-| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
-|---|---|---|---|---|
-| HLD v2.15 §10.A | “All provider calls flow through the Optimus AI Gateway; the local agent holds only a single Optimus credential.” | In scope | P11-FEAT-GATEWAY-CORE | E1 |
-| HLD v2.15 §10.B | “Every user request traverses the full governance loop. The loop enforces that no model output reaches the working tree without passing through both the feedforward constraint layer and the feedback fitness gate layer.” | In scope | P11-FEAT-GATEWAY-CORE | E11 |
-| HLD v2.15 §10.C | “Phase 1 is mandatory before any later phase.”<br>“PHASE 1 → Python Local Agent + Optimus Gateway”<br>“Release Gate: one-key setup → no direct provider keys on developer machines” | In scope | P11-FEAT-GATEWAY-CORE | E1 |
-| HLD v2.15 §10.D | “1. Pre-prompt (Feedforward) — AST slicing + cache anchoring + ADL constraints — Unnecessary tokens sent to expensive models.” | In scope | P11-FEAT-GATEWAY-CORE / Plan 12 boundary | E11 |
-| HLD v2.15 §10.D | “2. Router (Triage Gate) — Haiku classifies task → routes to cheapest sufficient model — Over-routing simple tasks to Pro/Opus tier.” | In scope | P11-FEAT-GATEWAY-CORE / Plan 12 boundary | E2, E11 |
-| HLD v2.15 §10.D | “3. Rigor Budget (Runtime) — LOW/MEDIUM/HIGH tier caps tool calls + reflection passes — Token-doubling on ceremonial planning loops.” | In scope | Plan 9 / P11-FEAT-GATEWAY-CORE preserve-only | E11 |
-| HLD v2.15 §10.D | “4. Post-call (Attribution) — Gateway usage object → EvidenceLedger → RedisTimeSeries — Silent cost accumulation; enables per-run audit.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E5 |
-| HLD v2.15 §10.E | “ToolInvocationPolicy blocks casual web calls; reason codes required” | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
-
-### HLD v2.15 §12 — 2 rows
+### Test Strategy v1.5 §7 - 9 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| HLD v2.15 §12 | “Phase 1 targets a minimum 80% Python production-code coverage gate, with materially higher expectations for safety-critical modules (mode enforcement, gateway usage accounting, evidence reconciliation, retry/fail-closed logic, policy enforcement). Coverage is a release gate, not a quality substitute.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E9 |
-| HLD v2.15 §12 | “Agent-quality and AI-safety evaluations — DeepEval (task-completion, hallucination, faithfulness, role-adherence), Ragas (retrieval / evidence-quality), and PyRIT (adversarial / red-team) — together with LangSmith trace observability are tracked separately and do not count toward the coverage metric.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E5, E9 |
+| Test Strategy v1.5 §7, p.5 | Default `http://127.0.0.1:8765` passes; localhost and canonical IPv6 loopback pass; non-loopback DNS names and IP literals fail closed. | In scope | P11-FEAT-GATEWAY-CORE | E7 |
+| Test Strategy v1.5 §7, p.5 | URI userinfo, ambiguous host parsing, and non-HTTP(S) schemes fail closed. | In scope | P11-FEAT-GATEWAY-CORE | E7 |
+| Test Strategy v1.5 §7, p.5 | No field or environment variable authorizes non-loopback; hosted origins and signed tenant profiles are absent. | In scope | P11-FEAT-GATEWAY-CORE | E7 |
+| Test Strategy v1.5 §7, p.5 | `optimus_api_key` is masked in repr, serialization, logs, telemetry, and state. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| Test Strategy v1.5 §7, p.5 | `/v1/responses` uses `input`; `/v1/chat/completions` uses `messages`; mixed shapes are rejected. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| Test Strategy v1.5 §7, p.6 | Direct policy-violation requests to the real loopback Gateway receive independent rejection. | In scope | P11-FEAT-GATEWAY-TOOLS | E8 |
+| Test Strategy v1.5 §7, p.6 | Aggregator routing/fallback evidence records returned provider and model. | In scope | P11-FEAT-GATEWAY-CORE | E2, E6 |
+| Test Strategy v1.5 §7, p.6 | Agent/ACP child egress is limited to loopback; Gateway egress is limited to configured aggregator, package/OSV, extract targets, Redis, and OTLP. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7, E11 |
+| Test Strategy v1.5 §7, p.6 | Missing or malformed provider usage/cost fails closed; permanent failures do not retry and transient faults have a bounded retry budget. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E6 |
 
-### LLD v2.38 §9 — 2 rows
+## Tier 2 - unowned rows resolved by this extraction
 
-| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
-|---|---|---|---|---|
-| LLD v2.38 §9, p.24 | “Tool use is policy-driven first, model-requested second: the model may request evidence, but the harness alone decides whether a tool is permitted, necessary, and cost-justified for the active execution mode and rigor tier.” | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
-| LLD v2.38 §9, p.24 | “This section defines the typed tool registry, the deterministic invocation policy matrix, and the Evidence Ledger schema that records every external lookup alongside the Assumption Ledger.” | In scope | P11-FEAT-GATEWAY-CORE / Plan 4 | E3, E4 |
-
-### LLD v2.38 §9E — 6 rows
-
-| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
-|---|---|---|---|---|
-| LLD v2.38 §9E, p.31–32 | “Every external lookup is recorded in an Evidence Ledger entry alongside the existing Assumption Ledger, so a reviewer can trace which architectural claims were backed by which external source, under which policy signal and reason code.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E3, E4 |
-| LLD v2.38 §9E, p.31–32 | “All gateway usage fields (gateway_request_id, provider, cache_hit, billing_units, cost_usd) are populated directly from the gateway response envelope, never estimated after the fact.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E3, E4 |
-| LLD v2.38 §9E, p.31–32 | “EvidenceLedger exposes three reconciliation methods: total_credits() for backward compatibility with v2.26 callers, total_billing_units() for provider-native unit reconciliation, and total_cost_usd() as the primary cost reconciliation field (since v2.29).” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
-| LLD v2.38 §9E, p.31–32 | “Key rule, carried from the HLD: local evidence first, external evidence only when policy-triggered, mutation only after mode and fitness gates pass.” | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
-| LLD v2.38 §9E, p.31–32 | “ToolRegistry.authorize_and_record_call enforces mode, policy trigger, and per-run call-count ceiling atomically.” | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
-| LLD v2.38 §9E, p.31–32 | “The two ledgers are kept separate and joined on gateway_request_id.”<br>“Reconciliation: EvidenceLedger.total_cost_usd() and the sum of ProviderUsage.cost_usd (joined by gateway_request_id) must equal the same figure.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
-
-### LLD v2.38 §10A — 7 rows
+### LLD v2.39 §0.B - 2 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| LLD v2.38 §10A, p.35 | “ProviderUsage extends GatewayUsage; it does not replace it. GatewayUsage remains the wire-level envelope returned by the Gateway on every billable call.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E2, E4 |
-| LLD v2.38 §10A, p.35 | “ProviderUsage is the canonical persisted ledger record and is a strict superset: it carries the GatewayUsage fields verbatim and adds the normalization fields (service, native_unit, optimus_credits_debited, price_snapshot_id).” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
-| LLD v2.38 §10A, p.35 | “Usage accounting stores both the provider-native unit and the normalized internal charge for every request, so any upstream cost (tokens, Tavily credits, trace events) reconciles to a single Optimus ledger.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
-| LLD v2.38 §10A, p.35 | “The Evidence Ledger (§9E) is the evidence / audit trail and is joined to this cost ledger on gateway_request_id (audit ↔ cost); it does not duplicate the normalized cost fields.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
-| LLD v2.38 §10A, p.35 | “The Gateway enforces budget against the wallet before dispatching any billable request; local budget state remains informational.” | Deferred → P9.85-FU-3 (parked; operator decision pending) | P9.85-FU-3 | E12 |
-| LLD v2.38 §10A, p.35 | “optimus_credits_debited is the normalized figure carried into the per-run telemetry and the RedisTimeSeries cost series.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E5, E12 |
-| LLD v2.38 §10A, p.35 | “The canonical Phase 1 path (see §0A): the local agent sends structured trace events to the Gateway at /v1/observability/traces, and the Gateway forwards them to LangSmith with a server-side service key.”<br>“The LangSmith key is never present locally; if LangSmith is proxied, LANGSMITH_ENDPOINT is forced to the Optimus Gateway.”<br>“Each trace carries: run_id, request_id, execution_mode, generation_scope, model/provider (selected by Gateway), cache_hit, cost_usd, billing_units, policy_signal, tool_class, validation_outcome, failure_classification (when applicable)” | In scope | P11-FEAT-GATEWAY-COST-OBS | E5, E7 |
+| LLD v2.39 §0.B, rendered p.2 | The repaired component flow documents local agent ingress, loopback Gateway authentication, seven documented routes, policy/domain/call-cap controls, model/search/extract/package/advisory adapters, OTel/OTLP trace ingress, OpenRouter default, and Phoenix default. | In scope | P11-FEAT-GATEWAY-CORE / P11-FEAT-GATEWAY-TOOLS | E2, E3, E5, E10 |
+| LLD v2.39 §0.B, rendered p.2 | The flow includes a budget/usage ledger with provider-reported USD cost; budget implementation remains architecture-unblocked but unscheduled under P9.85-FU-3. No MCP endpoint is shown or implied. | Deferred -> P9.85-FU-3 (architecture-unblocked; implementation unscheduled) | P9.85-FU-3 | E10, E12 |
 
-### LLD v2.38 §11A — 5 rows
+### LLD v2.39 §0.C - 10 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| LLD v2.38 §11A, p.38 | “The authoritative detail lives in the Test Strategy (§8A); the HLD and LLD may summarize the target for context, but Test Strategy §8A remains authoritative.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E9 |
-| LLD v2.38 §11A, p.38 | “Test coverage for production Python code is measured with coverage.py (canonical line and branch coverage) and pytest-cov (CI and local integration).”<br>“The Phase 1 release gate is a minimum 80% aggregate Python coverage threshold; safety-critical modules (ToolRegistry authorization, MutationGuard, GatewayUsage / ProviderUsage accounting, EvidenceLedger reconciliation, JSON-RPC framing, retry / fail-closed logic, policy enforcement) trend materially higher and must not regress.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E9 |
-| LLD v2.38 §11A, p.38 | “Agent-quality and AI-safety tools are tracked separately and do not count toward the coverage metric: DeepEval and Ragas for agent / evidence-quality evaluation, and PyRIT for adversarial / red-team probes. LangSmith traces are used for debugging and regression analysis, not as a coverage metric.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E5, E9 |
-| LLD v2.38 §11A, p.38 | “Critical failures from the DeepEval / Ragas / PyRIT suites do not affect the coverage figure but may still block release through separate quality and security gates.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E9 |
-| LLD v2.38 §11A, p.38 | “Authoritative thresholds, CI commands, eval suites, red-team tests, LangSmith trace assertions, and release gates are defined in the Test Strategy document, §8A.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E9 |
+| LLD v2.39 §0.C, p.3 | Authenticate the local agent with a shared secret on strict loopback. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| LLD v2.39 §0.C, p.3 | Resolve model aliases through an approved OpenAI-compatible aggregator. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| LLD v2.39 §0.C, p.3 | Broker deterministic search, bounded extract, package lookup, and OSV advisory independently. | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
+| LLD v2.39 §0.C, p.3 | Enforce execution mode, tool policy, domain rules, call caps, provenance, and run budget. | In scope | P11-FEAT-GATEWAY-CORE / P11-FEAT-GATEWAY-TOOLS | E8 |
+| LLD v2.39 §0.C, p.3 | Persist run/session/request/Gateway/provider request attribution. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E5 |
+| LLD v2.39 §0.C, p.3 | Isolate upstream credentials from the agent process. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| LLD v2.39 §0.C, p.3 | Accept structured trace ingress, map it to OTel, and export OTLP. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
+| LLD v2.39 §0.C, p.3 | Package and advisory capabilities remain independently dispatchable and do not depend on paid-search configuration. | In scope | P11-FEAT-GATEWAY-TOOLS | E3 |
+| LLD v2.39 §0.C, p.3 | MCP remains a local trust-contract concern; no Gateway MCP endpoint is added or inferred, and P11-FU-3 remains open. | Excluded -> P11-FU-3 (MCP source/transport gap) | P11-FU-3 | E10 |
+| LLD v2.39 §0.C, p.3 | OpenRouter is the default model/search route; Vercel remains an optional model route pending modest Python transport validation. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
 
-### LLD v2.38 §12 — 2 rows
-
-| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
-|---|---|---|---|---|
-| LLD v2.38 §12, p.39 | “All model-touching elements (the borderline classifier and the loop completion evaluator) route through the Optimus Gateway under the existing budget wallet and normalized ledger (§0A, §10A); the guardrails introduce no second cost path.” | In scope | P11-FEAT-GATEWAY-CORE | E2, E4 |
-| LLD v2.38 §12, p.39 | “All model-touching elements (the borderline classifier and the loop completion evaluator) route through the Optimus Gateway under the existing budget wallet and normalized ledger (§0A, §10A); the guardrails introduce no second cost path.” | Deferred → P9.85-FU-3 (parked; operator decision pending) | P9.85-FU-3 | E12 |
-
-### Guardrails v1.0 §7 — 1 row
+### LLD v2.39 §0.D - 7 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| Guardrails v1.0 §7, p.11 | “max_budget_credits is enforced by the same gateway budget policy as every other call.” | Deferred → P9.85-FU-3 (parked; operator decision pending) | P9.85-FU-3 | E12 |
+| LLD v2.39 §0.D, p.3 | The Gateway exposes OpenAI-compatible model endpoints and typed tool endpoints. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| LLD v2.39 §0.D, p.3 | `POST /v1/responses` uses the top-level `input` field. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| LLD v2.39 §0.D, p.3 | `POST /v1/chat/completions` uses the `messages` array. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| LLD v2.39 §0.D, p.3 | Mixed `messages`/`input` shapes are rejected by the Gateway schema validator. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| LLD v2.39 §0.D, p.3 | `POST /v1/tools/web/search` and `POST /v1/tools/web/extract` are documented typed routes. | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
+| LLD v2.39 §0.D, p.3 | `POST /v1/tools/package/lookup` remains a separate public-registry capability owned by P11-FU-2. | Deferred -> P11-FU-2 | P11-FU-2 | E3, E10 |
+| LLD v2.39 §0.D, p.3 | `POST /v1/tools/security/advisory` remains a separate public-OSV capability owned by P11-FU-2; the trace route is operational and no MCP route is added. | Deferred -> P11-FU-2 | P11-FU-2 | E3, E5, E10 |
 
-### Guardrails v1.0 §7.2 — 5 rows
+## Tier 3 - cross-cutting intersections
 
-| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
-|---|---|---|---|---|
-| Guardrails v1.0 §7.2 | “For Optimus, persistent state lives in files, git history, task manifests, traces, and the evidence ledger — never in an ever-growing chat context.” | In scope | P11-FEAT-GATEWAY-CORE / Plan 9 | E4, E5 |
-| Guardrails v1.0 §7.2 | “Every loop runs under hard, explicit bounds: max_iterations Hard ceiling on loop turns; max_wall_clock_minutes Time bound independent of iteration count; explicit completion condition Machine-checkable predicate that ends the loop.” | In scope | P11-FEAT-GATEWAY-CORE / Plan 9 | E11 |
-| Guardrails v1.0 §7.2 | “max_budget_credits Gateway budget cap across the whole loop.” | Deferred → P9.85-FU-3 (parked; operator decision pending) | P9.85-FU-3 | E12 |
-| Guardrails v1.0 §7.2 | “per-iteration evidence Each turn writes evidence to the ledger (LLD §9E).”<br>“clean git-diff check Working tree verified between iterations.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E11 |
-| Guardrails v1.0 §7.2 | “pre-tool guard active §3 enforcement is never bypassed inside a loop.”<br>“human approval for escalation Out-of-band actions require sign-off.”<br>“stop on repeated failure Identical-failure pattern terminates the loop.” | In scope | P11-FEAT-GATEWAY-TOOLS | E8, E11 |
+These rows trace Gateway intersections without redefining ownership of Plans 4, 7, 8, or 9.
 
-### Test Strategy v1.4 §8 — 6 rows
-
-| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
-|---|---|---|---|---|
-| Test Strategy v1.4 §8 | “These tests prove that cost accounting is accurate, complete, and reconciles against the gateway response.”<br>“total_cost_usd() sums cost_usd across all EvidenceLedgerEntry objects; returns 0.0 on empty ledger.”<br>“total_billing_units() sums billing_units; matches provider-native unit count.”<br>“total_credits() (backward compat) sums credits_used; does not conflict with cost_usd total.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
-| Test Strategy v1.4 §8 | “GatewayUsage fields (gateway_request_id, provider, provider_request_id, cache_hit, billing_units, cost_usd) all propagate correctly from gateway response envelope to EvidenceLedgerEntry.”<br>“Ledger entries are append-only; no existing entry can be modified after record() is called.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
-| Test Strategy v1.4 §8 | “Missing pricing_snapshot.json: usage accounting engine falls back to default pricing matrix and raises telemetry audit signal PRICING_FALLBACK_ACTIVATED.”<br>“pricing_snapshot.json present but stale (> 24h): PRICING_SNAPSHOT_STALE audit signal raised; calculation proceeds with stale data.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E5 |
-| Test Strategy v1.4 §8 | “TS.CREATE with retention 30 days: key created; RETENTION verified via TS.INFO.”<br>“Duplicate TS.CREATE on existing key: TS.ALTER applied idempotently; RETENTION updated; no error thrown.”<br>“TS.ADD with run_id tag: confirmed present in TS.RANGE query with tag filter.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
-| Test Strategy v1.4 §8 | “Run metadata hash (HSET): execution_mode, generation_scope, rigor_level, assumption ledger count all written at workflow completion; TTL set to 30 days.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
-| Test Strategy v1.4 §8 | “EvidenceLedger.total_cost_usd() reconciles against sum of GatewayUsage.cost_usd values — delta < $0.000001.”<br>“EvidenceLedger.total_billing_units() reconciles against sum of GatewayUsage.billing_units.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
-
-### Test Strategy v1.4 §8A — 5 rows
+### HLD v2.16 §6 - 3 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| Test Strategy v1.4 §8A | “This document is the authoritative source of truth for the Phase 1 coverage target, the measurement-tool taxonomy, and trace observability.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E9 |
-| Test Strategy v1.4 §8A | “Phase 1 targets a minimum 80% aggregate Python test coverage threshold for production code, measured in CI with coverage.py and surfaced through pytest-cov during normal pytest execution.”<br>“The 80% threshold is a release gate, not a quality substitute.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E9 |
-| Test Strategy v1.4 §8A | “deterministic safety-critical modules such as ToolRegistry authorization, MutationGuard, GatewayUsage accounting, EvidenceLedger reconciliation, JSON-RPC framing, retry/fail-closed logic, and policy enforcement should trend materially higher and must not regress without explicit review.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E9 |
-| Test Strategy v1.4 §8A | “Each trace should include run_id, request_id, execution_mode, generation_scope, model/provider selected by the Optimus Gateway, cache_hit, cost_usd, billing_units, policy_signal, tool_class, validation outcome, and failure classification where applicable.”<br>“To preserve the one-key developer setup, LangSmith credentials must be configured at the Gateway, CI, or deployment environment layer, not as an additional local developer key.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E5, E7 |
-| Test Strategy v1.4 §8A | “Coverage and evaluation tools are exercised in CI as follows: pytest --cov=optimus --cov-branch --cov-report=xml enforces the 80% gate; DeepEval, Ragas, and PyRIT suites run as separate, non-blocking-for-coverage jobs whose results are tracked on their own dashboards; LangSmith trace assertions validate that required trace fields are emitted per run.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E5, E9 |
+| HLD v2.16 §6, p.4 | Restored step 6 delivers to the loopback Gateway and approved upstream aggregator, returning model output plus provider-reported usage and USD cost; aliases are policy inputs and no direct adapter is selected. | In scope | P11-FEAT-GATEWAY-CORE | E2, E4 |
+| HLD v2.16 §6, p.4 | The orchestration loop returns to step 6 after a fitness failure and proceeds to patch execution only after the feedback gate passes. | In scope | P11-FEAT-GATEWAY-CORE / Plan 9 | E2, E11 |
+| HLD v2.16 §6, p.4 | RedisTimeSeries/Redis HASH persistence and the FinOps display consume the resulting run/request usage attribution. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E5 |
 
-### Test Strategy v1.4 §9 — 5 rows
+### HLD v2.16 §10 - 8 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| Test Strategy v1.4 §9 | “TransientGatewayError on first attempt: tenacity retries up to max_retries=3; succeeds on 3rd attempt; retry_count=2 in metadata.”<br>“ProviderRateLimitError: exponential backoff applied (500ms base); jitter present.” | In scope | P11-FEAT-GATEWAY-CORE | E6 |
-| Test Strategy v1.4 §9 | “PermanentGatewayError: ABORT_WITH_REPORT returned immediately; no retry; failure report emitted.”<br>“PolicyViolationError: ABORT_WITH_REPORT; escalation signal emitted.” | In scope | P11-FEAT-GATEWAY-CORE | E6, E8 |
-| Test Strategy v1.4 §9 | “BudgetExhaustedError: ABORT_WITH_REPORT; run terminates; cost_usd at time of abort recorded in ledger.”<br>“Budget exhausted mid-run: run terminates gracefully; partial telemetry flushed; no partial file writes in working tree.” | Deferred → P9.85-FU-3 (parked; operator decision pending) | P9.85-FU-3 | E12 |
-| Test Strategy v1.4 §9 | “max_retries=3 exceeded: ESCALATE_TO_USER returned; prior_failures injected into user escalation payload.” | In scope | P11-FEAT-GATEWAY-CORE | E6 |
-| Test Strategy v1.4 §9 | “Gateway returns 503 twice, then 200: agent retries twice, succeeds; working tree unchanged after failed attempts; final patch applied only on success.”<br>“Fitness gate fails on attempt 1 and 2, passes on attempt 3: replan_context() injected with failure summaries on attempts 2 and 3; final patch differs from attempt 1 (proves replanning occurred).” | In scope | P11-FEAT-GATEWAY-CORE / Plan 9 | E6, E11 |
+| HLD v2.16 §10.A, p.7 | The IDE, local agent, loopback Gateway, Redis, repository, and optional Phoenix collector share one developer environment while agent/Gateway credentials remain separate. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| HLD v2.16 §10.B, p.8 | Every request traverses feedforward constraints and feedback fitness gates before output reaches the working tree. | In scope | P11-FEAT-GATEWAY-TOOLS | E11 |
+| HLD v2.16 §10.C, p.9 | Phase 1 Python local agent plus loopback Gateway is mandatory before later phases; the release gate requires only the two agent-facing variables in the agent process. | In scope | P11-FEAT-GATEWAY-CORE | E1 |
+| HLD v2.16 §10.D, p.9 | Pre-prompt AST slicing, cache anchoring, and ADL constraints prevent unnecessary tokens. | In scope | P11-FEAT-GATEWAY-CORE / Plan 12 | E11 |
+| HLD v2.16 §10.D, p.9 | The triage router sends a task to the cheapest sufficient model. | In scope | P11-FEAT-GATEWAY-CORE | E2, E11 |
+| HLD v2.16 §10.D, p.9 | LOW/MEDIUM/HIGH rigor budgets cap tool calls and reflection passes. | In scope | Plan 9 / P11-FEAT-GATEWAY-CORE preserve-only | E11 |
+| HLD v2.16 §10.D, p.9 | Gateway usage -> EvidenceLedger -> RedisTimeSeries prevents silent accumulation and enables per-run audit. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E5 |
+| HLD v2.16 §10.E, p.9 | ToolInvocationPolicy blocks casual web calls and requires reason codes as one layer of hallucination control. | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
 
-### Test Strategy v1.4 §10 — 3 rows
-
-| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
-|---|---|---|---|---|
-| Test Strategy v1.4 §10 | “EvidenceRequest with empty query string: ValidationError raised before any gateway call.”<br>“EvidenceExtractRequest with max_chars_per_source=0: ValidationError raised.” | In scope | P11-FEAT-GATEWAY-TOOLS | E3 |
-| Test Strategy v1.4 §10 | “OptimusGatewaySettings with empty optimus_api_key: ValidationError raised.”<br>“GatewayUsage with negative billing_units: ValidationError raised.”<br>“GatewayUsage with negative cost_usd: ValidationError raised.” | In scope | P11-FEAT-GATEWAY-CORE | E2, E7 |
-| Test Strategy v1.4 §10 | “These tests prove that malformed inputs are rejected before any processing occurs, and that pydantic v2 validators enforce invariants at the boundary.” | In scope | P11-FEAT-GATEWAY-CORE | E2, E3 |
-
-### Test Strategy v1.4 §13 — 8 rows
+### HLD v2.16 §12 - 2 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| Test Strategy v1.4 §13 | “OptimusGatewaySettings rejects rogue gateway URLs in both production_mode and non-production_mode.” | In scope | P11-FEAT-GATEWAY-CORE | E7 |
-| Test Strategy v1.4 §13 | “POST /v1/responses uses input field exclusively; POST /v1/chat/completions uses messages — confirmed by unit + integration test.” | In scope | P11-FEAT-GATEWAY-CORE | E2 |
-| Test Strategy v1.4 §13 | “Gateway server-side revalidation (§9D) tested via direct policy-violating requests to staging gateway.” | In scope | P11-FEAT-GATEWAY-TOOLS | E8, E12 |
-| Test Strategy v1.4 §13 | “optimus_api_key never appears in plaintext in logs, telemetry, repr(), str(), or model_dump() — confirmed by log scan post-run.” | In scope | P11-FEAT-GATEWAY-CORE | E1, E5, E7 |
-| Test Strategy v1.4 §13 | “EvidenceRequest.query sent verbatim — confirmed by request capture in integration tests.”<br>“EvidenceLedger.total_cost_usd() reconciles against sum of GatewayUsage.cost_usd values — delta < $0.000001.”<br>“EvidenceLedger.total_billing_units() reconciles against sum of GatewayUsage.billing_units.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E3, E4 |
-| Test Strategy v1.4 §13 | “Aggregate Python production-code coverage ≥ 80% in CI (coverage.py + pytest-cov); safety-critical modules trend higher and do not regress (see §8A).”<br>“LangSmith trace assertions pass: every run emits the required trace fields; LangSmith credentials are sourced from the Gateway / deployment layer, never local config.” | In scope | P11-FEAT-GATEWAY-CORE / Test Strategy §8A | E5, E9 |
-| Test Strategy v1.4 §13 | “RedisTimeSeries TS.CREATE + TS.ALTER idempotency confirmed on both new and pre-existing keys.”<br>“Run metadata hash written at workflow completion with correct execution_mode, rigor_level, and assumption ledger count.” | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
-| Test Strategy v1.4 §13 | “RELEASE GATE: Agent completes a full Plan-mode and Agent-mode run with only OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY present. No provider API key (Tavily, OpenAI, OpenRouter, GLM, LangSmith, or any other upstream credential) is resolvable from the local environment, config files, or process state at any point during the run. This gate supersedes all others and must pass before the sprint is marked complete.” | In scope | P11-FEAT-GATEWAY-CORE | E1 |
+| HLD v2.16 §12, p.12 | Phase 1 requires at least 80% Python production-code coverage, with higher expectations for safety-critical modules; coverage is a release gate. | In scope | P11-FEAT-GATEWAY-COST-OBS | E9 |
+| HLD v2.16 §12, p.12 | DeepEval/Ragas/PyRIT and OTel/OTLP trace validation are separate quality, safety, and observability gates and do not count as coverage. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5, E9 |
 
-## Tier 4 — preserve-only constraints
-
-### HLD v2.15 §5 — 2 rows
+### LLD v2.39 §9 - 2 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| HLD v2.15 §5 | “Attribution calculations bypass tokeniser estimators, treating the provider usage response as the primary request-level cost record, supported by versioned pricing snapshots.” | In scope | Implemented by Plan 7 / P11-FEAT-GATEWAY-COST-OBS preserve | E4 |
-| HLD v2.15 §5 | “All gateway usage fields — gateway_request_id, provider, cache_hit, billing_units, and cost_usd — are parsed directly from the gateway response envelope, never estimated post-hoc.” | In scope | Implemented by Plan 7 / P11-FEAT-GATEWAY-COST-OBS preserve | E4 |
+| LLD v2.39 §9, carried body | Tool use is policy-driven first and model-requested second; the harness decides whether evidence is permitted, necessary, and cost-justified. | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
+| LLD v2.39 §9, carried body | The typed tool registry, deterministic invocation matrix, and Evidence Ledger record every external lookup alongside the Assumption Ledger. | In scope | P11-FEAT-GATEWAY-TOOLS / P11-FEAT-GATEWAY-COST-OBS | E3, E4 |
 
-### HLD v2.15 §8 — 3 rows
-
-| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
-|---|---|---|---|---|
-| HLD v2.15 §8 | “Optimus treats tool use as policy-driven first, model-requested second: the model may ask for evidence, but the harness alone decides whether a tool is allowed, necessary, and cost-justified.” | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3, E8 |
-| HLD v2.15 §8 | “Web evidence acquisition is wrapped behind Optimus-owned typed tools rather than exposing a third-party search API directly to the model.”<br>“This lets the harness enforce allowed domains, timeouts, retries, result caps, and cost telemetry uniformly.” | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3, E8 |
-| HLD v2.15 §8 | “Key rule: local evidence first, external evidence only when policy-triggered, mutation only after mode and fitness gates pass.” | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3, E8, E11 |
-
-### LLD v2.38 §0.E — 1 row
+### LLD v2.39 §9E - 6 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| LLD v2.38 §0.E, p.3 | “This boundary is strict.”<br>“Developer machine (local agent LLD): OPTIMUS_GATEWAY_URL, OPTIMUS_API_KEY (or OAuth session); production_mode flag; enterprise origins via signed tenant profile only.”<br>“Gateway / Vault (server-side only): tavily_api_key, openai_api_key, openrouter_api_key, etc.” | In scope | Implemented by Plan 3 / P11-FEAT-GATEWAY-CORE preserve | E1, E7 |
+| LLD v2.39 §9E, carried body | Every external lookup is recorded with source, policy signal, and reason code so architectural claims can be traced to evidence. | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E4 |
+| LLD v2.39 §9E, carried body | Gateway request ID, provider, cache, billing units, and `cost_usd` come directly from the validated Gateway response. | In scope | P11-FEAT-GATEWAY-COST-OBS | E3, E4 |
+| LLD v2.39 §9E, carried body | The ledger exposes backward-compatible credits, provider-native billing units, and primary `total_cost_usd()` reconciliation. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
+| LLD v2.39 §9E, carried body | Local evidence is first; external evidence is policy-triggered; mutation follows mode and fitness gates. | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8, E11 |
+| LLD v2.39 §9E, carried body | `ToolRegistry.authorize_and_record_call` atomically enforces mode, policy signal, and per-run call ceiling. | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
+| LLD v2.39 §9E, carried body | Evidence and cost ledgers remain separate and join on `gateway_request_id`; their totals reconcile. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
 
-### LLD v2.38 §9A — 2 rows
-
-| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
-|---|---|---|---|---|
-| LLD v2.38 §9A, p.24 | “PACKAGE_AND_ADVISORY_METADATA” | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3, E10 |
-| LLD v2.38 §9A, p.24 | “PACKAGE_VERSION”<br>“SECURITY_ADVISORY” | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3, E10 |
-
-### LLD v2.38 §9B — 3 rows
+### LLD v2.39 §10A - 7 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| LLD v2.38 §9B, p.25 | “PACKAGE_AND_ADVISORY_METADATA deliberately covers both package-registry lookups (PyPI, npm, Maven Central) and security-advisory lookups (OSV.dev, GitHub advisories); both are read-only, policy-triggered, and keyed by a package or CVE identifier, so a single tool class keeps the registry simple while the signal name (TASK_TOUCHES_DEPENDENCIES vs TASK_TOUCHES_SECURITY_CVE) distinguishes the input.” | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3, E8, E10 |
-| LLD v2.38 §9B, p.26 | “query must be a non-empty search string; reason is metadata only and must never be sent as the query.” | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3 |
-| LLD v2.38 §9B, p.26 | “Advanced search depth is capped to 5 results to bound per-call credit cost.” | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3 |
+| LLD v2.39 §10A, carried body | `GatewayUsage` remains the wire-level envelope returned on every billable call. | In scope | P11-FEAT-GATEWAY-COST-OBS | E2, E4 |
+| LLD v2.39 §10A, carried body | `ProviderUsage` is the canonical persisted superset carrying GatewayUsage fields plus normalization fields. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
+| LLD v2.39 §10A, carried body | Usage accounting stores provider-native units and normalized USD semantics for every request. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
+| LLD v2.39 §10A, carried body | Evidence audit joins the cost ledger on `gateway_request_id` without duplicating normalized cost fields. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
+| LLD v2.39 §10A, carried body | Cross-run budget authority remains P9.85-FU-3; local current-run budget evidence is retained without inventing a second policy. | Deferred -> P9.85-FU-3 (architecture-unblocked; implementation unscheduled) | P9.85-FU-3 | E12 |
+| LLD v2.39 §10A, carried body | The USD rename carries the normalized USD figure into run telemetry and RedisTimeSeries without legacy credit-named fields. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E5 |
+| LLD v2.39 §10A, carried body | Trace records retain run/request/mode/scope/model/provider/cache/USD/billing/policy/tool/validation/failure fields through authenticated OTel/OTLP ingress. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
 
-### LLD v2.38 §9C — 4 rows
-
-| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
-|---|---|---|---|---|
-| LLD v2.38 §9C, p.26–29 | “In the current Gateway-centric architecture, the local agent no longer holds any provider API key. Authentication to all downstream services (Tavily, OSV, package registries) is handled by the Optimus AI Gateway. The local agent supplies only its Optimus credential; the gateway resolves the provider route and injects its own Vault-held keys server-side.” | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E1, E3, E7 |
-| LLD v2.38 §9C, p.26–29 | “Extract is a follow-up on evidence the harness has already seen, never an independent fetch of arbitrary URLs.”<br>“Extract requested for URLs outside the prior approved search-result set” | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
-| LLD v2.38 §9C, p.29 | “urls: list[str] = Field(..., min_length=1, max_length=10)”<br>“max_chars_per_source: int = Field(default=4000, gt=0, le=20000)”<br>“URLs must not contain duplicates.” | In scope | P11-FEAT-GATEWAY-TOOLS | E3 |
-| LLD v2.38 §9C, p.28–30 | “gateway_request_id = usage_env.get("gateway_request_id", "")”<br>“provider = usage_env.get("provider", "tavily")”<br>“provider_request_id = usage_env.get("provider_request_id")”<br>“cache_hit = usage_env.get("cache_hit", False)”<br>“billing_units = usage_env.get("credits", 0)”<br>“cost_usd = usage_env.get("cost_usd", 0.0)” | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-COST-OBS preserve | E3, E4 |
-
-### LLD v2.38 §10 — 3 rows
+### LLD v2.39 §11A - 5 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| LLD v2.38 §10, p.33–34 | “TimeSeries Policy Lifetime Management: Keys feature an explicit retention window matching standard 30-day corporate storage stability intervals.” | In scope | Implemented by Plan 7 / P11-FEAT-GATEWAY-COST-OBS preserve | E5 |
-| LLD v2.38 §10, p.33–34 | “if os.path.exists(self.pricing_path):”<br>“is_fallback_pricing = True”<br>“model_rates = default_rates”<br>“c_key = f"telemetry:run:{run_id}:metrics:cost_usd"”<br>“i_key = f"telemetry:run:{run_id}:metrics:tokens_input"”<br>“o_key = f"telemetry:run:{run_id}:metrics:tokens_output"” | In scope | Implemented by Plan 7 / P11-FEAT-GATEWAY-COST-OBS preserve | E4, E5 |
-| LLD v2.38 §10, p.33–34 | “await pipe.hset(h_key, mapping={ "execution_mode": state_metadata.get("execution_mode", "PLAN"), "generation_scope": state_metadata.get("generation_scope", "INLINE_SNIPPET"), "rigor_level": state_metadata.get("rigor_level", "LOW"), "user_approval_id": state_metadata.get("user_approval_id", "unauthorized_direct_run"), "assumption_count": str(len(assumptions_list)), })”<br>“await pipe.expire(h_key, 2592000)” | In scope | Implemented by Plan 7 / P11-FEAT-GATEWAY-COST-OBS preserve | E5 |
+| LLD v2.39 §11A, carried body | Test Strategy §8A is authoritative for coverage, measurement taxonomy, and trace observability. | In scope | P11-FEAT-GATEWAY-COST-OBS | E9 |
+| LLD v2.39 §11A, carried body | Coverage uses `coverage.py` and `pytest-cov`; the Phase 1 gate is at least 80% aggregate with no safety-critical regression. | In scope | P11-FEAT-GATEWAY-COST-OBS | E9 |
+| LLD v2.39 §11A, carried body | DeepEval/Ragas and PyRIT remain separate quality/security suites, not coverage metrics. | In scope | P11-FEAT-GATEWAY-COST-OBS | E9 |
+| LLD v2.39 §11A, carried body | Critical quality/security failures can block release through separate gates. | In scope | P11-FEAT-GATEWAY-COST-OBS | E9 |
+| LLD v2.39 §11A, carried body | Authoritative thresholds, CI commands, evals, red-team tests, OTel assertions, and release gates live in Test Strategy. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5, E9 |
 
-### LLD v2.38 §12C — 3 rows
+### LLD v2.39 §12 - 2 rows
 
 | Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
 |---|---|---|---|---|
-| LLD v2.38 §12C, p.39 | “Persistent state lives in files, git history, task manifests, traces, and the evidence ledger (§9E), not in an ever-growing chat context.” | In scope | Implemented by Plan 9 / P11-FEAT-GATEWAY-COST-OBS preserve | E4, E5 |
-| LLD v2.38 §12C, p.39 | “The pre-tool guard (§12A) is never bypassed inside a loop, and the completion evaluator is a cheap Gateway-routed model, not the main reasoning model.” | In scope | Implemented by Plan 9 / P11-FEAT-GATEWAY-CORE preserve | E2, E8 |
-| LLD v2.38 §12C, p.39 | “LoopBudgetPolicy (max_iterations, max_budget_credits, max_wall_clock_minutes)” | Deferred → P9.85-FU-3 (parked; operator decision pending) | Implemented by Plan 9 / P9.85-FU-3 | E12 |
+| LLD v2.39 §12, p.39 | Borderline classifiers and loop completion evaluators route through the loopback Gateway and normalized USD ledger. | In scope | P11-FEAT-GATEWAY-CORE | E2, E4 |
+| LLD v2.39 §12, p.39 | Guardrails add no second cost path; cross-run budget authority remains P9.85-FU-3. | Deferred -> P9.85-FU-3 (architecture-unblocked; implementation unscheduled) | P9.85-FU-3 | E12 |
 
-## Named findings and decisions required
+### Guardrails v1.1 §7 - 1 row
 
-1. **Budget authority is a real scope finding, not an implementation detail.** HLD §5A and §11, LLD §0.B, §9D, §10A, and §12, Guardrails §7, §7.2, and §9, LLD §12C, and Test Strategy §9 assign Gateway budget authority or Gateway budget caps. Every such row is explicitly deferred to `P9.85-FU-3 (parked; operator decision pending)`. The Gateway inventory does not scope, implement, or silently discard budget enforcement. The operator must decide whether Gateway work organically reaching cost policy unparks `P9.85-FU-3`.
+| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
+|---|---|---|---|---|
+| Guardrails v1.1 §7, p.11 | `max_budget_usd` is enforced by the same local Gateway USD budget policy as every other call and reconciled from provider-reported cost. | In scope | P11-FEAT-GATEWAY-CORE / Plan 9 | E4, E6 |
 
-2. **LLD §0.B remains blocked.** The rendered component-flow block is clipped at the page boundary around `/v1/tools/web/extract`. The affected continuation is recorded as `unextractable-pending-repair` and assigned to `P11-FU-3`; no clipped line was reconstructed. The visible `Cost Ledger / Budget Engine (enforces spend caps, attribution)` line is separately recorded as a budget-authority requirement.
+### Guardrails v1.1 §7.2 - 5 rows
 
-3. **Package lookup and security advisory defer to `P11-FU-2`.** They are authoritative LLD §0.D endpoint requirements with supporting §9A/§9B class and routing constraints. They are owned by `P11-FEAT-GATEWAY-TOOLS` but remain open and unscheduled; they are not folded into the current CORE slice and do not inherit `P9.85-FU-3`'s parked state.
+| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
+|---|---|---|---|---|
+| Guardrails v1.1 §7.2, p.10 | Persistent state lives in files, git history, task manifests, traces, and the evidence ledger, not an ever-growing chat context. | In scope | P11-FEAT-GATEWAY-COST-OBS / Plan 9 | E4, E5 |
+| Guardrails v1.1 §7.2, p.10 | Every loop has hard `max_iterations`, USD-budget, wall-clock, and explicit-completion bounds. | In scope | P11-FEAT-GATEWAY-CORE / Plan 9 | E11 |
+| Guardrails v1.1 §7.2, p.10 | Each iteration writes evidence, verifies a clean git diff, and leaves the pre-tool guard active. | In scope | P11-FEAT-GATEWAY-TOOLS / Plan 9 | E3, E11 |
+| Guardrails v1.1 §7.2, p.10 | Human approval is required for escalation and repeated identical failures stop the loop. | In scope | P11-FEAT-GATEWAY-TOOLS / Plan 9 | E8, E11 |
+| Guardrails v1.1 §7.2, p.10 | The completion evaluator is a cheap model through the strict-loopback Gateway and fails closed on missing/malformed usage or cost. | In scope | P11-FEAT-GATEWAY-COST-OBS | E2, E4 |
 
-4. **The second model shape is in scope as a served Gateway route/schema contract.** `/v1/chat/completions` must accept an actual `POST` with a `messages` array; `/v1/responses` uses `input`; and the do-not-mix validator rule is independently specified and tested in both directions, even though the current local caller uses `/v1/responses`.
+### Test Strategy v1.5 §8 - 6 rows
 
-5. **MCP brokering is an explicit source-contract gap.** LLD §0.C names MCP tool brokering, but LLD §0.D supplies no MCP endpoint shape. This inventory excludes an inferred MCP route, assigns the gap to `P11-FU-3` / `LLD source repair`, and preserves Plan 6.5’s local MCP trust boundary; it is not redefined as a Gateway API here.
+| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
+|---|---|---|---|---|
+| Test Strategy v1.5 §8, carried body | `total_cost_usd()` sums ledger cost and returns zero on an empty ledger; billing-unit totals reconcile provider-native units. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
+| Test Strategy v1.5 §8, carried body | GatewayUsage identity, cache, billing, and USD fields propagate to append-only ledger entries. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
+| Test Strategy v1.5 §8, carried body | Pricing fallback/staleness emits an audit signal and does not replace provider-reported usage authority. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4, E5 |
+| Test Strategy v1.5 §8, carried body | RedisTimeSeries creation, retention, idempotent alteration, and tagged TS.ADD are verified. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
+| Test Strategy v1.5 §8, carried body | Run metadata hash records execution mode, generation scope, rigor level, assumption count, and a 30-day TTL. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
+| Test Strategy v1.5 §8, carried body | EvidenceLedger USD and billing-unit totals reconcile to GatewayUsage values within the stated delta. | In scope | P11-FEAT-GATEWAY-COST-OBS | E4 |
 
-6. **The three-way partition is ratified for planning.** The approved identities and boundaries are:
+### Test Strategy v1.5 §8A - 5 rows
 
-   - `P11-FEAT-GATEWAY-CORE`: one-key boundary, origin/secrets, model routing, both model wire shapes, schema rejection, retries, normalized response-envelope validation, and `/v1/observability/traces` route serving.
-   - `P11-FEAT-GATEWAY-TOOLS`: web search/extract adapters, provenance/domain revalidation, typed-tool envelopes, Plan 4 compatibility, and the explicit `P11-FU-2` package/security custody.
-   - `P11-FEAT-GATEWAY-COST-OBS`: provider-native usage normalization, ledger reconciliation, LangSmith trace export, observability fields, and Plan 7 telemetry compatibility.
+| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
+|---|---|---|---|---|
+| Test Strategy v1.5 §8A, p.8 | Test Strategy is authoritative for the Phase 1 coverage target, measurement taxonomy, and trace observability. | In scope | P11-FEAT-GATEWAY-COST-OBS | E9 |
+| Test Strategy v1.5 §8A, p.8 | Production Python coverage is at least 80% in CI via `coverage.py` and `pytest-cov`; safety-critical modules must not regress. | In scope | P11-FEAT-GATEWAY-COST-OBS | E9 |
+| Test Strategy v1.5 §8A, p.8 | Required trace fields include run/request/mode/scope/model/provider/cache/USD/billing/policy/tool/validation/failure attribution. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
+| Test Strategy v1.5 §8A, p.8 | Phoenix is the documented default for a real OTel/OTLP evidence tier; backend APIs are not the instrumentation contract. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
+| Test Strategy v1.5 §8A, p.8 | Coverage, quality, adversarial, and trace suites are tracked separately; no LangSmith dependency or amortized per-request charge exists. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5, E9 |
 
-   `P11-FEAT-GATEWAY-CORE` is Plan 11.1. The `-TOOLS` and `-COST-OBS` identities are ratified, but their Plan 11.x numbers are assigned at pickup.
+### Test Strategy v1.5 §9 - 5 rows
 
-7. **The original Gateway slice is too broad for one implementation plan.** The inventory supports
-   the ratified split at the boundaries above: CORE closes the routing, model-shape, trust,
-   retry, envelope, and observability-route gate; TOOLS owns web/tool policy and the explicitly
-   deferred package/advisory capability; COST-OBS owns normalization, ledger reconciliation, and
-   trace/cost export. No new `P11-FEAT-*` ID or plan number is minted by this extraction.
+| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
+|---|---|---|---|---|
+| Test Strategy v1.5 §9, p.9 | Transient Gateway errors retry up to three attempts; rate limits use exponential backoff with jitter. | In scope | P11-FEAT-GATEWAY-CORE | E6 |
+| Test Strategy v1.5 §9, p.9 | Permanent Gateway and policy errors abort immediately with a failure report/escalation signal. | In scope | P11-FEAT-GATEWAY-CORE | E6, E8 |
+| Test Strategy v1.5 §9, p.9 | Budget exhaustion aborts the run, records USD at abort, flushes partial telemetry, and produces no partial file writes. | In scope | P11-FEAT-GATEWAY-CORE / Plan 9 | E4, E11 |
+| Test Strategy v1.5 §9, p.9 | Exceeded retry budget returns `ESCALATE_TO_USER` with prior failures. | In scope | P11-FEAT-GATEWAY-CORE | E6 |
+| Test Strategy v1.5 §9, p.9 | 503 retry and fitness-failure scenarios prove no mutation before success and targeted replanning on later attempts. | In scope | P11-FEAT-GATEWAY-CORE / Plan 9 | E6, E11 |
+
+### Test Strategy v1.5 §10 - 3 rows
+
+| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
+|---|---|---|---|---|
+| Test Strategy v1.5 §10, p.9 | Empty evidence query and zero extract limit fail validation before any Gateway call. | In scope | P11-FEAT-GATEWAY-TOOLS | E3 |
+| Test Strategy v1.5 §10, p.9 | Empty API key, negative billing units, and negative USD cost fail validation. | In scope | P11-FEAT-GATEWAY-CORE | E2, E7 |
+| Test Strategy v1.5 §10, p.9 | ACP framing and Pydantic v2 validators reject malformed boundary inputs before processing. | In scope | P11-FEAT-GATEWAY-CORE | E2, E3 |
+
+### Test Strategy v1.5 §13 - 8 rows
+
+| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
+|---|---|---|---|---|
+| Test Strategy v1.5 §13, p.12 | Strict-loopback topology and WSL2 same-namespace evidence pass the transport release gate. | In scope | P11-FEAT-GATEWAY-CORE | E1, E7 |
+| Test Strategy v1.5 §13, p.12 | Both completion shapes validate and mixed shapes fail. | In scope | P11-FEAT-GATEWAY-CORE | E2 |
+| Test Strategy v1.5 §13, p.12 | Direct server-side policy revalidation is exercised against the real loopback Gateway. | In scope | P11-FEAT-GATEWAY-TOOLS | E8 |
+| Test Strategy v1.5 §13, p.12 | Secrets never appear in plaintext in logs, telemetry, repr, serialization, state, responses, child environments, or errors. | In scope | P11-FEAT-GATEWAY-CORE | E1, E5, E7 |
+| Test Strategy v1.5 §13, p.12 | Search input is captured verbatim and ledger USD/billing totals reconcile to GatewayUsage. | In scope | P11-FEAT-GATEWAY-COST-OBS | E3, E4 |
+| Test Strategy v1.5 §13, p.12 | Coverage is at least 80% and safety-critical modules do not regress; OTel/OTLP trace fields and redaction are asserted separately. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5, E9 |
+| Test Strategy v1.5 §13, p.12 | RedisTimeSeries schema operations are idempotent and run metadata records execution mode, rigor, and assumption count. | In scope | P11-FEAT-GATEWAY-COST-OBS | E5 |
+| Test Strategy v1.5 §13, p.12 | Release runs complete in Plan and Agent modes with only the two agent-facing variables; no upstream key is resolvable in the agent process. | In scope | P11-FEAT-GATEWAY-CORE | E1 |
+
+## Tier 4 - preserve-only constraints
+
+### HLD v2.16 §5 - 2 rows
+
+| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
+|---|---|---|---|---|
+| HLD v2.16 §5, carried body | Provider usage response is the primary request-level cost record; attribution does not estimate tokens post hoc. | In scope | Implemented by Plan 7 / P11-FEAT-GATEWAY-COST-OBS preserve | E4 |
+| HLD v2.16 §5, carried body | Gateway usage fields are parsed directly from the response envelope and retained in the normalized ledger. | In scope | Implemented by Plan 7 / P11-FEAT-GATEWAY-COST-OBS preserve | E4 |
+
+### HLD v2.16 §8 - 3 rows
+
+| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
+|---|---|---|---|---|
+| HLD v2.16 §8, carried body | Tool use is policy-driven first and model-requested second; the harness alone decides whether a tool is allowed, necessary, and cost-justified. | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3, E8 |
+| HLD v2.16 §8, carried body | Web evidence is wrapped behind Optimus-owned typed tools so domains, timeouts, retries, caps, and telemetry are uniform. | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3, E8 |
+| HLD v2.16 §8, carried body | Local evidence is first; external evidence is policy-triggered; mutation follows mode and fitness gates. | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3, E8, E11 |
+
+### LLD v2.39 §0.E - 1 row
+
+| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
+|---|---|---|---|---|
+| LLD v2.39 §0.E, p.3 | The strict boundary gives the agent only the loopback URL and API secret; Gateway-side configuration holds the aggregator key, domains, Redis, and optional OTLP endpoint, with no hosted origin or non-loopback mode. | In scope | Implemented by Plan 3 / P11-FEAT-GATEWAY-CORE preserve | E1, E7 |
+
+### LLD v2.39 §9A - 2 rows
+
+| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
+|---|---|---|---|---|
+| LLD v2.39 §9A, carried body | `PACKAGE_AND_ADVISORY_METADATA` remains the shared read-only tool class. | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3, E10 |
+| LLD v2.39 §9A, carried body | `PACKAGE_VERSION` and `SECURITY_ADVISORY` remain the package/CVE reason classes. | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3, E10 |
+
+### LLD v2.39 §9B - 3 rows
+
+| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
+|---|---|---|---|---|
+| LLD v2.39 §9B, carried body | Package and advisory lookup covers public PyPI/npm/Maven registries and OSV advisories; both are read-only and policy-triggered. | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3, E10 |
+| LLD v2.39 §9B, carried body | Query is a non-empty search string; the reason is metadata and is never sent as the query. | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3 |
+| LLD v2.39 §9B, carried body | Lookup depth remains capped to bound the operation; package and OSV routes are independent of search configuration. | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E3 |
+
+### LLD v2.39 §9C - 4 rows
+
+| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
+|---|---|---|---|---|
+| LLD v2.39 §9C, carried body | The local agent authenticates only to the loopback Gateway; provider mechanics remain behind typed Gateway routes. | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-TOOLS preserve | E1, E3, E7 |
+| LLD v2.39 §9C, carried body | Extract follows a prior approved search result in the same run and never fetches an arbitrary URL. | In scope | P11-FEAT-GATEWAY-TOOLS | E3, E8 |
+| LLD v2.39 §9C, carried body | Extract requests have bounded URL count, character count, and duplicate checks. | In scope | P11-FEAT-GATEWAY-TOOLS | E3 |
+| LLD v2.39 §9C, carried body | Search/extract responses carry Gateway/provider request identity, cache, billing, and provider-reported USD fields. | In scope | Implemented by Plan 4 / P11-FEAT-GATEWAY-COST-OBS preserve | E3, E4 |
+
+### LLD v2.39 §10 - 3 rows
+
+| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
+|---|---|---|---|---|
+| LLD v2.39 §10, carried body | TimeSeries keys retain an explicit 30-day corporate storage window. | In scope | Implemented by Plan 7 / P11-FEAT-GATEWAY-COST-OBS preserve | E5 |
+| LLD v2.39 §10, carried body | Pricing fallback signals and cost/token series remain auditable without replacing provider-reported cost. | In scope | Implemented by Plan 7 / P11-FEAT-GATEWAY-COST-OBS preserve | E4, E5 |
+| LLD v2.39 §10, carried body | Run metadata stores execution mode, scope, rigor, approval identity, assumption count, and a 30-day TTL. | In scope | Implemented by Plan 7 / P11-FEAT-GATEWAY-COST-OBS preserve | E5 |
+
+### LLD v2.39 §12C - 3 rows
+
+| Citation | Normative statement | Disposition | Owning feature/source ID | Evidence target |
+|---|---|---|---|---|
+| LLD v2.39 §12C, carried body | Persistent state lives in files, git history, manifests, traces, and the evidence ledger, not in unbounded chat context. | In scope | Implemented by Plan 9 / P11-FEAT-GATEWAY-COST-OBS preserve | E4, E5 |
+| LLD v2.39 §12C, carried body | The pre-tool guard is never bypassed inside a loop, and the completion evaluator is a cheap Gateway-routed model. | In scope | Implemented by Plan 9 / P11-FEAT-GATEWAY-CORE preserve | E2, E8 |
+| LLD v2.39 §12C, carried body | Loop budget fields use the current USD naming; cross-run budget authority is architecture-unblocked but implementation-unscheduled under P9.85-FU-3. | Deferred -> P9.85-FU-3 (architecture-unblocked; implementation unscheduled) | Implemented by Plan 9 / P9.85-FU-3 | E12 |
+
+## Named findings and decisions
+
+1. **Aggregator thesis retained and retargeted.** OpenRouter is the default upstream for models and deterministic search while the plugin remains accepted; Vercel is a bounded second model endpoint pending a modest Python transport check and moves to backlog if that check is more than modest. Search is a separate minimal model call and never attaches to the main generation call.
+2. **Search replacement is conditional.** The spike measured annotations, domain enforcement, citation structure, provider-reported cost, and direct fetch/extract. The deterministic plugin is deprecated, so release needs a live compatibility gate. Tavily remains rollback-only until replacement acceptance and rollback review pass; it is not the primary architecture.
+3. **Tool capabilities are independent.** The current `build_tool_dependencies()` behavior returns `None` when `TAVILY_API_KEY` is absent, which hides all four routes. That hard gate must be removed regardless of the selected backend: search, extract, package, and OSV receive independent capability construction, and package/OSV remain usable without a search credential.
+4. **Strict loopback is the trust boundary.** The agent has only the two agent-facing variables. The Gateway owns the aggregator credential, policy, budget, upstream egress, and OTel/OTLP ingress/export. There is no hosted-origin, tenant, OAuth, or non-loopback contract.
+5. **MCP disposition is unchanged.** The local MCP trust contract may remain in the guardrail/LLD contract, but no Gateway MCP endpoint is shown or implied. `P11-FU-3` remains open and `P11-FEAT-GATEWAY-MCP` remains blocked.
+6. **Observability is OTel-native.** Phoenix is the documented local default; LangSmith is absent from the architecture/dependency set, and no allocated or amortized per-request observability charge is invented.
+7. **Budget custody is explicit.** Current-run USD checks and provider-reported cost are current requirements; the cross-run budget-policy implementation remains architecture-unblocked and unscheduled under `P9.85-FU-3`.
+8. **Package/advisory custody is explicit.** `P11-FU-2` owns the independent PyPI/npm/Maven and OSV routes; this inventory does not fold them into the core model lane.
+9. **Determinism is a design constraint.** OpenRouter's web plugin searches and injects annotations deterministically; Vercel's documented `exaSearch` path is a model-elected tool call. The latter cannot satisfy the harness-gated evidence-first contract without a separate verified-or-fail release gate.
+10. **Extraction is bounded and untrusted.** The spike proves plain HTTPS fetch plus HTML-to-text feasibility, but production still needs redirect-by-redirect authorization, SSRF-safe resolution, streaming/size limits, media/encoding checks, and adversarial-HTML tests.
+11. **Pricing is not optimized here.** The spike records provider-reported cost and documents engine options, but volume is too low to justify a comparison matrix or engine-price optimization.
 
 ## Verification record
 
-- SHA-256 re-verification: four source digests matched the map.
-- Tier 1: 83 rows across the remediated owned sections; extracted to exhaustion.
-- Tier 2: 19 rows across §0.B, §0.C, and §0.D; extracted to exhaustion, with §0.B explicitly blocked and every unowned item disposed.
-- Tier 3: 68 Gateway-relevant intersection rows; all requested sections traced, including Guardrails §7 and all four HLD §10.D cost-control points.
-- Tier 4: 21 preserve-only rows; one-key boundary, Plan 4 wrapper and package/advisory constraints, Plan 7 ledger/telemetry contract, and Plan 9 Gateway evaluator boundary retained.
-- No blank disposition exists in the inventory.
-- All 13 budget-authority rows use the exact deferred disposition `Deferred → P9.85-FU-3 (parked; operator decision pending)`; full source prose is retained in both sides of each budget-separation pair.
-- Stage 1/2 custody and partition: `P11-FU-2` and `P11-FU-3` are owned backlog entries; the
-  charter and roadmap ratify CORE, TOOLS, and COST-OBS without minting new IDs or plan numbers.
-- No frozen specification or implementation file was changed; the charter and roadmap amendment is recorded separately by Stage 1 of this handoff.
+- Four repaired PDF digests and page counts match the authoritative section map.
+- Text extraction was checked through bundled `pypdf` and an independent WSL2 Poppler path; restored sections and the repaired LLD §0.B flow are present.
+- Tier 1 = 83 rows, Tier 2 = 19 rows, Tier 3 = 68 rows, Tier 4 = 21 rows; total = 191 rows.
+- Every inventory row has a non-empty disposition, owner, and evidence target.
+- Every explicitly cross-run budget-policy row uses `Deferred -> P9.85-FU-3 (architecture-unblocked; implementation unscheduled)`; current-run USD caps and loop budgets remain `In scope`. No row uses the superseded parked/operator-pending wording.
+- Package/advisory routes remain independently owned by `P11-FU-2`; the MCP gap remains `P11-FU-3` with no inferred endpoint.
+- Stale-reference sweep is clean for affirmative hosted-service, tenant-wallet, OAuth/device, and retired observability contracts; any remaining terms are explicit negative statements in the current source.

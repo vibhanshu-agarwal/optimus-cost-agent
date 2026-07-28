@@ -1345,6 +1345,38 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.run_openrouter_web_search_spike:_post_chat:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional HTTPS request serialization sends only the bounded model, query, token limit, temperature, and web-plugin configuration to OpenRouter. The credential remains in the Authorization header, and the serialized request is not logged or persisted.",
+      "sanitizer": "bounded spike request schema; no diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_openrouter_web_search_spike:main:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "The caught extract exception is limited to the HTTPS docs.python.org allowlisted fetch path and is placed only in the schema-limited spike report; provider response bodies, credentials, assistant content, and extracted source text have no field in that report.",
+      "sanitizer": "schema-limited experimental report; no credential or source-content field",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_openrouter_web_search_spike:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "The spike report serializes measured counts, hashes, timings, public citation metadata, usage, and bounded configuration only. Credentials, assistant text, citation content, and extracted page text are deliberately omitted.",
+      "sanitizer": "schema-limited experimental report; content represented by counts and SHA-256 digests",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_openrouter_web_search_spike:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Standard output receives only the schema-limited spike report described above; it excludes credentials, assistant text, citation content, and extracted page text.",
+      "sanitizer": "schema-limited experimental report; content represented by counts and SHA-256 digests",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.tool_providers:TavilyWebToolProvider._post_json:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Functional provider request serialization sends the API key only in the HTTPS request body to the configured Gateway-owned Tavily endpoint; the adapter never logs or exports the serialized payload.",

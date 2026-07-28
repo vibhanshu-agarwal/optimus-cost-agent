@@ -1,0 +1,177 @@
+{
+  "toolchain": {
+    "platform": "WSL2 Ubuntu-24.04",
+    "pandoc": "3.1.3",
+    "weasyprint": "61.1",
+    "poppler": "24.02.0",
+    "fonts": [
+      "DejaVu Sans",
+      "DejaVu Sans Mono",
+      "Lato",
+      "Liberation Sans (fallback only)"
+    ],
+    "ocr": false,
+    "mermaid_cli": false
+  },
+  "documents": [
+    {
+      "name": "HLD",
+      "source_pdf": "docs/Optimus-Cost-Agent-Architecture-v2.15.pdf",
+      "changed_source": "docs/sources/local-gateway-architecture-v3/hld-v2.16-changed-pages.md",
+      "replacement_pages": [
+        1,
+        3,
+        4,
+        7,
+        9,
+        10,
+        11,
+        12
+      ],
+      "output_pdf": "docs/Optimus-Cost-Agent-Architecture-v2.16.pdf",
+      "metadata_title": "Optimus-Cost-Agent - Architecture v2.16",
+      "page_header": "Optimus-Cost-Agent - Architecture v2.16",
+      "critical_text": [
+        "OpenRouter is the default aggregator",
+        "deterministic search"
+      ],
+      "inline_text_replacements": [
+        {
+          "page": 2,
+          "x": 437.79316,
+          "y": 673.7097,
+          "erase_width": 28.5,
+          "erase_height": 12.5,
+          "font_size": 9.6,
+          "text": "v2.16"
+        }
+      ],
+      "expected_pages": 13,
+      "sha256": "6C2C98FE2327A6C466CAD3EB1800335EB59F0E1F65B2CB8E1E3401D7CFA05801",
+      "completeness": {
+        "exceptions": [],
+        "forbidden_markers": []
+      }
+    },
+    {
+      "name": "LLD",
+      "source_pdf": "docs/Optimus-Cost-Agent-LLD-v2.38.pdf",
+      "changed_source": "docs/sources/local-gateway-architecture-v3/lld-v2.39-changed-pages.md",
+      "replacement_pages": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        20,
+        21,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40
+      ],
+      "output_pdf": "docs/Optimus-Cost-Agent-LLD-v2.39.pdf",
+      "metadata_title": "Optimus-Cost-Agent - LLD v2.39",
+      "page_header": "Optimus-Cost-Agent - LLD v2.39",
+      "critical_text": [
+        "UrllibOpenAICompatibleClient",
+        "Phoenix"
+      ],
+      "expected_pages": 40,
+      "carried_image_backed_pages": [
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        15,
+        16,
+        17,
+        18,
+        19,
+        22,
+        23,
+        24,
+        25
+      ],
+      "sha256": "82513729FD1A6E87FAD310DD90A18C996981B68024204E56CCA65377495585DE",
+      "completeness": {
+        "exceptions": [],
+        "forbidden_markers": []
+      }
+    },
+    {
+      "name": "Test Strategy",
+      "source_pdf": "docs/Optimus-Cost-Agent-Test-Strategy-v1.4.pdf",
+      "changed_source": "docs/sources/local-gateway-architecture-v3/test-strategy-v1.5-changed-pages.md",
+      "replacement_pages": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "output_pdf": "docs/Optimus-Cost-Agent-Test-Strategy-v1.5.pdf",
+      "metadata_title": "Optimus-Cost-Agent - Test Strategy v1.5",
+      "page_header": "Optimus-Cost-Agent - Test Strategy v1.5",
+      "critical_text": [
+        "Deterministic Search Compatibility Gate",
+        "OPTIMUS_API_KEY",
+        "Phoenix"
+      ],
+      "expected_pages": 14,
+      "sha256": "F3D744EC175B1E18E8B1E4E271997A0BB12666CC33CA7154A40BF5298588DA8D",
+      "completeness": {
+        "exceptions": [],
+        "forbidden_markers": []
+      }
+    },
+    {
+      "name": "Guardrails",
+      "source_pdf": "docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.0.pdf",
+      "changed_source": "docs/sources/local-gateway-architecture-v3/guardrails-v1.1-changed-pages.md",
+      "replacement_pages": [
+        1,
+        10,
+        11,
+        12
+      ],
+      "output_pdf": "docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.1.pdf",
+      "metadata_title": "Optimus-Cost-Agent - Agent Execution Guardrails and Workflow Strategy v1.1",
+      "page_header": "Optimus-Cost-Agent - Guardrails and Workflow v1.1",
+      "critical_text": [
+        "The completion evaluator must be"
+      ],
+      "allowed_historical_version_pages": [
+        16
+      ],
+      "expected_pages": 16,
+      "sha256": "27EF0657CCEC5568D3E3769C7320223D1BFE3CF6F4702564CBD0A8A391F11029",
+      "completeness": {
+        "exceptions": [],
+        "forbidden_markers": [
+          "identifier:max_budget_tokens"
+        ]
+      }
+    }
+  ]
+}
