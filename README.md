@@ -1,6 +1,6 @@
 # Optimus Cost Agent
 
-Local-first Python ACP (Agent Client Protocol) server for building **cost-aware AI agents**. All model and provider access routes through the **Optimus Gateway** so developers run with a single API key locally—no Tavily, OpenAI, OpenRouter, or other vendor credentials on the machine.
+Local-first Python ACP (Agent Client Protocol) server for building **cost-aware AI agents**. All model and provider access routes through the **local Optimus Gateway** so the agent process runs with a single API key; provider credentials stay isolated in the Gateway process.
 
 **Status:** Early initialization (Phase 1). Design docs and project standards are in place; application code is under active development.
 
@@ -32,13 +32,13 @@ violated.
 
 ### Phase 1 Gateway Configuration Foundation
 
-The gateway configuration foundation keeps the local runtime on the one-key
+The gateway configuration foundation keeps the agent process on the one-key
 model: `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY`. `OptimusGatewaySettings`
-validates trusted gateway origins, masks the Optimus API key in safe dumps and
-representations, rejects local provider keys in strict mode, and supports
-development-only extra trusted origins. The gateway client posts model requests
-to `/v1/responses` using the Responses API `input` shape and parses the
-GatewayUsage envelope before returning generated text.
+masks the Optimus API key in safe dumps and representations and rejects local
+provider keys. The current implementation still has a temporary origin-
+compatibility flag; the target contract is strict loopback. The gateway client
+posts model requests to `/v1/responses` using the Responses API `input` shape and
+parses the GatewayUsage envelope before returning generated text.
 
 ### Phase 1 Tool Policy and Evidence Foundation
 
@@ -108,8 +108,9 @@ joined by `gateway_request_id`. `EvidenceLedger` remains the audit trail for
 external evidence and reconciles against the provider usage ledger by cost,
 billing units, and request IDs. Local telemetry is append-only JSONL and Redis
 adapter writes are isolated behind TimeSeries/HASH boundaries. Trace export
-uses the Optimus Gateway `/v1/observability/traces` endpoint; LangSmith and
-provider credentials stay server-side and are never required locally.
+uses the Optimus Gateway `/v1/observability/traces` endpoint and the OTel/OTLP
+contract; Phoenix is the documented default, and provider credentials stay
+Gateway-side and are never required locally. LangSmith is not a dependency.
 
 ### Phase 1 Retry, Fitness Gates, Golden Tasks, and Release Gate
 
@@ -159,11 +160,11 @@ python tools/run_phase1_release_gate.py --golden-results reports/phase1-golden-r
 When `--golden-results` is omitted, `golden-task-suite` fails closed. A
 synthetic result file may be used for CLI wiring tests only. Sprint 1 sign-off
 requires result JSON captured from a real Optimus-only Plan-mode and Agent-mode
-run, or the release evidence must state that staging Gateway E2E was not run.
+run, or the release evidence must state that live Gateway E2E was not run.
 The final go/no-go rule is strict: a Plan-mode and Agent-mode release run must
 complete with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` available locally.
-Provider keys such as Tavily, OpenAI, OpenRouter, GLM, Anthropic, and LangSmith
-must remain Gateway-side. Plan 9 bounded loops and skill loading, and Plan 12
+Provider keys, including temporary Tavily migration credentials, remain Gateway-side; LangSmith is
+not a dependency. Plan 9 bounded loops and skill loading, and Plan 12
 context-window optimization gates, are out of scope for the Phase 1 golden
 fixture set described above.
 
@@ -495,6 +496,8 @@ override) that `optimus-agent`'s own auto-start path reads — see
 For this project the Optimus Gateway is a **local process you run yourself**, not a hosted
 service that issues credentials. The agent keeps the one-key model: only
 `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` in the agent environment.
+If the agent and Gateway run under WSL2, they must share the same WSL2 network namespace; a
+Windows-host Gateway is not loopback from an agent running inside WSL2.
 
 Use **two gitignored files** so agent and gateway secrets never mix:
 
@@ -525,13 +528,16 @@ OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0
 OPTIMUS_AGENT_MODEL=claude-haiku
 ```
 
-The built-in agent default model is `glm-5.2` (hosted Optimus Gateway). The local gateway
-stub maps `claude-haiku` to the configured provider's economy model, so set
+The current implementation default model is `glm-5.2`. The local Gateway
+maps `claude-haiku` to the configured provider's economy model, so set
 `OPTIMUS_AGENT_MODEL=claude-haiku` for local development unless you pass `--model` explicitly.
 
 Start the local gateway in a **separate shell** with the provider key on the gateway process
-only. **OpenRouter is the default** (`OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter`); OpenAI
-direct and Anthropic-native are also supported.
+only. **OpenRouter is the approved default** (`OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter`).
+Vercel AI Gateway is a future bounded model-endpoint option pending a modest Python transport
+check; it is not the Phase 1 search backend. Direct-provider adapters are a separate retirement
+lane. Tavily is temporary current-implementation migration configuration only, pending replacement
+acceptance and rollback review.
 
 Git Bash (recommended, per this repo's shell policy in `AGENTS.md`):
 
@@ -556,20 +562,6 @@ hard-killed (window closed, `Stop-Process`), the loaded secrets — including th
 remain in that PowerShell session's environment until the window closes. If you must use the
 PowerShell launcher, close that session when you are done with the gateway.
 
-OpenAI direct (set in `.env.gateway`):
-
-```bash
-OPTIMUS_LOCAL_GATEWAY_PROVIDER=openai
-OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=<your-openai-key>
-```
-
-Anthropic-native (secondary path):
-
-```bash
-OPTIMUS_LOCAL_GATEWAY_PROVIDER=anthropic
-ANTHROPIC_API_KEY=<your-anthropic-key>
-```
-
 Live gateway smoke tests also read `.env.gateway`, but only into the gateway **subprocess**
 environment via `dotenv_values()` — the pytest process itself never receives provider keys.
 Default `pytest` deselects `requires_live_gateway`; opt in explicitly when `.env.gateway` is
@@ -591,8 +583,10 @@ curl -sS http://127.0.0.1:8765/v1/responses \
   -d '{"model":"claude-haiku","input":"Reply with one short word."}'
 ```
 
-Hosted/staging gateways still work when `OPTIMUS_PRODUCTION_MODE=true` (default) and
-`OPTIMUS_GATEWAY_URL` points at an `https://` trusted origin.
+`OPTIMUS_PRODUCTION_MODE=false` is a temporary current-implementation compatibility setting for
+the direct `OptimusGatewaySettings.from_env()` path. Keep it false for the loopback Gateway; remove
+the setting when the strict-loopback code change lands under `P11-FEAT-GATEWAY-CORE`. Do not use a
+hosted-origin override.
 
 ## Contributor development setup
 
@@ -679,10 +673,13 @@ To remove it: `uv tool uninstall optimus-cost-agent`.
 ### Required environment
 
 ```bash
-export OPTIMUS_GATEWAY_URL=https://gateway.optimus.ai
-export OPTIMUS_API_KEY=...
+export OPTIMUS_GATEWAY_URL=http://127.0.0.1:8765
+export OPTIMUS_API_KEY=<local-shared-secret>
 export OPTIMUS_REDIS_URL=redis://localhost:6379/0
 ```
+
+The provider credential stays in `.env.gateway` and is passed only to the local Gateway process;
+it is never exported into the agent environment.
 
 Redis stores approved plans for replay.
 
@@ -705,10 +702,13 @@ summaries, and relative paths — never raw source code.
 # 1. Start Redis WITH TimeSeries (LLD section 10 requires TS.* commands)
 docker run --rm -d --name optimus-redis -p 6379:6379 redis:8
 
-# 2. Real credentials — no fakes, no placeholders
-export OPTIMUS_GATEWAY_URL=https://gateway.optimus.ai
-export OPTIMUS_API_KEY=<real key>
+# 2. Local loopback Gateway and shared secret
+export OPTIMUS_GATEWAY_URL=http://127.0.0.1:8765
+export OPTIMUS_API_KEY=<local-shared-secret>
 export OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0
+
+Keep the provider credential in `.env.gateway`; only the local shared secret belongs in the agent
+environment.
 
 # 3. Pre-flight
 python -m optimus.acp --workspace-root . --check-config --strict
@@ -762,27 +762,6 @@ If `OPTIMUS_GATEWAY_URL` or `OPTIMUS_API_KEY` is missing, startup fails with:
 
 ```text
 Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP agent (or run `optimus-agent --setup` to configure the local gateway).
-```
-
-### Zed `agent_servers` example (hosted gateway)
-
-For a real hosted `OPTIMUS_GATEWAY_URL`, auto-start and keychain setup do not engage — set
-credentials explicitly:
-
-```json
-{
-  "agent_servers": {
-    "optimus": {
-      "command": "optimus-agent",
-      "args": ["--workspace-root", "."],
-      "env": {
-        "OPTIMUS_GATEWAY_URL": "https://gateway.optimus.ai",
-        "OPTIMUS_API_KEY": "set-in-your-local-environment",
-        "OPTIMUS_REDIS_URL": "redis://localhost:6379/0"
-      }
-    }
-  }
-}
 ```
 
 See **Quick start → Install and configure** for the local auto-start Zed example (no `env` block).
@@ -879,9 +858,10 @@ optimus-cost-agent/
 
 | Document | Purpose |
 |----------|---------|
-| [docs/Optimus-Cost-Agent-Architecture-v2.15.pdf](docs/Optimus-Cost-Agent-Architecture-v2.15.pdf) | High-level design |
-| [docs/Optimus-Cost-Agent-LLD-v2.38.pdf](docs/Optimus-Cost-Agent-LLD-v2.38.pdf) | Low-level design |
-| [docs/Optimus-Cost-Agent-Test-Strategy-v1.4.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.4.pdf) | Testing approach |
+| [docs/Optimus-Cost-Agent-Architecture-v2.16.pdf](docs/Optimus-Cost-Agent-Architecture-v2.16.pdf) | High-level design |
+| [docs/Optimus-Cost-Agent-LLD-v2.39.pdf](docs/Optimus-Cost-Agent-LLD-v2.39.pdf) | Low-level design |
+| [docs/Optimus-Cost-Agent-Test-Strategy-v1.5.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.5.pdf) | Testing approach |
+| [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.1.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.1.pdf) | Execution guardrails |
 | [AGENTS.md](AGENTS.md) | Agent behavior, logging, safety, and testing gates |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Human and agent contribution workflow |
 

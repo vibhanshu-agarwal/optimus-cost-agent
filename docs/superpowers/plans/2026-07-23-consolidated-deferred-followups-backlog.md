@@ -42,10 +42,10 @@ open-work inventory.
 
 | Identity | State | Scope detail |
 |---|---|---|
-| `P11-FEAT-GATEWAY-CORE` | Plan 11.1 — closed; merged to `main` as PR #85 (`6ae6997`, tip `6c39599`) | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route) |
-| `P11-FEAT-GATEWAY-TOOLS` | Plan 11.2 design and implementation plan drafted; pending review; implementation not started; carries `P11-FU-2` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs) |
-| `P11-FEAT-GATEWAY-COST-OBS` | Ratified, unscheduled | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs) |
-| `P11-FEAT-GATEWAY-MCP` | Ratified but gated; blocked on `P11-FU-3`; plan number assigned at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
+| `P11-FEAT-GATEWAY-CORE` | Plan 11.1 — closed; merged to `main` as PR #85 (`6ae6997`, tip `6c39599`); migration follow-ups remain assigned here and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route); migration custody: strict-loopback completion, OpenRouter-default OpenAI-compatible aggregator transport, provider-reported accounting, direct-adapter retirement, and the bounded Vercel Python transport check |
+| `P11-FEAT-GATEWAY-TOOLS` | Plan 11.2 — closed by PR #88 (merge `4590dbf`); migration follow-ups remain assigned here and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); migration custody: deterministic search/direct extract, route-specific dependency availability, replacement acceptance, and Tavily rollback-reviewed retirement; closure evidence: [Plan 11.2 approval](../reviews/2026-07-27-plan-11-2-implementation-plan-approval-v2.md), [local-process evidence](../../../reports/plan-11-2-gateway-tools-local-process-evidence.md), [staging evidence](../../../reports/plan-11-2-gateway-tools-staging-evidence.md), and [fitness report](../../../reports/plan-11-2-gateway-tools-task7-fitness.md) |
+| `P11-FEAT-GATEWAY-COST-OBS` | Ratified, unscheduled; migration follow-ups remain assigned here and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration |
+| `P11-FEAT-GATEWAY-MCP` | Ratified but gated; blocked on `P11-FU-3`; no MCP endpoint is shown or implied; plan number assigned at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
 | `P11-FEAT-ZED-RESUME` | Ratified, unscheduled; carries `P11-FU-1` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume) |
 | `P11-FEAT-REGISTRY` | Ratified, unscheduled; blocked on its research gate — no authoritative source exists in any of the four pinned documents. Also owns the v1.0 release-version contract | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut) |
 | `P11-FEAT-IDE` | Conditional — opens only by explicit amendment if REGISTRY surfaces an unmet multi-IDE expectation | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing) |
@@ -141,16 +141,15 @@ Plan 7 usage ledger rather than a new parallel accounting path, and must fail cl
 silently permit overspend when ledger data is unavailable. Plan 9.85 records all usage completely
 and accurately but does not itself invent any cross-run denial policy.
 
-**Verified blocker (2026-07-25):** Independent review confirms an unresolved architecture conflict.
-HLD v2.15 §§5A and 11, LLD v2.38 §§0A, 9D, and 10A, and Guardrails v1.0 §§7.2 and 9 assign
-budget enforcement to the Gateway and describe local budget state as informational. The current
-`src/optimus_gateway/` implementation contains no budget, spend, cap, quota, or wallet-enforcement
-logic. This item is therefore blocked on an operator decision about the Gateway budget-enforcement
-roadmap and authority boundary; it is not a spec-readiness gap. The designated future plan remains
-none/unassigned pending that decision.
+**Architecture resolution (2026-07-28):** The repaired HLD v2.16 §§5A and 11, LLD v2.39 §§0A,
+9D, and 10A, Guardrails v1.1 §§7.2 and 9, and the refreshed requirement inventory settle the
+local Gateway as the authority for current-run budget caps, provider-reported usage/cost, and the
+reconciled cost ledger. The prior architecture conflict about a hosted budget service is resolved.
+This entry does not define a cumulative session/project ceiling: that policy remains open,
+undesigned, and unscheduled under a future budget-governance plan.
 
-**Plan 11 disposition:** Parked and undecided; not part of Plan 11's initial scope. Revisit only if
-Plan 11 Gateway work organically reaches budget or cost policy.
+**Plan 11 disposition:** Architecture-unblocked; no implementation or cumulative cross-run policy
+design is included in Plan 11. Revisit only under the future budget-governance plan.
 
 **Status:** Open, not yet scheduled.
 
@@ -209,22 +208,22 @@ capability, not a flaky regression or a parked architecture blocker.
 
 ### P11-FU-2: Package Lookup and Security Advisory Gateway Capability
 
-**Raised:** 2026-07-25 during the Plan 11 Gateway requirement review. The pinned LLD names
+**Raised:** 2026-07-25 during the Plan 11 Gateway requirement review. At intake, the pinned LLD named
 `POST /v1/tools/package/lookup` and `POST /v1/tools/security/advisory` as Gateway-facing typed
-endpoints, and §9A/§9B define their package/advisory tool class and routing signals. The local
-repository does not yet implement these Gateway routes as dedicated endpoints. Existing policy
+endpoints, and §9A/§9B define their package/advisory tool class and routing signals. At intake, the
+local repository did not yet implement these Gateway routes as dedicated endpoints. Existing policy
 behavior is not absent: `src/optimus/tools/policy.py:85-93` routes `DEPENDENCY_VERSION_CHECK` and
 `SECURITY_OR_CVE_CHECK` into `WEB_SEARCH_TRIGGERS`, while LLD §9B's `DEFAULT_POLICY_MATRIX`
-(p.26) maps both signals to `ToolClass.PACKAGE_AND_ADVISORY_METADATA`. Dependency and CVE
-evidence is therefore served today via generic web search, against a different tool class than
-the LLD specifies. Picking up FU-2 changes existing, tested policy behavior, not merely adding
-routes.
+(p.26) maps both signals to `ToolClass.PACKAGE_AND_ADVISORY_METADATA`. At intake, dependency and
+CVE evidence was therefore served via generic web search, against a different tool class than the
+LLD specified. Picking up FU-2 changed existing, tested policy behavior, not merely adding routes.
 
-**Origin:** `docs/Optimus-Cost-Agent-LLD-v2.38.pdf`, §0.D (p.3), §9A (p.24), and §9B (p.25).
+**Origin:** `docs/Optimus-Cost-Agent-LLD-v2.39.pdf`, §0.D (p.3), §9A (p.24), and §9B (p.25).
 
-**Designated slice:** `P11-FEAT-GATEWAY-TOOLS` (Plan 11.2 at this pickup). This is an
-unimplemented capability owned by the Tools slice; it is not part of the parked `P9.85-FU-3`
-budget-enforcement decision. The drafted artifacts are the [design specification](../specs/2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md)
+**Designated slice:** `P11-FEAT-GATEWAY-TOOLS` (Plan 11.2 at pickup). This capability was
+implemented and closed in PR #88 / merge `4590dbf`; future search-independence and migration work
+remains owned by the same feature identity. It is not part of the `P9.85-FU-3` cumulative
+cross-run policy. The reviewed artifacts are the [design specification](../specs/2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md)
 and [implementation plan](2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md).
 
 **Acceptance criteria:** The reviewed `P11-FEAT-GATEWAY-TOOLS` design and implementation must:
@@ -235,40 +234,41 @@ and [implementation plan](2026-07-26-plan-11-2-p11-feat-gateway-tools-implementa
   envelope, and evidence/provenance contracts; and
 - provide named unit, integration, and real-Gateway evidence for both endpoint families.
 
-**Status:** Owned by `P11-FEAT-GATEWAY-TOOLS`; Plan 11.2 design/plan drafted and pending review;
-implementation is not started. This is an unimplemented capability, not a parked architecture
-blocker.
+**Closure evidence:** The checked Plan 11.2 Definition of Done and closing approval are recorded
+in the [v2 approval record](../reviews/2026-07-27-plan-11-2-implementation-plan-approval-v2.md).
+Named evidence reports are the [real local-process HTTP artifact](../../../reports/plan-11-2-gateway-tools-local-process-evidence.md),
+[real staging-Gateway artifact](../../../reports/plan-11-2-gateway-tools-staging-evidence.md), and
+[fitness/release-gate report](../../../reports/plan-11-2-gateway-tools-task7-fitness.md).
 
-### P11-FU-3: LLD Source Repair — §0.B Component Flow and MCP Endpoint Shape
+**Status:** Closed by PR #88 / merge `4590dbf`; the dedicated package/advisory routes and their
+evidence are complete. Remaining migration work stays with `P11-FEAT-GATEWAY-TOOLS` and is not a
+reopening of this closed item.
 
-**Raised:** 2026-07-25 during the Plan 11 Gateway requirement review. LLD §0.B is clipped at the
-rendered page boundary around `/v1/tools/web/extract`, and LLD §0.C names MCP tool brokering without
-an MCP endpoint or Gateway request/response shape in §0.D.
+### P11-FU-3: MCP Support Decision After LLD §0.B Source Repair
 
-**Origin:** `docs/Optimus-Cost-Agent-LLD-v2.38.pdf`, §0.B (rendered p.2), §0.C (p.3), and §0.D
-(p.3); the source-contract gap was confirmed against the pinned SHA-256.
+**Raised:** 2026-07-25 during the Plan 11 Gateway requirement review. The original LLD §0.B was
+clipped at the rendered page boundary around `/v1/tools/web/extract`, and §0.C named MCP tool
+brokering without an MCP endpoint or Gateway request/response shape in §0.D.
 
-**Designated future plan:** `LLD source repair` (documentation-owner work). This item blocks the
-ratified `P11-FEAT-GATEWAY-MCP`; its Plan 11.x number is assigned only when that feature is picked
-up after the repaired source contract exists. No Plan 11 MCP implementation scope or plan number is
-assigned by this entry.
+**Origin:** `docs/Optimus-Cost-Agent-LLD-v2.39.pdf`, §0.B (rendered p.2), §0.C (p.3), and §0.D
+(p.3), final SHA-256 `82513729FD1A6E87FAD310DD90A18C996981B68024204E56CCA65377495585DE`.
 
-**Acceptance criteria:** The authoritative LLD source must be repaired or replaced by an explicitly
-reviewed authoritative source that:
+**Completed source repair:** The v2.39 §0.B clip and hosted-content repair are complete. The
+published source is extractable, its component flow is complete, and the §0.B diagram states that
+no MCP endpoint is shown or implied. The repair is documentation-complete; it does not authorize
+MCP implementation or endpoint inference.
 
-- restores the complete §0.B component-flow text without reconstructing the clipped continuation;
-- defines whether MCP brokering is supported and, if so, supplies its Gateway route and typed
-  request/response contract; and
-- triggers fresh source digest verification and a new requirement extraction before any affected
-  Gateway requirement is promoted into a specification.
+**Remaining acceptance criteria:**
 
-- when the repair is accepted, hands the affected source requirements to
-  `P11-FEAT-GATEWAY-MCP` for a new design/specification gate; and
-- does not authorize implementation or endpoint inference while the source contract is absent.
+- The operator must explicitly decide whether MCP brokering is supported. Until that decision,
+  no MCP route or implied endpoint is part of the architecture or implementation scope.
+- If the decision is affirmative, a separately reviewed Gateway route and typed request/response
+  contract must be authored, source-pinned, and followed by fresh requirement extraction before
+  any implementation plan is promoted.
 
-**Status:** Open, not yet scheduled, and owned by `LLD source repair`; blocks
-`P11-FEAT-GATEWAY-MCP`. This is a documentation/source contract repair item, not an inferred MCP
-implementation requirement.
+**Status:** Open solely for the operator MCP support decision and, if supported, the route plus
+typed request/response contract; `P11-FEAT-GATEWAY-MCP` remains blocked. No MCP endpoint is shown
+or implied by this entry.
 
 ### P11-FU-4: Re-pin FU-4A/FU-5 Live Evidence
 
