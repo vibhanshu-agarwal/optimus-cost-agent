@@ -52,7 +52,7 @@ The implementation plan does not authorize changes to src/optimus_gateway/tool_*
 - Consumes: approved design spec, 54-row inventory, current origin/main baseline.
 - Produces: a rerunnable blast-radius record in the implementation task notes/checkpoint log; no source or test mutation.
 
-- [ ] Step 1: Verify the branch and clean baseline
+- [x] Step 1: Verify the branch and clean baseline
 
 Run:
 
@@ -64,7 +64,9 @@ git rev-parse origin/main
 
 Expected: branch agent/codex/plan-11-4-gateway-core, both revisions 8b9486d950b9bf74dc5149ff7e2dc9c957b2593d, and no pre-existing source/test changes.
 
-- [ ] Step 2: Re-run the deprecated-surface search
+Executed on `agent/cursor/plan-11-4-gateway-core` with `HEAD`/`origin/main` both `7615c99e3beba311ea6dae7e87f871252c2bb7ab` after PR #90 merged the plan docs (see Task 1 report).
+
+- [x] Step 2: Re-run the deprecated-surface search
 
 Run:
 
@@ -74,7 +76,7 @@ rg -n "gateway\.optimus\.ai|production_mode|OPTIMUS_PRODUCTION_MODE|OPTIMUS_EXTR
 
 Expected: output identifies only the current migration surfaces and their regression tests; no unrelated tool or observability path is added to the task ledger.
 
-- [ ] Step 3: Re-run a structural inventory with AST names
+- [x] Step 3: Re-run a structural inventory with AST names
 
 Run this read-only scan and record its output with the task notes:
 
@@ -84,7 +86,7 @@ python -c "import ast; from pathlib import Path; roots=[Path('src/optimus/config
 
 Use the output to update any file list that differs from this plan; do not mutate production or test files during this baseline step.
 
-- [ ] Step 4: Map each changed surface to evidence aliases
+- [x] Step 4: Map each changed surface to evidence aliases
 
 Record the exact E1, E2, E4, E6, E7, and E9 artifact expected from each later task. Confirm the three split-custody COST-OBS rows remain attributed to both the CORE mechanism and COST-OBS settled evidence.
 
@@ -100,7 +102,7 @@ Record the exact E1, E2, E4, E6, E7, and E9 artifact expected from each later ta
 - Consumes: existing OptimusGatewaySettings.from_env, auth_headers, validate_trusted_gateway, and validate_no_local_provider_keys call sites.
 - Produces: frozen OptimusGatewaySettings with gateway_url default http://127.0.0.1:8765, masked SecretStr API key, idempotent strict-loopback validation, and unconditional local-provider-key rejection.
 
-- [ ] Step 1: Write failing strict-loopback tests
+- [x] Step 1: Write failing strict-loopback tests
 
 Replace hosted-origin/production-mode tests with cases covering the actual contract:
 
@@ -132,7 +134,7 @@ def test_non_loopback_or_ambiguous_urls_fail_closed(url: str):
 
 Add tests proving production_mode, extra_trusted_origins, signed_tenant_profile_origins, and ProviderKeyPolicy.IGNORE are no longer accepted fields/exports, while repr, str, safe_model_dump, and auth_headers never expose the secret.
 
-- [ ] Step 2: Run the settings tests and verify failure
+- [x] Step 2: Run the settings tests and verify failure
 
 Run:
 
@@ -142,7 +144,7 @@ python -m pytest tests/unit/config/test_gateway_settings.py tests/unit/gateway/t
 
 Expected: the new loopback/default tests fail against hosted/production behavior before implementation.
 
-- [ ] Step 3: Implement the minimal settings contract
+- [x] Step 3: Implement the minimal settings contract
 
 In gateway.py:
 
@@ -154,7 +156,7 @@ In gateway.py:
 6. Make validate_no_local_provider_keys() always raise ProviderKeyViolation for any non-empty name in LOCAL_PROVIDER_KEY_NAMES; there is no ignore branch.
 7. Remove the retired exports from src/optimus/config/__init__.py while preserving LOCAL_PROVIDER_KEY_NAMES, ProviderKeyViolation, and OptimusGatewaySettings.
 
-- [ ] Step 4: Run the settings tests and verify green
+- [x] Step 4: Run the settings tests and verify green
 
 Run:
 
