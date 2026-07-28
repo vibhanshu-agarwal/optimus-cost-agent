@@ -44,10 +44,8 @@ class TestParentAndGatewayResolveBaseUrlIdentically:
     set, OPTIMUS_LOCAL_GATEWAY_BASE_URL omitted (the documented/recommended
     common case in .env.gateway.example)."""
 
-    @pytest.mark.parametrize("provider", ["openrouter", "openai"])
-    def test_default_base_url_omitted_resolves_identically_on_both_sides(self, tmp_path, provider) -> None:
+    def test_default_base_url_omitted_resolves_identically_on_both_sides(self, tmp_path) -> None:
         environ = {
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER": provider,
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-test-key",
         }
 
@@ -59,7 +57,6 @@ class TestParentAndGatewayResolveBaseUrlIdentically:
         # Gateway side: the real GatewayServiceConfig.from_env(), fed the
         # child env the parent WOULD construct (as_gateway_child_env()).
         child_env = {
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER": provider,
             "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "shared-secret-value",
             **resolution.secrets.as_gateway_child_env(),
         }
@@ -67,36 +64,15 @@ class TestParentAndGatewayResolveBaseUrlIdentically:
 
         assert parent_base_url == gateway_config.base_url, (
             f"parent resolved base_url={parent_base_url!r} but Gateway resolved "
-            f"{gateway_config.base_url!r} for provider={provider!r} with no explicit "
+            f"{gateway_config.base_url!r} for OpenRouter with no explicit "
             "OPTIMUS_LOCAL_GATEWAY_BASE_URL -- these must be identical or the manifest "
             "signed by the parent can never verify against what the Gateway actually builds."
         )
 
-    def test_anthropic_base_url_stays_none_on_both_sides(self, tmp_path) -> None:
-        environ = {
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "anthropic",
-            "ANTHROPIC_API_KEY": "sk-ant-test",
-        }
-        resolution = resolve_provider_credentials(environ, config_root=tmp_path, keyring_backend=FakeKeyring())
-        assert resolution.secrets is not None
-        parent_base_url = resolution.secrets.base_url
-
-        child_env = {
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "anthropic",
-            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "shared-secret-value",
-            **resolution.secrets.as_gateway_child_env(),
-        }
-        gateway_config = GatewayServiceConfig.from_env(child_env, bind_host="127.0.0.1", bind_port=8765)
-
-        assert parent_base_url is None
-        assert gateway_config.base_url is None
-
-    @pytest.mark.parametrize("provider", ["openrouter", "openai"])
-    def test_explicit_custom_base_url_still_passes_through_unchanged(self, tmp_path, provider) -> None:
+    def test_explicit_custom_base_url_still_passes_through_unchanged(self, tmp_path) -> None:
         """The fix must not affect the explicit-override path — only the
         omitted-default case."""
         environ = {
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER": provider,
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-test-key",
             "OPTIMUS_LOCAL_GATEWAY_BASE_URL": "https://custom.example.com/v1",
         }
@@ -105,7 +81,6 @@ class TestParentAndGatewayResolveBaseUrlIdentically:
         assert resolution.secrets.base_url == "https://custom.example.com/v1"
 
         child_env = {
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER": provider,
             "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "shared-secret-value",
             **resolution.secrets.as_gateway_child_env(),
         }
@@ -120,10 +95,8 @@ class TestManifestRoundTripThroughRealGatewayFromEnv:
     still be rejected. Both directions must hold simultaneously; a fix that
     breaks either one is wrong."""
 
-    @pytest.mark.parametrize("provider", ["openrouter", "openai"])
-    def test_legitimate_default_base_url_launch_is_accepted(self, tmp_path, provider) -> None:
+    def test_legitimate_default_base_url_launch_is_accepted(self, tmp_path) -> None:
         environ = {
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER": provider,
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-legit-key",
         }
         resolution = resolve_provider_credentials(environ, config_root=tmp_path, keyring_backend=FakeKeyring())

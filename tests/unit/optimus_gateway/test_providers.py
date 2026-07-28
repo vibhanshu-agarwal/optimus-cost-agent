@@ -3,8 +3,9 @@ from __future__ import annotations
 import pytest
 
 from optimus_gateway.models import GatewayServiceConfig
-from optimus_gateway.providers import build_tool_dependencies
+from optimus_gateway.providers import build_tool_dependencies, build_upstream_client
 from optimus_gateway.tool_policy import GatewayToolPolicy
+from optimus_gateway.upstream_client import UrllibOpenAICompatibleClient
 
 
 def _config(**overrides: object) -> GatewayServiceConfig:
@@ -21,6 +22,12 @@ def _config(**overrides: object) -> GatewayServiceConfig:
     }
     fields.update(overrides)
     return GatewayServiceConfig(**fields)
+
+
+def test_build_upstream_client_uses_openai_compatible_client_for_openrouter() -> None:
+    client = build_upstream_client(_config())
+
+    assert isinstance(client, UrllibOpenAICompatibleClient)
 
 
 @pytest.mark.parametrize(

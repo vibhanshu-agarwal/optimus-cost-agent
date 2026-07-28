@@ -47,25 +47,21 @@ MANIFEST_MAX_AGE_SECONDS = 60
 # optimus_security package (not optimus.acp or optimus_gateway) so neither
 # side imports the other's package to share it — the same reason
 # launch_manifest.py itself lives here.
-DEFAULT_PROVIDER_BASE_URLS: dict[str, str] = {
-    "openai": "https://api.openai.com/v1",
-    "openrouter": "https://openrouter.ai/api/v1",
-}
+_GATEWAY_PROVIDER = "openrouter"
+_DEFAULT_GATEWAY_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 def resolve_effective_base_url(*, provider: str, base_url: str | None) -> str | None:
-    """Resolve the EFFECTIVE base_url for a provider, applying the shared
-    default when base_url is unset. Returns None for anthropic (which never
-    uses a base_url) or any provider not in DEFAULT_PROVIDER_BASE_URLS.
+    """Resolve the OpenRouter Gateway's effective base URL.
 
     Both the parent and the Gateway call this exact function so an omitted
     OPTIMUS_LOCAL_GATEWAY_BASE_URL resolves identically on both sides.
     """
-    if provider == "anthropic":
-        return None
+    if provider != _GATEWAY_PROVIDER:
+        raise ValueError(f"provider must be {_GATEWAY_PROVIDER!r}, got {provider!r}")
     if base_url:
         return base_url
-    return DEFAULT_PROVIDER_BASE_URLS.get(provider)
+    return _DEFAULT_GATEWAY_BASE_URL
 
 # Same keyring namespace/entry as optimus.acp.launch_approvals.KeyringApprovalStore's
 # integrity key — one root key, domain-separated per use. Duplicated here (rather than
@@ -189,6 +185,9 @@ def build_gateway_child_manifest(
 ) -> GatewayChildManifest:
     """Build a signed manifest. issued_at/expires_at are exactly
     MANIFEST_MAX_AGE_SECONDS apart."""
+    if provider != _GATEWAY_PROVIDER:
+        raise LaunchManifestError(code="MANIFEST_PROVIDER_INVALID")
+
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(seconds=MANIFEST_MAX_AGE_SECONDS)
     nonce = secrets.token_hex(16)

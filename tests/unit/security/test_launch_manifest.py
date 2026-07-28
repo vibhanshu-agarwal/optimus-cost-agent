@@ -48,6 +48,10 @@ def _build_sample_manifest(**overrides: object) -> GatewayChildManifest:
 class TestManifestConstruction:
     """Manifest schema and field constraints."""
 
+    def test_manifest_rejects_non_openrouter_provider(self) -> None:
+        with pytest.raises(LaunchManifestError, match="MANIFEST_PROVIDER_INVALID"):
+            _build_sample_manifest(provider="anthropic")
+
     def test_manifest_has_required_fields(self) -> None:
         manifest = _build_sample_manifest()
         assert manifest.schema_version == 1
@@ -139,43 +143,6 @@ class TestManifestVerification:
                 hmac_key=_HMAC_KEY,
                 provider="openrouter",
                 base_url="https://evil.attacker.example/v1",  # Redirected.
-                provider_api_key="sk-or-test-key",
-                shared_secret="shared-secret-value",
-                bind_host="127.0.0.1",
-                bind_port=8765,
-            )
-        assert exc_info.value.code == "MANIFEST_BASE_URL_MISMATCH"
-
-    def test_none_base_url_matches_none(self) -> None:
-        """Anthropic-style manifests have base_url=None; verification must
-        accept that exact match rather than treating None as a wildcard."""
-        manifest = _build_sample_manifest(provider="anthropic", base_url=None)
-        serialized = serialize_gateway_child_manifest(manifest)
-
-        verified = verify_gateway_child_manifest(
-            serialized,
-            hmac_key=_HMAC_KEY,
-            provider="anthropic",
-            base_url=None,
-            provider_api_key="sk-or-test-key",
-            shared_secret="shared-secret-value",
-            bind_host="127.0.0.1",
-            bind_port=8765,
-        )
-        assert verified.base_url is None
-
-    def test_none_base_url_does_not_match_real_url(self) -> None:
-        """A manifest signed with base_url=None must not verify against a
-        real base_url — the None/non-None boundary itself is a mismatch."""
-        manifest = _build_sample_manifest(provider="anthropic", base_url=None)
-        serialized = serialize_gateway_child_manifest(manifest)
-
-        with pytest.raises(LaunchManifestError) as exc_info:
-            verify_gateway_child_manifest(
-                serialized,
-                hmac_key=_HMAC_KEY,
-                provider="anthropic",
-                base_url="https://evil.attacker.example/v1",
                 provider_api_key="sk-or-test-key",
                 shared_secret="shared-secret-value",
                 bind_host="127.0.0.1",

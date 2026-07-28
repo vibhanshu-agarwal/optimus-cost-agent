@@ -11,22 +11,12 @@ from optimus_gateway.models import (
 )
 
 
-def test_resolve_model_id_anthropic_alias():
-    assert resolve_model_id(provider="anthropic", model="claude-haiku") == "claude-haiku-4-5-20251001"
-
-
 def test_resolve_model_id_openrouter_alias():
     assert resolve_model_id(provider="openrouter", model="claude-haiku") == "anthropic/claude-haiku-4.5"
 
 
-def test_resolve_model_id_openai_alias():
-    assert resolve_model_id(provider="openai", model="claude-haiku") == "gpt-4o-mini"
-
-
-def test_resolve_model_id_accepts_shared_agent_default_for_every_provider():
-    assert resolve_model_id(provider="anthropic", model=DEFAULT_AGENT_MODEL) == "claude-haiku-4-5-20251001"
+def test_resolve_model_id_accepts_shared_agent_default_for_openrouter():
     assert resolve_model_id(provider="openrouter", model=DEFAULT_AGENT_MODEL) == "anthropic/claude-haiku-4.5"
-    assert resolve_model_id(provider="openai", model=DEFAULT_AGENT_MODEL) == "gpt-4o-mini"
 
 
 def test_resolve_model_id_openrouter_passthrough():
@@ -38,8 +28,9 @@ def test_resolve_model_id_rejects_unknown_model():
         resolve_model_id(provider="openrouter", model="unknown-model")
 
 
-def test_is_plausible_passthrough_openai_prefix():
-    assert is_plausible_passthrough("openai", "gpt-4o-mini") is True
+def test_is_plausible_passthrough_rejects_non_openrouter_provider():
+    assert is_plausible_passthrough("openai", "gpt-4o-mini") is False
+    assert is_plausible_passthrough("anthropic", "claude-haiku-4-5-20251001") is False
 
 
 def test_gateway_service_config_rejects_non_loopback_bind():
@@ -54,7 +45,7 @@ def test_gateway_service_config_rejects_non_loopback_bind():
         )
 
 
-def test_gateway_service_config_from_env_defaults_to_openrouter():
+def test_gateway_service_config_defaults_to_openrouter_and_default_url():
     config = GatewayServiceConfig.from_env(
         {
             "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "secret",
@@ -67,18 +58,17 @@ def test_gateway_service_config_from_env_defaults_to_openrouter():
     assert config.base_url == "https://openrouter.ai/api/v1"
 
 
-def test_gateway_service_config_from_env_anthropic_requires_native_key():
-    config = GatewayServiceConfig.from_env(
-        {
-            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "secret",
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "anthropic",
-            "ANTHROPIC_API_KEY": "sk-ant",
-        },
-        bind_host="127.0.0.1",
-        bind_port=8765,
-    )
-    assert config.provider == "anthropic"
-    assert config.base_url is None
+def test_non_openrouter_provider_is_rejected():
+    with pytest.raises(ValueError, match="openrouter"):
+        GatewayServiceConfig.from_env(
+            {
+                "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "anthropic",
+                "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "shared",
+                "ANTHROPIC_API_KEY": "secret",
+            },
+            bind_host="127.0.0.1",
+            bind_port=8765,
+        )
 
 
 def test_gateway_service_config_from_env_never_reads_bind_env_vars():

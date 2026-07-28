@@ -258,7 +258,7 @@ Expected: PASS; no agent-facing test can resolve or display a provider key.
 - Consumes: explicit bind arguments, signed GatewayChildManifest, and resolve_effective_base_url.
 - Produces: GatewayServiceConfig with fixed provider == "openrouter", OpenRouter default base URL https://openrouter.ai/api/v1, generic provider key, loopback bind, and optional tool configuration.
 
-- [ ] Step 1: Write failing OpenRouter-only configuration tests
+- [x] Step 1: Write failing OpenRouter-only configuration tests
 
 Update/add tests for:
 
@@ -290,7 +290,7 @@ def test_non_openrouter_provider_is_rejected():
 
 Add a provider-builder assertion that build_upstream_client(config) returns UrllibOpenAICompatibleClient for the valid config and never constructs an Anthropic client.
 
-- [ ] Step 2: Run the Gateway configuration tests and verify failure
+- [x] Step 2: Run the Gateway configuration tests and verify failure
 
 Run:
 
@@ -300,7 +300,7 @@ python -m pytest tests/unit/optimus_gateway/test_models.py tests/unit/optimus_ga
 
 Expected: old Anthropic/OpenAI provider-selection assertions fail before implementation.
 
-- [ ] Step 3: Implement the fixed provider and base URL contract
+- [x] Step 3: Implement the fixed provider and base URL contract
 
 1. Replace _SUPPORTED_PROVIDERS with the single openrouter provider and make GatewayServiceConfig.from_env reject any non-empty provider selector other than openrouter.
 2. Always read OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY; do not branch to ANTHROPIC_API_KEY.
@@ -309,7 +309,7 @@ Expected: old Anthropic/OpenAI provider-selection assertions fail before impleme
 5. Keep the signed manifest’s provider field as the fixed value openrouter; preserve HMAC binding of base URL, provider key fingerprint, shared secret fingerprint, and code-derived loopback bind.
 6. Remove direct OpenAI/Anthropic model mappings. Keep the OpenRouter alias claude-haiku -> anthropic/claude-haiku-4.5 and OpenRouter slash-qualified passthrough validation.
 
-- [ ] Step 4: Run configuration and manifest tests
+- [x] Step 4: Run configuration and manifest tests
 
 Run:
 
