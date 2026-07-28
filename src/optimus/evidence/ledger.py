@@ -11,6 +11,19 @@ from optimus.tools.policy import EvidenceReasonCode, ToolClass
 from optimus.usage.errors import DuplicateGatewayRequestError
 
 
+def _settled_fingerprint(
+    entry: EvidenceLedgerEntry,
+) -> tuple[str, str, str | None, int, Decimal]:
+    """Settled-facts fingerprint mirroring Redis ``record_settled_usage``'s claim fields."""
+    return (
+        entry.gateway_request_id,
+        entry.provider,
+        entry.provider_request_id,
+        entry.billing_units,
+        entry.cost_usd,
+    )
+
+
 class EvidenceLedgerEntry(BaseModel):
     """Immutable audit record for one authorized evidence tool call.
 
@@ -94,13 +107,17 @@ class EvidenceLedger(BaseModel):
     def record(self, entry: EvidenceLedgerEntry) -> EvidenceLedger:
         """Append ``entry`` keyed by ``gateway_request_id``, idempotently.
 
-        An identical replay of an already-recorded ``gateway_request_id`` returns this same
-        ledger unchanged. A same-ID record with any divergent field raises
-        ``DuplicateGatewayRequestError`` before a second entry is ever appended.
+        Same-ID replays are compared on the settled-facts fingerprint alone --
+        ``gateway_request_id``, ``provider``, ``provider_request_id``, ``billing_units``,
+        ``cost_usd`` -- mirroring the Redis ``record_settled_usage`` claim. Caller-side
+        bookkeeping fields such as ``request_id``/``queried_at`` legitimately differ across
+        a genuine Gateway-level retry and must not trigger a false divergence. A same-ID
+        record whose settled facts diverge raises ``DuplicateGatewayRequestError`` before a
+        second entry is ever appended.
         """
         existing = self._entry_for_gateway_request(entry.gateway_request_id)
         if existing is not None:
-            if existing == entry:
+            if _settled_fingerprint(existing) == _settled_fingerprint(entry):
                 return self
             raise DuplicateGatewayRequestError(entry.gateway_request_id)
         return EvidenceLedger(entries=(*self.entries, entry))

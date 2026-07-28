@@ -55,3 +55,32 @@ def test_provider_usage_ledger_is_idempotent_and_rejects_divergence():
     assert ledger.record(provider_usage("gw-1", "0.001", 10)) == ledger
     with pytest.raises(DuplicateGatewayRequestError, match="gw-1"):
         ledger.record(provider_usage("gw-1", "0.002", 10))
+
+
+def test_provider_usage_ledger_replay_with_different_bookkeeping_is_idempotent():
+    """A genuine Gateway-level retry reuses the same ``gateway_request_id`` and settled
+    facts but is re-recorded by the caller with a fresh ``request_id``/``occurred_at``.
+    That must be treated as the same settled fact, not a divergent duplicate."""
+    first = usage("gw-1", "0.001", 10)
+    ledger = ProviderUsageLedger().record(first)
+
+    replay = first.model_copy(
+        update={
+            "request_id": "req-retry-2",
+            "occurred_at": datetime(2026, 7, 5, tzinfo=UTC),
+        }
+    )
+
+    assert ledger.record(replay) == ledger
+
+
+def test_provider_usage_ledger_rejects_divergent_settled_facts():
+    first = usage("gw-1", "0.001", 10)
+    ledger = ProviderUsageLedger().record(first)
+
+    with pytest.raises(DuplicateGatewayRequestError, match="gw-1"):
+        ledger.record(first.model_copy(update={"provider": "openai"}))
+    with pytest.raises(DuplicateGatewayRequestError, match="gw-1"):
+        ledger.record(first.model_copy(update={"billing_units": 99}))
+    with pytest.raises(DuplicateGatewayRequestError, match="gw-1"):
+        ledger.record(first.model_copy(update={"provider_request_id": "provider-req-2"}))
