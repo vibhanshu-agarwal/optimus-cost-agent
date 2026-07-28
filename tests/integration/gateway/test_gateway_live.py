@@ -41,6 +41,15 @@ _CALCULATOR_CHECKS: tuple[tuple[str, str], ...] = (
 )
 
 
+@pytest.fixture(autouse=True)
+def _require_live_gateway_credentials() -> None:
+    missing = tuple(
+        name for name in ("OPTIMUS_GATEWAY_URL", "OPTIMUS_API_KEY") if not os.environ.get(name, "").strip()
+    )
+    if missing:
+        pytest.skip(f"requires real Gateway credentials: {', '.join(missing)}")
+
+
 def _live_max_cost_usd() -> Decimal:
     raw = os.environ.get("OPTIMUS_LIVE_MAX_COST_USD", "").strip()
     if not raw:
@@ -160,8 +169,10 @@ def test_live_gateway_minimal_response_reports_usage_fields() -> None:
 
     assert response.response_id
     assert response.gateway_usage.cost_usd >= Decimal("0")
+    assert response.gateway_usage.cost_usd.is_finite()
+    assert response.gateway_usage.billing_units > 0
     assert response.gateway_usage.gateway_request_id
-    assert response.gateway_usage.provider
+    assert response.gateway_usage.provider == "openrouter"
     assert response.output_text.strip()
     _assert_cost_within_cap(response.gateway_usage.cost_usd)
 

@@ -1,7 +1,8 @@
-"""Integration tests for failed-attempt usage through the real urllib transport.
+"""Integration tests for provider-reported usage through real urllib transport.
 
 These tests use a local ThreadingHTTPServer on loopback to exercise the real
-GatewayClient + UrllibGatewayTransport against deterministic HTTP 503 responses.
+GatewayClient + UrllibGatewayTransport against deterministic Gateway responses
+whose accounting originated in an OpenRouter-shaped upstream response.
 They are NOT marked requires_gateway and do NOT claim real-provider behavior.
 """
 
@@ -49,10 +50,16 @@ class ReportedFailureThenSuccessHandler(BaseHTTPRequestHandler):
                     "error": "temporary overload",
                     "gateway_usage": {
                         "gateway_request_id": "gw-local-failed-1",
-                        "provider": "local-test",
+                        "provider": "openrouter",
+                        "provider_request_id": "gen-local-failed-1",
+                        "resolved_provider": "Example Provider",
+                        "resolved_model": "example/model-v1",
                         "cache_hit": False,
                         "billing_units": 5,
                         "cost_usd": "0.001",
+                        "input_tokens": 3,
+                        "output_tokens": 2,
+                        "total_tokens": 5,
                         "service": "responses",
                         "native_unit": "tokens",
                         "optimus_credits_debited": "0.1",
@@ -72,10 +79,18 @@ class ReportedFailureThenSuccessHandler(BaseHTTPRequestHandler):
                     "output_text": FINAL_PLAN_TEXT,
                     "gateway_usage": {
                         "gateway_request_id": "gw-local-success-2",
-                        "provider": "local-test",
-                        "cache_hit": False,
+                        "provider": "openrouter",
+                        "provider_request_id": "gen-local-success-2",
+                        "resolved_provider": "Example Provider",
+                        "resolved_model": "example/model-v1",
+                        "cache_hit": True,
                         "billing_units": 10,
                         "cost_usd": "0.002",
+                        "input_tokens": 6,
+                        "output_tokens": 4,
+                        "total_tokens": 10,
+                        "cached_tokens": 2,
+                        "cache_age_seconds": 31,
                         "service": "responses",
                         "native_unit": "tokens",
                         "optimus_credits_debited": "0.2",
@@ -93,17 +108,28 @@ class ReportedFailureThenSuccessHandler(BaseHTTPRequestHandler):
         pass  # suppress console logging during tests
 
 
-class UnknownCostHandler(BaseHTTPRequestHandler):
-    """Always returns 503 with no gateway_usage field."""
+class MalformedProviderAccountingHandler(BaseHTTPRequestHandler):
+    """Always returns malformed provider-derived accounting in a 503 response."""
 
     request_count = 0
 
     def do_POST(self) -> None:
-        UnknownCostHandler.request_count += 1
+        MalformedProviderAccountingHandler.request_count += 1
         content_length = int(self.headers.get("Content-Length", 0))
         self.rfile.read(content_length)
 
-        body = json.dumps({"error": "temporary outage"}).encode("utf-8")
+        body = json.dumps(
+            {
+                "error": "provider accounting was malformed",
+                "gateway_usage": {
+                    "gateway_request_id": "gw-local-malformed-1",
+                    "provider": "openrouter",
+                    "cache_hit": False,
+                    "billing_units": 5,
+                    "cost_usd": "not-a-decimal",
+                },
+            }
+        ).encode("utf-8")
         self.send_response(503)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -123,7 +149,6 @@ def test_reported_failure_then_success_charges_both_attempts(tmp_path: Path) -> 
         settings = OptimusGatewaySettings(
             gateway_url=f"http://127.0.0.1:{port}",
             optimus_api_key="test-key-local",
-            production_mode=False,
         )
         client = GatewayClient(settings=settings, timeout_seconds=5.0)
         accounting = UsageAccountingService()
@@ -151,6 +176,7 @@ def test_reported_failure_then_success_charges_both_attempts(tmp_path: Path) -> 
         assert result.total_cost_usd == Decimal("0.003")
         assert result.cost_complete is True
         assert result.unknown_cost_attempt_count == 0
+        assert all(entry.provider == "openrouter" for entry in accounting.provider_ledger.entries)
         # Both attempts persisted as ProviderUsage rows.
         assert len(accounting.provider_ledger.entries) == 2
         assert [e.request_id for e in accounting.provider_ledger.entries] == [
@@ -166,16 +192,15 @@ def test_reported_failure_then_success_charges_both_attempts(tmp_path: Path) -> 
         server.server_close()
 
 
-def test_unknown_cost_stops_after_one_request(tmp_path: Path) -> None:
-    """Real urllib transport: 503 without usage -> immediate stop, no retry."""
-    UnknownCostHandler.request_count = 0
-    server, port = _start_local_server(UnknownCostHandler)
+def test_malformed_provider_accounting_stops_after_one_request(tmp_path: Path) -> None:
+    """Malformed provider accounting produces no retry, ledger row, or successful output."""
+    MalformedProviderAccountingHandler.request_count = 0
+    server, port = _start_local_server(MalformedProviderAccountingHandler)
     try:
         (tmp_path / "target.py").write_text("original\n", encoding="utf-8")
         settings = OptimusGatewaySettings(
             gateway_url=f"http://127.0.0.1:{port}",
             optimus_api_key="test-key-local",
-            production_mode=False,
         )
         client = GatewayClient(settings=settings, timeout_seconds=5.0)
         accounting = UsageAccountingService()
@@ -197,7 +222,7 @@ def test_unknown_cost_stops_after_one_request(tmp_path: Path) -> None:
         )
 
         # Exactly 1 HTTP request — no retry dispatched.
-        assert UnknownCostHandler.request_count == 1
+        assert MalformedProviderAccountingHandler.request_count == 1
         assert result.status is AgentRunStatus.TERMINATED
         assert result.stop_reason == "PLANNING_GATEWAY_COST_UNKNOWN"
         assert result.total_cost_usd == Decimal("0")

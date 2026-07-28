@@ -19,7 +19,7 @@ class CapturingGatewayTransport:
             "output_text": "Plan-mode advisory response.",
             "gateway_usage": {
                 "gateway_request_id": "gw-plan-1",
-                "provider": "glm",
+                "provider": "openrouter",
                 "provider_request_id": "provider-plan-1",
                 "cache_hit": False,
                 "billing_units": 31,
@@ -43,6 +43,8 @@ def test_mocked_full_gateway_run_uses_only_optimus_credentials(monkeypatch):
         "LANGSMITH_API_KEY",
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY",
+        "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET",
         "TAVILY_API_KEY",
         "ZHIPUAI_API_KEY",
     ]:

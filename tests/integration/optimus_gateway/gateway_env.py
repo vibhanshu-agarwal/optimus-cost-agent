@@ -51,21 +51,12 @@ def load_gateway_env_file(root: Path | None = None) -> dict[str, str]:
     return {key: value for key, value in values.items() if key and value is not None}
 
 
-def resolve_gateway_provider_api_key(provider: str, gateway_env: Mapping[str, str]) -> str:
-    if provider == "anthropic":
-        api_key = gateway_env.get("ANTHROPIC_API_KEY", "").strip()
-        if not api_key:
-            pytest.fail(
-                "ANTHROPIC_API_KEY is required in .env.gateway when "
-                "OPTIMUS_LOCAL_GATEWAY_PROVIDER=anthropic."
-            )
-        return api_key
-
+def resolve_gateway_provider_api_key(gateway_env: Mapping[str, str]) -> str:
     api_key = gateway_env.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY", "").strip()
     if not api_key:
         pytest.fail(
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY is required in .env.gateway for "
-            "openai/openrouter live smoke tests."
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY is required in .env.gateway "
+            "for OpenRouter live smoke tests."
         )
     return api_key
 
@@ -80,25 +71,21 @@ def merge_gateway_subprocess_env(
     gateway_env = dict(base_environ or os.environ)
     gateway_env.update(load_gateway_env_file(root))
 
-    provider = gateway_env.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER", "openrouter").strip().lower()
-    if provider not in {"openai", "openrouter", "anthropic"}:
-        pytest.fail(f"unsupported OPTIMUS_LOCAL_GATEWAY_PROVIDER for live smoke: {provider}")
+    configured_provider = gateway_env.get("OPTIMUS_LOCAL_GATEWAY_PROVIDER", "").strip().lower()
+    if configured_provider and configured_provider != "openrouter":
+        pytest.fail(
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER must be omitted or set to openrouter "
+            "for live smoke tests."
+        )
 
-    gateway_env["OPTIMUS_LOCAL_GATEWAY_PROVIDER"] = provider
+    gateway_env["OPTIMUS_LOCAL_GATEWAY_PROVIDER"] = "openrouter"
     gateway_env["OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"] = shared_secret
     gateway_env["OPTIMUS_LOCAL_GATEWAY_BIND_HOST"] = "127.0.0.1"
     gateway_env["OPTIMUS_LOCAL_GATEWAY_PORT"] = str(port)
     gateway_env.pop("OPTIMUS_GATEWAY_URL", None)
     gateway_env.pop("OPTIMUS_API_KEY", None)
-
-    if provider == "anthropic":
-        gateway_env["ANTHROPIC_API_KEY"] = resolve_gateway_provider_api_key(provider, gateway_env)
-        gateway_env.pop("OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY", None)
-    else:
-        gateway_env["OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"] = resolve_gateway_provider_api_key(
-            provider, gateway_env
-        )
-        gateway_env.pop("ANTHROPIC_API_KEY", None)
+    gateway_env["OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"] = resolve_gateway_provider_api_key(gateway_env)
+    gateway_env.pop("ANTHROPIC_API_KEY", None)
 
     _ensure_src_on_pythonpath(gateway_env, root or project_root())
 

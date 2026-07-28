@@ -552,11 +552,11 @@ Expected: PASS, with rg -n "UrllibAnthropicClient|parse_anthropic_message|provid
 - Consumes: signed OpenRouter child manifest, only Gateway-child provider credential, and Tasks 2–7 contracts.
 - Produces: named E1, E2, E4, E6, E7, and E9 artifacts with real dependencies at the tiers that require them.
 
-- [ ] Step 1: Add deterministic local-process tests first
+- [x] Step 1: Add deterministic local-process tests first
 
 Use a loopback ThreadingHTTPServer only for unit/integration transport behavior. Return a valid OpenRouter-shaped body with explicit usage.cost, usage.total_tokens, and cache headers; return malformed cost in a second handler. Assert valid output includes settled cost and malformed cost stops after one request with no ledger entry or successful output.
 
-- [ ] Step 2: Run the local-process evidence
+- [x] Step 2: Run the local-process evidence
 
 Run:
 
@@ -566,7 +566,7 @@ python -m pytest tests/integration/gateway/test_failed_usage_transport_flow.py t
 
 Expected: PASS with deterministic request counts and no fake provider key in the agent environment.
 
-- [ ] Step 3: Update and run the real Gateway smoke harness
+- [x] Step 3: Update and run the real Gateway smoke harness
 
 The requires_live_gateway harness must resolve only OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY, build a manifest with provider="openrouter", and remove all Anthropic/OpenAI matrix branches. Run the real child process with the independently authored acpx client for ACP protocol evidence where required. Exercise /v1/responses and /v1/chat/completions, record returned provider/model/cache/cost fields, and enforce the configured live cost cap.
 
@@ -579,7 +579,7 @@ python -m pytest tests/integration/gateway/test_gateway_live.py -m requires_gate
 
 Expected: real OpenRouter responses provide finite provider-reported cost and billing units; no direct provider egress occurs.
 
-- [ ] Step 4: Run the credential and egress evidence
+- [x] Step 4: Run the credential and egress evidence
 
 Run the release credential/launch suites and the repository’s approved egress scan. Confirm the agent process resolves only OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY; the Gateway child alone resolves the OpenRouter credential; no direct OpenAI/Anthropic/Tavily/LangSmith egress is added by CORE.
 
