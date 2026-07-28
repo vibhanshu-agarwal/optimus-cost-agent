@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import ast
+import inspect
+
 import pytest
 
+import optimus_gateway.providers as providers
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.providers import build_tool_dependencies, build_upstream_client
 from optimus_gateway.tool_policy import GatewayToolPolicy
 from optimus_gateway.upstream_client import UrllibOpenAICompatibleClient
 
 
-def _config(**overrides: object) -> GatewayServiceConfig:
+def _openrouter_config(**overrides: object) -> GatewayServiceConfig:
     fields: dict[str, object] = {
         "bind_host": "127.0.0.1",
         "bind_port": 8765,
@@ -25,9 +29,24 @@ def _config(**overrides: object) -> GatewayServiceConfig:
 
 
 def test_build_upstream_client_uses_openai_compatible_client_for_openrouter() -> None:
-    client = build_upstream_client(_config())
+    client = build_upstream_client(_openrouter_config())
 
     assert isinstance(client, UrllibOpenAICompatibleClient)
+
+
+def test_build_upstream_client_constructs_only_openai_compatible_upstream_class() -> None:
+    source = inspect.getsource(providers.build_upstream_client)
+    tree = ast.parse(source)
+    constructed_clients: set[str] = set()
+    for call in ast.walk(tree):
+        if not isinstance(call, ast.Call):
+            continue
+        if isinstance(call.func, ast.Name) and call.func.id.endswith("Client"):
+            constructed_clients.add(call.func.id)
+        elif isinstance(call.func, ast.Attribute) and call.func.attr.endswith("Client"):
+            constructed_clients.add(call.func.attr)
+
+    assert constructed_clients == {"UrllibOpenAICompatibleClient"}
 
 
 @pytest.mark.parametrize(
@@ -37,7 +56,7 @@ def test_build_upstream_client_uses_openai_compatible_client_for_openrouter() ->
 def test_build_tool_dependencies_fails_closed_when_required_field_missing(
     missing_field: str,
 ) -> None:
-    config = _config(**{missing_field: None if missing_field != "tool_allowed_domains" else ()})
+    config = _openrouter_config(**{missing_field: None if missing_field != "tool_allowed_domains" else ()})
 
     assert build_tool_dependencies(config) is None
 
@@ -55,7 +74,7 @@ def test_build_tool_dependencies_fails_closed_on_whitespace_required_fields(
     field: str,
     value: object,
 ) -> None:
-    assert build_tool_dependencies(_config(**{field: value})) is None
+    assert build_tool_dependencies(_openrouter_config(**{field: value})) is None
 
 
 def test_build_tool_dependencies_wires_all_providers_and_gateway_controls(monkeypatch) -> None:
@@ -66,7 +85,7 @@ def test_build_tool_dependencies_wires_all_providers_and_gateway_controls(monkey
     )
 
     dependencies = build_tool_dependencies(
-        _config(
+        _openrouter_config(
             tavily_base_url="https://tavily.example",
             osv_base_url="https://osv.example",
             osv_api_key="osv-key",
@@ -92,7 +111,7 @@ def test_build_tool_dependencies_uses_gateway_provider_defaults(monkeypatch) -> 
         lambda url: object(),
     )
 
-    dependencies = build_tool_dependencies(_config())
+    dependencies = build_tool_dependencies(_openrouter_config())
 
     assert dependencies is not None
     assert dependencies.web_provider.base_url == "https://api.tavily.com"

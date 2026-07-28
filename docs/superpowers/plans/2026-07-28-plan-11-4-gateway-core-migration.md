@@ -520,15 +520,15 @@ Expected: PASS with provider cost preserved exactly and malformed accounting fai
 - Consumes: fixed OpenRouter provider contract from Tasks 3–6.
 - Produces: no import, branch, alias, credential resolver, manifest fixture, or test fixture that can select a direct Anthropic/OpenAI model path.
 
-- [ ] Step 1: Write the retirement guard test
+- [x] Step 1: Write the retirement guard test
 
 Add a source-level regression test that imports the production provider module and asserts UrllibOpenAICompatibleClient is the only upstream class constructed. Add a repository search assertion in the task notes for zero production references to UrllibAnthropicClient, parse_anthropic_message, and direct provider aliases after cleanup.
 
-- [ ] Step 2: Remove remaining stale fixtures and imports
+- [x] Step 2: Remove remaining stale fixtures and imports
 
 Replace remaining Anthropic/OpenAI config helpers in ACP, manifest, and Gateway entrypoint tests with one _openrouter_config() helper, update fake results to include provider-reported cost fields, and verify no test imports the deleted direct adapter module. Keep direct tool-provider tests untouched.
 
-- [ ] Step 3: Run the retirement and full Gateway unit slice
+- [x] Step 3: Run the retirement and full Gateway unit slice
 
 Run:
 
