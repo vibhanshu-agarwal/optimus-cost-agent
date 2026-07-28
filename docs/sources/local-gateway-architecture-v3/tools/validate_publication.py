@@ -12,7 +12,6 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import ImageFont
 from pypdf import PdfReader
 
 logging.disable(logging.WARNING)
@@ -20,6 +19,27 @@ logging.disable(logging.WARNING)
 SVG_NS = "http://www.w3.org/2000/svg"
 TOKEN_RE = re.compile(r"[A-Za-z]|-?\d+(?:\.\d+)?")
 FONT_RE = re.compile(r"\.([\w-]+)\s*\{[^}]*font:\s*(?:(\d+)\s+)?(\d+)px", re.DOTALL)
+
+BACKTICK_MARKER_RE = re.compile(r"`([^`\n]+)`")
+IDENTIFIER_MARKER_RE = re.compile(
+    r"\b[A-Z][A-Za-z0-9]*(?:Policy|Registry|Manifest|Guard|Controller|Validator|Event|Ledger|State|"
+    r"Request|Result|Settings|Usage|Client|Evaluator|Catalog|Scanner|Decision|Invocation|Service|Reason)\b"
+)
+FIELD_MARKER_RE = re.compile(
+    r"\b(?:[A-Za-z][A-Za-z0-9]*_){1,}[A-Za-z][A-Za-z0-9]*\b"
+)
+SPECIAL_IDENTIFIER_RE = re.compile(
+    r"\b(?:[A-Z]{2,}[A-Za-z0-9]*(?:[-.][A-Za-z0-9]+)+|coverage\.py|pytest-cov)\b"
+)
+UPPERCASE_MARKER_RE = re.compile(r"\b[A-Z][A-Z0-9_]{2,}\b")
+ENDPOINT_MARKER_RE = re.compile(r"/(?:v1|api)/[A-Za-z0-9_./-]+")
+HYPHENATED_CODE_MARKER_RE = re.compile(r"\b[A-Z][A-Za-z0-9]+-[A-Za-z0-9][A-Za-z0-9-]+\b")
+HEADING_MARKER_RE = re.compile(
+    r"^\s*(?:#+\s*)?"
+    r"(?P<section>(?:\d{1,2}(?:\.\d+|[A-Z])+(?:\.)?|\d{1,2}\.|[A-Z]\.))"
+    r"(?:\s+|$)"
+)
+SVG_LINK_RE = re.compile(r"!\[[^\]]*\]\(([^)]+\.svg)(?:\{[^}]*\})?\)")
 
 
 @dataclass(frozen=True)
@@ -38,6 +58,137 @@ class Box:
             self.y1 + amount,
             self.label,
         )
+
+
+@dataclass(frozen=True)
+class InventoryDiff:
+    """Bidirectional difference between source and candidate content markers."""
+
+    missing: frozenset[str]
+    added: frozenset[str]
+    source: frozenset[str]
+    candidate: frozenset[str]
+
+
+def _normalized_marker(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip().strip(".,;:"))
+
+
+def _marker_value(marker: str) -> str:
+    return marker.split(":", 1)[1] if ":" in marker else marker
+
+
+def _marker_present_in_text(marker: str, text: str) -> bool:
+    """Allow source code markers to survive PDF extraction without Markdown ticks."""
+
+    value = _normalized_marker(_marker_value(marker))
+    if not value or value.casefold() == "none":
+        return True
+    normalized_text = _normalized_marker(text)
+    if value in normalized_text:
+        return True
+    # Some PDF extractors insert spaces at font-subset boundaries inside identifiers.
+    compact_value = re.sub(r"\s+", "", value)
+    compact_text = re.sub(r"\s+", "", normalized_text)
+    return compact_value in compact_text
+
+
+def extract_inventory(text: str) -> frozenset[str]:
+    """Extract stable heading and component/identifier markers from a document."""
+
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"data-[A-Za-z-]+\s*=\s*\"[^\"]*\"", " ", text)
+    # pypdf can split a glyph run inside words (for example ``T ool`` or
+    # ``PyT estArch``) when a font subset changes. Rejoin only a single
+    # uppercase glyph followed by a lowercase run; normal word spacing is
+    # unaffected.
+    text = re.sub(r"\b([A-Z])\s+(?=[a-z])", r"\1", text)
+    markers: set[str] = set()
+    for line in text.splitlines():
+        if re.match(r"^\s*(?:Page\s+\d+\s+of\s+\d+|data-page=|data-total=)", line):
+            continue
+        heading = HEADING_MARKER_RE.match(line)
+        if heading and heading.group("section"):
+            markers.add(f"heading:{heading.group('section').rstrip('.')}" )
+    for match in BACKTICK_MARKER_RE.finditer(text):
+        value = _normalized_marker(match.group(1))
+        if (
+            len(value) >= 3
+            and "=" not in value
+            and "<" not in value
+            and ">" not in value
+            and not re.search(r"\s|:", value)
+            and not re.fullmatch(r"[\d.]+", value)
+        ):
+            markers.add(f"identifier:{value}")
+    for pattern in (
+        IDENTIFIER_MARKER_RE,
+        FIELD_MARKER_RE,
+        UPPERCASE_MARKER_RE,
+        ENDPOINT_MARKER_RE,
+        HYPHENATED_CODE_MARKER_RE,
+    ):
+        for match in pattern.finditer(text):
+            value = _normalized_marker(match.group(0))
+            if len(value) >= 3 and value not in {"NONE", "None"}:
+                markers.add(f"identifier:{value}")
+    for match in SPECIAL_IDENTIFIER_RE.finditer(text):
+        value = _normalized_marker(match.group(0))
+        markers.add(f"identifier:{value}")
+    return frozenset(markers)
+
+
+def inventory_diff(source: str, candidate: str) -> InventoryDiff:
+    source_markers = extract_inventory(source)
+    candidate_markers = extract_inventory(candidate)
+    return InventoryDiff(
+        missing=frozenset(
+            marker
+            for marker in source_markers - candidate_markers
+            if not _marker_present_in_text(marker, candidate)
+        ),
+        added=frozenset(candidate_markers - source_markers),
+        source=source_markers,
+        candidate=candidate_markers,
+    )
+
+
+def assert_inventory_complete(
+    source: str,
+    candidate: str,
+    *,
+    exceptions: list[dict[str, str]],
+    known_entry_ids: set[str],
+    forbidden_markers: set[str] | None = None,
+) -> InventoryDiff:
+    """Fail unless every source/candidate marker difference is redline-owned."""
+
+    allowed: set[str] = set()
+    for exception in exceptions:
+        entry_id = str(exception.get("entry_id", ""))
+        if entry_id not in known_entry_ids:
+            raise AssertionError(f"unknown redline entry {entry_id!r} in completeness exception")
+        marker = str(exception.get("marker", ""))
+        if not marker:
+            raise AssertionError(f"redline entry {entry_id!r} has an empty completeness marker")
+        allowed.add(marker)
+    diff = inventory_diff(source, candidate)
+    forbidden = set(forbidden_markers or ())
+    present_forbidden = forbidden & (set(diff.source) | set(diff.candidate))
+    if present_forbidden:
+        raise AssertionError(
+            "forbidden inventory markers present: " + ", ".join(sorted(present_forbidden))
+        )
+    unresolved_missing = diff.missing - allowed
+    unresolved_added = diff.added - allowed
+    if unresolved_missing or unresolved_added:
+        details: list[str] = []
+        if unresolved_missing:
+            details.append("missing=" + ", ".join(sorted(unresolved_missing)))
+        if unresolved_added:
+            details.append("added=" + ", ".join(sorted(unresolved_added)))
+        raise AssertionError("publication completeness failed: " + "; ".join(details))
+    return diff
 
 
 def parse_args() -> argparse.Namespace:
@@ -65,9 +216,68 @@ def version_from_filename(path: str) -> str:
     return match.group(1)
 
 
+def redline_entry_ids(root: Path) -> set[str]:
+    report = root / "docs/superpowers/reports/2026-07-27-local-gateway-architecture-document-redline-v3.md"
+    text = report.read_text(encoding="utf-8")
+    return set(re.findall(r"^###\s+([A-Z][A-Z0-9-]*-\d+)\b", text, re.MULTILINE))
+
+
+def pdf_text(reader: PdfReader, pages: set[int] | None = None) -> str:
+    selected = (
+        enumerate(reader.pages, start=1)
+        if pages is None
+        else ((number, reader.pages[number - 1]) for number in sorted(pages))
+    )
+    return "\n".join(page.extract_text() or "" for _, page in selected)
+
+
+def effective_source_text(root: Path, document: dict[str, object]) -> str:
+    """Combine corrected changed-page Markdown with the pinned carried-page source text."""
+
+    changed_source = root / str(document["changed_source"])
+    source_pdf = PdfReader(root / str(document["source_pdf"]))
+    replacement_pages = {int(value) for value in document["replacement_pages"]}
+    carried_pages = set(range(1, len(source_pdf.pages) + 1)) - replacement_pages
+    changed_text = changed_source.read_text(encoding="utf-8")
+    linked_assets: list[str] = []
+    for relative_asset in SVG_LINK_RE.findall(changed_text):
+        asset_path = changed_source.parent / relative_asset
+        linked_assets.append(asset_path.read_text(encoding="utf-8"))
+    carried_text = pdf_text(source_pdf, carried_pages)
+    return changed_text + "\n" + "\n".join(linked_assets) + "\n" + carried_text
+
+
+def validate_source_completeness(
+    root: Path,
+    document: dict[str, object],
+    known_entry_ids: set[str],
+) -> None:
+    output_path = root / str(document["output_pdf"])
+    candidate_text = pdf_text(PdfReader(output_path))
+    source_text = effective_source_text(root, document)
+    completeness = dict(document.get("completeness", {}))
+    exceptions = [dict(item) for item in completeness.get("exceptions", [])]
+    forbidden = {
+        str(marker) for marker in completeness.get("forbidden_markers", [])
+    }
+    diff = assert_inventory_complete(
+        source_text,
+        candidate_text,
+        exceptions=exceptions,
+        known_entry_ids=known_entry_ids,
+        forbidden_markers=forbidden,
+    )
+    print(
+        f"PASS {document['name']}: source/candidate inventory complete; "
+        f"{len(diff.source)} markers, {len(diff.missing)} authorized missing, "
+        f"{len(diff.added)} authorized added"
+    )
+
+
 def validate_pdf_versions(root: Path) -> None:
     source_dir = root / "docs/sources/local-gateway-architecture-v3"
     manifest = json.loads((source_dir / "build-manifest.json").read_text(encoding="utf-8"))
+    known_entry_ids = redline_entry_ids(root)
     for document in manifest["documents"]:
         old_version = version_from_filename(document["source_pdf"])
         target_version = version_from_filename(document["output_pdf"])
@@ -126,6 +336,7 @@ def validate_pdf_versions(root: Path) -> None:
             f"SHA-256 match; target {target_version} on every page; superseded "
             f"{old_version} absent outside explicit history"
         )
+        validate_source_completeness(root, document, known_entry_ids)
 
 
 def css_fonts(root: ET.Element) -> dict[str, tuple[int, int]]:
@@ -144,6 +355,8 @@ def text_box(
     regular_font: Path,
     bold_font: Path,
 ) -> Box:
+    from PIL import ImageFont
+
     class_name = element.get("class", "")
     if class_name not in fonts:
         raise AssertionError(f"Text class {class_name!r} has no parsed font declaration")

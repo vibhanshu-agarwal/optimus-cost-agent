@@ -33,8 +33,7 @@
       "page_header": "Optimus-Cost-Agent - Architecture v2.16",
       "critical_text": [
         "OpenRouter is the default aggregator",
-        "deterministic search",
-        "P11-FEAT-GATEWAY-MCP"
+        "deterministic search"
       ],
       "inline_text_replacements": [
         {
@@ -48,7 +47,11 @@
         }
       ],
       "expected_pages": 13,
-      "sha256": "B00F92DF7E50E4C642A5FEC3D2C3B5893BC05991E2BACA900FB9AAFD8F7CF564"
+      "sha256": "6C2C98FE2327A6C466CAD3EB1800335EB59F0E1F65B2CB8E1E3401D7CFA05801",
+      "completeness": {
+        "exceptions": [],
+        "forbidden_markers": []
+      }
     },
     {
       "name": "LLD",
@@ -83,8 +86,7 @@
       "page_header": "Optimus-Cost-Agent - LLD v2.39",
       "critical_text": [
         "UrllibOpenAICompatibleClient",
-        "Phoenix",
-        "P11-FEAT-GATEWAY-MCP"
+        "Phoenix"
       ],
       "expected_pages": 40,
       "carried_image_backed_pages": [
@@ -106,7 +108,11 @@
         24,
         25
       ],
-      "sha256": "2F86FFD62EB153CCE0CFDDC98631F046202BC0E9CBB17FC5F35268E78627CAA8"
+      "sha256": "82513729FD1A6E87FAD310DD90A18C996981B68024204E56CCA65377495585DE",
+      "completeness": {
+        "exceptions": [],
+        "forbidden_markers": []
+      }
     },
     {
       "name": "Test Strategy",
@@ -133,7 +139,11 @@
         "Phoenix"
       ],
       "expected_pages": 14,
-      "sha256": "A5629907AC477880E86D7AA217FF01FCE92825E057F876AA5CCFBF6476018EBA"
+      "sha256": "F3D744EC175B1E18E8B1E4E271997A0BB12666CC33CA7154A40BF5298588DA8D",
+      "completeness": {
+        "exceptions": [],
+        "forbidden_markers": []
+      }
     },
     {
       "name": "Guardrails",
@@ -149,13 +159,19 @@
       "metadata_title": "Optimus-Cost-Agent - Agent Execution Guardrails and Workflow Strategy v1.1",
       "page_header": "Optimus-Cost-Agent - Guardrails and Workflow v1.1",
       "critical_text": [
-        "Completion evaluation cost control"
+        "The completion evaluator must be"
       ],
       "allowed_historical_version_pages": [
         16
       ],
       "expected_pages": 16,
-      "sha256": "DE8987CF44897C47563FC48E2E43832180F117A0BBCBE45E4B6E26C68059035A"
+      "sha256": "27EF0657CCEC5568D3E3769C7320223D1BFE3CF6F4702564CBD0A8A391F11029",
+      "completeness": {
+        "exceptions": [],
+        "forbidden_markers": [
+          "identifier:max_budget_tokens"
+        ]
+      }
     }
   ]
 }

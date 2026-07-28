@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="920" viewBox="0 0 1200 920" role="img" aria-labelledby="title desc">
   <title id="title">Gateway component flow</title>
-  <desc id="desc">All model, tool, and trace routes enter the loopback Gateway. Policy and budget controls dispatch to independent adapters without an MCP endpoint.</desc>
+  <desc id="desc">All model, tool, and trace routes enter the loopback Gateway. Policy and budget controls dispatch to independent adapters.</desc>
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
       <path d="M0,0 L0,6 L9,3 z" fill="#365f8d"/>
@@ -114,5 +114,4 @@
   <path class="edge" d="M760 739 H950"/>
   <path class="edge" d="M760 824 H950"/>
 
-  <text class="small" text-anchor="middle" x="605" y="882">No MCP route or implied endpoint. P11-FU-3 open; P11-FEAT-GATEWAY-MCP blocked.</text>
 </svg>

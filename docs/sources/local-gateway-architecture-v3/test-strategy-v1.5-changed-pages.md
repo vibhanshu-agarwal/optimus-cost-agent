@@ -135,32 +135,76 @@ Phoenix is the documented default, not an API dependency. No LangSmith dependenc
 credential, or amortized per-request charge exists.
 :::
 
-::: {.sheet .compact data-doc="Optimus-Cost-Agent - Test Strategy v1.5" data-page="9" data-total="14"}
+::: {.sheet .tight data-doc="Optimus-Cost-Agent - Test Strategy v1.5" data-page="9" data-total="14"}
 # 7A. Deterministic Search Compatibility Gate
 
-The gate uses one cheap Flash/Haiku-class model and the default engine request shape.
+The deterministic search compatibility gate uses one cheap Flash/Haiku-class model and one default
+engine request shape. The approved 2026-07-27 baseline is:
 
-<div class="metric-grid">
-<div class="metric"><b>16</b>maximum output tokens</div>
-<div class="metric"><b>3</b>minimal-call annotations</div>
-<div class="metric"><b>9/9</b>complete citations</div>
-</div>
+- `max_tokens=16`;
+- 3 annotations on the minimal-output probe;
+- 3/3 include-domain results allowed and 0 violations;
+- 0/3 excluded-domain results forbidden and 0 violations;
+- 9/9 annotations with HTTPS URL, title, and non-empty content;
+- mean latency 7,068.7 ms/search;
+- provider-reported mean cost `$0.0051584/search`;
+- direct extract 270,008 bytes -> 60,077 text characters in 589.5 ms.
 
-<div class="metric-grid">
-<div class="metric"><b>0</b>include-domain violations</div>
-<div class="metric"><b>0</b>exclude-domain violations</div>
-<div class="metric"><b>7,068.7 ms</b>mean latency</div>
-</div>
+These are evidence values, not permanent performance thresholds. Each run reports fresh values and
+fails on missing search execution, annotations, domain enforcement, or provider usage/cost. Engine
+and model comparison matrices are out of scope. A verified-or-fail server-tool successor requires a
+separate live test proving `max_uses: 1`, exactly one search, search-use accounting, valid
+annotations, domain enforcement, and fail-closed behavior when execution evidence is absent.
 
-Provider-reported mean cost was `$0.0051584/search`. Direct extract measured 270,008 bytes to
-60,077 text characters in 589.5 ms.
+# 9. Error, Retry, and Failure Injection Tests
 
-These values are evidence, not permanent performance thresholds. Every run reports fresh values
-and fails on absent search execution, annotations, domain enforcement, or usage/cost.
+LLD reference: §6 Resilient Provider Calling Layer, §4A Failure and Retry Lifecycle. These tests
+prove that transient failures are retried with backoff and permanent failures abort cleanly without
+side effects.
 
-A server-tool successor requires a separate live test proving `max_uses: 1`, exactly one search,
-search-use accounting, valid annotations, domain enforcement, and fail-closed behavior when
-execution evidence is absent.
+## Unit Tests - RetryPolicy
+
+- `TransientGatewayError` on first attempt: tenacity retries up to `max_retries=3`; succeeds on
+  3rd attempt; `retry_count=2` in metadata.
+- `ProviderRateLimitError`: exponential backoff applied (500 ms base); jitter present.
+- `PermanentGatewayError`: `ABORT_WITH_REPORT` returned immediately; no retry; failure report emitted.
+- `PolicyViolationError`: `ABORT_WITH_REPORT`; escalation signal emitted.
+- `BudgetExhaustedError`: `ABORT_WITH_REPORT`; run terminates; `cost_usd` at time of abort recorded
+  in ledger.
+- `max_retries=3` exceeded: `ESCALATE_TO_USER` returned; `prior_failures` injected into user
+  escalation payload.
+
+## Integration Tests - Failure Injection
+
+- Gateway returns 503 twice, then 200: agent retries twice, succeeds; working tree unchanged after
+  failed attempts; final patch applied only on success.
+- Fitness gate fails on attempts 1 and 2, passes on attempt 3: `replan_context()` is injected with
+  failure summaries on attempts 2 and 3; final patch differs from attempt 1.
+- Budget exhausted mid-run: run terminates gracefully; partial telemetry is flushed; no partial file
+  writes occur in the working tree.
+
+# 10. Schema Validation Tests
+
+LLD reference: §1 ACP Protocol Framing, §9 Tool Registry. These tests prove malformed inputs are
+rejected before processing and Pydantic v2 validators enforce invariants at the boundary.
+
+## Unit Tests - ACP Framing
+
+- `Content-Length: 0` with non-empty body: rejected with `-32700 Parse Error`.
+- `Content-Length > MAX_HEADER_SIZE`: rejected with `-32600 Invalid Request`.
+- Non-numeric `Content-Length`: rejected with `-32700 Parse Error`.
+- Body larger than declared `Content-Length`: truncated; remaining bytes are not leaked into the
+  next message.
+- JSON-RPC body missing `method`: rejected with `-32600 Invalid Request`.
+- JSON-RPC body with unknown method: rejected with `-32601 Method Not Found`.
+
+## Unit Tests - Pydantic Models
+
+- `EvidenceRequest` with an empty query string: `ValidationError` before any Gateway call.
+- `EvidenceExtractRequest` with `max_chars_per_source=0`: `ValidationError`.
+- `OptimusGatewaySettings` with empty `optimus_api_key`: `ValidationError`.
+- `GatewayUsage` with negative `billing_units`: `ValidationError`.
+- `GatewayUsage` with negative `cost_usd`: `ValidationError`.
 :::
 
 ::: {.sheet .tight data-doc="Optimus-Cost-Agent - Test Strategy v1.5" data-page="10" data-total="14"}

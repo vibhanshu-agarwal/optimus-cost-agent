@@ -639,46 +639,64 @@ LangSmith trace assertions and amortized observability accounting are deleted.
 All model-touching guardrails use the same loopback Gateway, developer aggregator account, USD
 budget, provider-reported cost, and OTel trace path.
 
-`LoopBudgetPolicy.max_budget_credits` becomes `max_budget_usd` in the separate field-migration
-subtask. The rename adds no cross-run policy.
+This section specifies the Phase 1 enforcement and workflow components introduced as a cross-cutting
+concern in HLD §13. The authoritative policy rationale lives in the companion Agent Execution
+Guardrails & Workflow Strategy v1.1 (§2-§9); the representative Pydantic type shapes are in its
+§10.2. The contracts below are owned by this section. All model-touching elements (the borderline
+classifier and the loop completion evaluator) route through the Optimus Gateway under the existing
+developer aggregator account and normalized ledger (§0A, §10A); the guardrails introduce no second
+cost path.
 
-## Verified-or-fail server-tool successor
+## 12A. Permission & Pre-Tool Enforcement
 
-A server-tool successor is not accepted until a dedicated live request:
+`PermissionPolicy` evaluates mode -> user_deny -> project_allow -> impact -> classifier and returns
+a single `PermissionDecision` (`ALLOW` | `DENY` | `HOLD`); deny always precedes allow; the
+classifier cannot overturn a deny.
 
-- declares `max_uses: 1`;
-- performs exactly one search;
-- reports search-use accounting;
-- returns structurally valid annotations;
-- enforces include/exclude domains;
-- fails closed when search execution evidence is absent.
+`PermissionDecision` contains `verdict`, `layer`, `rule_id`, `reason`, and
+`requires_human_approval`.
 
-## MCP disposition
+`PreToolGuard` fires after the agent assembles a tool call, before execution (cf. PreToolUse), for
+every tool class (bash, file_edit, mcp_call, web); deterministic checks run before any classifier.
+It returns `PreToolResult`.
 
-MCP is outside this correction. No Gateway route, endpoint, tool contract, or diagram branch is
-added. `P11-FU-3` remains open and `P11-FEAT-GATEWAY-MCP` remains blocked.
+`CommandSafetyValidator` is a local, in-process shell validator covering destructive commands,
+pipe-to-shell, environment/credential access, Unicode homoglyph/confusable characters, ANSI/control
+sequences, insecure transport, and unexpected network egress. Satisfiable by Tirith or an equivalent
+validator; the design takes no hard dependency on any one implementation.
+
+`ToolInvocationAuditEvent` is an append-only record of each decision (verdict, layer, failed checks,
+approver) feeding the same trace sink as evidence and cost telemetry.
+
+## 12B. Prompt-Injection & MCP Supply-Chain Trust
+
+`MCPTrustRegistry` captures `server_id`, `manifest_hash`, `allowed_tools`, `permission_scope`, and
+`approved`. MCP servers are never auto-loaded from cloned repositories; a manifest-hash change
+forces re-approval; tool descriptors (name/description/schema) are inspected for injection before
+being surfaced to the planner.
+
+`ConfigTrustScanner` treats agent config and rule files as code, scanning on ingest for embedded
+instructions, exfiltration endpoints, and homoglyph/ANSI content before they may influence behavior.
+
+## 12C. Bounded Agent Loops
+
+`GoalLoopController`, `IterationState`, `CompletionEvaluator`, `ProgressLedger`,
+`LoopBudgetPolicy` (`max_iterations`, `max_budget_usd`, `max_wall_clock_minutes`), and
+`LoopStopReason` (`COMPLETED` | `MAX_ITERATIONS` | `BUDGET_EXHAUSTED` | `WALL_CLOCK` |
+`REPEATED_FAILURE` | `HUMAN_HALT`) are the bounded-loop contracts.
+
+Persistent state lives in files, git history, task manifests, traces, and the evidence ledger (§9E),
+not in an ever-growing chat context. The pre-tool guard (§12A) is never bypassed inside a loop, and
+the completion evaluator is a cheap Gateway-routed model, not the main reasoning model.
 :::
 
 ::: {.sheet .compact data-doc="Optimus-Cost-Agent - LLD v2.39" data-page="40" data-total="40"}
 # 12D. Curated Workflow Skills
 
-Curated skills remain on-demand procedural artifacts governed by the same permission and trust
-boundaries as every other agent capability.
+`SkillRegistry`, `SkillManifest` (`name`, `description`, `globs`, `allowed_tools`, `owner`, `version`,
+`trust_level`), `SkillTrustPolicy` (draft/untrusted skills blocked in Agent mode), and
+`SkillInvocationPolicy` define curated workflow skill resolution.
 
-- Skills are curated, reviewed, versioned, and narrow.
-- A skill cannot widen the agent's tool surface or override project/user deny rules.
-- Generated skills remain draft-only until reviewed and promoted.
-- Skill resolution is deterministic and carries no model-call cost.
-- Completion evaluation uses a cheap model through the same loopback Gateway.
-- The completion evaluator is governed by `max_budget_usd`, provider-reported cost, and the same
-  OTel/OTLP trace path as every other model call.
-
-## Document closure
-
-This LLD documents a local-first Gateway with one agent-facing shared secret, one
-developer-controlled aggregator credential, independent typed tools, provider-reported cost, and
-vendor-neutral observability.
-
-No hosted Optimus service, tenant wallet, Vault, direct provider adapter, LangSmith dependency, or
-MCP Gateway endpoint is part of Phase 1.
+A skill's declared `allowed_tools` are enforced by the pre-tool guard (§12A) - a skill can never
+widen the agent's tool surface - and a skill can never override project or user deny rules.
 :::
