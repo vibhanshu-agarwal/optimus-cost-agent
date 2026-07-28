@@ -1,6 +1,6 @@
 # Plan 11.4: P11-FEAT-GATEWAY-CORE Migration Design Specification
 
-**Status:** Pending reviewer-agent and operator approval; implementation is not authorized.
+**Status:** Reviewer-agent and operator approved; implementation remains unauthorized until an execution decision and the plan's verification gates.
 
 **Stable feature:** `P11-FEAT-GATEWAY-CORE`. Plan 11.1 delivered the initial Gateway route
 surface. Plan 11.4 is the migration follow-up that completes the already-ratified local-first
