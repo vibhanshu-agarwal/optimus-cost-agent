@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.client import GatewayClient, GatewayTransport
-from optimus.telemetry.events import TelemetryEvent
+from optimus.telemetry.events import TELEMETRY_EVENT_SCHEMA_VERSION, TelemetryEvent
 
 
 class TraceEvent(BaseModel):
@@ -71,7 +72,18 @@ class GatewayObservabilityExporter:
         self._client = GatewayClient(settings=settings, transport=transport, timeout_seconds=timeout_seconds)
 
     def export(self, events: tuple[TelemetryEvent, ...]) -> dict[str, object]:
+        """Send a typed `TraceBatch`-shaped envelope to the Gateway trace ingress.
+
+        `schema_version`/`batch_id` are wire-required by the Gateway's typed
+        `GatewayTraceBatch` validation (Task 4); a fresh `batch_id` is
+        generated per export call so repeated flushes are independently
+        correlatable even when they carry the same (or zero) events.
+        """
         return self._client.post_observability_json(
             path="/v1/observability/traces",
-            payload={"events": [event.to_json_dict() for event in events]},
+            payload={
+                "schema_version": TELEMETRY_EVENT_SCHEMA_VERSION,
+                "batch_id": f"batch-{uuid4().hex}",
+                "events": [event.to_json_dict() for event in events],
+            },
         )

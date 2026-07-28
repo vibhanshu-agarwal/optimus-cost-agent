@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES
 from optimus.gateway.client import GatewayRequest
-from optimus.telemetry.events import TelemetryEvent
+from optimus.telemetry.events import TELEMETRY_EVENT_SCHEMA_VERSION, TelemetryEvent
 from optimus.telemetry.observability import GatewayObservabilityExporter, TraceBatch
 from tests.support.gateway_settings import LOOPBACK_GATEWAY_URL, gateway_settings
 
@@ -61,6 +61,27 @@ def test_observability_export_does_not_require_local_provider_keys(monkeypatch):
     response = exporter.export(())
 
     assert response == {"accepted": True, "trace_batch_id": "trace-batch-1"}
+
+
+def test_observability_export_sends_typed_batch_envelope_fields(monkeypatch):
+    """Plan 11.5, Task 4: the Gateway's typed `GatewayTraceBatch` requires a
+    non-empty `schema_version`/`batch_id` at the top level of the wire
+    envelope; the agent-side exporter must always supply both, even for a
+    zero-event flush."""
+    for key in LOCAL_PROVIDER_KEY_NAMES:
+        monkeypatch.delenv(key, raising=False)
+    transport = FakeTransport()
+    settings = gateway_settings()
+    exporter = GatewayObservabilityExporter(settings=settings, transport=transport)
+
+    exporter.export(())
+    exporter.export(())
+
+    first_payload = transport.requests[0].payload
+    second_payload = transport.requests[1].payload
+    assert first_payload["schema_version"] == TELEMETRY_EVENT_SCHEMA_VERSION
+    assert isinstance(first_payload["batch_id"], str) and first_payload["batch_id"]
+    assert first_payload["batch_id"] != second_payload["batch_id"]
 
 
 def _event_payload(*, event_id: str, trace_id: str) -> dict[str, object]:

@@ -777,6 +777,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.observability:_coerce_attribute_value:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.observability:_coerce_attribute_value:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback. `_coerce_attribute_value` only runs on the already-`sanitize_for_persistence`-processed value returned by `_redact_field` in `_apply_redacted_attributes`; it never receives raw untrusted content directly.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_observability_export.py::test_exporter_json_encodes_structured_attribute_values",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.observability:handle_observability_traces_request:exception_export",
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.observability:handle_observability_traces_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",

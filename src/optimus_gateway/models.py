@@ -31,6 +31,7 @@ class GatewayServiceConfig:
     npm_base_url: str | None = None
     maven_base_url: str | None = None
     tool_max_calls_per_tool: int = 5
+    otlp_endpoint: str | None = None
 
     def __post_init__(self) -> None:
         if self.bind_host.lower() not in _LOOPBACK_HOSTS:
@@ -109,6 +110,11 @@ class GatewayServiceConfig:
             npm_base_url=_optional_env(env, _GATEWAY_TOOL_ENV_PREFIX + "NPM_BASE_URL"),
             maven_base_url=_optional_env(env, _GATEWAY_TOOL_ENV_PREFIX + "MAVEN_BASE_URL"),
             tool_max_calls_per_tool=max_calls,
+            # Plan 11.5, Task 4: standard (non-`OPTIMUS_LOCAL_GATEWAY_`-prefixed) OTel
+            # env var, read only on the Gateway-child side. The agent-side
+            # `OptimusGatewaySettings` never reads or forwards this variable — the
+            # agent receives no OTLP/Phoenix endpoint or credential.
+            otlp_endpoint=_optional_env(env, "OTEL_EXPORTER_OTLP_ENDPOINT"),
         )
 
 
