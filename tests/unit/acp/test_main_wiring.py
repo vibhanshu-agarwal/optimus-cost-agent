@@ -478,6 +478,8 @@ def test_anthropic_provider_selection_fails_before_agent_or_gateway_start(monkey
     env = _base_env()
     env["OPTIMUS_LOCAL_GATEWAY_PROVIDER"] = "anthropic"
     env["ANTHROPIC_API_KEY"] = "sk-ant-real"
+    # Isolate KeyringApprovalStore from the host OS keyring (Linux CI has none).
+    monkeypatch.setattr(acp_main, "keyring", FakeKeyring())
     for name, value in env.items():
         monkeypatch.setenv(name, value)
 

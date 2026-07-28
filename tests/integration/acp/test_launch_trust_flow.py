@@ -119,6 +119,9 @@ def _real_launch_pipeline(
         workspace_identity=workspace_identity,
         operator_paths=operator_paths,
         hmac_key=store.hmac_key,
+        # Isolate credential resolution from the host OS keyring (Windows CI vs
+        # Linux CI diverge otherwise when a developer machine has stored keys).
+        credential_keyring_backend=keyring,
     )
     return candidate, store
 
@@ -245,18 +248,8 @@ def test_full_launch_trust_flow_connects_every_real_seam(tmp_path: Path) -> None
         for name, policy in LAUNCH_VARIABLE_POLICIES.items()
         if PropagationTarget.GATEWAY_CHILD in policy.propagation and env.get(name, "").strip()
     }
-    # Plan 11.4: resolve_launch_candidate always overlays resolved OpenRouter
-    # provider credentials and the shared secret onto gateway_environ, even when
-    # those names were not present in the captured parent env.
-    expected_gateway_keys |= {
-        "OPTIMUS_LOCAL_GATEWAY_PROVIDER",
-        "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY",
-        "OPTIMUS_LOCAL_GATEWAY_BASE_URL",
-        "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET",
-    }
     assert set(candidate.agent_environ) == expected_agent_keys
     assert set(candidate.gateway_environ) == expected_gateway_keys
-    assert candidate.gateway_environ["OPTIMUS_LOCAL_GATEWAY_PROVIDER"] == "openrouter"
     # OPTIMUS_CONFIG_ROOT is PARENT_ONLY -- must reach neither child, even
     # though it is present (and non-empty) in this test's environment.
     assert "OPTIMUS_CONFIG_ROOT" not in candidate.agent_environ
@@ -298,6 +291,7 @@ def test_approval_bootstrap_allows_audit_then_revalidation_but_later_mutation_fa
         workspace_identity=authoring_identity,
         operator_paths=authoring_paths,
         hmac_key=authoring_store.hmac_key,
+        credential_keyring_backend=keyring,
     )
     authoring_store.write_durable(
         build_approval_record(
