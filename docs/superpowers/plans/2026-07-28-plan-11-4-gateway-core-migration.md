@@ -363,7 +363,7 @@ class ProviderMessageResult:
     cache_age_seconds: int | None = None
 ~~~
 
-- [ ] Step 1: Write failing parser tests
+- [x] Step 1: Write failing parser tests
 
 Add a representative OpenRouter body and headers:
 
@@ -391,7 +391,7 @@ Assert message text, generation ID, provider == openrouter, resolved provider/mo
 
 Add parametrized failures for absent/null/negative/NaN/Infinity/boolean/string-invalid cost, missing usage, missing provider-reported total/billing units, invalid token types, missing ID/choices/message/content, and malformed router metadata. Unknown additive fields must not fail a valid response.
 
-- [ ] Step 2: Write failing retry tests
+- [x] Step 2: Write failing retry tests
 
 Change the existing four-attempt expectation to:
 
@@ -406,7 +406,7 @@ def test_model_retry_ceiling_is_three_attempts(monkeypatch):
 
 Assert event attempt number, transient/permanent classification, measured non-negative latency, sanitized context, and no retry for 401, malformed JSON, malformed usage, or malformed cost. Add a tool-provider regression test proving its existing helper default and callback behavior remain unchanged.
 
-- [ ] Step 3: Implement response capture, typed parsing, and retry events
+- [x] Step 3: Implement response capture, typed parsing, and retry events
 
 1. Make _urlopen_json return a decoded body plus a case-insensitive response-header mapping; never discard headers.
 2. Add X-OpenRouter-Metadata: enabled to the OpenRouter request and retain cache status/age headers for parsing.
@@ -416,7 +416,7 @@ Assert event attempt number, transient/permanent classification, measured non-ne
 6. Add an explicit max_attempts=3 argument on the model client. Keep the helper’s existing default for tool HTTP calls. Emit RetryEvent for every failed attempt and retain the legacy integer callback only where tool callers still require it.
 7. Retire the direct adapter in this task: remove UrllibAnthropicClient, parse_anthropic_message, and _extract_anthropic_output_text from upstream_client.py; delete the anthropic_client.py compatibility re-export; and replace test_parse_anthropic_message_maps_usage_fields with a direct-adapter-absence assertion. This keeps Task 5’s own upstream test checkpoint green after ProviderMessageResult gains required accounting fields.
 
-- [ ] Step 4: Run upstream and tool regression tests
+- [x] Step 4: Run upstream and tool regression tests
 
 Run:
 
