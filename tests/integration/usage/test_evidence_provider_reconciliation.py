@@ -59,8 +59,8 @@ def test_mocked_evidence_and_provider_ledgers_reconcile():
 class NormalizedCapturingTransport:
     """Like the fake transport in ``test_mocked_evidence_flow.py``, but each
     ``gateway_usage`` also carries the normalized provider-accounting fields
-    (``service``, ``native_unit``, ``optimus_credits_debited``,
-    ``price_snapshot_id``) so the resulting usage can be replayed into
+    (``service``, ``native_unit``, ``price_snapshot_id``) so the resulting
+    usage can be replayed into
     :class:`~optimus.usage.accounting.UsageAccountingService`.
     """
 

@@ -379,7 +379,7 @@ def test_dispatcher_routes_evidence_search_to_service():
     assert response["result"]["results"][0]["url"] == "https://docs.example.com/a"
     assert response["result"]["gateway_usage"]["gateway_request_id"] == "gw-search-1"
     assert response["result"]["ledger_run_total_cost_usd"] == "0.007"
-    assert response["result"]["ledger_run_total_credits"] == 7
+    assert response["result"]["ledger_run_total_billing_units"] == 7
     assert evidence_service.search_calls[0]["request"].query == "latest pytest release"
 
 
@@ -407,7 +407,7 @@ def test_dispatcher_routes_evidence_extract_to_service():
     assert response["result"]["content"] == "Evidence text"
     assert response["result"]["gateway_usage"]["gateway_request_id"] == "gw-extract-1"
     assert response["result"]["ledger_run_total_cost_usd"] == "0.007"
-    assert response["result"]["ledger_run_total_credits"] == 7
+    assert response["result"]["ledger_run_total_billing_units"] == 7
 
 
 def test_dispatcher_rejects_malformed_evidence_search_request():
@@ -675,7 +675,7 @@ def test_dispatcher_routes_evidence_package_lookup_to_service():
     assert response["result"]["latest_version"] == "0.24.0"
     assert response["result"]["gateway_usage"]["gateway_request_id"] == "gw-pkg-1"
     assert response["result"]["ledger_run_total_cost_usd"] == "0.007"
-    assert response["result"]["ledger_run_total_credits"] == 7
+    assert response["result"]["ledger_run_total_billing_units"] == 7
     call = package_advisory_service.package_lookup_calls[0]
     assert call["request"].package == "pytest-asyncio"
     assert call["request"].context.run_id == "run-1"
@@ -706,7 +706,7 @@ def test_dispatcher_routes_evidence_security_advisory_to_service():
     assert response["result"]["identifier"] == "CVE-2026-12345"
     assert response["result"]["gateway_usage"]["gateway_request_id"] == "gw-adv-1"
     assert response["result"]["ledger_run_total_cost_usd"] == "0.007"
-    assert response["result"]["ledger_run_total_credits"] == 7
+    assert response["result"]["ledger_run_total_billing_units"] == 7
     call = package_advisory_service.security_advisory_calls[0]
     assert call["request"].identifier == "CVE-2026-12345"
     assert call["request"].context.run_id == "run-1"

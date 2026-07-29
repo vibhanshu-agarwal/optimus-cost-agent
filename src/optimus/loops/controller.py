@@ -104,7 +104,7 @@ class GoalLoopController:
                 summary=outcome.summary,
                 stop_reason=None,
                 failure_signature=outcome.failure_signature,
-                cost_credits=outcome.cost_credits,
+                cost_usd=outcome.cost_usd,
                 evidence=outcome.evidence,
             )
 
@@ -130,7 +130,7 @@ class GoalLoopController:
                 state=state,
                 summary=f"completion evaluation: {evaluation.reason}",
                 stop_reason=None,
-                cost_credits=evaluation.cost_credits,
+                cost_usd=evaluation.cost_usd,
             )
             if evaluation.completed:
                 self._record(state=state, summary=evaluation.reason, stop_reason=LoopStopReason.COMPLETED)
@@ -148,8 +148,8 @@ class GoalLoopController:
                 occurred_at=self._now(),
                 iteration=state.iteration,
                 stop_reason=stop_reason.value,
-                credits_spent=state.credits_spent,
-                max_budget_credits=self._policy.max_budget_credits,
+                cost_usd_spent=state.cost_usd_spent,
+                max_budget_usd=self._policy.max_budget_usd,
                 summary=summary,
             )
         )
@@ -160,7 +160,7 @@ class GoalLoopController:
             return LoopStopReason.HUMAN_HALT
         if state.repeated_failure_count >= self._policy.repeated_failure_limit:
             return LoopStopReason.REPEATED_FAILURE
-        if state.credits_spent >= self._policy.max_budget_credits:
+        if state.cost_usd_spent >= self._policy.max_budget_usd:
             return LoopStopReason.BUDGET_EXHAUSTED
         if state.elapsed_minutes(now=self._now()) >= self._policy.max_wall_clock_minutes:
             return LoopStopReason.WALL_CLOCK
@@ -175,7 +175,7 @@ class GoalLoopController:
         summary: str,
         stop_reason: LoopStopReason | None,
         failure_signature: str | None = None,
-        cost_credits: Decimal = Decimal("0"),
+        cost_usd: Decimal = Decimal("0"),
         evidence: dict[str, str] | None = None,
     ) -> None:
         self._ledger.append(
@@ -185,7 +185,7 @@ class GoalLoopController:
                 iteration=state.iteration,
                 goal=state.goal,
                 summary=summary,
-                cost_credits=cost_credits,
+                cost_usd=cost_usd,
                 stop_reason=stop_reason,
                 failure_signature=failure_signature,
                 evidence=evidence or {},

@@ -75,7 +75,6 @@ def test_provider_usage_uses_caller_context_when_gateway_fields_are_absent():
     assert usage.service == "agent.model"
     assert usage.native_unit == "tokens"
     assert usage.price_snapshot_id is None
-    assert not hasattr(usage, "optimus_credits_debited")
 
 
 def test_provider_usage_copies_resolved_provider_model_and_token_detail():

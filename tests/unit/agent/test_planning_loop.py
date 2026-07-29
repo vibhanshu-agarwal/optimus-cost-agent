@@ -30,7 +30,7 @@ def test_planning_policy_defaults_to_three_turns_and_two_repeated_failures():
     assert policy.max_wall_clock_minutes == 30
     loop_policy = policy.to_loop_budget_policy(max_cost_usd=Decimal("0.05"))
     assert loop_policy.max_iterations == 3
-    assert loop_policy.max_budget_credits == Decimal("0.05")
+    assert loop_policy.max_budget_usd == Decimal("0.05")
     assert loop_policy.repeated_failure_limit == 2
 
 

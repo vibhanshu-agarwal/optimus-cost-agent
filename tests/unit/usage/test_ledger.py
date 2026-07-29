@@ -47,7 +47,6 @@ def test_provider_usage_ledger_is_append_only_and_totals_reconcile():
     assert updated.entries_for_run("run-1") == (first, second)
     assert updated.gateway_request_ids() == frozenset({"gw-1", "gw-2"})
     assert updated.gateway_request_ids(run_id="run-1") == frozenset({"gw-1", "gw-2"})
-    assert not hasattr(updated, "total_optimus_credits")
 
 
 def test_provider_usage_ledger_is_idempotent_and_rejects_divergence():

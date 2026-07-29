@@ -46,7 +46,7 @@ class _AgentLoopIterationRunner:
         self.last_result = result
         return IterationOutcome(
             summary=result.output_text,
-            cost_credits=result.total_cost_usd,
+            cost_usd=result.total_cost_usd,
             deterministic_completion=result.status is AgentRunStatus.COMPLETED,
         )
 
@@ -179,7 +179,7 @@ class AgentRunner:
         controller = GoalLoopController(
             policy=LoopBudgetPolicy(
                 max_iterations=5,
-                max_budget_credits=max(request.max_cost_usd, Decimal("0.01")),
+                max_budget_usd=max(request.max_cost_usd, Decimal("0.01")),
                 max_wall_clock_minutes=30,
             ),
             runner=iteration_runner,

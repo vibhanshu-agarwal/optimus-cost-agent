@@ -981,7 +981,7 @@ class _CompleteAtRunBudget:
         del state, tools
         return IterationOutcome(
             summary="pytest tests green",
-            cost_credits=Decimal("0.05"),
+            cost_usd=Decimal("0.05"),
             deterministic_completion=True,
         )
 

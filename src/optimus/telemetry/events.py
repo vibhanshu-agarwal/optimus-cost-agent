@@ -159,8 +159,8 @@ class TelemetryEvent(BaseModel):
         """Settled Gateway usage for one accounting attempt.
 
         Carries only provider-reported fields plus caller-supplied attribution
-        (``service``/``native_unit``); there is no credit-balance estimate here
-        -- ``cost_usd`` and ``billing_units`` are the sole settled amounts.
+        (``service``/``native_unit``); there is no additional balance estimate
+        here -- ``cost_usd`` and ``billing_units`` are the sole settled amounts.
         """
         return cls(
             kind=TelemetryEventKind.GATEWAY_USAGE,
@@ -462,8 +462,8 @@ class TelemetryEvent(BaseModel):
         occurred_at: datetime,
         iteration: int,
         stop_reason: str,
-        credits_spent: Decimal,
-        max_budget_credits: Decimal,
+        cost_usd_spent: Decimal,
+        max_budget_usd: Decimal,
         summary: str,
     ) -> TelemetryEvent:
         return cls(
@@ -475,8 +475,8 @@ class TelemetryEvent(BaseModel):
             payload={
                 "iteration": iteration,
                 "stop_reason": stop_reason,
-                "credits_spent": credits_spent,
-                "max_budget_credits": max_budget_credits,
+                "cost_usd_spent": cost_usd_spent,
+                "max_budget_usd": max_budget_usd,
                 "summary": summary,
             },
         )

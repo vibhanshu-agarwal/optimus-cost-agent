@@ -59,8 +59,8 @@ def test_inventory_diff_accepts_code_marker_surviving_without_markdown_ticks() -
 
 
 def test_authorized_inventory_change_requires_known_redline_entry() -> None:
-    source = "# 7. Controls\n`max_budget_credits`"
-    candidate = "# 7. Controls\n`max_budget_usd`"
+    source = "# 7. Controls\n`old_budget_field`"
+    candidate = "# 7. Controls\n`new_budget_field`"
 
     with pytest.raises(AssertionError, match="unknown redline entry"):
         validate_publication.assert_inventory_complete(
@@ -68,7 +68,7 @@ def test_authorized_inventory_change_requires_known_redline_entry() -> None:
             candidate,
             exceptions=[
                 {
-                    "marker": "identifier:max_budget_usd",
+                    "marker": "identifier:new_budget_field",
                     "entry_id": "NOT-A-REDLINE-ENTRY",
                 }
             ],
@@ -77,15 +77,15 @@ def test_authorized_inventory_change_requires_known_redline_entry() -> None:
 
 
 def test_authorized_inventory_change_can_be_scoped_to_redline_entry() -> None:
-    source = "# 7. Controls\n`max_budget_credits`"
-    candidate = "# 7. Controls\n`max_budget_usd`"
+    source = "# 7. Controls\n`old_budget_field`"
+    candidate = "# 7. Controls\n`new_budget_field`"
 
     validate_publication.assert_inventory_complete(
         source,
         candidate,
         exceptions=[
-            {"marker": "identifier:max_budget_usd", "entry_id": "GR-1"},
-            {"marker": "identifier:max_budget_credits", "entry_id": "GR-1"},
+            {"marker": "identifier:new_budget_field", "entry_id": "GR-1"},
+            {"marker": "identifier:old_budget_field", "entry_id": "GR-1"},
         ],
         known_entry_ids={"GR-1"},
     )

@@ -17,9 +17,9 @@ class GatewayUsage(BaseModel):
     instead of these optional wire fields; ``price_snapshot_id`` remains
     optional diagnostic metadata at both layers. ``model`` and
     ``model_version`` are copied through when present. The legacy
-    ``optimus_credits_debited`` field has been removed: provider-reported
+    per-request debit field has been removed: provider-reported
     ``cost_usd`` and ``billing_units`` are the only settled accounting
-    values, and nothing here estimates a credit balance.
+    values, and nothing here estimates any additional balance.
     """
 
     model_config = ConfigDict(frozen=True)

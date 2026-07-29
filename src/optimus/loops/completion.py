@@ -90,9 +90,7 @@ class GatewayCompletionEvaluator:
             completed=completed,
             reason=str(payload.get("reason") or "completion evaluator did not provide a reason"),
             confidence=confidence,
-            # Transitional (until Task 6): CompletionEvaluation.cost_credits is still
-            # populated from GatewayUsage.cost_usd, not renamed to a USD field yet.
-            cost_credits=usage.cost_usd,
+            cost_usd=usage.cost_usd,
             gateway_request_id=usage.gateway_request_id,
         )
 

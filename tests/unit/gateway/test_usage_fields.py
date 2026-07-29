@@ -15,8 +15,8 @@ them; the parametrized legacy test covers the two most commonly absent
 (service, native_unit). Persisted accounting (``ProviderUsage``) takes
 ``service``/``native_unit`` from explicit caller context rather than from
 these optional wire fields; ``price_snapshot_id`` remains optional
-diagnostic metadata at both layers. The legacy ``optimus_credits_debited``
-field has been removed from the wire envelope entirely (Plan 11.5 Task 2).
+diagnostic metadata at both layers. The legacy per-request debit field has
+been removed from the wire envelope entirely (Plan 11.5 Task 2).
 """
 from decimal import Decimal
 
@@ -58,7 +58,6 @@ def test_gateway_usage_accepts_normalized_cost_fields():
     assert usage.resolved_model == "z-ai/glm-5.2"
     assert usage.total_tokens == 123
     assert usage.cached_tokens == 7
-    assert not hasattr(usage, "optimus_credits_debited")
 
 
 def test_parse_gateway_response_preserves_normalized_usage_fields():

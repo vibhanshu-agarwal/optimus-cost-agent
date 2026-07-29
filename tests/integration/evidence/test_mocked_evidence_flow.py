@@ -133,7 +133,7 @@ class UsageLessExtractTransport:
             }
         if request.url.endswith("/v1/tools/web/extract"):
             # No gateway_usage key at all: the extract response is unusable and
-            # must never be attributed a cost/credit.
+            # must never be attributed any cost.
             return {"error": "provider outage"}
         raise AssertionError(f"unexpected URL: {request.url}")
 
@@ -196,9 +196,7 @@ def test_mocked_search_then_extract_flow_uses_only_optimus_credentials(monkeypat
     assert extract_response["result"]["gateway_usage"]["gateway_request_id"] == "gw-extract-1"
     assert extract_response["result"]["trust"] == "untrusted"
     assert extract_response["result"]["ledger_run_total_cost_usd"] == "0.003"
-    # Transitional (until Task 6): ledger_run_total_credits is the legacy public key name,
-    # but Task 2 sources its value from total_billing_units, not the deleted total_credits().
-    assert extract_response["result"]["ledger_run_total_credits"] == 3
+    assert extract_response["result"]["ledger_run_total_billing_units"] == 3
     assert [request.url for request in transport.requests] == [
         f"{TRUSTED_GATEWAY_ORIGIN}/v1/tools/web/search",
         f"{TRUSTED_GATEWAY_ORIGIN}/v1/tools/web/extract",

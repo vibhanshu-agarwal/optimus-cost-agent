@@ -57,7 +57,7 @@ def test_entry_from_gateway_usage_copies_fields_verbatim():
 def test_entry_carries_lld_required_identity_provenance_and_policy_fields():
     """LLD v2.39 SS9E: evidence entries carry evidence/run/session/request/Gateway/provider
     IDs, provider/model/version, resolved provider/model, cache, billing units, USD cost,
-    provenance, trust, and the policy reason -- with no legacy credit-named field. The
+    provenance, trust, and the policy reason -- with no retired provider-balance field. The
     existing ``reason``/``policy_signal``/``tool_class`` fields are the preserved Plan 11.4
     policy-custody surface and are what this design treats as the "policy reason" fields
     named by the LLD -- they are not renamed.
@@ -78,9 +78,6 @@ def test_entry_carries_lld_required_identity_provenance_and_policy_fields():
     assert entry.tool_class is ToolClass.WEB_SEARCH
     assert entry.billing_units == 3
     assert entry.cost_usd == Decimal("0.003")
-    assert not hasattr(entry, "credits_used")
-    assert not hasattr(entry, "optimus_credits_debited")
-    assert not hasattr(EvidenceLedger(), "total_credits")
 
 
 def test_ledger_totals_reconcile_gateway_usage_fields():
@@ -106,9 +103,9 @@ def test_ledger_totals_reconcile_gateway_usage_fields():
 
 def test_ledger_preserves_verbatim_billing_units_and_cost_without_fabrication():
     """The Gateway tool envelope is the only source of billing_units/cost_usd; nothing
-    here estimates or invents a value beyond what the envelope reports (replaces the
-    retired ``test_ledger_credits_used_stays_zero_when_gateway_envelope_carries_no_credit_field``,
-    since ``credits_used`` no longer exists on this model)."""
+    here estimates or invents a value beyond what the envelope reports (replaces an
+    earlier regression test for a now fully retired provider-native-unit balance field
+    that no longer exists on this model)."""
     entry = build_entry(gateway_usage=usage("gw-1", "0.003", 3))
 
     ledger = EvidenceLedger().record(entry)

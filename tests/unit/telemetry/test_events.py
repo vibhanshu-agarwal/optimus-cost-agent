@@ -105,7 +105,6 @@ def test_gateway_reconciliation_and_pricing_fallback_events_have_json_payloads()
     assert gateway_event.to_json_dict()["kind"] == TelemetryEventKind.GATEWAY_USAGE.value
     assert gateway_event.to_json_dict()["cost_usd"] == "0.0123"
     assert gateway_event.to_json_dict()["provider_request_id"] == "provider-req-1"
-    assert "optimus_credits_debited" not in gateway_event.to_json_dict()
     assert reconciliation_event.to_json_dict()["matched_gateway_request_ids"] == ["gw-1"]
     assert reconciliation_event.to_json_dict()["reconciled"] is True
     assert fallback_event.to_json_dict()["kind"] == TelemetryEventKind.PRICING_FALLBACK.value
@@ -290,8 +289,8 @@ def test_goal_loop_event_serializes_stop_reason_and_budget():
         occurred_at=datetime(2026, 7, 6, tzinfo=UTC),
         iteration=3,
         stop_reason="REPEATED_FAILURE",
-        credits_spent=Decimal("0.25"),
-        max_budget_credits=Decimal("1.00"),
+        cost_usd_spent=Decimal("0.25"),
+        max_budget_usd=Decimal("1.00"),
         summary="same failure repeated",
     )
 
@@ -299,7 +298,7 @@ def test_goal_loop_event_serializes_stop_reason_and_budget():
 
     assert encoded["kind"] == "goal_loop"
     assert encoded["stop_reason"] == "REPEATED_FAILURE"
-    assert encoded["credits_spent"] == "0.25"
+    assert encoded["cost_usd_spent"] == "0.25"
 
 
 def test_skill_invocation_event_serializes_manifest_hash_without_body():

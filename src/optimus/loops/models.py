@@ -21,7 +21,7 @@ class LoopBudgetPolicy(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     max_iterations: int = Field(ge=1)
-    max_budget_credits: Decimal = Field(gt=Decimal("0"))
+    max_budget_usd: Decimal = Field(gt=Decimal("0"))
     max_wall_clock_minutes: int = Field(ge=1)
     repeated_failure_limit: int = Field(default=3, ge=2)
 
@@ -32,7 +32,7 @@ class CompletionEvaluation(BaseModel):
     completed: bool
     reason: str = Field(min_length=1)
     confidence: Decimal = Field(default=Decimal("1"), ge=Decimal("0"), le=Decimal("1"))
-    cost_credits: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    cost_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     gateway_request_id: str | None = None
 
 
@@ -40,7 +40,7 @@ class IterationOutcome(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     summary: str = Field(min_length=1)
-    cost_credits: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    cost_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     failure_signature: str | None = None
     deterministic_completion: bool = False
     evidence: dict[str, str] = Field(default_factory=dict)
@@ -76,12 +76,12 @@ class IterationState(BaseModel):
     :type started_at: datetime
     :ivar deadline_at: Optional deadline for completing the iteration.
     :type deadline_at: datetime | None
-    :ivar remaining_budget_credits: Remaining budget credits for the iteration, if applicable.
-    :type remaining_budget_credits: Decimal | None
+    :ivar remaining_budget_usd: Remaining USD budget for the iteration, if applicable.
+    :type remaining_budget_usd: Decimal | None
     :ivar iteration: Counter tracking the current iteration cycle.
     :type iteration: int
-    :ivar credits_spent: Total credits spent up to the current iteration.
-    :type credits_spent: Decimal
+    :ivar cost_usd_spent: Total USD spent up to the current iteration.
+    :type cost_usd_spent: Decimal
     :ivar last_failure_signature: Identifier for the last failure signature, if any.
     :type last_failure_signature: str | None
     :ivar repeated_failure_count: Count of consecutive failures with the same signature.
@@ -97,9 +97,9 @@ class IterationState(BaseModel):
     completion_condition: str = Field(min_length=1)
     started_at: datetime
     deadline_at: datetime | None = None
-    remaining_budget_credits: Decimal | None = None
+    remaining_budget_usd: Decimal | None = None
     iteration: int = Field(default=0, ge=0)
-    credits_spent: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    cost_usd_spent: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     last_failure_signature: str | None = None
     repeated_failure_count: int = Field(default=0, ge=0)
     human_halt_requested: bool = False
@@ -118,22 +118,22 @@ class IterationState(BaseModel):
         return self.model_copy(
             update={
                 "iteration": self.iteration + 1,
-                "credits_spent": self.credits_spent + outcome.cost_credits,
+                "cost_usd_spent": self.cost_usd_spent + outcome.cost_usd,
                 "last_failure_signature": outcome.failure_signature,
                 "repeated_failure_count": repeated,
             }
         )
 
     def record_completion_evaluation(self, evaluation: CompletionEvaluation) -> "IterationState":
-        return self.model_copy(update={"credits_spent": self.credits_spent + evaluation.cost_credits})
+        return self.model_copy(update={"cost_usd_spent": self.cost_usd_spent + evaluation.cost_usd})
 
     def request_halt(self) -> "IterationState":
         return self.model_copy(update={"human_halt_requested": True})
 
     def with_runtime_limits(self, *, policy: LoopBudgetPolicy) -> "IterationState":
         deadline_at = self.started_at + timedelta(minutes=policy.max_wall_clock_minutes)
-        remaining = max(Decimal("0"), policy.max_budget_credits - self.credits_spent)
-        return self.model_copy(update={"deadline_at": deadline_at, "remaining_budget_credits": remaining})
+        remaining = max(Decimal("0"), policy.max_budget_usd - self.cost_usd_spent)
+        return self.model_copy(update={"deadline_at": deadline_at, "remaining_budget_usd": remaining})
 
     def elapsed_minutes(self, *, now: datetime) -> int:
         elapsed = now - self.started_at

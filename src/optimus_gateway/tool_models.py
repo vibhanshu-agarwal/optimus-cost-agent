@@ -67,7 +67,7 @@ class ProviderUsage:
     """Real provider-reported usage/cost; the Gateway assigns gateway_request_id.
 
     Provider adapters own this because only they observe the real upstream
-    billing response; the Gateway never estimates tokens, credits, or cost.
+    billing response; the Gateway never estimates tokens, billing units, or cost.
     """
 
     provider: str

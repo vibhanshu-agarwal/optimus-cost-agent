@@ -16,7 +16,7 @@ def entry(iteration: int = 1) -> ProgressLedgerEntry:
         iteration=iteration,
         goal="Migrate auth call sites",
         summary="updated one file",
-        cost_credits=Decimal("0.125"),
+        cost_usd=Decimal("0.125"),
         stop_reason=None,
         failure_signature=None,
         occurred_at=datetime(2026, 7, 6, tzinfo=UTC),
@@ -45,7 +45,7 @@ def test_jsonl_progress_ledger_writes_redacted_json_lines(tmp_path):
             iteration=2,
             goal="Migrate auth call sites",
             summary=f"stopped after token=secret-token in {tmp_path / 'src' / 'optimus' / 'x.py'}",
-            cost_credits=Decimal("0"),
+            cost_usd=Decimal("0"),
             stop_reason=LoopStopReason.MAX_ITERATIONS,
             failure_signature="Authorization: Bearer secret-token",
             occurred_at=datetime(2026, 7, 6, tzinfo=UTC),
@@ -55,7 +55,7 @@ def test_jsonl_progress_ledger_writes_redacted_json_lines(tmp_path):
     lines = path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
     decoded = [json.loads(line) for line in lines]
-    assert decoded[0]["cost_credits"] == "0.125"
+    assert decoded[0]["cost_usd"] == "0.125"
     assert decoded[1]["stop_reason"] == "MAX_ITERATIONS"
     assert "secret-token" not in lines[1]
     assert "<workspace>/src/optimus/x.py" in lines[1]
@@ -71,7 +71,7 @@ def test_jsonl_progress_ledger_sanitizes_nested_free_text_and_uri_before_write(t
             iteration=1,
             goal="Investigate OPTIMUS_API_KEY=top-secret-canary",
             summary="Gateway refused redis://user:top-secret-canary@host/0",
-            cost_credits=Decimal("0"),
+            cost_usd=Decimal("0"),
             stop_reason=None,
             failure_signature="Authorization: Bearer top-secret-canary",
             evidence={"nested_message": "OPTIMUS_API_KEY=top-secret-canary"},
@@ -94,7 +94,7 @@ def test_jsonl_progress_ledger_does_not_write_raw_entry_when_sanitization_fails(
         iteration=1,
         goal="Inspect credentials",
         summary="OPTIMUS_API_KEY=top-secret-canary",
-        cost_credits=Decimal("0"),
+        cost_usd=Decimal("0"),
         stop_reason=None,
         failure_signature=None,
         occurred_at=datetime(2026, 7, 6, tzinfo=UTC),
