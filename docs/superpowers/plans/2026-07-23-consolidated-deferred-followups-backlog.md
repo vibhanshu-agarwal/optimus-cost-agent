@@ -44,7 +44,7 @@ open-work inventory.
 |---|---|---|
 | `P11-FEAT-GATEWAY-CORE` | Plan 11.1 — closed; merged to `main` as PR #85 (`6ae6997`, tip `6c39599`). Migration closed by **Plan 11.4**, merged to `main` as PR #91 (`d80e112`), 2026-07-28; no migration follow-ups remain open under this identity | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route); migration custody: strict-loopback completion, OpenRouter-default OpenAI-compatible aggregator transport, provider-reported accounting, and direct-adapter retirement — all implemented and independently re-verified task-by-task. The bounded Vercel Python transport check is complete as a design decision: Vercel is backlogged under this identity (its public OpenAI-compatible transport doesn't document the mandatory per-response provider-cost fields the settled `GatewayUsage` contract requires; no comparison matrix, no second endpoint added). Closure evidence: [design spec](../specs/2026-07-28-plan-11-4-p11-feat-gateway-core-migration-design.md), [implementation plan](2026-07-28-plan-11-4-gateway-core-migration.md) (all 36 checkboxes checked against their named verification commands) |
 | `P11-FEAT-GATEWAY-TOOLS` | Plan 11.2 — closed by PR #88 (merge `4590dbf`); migration follow-ups remain assigned here and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); migration custody: deterministic search/direct extract, route-specific dependency availability, replacement acceptance, and Tavily rollback-reviewed retirement; closure evidence: [Plan 11.2 approval](../reviews/2026-07-27-plan-11-2-implementation-plan-approval-v2.md), [local-process evidence](../../../reports/plan-11-2-gateway-tools-local-process-evidence.md), [staging evidence](../../../reports/plan-11-2-gateway-tools-staging-evidence.md), and [fitness report](../../../reports/plan-11-2-gateway-tools-task7-fitness.md) |
-| `P11-FEAT-GATEWAY-COST-OBS` | Plan 11.5 — in progress on `agent/cursor/plan-11-5-gateway-cost-obs` (Tasks 0–4 landed locally; not yet merged); migration follow-ups remain assigned here | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); [implementation plan](2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration |
+| `P11-FEAT-GATEWAY-COST-OBS` | Plan 11.5 — closed by PR #95 (merge `e388258`), 2026-07-29; migration follow-ups remain assigned here (`P11.5-FU-1` open; `P11.5-FU-2` closed via Plan 11.6) and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); [implementation plan](2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration |
 | `P11-FEAT-GATEWAY-MCP` | Ratified but gated; blocked on `P11-FU-3`; no MCP endpoint is shown or implied; plan number assigned at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
 | `P11-FEAT-ZED-RESUME` | Ratified, unscheduled; carries `P11-FU-1` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume) |
 | `P11-FEAT-REGISTRY` | Ratified, unscheduled; blocked on its research gate — no authoritative source exists in any of the four pinned documents. Also owns the v1.0 release-version contract | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut) |
@@ -575,11 +575,16 @@ instead of one shared, documented one. The eventual design must nail this down e
 project-specific non-default port, or an explicit identity check) rather than depend on ambient
 port availability.
 
-**Status:** **Promoted -> Plan 11.6** (2026-07-29):
-[`2026-07-29-plan-11-6-p11-5-fu-2-local-startup-consolidation.md`](2026-07-29-plan-11-6-p11-5-fu-2-local-startup-consolidation.md).
-The implementation plan is drafted for Claude review and operator approval; implementation has
-not started. Retain this entry and update it to `Closed` only after Plan 11.6's named real
-Redis/Gateway/Phoenix/`acpx` evidence exists.
+**Status:** **Closed** (2026-07-29): Plan 11.6 implemented on
+`agent/cursor/plan-11-6-local-startup-consolidation` with commits
+`d123779`, `01f7849`, `24158ce`, `1618591`, `ef3dbd8` (Tasks 1–5) and Task 6 live evidence in
+[`reports/plan-11-6-local-startup-live-evidence.md`](../../reports/plan-11-6-local-startup-live-evidence.md)
+(plus [`reports/plan-11-6-local-startup-acpx-evidence.md`](../../reports/plan-11-6-local-startup-acpx-evidence.md)
+and WSL residual
+[`reports/plan-11-6-local-startup-acpx-wsl-evidence.md`](../../reports/plan-11-6-local-startup-acpx-wsl-evidence.md)).
+Operator runbook:
+[`2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md`](2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md).
+Retain this entry for history; do not reopen without a new deferred-follow-up ID.
 
 ## P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)
 

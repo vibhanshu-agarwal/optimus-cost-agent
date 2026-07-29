@@ -771,7 +771,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 **Produces:** Named real-dependency evidence that the runbook works from an empty Optimus shell,
 plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependency.
 
-- [ ] **Step 1: Run all affected non-live tests.**
+- [x] **Step 1: Run all affected non-live tests.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_acp_subprocess_env.py tests/unit/acp/test_local_infra.py tests/unit/acp/test_launch_approval_cli.py tests/unit/acp/test_main_wiring.py tests/unit/acp/test_preflight.py tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py tests/unit/tools/test_plan115_docs.py tests/unit/tools/test_plan116_local_startup_docs.py tests/integration/release/test_verify_live_agent_cli.py -q
@@ -780,7 +780,7 @@ plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependenc
   Expected: all pass with no Docker, keyring, Gateway, Phoenix, or `acpx` fake presented as live
   evidence.
 
-- [ ] **Step 2: Execute the runbook's zero-env strict smoke.**
+- [x] **Step 2: Execute the runbook's zero-env strict smoke.**
 
   In a fresh shell, record and clear inherited `OPTIMUS_*` names for the command scope, confirm the
   required durable approval exists, then run exactly:
@@ -793,7 +793,7 @@ plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependenc
   health; the real Gateway authenticates; no provider key or OTLP endpoint appears in agent output.
   If approval/credentials are absent, perform only the runbook's setup/approve steps and rerun.
 
-- [ ] **Step 3: Record dependency identities and collision behavior.**
+- [x] **Step 3: Record dependency identities and collision behavior.**
 
   ```powershell
   docker ps --filter "name=^/optimus-redis$" --format "{{.Names}}`t{{.Image}}`t{{.Ports}}"
@@ -806,7 +806,7 @@ plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependenc
   container. Expected: typed failure names the conflict and no later Gateway/agent side effect
   occurs.
 
-- [ ] **Step 4: Run real Redis, Phoenix, Gateway, and independent ACP evidence.**
+- [x] **Step 4: Run real Redis, Phoenix, Gateway, and independent ACP evidence.**
 
   Keep the Step 2 zero-env smoke and the external-`acpx` capture as the proof of the consolidated
   launcher contract. Before the pre-existing direct-client live tiers, open Terminal A and keep
@@ -843,12 +843,14 @@ plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependenc
   commands are consolidated-launcher evidence and which are explicit direct-client regression
   evidence, including the persistent `run-gateway` terminal and its shutdown time.
 
-- [ ] **Step 5: Reproduce the platform-sensitive contract on WSL2.**
+- [x] **Step 5: Reproduce the platform-sensitive contract on WSL2.**
 
-  From the Windows host, run the focused POSIX projection in a real Ubuntu WSL2 environment:
+  From the Windows host, run the focused POSIX projection in a real Ubuntu WSL2 environment
+  using worktree path `optimus-cost-agent-wt-cursor` (plan text historically said `wt-codex`;
+  this implementation used `wt-cursor`).
 
   ```powershell
-  wsl.exe -d Ubuntu-24.04 -- bash -lc 'cd /mnt/d/Projects/Development/Python/optimus-cost-agent-wt-codex && uv sync --frozen --extra dev && env -i PATH="$PATH" uv run --frozen pytest tests/unit/acp/test_acp_subprocess_env.py tests/unit/acp/test_local_infra.py -q && command -v acpx && env -i PATH="$PWD/.venv/bin:$PATH" .venv/bin/python tools/run_plan115_acpx_cost_obs_evidence.py --workspace . --task "Return a one-sentence POSIX zero-env smoke result." --report /tmp/plan-11-6-local-startup-acpx-wsl-evidence.md'
+  wsl.exe -d Ubuntu-24.04 -- bash -lc 'cd /mnt/d/Projects/Development/Python/optimus-cost-agent-wt-cursor && uv sync --frozen --extra dev && env -i PATH="$PATH" uv run --frozen pytest tests/unit/acp/test_acp_subprocess_env.py tests/unit/acp/test_local_infra.py -q && command -v acpx && env -i PATH="$PWD/.venv/bin:$PATH" .venv/bin/python tools/run_plan115_acpx_cost_obs_evidence.py --workspace . --task "Return a one-sentence POSIX zero-env smoke result." --report /tmp/plan-11-6-local-startup-acpx-wsl-evidence.md'
   ```
 
   The first `env -i` invocation deliberately preserves only `PATH` for the focused tests. The
@@ -860,7 +862,7 @@ plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependenc
   exact failure as an unverified POSIX residual risk and do not claim Linux zero-env evidence;
   Windows success does not discharge that gap.
 
-- [ ] **Step 6: Run full fitness and retirement gates.**
+- [x] **Step 6: Run full fitness and retirement gates.**
 
   ```powershell
   uv run --frozen pytest -q
@@ -876,7 +878,7 @@ plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependenc
   in production plus their focused expected-command tests; `run-gateway` is present only in its
   retained CLI/tests/runbook sequence, and no launcher wrapper or stale inline operator hint exists.
 
-- [ ] **Step 7: Write evidence and close the backlog item.**
+- [x] **Step 7: Write evidence and close the backlog item.**
 
   Write `reports/plan-11-6-local-startup-live-evidence.md` with plan/approval digests, commands,
   exit codes, test counts, coverage, Ruff, real dependency names/images/digests, Windows and WSL2
@@ -885,7 +887,7 @@ plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependenc
   existing `P11.5-FU-2` status from promoted to closed with implementation commit/PR and this
   evidence link. Leave the full entry/history in place.
 
-- [ ] **Step 8: Final reviewer/operator handoff.**
+- [x] **Step 8: Final reviewer/operator handoff.**
 
   Update the checkpoint log, present the complete on-disk diff and evidence, and stop for review.
   Do not push, create a PR, merge, delete branches/containers, or claim the Phase 1 agent is
