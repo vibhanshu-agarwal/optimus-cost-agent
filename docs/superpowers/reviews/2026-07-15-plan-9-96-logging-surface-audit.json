@@ -945,14 +945,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.run_local_gateway:script:stderr_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: tools.run_local_gateway:script:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_run_local_gateway_scripts.py::test_script_delegates_to_optimus_trust_run_gateway",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "tools.run_openrouter_web_search_spike:_post_chat:json_serialization",
       "policy": "protocol-only",
       "rationale": "Functional HTTPS request serialization sends only the bounded model, query, token limit, temperature, and web-plugin configuration to OpenRouter. The credential remains in the Authorization header, and the serialized request is not logged or persisted.",

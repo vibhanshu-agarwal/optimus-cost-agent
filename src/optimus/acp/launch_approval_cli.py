@@ -37,6 +37,7 @@ from optimus.acp.local_gateway_secrets import (
     resolve_provider_credentials,
     resolve_shared_secret,
 )
+from optimus.acp.local_infra import LocalInfrastructureError, ensure_local_phoenix
 from optimus.acp.operator_paths import (
     OperatorPaths,
     WorkspaceRuntimeRootError,
@@ -127,7 +128,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
 
     # run-gateway
-    subparsers.add_parser("run-gateway", help="Start the local gateway with approval ceremony.")
+    run_gateway_parser = subparsers.add_parser(
+        "run-gateway", help="Start the local gateway with approval ceremony."
+    )
+    run_gateway_parser.add_argument(
+        "--with-local-phoenix",
+        action="store_true",
+        default=False,
+        help="Auto-start local Phoenix and inject OTEL_EXPORTER_OTLP_ENDPOINT into the Gateway child only.",
+    )
 
     return parser.parse_args(argv)
 
@@ -156,7 +165,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "run":
             return _cmd_run(workspace_root, target_argv=args.target_argv, elevated_debug=args.elevated_debug)
         if args.command == "run-gateway":
-            return _cmd_run_gateway_default(workspace_root)
+            return _cmd_run_gateway_default(
+                workspace_root,
+                with_local_phoenix=bool(getattr(args, "with_local_phoenix", False)),
+            )
     except CliError as exc:
         print(exc.message, file=sys.stderr)
         return exc.code
@@ -492,7 +504,7 @@ _DEFAULT_GATEWAY_BIND_HOST = "127.0.0.1"
 _DEFAULT_GATEWAY_BIND_PORT = 8765
 
 
-def _cmd_run_gateway_default(workspace_root: Path) -> int:
+def _cmd_run_gateway_default(workspace_root: Path, *, with_local_phoenix: bool = False) -> int:
     """Entry point for `optimus-trust run-gateway` with real trusted roots
     and the real OS keyring (no injectable parameters) — the production
     call path. _cmd_run_gateway itself takes explicit trusted_roots/
@@ -507,6 +519,7 @@ def _cmd_run_gateway_default(workspace_root: Path) -> int:
         bind_port=_DEFAULT_GATEWAY_BIND_PORT,
         trusted_roots=_resolve_trusted_roots(),
         credential_keyring_backend=keyring_backend,
+        with_local_phoenix=with_local_phoenix,
     )
 
 
@@ -517,6 +530,7 @@ def _cmd_run_gateway(
     bind_port: int,
     trusted_roots: TrustedOperatorRoots,
     credential_keyring_backend: object,
+    with_local_phoenix: bool = False,
 ) -> int:
     """Start the local Gateway with the approval ceremony, reading the
     repository's own .env.gateway as untrusted DATA — never sourced or
@@ -620,6 +634,14 @@ def _cmd_run_gateway(
         value = os.environ.get(key, "")
         if value:
             child_env[key] = value
+
+    if with_local_phoenix:
+        try:
+            otlp_endpoint = ensure_local_phoenix(log=lambda msg: print(msg, file=sys.stderr))
+        except LocalInfrastructureError as exc:
+            print(f"optimus-trust run-gateway: {exc.code}: {exc.user_message}", file=sys.stderr)
+            return 2
+        child_env["OTEL_EXPORTER_OTLP_ENDPOINT"] = otlp_endpoint
 
     result = subprocess.run(
         [

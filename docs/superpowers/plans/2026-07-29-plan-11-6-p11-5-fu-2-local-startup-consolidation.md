@@ -606,7 +606,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 - Deletes only the misleading `tools/run_local_gateway.sh` / `.ps1` wrappers and their dedicated
   test file.
 
-- [ ] **Step 1: Write RED persistence and wrapper-retirement tests.**
+- [x] **Step 1: Write RED persistence and wrapper-retirement tests.**
 
   Add a parser test for the new persistent-mode option:
 
@@ -622,7 +622,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   shared-secret, safe-display, manifest, and TTY tests. Delete wrapper-specific tests only after
   the replacement runbook/presence test owns their absence.
 
-- [ ] **Step 2: Run RED selector.**
+- [x] **Step 2: Run RED selector.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_launch_approval_cli.py -q
@@ -631,7 +631,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   Expected: the new option test fails because the current `run-gateway` parser has no Phoenix
   option; existing persistent-command tests remain green.
 
-- [ ] **Step 3: Extend the existing ceremony and delete only wrappers.**
+- [x] **Step 3: Extend the existing ceremony and delete only wrappers.**
 
   Add `--with-local-phoenix` to the existing `run-gateway` parser and thread it through
   `_cmd_run_gateway_default` and `_cmd_run_gateway`. After the existing TTY/config/credential
@@ -641,7 +641,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   `tests/unit/tools/test_run_local_gateway_scripts.py`; do not add aliases, deprecation shims, or
   renamed launch scripts.
 
-- [ ] **Step 4: Run focused green and wrapper retirement audit.**
+- [x] **Step 4: Run focused green and wrapper retirement audit.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_launch_approval_cli.py -q
@@ -652,7 +652,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   `run_local_gateway` has no active hit. Documentation for the retained ceremony is handled in
   Task 5 rather than hidden here.
 
-- [ ] **Step 5: Record checkpoint; commit only with separate approval.**
+- [x] **Step 5: Record checkpoint; commit only with separate approval.**
 
   If authorized, commit Task 4 paths with subject
   `refactor(acp): retire misleading local Gateway wrappers`.
