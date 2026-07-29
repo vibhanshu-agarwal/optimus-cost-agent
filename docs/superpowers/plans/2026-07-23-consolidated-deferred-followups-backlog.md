@@ -531,7 +531,7 @@ than adding another ad-hoc path.
 
 **Deliverable:** One short operator runbook (matching the existing Plan 9.6 Phase C runbook
 precedent at
-`docs/superpowers/plans/2026-07-10-plan-9-6-phase-c-operator-runbook.md`) that is the **single
+`docs/runbooks/plan-9-6-phase-c-operator-path.md`) that is the **single
 source of truth**, backed by code that actually matches what the runbook says — not a doc layered
 on top of still-divergent scripts.
 
@@ -558,7 +558,7 @@ checkpoint without a reviewed amendment; retain named pool custody before Plan 1
 incomplete live E7 / `requires_gateway` dispositions; `src/optimus/acp/subprocess_env.py`;
 `tools/run_plan115_acpx_cost_obs_evidence.py`; `tools/run_local_gateway.sh` / `.ps1`;
 `optimus-trust run-gateway`; Plan 9.6 Phase C runbook
-(`docs/superpowers/plans/2026-07-10-plan-9-6-phase-c-operator-runbook.md`).
+(`docs/runbooks/plan-9-6-phase-c-operator-path.md`).
 
 **New finding (2026-07-29, discovered while attempting live `requires_gateway`/E7 evidence):** the
 established `optimus-redis` (`redis:8`, port 6379) container had stopped — likely from a
@@ -583,7 +583,7 @@ port availability.
 and WSL residual
 [`reports/plan-11-6-local-startup-acpx-wsl-evidence.md`](../../reports/plan-11-6-local-startup-acpx-wsl-evidence.md)).
 Operator runbook:
-[`2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md`](2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md).
+[`docs/runbooks/local-live-dependencies.md`](../../runbooks/local-live-dependencies.md).
 Retain this entry for history; do not reopen without a new deferred-follow-up ID.
 
 ## P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)

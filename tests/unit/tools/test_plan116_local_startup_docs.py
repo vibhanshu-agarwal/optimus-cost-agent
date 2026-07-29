@@ -10,9 +10,7 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-RUNBOOK_PATH = (
-    REPO_ROOT / "docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md"
-)
+RUNBOOK_PATH = REPO_ROOT / "docs/runbooks/local-live-dependencies.md"
 README_PATH = REPO_ROOT / "README.md"
 ENV_EXAMPLE_PATH = REPO_ROOT / ".env.example"
 ENV_GATEWAY_EXAMPLE_PATH = REPO_ROOT / ".env.gateway.example"
@@ -66,7 +64,7 @@ def test_active_guidance_has_no_competing_launcher_instructions() -> None:
     assert "Phoenix" not in agent_env
     assert "6006" not in agent_env
 
-    assert "plan-11-6-local-live-dependencies-operator-runbook.md" in readme
+    assert "docs/runbooks/local-live-dependencies.md" in readme
     assert "OTEL_EXPORTER_OTLP_ENDPOINT" in gateway_example
     assert "Gateway child" in gateway_example or "Gateway-child" in gateway_example
     assert "never exported into the agent shell" in gateway_example.lower() or (

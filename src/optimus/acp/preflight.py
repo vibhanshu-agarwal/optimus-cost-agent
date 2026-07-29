@@ -11,7 +11,7 @@ from optimus.redis.runtime import RedisRuntime
 
 DEFAULT_REDIS_URL_HINT = DEFAULT_REDIS_URL
 _LOCAL_STARTUP_RUNBOOK = (
-    "docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md"
+    "docs/runbooks/local-live-dependencies.md"
 )
 _REDIS_TS_PROBE_KEY = "optimus:preflight:timeseries-probe"
 

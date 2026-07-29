@@ -1,10 +1,10 @@
 # Plan 11.6 — Local live dependencies operator runbook
 
-> **Authority:** [Plan 11.6](2026-07-29-plan-11-6-p11-5-fu-2-local-startup-consolidation.md).
+> **Authority:** [Plan 11.6](../superpowers/plans/2026-07-29-plan-11-6-p11-5-fu-2-local-startup-consolidation.md).
 > This is the **single** living operator sequence for Redis, local Gateway, and local Phoenix.
 > Competing README/`docker run` launcher instructions are retired; presence tests reject them.
 
-**Parent:** [Plan 11.5 deferred follow-up `P11.5-FU-2`](2026-07-23-consolidated-deferred-followups-backlog.md)
+**Parent:** [Plan 11.5 deferred follow-up `P11.5-FU-2`](../superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md)
 
 ---
 

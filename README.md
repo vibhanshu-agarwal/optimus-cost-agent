@@ -368,7 +368,7 @@ set `OPTIMUS_CONFIG_ROOT` to an absolute directory outside the workspace to over
 it explicitly. `optimus-agent --setup` writes to the OS keychain, not to this file —
 use `.env.gateway` in the config directory only if you prefer a file over the
 keychain. For the single local Redis / Gateway / Phoenix operator sequence, see
-[Plan 11.6 local live dependencies operator runbook](docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md)
+[Plan 11.6 local live dependencies operator runbook](docs/runbooks/local-live-dependencies.md)
 — checkout-root `.env.gateway` is untrusted data for the retained trust CLI
 ceremony, not an implicit `optimus-agent` discovery path.
 
@@ -435,7 +435,7 @@ flow.
 **If you kill or restart the local gateway manually:** `--check-config` does **not** spawn it.
 After changing gateway source (for example a new `pricing.py` entry), the running process keeps
 the old in-memory config until restarted. Safe order: (1) restart the persistent Gateway using the
-[Plan 11.6 local live dependencies operator runbook](docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md),
+[Plan 11.6 local live dependencies operator runbook](docs/runbooks/local-live-dependencies.md),
 (2) `optimus-agent --check-config --strict` with your intended `OPTIMUS_AGENT_MODEL`, (3) only then
 run live evidence or IDE sessions. Skipping step 1 after a code change produces misleading
 `no pricing snapshot` errors from a stale process.
@@ -454,7 +454,7 @@ run live evidence or IDE sessions. Skipping step 1 after a code change produces 
 container (`redis:8`), it runs detached **without** auto-remove and binds to `127.0.0.1`
 only, so the container can be restarted by name across launches. Operator-facing startup,
 conflict diagnosis, and consumer wiring live in the
-[Plan 11.6 local live dependencies operator runbook](docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md).
+[Plan 11.6 local live dependencies operator runbook](docs/runbooks/local-live-dependencies.md).
 
 **First-run note:** the first auto-start may pull the `redis:8` image and can take several
 minutes on a slow network; container create/start have no timeout in this path.
@@ -491,7 +491,7 @@ Keychain setup above is the intended long-term default. `.env` and operator-conf
 keychain values (explicit env vars and `.env.gateway` take precedence over the keychain).
 
 **Local Redis, Gateway, and Phoenix startup has one living sequence:** the
-[Plan 11.6 local live dependencies operator runbook](docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md).
+[Plan 11.6 local live dependencies operator runbook](docs/runbooks/local-live-dependencies.md).
 Use that runbook for keychain setup, durable approval, the persistent trust-CLI Gateway
 ceremony (optional local Phoenix), the `--no-auto-start` / external-`acpx` consumer path,
 and the bounded `--check-config --strict` auto-start smoke. Do not revive retired wrapper
@@ -680,7 +680,7 @@ summaries, and relative paths — never raw source code.
 ### Operator runbook (live verification)
 
 Follow the single living sequence in
-[Plan 11.6 local live dependencies operator runbook](docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md)
+[Plan 11.6 local live dependencies operator runbook](docs/runbooks/local-live-dependencies.md)
 for Redis, local Gateway, optional Phoenix, durable approval, the persistent trust-CLI ceremony,
 and consumer / `acpx` terminals. Summary only:
 
@@ -791,7 +791,7 @@ Client Protocol flow above.
 
 Unit and default integration tests use in-memory fakes. To prove Redis-backed plan
 replay works on your machine, start the named Redis dependency using the
-[Plan 11.6 local live dependencies operator runbook](docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md)
+[Plan 11.6 local live dependencies operator runbook](docs/runbooks/local-live-dependencies.md)
 (default URL `redis://127.0.0.1:6379/0`, image `redis:8`), then run:
 
 ```bash

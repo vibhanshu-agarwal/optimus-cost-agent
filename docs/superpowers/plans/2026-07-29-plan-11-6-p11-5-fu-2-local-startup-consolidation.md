@@ -220,7 +220,7 @@ value only as an argument to Gateway-child environment assembly. The agent-facin
 | `tests/unit/tools/test_run_local_gateway_scripts.py` | Delete with the retired wrappers. |
 | `tests/integration/telemetry/test_phoenix_live.py` | Remove the ad-hoc Docker hint and point dependency failures to the runbook. |
 | `tests/unit/tools/test_plan116_local_startup_docs.py` | Presence/retirement contract between code, runbook, README, examples, and live-test hints. |
-| `docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md` | Single operator source of truth for credentials, approval, startup, smoke, identity diagnosis, and recovery. |
+| `docs/runbooks/local-live-dependencies.md` | Single operator source of truth for credentials, approval, startup, smoke, identity diagnosis, and recovery. |
 | `README.md`, `.env.gateway.example` | Link to the runbook and describe Gateway-only OTLP projection without competing launcher commands. |
 | `reports/plan-11-6-local-startup-live-evidence.md` | Named real Redis/Gateway/Phoenix/acpx/runbook-smoke evidence artifact. |
 | `reports/plan-11-6-local-startup-acpx-evidence.md` | Sanitized external-`acpx` transcript/result evidence consumed by the consolidated live report. |
@@ -662,7 +662,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 **Files:**
 
 - Create:
-  `docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md`
+  `docs/runbooks/local-live-dependencies.md`
 - Create: `tests/unit/tools/test_plan116_local_startup_docs.py`
 - Modify: `README.md`
 - Modify: `.env.gateway.example`

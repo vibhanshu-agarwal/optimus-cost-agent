@@ -96,7 +96,7 @@ def phoenix_project() -> tuple[str, str]:
         pytest.fail(
             "Set PHOENIX_TEST_BASE_URL (e.g. http://127.0.0.1:6006) to a running Phoenix "
             "collector's UI/REST base URL before running requires_phoenix tests "
-            "(see docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md "
+            "(see docs/runbooks/local-live-dependencies.md "
             "for named Phoenix dependency startup)."
         )
     project = os.environ.get("PHOENIX_TEST_PROJECT", "default").strip() or "default"
