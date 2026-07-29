@@ -1,4 +1,4 @@
-# Consolidated Open Work Pool
+﻿# Consolidated Open Work Pool
 
 ## Purpose
 
@@ -429,6 +429,154 @@ batches; Plan 11.5 Task 8 real Phoenix evidence must prove or disposition this.
 
 **Status:** Tracked, not yet scheduled; no implementation plan exists. Drafted 2026-07-29 for
 operator review of pool custody wording.
+
+### P11-FU-8: Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming
+
+**Raised:** 2026-07-29 by operator ([Vibhanshu]) during backlog triage. Priority: **Low**.
+Status for pickup: **Needs deeper investigation before scoping — not ready to implement.**
+
+**Origin / substance:** The name is functionally correct but inconsistent with sibling Gateway
+env naming (`OPTIMUS_GATEWAY_TAVILY_BASE_URL`, `OPTIMUS_GATEWAY_OSV_BASE_URL`, and similar all use
+`OPTIMUS_GATEWAY_<THING>_BASE_URL`). This identifier breaks the pattern as
+`OPTIMUS_LOCAL_GATEWAY_BASE_URL`. Candidate rename: `OPTIMUS_GATEWAY_PROVIDER_BASE_URL`.
+
+**Why this is not a quick rename (confirmed by direct investigation):**
+
+- Blast radius: ~20 files / ~65 occurrences across three source packages (`optimus.acp`,
+  `optimus_gateway`, `optimus_security`) and at least six test files
+  (`tests/unit/acp/test_launch_gate.py` alone has ~15 occurrences; a dedicated
+  `tests/unit/security/test_gateway_base_url_resolution.py` exists for this surface).
+- The variable **name** feeds the HMAC security-snapshot fingerprint via
+  `compute_secret_fingerprint(value, field_name=name, ...)` in `launch_gate.py`. Renaming
+  invalidates existing operators' durable launch approvals and requires an explicit migration
+  story — not a silent swap.
+- `resolve_launch_candidate` fails closed on any unrecognized `OPTIMUS_*` name. An operator's
+  existing `.env.gateway` that still carries the old name would hard-break post-rename unless a
+  compatibility alias (or dual-accept window) is designed first.
+- At least one referencing design
+  (`docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md`)
+  is frozen/digest-pinned; its header requires a matching frozen digest for approval, so any
+  edit needs a full reviewed amendment rather than an in-place tweak.
+- Historical doc surface: nine plan/spec references across six plan/spec identities (the original pre-9.x local-Gateway-service plan, 9.7, 9.96, 9.99, 10.2, 11.4). Frozen/historical docs must be allowlisted by exact path if touched only for census, or
+  amended under their own review rules.
+
+**Designated slice / plan shape:** Future small dedicated naming/canonicalization plan
+(precedent: Plan 9.99 existed for this class of security-snapshot naming concern). Do **not**
+fold a silent rename into an unfinished Plan 11.5 checkpoint or any unrelated feature slice.
+Plan number assigned at pickup after the compat-alias + migration design is reviewed.
+
+**Next step before implementation:** Scope a compatibility-alias + durable-approval migration
+design (old name accept window, fingerprint transition, fail-closed behavior for mixed/unknown
+names, operator docs, and frozen-spec amendment path). Only then commit to the rename target
+(`OPTIMUS_GATEWAY_PROVIDER_BASE_URL` or a reviewed alternative).
+
+**Acceptance criteria (draft — refine at pickup):**
+
+- Reviewed design covers alias window, HMAC fingerprint migration, and fail-closed launch-gate
+  behavior for stale vs dual names.
+- Implementation (when scheduled) updates all live `src` / `tests` / runtime examples /
+  `.env*.example` surfaces; does not silently break existing durable approvals.
+- Frozen digest-pinned specs are amended under their own approval path or left untouched with
+  exact-path historical custody — no broad `docs/**` rewrite.
+- Focused regression coverage extends
+  `tests/unit/security/test_gateway_base_url_resolution.py` and launch-gate fingerprint tests for
+  the chosen migration semantics.
+
+**Evidence anchors:** operator investigation notes (2026-07-29); `src/optimus_security` launch-gate
+fingerprint path; sibling env names `OPTIMUS_GATEWAY_TAVILY_BASE_URL` /
+`OPTIMUS_GATEWAY_OSV_BASE_URL`; Plan 9.99
+(`docs/superpowers/plans/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md`)
+as process precedent.
+
+**Status:** Tracked, not yet scheduled; **needs deeper investigation / migration design before
+scoping**. No implementation plan exists. Filed 2026-07-29 for pool custody.
+
+### P11.5-FU-2: Consistent local env / Redis / Phoenix / Gateway startup for live runs
+
+**Raised:** 2026-07-29 during Plan 11.5 Task 8 (real Redis / Phoenix / ACP release-evidence
+capture), by operator ([Vibhanshu]). Priority: **HIGH**. Surfaced while attempting live E7
+`acpx` capture and `requires_gateway` evidence and hitting four inconsistent mechanisms for
+getting local dependencies running before landing on a workaround.
+
+**Origin / core problem:** `optimus-agent` startup (`__main__.py`) already resolves runtime
+configuration from the OS keychain + sensible defaults with **zero required env vars** — the
+documented Plan 9.7 / Plan 9.6 Phase C "no `.env` files required" path, confirmed still working.
+But `src/optimus/acp/subprocess_env.py`'s `build_acp_subprocess_env` (used by both the Plan 11.5
+Task 8 `acpx` evidence tool and the older Plan 9.87 one) imposes a separate, stricter gate that
+`OPTIMUS_GATEWAY_URL` / `OPTIMUS_API_KEY` / `OPTIMUS_REDIS_URL` be **explicitly present in the
+shell**. That stricter gate is not technically required by the agent contract and is what forced
+a manual workaround during Task 8.
+
+**Four divergent mechanisms found this session (do not add a fifth):**
+
+1. **`optimus-agent` auto-start** (`ensure_local_gateway` / `ensure_local_redis`) — zero env vars,
+   keychain-based, non-interactive.
+2. **`optimus-trust run-gateway`** — interactive ceremony, TTY-required, displays a config
+   snapshot.
+3. **`tools/run_local_gateway.sh` / `.ps1`** — look like standalone non-interactive launchers
+   (names/docstrings still describe old direct-source behavior) but now just delegate to #2.
+4. **`build_acp_subprocess_env`** — a stricter, explicit-env-var gate layered on top of #1 for
+   evidence tooling specifically.
+
+**Explicit requirement — consolidate, don't bolt on another option:** The fix must reduce this
+to **one clear path**. Preferred direction: make #4 honor #1's proven keychain-only contract. If
+evidence-capture truly needs stricter/explicit config, that divergence must be deliberate and
+documented — and #3 must be deleted or clearly repointed so it is not a false lead. Whichever
+direction, there must be exactly one documented answer to "how do I get local deps running for a
+live run," not several scripts that look interchangeable but aren't.
+
+**Also found:** No launcher exists for **Phoenix** at all — only an inline `docker run` hint
+buried in a test docstring. Bring Phoenix into the **same** single consistent mechanism rather
+than adding another ad-hoc path.
+
+**Deliverable:** One short operator runbook (matching the existing Plan 9.6 Phase C runbook
+precedent at
+`docs/superpowers/plans/2026-07-10-plan-9-6-phase-c-operator-runbook.md`) that is the **single
+source of truth**, backed by code that actually matches what the runbook says — not a doc layered
+on top of still-divergent scripts.
+
+**Designated slice / plan shape:** Future small dedicated startup/runbook consolidation plan
+(Plan number assigned at pickup). Do **not** silently fold into an unfinished Plan 11.5 Task 8
+checkpoint without a reviewed amendment; retain named pool custody before Plan 11.5 close.
+
+**Acceptance criteria (draft — refine at pickup):**
+
+- Exactly one documented, operator-usable path for local Redis + Gateway (+ Phoenix where needed)
+  for live/evidence runs.
+- `build_acp_subprocess_env` either honors the keychain-only agent contract (#1) or documents and
+  tests a deliberate, reviewed divergence — no implicit stricter shell-env gate.
+- `tools/run_local_gateway.sh` / `.ps1` either match that single path (names + behavior) or are
+  removed/repointed so they cannot mislead.
+- Phoenix local startup is part of the same mechanism/runbook (not a fifth ad-hoc docker hint).
+- Runbook text and code paths are verified against each other (presence tests and/or a focused
+  live smoke that follows the runbook steps).
+- Does not invent a fifth launcher family; does not weaken launch-trust / one-key / Gateway-only
+  OTLP contracts.
+
+**Evidence anchors:** Plan 11.5 Task 8 review conversation and evidence attempt (E7 /
+`requires_gateway` capture that surfaced all four mechanisms); `.superpowers/sdd/task-8-report.md`
+incomplete live E7 / `requires_gateway` dispositions; `src/optimus/acp/subprocess_env.py`;
+`tools/run_plan115_acpx_cost_obs_evidence.py`; `tools/run_local_gateway.sh` / `.ps1`;
+`optimus-trust run-gateway`; Plan 9.6 Phase C runbook
+(`docs/superpowers/plans/2026-07-10-plan-9-6-phase-c-operator-runbook.md`).
+
+**New finding (2026-07-29, discovered while attempting live `requires_gateway`/E7 evidence):** the
+established `optimus-redis` (`redis:8`, port 6379) container had stopped — likely from a
+machine/Docker Desktop restart since its last use, not a code or process regression. In its
+absence, an unrelated project's container (`optimus-plan112-redis`, `redis:7-alpine`, no
+TimeSeries module) took over the same default host port. `optimus-agent`'s preflight correctly
+detected and rejected the TimeSeries-less Redis — the fail-closed check itself worked as
+designed — but there is no protection against an unrelated project's container colliding on the
+same default port, and no documented recovery path. This also reconfirms the divergent-mechanism
+finding above at the Docker/port layer: separately-named, non-default-port containers
+(`optimus-task8-redis` on 16379, `optimus-task8-phoenix` on 16006) were found running alongside
+the default-port containers, consistent with different sessions standing up isolated instances
+instead of one shared, documented one. The eventual design must nail this down explicitly (e.g. a
+project-specific non-default port, or an explicit identity check) rather than depend on ambient
+port availability.
+
+**Status:** Tracked, not yet scheduled; **HIGH** priority. No implementation plan exists. Filed
+2026-07-29 for pool custody before Plan 11.5 close.
 
 ## P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)
 
