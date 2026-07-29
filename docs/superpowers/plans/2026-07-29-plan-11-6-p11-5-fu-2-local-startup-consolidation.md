@@ -320,7 +320,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 - Consumes later: Task 3's external-`acpx` invocation adds the Phoenix mode without changing this
   environment contract.
 
-- [ ] **Step 1: Write RED zero-env and digest-parity tests.**
+- [x] **Step 1: Write RED zero-env and digest-parity tests.**
 
   Replace the missing-Gateway failure test with:
 
@@ -340,8 +340,10 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   operator-verifier test that passes no Optimus variables, asserts the parent opens
   `redis://127.0.0.1:6379/0`, and asserts the spawned child environment still contains no
   `OPTIMUS_*` name. Add a Plan 11.5 helper test that the empty projection is accepted.
+  Fold-in (operator+Claude ruling): classify and delete dead
+  `bootstrap._DEFAULT_REDIS_URL_HINT` with a RED absence test.
 
-- [ ] **Step 2: Run RED selectors.**
+- [x] **Step 2: Run RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_acp_subprocess_env.py tests/integration/release/test_verify_live_agent_cli.py tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py -q
@@ -349,8 +351,10 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   Expected: failures identify the three-key loop, missing-URL error, and verifier's direct Redis
   indexing; existing secret-exclusion tests remain green.
+  Observed RED (with bootstrap fold-in): 6 failed, 46 passed — empty env / registry / verifier
+  KeyError / plan115 empty / bootstrap dead constant.
 
-- [ ] **Step 3: Implement the minimal registry projection.**
+- [x] **Step 3: Implement the minimal registry projection.**
 
   The core loop is:
 
@@ -376,8 +380,9 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   `apply_local_defaults(environ, config_root=config.workspace_root, resolved_shared_secret=None)`
   to obtain its Redis URL, but call `build_acp_subprocess_env` with the original `environ`.
   Do not add the resolved view to the subprocess environment.
+  Also delete dead `bootstrap._DEFAULT_REDIS_URL_HINT`.
 
-- [ ] **Step 4: Run focused green and secret-boundary tests.**
+- [x] **Step 4: Run focused green and secret-boundary tests.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_acp_subprocess_env.py tests/integration/release/test_verify_live_agent_cli.py tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py -q
@@ -385,12 +390,15 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   Expected: all pass; empty input stays empty; full registry input projects exactly; provider,
   Gateway-only, Python-path, and unrelated ambient variables remain absent.
+  Observed GREEN (plus bootstrap unit): `52 passed`. Child-key set for full registry input:
+  `OPTIMUS_AGENT_MODEL`, `OPTIMUS_API_KEY`, `OPTIMUS_GATEWAY_URL`, `OPTIMUS_LIVE_MAX_COST_USD`,
+  `OPTIMUS_MAX_PLANNING_TURNS`, `OPTIMUS_REDIS_URL`, plus `PATH`.
 
-- [ ] **Step 5: Record checkpoint; commit only with separate approval.**
+- [x] **Step 5: Record checkpoint; commit only with separate approval.**
 
   Record RED/GREEN output and the exact child-key set. If authorized, commit only these Task 1
   paths with subject `fix(acp): honor zero-env child startup contract`.
-
+  Commit authorized by Claude review + operator; seven Task 1 paths committed.
 ### Task 2: Fail closed on wrong Redis ownership without changing the default port
 
 **Files:**

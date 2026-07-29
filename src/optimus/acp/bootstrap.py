@@ -19,8 +19,6 @@ from optimus.telemetry.jsonl import JsonlTelemetryWriter
 from optimus.telemetry.observability import GatewayObservabilityExporter
 from optimus.telemetry.redis_sink import RedisTelemetryEventSink
 
-_DEFAULT_REDIS_URL_HINT = "redis://localhost:6379/0"
-
 
 @dataclass(frozen=True)
 class StartupConfigurationError(Exception):

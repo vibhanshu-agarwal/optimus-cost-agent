@@ -192,6 +192,16 @@ def test_parse_jsonl_records_skips_non_object_json_lines() -> None:
     assert records == [{"id": 1, "result": {"ok": True}}]
 
 
+def test_build_agent_environment_accepts_empty_optimus_projection() -> None:
+    """Plan 11.6 Task 1: evidence helper must accept a PATH-only / zero-Optimus shell."""
+    from tools.run_plan115_acpx_cost_obs_evidence import build_agent_environment
+
+    env = build_agent_environment({"PATH": "/usr/bin"})
+    assert env == {"PATH": "/usr/bin"}
+    assert_agent_environment_is_approved(env)
+    assert not any(name.startswith("OPTIMUS_") for name in env)
+
+
 def test_assert_agent_environment_is_approved_accepts_registry_names() -> None:
     env = {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:9",

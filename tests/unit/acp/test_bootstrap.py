@@ -1,8 +1,21 @@
+import inspect
+
 import pytest
 
+from optimus.acp import bootstrap as bootstrap_module
 from optimus.acp.bootstrap import StartupConfigurationError, build_agent_runner_for_harness, build_configured_server
 from optimus.acp.preflight import PreflightFailure
 from optimus.agent.runner import AgentRunner
+
+
+def test_bootstrap_has_no_divergent_dead_redis_default_constant():
+    """Plan 11.6 Task 1 fold-in: remove the unused localhost Redis hint that disagreed
+    with local_infra's live 127.0.0.1 default.
+    """
+    assert not hasattr(bootstrap_module, "_DEFAULT_REDIS_URL_HINT")
+    source = inspect.getsource(bootstrap_module)
+    assert "_DEFAULT_REDIS_URL_HINT" not in source
+    assert "redis://localhost:6379/0" not in source
 
 
 def test_bootstrap_reports_missing_optimus_credentials(tmp_path):
