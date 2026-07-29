@@ -220,7 +220,7 @@ value only as an argument to Gateway-child environment assembly. The agent-facin
 | `tests/unit/tools/test_run_local_gateway_scripts.py` | Delete with the retired wrappers. |
 | `tests/integration/telemetry/test_phoenix_live.py` | Remove the ad-hoc Docker hint and point dependency failures to the runbook. |
 | `tests/unit/tools/test_plan116_local_startup_docs.py` | Presence/retirement contract between code, runbook, README, examples, and live-test hints. |
-| `docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md` | Single operator source of truth for credentials, approval, startup, smoke, identity diagnosis, and recovery. |
+| `docs/runbooks/local-live-dependencies.md` | Single operator source of truth for credentials, approval, startup, smoke, identity diagnosis, and recovery. |
 | `README.md`, `.env.gateway.example` | Link to the runbook and describe Gateway-only OTLP projection without competing launcher commands. |
 | `reports/plan-11-6-local-startup-live-evidence.md` | Named real Redis/Gateway/Phoenix/acpx/runbook-smoke evidence artifact. |
 | `reports/plan-11-6-local-startup-acpx-evidence.md` | Sanitized external-`acpx` transcript/result evidence consumed by the consolidated live report. |
@@ -320,7 +320,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 - Consumes later: Task 3's external-`acpx` invocation adds the Phoenix mode without changing this
   environment contract.
 
-- [ ] **Step 1: Write RED zero-env and digest-parity tests.**
+- [x] **Step 1: Write RED zero-env and digest-parity tests.**
 
   Replace the missing-Gateway failure test with:
 
@@ -340,8 +340,10 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   operator-verifier test that passes no Optimus variables, asserts the parent opens
   `redis://127.0.0.1:6379/0`, and asserts the spawned child environment still contains no
   `OPTIMUS_*` name. Add a Plan 11.5 helper test that the empty projection is accepted.
+  Fold-in (operator+Claude ruling): classify and delete dead
+  `bootstrap._DEFAULT_REDIS_URL_HINT` with a RED absence test.
 
-- [ ] **Step 2: Run RED selectors.**
+- [x] **Step 2: Run RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_acp_subprocess_env.py tests/integration/release/test_verify_live_agent_cli.py tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py -q
@@ -349,8 +351,10 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   Expected: failures identify the three-key loop, missing-URL error, and verifier's direct Redis
   indexing; existing secret-exclusion tests remain green.
+  Observed RED (with bootstrap fold-in): 6 failed, 46 passed — empty env / registry / verifier
+  KeyError / plan115 empty / bootstrap dead constant.
 
-- [ ] **Step 3: Implement the minimal registry projection.**
+- [x] **Step 3: Implement the minimal registry projection.**
 
   The core loop is:
 
@@ -376,8 +380,9 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   `apply_local_defaults(environ, config_root=config.workspace_root, resolved_shared_secret=None)`
   to obtain its Redis URL, but call `build_acp_subprocess_env` with the original `environ`.
   Do not add the resolved view to the subprocess environment.
+  Also delete dead `bootstrap._DEFAULT_REDIS_URL_HINT`.
 
-- [ ] **Step 4: Run focused green and secret-boundary tests.**
+- [x] **Step 4: Run focused green and secret-boundary tests.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_acp_subprocess_env.py tests/integration/release/test_verify_live_agent_cli.py tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py -q
@@ -385,12 +390,15 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   Expected: all pass; empty input stays empty; full registry input projects exactly; provider,
   Gateway-only, Python-path, and unrelated ambient variables remain absent.
+  Observed GREEN (plus bootstrap unit): `52 passed`. Child-key set for full registry input:
+  `OPTIMUS_AGENT_MODEL`, `OPTIMUS_API_KEY`, `OPTIMUS_GATEWAY_URL`, `OPTIMUS_LIVE_MAX_COST_USD`,
+  `OPTIMUS_MAX_PLANNING_TURNS`, `OPTIMUS_REDIS_URL`, plus `PATH`.
 
-- [ ] **Step 5: Record checkpoint; commit only with separate approval.**
+- [x] **Step 5: Record checkpoint; commit only with separate approval.**
 
   Record RED/GREEN output and the exact child-key set. If authorized, commit only these Task 1
   paths with subject `fix(acp): honor zero-env child startup contract`.
-
+  Commit authorized by Claude review + operator; seven Task 1 paths committed.
 ### Task 2: Fail closed on wrong Redis ownership without changing the default port
 
 **Files:**
@@ -416,7 +424,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   established default port; native/no-owner listeners remain eligible for functional preflight.
 - Task 3 reuses the Docker identity helpers for Phoenix.
 
-- [ ] **Step 1: Write RED ownership and non-destruction tests.**
+- [x] **Step 1: Write RED ownership and non-destruction tests.**
 
   Add tests for:
 
@@ -432,7 +440,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   - no command contains `stop`, `rm`, `rename`, or `update` for an unrelated name;
   - `main()` prints `optimus-agent: <message>` and exits 2 before Gateway/agent startup.
 
-- [ ] **Step 2: Run RED selectors.**
+- [x] **Step 2: Run RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_local_infra.py tests/unit/acp/test_main_wiring.py -q
@@ -440,8 +448,9 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   Expected: new conflict tests fail because current code returns on any reachable TCP listener and
   has no typed error.
+  Observed RED: `6 failed, 60 passed`.
 
-- [ ] **Step 3: Implement default-port owner/image inspection.**
+- [x] **Step 3: Implement default-port owner/image inspection.**
 
   Add bounded Docker helpers using argument arrays and `shell=False`:
 
@@ -458,13 +467,13 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   wait, and subsequent real TimeSeries preflight. Record the configured image on the named
   container, but do not reject a named alternate image before the capability check.
 
-- [ ] **Step 4: Catch the typed failure after authorization and before later side effects.**
+- [x] **Step 4: Catch the typed failure after authorization and before later side effects.**
 
   Catch `LocalInfrastructureError` around Redis startup in both check-config and serving paths,
   print its safe `user_message` with the existing `optimus-agent:` prefix, return exit 2, and never
   start Gateway or build the agent server after the conflict.
 
-- [ ] **Step 5: Run focused green.**
+- [x] **Step 5: Run focused green.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_local_infra.py tests/unit/acp/test_main_wiring.py tests/unit/acp/test_preflight.py -q
@@ -472,11 +481,13 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   Expected: wrong-container ownership/non-destruction tests, native Redis escape-path tests, and
   existing TimeSeries fail-closed tests pass.
+  Observed GREEN: `74 passed`; Ruff clean on Task 2 paths.
 
-- [ ] **Step 6: Record checkpoint; commit only with separate approval.**
+- [x] **Step 6: Record checkpoint; commit only with separate approval.**
 
   If authorized, commit Task 2 paths with subject
   `fix(acp): reject ambiguous default Redis ownership`.
+  Commit authorized by Claude review + operator.
 
 ### Task 3: Add optional Phoenix to the authorized session-bound auto-start path
 
@@ -509,7 +520,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   builder remains optional, while the Plan 11.5 cost-observability evidence tool passes
   `with_local_phoenix=True` explicitly.
 
-- [ ] **Step 1: Write RED Phoenix lifecycle and boundary tests.**
+- [x] **Step 1: Write RED Phoenix lifecycle and boundary tests.**
 
   Add tests asserting:
 
@@ -529,7 +540,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
     cost-observability capture opts in explicitly and its environment remains zero-Optimus when
     the shell is empty.
 
-- [ ] **Step 2: Run RED selectors.**
+- [x] **Step 2: Run RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_local_infra.py tests/unit/acp/test_main_wiring.py tests/unit/acp/test_acp_subprocess_env.py tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py -q
@@ -537,8 +548,9 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   Expected: failures identify the missing agent option, Phoenix helper, endpoint argument, strict
   check-config Gateway startup, and cost-observability invocation flag.
+  Observed RED: `13 failed, 102 passed`.
 
-- [ ] **Step 3: Implement Phoenix in the existing lifecycle.**
+- [x] **Step 3: Implement Phoenix in the existing lifecycle.**
 
   Reuse Task 2's exact owner/image helpers. Health-check with Python stdlib HTTP only; no Phoenix
   dependency. The enabled `optimus-agent` startup sequence after authorization is:
@@ -554,13 +566,13 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   Keep Redis and Phoenix named containers running for reuse. Do not auto-remove them, pull images
   explicitly, or send the endpoint through `agent_environ`.
 
-- [ ] **Step 4: Share strict check-config and serving cleanup.**
+- [x] **Step 4: Share strict check-config and serving cleanup.**
 
   Ensure `--check-config --strict` can auto-start the Gateway instead of requiring a separate
   manual launcher. Wrap Gateway lifetime in `try/finally` for both strict check-config and serving.
   Non-strict check-config retains its Redis-only behavior unless Phoenix was explicitly requested.
 
-- [ ] **Step 5: Run focused green and one-key boundary tests.**
+- [x] **Step 5: Run focused green and one-key boundary tests.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_local_infra.py tests/unit/acp/test_main_wiring.py tests/unit/acp/test_launch_approval_cli.py tests/unit/acp/test_acp_subprocess_env.py tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py tests/unit/tools/test_plan115_docs.py -q
@@ -568,8 +580,9 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   Expected: all pass; `OTEL_EXPORTER_OTLP_ENDPOINT` appears only in Gateway-child construction and
   the Gateway-side living example, never in agent child output.
+  Observed GREEN: `158 passed, 6 skipped`; Ruff clean on Task 3 paths.
 
-- [ ] **Step 6: Record checkpoint; commit only with separate approval.**
+- [x] **Step 6: Record checkpoint; commit only with separate approval.**
 
   If authorized, commit Task 3 paths with subject
   `feat(acp): auto-start local Phoenix for live evidence`.
@@ -593,7 +606,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 - Deletes only the misleading `tools/run_local_gateway.sh` / `.ps1` wrappers and their dedicated
   test file.
 
-- [ ] **Step 1: Write RED persistence and wrapper-retirement tests.**
+- [x] **Step 1: Write RED persistence and wrapper-retirement tests.**
 
   Add a parser test for the new persistent-mode option:
 
@@ -609,7 +622,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   shared-secret, safe-display, manifest, and TTY tests. Delete wrapper-specific tests only after
   the replacement runbook/presence test owns their absence.
 
-- [ ] **Step 2: Run RED selector.**
+- [x] **Step 2: Run RED selector.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_launch_approval_cli.py -q
@@ -618,7 +631,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   Expected: the new option test fails because the current `run-gateway` parser has no Phoenix
   option; existing persistent-command tests remain green.
 
-- [ ] **Step 3: Extend the existing ceremony and delete only wrappers.**
+- [x] **Step 3: Extend the existing ceremony and delete only wrappers.**
 
   Add `--with-local-phoenix` to the existing `run-gateway` parser and thread it through
   `_cmd_run_gateway_default` and `_cmd_run_gateway`. After the existing TTY/config/credential
@@ -628,7 +641,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   `tests/unit/tools/test_run_local_gateway_scripts.py`; do not add aliases, deprecation shims, or
   renamed launch scripts.
 
-- [ ] **Step 4: Run focused green and wrapper retirement audit.**
+- [x] **Step 4: Run focused green and wrapper retirement audit.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_launch_approval_cli.py -q
@@ -639,7 +652,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   `run_local_gateway` has no active hit. Documentation for the retained ceremony is handled in
   Task 5 rather than hidden here.
 
-- [ ] **Step 5: Record checkpoint; commit only with separate approval.**
+- [x] **Step 5: Record checkpoint; commit only with separate approval.**
 
   If authorized, commit Task 4 paths with subject
   `refactor(acp): retire misleading local Gateway wrappers`.
@@ -649,7 +662,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 **Files:**
 
 - Create:
-  `docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md`
+  `docs/runbooks/local-live-dependencies.md`
 - Create: `tests/unit/tools/test_plan116_local_startup_docs.py`
 - Modify: `README.md`
 - Modify: `.env.gateway.example`
@@ -665,7 +678,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   documented as the bounded auto-start verification path.
 - Produces a presence/retirement test that rejects competing active instructions.
 
-- [ ] **Step 1: Write RED presence and retirement assertions.**
+- [x] **Step 1: Write RED presence and retirement assertions.**
 
   The new test reads active code/docs and asserts:
 
@@ -687,7 +700,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   `.env.example` contains no OTLP/Phoenix name. The retained `run-gateway` ceremony must appear
   only through the runbook's single documented sequence and its own CLI implementation/tests.
 
-- [ ] **Step 2: Run the docs test and verify RED.**
+- [x] **Step 2: Run the docs test and verify RED.**
 
   ```powershell
   uv run --frozen pytest tests/unit/tools/test_plan116_local_startup_docs.py tests/unit/tools/test_plan115_docs.py -q
@@ -695,7 +708,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   Expected: missing runbook and stale active launcher hints fail.
 
-- [ ] **Step 3: Write the operator runbook.**
+- [x] **Step 3: Write the operator runbook.**
 
   Use the Plan 9.6 Phase C structure and include:
 
@@ -718,7 +731,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   State explicitly that Optimus never stops or deletes the conflicting container.
 
-- [ ] **Step 4: Repoint living guidance.**
+- [x] **Step 4: Repoint living guidance.**
 
   Replace competing README commands with one concise runbook link and summary. Keep the retained
   `run-gateway` command only in that runbook and its CLI help/tests. Update
@@ -726,7 +739,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   reference only to the Gateway child; it is never exported into the agent shell. Replace
   preflight and Phoenix-test inline Docker commands with the runbook path and dependency name.
 
-- [ ] **Step 5: Run docs/presence green and active-surface audit.**
+- [x] **Step 5: Run docs/presence green and active-surface audit.**
 
   ```powershell
   uv run --frozen pytest tests/unit/tools/test_plan116_local_startup_docs.py tests/unit/tools/test_plan115_docs.py -q
@@ -739,7 +752,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   auto-start implementation, not operator guidance. `run-gateway` may appear only in the retained
   CLI/tests and the runbook sequence.
 
-- [ ] **Step 6: Record checkpoint; commit only with separate approval.**
+- [x] **Step 6: Record checkpoint; commit only with separate approval.**
 
   If authorized, commit Task 5 paths with subject
   `docs: establish one local dependency startup runbook`.
@@ -758,7 +771,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 **Produces:** Named real-dependency evidence that the runbook works from an empty Optimus shell,
 plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependency.
 
-- [ ] **Step 1: Run all affected non-live tests.**
+- [x] **Step 1: Run all affected non-live tests.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_acp_subprocess_env.py tests/unit/acp/test_local_infra.py tests/unit/acp/test_launch_approval_cli.py tests/unit/acp/test_main_wiring.py tests/unit/acp/test_preflight.py tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py tests/unit/tools/test_plan115_docs.py tests/unit/tools/test_plan116_local_startup_docs.py tests/integration/release/test_verify_live_agent_cli.py -q
@@ -767,7 +780,7 @@ plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependenc
   Expected: all pass with no Docker, keyring, Gateway, Phoenix, or `acpx` fake presented as live
   evidence.
 
-- [ ] **Step 2: Execute the runbook's zero-env strict smoke.**
+- [x] **Step 2: Execute the runbook's zero-env strict smoke.**
 
   In a fresh shell, record and clear inherited `OPTIMUS_*` names for the command scope, confirm the
   required durable approval exists, then run exactly:
@@ -780,7 +793,7 @@ plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependenc
   health; the real Gateway authenticates; no provider key or OTLP endpoint appears in agent output.
   If approval/credentials are absent, perform only the runbook's setup/approve steps and rerun.
 
-- [ ] **Step 3: Record dependency identities and collision behavior.**
+- [x] **Step 3: Record dependency identities and collision behavior.**
 
   ```powershell
   docker ps --filter "name=^/optimus-redis$" --format "{{.Names}}`t{{.Image}}`t{{.Ports}}"
@@ -793,7 +806,7 @@ plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependenc
   container. Expected: typed failure names the conflict and no later Gateway/agent side effect
   occurs.
 
-- [ ] **Step 4: Run real Redis, Phoenix, Gateway, and independent ACP evidence.**
+- [x] **Step 4: Run real Redis, Phoenix, Gateway, and independent ACP evidence.**
 
   Keep the Step 2 zero-env smoke and the external-`acpx` capture as the proof of the consolidated
   launcher contract. Before the pre-existing direct-client live tiers, open Terminal A and keep
@@ -830,12 +843,14 @@ plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependenc
   commands are consolidated-launcher evidence and which are explicit direct-client regression
   evidence, including the persistent `run-gateway` terminal and its shutdown time.
 
-- [ ] **Step 5: Reproduce the platform-sensitive contract on WSL2.**
+- [x] **Step 5: Reproduce the platform-sensitive contract on WSL2.**
 
-  From the Windows host, run the focused POSIX projection in a real Ubuntu WSL2 environment:
+  From the Windows host, run the focused POSIX projection in a real Ubuntu WSL2 environment
+  using worktree path `optimus-cost-agent-wt-cursor` (plan text historically said `wt-codex`;
+  this implementation used `wt-cursor`).
 
   ```powershell
-  wsl.exe -d Ubuntu-24.04 -- bash -lc 'cd /mnt/d/Projects/Development/Python/optimus-cost-agent-wt-codex && uv sync --frozen --extra dev && env -i PATH="$PATH" uv run --frozen pytest tests/unit/acp/test_acp_subprocess_env.py tests/unit/acp/test_local_infra.py -q && command -v acpx && env -i PATH="$PWD/.venv/bin:$PATH" .venv/bin/python tools/run_plan115_acpx_cost_obs_evidence.py --workspace . --task "Return a one-sentence POSIX zero-env smoke result." --report /tmp/plan-11-6-local-startup-acpx-wsl-evidence.md'
+  wsl.exe -d Ubuntu-24.04 -- bash -lc 'cd /mnt/d/Projects/Development/Python/optimus-cost-agent-wt-cursor && uv sync --frozen --extra dev && env -i PATH="$PATH" uv run --frozen pytest tests/unit/acp/test_acp_subprocess_env.py tests/unit/acp/test_local_infra.py -q && command -v acpx && env -i PATH="$PWD/.venv/bin:$PATH" .venv/bin/python tools/run_plan115_acpx_cost_obs_evidence.py --workspace . --task "Return a one-sentence POSIX zero-env smoke result." --report /tmp/plan-11-6-local-startup-acpx-wsl-evidence.md'
   ```
 
   The first `env -i` invocation deliberately preserves only `PATH` for the focused tests. The
@@ -847,7 +862,7 @@ plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependenc
   exact failure as an unverified POSIX residual risk and do not claim Linux zero-env evidence;
   Windows success does not discharge that gap.
 
-- [ ] **Step 6: Run full fitness and retirement gates.**
+- [x] **Step 6: Run full fitness and retirement gates.**
 
   ```powershell
   uv run --frozen pytest -q
@@ -863,7 +878,7 @@ plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependenc
   in production plus their focused expected-command tests; `run-gateway` is present only in its
   retained CLI/tests/runbook sequence, and no launcher wrapper or stale inline operator hint exists.
 
-- [ ] **Step 7: Write evidence and close the backlog item.**
+- [x] **Step 7: Write evidence and close the backlog item.**
 
   Write `reports/plan-11-6-local-startup-live-evidence.md` with plan/approval digests, commands,
   exit codes, test counts, coverage, Ruff, real dependency names/images/digests, Windows and WSL2
@@ -872,7 +887,7 @@ plus final closure of `P11.5-FU-2`. No fake may substitute for a named dependenc
   existing `P11.5-FU-2` status from promoted to closed with implementation commit/PR and this
   evidence link. Leave the full entry/history in place.
 
-- [ ] **Step 8: Final reviewer/operator handoff.**
+- [x] **Step 8: Final reviewer/operator handoff.**
 
   Update the checkpoint log, present the complete on-disk diff and evidence, and stop for review.
   Do not push, create a PR, merge, delete branches/containers, or claim the Phase 1 agent is

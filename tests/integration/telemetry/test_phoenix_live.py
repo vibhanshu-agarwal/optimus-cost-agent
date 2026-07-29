@@ -96,7 +96,8 @@ def phoenix_project() -> tuple[str, str]:
         pytest.fail(
             "Set PHOENIX_TEST_BASE_URL (e.g. http://127.0.0.1:6006) to a running Phoenix "
             "collector's UI/REST base URL before running requires_phoenix tests "
-            "(start one with: docker run --rm -d -p 6006:6006 arizephoenix/phoenix:latest)."
+            "(see docs/runbooks/local-live-dependencies.md "
+            "for named Phoenix dependency startup)."
         )
     project = os.environ.get("PHOENIX_TEST_PROJECT", "default").strip() or "default"
     _wait_for_phoenix_health(base_url)

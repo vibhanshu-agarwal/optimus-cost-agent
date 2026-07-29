@@ -901,3 +901,250 @@ def test_no_gated_helper_reads_os_environ_after_capture(monkeypatch, tmp_path) -
 
     assert exit_code == 0
     assert agent_environ_seen["OPTIMUS_API_KEY"] == "test-key"
+
+
+def test_main_exits_2_on_redis_port_conflict_before_gateway(monkeypatch, tmp_path, capsys) -> None:
+    """Plan 11.6 Task 2: typed Redis ownership failure prints and exits 2 before Gateway."""
+    from optimus.acp.local_infra import LocalInfrastructureError
+
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+    gateway_calls: list[object] = []
+    server_calls: list[object] = []
+
+    def raise_conflict(*_a, **_k):
+        raise LocalInfrastructureError(
+            code="REDIS_PORT_CONFLICT",
+            user_message="Default Redis port 6379 is owned by container optimus-plan112-redis.",
+        )
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", raise_conflict)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: gateway_calls.append(k) or None)
+    monkeypatch.setattr(acp_main, "build_configured_server", lambda **k: server_calls.append(k) or None)
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "optimus-agent:" in captured.err
+    assert "optimus-plan112-redis" in captured.err
+    assert gateway_calls == []
+    assert server_calls == []
+
+
+def test_check_config_exits_2_on_redis_port_conflict(monkeypatch, tmp_path, capsys) -> None:
+    from optimus.acp.local_infra import LocalInfrastructureError
+
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+    gateway_calls: list[object] = []
+
+    def raise_conflict(*_a, **_k):
+        raise LocalInfrastructureError(
+            code="REDIS_PORT_CONFLICT",
+            user_message="Default Redis port 6379 is owned by container optimus-plan112-redis.",
+        )
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", raise_conflict)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: gateway_calls.append(k) or None)
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path), "--check-config"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "optimus-agent:" in captured.err
+    assert "optimus-plan112-redis" in captured.err
+    assert gateway_calls == []
+
+
+# --- Plan 11.6 Task 3: optional local Phoenix ---
+
+
+def test_parse_args_rejects_with_local_phoenix_and_no_auto_start() -> None:
+    with pytest.raises(SystemExit):
+        acp_main.parse_args(["--with-local-phoenix", "--no-auto-start"])
+
+
+def test_parse_args_rejects_check_config_phoenix_without_strict() -> None:
+    with pytest.raises(SystemExit):
+        acp_main.parse_args(["--check-config", "--with-local-phoenix"])
+
+
+def test_parse_args_accepts_check_config_strict_with_local_phoenix() -> None:
+    args = acp_main.parse_args(["--check-config", "--strict", "--with-local-phoenix"])
+    assert args.with_local_phoenix is True
+    assert args.strict is True
+    assert args.check_config is True
+
+
+def test_phoenix_not_started_before_authorization_audit_revalidation(monkeypatch, tmp_path) -> None:
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+    call_order: list[str] = []
+
+    real_append = acp_main.append_launch_audit_event
+
+    def tracking_append(*a, **k):
+        call_order.append("append_launch_audit_event")
+        return real_append(*a, **k)
+
+    real_revalidate = acp_main.revalidate_workspace_identity
+
+    def tracking_revalidate(*a, **k):
+        call_order.append("revalidate_workspace_identity")
+        return real_revalidate(*a, **k)
+
+    monkeypatch.setattr(acp_main, "append_launch_audit_event", tracking_append)
+    monkeypatch.setattr(acp_main, "revalidate_workspace_identity", tracking_revalidate)
+    monkeypatch.setattr(
+        acp_main,
+        "ensure_local_redis",
+        lambda *a, **k: call_order.append("ensure_local_redis"),
+    )
+    monkeypatch.setattr(
+        acp_main,
+        "ensure_local_phoenix",
+        lambda **k: call_order.append("ensure_local_phoenix") or "http://127.0.0.1:6006/v1/traces",
+    )
+    monkeypatch.setattr(
+        acp_main,
+        "ensure_local_gateway",
+        lambda **k: call_order.append("ensure_local_gateway") or None,
+    )
+    _patch_common(monkeypatch)
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path), "--with-local-phoenix"])
+
+    assert exit_code == 0
+    assert call_order.index("append_launch_audit_event") < call_order.index("ensure_local_phoenix")
+    assert call_order.index("revalidate_workspace_identity") < call_order.index("ensure_local_phoenix")
+    assert call_order.index("ensure_local_redis") < call_order.index("ensure_local_phoenix")
+    assert call_order.index("ensure_local_phoenix") < call_order.index("ensure_local_gateway")
+
+
+def test_serve_with_phoenix_passes_otlp_endpoint_only_to_gateway(monkeypatch, tmp_path) -> None:
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+    gateway_kwargs: dict[str, object] = {}
+    agent_environ_seen: dict[str, str] = {}
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(
+        acp_main,
+        "ensure_local_phoenix",
+        lambda **k: "http://127.0.0.1:6006/v1/traces",
+    )
+
+    def fake_gateway(**kwargs):
+        gateway_kwargs.update(kwargs)
+        return None
+
+    def fake_server(*, environ, workspace_root, model):
+        agent_environ_seen.update(environ)
+
+        class FakeServer:
+            def serve_ndjson(self, *_a, **_k):
+                async def _noop():
+                    return None
+
+                return _noop()
+
+        return FakeServer()
+
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", fake_gateway)
+    monkeypatch.setattr(acp_main, "build_configured_server", fake_server)
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineReader", lambda *_a, **_k: object())
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineWriter", lambda *_a, **_k: object())
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path), "--with-local-phoenix"])
+
+    assert exit_code == 0
+    assert gateway_kwargs.get("otlp_endpoint") == "http://127.0.0.1:6006/v1/traces"
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT" not in agent_environ_seen
+
+
+def test_strict_check_config_with_phoenix_starts_gateway_and_stops_it(monkeypatch, tmp_path) -> None:
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+    call_order: list[str] = []
+    stop_calls: list[str] = []
+
+    class FakeGatewayProcess:
+        def stop(self):
+            stop_calls.append("stopped")
+
+    monkeypatch.setattr(
+        acp_main,
+        "ensure_local_redis",
+        lambda *a, **k: call_order.append("ensure_local_redis"),
+    )
+    monkeypatch.setattr(
+        acp_main,
+        "ensure_local_phoenix",
+        lambda **k: call_order.append("ensure_local_phoenix") or "http://127.0.0.1:6006/v1/traces",
+    )
+    monkeypatch.setattr(
+        acp_main,
+        "ensure_local_gateway",
+        lambda **k: call_order.append("ensure_local_gateway") or FakeGatewayProcess(),
+    )
+    monkeypatch.setattr(
+        acp_main,
+        "run_preflight",
+        lambda environ, **k: call_order.append("run_preflight"),
+    )
+    _patch_common(monkeypatch)
+
+    exit_code = acp_main.main(
+        ["--workspace-root", str(tmp_path), "--check-config", "--strict", "--with-local-phoenix"]
+    )
+
+    assert exit_code == 0
+    assert call_order == [
+        "ensure_local_redis",
+        "ensure_local_phoenix",
+        "ensure_local_gateway",
+        "run_preflight",
+    ]
+    assert stop_calls == ["stopped"]
+
+
+def test_strict_check_config_starts_and_stops_gateway_without_phoenix(monkeypatch, tmp_path) -> None:
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+    call_order: list[str] = []
+    stop_calls: list[str] = []
+    phoenix_calls: list[object] = []
+
+    class FakeGatewayProcess:
+        def stop(self):
+            stop_calls.append("stopped")
+
+    monkeypatch.setattr(
+        acp_main,
+        "ensure_local_redis",
+        lambda *a, **k: call_order.append("ensure_local_redis"),
+    )
+    monkeypatch.setattr(
+        acp_main,
+        "ensure_local_phoenix",
+        lambda **k: phoenix_calls.append(k) or "http://127.0.0.1:6006/v1/traces",
+    )
+    monkeypatch.setattr(
+        acp_main,
+        "ensure_local_gateway",
+        lambda **k: call_order.append("ensure_local_gateway") or FakeGatewayProcess(),
+    )
+    monkeypatch.setattr(
+        acp_main,
+        "run_preflight",
+        lambda environ, **k: call_order.append("run_preflight"),
+    )
+    _patch_common(monkeypatch)
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path), "--check-config", "--strict"])
+
+    assert exit_code == 0
+    assert phoenix_calls == []
+    assert call_order == ["ensure_local_redis", "ensure_local_gateway", "run_preflight"]
+    assert stop_calls == ["stopped"]

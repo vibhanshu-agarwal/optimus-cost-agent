@@ -113,6 +113,56 @@ def test_build_agent_invocation_uses_forward_slashes_for_acpx_parsing(tmp_path: 
     assert invocation.startswith("C:/tools/optimus-agent.exe")
 
 
+def test_build_agent_invocation_omits_phoenix_by_default(tmp_path: Path) -> None:
+    invocation = build_agent_invocation(agent_exe="optimus-agent", workspace=tmp_path)
+    assert "--with-local-phoenix" not in invocation
+
+
+def test_build_agent_invocation_opts_into_local_phoenix(tmp_path: Path) -> None:
+    invocation = build_agent_invocation(
+        agent_exe="optimus-agent",
+        workspace=tmp_path,
+        with_local_phoenix=True,
+    )
+    assert "--with-local-phoenix" in invocation
+
+
+def test_run_capture_passes_with_local_phoenix_true(monkeypatch, tmp_path: Path) -> None:
+    """Plan 11.6 Task 3: cost-observability capture opts into Phoenix explicitly."""
+    from tools import run_plan115_acpx_cost_obs_evidence as tool
+
+    observed: dict[str, object] = {}
+
+    monkeypatch.setattr(tool, "resolve_acpx", lambda: "/usr/bin/acpx")
+    monkeypatch.setattr(tool, "resolve_optimus_agent", lambda: "optimus-agent")
+    monkeypatch.setattr(tool, "build_agent_environment", lambda _env: {"PATH": "/usr/bin"})
+    monkeypatch.setattr(tool, "assert_agent_environment_is_approved", lambda _env: None)
+
+    def fake_invocation(*, agent_exe, workspace, with_local_phoenix=False):
+        observed["with_local_phoenix"] = with_local_phoenix
+        return f"{agent_exe} --workspace-root {workspace.as_posix()}"
+
+    monkeypatch.setattr(tool, "build_agent_invocation", fake_invocation)
+    monkeypatch.setattr(
+        tool,
+        "build_acpx_command",
+        lambda **k: ["acpx", "exec", "task"],
+    )
+    monkeypatch.setattr(
+        tool.subprocess,
+        "run",
+        lambda *a, **k: type("P", (), {"returncode": 0, "stdout": "", "stderr": ""})(),
+    )
+    monkeypatch.setattr(tool, "parse_jsonl_records", lambda _t: [])
+    monkeypatch.setattr(tool, "verify_acp_results", lambda _r: [])
+    monkeypatch.setattr(tool, "build_e7_summary", lambda **k: {"ok": True})
+    monkeypatch.setattr(tool, "write_e7_report", lambda *a, **k: None)
+
+    tool.run_capture(workspace=tmp_path, task="smoke", report_path=tmp_path / "r.md")
+
+    assert observed["with_local_phoenix"] is True
+
+
 def test_assert_no_retired_accounting_fields_passes_on_current_ledger_field_names() -> None:
     current_result = {
         "gateway_usage": {"cost_usd": "0.01", "billing_units": 5},
@@ -190,6 +240,16 @@ def test_parse_jsonl_records_skips_non_object_json_lines() -> None:
     records = parse_jsonl_records(transcript)
 
     assert records == [{"id": 1, "result": {"ok": True}}]
+
+
+def test_build_agent_environment_accepts_empty_optimus_projection() -> None:
+    """Plan 11.6 Task 1: evidence helper must accept a PATH-only / zero-Optimus shell."""
+    from tools.run_plan115_acpx_cost_obs_evidence import build_agent_environment
+
+    env = build_agent_environment({"PATH": "/usr/bin"})
+    assert env == {"PATH": "/usr/bin"}
+    assert_agent_environment_is_approved(env)
+    assert not any(name.startswith("OPTIMUS_") for name in env)
 
 
 def test_assert_agent_environment_is_approved_accepts_registry_names() -> None:

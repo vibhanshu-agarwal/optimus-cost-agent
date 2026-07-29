@@ -30,6 +30,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from optimus.acp.e2e_transcript import PLAN_9_6_LIVE_AGENT_TRANSCRIPT_PATH, E2eAcpTranscriptWriter
+from optimus.acp.local_infra import apply_local_defaults
 from optimus.acp.ndjson_subprocess_session import LiveSessionError, NdjsonSubprocessSession
 from optimus.acp.preflight import (
     PreflightCheckResult,
@@ -243,7 +244,16 @@ def run_operator_live_session(
         plan details, execution costs, and session stop reasons.
     :rtype: OperatorLiveSessionResult
     """
-    redis_url = environ["OPTIMUS_REDIS_URL"].strip()
+    # Parent-only Redis default for this verifier's store connection. Do not
+    # inject the resolved view into the child — build_acp_subprocess_env must
+    # see the original environ so zero-Optimus shells stay digest-compatible
+    # with a direct optimus-agent launch (Plan 11.6 Task 1).
+    parent_environ = apply_local_defaults(
+        environ,
+        config_root=config.workspace_root,
+        resolved_shared_secret=None,
+    )
+    redis_url = parent_environ["OPTIMUS_REDIS_URL"].strip()
     redis_store = RedisAgentStateStore.from_url(redis_url)
     subprocess_env = build_acp_subprocess_env(operator_environ=environ)
     deadline = time.monotonic() + config.wall_clock_timeout_seconds

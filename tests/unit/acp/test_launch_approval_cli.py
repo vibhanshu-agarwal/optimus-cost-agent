@@ -7,6 +7,7 @@ never display, and CLI output/exception paths contain no canaries.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -839,6 +840,126 @@ class TestRunGatewayCommand:
     resolve_launch_candidate(credential_keyring_backend=...) pattern used
     elsewhere in this codebase, and keeping the real OS keyring completely
     out of the test path."""
+
+    def test_run_gateway_accepts_local_phoenix_option(self) -> None:
+        """Plan 11.6 Task 4: persistent run-gateway accepts Task 3 Phoenix opt-in."""
+        from optimus.acp.launch_approval_cli import _parse_args
+
+        args = _parse_args(["run-gateway", "--with-local-phoenix"])
+        assert args.command == "run-gateway"
+        assert args.with_local_phoenix is True
+
+    def test_run_gateway_blocks_until_gateway_child_completes(self, tmp_path, monkeypatch) -> None:
+        """Plan 11.6 Task 4: run-gateway stays in the foreground until subprocess.run returns."""
+        from optimus.acp.launch_approval_cli import _cmd_run_gateway
+        from optimus.acp.trusted_paths import TrustedOperatorRoots
+
+        env_gateway = tmp_path / ".env.gateway"
+        env_gateway.write_text(
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-test\n"
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=shared-secret\n",
+            encoding="utf-8",
+        )
+        if _sys_platform_is_posix():
+            env_gateway.chmod(0o600)
+
+        order: list[str] = []
+
+        class FakeCompletedProcess:
+            returncode = 0
+            stdout = ""
+
+        real_subprocess_run = subprocess.run
+
+        def fake_run(args, **kwargs):
+            if args and isinstance(args, list) and "optimus_gateway" in args:
+                order.append("child_started")
+                order.append("child_finished")
+                return FakeCompletedProcess()
+            return real_subprocess_run(args, **kwargs)
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        with patch("sys.stdin") as mock_stdin, patch("sys.stdout") as mock_stdout:
+            mock_stdin.isatty.return_value = True
+            mock_stdout.isatty.return_value = True
+            result = _cmd_run_gateway(
+                tmp_path,
+                bind_host="127.0.0.1",
+                bind_port=8765,
+                trusted_roots=TrustedOperatorRoots(
+                    default_config_root=tmp_path / "config", approval_runtime_root=tmp_path / "runtime"
+                ),
+                credential_keyring_backend=_FakeKeyring(),
+            )
+            order.append("returned")
+
+        assert result == 0
+        assert order == ["child_started", "child_finished", "returned"]
+
+    def test_run_gateway_with_local_phoenix_injects_otlp_into_child_env(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """Plan 11.6 Task 4: --with-local-phoenix overlays OTLP on the Gateway child only."""
+        from optimus.acp.launch_approval_cli import _cmd_run_gateway
+        from optimus.acp.trusted_paths import TrustedOperatorRoots
+
+        env_gateway = tmp_path / ".env.gateway"
+        env_gateway.write_text(
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-test\n"
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=shared-secret\n",
+            encoding="utf-8",
+        )
+        if _sys_platform_is_posix():
+            env_gateway.chmod(0o600)
+
+        captured: dict[str, object] = {}
+        phoenix_calls: list[object] = []
+
+        class FakeCompletedProcess:
+            returncode = 0
+            stdout = ""
+
+        real_subprocess_run = subprocess.run
+
+        def fake_run(args, **kwargs):
+            if args and isinstance(args, list) and "optimus_gateway" in args:
+                captured["env"] = kwargs.get("env")
+                return FakeCompletedProcess()
+            return real_subprocess_run(args, **kwargs)
+
+        def fake_ensure_local_phoenix(*, log=None):
+            phoenix_calls.append({"log": log})
+            return "http://127.0.0.1:6006/v1/traces"
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        monkeypatch.setattr(
+            "optimus.acp.launch_approval_cli.ensure_local_phoenix",
+            fake_ensure_local_phoenix,
+        )
+
+        with patch("sys.stdin") as mock_stdin, patch("sys.stdout") as mock_stdout:
+            mock_stdin.isatty.return_value = True
+            mock_stdout.isatty.return_value = True
+            result = _cmd_run_gateway(
+                tmp_path,
+                bind_host="127.0.0.1",
+                bind_port=8765,
+                trusted_roots=TrustedOperatorRoots(
+                    default_config_root=tmp_path / "config", approval_runtime_root=tmp_path / "runtime"
+                ),
+                credential_keyring_backend=_FakeKeyring(),
+                with_local_phoenix=True,
+            )
+
+        assert result == 0
+        assert len(phoenix_calls) == 1
+        env_passed = captured["env"]
+        assert env_passed is not None
+        assert env_passed["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://127.0.0.1:6006/v1/traces"
+        assert "OTEL_EXPORTER_OTLP_ENDPOINT" not in os.environ
 
     def test_run_gateway_requires_tty(self, tmp_path) -> None:
         """A non-interactive invocation fails with a value-free message —

@@ -25,11 +25,27 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.__main__:_start_local_dependencies:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.__main__:_start_local_dependencies:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_main_wiring.py::test_main_exits_2_on_redis_port_conflict_before_gateway",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.__main__:main:stderr_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.acp.__main__:main:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/acp/test_main_wiring.py::test_unapproved_workspace_fails_closed_before_any_side_effect",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.__main__:parse_args:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.__main__:parse_args:logger_export is an AST heuristic overmatch on argparse.ArgumentParser.error; it emits only controlled flag-conflict usage text to stderr and does not retain secrets.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_main_wiring.py::test_parse_args_rejects_with_local_phoenix_and_no_auto_start",
       "evidence_tier": "unit"
     },
     {
@@ -926,14 +942,6 @@
       "rationale": "Inspection: serialize_gateway_child_manifest emits the fixed child-manifest schema with provider/shared-secret fingerprints rather than credential literals.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/security/test_launch_manifest.py::test_manifest_contains_no_raw_secret",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.run_local_gateway:script:stderr_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: tools.run_local_gateway:script:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_run_local_gateway_scripts.py::test_script_delegates_to_optimus_trust_run_gateway",
       "evidence_tier": "unit"
     },
     {

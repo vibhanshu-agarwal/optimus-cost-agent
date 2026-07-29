@@ -404,6 +404,72 @@ def test_run_operator_live_session_surfaces_config_root_rejection_cleanly(tmp_pa
     assert "timed out waiting" not in message
 
 
+def test_run_operator_live_session_resolves_redis_default_for_parent_only(tmp_path, monkeypatch):
+    """Plan 11.6 Task 1: parent verifier may apply the Redis loopback default for its
+    own store connection, but the child projection must stay empty of OPTIMUS_* when
+    the operator environ has none — matching a direct zero-env optimus-agent launch.
+    """
+    import sys as _sys
+
+    from optimus.acp import operator_verify as operator_verify_module
+    from optimus.acp.ndjson_subprocess_session import LiveSessionError
+
+    workspace = tmp_path / "verify-workspace"
+    workspace.mkdir()
+
+    fake_agent_script = tmp_path / "fake_zero_env_agent.py"
+    fake_agent_script.write_text(
+        "import sys\n"
+        "print('optimus-agent: no launch approval found for this workspace.', file=sys.stderr)\n"
+        "sys.exit(2)\n",
+        encoding="utf-8",
+    )
+
+    observed: dict[str, object] = {}
+
+    def fake_popen(args, **kwargs):
+        observed["child_env"] = dict(kwargs.get("env") or {})
+        return _real_popen([_sys.executable, str(fake_agent_script)], **kwargs)
+
+    import subprocess as subprocess_module
+
+    _real_popen = subprocess_module.Popen
+    monkeypatch.setattr(operator_verify_module.subprocess, "Popen", fake_popen)
+
+    class _FakeRedisStore:
+        redis_client = None
+
+        def latest_plan_for_run(self, *, run_id):
+            return None
+
+    def fake_from_url(url, **_kwargs):
+        observed["parent_redis_url"] = url
+        return _FakeRedisStore()
+
+    monkeypatch.setattr(
+        operator_verify_module.RedisAgentStateStore, "from_url", staticmethod(fake_from_url)
+    )
+
+    config = operator_verify_module.OperatorLiveSessionConfig(
+        workspace_root=workspace,
+        repository_root=tmp_path,
+        model="claude-haiku",
+        task="irrelevant",
+        transcript_path=tmp_path / "transcript.json",
+        wall_clock_timeout_seconds=10,
+    )
+    environ = {"PATH": "/usr/bin"}
+    transcript = operator_verify_module.E2eAcpTranscriptWriter()
+
+    with pytest.raises(LiveSessionError):
+        operator_verify_module.run_operator_live_session(config, environ=environ, transcript=transcript)
+
+    assert observed["parent_redis_url"] == "redis://127.0.0.1:6379/0"
+    child_env = observed["child_env"]
+    assert isinstance(child_env, dict)
+    assert not any(name.startswith("OPTIMUS_") for name in child_env)
+
+
 def test_verify_live_agent_runtime_failure_exits_3(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("OPTIMUS_GATEWAY_URL", "https://gateway.example")
     monkeypatch.setenv("OPTIMUS_API_KEY", "opt-test")

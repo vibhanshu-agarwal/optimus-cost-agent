@@ -5,10 +5,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from optimus.acp.local_infra import DEFAULT_REDIS_URL
 from optimus.agent.state_store import validate_redis_url
 from optimus.redis.runtime import RedisRuntime
 
-DEFAULT_REDIS_URL_HINT = "redis://127.0.0.1:6379/0"
+DEFAULT_REDIS_URL_HINT = DEFAULT_REDIS_URL
+_LOCAL_STARTUP_RUNBOOK = (
+    "docs/runbooks/local-live-dependencies.md"
+)
 _REDIS_TS_PROBE_KEY = "optimus:preflight:timeseries-probe"
 
 
@@ -71,7 +75,7 @@ def _require_redis_url(environ: Mapping[str, str]) -> str:
             exit_code=2,
             user_message=(
                 f"Set OPTIMUS_REDIS_URL={DEFAULT_REDIS_URL_HINT} "
-                "(start one with: docker run --rm -d -p 6379:6379 redis:8)."
+                f"(see {_LOCAL_STARTUP_RUNBOOK} for named Redis dependency startup)."
             ),
         )
     try:
