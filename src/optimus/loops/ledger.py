@@ -39,7 +39,7 @@ class ProgressLedgerEntry(BaseModel):
     iteration: int = Field(ge=0)
     goal: str = Field(min_length=1)
     summary: str = Field(min_length=1)
-    cost_credits: Decimal = Field(ge=Decimal("0"))
+    cost_usd: Decimal = Field(ge=Decimal("0"))
     stop_reason: LoopStopReason | None
     failure_signature: str | None
     evidence: dict[str, str] = Field(default_factory=dict)

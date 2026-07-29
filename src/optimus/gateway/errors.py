@@ -31,10 +31,8 @@ class GatewayResponseError(GatewayError):
         message: str,
         *,
         gateway_usage: GatewayUsage | None = None,
-        credits_used: int | None = None,
         audit_code: str | None = None,
     ) -> None:
         self.gateway_usage = gateway_usage
-        self.credits_used = credits_used
         self.audit_code = audit_code
         super().__init__(message)

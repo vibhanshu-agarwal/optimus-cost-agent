@@ -371,7 +371,6 @@ def _gateway_usage_payload(usage: GatewayUsage) -> dict[str, Any]:
     for field in (
         "service",
         "native_unit",
-        "optimus_credits_debited",
         "model",
         "model_version",
         "price_snapshot_id",
@@ -410,7 +409,7 @@ def _evidence_search_payload(
         ],
         "gateway_usage": _gateway_usage_payload(response.gateway_usage),
         "ledger_run_total_cost_usd": str(ledger.total_cost_usd(run_id=run_id)),
-        "ledger_run_total_credits": ledger.total_credits(run_id=run_id),
+        "ledger_run_total_billing_units": ledger.total_billing_units(run_id=run_id),
     }
 
 
@@ -426,7 +425,7 @@ def _evidence_extract_payload(
         "trust": response.trust,
         "gateway_usage": _gateway_usage_payload(response.gateway_usage),
         "ledger_run_total_cost_usd": str(ledger.total_cost_usd(run_id=run_id)),
-        "ledger_run_total_credits": ledger.total_credits(run_id=run_id),
+        "ledger_run_total_billing_units": ledger.total_billing_units(run_id=run_id),
     }
 
 
@@ -457,7 +456,7 @@ def _evidence_package_lookup_payload(
     payload = result.model_dump(mode="json")
     payload["gateway_usage"] = _ledger_usage_payload(ledger, run_id)
     payload["ledger_run_total_cost_usd"] = str(ledger.total_cost_usd(run_id=run_id))
-    payload["ledger_run_total_credits"] = ledger.total_credits(run_id=run_id)
+    payload["ledger_run_total_billing_units"] = ledger.total_billing_units(run_id=run_id)
     return payload
 
 
@@ -469,5 +468,5 @@ def _evidence_security_advisory_payload(
     payload = result.model_dump(mode="json")
     payload["gateway_usage"] = _ledger_usage_payload(ledger, run_id)
     payload["ledger_run_total_cost_usd"] = str(ledger.total_cost_usd(run_id=run_id))
-    payload["ledger_run_total_credits"] = ledger.total_credits(run_id=run_id)
+    payload["ledger_run_total_billing_units"] = ledger.total_billing_units(run_id=run_id)
     return payload

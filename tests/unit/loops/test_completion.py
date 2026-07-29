@@ -54,10 +54,6 @@ def test_gateway_completion_evaluator_routes_through_gateway_and_returns_usage()
                 "provider": "openai",
                 "billing_units": 7,
                 "cost_usd": "0.002",
-                "optimus_credits_debited": "0.03",
-                "service": "responses",
-                "native_unit": "tokens",
-                "price_snapshot_id": "prices-1",
             },
         }
     )
@@ -70,7 +66,9 @@ def test_gateway_completion_evaluator_routes_through_gateway_and_returns_usage()
 
     assert result.completed is True
     assert result.reason == "tests pass"
-    assert result.cost_credits == Decimal("0.03")
+    # CompletionEvaluation.cost_usd is sourced directly from the provider-reported
+    # GatewayUsage.cost_usd wire field.
+    assert result.cost_usd == Decimal("0.002")
     assert result.gateway_request_id == "gw-1"
     assert transport.requests[0].headers["Authorization"] == "Bearer optimus-key"
     assert transport.requests[0].payload["metadata"]["purpose"] == "goal_loop_completion_evaluation"
@@ -190,7 +188,7 @@ def test_gateway_completion_evaluator_redacts_ledger_fields_before_gateway_call(
             iteration=1,
             goal="Migrate auth call sites",
             summary=f"stopped after token=secret-token in {secret_path}",
-            cost_credits=Decimal("0"),
+            cost_usd=Decimal("0"),
             stop_reason=LoopStopReason.MAX_ITERATIONS,
             failure_signature="Authorization: Bearer secret-token",
             evidence={"stdout": "OPENAI_API_KEY=sk-live"},

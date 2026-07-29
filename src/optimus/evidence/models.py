@@ -63,7 +63,6 @@ class EvidenceSearchResponse(BaseModel):
 
     results: tuple[EvidenceSearchResult, ...]
     gateway_usage: GatewayUsage
-    credits_used: int = Field(default=0, ge=0)
 
 
 class EvidenceExtractResponse(BaseModel):
@@ -76,7 +75,6 @@ class EvidenceExtractResponse(BaseModel):
     content: str
     trust: Literal["untrusted"] = "untrusted"
     gateway_usage: GatewayUsage
-    credits_used: int = Field(default=0, ge=0)
 
     @property
     def url_text(self) -> str:

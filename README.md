@@ -103,13 +103,17 @@ that later telemetry layer to persist or export.
 Gateway response usage remains the source of truth for billable calls.
 `GatewayUsage` captures the response envelope returned by the Optimus Gateway,
 while `ProviderUsage` persists the normalized provider/native-unit cost record
-joined by `gateway_request_id`. `EvidenceLedger` remains the audit trail for
+joined by `gateway_request_id`, with `cost_usd` and `billing_units` as the
+canonical USD/billing fields. `EvidenceLedger` remains the audit trail for
 external evidence and reconciles against the provider usage ledger by cost,
-billing units, and request IDs. Local telemetry is append-only JSONL and Redis
-adapter writes are isolated behind TimeSeries/HASH boundaries. Trace export
-uses the Optimus Gateway `/v1/observability/traces` endpoint and the OTel/OTLP
-contract; Phoenix is the documented default, and provider credentials stay
-Gateway-side and are never required locally. LangSmith is not a dependency.
+billing units, and request IDs. Local telemetry is append-only JSONL and
+RedisTimeSeries-backed Redis adapter writes are isolated behind TimeSeries/HASH
+boundaries. Trace export uses the Optimus Gateway `/v1/observability/traces`
+endpoint, the OTel/OTLP contract, and a typed `TraceDeliveryState` (delivered,
+queued, failed, not_configured) for export outcomes; Phoenix is the documented
+local default, and provider credentials stay Gateway-side and are never
+required locally. Trace export carries no allocated or amortized per-request charge,
+and LangSmith is not a dependency.
 
 ### Phase 1 Retry, Fitness Gates, Golden Tasks, and Release Gate
 
@@ -172,7 +176,7 @@ fixture set described above.
 Plan 9 adds architectural support for bounded goal-driven loops and curated
 workflow skills. Loops are not the default execution mode. They are enabled only
 when a task has a machine-checkable completion condition and explicit
-`LoopBudgetPolicy` bounds for iterations, Optimus credits, wall-clock time, and
+`LoopBudgetPolicy` bounds for iterations, USD budget, wall-clock time, and
 repeated failures.
 
 Loop iterations persist progress to an append-only ledger and must use the same

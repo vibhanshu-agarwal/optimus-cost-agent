@@ -119,3 +119,55 @@ def test_bootstrap_wires_workspace_context_observer(monkeypatch, tmp_path):
 
     assert captured_kwargs["workspace_context_observer"] is log_workspace_context_result
     assert captured_kwargs["planning_progress_observer"] is log_planning_replan_event
+
+
+def test_bootstrap_wires_one_telemetry_fanout_with_jsonl_redis_and_gateway_exporter(monkeypatch, tmp_path):
+    from optimus.telemetry.fanout import TelemetryFanout
+    from optimus.telemetry.jsonl import JsonlTelemetryWriter
+    from optimus.telemetry.observability import GatewayObservabilityExporter
+    from optimus.telemetry.redis_sink import RedisTelemetryEventSink
+
+    captured_kwargs: dict = {}
+
+    class CapturingAgentRunner(AgentRunner):
+        def __init__(self, **kwargs) -> None:
+            captured_kwargs.update(kwargs)
+            super().__init__(**kwargs)
+
+    class FakeStore:
+        def ping(self):
+            return None
+
+    class FakeRuntime:
+        def ping(self):
+            return None
+
+        def sync_state_store(self):
+            return FakeStore()
+
+        def telemetry_adapter(self):
+            return object()
+
+    monkeypatch.setattr("optimus.acp.bootstrap.AgentRunner", CapturingAgentRunner)
+    monkeypatch.setattr(
+        "optimus.acp.preflight.run_preflight",
+        lambda environ, **kwargs: "redis://localhost:6379/0",
+    )
+    monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: FakeRuntime())
+
+    build_agent_runner_for_harness(
+        environ={
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "opt-test",
+            "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
+        },
+        workspace_root=tmp_path,
+        model="glm-5.2",
+    )
+
+    fanout = captured_kwargs["event_sink"]
+    assert isinstance(fanout, TelemetryFanout)
+    assert isinstance(fanout.jsonl_writer, JsonlTelemetryWriter)
+    assert fanout.jsonl_writer.path == tmp_path.resolve() / ".optimus" / "telemetry.jsonl"
+    assert isinstance(fanout.redis_sink, RedisTelemetryEventSink)
+    assert isinstance(fanout.gateway_exporter, GatewayObservabilityExporter)

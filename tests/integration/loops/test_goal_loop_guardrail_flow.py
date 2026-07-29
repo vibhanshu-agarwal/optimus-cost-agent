@@ -37,7 +37,7 @@ def test_goal_loop_never_bypasses_pre_tool_guard(tmp_path):
     tools = GuardedLoopToolExecutor(guard=guard)
     ledger = InMemoryProgressLedger()
     controller = GoalLoopController(
-        policy=LoopBudgetPolicy(max_iterations=5, max_budget_credits=Decimal("1"), max_wall_clock_minutes=5, repeated_failure_limit=2),
+        policy=LoopBudgetPolicy(max_iterations=5, max_budget_usd=Decimal("1"), max_wall_clock_minutes=5, repeated_failure_limit=2),
         runner=UnsafeRunner(),
         tools=tools,
         evaluator=NeverComplete(),

@@ -7,21 +7,26 @@ from pydantic import ValidationError
 from optimus.evidence.ledger import EvidenceLedger, EvidenceLedgerEntry
 from optimus.gateway.models import GatewayUsage
 from optimus.tools.policy import EvidenceReasonCode, ToolClass, ToolPolicySignal
+from optimus.usage.errors import DuplicateGatewayRequestError
 
 
-def usage() -> GatewayUsage:
+def usage(gateway_request_id: str = "gw-1", cost: str = "0.003", units: int = 3) -> GatewayUsage:
     return GatewayUsage(
-        gateway_request_id="gw-1",
+        gateway_request_id=gateway_request_id,
         provider="tavily",
         provider_request_id="provider-1",
         cache_hit=False,
-        billing_units=3,
-        cost_usd=Decimal("0.003"),
+        billing_units=units,
+        cost_usd=Decimal(cost),
+        model="tavily-search",
+        model_version="v1",
+        resolved_provider="tavily-resolved",
+        resolved_model="tavily-search-v1",
     )
 
 
-def test_entry_from_gateway_usage_copies_fields_verbatim():
-    entry = EvidenceLedgerEntry.from_gateway_usage(
+def build_entry(**overrides) -> EvidenceLedgerEntry:
+    kwargs = dict(
         run_id="run-1",
         session_id="session-1",
         reason=EvidenceReasonCode.USER_REQUESTED,
@@ -29,9 +34,14 @@ def test_entry_from_gateway_usage_copies_fields_verbatim():
         tool_class=ToolClass.WEB_SEARCH,
         sources=("https://docs.example.com/a",),
         gateway_usage=usage(),
-        credits_used=3,
         queried_at=datetime(2026, 7, 3, tzinfo=UTC),
     )
+    kwargs.update(overrides)
+    return EvidenceLedgerEntry.from_gateway_usage(**kwargs)
+
+
+def test_entry_from_gateway_usage_copies_fields_verbatim():
+    entry = build_entry()
 
     assert entry.run_id == "run-1"
     assert entry.session_id == "session-1"
@@ -41,92 +51,72 @@ def test_entry_from_gateway_usage_copies_fields_verbatim():
     assert entry.cache_hit is False
     assert entry.billing_units == 3
     assert entry.cost_usd == Decimal("0.003")
-    assert entry.credits_used == 3
     assert entry.sources == ("https://docs.example.com/a",)
 
 
+def test_entry_carries_lld_required_identity_provenance_and_policy_fields():
+    """LLD v2.39 SS9E: evidence entries carry evidence/run/session/request/Gateway/provider
+    IDs, provider/model/version, resolved provider/model, cache, billing units, USD cost,
+    provenance, trust, and the policy reason -- with no retired provider-balance field. The
+    existing ``reason``/``policy_signal``/``tool_class`` fields are the preserved Plan 11.4
+    policy-custody surface and are what this design treats as the "policy reason" fields
+    named by the LLD -- they are not renamed.
+    """
+    entry = build_entry()
+
+    assert entry.evidence_id
+    assert entry.request_id
+    assert entry.gateway_request_id == "gw-1"
+    assert entry.provider == "tavily"
+    assert entry.model == "tavily-search"
+    assert entry.model_version == "v1"
+    assert entry.resolved_provider == "tavily-resolved"
+    assert entry.resolved_model == "tavily-search-v1"
+    assert entry.trust == "untrusted"
+    assert entry.reason is EvidenceReasonCode.USER_REQUESTED
+    assert entry.policy_signal == ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT.value
+    assert entry.tool_class is ToolClass.WEB_SEARCH
+    assert entry.billing_units == 3
+    assert entry.cost_usd == Decimal("0.003")
+
+
 def test_ledger_totals_reconcile_gateway_usage_fields():
-    first = EvidenceLedgerEntry.from_gateway_usage(
-        run_id="run-1",
-        session_id=None,
-        reason=EvidenceReasonCode.USER_REQUESTED,
-        policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT.value,
-        tool_class=ToolClass.WEB_SEARCH,
-        sources=("https://docs.example.com/a",),
-        gateway_usage=usage(),
-        credits_used=3,
-        queried_at=datetime(2026, 7, 3, tzinfo=UTC),
-    )
-    second = EvidenceLedgerEntry(
+    first = build_entry(gateway_usage=usage("gw-1", "0.003", 3))
+    second = build_entry(
         run_id="run-1",
         session_id=None,
         reason=EvidenceReasonCode.CURRENT_FACT,
         policy_signal=ToolPolicySignal.CURRENT_OR_LATEST_FACT.value,
         tool_class=ToolClass.WEB_EXTRACT,
-        queried_at=datetime(2026, 7, 3, 0, 0, 1, tzinfo=UTC),
         sources=("https://docs.example.com/a",),
-        credits_used=4,
-        gateway_request_id="gw-2",
-        provider="tavily",
-        provider_request_id=None,
-        cache_hit=True,
-        billing_units=5,
-        cost_usd=Decimal("0.005"),
+        gateway_usage=usage("gw-2", "0.005", 5),
+        queried_at=datetime(2026, 7, 3, 0, 0, 1, tzinfo=UTC),
     )
 
     ledger = EvidenceLedger().record(first).record(second)
 
-    assert ledger.total_credits() == 7
     assert ledger.total_billing_units() == 8
     assert ledger.total_cost_usd() == Decimal("0.008")
-    assert ledger.total_credits(run_id="run-1") == 7
     assert ledger.total_cost_usd(run_id="run-1") == Decimal("0.008")
     assert ledger.total_cost_usd(run_id="other-run") == Decimal("0")
 
 
-def test_ledger_credits_used_stays_zero_when_gateway_envelope_carries_no_credit_field():
-    """``credits_used`` has no source of truth in the Gateway tool envelope
-    (only ``billing_units``/``cost_usd``/``optimus_credits_debited`` are
-    parsed from the response); every production call site passes
-    ``credits_used=0`` rather than inventing a value. This test locks in that
-    honest default so a future change cannot silently start estimating
-    credits post-hoc.
-    """
-    entry = EvidenceLedgerEntry.from_gateway_usage(
-        run_id="run-1",
-        session_id=None,
-        reason=EvidenceReasonCode.USER_REQUESTED,
-        policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT.value,
-        tool_class=ToolClass.WEB_SEARCH,
-        sources=("https://docs.example.com/a",),
-        gateway_usage=usage(),
-        credits_used=0,
-        queried_at=datetime(2026, 7, 3, tzinfo=UTC),
-    )
+def test_ledger_preserves_verbatim_billing_units_and_cost_without_fabrication():
+    """The Gateway tool envelope is the only source of billing_units/cost_usd; nothing
+    here estimates or invents a value beyond what the envelope reports (replaces an
+    earlier regression test for a now fully retired provider-native-unit balance field
+    that no longer exists on this model)."""
+    entry = build_entry(gateway_usage=usage("gw-1", "0.003", 3))
 
-    assert entry.credits_used == 0
     ledger = EvidenceLedger().record(entry)
-    assert ledger.total_credits() == 0
-    assert ledger.total_credits(run_id="run-1") == 0
-    # The envelope's real billing signals (units/cost) are still preserved
-    # verbatim even though credits are honestly reported as unknown/zero.
+
     assert ledger.total_billing_units() == 3
     assert ledger.total_cost_usd() == Decimal("0.003")
 
 
 def test_ledger_record_returns_new_append_only_instance():
     ledger = EvidenceLedger()
-    entry = EvidenceLedgerEntry.from_gateway_usage(
-        run_id="run-1",
-        session_id=None,
-        reason=EvidenceReasonCode.USER_REQUESTED,
-        policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT.value,
-        tool_class=ToolClass.WEB_SEARCH,
-        sources=("https://docs.example.com/a",),
-        gateway_usage=usage(),
-        credits_used=0,
-        queried_at=datetime(2026, 7, 3, tzinfo=UTC),
-    )
+    entry = build_entry()
 
     updated = ledger.record(entry)
 
@@ -134,8 +124,10 @@ def test_ledger_record_returns_new_append_only_instance():
     assert updated.entries == (entry,)
     with pytest.raises(ValidationError):
         EvidenceLedgerEntry(
+            evidence_id="ev-1",
             run_id="run-1",
             session_id=None,
+            request_id="req-1",
             reason=EvidenceReasonCode.USER_REQUESTED,
             policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT.value,
             tool_class=ToolClass.WEB_SEARCH,
@@ -144,3 +136,44 @@ def test_ledger_record_returns_new_append_only_instance():
             billing_units=-1,
             cost_usd=Decimal("0"),
         )
+
+
+def test_ledger_record_is_idempotent_and_rejects_divergence():
+    entry = build_entry(gateway_usage=usage("gw-1", "0.001", 10))
+    ledger = EvidenceLedger().record(entry)
+
+    duplicate = build_entry(gateway_usage=usage("gw-1", "0.001", 10))
+    assert ledger.record(duplicate) == ledger
+
+    divergent = build_entry(gateway_usage=usage("gw-1", "0.002", 10))
+    with pytest.raises(DuplicateGatewayRequestError, match="gw-1"):
+        ledger.record(divergent)
+
+
+def test_ledger_record_replay_with_different_bookkeeping_is_idempotent():
+    """A genuine Gateway-level retry re-records the same settled facts under the same
+    ``gateway_request_id`` but with a fresh caller-side ``request_id``/``queried_at``.
+    That must be treated as the same settled fact, not a divergent duplicate."""
+    entry = build_entry(gateway_usage=usage("gw-1", "0.001", 10))
+    ledger = EvidenceLedger().record(entry)
+
+    replay = entry.model_copy(
+        update={
+            "request_id": "req-retry-2",
+            "queried_at": datetime(2026, 7, 3, 0, 0, 5, tzinfo=UTC),
+        }
+    )
+
+    assert ledger.record(replay) == ledger
+
+
+def test_ledger_record_rejects_divergent_settled_facts():
+    entry = build_entry(gateway_usage=usage("gw-1", "0.001", 10))
+    ledger = EvidenceLedger().record(entry)
+
+    with pytest.raises(DuplicateGatewayRequestError, match="gw-1"):
+        ledger.record(entry.model_copy(update={"provider": "openai"}))
+    with pytest.raises(DuplicateGatewayRequestError, match="gw-1"):
+        ledger.record(entry.model_copy(update={"billing_units": 99}))
+    with pytest.raises(DuplicateGatewayRequestError, match="gw-1"):
+        ledger.record(entry.model_copy(update={"provider_request_id": "provider-req-2"}))

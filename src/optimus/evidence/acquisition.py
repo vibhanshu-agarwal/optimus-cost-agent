@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from threading import Lock
+from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from optimus.evidence.domain_policy import EvidenceDomainPolicy
 from optimus.evidence.gateway_io import (
@@ -19,7 +21,8 @@ from optimus.evidence.models import (
     EvidenceSearchResult,
 )
 from optimus.gateway.client import GatewayClient
-from optimus.gateway.errors import GatewayResponseError
+from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
+from optimus.gateway.models import GatewayUsage
 from optimus.gateway.tool_models import GatewayToolContext
 from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolVerdict
@@ -34,6 +37,17 @@ from optimus.tools.policy import (
 )
 from optimus.tools.registry import ToolCallRejected, ToolRegistry
 
+if TYPE_CHECKING:
+    # Deferred: optimus.usage.accounting imports optimus.evidence.ledger, which (via
+    # optimus.evidence's package __init__) imports this module back -- a real circular
+    # import at module-load time. The annotation-only reference below (enabled by
+    # `from __future__ import annotations`) never needs the class at runtime.
+    from optimus.usage.accounting import UsageAccountingService
+
+WEB_SEARCH_SERVICE = "web.search"
+WEB_EXTRACT_SERVICE = "web.extract"
+TAVILY_NATIVE_UNIT = "tavily_credits"
+
 
 class EvidenceAcquisitionService:
     """Orchestration layer for gateway-backed web evidence in Phase 1.
@@ -43,8 +57,9 @@ class EvidenceAcquisitionService:
     ``extract``. Authorization consumes per-run caps before transport; transport
     failures and malformed response bodies without usage keep the cap record but
     do not append a ledger entry. When the gateway returns usage but the
-    evidence payload is malformed, usage is still recorded before the error
-    propagates.
+    evidence payload is malformed, or the transport call itself fails with an
+    HTTP error that still carries billed usage (``GatewayHttpError.gateway_usage``),
+    usage is still recorded before the error propagates.
     """
 
     def __init__(
@@ -55,6 +70,7 @@ class EvidenceAcquisitionService:
         registry: ToolRegistry | None = None,
         ledger: EvidenceLedger | None = None,
         pre_tool_guard: PreToolGuard | None = None,
+        usage_accounting: UsageAccountingService | None = None,
     ) -> None:
         self.gateway_client = gateway_client
         self.domain_policy = domain_policy
@@ -62,6 +78,7 @@ class EvidenceAcquisitionService:
         self.ledger = ledger or EvidenceLedger()
         self._ledger_lock = Lock()
         self._pre_tool_guard = pre_tool_guard
+        self._usage_accounting = usage_accounting
 
     def search(
         self,
@@ -91,11 +108,24 @@ class EvidenceAcquisitionService:
             session_id=request.session_id,
             execution_mode=execution_mode.value,
         )
+        request_id = _stable_request_id(request.run_id, WEB_SEARCH_SERVICE)
         effective_request = request.model_copy(update={"allowed_domains": effective_allowed_domains})
-        body = self.gateway_client.post_tool_json(
-            path="/v1/tools/web/search",
-            payload=build_web_search_payload(effective_request, context),
-        )
+        try:
+            body = self.gateway_client.post_tool_json(
+                path="/v1/tools/web/search",
+                payload=build_web_search_payload(effective_request, context),
+            )
+        except GatewayHttpError as exc:
+            self._record_parse_failure_usage(
+                request=request,
+                tool_class=ToolClass.WEB_SEARCH,
+                sources=(),
+                exc=exc,
+                service=WEB_SEARCH_SERVICE,
+                native_unit=TAVILY_NATIVE_UNIT,
+                request_id=request_id,
+            )
+            raise
         try:
             envelope = parse_web_search_envelope(body)
         except GatewayResponseError as exc:
@@ -104,6 +134,9 @@ class EvidenceAcquisitionService:
                 tool_class=ToolClass.WEB_SEARCH,
                 sources=(),
                 exc=exc,
+                service=WEB_SEARCH_SERVICE,
+                native_unit=TAVILY_NATIVE_UNIT,
+                request_id=request_id,
             )
             raise
         urls = tuple(str(item.url) for item in envelope.result.results)
@@ -116,7 +149,14 @@ class EvidenceAcquisitionService:
                 for item in envelope.result.results
             ),
             gateway_usage=envelope.gateway_usage,
-            credits_used=0,
+        )
+        self._record_provider_usage(
+            run_id=request.run_id,
+            session_id=request.session_id,
+            request_id=request_id,
+            gateway_usage=envelope.gateway_usage,
+            service=WEB_SEARCH_SERVICE,
+            native_unit=TAVILY_NATIVE_UNIT,
         )
         ledger = self._record_ledger_entry(
             EvidenceLedgerEntry.from_gateway_usage(
@@ -127,7 +167,6 @@ class EvidenceAcquisitionService:
                 tool_class=ToolClass.WEB_SEARCH,
                 sources=urls,
                 gateway_usage=envelope.gateway_usage,
-                credits_used=response.credits_used,
                 queried_at=_utc_now(),
             )
         )
@@ -165,10 +204,23 @@ class EvidenceAcquisitionService:
             session_id=request.session_id,
             execution_mode=execution_mode.value,
         )
-        body = self.gateway_client.post_tool_json(
-            path="/v1/tools/web/extract",
-            payload=build_web_extract_payload(request, context),
-        )
+        request_id = _stable_request_id(request.run_id, WEB_EXTRACT_SERVICE)
+        try:
+            body = self.gateway_client.post_tool_json(
+                path="/v1/tools/web/extract",
+                payload=build_web_extract_payload(request, context),
+            )
+        except GatewayHttpError as exc:
+            self._record_parse_failure_usage(
+                request=request,
+                tool_class=ToolClass.WEB_EXTRACT,
+                sources=(target_url,),
+                exc=exc,
+                service=WEB_EXTRACT_SERVICE,
+                native_unit=TAVILY_NATIVE_UNIT,
+                request_id=request_id,
+            )
+            raise
         try:
             envelope = parse_web_extract_envelope(body)
         except GatewayResponseError as exc:
@@ -177,6 +229,9 @@ class EvidenceAcquisitionService:
                 tool_class=ToolClass.WEB_EXTRACT,
                 sources=(target_url,),
                 exc=exc,
+                service=WEB_EXTRACT_SERVICE,
+                native_unit=TAVILY_NATIVE_UNIT,
+                request_id=request_id,
             )
             raise
         if not envelope.result.items:
@@ -186,6 +241,9 @@ class EvidenceAcquisitionService:
                 tool_class=ToolClass.WEB_EXTRACT,
                 sources=(target_url,),
                 exc=failure,
+                service=WEB_EXTRACT_SERVICE,
+                native_unit=TAVILY_NATIVE_UNIT,
+                request_id=request_id,
             )
             raise failure
         item = envelope.result.items[0]
@@ -195,7 +253,14 @@ class EvidenceAcquisitionService:
             content=item.content,
             trust="untrusted",
             gateway_usage=envelope.gateway_usage,
-            credits_used=0,
+        )
+        self._record_provider_usage(
+            run_id=request.run_id,
+            session_id=request.session_id,
+            request_id=request_id,
+            gateway_usage=response.gateway_usage,
+            service=WEB_EXTRACT_SERVICE,
+            native_unit=TAVILY_NATIVE_UNIT,
         )
         ledger = self._record_ledger_entry(
             EvidenceLedgerEntry.from_gateway_usage(
@@ -206,7 +271,6 @@ class EvidenceAcquisitionService:
                 tool_class=ToolClass.WEB_EXTRACT,
                 sources=(target_url,),
                 gateway_usage=response.gateway_usage,
-                credits_used=response.credits_used,
                 queried_at=_utc_now(),
             )
         )
@@ -253,16 +317,56 @@ class EvidenceAcquisitionService:
             self.ledger = self.ledger.record(entry)
             return self.ledger
 
+    def _record_provider_usage(
+        self,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        gateway_usage: GatewayUsage,
+        service: str,
+        native_unit: str,
+    ) -> None:
+        if self._usage_accounting is None:
+            return
+        self._usage_accounting.record_gateway_usage(
+            gateway_usage,
+            run_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=_utc_now(),
+            service=service,
+            native_unit=native_unit,
+        )
+
     def _record_parse_failure_usage(
         self,
         *,
         request: EvidenceRequest | EvidenceExtractRequest,
         tool_class: ToolClass,
         sources: tuple[str, ...],
-        exc: GatewayResponseError,
+        exc: GatewayResponseError | GatewayHttpError,
+        service: str,
+        native_unit: str,
+        request_id: str,
     ) -> None:
+        """Record usage carried by a transport-level or parse-level failure.
+
+        Shared by the ``GatewayHttpError`` transport-failure path and the
+        ``GatewayResponseError`` envelope-parsing-failure path: both exception
+        types carry an optional ``gateway_usage`` for attempts the gateway
+        still billed despite the failure.
+        """
         if exc.gateway_usage is None:
             return
+        self._record_provider_usage(
+            run_id=request.run_id,
+            session_id=request.session_id,
+            request_id=request_id,
+            gateway_usage=exc.gateway_usage,
+            service=service,
+            native_unit=native_unit,
+        )
         self._record_ledger_entry(
             EvidenceLedgerEntry.from_gateway_usage(
                 run_id=request.run_id,
@@ -272,7 +376,6 @@ class EvidenceAcquisitionService:
                 tool_class=tool_class,
                 sources=sources,
                 gateway_usage=exc.gateway_usage,
-                credits_used=exc.credits_used or 0,
                 queried_at=_utc_now(),
             )
         )
@@ -290,3 +393,9 @@ def _rejected_web_decision(*, reason: str, tool_class: ToolClass) -> ToolInvocat
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def _stable_request_id(run_id: str, service: str) -> str:
+    """One caller-generated ID per transport attempt, reused across the success
+    and parse-failure recording paths for that same attempt."""
+    return f"{run_id}:{service}:{uuid4().hex}"

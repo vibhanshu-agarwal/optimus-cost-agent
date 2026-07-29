@@ -43,6 +43,22 @@ def test_model_call_event_contains_required_audit_fields():
     assert "response_summary" not in payload
 
 
+def test_event_serialization_has_schema_and_correlation_ids():
+    event = TelemetryEvent.model_call(
+        run_id="run-1", session_id="session-1", request_id="req-1",
+        occurred_at=datetime(2026, 7, 28, tzinfo=UTC), model="glm-5.2",
+        model_version="v1", provider="openrouter", cache_hit=False,
+        billing_units=3, cost_usd=Decimal("0.001"), latency_ms=10,
+        prompt="hello", response="done", input_tokens=1, output_tokens=2,
+    )
+    payload = event.to_json_dict()
+    assert payload["schema_version"] == "1.0"
+    assert payload["event_id"]
+    assert payload["trace_id"] == "run-1"
+    assert payload["parent_span_id"] is None
+    assert payload["gateway_request_id"] is None
+
+
 def test_gateway_reconciliation_and_pricing_fallback_events_have_json_payloads():
     gateway_event = TelemetryEvent.gateway_usage(
         run_id="run-1",
@@ -51,12 +67,12 @@ def test_gateway_reconciliation_and_pricing_fallback_events_have_json_payloads()
         occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
         gateway_request_id="gw-1",
         provider="glm",
+        provider_request_id="provider-req-1",
         cache_hit=False,
         billing_units=123,
         cost_usd=Decimal("0.0123"),
         service="responses",
         native_unit="tokens",
-        optimus_credits_debited=Decimal("1.23"),
         model="glm-5.2",
         model_version="2026-06-01",
         price_snapshot_id="prices-2026-07-04",
@@ -88,6 +104,7 @@ def test_gateway_reconciliation_and_pricing_fallback_events_have_json_payloads()
 
     assert gateway_event.to_json_dict()["kind"] == TelemetryEventKind.GATEWAY_USAGE.value
     assert gateway_event.to_json_dict()["cost_usd"] == "0.0123"
+    assert gateway_event.to_json_dict()["provider_request_id"] == "provider-req-1"
     assert reconciliation_event.to_json_dict()["matched_gateway_request_ids"] == ["gw-1"]
     assert reconciliation_event.to_json_dict()["reconciled"] is True
     assert fallback_event.to_json_dict()["kind"] == TelemetryEventKind.PRICING_FALLBACK.value
@@ -272,8 +289,8 @@ def test_goal_loop_event_serializes_stop_reason_and_budget():
         occurred_at=datetime(2026, 7, 6, tzinfo=UTC),
         iteration=3,
         stop_reason="REPEATED_FAILURE",
-        credits_spent=Decimal("0.25"),
-        max_budget_credits=Decimal("1.00"),
+        cost_usd_spent=Decimal("0.25"),
+        max_budget_usd=Decimal("1.00"),
         summary="same failure repeated",
     )
 
@@ -281,7 +298,7 @@ def test_goal_loop_event_serializes_stop_reason_and_budget():
 
     assert encoded["kind"] == "goal_loop"
     assert encoded["stop_reason"] == "REPEATED_FAILURE"
-    assert encoded["credits_spent"] == "0.25"
+    assert encoded["cost_usd_spent"] == "0.25"
 
 
 def test_skill_invocation_event_serializes_manifest_hash_without_body():

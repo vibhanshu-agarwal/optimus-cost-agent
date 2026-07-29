@@ -5,11 +5,14 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
+from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from optimus.telemetry.redaction import redact_for_telemetry
 from optimus.telemetry.serialization import json_safe
+
+TELEMETRY_EVENT_SCHEMA_VERSION = "1.0"
 
 
 class TelemetryEventKind(StrEnum):
@@ -56,15 +59,41 @@ class TelemetryEvent(BaseModel):
     :type occurred_at: datetime
     :ivar payload: A dictionary containing additional event-specific data.
     :type payload: dict[str, Any]
+    :ivar schema_version: The wire schema version for this event's correlation contract.
+    :type schema_version: str
+    :ivar event_id: Globally unique identifier for this specific event instance.
+    :type event_id: str
+    :ivar trace_id: Identifier correlating this event with other events in the same trace;
+        defaults to ``run_id`` when not supplied.
+    :type trace_id: str
+    :ivar parent_span_id: Identifier of the parent span/event, if any.
+    :type parent_span_id: str | None
+    :ivar gateway_request_id: Identifier of the Gateway request associated with this event,
+        if any, at the top level of the event envelope.
+    :type gateway_request_id: str | None
     """
     model_config = ConfigDict(frozen=True)
 
+    schema_version: str = Field(default=TELEMETRY_EVENT_SCHEMA_VERSION, min_length=1)
+    event_id: str = Field(default_factory=lambda: uuid4().hex)
+    trace_id: str = Field(min_length=1)
+    parent_span_id: str | None = None
     kind: TelemetryEventKind
     run_id: str = Field(min_length=1)
     session_id: str | None
     request_id: str = Field(min_length=1)
     occurred_at: datetime
+    gateway_request_id: str | None = None
     payload: dict[str, Any]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_trace_id_to_run_id(cls, data: Any) -> Any:
+        if isinstance(data, dict) and not data.get("trace_id"):
+            run_id = data.get("run_id")
+            if run_id:
+                data = {**data, "trace_id": run_id}
+        return data
 
     @classmethod
     def model_call(
@@ -117,16 +146,22 @@ class TelemetryEvent(BaseModel):
         occurred_at: datetime,
         gateway_request_id: str,
         provider: str,
+        provider_request_id: str | None = None,
         cache_hit: bool,
         billing_units: int,
         cost_usd: Decimal,
         service: str,
         native_unit: str,
-        optimus_credits_debited: Decimal,
         model: str | None,
         model_version: str | None,
-        price_snapshot_id: str,
+        price_snapshot_id: str | None = None,
     ) -> TelemetryEvent:
+        """Settled Gateway usage for one accounting attempt.
+
+        Carries only provider-reported fields plus caller-supplied attribution
+        (``service``/``native_unit``); there is no additional balance estimate
+        here -- ``cost_usd`` and ``billing_units`` are the sole settled amounts.
+        """
         return cls(
             kind=TelemetryEventKind.GATEWAY_USAGE,
             run_id=run_id,
@@ -136,12 +171,12 @@ class TelemetryEvent(BaseModel):
             payload={
                 "gateway_request_id": gateway_request_id,
                 "provider": provider,
+                "provider_request_id": provider_request_id,
                 "cache_hit": cache_hit,
                 "billing_units": billing_units,
                 "cost_usd": cost_usd,
                 "service": service,
                 "native_unit": native_unit,
-                "optimus_credits_debited": optimus_credits_debited,
                 "model": model,
                 "model_version": model_version,
                 "price_snapshot_id": price_snapshot_id,
@@ -427,8 +462,8 @@ class TelemetryEvent(BaseModel):
         occurred_at: datetime,
         iteration: int,
         stop_reason: str,
-        credits_spent: Decimal,
-        max_budget_credits: Decimal,
+        cost_usd_spent: Decimal,
+        max_budget_usd: Decimal,
         summary: str,
     ) -> TelemetryEvent:
         return cls(
@@ -440,8 +475,8 @@ class TelemetryEvent(BaseModel):
             payload={
                 "iteration": iteration,
                 "stop_reason": stop_reason,
-                "credits_spent": credits_spent,
-                "max_budget_credits": max_budget_credits,
+                "cost_usd_spent": cost_usd_spent,
+                "max_budget_usd": max_budget_usd,
                 "summary": summary,
             },
         )
@@ -545,11 +580,16 @@ class TelemetryEvent(BaseModel):
 
     def to_json_dict(self) -> dict[str, Any]:
         encoded = {
+            "schema_version": self.schema_version,
+            "event_id": self.event_id,
+            "trace_id": self.trace_id,
+            "parent_span_id": self.parent_span_id,
             "kind": self.kind.value,
             "run_id": self.run_id,
             "session_id": self.session_id,
             "request_id": self.request_id,
             "occurred_at": self.occurred_at.isoformat(),
+            "gateway_request_id": self.gateway_request_id,
             **self.payload,
         }
         return json_safe(redact_for_telemetry(encoded))

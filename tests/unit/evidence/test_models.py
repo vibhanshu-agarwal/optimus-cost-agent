@@ -87,20 +87,17 @@ def test_search_and_extract_responses_carry_gateway_usage():
             ),
         ),
         gateway_usage=usage,
-        credits_used=2,
     )
     extract_response = EvidenceExtractResponse(
         url="https://docs.example.com/a",
         title="Docs",
         content="Evidence text",
         gateway_usage=usage,
-        credits_used=1,
     )
 
     assert search_response.results[0].url_text == "https://docs.example.com/a"
     assert extract_response.gateway_usage.cost_usd == Decimal("0.002")
     assert extract_response.trust == "untrusted"
-    assert search_response.credits_used == 2
 
 
 # --- Package lookup / security advisory ACP-facing models (P11-FU-2) --------

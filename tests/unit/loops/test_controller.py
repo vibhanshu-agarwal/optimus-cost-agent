@@ -1,6 +1,8 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+import pytest
+
 from optimus.loops.controller import GoalLoopController
 from optimus.loops.ledger import InMemoryProgressLedger
 from optimus.loops.models import (
@@ -42,7 +44,7 @@ def state(started_at: datetime | None = None) -> IterationState:
 
 
 def policy() -> LoopBudgetPolicy:
-    return LoopBudgetPolicy(max_iterations=3, max_budget_credits=Decimal("1.0"), max_wall_clock_minutes=10)
+    return LoopBudgetPolicy(max_iterations=3, max_budget_usd=Decimal("1.0"), max_wall_clock_minutes=10)
 
 
 class FakeLoopTools:
@@ -56,15 +58,15 @@ def loop_tools(tmp_path) -> LoopToolExecutorProtocol:
 
 def test_loop_stops_on_completion(tmp_path):
     ledger = InMemoryProgressLedger()
-    runner = StaticRunner([IterationOutcome(summary="updated", cost_credits=Decimal("0.1"))])
-    evaluator = StaticEvaluator([CompletionEvaluation(completed=True, reason="tests pass", cost_credits=Decimal("0.01"))])
+    runner = StaticRunner([IterationOutcome(summary="updated", cost_usd=Decimal("0.1"))])
+    evaluator = StaticEvaluator([CompletionEvaluation(completed=True, reason="tests pass", cost_usd=Decimal("0.01"))])
     controller = GoalLoopController(policy=policy(), runner=runner, tools=loop_tools(tmp_path), evaluator=evaluator, ledger=ledger, now=lambda: datetime(2026, 7, 6, tzinfo=UTC))
 
     result = controller.run(state())
 
     assert result.stop_reason is LoopStopReason.COMPLETED
     assert result.state.iteration == 1
-    assert result.state.credits_spent == Decimal("0.11")
+    assert result.state.cost_usd_spent == Decimal("0.11")
     assert ledger.entries(run_id="run-1")[-1].stop_reason is LoopStopReason.COMPLETED
 
 
@@ -82,7 +84,7 @@ def test_loop_stops_on_max_iterations(tmp_path):
 
 def test_loop_stops_on_budget_exhaustion(tmp_path):
     ledger = InMemoryProgressLedger()
-    runner = StaticRunner([IterationOutcome(summary="expensive", cost_credits=Decimal("1.25"))])
+    runner = StaticRunner([IterationOutcome(summary="expensive", cost_usd=Decimal("1.25"))])
     evaluator = StaticEvaluator([])
     controller = GoalLoopController(policy=policy(), runner=runner, tools=loop_tools(tmp_path), evaluator=evaluator, ledger=ledger, now=lambda: datetime(2026, 7, 6, tzinfo=UTC))
 
@@ -165,7 +167,7 @@ def test_stop_reason_precedence_when_multiple_limits_hold(tmp_path):
         completion_condition="tests/unit/auth pass",
         started_at=start,
         iteration=3,
-        credits_spent=Decimal("1.25"),
+        cost_usd_spent=Decimal("1.25"),
         repeated_failure_count=3,
     )
     controller = GoalLoopController(
@@ -180,6 +182,20 @@ def test_stop_reason_precedence_when_multiple_limits_hold(tmp_path):
     result = controller.run(state_with_all_limits)
 
     assert result.stop_reason is LoopStopReason.REPEATED_FAILURE
+
+
+@pytest.mark.parametrize("cost_usd", [Decimal("1.0"), Decimal("1.25")])
+def test_loop_stops_on_budget_exhaustion_at_or_above_max_budget_usd(tmp_path, cost_usd):
+    """Preserves the previous >= stop comparison (boundary and above) for the same Decimal inputs."""
+    ledger = InMemoryProgressLedger()
+    runner = StaticRunner([IterationOutcome(summary="at or above budget", cost_usd=cost_usd)])
+    evaluator = StaticEvaluator([])
+    controller = GoalLoopController(policy=policy(), runner=runner, tools=loop_tools(tmp_path), evaluator=evaluator, ledger=ledger, now=lambda: datetime(2026, 7, 6, tzinfo=UTC))
+
+    result = controller.run(state())
+
+    assert result.stop_reason is LoopStopReason.BUDGET_EXHAUSTED
+    assert result.state.cost_usd_spent == cost_usd
 
 
 def test_mid_loop_human_halt_is_checked_between_iterations(tmp_path):

@@ -36,8 +36,11 @@ The Gateway capability partition remains the first primary slice:
 - `P11-FEAT-GATEWAY-MCP` owns MCP tool-call brokering through the Gateway, including transport,
   trust-registry integration with the existing `optimus/mcp/runtime.py` guardrail layer, and the
   typed request/response contract; and
-- `P11-FEAT-GATEWAY-COST-OBS` owns provider-native usage normalization, ledger reconciliation,
-  LangSmith trace export, and observability-field compatibility.
+- `P11-FEAT-GATEWAY-COST-OBS` owns provider-native usage persistence and reconciliation, the
+  wire-aware USD field migration, authenticated structured agent-to-Gateway trace ingress, Gateway
+  validation/redaction and OTel/OTLP export with Phoenix as the local default, Plan 7 telemetry
+  compatibility, and observability-field compatibility. Trace export has
+  no allocated or amortized per-request charge, and LangSmith is not part of the architecture.
 
 All three slices preserve the one-key local credential boundary, with vendor keys owned and resolved
 gateway-side. `P9.85-FU-3` budget enforcement remains outside the Plan 11.1 scope pending the
@@ -97,9 +100,13 @@ revalidation, typed-tool envelopes, and the `P11-FU-2` package/advisory capabili
 as Plan 11.2 for the drafted design and implementation plan; implementation remains unauthorized
 until the frozen artifacts receive their review approvals.
 
-`P11-FEAT-GATEWAY-COST-OBS` is the ratified owner for provider-native usage normalization, ledger
-reconciliation, LangSmith export, amortized observability cost, and Plan 7 telemetry compatibility.
-Its Plan 11.x number is assigned at pickup. Neither identity expands Plan 11.1's implementation scope.
+`P11-FEAT-GATEWAY-COST-OBS` is the ratified owner for provider-native usage persistence and
+reconciliation, the wire-aware USD field migration,
+authenticated structured agent-to-Gateway trace ingress, Gateway validation/redaction and
+OTel/OTLP export with Phoenix as the local default, Plan 7 telemetry compatibility, and
+observability-field compatibility. Trace export has
+no allocated or amortized per-request charge, and LangSmith is not part of the architecture. Its
+Plan 11.x number is assigned at pickup. Neither identity expands Plan 11.1's implementation scope.
 
 ## P11-FEAT-GATEWAY-MCP - Gateway MCP tool-call brokering
 

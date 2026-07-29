@@ -84,7 +84,7 @@ class PlanningLoopPolicy(BaseModel):
             raise ValueError("max_cost_usd must be positive before constructing a planning loop")
         return LoopBudgetPolicy(
             max_iterations=self.max_planning_turns,
-            max_budget_credits=max_cost_usd,
+            max_budget_usd=max_cost_usd,
             max_wall_clock_minutes=self.max_wall_clock_minutes,
             repeated_failure_limit=2,
         )
@@ -841,14 +841,14 @@ class _PlanningIterationRunner:
         *,
         stop_reason: str,
         summary: str,
-        cost_credits: Decimal,
+        cost_usd: Decimal,
     ) -> IterationOutcome:
         self._typed_planning_stop_reason = stop_reason
         return IterationOutcome(
             summary=summary,
             deterministic_completion=True,
             failure_signature=None,
-            cost_credits=cost_credits,
+            cost_usd=cost_usd,
         )
 
     def _record_reported_gateway_usage(
@@ -964,7 +964,7 @@ class _PlanningIterationRunner:
 
     def run_iteration(self, state: IterationState, tools: LoopToolExecutorProtocol) -> IterationOutcome:
         planning_turn = state.iteration + 1
-        remaining_budget = max(Decimal("0"), self._max_cost_usd - state.credits_spent)
+        remaining_budget = max(Decimal("0"), self._max_cost_usd - state.cost_usd_spent)
         remaining_wall_clock = max(
             0,
             self._policy.max_wall_clock_minutes - state.elapsed_minutes(now=self._now()),
@@ -986,7 +986,7 @@ class _PlanningIterationRunner:
             return self._typed_planning_failure(
                 stop_reason=exc.code,
                 summary=str(exc),
-                cost_credits=Decimal("0"),
+                cost_usd=Decimal("0"),
             )
         prompt = build_multi_turn_planner_input(
             self._task,
@@ -1013,7 +1013,7 @@ class _PlanningIterationRunner:
             return self._typed_planning_failure(
                 stop_reason=exc.stop_reason,
                 summary=f"planning gateway invocation stopped: {exc.stop_reason}",
-                cost_credits=exc.reported_cost_usd,
+                cost_usd=exc.reported_cost_usd,
             )
         # Success path — cost already recorded inside _invoke_planning_gateway via
         # _record_reported_gateway_usage; do NOT append/add again here.
@@ -1026,7 +1026,7 @@ class _PlanningIterationRunner:
                 summary="planning response was unparseable",
                 deterministic_completion=False,
                 failure_signature="UNPARSEABLE",
-                cost_credits=attempt_cost,
+                cost_usd=attempt_cost,
             )
 
         self._last_decision = decision
@@ -1052,7 +1052,7 @@ class _PlanningIterationRunner:
                 return self._typed_planning_failure(
                     stop_reason=exc.code,
                     summary=str(exc),
-                    cost_credits=attempt_cost,
+                    cost_usd=attempt_cost,
                 )
             except PlanningReadError as exc:
                 from optimus.acp.debug_trace import acp_debug_log
@@ -1074,13 +1074,13 @@ class _PlanningIterationRunner:
                 return self._typed_planning_failure(
                     stop_reason=exc.code,
                     summary=str(exc),
-                    cost_credits=attempt_cost,
+                    cost_usd=attempt_cost,
                 )
             except LoopToolBlocked as exc:
                 return self._typed_planning_failure(
                     stop_reason="PLANNING_READ_GUARD_BLOCKED",
                     summary=str(exc),
-                    cost_credits=attempt_cost,
+                    cost_usd=attempt_cost,
                 )
             self._observations.extend(
                 observations_from_read_evidence(
@@ -1106,7 +1106,7 @@ class _PlanningIterationRunner:
                         total_cost_usd=self._total_cost_usd,
                         remaining_budget_usd=max(
                             Decimal("0"),
-                            self._max_cost_usd - state.credits_spent - attempt_cost,
+                            self._max_cost_usd - state.cost_usd_spent - attempt_cost,
                         ),
                         gateway_request_ids=tuple(self._gateway_request_ids),
                         wire_retry_count=self._last_wire_retry_count,
@@ -1116,7 +1116,7 @@ class _PlanningIterationRunner:
                 summary="planning requested guarded read evidence",
                 deterministic_completion=False,
                 failure_signature=decision.failure_signature,
-                cost_credits=attempt_cost,
+                cost_usd=attempt_cost,
             )
 
         if decision.kind is PlanningTurnKind.FINAL_PLAN:
@@ -1124,7 +1124,7 @@ class _PlanningIterationRunner:
                 summary="planning settled with a final directive plan",
                 deterministic_completion=True,
                 failure_signature=None,
-                cost_credits=attempt_cost,
+                cost_usd=attempt_cost,
                 evidence={"planning_turn": str(planning_turn)},
             )
 
@@ -1133,13 +1133,13 @@ class _PlanningIterationRunner:
                 summary="planning settled with a typed refusal",
                 deterministic_completion=True,
                 failure_signature=None,
-                cost_credits=attempt_cost,
+                cost_usd=attempt_cost,
             )
 
         raise AssertionError(f"unsupported planning decision: {decision.kind}")
 
     def _planning_resource_stop_after_final_plan(self, *, state: IterationState) -> str | None:
-        if state.credits_spent >= self.loop_budget_policy.max_budget_credits:
+        if state.cost_usd_spent >= self.loop_budget_policy.max_budget_usd:
             return "PLANNING_BUDGET_EXHAUSTED"
         if state.elapsed_minutes(now=self._now()) >= self.loop_budget_policy.max_wall_clock_minutes:
             return "PLANNING_WALL_CLOCK_EXHAUSTED"

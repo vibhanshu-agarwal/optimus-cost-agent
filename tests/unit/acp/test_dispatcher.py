@@ -317,7 +317,17 @@ class FakeEvidenceService:
                 cost_usd=Decimal("0.002"),
             ),
         )
-        return response, EvidenceLedger()
+        ledger = EvidenceLedger().record(
+            _fake_ledger_entry(
+                run_id="run-1",
+                tool_class=ToolClass.WEB_SEARCH,
+                gateway_request_id="gw-search-ledger-1",
+                provider="tavily",
+                reason=EvidenceReasonCode.USER_REQUESTED,
+                policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT.value,
+            )
+        )
+        return response, ledger
 
     def extract(self, request, *, execution_mode):
         self.extract_calls.append({"request": request, "execution_mode": execution_mode})
@@ -333,7 +343,17 @@ class FakeEvidenceService:
                 cost_usd=Decimal("0.001"),
             ),
         )
-        return response, EvidenceLedger()
+        ledger = EvidenceLedger().record(
+            _fake_ledger_entry(
+                run_id="run-1",
+                tool_class=ToolClass.WEB_EXTRACT,
+                gateway_request_id="gw-extract-ledger-1",
+                provider="tavily",
+                reason=EvidenceReasonCode.USER_REQUESTED,
+                policy_signal=ToolPolicySignal.APPROVED_SEARCH_RESULT_PROVENANCE.value,
+            )
+        )
+        return response, ledger
 
 
 def test_dispatcher_routes_evidence_search_to_service():
@@ -358,8 +378,8 @@ def test_dispatcher_routes_evidence_search_to_service():
     assert "error" not in response
     assert response["result"]["results"][0]["url"] == "https://docs.example.com/a"
     assert response["result"]["gateway_usage"]["gateway_request_id"] == "gw-search-1"
-    assert response["result"]["ledger_run_total_cost_usd"] == "0"
-    assert response["result"]["ledger_run_total_credits"] == 0
+    assert response["result"]["ledger_run_total_cost_usd"] == "0.007"
+    assert response["result"]["ledger_run_total_billing_units"] == 7
     assert evidence_service.search_calls[0]["request"].query == "latest pytest release"
 
 
@@ -386,8 +406,8 @@ def test_dispatcher_routes_evidence_extract_to_service():
     assert response["result"]["url"] == "https://docs.example.com/a"
     assert response["result"]["content"] == "Evidence text"
     assert response["result"]["gateway_usage"]["gateway_request_id"] == "gw-extract-1"
-    assert response["result"]["ledger_run_total_cost_usd"] == "0"
-    assert response["result"]["ledger_run_total_credits"] == 0
+    assert response["result"]["ledger_run_total_cost_usd"] == "0.007"
+    assert response["result"]["ledger_run_total_billing_units"] == 7
 
 
 def test_dispatcher_rejects_malformed_evidence_search_request():
@@ -571,7 +591,8 @@ class FakePackageAdvisoryService:
                 tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
                 gateway_request_id="gw-pkg-1",
                 provider="package-registry",
-                cost_usd=Decimal("0.0005"),
+                reason=EvidenceReasonCode.PACKAGE_VERSION,
+                policy_signal=ToolPolicySignal.DEPENDENCY_VERSION_CHECK.value,
             )
         )
         return result, ledger
@@ -590,13 +611,24 @@ class FakePackageAdvisoryService:
                 tool_class=ToolClass.PACKAGE_AND_ADVISORY_METADATA,
                 gateway_request_id="gw-adv-1",
                 provider="osv",
-                cost_usd=Decimal("0.0007"),
+                reason=EvidenceReasonCode.SECURITY_ADVISORY,
+                policy_signal=ToolPolicySignal.SECURITY_OR_CVE_CHECK.value,
             )
         )
         return result, ledger
 
 
-def _fake_ledger_entry(*, run_id, tool_class, gateway_request_id, provider, cost_usd):
+def _fake_ledger_entry(
+    *,
+    run_id,
+    tool_class,
+    gateway_request_id,
+    provider,
+    reason,
+    policy_signal,
+    billing_units=7,
+    cost_usd=Decimal("0.007"),
+):
     from datetime import UTC, datetime
 
     from optimus.evidence.ledger import EvidenceLedgerEntry
@@ -604,18 +636,17 @@ def _fake_ledger_entry(*, run_id, tool_class, gateway_request_id, provider, cost
     return EvidenceLedgerEntry.from_gateway_usage(
         run_id=run_id,
         session_id=None,
-        reason=EvidenceReasonCode.PACKAGE_VERSION,
-        policy_signal=ToolPolicySignal.DEPENDENCY_VERSION_CHECK.value,
+        reason=reason,
+        policy_signal=policy_signal,
         tool_class=tool_class,
         sources=(),
         gateway_usage=GatewayUsage(
             gateway_request_id=gateway_request_id,
             provider=provider,
             cache_hit=False,
-            billing_units=1,
+            billing_units=billing_units,
             cost_usd=cost_usd,
         ),
-        credits_used=0,
         queried_at=datetime(2026, 7, 26, tzinfo=UTC),
     )
 
@@ -643,6 +674,8 @@ def test_dispatcher_routes_evidence_package_lookup_to_service():
     assert response["result"]["package"] == "pytest-asyncio"
     assert response["result"]["latest_version"] == "0.24.0"
     assert response["result"]["gateway_usage"]["gateway_request_id"] == "gw-pkg-1"
+    assert response["result"]["ledger_run_total_cost_usd"] == "0.007"
+    assert response["result"]["ledger_run_total_billing_units"] == 7
     call = package_advisory_service.package_lookup_calls[0]
     assert call["request"].package == "pytest-asyncio"
     assert call["request"].context.run_id == "run-1"
@@ -672,6 +705,8 @@ def test_dispatcher_routes_evidence_security_advisory_to_service():
     assert "error" not in response
     assert response["result"]["identifier"] == "CVE-2026-12345"
     assert response["result"]["gateway_usage"]["gateway_request_id"] == "gw-adv-1"
+    assert response["result"]["ledger_run_total_cost_usd"] == "0.007"
+    assert response["result"]["ledger_run_total_billing_units"] == 7
     call = package_advisory_service.security_advisory_calls[0]
     assert call["request"].identifier == "CVE-2026-12345"
     assert call["request"].context.run_id == "run-1"

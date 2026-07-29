@@ -46,7 +46,7 @@ class _AgentLoopIterationRunner:
         self.last_result = result
         return IterationOutcome(
             summary=result.output_text,
-            cost_credits=result.total_cost_usd,
+            cost_usd=result.total_cost_usd,
             deterministic_completion=result.status is AgentRunStatus.COMPLETED,
         )
 
@@ -138,12 +138,24 @@ class AgentRunner:
             else self._planning_progress_observer
         )
         matched_skills = self._match_skills(request)
-        if request.completion_condition:
-            result = self._run_bounded_loop(request, matched_skills=matched_skills)
-        else:
-            result = self._run_once(request, planning_progress_observer=observer)
-        self._emit_agent_run(request, result, matched_skills=matched_skills)
-        return result
+        try:
+            if request.completion_condition:
+                result = self._run_bounded_loop(request, matched_skills=matched_skills)
+            else:
+                result = self._run_once(request, planning_progress_observer=observer)
+            self._emit_agent_run(request, result, matched_skills=matched_skills)
+            return result
+        finally:
+            # Narrow flush() protocol: flush a batching event sink (e.g. TelemetryFanout)
+            # after the final agent_run event, and also on a controlled failure that
+            # raises out of this method, so buffered telemetry is not silently dropped.
+            # A trace-flush outcome must never affect what this method returns or raises.
+            self._flush_event_sink()
+
+    def _flush_event_sink(self) -> None:
+        flush = getattr(self._event_sink, "flush", None)
+        if callable(flush):
+            flush()
 
     def _match_skills(self, request: AgentRunRequest) -> tuple[str, ...]:
         if not request.skill_paths:
@@ -167,7 +179,7 @@ class AgentRunner:
         controller = GoalLoopController(
             policy=LoopBudgetPolicy(
                 max_iterations=5,
-                max_budget_credits=max(request.max_cost_usd, Decimal("0.01")),
+                max_budget_usd=max(request.max_cost_usd, Decimal("0.01")),
                 max_wall_clock_minutes=30,
             ),
             runner=iteration_runner,
@@ -539,14 +551,15 @@ class AgentRunner:
     ) -> None:
         if self._usage_accounting is None:
             return
-        if gateway_usage.service is None:
-            return
         self._usage_accounting.record_gateway_usage(
             gateway_usage,
             run_id=request.run_id,
             session_id=request.session_id,
             request_id=f"{request.run_id}:planning:{settled_turn}:{wire_attempt}",
             occurred_at=datetime.now(tz=UTC),
+            service="agent.model",
+            native_unit="tokens",
+            price_snapshot_id=gateway_usage.price_snapshot_id,
         )
 
     def _run_approved_from_store(

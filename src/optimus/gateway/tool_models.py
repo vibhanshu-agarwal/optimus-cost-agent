@@ -5,7 +5,7 @@ agent client and the Optimus Gateway (Plan 11.2, ``P11-FEAT-GATEWAY-TOOLS``).
 Package/advisory and web-extract text is untrusted data: it is never executed,
 followed, or promoted to policy. ``gateway_usage`` is always parsed from the
 canonical :class:`~optimus.gateway.models.GatewayUsage` model; this module never
-estimates tokens, credits, or dollars.
+estimates tokens, billing units, or dollars.
 """
 from __future__ import annotations
 

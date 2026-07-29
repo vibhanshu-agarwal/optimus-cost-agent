@@ -10,6 +10,9 @@ dependencies = [
   "confusable-homoglyphs>=3.3",
   "defusedxml>=0.7.1",
   "keyring>=25,<26",
+  "opentelemetry-api>=1.44,<2",
+  "opentelemetry-exporter-otlp-proto-http>=1.44,<2",
+  "opentelemetry-sdk>=1.44,<2",
   "pydantic>=2.8",
   "redis>=5",
 ]
@@ -41,13 +44,14 @@ addopts = [
   "--strict-markers",
   "--import-mode=importlib",
   "-m",
-  "not requires_redis and not requires_gateway and not e2e and not requires_live_gateway",
+  "not requires_redis and not requires_gateway and not e2e and not requires_live_gateway and not requires_phoenix",
 ]
 markers = [
   "requires_redis: integration test that needs a live TimeSeries-capable Redis server",
   "requires_gateway: integration test that needs real Optimus Gateway credentials",
   "e2e: end-to-end test that spawns the real ACP stdio process",
   "requires_live_gateway: integration test that needs the local Optimus Gateway service process and Anthropic API key on that process only",
+  "requires_phoenix: integration test that needs a live Phoenix trace collector reachable via the Gateway-only OTLP endpoint",
 ]
 
 [tool.coverage.run]

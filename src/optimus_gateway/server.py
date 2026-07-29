@@ -7,7 +7,11 @@ from typing import Any
 
 from optimus_gateway.chat_completions import handle_chat_completions_request
 from optimus_gateway.models import GatewayServiceConfig
-from optimus_gateway.observability import handle_observability_traces_request
+from optimus_gateway.observability import (
+    OpenTelemetryTraceExporter,
+    TraceExporter,
+    handle_observability_traces_request,
+)
 from optimus_gateway.providers import build_tool_dependencies, build_upstream_client
 from optimus_gateway.responses import handle_responses_request
 from optimus_gateway.tool_handlers import TOOL_ROUTE_PATHS, GatewayToolDependencies, handle_tool_request
@@ -18,18 +22,21 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
     config: GatewayServiceConfig
     upstream_client: UpstreamClient
     tool_dependencies: GatewayToolDependencies | None = None
+    trace_exporter: TraceExporter
 
     def log_message(self, format: str, *args: object) -> None:
         return
 
     def do_POST(self) -> None:
         tool_mode = False
+        trace_mode = False
         if self.path == "/v1/responses":
             handler = handle_responses_request
         elif self.path == "/v1/chat/completions":
             handler = handle_chat_completions_request
         elif self.path == "/v1/observability/traces":
             handler = handle_observability_traces_request
+            trace_mode = True
         elif self.path in TOOL_ROUTE_PATHS and self.tool_dependencies is not None:
             tool_mode = True
         else:
@@ -55,6 +62,14 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
                 config=self.config,
                 dependencies=self.tool_dependencies,
             )
+        elif trace_mode:
+            status, body = handler(
+                authorization_header=self.headers.get("Authorization"),
+                request_body=request_body,
+                config=self.config,
+                upstream_client=self.upstream_client,
+                trace_exporter=self.trace_exporter,
+            )
         else:
             status, body = handler(
                 authorization_header=self.headers.get("Authorization"),
@@ -79,10 +94,19 @@ def serve_gateway(
     config: GatewayServiceConfig,
     upstream_client: UpstreamClient | None = None,
     tool_dependencies: GatewayToolDependencies | None = None,
+    trace_exporter: TraceExporter | None = None,
 ) -> ThreadingHTTPServer:
     client = upstream_client or build_upstream_client(config)
     resolved_tool_dependencies = (
         tool_dependencies if tool_dependencies is not None else build_tool_dependencies(config)
+    )
+    # Plan 11.5, Task 4: config carries the Gateway-only OTLP endpoint
+    # (`config.otlp_endpoint`, read from `OTEL_EXPORTER_OTLP_ENDPOINT`); the
+    # default exporter is built from it here so every `serve_gateway(config=...)`
+    # call site (including the standalone `__main__` entrypoint) picks it up
+    # without needing its own explicit `trace_exporter=` argument.
+    resolved_trace_exporter = (
+        trace_exporter if trace_exporter is not None else OpenTelemetryTraceExporter(otlp_endpoint=config.otlp_endpoint)
     )
 
     class _BoundHandler(OptimusGatewayHandler):
@@ -91,5 +115,6 @@ def serve_gateway(
     _BoundHandler.config = config
     _BoundHandler.upstream_client = client
     _BoundHandler.tool_dependencies = resolved_tool_dependencies
+    _BoundHandler.trace_exporter = resolved_trace_exporter
     server = ThreadingHTTPServer((config.bind_host, config.bind_port), _BoundHandler)
     return server

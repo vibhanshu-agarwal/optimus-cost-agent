@@ -14,6 +14,8 @@ from optimus.guardrails.pre_tool import PreToolResult, PreToolVerdict
 from optimus.runtime.modes import ExecutionMode
 from optimus.tools.policy import EvidenceReasonCode, ToolClass, ToolPolicySignal
 from optimus.tools.registry import ToolCallRejected, ToolRegistry
+from optimus.usage.accounting import UsageAccountingService
+from optimus.usage.errors import DuplicateGatewayRequestError
 
 
 def domain_policy() -> EvidenceDomainPolicy:
@@ -23,10 +25,12 @@ def domain_policy() -> EvidenceDomainPolicy:
 class FakeGatewayClient:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
+        self._search_call_count = 0
 
     def post_tool_json(self, *, path: str, payload: dict[str, object]) -> dict[str, object]:
         self.calls.append({"path": path, "payload": payload})
         if path == "/v1/tools/web/search":
+            self._search_call_count += 1
             return {
                 "tool_class": "web_search",
                 "policy_signal": "USER_REQUESTED_EXTERNAL_FACT",
@@ -42,7 +46,10 @@ class FakeGatewayClient:
                     "trust": "untrusted",
                 },
                 "gateway_usage": {
-                    "gateway_request_id": "gw-search-1",
+                    # A real Gateway issues a distinct gateway_request_id per call; the counter
+                    # here mirrors that so concurrent calls in the same test don't collide under
+                    # the idempotent-ledger's gateway_request_id key.
+                    "gateway_request_id": f"gw-search-{self._search_call_count}",
                     "provider": "tavily",
                     "provider_request_id": "provider-search-1",
                     "cache_hit": False,
@@ -88,6 +95,29 @@ class FailingGatewayClient(FakeGatewayClient):
     def post_tool_json(self, *, path: str, payload: dict[str, object]) -> dict[str, object]:
         self.calls.append({"path": path, "payload": payload})
         raise GatewayHttpError(502, "gateway unavailable")
+
+
+class FailingWithUsageGatewayClient(FakeGatewayClient):
+    """A gateway HTTP error that still carries billed usage in the error body.
+
+    Mirrors a real Gateway response where the provider call itself failed
+    (e.g. a 4xx/5xx from the upstream provider) but the Gateway still billed
+    the attempt and reports it via ``_try_parse_error_usage``.
+    """
+
+    def post_tool_json(self, *, path: str, payload: dict[str, object]) -> dict[str, object]:
+        from optimus.gateway.models import GatewayUsage
+
+        self.calls.append({"path": path, "payload": payload})
+        usage = GatewayUsage(
+            gateway_request_id="gw-http-error-1",
+            provider="tavily",
+            provider_request_id="provider-http-error-1",
+            cache_hit=False,
+            billing_units=3,
+            cost_usd=Decimal("0.003"),
+        )
+        raise GatewayHttpError(502, "gateway unavailable", gateway_usage=usage)
 
 
 class EmptyExtractItemsGatewayClient(FakeGatewayClient):
@@ -158,7 +188,7 @@ def test_search_authorizes_gateway_call_and_records_ledger_entry():
     assert ledger.entries[0].run_id == "run-1"
     assert ledger.entries[0].gateway_request_id == "gw-search-1"
     assert ledger.total_cost_usd() == Decimal("0.002")
-    assert ledger.total_credits() == 0
+    assert ledger.total_billing_units() == 2
 
 
 def test_search_intersects_request_domains_with_configured_allowlist():
@@ -354,7 +384,6 @@ def test_extract_requires_prior_search_result_and_records_separate_usage():
     assert ledger.entries[0].tool_class is ToolClass.WEB_EXTRACT
     assert ledger.entries[0].gateway_request_id == "gw-extract-1"
     assert ledger.total_billing_units() == 1
-    assert ledger.total_credits() == 0
 
 
 def test_extract_empty_items_records_usage_and_fails_closed():
@@ -383,6 +412,230 @@ def test_extract_empty_items_records_usage_and_fails_closed():
     assert service.ledger.entries[0].tool_class is ToolClass.WEB_EXTRACT
     assert service.ledger.entries[0].gateway_request_id == "gw-extract-empty"
     assert service.ledger.entries[0].cost_usd == Decimal("0.001")
+
+
+def test_search_records_provider_usage_with_web_search_context():
+    gateway = FakeGatewayClient()
+    accounting = UsageAccountingService()
+    service = EvidenceAcquisitionService(
+        gateway_client=gateway,
+        domain_policy=domain_policy(),
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+        usage_accounting=accounting,
+    )
+    request = EvidenceRequest(
+        run_id="run-1",
+        query="latest pytest release",
+        reason=EvidenceReasonCode.USER_REQUESTED,
+        policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT,
+        allowed_domains=("docs.example.com",),
+    )
+
+    service.search(request, execution_mode=ExecutionMode.PLAN)
+
+    assert len(accounting.provider_ledger.entries) == 1
+    entry = accounting.provider_ledger.entries[0]
+    assert entry.gateway_request_id == "gw-search-1"
+    assert entry.service == "web.search"
+    assert entry.native_unit == "tavily_credits"
+    assert entry.run_id == "run-1"
+
+
+def test_extract_records_provider_usage_with_web_extract_context():
+    gateway = FakeGatewayClient()
+    accounting = UsageAccountingService()
+    registry = ToolRegistry(max_calls_per_run=10)
+    registry.record_search_results(run_id="run-1", urls=("https://docs.example.com/a",))
+    service = EvidenceAcquisitionService(
+        gateway_client=gateway,
+        domain_policy=domain_policy(),
+        registry=registry,
+        ledger=EvidenceLedger(),
+        usage_accounting=accounting,
+    )
+    request = EvidenceExtractRequest(
+        run_id="run-1",
+        url="https://docs.example.com/a",
+        reason=EvidenceReasonCode.USER_REQUESTED,
+        policy_signal=ToolPolicySignal.APPROVED_SEARCH_RESULT_PROVENANCE,
+        allowed_domains=("docs.example.com",),
+    )
+
+    service.extract(request, execution_mode=ExecutionMode.CHAT)
+
+    assert len(accounting.provider_ledger.entries) == 1
+    entry = accounting.provider_ledger.entries[0]
+    assert entry.gateway_request_id == "gw-extract-1"
+    assert entry.service == "web.extract"
+    assert entry.native_unit == "tavily_credits"
+
+
+def test_malformed_gateway_body_records_provider_usage_before_error():
+    gateway = MalformedBodyGatewayClient()
+    accounting = UsageAccountingService()
+    service = EvidenceAcquisitionService(
+        gateway_client=gateway,
+        domain_policy=domain_policy(),
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+        usage_accounting=accounting,
+    )
+    request = EvidenceRequest(
+        run_id="run-1",
+        query="latest pytest release",
+        reason=EvidenceReasonCode.USER_REQUESTED,
+        policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT,
+        allowed_domains=("docs.example.com",),
+    )
+
+    with pytest.raises(GatewayResponseError, match="url"):
+        service.search(request, execution_mode=ExecutionMode.PLAN)
+
+    assert len(accounting.provider_ledger.entries) == 1
+    assert accounting.provider_ledger.entries[0].gateway_request_id == "gw-search-bad"
+    assert accounting.provider_ledger.entries[0].service == "web.search"
+
+
+def test_gateway_failure_without_usage_records_no_provider_usage():
+    gateway = FailingGatewayClient()
+    accounting = UsageAccountingService()
+    service = EvidenceAcquisitionService(
+        gateway_client=gateway,
+        domain_policy=domain_policy(),
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+        usage_accounting=accounting,
+    )
+    request = EvidenceRequest(
+        run_id="run-1",
+        query="latest pytest release",
+        reason=EvidenceReasonCode.USER_REQUESTED,
+        policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT,
+        allowed_domains=("docs.example.com",),
+    )
+
+    with pytest.raises(GatewayHttpError):
+        service.search(request, execution_mode=ExecutionMode.PLAN)
+
+    assert accounting.provider_ledger.entries == ()
+
+
+def test_search_http_error_with_usage_records_provider_usage_before_error():
+    gateway = FailingWithUsageGatewayClient()
+    accounting = UsageAccountingService()
+    service = EvidenceAcquisitionService(
+        gateway_client=gateway,
+        domain_policy=domain_policy(),
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+        usage_accounting=accounting,
+    )
+    request = EvidenceRequest(
+        run_id="run-1",
+        query="latest pytest release",
+        reason=EvidenceReasonCode.USER_REQUESTED,
+        policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT,
+        allowed_domains=("docs.example.com",),
+    )
+
+    with pytest.raises(GatewayHttpError):
+        service.search(request, execution_mode=ExecutionMode.PLAN)
+
+    assert len(accounting.provider_ledger.entries) == 1
+    entry = accounting.provider_ledger.entries[0]
+    assert entry.gateway_request_id == "gw-http-error-1"
+    assert entry.service == "web.search"
+    assert entry.native_unit == "tavily_credits"
+    assert entry.run_id == "run-1"
+    assert entry.cost_usd == Decimal("0.003")
+    assert len(service.ledger.entries) == 1
+    assert service.ledger.entries[0].gateway_request_id == "gw-http-error-1"
+    assert service.ledger.entries[0].cost_usd == Decimal("0.003")
+
+
+def test_extract_http_error_with_usage_records_provider_usage_before_error():
+    gateway = FailingWithUsageGatewayClient()
+    accounting = UsageAccountingService()
+    registry = ToolRegistry(max_calls_per_run=10)
+    registry.record_search_results(run_id="run-1", urls=("https://docs.example.com/a",))
+    service = EvidenceAcquisitionService(
+        gateway_client=gateway,
+        domain_policy=domain_policy(),
+        registry=registry,
+        ledger=EvidenceLedger(),
+        usage_accounting=accounting,
+    )
+    request = EvidenceExtractRequest(
+        run_id="run-1",
+        url="https://docs.example.com/a",
+        reason=EvidenceReasonCode.USER_REQUESTED,
+        policy_signal=ToolPolicySignal.APPROVED_SEARCH_RESULT_PROVENANCE,
+        allowed_domains=("docs.example.com",),
+    )
+
+    with pytest.raises(GatewayHttpError):
+        service.extract(request, execution_mode=ExecutionMode.CHAT)
+
+    assert len(accounting.provider_ledger.entries) == 1
+    entry = accounting.provider_ledger.entries[0]
+    assert entry.gateway_request_id == "gw-http-error-1"
+    assert entry.service == "web.extract"
+    assert entry.native_unit == "tavily_credits"
+    assert len(service.ledger.entries) == 1
+    assert service.ledger.entries[0].tool_class is ToolClass.WEB_EXTRACT
+    assert service.ledger.entries[0].gateway_request_id == "gw-http-error-1"
+
+
+def test_search_divergent_duplicate_gateway_request_id_raises_before_ledger_entry():
+    gateway = FakeGatewayClient()
+    accounting = UsageAccountingService()
+    accounting.record_gateway_usage(
+        gateway_usage_stub(),
+        run_id="run-1",
+        session_id=None,
+        request_id="pre-existing",
+        occurred_at=_frozen_now(),
+        service="web.search",
+        native_unit="tavily_credits",
+    )
+    service = EvidenceAcquisitionService(
+        gateway_client=gateway,
+        domain_policy=domain_policy(),
+        registry=ToolRegistry(max_calls_per_run=10),
+        ledger=EvidenceLedger(),
+        usage_accounting=accounting,
+    )
+    request = EvidenceRequest(
+        run_id="run-1",
+        query="latest pytest release",
+        reason=EvidenceReasonCode.USER_REQUESTED,
+        policy_signal=ToolPolicySignal.USER_REQUESTED_EXTERNAL_FACT,
+        allowed_domains=("docs.example.com",),
+    )
+
+    with pytest.raises(DuplicateGatewayRequestError):
+        service.search(request, execution_mode=ExecutionMode.PLAN)
+
+    assert service.ledger.entries == ()
+
+
+def gateway_usage_stub():
+    from optimus.gateway.models import GatewayUsage
+
+    return GatewayUsage(
+        gateway_request_id="gw-search-1",
+        provider="other-provider",
+        cache_hit=False,
+        billing_units=99,
+        cost_usd=Decimal("9.99"),
+    )
+
+
+def _frozen_now():
+    from datetime import UTC, datetime
+
+    return datetime(2026, 7, 4, tzinfo=UTC)
 
 
 def test_extract_rejects_unapproved_url_before_gateway_call():

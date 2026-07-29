@@ -62,7 +62,6 @@ class ReportedFailureThenSuccessHandler(BaseHTTPRequestHandler):
                         "total_tokens": 5,
                         "service": "responses",
                         "native_unit": "tokens",
-                        "optimus_credits_debited": "0.1",
                         "price_snapshot_id": "prices-local",
                     },
                 }
@@ -93,7 +92,6 @@ class ReportedFailureThenSuccessHandler(BaseHTTPRequestHandler):
                         "cache_age_seconds": 31,
                         "service": "responses",
                         "native_unit": "tokens",
-                        "optimus_credits_debited": "0.2",
                         "price_snapshot_id": "prices-local",
                     },
                 }

@@ -169,19 +169,19 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.launch_approval_cli:_display_candidate:stdout_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.acp.launch_approval_cli:_display_candidate:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_run_command_accepts_elevated_debug",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "optimus.acp.launch_approval_cli:_confirm_approval:stdout_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.acp.launch_approval_cli:_confirm_approval:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_approve_decline_does_not_build_or_write_record",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_display_candidate:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.launch_approval_cli:_display_candidate:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_run_command_accepts_elevated_debug",
       "evidence_tier": "unit"
     },
     {
@@ -705,11 +705,27 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.telemetry.redis_adapter:RedisTelemetryAdapter._ensure_usage_series:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.telemetry.redis_adapter:RedisTelemetryAdapter._ensure_usage_series:exception_export mirrors RedisTelemetryAdapter.ensure_series -- it uses exception text only to detect an already-exists TS.CREATE failure and fall back to TS.ALTER; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/telemetry/test_redis_adapter.py::test_record_settled_usage_reuses_existing_series_for_second_request_in_same_run",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.telemetry.redis_adapter:RedisTelemetryAdapter.ensure_series:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.telemetry.redis_adapter:RedisTelemetryAdapter.ensure_series:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/telemetry/test_redis_adapter.py::test_ensure_series_alters_existing_key",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.telemetry.redis_adapter:RedisTelemetryAdapter.record_settled_usage:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: record_settled_usage serializes only the fixed provider-accounting fingerprint (gateway_request_id, provider, provider_request_id, billing_units, cost_usd) used for HSETNX duplicate-claim comparison; it contains no free-text diagnostic content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/telemetry/test_redis_adapter.py::test_record_settled_usage_writes_exact_ts_create_and_ts_add_sequence",
       "evidence_tier": "unit"
     },
     {
@@ -758,6 +774,14 @@
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.chat_completions:handle_chat_completions_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/optimus_gateway/test_responses.py::test_handle_chat_completions_request_sanitizes_validation_errors",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.observability:_coerce_attribute_value:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.observability:_coerce_attribute_value:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback. `_coerce_attribute_value` only runs on the already-`sanitize_for_persistence`-processed value returned by `_redact_field` in `_apply_redacted_attributes`; it never receives raw untrusted content directly.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_observability_export.py::test_exporter_json_encodes_structured_attribute_values",
       "evidence_tier": "unit"
     },
     {
@@ -857,6 +881,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.tool_providers:TavilyWebToolProvider._post_json:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Functional provider request serialization sends the API key only in the HTTPS request body to the configured Gateway-owned Tavily endpoint; the adapter never logs or exports the serialized payload.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_tool_providers.py::test_search_normalizes_https_results_and_usage",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.tool_state:_fail_closed.__exit__:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus_gateway.tool_state:_fail_closed.__exit__:exception_export uses exception text only to construct an in-memory GatewayToolStateUnavailable typed failure; it does not persist raw diagnostics.",
@@ -865,19 +897,19 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus_gateway.upstream_client:call_with_upstream_retry:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection (Plan 11.4 re-verified): call_with_upstream_retry uses str(exc) only to rewrap a RetryableUpstreamError as RuntimeError in memory after transient-attempt exhaustion; no sanitizer runs at this site. The message is sanitized at the existing run_model_completion RuntimeError→502 boundary (sanitize_error_message) before any HTTP response export. The on_attempt_failure callback added for model-path retry telemetry receives only attempt number, a literal transient/permanent classification string, latency, and disposition — never exception text, so it does not add a new exception_export surface. Non-retryable exceptions are re-raised as-is (bare raise, no str()/repr() conversion) and are outside this surface. Callers that reuse this helper without that outer catch must add their own sanitizing boundary.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_upstream_retry.py::test_model_retry_ceiling_is_three_attempts",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_message:json_serialization",
       "policy": "protocol-only",
       "rationale": "Functional protocol serialization at optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_message:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
       "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:call_with_upstream_retry:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 11.4 re-verified): call_with_upstream_retry uses str(exc) only to rewrap a RetryableUpstreamError as RuntimeError in memory after transient-attempt exhaustion; no sanitizer runs at this site. The message is sanitized at the existing run_model_completion RuntimeError\u2192502 boundary (sanitize_error_message) before any HTTP response export. The on_attempt_failure callback added for model-path retry telemetry receives only attempt number, a literal transient/permanent classification string, latency, and disposition \u2014 never exception text, so it does not add a new exception_export surface. Non-retryable exceptions are re-raised as-is (bare raise, no str()/repr() conversion) and are outside this surface. Callers that reuse this helper without that outer catch must add their own sanitizing boundary.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_upstream_retry.py::test_model_retry_ceiling_is_three_attempts",
       "evidence_tier": "unit"
     },
     {
@@ -905,6 +937,38 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.run_openrouter_web_search_spike:_post_chat:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional HTTPS request serialization sends only the bounded model, query, token limit, temperature, and web-plugin configuration to OpenRouter. The credential remains in the Authorization header, and the serialized request is not logged or persisted.",
+      "sanitizer": "bounded spike request schema; no diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_openrouter_web_search_spike:main:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "The caught extract exception is limited to the HTTPS docs.python.org allowlisted fetch path and is placed only in the schema-limited spike report; provider response bodies, credentials, assistant content, and extracted source text have no field in that report.",
+      "sanitizer": "schema-limited experimental report; no credential or source-content field",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_openrouter_web_search_spike:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "The spike report serializes measured counts, hashes, timings, public citation metadata, usage, and bounded configuration only. Credentials, assistant text, citation content, and extracted page text are deliberately omitted.",
+      "sanitizer": "schema-limited experimental report; content represented by counts and SHA-256 digests",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_openrouter_web_search_spike:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Standard output receives only the schema-limited spike report described above; it excludes credentials, assistant text, citation content, and extracted page text.",
+      "sanitizer": "schema-limited experimental report; content represented by counts and SHA-256 digests",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.run_phase1_release_gate:main:stderr_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: tools.run_phase1_release_gate:main:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
@@ -926,6 +990,62 @@
       "rationale": "Inspection: tools.run_phase1_release_gate:main:text_write writes only an already constrained functional artifact rather than raw diagnostic content.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_accepts_golden_results_argument",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan115_acpx_cost_obs_evidence:main:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_plan115_acpx_cost_obs_evidence:main:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py::test_resolve_acpx_fails_closed_when_acpx_is_not_on_path",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan115_acpx_cost_obs_evidence:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_plan115_acpx_cost_obs_evidence:main:stderr_export prints only controlled operational or typed failure text to stderr (acpx-not-found, env-config rejection, timeout) and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py::test_resolve_acpx_fails_closed_when_acpx_is_not_on_path",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan115_acpx_cost_obs_evidence:run_capture:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_plan115_acpx_cost_obs_evidence:run_capture:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py::test_verify_acp_results_rejects_transcript_with_a_retired_field_anywhere",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan115_acpx_cost_obs_evidence:run_capture:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_plan115_acpx_cost_obs_evidence:run_capture:stderr_export prints only controlled rejection status text to stderr and does not retain raw child diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py::test_verify_acp_results_rejects_transcript_with_a_retired_field_anywhere",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan115_acpx_cost_obs_evidence:run_capture:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_plan115_acpx_cost_obs_evidence:run_capture:stdout_export prints only the controlled report-path status line and does not retain raw child diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py::test_build_e7_summary_records_usd_and_billing_unit_evidence_and_legacy_absence",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan115_acpx_cost_obs_evidence:write_e7_report:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at tools.run_plan115_acpx_cost_obs_evidence:write_e7_report:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback. Summary/report JSON is written only after StreamingTextSanitizer redacts known OPTIMUS_API_KEY secrets from captured stdout/stderr.",
+      "sanitizer": "optimus_security.sanitization.StreamingTextSanitizer",
+      "test_node": "tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py::test_write_e7_report_persists_sanitized_transcript_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan115_acpx_cost_obs_evidence:write_e7_report:text_file_write",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at tools.run_plan115_acpx_cost_obs_evidence:write_e7_report:text_file_write before this persistence or export boundary; sanitizer failure has no raw fallback. The report body receives only StreamingTextSanitizer output for stdout/stderr plus schema-limited summary fields.",
+      "sanitizer": "optimus_security.sanitization.StreamingTextSanitizer",
+      "test_node": "tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py::test_write_e7_report_persists_sanitized_transcript_only",
       "evidence_tier": "unit"
     },
     {
@@ -1334,46 +1454,6 @@
       "rationale": "Inspection: parse_live_output parses ACPX JSON only to verify required end_turn and approval evidence in memory; it does not persist a diagnostic artifact.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_parse_live_output_requires_end_turn_and_permission_evidence",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.run_openrouter_web_search_spike:_post_chat:json_serialization",
-      "policy": "protocol-only",
-      "rationale": "Functional HTTPS request serialization sends only the bounded model, query, token limit, temperature, and web-plugin configuration to OpenRouter. The credential remains in the Authorization header, and the serialized request is not logged or persisted.",
-      "sanitizer": "bounded spike request schema; no diagnostic retention",
-      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.run_openrouter_web_search_spike:main:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "The caught extract exception is limited to the HTTPS docs.python.org allowlisted fetch path and is placed only in the schema-limited spike report; provider response bodies, credentials, assistant content, and extracted source text have no field in that report.",
-      "sanitizer": "schema-limited experimental report; no credential or source-content field",
-      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.run_openrouter_web_search_spike:main:json_serialization",
-      "policy": "safe-by-construction",
-      "rationale": "The spike report serializes measured counts, hashes, timings, public citation metadata, usage, and bounded configuration only. Credentials, assistant text, citation content, and extracted page text are deliberately omitted.",
-      "sanitizer": "schema-limited experimental report; content represented by counts and SHA-256 digests",
-      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.run_openrouter_web_search_spike:main:stdout_export",
-      "policy": "safe-by-construction",
-      "rationale": "Standard output receives only the schema-limited spike report described above; it excludes credentials, assistant text, citation content, and extracted page text.",
-      "sanitizer": "schema-limited experimental report; content represented by counts and SHA-256 digests",
-      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.tool_providers:TavilyWebToolProvider._post_json:json_serialization",
-      "policy": "safe-by-construction",
-      "rationale": "Functional provider request serialization sends the API key only in the HTTPS request body to the configured Gateway-owned Tavily endpoint; the adapter never logs or exports the serialized payload.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_tool_providers.py::test_search_normalizes_https_results_and_usage",
       "evidence_tier": "unit"
     }
   ]
