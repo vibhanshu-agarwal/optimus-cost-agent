@@ -1,9 +1,9 @@
 # Plan 11.6 — Local startup live evidence
 
-**Plan:** `docs/superpowers/plans/2026-07-29-plan-11-6-p11-5-fu-2-local-startup-consolidation.md`  
-**Operator runbook:** `docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md`  
-**Branch:** `agent/cursor/plan-11-6-local-startup-consolidation`  
-**Worktree:** `D:\Projects\Development\Python\optimus-cost-agent-wt-cursor`  
+**Plan:** `docs/superpowers/plans/2026-07-29-plan-11-6-p11-5-fu-2-local-startup-consolidation.md`
+**Operator runbook:** `docs/runbooks/local-live-dependencies.md`
+**Branch:** `agent/cursor/plan-11-6-local-startup-consolidation`
+**Worktree:** `D:\Projects\Development\Python\optimus-cost-agent-wt-cursor`
 **Evidence captured:** 2026-07-29 (UTC afternoon; Windows host + WSL2 Ubuntu 24.04)
 
 ## Digests and commits
@@ -12,7 +12,7 @@
 |------|-------|
 | Approved plan SHA-256 (freeze / implementation authorization) | `74CBE070C2CAA90C0D1D562F5DFE8CBA8C8F2839CD2CF1E9369E9A3D613B85C1` |
 | Approval record SHA-256 | `F3456EAB59D7C292411668AEAF5DB0B1F9D49040F1A26340B52C2AD732D55153` |
-| Plan file SHA-256 at evidence time (checkboxes progressed; Step 5 path note + `wt-cursor` command; Step 8 handoff) | `194E8D70B476BBB32E36E711CB5F06C59F28904C9673F8ECCCEE05BE314B0415` |
+| Plan file SHA-256 at evidence time (checkboxes progressed; Step 5 path note + `wt-cursor` command; Step 8 handoff; runbook relocated to `docs/runbooks/`) | `0210863356D5AE911F2B426EC67A444B146C2014BA969104D0438E7E436EAA43` |
 | Implementation baseline | `origin/main` @ `9d95e6c` |
 | HEAD at evidence start (Task 5 landed) | `ef3dbd819dbef30232d48a11cc10d8d16acf644f` |
 
@@ -57,7 +57,7 @@ No Docker/keyring/Gateway/Phoenix/`acpx` fake presented as live evidence.
 
 ## Step 2 — Zero-env strict smoke (Windows)
 
-Precondition: cleared `OPTIMUS_*` / `OTEL_*` for the command scope.  
+Precondition: cleared `OPTIMUS_*` / `OTEL_*` for the command scope.
 `optimus-trust --workspace-root . inspect` → Approval ID `appr_04598d8984f6104b07626c41`.
 
 ```text
@@ -137,16 +137,16 @@ No skips in the selected live tiers above.
 
 Independent client: `C:\Users\pc\AppData\Roaming\npm\acpx` **0.12.0**.
 
-1. **Consolidated-launcher tool** (opts into Phoenix):  
-   `tools/run_plan115_acpx_cost_obs_evidence.py` →  
-   [`reports/plan-11-6-local-startup-acpx-evidence.md`](plan-11-6-local-startup-acpx-evidence.md)  
-   - Zero `OPTIMUS_*` in operator shell before run  
-   - `agent_environment_names` = system PATH keys only (no Optimus names)  
-   - `exit_code: 0`, `capture_complete: true`, ACP initialize/session/prompt succeeded  
+1. **Consolidated-launcher tool** (opts into Phoenix):
+   `tools/run_plan115_acpx_cost_obs_evidence.py` →
+   [`reports/plan-11-6-local-startup-acpx-evidence.md`](plan-11-6-local-startup-acpx-evidence.md)
+   - Zero `OPTIMUS_*` in operator shell before run
+   - `agent_environment_names` = system PATH keys only (no Optimus names)
+   - `exit_code: 0`, `capture_complete: true`, ACP initialize/session/prompt succeeded
    - Planning stopped with gateway cost-verification message; `cost_evidence_fields: []` recorded honestly
 
-2. **Persistent-Gateway consumer**: `acpx … --agent "…/optimus-agent … --no-auto-start" exec …`  
-   - EXIT=0; ACP session completed; BOUNDARY_SCAN_OK  
+2. **Persistent-Gateway consumer**: `acpx … --agent "…/optimus-agent … --no-auto-start" exec …`
+   - EXIT=0; ACP session completed; BOUNDARY_SCAN_OK
    - Same planning cost-verification stop observed against Terminal A
 
 Gateway-only OTLP ownership remains: agent shell had no `OTEL_*`; Phoenix UI/health remained up for `requires_phoenix`.
@@ -199,9 +199,9 @@ error: NoKeyringError — No recommended backend was available (Linux SecretStor
 
 ## Secret / endpoint boundary proof
 
-- Step 2 agent output: no provider key material; no OTLP endpoint string  
-- Windows acpx reports: agent env names exclude `OPTIMUS_*` / `OTEL_*`  
-- `.env.example` remains free of Phoenix/OTLP names (Plan 11.5 + 11.6 presence tests)  
+- Step 2 agent output: no provider key material; no OTLP endpoint string
+- Windows acpx reports: agent env names exclude `OPTIMUS_*` / `OTEL_*`
+- `.env.example` remains free of Phoenix/OTLP names (Plan 11.5 + 11.6 presence tests)
 - Phoenix OTLP is Gateway-child-only when `--with-local-phoenix` is used
 
 ---
