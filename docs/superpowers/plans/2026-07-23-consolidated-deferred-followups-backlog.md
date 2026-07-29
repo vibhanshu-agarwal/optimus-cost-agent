@@ -64,7 +64,8 @@ open-work inventory.
 policy, measures wrong-target regret, and retains a fail-closed threshold. Until this lands,
 ambiguity stays visible and deterministic (Plan 9.8's current behavior).
 
-**Status:** Open, not yet scheduled.
+**Status:** Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`); open pending the current-Zed
+pre/post refusal-rendering evidence and reviewed disposition.
 
 ### P9.8-FU-3: Dynamic context budgets and required-file summarization
 
@@ -203,8 +204,9 @@ owned by `P11-FEAT-ZED-RESUME`, not parked or deferred to a later milestone.
 (`AgentPlanRecord`), not ACP session or conversation state, and cannot be treated as an existing
 resume store without an explicit design and migration decision.
 
-**Status:** Owned by `P11-FEAT-ZED-RESUME`; open and not yet scheduled. This is an unimplemented protocol
-capability, not a flaky regression or a parked architecture blocker.
+**Status:** Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`); open pending implementation and
+real-`acpx`/Zed evidence. This is an unimplemented protocol capability, not a flaky regression or
+a parked architecture blocker.
 
 ### P11-FU-2: Package Lookup and Security Advisory Gateway Capability
 
