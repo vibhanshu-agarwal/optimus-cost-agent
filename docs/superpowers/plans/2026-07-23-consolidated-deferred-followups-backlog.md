@@ -575,8 +575,11 @@ instead of one shared, documented one. The eventual design must nail this down e
 project-specific non-default port, or an explicit identity check) rather than depend on ambient
 port availability.
 
-**Status:** Tracked, not yet scheduled; **HIGH** priority. No implementation plan exists. Filed
-2026-07-29 for pool custody before Plan 11.5 close.
+**Status:** **Promoted -> Plan 11.6** (2026-07-29):
+[`2026-07-29-plan-11-6-p11-5-fu-2-local-startup-consolidation.md`](2026-07-29-plan-11-6-p11-5-fu-2-local-startup-consolidation.md).
+The implementation plan is drafted for Claude review and operator approval; implementation has
+not started. Retain this entry and update it to `Closed` only after Plan 11.6's named real
+Redis/Gateway/Phoenix/`acpx` evidence exists.
 
 ## P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)
 
