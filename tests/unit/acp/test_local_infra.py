@@ -770,3 +770,182 @@ def test_retired_origin_configuration_is_not_in_gateway_child_registry() -> None
             "OPTIMUS_EXTRA_GATEWAY_ORIGINS",
         }
     )
+
+
+# --- Plan 11.6 Task 3: local Phoenix lifecycle ---
+
+
+def test_ensure_local_phoenix_creates_named_container_when_missing(monkeypatch) -> None:
+    run_calls: list[list[str]] = []
+    health_urls: list[str] = []
+    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
+    monkeypatch.setattr(local_infra, "_docker_daemon_reachable", lambda _docker: True)
+    monkeypatch.setattr(local_infra, "_container_exists", lambda *_a, **_k: False)
+    monkeypatch.setattr(local_infra, "_docker_published_port_owners", lambda *_a, **_k: [])
+    monkeypatch.setattr(local_infra.time, "sleep", lambda _seconds: None)
+
+    def fake_run(args, **_k):
+        run_calls.append(list(args))
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(local_infra.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        local_infra,
+        "_phoenix_health_ready",
+        lambda url: health_urls.append(url) or True,
+    )
+
+    endpoint = local_infra.ensure_local_phoenix()
+
+    assert endpoint == local_infra.LOCAL_PHOENIX_OTLP_ENDPOINT
+    assert run_calls == [
+        [
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            "optimus-phoenix",
+            "-p",
+            "127.0.0.1:6006:6006",
+            "arizephoenix/phoenix:latest",
+        ],
+    ]
+    assert health_urls == ["http://127.0.0.1:6006/healthz"]
+    _assert_no_destructive_docker_args(run_calls)
+
+
+def test_ensure_local_phoenix_starts_existing_matching_container(monkeypatch) -> None:
+    run_calls: list[list[str]] = []
+    health_calls = {"n": 0}
+    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
+    monkeypatch.setattr(local_infra, "_docker_daemon_reachable", lambda _docker: True)
+    monkeypatch.setattr(local_infra, "_container_exists", lambda *_a, **_k: True)
+    monkeypatch.setattr(
+        local_infra,
+        "_docker_published_port_owners",
+        lambda *_a, **_k: [],
+    )
+    monkeypatch.setattr(
+        local_infra,
+        "_docker_container_image",
+        lambda *_a, **_k: "arizephoenix/phoenix:latest",
+    )
+
+    def fake_health(_url: str) -> bool:
+        health_calls["n"] += 1
+        return health_calls["n"] > 1
+
+    monkeypatch.setattr(local_infra, "_phoenix_health_ready", fake_health)
+    monkeypatch.setattr(local_infra.time, "sleep", lambda _seconds: None)
+
+    def fake_run(args, **_k):
+        run_calls.append(list(args))
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(local_infra.subprocess, "run", fake_run)
+
+    endpoint = local_infra.ensure_local_phoenix()
+
+    assert endpoint == local_infra.LOCAL_PHOENIX_OTLP_ENDPOINT
+    assert run_calls == [["docker", "start", "optimus-phoenix"]]
+    _assert_no_destructive_docker_args(run_calls)
+
+
+def test_ensure_local_phoenix_raises_on_wrong_port_owner(monkeypatch) -> None:
+    run_calls: list[list[str]] = []
+    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
+    monkeypatch.setattr(local_infra, "_docker_daemon_reachable", lambda _docker: True)
+    monkeypatch.setattr(
+        local_infra,
+        "_docker_published_port_owners",
+        lambda *_a, **_k: [("other-phoenix", "arizephoenix/phoenix:latest")],
+    )
+    monkeypatch.setattr(local_infra.subprocess, "run", lambda *a, **k: run_calls.append(list(a[0])))
+
+    with pytest.raises(local_infra.LocalInfrastructureError) as exc_info:
+        local_infra.ensure_local_phoenix()
+
+    assert "PHOENIX" in exc_info.value.code
+    assert "6006" in exc_info.value.user_message
+    assert "other-phoenix" in exc_info.value.user_message
+    _assert_no_destructive_docker_args(run_calls)
+
+
+def test_ensure_local_phoenix_raises_on_wrong_image_for_named_container(monkeypatch) -> None:
+    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
+    monkeypatch.setattr(local_infra, "_docker_daemon_reachable", lambda _docker: True)
+    monkeypatch.setattr(local_infra, "_container_exists", lambda *_a, **_k: True)
+    monkeypatch.setattr(
+        local_infra,
+        "_docker_published_port_owners",
+        lambda *_a, **_k: [("optimus-phoenix", "wrong/image:tag")],
+    )
+    monkeypatch.setattr(
+        local_infra.subprocess,
+        "run",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not mutate")),
+    )
+
+    with pytest.raises(local_infra.LocalInfrastructureError) as exc_info:
+        local_infra.ensure_local_phoenix()
+
+    assert "PHOENIX" in exc_info.value.code
+    assert "wrong/image:tag" in exc_info.value.user_message or "arizephoenix/phoenix:latest" in exc_info.value.user_message
+
+
+def test_ensure_local_gateway_injects_otlp_endpoint_into_child_env_only(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(local_infra, "_tcp_reachable", MagicMock(side_effect=[False, True]))
+    monkeypatch.setattr(local_infra.time, "sleep", lambda _seconds: None)
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        pid = 1
+        returncode = None
+
+        def poll(self):
+            return None
+
+    def fake_popen(args, *, env, stdin, stdout, stderr):
+        captured["env"] = env
+        return FakeProcess()
+
+    monkeypatch.setattr(local_infra.subprocess, "Popen", fake_popen)
+
+    result = local_infra.ensure_local_gateway(
+        **_ensure_gateway_kwargs(),
+        runtime_root=tmp_path / ".optimus",
+        otlp_endpoint="http://127.0.0.1:6006/v1/traces",
+    )
+
+    assert result is not None
+    child_env = captured["env"]
+    assert isinstance(child_env, dict)
+    assert child_env["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://127.0.0.1:6006/v1/traces"
+    assert set(k for k in child_env if k.startswith("OTEL_")) == {"OTEL_EXPORTER_OTLP_ENDPOINT"}
+
+
+def test_ensure_local_gateway_omits_otlp_when_endpoint_none(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(local_infra, "_tcp_reachable", MagicMock(side_effect=[False, True]))
+    monkeypatch.setattr(local_infra.time, "sleep", lambda _seconds: None)
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        pid = 1
+        returncode = None
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(
+        local_infra.subprocess,
+        "Popen",
+        lambda args, *, env, stdin, stdout, stderr: captured.update(env=env) or FakeProcess(),
+    )
+
+    local_infra.ensure_local_gateway(
+        **_ensure_gateway_kwargs(),
+        runtime_root=tmp_path / ".optimus",
+        otlp_endpoint=None,
+    )
+
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT" not in captured["env"]

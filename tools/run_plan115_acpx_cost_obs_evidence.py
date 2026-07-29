@@ -135,13 +135,16 @@ def assert_agent_environment_is_approved(env: Mapping[str, str]) -> None:
         )
 
 
-def build_agent_invocation(*, agent_exe: str, workspace: Path) -> str:
+def build_agent_invocation(*, agent_exe: str, workspace: Path, with_local_phoenix: bool = False) -> str:
     """Build only the inner ``optimus-agent`` invocation string for ``acpx --agent``.
 
     ACPX parses ``--agent`` as raw command text and treats backslashes as escapes, so
     Windows paths embedded here must use forward slashes.
     """
-    return f"{agent_exe.replace(chr(92), '/')} --workspace-root {workspace.as_posix()}"
+    invocation = f"{agent_exe.replace(chr(92), '/')} --workspace-root {workspace.as_posix()}"
+    if with_local_phoenix:
+        invocation = f"{invocation} --with-local-phoenix"
+    return invocation
 
 
 def build_acpx_command(*, acpx: str, workspace: Path, agent_invocation: str, task: str) -> list[str]:
@@ -302,7 +305,11 @@ def run_capture(
     assert_agent_environment_is_approved(env)
 
     workspace.mkdir(parents=True, exist_ok=True)
-    agent_invocation = build_agent_invocation(agent_exe=agent_exe, workspace=workspace)
+    agent_invocation = build_agent_invocation(
+        agent_exe=agent_exe,
+        workspace=workspace,
+        with_local_phoenix=True,
+    )
     command = build_acpx_command(acpx=acpx, workspace=workspace, agent_invocation=agent_invocation, task=task)
 
     proc = subprocess.run(  # noqa: S603

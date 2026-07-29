@@ -5,6 +5,8 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,6 +55,13 @@ _POLL_INTERVAL_SECONDS = 0.5
 _DEFAULT_REDIS_URL = "redis://127.0.0.1:6379/0"
 _DEFAULT_GATEWAY_URL = "http://127.0.0.1:8765"
 _DEFAULT_LOCAL_AGENT_MODEL = "claude-haiku"
+_PHOENIX_CONTAINER_NAME = "optimus-phoenix"
+_PHOENIX_IMAGE = "arizephoenix/phoenix:latest"
+_PHOENIX_PORT = 6006
+_PHOENIX_READY_TIMEOUT_SECONDS = 30.0
+LOCAL_PHOENIX_BASE_URL = "http://127.0.0.1:6006"
+LOCAL_PHOENIX_OTLP_ENDPOINT = "http://127.0.0.1:6006/v1/traces"
+_PHOENIX_HEALTHZ_URL = f"{LOCAL_PHOENIX_BASE_URL}/healthz"
 _SYSTEM_ENV_KEYS = ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "PATH", "TEMP", "TMP")
 _EMPTY_MAPPING: Mapping[str, str] = {}
 
@@ -267,6 +276,123 @@ def ensure_local_redis(redis_url: str, *, log: Callable[[str], None] = _noop_log
     log(f"optimus-agent: {_REDIS_CONTAINER_NAME} did not become reachable in time; leaving pre-flight to fail closed.")
 
 
+def _phoenix_health_ready(url: str) -> bool:
+    try:
+        with urllib.request.urlopen(url, timeout=1.0) as response:
+            return 200 <= int(getattr(response, "status", 200)) < 300
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        return False
+
+
+def _docker_container_image(docker: str, name: str) -> str | None:
+    try:
+        result = subprocess.run(
+            [docker, "inspect", "--format", "{{.Config.Image}}", name],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    image = result.stdout.strip()
+    return image or None
+
+
+def _assert_phoenix_port_identity(*, docker: str, log: Callable[[str], None]) -> None:
+    owners = _docker_published_port_owners(docker, _PHOENIX_PORT)
+    if not owners:
+        return
+    names = [name for name, _image in owners]
+    if any(name != _PHOENIX_CONTAINER_NAME for name in names):
+        observed = ", ".join(names)
+        raise LocalInfrastructureError(
+            code="PHOENIX_PORT_CONFLICT",
+            user_message=(
+                f"Local Phoenix port {_PHOENIX_PORT} is owned by Docker container {observed}, "
+                f"not {_PHOENIX_CONTAINER_NAME}. Stop or reconfigure that container yourself; "
+                "Optimus will not stop or delete the conflicting container."
+            ),
+        )
+    for name, image in owners:
+        if image != _PHOENIX_IMAGE:
+            raise LocalInfrastructureError(
+                code="PHOENIX_IMAGE_CONFLICT",
+                user_message=(
+                    f"Named container {name} is running image {image!r}, expected {_PHOENIX_IMAGE!r}. "
+                    "Stop or recreate the container yourself; Optimus will not mutate it."
+                ),
+            )
+
+
+def ensure_local_phoenix(*, log: Callable[[str], None] = _noop_log) -> str:
+    """Return the fixed OTLP endpoint after named-container health succeeds."""
+    docker = shutil.which("docker")
+    if docker is None:
+        raise LocalInfrastructureError(
+            code="PHOENIX_DOCKER_MISSING",
+            user_message="docker not found on PATH; cannot start local Phoenix.",
+        )
+    if not _docker_daemon_reachable(docker):
+        raise LocalInfrastructureError(
+            code="PHOENIX_DOCKER_UNREACHABLE",
+            user_message="Docker daemon not reachable; cannot start local Phoenix.",
+        )
+
+    _assert_phoenix_port_identity(docker=docker, log=log)
+
+    if _container_exists(docker, _PHOENIX_CONTAINER_NAME):
+        configured = _docker_container_image(docker, _PHOENIX_CONTAINER_NAME)
+        if configured is not None and configured != _PHOENIX_IMAGE:
+            raise LocalInfrastructureError(
+                code="PHOENIX_IMAGE_CONFLICT",
+                user_message=(
+                    f"Named container {_PHOENIX_CONTAINER_NAME} is configured with image "
+                    f"{configured!r}, expected {_PHOENIX_IMAGE!r}. Stop or recreate it yourself; "
+                    "Optimus will not mutate it."
+                ),
+            )
+        if not _phoenix_health_ready(_PHOENIX_HEALTHZ_URL):
+            log(f"optimus-agent: starting existing {_PHOENIX_CONTAINER_NAME} container...")
+            subprocess.run(
+                [docker, "start", _PHOENIX_CONTAINER_NAME],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+    else:
+        log(f"optimus-agent: creating {_PHOENIX_CONTAINER_NAME} container ({_PHOENIX_IMAGE})...")
+        subprocess.run(
+            [
+                docker,
+                "run",
+                "-d",
+                "--name",
+                _PHOENIX_CONTAINER_NAME,
+                "-p",
+                f"127.0.0.1:{_PHOENIX_PORT}:{_PHOENIX_PORT}",
+                _PHOENIX_IMAGE,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    deadline = time.monotonic() + _PHOENIX_READY_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if _phoenix_health_ready(_PHOENIX_HEALTHZ_URL):
+            return LOCAL_PHOENIX_OTLP_ENDPOINT
+        time.sleep(_POLL_INTERVAL_SECONDS)
+    raise LocalInfrastructureError(
+        code="PHOENIX_NOT_READY",
+        user_message=(
+            f"{_PHOENIX_CONTAINER_NAME} did not become healthy at {_PHOENIX_HEALTHZ_URL} in time."
+        ),
+    )
+
+
 @dataclass
 class LocalGatewayProcess:
     process: subprocess.Popen | None
@@ -295,6 +421,7 @@ def ensure_local_gateway(
     runtime_root: Path,
     system_env: Mapping[str, str] = _EMPTY_MAPPING,
     config_root: Path | None = None,
+    otlp_endpoint: str | None = None,
     log: Callable[[str], None] = _noop_log,
 ) -> LocalGatewayProcess | None:
     """Start the local Gateway child using ALREADY-RESOLVED credentials.
@@ -350,6 +477,8 @@ def ensure_local_gateway(
         **provider_secrets.as_gateway_child_env(),
         **tool_env,
     }
+    if otlp_endpoint:
+        child_env["OTEL_EXPORTER_OTLP_ENDPOINT"] = otlp_endpoint
     for key in _SYSTEM_ENV_KEYS:
         value = system_env.get(key, "")
         if value:

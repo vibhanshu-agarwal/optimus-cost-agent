@@ -520,7 +520,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   builder remains optional, while the Plan 11.5 cost-observability evidence tool passes
   `with_local_phoenix=True` explicitly.
 
-- [ ] **Step 1: Write RED Phoenix lifecycle and boundary tests.**
+- [x] **Step 1: Write RED Phoenix lifecycle and boundary tests.**
 
   Add tests asserting:
 
@@ -540,7 +540,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
     cost-observability capture opts in explicitly and its environment remains zero-Optimus when
     the shell is empty.
 
-- [ ] **Step 2: Run RED selectors.**
+- [x] **Step 2: Run RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_local_infra.py tests/unit/acp/test_main_wiring.py tests/unit/acp/test_acp_subprocess_env.py tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py -q
@@ -548,8 +548,9 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   Expected: failures identify the missing agent option, Phoenix helper, endpoint argument, strict
   check-config Gateway startup, and cost-observability invocation flag.
+  Observed RED: `13 failed, 102 passed`.
 
-- [ ] **Step 3: Implement Phoenix in the existing lifecycle.**
+- [x] **Step 3: Implement Phoenix in the existing lifecycle.**
 
   Reuse Task 2's exact owner/image helpers. Health-check with Python stdlib HTTP only; no Phoenix
   dependency. The enabled `optimus-agent` startup sequence after authorization is:
@@ -565,13 +566,13 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   Keep Redis and Phoenix named containers running for reuse. Do not auto-remove them, pull images
   explicitly, or send the endpoint through `agent_environ`.
 
-- [ ] **Step 4: Share strict check-config and serving cleanup.**
+- [x] **Step 4: Share strict check-config and serving cleanup.**
 
   Ensure `--check-config --strict` can auto-start the Gateway instead of requiring a separate
   manual launcher. Wrap Gateway lifetime in `try/finally` for both strict check-config and serving.
   Non-strict check-config retains its Redis-only behavior unless Phoenix was explicitly requested.
 
-- [ ] **Step 5: Run focused green and one-key boundary tests.**
+- [x] **Step 5: Run focused green and one-key boundary tests.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_local_infra.py tests/unit/acp/test_main_wiring.py tests/unit/acp/test_launch_approval_cli.py tests/unit/acp/test_acp_subprocess_env.py tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py tests/unit/tools/test_plan115_docs.py -q
@@ -579,8 +580,9 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   Expected: all pass; `OTEL_EXPORTER_OTLP_ENDPOINT` appears only in Gateway-child construction and
   the Gateway-side living example, never in agent child output.
+  Observed GREEN: `158 passed, 6 skipped`; Ruff clean on Task 3 paths.
 
-- [ ] **Step 6: Record checkpoint; commit only with separate approval.**
+- [x] **Step 6: Record checkpoint; commit only with separate approval.**
 
   If authorized, commit Task 3 paths with subject
   `feat(acp): auto-start local Phoenix for live evidence`.

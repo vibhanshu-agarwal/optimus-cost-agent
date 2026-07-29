@@ -27,6 +27,7 @@ from optimus.acp.local_infra import (
     LocalInfrastructureError,
     apply_local_defaults,
     ensure_local_gateway,
+    ensure_local_phoenix,
     ensure_local_redis,
 )
 from optimus.acp.operator_paths import OperatorPathConfigurationError, resolve_authorized_operator_paths
@@ -70,6 +71,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Do not auto-start local Redis or the local gateway process; assume they are already running.",
     )
     parser.add_argument(
+        "--with-local-phoenix",
+        action="store_true",
+        help=(
+            "After launch authorization, ensure the named local Phoenix container and pass its "
+            "fixed loopback OTLP endpoint only to the Gateway child."
+        ),
+    )
+    parser.add_argument(
         "--debug-trace",
         action="store_true",
         help="Enable ACP protocol debug tracing to an NDJSON log file (never stdout).",
@@ -94,7 +103,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     # `run --elevated-debug`, which substitutes {diagnostic_grant_id} into
     # the argv it spawns.
     parser.add_argument("--diagnostic-grant-id", default=None, help=argparse.SUPPRESS)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.with_local_phoenix and args.no_auto_start:
+        parser.error("--with-local-phoenix cannot be combined with --no-auto-start")
+    if args.with_local_phoenix and args.check_config and not args.strict:
+        parser.error("--with-local-phoenix with --check-config requires --strict")
+    return args
 
 
 def _apply_debug_trace_args(
@@ -355,35 +369,19 @@ def main(argv: list[str] | None = None) -> int:
         resolved_shared_secret=candidate.shared_secret,
     )
 
-    if args.check_config:
-        if not args.no_auto_start:
-            try:
-                ensure_local_redis(agent_environ.get("OPTIMUS_REDIS_URL", ""), log=_print_log)
-            except LocalInfrastructureError as exc:
-                print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
-                return 2
-        try:
-            run_preflight(
-                agent_environ,
-                workspace_root=workspace_root,
-                strict=args.strict,
-                require_timeseries=True,
-            )
-        except PreflightFailure as exc:
-            print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
-            return exc.exit_code
-        log_provenance_once()
-        print("Optimus ACP agent configuration OK.", file=sys.stderr)
-        return 0
-
-    gateway_process = None
-    if not args.no_auto_start:
+    def _start_local_dependencies() -> tuple[str | None, int | None]:
+        """Start Redis (+ optional Phoenix). Returns (otlp_endpoint, error_exit)."""
         try:
             ensure_local_redis(agent_environ.get("OPTIMUS_REDIS_URL", ""), log=_print_log)
+            if args.with_local_phoenix:
+                return ensure_local_phoenix(log=_print_log), None
         except LocalInfrastructureError as exc:
             print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
-            return 2
-        gateway_process = ensure_local_gateway(
+            return None, 2
+        return None, None
+
+    def _start_gateway(*, otlp_endpoint: str | None):
+        return ensure_local_gateway(
             gateway_url=agent_environ.get("OPTIMUS_GATEWAY_URL", ""),
             provider_credentials=candidate.provider_credentials,
             shared_secret=candidate.shared_secret,
@@ -394,8 +392,45 @@ def main(argv: list[str] | None = None) -> int:
             runtime_root=candidate.operator_paths.runtime_root,
             system_env=snapshot.values,
             config_root=candidate.operator_paths.config_root,
+            otlp_endpoint=otlp_endpoint,
             log=_print_log,
         )
+
+    if args.check_config:
+        gateway_process = None
+        try:
+            otlp_endpoint = None
+            if not args.no_auto_start:
+                otlp_endpoint, error_exit = _start_local_dependencies()
+                if error_exit is not None:
+                    return error_exit
+                # Strict check-config (and Phoenix, which requires strict) must exercise
+                # the Gateway path that receives OTLP configuration.
+                if args.strict or args.with_local_phoenix:
+                    gateway_process = _start_gateway(otlp_endpoint=otlp_endpoint)
+            try:
+                run_preflight(
+                    agent_environ,
+                    workspace_root=workspace_root,
+                    strict=args.strict,
+                    require_timeseries=True,
+                )
+            except PreflightFailure as exc:
+                print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
+                return exc.exit_code
+            log_provenance_once()
+            print("Optimus ACP agent configuration OK.", file=sys.stderr)
+            return 0
+        finally:
+            if gateway_process is not None:
+                gateway_process.stop()
+
+    gateway_process = None
+    if not args.no_auto_start:
+        otlp_endpoint, error_exit = _start_local_dependencies()
+        if error_exit is not None:
+            return error_exit
+        gateway_process = _start_gateway(otlp_endpoint=otlp_endpoint)
 
     # Single try/finally around BOTH build_configured_server(...) and serve(...): an earlier draft
     # of this plan wrapped only the serve() call, so an unexpected (non-StartupConfigurationError)
