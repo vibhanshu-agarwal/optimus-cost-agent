@@ -24,6 +24,7 @@ from optimus.acp.launch_gate import AuthorizedLaunch, LaunchCandidate, LaunchGat
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
 from optimus.acp.local_gateway_secrets import run_setup_wizard
 from optimus.acp.local_infra import (
+    LocalInfrastructureError,
     apply_local_defaults,
     ensure_local_gateway,
     ensure_local_redis,
@@ -356,7 +357,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.check_config:
         if not args.no_auto_start:
-            ensure_local_redis(agent_environ.get("OPTIMUS_REDIS_URL", ""), log=_print_log)
+            try:
+                ensure_local_redis(agent_environ.get("OPTIMUS_REDIS_URL", ""), log=_print_log)
+            except LocalInfrastructureError as exc:
+                print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
+                return 2
         try:
             run_preflight(
                 agent_environ,
@@ -373,7 +378,11 @@ def main(argv: list[str] | None = None) -> int:
 
     gateway_process = None
     if not args.no_auto_start:
-        ensure_local_redis(agent_environ.get("OPTIMUS_REDIS_URL", ""), log=_print_log)
+        try:
+            ensure_local_redis(agent_environ.get("OPTIMUS_REDIS_URL", ""), log=_print_log)
+        except LocalInfrastructureError as exc:
+            print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
+            return 2
         gateway_process = ensure_local_gateway(
             gateway_url=agent_environ.get("OPTIMUS_GATEWAY_URL", ""),
             provider_credentials=candidate.provider_credentials,

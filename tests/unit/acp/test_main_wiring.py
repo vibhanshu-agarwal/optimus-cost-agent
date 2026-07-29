@@ -901,3 +901,57 @@ def test_no_gated_helper_reads_os_environ_after_capture(monkeypatch, tmp_path) -
 
     assert exit_code == 0
     assert agent_environ_seen["OPTIMUS_API_KEY"] == "test-key"
+
+
+def test_main_exits_2_on_redis_port_conflict_before_gateway(monkeypatch, tmp_path, capsys) -> None:
+    """Plan 11.6 Task 2: typed Redis ownership failure prints and exits 2 before Gateway."""
+    from optimus.acp.local_infra import LocalInfrastructureError
+
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+    gateway_calls: list[object] = []
+    server_calls: list[object] = []
+
+    def raise_conflict(*_a, **_k):
+        raise LocalInfrastructureError(
+            code="REDIS_PORT_CONFLICT",
+            user_message="Default Redis port 6379 is owned by container optimus-plan112-redis.",
+        )
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", raise_conflict)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: gateway_calls.append(k) or None)
+    monkeypatch.setattr(acp_main, "build_configured_server", lambda **k: server_calls.append(k) or None)
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "optimus-agent:" in captured.err
+    assert "optimus-plan112-redis" in captured.err
+    assert gateway_calls == []
+    assert server_calls == []
+
+
+def test_check_config_exits_2_on_redis_port_conflict(monkeypatch, tmp_path, capsys) -> None:
+    from optimus.acp.local_infra import LocalInfrastructureError
+
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+    gateway_calls: list[object] = []
+
+    def raise_conflict(*_a, **_k):
+        raise LocalInfrastructureError(
+            code="REDIS_PORT_CONFLICT",
+            user_message="Default Redis port 6379 is owned by container optimus-plan112-redis.",
+        )
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", raise_conflict)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: gateway_calls.append(k) or None)
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path), "--check-config"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "optimus-agent:" in captured.err
+    assert "optimus-plan112-redis" in captured.err
+    assert gateway_calls == []

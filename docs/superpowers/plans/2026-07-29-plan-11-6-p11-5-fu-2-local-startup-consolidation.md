@@ -424,7 +424,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   established default port; native/no-owner listeners remain eligible for functional preflight.
 - Task 3 reuses the Docker identity helpers for Phoenix.
 
-- [ ] **Step 1: Write RED ownership and non-destruction tests.**
+- [x] **Step 1: Write RED ownership and non-destruction tests.**
 
   Add tests for:
 
@@ -440,7 +440,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   - no command contains `stop`, `rm`, `rename`, or `update` for an unrelated name;
   - `main()` prints `optimus-agent: <message>` and exits 2 before Gateway/agent startup.
 
-- [ ] **Step 2: Run RED selectors.**
+- [x] **Step 2: Run RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_local_infra.py tests/unit/acp/test_main_wiring.py -q
@@ -448,8 +448,9 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   Expected: new conflict tests fail because current code returns on any reachable TCP listener and
   has no typed error.
+  Observed RED: `6 failed, 60 passed`.
 
-- [ ] **Step 3: Implement default-port owner/image inspection.**
+- [x] **Step 3: Implement default-port owner/image inspection.**
 
   Add bounded Docker helpers using argument arrays and `shell=False`:
 
@@ -466,13 +467,13 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   wait, and subsequent real TimeSeries preflight. Record the configured image on the named
   container, but do not reject a named alternate image before the capability check.
 
-- [ ] **Step 4: Catch the typed failure after authorization and before later side effects.**
+- [x] **Step 4: Catch the typed failure after authorization and before later side effects.**
 
   Catch `LocalInfrastructureError` around Redis startup in both check-config and serving paths,
   print its safe `user_message` with the existing `optimus-agent:` prefix, return exit 2, and never
   start Gateway or build the agent server after the conflict.
 
-- [ ] **Step 5: Run focused green.**
+- [x] **Step 5: Run focused green.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_local_infra.py tests/unit/acp/test_main_wiring.py tests/unit/acp/test_preflight.py -q
@@ -480,11 +481,13 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   Expected: wrong-container ownership/non-destruction tests, native Redis escape-path tests, and
   existing TimeSeries fail-closed tests pass.
+  Observed GREEN: `74 passed`; Ruff clean on Task 2 paths.
 
-- [ ] **Step 6: Record checkpoint; commit only with separate approval.**
+- [x] **Step 6: Record checkpoint; commit only with separate approval.**
 
   If authorized, commit Task 2 paths with subject
   `fix(acp): reject ambiguous default Redis ownership`.
+  Commit authorized by Claude review + operator.
 
 ### Task 3: Add optional Phoenix to the authorized session-bound auto-start path
 

@@ -57,6 +57,15 @@ _SYSTEM_ENV_KEYS = ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT",
 _EMPTY_MAPPING: Mapping[str, str] = {}
 
 
+@dataclass(frozen=True)
+class LocalInfrastructureError(Exception):
+    code: str
+    user_message: str
+
+    def __str__(self) -> str:
+        return self.user_message
+
+
 def _noop_log(_message: str) -> None:
     return
 
@@ -147,6 +156,77 @@ def _container_exists(docker: str, name: str) -> bool:
     return name in result.stdout.split()
 
 
+def _is_established_default_redis_url(redis_url: str) -> bool:
+    parsed = urlparse(redis_url)
+    host = (parsed.hostname or "127.0.0.1").lower()
+    if host == "localhost":
+        host = "127.0.0.1"
+    port = parsed.port or 6379
+    path = parsed.path or "/0"
+    if path in ("", "/"):
+        path = "/0"
+    return (
+        host == "127.0.0.1"
+        and port == 6379
+        and path == "/0"
+        and not parsed.username
+        and not parsed.password
+    )
+
+
+def _docker_published_port_owners(docker: str, port: int) -> list[tuple[str, str]]:
+    """Return exact (name, image) pairs publishing ``port`` on the Docker host."""
+    try:
+        result = subprocess.run(
+            [docker, "ps", "--filter", f"publish={port}", "--format", "{{.Names}}\t{{.Image}}"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if result.returncode != 0:
+        return []
+    owners: list[tuple[str, str]] = []
+    for line in result.stdout.splitlines():
+        name, sep, image = line.partition("\t")
+        if not sep or not name.strip():
+            continue
+        owners.append((name.strip(), image.strip()))
+    return owners
+
+
+def _assert_default_redis_port_owner(*, docker: str | None, port: int, log: Callable[[str], None]) -> None:
+    """Fail closed only when Docker reports a non-optimus-redis owner of the default port."""
+    if docker is None:
+        log(
+            "optimus-agent: Docker not available; treating reachable Redis on the default port "
+            "as a native/operator-managed listener and leaving TimeSeries preflight to decide."
+        )
+        return
+    owners = _docker_published_port_owners(docker, port)
+    if not owners:
+        log(
+            "optimus-agent: no Docker container owns the default Redis port; treating the "
+            "reachable listener as native/operator-managed and leaving TimeSeries preflight to decide."
+        )
+        return
+    names = [name for name, _image in owners]
+    if names and all(name == _REDIS_CONTAINER_NAME for name in names):
+        return
+    observed = ", ".join(names)
+    raise LocalInfrastructureError(
+        code="REDIS_PORT_CONFLICT",
+        user_message=(
+            f"Default Redis port {port} is owned by Docker container {observed}, "
+            f"not {_REDIS_CONTAINER_NAME}. Stop or reconfigure that container yourself, "
+            "or set an explicit OPTIMUS_REDIS_URL and re-approve; Optimus will not stop "
+            "or delete the conflicting container."
+        ),
+    )
+
+
 def ensure_local_redis(redis_url: str, *, log: Callable[[str], None] = _noop_log) -> None:
     parsed = urlparse(redis_url)
     host = parsed.hostname or "127.0.0.1"
@@ -154,6 +234,9 @@ def ensure_local_redis(redis_url: str, *, log: Callable[[str], None] = _noop_log
     if not _is_loopback(host):
         return
     if _tcp_reachable(host, port):
+        if _is_established_default_redis_url(redis_url):
+            docker = shutil.which("docker")
+            _assert_default_redis_port_owner(docker=docker, port=port, log=log)
         return
 
     docker = shutil.which("docker")

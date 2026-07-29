@@ -4,6 +4,8 @@ import subprocess
 import sys
 from unittest.mock import MagicMock
 
+import pytest
+
 from optimus.acp import local_infra
 from optimus.acp.local_gateway_secrets import (
     CredentialLayer,
@@ -143,13 +145,23 @@ def test_apply_local_defaults_does_not_mutate_input_or_os_environ(tmp_path) -> N
 
 
 def test_ensure_local_redis_noops_when_already_reachable(monkeypatch) -> None:
-    docker_calls: list[object] = []
+    run_calls: list[list[str]] = []
     monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)
-    monkeypatch.setattr(local_infra.subprocess, "run", lambda *a, **k: docker_calls.append((a, k)))
+    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
+
+    def fake_run(args, **_k):
+        run_calls.append(list(args))
+        if args[:3] == ["docker", "ps", "--filter"]:
+            return _fake_docker_ps_owner("optimus-redis", "redis:8")
+        raise AssertionError(f"unexpected docker call: {args}")
+
+    monkeypatch.setattr(local_infra.subprocess, "run", fake_run)
 
     local_infra.ensure_local_redis("redis://127.0.0.1:6379/0")
 
-    assert docker_calls == []
+    assert run_calls == [
+        ["docker", "ps", "--filter", "publish=6379", "--format", "{{.Names}}\t{{.Image}}"],
+    ]
 
 
 def test_ensure_local_redis_noops_for_non_loopback_host(monkeypatch) -> None:
@@ -236,6 +248,112 @@ def test_ensure_local_redis_starts_existing_container(monkeypatch) -> None:
     local_infra.ensure_local_redis("redis://127.0.0.1:6379/0")
 
     assert run_calls == [["docker", "start", "optimus-redis"]]
+
+
+# --- Plan 11.6 Task 2: default-port Redis ownership ---
+
+
+def _fake_docker_ps_owner(name: str, image: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        ["docker", "ps"],
+        0,
+        stdout=f"{name}\t{image}\n",
+        stderr="",
+    )
+
+
+def _assert_no_destructive_docker_args(run_calls: list[list[str]]) -> None:
+    destructive = {"stop", "rm", "rename", "update"}
+    for cmd in run_calls:
+        assert destructive.isdisjoint(cmd), cmd
+
+
+def test_ensure_local_redis_accepts_default_port_owned_by_optimus_redis(monkeypatch) -> None:
+    run_calls: list[list[str]] = []
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)
+    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
+
+    def fake_run(args, **_k):
+        run_calls.append(list(args))
+        if args[:3] == ["docker", "ps", "--filter"]:
+            return _fake_docker_ps_owner("optimus-redis", "redis:7-alpine")
+        raise AssertionError(f"unexpected docker call: {args}")
+
+    monkeypatch.setattr(local_infra.subprocess, "run", fake_run)
+
+    local_infra.ensure_local_redis("redis://127.0.0.1:6379/0")
+
+    assert run_calls == [
+        ["docker", "ps", "--filter", "publish=6379", "--format", "{{.Names}}\t{{.Image}}"],
+    ]
+    _assert_no_destructive_docker_args(run_calls)
+
+
+def test_ensure_local_redis_raises_port_conflict_for_wrong_docker_owner(monkeypatch) -> None:
+    run_calls: list[list[str]] = []
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)
+    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
+
+    def fake_run(args, **_k):
+        run_calls.append(list(args))
+        if args[:3] == ["docker", "ps", "--filter"]:
+            return _fake_docker_ps_owner("optimus-plan112-redis", "redis:7-alpine")
+        raise AssertionError(f"unexpected docker call: {args}")
+
+    monkeypatch.setattr(local_infra.subprocess, "run", fake_run)
+
+    with pytest.raises(local_infra.LocalInfrastructureError) as exc_info:
+        local_infra.ensure_local_redis("redis://127.0.0.1:6379/0")
+
+    assert exc_info.value.code == "REDIS_PORT_CONFLICT"
+    assert "6379" in exc_info.value.user_message
+    assert "optimus-plan112-redis" in exc_info.value.user_message
+    _assert_no_destructive_docker_args(run_calls)
+
+
+def test_ensure_local_redis_treats_reachable_default_without_docker_owner_as_native(monkeypatch) -> None:
+    run_calls: list[list[str]] = []
+    messages: list[str] = []
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)
+    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
+
+    def fake_run(args, **_k):
+        run_calls.append(list(args))
+        if args[:3] == ["docker", "ps", "--filter"]:
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+        raise AssertionError(f"unexpected docker call: {args}")
+
+    monkeypatch.setattr(local_infra.subprocess, "run", fake_run)
+
+    local_infra.ensure_local_redis("redis://127.0.0.1:6379/0", log=messages.append)
+
+    assert any("native" in msg.lower() or "operator-managed" in msg.lower() for msg in messages)
+    _assert_no_destructive_docker_args(run_calls)
+
+
+def test_ensure_local_redis_treats_reachable_default_when_docker_missing_as_native(monkeypatch) -> None:
+    messages: list[str] = []
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)
+    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(
+        local_infra.subprocess,
+        "run",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("docker must not be invoked")),
+    )
+
+    local_infra.ensure_local_redis("redis://127.0.0.1:6379/0", log=messages.append)
+
+    assert any("native" in msg.lower() or "operator-managed" in msg.lower() for msg in messages)
+
+
+def test_ensure_local_redis_non_default_reachable_url_skips_ownership_gate(monkeypatch) -> None:
+    run_calls: list[object] = []
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)
+    monkeypatch.setattr(local_infra.subprocess, "run", lambda *a, **k: run_calls.append((a, k)))
+
+    local_infra.ensure_local_redis("redis://127.0.0.1:6380/0")
+
+    assert run_calls == []
 
 
 # --- ensure_local_gateway: Task 5 signature (pre-resolved credentials,
