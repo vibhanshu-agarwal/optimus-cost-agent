@@ -189,9 +189,18 @@ def test_live_local_gateway_observability_traces_accepts_real_exporter_batch(liv
 
 def test_live_local_gateway_observability_traces_fails_closed_on_malformed_batch(live_local_gateway_url):
     gateway_url, shared_secret = live_local_gateway_url
+    # Task 4 ingress validates schema_version/batch_id before event shape; send a
+    # structurally typed envelope with a non-object event so the fail-closed path
+    # exercises the event-level rejection (not the earlier envelope check).
     request = urllib.request.Request(
         f"{gateway_url}/v1/observability/traces",
-        data=json.dumps({"events": ["not-an-object"]}).encode("utf-8"),
+        data=json.dumps(
+            {
+                "schema_version": "1",
+                "batch_id": "batch-live-malformed-1",
+                "events": ["not-an-object"],
+            }
+        ).encode("utf-8"),
         headers={
             "Authorization": f"Bearer {shared_secret}",
             "Content-Type": "application/json",

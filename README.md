@@ -176,7 +176,7 @@ fixture set described above.
 Plan 9 adds architectural support for bounded goal-driven loops and curated
 workflow skills. Loops are not the default execution mode. They are enabled only
 when a task has a machine-checkable completion condition and explicit
-`LoopBudgetPolicy` bounds for iterations, Optimus credits, wall-clock time, and
+`LoopBudgetPolicy` bounds for iterations, USD budget, wall-clock time, and
 repeated failures.
 
 Loop iterations persist progress to an append-only ledger and must use the same
