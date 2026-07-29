@@ -45,8 +45,8 @@ open-work inventory.
 | `P11-FEAT-GATEWAY-CORE` | Plan 11.1 — closed; merged to `main` as PR #85 (`6ae6997`, tip `6c39599`). Migration closed by **Plan 11.4**, merged to `main` as PR #91 (`d80e112`), 2026-07-28; no migration follow-ups remain open under this identity | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route); migration custody: strict-loopback completion, OpenRouter-default OpenAI-compatible aggregator transport, provider-reported accounting, and direct-adapter retirement — all implemented and independently re-verified task-by-task. The bounded Vercel Python transport check is complete as a design decision: Vercel is backlogged under this identity (its public OpenAI-compatible transport doesn't document the mandatory per-response provider-cost fields the settled `GatewayUsage` contract requires; no comparison matrix, no second endpoint added). Closure evidence: [design spec](../specs/2026-07-28-plan-11-4-p11-feat-gateway-core-migration-design.md), [implementation plan](2026-07-28-plan-11-4-gateway-core-migration.md) (all 36 checkboxes checked against their named verification commands) |
 | `P11-FEAT-GATEWAY-TOOLS` | Plan 11.2 — closed by PR #88 (merge `4590dbf`); migration follow-ups remain assigned here and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); migration custody: deterministic search/direct extract, route-specific dependency availability, replacement acceptance, and Tavily rollback-reviewed retirement; closure evidence: [Plan 11.2 approval](../reviews/2026-07-27-plan-11-2-implementation-plan-approval-v2.md), [local-process evidence](../../../reports/plan-11-2-gateway-tools-local-process-evidence.md), [staging evidence](../../../reports/plan-11-2-gateway-tools-staging-evidence.md), and [fitness report](../../../reports/plan-11-2-gateway-tools-task7-fitness.md) |
 | `P11-FEAT-GATEWAY-COST-OBS` | Plan 11.5 — closed by PR #95 (merge `e388258`), 2026-07-29; migration follow-ups remain assigned here (`P11.5-FU-1` open; `P11.5-FU-2` closed via Plan 11.6) and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); [implementation plan](2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration |
-| `P11-FEAT-GATEWAY-MCP` | Ratified but gated; blocked on `P11-FU-3`; no MCP endpoint is shown or implied; plan number assigned at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
-| `P11-FEAT-ZED-RESUME` | Ratified, unscheduled; carries `P11-FU-1` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume) |
+| `P11-FEAT-GATEWAY-MCP` | Ratified; operator confirmed MCP support on 2026-07-29 (`P11-FU-3` decision half closed). Still blocked on the route/typed-contract design and fresh requirement extraction—no MCP endpoint is shown or implied yet; plan number assigned at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
+| `P11-FEAT-ZED-RESUME` | **Plan 11.7 picked up 2026-07-29; implementation plan drafting/review in progress.** Carries owned `P11-FU-1` and `P9.8-FU-5`; coordinates, but does not own, `P11-FU-4` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume) |
 | `P11-FEAT-REGISTRY` | Ratified, unscheduled; blocked on its research gate — no authoritative source exists in any of the four pinned documents. Also owns the v1.0 release-version contract | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut) |
 | `P11-FEAT-IDE` | Conditional — opens only by explicit amendment if REGISTRY surfaces an unmet multi-IDE expectation | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing) |
 | `Plan 12` | Post-v1.0 context-window and intelligent-selection lane; outside the v1.0 cut | [Charter boundary](2026-07-25-plan-11-v1-milestone-charter.md#explicit-exclusions-and-unresolved-inputs) |
@@ -64,7 +64,8 @@ open-work inventory.
 policy, measures wrong-target regret, and retains a fail-closed threshold. Until this lands,
 ambiguity stays visible and deterministic (Plan 9.8's current behavior).
 
-**Status:** Open, not yet scheduled.
+**Status:** Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`); open pending the current-Zed
+pre/post refusal-rendering evidence and reviewed disposition.
 
 ### P9.8-FU-3: Dynamic context budgets and required-file summarization
 
@@ -203,8 +204,9 @@ owned by `P11-FEAT-ZED-RESUME`, not parked or deferred to a later milestone.
 (`AgentPlanRecord`), not ACP session or conversation state, and cannot be treated as an existing
 resume store without an explicit design and migration decision.
 
-**Status:** Owned by `P11-FEAT-ZED-RESUME`; open and not yet scheduled. This is an unimplemented protocol
-capability, not a flaky regression or a parked architecture blocker.
+**Status:** Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`); open pending implementation and
+real-`acpx`/Zed evidence. This is an unimplemented protocol capability, not a flaky regression or
+a parked architecture blocker.
 
 ### P11-FU-2: Package Lookup and Security Advisory Gateway Capability
 
@@ -258,17 +260,21 @@ published source is extractable, its component flow is complete, and the §0.B d
 no MCP endpoint is shown or implied. The repair is documentation-complete; it does not authorize
 MCP implementation or endpoint inference.
 
+**Operator decision (2026-07-29):** Affirmative—MCP brokering is supported. Operator's stated
+rationale: non-negotiable for any agent, especially a coding agent.
+
 **Remaining acceptance criteria:**
 
-- The operator must explicitly decide whether MCP brokering is supported. Until that decision,
-  no MCP route or implied endpoint is part of the architecture or implementation scope.
-- If the decision is affirmative, a separately reviewed Gateway route and typed request/response
-  contract must be authored, source-pinned, and followed by fresh requirement extraction before
-  any implementation plan is promoted.
+- ~~The operator must explicitly decide whether MCP brokering is supported.~~ Decided 2026-07-29:
+  yes.
+- A separately reviewed Gateway route and typed request/response contract must still be authored,
+  source-pinned, and followed by fresh requirement extraction before any implementation plan is
+  promoted. This design/contract work has not started.
 
-**Status:** Open solely for the operator MCP support decision and, if supported, the route plus
-typed request/response contract; `P11-FEAT-GATEWAY-MCP` remains blocked. No MCP endpoint is shown
-or implied by this entry.
+**Status:** Decision half closed (2026-07-29: MCP brokering is supported).
+`P11-FEAT-GATEWAY-MCP` remains blocked pending the route/contract design and requirement
+extraction—not yet ready for an implementation plan. `P11-FEAT-ZED-RESUME` was picked up instead
+as Plan 11.7; this entry stays open and unscheduled.
 
 ### P11-FU-4: Re-pin FU-4A/FU-5 Live Evidence
 
@@ -490,6 +496,70 @@ as process precedent.
 
 **Status:** Tracked, not yet scheduled; **needs deeper investigation / migration design before
 scoping**. No implementation plan exists. Filed 2026-07-29 for pool custody.
+
+### P11-FU-9: Client-Supplied ACP `mcpServers` Disposition
+
+**Raised:** 2026-07-29 during Plan 11.7 design review after validating the vendored ACP v1 schema.
+Priority: **Protocol-honesty / trust-boundary follow-up; not a Plan 11.7 prerequisite.**
+
+**Origin / current behavior:** ACP requires `mcpServers` on both `NewSessionRequest` and
+`LoadSessionRequest`. Optimus has long accepted `session/new` while ignoring that field; existing
+tests and live payloads send `[]`. This is not the same system as `P11-FEAT-GATEWAY-MCP`:
+ACP `mcpServers` asks the agent to connect outward to client-nominated servers, while Gateway MCP
+brokering routes Optimus-owned tool calls through the Gateway. Sequencing Gateway-MCP first would
+not resolve the current ACP behavior.
+
+**Designated custody:** This entry owns the cross-lifecycle ACP-input decision for current
+`session/new` and future methods, including `session/load`. Plan 11.7 preserves the shipped
+posture and records the field without creating a client-nominated connection; it does not claim
+that Gateway-MCP implements this capability.
+
+**Acceptance criteria:**
+
+- Decide explicitly whether non-empty client-supplied MCP server arrays are rejected, accepted but
+  deliberately unsupported, or honored through a separately reviewed agent-side MCP client.
+- Apply the decision consistently to every ACP lifecycle method that carries `mcpServers`; do not
+  fix only `session/load` while leaving `session/new` semantically different.
+- Preserve the one-key/Gateway trust boundary, reject arbitrary side-effecting connectivity unless
+  explicitly authorized, and distinguish client-nominated MCP from Gateway-brokered tools in docs
+  and telemetry.
+- Add schema-pinned unit tests plus real-client evidence for empty and non-empty arrays, with no
+  raw server credentials or untrusted configuration persisted or logged.
+
+**Status:** Tracked, not yet scheduled. Explicitly not a hard prerequisite for Plan 11.7 and not
+owned by `P11-FEAT-GATEWAY-MCP`.
+
+### P11-FU-10: Complete ACP Error-Code Registry Audit
+
+**Raised:** 2026-07-29 during Plan 11.7 design review after the vendored ACP schema exposed the
+current `MUTATION_FORBIDDEN = -32002` collision with ACP `RESOURCE_NOT_FOUND`.
+Priority: **Conformance hardening; partially forced into Plan 11.7.**
+
+**Forced Plan 11.7 subset:** Plan 11.7 must reserve ACP `-32002` for
+`RESOURCE_NOT_FOUND`, relocate ACP-adapter mutation refusal to Optimus code `-32910`, and remove
+the duplicate raw wire-code constant from `src/optimus/runtime/mutation.py`. That required subset
+belongs to Plan 11.7 and does not block on this follow-up.
+
+**This entry retains only the general audit:**
+
+- audit `DUPLICATE_REQUEST_ID = -32001` against ACP/JSON-RPC allocations and actual client
+  behavior;
+- eliminate remaining production raw error-code literals outside the central ACP registry;
+- reduce the Plan 11.7 exact path-and-symbol legacy allowlist to zero; and
+- retain frozen historical plan references as expected evidence rather than rewriting history.
+
+**Acceptance criteria:**
+
+- A schema-derived oracle proves registry uniqueness, disjointness from ACP allocations, and
+  exclusion from JSON-RPC's complete `-32768…-32000` reserved band for Optimus application codes.
+- An AST-based source audit rejects raw JSON-RPC/application code literals outside the central
+  registry. Any temporary baseline allowlist is exact by path and symbol and cannot grow.
+- Runtime exceptions remain semantic; the ACP adapter alone maps them to wire codes.
+- Current user-facing documentation is updated when codes move, while frozen historical plans
+  remain byte-for-byte historical records with explicit audit disposition.
+
+**Status:** Tracked, not yet scheduled. It does not gate Plan 11.7 closure; Plan 11.7 owns only the
+forced `-32002`/mutation-refusal correction and a no-new-bypasses baseline gate.
 
 ### P11.5-FU-2: Consistent local env / Redis / Phoenix / Gateway startup for live runs
 

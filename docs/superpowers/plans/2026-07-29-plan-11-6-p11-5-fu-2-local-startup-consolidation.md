@@ -5,9 +5,10 @@
 > Steps use checkbox syntax (`- [ ]`) for tracking. No implementation may begin until Task 0
 > records reviewer and operator approval of the final plan SHA-256.
 
-**Status:** Drafted for Claude review and operator approval on 2026-07-29. Implementation is not
-authorized. No source, test, launcher, runbook, dependency, or runtime-service change has started
-from this plan.
+**Status:** Implemented and live-verified on 2026-07-29; merged to `main` by PR #97 at
+`dc9a080`. Task 0's approval/baseline gates and Tasks 1–6 are complete, the named evidence
+artifacts are recorded in `reports/`, and `P11.5-FU-2` is closed. The WSL2 PATH-only external-
+`acpx` attempt remains honestly recorded as an unverified SecretStorage/D-Bus residual risk.
 
 **Goal:** Consolidate local live/evidence startup around the authorized `optimus-agent` session
 path and the existing `optimus-trust run-gateway` persistent security ceremony, while removing
@@ -243,7 +244,7 @@ value only as an argument to Gateway-child environment assembly. The agent-facin
 **Produces:** A digest-pinned implementation contract based directly on current `origin/main`,
 with a fresh blast-radius inventory and no collision with another Plan 11.6 allocation.
 
-- [ ] **Step 1: Verify branch ancestry, clean state, and plan allocation.**
+- [x] **Step 1: Verify branch ancestry, clean state, and plan allocation.**
 
   Run:
 
@@ -259,14 +260,14 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   then-current `origin/main`; only this plan/backlog promotion allocate Plan 11.6; no unexplained
   dirty source/test path exists.
 
-- [ ] **Step 2: Re-read authority and stop on conflict.**
+- [x] **Step 2: Re-read authority and stop on conflict.**
 
   Read `AGENTS.md`, `CONTRIBUTING.md`, the full backlog entry, this plan, the Plan 9.6 Phase C
   runbook precedent, and the current HLD/LLD/Test Strategy citations governing one-key,
   Gateway-only OTLP, launch trust, and real evidence. Record exact blob IDs/digests. If those
   authorities conflict with this plan, stop for an operator ruling.
 
-- [ ] **Step 3: Re-derive the blast radius mechanically.**
+- [x] **Step 3: Re-derive the blast radius mechanically.**
 
   Run:
 
@@ -278,7 +279,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   log. Historical frozen plans/reports may be verify-only; no active runtime/test/doc hit may be
   silently omitted.
 
-- [ ] **Step 4: Re-run the focused baseline.**
+- [x] **Step 4: Re-run the focused baseline.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_acp_subprocess_env.py tests/unit/acp/test_local_infra.py tests/unit/acp/test_launch_approval_cli.py tests/unit/acp/test_main_wiring.py tests/unit/tools/test_run_local_gateway_scripts.py tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py tests/integration/release/test_verify_live_agent_cli.py -q
@@ -287,7 +288,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   Expected: green before implementation. A failure is investigated and ruled on; it is not
   normalized into this plan.
 
-- [ ] **Step 5: Obtain digest-pinned review approval.**
+- [x] **Step 5: Obtain digest-pinned review approval.**
 
   Compute:
 

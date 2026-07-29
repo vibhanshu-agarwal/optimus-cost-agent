@@ -1053,20 +1053,17 @@ consolidated open-work pool before v1.0 sign-off. Plan 11 does not ship with ope
 Plan 12 is not a v1.0 prerequisite and begins only as the post-launch v1.x phase. Conditional IDE
 testing does not become a gate unless an explicit charter amendment says so.
 
-**Status:** Plan 11.1 is the active scoped feature gate; the charter and ratified three-identity
-sequencing map are recorded in [`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md),
-and no implementation sub-plan exists yet. Explicitly out of scope for Plan 9.7 (a local-startup-
-ergonomics plan, not a gateway-capability-surface redesign) and for Plan 9.6 (live-verification
-proof of the existing model-call path). The `P11-FEAT-GATEWAY-CORE` specification must resolve the Gateway route,
-provider, secret-boundary, failure, normalized usage/cost, and observability contracts. The
-`P11-FEAT-GATEWAY-TOOLS` and `P11-FEAT-GATEWAY-COST-OBS` identities are ratified, with plan numbers
-assigned at pickup; they do not widen Plan 11.1. The
-`P11-FEAT-ZED-RESUME` specification must resolve Zed's `P9.8-FU-5` disposition and the session-resume storage/durability
-decision for owned `P11-FU-1`; the existing plan-only Redis state store is not sufficient by
-assumption. The `P11-FEAT-REGISTRY` specification must research ACP registry requirements before freezing
-registration scope and must align both `pyproject.toml` and ACP `agentInfo.version` at the v1.0
-cut. The `P11-FEAT-IDE` slice remains conditional if registry registration does not satisfy the broader
-multi-IDE expectation.
+**Status:** Plan 11.7 (`P11-FEAT-ZED-RESUME`) is the active scoped feature gate after the closed
+Plan 11.1/11.2/11.4/11.5/11.6 slices. Its implementation plan was picked up on 2026-07-29 and must
+resolve Zed's `P9.8-FU-5` disposition plus the session-load storage/durability decision for owned
+`P11-FU-1`; the existing plan-only Redis state store is not sufficient by assumption. The charter
+and ratified feature sequencing map remain recorded in
+[`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md).
+`P11-FEAT-GATEWAY-MCP` remains unscheduled pending its reviewed route/typed-contract design after
+the affirmative `P11-FU-3` operator decision. `P11-FEAT-REGISTRY` must research ACP registry
+requirements before freezing registration scope and must align both `pyproject.toml` and ACP
+`agentInfo.version` at the v1.0 cut. `P11-FEAT-IDE` remains conditional if registry registration
+does not satisfy the broader multi-IDE expectation.
 
 ## Plan 12 (Post-v1.0 v1.x Phase; Context Window Optimization and Intelligent Selection)
 
