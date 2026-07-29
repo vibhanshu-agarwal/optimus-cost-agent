@@ -536,7 +536,7 @@ def _cmd_run_gateway(
     repository's own .env.gateway as untrusted DATA — never sourced or
     executed.
 
-    Plan 9.96, Task 5 Batch 3 Step 4: `tools/run_local_gateway.sh`/`.ps1`
+    Plan 9.96, Task 5 Batch 3 Step 4: earlier checkout-root Gateway launcher scripts
     previously did `source .env.gateway` (bash) or hand-parsed it into the
     invoking shell's own environment (PowerShell) — either way, executing
     or copying repository-controlled file content into the operator's

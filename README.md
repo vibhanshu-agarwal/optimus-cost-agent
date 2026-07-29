@@ -367,10 +367,10 @@ workspace: on Windows this defaults to `%APPDATA%/optimus-cost-agent/.env.gatewa
 set `OPTIMUS_CONFIG_ROOT` to an absolute directory outside the workspace to override
 it explicitly. `optimus-agent --setup` writes to the OS keychain, not to this file —
 use `.env.gateway` in the config directory only if you prefer a file over the
-keychain. The two manual gateway launcher scripts (`tools/run_local_gateway.sh` /
-`.ps1`, described in [Manual / advanced setup](#manual--advanced-setup-transitional)
-below) still load the checkout's own repo-root `.env.gateway` — that remains an
-explicit developer action, not `optimus-agent`'s implicit config discovery.
+keychain. For the single local Redis / Gateway / Phoenix operator sequence, see
+[Plan 11.6 local live dependencies operator runbook](docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md)
+— checkout-root `.env.gateway` is untrusted data for the retained trust CLI
+ceremony, not an implicit `optimus-agent` discovery path.
 
 **Local gateway and debug logs (singleton semantics):** the workspace that starts
 the loopback local gateway owns `<that-workspace>/.optimus/local-gateway.log`. If a
@@ -434,10 +434,11 @@ flow.
 
 **If you kill or restart the local gateway manually:** `--check-config` does **not** spawn it.
 After changing gateway source (for example a new `pricing.py` entry), the running process keeps
-the old in-memory config until restarted. Safe order: (1) restart the gateway
-(`tools/run_local_gateway.sh` or equivalent), (2) `optimus-agent --check-config --strict` with
-your intended `OPTIMUS_AGENT_MODEL`, (3) only then run live evidence or IDE sessions. Skipping
-step 1 after a code change produces misleading `no pricing snapshot` errors from a stale process.
+the old in-memory config until restarted. Safe order: (1) restart the persistent Gateway using the
+[Plan 11.6 local live dependencies operator runbook](docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md),
+(2) `optimus-agent --check-config --strict` with your intended `OPTIMUS_AGENT_MODEL`, (3) only then
+run live evidence or IDE sessions. Skipping step 1 after a code change produces misleading
+`no pricing snapshot` errors from a stale process.
 
 **Flags**
 
@@ -449,13 +450,14 @@ step 1 after a code change produces misleading `no pricing snapshot` errors from
 
 `--no-auto-start` disables **both** Redis and gateway auto-start consistently.
 
-**Auto-managed Redis container:** when auto-start creates `optimus-redis`, it uses
-`docker run -d` **without** `--rm` and binds to `127.0.0.1` only, so the container can be
-restarted by name across launches. The manual runbook below uses `docker run --rm -d ...` for
-one-off sessions where the operator wants full cleanup on stop — both patterns are intentional.
+**Auto-managed Redis container:** when auto-start creates the named `optimus-redis`
+container (`redis:8`), it runs detached **without** auto-remove and binds to `127.0.0.1`
+only, so the container can be restarted by name across launches. Operator-facing startup,
+conflict diagnosis, and consumer wiring live in the
+[Plan 11.6 local live dependencies operator runbook](docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md).
 
 **First-run note:** the first auto-start may pull the `redis:8` image and can take several
-minutes on a slow network; `docker run`/`docker start` have no timeout in this path.
+minutes on a slow network; container create/start have no timeout in this path.
 
 **Zed `agent_servers` (local auto-start — no `env` block):**
 
@@ -484,17 +486,23 @@ Do **not** point Zed at `.venv\Scripts\optimus-agent.exe` — use the PATH comma
 
 ### Manual / advanced setup (transitional)
 
-Keychain setup above is the intended long-term default. `.env` and `.env.gateway` remain
-supported for operators who prefer files or need to override keychain values (explicit env vars
-and `.env.gateway` take precedence over the keychain).
+Keychain setup above is the intended long-term default. `.env` and operator-config
+`.env.gateway` remain supported for operators who prefer files or need to override
+keychain values (explicit env vars and `.env.gateway` take precedence over the keychain).
 
-**This section's `.env.gateway` is the checkout's own repo-root file, loaded only by the manual
-launcher scripts below (`tools/run_local_gateway.sh` / `.ps1`) when you invoke them explicitly.**
-It is a separate file from the operator config directory's `.env.gateway`
+**Local Redis, Gateway, and Phoenix startup has one living sequence:** the
+[Plan 11.6 local live dependencies operator runbook](docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md).
+Use that runbook for keychain setup, durable approval, the persistent trust-CLI Gateway
+ceremony (optional local Phoenix), the `--no-auto-start` / external-`acpx` consumer path,
+and the bounded `--check-config --strict` auto-start smoke. Do not revive retired wrapper
+scripts or paste one-off container launchers from older docs.
+
+Checkout-root `.env.gateway` is untrusted key=value data for that trust-CLI ceremony and for
+live Gateway subprocess tests — never sourced into the interactive shell, and never an
+implicit `optimus-agent` discovery path. The operator config directory's `.env.gateway`
 (`%APPDATA%/optimus-cost-agent/.env.gateway` by default, or an absolute `OPTIMUS_CONFIG_ROOT`
-override) that `optimus-agent`'s own auto-start path reads — see
+override) remains the file-backed alternative for agent credential resolution — see
 [Install and configure](#2-install-and-configure-keychain--operator-path) above.
-`optimus-agent` never implicitly reads this repo-root file.
 
 For this project the Optimus Gateway is a **local process you run yourself**, not a hosted
 service that issues credentials. The agent keeps the one-key model: only
@@ -507,7 +515,7 @@ Use **two gitignored files** so agent and gateway secrets never mix:
 | File | Loaded by | Purpose |
 |------|-----------|---------|
 | `.env` | your agent shell / launchers | `OPTIMUS_GATEWAY_URL`, `OPTIMUS_API_KEY`, `OPTIMUS_REDIS_URL`, `OPTIMUS_AGENT_MODEL` |
-| `.env.gateway` (repo root) | `tools/run_local_gateway.sh` / `.ps1` only | provider key + `OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET` |
+| `.env.gateway` (repo root) | trust-CLI Gateway ceremony / live Gateway tests as data | provider key + `OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET` |
 
 Copy the examples and edit locally (never commit the real files):
 
@@ -534,35 +542,11 @@ The current implementation default model is `glm-5.2`. The local Gateway
 maps `claude-haiku` to the configured provider's economy model, so set
 `OPTIMUS_AGENT_MODEL=claude-haiku` for local development unless you pass `--model` explicitly.
 
-Start the local gateway in a **separate shell** with the provider key on the gateway process
-only. **OpenRouter is the approved default** (`OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter`).
+**OpenRouter is the approved default** (`OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter`).
 Vercel AI Gateway is a future bounded model-endpoint option pending a modest Python transport
 check; it is not the Phase 1 search backend. Direct-provider adapters are a separate retirement
 lane. Tavily is temporary current-implementation migration configuration only, pending replacement
 acceptance and rollback review.
-
-Git Bash (recommended, per this repo's shell policy in `AGENTS.md`):
-
-```bash
-bash tools/run_local_gateway.sh
-```
-
-PowerShell (fallback):
-
-```powershell
-.\tools\run_local_gateway.ps1
-```
-
-The launchers load `.env.gateway` into the gateway process only. They do not require manual
-`export` commands and do not put provider keys into your interactive shell history.
-
-**Shell caveat — prefer Git Bash on Windows.** The bash launcher loads secrets in a subshell, so
-the parent shell's environment is never touched, even if the gateway crashes or is killed. The
-PowerShell launcher cannot do this: it must set the variables in the current session and restore
-them in a `finally` block. That restore runs on normal exit and Ctrl+C, but if the process is
-hard-killed (window closed, `Stop-Process`), the loaded secrets — including the provider API key —
-remain in that PowerShell session's environment until the window closes. If you must use the
-PowerShell launcher, close that session when you are done with the gateway.
 
 Live gateway smoke tests also read `.env.gateway`, but only into the gateway **subprocess**
 environment via `dotenv_values()` — the pytest process itself never receives provider keys.
@@ -695,31 +679,35 @@ summaries, and relative paths — never raw source code.
 
 ### Operator runbook (live verification)
 
+Follow the single living sequence in
+[Plan 11.6 local live dependencies operator runbook](docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md)
+for Redis, local Gateway, optional Phoenix, durable approval, the persistent trust-CLI ceremony,
+and consumer / `acpx` terminals. Summary only:
+
+1. Zero-Optimus shell; keychain credentials; durable workspace approval.
+2. Bounded smoke (prefer the PATH binary; module form remains valid with the project venv):
+
 ```bash
-# 1. Start Redis WITH TimeSeries (LLD section 10 requires TS.* commands)
-docker run --rm -d --name optimus-redis -p 6379:6379 redis:8
-
-# 2. Local loopback Gateway and shared secret
-export OPTIMUS_GATEWAY_URL=http://127.0.0.1:8765
-export OPTIMUS_API_KEY=<local-shared-secret>
-export OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0
-
-Keep the provider credential in `.env.gateway`; only the local shared secret belongs in the agent
-environment.
-
-# 3. Pre-flight
 python -m optimus.acp --workspace-root . --check-config --strict
+```
 
-# 4. Live tiers, in cost order
+   Add Phoenix only via the runbook's documented flag on the equivalent `optimus-agent` invocation.
+3. Persistent Gateway terminal + `--no-auto-start` / external-`acpx` consumer terminal per the
+   runbook — not one-off container paste commands.
+4. Live tiers, in cost order, then operator sign-off (defaults to
+   `reports/.verify-live-agent-workspace`):
+
+```bash
 pytest -m requires_redis -v
 pytest -m requires_gateway -v
 pytest -m e2e -v
-
-# 5. Operator sign-off command (defaults to reports/.verify-live-agent-workspace)
 python tools/verify_live_agent.py
 # Or pass an explicit scratch directory:
 # python tools/verify_live_agent.py --workspace-root /tmp/optimus-verify-workspace
 ```
+
+Keep the provider credential in `.env.gateway`; only the local shared secret belongs in the agent
+environment when you use file-backed config.
 
 ### Config check
 
@@ -802,10 +790,11 @@ Client Protocol flow above.
 ### Verify with real Redis
 
 Unit and default integration tests use in-memory fakes. To prove Redis-backed plan
-replay works on your machine, start Redis and run the live checks:
+replay works on your machine, start the named Redis dependency using the
+[Plan 11.6 local live dependencies operator runbook](docs/superpowers/plans/2026-07-29-plan-11-6-local-live-dependencies-operator-runbook.md)
+(default URL `redis://127.0.0.1:6379/0`, image `redis:8`), then run:
 
 ```bash
-docker run --rm -d --name optimus-redis -p 6379:6379 redis:8
 export OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0
 pytest -m requires_redis tests/integration/agent/test_redis_live_agent.py tests/integration/acp/test_bootstrap_live_redis.py tests/integration/acp/test_server_stream_live_redis.py -v
 # Default uses reports/.verify-live-agent-workspace (gitignored scratch dir).

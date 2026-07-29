@@ -678,7 +678,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   documented as the bounded auto-start verification path.
 - Produces a presence/retirement test that rejects competing active instructions.
 
-- [ ] **Step 1: Write RED presence and retirement assertions.**
+- [x] **Step 1: Write RED presence and retirement assertions.**
 
   The new test reads active code/docs and asserts:
 
@@ -700,7 +700,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   `.env.example` contains no OTLP/Phoenix name. The retained `run-gateway` ceremony must appear
   only through the runbook's single documented sequence and its own CLI implementation/tests.
 
-- [ ] **Step 2: Run the docs test and verify RED.**
+- [x] **Step 2: Run the docs test and verify RED.**
 
   ```powershell
   uv run --frozen pytest tests/unit/tools/test_plan116_local_startup_docs.py tests/unit/tools/test_plan115_docs.py -q
@@ -708,7 +708,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   Expected: missing runbook and stale active launcher hints fail.
 
-- [ ] **Step 3: Write the operator runbook.**
+- [x] **Step 3: Write the operator runbook.**
 
   Use the Plan 9.6 Phase C structure and include:
 
@@ -731,7 +731,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
 
   State explicitly that Optimus never stops or deletes the conflicting container.
 
-- [ ] **Step 4: Repoint living guidance.**
+- [x] **Step 4: Repoint living guidance.**
 
   Replace competing README commands with one concise runbook link and summary. Keep the retained
   `run-gateway` command only in that runbook and its CLI help/tests. Update
@@ -739,7 +739,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   reference only to the Gateway child; it is never exported into the agent shell. Replace
   preflight and Phoenix-test inline Docker commands with the runbook path and dependency name.
 
-- [ ] **Step 5: Run docs/presence green and active-surface audit.**
+- [x] **Step 5: Run docs/presence green and active-surface audit.**
 
   ```powershell
   uv run --frozen pytest tests/unit/tools/test_plan116_local_startup_docs.py tests/unit/tools/test_plan115_docs.py -q
@@ -752,7 +752,7 @@ with a fresh blast-radius inventory and no collision with another Plan 11.6 allo
   auto-start implementation, not operator guidance. `run-gateway` may appear only in the retained
   CLI/tests and the runbook sequence.
 
-- [ ] **Step 6: Record checkpoint; commit only with separate approval.**
+- [x] **Step 6: Record checkpoint; commit only with separate approval.**
 
   If authorized, commit Task 5 paths with subject
   `docs: establish one local dependency startup runbook`.
