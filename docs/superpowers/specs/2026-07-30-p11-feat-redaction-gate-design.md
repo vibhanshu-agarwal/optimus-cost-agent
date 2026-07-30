@@ -1,7 +1,8 @@
 # P11-FEAT-REDACTION-GATE Design Specification
 
-**Status:** Approved by Claude and the operator on 2026-07-30. Implementation remains
-unauthorized pending a separately reviewed implementation plan.
+**Status:** Approved by Claude and the operator on 2026-07-30, including the operator-directed
+extractability amendment verified by Claude on 2026-07-30. Implementation remains unauthorized
+pending a separately reviewed implementation plan.
 
 **Feature identity:** `P11-FEAT-REDACTION-GATE`. Numbering is assigned at pickup.
 
@@ -19,6 +20,8 @@ unauthorized pending a separately reviewed implementation plan.
   (`evidence`, `redaction`, `handoff`). They never contain a feature identity or scheduling number.
 - The implementation package boundary is `optimus_evidence`. The shared security primitives remain
   in `optimus_security`; the evidence package must not fork them.
+- `optimus_evidence` is a portable package. It must not import `optimus.*` or
+  `optimus_gateway.*`; Optimus-specific adaptation lives in the host package.
 
 ## Goal
 
@@ -26,6 +29,11 @@ Create one fail-closed redaction gate for evidence artifacts before they enter a
 or another durable evidence sink. The gate must redact API keys and scoped personally identifiable
 information (PII), preserve required correlation evidence, and produce content-free proof of what
 was checked.
+
+The gate is designed for later extraction into a standalone evidence connector or plugin without
+moving Optimus ACP or Gateway runtime code into that distribution. Package separation alone is not
+the claim: the dependency graph, portable input contracts, and static boundary tests must make the
+extraction mechanical.
 
 The first consumer is sanitized evidence for `P11-FEAT-ZED-RESUME`. Later consumers include the
 evidence collector and the A2A handoff ledger, but this feature does not implement either consumer.
@@ -39,6 +47,9 @@ The repository already establishes a single sanitization source of truth:
   counts.
 - `src/optimus_security/__init__.py` requires every persistence/export wrapper to delegate to that
   implementation rather than fork its rules (Global Constraint 17).
+- `src/optimus_security/launch_manifest.py` records the established neutral-package pattern: shared
+  primitives live outside both deployables so the ACP parent and Gateway child do not import each
+  other. Its current imports are standard-library-only.
 - `src/optimus/telemetry/redaction.py` is only a compatibility wrapper. It currently calls
   `sanitize_for_persistence(..., known_secrets=())`, so an unlabeled configured secret is not
   protected by exact matching at this boundary.
@@ -52,6 +63,10 @@ The repository already establishes a single sanitization source of truth:
   `sanitize_workspace_text`.
 - `src/optimus/acp/debug_trace.py::log_provenance_once` records absolute interpreter, source, log,
   and working-directory paths that can contain the operator username.
+- `pyproject.toml` currently uses setuptools package discovery with `where = ["src"]`, so
+  `optimus`, `optimus_gateway`, `optimus_security`, and the future evidence package ship in one
+  distribution today. A later distribution split remains cheap only if the import graph stays
+  portable now.
 
 The design therefore extends the existing sanitizer and controlled-capture precedent. It does not
 introduce a second redaction stack.
@@ -141,6 +156,8 @@ scan.
 - A descriptive sensitive-value inventory module owns the in-memory value container, length
   validation, deduplication, and content-free metadata.
 - The sanitizer never reads `os.environ`, `.env` files, the keyring, or artifact paths on its own.
+- The neutral security package remains standard-library-only unless a separately reviewed
+  amendment changes that portability contract.
 
 `optimus_evidence.redaction` owns orchestration:
 
@@ -152,29 +169,50 @@ scan.
 - final-scan invocation; and
 - content-free manifest construction.
 
-The evidence package calls `optimus_security`; `optimus_security` must not import the evidence
-package. Core redaction logic must not live in artifact adapters.
+`optimus_evidence` may import `optimus_security`, the Python standard library, and explicitly
+reviewed portable dependencies. It must not import `optimus`, `optimus_gateway`, ACP launch types,
+Gateway service types, or project tools. Its public call boundary accepts only portable
+protocols/dataclasses defined in `optimus_evidence` or `optimus_security`.
+
+`src/optimus/acp/evidence_redaction_adapter.py` is the named Optimus host adapter. It is the only
+component in this feature that understands `AuthorizedLaunch`, `LaunchCandidate`, projected child
+environments, operator paths, or Optimus credential-resolution objects. It converts those
+host-specific objects into portable `RedactionRuntimeInputs` and calls the evidence gate. The
+portable package must not use reflection, `Any` mappings, or delayed imports to reach back into the
+host.
+
+The dependency direction is:
+
+```text
+optimus.acp.evidence_redaction_adapter -> optimus_evidence -> optimus_security
+                                      \--------------------> optimus_security
+```
+
+`optimus_security` must not import the evidence package, and neither portable package may import
+either deployable. Core redaction logic must not live in the host adapter.
 
 ### Conceptual data flow
 
-1. Capture an immutable runtime/configuration snapshot through the existing launch and credential
-   resolution path.
-2. Build an in-memory sensitive-value inventory from explicitly supplied resolved values.
-3. Resolve canonical path aliases from trusted operator/workspace paths.
-4. Classify the artifact by an explicit requested type and validate that type against its content.
-5. Sanitize into a private staging destination without creating a second raw copy.
-6. Run the final exact/pattern/entropy/PII scan over the logical sanitized content.
-7. Quarantine on any scan, parse, sanitizer, I/O, or policy failure.
-8. Require explicit human approval for a metadata-stripped screenshot.
-9. Atomically promote only an eligible sanitized artifact and write its content-free manifest.
-10. Drop all references to the sensitive-value inventory.
+1. The Optimus host captures an immutable runtime/configuration snapshot through the existing
+   launch and credential resolution path.
+2. The host adapter converts resolved Optimus objects into portable `RedactionRuntimeInputs`,
+   including an in-memory sensitive-value inventory and canonical path aliases.
+3. The portable gate classifies the artifact by an explicit requested type and validates that type
+   against its content.
+4. The gate sanitizes into a private staging destination without creating a second raw copy.
+5. The gate runs the final exact/pattern/entropy/PII scan over the logical sanitized content.
+6. The gate quarantines on any scan, parse, sanitizer, I/O, or policy failure.
+7. The gate requires explicit human approval for a metadata-stripped screenshot.
+8. The gate atomically promotes only an eligible sanitized artifact and writes its content-free
+   manifest.
+9. The host and gate drop all references to the sensitive-value inventory.
 
 ## Sensitive-value inventory
 
 ### Sources
 
-The inventory builder receives values, never authority to rediscover them. Its production sources
-are:
+The portable inventory builder receives values, never authority to rediscover them. It accepts only
+portable typed inputs. For the Optimus host, the adapter derives those inputs from:
 
 - secret-tier values from an immutable captured environment, selected through the existing launch
   variable registry;
@@ -185,10 +223,11 @@ are:
 - explicitly injected known PII such as operator username, configured email, host identity, and
   trusted path roots.
 
-The adapter reuses the already-resolved launch/configuration objects. It must not independently
-parse `.env` files, query the keyring a second time, or reread ambient environment state. A
-standalone invocation must first create the same immutable resolved snapshot through the canonical
-bootstrap path and then pass it to the gate.
+The Optimus adapter reuses the already-resolved launch/configuration objects. It must not
+independently parse `.env` files, query the keyring a second time, or reread ambient environment
+state. A standalone connector supplies its own host adapter that constructs the same portable
+`RedactionRuntimeInputs` contract; `optimus_evidence` never imports or invokes an Optimus bootstrap
+path.
 
 ### Lifetime and non-disclosure
 
@@ -437,16 +476,25 @@ direction and naming discipline:
 |---|---|
 | `src/optimus_security/sanitization.py` | Sole rule engine, preservation policy, and final content scan primitives. |
 | `src/optimus_security/sensitive_values.py` | Non-serializable in-memory sensitive-value inventory and safe metadata. |
+| `src/optimus/acp/evidence_redaction_adapter.py` | Optimus-only adapter from `AuthorizedLaunch`/`LaunchCandidate`, projected environments, and operator paths into portable `RedactionRuntimeInputs`; calls the portable gate. |
+| `src/optimus_evidence/redaction/models.py` | Portable request, runtime-input, path-alias, result, disposition, and approval contracts; no Optimus types. |
 | `src/optimus_evidence/redaction/gate.py` | Orchestration, dispatch, state transitions, and promotion decision. |
 | `src/optimus_evidence/redaction/structured.py` | Bounded JSON/NDJSON parsing and sanitized serialization; no independent rules. |
 | `src/optimus_evidence/redaction/text.py` | Streaming adapter over the shared sanitizer; no independent patterns. |
 | `src/optimus_evidence/redaction/images.py` | Canonical metadata-free image staging and approval binding. |
 | `src/optimus_evidence/redaction/quarantine.py` | Safe quarantine placement and hash-only dump records. |
 | `src/optimus_evidence/redaction/manifest.py` | Content-free manifest assembly and pre-promotion scan. |
+| `tests/unit/evidence/test_import_boundaries.py` | AST enforcement for portable-package imports plus an isolated import smoke with both deployable roots blocked. |
+| `tests/unit/acp/test_evidence_redaction_adapter.py` | Host-to-portable mapping, inventory completeness, and proof that no Optimus object crosses the adapter boundary. |
 
 Any future CLI uses a descriptive surface such as `optimus-evidence redact`. Configuration uses an
 `OPTIMUS_EVIDENCE_` namespace only where configuration is genuinely required. There is no
 feature-ID-bearing or number-bearing import path, command, setting, schema name, or artifact name.
+
+All packages currently ship together because `pyproject.toml` discovers packages under `src`.
+That packaging convenience does not relax the import boundary. A later standalone distribution may
+select `optimus_evidence` plus `optimus_security` without pulling in `optimus` or
+`optimus_gateway`.
 
 ## Verification design
 
@@ -481,11 +529,20 @@ feature-ID-bearing or number-bearing import path, command, setting, schema name,
 - Manifest canaries prove the manifest contains no sensitive inventory material.
 - A static naming audit covers the new package, entry points, configuration names, schema names,
   and artifact names and rejects scheduling-number or feature-ID coupling.
+- A static AST import-boundary test scans every module under `src/optimus_evidence` and rejects
+  imports rooted at `optimus`, `optimus_gateway`, or `tools`; it permits `optimus_security` and
+  reviewed portable dependencies.
+- The same boundary test keeps `optimus_security` standard-library-only: imports may resolve only
+  to the Python standard library or another `optimus_security` module.
+- Adapter tests prove `src/optimus/acp/evidence_redaction_adapter.py` is the host-side owner of
+  `AuthorizedLaunch`/`LaunchCandidate` access and that the resulting portable runtime inputs contain
+  no Optimus object.
 
 ### Integration evidence
 
 - The canonical authorized-launch/configuration path supplies environment-, configuration-, and
-  OS-keyring-resolved secrets to the in-memory inventory without rereading sources.
+  OS-keyring-resolved secrets through the named host adapter to the portable in-memory inventory
+  without rereading sources.
 - A mixed fixture set containing JSON, NDJSON, text, an image with metadata, and a synthetic dump
   yields the required disposition for every artifact.
 - A real controlled ACP capture streams through the gate without writing raw stdout/stderr and
@@ -510,11 +567,17 @@ client required by the repository evidence-tier rules.
 - Ruff and the repository secret scanner pass.
 - A repository search proves no new evidence implementation surface contains feature-ID or
   scheduling-number names.
+- The static import-boundary test plus an isolated import smoke that blocks `optimus` and
+  `optimus_gateway` while allowing the standard library and declared portable dependencies prove
+  there is no runtime dependency on either deployable. Built-wheel inventory records that all
+  packages remain co-shipped today and makes no premature standalone-wheel claim.
 - A canary scan names every promoted artifact and reports no credential or scoped-PII hit.
 
 ## Design completion criteria
 
 - `optimus_security.sanitization` remains the sole redaction-rule implementation.
+- `optimus_evidence` imports neither `optimus` nor `optimus_gateway`; all host state crosses a
+  portable typed boundary through the named Optimus adapter.
 - The evidence gate always receives a populated exact-match inventory from canonical resolved
   runtime state and never rereads ambient sources.
 - The inventory is held only in memory and cannot appear in any output or error.
@@ -525,5 +588,26 @@ client required by the repository evidence-tier rules.
 - Only sanitized, rescanned artifacts reach promotable destinations.
 - Package, module, configuration, CLI, schema, and artifact names remain descriptive and independent
   of feature identity or scheduling.
-- Implementation remains blocked until this design receives Claude and operator approval and a
+- A standalone distribution can select `optimus_evidence` and `optimus_security` without shipping
+  either deployable package.
+- Implementation remains blocked until Claude verifies the extractability amendment and a
   separately reviewed implementation plan is assigned at pickup.
+
+## Amendment record
+
+### 2026-07-30 — Structural extractability
+
+A post-approval dependency audit found that the original one-way
+`optimus_evidence -> optimus_security` rule did not prohibit `optimus_evidence` from importing
+Optimus ACP runtime objects. This operator-directed amendment:
+
+- makes standalone connector/plugin extraction an explicit goal;
+- prohibits portable-package imports from `optimus` and `optimus_gateway`;
+- defines `RedactionRuntimeInputs` as the portable call-boundary contract;
+- assigns `AuthorizedLaunch`/`LaunchCandidate` conversion to the named
+  `optimus.acp.evidence_redaction_adapter` host adapter;
+- records the current co-shipped setuptools packaging shape without treating it as proof of
+  standalone distribution; and
+- makes the boundary executable through AST and isolated-import tests.
+
+No implementation work is authorized by this amendment.
