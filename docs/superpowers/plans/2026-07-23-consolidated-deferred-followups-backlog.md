@@ -49,6 +49,9 @@ open-work inventory.
 | `P11-FEAT-ZED-RESUME` | **Plan 11.7 picked up 2026-07-29; implementation plan drafting/review in progress.** Carries owned `P11-FU-1` and `P9.8-FU-5`; coordinates, but does not own, `P11-FU-4` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume) |
 | `P11-FEAT-REGISTRY` | Ratified, unscheduled; blocked on its research gate — no authoritative source exists in any of the four pinned documents. Also owns the v1.0 release-version contract | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut) |
 | `P11-FEAT-IDE` | Conditional — opens only by explicit amendment if REGISTRY surfaces an unmet multi-IDE expectation | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing) |
+| `P11-FEAT-REDACTION-GATE` | **HIGH; ratified, unscheduled.** First slice in the future independent handoff/evidence train because it unblocks sanitized Plan 11.7 Task 0 evidence. The eventual plan number is assigned at pickup; no number is reserved by this row. | Type-dispatched, fail-closed artifact gate: parse/sanitize/reserialize JSON and NDJSON; stream-sanitize logs and notes; strip screenshot metadata and require human approval; quarantine dumps and retain hashes only. Redact API keys and PII using exact runtime-known-secret matching plus pattern/entropy detection and path canonicalization. Preserve session/run IDs, model/provider names, and git SHAs. [Design draft](../specs/2026-07-30-p11-feat-redaction-gate-design.md). |
+| `P11-FEAT-EVIDENCE-COLLECTOR` | Ratified, unscheduled; sequenced after `P11-FEAT-REDACTION-GATE`. The eventual plan number is assigned at pickup; no number is reserved by this row. | One `tools/evidence_gather.py` entry point with subcommands, declarative scenarios, composable collectors/detectors, and the redaction gate as a separately invocable final stage. Outcomes are `rendered_stable`, `rendered_then_crashed`, `client_crashed`, or `indeterminate`; no hardcoded model literals or default report targets. Its Zed prompt-injection gate remains investigation-only until UIA/SendInput on Zed 1.13.1, the `zed://` scheme, and hermetic `--user-data-dir` instances produce evidence. |
+| `P11-FEAT-A2A-LEDGER` | Ratified, unscheduled; sequenced after the redaction gate and evidence collector. **Blocked on the cross-agent localhost-TCP reachability investigation** for Claude Code, Cursor, and Codex. The eventual plan number is assigned at pickup; no number is reserved by this row. | Default-off, opt-in append-only handoff protocol—not a transcript archive—with question, answer, evidence-notice, review-ruling, handoff, and separate acknowledgement entries; large payloads use SHA-256 references. PostgreSQL in Docker is primary only if the reachability spike passes; otherwise use global SQLite under a non-cloud-synced `%LOCALAPPDATA%`-class path. Keep the store independent of Redis/general memory, preserve reviewer/implementer role separation, apply ingress redaction before every write, and place any eventual container configuration in Plan 11.6's consolidated startup source of truth. |
 | `Plan 12` | Post-v1.0 context-window and intelligent-selection lane; outside the v1.0 cut | [Charter boundary](2026-07-25-plan-11-v1-milestone-charter.md#explicit-exclusions-and-unresolved-inputs) |
 
 ## Open items
@@ -655,6 +658,30 @@ and WSL residual
 Operator runbook:
 [`docs/runbooks/local-live-dependencies.md`](../../runbooks/local-live-dependencies.md).
 Retain this entry for history; do not reopen without a new deferred-follow-up ID.
+
+## Accepted risks and warnings
+
+Entries in this section record operator-accepted limitations. They are not open work and do not
+reserve a future plan number.
+
+### Plan 11.7 accepted risk: `optimus-redis` ACP-session durability boundary
+
+**RISK (accepted by operator 2026-07-30):** `optimus-redis` provides no real durability for
+[Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md)'s "durable Redis ACP
+sessions." Live-inspected container state has no volume mounts, `appendonly no` (periodic RDB
+snapshots only), and a default user configured as `nopass ~* &* +@all`; strict loopback binding
+mitigates the unauthenticated default-user exposure.
+
+**Consequence:** Container removal loses all ACP session state. Container restart recovers only to
+the latest RDB snapshot. The accepted Plan 11.7 meaning of "durable" is survival across
+process/agent restarts, not container lifecycle events.
+
+**Revisit trigger:** Revisit only if session-state loss occurs in practice or a future plan—such
+as the A2A ledger's hardened-Redis fallback path—already changes Redis persistence configuration.
+In that case, fix persistence once in the consolidated startup mechanism under the single-config
+rule.
+
+**Status:** Accepted as-is by the operator on 2026-07-30; recorded warning, not open work.
 
 ## P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)
 
