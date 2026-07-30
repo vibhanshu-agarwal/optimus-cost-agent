@@ -2,10 +2,10 @@
 
 ## Purpose
 
-This document is the single source of truth for all currently open work: charter-ratified feature
-slices, deferred follow-ups, parked items, and tracked defects. It owns each item's existence and
+This document is the single source of truth for all currently open Optimus work: charter-ratified
+feature slices, deferred follow-ups, parked items, and tracked defects. It owns each item's existence and
 state; the relevant charter or source document owns scope, sequencing, and detailed acceptance
-criteria. Anything not listed here is not tracked.
+criteria. Anything not listed here is not tracked as Optimus work.
 
 Before this document existed, each follow-up lived only inside the "Deferred Follow-Ups" section of
 whichever plan originally raised it, cross-referenced (if at all) by a one-line mention in the
@@ -36,7 +36,7 @@ not duplicate this content.
 
 ## Feature slices
 
-The pool owns each feature's existence and state; the [Plan 11 v1.0 milestone charter](2026-07-25-plan-11-v1-milestone-charter.md)
+The pool owns each Optimus feature's existence and state; the [Plan 11 v1.0 milestone charter](2026-07-25-plan-11-v1-milestone-charter.md)
 owns feature scope and sequencing. Plan 12 is listed so its post-v1.0 custody cannot fall off the
 open-work inventory.
 
@@ -46,7 +46,7 @@ open-work inventory.
 | `P11-FEAT-GATEWAY-TOOLS` | Plan 11.2 — closed by PR #88 (merge `4590dbf`); migration follow-ups remain assigned here and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); migration custody: deterministic search/direct extract, route-specific dependency availability, replacement acceptance, and Tavily rollback-reviewed retirement; closure evidence: [Plan 11.2 approval](../reviews/2026-07-27-plan-11-2-implementation-plan-approval-v2.md), [local-process evidence](../../../reports/plan-11-2-gateway-tools-local-process-evidence.md), [staging evidence](../../../reports/plan-11-2-gateway-tools-staging-evidence.md), and [fitness report](../../../reports/plan-11-2-gateway-tools-task7-fitness.md) |
 | `P11-FEAT-GATEWAY-COST-OBS` | Plan 11.5 — closed by PR #95 (merge `e388258`), 2026-07-29; migration follow-ups remain assigned here (`P11.5-FU-1` open; `P11.5-FU-2` closed via Plan 11.6) and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); [implementation plan](2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration |
 | `P11-FEAT-GATEWAY-MCP` | Ratified; operator confirmed MCP support on 2026-07-29 (`P11-FU-3` decision half closed). Still blocked on the route/typed-contract design and fresh requirement extraction—no MCP endpoint is shown or implied yet; plan number assigned at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
-| `P11-FEAT-ZED-RESUME` | **Plan 11.7 picked up 2026-07-29; implementation plan drafting/review in progress.** Carries owned `P11-FU-1` and `P9.8-FU-5`; coordinates, but does not own, `P11-FU-4` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume) |
+| `P11-FEAT-ZED-RESUME` | **Plan 11.7 picked up 2026-07-29; implementation plan drafting/review in progress.** Carries owned `P11-FU-1` and `P9.8-FU-5`; coordinates, but does not own, `P11-FU-4` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume). Dependency: the [evidence and handoff product pool](evidence-handoff-open-work-pool.md) entry `P11-FEAT-REDACTION-GATE` supplies its sanitized-evidence gate. |
 | `P11-FEAT-REGISTRY` | Ratified, unscheduled; blocked on its research gate — no authoritative source exists in any of the four pinned documents. Also owns the v1.0 release-version contract | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut) |
 | `P11-FEAT-IDE` | Conditional — opens only by explicit amendment if REGISTRY surfaces an unmet multi-IDE expectation | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing) |
 | `Plan 12` | Post-v1.0 context-window and intelligent-selection lane; outside the v1.0 cut | [Charter boundary](2026-07-25-plan-11-v1-milestone-charter.md#explicit-exclusions-and-unresolved-inputs) |
@@ -655,6 +655,30 @@ and WSL residual
 Operator runbook:
 [`docs/runbooks/local-live-dependencies.md`](../../runbooks/local-live-dependencies.md).
 Retain this entry for history; do not reopen without a new deferred-follow-up ID.
+
+## Accepted risks and warnings
+
+Entries in this section record operator-accepted limitations. They are not open work and do not
+reserve a future plan number.
+
+### Plan 11.7 accepted risk: `optimus-redis` ACP-session durability boundary
+
+**RISK (accepted by operator 2026-07-30):** `optimus-redis` provides no real durability for
+[Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md)'s "durable Redis ACP
+sessions." Live-inspected container state has no volume mounts, `appendonly no` (periodic RDB
+snapshots only), and a default user configured as `nopass ~* &* +@all`; strict loopback binding
+mitigates the unauthenticated default-user exposure.
+
+**Consequence:** Container removal loses all ACP session state. Container restart recovers only to
+the latest RDB snapshot. The accepted Plan 11.7 meaning of "durable" is survival across
+process/agent restarts, not container lifecycle events.
+
+**Revisit trigger:** Revisit only if session-state loss occurs in practice or a future plan—such
+as the A2A ledger's hardened-Redis fallback path—already changes Redis persistence configuration.
+In that case, fix persistence once in the consolidated startup mechanism under the single-config
+rule.
+
+**Status:** Accepted as-is by the operator on 2026-07-30; recorded warning, not open work.
 
 ## P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)
 
