@@ -21,15 +21,101 @@ Feature ID, but must not duplicate a moved item's live state or status.
 
 ## Naming and extraction convention
 
-The current `P11-` Feature-ID prefix is provisional. Rename it only as one reviewed mechanical
-change bundled with the package-name decision, before `P11-FEAT-REDACTION-GATE` Task 2. Until then,
-the four IDs below remain unique greppable tokens and must not appear as owned rows in another
-open-work pool.
+### Step 0 — Package-name and Feature-ID decision
+
+**State:** Decided on 2026-07-31. The operator selected `evidence_handoff` as the canonical package
+stem and `EVIDENCE-HANDOFF-` as the Feature-ID prefix. Claude reviewed the pair against the frozen
+constraints and verified that all four resulting identities satisfy the existing
+`FEATURE_ID_BODY` grammar without a regex change. Step 0 has exited; the mechanical rename has not
+started.
+
+The decision covers exactly two tokens:
+
+1. The canonical distribution/package stem `evidence_handoff`, which replaces the provisional
+   `optimus_evidence`.
+   Python packaging mechanically renders an underscore import name as the corresponding normalized
+   hyphenated distribution name; those two spellings are one decision, not separate tokens.
+2. The Feature-ID prefix `EVIDENCE-HANDOFF-`, which replaces the provisional `P11-`.
+
+Every candidate must be descriptive of evidence, redaction, or handoff behavior, brand-free, and
+free of feature identities and scheduling numbers. The package is intended for extraction into a
+standalone product: it must not import `optimus`, `optimus_gateway`, their subpackages, Optimus
+launch types, or Gateway service types. Optimus-specific adaptation remains in the host package.
+The package may consume `optimus_security`, but it must not fork the shared security primitives or
+create another redaction-rule engine.
+
+Package-stem candidates:
+
+| Candidate | Normalized distribution name | Rationale and trade-off |
+|---|---|---|
+| `evidence_handoff` | `evidence-handoff` | Matches the established product-document namespace and directly describes the broader evidence-transfer boundary. It keeps redaction as an explicit subsystem rather than implying that handoff alone makes content safe. The shared `evidence-handoff` stem also means broad greps match both package and document names, so searches must distinguish paths or artifact kinds. This is Codex's recommendation for operator consideration. |
+| `evidence_custody` | `evidence-custody` | Emphasizes private capture, hashing, quarantine, approval, and controlled promotion. It describes the safety lifecycle well, but makes the inter-agent handoff purpose less obvious. |
+| `evidence_exchange` | `evidence-exchange` | Emphasizes portable evidence transfer across hosts and agents. It makes handoff intent clear, but says less about the fail-closed redaction and custody boundary. |
+
+The namespace trade-off is symmetric: `evidence_handoff` keeps the package and the permanently
+established `evidence-handoff-*` document namespace coherent but requires path- or artifact-aware
+greps. Either alternative makes unfiltered package-name greps more selective but permanently gives
+the package and its product-owned documents different names.
+
+PyPI's official JSON endpoints returned HTTP 404 for all three normalized distribution names on
+2026-07-31, so none was registered at the time of this check. This point-in-time result is not a
+name reservation and must be rechecked before publication.
+
+Feature-ID-prefix candidates:
+
+| Candidate | Example resulting identity | Rationale and trade-off |
+|---|---|---|
+| `EVIDENCE-HANDOFF-` | `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` | Fully descriptive, brand-free, and unambiguous in cross-product references. It is longer than the alternatives, but Feature IDs are planning and custody tokens rather than runtime names. This is Codex's recommendation for operator consideration. |
+| `EVIDENCE-` | `EVIDENCE-FEAT-REDACTION-GATE` | Shorter while remaining self-descriptive and brand-free. It does not distinguish this product's handoff scope from other evidence features. |
+| `EH-` | `EH-FEAT-REDACTION-GATE` | Compact and aligned with “evidence and handoff” once defined. The acronym is less self-explanatory and more collision-prone outside this pool. |
+
+Until Step 1 applies the recorded decision, `optimus_evidence` and the four `P11-` identities below
+remain the current provisional repository tokens. No naming question remains open.
+
+### Step 1 — Mechanical rename
+
+**State:** Unblocked; not started. Apply the package rename and Feature-ID prefix rename as one
+reviewed mechanical change before `P11-FEAT-REDACTION-GATE` Task 2. The change must include all of
+the following; none is an optional cleanup:
+
+The mechanical replacements apply only to live identifier, package, document-path, and dependency
+usages. Do not token-swap the Step 0 decision record or these Step 1 instructions in place. When
+Step 1 completes, rewrite this naming section as a closed historical record: preserve the explicit
+old-to-new token decision, remove transitional pre-execution statements, mark Step 1 complete, and
+cite the rename and digest evidence. Retained old tokens in that closed record are historical
+provenance, not live references.
+
+- Rename all four product-owned Feature IDs and their live references atomically:
+  `P11-FEAT-REDACTION-GATE`, `P11-FEAT-EVIDENCE-COLLECTOR`, `P11-FEAT-A2A-LEDGER`, and
+  `P11-FEAT-APPROVAL-RECORD`. Update both hardcoded sites in
+  `tests/unit/docs/test_open_work_pool_hygiene.py`: the `PRODUCT_FEATURE_IDS` set and the separate
+  exact `dependency_ids` assertion for `P11-FEAT-REDACTION-GATE`. The existing `FEATURE_ID_BODY`
+  grammar already accepts the selected prefix and must not change as part of this rename.
+- Update the single product Feature-ID dependency reference in the Optimus-owned
+  `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md`. Preserve it as a
+  pointer to this product pool and do not add live state or status language; the hygiene test
+  enforces both constraints.
+- Rename the live provisional `optimus_evidence` package usages to the chosen package token without
+  changing the frozen extraction boundary or dependency direction. The token currently appears
+  outside this naming section in both frozen redaction documents.
+- Rename the two digest-bound document paths atomically to
+  `docs/superpowers/specs/evidence-handoff-redaction-gate-design.md` and
+  `docs/superpowers/plans/evidence-handoff-redaction-gate-implementation.md`. Update every link,
+  command, and path allowlist entry, including `PRODUCT_OWNED_DOCS` in the hygiene test, in the
+  same change.
+- Re-freeze both digest-bound documents because their contents change. Compute each digest from the
+  committed Git blob at its renamed path with `git show HEAD:<path> | sha256sum`, never from the
+  working tree; CRLF/LF conversion makes working-tree hashes untrustworthy.
+- After renaming the design to
+  `docs/superpowers/specs/evidence-handoff-redaction-gate-design.md`, fix its stale live-state
+  pointer: it must point to `docs/superpowers/plans/evidence-handoff-open-work-pool.md`, not the
+  consolidated Optimus backlog. This is a pointer correction only; custody is already clean.
 
 New product-owned document basenames start with `evidence-handoff-` and use a descriptive,
 brand-free, scheduling-number-free remainder: `evidence-handoff-*.md`. This keeps eventual
-extraction glob-based. The two digest-bound documents listed below are explicit legacy-name
-exceptions and must not be renamed independently.
+extraction glob-based. The two digest-bound documents listed below are temporary legacy-name
+exceptions until Step 1 completes: no separate change may rename either one. Step 1 removes the
+exception by renaming both documents together to the explicit target paths above.
 
 ## Product-owned documents temporarily hosted in Optimus
 
