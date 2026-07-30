@@ -1,4 +1,4 @@
-# P11-FEAT-REDACTION-GATE Implementation Plan
+# EVIDENCE-HANDOFF-FEAT-REDACTION-GATE Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > `superpowers:subagent-driven-development` (recommended) or
@@ -9,7 +9,7 @@ preserving the existing sanitizer behavior of all current callers and keeping th
 portable packages mechanically extractable.
 
 **Architecture:** `optimus_security` remains the only rule engine and gains an explicit,
-versioned evidence policy. `optimus_evidence` owns portable artifact dispatch,
+versioned evidence policy. `evidence_handoff` owns portable artifact dispatch,
 bounded parsing, private staging, quarantine, approval, manifests, and atomic
 promotion. `optimus.acp.evidence_redaction_adapter` is the only host adapter allowed
 to receive Optimus launch objects. Existing callers keep the compatibility policy;
@@ -26,9 +26,9 @@ implementation, dependency mutation, commit, push, PR, or merge. Numbering is
 assigned at pickup.
 
 **Frozen design baseline:** Commit
-`a1f51e2cc9ddc0e64c137bea2a6fbf2639f36c81`, file
-`docs/superpowers/specs/2026-07-30-p11-feat-redaction-gate-design.md`, SHA-256
-`86d8dd9e54c4767ff519b79a28fce2143491fb732e4317f02b33de0d2f06e459`.
+`4f7cfeb8d8c4210b31f031385917588ed0687ccf`, file
+`docs/superpowers/specs/evidence-handoff-redaction-gate-design.md`, SHA-256
+`ee07b88186db65d6f0c109d2341147c066df8846fb4de7f80a86bb7b9f296ddb`.
 The implementation worker must hash the committed blob, not the working-tree file.
 Any mismatch blocks pickup.
 
@@ -45,7 +45,7 @@ Any mismatch blocks pickup.
   aggregate production coverage, secret redaction before export, real named
   dependencies for live claims, and independent `acpx` for ACP protocol evidence.
   Recheck their repository versions at pickup and stop on any conflict.
-- Reference this work only as `P11-FEAT-REDACTION-GATE`. Do not assign or speculate
+- Reference this work only as `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE`. Do not assign or speculate
   about a scheduling number. Source packages, modules, settings, commands, schemas,
   and artifact names must remain descriptive and contain neither the Feature ID nor a
   scheduling number.
@@ -64,7 +64,7 @@ Any mismatch blocks pickup.
   `tests`. The 37-file behavioral baseline excludes the two package/export-only
   initializers and the launch-time secret-length-only source hit. Task 0 must record
   both sets and fail if either classification changes before implementation.
-- `optimus_evidence` may import only the standard library, `optimus_security`, and
+- `evidence_handoff` may import only the standard library, `optimus_security`, and
   the explicitly enumerated portable dependency root `PIL`. It must not import
   `optimus`, `optimus_gateway`, `tools`, launch types, Gateway service types, or use
   reflection/delayed imports to reach them.
@@ -219,7 +219,7 @@ The shared sanitizer has this exact callable shape:
 known_pii: Sequence[str] = (), path_aliases: Sequence[PathAliasRule] = (),
 policy: SanitizationPolicy = COMPATIBILITY_SANITIZATION_POLICY) ->
 SanitizationResult`. `PathAliasRule` is a frozen standard-library-only contract in
-`optimus_security.sanitization`; `optimus_evidence.redaction.models` re-exports it as
+`optimus_security.sanitization`; `evidence_handoff.redaction.models` re-exports it as
 part of the portable gate boundary without defining a competing type.
 
 `StreamingTextSanitizer` receives the same policy/PII/path inputs. The compatibility
@@ -233,23 +233,23 @@ approved prefix, entropy, email, known-PII, path, and contextual-preservation ru
 
 - `src/optimus_security/sensitive_values.py`: in-memory inventory and value-free
   errors/metadata.
-- `src/optimus_evidence/__init__.py`: portable package declaration only.
-- `src/optimus_evidence/redaction/__init__.py`: narrow public exports.
-- `src/optimus_evidence/redaction/models.py`: portable request/result/approval/path
+- `src/evidence_handoff/__init__.py`: portable package declaration only.
+- `src/evidence_handoff/redaction/__init__.py`: narrow public exports.
+- `src/evidence_handoff/redaction/models.py`: portable request/result/approval/path
   contracts and bounds.
-- `src/optimus_evidence/redaction/private_files.py`: private staging, restrictive
+- `src/evidence_handoff/redaction/private_files.py`: private staging, restrictive
   permissions, containment, same-filesystem checks, and atomic rename.
-- `src/optimus_evidence/redaction/text.py`: streaming adapter over the shared
+- `src/evidence_handoff/redaction/text.py`: streaming adapter over the shared
   sanitizer.
-- `src/optimus_evidence/redaction/structured.py`: bounded JSON/NDJSON parsing,
+- `src/evidence_handoff/redaction/structured.py`: bounded JSON/NDJSON parsing,
   prefix validation, normalized serialization, and joined-string scans.
-- `src/optimus_evidence/redaction/images.py`: Pillow decode, canonical PNG re-encode,
+- `src/evidence_handoff/redaction/images.py`: Pillow decode, canonical PNG re-encode,
   and approval binding.
-- `src/optimus_evidence/redaction/quarantine.py`: source custody, dump recognition,
+- `src/evidence_handoff/redaction/quarantine.py`: source custody, dump recognition,
   streaming hash, and quarantine records.
-- `src/optimus_evidence/redaction/manifest.py`: content-free manifest assembly and
+- `src/evidence_handoff/redaction/manifest.py`: content-free manifest assembly and
   manifest canary scan.
-- `src/optimus_evidence/redaction/gate.py`: dispatch, state machine, final scan, and
+- `src/evidence_handoff/redaction/gate.py`: dispatch, state machine, final scan, and
   promotion ordering.
 - `src/optimus/acp/evidence_redaction_adapter.py`: Optimus-only launch/configuration
   adapter.
@@ -263,7 +263,7 @@ approved prefix, entropy, email, known-PII, path, and contextual-preservation ru
 - `src/optimus/telemetry/subjects.py`: remove its private secret-value regex and
   delegate the behavior to the shared compatibility policy.
 - `pyproject.toml`: Pillow range, explicit test marker, and
-  `src/optimus_evidence` coverage.
+  `src/evidence_handoff` coverage.
 - `uv.lock`: reviewed Pillow resolution only.
 - `.gitignore`: local live-capture workspace pattern if the evidence runner creates
   one below the repository.
@@ -314,8 +314,8 @@ Run:
 
 ```bash
 git status --short --branch
-git merge-base --is-ancestor 79cd37cf37b2740f7580b2ed3859c0401a47f6a4 HEAD
-git show a1f51e2:docs/superpowers/specs/2026-07-30-p11-feat-redaction-gate-design.md | sha256sum
+git merge-base --is-ancestor 4f7cfeb8d8c4210b31f031385917588ed0687ccf HEAD
+git show 4f7cfeb8d8c4210b31f031385917588ed0687ccf:docs/superpowers/specs/evidence-handoff-redaction-gate-design.md | sha256sum
 ```
 
 Expected: the worktree has no unexplained changes, the ancestry command succeeds, and
@@ -348,14 +348,14 @@ compatibility baseline, not a license to change untested callers.
 
 - [ ] **Step 4: Update living status only**
 
-Change only the `P11-FEAT-REDACTION-GATE` pool row to say that implementation-plan
+Change only the `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` pool row to say that implementation-plan
 review/pickup is active, link this plan, and retain “assigned at pickup.” Do not alter
 the frozen design or any other feature row.
 
 - [ ] **Step 5: Run the documentation/naming check**
 
 ```bash
-rg -n 'Plan [0-9]|plan-[0-9]' docs/superpowers/plans/2026-07-30-p11-feat-redaction-gate-implementation.md
+rg -n 'Plan [0-9]|plan-[0-9]' docs/superpowers/plans/evidence-handoff-redaction-gate-implementation.md
 git diff --check
 git status --short
 ```
@@ -505,7 +505,7 @@ Expected RED: packages/models do not exist and Pillow is not declared.
 - [ ] **Step 2: Add Pillow and create the portable model layer**
 
 Add `Pillow>=12.3,<13` to runtime dependencies, update `uv.lock`, and add
-`src/optimus_evidence` to coverage sources. Add only the model/package code needed
+`src/evidence_handoff` to coverage sources. Add only the model/package code needed
 for the tests. Do not implement dispatch or image processing yet.
 
 Register:
@@ -523,14 +523,14 @@ uv lock --check
 uv sync --frozen --extra dev
 uv run --frozen pytest tests/unit/evidence/test_import_boundaries.py tests/unit/evidence/test_naming_boundaries.py tests/unit/evidence/test_models.py -q
 uv build
-uv run --frozen python -c "from PIL import Image; import optimus_evidence, optimus_security; print(Image.__version__)"
+uv run --frozen python -c "from PIL import Image; import evidence_handoff, optimus_security; print(Image.__version__)"
 uv run --frozen ruff check .
 git diff --check
 ```
 
 Inspect the built wheel and record that all packages still co-ship. Do not claim a
 standalone wheel. The isolated-import test must block `optimus` and
-`optimus_gateway` while successfully importing `optimus_evidence.redaction.models`.
+`optimus_gateway` while successfully importing `evidence_handoff.redaction.models`.
 
 - [ ] **Step 4: Stop for dependency and extraction review**
 
@@ -1008,7 +1008,7 @@ otherwise.
 ```bash
 uv run --frozen pytest tests/unit -q
 uv run --frozen pytest tests/integration -q
-uv run --frozen pytest --cov=src/optimus --cov=src/optimus_gateway --cov=src/optimus_security --cov=src/optimus_evidence --cov-report=term-missing --cov-report=xml --cov-fail-under=80
+uv run --frozen pytest --cov=src/optimus --cov=src/optimus_gateway --cov=src/optimus_security --cov=src/evidence_handoff --cov-report=term-missing --cov-report=xml --cov-fail-under=80
 ```
 
 Named live markers are not satisfied by the default integration command; cite the
@@ -1068,7 +1068,7 @@ open a PR, merge, delete branches, or rewrite history.
   labeled correlations, including the real Zed Rust-debug grammar.
 - [ ] Exact runtime secrets and known PII are supplied from already-resolved host
   state and never persist or appear in diagnostics.
-- [ ] `optimus_evidence` imports only stdlib, `optimus_security`, and `PIL`;
+- [ ] `evidence_handoff` imports only stdlib, `optimus_security`, and `PIL`;
   `optimus_security` remains stdlib-only; the isolated import smoke passes.
 - [ ] JSON, generic NDJSON, ACP crash-tail NDJSON, text, screenshots, dumps, unknown
   types, and mismatches follow their fail-closed policies.

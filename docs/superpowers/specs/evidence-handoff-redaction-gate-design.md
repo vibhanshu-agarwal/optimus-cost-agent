@@ -1,26 +1,26 @@
-# P11-FEAT-REDACTION-GATE Design Specification
+# EVIDENCE-HANDOFF-FEAT-REDACTION-GATE Design Specification
 
 **Status:** Approved by Claude and the operator on 2026-07-30, including the operator-directed
 extractability amendment verified by Claude on 2026-07-30. Implementation remains unauthorized
 pending a separately reviewed implementation plan.
 
-**Feature identity:** `P11-FEAT-REDACTION-GATE`. Numbering is assigned at pickup.
+**Feature identity:** `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE`. Numbering is assigned at pickup.
 
 **Baseline:** `origin/main` at `79cd37cf37b2740f7580b2ed3859c0401a47f6a4`.
 
 ## Naming and document-custody rules
 
-- This document references the feature exclusively as `P11-FEAT-REDACTION-GATE`.
-- The feature identity is provisional but remains a unique, greppable token until an approved
-  mechanical rename.
+- This document references the feature exclusively as `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE`.
+- The feature identity is the reviewed product identifier and remains a unique, greppable token.
+  Any future identity change requires another reviewed mechanical rename.
 - Live feature state belongs only in the
-  [consolidated open-work pool](../plans/2026-07-23-consolidated-deferred-followups-backlog.md).
+  [evidence and handoff open-work pool](../plans/evidence-handoff-open-work-pool.md).
   This design owns architecture, scope, and verification requirements, not status.
 - Eventual package, module, configuration, and CLI names are descriptive of their behavior
   (`evidence`, `redaction`, `handoff`). They never contain a feature identity or scheduling number.
-- The implementation package boundary is `optimus_evidence`. The shared security primitives remain
+- The implementation package boundary is `evidence_handoff`. The shared security primitives remain
   in `optimus_security`; the evidence package must not fork them.
-- `optimus_evidence` is a portable package. It must not import `optimus.*` or
+- `evidence_handoff` is a portable package. It must not import `optimus.*` or
   `optimus_gateway.*`; Optimus-specific adaptation lives in the host package.
 
 ## Goal
@@ -88,7 +88,7 @@ introduce a second redaction stack.
 - A final joined-content scan before promotion.
 - Content-free manifests containing digests, rule identifiers/counts, artifact kind, disposition,
   and approval metadata where applicable.
-- A descriptive, extractable `optimus_evidence` package boundary.
+- A descriptive, extractable `evidence_handoff` package boundary.
 
 ### Explicit non-goals
 
@@ -159,7 +159,7 @@ scan.
 - The neutral security package remains standard-library-only unless a separately reviewed
   amendment changes that portability contract.
 
-`optimus_evidence.redaction` owns orchestration:
+`evidence_handoff.redaction` owns orchestration:
 
 - artifact-kind dispatch;
 - safe parsing and bounded streaming;
@@ -169,10 +169,10 @@ scan.
 - final-scan invocation; and
 - content-free manifest construction.
 
-`optimus_evidence` may import `optimus_security`, the Python standard library, and explicitly
+`evidence_handoff` may import `optimus_security`, the Python standard library, and explicitly
 reviewed portable dependencies. It must not import `optimus`, `optimus_gateway`, ACP launch types,
 Gateway service types, or project tools. Its public call boundary accepts only portable
-protocols/dataclasses defined in `optimus_evidence` or `optimus_security`.
+protocols/dataclasses defined in `evidence_handoff` or `optimus_security`.
 
 `src/optimus/acp/evidence_redaction_adapter.py` is the named Optimus host adapter. It is the only
 component in this feature that understands `AuthorizedLaunch`, `LaunchCandidate`, projected child
@@ -184,7 +184,7 @@ host.
 The dependency direction is:
 
 ```text
-optimus.acp.evidence_redaction_adapter -> optimus_evidence -> optimus_security
+optimus.acp.evidence_redaction_adapter -> evidence_handoff -> optimus_security
                                       \--------------------> optimus_security
 ```
 
@@ -226,7 +226,7 @@ portable typed inputs. For the Optimus host, the adapter derives those inputs fr
 The Optimus adapter reuses the already-resolved launch/configuration objects. It must not
 independently parse `.env` files, query the keyring a second time, or reread ambient environment
 state. A standalone connector supplies its own host adapter that constructs the same portable
-`RedactionRuntimeInputs` contract; `optimus_evidence` never imports or invokes an Optimus bootstrap
+`RedactionRuntimeInputs` contract; `evidence_handoff` never imports or invokes an Optimus bootstrap
 path.
 
 ### Lifetime and non-disclosure
@@ -477,13 +477,13 @@ direction and naming discipline:
 | `src/optimus_security/sanitization.py` | Sole rule engine, preservation policy, and final content scan primitives. |
 | `src/optimus_security/sensitive_values.py` | Non-serializable in-memory sensitive-value inventory and safe metadata. |
 | `src/optimus/acp/evidence_redaction_adapter.py` | Optimus-only adapter from `AuthorizedLaunch`/`LaunchCandidate`, projected environments, and operator paths into portable `RedactionRuntimeInputs`; calls the portable gate. |
-| `src/optimus_evidence/redaction/models.py` | Portable request, runtime-input, path-alias, result, disposition, and approval contracts; no Optimus types. |
-| `src/optimus_evidence/redaction/gate.py` | Orchestration, dispatch, state transitions, and promotion decision. |
-| `src/optimus_evidence/redaction/structured.py` | Bounded JSON/NDJSON parsing and sanitized serialization; no independent rules. |
-| `src/optimus_evidence/redaction/text.py` | Streaming adapter over the shared sanitizer; no independent patterns. |
-| `src/optimus_evidence/redaction/images.py` | Canonical metadata-free image staging and approval binding. |
-| `src/optimus_evidence/redaction/quarantine.py` | Safe quarantine placement and hash-only dump records. |
-| `src/optimus_evidence/redaction/manifest.py` | Content-free manifest assembly and pre-promotion scan. |
+| `src/evidence_handoff/redaction/models.py` | Portable request, runtime-input, path-alias, result, disposition, and approval contracts; no Optimus types. |
+| `src/evidence_handoff/redaction/gate.py` | Orchestration, dispatch, state transitions, and promotion decision. |
+| `src/evidence_handoff/redaction/structured.py` | Bounded JSON/NDJSON parsing and sanitized serialization; no independent rules. |
+| `src/evidence_handoff/redaction/text.py` | Streaming adapter over the shared sanitizer; no independent patterns. |
+| `src/evidence_handoff/redaction/images.py` | Canonical metadata-free image staging and approval binding. |
+| `src/evidence_handoff/redaction/quarantine.py` | Safe quarantine placement and hash-only dump records. |
+| `src/evidence_handoff/redaction/manifest.py` | Content-free manifest assembly and pre-promotion scan. |
 | `tests/unit/evidence/test_import_boundaries.py` | AST enforcement for portable-package imports plus an isolated import smoke with both deployable roots blocked. |
 | `tests/unit/acp/test_evidence_redaction_adapter.py` | Host-to-portable mapping, inventory completeness, and proof that no Optimus object crosses the adapter boundary. |
 
@@ -493,7 +493,7 @@ feature-ID-bearing or number-bearing import path, command, setting, schema name,
 
 All packages currently ship together because `pyproject.toml` discovers packages under `src`.
 That packaging convenience does not relax the import boundary. A later standalone distribution may
-select `optimus_evidence` plus `optimus_security` without pulling in `optimus` or
+select `evidence_handoff` plus `optimus_security` without pulling in `optimus` or
 `optimus_gateway`.
 
 ## Verification design
@@ -529,7 +529,7 @@ select `optimus_evidence` plus `optimus_security` without pulling in `optimus` o
 - Manifest canaries prove the manifest contains no sensitive inventory material.
 - A static naming audit covers the new package, entry points, configuration names, schema names,
   and artifact names and rejects scheduling-number or feature-ID coupling.
-- A static AST import-boundary test scans every module under `src/optimus_evidence` and rejects
+- A static AST import-boundary test scans every module under `src/evidence_handoff` and rejects
   imports rooted at `optimus`, `optimus_gateway`, or `tools`; it permits `optimus_security` and
   reviewed portable dependencies.
 - The same boundary test keeps `optimus_security` standard-library-only: imports may resolve only
@@ -576,7 +576,7 @@ client required by the repository evidence-tier rules.
 ## Design completion criteria
 
 - `optimus_security.sanitization` remains the sole redaction-rule implementation.
-- `optimus_evidence` imports neither `optimus` nor `optimus_gateway`; all host state crosses a
+- `evidence_handoff` imports neither `optimus` nor `optimus_gateway`; all host state crosses a
   portable typed boundary through the named Optimus adapter.
 - The evidence gate always receives a populated exact-match inventory from canonical resolved
   runtime state and never rereads ambient sources.
@@ -588,7 +588,7 @@ client required by the repository evidence-tier rules.
 - Only sanitized, rescanned artifacts reach promotable destinations.
 - Package, module, configuration, CLI, schema, and artifact names remain descriptive and independent
   of feature identity or scheduling.
-- A standalone distribution can select `optimus_evidence` and `optimus_security` without shipping
+- A standalone distribution can select `evidence_handoff` and `optimus_security` without shipping
   either deployable package.
 - Implementation remains blocked until Claude verifies the extractability amendment and a
   separately reviewed implementation plan is assigned at pickup.
@@ -598,7 +598,7 @@ client required by the repository evidence-tier rules.
 ### 2026-07-30 — Structural extractability
 
 A post-approval dependency audit found that the original one-way
-`optimus_evidence -> optimus_security` rule did not prohibit `optimus_evidence` from importing
+`evidence_handoff -> optimus_security` rule did not prohibit `evidence_handoff` from importing
 Optimus ACP runtime objects. This operator-directed amendment:
 
 - makes standalone connector/plugin extraction an explicit goal;

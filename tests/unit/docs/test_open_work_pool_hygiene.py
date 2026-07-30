@@ -13,16 +13,16 @@ PRODUCT_POOL = REPO_ROOT / "docs/superpowers/plans/evidence-handoff-open-work-po
 
 PRODUCT_FEATURE_IDS = frozenset(
     {
-        "P11-FEAT-REDACTION-GATE",
-        "P11-FEAT-EVIDENCE-COLLECTOR",
-        "P11-FEAT-A2A-LEDGER",
-        "P11-FEAT-APPROVAL-RECORD",
+        "EVIDENCE-HANDOFF-FEAT-REDACTION-GATE",
+        "EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR",
+        "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER",
+        "EVIDENCE-HANDOFF-FEAT-APPROVAL-RECORD",
     }
 )
 PRODUCT_OWNED_DOCS = frozenset(
     {
-        "docs/superpowers/specs/2026-07-30-p11-feat-redaction-gate-design.md",
-        "docs/superpowers/plans/2026-07-30-p11-feat-redaction-gate-implementation.md",
+        "docs/superpowers/specs/evidence-handoff-redaction-gate-design.md",
+        "docs/superpowers/plans/evidence-handoff-redaction-gate-implementation.md",
     }
 )
 
@@ -86,7 +86,7 @@ def test_optimus_dependency_references_resolve_to_product_pool_without_status_cu
         assert re.search(r"\b(?:state|status|ratified|unscheduled|blocked|closed)\b", clause, re.IGNORECASE) is None
         dependency_ids.update(referenced_ids)
 
-    assert dependency_ids == {"P11-FEAT-REDACTION-GATE"}
+    assert dependency_ids == {"EVIDENCE-HANDOFF-FEAT-REDACTION-GATE"}
     assert dependency_ids <= product_rows.keys()
 
 
