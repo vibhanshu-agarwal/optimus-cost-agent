@@ -21,139 +21,53 @@ Feature ID, but must not duplicate a moved item's live state or status.
 
 ## Naming and extraction convention
 
-### Step 0 — Package-name and Feature-ID decision
+### Closed rename record
 
-**State:** Decided on 2026-07-31. The operator selected `evidence_handoff` as the canonical package
-stem and `EVIDENCE-HANDOFF-` as the Feature-ID prefix. Claude reviewed the pair against the frozen
-constraints and verified that all four resulting identities satisfy the existing
-`FEATURE_ID_BODY` grammar without a regex change. Step 0 has exited; the mechanical rename has not
-started.
+**State:** Complete on 2026-07-31. The operator selected `evidence_handoff` as the canonical Python
+package stem, normalized to the `evidence-handoff` distribution name, and selected
+`EVIDENCE-HANDOFF-` as the Feature-ID prefix. Claude reviewed the pair against the frozen
+constraints. The existing `FEATURE_ID_BODY` grammar accepted all four final identities unchanged.
 
-The decision covers exactly two tokens:
+The retired tokens below are preserved only as historical provenance. They are not live package
+names, live Feature IDs, or owned feature rows:
 
-1. The canonical distribution/package stem `evidence_handoff`, which replaces the provisional
-   `optimus_evidence`.
-   Python packaging mechanically renders an underscore import name as the corresponding normalized
-   hyphenated distribution name; those two spellings are one decision, not separate tokens.
-2. The Feature-ID prefix `EVIDENCE-HANDOFF-`, which replaces the provisional `P11-`.
+- Package stem: `optimus_evidence` → `evidence_handoff`.
+- Feature-ID prefix: `P11-` → `EVIDENCE-HANDOFF-`.
+- `P11-FEAT-REDACTION-GATE` → `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE`.
+- `P11-FEAT-EVIDENCE-COLLECTOR` → `EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR`.
+- `P11-FEAT-A2A-LEDGER` → `EVIDENCE-HANDOFF-FEAT-A2A-LEDGER`.
+- `P11-FEAT-APPROVAL-RECORD` → `EVIDENCE-HANDOFF-FEAT-APPROVAL-RECORD`.
 
-Every candidate must be descriptive of evidence, redaction, or handoff behavior, brand-free, and
-free of feature identities and scheduling numbers. The package is intended for extraction into a
-standalone product: it must not import `optimus`, `optimus_gateway`, their subpackages, Optimus
-launch types, or Gateway service types. Optimus-specific adaptation remains in the host package.
-The package may consume `optimus_security`, but it must not fork the shared security primitives or
-create another redaction-rule engine.
+The package choice keeps the package and permanent `evidence-handoff-*` document namespace
+coherent; path- or artifact-aware greps distinguish them when needed. Case-sensitive searches keep
+the `EVIDENCE-HANDOFF-` identities distinct. PyPI's official JSON endpoint returned HTTP 404 for
+`evidence-handoff` on 2026-07-31; that point-in-time result is not a reservation and must be
+rechecked before publication.
 
-Package-stem candidates:
+The extraction constraints remain binding:
 
-| Candidate | Normalized distribution name | Rationale and trade-off |
-|---|---|---|
-| `evidence_handoff` | `evidence-handoff` | Matches the established product-document namespace and directly describes the broader evidence-transfer boundary. It keeps redaction as an explicit subsystem rather than implying that handoff alone makes content safe. The shared `evidence-handoff` stem also means broad greps match both package and document names, so searches must distinguish paths or artifact kinds. This is Codex's recommendation for operator consideration. |
-| `evidence_custody` | `evidence-custody` | Emphasizes private capture, hashing, quarantine, approval, and controlled promotion. It describes the safety lifecycle well, but makes the inter-agent handoff purpose less obvious. |
-| `evidence_exchange` | `evidence-exchange` | Emphasizes portable evidence transfer across hosts and agents. It makes handoff intent clear, but says less about the fail-closed redaction and custody boundary. |
+- Package, module, configuration, schema, artifact, and CLI names are descriptive, brand-free, and
+  scheduling-number-free.
+- `evidence_handoff` must not import `optimus`, `optimus_gateway`, their subpackages, Optimus launch
+  types, Gateway service types, or `tools`; Optimus-specific adaptation remains in the host
+  package.
+- `evidence_handoff` may consume `optimus_security`, but must not fork its shared security
+  primitives or create another redaction-rule engine.
+- Product-owned document basenames use `evidence-handoff-*.md`; the two former legacy exceptions
+  were renamed together by the mechanical rename.
 
-The namespace trade-off is symmetric: `evidence_handoff` keeps the package and the permanently
-established `evidence-handoff-*` document namespace coherent but requires path- or artifact-aware
-greps. Either alternative makes unfiltered package-name greps more selective but permanently gives
-the package and its product-owned documents different names.
+Execution evidence:
 
-PyPI's official JSON endpoints returned HTTP 404 for all three normalized distribution names on
-2026-07-31, so none was registered at the time of this check. This point-in-time result is not a
-name reservation and must be rechecked before publication.
-
-Feature-ID-prefix candidates:
-
-| Candidate | Example resulting identity | Rationale and trade-off |
-|---|---|---|
-| `EVIDENCE-HANDOFF-` | `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` | Fully descriptive, brand-free, and unambiguous in cross-product references. It is longer than the alternatives, but Feature IDs are planning and custody tokens rather than runtime names. This is Codex's recommendation for operator consideration. |
-| `EVIDENCE-` | `EVIDENCE-FEAT-REDACTION-GATE` | Shorter while remaining self-descriptive and brand-free. It does not distinguish this product's handoff scope from other evidence features. |
-| `EH-` | `EH-FEAT-REDACTION-GATE` | Compact and aligned with “evidence and handoff” once defined. The acronym is less self-explanatory and more collision-prone outside this pool. |
-
-Commit 1 applies the recorded decision to live repository usages. Old tokens retained in this
-naming section remain provenance and operative instructions until Commit 2 rewrites the section as
-a closed historical record. No naming question remains open.
-
-### Step 1 — Mechanical rename
-
-**State:** In progress; the commit containing the live-renamed artifacts is Commit 1, and the
-frozen-baseline refresh remains pending. Execution began from the clean committed branch tip that
-contains this protocol and descends from the approved decision commit
-`2043359bc79db044e36775efe6571f963d229f58`. That decision commit is an ancestry floor, not a
-checkout or reset target. Deliver the reviewed mechanical change in exactly two commits before
-`P11-FEAT-REDACTION-GATE` Task 2. Keep both commits in the same branch and pull request, and do not
-begin the Evidence Collector design between them. The change must include all of the following;
-none is an optional cleanup.
-
-The mechanical replacements apply only to live identifier, package, document-path, and dependency
-usages. Do not token-swap the Step 0 decision record or these Step 1 instructions in place. When
-Step 1 completes in the second commit, rewrite this naming section as a closed historical record:
-preserve the explicit old-to-new token decision, remove transitional pre-execution statements,
-mark Step 1 complete, and cite the first commit plus the re-frozen design digest. Retained old
-tokens in that closed record are historical provenance, not live references.
-
-Mandatory commit sequence:
-
-1. **Rename commit.** Starting from that clean committed branch tip, perform every live token
-   replacement, both document renames, the stale-pointer correction, the Optimus-owned
-   dependency-pointer update, and the required test updates below, except for the implementation
-   plan's frozen-baseline commit, path, and digest pins and its executable baseline checks. Those
-   values are intentionally reserved for the second commit because the rename commit does not
-   exist yet. Run the applicable rename, hygiene, Ruff, and diff gates and create no red
-   intermediate commit. This commit establishes the authoritative renamed design blob. Record its
-   commit SHA as `<rename-commit>`; do not guess it in advance and do not claim that the
-   implementation plan's frozen-baseline block is current yet.
-2. **Frozen-baseline refresh commit.** Compute the renamed design digest from:
-
-   ```bash
-   git show <rename-commit>:docs/superpowers/specs/evidence-handoff-redaction-gate-design.md | sha256sum
-   ```
-
-   In the renamed implementation plan, update the frozen-baseline commit pin to
-   `<rename-commit>`, update its design path and SHA-256, and update the executable `git show`
-   command to use that exact commit and path. Replace the obsolete ancestry check with
-   `git merge-base --is-ancestor <rename-commit> HEAD`. Rewrite this naming section as the closed
-   historical record described above, rerun the gates, and commit the refresh. The implementation
-   plan's own digest is pinned nowhere in the repository, so this second commit terminates the
-   sequence; do not create a third metadata-only commit.
-
-- Rename all four product-owned Feature IDs and their live references atomically:
-  `P11-FEAT-REDACTION-GATE`, `P11-FEAT-EVIDENCE-COLLECTOR`, `P11-FEAT-A2A-LEDGER`, and
-  `P11-FEAT-APPROVAL-RECORD`. Update both hardcoded sites in
-  `tests/unit/docs/test_open_work_pool_hygiene.py`: the `PRODUCT_FEATURE_IDS` set and the separate
-  exact `dependency_ids` assertion for `P11-FEAT-REDACTION-GATE`. The existing `FEATURE_ID_BODY`
-  grammar already accepts the selected prefix and must not change as part of this rename.
-- Update the single product Feature-ID dependency reference in the Optimus-owned
-  `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md`. Preserve it as a
-  pointer to this product pool and do not add live state or status language; the hygiene test
-  enforces both constraints.
-- Rename the live provisional `optimus_evidence` package usages to the chosen package token without
-  changing the frozen extraction boundary or dependency direction. The token currently appears
-  outside this naming section in both frozen redaction documents.
-- Rename the two digest-bound document paths atomically to
-  `docs/superpowers/specs/evidence-handoff-redaction-gate-design.md` and
-  `docs/superpowers/plans/evidence-handoff-redaction-gate-implementation.md`. Update every link,
-  command, and path allowlist entry, including `PRODUCT_OWNED_DOCS` in the hygiene test, in the
-  same change.
-- Re-freeze both digest-bound documents from committed Git blobs, never from the working tree;
-  CRLF/LF conversion makes working-tree hashes untrustworthy. The second commit pins the design's
-  first-commit SHA and digest in the implementation plan. After the second commit, compute the
-  final implementation-plan digest with:
-
-  ```bash
-  git show HEAD:docs/superpowers/plans/evidence-handoff-redaction-gate-implementation.md | sha256sum
-  ```
-
-  Report that digest as verification evidence; it has no in-repository pin.
-- After renaming the design to
-  `docs/superpowers/specs/evidence-handoff-redaction-gate-design.md`, fix its stale live-state
-  pointer: it must point to `docs/superpowers/plans/evidence-handoff-open-work-pool.md`, not the
-  consolidated Optimus backlog. This is a pointer correction only; custody is already clean.
-
-New product-owned document basenames start with `evidence-handoff-` and use a descriptive,
-brand-free, scheduling-number-free remainder: `evidence-handoff-*.md`. This keeps eventual
-extraction glob-based. The two digest-bound documents listed below are temporary legacy-name
-exceptions until Step 1 completes: no separate change may rename either one. Step 1 removes the
-exception by renaming both documents together to the explicit target paths above.
+- Naming decision commit: `2043359bc79db044e36775efe6571f963d229f58`.
+- Two-commit protocol commit: `8092f1decc1bb7c3df216cbc10fc6c4ef26ce481`.
+- Rename commit: `4f7cfeb8d8c4210b31f031385917588ed0687ccf`.
+- Renamed design:
+  `docs/superpowers/specs/evidence-handoff-redaction-gate-design.md`, committed-blob SHA-256
+  `ee07b88186db65d6f0c109d2341147c066df8846fb4de7f80a86bb7b9f296ddb`.
+- The commit containing this closed record is the frozen-baseline refresh commit. The renamed
+  implementation plan pins the rename commit, design path, and design digest above. Its own final
+  digest is verification evidence rather than an in-repository pin, so the sequence terminates
+  here without a third metadata-only commit.
 
 ## Product-owned documents temporarily hosted in Optimus
 

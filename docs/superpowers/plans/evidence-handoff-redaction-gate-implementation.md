@@ -26,9 +26,9 @@ implementation, dependency mutation, commit, push, PR, or merge. Numbering is
 assigned at pickup.
 
 **Frozen design baseline:** Commit
-`a1f51e2cc9ddc0e64c137bea2a6fbf2639f36c81`, file
-`docs/superpowers/specs/2026-07-30-p11-feat-redaction-gate-design.md`, SHA-256
-`86d8dd9e54c4767ff519b79a28fce2143491fb732e4317f02b33de0d2f06e459`.
+`4f7cfeb8d8c4210b31f031385917588ed0687ccf`, file
+`docs/superpowers/specs/evidence-handoff-redaction-gate-design.md`, SHA-256
+`ee07b88186db65d6f0c109d2341147c066df8846fb4de7f80a86bb7b9f296ddb`.
 The implementation worker must hash the committed blob, not the working-tree file.
 Any mismatch blocks pickup.
 
@@ -314,8 +314,8 @@ Run:
 
 ```bash
 git status --short --branch
-git merge-base --is-ancestor 79cd37cf37b2740f7580b2ed3859c0401a47f6a4 HEAD
-git show a1f51e2:docs/superpowers/specs/2026-07-30-p11-feat-redaction-gate-design.md | sha256sum
+git merge-base --is-ancestor 4f7cfeb8d8c4210b31f031385917588ed0687ccf HEAD
+git show 4f7cfeb8d8c4210b31f031385917588ed0687ccf:docs/superpowers/specs/evidence-handoff-redaction-gate-design.md | sha256sum
 ```
 
 Expected: the worktree has no unexplained changes, the ancestry command succeeds, and
