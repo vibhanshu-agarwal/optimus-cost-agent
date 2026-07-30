@@ -74,16 +74,45 @@ remain the current provisional repository tokens. No naming question remains ope
 
 ### Step 1 — Mechanical rename
 
-**State:** Unblocked; not started. Apply the package rename and Feature-ID prefix rename as one
-reviewed mechanical change before `P11-FEAT-REDACTION-GATE` Task 2. The change must include all of
-the following; none is an optional cleanup:
+**State:** Unblocked; not started. Execute from the clean committed branch tip that contains this
+protocol and descends from the approved decision commit
+`2043359bc79db044e36775efe6571f963d229f58`. That decision commit is an ancestry floor, not a
+checkout or reset target. Deliver the reviewed mechanical change in exactly two commits before
+`P11-FEAT-REDACTION-GATE` Task 2. Keep both commits in the same branch and pull request, and do not
+begin the Evidence Collector design between them. The change must include all of the following;
+none is an optional cleanup.
 
 The mechanical replacements apply only to live identifier, package, document-path, and dependency
 usages. Do not token-swap the Step 0 decision record or these Step 1 instructions in place. When
-Step 1 completes, rewrite this naming section as a closed historical record: preserve the explicit
-old-to-new token decision, remove transitional pre-execution statements, mark Step 1 complete, and
-cite the rename and digest evidence. Retained old tokens in that closed record are historical
-provenance, not live references.
+Step 1 completes in the second commit, rewrite this naming section as a closed historical record:
+preserve the explicit old-to-new token decision, remove transitional pre-execution statements,
+mark Step 1 complete, and cite the first commit plus the re-frozen design digest. Retained old
+tokens in that closed record are historical provenance, not live references.
+
+Mandatory commit sequence:
+
+1. **Rename commit.** Starting from that clean committed branch tip, perform every live token
+   replacement, both document renames, the stale-pointer correction, the Optimus-owned
+   dependency-pointer update, and the required test updates below, except for the implementation
+   plan's frozen-baseline commit, path, and digest pins and its executable baseline checks. Those
+   values are intentionally reserved for the second commit because the rename commit does not
+   exist yet. Run the applicable rename, hygiene, Ruff, and diff gates and create no red
+   intermediate commit. This commit establishes the authoritative renamed design blob. Record its
+   commit SHA as `<rename-commit>`; do not guess it in advance and do not claim that the
+   implementation plan's frozen-baseline block is current yet.
+2. **Frozen-baseline refresh commit.** Compute the renamed design digest from:
+
+   ```bash
+   git show <rename-commit>:docs/superpowers/specs/evidence-handoff-redaction-gate-design.md | sha256sum
+   ```
+
+   In the renamed implementation plan, update the frozen-baseline commit pin to
+   `<rename-commit>`, update its design path and SHA-256, and update the executable `git show`
+   command to use that exact commit and path. Replace the obsolete ancestry check with
+   `git merge-base --is-ancestor <rename-commit> HEAD`. Rewrite this naming section as the closed
+   historical record described above, rerun the gates, and commit the refresh. The implementation
+   plan's own digest is pinned nowhere in the repository, so this second commit terminates the
+   sequence; do not create a third metadata-only commit.
 
 - Rename all four product-owned Feature IDs and their live references atomically:
   `P11-FEAT-REDACTION-GATE`, `P11-FEAT-EVIDENCE-COLLECTOR`, `P11-FEAT-A2A-LEDGER`, and
@@ -103,9 +132,16 @@ provenance, not live references.
   `docs/superpowers/plans/evidence-handoff-redaction-gate-implementation.md`. Update every link,
   command, and path allowlist entry, including `PRODUCT_OWNED_DOCS` in the hygiene test, in the
   same change.
-- Re-freeze both digest-bound documents because their contents change. Compute each digest from the
-  committed Git blob at its renamed path with `git show HEAD:<path> | sha256sum`, never from the
-  working tree; CRLF/LF conversion makes working-tree hashes untrustworthy.
+- Re-freeze both digest-bound documents from committed Git blobs, never from the working tree;
+  CRLF/LF conversion makes working-tree hashes untrustworthy. The second commit pins the design's
+  first-commit SHA and digest in the implementation plan. After the second commit, compute the
+  final implementation-plan digest with:
+
+  ```bash
+  git show HEAD:docs/superpowers/plans/evidence-handoff-redaction-gate-implementation.md | sha256sum
+  ```
+
+  Report that digest as verification evidence; it has no in-repository pin.
 - After renaming the design to
   `docs/superpowers/specs/evidence-handoff-redaction-gate-design.md`, fix its stale live-state
   pointer: it must point to `docs/superpowers/plans/evidence-handoff-open-work-pool.md`, not the
