@@ -23,6 +23,7 @@ PRODUCT_OWNED_DOCS = frozenset(
     {
         "docs/superpowers/specs/evidence-handoff-evidence-collector-design.md",
         "docs/superpowers/specs/evidence-handoff-redaction-gate-design.md",
+        "docs/superpowers/plans/evidence-handoff-evidence-collector-implementation.md",
         "docs/superpowers/plans/evidence-handoff-redaction-gate-implementation.md",
     }
 )
