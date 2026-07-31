@@ -1,0 +1,8 @@
+{
+  "unlabeled_api_key": "Q7mV2xN9pR4tY8kL3cD6wF1hJ5sB0zUa",
+  "session_id": "session-zed-canary-0123456789abcdef",
+  "run_id": "run-canary-0123456789abcdef",
+  "gateway_request_id": "gw-canary-0123456789abcdef",
+  "git_sha": "0123456789abcdef0123456789abcdef01234567",
+  "artifact_sha256": "fe7dc4ae7c8730844b5104762dcf9fa5eec8ad8670c53480f0ece4e6da481569"
+}

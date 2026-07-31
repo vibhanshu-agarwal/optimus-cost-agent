@@ -1,38 +1,99 @@
 """Shared structured/free-text sanitizer for diagnostic persistence.
 
-Plan 9.96, Task 4: Implements structured/free-text redaction, exact
-current-secret replacement, URI-userinfo masking, rule counts, and safe
-unsupported-object type metadata. Never reads ambient environment.
+Implements structured/free-text redaction, exact current-secret replacement,
+URI-userinfo masking, rule counts, and safe unsupported-object type metadata.
+Never reads ambient environment.
 
 The sanitizer accepts known secrets explicitly. All agent, Gateway, telemetry,
-stderr, state, and transcript boundaries use this single implementation
-(Global Constraint 17).
+stderr, state, and transcript boundaries use this single implementation.
+Evidence callers opt into EVIDENCE_REDACTION_POLICY explicitly; the default
+COMPATIBILITY_SANITIZATION_POLICY preserves pre-existing caller behavior.
 """
 
 from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import re
+from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 # Maximum length of a secret that the sanitizer guarantees to catch in streaming
-# mode. Secrets longer than this are rejected at launch time (Task 6).
+# mode. Secrets longer than this are rejected at launch time.
 MAX_SECRET_TEXT_CHARS = 65_536
 
 _REDACTED = "**********"
 _CORRELATION_TAG_DOMAIN = b"p996-correlation-tag-v1"
 
+# Entropy / prefix candidates (evidence-redaction-v1 provisional until Task 1 freeze).
+_ENTROPY_MIN_LEN = 24
+_ENTROPY_MAX_LEN = 256
+_ENTROPY_MIN_CLASSES = 2
+_ENTROPY_MIN_BITS = 4.0
+_PREFIX_SUFFIX_MIN = 16
+_PREFIX_SUFFIX_MAX = 240
+
+# Longest-first recognized prefixes.
+_RECOGNIZED_PREFIXES: tuple[str, ...] = (
+    "sk-or-v1-",
+    "sk-ant-",
+    "sk-proj-",
+    "github_pat_",
+    "sk-",
+    "tvly-",
+    "AIza",
+    "ghp_",
+)
+
 # Patterns for free-text redaction (independent of known secrets).
 _BEARER_TOKEN_RE = re.compile(r"(?i)(authorization:\s*bearer\s+|bearer\s+)\S+")
 _ENV_ASSIGNMENT_RE = re.compile(r"(?i)\b([A-Z_][A-Z0-9_]*(?:_KEY|_SECRET|_TOKEN|_PASSWORD))\s*=\s*\S+")
 _GENERIC_SECRET_ASSIGNMENT_RE = re.compile(r"(?i)\b(token|password|secret|credential|api[_-]?key)((?:=|:)\s*)\S+")
+_WHITESPACE_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(token|password|secret|credential|api[_-]?key)(\s+)\S+"
+)
 _API_KEY_HEADER_RE = re.compile(r"(?i)(api[_-]?key)\s*:\s*\S+")
 _X_API_KEY_HEADER_RE = re.compile(r"(?i)x-api-key:\s*\S+")
 _URL_USERINFO_RE = re.compile(r"(?i)(\w+://)[^/\s:@]*:[^@\s/]+@")
+_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+_TOKEN_CANDIDATE_RE = re.compile(r"[A-Za-z0-9._+:/-]{24,256}")
+
+_ID_VALUE = r"[A-Za-z0-9._:-]{1,128}"
+_MODEL_VALUE = r"[A-Za-z0-9._:+/-]{1,128}"
+_GIT_SHA_VALUE = r"[0-9a-fA-F]{7,64}"
+_ARTIFACT_SHA_VALUE = r"[0-9a-fA-F]{64}"
+
+_PRESERVE_LABELS: tuple[tuple[str, str], ...] = (
+    ("session_id|sessionId", _ID_VALUE),
+    ("run_id|runId", _ID_VALUE),
+    ("gateway_request_id|gatewayRequestId", _ID_VALUE),
+    ("model", _MODEL_VALUE),
+    ("provider", _MODEL_VALUE),
+    ("git_sha|gitSha", _GIT_SHA_VALUE),
+    ("artifact_sha256|sha256", _ARTIFACT_SHA_VALUE),
+)
+
+_STRUCTURED_PRESERVE_KEYS = frozenset(
+    {
+        "session_id",
+        "sessionid",
+        "run_id",
+        "runid",
+        "gateway_request_id",
+        "gatewayrequestid",
+        "model",
+        "provider",
+        "git_sha",
+        "gitsha",
+        "artifact_sha256",
+        "sha256",
+    }
+)
 
 # Dictionary keys that are always considered secret.
 _EXACT_SECRET_KEYS = frozenset({
@@ -52,6 +113,53 @@ _SECRET_KEY_PARTS = frozenset({
 
 
 @dataclass(frozen=True)
+class PathAliasRule:
+    """Trusted resolved root mapped to a content-free persisted alias."""
+
+    source_root: str
+    alias: str
+
+
+@dataclass(frozen=True)
+class SanitizationPolicy:
+    """Immutable per-call sanitization rule activation contract."""
+
+    version: str
+    enable_exact_secrets: bool = True
+    enable_uri_userinfo: bool = True
+    enable_bearer_header_assignment: bool = True
+    enable_secret_dict_keys: bool = True
+    enable_whitespace_secret_assignment: bool = False
+    enable_prefix_detection: bool = False
+    enable_entropy_detection: bool = False
+    enable_email_masking: bool = False
+    enable_known_pii: bool = False
+    enable_path_aliases: bool = False
+    enable_contextual_preservation: bool = False
+
+
+COMPATIBILITY_SANITIZATION_POLICY = SanitizationPolicy(version="compatibility-v1")
+
+EVIDENCE_REDACTION_POLICY = SanitizationPolicy(
+    version="evidence-redaction-v1",
+    enable_whitespace_secret_assignment=True,
+    enable_prefix_detection=True,
+    enable_entropy_detection=True,
+    enable_email_masking=True,
+    enable_known_pii=True,
+    enable_path_aliases=True,
+    enable_contextual_preservation=True,
+)
+
+# Workspace subjects enable the shared whitespace assignment rule without
+# changing the default compatibility contract used by redact_for_telemetry.
+WORKSPACE_SUBJECT_SANITIZATION_POLICY = replace(
+    COMPATIBILITY_SANITIZATION_POLICY,
+    enable_whitespace_secret_assignment=True,
+)
+
+
+@dataclass(frozen=True)
 class SanitizationResult:
     """Result of sanitizing a value for persistence.
 
@@ -63,38 +171,69 @@ class SanitizationResult:
     rule_counts: Mapping[str, int]
 
 
+def shannon_entropy(token: str) -> float:
+    """Shannon entropy in bits per character over the token's observed alphabet."""
+    if not token:
+        return 0.0
+    length = len(token)
+    counts = Counter(token)
+    return -sum((count / length) * math.log2(count / length) for count in counts.values())
+
+
+def character_class_count(token: str) -> int:
+    """Count how many of lowercase/uppercase/digit/symbol classes appear."""
+    return sum(
+        [
+            any(ch.islower() for ch in token),
+            any(ch.isupper() for ch in token),
+            any(ch.isdigit() for ch in token),
+            any(not ch.isalnum() for ch in token),
+        ]
+    )
+
+
+def is_git_sha_shape(value: str) -> bool:
+    return bool(re.fullmatch(_GIT_SHA_VALUE, value))
+
+
+def is_artifact_sha256_shape(value: str) -> bool:
+    return bool(re.fullmatch(_ARTIFACT_SHA_VALUE, value))
+
+
+def is_correlation_id_shape(value: str) -> bool:
+    return bool(re.fullmatch(_ID_VALUE, value))
+
+
+def is_model_or_provider_shape(value: str) -> bool:
+    return bool(re.fullmatch(_MODEL_VALUE, value))
+
+
 def sanitize_for_persistence(
     value: object,
     *,
     known_secrets: Sequence[str] = (),
+    known_pii: Sequence[str] = (),
+    path_aliases: Sequence[PathAliasRule] = (),
+    policy: SanitizationPolicy = COMPATIBILITY_SANITIZATION_POLICY,
 ) -> SanitizationResult:
     """Sanitize a value for safe persistence/export.
 
-    Applies:
-    1. Exact known-secret replacement (longest-first match).
-    2. URI-userinfo masking.
-    3. Bearer/header/assignment pattern redaction.
-    4. Dictionary key-based redaction for secret-named fields.
-    5. Safe type metadata for unsupported objects (no repr/str/user code).
+    Applies the active policy's rule set. Default policy is compatibility-only.
 
-    Never reads ambient environment. Known secrets are passed explicitly.
-
-    Args:
-        value: The value to sanitize. May be str, dict, list, tuple, or any object.
-        known_secrets: Exact secret values to redact. Order doesn't matter;
-            replacement uses longest-first matching internally.
-
-    Returns:
-        SanitizationResult with the sanitized value and rule counts.
+    Never reads ambient environment. Known secrets/PII are passed explicitly.
     """
     counter = _RuleCounter()
-    # Sort secrets longest-first for greedy replacement.
-    sorted_secrets = sorted(
-        (s for s in known_secrets if s),
-        key=len,
-        reverse=True,
+    sorted_secrets = sorted((s for s in known_secrets if s), key=len, reverse=True)
+    sorted_pii = sorted((s for s in known_pii if s), key=len, reverse=True)
+    normalized_aliases = _normalize_path_aliases(path_aliases)
+    sanitized = _sanitize_recursive(
+        value,
+        sorted_secrets=sorted_secrets,
+        sorted_pii=sorted_pii,
+        path_aliases=normalized_aliases,
+        policy=policy,
+        counter=counter,
     )
-    sanitized = _sanitize_recursive(value, sorted_secrets=sorted_secrets, counter=counter)
     return SanitizationResult(value=sanitized, rule_counts=dict(counter.counts))
 
 
@@ -111,90 +250,285 @@ class _RuleCounter:
         self.counts[rule] = self.counts.get(rule, 0) + 1
 
 
+def _normalize_path_aliases(path_aliases: Sequence[PathAliasRule]) -> list[PathAliasRule]:
+    normalized: list[PathAliasRule] = []
+    for rule in path_aliases:
+        root = Path(rule.source_root).expanduser().resolve().as_posix().rstrip("/")
+        if not root:
+            continue
+        normalized.append(PathAliasRule(source_root=root, alias=rule.alias))
+    normalized.sort(key=lambda item: len(item.source_root), reverse=True)
+    return normalized
+
+
 def _sanitize_recursive(
     value: object,
     *,
     sorted_secrets: list[str],
+    sorted_pii: list[str],
+    path_aliases: list[PathAliasRule],
+    policy: SanitizationPolicy,
     counter: _RuleCounter,
 ) -> object:
     """Recursively sanitize a value."""
     if isinstance(value, str):
-        return _sanitize_text(value, sorted_secrets=sorted_secrets, counter=counter)
+        return _sanitize_text(
+            value,
+            sorted_secrets=sorted_secrets,
+            sorted_pii=sorted_pii,
+            path_aliases=path_aliases,
+            policy=policy,
+            counter=counter,
+        )
 
     if isinstance(value, dict):
         result: dict[str, Any] = {}
         for key, child in value.items():
             key_str = str(key)
-            if _is_secret_dict_key(key_str):
+            if (
+                policy.enable_secret_dict_keys
+                and _is_secret_dict_key(key_str)
+                and not _is_structured_preserve_key(key_str, child, policy)
+            ):
                 result[key_str] = _REDACTED
                 counter.inc("dict_key_redaction")
+            elif _is_structured_preserve_key(key_str, child, policy):
+                result[key_str] = child
             else:
-                result[key_str] = _sanitize_recursive(child, sorted_secrets=sorted_secrets, counter=counter)
+                result[key_str] = _sanitize_recursive(
+                    child,
+                    sorted_secrets=sorted_secrets,
+                    sorted_pii=sorted_pii,
+                    path_aliases=path_aliases,
+                    policy=policy,
+                    counter=counter,
+                )
         return result
 
     if isinstance(value, (list, tuple)):
-        return [_sanitize_recursive(item, sorted_secrets=sorted_secrets, counter=counter) for item in value]
+        return [
+            _sanitize_recursive(
+                item,
+                sorted_secrets=sorted_secrets,
+                sorted_pii=sorted_pii,
+                path_aliases=path_aliases,
+                policy=policy,
+                counter=counter,
+            )
+            for item in value
+        ]
 
     if isinstance(value, (int, float, bool, type(None))):
         return value
 
-    # Decimal is a safe numeric type used for cost/budget values.
     import decimal
 
     if isinstance(value, decimal.Decimal):
         return value
 
-    # Unsupported object: return safe type metadata without calling repr/str/
-    # arbitrary serializers or user code (Global Constraint 18).
     counter.inc("unsupported_object_type_metadata")
     return f"<{type(value).__module__}.{type(value).__qualname__}>"
+
+
+def _is_structured_preserve_key(key: str, value: object, policy: SanitizationPolicy) -> bool:
+    if not policy.enable_contextual_preservation:
+        return False
+    if not isinstance(value, str):
+        return False
+    normalized = key.lower().replace("-", "")
+    if normalized not in _STRUCTURED_PRESERVE_KEYS:
+        return False
+    if normalized in {"git_sha", "gitsha"}:
+        return is_git_sha_shape(value)
+    if normalized in {"artifact_sha256", "sha256"}:
+        return is_artifact_sha256_shape(value)
+    if normalized in {"model", "provider"}:
+        return is_model_or_provider_shape(value)
+    return is_correlation_id_shape(value)
 
 
 def _sanitize_text(
     text: str,
     *,
     sorted_secrets: list[str],
+    sorted_pii: list[str],
+    path_aliases: list[PathAliasRule],
+    policy: SanitizationPolicy,
     counter: _RuleCounter,
 ) -> str:
-    """Sanitize a free-text string."""
+    """Sanitize a free-text string under the active policy."""
     result = text
 
-    # 1. Exact known-secret replacement (longest-first).
-    for secret in sorted_secrets:
-        if secret in result:
-            result = result.replace(secret, _REDACTED)
-            counter.inc("exact_secret_replacement")
+    if policy.enable_exact_secrets:
+        for secret in sorted_secrets:
+            if secret in result:
+                result = result.replace(secret, _REDACTED)
+                counter.inc("exact_secret_replacement")
 
-    # 2. URI-userinfo masking.
-    if _URL_USERINFO_RE.search(result):
+    if policy.enable_known_pii:
+        for pii in sorted_pii:
+            if pii in result:
+                result = result.replace(pii, _REDACTED)
+                counter.inc("known_pii_replacement")
+
+    if policy.enable_path_aliases:
+        result = _apply_path_aliases(result, path_aliases, counter)
+
+    if policy.enable_uri_userinfo and _URL_USERINFO_RE.search(result):
         result = _URL_USERINFO_RE.sub(r"\1" + _REDACTED + "@", result)
         counter.inc("uri_userinfo_masking")
 
-    # 3. Bearer token.
-    if _BEARER_TOKEN_RE.search(result):
-        result = _BEARER_TOKEN_RE.sub(r"\1" + _REDACTED, result)
-        counter.inc("bearer_token_redaction")
+    if policy.enable_bearer_header_assignment:
+        if _BEARER_TOKEN_RE.search(result):
+            result = _BEARER_TOKEN_RE.sub(r"\1" + _REDACTED, result)
+            counter.inc("bearer_token_redaction")
 
-    # 4. Environment assignment patterns.
-    if _ENV_ASSIGNMENT_RE.search(result):
-        result = _ENV_ASSIGNMENT_RE.sub(r"\1=" + _REDACTED, result)
-        counter.inc("env_assignment_redaction")
+        if _ENV_ASSIGNMENT_RE.search(result):
+            result = _ENV_ASSIGNMENT_RE.sub(r"\1=" + _REDACTED, result)
+            counter.inc("env_assignment_redaction")
 
-    # 5. Generic secret assignment.
-    if _GENERIC_SECRET_ASSIGNMENT_RE.search(result):
-        result = _GENERIC_SECRET_ASSIGNMENT_RE.sub(r"\1\2" + _REDACTED, result)
-        counter.inc("generic_secret_redaction")
+        if _GENERIC_SECRET_ASSIGNMENT_RE.search(result):
+            result = _GENERIC_SECRET_ASSIGNMENT_RE.sub(r"\1\2" + _REDACTED, result)
+            counter.inc("generic_secret_redaction")
 
-    # 6. API key headers.
-    if _API_KEY_HEADER_RE.search(result):
-        result = _API_KEY_HEADER_RE.sub(r"\1: " + _REDACTED, result)
-        counter.inc("api_key_header_redaction")
+        if _API_KEY_HEADER_RE.search(result):
+            result = _API_KEY_HEADER_RE.sub(r"\1: " + _REDACTED, result)
+            counter.inc("api_key_header_redaction")
 
-    if _X_API_KEY_HEADER_RE.search(result):
-        result = _X_API_KEY_HEADER_RE.sub("x-api-key: " + _REDACTED, result)
-        counter.inc("x_api_key_header_redaction")
+        if _X_API_KEY_HEADER_RE.search(result):
+            result = _X_API_KEY_HEADER_RE.sub("x-api-key: " + _REDACTED, result)
+            counter.inc("x_api_key_header_redaction")
+
+    if policy.enable_whitespace_secret_assignment and _WHITESPACE_SECRET_ASSIGNMENT_RE.search(result):
+        result = _WHITESPACE_SECRET_ASSIGNMENT_RE.sub(r"\1\2" + _REDACTED, result)
+        counter.inc("whitespace_secret_assignment")
+
+    if policy.enable_email_masking and _EMAIL_RE.search(result):
+        result = _EMAIL_RE.sub(_REDACTED, result)
+        counter.inc("email_masking")
+
+    protected = _protected_spans(result) if policy.enable_contextual_preservation else ()
+
+    if policy.enable_prefix_detection:
+        result = _apply_prefix_redaction(result, protected=protected, counter=counter)
+
+    if policy.enable_entropy_detection:
+        # Recompute protected spans after prefix edits so indices stay aligned.
+        protected = _protected_spans(result) if policy.enable_contextual_preservation else ()
+        result = _apply_entropy_redaction(result, protected=protected, counter=counter)
 
     return result
+
+
+def _apply_path_aliases(text: str, path_aliases: list[PathAliasRule], counter: _RuleCounter) -> str:
+    if not path_aliases:
+        return text
+    # Work on a slash-normalized copy for matching, then rewrite matches.
+    normalized = text.replace("\\", "/")
+    result = normalized
+    for rule in path_aliases:
+        root = rule.source_root
+        # Match root at a path-segment boundary.
+        pattern = re.compile(
+            re.escape(root) + r'(?=/|$|\s|["\'])',
+            re.IGNORECASE,
+        )
+        if pattern.search(result):
+            result = pattern.sub(rule.alias, result)
+            counter.inc("path_alias_replacement")
+    return result
+
+
+def _protected_spans(text: str) -> tuple[tuple[int, int], ...]:
+    spans: list[tuple[int, int]] = []
+    for labels, value_pat in _PRESERVE_LABELS:
+        patterns = (
+            re.compile(rf'(?i)"(?:{labels})"\s*:\s*"({value_pat})"'),
+            re.compile(rf"(?i)\b(?:{labels})=({value_pat})\b"),
+            re.compile(rf"(?i)\b(?:{labels}):\s*({value_pat})\b"),
+            re.compile(rf'(?i)(?:{labels})":\s*String\("({value_pat})"\)'),
+        )
+        for pattern in patterns:
+            for match in pattern.finditer(text):
+                spans.append((match.start(1), match.end(1)))
+    spans.sort()
+    return tuple(spans)
+
+
+def _span_protected(start: int, end: int, protected: Sequence[tuple[int, int]]) -> bool:
+    return any(start >= p_start and end <= p_end for p_start, p_end in protected)
+
+
+def _apply_prefix_redaction(
+    text: str,
+    *,
+    protected: Sequence[tuple[int, int]],
+    counter: _RuleCounter,
+) -> str:
+    matches: list[tuple[int, int]] = []
+    for prefix in _RECOGNIZED_PREFIXES:
+        pattern = re.compile(
+            rf"(?<![A-Za-z0-9_-]){re.escape(prefix)}[A-Za-z0-9_-]{{{_PREFIX_SUFFIX_MIN},{_PREFIX_SUFFIX_MAX}}}(?![A-Za-z0-9_-])"
+        )
+        for match in pattern.finditer(text):
+            if _span_protected(match.start(), match.end(), protected):
+                continue
+            matches.append((match.start(), match.end()))
+    return _replace_spans(text, matches, counter, rule="prefix_redaction")
+
+
+def _is_entropy_candidate(token: str) -> bool:
+    if not (_ENTROPY_MIN_LEN <= len(token) <= _ENTROPY_MAX_LEN):
+        return False
+    if character_class_count(token) < _ENTROPY_MIN_CLASSES:
+        return False
+    return shannon_entropy(token) >= _ENTROPY_MIN_BITS
+
+
+def _apply_entropy_redaction(
+    text: str,
+    *,
+    protected: Sequence[tuple[int, int]],
+    counter: _RuleCounter,
+) -> str:
+    matches: list[tuple[int, int]] = []
+    for match in _TOKEN_CANDIDATE_RE.finditer(text):
+        token = match.group(0)
+        if not _is_entropy_candidate(token):
+            continue
+        if _span_protected(match.start(), match.end(), protected):
+            continue
+        matches.append((match.start(), match.end()))
+    return _replace_spans(text, matches, counter, rule="entropy_redaction")
+
+
+def _replace_spans(
+    text: str,
+    spans: Sequence[tuple[int, int]],
+    counter: _RuleCounter,
+    *,
+    rule: str,
+) -> str:
+    if not spans:
+        return text
+    # Drop overlaps, keep earliest longest-ish by sorting start then -length.
+    ordered = sorted(spans, key=lambda item: (item[0], -(item[1] - item[0])))
+    selected: list[tuple[int, int]] = []
+    last_end = -1
+    for start, end in ordered:
+        if start < last_end:
+            continue
+        selected.append((start, end))
+        last_end = end
+    parts: list[str] = []
+    cursor = 0
+    for start, end in selected:
+        parts.append(text[cursor:start])
+        parts.append(_REDACTED)
+        counter.inc(rule)
+        cursor = end
+    parts.append(text[cursor:])
+    return "".join(parts)
 
 
 def _is_secret_dict_key(key: str) -> bool:
@@ -205,12 +539,10 @@ def _is_secret_dict_key(key: str) -> bool:
     normalized = lower.replace("-", "_")
     if normalized in _SECRET_KEY_PARTS:
         return True
-    # Check if any segment or consecutive segment pair matches.
     segments = normalized.split("_")
     for segment in segments:
         if segment in _SECRET_KEY_PARTS:
             return True
-    # Check consecutive pairs (e.g., "api_key" in "optimus_api_key").
     for i in range(len(segments) - 1):
         pair = f"{segments[i]}_{segments[i + 1]}"
         if pair in _SECRET_KEY_PARTS:
@@ -219,55 +551,27 @@ def _is_secret_dict_key(key: str) -> bool:
 
 
 def validate_secret_length(secret: str, *, max_chars: int = MAX_SECRET_TEXT_CHARS) -> None:
-    """Reject a secret longer than the streaming overlap guarantee supports.
-
-    Plan 9.96, Task 6: MAX_SECRET_TEXT_CHARS is the correctness bound
-    StreamingTextSanitizer's cross-chunk overlap buffer is sized against
-    (Global Constraint 19: "overlap equal to the supported maximum secret
-    length"). An uncapped secret would need an unbounded overlap buffer, so
-    every secret that will ever be passed to the streaming sanitizer must be
-    validated against this same cap before use. This function only checks
-    the length; the launch-time site that calls it (rejecting an
-    over-length configured secret before authorization) is a separate,
-    later change.
-    """
+    """Reject a secret longer than the streaming overlap guarantee supports."""
     if len(secret) > max_chars:
         raise ValueError(f"secret length {len(secret)} exceeds the maximum of {max_chars} characters")
 
 
 class StreamingTextSanitizer:
-    """Bounded-overlap streaming sanitizer for incrementally-arriving text.
-
-    Plan 9.96, Task 6, Global Constraint 19: sanitizes text arriving in
-    chunks (e.g. subprocess stdout/stderr) while guaranteeing that a known
-    secret split across ANY chunk boundary -- including the worst case of a
-    single character in one chunk and the remainder in the next -- is still
-    caught before the sanitized text is released to the caller.
-
-    Design: every incoming chunk is appended to an internal pending buffer,
-    and only the portion of that buffer that is more than `overlap_chars`
-    characters from the end is sanitized and released on each feed() call.
-    The trailing `overlap_chars` characters are always held back, because a
-    secret could still be completed by text that has not arrived yet.
-    finalize() flushes the entire remaining buffer once no more input is
-    coming.
-
-    `overlap_chars` defaults to `MAX_SECRET_TEXT_CHARS - 1`: with one fewer
-    than the longest possible secret held back at all times, no secret of
-    length <= MAX_SECRET_TEXT_CHARS can ever be split such that ALL of it
-    has already been released before feed() had a chance to see it whole
-    (the earliest a full copy of a k-length secret can be forced past the
-    held-back window is exactly when the window is k-1 characters, one
-    short of the secret itself).
-    """
+    """Bounded-overlap streaming sanitizer for incrementally-arriving text."""
 
     def __init__(
         self,
         *,
         known_secrets: Sequence[str] = (),
+        known_pii: Sequence[str] = (),
+        path_aliases: Sequence[PathAliasRule] = (),
+        policy: SanitizationPolicy = COMPATIBILITY_SANITIZATION_POLICY,
         max_secret_chars: int = MAX_SECRET_TEXT_CHARS,
     ) -> None:
         self._sorted_secrets = sorted((s for s in known_secrets if s), key=len, reverse=True)
+        self._sorted_pii = sorted((s for s in known_pii if s), key=len, reverse=True)
+        self._path_aliases = _normalize_path_aliases(path_aliases)
+        self._policy = policy
         self.overlap_chars = max(0, max_secret_chars - 1)
         self._pending = ""
         self._counter = _RuleCounter()
@@ -277,9 +581,6 @@ class StreamingTextSanitizer:
         return dict(self._counter.counts)
 
     def feed(self, chunk: str) -> str:
-        """Feed the next chunk of arriving text. Returns the portion that is
-        now safe to release (sanitized), holding back the trailing overlap
-        window for the next feed() or finalize() call."""
         self._pending += chunk
         if len(self._pending) <= self.overlap_chars:
             return ""
@@ -288,20 +589,16 @@ class StreamingTextSanitizer:
         if boundary <= 0:
             return ""
         to_release, self._pending = self._pending[:boundary], self._pending[boundary:]
-        return _sanitize_text(to_release, sorted_secrets=self._sorted_secrets, counter=self._counter)
+        return _sanitize_text(
+            to_release,
+            sorted_secrets=self._sorted_secrets,
+            sorted_pii=self._sorted_pii,
+            path_aliases=self._path_aliases,
+            policy=self._policy,
+            counter=self._counter,
+        )
 
     def _safe_release_boundary(self, tentative_boundary: int) -> int:
-        """Never cut a release boundary through the middle of a known-secret
-        occurrence. A blind character-count boundary (the naive approach)
-        can release a secret's prefix in one feed() call and its suffix in
-        the next -- since each feed() call sanitizes only the text it
-        releases, a split secret would never be seen whole by any single
-        _sanitize_text call and would leak in plain text either side of the
-        cut. Pull the boundary back to the start of the EARLIEST occurrence
-        that straddles it, then repeat (an occurrence starting even earlier
-        could itself straddle the new, pulled-back boundary) until no
-        occurrence straddles the final boundary.
-        """
         boundary = tentative_boundary
         changed = True
         while changed:
@@ -320,34 +617,21 @@ class StreamingTextSanitizer:
         return boundary
 
     def finalize(self) -> str:
-        """Flush and sanitize the entire remaining buffer. Call once, after
-        the last feed() call, when no more input is coming."""
         remaining, self._pending = self._pending, ""
         if not remaining:
             return ""
-        return _sanitize_text(remaining, sorted_secrets=self._sorted_secrets, counter=self._counter)
+        return _sanitize_text(
+            remaining,
+            sorted_secrets=self._sorted_secrets,
+            sorted_pii=self._sorted_pii,
+            path_aliases=self._path_aliases,
+            policy=self._policy,
+            counter=self._counter,
+        )
 
 
 def session_correlation_tag(secret: str, *, field_name: str, session_key: bytes) -> str:
-    """Compute a non-derivable, session-scoped correlation tag for a secret.
-
-    Plan 9.96, Task 6: used at predeclared elevated-diagnostic comparison
-    points so an operator can confirm "this is the same configured value I
-    approved" without the secret itself ever being displayed or logged. The
-    contract accepts this as a bounded "one-bit match oracle" only because
-    it fires at REVIEWED comparison points, not on attacker-chosen input --
-    this function itself has no opinion on call sites; it is a pure
-    primitive.
-
-    HMAC-SHA256 keyed by the per-process session_key, domain-separated by
-    field_name so the same secret value used for two different settings
-    never produces a linkable tag, truncated to 128 bits (32 hex chars).
-    Without knowledge of session_key, two tags cannot be linked to the same
-    underlying secret across sessions -- session_key is generated fresh in
-    memory per launch (never persisted, never derived from the secret) so a
-    new session's tags are cryptographically unlinkable to a prior
-    session's tags for the same secret.
-    """
+    """Compute a non-derivable, session-scoped correlation tag for a secret."""
     secret_bytes = secret.encode("utf-8")
     message = (
         _CORRELATION_TAG_DOMAIN
@@ -399,9 +683,5 @@ def canonicalize_credential_uri(uri: str) -> CredentialUriCanonicalization:
 
 
 def mask_uri_userinfo(uri: str) -> str:
-    """Mask user information in a URI, preserving structure.
-
-    Returns the URI with username:password replaced by **********.
-    If no userinfo is present, returns the URI unchanged.
-    """
+    """Mask user information in a URI, preserving structure."""
     return canonicalize_credential_uri(uri).display_uri
