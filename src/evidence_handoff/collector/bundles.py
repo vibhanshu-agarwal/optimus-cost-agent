@@ -16,8 +16,12 @@ from typing import Any
 from .models import (
     AdapterParameter,
     CapturedArtifact,
+    ClaimKind,
+    ClassificationResult,
     CollectionBatch,
+    EvidenceClaim,
     Observation,
+    Outcome,
     RunContext,
     Scenario,
     _canonicalize,
@@ -28,9 +32,35 @@ from .scenarios import _is_portable_absolute_path, scenario_sha256
 
 RUN_SCHEMA = "evidence-run-v1"
 RAW_BUNDLE_SCHEMA = "evidence-raw-bundle-v1"
+RENDER_OBSERVATION_SCHEMA = "evidence-render-observation-v1"
+PROVISIONAL_RESULT_SCHEMA = "evidence-classification-v1"
 _RUN_MANIFEST_NAME = "run-manifest.json"
 _RAW_BUNDLE_NAME = "raw-bundle.json"
+_PROVISIONAL_NAME = "provisional-result.json"
 _RELATIVE_LOCATOR_RE = re.compile(r"^(?!/)(?!.*(?:^|/)\.\.(?:/|$))[A-Za-z0-9._/-]+$")
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_RENDER_KEYS = frozenset(
+    {
+        "schema",
+        "complete",
+        "scenario_id",
+        "run_id",
+        "detector_id",
+        "artifact_sha256",
+        "starts_at_ns",
+        "ends_at_ns",
+        "assertion_provenance",
+    }
+)
+_FORBIDDEN_RENDER_KEYS = frozenset(
+    {
+        "screenshot_approval",
+        "approval",
+        "authorization",
+        "gate_approval",
+        "authority",
+    }
+)
 
 
 def write_run_manifest(
@@ -160,6 +190,128 @@ def validate_custody_roots(
         for right in all_roots[index + 1 :]:
             if _is_under(left, right) or _is_under(right, left):
                 raise ValueError("path_overlap")
+
+
+def load_render_observation(
+    *,
+    context: RunContext,
+    path: Path,
+    allowed_detector_ids: Sequence[str],
+) -> EvidenceClaim:
+    if not path.is_absolute():
+        raise ValueError("relative_path_rejected")
+    payload = _read_complete_json(path)
+    for key in payload:
+        if key in _FORBIDDEN_RENDER_KEYS:
+            raise ValueError("non_executable_input")
+    unknown = sorted(set(payload) - _RENDER_KEYS)
+    if unknown:
+        raise ValueError("unknown_field")
+    if payload.get("schema") != RENDER_OBSERVATION_SCHEMA:
+        raise ValueError("unknown_schema")
+    if payload.get("scenario_id") != context.scenario_id:
+        raise ValueError("foreign_scenario_id")
+    if payload.get("run_id") != context.run_id:
+        raise ValueError("foreign_run_id")
+    detector_id = payload.get("detector_id")
+    if not isinstance(detector_id, str) or detector_id not in allowed_detector_ids:
+        raise ValueError("unknown_detector")
+    artifact_sha256 = payload.get("artifact_sha256")
+    if not isinstance(artifact_sha256, str) or not _SHA256_RE.fullmatch(artifact_sha256):
+        raise ValueError("bad_digest")
+    starts_at_ns = payload.get("starts_at_ns")
+    ends_at_ns = payload.get("ends_at_ns")
+    if not isinstance(starts_at_ns, int) or not isinstance(ends_at_ns, int):
+        raise ValueError("ambiguous_type")
+    if ends_at_ns < starts_at_ns:
+        raise ValueError("clock_regression")
+    provenance = payload.get("assertion_provenance")
+    if provenance == "screenshot-success":
+        raise ValueError("screenshot_without_render_observation")
+    if provenance != "scenario-detector":
+        raise ValueError("unknown_field")
+    return EvidenceClaim(
+        claim_kind=ClaimKind.RENDER_OBSERVED,
+        scenario_id=context.scenario_id,
+        run_id=context.run_id,
+        detector_id=detector_id,
+        contract_version="v1",
+        evidence_sha256=(artifact_sha256,),
+        starts_at_ns=starts_at_ns,
+        ends_at_ns=ends_at_ns,
+        reason_code="ok",
+    )
+
+
+def write_provisional_result(
+    *,
+    context: RunContext,
+    result: ClassificationResult,
+) -> Path:
+    root = _require_absolute_dir(context.capture_root, create=False)
+    run_dir = root / context.run_id
+    if not run_dir.is_dir():
+        raise ValueError("run_dir_missing")
+    if result.scenario_id != context.scenario_id or result.run_id != context.run_id:
+        raise ValueError("foreign_run_id")
+    payload = {
+        "schema": PROVISIONAL_RESULT_SCHEMA,
+        "complete": True,
+        "scenario_id": result.scenario_id,
+        "run_id": result.run_id,
+        "outcome": result.outcome.value,
+        "reason_codes": list(result.reason_codes),
+        "raw_bundle_sha256": result.raw_bundle_sha256,
+        "claims": [_canonicalize(asdict(claim)) for claim in result.claims],
+    }
+    path = run_dir / _PROVISIONAL_NAME
+    if path.exists():
+        existing = _read_complete_json(path)
+        if existing != payload:
+            raise ValueError("immutable_mismatch")
+        return path
+    _atomic_write_json(path, payload)
+    return path
+
+
+def load_provisional_result(
+    *,
+    context: RunContext,
+    path: Path,
+) -> ClassificationResult:
+    if not path.is_absolute():
+        raise ValueError("relative_path_rejected")
+    payload = _read_complete_json(path)
+    if payload.get("schema") != PROVISIONAL_RESULT_SCHEMA:
+        raise ValueError("unknown_schema")
+    if payload.get("run_id") != context.run_id:
+        raise ValueError("foreign_run_id")
+    if payload.get("scenario_id") != context.scenario_id:
+        raise ValueError("foreign_scenario_id")
+    claims = tuple(_claim_from_dict(item) for item in payload["claims"])
+    return ClassificationResult(
+        schema=PROVISIONAL_RESULT_SCHEMA,
+        scenario_id=str(payload["scenario_id"]),
+        run_id=str(payload["run_id"]),
+        outcome=Outcome(str(payload["outcome"])),
+        claims=claims,
+        reason_codes=tuple(str(item) for item in payload["reason_codes"]),
+        raw_bundle_sha256=str(payload["raw_bundle_sha256"]),
+    )
+
+
+def _claim_from_dict(raw: Mapping[str, Any]) -> EvidenceClaim:
+    return EvidenceClaim(
+        claim_kind=ClaimKind(str(raw["claim_kind"])),
+        scenario_id=str(raw["scenario_id"]),
+        run_id=str(raw["run_id"]),
+        detector_id=str(raw["detector_id"]),
+        contract_version=str(raw["contract_version"]),
+        evidence_sha256=tuple(str(item) for item in raw["evidence_sha256"]),
+        starts_at_ns=int(raw["starts_at_ns"]),
+        ends_at_ns=int(raw["ends_at_ns"]),
+        reason_code=str(raw["reason_code"]),
+    )
 
 
 def _batch_to_dict(batch: CollectionBatch) -> dict[str, Any]:
