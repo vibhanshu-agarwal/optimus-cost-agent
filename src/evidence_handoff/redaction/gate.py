@@ -7,6 +7,7 @@ import os
 import shutil
 import uuid
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -104,13 +105,11 @@ def _sha256_file(path: Path) -> str:
 def _cleanup_tree(path: Path | None) -> None:
     if path is None:
         return
-    try:
+    with suppress(Exception):
         if path.is_dir():
             shutil.rmtree(path, ignore_errors=True)
         elif path.exists():
             cleanup_private_path(path)
-    except Exception:
-        pass
 
 
 def _promote_bundle(*, bundle_dir: Path, destination_root: Path) -> Path:

@@ -15,6 +15,14 @@ RUNNER_PATH = REPO_ROOT / "tools" / "run_redaction_gate_live_evidence.py"
 def _load_runner():
     if not RUNNER_PATH.is_file():
         raise ImportError("run_redaction_gate_live_evidence missing")
+    # Clear docs-test PIL stubs (test_validate_publication) so the runner can
+    # import the real Pillow package when needed without "unknown location".
+    for name in list(sys.modules):
+        if name == "PIL" or name.startswith("PIL."):
+            mod = sys.modules.get(name)
+            origin = getattr(mod, "__file__", None) if mod is not None else None
+            if origin is None:
+                sys.modules.pop(name, None)
     spec = importlib.util.spec_from_file_location("run_redaction_gate_live_evidence", RUNNER_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

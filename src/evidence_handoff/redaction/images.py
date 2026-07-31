@@ -7,6 +7,7 @@ import io
 import os
 import warnings
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -100,16 +101,11 @@ def _abort_staging(handle: object | None, staging_path: Path | None) -> None:
     if handle is not None:
         close = getattr(handle, "close", None)
         if close is not None:
-            try:
+            with suppress(Exception):
                 close()
-            except Exception:
-                pass
     if staging_path is not None:
-        try:
+        with suppress(Exception):
             cleanup_private_path(staging_path)
-        except Exception:
-            pass
-
 
 def sanitize_screenshot_artifact(
     *,

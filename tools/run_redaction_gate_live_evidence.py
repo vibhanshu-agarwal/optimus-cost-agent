@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import Any, TextIO
 
 import keyring
-from PIL import Image
 
 from evidence_handoff.redaction.gate import run_redaction_gate
 from evidence_handoff.redaction.manifest import manifest_canary_scan
@@ -705,6 +704,8 @@ def run_verify(
     crash_src.unlink(missing_ok=True)
 
     png_path = (roots.capture_root / f"screenshot-{uuid.uuid4().hex}.png").resolve()
+    from PIL import Image
+
     Image.new("RGB", (16, 12), color=(10, 20, 30)).save(png_path)
     records.append(
         _promote_and_record(

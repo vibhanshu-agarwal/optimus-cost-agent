@@ -21,9 +21,9 @@ setuptools/uv, pytest/pytest-asyncio/pytest-cov, coverage.py, Ruff, detect-secre
 real OS credential stores, real subprocess boundaries, and the independently authored
 `acpx` client for live ACP evidence.
 
-**Status:** Draft pending Claude and operator review. This document authorizes no
-implementation, dependency mutation, commit, push, PR, or merge. Numbering is
-assigned at pickup.
+**Status:** Closed 2026-07-31 on branch `agent/cursor/evidence-handoff-redaction-gate`.
+Tasks 0–9 complete; repository gates and living-docs audited. No push, PR, or merge is
+authorized by this status.
 
 **Frozen design baseline:** Commit
 `4f7cfeb8d8c4210b31f031385917588ed0687ccf`, file
@@ -308,7 +308,7 @@ approved prefix, entropy, email, known-PII, path, and contextual-preservation ru
 **Files:** Read-only repository/spec sources; modify the consolidated pool only after
 pickup approval; append only to the ignored reviewer checkpoint log.
 
-- [ ] **Step 1: Verify branch, baseline, and committed design digest**
+- [x] **Step 1: Verify branch, baseline, and committed design digest**
 
 Run:
 
@@ -321,7 +321,7 @@ git show 4f7cfeb8d8c4210b31f031385917588ed0687ccf:docs/superpowers/specs/evidenc
 Expected: the worktree has no unexplained changes, the ancestry command succeeds, and
 the digest is exactly the frozen digest in this document.
 
-- [ ] **Step 2: Reproduce the 40-file grep perimeter and 37-file behavioral baseline**
+- [x] **Step 2: Reproduce the 40-file grep perimeter and 37-file behavioral baseline**
 
 Run:
 
@@ -335,7 +335,7 @@ guard. Record the exact paths and counts in the ignored checkpoint. If the perim
 is no longer 40 or the behavioral baseline is no longer 37, stop and return the diff
 to the reviewer before touching code.
 
-- [ ] **Step 3: Characterize existing behavior before changing the signature**
+- [x] **Step 3: Characterize existing behavior before changing the signature**
 
 Run the current sanitizer-dependent suites:
 
@@ -346,13 +346,13 @@ uv run --frozen pytest tests/unit/security tests/unit/telemetry tests/unit/acp t
 Record pass/skip counts and any environment-gated exclusions. These outputs are the
 compatibility baseline, not a license to change untested callers.
 
-- [ ] **Step 4: Update living status only**
+- [x] **Step 4: Update living status only**
 
 Change only the `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` pool row to say that implementation-plan
 review/pickup is active, link this plan, and retain “assigned at pickup.” Do not alter
 the frozen design or any other feature row.
 
-- [ ] **Step 5: Run the documentation/naming check**
+- [x] **Step 5: Run the documentation/naming check**
 
 ```bash
 rg -n 'Plan [0-9]|plan-[0-9]' docs/superpowers/plans/evidence-handoff-redaction-gate-implementation.md
@@ -363,7 +363,7 @@ git status --short
 Expected: no scheduling-number match in this plan, and only the approved pool/plan
 state is modified.
 
-- [ ] **Step 6: Stop for review**
+- [x] **Step 6: Stop for review**
 
 Update the ignored checkpoint with the baseline, counts, command outputs, and pool
 diff. Do not commit until Claude approves and the operator authorizes a docs-only
@@ -376,7 +376,7 @@ checkpoint commit. After that commit, stop; Task 1 is not automatically authoriz
 `tests/unit/telemetry/test_serialization.py`; create the calibration test and two
 fixtures.
 
-- [ ] **Step 1: Add RED canary and compatibility tests**
+- [x] **Step 1: Add RED canary and compatibility tests**
 
 The fixtures must include:
 
@@ -425,7 +425,7 @@ uv run --frozen pytest tests/unit/security/test_redaction_policy_calibration.py 
 Expected RED: missing policy/entropy/preservation APIs and the wrapper-delegation
 assertion fail; existing baseline assertions remain green.
 
-- [ ] **Step 2: Implement immutable policies and pure candidate scanners**
+- [x] **Step 2: Implement immutable policies and pure candidate scanners**
 
 Add frozen `SanitizationPolicy`, `COMPATIBILITY_SANITIZATION_POLICY`, and
 `EVIDENCE_REDACTION_POLICY`. The evidence policy version is
@@ -437,7 +437,7 @@ Move the whitespace secret-assignment rule from `subjects.py` into the shared
 compatibility rule registry and leave `subjects.py` responsible only for workspace
 normalization plus shared delegation.
 
-- [ ] **Step 3: Run canaries before freezing the constants**
+- [x] **Step 3: Run canaries before freezing the constants**
 
 ```bash
 uv run --frozen pytest tests/unit/security/test_redaction_policy_calibration.py -q
@@ -449,7 +449,7 @@ required labeled correlation shapes survive. Record rule identifiers and counts,
 never values, in the ignored checkpoint. If any assertion fails, stop without
 changing thresholds or grammars.
 
-- [ ] **Step 4: Run the whole behavioral call surface in the same task**
+- [x] **Step 4: Run the whole behavioral call surface in the same task**
 
 ```bash
 uv run --frozen pytest tests/unit/security tests/unit/telemetry tests/unit/acp tests/unit/agent tests/unit/guardrails tests/unit/loops tests/unit/release tests/unit/optimus_gateway tests/unit/tools tests/integration/acp -q
@@ -460,7 +460,7 @@ git diff --check
 Expected: all baseline callers remain green and only explicit evidence-policy tests
 observe new PII/path/prefix/entropy behavior.
 
-- [ ] **Step 5: Stop for threshold and compatibility review**
+- [x] **Step 5: Stop for threshold and compatibility review**
 
 Claude must review the actual RED/GREEN canary output and the 37-file compatibility
 result before the policy constants become frozen by commit. Only after operator
@@ -472,7 +472,7 @@ Stop after the commit.
 **Files:** Modify `pyproject.toml`, `uv.lock`, and coverage configuration; create the
 portable package initializers, `models.py`, import/naming/model tests.
 
-- [ ] **Step 1: Write RED boundary and model tests**
+- [x] **Step 1: Write RED boundary and model tests**
 
 The AST test must enumerate, not describe, the third-party allowlist:
 
@@ -502,7 +502,7 @@ uv run --frozen pytest tests/unit/evidence/test_import_boundaries.py tests/unit/
 
 Expected RED: packages/models do not exist and Pillow is not declared.
 
-- [ ] **Step 2: Add Pillow and create the portable model layer**
+- [x] **Step 2: Add Pillow and create the portable model layer**
 
 Add `Pillow>=12.3,<13` to runtime dependencies, update `uv.lock`, and add
 `src/evidence_handoff` to coverage sources. Add only the model/package code needed
@@ -516,7 +516,7 @@ Register:
 
 Exclude that marker from default pytest selection.
 
-- [ ] **Step 3: Prove the real package/dependency shape**
+- [x] **Step 3: Prove the real package/dependency shape**
 
 ```bash
 uv lock --check
@@ -532,7 +532,7 @@ Inspect the built wheel and record that all packages still co-ship. Do not claim
 standalone wheel. The isolated-import test must block `optimus` and
 `optimus_gateway` while successfully importing `evidence_handoff.redaction.models`.
 
-- [ ] **Step 4: Stop for dependency and extraction review**
+- [x] **Step 4: Stop for dependency and extraction review**
 
 The review must examine `pyproject.toml`, the lock diff, AST escape-hatch checks,
 wheel contents, and isolated import output. Only after approval may the worker commit
@@ -544,7 +544,7 @@ wheel contents, and isolated import output. Only after approval may the worker c
 `src/optimus/acp/evidence_redaction_adapter.py`, their unit tests, and the live
 runtime-input integration test.
 
-- [ ] **Step 1: Write RED non-disclosure and adapter tests**
+- [x] **Step 1: Write RED non-disclosure and adapter tests**
 
 Inventory tests cover longest-first deduplication, aggregate source counts, empty and
 over-length rejection, absent `__dict__`, blocked pickle/copy/dataclass conversion,
@@ -579,14 +579,14 @@ uv run --frozen pytest tests/unit/security/test_sensitive_values.py tests/unit/a
 
 Expected RED: inventory and adapter modules do not exist.
 
-- [ ] **Step 2: Implement the inventory and one-way adapter**
+- [x] **Step 2: Implement the inventory and one-way adapter**
 
 The adapter consumes only already-resolved objects and explicit host context. It must
 not call `os.environ`, dotenv parsing, a keyring API, the configuration resolver, or
 trusted-root discovery. Catch source exceptions at the host boundary and replace them
 with stable codes without chaining input-bearing messages.
 
-- [ ] **Step 3: Verify unit behavior and semantic extraction**
+- [x] **Step 3: Verify unit behavior and semantic extraction**
 
 ```bash
 uv run --frozen pytest tests/unit/security/test_sensitive_values.py tests/unit/acp/test_evidence_redaction_adapter.py tests/unit/evidence/test_import_boundaries.py -q
@@ -594,7 +594,7 @@ uv run --frozen ruff check .
 git diff --check
 ```
 
-- [ ] **Step 4: Run real resolver/keyring evidence for this task**
+- [x] **Step 4: Run real resolver/keyring evidence for this task**
 
 The integration test calls the canonical launch-candidate resolver with the real
 operator configuration and real OS credential-store backend, passes the resolved
@@ -608,7 +608,7 @@ uv run --frozen pytest tests/integration/evidence/test_runtime_inputs_live.py -m
 Expected: environment-, configuration-, and/or keyring-resolved source classes are
 reported without values, and a canary scan of captured logs/exceptions is clean.
 
-- [ ] **Step 5: Stop for source-custody review**
+- [x] **Step 5: Stop for source-custody review**
 
 Claude must verify the live test used the real resolver/store and that no value or
 Optimus object crossed the portable boundary. After authorization, commit
@@ -619,7 +619,7 @@ Optimus object crossed the portable boundary. After authorization, commit
 **Files:** Create `private_files.py`, its unit/integration tests, and extend shared
 sanitizer path tests.
 
-- [ ] **Step 1: Write RED path and filesystem tests**
+- [x] **Step 1: Write RED path and filesystem tests**
 
 Cover Windows case-folding and separator variants, POSIX case sensitivity,
 longest-root-first replacement, segment-boundary rejection, symlink/junction escape,
@@ -642,7 +642,7 @@ uv run --frozen pytest tests/unit/evidence/test_private_files.py tests/unit/secu
 
 Expected RED: private filesystem and expanded alias behavior are absent.
 
-- [ ] **Step 2: Implement portable private-file primitives**
+- [x] **Step 2: Implement portable private-file primitives**
 
 Use descriptor-based creation (`os.open` with exclusive creation), `lstat`/resolved
 containment checks, non-symlink parents, flush plus `os.fsync`, and `os.replace` only
@@ -650,7 +650,7 @@ on the same filesystem. Implement Windows DACL creation/validation with conditio
 standard-library `ctypes`; do not import the host package or shell out to `icacls`.
 All errors expose stable codes only.
 
-- [ ] **Step 3: Run narrow and real-host evidence**
+- [x] **Step 3: Run narrow and real-host evidence**
 
 ```bash
 uv run --frozen pytest tests/unit/evidence/test_private_files.py tests/unit/security/test_sanitization.py -q
@@ -670,7 +670,7 @@ uv run --frozen pytest tests/integration/evidence/test_private_files_platform.py
 If WSL cannot access the worktree or uv environment, report the exact failure; do not
 substitute a mocked POSIX test.
 
-- [ ] **Step 4: Stop for cross-platform review**
+- [x] **Step 4: Stop for cross-platform review**
 
 After approval, commit `feat: add private evidence staging primitives`. Stop after
 the commit.
@@ -680,7 +680,7 @@ the commit.
 **Files:** Create `text.py`, `structured.py`, their unit tests, and the real
 subprocess-truncation integration test.
 
-- [ ] **Step 1: Write RED text/JSON/NDJSON tests**
+- [x] **Step 1: Write RED text/JSON/NDJSON tests**
 
 Tests must cover:
 
@@ -712,7 +712,7 @@ uv run --frozen pytest tests/unit/evidence/test_text_redaction.py tests/unit/evi
 
 Expected RED: handlers and validators do not exist.
 
-- [ ] **Step 2: Implement text and structured handlers**
+- [x] **Step 2: Implement text and structured handlers**
 
 Text uses `StreamingTextSanitizer` with the evidence policy and writes only sanitized
 chunks to private staging. JSON/NDJSON use standard `json` without object hooks,
@@ -732,7 +732,7 @@ all tail bytes/fields, and emit only:
 The numeric example is illustrative of the field type only; the runtime value is the
 actual aggregate byte count.
 
-- [ ] **Step 3: Run narrow tests and the real process-boundary crash test**
+- [x] **Step 3: Run narrow tests and the real process-boundary crash test**
 
 `test_subprocess_truncation.py` must spawn a real writer process, terminate it during
 the final record, and feed the resulting bytes through the gate. One case cuts after
@@ -746,7 +746,7 @@ uv run --frozen ruff check .
 git diff --check
 ```
 
-- [ ] **Step 4: Stop for truncation-contract review**
+- [x] **Step 4: Stop for truncation-contract review**
 
 Claude must inspect the byte-level fixtures, confirm no raw tail digest/body is
 persisted, and verify the real subprocess was used. After authorization, commit
@@ -756,7 +756,7 @@ persisted, and verify the real subprocess was used. After authorization, commit
 
 **Files:** Create `images.py`, `quarantine.py`, and their tests.
 
-- [ ] **Step 1: Write RED Pillow and dump tests**
+- [x] **Step 1: Write RED Pillow and dump tests**
 
 Image fixtures must contain EXIF, XMP, ICC, PNG textual chunks, a comment, and an
 unsafe source filename. Tests cover PNG/JPEG magic validation, unsupported format,
@@ -778,7 +778,7 @@ uv run --frozen pytest tests/unit/evidence/test_image_redaction.py tests/unit/ev
 
 Expected RED: image and quarantine modules do not exist.
 
-- [ ] **Step 2: Implement image and dump handlers**
+- [x] **Step 2: Implement image and dump handlers**
 
 For Pillow, open from the bounded private source, force `load()`, reject warnings and
 extra frames, copy pixels into a fresh `Image.new`, clear/omit all metadata, convert
@@ -793,7 +793,7 @@ recompute the staged digest immediately before promotion.
 For dumps, inspect only the bounded header needed for type recognition, hash by
 chunks, move/retain in quarantine, and return content-free metadata.
 
-- [ ] **Step 3: Run real dependency and filesystem evidence**
+- [x] **Step 3: Run real dependency and filesystem evidence**
 
 ```bash
 uv run --frozen pytest tests/unit/evidence/test_image_redaction.py tests/unit/evidence/test_quarantine.py -q
@@ -807,7 +807,7 @@ Inspect one emitted PNG with Pillow and a raw-byte metadata-canary scan. Expecte
 Pillow is within the locked 12.3.x line, all metadata canaries are absent, and the raw
 source exists only in approved quarantine.
 
-- [ ] **Step 4: Stop for dependency-security and custody review**
+- [x] **Step 4: Stop for dependency-security and custody review**
 
 After approval, commit `feat: canonicalize images and quarantine dumps`. Stop after
 the commit.
@@ -817,7 +817,7 @@ the commit.
 **Files:** Create `manifest.py`, `gate.py`, their unit tests, and the mixed-artifact
 integration test.
 
-- [ ] **Step 1: Write RED manifest and state-machine tests**
+- [x] **Step 1: Write RED manifest and state-machine tests**
 
 Freeze manifest schema `evidence-redaction-manifest-v1` with:
 
@@ -849,7 +849,7 @@ uv run --frozen pytest tests/unit/evidence/test_manifest.py tests/unit/evidence/
 
 Expected RED: manifest and gate do not exist.
 
-- [ ] **Step 2: Implement fail-closed orchestration**
+- [x] **Step 2: Implement fail-closed orchestration**
 
 The order is fixed:
 
@@ -868,7 +868,7 @@ The destination exposes neither file before the bundle rename and both afterward
 Recovery removes or quarantines an abandoned private bundle; it never completes a
 promotion by trusting an unscanned manifest.
 
-- [ ] **Step 3: Run mixed real-filesystem integration evidence**
+- [x] **Step 3: Run mixed real-filesystem integration evidence**
 
 The integration test creates real JSON, generic NDJSON, crash-tail ACP NDJSON, text,
 metadata-bearing PNG/JPEG, and synthetic dump files on disk; uses the real Pillow
@@ -882,7 +882,7 @@ uv run --frozen ruff check .
 git diff --check
 ```
 
-- [ ] **Step 4: Stop for promotion-contract review**
+- [x] **Step 4: Stop for promotion-contract review**
 
 Claude must inspect failure ordering and the produced manifest set, then run an
 independent canary scan. After authorization, commit
@@ -893,7 +893,7 @@ independent canary scan. After authorization, commit
 **Files:** Create the descriptive live runner, its unit test, and the live integration
 test; update `.gitignore` only for its local workspace if needed.
 
-- [ ] **Step 1: Write RED runner contract tests**
+- [x] **Step 1: Write RED runner contract tests**
 
 The runner must:
 
@@ -919,13 +919,13 @@ uv run --frozen pytest tests/unit/tools/test_run_redaction_gate_live_evidence.py
 
 Expected RED: runner does not exist.
 
-- [ ] **Step 2: Implement the runner as test tooling, not a collector**
+- [x] **Step 2: Implement the runner as test tooling, not a collector**
 
 The runner exercises only this feature's gate and fixed `P11-FEAT-ZED-RESUME`
 fixtures. It must not add declarative scenarios, UI automation, prompt injection,
 crash classification, or general collector functionality.
 
-- [ ] **Step 3: Run the real credential/process/ACP evidence**
+- [x] **Step 3: Run the real credential/process/ACP evidence**
 
 Use operator-approved absolute roots outside cloud synchronization and a real durable
 launch approval. Before the command, the operator supplies four absolute,
@@ -968,7 +968,7 @@ Expected evidence:
 - the screenshot remains awaiting approval until a different human identity approves
   its exact digest.
 
-- [ ] **Step 4: Run live-output canary and provenance checks**
+- [x] **Step 4: Run live-output canary and provenance checks**
 
 ```bash
 uv run --frozen python tools/run_redaction_gate_live_evidence.py inspect \
@@ -980,7 +980,7 @@ git diff --check
 The inspection command names every output artifact, verifies digests/manifests,
 reports zero credential/scoped-PII hits, and emits no bodies or absolute source paths.
 
-- [ ] **Step 5: Stop for live-evidence review**
+- [x] **Step 5: Stop for live-evidence review**
 
 Relay the runner output, `acpx` version, process/config dependency identities, artifact
 digest table, and screenshot approval state to Claude. After approval and operator
@@ -992,7 +992,7 @@ commit.
 **Files:** Read all changed files and current-state docs; modify only the consolidated
 pool and implementation-plan checkboxes whose named commands have passed.
 
-- [ ] **Step 1: Re-run the behavioral blast-radius sweep**
+- [x] **Step 1: Re-run the behavioral blast-radius sweep**
 
 ```bash
 rg -l --glob '*.py' 'optimus_security\.sanitization|sanitize_for_persistence|StreamingTextSanitizer|redact_for_telemetry|sanitize_workspace_text' src tools tests
@@ -1003,7 +1003,7 @@ Compare with Task 0 and explain every new/removed caller. Confirm every old call
 still uses the compatibility policy unless an explicit, reviewed test proves
 otherwise.
 
-- [ ] **Step 2: Run complete unit/integration/coverage gates**
+- [x] **Step 2: Run complete unit/integration/coverage gates**
 
 ```bash
 uv run --frozen pytest tests/unit -q
@@ -1014,7 +1014,7 @@ uv run --frozen pytest --cov=src/optimus --cov=src/optimus_gateway --cov=src/opt
 Named live markers are not satisfied by the default integration command; cite the
 successful real commands from Tasks 3, 4, 5, 6, and 8 separately.
 
-- [ ] **Step 3: Run repository security, style, packaging, and naming gates**
+- [x] **Step 3: Run repository security, style, packaging, and naming gates**
 
 ```bash
 uv lock --check
@@ -1030,7 +1030,7 @@ git status --short
 Inspect wheel contents and repeat the isolated import smoke. Confirm the distribution
 still co-ships all packages while the import graph remains separable.
 
-- [ ] **Step 4: Audit current-state documentation**
+- [x] **Step 4: Audit current-state documentation**
 
 Read the consolidated pool, roadmap, README, this plan, and every current-state
 document whose claims change. Update only living status/links. Do not rewrite frozen
@@ -1038,7 +1038,7 @@ design/history. The pool row must name exact commits and reviewed evidence when
 closing; if any required evidence is absent, keep the feature open and name the
 blocker.
 
-- [ ] **Step 5: Produce the final review bundle and stop**
+- [x] **Step 5: Produce the final review bundle and stop**
 
 Record in the ignored checkpoint:
 
@@ -1060,31 +1060,31 @@ open a PR, merge, delete branches, or rewrite history.
 
 ## Definition of Done
 
-- [ ] The committed implementation matches the frozen design digest and no design
+- [x] The committed implementation matches the frozen design digest and no design
   amendment is pending.
-- [ ] `optimus_security.sanitization` is the single rule engine.
-- [ ] All pre-existing callers retain compatibility-policy outputs and rule counts.
-- [ ] Evidence-policy canaries catch the unlabeled key and preserve only valid,
+- [x] `optimus_security.sanitization` is the single rule engine.
+- [x] All pre-existing callers retain compatibility-policy outputs and rule counts.
+- [x] Evidence-policy canaries catch the unlabeled key and preserve only valid,
   labeled correlations, including the real Zed Rust-debug grammar.
-- [ ] Exact runtime secrets and known PII are supplied from already-resolved host
+- [x] Exact runtime secrets and known PII are supplied from already-resolved host
   state and never persist or appear in diagnostics.
-- [ ] `evidence_handoff` imports only stdlib, `optimus_security`, and `PIL`;
+- [x] `evidence_handoff` imports only stdlib, `optimus_security`, and `PIL`;
   `optimus_security` remains stdlib-only; the isolated import smoke passes.
-- [ ] JSON, generic NDJSON, ACP crash-tail NDJSON, text, screenshots, dumps, unknown
+- [x] JSON, generic NDJSON, ACP crash-tail NDJSON, text, screenshots, dumps, unknown
   types, and mismatches follow their fail-closed policies.
-- [ ] The mid-multibyte UTF-8 crash-tail case quarantines.
-- [ ] Screenshots are metadata-free, digest-bound, and independently approved; dumps
+- [x] The mid-multibyte UTF-8 crash-tail case quarantines.
+- [x] Screenshots are metadata-free, digest-bound, and independently approved; dumps
   are hash-only and never promotable.
-- [ ] Raw controlled ACP stdout/stderr is never written before sanitization.
-- [ ] Private staging/quarantine permissions pass on real Windows and WSL/POSIX.
-- [ ] Every promoted artifact has a scanned, content-free matching manifest and no
+- [x] Raw controlled ACP stdout/stderr is never written before sanitization.
+- [x] Private staging/quarantine permissions pass on real Windows and WSL/POSIX.
+- [x] Every promoted artifact has a scanned, content-free matching manifest and no
   unmanifested promotable artifact survives a failure.
-- [ ] Real config/keyring, process, Pillow, Gateway, ACP, and independently authored
+- [x] Real config/keyring, process, Pillow, Gateway, ACP, and independently authored
   `acpx` evidence has passed at the named tiers.
-- [ ] Aggregate production coverage is at least 80%, Ruff and detect-secrets are
+- [x] Aggregate production coverage is at least 80%, Ruff and detect-secrets are
   clean, the lock is current, the wheel/import audits pass, and no descriptive code
   surface contains Feature-ID or scheduling-number coupling.
-- [ ] Current-state documentation is fresh, the reviewer checkpoint is complete and
+- [x] Current-state documentation is fresh, the reviewer checkpoint is complete and
   unstaged, and no push/PR/merge occurred.
 
 ## Review handoff
