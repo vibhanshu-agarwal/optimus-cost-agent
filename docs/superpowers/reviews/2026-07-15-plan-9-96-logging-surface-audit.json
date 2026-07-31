@@ -1121,6 +1121,30 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.evidence_gather:_handle_collect:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_collect:file_open opens only the run-scoped NDJSON suffix bytes under an explicit capture-root relative locator after offset capture; it does not retain ambient diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_collect_handler_is_registered_not_stage_unavailable",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_collect:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_collect:json_serialization emits a content-free collect summary (run_id and completion_claim kind only) plus a schema-limited collect-result document with digests and typed codes.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_collect_handler_is_registered_not_stage_unavailable",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_collect:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_collect:stdout_export prints only the content-free collect summary JSON and does not retain prompts, transcripts, or credentials.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_collect_handler_is_registered_not_stage_unavailable",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.evidence_gather:_handle_unavailable:stderr_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: tools.evidence_gather:_handle_unavailable:stderr_export prints only the fixed stage_unavailable reason code to stderr and does not retain diagnostics.",
@@ -1166,6 +1190,38 @@
       "rationale": "Inspection: tools.evidence_gather_support.fixtures:prepare_fixtures:exception_export wraps ValueError from _read_complete_json via HostError(str(exc)) where exc is already a fixed reason code (invalid_json/partial_stage); it does not export raw JSON diagnostics.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_evidence_gather.py::test_truncated_fixture_marker_fails_prepare_with_stable_code",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.acp:_pump_stream:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather_support.acp:_pump_stream:file_open opens only an explicit private capture-root path to drain child stdio while waiting; drained bytes are not logged or exported as transcripts by this helper.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_spawn_acpx_drains_pipes_instead_of_deadlocking",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.acp:_pump_stream:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather_support.acp:_pump_stream:text_write writes only drained child stdio into an operator-supplied private capture path to prevent pipe-buffer deadlock; it does not retain or export diagnostic content beyond that private file.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_spawn_acpx_drains_pipes_instead_of_deadlocking",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.ndjson:read_ordered_suffix:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather_support.ndjson:read_ordered_suffix:file_open opens an explicit NDJSON path only to seek a pre-captured byte offset and read the run-scoped suffix; prefix bytes are not loaded.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_ndjson_bounded_reads_do_not_load_prefix",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.ndjson:suffix_sha256:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather_support.ndjson:suffix_sha256:file_open opens an explicit NDJSON path only to digest the run-scoped suffix bytes after the pre-captured offset.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_ndjson_bounded_reads_do_not_load_prefix",
       "evidence_tier": "unit"
     },
     {

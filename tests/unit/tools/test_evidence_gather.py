@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -269,11 +270,13 @@ def test_unavailable_stages_print_stable_code(
     capture.mkdir()
     code = gather.main(
         [
-            "collect",
+            "classify",
             "--scenario",
             str(FIXTURE.resolve()),
             "--capture-root",
             str(capture),
+            "--result",
+            str((tmp_path / "result.json").resolve()),
             "--bind",
             "model=operator-supplied",
         ]
@@ -304,3 +307,504 @@ def test_live_markers_are_registered_and_excluded_by_default() -> None:
     assert "not requires_zed" in text
     assert "not requires_windows_desktop" in text
     assert "not evidence_investigation" in text
+
+
+# --- Task 5: NDJSON / ACP / completion / collect ---
+
+
+def _exit_event(
+    *,
+    request_id: str = "req-1",
+    method: str = "session/prompt",
+    has_error: bool = False,
+    session_id: str = "debug_abc",
+    timestamp: int = 1_000,
+) -> dict:
+    return {
+        "sessionId": session_id,
+        "timestamp": timestamp,
+        "location": "server.py:process_request:exit",
+        "message": "client request handled",
+        "data": {
+            "request_id": request_id,
+            "method": method,
+            "has_error": has_error,
+            "stop_reason": None if has_error else "end_turn",
+        },
+        "hypothesisId": "H4",
+        "runId": "pre-fix",
+    }
+
+
+def _prompt_entry(
+    *,
+    session_id: str = "session-aaa",
+    request_id: str = "req-1",
+    run_id: str = "session-aaa:req-1",
+    timestamp: int = 900,
+) -> dict:
+    return {
+        "sessionId": "debug_abc",
+        "timestamp": timestamp,
+        "location": "spec.py:_handle_session_prompt:entry",
+        "message": "session prompt",
+        "data": {
+            "session_id": session_id,
+            "request_id": request_id,
+            "run_id": run_id,
+        },
+        "hypothesisId": "H4",
+        "runId": "pre-fix",
+    }
+
+
+def test_ndjson_records_pre_run_byte_offset_and_file_identity(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import ndjson as ndjson_mod
+
+    path = tmp_path / "debug-acp.ndjson"
+    path.write_text('{"location":"older"}\n', encoding="utf-8")
+    snap = ndjson_mod.snapshot_source(path)
+    assert snap.byte_offset == path.stat().st_size
+    assert snap.identity.size_bytes == path.stat().st_size
+    assert snap.identity.path == path.resolve()
+
+
+def test_ndjson_extracts_ordered_suffix_only(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import ndjson as ndjson_mod
+
+    path = tmp_path / "debug-acp.ndjson"
+    older = json.dumps({"location": "older", "timestamp": 1}, separators=(",", ":"))
+    newer = json.dumps({"location": "newer", "timestamp": 2}, separators=(",", ":"))
+    path.write_text(older + "\n", encoding="utf-8")
+    snap = ndjson_mod.snapshot_source(path)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(newer + "\n")
+    records = ndjson_mod.read_ordered_suffix(path, snap)
+    assert [item["location"] for item in records] == ["newer"]
+
+
+def test_ndjson_rejects_partial_final_record(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import ndjson as ndjson_mod
+    from tools.evidence_gather_support.common import HostError
+
+    path = tmp_path / "debug-acp.ndjson"
+    path.write_text("", encoding="utf-8")
+    snap = ndjson_mod.snapshot_source(path)
+    path.write_text('{"location":"partial"', encoding="utf-8")
+    with pytest.raises(HostError) as exc_info:
+        ndjson_mod.read_ordered_suffix(path, snap)
+    assert exc_info.value.code == "partial_ndjson_record"
+
+
+def test_ndjson_rejects_malformed_interior_record(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import ndjson as ndjson_mod
+    from tools.evidence_gather_support.common import HostError
+
+    path = tmp_path / "debug-acp.ndjson"
+    path.write_text("", encoding="utf-8")
+    snap = ndjson_mod.snapshot_source(path)
+    path.write_text("{not-json}\n{\"location\":\"ok\"}\n", encoding="utf-8")
+    with pytest.raises(HostError) as exc_info:
+        ndjson_mod.read_ordered_suffix(path, snap)
+    assert exc_info.value.code == "malformed_ndjson_record"
+
+
+def test_ndjson_rejects_rotation_or_replacement(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import ndjson as ndjson_mod
+    from tools.evidence_gather_support.common import HostError
+
+    path = tmp_path / "debug-acp.ndjson"
+    path.write_text('{"a":1}\n{"a":2}\n', encoding="utf-8")
+    snap = ndjson_mod.snapshot_source(path)
+    path.write_text('{"r":1}\n', encoding="utf-8")
+    with pytest.raises(HostError) as exc_info:
+        ndjson_mod.read_ordered_suffix(path, snap)
+    assert exc_info.value.code in {"ndjson_rotated", "ndjson_identity_changed"}
+
+
+def test_ndjson_rejects_foreign_suffix_session(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import ndjson as ndjson_mod
+    from tools.evidence_gather_support.common import HostError
+
+    path = tmp_path / "debug-acp.ndjson"
+    path.write_text("", encoding="utf-8")
+    snap = ndjson_mod.snapshot_source(path)
+    foreign = _exit_event(session_id="debug_foreign")
+    path.write_text(json.dumps(foreign, separators=(",", ":")) + "\n", encoding="utf-8")
+    records = ndjson_mod.read_ordered_suffix(path, snap)
+    with pytest.raises(HostError) as exc_info:
+        ndjson_mod.normalize_completion(
+            records,
+            correlate_session_id="session-aaa",
+            correlate_request_id="req-1",
+            correlate_run_id="session-aaa:req-1",
+            expected_debug_session_id="debug_abc",
+        )
+    assert exc_info.value.code == "foreign_ndjson_suffix"
+
+
+def test_ndjson_bounded_reads_do_not_load_prefix(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import ndjson as ndjson_mod
+
+    path = tmp_path / "debug-acp.ndjson"
+    prefix = (("x" * 1024) + "\n") * 8
+    path.write_text(prefix, encoding="utf-8")
+    snap = ndjson_mod.snapshot_source(path)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"location": "tail"}, separators=(",", ":")) + "\n")
+    records = ndjson_mod.read_ordered_suffix(path, snap)
+    assert [item["location"] for item in records] == ["tail"]
+    # Suffix-only: digest of the full file must differ from suffix digest.
+    full = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert ndjson_mod.suffix_sha256(path, snap) != full
+    assert len(records) == 1
+
+
+def test_acp_argument_vector_ownership_and_shell_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tools.evidence_gather_support import acp as acp_mod
+    from tools.evidence_gather_support.common import HostError
+
+    seen: dict[str, object] = {}
+
+    def fake_which(name: str) -> str | None:
+        return r"C:\tools\acpx.exe" if name == "acpx" else None
+
+    def fake_run(command, **kwargs):
+        class Result:
+            returncode = 0
+            stdout = "acpx 0.1.0\n"
+            stderr = ""
+
+        assert kwargs.get("shell") is False
+        return Result()
+
+    def fake_popen(command, **kwargs):
+        seen["command"] = list(command)
+        seen["shell"] = kwargs.get("shell")
+
+        class Proc:
+            returncode = 0
+
+            def poll(self):
+                return 0
+
+            def wait(self, timeout=None):
+                return 0
+
+            def communicate(self, timeout=None):
+                return ("", "")
+
+            def kill(self):
+                return None
+
+            stdout = None
+            stderr = None
+
+        return Proc()
+
+    monkeypatch.setattr(acp_mod.shutil, "which", fake_which)
+    monkeypatch.setattr(acp_mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(acp_mod.subprocess, "Popen", fake_popen)
+
+    workspace = Path(r"D:\ws").resolve()
+    agent = Path(r"D:\bin\optimus-agent.exe").resolve()
+    command = acp_mod.build_acpx_command(
+        acpx_path=r"C:\tools\acpx.exe",
+        workspace_root=workspace,
+        agent_executable=agent,
+        prompt="ping",
+        launch_session_id="launch-1",
+    )
+    assert command[0] == r"C:\tools\acpx.exe"
+    assert "--format" in command and "json" in command
+    assert "shell" not in {part.lower() for part in command}
+    assert all(not part.startswith("%") for part in command)
+
+    acp_mod.spawn_acpx(command=command, cwd=workspace, env={}, timeout_seconds=5)
+    assert seen["shell"] is False
+    assert seen["command"] == command
+
+    monkeypatch.setattr(acp_mod.shutil, "which", lambda _name: None)
+    with pytest.raises(HostError) as missing:
+        acp_mod.resolve_acpx()
+    assert missing.value.code == "acpx_not_on_path"
+
+
+def test_acp_process_timeout_is_content_free(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tools.evidence_gather_support import acp as acp_mod
+    from tools.evidence_gather_support.common import HostError
+
+    class Proc:
+        returncode = None
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            raise acp_mod.subprocess.TimeoutExpired(cmd=["acpx"], timeout=timeout)
+
+        def communicate(self, timeout=None):
+            raise acp_mod.subprocess.TimeoutExpired(cmd=["acpx"], timeout=timeout)
+
+        def kill(self):
+            self.returncode = -9
+            return None
+
+        stdout = None
+        stderr = None
+
+    monkeypatch.setattr(acp_mod.subprocess, "Popen", lambda *a, **k: Proc())
+    with pytest.raises(HostError) as exc_info:
+        acp_mod.spawn_acpx(
+            command=["acpx", "exec", "x"],
+            cwd=Path(".").resolve(),
+            env={},
+            timeout_seconds=1,
+        )
+    assert exc_info.value.code == "acpx_timeout"
+
+
+def test_completion_matches_exact_location_and_correlation() -> None:
+    from tools.evidence_gather_support import ndjson as ndjson_mod
+
+    records = (_prompt_entry(), _exit_event())
+    claim = ndjson_mod.normalize_completion(
+        records,
+        correlate_session_id="session-aaa",
+        correlate_request_id="req-1",
+        correlate_run_id="session-aaa:req-1",
+        expected_debug_session_id="debug_abc",
+        scenario_id="zed-session",
+        run_id="collector-run-1",
+        evidence_sha256=("a" * 64,),
+    )
+    assert claim.claim_kind.value == "completion_observed"
+    assert claim.reason_code == "ok"
+
+
+def test_completion_rejects_error_bearing_and_older_events() -> None:
+    from tools.evidence_gather_support import ndjson as ndjson_mod
+    from tools.evidence_gather_support.common import HostError
+
+    with pytest.raises(HostError) as err:
+        ndjson_mod.normalize_completion(
+            (_prompt_entry(), _exit_event(has_error=True)),
+            correlate_session_id="session-aaa",
+            correlate_request_id="req-1",
+            correlate_run_id="session-aaa:req-1",
+            expected_debug_session_id="debug_abc",
+            scenario_id="zed-session",
+            run_id="collector-run-1",
+            evidence_sha256=("a" * 64,),
+        )
+    assert err.value.code == "completion_has_error"
+
+    with pytest.raises(HostError) as older:
+        ndjson_mod.normalize_completion(
+            (_prompt_entry(timestamp=2_000), _exit_event(timestamp=1_000)),
+            correlate_session_id="session-aaa",
+            correlate_request_id="req-1",
+            correlate_run_id="session-aaa:req-1",
+            expected_debug_session_id="debug_abc",
+            scenario_id="zed-session",
+            run_id="collector-run-1",
+            evidence_sha256=("a" * 64,),
+        )
+    assert older.value.code in {"completion_ordering", "completion_ambiguous", "completion_missing"}
+
+
+def test_completion_never_creates_render_observed() -> None:
+    from evidence_handoff.collector.models import ClaimKind
+    from tools.evidence_gather_support import ndjson as ndjson_mod
+
+    records = (_prompt_entry(), _exit_event())
+    claim = ndjson_mod.normalize_completion(
+        records,
+        correlate_session_id="session-aaa",
+        correlate_request_id="req-1",
+        correlate_run_id="session-aaa:req-1",
+        expected_debug_session_id="debug_abc",
+        scenario_id="zed-session",
+        run_id="collector-run-1",
+        evidence_sha256=("a" * 64,),
+    )
+    assert claim.claim_kind is ClaimKind.COMPLETION_OBSERVED
+    assert claim.claim_kind is not ClaimKind.RENDER_OBSERVED
+
+
+def test_completion_requires_correlating_prompt_not_request_id_alone() -> None:
+    from tools.evidence_gather_support import ndjson as ndjson_mod
+    from tools.evidence_gather_support.common import HostError
+
+    # Bare exit with matching request_id but foreign run_id and no prompt entry.
+    with pytest.raises(HostError) as exc_info:
+        ndjson_mod.normalize_completion(
+            (_exit_event(request_id="req-1"),),
+            correlate_session_id="session-aaa",
+            correlate_request_id="req-1",
+            correlate_run_id="totally-different-foreign-run-id",
+            expected_debug_session_id="debug_abc",
+            scenario_id="zed-session",
+            run_id="collector-run-1",
+            evidence_sha256=("a" * 64,),
+        )
+    assert exc_info.value.code in {
+        "completion_correlation_missing",
+        "completion_missing",
+        "foreign_completion",
+    }
+
+    # Prompt present but run_id does not match correlate_run_id.
+    with pytest.raises(HostError) as foreign:
+        ndjson_mod.normalize_completion(
+            (
+                _prompt_entry(run_id="session-aaa:req-1"),
+                _exit_event(request_id="req-1"),
+            ),
+            correlate_session_id="session-aaa",
+            correlate_request_id="req-1",
+            correlate_run_id="foreign-run",
+            expected_debug_session_id="debug_abc",
+            scenario_id="zed-session",
+            run_id="collector-run-1",
+            evidence_sha256=("a" * 64,),
+        )
+    assert foreign.value.code in {
+        "completion_correlation_missing",
+        "completion_missing",
+        "foreign_completion",
+    }
+
+
+def test_spawn_acpx_drains_pipes_instead_of_deadlocking(tmp_path: Path) -> None:
+    """Large stdout must not hang spawn_acpx for the full timeout window."""
+    import os
+    import sys
+    import time
+
+    from tools.evidence_gather_support import acp as acp_mod
+
+    script = tmp_path / "big_stdout.py"
+    script.write_text(
+        "import sys\n"
+        "sys.stdout.write('x' * 300_000)\n"
+        "sys.stdout.flush()\n"
+        "sys.stderr.write('y' * 10_000)\n"
+        "sys.stderr.flush()\n",
+        encoding="utf-8",
+    )
+    # Inherit a minimal host env so the real interpreter can start; this case
+    # is about pipe draining, not launch-env cleanliness.
+    env = {key: value for key, value in os.environ.items() if key in {
+        "PATH",
+        "SYSTEMROOT",
+        "WINDIR",
+        "PATHEXT",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "HOME",
+        "PYTHONPATH",
+        "SYSTEMDRIVE",
+        "COMSPEC",
+    }}
+    started = time.monotonic()
+    code = acp_mod.spawn_acpx(
+        command=[sys.executable, str(script.resolve())],
+        cwd=tmp_path.resolve(),
+        env=env,
+        timeout_seconds=8,
+    )
+    elapsed = time.monotonic() - started
+    assert code == 0
+    assert elapsed < 4.0, f"spawn_acpx appeared to deadlock waiting without drain: {elapsed:.2f}s"
+
+
+def test_collect_handler_is_registered_not_stage_unavailable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gather = _gather()
+    capture = (tmp_path / "capture").resolve()
+    workspace = (tmp_path / "workspace").resolve()
+    workspace.mkdir()
+    agent = (tmp_path / "optimus-agent").resolve()
+    agent.write_text("#!/bin/true\n", encoding="utf-8")
+    ndjson_path = workspace / ".optimus" / "debug-acp.ndjson"
+    ndjson_path.parent.mkdir(parents=True)
+    ndjson_path.write_text("", encoding="utf-8")
+
+    prepare = gather.main(
+        [
+            "prepare",
+            "--scenario",
+            str(FIXTURE.resolve()),
+            "--capture-root",
+            str(capture),
+            "--bind",
+            "model=operator-supplied",
+        ]
+    )
+    assert prepare == 0
+    assert gather.main(
+        [
+            "check",
+            "--scenario",
+            str(FIXTURE.resolve()),
+            "--capture-root",
+            str(capture),
+            "--bind",
+            "model=operator-supplied",
+        ]
+    ) == 0
+
+    from tools.evidence_gather_support import acp as acp_mod
+
+    monkeypatch.setattr(acp_mod, "resolve_acpx", lambda: (r"C:\tools\acpx.exe", "acpx 0.1.0"))
+
+    def fake_spawn(*, command, cwd, env, timeout_seconds):
+        entry = _prompt_entry()
+        exit_event = _exit_event()
+        with ndjson_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, separators=(",", ":")) + "\n")
+            handle.write(json.dumps(exit_event, separators=(",", ":")) + "\n")
+        return 0
+
+    monkeypatch.setattr(acp_mod, "spawn_acpx", fake_spawn)
+    monkeypatch.setattr(
+        acp_mod,
+        "build_acpx_command",
+        lambda **kwargs: ["acpx", "--format", "json", "exec", "ping"],
+    )
+
+    code = gather.main(
+        [
+            "collect",
+            "--scenario",
+            str(FIXTURE.resolve()),
+            "--capture-root",
+            str(capture),
+            "--bind",
+            "model=operator-supplied",
+            "--workspace-root",
+            str(workspace),
+            "--agent-executable",
+            str(agent),
+            "--prompt",
+            "ping",
+            "--timeout-seconds",
+            "30",
+            "--ndjson-path",
+            str(ndjson_path.resolve()),
+            "--correlate-session-id",
+            "session-aaa",
+            "--correlate-request-id",
+            "req-1",
+            "--correlate-run-id",
+            "session-aaa:req-1",
+            "--debug-session-id",
+            "debug_abc",
+        ]
+    )
+    err = capsys.readouterr().err
+    assert "stage_unavailable" not in err
+    assert code == 0

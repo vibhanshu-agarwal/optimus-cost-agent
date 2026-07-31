@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
+import time
+import uuid
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -12,10 +15,13 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from evidence_handoff.collector.bundles import write_run_manifest
+from evidence_handoff.collector.bundles import write_raw_bundle, write_run_manifest
+from evidence_handoff.collector.models import CapturedArtifact, CollectionBatch, Observation, RunContext
 from evidence_handoff.collector.scenarios import load_scenario, resolve_bindings, scenario_sha256
 
-from tools.evidence_gather_support.common import HostError, require_directory, require_existing_file
+from tools.evidence_gather_support import acp as acp_mod
+from tools.evidence_gather_support import ndjson as ndjson_mod
+from tools.evidence_gather_support.common import HostError, require_absolute_path, require_directory, require_existing_file
 from tools.evidence_gather_support.fixtures import prepare_fixtures, run_preconditions
 from tools.evidence_gather_support.registry import assert_scenario_adapters_registered, build_registry
 
@@ -44,6 +50,16 @@ def build_parser() -> argparse.ArgumentParser:
     collect.add_argument("--scenario", type=Path, required=True)
     collect.add_argument("--capture-root", type=Path, required=True)
     collect.add_argument("--bind", action="append", default=[])
+    collect.add_argument("--workspace-root", type=Path, required=True)
+    collect.add_argument("--agent-executable", type=Path, required=True)
+    collect.add_argument("--prompt", type=str, required=True)
+    collect.add_argument("--timeout-seconds", type=int, required=True)
+    collect.add_argument("--ndjson-path", type=Path, required=False)
+    collect.add_argument("--correlate-session-id", type=str, required=True)
+    collect.add_argument("--correlate-request-id", type=str, required=True)
+    collect.add_argument("--correlate-run-id", type=str, required=True)
+    collect.add_argument("--debug-session-id", type=str, required=True)
+    collect.add_argument("--launch-session-id", type=str, required=False)
 
     classify = sub.add_parser("classify")
     classify.add_argument("--scenario", type=Path, required=True)
@@ -79,7 +95,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "validate": _handle_validate,
         "prepare": _handle_prepare,
         "check": _handle_check,
-        "collect": _handle_unavailable,
+        "collect": _handle_collect,
         "classify": _handle_unavailable,
         "redact": _handle_unavailable,
         "inspect": _handle_unavailable,
@@ -160,6 +176,129 @@ def _handle_check(args: argparse.Namespace) -> int:
         raise HostError("run_dir_missing")
     run_id, _origin = existing
     run_preconditions(capture_root=capture_root, scenario=scenario, run_id=run_id)
+    return 0
+
+
+def _handle_collect(args: argparse.Namespace) -> int:
+    scenario_path = require_existing_file(Path(args.scenario))
+    capture_root = require_directory(Path(args.capture_root), create=False)
+    workspace_root = require_absolute_path(Path(args.workspace_root)).resolve()
+    agent_executable = require_absolute_path(Path(args.agent_executable)).resolve()
+    if not workspace_root.is_dir():
+        raise HostError("workspace_missing")
+    if not agent_executable.is_file():
+        raise HostError("agent_missing")
+    scenario = load_scenario(scenario_path)
+    bindings = resolve_bindings(scenario, tuple(args.bind))
+    registry = build_registry()
+    assert_scenario_adapters_registered(scenario, registry)
+    digest = scenario_sha256(scenario, bindings)
+    existing = _find_run_for_digest(capture_root, digest)
+    if existing is None:
+        raise HostError("run_dir_missing")
+    run_id, origin = existing
+    run_preconditions(capture_root=capture_root, scenario=scenario, run_id=run_id)
+
+    ndjson_path = (
+        require_absolute_path(Path(args.ndjson_path)).resolve()
+        if args.ndjson_path is not None
+        else (workspace_root / ".optimus" / "debug-acp.ndjson").resolve()
+    )
+    snapshot = ndjson_mod.snapshot_source(ndjson_path)
+    acpx_path, acpx_version = acp_mod.resolve_acpx()
+    launch_session_id = args.launch_session_id or f"evidence-{uuid.uuid4().hex}"
+    command = acp_mod.build_acpx_command(
+        acpx_path=acpx_path,
+        workspace_root=workspace_root,
+        agent_executable=agent_executable,
+        prompt=args.prompt,
+        launch_session_id=launch_session_id,
+    )
+    acp_mod.spawn_acpx(
+        command=command,
+        cwd=workspace_root,
+        env={},
+        timeout_seconds=int(args.timeout_seconds),
+    )
+    records = ndjson_mod.read_ordered_suffix(ndjson_path, snapshot)
+    digest_hex = ndjson_mod.suffix_sha256(ndjson_path, snapshot)
+    claim = ndjson_mod.normalize_completion(
+        records,
+        correlate_session_id=args.correlate_session_id,
+        correlate_request_id=args.correlate_request_id,
+        correlate_run_id=args.correlate_run_id,
+        expected_debug_session_id=args.debug_session_id,
+        scenario_id=scenario.scenario_id,
+        run_id=run_id,
+        evidence_sha256=(digest_hex,),
+    )
+    if claim.claim_kind.value == "render_observed":
+        raise HostError("render_claim_forbidden")
+
+    run_dir = capture_root / run_id
+    relative = "artifacts/acp-debug-suffix.ndjson"
+    artifact_path = run_dir / relative
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    with ndjson_path.open("rb") as handle:
+        handle.seek(snapshot.byte_offset)
+        payload = handle.read()
+    artifact_path.write_bytes(payload)
+    artifact = CapturedArtifact(
+        role="acp_debug_suffix",
+        media_type="application/x-ndjson",
+        relative_locator=relative,
+        sha256=digest_hex,
+        size_bytes=len(payload),
+    )
+    now_offset = time.monotonic_ns() - origin
+    observation = Observation(
+        schema="evidence-observation-v1",
+        scenario_id=scenario.scenario_id,
+        run_id=run_id,
+        collector_id="acp_stream_collector",
+        sequence=0,
+        monotonic_offset_ns=max(now_offset, 0),
+        observed_at="1970-01-01T00:00:00Z",
+        observation_kind="completion_event",
+        correlation=(
+            ("session_id", args.correlate_session_id),
+            ("request_id", args.correlate_request_id),
+            ("run_id", args.correlate_run_id),
+        ),
+        artifact_role=artifact.role,
+        artifact_sha256=artifact.sha256,
+        reason_code=None,
+    )
+    batch = CollectionBatch(
+        collector_id="acp_stream_collector",
+        contract_version="v1",
+        observations=(observation,),
+        artifacts=(artifact,),
+    )
+    context = RunContext(
+        schema="evidence-run-v1",
+        scenario_id=scenario.scenario_id,
+        run_id=run_id,
+        scenario_sha256=digest,
+        capture_root=capture_root,
+        monotonic_origin_ns=origin,
+    )
+    write_raw_bundle(context=context, batches=(batch,))
+    summary = {
+        "schema": "evidence-collect-result-v1",
+        "complete": True,
+        "run_id": run_id,
+        "acpx_version": acpx_version,
+        "acpx_path_digest": hashlib.sha256(acpx_path.encode("utf-8")).hexdigest(),
+        "artifact_sha256": digest_hex,
+        "completion_claim": claim.claim_kind.value,
+        "completion_reason_code": claim.reason_code,
+    }
+    result_path = run_dir / "collect-result.json"
+    from evidence_handoff.collector.bundles import _atomic_write_json
+
+    _atomic_write_json(result_path, summary)
+    print(json.dumps({"run_id": run_id, "completion_claim": claim.claim_kind.value}, separators=(",", ":"), sort_keys=True))
     return 0
 
 
