@@ -1,6 +1,22 @@
 {
   "surfaces": [
     {
+      "key": "evidence_handoff.collector.scenarios:_load_toml:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: evidence_handoff.collector.scenarios:_load_toml:exception_export calls str(exc) only to branch on a fixed duplicate-key substring, then raises a typed ValueError with a fixed reason code; it does not persist or export raw TOML diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence/test_collector_scenarios.py::test_toml_and_json_fixtures_produce_identical_scenarios",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.collector.scenarios:scenario_sha256:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: scenario_sha256 canonicalizes already-validated portable Scenario and AdapterParameter fields solely to compute an in-memory SHA-256 digest; it does not persist or export the serialized payload.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence/test_collector_scenarios.py::test_scenario_sha256_is_stable_hex_digest",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "evidence_handoff.redaction.gate:_read_magic:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: magic-byte peek only; no body retention before kind dispatch.",

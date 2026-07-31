@@ -7,10 +7,14 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EVIDENCE_ROOT = REPO_ROOT / "src" / "evidence_handoff"
+COLLECTOR_ROOT = EVIDENCE_ROOT / "collector"
+SCENARIO_FIXTURES = REPO_ROOT / "tests" / "fixtures" / "evidence" / "scenarios"
 TASK_TEST_FILES = (
     REPO_ROOT / "tests/unit/evidence/test_import_boundaries.py",
     REPO_ROOT / "tests/unit/evidence/test_naming_boundaries.py",
     REPO_ROOT / "tests/unit/evidence/test_redaction_models.py",
+    REPO_ROOT / "tests/unit/evidence/test_collector_models.py",
+    REPO_ROOT / "tests/unit/evidence/test_collector_boundaries.py",
 )
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 
@@ -44,10 +48,21 @@ def test_task_owned_tests_have_no_feature_id_or_scheduling_numbers() -> None:
 def test_package_and_module_names_are_descriptive() -> None:
     assert (EVIDENCE_ROOT / "__init__.py").is_file()
     assert (EVIDENCE_ROOT / "redaction" / "models.py").is_file()
+    assert (COLLECTOR_ROOT / "__init__.py").is_file()
+    assert (COLLECTOR_ROOT / "models.py").is_file()
+    assert (COLLECTOR_ROOT / "scenarios.py").is_file()
     names = [path.name for path in EVIDENCE_ROOT.rglob("*.py")]
     assert all("plan-" not in name for name in names)
     assert all("feat_" not in name for name in names)
     assert all(FEATURE_ID_RE.search(name) is None for name in names)
+
+
+def test_collector_scenarios_and_artifacts_have_no_feature_id_or_scheduling_numbers() -> None:
+    paths = sorted(COLLECTOR_ROOT.rglob("*.py"))
+    assert paths, "collector package source must exist"
+    fixture_paths = sorted(SCENARIO_FIXTURES.glob("*"))
+    assert fixture_paths, "scenario fixtures must exist"
+    assert _scan_paths(paths + fixture_paths) == []
 
 
 def test_version_suffix_v1_is_allowed_in_descriptive_names() -> None:

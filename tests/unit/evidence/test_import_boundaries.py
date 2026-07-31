@@ -194,3 +194,27 @@ def test_isolated_import_blocks_deployables_and_loads_models() -> None:
         sys.meta_path.remove(finder)
         sys.modules.update(deployables)
         sys.modules.update(portable)
+
+
+def test_collector_subtree_rejects_optimus_security_imports() -> None:
+    collector_root = EVIDENCE_ROOT / "collector"
+    assert collector_root.is_dir()
+    violations: list[str] = []
+    for path in _python_files(collector_root):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for root in _imported_roots(tree):
+            if root == "optimus_security":
+                violations.append(path.relative_to(REPO_ROOT).as_posix())
+    assert violations == []
+
+
+def test_collector_subtree_rejects_dynamic_and_escaping_relative_imports() -> None:
+    collector_root = EVIDENCE_ROOT / "collector"
+    offenders: list[str] = []
+    for path in _python_files(collector_root):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        if _has_dynamic_import(tree):
+            offenders.append(path.relative_to(REPO_ROOT).as_posix())
+        if _relative_import_escapes(tree, package_depth=_package_depth(path, EVIDENCE_ROOT)):
+            offenders.append(path.relative_to(REPO_ROOT).as_posix())
+    assert offenders == []
