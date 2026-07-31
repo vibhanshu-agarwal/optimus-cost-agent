@@ -304,7 +304,7 @@ def test_exact_digest_approval_promotes(tmp_path: Path) -> None:
     assert pending.disposition is Disposition.AWAITING_HUMAN_APPROVAL
     assert pending.staged_sha256 is not None
     # Re-open staged file as if operator approved the exact digest.
-    # Source already quarantined; approve path takes staging path as source? 
+    # Source already quarantined; approve path takes staging path as source?
     # Handler API: pass approval on a second call against already-staged? Plan says
     # recompute digest before promotion. Use evaluate_screenshot_approval helper.
     approval = ScreenshotApproval(
