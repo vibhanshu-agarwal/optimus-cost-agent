@@ -1121,6 +1121,54 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.evidence_gather:_handle_unavailable:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_unavailable:stderr_export prints only the fixed stage_unavailable reason code to stderr and does not retain diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_unavailable_stages_print_stable_code",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_validate:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_validate:json_serialization canonicalizes an already-validated content-free validate summary (scenario id, digest, adapter ids, binding names only) for stdout; binding values are omitted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_validate_with_model_binding_emits_content_free_summary",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_validate:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_validate:stdout_export prints only the content-free validate summary JSON and does not retain binding values or diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_validate_with_model_binding_emits_content_free_summary",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:main:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:main:exception_export prints str(exc) for HostError/ValueError only when the message is already a stable snake_case reason code; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_validate_without_model_binding_fails_before_side_effects",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:main:stderr_export prints only controlled typed failure reason codes to stderr and does not retain them.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_validate_without_model_binding_fails_before_side_effects",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.fixtures:prepare_fixtures:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather_support.fixtures:prepare_fixtures:exception_export wraps ValueError from _read_complete_json via HostError(str(exc)) where exc is already a fixed reason code (invalid_json/partial_stage); it does not export raw JSON diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_truncated_fixture_marker_fails_prepare_with_stable_code",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.run_openrouter_web_search_spike:_post_chat:json_serialization",
       "policy": "protocol-only",
       "rationale": "Functional HTTPS request serialization sends only the bounded model, query, token limit, temperature, and web-plugin configuration to OpenRouter. The credential remains in the Authorization header, and the serialized request is not logged or persisted.",

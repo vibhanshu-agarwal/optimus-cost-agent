@@ -45,7 +45,7 @@ addopts = [
   "--strict-markers",
   "--import-mode=importlib",
   "-m",
-  "not requires_redis and not requires_gateway and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring",
+  "not requires_redis and not requires_gateway and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring and not requires_acpx and not requires_zed and not requires_windows_desktop and not evidence_investigation",
 ]
 markers = [
   "requires_redis: integration test that needs a live TimeSeries-capable Redis server",
@@ -54,6 +54,10 @@ markers = [
   "requires_live_gateway: integration test that needs the local Optimus Gateway service process and Anthropic API key on that process only",
   "requires_phoenix: integration test that needs a live Phoenix trace collector reachable via the Gateway-only OTLP endpoint",
   "requires_os_keyring: integration test that reads existing operator-approved credentials from the real OS credential store without writing or deleting them",
+  "requires_acpx: requires independently authored acpx and a real agent process",
+  "requires_zed: requires a real supported Zed instance and its real logs",
+  "requires_windows_desktop: requires an interactive Windows desktop and real DWM",
+  "evidence_investigation: runs a named evidence-only investigation with its real dependency",
 ]
 
 [tool.coverage.run]
@@ -79,6 +83,7 @@ ignore = ["E501"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["E402"]
 "tools/verify_live_agent.py" = ["E402"]
+"tools/evidence_gather.py" = ["E402", "I001"]
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]
