@@ -312,7 +312,25 @@ def quarantine_partial_staging(path: Path, *, quarantine_root: Path) -> Path:
         os.replace(src, dest)
     except OSError:
         _raise("quarantine_move_failed")
+    apply_restrictive_permissions(dest)
     return dest
+
+
+def apply_restrictive_permissions(path: Path) -> None:
+    """Force restrictive same-user permissions on an existing path."""
+    target = _absolute_without_follow(path)
+    if not target.exists():
+        _raise("permission_target_missing")
+    try:
+        if sys.platform == "win32":
+            _apply_windows_restrictive_dacl(target, is_directory=target.is_dir())
+        else:
+            _apply_posix_mode(target, 0o700 if target.is_dir() else 0o600)
+    except PrivateFileError:
+        raise
+    except OSError:
+        _raise("private_file_permission_failed")
+    verify_restrictive_permissions(target)
 
 
 def verify_restrictive_permissions(path: Path) -> None:
