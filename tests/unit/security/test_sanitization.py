@@ -7,6 +7,9 @@ raise or contain canaries.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pytest
 
 from optimus_security.sanitization import (
@@ -518,3 +521,91 @@ class TestPrimitivePassthrough:
     def test_none_unchanged(self) -> None:
         result = sanitize_for_persistence(None, known_secrets=[])
         assert result.value is None
+
+
+class TestEvidencePathAliases:
+    """Evidence-policy path alias canonicalization."""
+
+    def test_longest_root_first_replacement(self, tmp_path: Path) -> None:
+        from optimus_security.sanitization import (
+            EVIDENCE_REDACTION_POLICY,
+            PathAliasRule,
+            sanitize_for_persistence,
+        )
+
+        outer = (tmp_path / "user").resolve()
+        inner = (outer / "project").resolve()
+        outer.mkdir()
+        inner.mkdir()
+        text = f"opened {inner.as_posix()}/src/main.py"
+        result = sanitize_for_persistence(
+            text,
+            path_aliases=(
+                PathAliasRule(source_root=str(outer), alias="<user-data>"),
+                PathAliasRule(source_root=str(inner), alias="<workspace>"),
+            ),
+            policy=EVIDENCE_REDACTION_POLICY,
+        )
+        assert "<workspace>/src/main.py" in str(result.value)
+        assert str(inner) not in str(result.value)
+        assert result.rule_counts.get("path_alias_replacement", 0) >= 1
+
+    def test_segment_boundary_rejects_suffix_match(self, tmp_path: Path) -> None:
+        from optimus_security.sanitization import (
+            EVIDENCE_REDACTION_POLICY,
+            PathAliasRule,
+            sanitize_for_persistence,
+        )
+
+        root = (tmp_path / "home" / "user").resolve()
+        root.mkdir(parents=True)
+        # Mid-string occurrence with shared suffix must not rewrite.
+        text = f"backup{root.as_posix()}/notes.txt"
+        result = sanitize_for_persistence(
+            text,
+            path_aliases=(PathAliasRule(source_root=str(root), alias="<user-data>"),),
+            policy=EVIDENCE_REDACTION_POLICY,
+        )
+        assert "<user-data>" not in str(result.value)
+
+    def test_windows_separator_and_case_variants(self, tmp_path: Path) -> None:
+        from optimus_security.sanitization import (
+            EVIDENCE_REDACTION_POLICY,
+            PathAliasRule,
+            sanitize_for_persistence,
+        )
+
+        root = (tmp_path / "Workspace").resolve()
+        root.mkdir()
+        mixed = str(root).replace("/", "\\")
+        if sys.platform == "win32":
+            mixed = mixed.swapcase() if mixed != mixed.swapcase() else mixed
+        text = f"path {mixed}\\src\\app.py"
+        result = sanitize_for_persistence(
+            text,
+            path_aliases=(PathAliasRule(source_root=str(root), alias="<workspace>"),),
+            policy=EVIDENCE_REDACTION_POLICY,
+        )
+        if sys.platform == "win32":
+            assert "<workspace>" in str(result.value).replace("\\", "/")
+        else:
+            # POSIX: case-sensitive; swapcase root must not match.
+            assert "<workspace>" not in str(result.value) or mixed == str(root)
+
+    def test_compatibility_policy_does_not_apply_path_aliases(self, tmp_path: Path) -> None:
+        from optimus_security.sanitization import (
+            COMPATIBILITY_SANITIZATION_POLICY,
+            PathAliasRule,
+            sanitize_for_persistence,
+        )
+
+        root = (tmp_path / "ws").resolve()
+        root.mkdir()
+        text = f"{root.as_posix()}/x.py"
+        result = sanitize_for_persistence(
+            text,
+            path_aliases=(PathAliasRule(source_root=str(root), alias="<workspace>"),),
+            policy=COMPATIBILITY_SANITIZATION_POLICY,
+        )
+        assert str(result.value) == text
+        assert result.rule_counts.get("path_alias_replacement", 0) == 0

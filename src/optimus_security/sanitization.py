@@ -16,6 +16,7 @@ import hashlib
 import hmac
 import math
 import re
+import sys
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -423,18 +424,23 @@ def _sanitize_text(
 def _apply_path_aliases(text: str, path_aliases: list[PathAliasRule], counter: _RuleCounter) -> str:
     if not path_aliases:
         return text
-    # Work on a slash-normalized copy for matching, then rewrite matches.
+    # Slash-normalize for matching; Windows may case-fold, POSIX must not.
     normalized = text.replace("\\", "/")
     result = normalized
+    flags = re.IGNORECASE if sys.platform == "win32" else 0
     for rule in path_aliases:
-        root = rule.source_root
-        # Match root at a path-segment boundary.
+        root = rule.source_root.replace("\\", "/").rstrip("/")
+        if not root:
+            continue
+        # Segment boundaries: reject mid-token suffix matches such as
+        # ``backup<rooted-path>/file``, while allowing whitespace/start prefixes.
         pattern = re.compile(
-            re.escape(root) + r'(?=/|$|\s|["\'])',
-            re.IGNORECASE,
+            rf'(?<![A-Za-z0-9_]){re.escape(root)}(?=[/\\"\']|\s|$)',
+            flags,
         )
-        if pattern.search(result):
-            result = pattern.sub(rule.alias, result)
+        replaced, count = pattern.subn(rule.alias, result)
+        if count:
+            result = replaced
             counter.inc("path_alias_replacement")
     return result
 
