@@ -1,6 +1,38 @@
 {
   "surfaces": [
     {
+      "key": "evidence_handoff.collector.bundles:_atomic_write_json:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens a sibling temporary JSON stage file only to publish digest-bound portable run/bundle documents; no diagnostic body retention.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/integration/evidence/test_collector_filesystem.py::test_atomic_replacement_and_resume",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.collector.bundles:_atomic_write_json:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes already-validated portable scenario/run/bundle fields to canonical JSON before atomic replace; content is schema-limited and not a diagnostic export.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/integration/evidence/test_collector_filesystem.py::test_atomic_replacement_and_resume",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.collector.bundles:_atomic_write_json:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the canonical JSON bytes for a complete stage document to a temporary sibling before os.replace; partial names cannot be loaded as completed stages.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/integration/evidence/test_collector_filesystem.py::test_temporary_partial_files_are_not_completed_stage_names",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.collector.bundles:_payload_sha256:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonicalizes an in-memory portable payload solely to compute a SHA-256 digest field; the encoded JSON is not persisted or exported by this helper.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/integration/evidence/test_collector_filesystem.py::test_file_identity_change_fails_verification",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "evidence_handoff.collector.scenarios:_load_toml:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: evidence_handoff.collector.scenarios:_load_toml:exception_export calls str(exc) only to branch on a fixed duplicate-key substring, then raises a typed ValueError with a fixed reason code; it does not persist or export raw TOML diagnostics.",
