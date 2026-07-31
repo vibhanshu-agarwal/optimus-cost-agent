@@ -577,20 +577,31 @@ class TestEvidencePathAliases:
 
         root = (tmp_path / "Workspace").resolve()
         root.mkdir()
-        mixed = str(root).replace("/", "\\")
-        if sys.platform == "win32":
-            mixed = mixed.swapcase() if mixed != mixed.swapcase() else mixed
-        text = f"path {mixed}\\src\\app.py"
-        result = sanitize_for_persistence(
-            text,
-            path_aliases=(PathAliasRule(source_root=str(root), alias="<workspace>"),),
+        aliases = (PathAliasRule(source_root=str(root), alias="<workspace>"),)
+        # Separator normalization is universal (design: normalize separators and
+        # Windows case-folding). Only case-folding is platform-gated.
+        mixed_sep = str(root).replace("/", "\\")
+        sep_text = f"path {mixed_sep}\\src\\app.py"
+        sep_result = sanitize_for_persistence(
+            sep_text,
+            path_aliases=aliases,
+            policy=EVIDENCE_REDACTION_POLICY,
+        )
+        assert "<workspace>" in str(sep_result.value).replace("\\", "/")
+
+        cased = str(root).swapcase()
+        if cased == str(root):
+            return
+        case_text = f"path {cased}/src/app.py"
+        case_result = sanitize_for_persistence(
+            case_text,
+            path_aliases=aliases,
             policy=EVIDENCE_REDACTION_POLICY,
         )
         if sys.platform == "win32":
-            assert "<workspace>" in str(result.value).replace("\\", "/")
+            assert "<workspace>" in str(case_result.value).replace("\\", "/")
         else:
-            # POSIX: case-sensitive; swapcase root must not match.
-            assert "<workspace>" not in str(result.value) or mixed == str(root)
+            assert "<workspace>" not in str(case_result.value)
 
     def test_compatibility_policy_does_not_apply_path_aliases(self, tmp_path: Path) -> None:
         from optimus_security.sanitization import (
