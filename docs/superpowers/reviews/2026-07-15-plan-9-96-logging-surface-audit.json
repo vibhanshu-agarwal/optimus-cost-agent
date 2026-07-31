@@ -1,6 +1,134 @@
 {
   "surfaces": [
     {
+      "key": "evidence_handoff.redaction.gate:_read_magic:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: magic-byte peek only; no body retention before kind dispatch.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence/test_gate.py::test_promoted_text_writes_bundle_atomically",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.gate:_sha256_file:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: streaming digest of already-staged sanitized bytes; no raw body export.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence/test_gate.py::test_promoted_text_writes_bundle_atomically",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.gate:_write_promoted_bundle:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer and manifest canary protect promoted artifact bytes before destination rename.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/evidence/test_gate.py::test_promoted_text_writes_bundle_atomically",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.gate:_write_promoted_bundle:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "Manifest serialization is canary-scanned content-free JSON before promotion.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/evidence/test_gate.py::test_promoted_text_writes_bundle_atomically",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.images:_sha256_file:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: streaming digest of canonical PNG bytes only.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence/test_image_redaction.py::test_canonical_png_strips_metadata_and_uses_role_name",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.images:sanitize_screenshot_artifact:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Screenshot decode/re-encode path; raw source quarantined; staged bytes are metadata-free PNG.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/evidence/test_image_redaction.py::test_canonical_png_strips_metadata_and_uses_role_name",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.images:sanitize_screenshot_artifact:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "Canonical PNG write of re-encoded raster only; no metadata/text chunks retained.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/evidence/test_image_redaction.py::test_canonical_png_strips_metadata_and_uses_role_name",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.manifest:serialize_manifest:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Content-free manifest fields only; canary-scanned before promotion.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/evidence/test_manifest.py::test_serialized_manifest_has_no_forbidden_content",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.private_files:atomic_replace_same_filesystem:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: same-filesystem rename/replace of private staging paths; no diagnostic body export.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence/test_private_files.py::test_create_private_staging_file_uses_role_based_name",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.private_files:create_private_staging_file:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: creates empty/private staging file with restrictive permissions.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence/test_private_files.py::test_create_private_staging_file_uses_role_based_name",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.quarantine:_stream_sha256:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: hash-only quarantine streaming read; dump bodies never promoted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence/test_quarantine.py::test_hash_only_record_has_no_body_fields",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.quarantine:quarantine_process_dump:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: move/retain dump into quarantine; hash-only record; no promotion API.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence/test_quarantine.py::test_hash_only_record_has_no_body_fields",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.structured:_dump_deterministic:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects structured JSON/NDJSON before staging write.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/evidence/test_structured_redaction.py::test_json_deterministic_utf8_and_escape_scanning",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.structured:_write_staging:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects structured artifact text before private staging write.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/evidence/test_structured_redaction.py::test_json_deterministic_utf8_and_escape_scanning",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.text:sanitize_text_artifact:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer streaming-protects text artifacts before staging.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/evidence/test_text_redaction.py::test_exact_secret_split_across_every_stream_boundary",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.text:sanitize_text_artifact:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects text artifact output before private staging write.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/evidence/test_text_redaction.py::test_exact_secret_split_across_every_stream_boundary",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.__main__:_append_audit_or_exit:stderr_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.acp.__main__:_append_audit_or_exit:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
@@ -1358,6 +1486,110 @@
       "rationale": "Inspection: tools.run_plan996_acpx_security_evidence:main:stderr_export prints only controlled operational, status, or typed failure text to stderr (acpx-not-found, gate-rejection remediation, grant-failure codes, and provenance messages with no credential or diagnostic content) and does not retain it.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_elevated_capture_fails_closed_on_missing_diagnostic_grant",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_redaction_gate_live_evidence:_pump:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Temporary private capture under operator capture root; streamed into redaction gate; never retained as raw transcript in output.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_run_redaction_gate_live_evidence.py::test_spawn_uses_shell_false",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_redaction_gate_live_evidence:_pump:text_file_write",
+      "policy": "shared-sanitize",
+      "rationale": "Temporary private capture write before gate; deleted after promotion attempt.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_run_redaction_gate_live_evidence.py::test_spawn_uses_shell_false",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_redaction_gate_live_evidence:_pump:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "Temporary private capture write before gate; deleted after promotion attempt.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_run_redaction_gate_live_evidence.py::test_spawn_uses_shell_false",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_redaction_gate_live_evidence:_sha256_file:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: digest of already-promoted or staged artifacts for content-free summary.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_redaction_gate_live_evidence.py::test_spawn_uses_shell_false",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_redaction_gate_live_evidence:_write_private_capture:text_file_write",
+      "policy": "shared-sanitize",
+      "rationale": "Private capture under temporary_capture_root for fixture staging into the gate only.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_run_redaction_gate_live_evidence.py::test_spawn_uses_shell_false",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_redaction_gate_live_evidence:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "CLI prints content-free ok/error JSON only (digests, dispositions, reason codes).",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_redaction_gate_live_evidence.py::test_spawn_uses_shell_false",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_redaction_gate_live_evidence:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "CLI stderr emits content-free error codes only.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_redaction_gate_live_evidence.py::test_spawn_uses_shell_false",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_redaction_gate_live_evidence:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "CLI stdout emits content-free status and digest tables only.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_redaction_gate_live_evidence.py::test_spawn_uses_shell_false",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_redaction_gate_live_evidence:run_drive_acp_only:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Content-free run-summary JSON (identities, digests, dispositions); no raw transcript.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_redaction_gate_live_evidence.py::test_spawn_uses_shell_false",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_redaction_gate_live_evidence:run_drive_acp_only:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Writes content-free run-summary.json only under operator output root.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_redaction_gate_live_evidence.py::test_spawn_uses_shell_false",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_redaction_gate_live_evidence:run_inspect:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspect emits content-free digests/dispositions; canary failure fails closed.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_redaction_gate_live_evidence.py::test_spawn_uses_shell_false",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_redaction_gate_live_evidence:run_verify:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Content-free run-summary JSON after gate promotion; no raw transcript materialization.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_redaction_gate_live_evidence.py::test_spawn_uses_shell_false",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_redaction_gate_live_evidence:run_verify:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Writes content-free run-summary.json only under operator output root.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_redaction_gate_live_evidence.py::test_spawn_uses_shell_false",
       "evidence_tier": "unit"
     },
     {

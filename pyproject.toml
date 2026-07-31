@@ -13,6 +13,7 @@ dependencies = [
   "opentelemetry-api>=1.44,<2",
   "opentelemetry-exporter-otlp-proto-http>=1.44,<2",
   "opentelemetry-sdk>=1.44,<2",
+  "Pillow>=12.3,<13",
   "pydantic>=2.8",
   "redis>=5",
 ]
@@ -44,7 +45,7 @@ addopts = [
   "--strict-markers",
   "--import-mode=importlib",
   "-m",
-  "not requires_redis and not requires_gateway and not e2e and not requires_live_gateway and not requires_phoenix",
+  "not requires_redis and not requires_gateway and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring",
 ]
 markers = [
   "requires_redis: integration test that needs a live TimeSeries-capable Redis server",
@@ -52,11 +53,12 @@ markers = [
   "e2e: end-to-end test that spawns the real ACP stdio process",
   "requires_live_gateway: integration test that needs the local Optimus Gateway service process and Anthropic API key on that process only",
   "requires_phoenix: integration test that needs a live Phoenix trace collector reachable via the Gateway-only OTLP endpoint",
+  "requires_os_keyring: integration test that reads existing operator-approved credentials from the real OS credential store without writing or deleting them",
 ]
 
 [tool.coverage.run]
 branch = true
-source = ["src/optimus", "src/optimus_gateway", "src/optimus_security"]
+source = ["src/optimus", "src/optimus_gateway", "src/optimus_security", "src/evidence_handoff"]
 
 [tool.coverage.report]
 show_missing = true
