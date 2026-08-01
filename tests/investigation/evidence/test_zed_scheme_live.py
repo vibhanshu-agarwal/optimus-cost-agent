@@ -21,7 +21,6 @@ import subprocess
 import sys
 import time
 import urllib.parse
-from ctypes import windll
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -216,6 +215,10 @@ def _enum_window_titles_for_pids(pids: set[int]) -> list[dict[str, Any]]:
 def _invoke_os_scheme(uri: str) -> dict[str, Any]:
     """Invoke the registered scheme via ShellExecuteW (real OS handler path)."""
     # Do not call Zed.exe directly — that would bypass scheme registration.
+    # Import windll only here so Linux CI can collect this module under marker
+    # deselection without a Windows-only ctypes attribute.
+    from ctypes import windll
+
     windll.ole32.CoInitializeEx(None, 0x0)
     rc = int(windll.shell32.ShellExecuteW(None, "open", uri, None, None, _SW_SHOWNORMAL))
     # Per MSDN, values > 32 indicate success.
