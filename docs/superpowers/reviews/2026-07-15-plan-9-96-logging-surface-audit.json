@@ -1145,6 +1145,38 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.evidence_gather:_handle_inspect:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_inspect:json_serialization serializes only a body-free inspect summary (schema, scenario/run ids, outcome, report digest, promoted count, and relative artifact locators) with no artifact bodies, credentials, or host authorization objects.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_redact_promotes_text_and_writes_report_then_inspect_is_body_free",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_inspect:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_inspect:stdout_export prints only the body-free inspect summary JSON and does not retain artifact bodies or credentials.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_redact_promotes_text_and_writes_report_then_inspect_is_body_free",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_redact:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_redact:json_serialization emits a schema-limited redact-result document (run_id, provisional outcome, disposition enums, and public reason codes) plus a content-free stdout summary; AuthorizedLaunch, host context, credentials, and artifact bodies are omitted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_redact_promotes_text_and_writes_report_then_inspect_is_body_free",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_redact:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_redact:stdout_export prints only run_id, optional report path, and provisional outcome; it does not retain credentials, host authorization objects, or artifact bodies.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_redact_promotes_text_and_writes_report_then_inspect_is_body_free",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.evidence_gather:_handle_unavailable:stderr_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: tools.evidence_gather:_handle_unavailable:stderr_export prints only the fixed stage_unavailable reason code to stderr and does not retain diagnostics.",

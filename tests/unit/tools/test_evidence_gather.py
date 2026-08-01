@@ -1576,3 +1576,760 @@ def test_dwm_screenshot_collect_through_entry_point(
     assert dwm_batches[0]["artifacts"][0]["role"] == "screenshot"
     assert all(obs["observation_kind"] == "screenshot_capture" for obs in dwm_batches[0]["observations"])
     assert all(obs["observation_kind"] != "render_observed" for obs in dwm_batches[0]["observations"])
+
+# --- Task 8: redact / report / inspect / contract ---
+
+from collections.abc import Mapping
+
+from evidence_handoff.collector.bundles import write_provisional_result, write_raw_bundle
+from evidence_handoff.collector.models import (
+    CapturedArtifact,
+    ClassificationResult,
+    CollectionBatch,
+    Observation,
+    Outcome,
+    RunContext,
+)
+from evidence_handoff.redaction.models import ArtifactKind, Disposition, RedactionGateResult
+from tests.unit.acp.conftest import FakeKeyring
+
+
+def _launch_env() -> dict[str, str]:
+    return {
+        "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+        "OPTIMUS_API_KEY": "collector-redact-unit-key-xxxxxxxx",
+        "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+    }
+
+
+def _sha256_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _prepare_run(tmp_path: Path) -> tuple[Path, Path, Path, RunContext, Path]:
+    gather = _gather()
+    capture = (tmp_path / "capture").resolve()
+    workspace = (tmp_path / "workspace").resolve()
+    workspace.mkdir()
+    (workspace / ".git").mkdir()
+    assert (
+        gather.main(
+            [
+                "prepare",
+                "--scenario",
+                str(FIXTURE.resolve()),
+                "--capture-root",
+                str(capture),
+                "--bind",
+                "model=operator-supplied",
+            ]
+        )
+        == 0
+    )
+    run_dirs = [path for path in capture.iterdir() if path.is_dir()]
+    assert len(run_dirs) == 1
+    run_dir = run_dirs[0]
+    manifest = json.loads((run_dir / "run-manifest.json").read_text(encoding="utf-8"))
+    context = RunContext(
+        schema="evidence-run-v1",
+        scenario_id=str(manifest["scenario_id"]),
+        run_id=str(manifest["run_id"]),
+        scenario_sha256=str(manifest["scenario_sha256"]),
+        capture_root=capture,
+        monotonic_origin_ns=int(manifest["monotonic_origin_ns"]),
+    )
+    return capture, workspace, run_dir, context, capture
+
+
+def _write_text_bundle(context: RunContext, run_dir: Path, *, body: str = "safe note\n") -> str:
+    relative = "artifacts/note.txt"
+    path = run_dir / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = body.encode("utf-8")
+    path.write_bytes(payload)
+    digest = _sha256_bytes(payload)
+    batch = CollectionBatch(
+        collector_id="unit_text_collector",
+        contract_version="v1",
+        observations=(
+            Observation(
+                schema="evidence-observation-v1",
+                scenario_id=context.scenario_id,
+                run_id=context.run_id,
+                collector_id="unit_text_collector",
+                sequence=0,
+                monotonic_offset_ns=1,
+                observed_at="1970-01-01T00:00:00+00:00",
+                observation_kind="text_capture",
+                correlation=(),
+                artifact_role="zed_log",
+                artifact_sha256=digest,
+                reason_code=None,
+            ),
+        ),
+        artifacts=(
+            CapturedArtifact(
+                role="zed_log",
+                media_type="text/plain",
+                relative_locator=relative,
+                sha256=digest,
+                size_bytes=len(payload),
+            ),
+        ),
+    )
+    bundle_path = write_raw_bundle(context=context, batches=(batch,))
+    bundle_digest = json.loads(bundle_path.read_text(encoding="utf-8"))["bundle_sha256"]
+    write_provisional_result(
+        context=context,
+        result=ClassificationResult(
+            schema="evidence-provisional-result-v1",
+            scenario_id=context.scenario_id,
+            run_id=context.run_id,
+            outcome=Outcome.INDETERMINATE,
+            claims=(),
+            reason_codes=("unit",),
+            raw_bundle_sha256=str(bundle_digest),
+        ),
+    )
+    return digest
+
+
+def _seed_durable_approval(*, workspace: Path, env: dict[str, str], fake: FakeKeyring) -> None:
+    import sys as _sys
+
+    from optimus.acp.launch_approvals import KeyringApprovalStore, build_approval_record
+    from optimus.acp.launch_gate import resolve_launch_candidate
+    from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
+    from optimus.acp.operator_paths import bootstrap_workspace_runtime_root, resolve_authorized_operator_paths
+    from optimus.acp.trusted_paths import resolve_workspace_identity
+
+    snapshot = LaunchEnvironmentSnapshot.capture(env)
+    paths = resolve_authorized_operator_paths(
+        workspace_root=workspace,
+        snapshot_values=snapshot.values,
+        platform_name=_sys.platform,
+    )
+    bootstrap_workspace_runtime_root(paths)
+    store = KeyringApprovalStore(keyring_backend=fake, runtime_root=paths.runtime_root)
+    candidate = resolve_launch_candidate(
+        snapshot=snapshot,
+        workspace_identity=resolve_workspace_identity(workspace),
+        operator_paths=paths,
+        hmac_key=store.hmac_key,
+        credential_keyring_backend=fake,
+    )
+    record = build_approval_record(
+        mode="durable",
+        workspace_identity=candidate.workspace_identity,
+        security_literals=candidate.security_literals,
+        secret_fingerprints=candidate.secret_fingerprints,
+        monotonic_grants=candidate.monotonic_grants,
+        model_observation=candidate.model_observation,
+        hmac_key=store.hmac_key,
+    )
+    store.write_durable(record)
+
+
+def _redact_argv(
+    *,
+    workspace: Path,
+    capture: Path,
+    user_data: Path,
+    staging: Path,
+    quarantine: Path,
+    sanitized: Path,
+    result: Path,
+    report: Path,
+    forbidden: Path | None = None,
+    screenshot_approval: Path | None = None,
+) -> list[str]:
+    argv = [
+        "redact",
+        "--scenario",
+        str(FIXTURE.resolve()),
+        "--workspace-root",
+        str(workspace),
+        "--user-data-root",
+        str(user_data),
+        "--capture-root",
+        str(capture),
+        "--staging-root",
+        str(staging),
+        "--quarantine-root",
+        str(quarantine),
+        "--sanitized-root",
+        str(sanitized),
+        "--result",
+        str(result),
+        "--report",
+        str(report),
+        "--bind",
+        "model=operator-supplied",
+    ]
+    if forbidden is not None:
+        argv.extend(["--forbidden-root", str(forbidden)])
+    if screenshot_approval is not None:
+        argv.extend(["--screenshot-approval", str(screenshot_approval)])
+    return argv
+
+
+def test_only_redact_imports_redaction_orchestration() -> None:
+    offenders: list[str] = []
+    allowed_reports = REPO_ROOT / "tools" / "evidence_gather_support" / "reports.py"
+    for path in (REPO_ROOT / "tools").rglob("*.py"):
+        if path.name == "redaction.py" and path.parent.name == "evidence_gather_support":
+            continue
+        if path.resolve() == allowed_reports.resolve():
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module == "evidence_handoff.redaction.gate":
+                    offenders.append(path.relative_to(REPO_ROOT).as_posix())
+                if isinstance(node, ast.ImportFrom) and node.module and "evidence_redaction_adapter" in node.module:
+                    offenders.append(path.relative_to(REPO_ROOT).as_posix())
+            continue
+        if path.name == "evidence_gather.py":
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            uses = False
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef) and node.name == "_handle_redact":
+                    uses = True
+            assert uses
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "evidence_handoff.redaction" in text or "evidence_redaction_adapter" in text:
+            if path.name in {"run_redaction_gate_live_evidence.py", "run_plan115_acpx_cost_obs_evidence.py"}:
+                continue
+            offenders.append(path.relative_to(REPO_ROOT).as_posix())
+    assert offenders == []
+
+
+def test_exhaustive_artifact_role_to_kind_contract() -> None:
+    from tools.evidence_gather_support import redaction as redaction_mod
+
+    pairs = redaction_mod.exhaustive_role_kind_pairs()
+    assert pairs == (
+        ("acp_debug_suffix", ArtifactKind.ACP_DEBUG_TRACE),
+        ("screenshot", ArtifactKind.SCREENSHOT),
+        ("zed_log", ArtifactKind.TEXT),
+        ("zed_panic_json", ArtifactKind.JSON),
+        ("zed_process_dump", ArtifactKind.PROCESS_DUMP),
+    )
+    for role, kind in pairs:
+        assert redaction_mod.map_artifact_role(role) is kind
+    from tools.evidence_gather_support.common import HostError
+
+    with pytest.raises(HostError) as exc_info:
+        redaction_mod.map_artifact_role("zed_unknown")
+    assert exc_info.value.code == "unknown_artifact_role"
+
+
+def test_redaction_gate_contract_imports_are_public_models_exports() -> None:
+    import evidence_handoff.redaction.models as models
+
+    public = set(models.__all__)
+    path = SUPPORT / "redaction.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "evidence_handoff.redaction.models":
+            for alias in node.names:
+                imported.add(alias.name)
+        if isinstance(node, ast.ImportFrom) and node.module == "evidence_handoff.redaction":
+            pytest.fail("collector must import models from evidence_handoff.redaction.models")
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith(
+            "evidence_handoff.redaction."
+        ):
+            if node.module not in {"evidence_handoff.redaction.models", "evidence_handoff.redaction.gate"}:
+                pytest.fail(f"non-public redaction import: {node.module}")
+    assert {"ArtifactKind", "Disposition", "RedactionGateResult", "RedactionRequest", "RedactionRuntimeInputs", "ScreenshotApproval"} <= imported
+    assert imported <= public | {"ArtifactKind", "Disposition", "RedactionGateResult", "RedactionRequest", "RedactionRuntimeInputs", "ScreenshotApproval"}
+    text = path.read_text(encoding="utf-8")
+    assert "EVIDENCE_REDACTION_POLICY" not in text
+    assert "sanitizer_policy_version" not in text
+
+
+def test_redact_parser_requires_workspace_and_user_data_roots() -> None:
+    gather = _gather()
+    with pytest.raises(SystemExit):
+        gather.build_parser().parse_args(
+            [
+                "redact",
+                "--scenario",
+                str(FIXTURE.resolve()),
+                "--capture-root",
+                str((REPO_ROOT / "tmp-capture").resolve()),
+                "--result",
+                str((REPO_ROOT / "tmp-result.json").resolve()),
+                "--staging-root",
+                str((REPO_ROOT / "tmp-staging").resolve()),
+                "--quarantine-root",
+                str((REPO_ROOT / "tmp-quarantine").resolve()),
+                "--sanitized-root",
+                str((REPO_ROOT / "tmp-sanitized").resolve()),
+                "--report",
+                str((REPO_ROOT / "tmp-report.json").resolve()),
+            ]
+        )
+    parsed = gather.build_parser().parse_args(
+        [
+            "redact",
+            "--scenario",
+            str(FIXTURE.resolve()),
+            "--workspace-root",
+            str((REPO_ROOT / "tmp-ws").resolve()),
+            "--user-data-root",
+            str((REPO_ROOT / "tmp-ud").resolve()),
+            "--capture-root",
+            str((REPO_ROOT / "tmp-capture").resolve()),
+            "--result",
+            str((REPO_ROOT / "tmp-result.json").resolve()),
+            "--staging-root",
+            str((REPO_ROOT / "tmp-staging").resolve()),
+            "--quarantine-root",
+            str((REPO_ROOT / "tmp-quarantine").resolve()),
+            "--sanitized-root",
+            str((REPO_ROOT / "tmp-sanitized").resolve()),
+            "--report",
+            str((REPO_ROOT / "tmp-report.json").resolve()),
+        ]
+    )
+    assert Path(parsed.workspace_root).is_absolute()
+    assert Path(parsed.user_data_root[0]).is_absolute()
+    assert Path(parsed.report).is_absolute()
+
+
+def test_redact_forbidden_roots_always_include_workspace(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import redaction as redaction_mod
+    from tools.evidence_gather_support.common import HostError
+
+    workspace = (tmp_path / "workspace").resolve()
+    workspace.mkdir()
+    user_data = (tmp_path / "user-data").resolve()
+    user_data.mkdir()
+    capture = (tmp_path / "capture").resolve()
+    staging = (tmp_path / "staging").resolve()
+    quarantine = (tmp_path / "quarantine").resolve()
+    for path in (capture, staging, quarantine):
+        path.mkdir()
+    extra = (tmp_path / "forbidden-extra").resolve()
+    extra.mkdir()
+
+    class _Launch:
+        pass
+
+    (tmp_path / "profile").mkdir()
+    context = redaction_mod.build_redaction_host_context(
+        authorized_launch=_Launch(),  # type: ignore[arg-type]
+        workspace_root=workspace,
+        user_data_roots=(user_data,),
+        temporary_capture_root=capture,
+        staging_root=staging,
+        quarantine_root=quarantine,
+        operator_forbidden_roots=(extra,),
+        operator_profile_root=(tmp_path / "profile").resolve(),
+        operator_identity_values=("operator", "host"),
+    )
+    assert workspace in context.forbidden_persistence_roots
+    assert extra in context.forbidden_persistence_roots
+    with pytest.raises(HostError) as empty_identity:
+        redaction_mod.build_redaction_host_context(
+            authorized_launch=_Launch(),  # type: ignore[arg-type]
+            workspace_root=workspace,
+            user_data_roots=(user_data,),
+            temporary_capture_root=capture,
+            staging_root=staging,
+            quarantine_root=quarantine,
+            operator_forbidden_roots=(),
+            operator_profile_root=(tmp_path / "profile").resolve(),
+            operator_identity_values=(),
+        )
+    assert empty_identity.value.code == "operator_identity_unavailable"
+
+
+def test_redact_profile_lookup_ignores_inherited_profile_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from tools.evidence_gather_support import redaction as redaction_mod
+
+    fake = (tmp_path / "fake-profile").resolve()
+    fake.mkdir()
+    monkeypatch.setenv("USERPROFILE", str(fake))
+    monkeypatch.setenv("HOME", str(fake))
+    monkeypatch.setenv("HOMEPATH", str(fake))
+    resolved = redaction_mod.resolve_operator_profile_root()
+    assert resolved != fake
+
+
+def test_redact_launch_environment_captured_exactly_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
+    from tools.evidence_gather_support import redaction as redaction_mod
+    from tools.evidence_gather_support.common import HostError
+
+    workspace = (tmp_path / "workspace").resolve()
+    workspace.mkdir()
+    (workspace / ".git").mkdir()
+    env = _launch_env()
+    fake = FakeKeyring()
+    _seed_durable_approval(workspace=workspace, env=env, fake=fake)
+    calls: list[Mapping[str, str] | dict[str, str]] = []
+    real = LaunchEnvironmentSnapshot.capture
+
+    def wrapped(values):
+        calls.append(dict(values))
+        return real(values)
+
+    monkeypatch.setattr(LaunchEnvironmentSnapshot, "capture", staticmethod(wrapped))
+    authorized = redaction_mod.authorize_redaction_launch(
+        workspace_root=workspace,
+        environ=env,
+        keyring_backend=fake,
+    )
+    assert len(calls) == 1
+    assert authorized.approval_mode == "durable"
+    # Ambient mutation after the explicit environ capture must not be reread.
+    mutated = dict(env)
+    mutated["OPTIMUS_API_KEY"] = "mutated-after-capture-should-not-apply"
+    with pytest.raises(HostError) as mismatch:
+        redaction_mod.authorize_redaction_launch(
+            workspace_root=workspace,
+            environ=mutated,
+            keyring_backend=fake,
+        )
+    assert mismatch.value.code == "REDACTION_AUTHORIZATION_SNAPSHOT_MISMATCH"
+
+
+def test_redact_authorization_no_approval_leaves_bundle_unchanged(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gather = _gather()
+    capture, workspace, run_dir, context, _ = _prepare_run(tmp_path)
+    _write_text_bundle(context, run_dir)
+    raw_before = (run_dir / "raw-bundle.json").read_bytes()
+    provisional_before = (run_dir / "provisional-result.json").read_bytes()
+    user_data = (tmp_path / "user-data").resolve()
+    staging = (tmp_path / "staging").resolve()
+    quarantine = (tmp_path / "quarantine").resolve()
+    sanitized = (tmp_path / "sanitized").resolve()
+    for path in (user_data, staging, quarantine, sanitized):
+        path.mkdir()
+    report = (tmp_path / "report.json").resolve()
+    result = (tmp_path / "result.json").resolve()
+    env = _launch_env()
+    fake = FakeKeyring()
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    from tools.evidence_gather_support import redaction as redaction_mod
+
+    real_authorize = redaction_mod.authorize_redaction_launch
+
+    def authorize_with_fake(**kwargs):
+        return real_authorize(
+            workspace_root=kwargs["workspace_root"],
+            environ=env,
+            keyring_backend=fake,
+        )
+
+    monkeypatch.setattr(redaction_mod, "authorize_redaction_launch", authorize_with_fake)
+    code = gather.main(
+        _redact_argv(
+            workspace=workspace,
+            capture=capture,
+            user_data=user_data,
+            staging=staging,
+            quarantine=quarantine,
+            sanitized=sanitized,
+            result=result,
+            report=report,
+        )
+    )
+    err = capsys.readouterr().err
+    assert code == 2
+    assert err.strip() == "REDACTION_AUTHORIZATION_NO_DURABLE_APPROVAL"
+    assert "no durable approval" not in err
+    assert (run_dir / "raw-bundle.json").read_bytes() == raw_before
+    assert (run_dir / "provisional-result.json").read_bytes() == provisional_before
+    assert not report.exists()
+    assert not result.exists()
+
+
+def test_redact_authorization_snapshot_mismatch_maps_stable_code(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gather = _gather()
+    capture, workspace, run_dir, context, _ = _prepare_run(tmp_path)
+    _write_text_bundle(context, run_dir)
+    raw_before = (run_dir / "raw-bundle.json").read_bytes()
+    provisional_before = (run_dir / "provisional-result.json").read_bytes()
+    user_data = (tmp_path / "user-data").resolve()
+    staging = (tmp_path / "staging").resolve()
+    quarantine = (tmp_path / "quarantine").resolve()
+    sanitized = (tmp_path / "sanitized").resolve()
+    for path in (user_data, staging, quarantine, sanitized):
+        path.mkdir()
+    report = (tmp_path / "report.json").resolve()
+    result = (tmp_path / "result.json").resolve()
+    env = _launch_env()
+    fake = FakeKeyring()
+    _seed_durable_approval(workspace=workspace, env=env, fake=fake)
+    drifted = dict(env)
+    drifted["OPTIMUS_API_KEY"] = "drifted-key-value-should-mismatch"
+    from tools.evidence_gather_support import redaction as redaction_mod
+
+    real_authorize = redaction_mod.authorize_redaction_launch
+
+    def authorize_with_drift(**kwargs):
+        return real_authorize(
+            workspace_root=kwargs["workspace_root"],
+            environ=drifted,
+            keyring_backend=fake,
+        )
+
+    monkeypatch.setattr(redaction_mod, "authorize_redaction_launch", authorize_with_drift)
+    code = gather.main(
+        _redact_argv(
+            workspace=workspace,
+            capture=capture,
+            user_data=user_data,
+            staging=staging,
+            quarantine=quarantine,
+            sanitized=sanitized,
+            result=result,
+            report=report,
+        )
+    )
+    err = capsys.readouterr().err
+    assert code == 2
+    assert err.strip() == "REDACTION_AUTHORIZATION_SNAPSHOT_MISMATCH"
+    assert "effective configuration" not in err
+    assert (run_dir / "raw-bundle.json").read_bytes() == raw_before
+    assert (run_dir / "provisional-result.json").read_bytes() == provisional_before
+    assert not report.exists()
+
+
+def test_redact_promotes_text_and_writes_report_then_inspect_is_body_free(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gather = _gather()
+    capture, workspace, run_dir, context, _ = _prepare_run(tmp_path)
+    secret = "collector-redact-unit-key-xxxxxxxx"
+    _write_text_bundle(context, run_dir, body=f"note with {secret}\n")
+    provisional_before = json.loads((run_dir / "provisional-result.json").read_text(encoding="utf-8"))
+    user_data = (tmp_path / "user-data").resolve()
+    staging = (tmp_path / "staging").resolve()
+    quarantine = (tmp_path / "quarantine").resolve()
+    sanitized = (tmp_path / "sanitized").resolve()
+    profile = (tmp_path / "profile").resolve()
+    for path in (user_data, staging, quarantine, sanitized, profile):
+        path.mkdir()
+    report = (tmp_path / "report.json").resolve()
+    result = (tmp_path / "result.json").resolve()
+    env = _launch_env()
+    fake = FakeKeyring()
+    _seed_durable_approval(workspace=workspace, env=env, fake=fake)
+    from tools.evidence_gather_support import redaction as redaction_mod
+
+    real_authorize = redaction_mod.authorize_redaction_launch
+
+    def authorize_with_fake(**kwargs):
+        return real_authorize(
+            workspace_root=kwargs["workspace_root"],
+            environ=env,
+            keyring_backend=fake,
+        )
+
+    monkeypatch.setattr(redaction_mod, "authorize_redaction_launch", authorize_with_fake)
+    real_build = redaction_mod.build_redaction_host_context
+
+    def build_with_injected(**kwargs):
+        kwargs.setdefault("operator_profile_root", profile)
+        kwargs.setdefault("operator_identity_values", ("unit-operator", "unit-host"))
+        return real_build(**kwargs)
+
+    monkeypatch.setattr(redaction_mod, "build_redaction_host_context", build_with_injected)
+    code = gather.main(
+        _redact_argv(
+            workspace=workspace,
+            capture=capture,
+            user_data=user_data,
+            staging=staging,
+            quarantine=quarantine,
+            sanitized=sanitized,
+            result=result,
+            report=report,
+        )
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert report.exists()
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    assert payload["schema"] == "evidence-report-v1"
+    assert payload["outcome"] == provisional_before["outcome"]
+    assert payload["raw_bundle_sha256"] == provisional_before["raw_bundle_sha256"]
+    assert "AuthorizedLaunch" not in report.read_text(encoding="utf-8")
+    assert "EvidenceRedactionHostContext" not in report.read_text(encoding="utf-8")
+    assert secret not in report.read_text(encoding="utf-8")
+    assert all(not Path(item["artifact_locator"]).is_absolute() for item in payload["promoted_artifacts"])
+    for artifact in sanitized.rglob("artifact"):
+        assert secret.encode() not in artifact.read_bytes()
+    inspect_code = gather.main(["inspect", "--report", str(report)])
+    inspect_out = capsys.readouterr().out
+    assert inspect_code == 0
+    summary = json.loads(inspect_out.strip().splitlines()[-1])
+    assert summary["report_sha256"]
+    assert summary["promoted_count"] == 1
+    assert "safe note" not in inspect_out
+    assert secret not in inspect_out
+    assert str(report) in out or payload["run_id"] in out
+
+
+def test_report_blocks_when_required_evidence_not_promoted(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import reports as reports_mod
+    from tools.evidence_gather_support.common import HostError
+
+    provisional = ClassificationResult(
+        schema="evidence-provisional-result-v1",
+        scenario_id="zed-session",
+        run_id="run-1",
+        outcome=Outcome.INDETERMINATE,
+        claims=(),
+        reason_codes=("unit",),
+        raw_bundle_sha256="a" * 64,
+    )
+    waiting = RedactionGateResult(
+        disposition=Disposition.AWAITING_HUMAN_APPROVAL,
+        artifact_locator="<staging>/screenshot/artifact",
+        manifest_locator=None,
+        reason_code=None,
+    )
+    report = (tmp_path / "report.json").resolve()
+    with pytest.raises(HostError) as exc_info:
+        reports_mod.write_evidence_report(
+            report_path=report,
+            scenario_id="zed-session",
+            run_id="run-1",
+            provisional=provisional,
+            gate_results=(waiting,),
+        )
+    assert exc_info.value.code == "report_requires_promoted_artifacts"
+    assert not report.exists()
+
+
+def test_report_rejects_raw_paths_and_policy_constants(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import reports as reports_mod
+    from tools.evidence_gather_support.common import HostError
+
+    provisional = ClassificationResult(
+        schema="evidence-provisional-result-v1",
+        scenario_id="zed-session",
+        run_id="run-1",
+        outcome=Outcome.INDETERMINATE,
+        claims=(),
+        reason_codes=("unit",),
+        raw_bundle_sha256="a" * 64,
+    )
+    raw = RedactionGateResult(
+        disposition=Disposition.PROMOTED,
+        artifact_locator=str((tmp_path / "abs").resolve()),
+        manifest_locator="<destination>/note/manifest.json",
+        reason_code=None,
+    )
+    with pytest.raises(HostError) as exc_info:
+        reports_mod.write_evidence_report(
+            report_path=(tmp_path / "report.json").resolve(),
+            scenario_id="zed-session",
+            run_id="run-1",
+            provisional=provisional,
+            gate_results=(raw,),
+        )
+    assert exc_info.value.code == "report_raw_path_rejected"
+
+
+def test_dump_bytes_never_enter_report_eligibility() -> None:
+    from tools.evidence_gather_support import redaction as redaction_mod
+
+    dump = RedactionGateResult(
+        disposition=Disposition.QUARANTINED,
+        artifact_locator="<quarantine>/dump",
+        manifest_locator=None,
+        reason_code="process_dump_quarantined",
+    )
+    assert redaction_mod.report_eligible((dump,)) is False
+
+
+def test_report_host_types_never_serialized_in_stage_outputs(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import reports as reports_mod
+
+    provisional = ClassificationResult(
+        schema="evidence-provisional-result-v1",
+        scenario_id="zed-session",
+        run_id="run-1",
+        outcome=Outcome.RENDERED_STABLE,
+        claims=(),
+        reason_codes=("ok",),
+        raw_bundle_sha256="b" * 64,
+    )
+    promoted = RedactionGateResult(
+        disposition=Disposition.PROMOTED,
+        artifact_locator="<destination>/zed_log/artifact",
+        manifest_locator="<destination>/zed_log/manifest.json",
+        reason_code=None,
+    )
+    report = (tmp_path / "report.json").resolve()
+    reports_mod.write_evidence_report(
+        report_path=report,
+        scenario_id="zed-session",
+        run_id="run-1",
+        provisional=provisional,
+        gate_results=(promoted,),
+    )
+    text = report.read_text(encoding="utf-8")
+    assert "AuthorizedLaunch" not in text
+    assert "EvidenceRedactionHostContext" not in text
+    assert "EVIDENCE_REDACTION_POLICY" not in text
+
+
+def test_redact_cloud_sync_roots_are_rejected(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import redaction as redaction_mod
+    from tools.evidence_gather_support.common import HostError
+
+    workspace = (tmp_path / "workspace").resolve()
+    workspace.mkdir()
+    capture = (tmp_path / "OneDrive" / "capture").resolve()
+    capture.mkdir(parents=True)
+    staging = (tmp_path / "staging").resolve()
+    quarantine = (tmp_path / "quarantine").resolve()
+    sanitized = (tmp_path / "sanitized").resolve()
+    user_data = (tmp_path / "user-data").resolve()
+    for path in (staging, quarantine, sanitized, user_data):
+        path.mkdir()
+    with pytest.raises(HostError) as exc_info:
+        redaction_mod.validate_redaction_custody_roots(
+            workspace_root=workspace,
+            capture_root=capture,
+            staging_root=staging,
+            quarantine_root=quarantine,
+            sanitized_root=sanitized,
+            user_data_roots=(user_data,),
+            forbidden_roots=(),
+        )
+    assert exc_info.value.code == "cloud_sync_path_segment"
+
+
+def test_gate_contract_rename_breaks_collector_call_sites() -> None:
+    """Same-suite sweep: renaming a public model export must fail this test."""
+    import evidence_handoff.redaction.models as models
+
+    required = {
+        "ArtifactKind",
+        "Disposition",
+        "RedactionGateResult",
+        "RedactionRequest",
+        "RedactionRuntimeInputs",
+        "ScreenshotApproval",
+    }
+    missing = sorted(required - set(models.__all__))
+    assert missing == []
+    path = SUPPORT / "redaction.py"
+    text = path.read_text(encoding="utf-8")
+    for name in required:
+        assert name in text

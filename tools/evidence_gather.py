@@ -21,6 +21,8 @@ from evidence_handoff.collector.scenarios import load_scenario, resolve_bindings
 
 from tools.evidence_gather_support import acp as acp_mod
 from tools.evidence_gather_support import ndjson as ndjson_mod
+from tools.evidence_gather_support import redaction as redaction_mod
+from tools.evidence_gather_support import reports as reports_mod
 from tools.evidence_gather_support import windows_capture as dwm_mod
 from tools.evidence_gather_support import zed_logs as zed_mod
 from tools.evidence_gather_support.common import HostError, require_absolute_path, require_directory, require_existing_file
@@ -105,8 +107,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "check": _handle_check,
         "collect": _handle_collect,
         "classify": _handle_unavailable,
-        "redact": _handle_unavailable,
-        "inspect": _handle_unavailable,
+        "redact": _handle_redact,
+        "inspect": _handle_inspect,
     }
     try:
         return handlers[args.command](args)
@@ -433,6 +435,131 @@ def _handle_collect(args: argparse.Namespace) -> int:
             sort_keys=True,
         )
     )
+    return 0
+
+
+def _handle_redact(args: argparse.Namespace) -> int:
+    scenario_path = require_existing_file(Path(args.scenario))
+    workspace_root = require_absolute_path(Path(args.workspace_root)).resolve()
+    capture_root = require_directory(Path(args.capture_root), create=False)
+    staging_root = require_directory(Path(args.staging_root), create=True)
+    quarantine_root = require_directory(Path(args.quarantine_root), create=True)
+    sanitized_root = require_directory(Path(args.sanitized_root), create=True)
+    report_path = require_absolute_path(Path(args.report)).resolve()
+    result_path = require_absolute_path(Path(args.result)).resolve()
+    if not workspace_root.is_dir():
+        raise HostError("workspace_missing")
+    user_data_roots = tuple(require_absolute_path(Path(path)).resolve() for path in args.user_data_root)
+    if not user_data_roots:
+        raise HostError("user_data_root_required")
+    for root in user_data_roots:
+        if not root.is_dir():
+            raise HostError("user_data_root_missing")
+    forbidden_extra = tuple(require_absolute_path(Path(path)).resolve() for path in (args.forbidden_root or []))
+    redaction_mod.validate_redaction_custody_roots(
+        workspace_root=workspace_root,
+        capture_root=capture_root,
+        staging_root=staging_root,
+        quarantine_root=quarantine_root,
+        sanitized_root=sanitized_root,
+        user_data_roots=user_data_roots,
+        forbidden_roots=forbidden_extra,
+    )
+    scenario = load_scenario(scenario_path)
+    bindings = resolve_bindings(scenario, tuple(args.bind))
+    registry = build_registry()
+    assert_scenario_adapters_registered(scenario, registry)
+    digest = scenario_sha256(scenario, bindings)
+    existing = _find_run_for_digest(capture_root, digest)
+    if existing is None:
+        raise HostError("run_dir_missing")
+    run_id, origin = existing
+    context = RunContext(
+        schema="evidence-run-v1",
+        scenario_id=scenario.scenario_id,
+        run_id=run_id,
+        scenario_sha256=digest,
+        capture_root=capture_root,
+        monotonic_origin_ns=origin,
+    )
+
+    # Authorization failures are expected stage outcomes: do not mutate provisional/raw.
+    authorized = redaction_mod.authorize_redaction_launch(workspace_root=workspace_root)
+    host_context = redaction_mod.build_redaction_host_context(
+        authorized_launch=authorized,
+        workspace_root=workspace_root,
+        user_data_roots=user_data_roots,
+        temporary_capture_root=capture_root,
+        staging_root=staging_root,
+        quarantine_root=quarantine_root,
+        operator_forbidden_roots=forbidden_extra,
+    )
+    if workspace_root not in host_context.forbidden_persistence_roots:
+        raise HostError("forbidden_roots_missing_workspace")
+    runtime = redaction_mod.convert_host_context(host_context)
+    # Drop host-only objects immediately after conversion.
+    del authorized, host_context
+
+    approval = None
+    if args.screenshot_approval is not None:
+        approval = redaction_mod.load_screenshot_approval(Path(args.screenshot_approval))
+
+    gate_results, provisional = redaction_mod.redact_raw_bundle(
+        context=context,
+        destination_root=sanitized_root,
+        runtime=runtime,
+        screenshot_approval=approval,
+    )
+    summary = {
+        "schema": "evidence-redact-result-v1",
+        "complete": True,
+        "run_id": run_id,
+        "outcome": provisional.outcome.value,
+        "dispositions": [result.disposition.value for result in gate_results],
+        "reason_codes": [result.reason_code for result in gate_results],
+    }
+    from evidence_handoff.collector.bundles import _atomic_write_json
+
+    _atomic_write_json(result_path, summary)
+
+    if redaction_mod.report_eligible(gate_results):
+        reports_mod.write_evidence_report(
+            report_path=report_path,
+            scenario_id=scenario.scenario_id,
+            run_id=run_id,
+            provisional=provisional,
+            gate_results=gate_results,
+        )
+    else:
+        # Required rejected/quarantined/awaiting evidence blocks report creation.
+        if report_path.exists():
+            raise HostError("report_partial_forbidden")
+        print(
+            json.dumps(
+                {"run_id": run_id, "report": None, "outcome": provisional.outcome.value},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+        return 0
+
+    print(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "report": str(report_path),
+                "outcome": provisional.outcome.value,
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+def _handle_inspect(args: argparse.Namespace) -> int:
+    summary = reports_mod.inspect_report(report_path=Path(args.report))
+    print(json.dumps(summary, separators=(",", ":"), sort_keys=True))
     return 0
 
 
