@@ -448,7 +448,11 @@ def test_zed_user_data_live_investigation(tmp_path: Path) -> None:
             custody[0]["pid"] != custody[1]["pid"]
         ):
             # Roots materialized with distinct PIDs even if cmdline snapshot raced.
-            if markers_a["has_zed_log"] and markers_b["has_zed_log"]:
+            if (
+                markers_a["has_zed_log"]
+                and markers_b["has_zed_log"]
+                and markers_a["zed_log_sha256"] != markers_b["zed_log_sha256"]
+            ):
                 outcome = "supported"
                 reason = "two_isolated_roots_with_distinct_logs"
             else:
