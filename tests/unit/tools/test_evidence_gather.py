@@ -262,12 +262,13 @@ def test_unknown_adapter_fails_before_fixture_mutation(tmp_path: Path) -> None:
     assert not any(capture.rglob("*")) if capture.exists() else True
 
 
-def test_unavailable_stages_print_stable_code(
+def test_classify_handler_is_registered_not_stage_unavailable(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     gather = _gather()
     capture = (tmp_path / "capture").resolve()
     capture.mkdir()
+    # Missing run dir fails after dispatch — proves classify is no longer unavailable.
     code = gather.main(
         [
             "classify",
@@ -281,8 +282,236 @@ def test_unavailable_stages_print_stable_code(
             "model=operator-supplied",
         ]
     )
+    err = capsys.readouterr().err
     assert code == 2
-    assert "stage_unavailable" in capsys.readouterr().err
+    assert "stage_unavailable" not in err
+    assert "run_dir_missing" in err
+
+
+def _seed_classify_batches(
+    context: RunContext,
+    run_dir: Path,
+    *,
+    with_crash: bool = False,
+) -> None:
+    from evidence_handoff.collector.bundles import write_raw_bundle
+
+    batches: list[CollectionBatch] = []
+    acp_rel = "artifacts/acp-debug-suffix.ndjson"
+    acp_path = run_dir / acp_rel
+    acp_path.parent.mkdir(parents=True, exist_ok=True)
+    acp_body = b'{"type":"agent_message_chunk"}\n'
+    acp_path.write_bytes(acp_body)
+    acp_digest = hashlib.sha256(acp_body).hexdigest()
+    batches.append(
+        CollectionBatch(
+            collector_id="acp_stream_collector",
+            contract_version="v1",
+            observations=(
+                Observation(
+                    schema="evidence-observation-v1",
+                    scenario_id=context.scenario_id,
+                    run_id=context.run_id,
+                    collector_id="acp_stream_collector",
+                    sequence=0,
+                    monotonic_offset_ns=10,
+                    observed_at="1970-01-01T00:00:00Z",
+                    observation_kind="completion_event",
+                    correlation=(("session_id", "s1"), ("request_id", "1"), ("run_id", "s1:1")),
+                    artifact_role="acp_debug_suffix",
+                    artifact_sha256=acp_digest,
+                    reason_code=None,
+                ),
+            ),
+            artifacts=(
+                CapturedArtifact(
+                    role="acp_debug_suffix",
+                    media_type="application/x-ndjson",
+                    relative_locator=acp_rel,
+                    sha256=acp_digest,
+                    size_bytes=len(acp_body),
+                ),
+            ),
+        )
+    )
+    if with_crash:
+        crash_rel = "artifacts/zed/crash.dmp"
+        crash_path = run_dir / crash_rel
+        crash_path.parent.mkdir(parents=True, exist_ok=True)
+        crash_body = b"MDMP" + b"\x00" * 12
+        crash_path.write_bytes(crash_body)
+        crash_digest = hashlib.sha256(crash_body).hexdigest()
+        batches.append(
+            CollectionBatch(
+                collector_id="zed_crash_collector",
+                contract_version="v1",
+                observations=(
+                    Observation(
+                        schema="evidence-observation-v1",
+                        scenario_id=context.scenario_id,
+                        run_id=context.run_id,
+                        collector_id="zed_crash_collector",
+                        sequence=0,
+                        monotonic_offset_ns=200,
+                        observed_at="1970-01-01T00:00:00Z",
+                        observation_kind="artifact_captured",
+                        correlation=(),
+                        artifact_role="zed_process_dump",
+                        artifact_sha256=crash_digest,
+                        reason_code=None,
+                    ),
+                ),
+                artifacts=(
+                    CapturedArtifact(
+                        role="zed_process_dump",
+                        media_type="application/octet-stream",
+                        relative_locator=crash_rel,
+                        sha256=crash_digest,
+                        size_bytes=len(crash_body),
+                    ),
+                ),
+            )
+        )
+    write_raw_bundle(context=context, batches=tuple(batches))
+
+
+def test_classify_without_render_stays_indeterminate(tmp_path: Path) -> None:
+    gather = _gather()
+    capture, _workspace, run_dir, context, _ = _prepare_run(tmp_path)
+    _seed_classify_batches(context, run_dir)
+    result = (tmp_path / "classify-result.json").resolve()
+    assert (
+        gather.main(
+            [
+                "classify",
+                "--scenario",
+                str(FIXTURE.resolve()),
+                "--capture-root",
+                str(capture),
+                "--result",
+                str(result),
+                "--bind",
+                "model=operator-supplied",
+            ]
+        )
+        == 0
+    )
+    classified = json.loads(result.read_text(encoding="utf-8"))
+    assert classified["schema"] == "evidence-classify-result-v1"
+    assert classified["outcome"] == Outcome.INDETERMINATE.value
+    provisional = json.loads((run_dir / "provisional-result.json").read_text(encoding="utf-8"))
+    assert provisional["outcome"] == Outcome.INDETERMINATE.value
+
+
+def test_classify_with_crash_batch_yields_client_crashed(tmp_path: Path) -> None:
+    gather = _gather()
+    capture, _workspace, run_dir, context, _ = _prepare_run(tmp_path)
+    _seed_classify_batches(context, run_dir, with_crash=True)
+    result = (tmp_path / "classify-result.json").resolve()
+    assert (
+        gather.main(
+            [
+                "classify",
+                "--scenario",
+                str(FIXTURE.resolve()),
+                "--capture-root",
+                str(capture),
+                "--result",
+                str(result),
+                "--bind",
+                "model=operator-supplied",
+            ]
+        )
+        == 0
+    )
+    classified = json.loads(result.read_text(encoding="utf-8"))
+    assert classified["outcome"] == Outcome.CLIENT_CRASHED.value
+
+
+def test_classify_render_then_crash_yields_rendered_then_crashed(tmp_path: Path) -> None:
+    gather = _gather()
+    capture, _workspace, run_dir, context, _ = _prepare_run(tmp_path)
+    _seed_classify_batches(context, run_dir, with_crash=True)
+    render_digest = "b" * 64
+    render_path = (tmp_path / "render-observation.json").resolve()
+    render_path.write_text(
+        json.dumps(
+            {
+                "schema": "evidence-render-observation-v1",
+                "complete": True,
+                "scenario_id": context.scenario_id,
+                "run_id": context.run_id,
+                "detector_id": "render_detector",
+                "artifact_sha256": render_digest,
+                "starts_at_ns": 50,
+                "ends_at_ns": 60,
+                "assertion_provenance": "scenario-detector",
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    result = (tmp_path / "classify-result.json").resolve()
+    assert (
+        gather.main(
+            [
+                "classify",
+                "--scenario",
+                str(FIXTURE.resolve()),
+                "--capture-root",
+                str(capture),
+                "--result",
+                str(result),
+                "--render-observation",
+                str(render_path),
+                "--bind",
+                "model=operator-supplied",
+            ]
+        )
+        == 0
+    )
+    classified = json.loads(result.read_text(encoding="utf-8"))
+    assert classified["outcome"] == Outcome.RENDERED_THEN_CRASHED.value
+
+
+def test_detectors_refuse_render_observed_in_batch() -> None:
+    from tools.evidence_gather_support import detectors as detectors_mod
+    from tools.evidence_gather_support.common import HostError
+
+    context = RunContext(
+        schema="evidence-run-v1",
+        scenario_id="zed-session",
+        run_id="run-x",
+        scenario_sha256="a" * 64,
+        capture_root=Path("/tmp/capture"),
+        monotonic_origin_ns=1,
+    )
+    batch = CollectionBatch(
+        collector_id="dwm_capture_collector",
+        contract_version="v1",
+        observations=(
+            Observation(
+                schema="evidence-observation-v1",
+                scenario_id=context.scenario_id,
+                run_id=context.run_id,
+                collector_id="dwm_capture_collector",
+                sequence=0,
+                monotonic_offset_ns=1,
+                observed_at="1970-01-01T00:00:00Z",
+                observation_kind="render_observed",
+                correlation=(),
+                artifact_role="screenshot",
+                artifact_sha256="c" * 64,
+                reason_code=None,
+            ),
+        ),
+        artifacts=(),
+    )
+    with pytest.raises(HostError) as exc:
+        detectors_mod.detect_claims(context=context, batches=(batch,))
+    assert exc.value.code == "render_claim_forbidden"
 
 
 def test_live_markers_are_registered_and_excluded_by_default() -> None:
@@ -342,9 +571,10 @@ def _prompt_entry(
     request_id: str = "req-1",
     run_id: str = "session-aaa:req-1",
     timestamp: int = 900,
+    debug_session_id: str = "debug_abc",
 ) -> dict:
     return {
-        "sessionId": "debug_abc",
+        "sessionId": debug_session_id,
         "timestamp": timestamp,
         "location": "spec.py:_handle_session_prompt:entry",
         "message": "session prompt",
@@ -582,6 +812,61 @@ def test_completion_matches_exact_location_and_correlation() -> None:
     assert claim.reason_code == "ok"
 
 
+def test_discover_unique_completion_reads_sole_pair() -> None:
+    from tools.evidence_gather_support import ndjson as ndjson_mod
+
+    session, request, run, debug = ndjson_mod.discover_unique_completion(
+        (_prompt_entry(), _exit_event())
+    )
+    assert session == "session-aaa"
+    assert request == "req-1"
+    assert run == "session-aaa:req-1"
+    assert debug == "debug_abc"
+
+
+def test_discover_unique_completion_rejects_later_foreign_session() -> None:
+    """Auto mode must not silently attribute a later foreign pair to this collect."""
+    from tools.evidence_gather_support import ndjson as ndjson_mod
+    from tools.evidence_gather_support.common import HostError
+
+    records = (
+        _prompt_entry(timestamp=1000),
+        _exit_event(timestamp=1010),
+        _prompt_entry(
+            session_id="foreign-session",
+            request_id="foreign-req",
+            run_id="foreign-run",
+            timestamp=2000,
+            debug_session_id="debug-foreign",
+        ),
+        _exit_event(
+            request_id="foreign-req",
+            session_id="debug-foreign",
+            timestamp=2010,
+        ),
+    )
+    with pytest.raises(HostError) as exc_info:
+        result = ndjson_mod.discover_unique_completion(records)
+        # If discovery wrongly returns instead of failing, surface the foreign pick.
+        raise AssertionError(f"expected fail-closed, got {result!r}")
+    assert exc_info.value.code == "completion_ambiguous"
+
+
+def test_host_process_env_excludes_optimus_secrets() -> None:
+    from tools.evidence_gather_support import acp as acp_mod
+
+    env = acp_mod.host_process_env(
+        {
+            "PATH": "C:\\Windows\\System32",
+            "OPTIMUS_API_KEY": "secret-must-not-pass",
+            "OPENAI_API_KEY": "also-secret",
+            "SYSTEMROOT": "C:\\Windows",
+        }
+    )
+    assert env == {"PATH": "C:\\Windows\\System32", "SYSTEMROOT": "C:\\Windows"}
+    assert "OPTIMUS_API_KEY" not in env
+
+
 def test_completion_rejects_error_bearing_and_older_events() -> None:
     from tools.evidence_gather_support import ndjson as ndjson_mod
     from tools.evidence_gather_support.common import HostError
@@ -807,6 +1092,81 @@ def test_collect_handler_is_registered_not_stage_unavailable(
     )
     err = capsys.readouterr().err
     assert "stage_unavailable" not in err
+    assert code == 0
+
+
+def test_collect_auto_correlation_discovers_unique_pair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gather = _gather()
+    capture = (tmp_path / "capture").resolve()
+    workspace = (tmp_path / "workspace").resolve()
+    workspace.mkdir()
+    agent = (tmp_path / "optimus-agent").resolve()
+    agent.write_text("#!/bin/true\n", encoding="utf-8")
+    ndjson_path = workspace / ".optimus" / "debug-acp.ndjson"
+    ndjson_path.parent.mkdir(parents=True)
+    ndjson_path.write_text("", encoding="utf-8")
+    assert gather.main(
+        [
+            "prepare",
+            "--scenario",
+            str(FIXTURE.resolve()),
+            "--capture-root",
+            str(capture),
+            "--bind",
+            "model=operator-supplied",
+        ]
+    ) == 0
+
+    from tools.evidence_gather_support import acp as acp_mod
+
+    monkeypatch.setattr(acp_mod, "resolve_acpx", lambda: (r"C:\tools\acpx.exe", "acpx 0.1.0"))
+
+    def fake_spawn(*, command, cwd, env, timeout_seconds):
+        assert "OPTIMUS_API_KEY" not in env
+        assert "PATH" in env or env == acp_mod.host_process_env()
+        with ndjson_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(_prompt_entry(), separators=(",", ":")) + "\n")
+            handle.write(json.dumps(_exit_event(), separators=(",", ":")) + "\n")
+        return 0
+
+    monkeypatch.setattr(acp_mod, "spawn_acpx", fake_spawn)
+    monkeypatch.setattr(
+        acp_mod,
+        "build_acpx_command",
+        lambda **kwargs: ["acpx", "--format", "json", "exec", "ping"],
+    )
+    code = gather.main(
+        [
+            "collect",
+            "--scenario",
+            str(FIXTURE.resolve()),
+            "--capture-root",
+            str(capture),
+            "--bind",
+            "model=operator-supplied",
+            "--workspace-root",
+            str(workspace),
+            "--agent-executable",
+            str(agent),
+            "--prompt",
+            "ping",
+            "--timeout-seconds",
+            "30",
+            "--ndjson-path",
+            str(ndjson_path.resolve()),
+            "--correlate-session-id",
+            "auto",
+            "--correlate-request-id",
+            "auto",
+            "--correlate-run-id",
+            "auto",
+            "--debug-session-id",
+            "auto",
+            "--no-auto-start",
+        ]
+    )
     assert code == 0
 
 

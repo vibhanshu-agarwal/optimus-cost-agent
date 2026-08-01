@@ -36,3 +36,15 @@ parameters = []
 adapter_id = "completion_detector"
 contract_version = "v1"
 parameters = []
+
+[[detection]]
+adapter_id = "crash_detector"
+contract_version = "v1"
+parameters = []
+
+[[detection]]
+adapter_id = "render_detector"
+contract_version = "v1"
+parameters = [
+  { name = "stability_interval_ns", kind = "integer", value = 1000000000 },
+]

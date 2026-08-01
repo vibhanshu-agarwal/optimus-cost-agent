@@ -98,10 +98,68 @@ def read_ordered_suffix(path: Path, snapshot: NdjsonSnapshot) -> tuple[dict[str,
 
 def suffix_sha256(path: Path, snapshot: NdjsonSnapshot) -> str:
     absolute = path.resolve()
+    if not absolute.is_file():
+        if snapshot.byte_offset == 0:
+            return hashlib.sha256(b"").hexdigest()
+        raise HostError("ndjson_missing")
     with absolute.open("rb") as handle:
         handle.seek(snapshot.byte_offset)
         encoded = handle.read()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def discover_unique_completion(
+    records: Sequence[Mapping[str, Any]],
+) -> tuple[str, str, str, str]:
+    """Return session_id, request_id, run_id, debug_session_id for a sole pair.
+
+    Fail closed when the suffix contains more than one distinct
+    (session_id, request_id, run_id) combination — never pick the latest
+    foreign pair by timestamp (self-referential correlation).
+    """
+    prompt_entries = [
+        record for record in records if record.get("location") == _PROMPT_ENTRY_LOCATION
+    ]
+    exits = [record for record in records if record.get("location") == _COMPLETION_LOCATION]
+    if not prompt_entries or not exits:
+        raise HostError("completion_missing")
+
+    combinations: set[tuple[str, str, str]] = set()
+    for prompt in prompt_entries:
+        data = _data(prompt)
+        session_id = data.get("session_id")
+        request_id = data.get("request_id")
+        run_id = data.get("run_id")
+        if not isinstance(session_id, str) or not session_id:
+            raise HostError("completion_correlation_missing")
+        if request_id is None or run_id is None:
+            raise HostError("completion_correlation_missing")
+        combinations.add((session_id, str(request_id), str(run_id)))
+    if len(combinations) != 1:
+        raise HostError("completion_ambiguous")
+
+    session_id, request_id, run_id = next(iter(combinations))
+    matched_prompts = [
+        record
+        for record in prompt_entries
+        if _data(record).get("session_id") == session_id
+        and str(_data(record).get("request_id")) == request_id
+        and str(_data(record).get("run_id")) == run_id
+    ]
+    if len(matched_prompts) != 1:
+        raise HostError("completion_ambiguous")
+    prompt = matched_prompts[0]
+    debug_session_id = prompt.get("sessionId")
+    if not isinstance(debug_session_id, str) or not debug_session_id:
+        raise HostError("completion_correlation_missing")
+    matched_exits = [
+        record for record in exits if str(_data(record).get("request_id")) == request_id
+    ]
+    if not matched_exits:
+        raise HostError("completion_missing")
+    if len(matched_exits) != 1:
+        raise HostError("completion_ambiguous")
+    return session_id, request_id, run_id, debug_session_id
 
 
 def normalize_completion(

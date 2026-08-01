@@ -15,11 +15,19 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from evidence_handoff.collector.bundles import write_raw_bundle, write_run_manifest
+from evidence_handoff.collector.bundles import (
+    load_render_observation,
+    load_verified_raw_bundle,
+    write_provisional_result,
+    write_raw_bundle,
+    write_run_manifest,
+)
+from evidence_handoff.collector.classification import classify
 from evidence_handoff.collector.models import CapturedArtifact, CollectionBatch, Observation, RunContext
 from evidence_handoff.collector.scenarios import load_scenario, resolve_bindings, scenario_sha256
 
 from tools.evidence_gather_support import acp as acp_mod
+from tools.evidence_gather_support import detectors as detectors_mod
 from tools.evidence_gather_support import ndjson as ndjson_mod
 from tools.evidence_gather_support import redaction as redaction_mod
 from tools.evidence_gather_support import reports as reports_mod
@@ -29,7 +37,7 @@ from tools.evidence_gather_support.common import HostError, require_absolute_pat
 from tools.evidence_gather_support.fixtures import prepare_fixtures, run_preconditions
 from tools.evidence_gather_support.registry import assert_scenario_adapters_registered, build_registry
 
-_STAGE_UNAVAILABLE = "stage_unavailable"
+_DEFAULT_STABILITY_INTERVAL_NS = 1_000_000_000
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -64,6 +72,8 @@ def build_parser() -> argparse.ArgumentParser:
     collect.add_argument("--correlate-run-id", type=str, required=True)
     collect.add_argument("--debug-session-id", type=str, required=True)
     collect.add_argument("--launch-session-id", type=str, required=False)
+    collect.add_argument("--no-auto-start", action="store_true", default=False)
+    collect.add_argument("--launch-approval-id", type=str, required=False)
     collect.add_argument("--zed-log-root", type=Path, required=False)
     collect.add_argument("--zed-client-identity", type=str, required=False)
     collect.add_argument("--zed-version", type=str, required=False)
@@ -106,7 +116,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "prepare": _handle_prepare,
         "check": _handle_check,
         "collect": _handle_collect,
-        "classify": _handle_unavailable,
+        "classify": _handle_classify,
         "redact": _handle_redact,
         "inspect": _handle_inspect,
     }
@@ -242,6 +252,9 @@ def _handle_collect(args: argparse.Namespace) -> int:
         if args.ndjson_path is not None
         else (workspace_root / ".optimus" / "debug-acp.ndjson").resolve()
     )
+    ndjson_path.parent.mkdir(parents=True, exist_ok=True)
+    if not ndjson_path.exists():
+        ndjson_path.write_bytes(b"")
     snapshot = ndjson_mod.snapshot_source(ndjson_path)
     acpx_path, acpx_version = acp_mod.resolve_acpx()
     launch_session_id = args.launch_session_id or f"evidence-{uuid.uuid4().hex}"
@@ -251,21 +264,47 @@ def _handle_collect(args: argparse.Namespace) -> int:
         agent_executable=agent_executable,
         prompt=args.prompt,
         launch_session_id=launch_session_id,
+        no_auto_start=bool(args.no_auto_start),
+        launch_approval_id=args.launch_approval_id,
     )
     acp_mod.spawn_acpx(
         command=command,
         cwd=workspace_root,
-        env={},
+        env=acp_mod.host_process_env(),
         timeout_seconds=int(args.timeout_seconds),
     )
     records = ndjson_mod.read_ordered_suffix(ndjson_path, snapshot)
     digest_hex = ndjson_mod.suffix_sha256(ndjson_path, snapshot)
+    correlate_session_id = str(args.correlate_session_id)
+    correlate_request_id = str(args.correlate_request_id)
+    correlate_run_id = str(args.correlate_run_id)
+    debug_session_id = str(args.debug_session_id)
+    auto_tokens = {
+        correlate_session_id,
+        correlate_request_id,
+        correlate_run_id,
+        debug_session_id,
+    }
+    if auto_tokens == {"auto"}:
+        (
+            correlate_session_id,
+            correlate_request_id,
+            correlate_run_id,
+            debug_session_id,
+        ) = ndjson_mod.discover_unique_completion(records)
+        records = tuple(
+            record
+            for record in records
+            if record.get("sessionId") in (None, debug_session_id)
+        )
+    elif "auto" in auto_tokens:
+        raise HostError("completion_correlation_missing")
     claim = ndjson_mod.normalize_completion(
         records,
-        correlate_session_id=args.correlate_session_id,
-        correlate_request_id=args.correlate_request_id,
-        correlate_run_id=args.correlate_run_id,
-        expected_debug_session_id=args.debug_session_id,
+        correlate_session_id=correlate_session_id,
+        correlate_request_id=correlate_request_id,
+        correlate_run_id=correlate_run_id,
+        expected_debug_session_id=debug_session_id,
         scenario_id=scenario.scenario_id,
         run_id=run_id,
         evidence_sha256=(digest_hex,),
@@ -299,9 +338,9 @@ def _handle_collect(args: argparse.Namespace) -> int:
         observed_at="1970-01-01T00:00:00Z",
         observation_kind="completion_event",
         correlation=(
-            ("session_id", args.correlate_session_id),
-            ("request_id", args.correlate_request_id),
-            ("run_id", args.correlate_run_id),
+            ("session_id", correlate_session_id),
+            ("request_id", correlate_request_id),
+            ("run_id", correlate_run_id),
         ),
         artifact_role=artifact.role,
         artifact_sha256=artifact.sha256,
@@ -436,6 +475,81 @@ def _handle_collect(args: argparse.Namespace) -> int:
         )
     )
     return 0
+
+
+def _handle_classify(args: argparse.Namespace) -> int:
+    scenario_path = require_existing_file(Path(args.scenario))
+    capture_root = require_directory(Path(args.capture_root), create=False)
+    result_path = require_absolute_path(Path(args.result)).resolve()
+    scenario = load_scenario(scenario_path)
+    bindings = resolve_bindings(scenario, tuple(args.bind))
+    registry = build_registry()
+    assert_scenario_adapters_registered(scenario, registry)
+    digest = scenario_sha256(scenario, bindings)
+    existing = _find_run_for_digest(capture_root, digest)
+    if existing is None:
+        raise HostError("run_dir_missing")
+    run_id, origin = existing
+    context = RunContext(
+        schema="evidence-run-v1",
+        scenario_id=scenario.scenario_id,
+        run_id=run_id,
+        scenario_sha256=digest,
+        capture_root=capture_root,
+        monotonic_origin_ns=origin,
+    )
+    bundle_path = capture_root / run_id / "raw-bundle.json"
+    batches = load_verified_raw_bundle(context=context, bundle_path=bundle_path)
+    bundle_digest = json.loads(bundle_path.read_text(encoding="utf-8"))["bundle_sha256"]
+
+    allowed_render_detectors = tuple(
+        item.adapter_id for item in scenario.detection if item.adapter_id == "render_detector"
+    ) or ("render_detector",)
+    render_claim = None
+    if args.render_observation is not None:
+        render_claim = load_render_observation(
+            context=context,
+            path=require_absolute_path(Path(args.render_observation)).resolve(),
+            allowed_detector_ids=allowed_render_detectors,
+        )
+
+    claims = detectors_mod.detect_claims(
+        context=context,
+        batches=batches,
+        render_claim=render_claim,
+    )
+    required_collectors = tuple(batch.collector_id for batch in batches)
+    stability = _stability_interval_ns(scenario)
+    provisional = classify(
+        context=context,
+        raw_bundle_sha256=str(bundle_digest),
+        claims=claims,
+        required_collectors=required_collectors,
+        stability_interval_ns=stability,
+    )
+    write_provisional_result(context=context, result=provisional)
+    from evidence_handoff.collector.bundles import _atomic_write_json
+
+    summary = {
+        "schema": "evidence-classify-result-v1",
+        "complete": True,
+        "run_id": run_id,
+        "outcome": provisional.outcome.value,
+        "reason_codes": list(provisional.reason_codes),
+        "raw_bundle_sha256": provisional.raw_bundle_sha256,
+        "claim_kinds": [claim.claim_kind.value for claim in provisional.claims],
+    }
+    _atomic_write_json(result_path, summary)
+    print(json.dumps({"run_id": run_id, "outcome": provisional.outcome.value}, separators=(",", ":"), sort_keys=True))
+    return 0
+
+
+def _stability_interval_ns(scenario) -> int:
+    for adapter in scenario.detection:
+        for parameter in adapter.parameters:
+            if parameter.name == "stability_interval_ns" and isinstance(parameter.value, int):
+                return int(parameter.value)
+    return _DEFAULT_STABILITY_INTERVAL_NS
 
 
 def _handle_redact(args: argparse.Namespace) -> int:
@@ -575,12 +689,6 @@ def _find_run_for_digest(capture_root: Path, digest: str) -> tuple[str, int] | N
     if not matches:
         return None
     return matches[-1]
-
-
-def _handle_unavailable(args: argparse.Namespace) -> int:
-    del args
-    print(_STAGE_UNAVAILABLE, file=sys.stderr)
-    return 2
 
 
 if __name__ == "__main__":

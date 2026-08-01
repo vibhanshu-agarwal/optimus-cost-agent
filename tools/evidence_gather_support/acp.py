@@ -31,6 +31,29 @@ def resolve_acpx() -> tuple[str, str]:
     return path, version
 
 
+def host_process_env(source: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Pass only host process essentials — never OPTIMUS_* or provider secrets."""
+    import os
+
+    allowed = {
+        "PATH",
+        "SYSTEMROOT",
+        "WINDIR",
+        "PATHEXT",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "HOME",
+        "SYSTEMDRIVE",
+        "COMSPEC",
+        "LANG",
+        "LC_ALL",
+        "TERM",
+    }
+    env_source = os.environ if source is None else source
+    return {key: value for key, value in env_source.items() if key in allowed}
+
+
 def build_acpx_command(
     *,
     acpx_path: str,

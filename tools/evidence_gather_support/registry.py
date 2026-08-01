@@ -13,7 +13,7 @@ PRECONDITION_ADAPTER_IDS = frozenset({"capture_root_ready"})
 COLLECTOR_ADAPTER_IDS = frozenset(
     {"acp_stream_collector", "zed_crash_collector", "dwm_capture_collector"}
 )
-DETECTOR_ADAPTER_IDS = frozenset({"completion_detector"})
+DETECTOR_ADAPTER_IDS = frozenset({"completion_detector", "crash_detector", "render_detector"})
 
 
 @dataclass(frozen=True, slots=True)
