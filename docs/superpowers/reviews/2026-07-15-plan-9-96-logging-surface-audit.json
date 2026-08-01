@@ -1,6 +1,54 @@
 {
   "surfaces": [
     {
+      "key": "evidence_handoff.collector.bundles:_atomic_write_json:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens a sibling temporary JSON stage file only to publish digest-bound portable run/bundle documents; no diagnostic body retention.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/integration/evidence/test_collector_filesystem.py::test_atomic_replacement_and_resume",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.collector.bundles:_atomic_write_json:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes already-validated portable scenario/run/bundle fields to canonical JSON before atomic replace; content is schema-limited and not a diagnostic export.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/integration/evidence/test_collector_filesystem.py::test_atomic_replacement_and_resume",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.collector.bundles:_atomic_write_json:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the canonical JSON bytes for a complete stage document to a temporary sibling before os.replace; partial names cannot be loaded as completed stages.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/integration/evidence/test_collector_filesystem.py::test_temporary_partial_files_are_not_completed_stage_names",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.collector.bundles:_payload_sha256:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonicalizes an in-memory portable payload solely to compute a SHA-256 digest field; the encoded JSON is not persisted or exported by this helper.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/integration/evidence/test_collector_filesystem.py::test_file_identity_change_fails_verification",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.collector.scenarios:_load_toml:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: evidence_handoff.collector.scenarios:_load_toml:exception_export calls str(exc) only to branch on a fixed duplicate-key substring, then raises a typed ValueError with a fixed reason code; it does not persist or export raw TOML diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence/test_collector_scenarios.py::test_toml_and_json_fixtures_produce_identical_scenarios",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.collector.scenarios:scenario_sha256:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: scenario_sha256 canonicalizes already-validated portable Scenario and AdapterParameter fields solely to compute an in-memory SHA-256 digest; it does not persist or export the serialized payload.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence/test_collector_scenarios.py::test_scenario_sha256_is_stable_hex_digest",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "evidence_handoff.redaction.gate:_read_magic:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: magic-byte peek only; no body retention before kind dispatch.",
@@ -1070,6 +1118,150 @@
       "rationale": "Inspection: serialize_gateway_child_manifest emits the fixed child-manifest schema with provider/shared-secret fingerprints rather than credential literals.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/security/test_launch_manifest.py::test_manifest_contains_no_raw_secret",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_collect:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_collect:file_open opens only the run-scoped NDJSON suffix bytes under an explicit capture-root relative locator after offset capture; it does not retain ambient diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_collect_handler_is_registered_not_stage_unavailable",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_collect:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_collect:json_serialization emits a content-free collect summary (run_id and completion_claim kind only) plus a schema-limited collect-result document with digests and typed codes.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_collect_handler_is_registered_not_stage_unavailable",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_collect:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_collect:stdout_export prints only the content-free collect summary JSON and does not retain prompts, transcripts, or credentials.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_collect_handler_is_registered_not_stage_unavailable",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_classify:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_classify:json_serialization emits a schema-limited classify-result document (run_id, provisional outcome, reason codes, claim kinds, and raw-bundle digest) plus a content-free stdout summary; artifact bodies and credentials are omitted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_classify_handler_is_registered_not_stage_unavailable",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_classify:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_classify:stdout_export prints only run_id and provisional outcome and does not retain artifact bodies or credentials.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_classify_handler_is_registered_not_stage_unavailable",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_inspect:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_inspect:json_serialization serializes only a body-free inspect summary (schema, scenario/run ids, outcome, report digest, promoted count, and relative artifact locators) with no artifact bodies, credentials, or host authorization objects.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_redact_promotes_text_and_writes_report_then_inspect_is_body_free",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_inspect:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_inspect:stdout_export prints only the body-free inspect summary JSON and does not retain artifact bodies or credentials.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_redact_promotes_text_and_writes_report_then_inspect_is_body_free",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_redact:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_redact:json_serialization emits a schema-limited redact-result document (run_id, provisional outcome, disposition enums, and public reason codes) plus a content-free stdout summary; AuthorizedLaunch, host context, credentials, and artifact bodies are omitted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_redact_promotes_text_and_writes_report_then_inspect_is_body_free",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_redact:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_redact:stdout_export prints only run_id, optional report path, and provisional outcome; it does not retain credentials, host authorization objects, or artifact bodies.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_redact_promotes_text_and_writes_report_then_inspect_is_body_free",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_validate:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_validate:json_serialization canonicalizes an already-validated content-free validate summary (scenario id, digest, adapter ids, binding names only) for stdout; binding values are omitted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_validate_with_model_binding_emits_content_free_summary",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_validate:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_validate:stdout_export prints only the content-free validate summary JSON and does not retain binding values or diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_validate_with_model_binding_emits_content_free_summary",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:main:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:main:exception_export prints str(exc) for HostError/ValueError only when the message is already a stable snake_case reason code; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_validate_without_model_binding_fails_before_side_effects",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:main:stderr_export prints only controlled typed failure reason codes to stderr and does not retain them.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_validate_without_model_binding_fails_before_side_effects",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.fixtures:prepare_fixtures:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather_support.fixtures:prepare_fixtures:exception_export wraps ValueError from _read_complete_json via HostError(str(exc)) where exc is already a fixed reason code (invalid_json/partial_stage); it does not export raw JSON diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_truncated_fixture_marker_fails_prepare_with_stable_code",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.acp:_pump_stream:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather_support.acp:_pump_stream:file_open opens only an explicit private capture-root path to drain child stdio while waiting; drained bytes are not logged or exported as transcripts by this helper.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_spawn_acpx_drains_pipes_instead_of_deadlocking",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.acp:_pump_stream:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather_support.acp:_pump_stream:text_write writes only drained child stdio into an operator-supplied private capture path to prevent pipe-buffer deadlock; it does not retain or export diagnostic content beyond that private file.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_spawn_acpx_drains_pipes_instead_of_deadlocking",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.ndjson:read_ordered_suffix:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather_support.ndjson:read_ordered_suffix:file_open opens an explicit NDJSON path only to seek a pre-captured byte offset and read the run-scoped suffix; prefix bytes are not loaded.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_ndjson_bounded_reads_do_not_load_prefix",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.ndjson:suffix_sha256:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather_support.ndjson:suffix_sha256:file_open opens an explicit NDJSON path only to digest the run-scoped suffix bytes after the pre-captured offset.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_ndjson_bounded_reads_do_not_load_prefix",
       "evidence_tier": "unit"
     },
     {

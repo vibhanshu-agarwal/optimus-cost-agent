@@ -1,0 +1,50 @@
+schema = "evidence-scenario-v1"
+scenario_id = "zed-session"
+required_evidence = [
+  "completion_observed",
+  "observation_window_complete",
+]
+
+[[required_bindings]]
+name = "model"
+kind = "string"
+required = true
+min_length = 1
+max_length = 256
+
+[client]
+adapter_id = "zed_acp_client"
+contract_version = "v1"
+parameters = []
+
+[fixture]
+adapter_id = "hermetic_user_data_fixture"
+contract_version = "v1"
+parameters = []
+
+[[preconditions]]
+adapter_id = "capture_root_ready"
+contract_version = "v1"
+parameters = []
+
+[[collection]]
+adapter_id = "acp_stream_collector"
+contract_version = "v1"
+parameters = []
+
+[[detection]]
+adapter_id = "completion_detector"
+contract_version = "v1"
+parameters = []
+
+[[detection]]
+adapter_id = "crash_detector"
+contract_version = "v1"
+parameters = []
+
+[[detection]]
+adapter_id = "render_detector"
+contract_version = "v1"
+parameters = [
+  { name = "stability_interval_ns", kind = "integer", value = 1000000000 },
+]
