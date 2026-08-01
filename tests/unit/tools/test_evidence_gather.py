@@ -1271,3 +1271,308 @@ def test_zed_crash_collect_through_entry_point_excludes_pre_run(
     assert all(
         obs.get("observation_kind") != "client_crash_observed" for obs in zed_batches[0]["observations"]
     )
+
+
+# --- Task 7: DWM physical-bounds capture ---
+
+
+def test_dwm_capture_collector_is_registered() -> None:
+    from tools.evidence_gather_support.registry import build_registry
+
+    assert "dwm_capture_collector" in build_registry().collectors
+
+
+def test_dwm_top_level_visible_window_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tools.evidence_gather_support import windows_capture as dwm_mod
+
+    hwnd = 0x1000
+    monkeypatch.setattr(
+        dwm_mod,
+        "enumerate_top_level_windows",
+        lambda: (
+            dwm_mod.WindowCandidate(hwnd=hwnd, pid=4242, title="Zed", visible=True),
+            dwm_mod.WindowCandidate(hwnd=0x1001, pid=4242, title="hidden", visible=False),
+        ),
+    )
+    monkeypatch.setattr(dwm_mod, "window_pid", lambda value: 4242 if value == hwnd else 0)
+    chosen = dwm_mod.resolve_unique_visible_window(expected_pid=4242)
+    assert chosen.hwnd == hwnd
+    assert chosen.pid == 4242
+
+
+def test_dwm_pid_mismatch_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tools.evidence_gather_support import windows_capture as dwm_mod
+    from tools.evidence_gather_support.common import HostError
+
+    monkeypatch.setattr(
+        dwm_mod,
+        "enumerate_top_level_windows",
+        lambda: (dwm_mod.WindowCandidate(hwnd=0x1000, pid=9999, title="other", visible=True),),
+    )
+    with pytest.raises(HostError) as exc_info:
+        dwm_mod.resolve_unique_visible_window(expected_pid=4242)
+    assert exc_info.value.code == "dwm_pid_mismatch"
+
+
+def test_dwm_multiple_candidates_are_ambiguous(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tools.evidence_gather_support import windows_capture as dwm_mod
+    from tools.evidence_gather_support.common import HostError
+
+    monkeypatch.setattr(
+        dwm_mod,
+        "enumerate_top_level_windows",
+        lambda: (
+            dwm_mod.WindowCandidate(hwnd=0x1000, pid=4242, title="A", visible=True),
+            dwm_mod.WindowCandidate(hwnd=0x1001, pid=4242, title="B", visible=True),
+        ),
+    )
+    with pytest.raises(HostError) as exc_info:
+        dwm_mod.resolve_unique_visible_window(expected_pid=4242)
+    assert exc_info.value.code == "dwm_window_ambiguous"
+
+
+def test_dwm_physical_bounds_via_extended_frame(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tools.evidence_gather_support import windows_capture as dwm_mod
+
+    bounds = dwm_mod.PhysicalBounds(left=10, top=20, right=310, bottom=220)
+
+    def fake_dwm(hwnd: int) -> dwm_mod.PhysicalBounds:
+        assert hwnd == 0xABC
+        return bounds
+
+    monkeypatch.setattr(dwm_mod, "query_dwm_extended_frame_bounds", fake_dwm)
+    got = dwm_mod.get_physical_bounds(0xABC)
+    assert got == bounds
+    assert got.width == 300
+    assert got.height == 200
+
+
+def test_dwm_physical_bounds_reject_invalid_rectangle() -> None:
+    from tools.evidence_gather_support import windows_capture as dwm_mod
+    from tools.evidence_gather_support.common import HostError
+
+    with pytest.raises(HostError) as exc_info:
+        dwm_mod.validate_physical_bounds(dwm_mod.PhysicalBounds(10, 10, 10, 20))
+    assert exc_info.value.code == "dwm_invalid_bounds"
+
+
+def test_dwm_dpi_context_is_recorded(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tools.evidence_gather_support import windows_capture as dwm_mod
+
+    monkeypatch.setattr(
+        dwm_mod,
+        "query_dpi_context",
+        lambda hwnd: dwm_mod.DpiContext(dpi_x=144, dpi_y=144, awareness="per_monitor_v2"),
+    )
+    ctx = dwm_mod.get_dpi_context(0xABC)
+    assert ctx.dpi_x == 144
+    assert ctx.awareness == "per_monitor_v2"
+
+
+def test_dwm_screenshot_capture_records_timestamp_and_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tools.evidence_gather_support import windows_capture as dwm_mod
+
+    bounds = dwm_mod.PhysicalBounds(0, 0, 4, 2)
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x04\x00\x00\x00\x02"
+        b"\x08\x02\x00\x00\x00\x9d\x81\x8c\xf7"
+    )
+
+    monkeypatch.setattr(dwm_mod, "query_dwm_extended_frame_bounds", lambda hwnd: bounds)
+    monkeypatch.setattr(
+        dwm_mod,
+        "query_dpi_context",
+        lambda hwnd: dwm_mod.DpiContext(dpi_x=96, dpi_y=96, awareness="system"),
+    )
+    monkeypatch.setattr(dwm_mod, "bitblt_region_png", lambda region: png)
+    monkeypatch.setattr(dwm_mod, "window_pid", lambda hwnd: 4242)
+
+    result = dwm_mod.capture_window(
+        hwnd=0xABC,
+        expected_pid=4242,
+        captured_at="1970-01-01T00:00:01Z",
+        monotonic_ns=1_000,
+    )
+    assert result.sha256 == hashlib.sha256(png).hexdigest()
+    assert result.width == 4
+    assert result.height == 2
+    assert result.captured_at == "1970-01-01T00:00:01Z"
+    assert result.bounds == bounds
+
+
+def test_dwm_bounds_changed_during_capture_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tools.evidence_gather_support import windows_capture as dwm_mod
+    from tools.evidence_gather_support.common import HostError
+
+    first = dwm_mod.PhysicalBounds(0, 0, 100, 50)
+    second = dwm_mod.PhysicalBounds(0, 0, 120, 50)
+    calls = {"n": 0}
+
+    def flipping(_hwnd: int) -> dwm_mod.PhysicalBounds:
+        calls["n"] += 1
+        return first if calls["n"] == 1 else second
+
+    monkeypatch.setattr(dwm_mod, "query_dwm_extended_frame_bounds", flipping)
+    monkeypatch.setattr(
+        dwm_mod,
+        "query_dpi_context",
+        lambda hwnd: dwm_mod.DpiContext(dpi_x=96, dpi_y=96, awareness="system"),
+    )
+    monkeypatch.setattr(dwm_mod, "bitblt_region_png", lambda region: b"PNG")
+    monkeypatch.setattr(dwm_mod, "window_pid", lambda hwnd: 4242)
+
+    with pytest.raises(HostError) as exc_info:
+        dwm_mod.capture_window(hwnd=0xABC, expected_pid=4242)
+    assert exc_info.value.code == "dwm_bounds_changed"
+
+
+def test_dwm_api_failure_is_content_free(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tools.evidence_gather_support import windows_capture as dwm_mod
+    from tools.evidence_gather_support.common import HostError
+
+    def boom(_hwnd: int) -> dwm_mod.PhysicalBounds:
+        raise HostError("dwm_api_failure")
+
+    monkeypatch.setattr(dwm_mod, "query_dwm_extended_frame_bounds", boom)
+    with pytest.raises(HostError) as exc_info:
+        dwm_mod.get_physical_bounds(0xABC)
+    assert exc_info.value.code == "dwm_api_failure"
+
+
+def test_dwm_screenshot_observation_is_not_a_render_claim() -> None:
+    from tools.evidence_gather_support import windows_capture as dwm_mod
+
+    batch = dwm_mod.build_collection_batch(
+        scenario_id="zed-session",
+        run_id="run-1",
+        monotonic_origin_ns=0,
+        capture=dwm_mod.CaptureResult(
+            hwnd=0xABC,
+            pid=4242,
+            bounds=dwm_mod.PhysicalBounds(0, 0, 10, 10),
+            dpi=dwm_mod.DpiContext(96, 96, "system"),
+            png_bytes=b"PNG",
+            sha256="a" * 64,
+            width=10,
+            height=10,
+            captured_at="1970-01-01T00:00:01Z",
+            monotonic_ns=100,
+        ),
+    )
+    assert batch.collector_id == "dwm_capture_collector"
+    assert batch.artifacts[0].role == "screenshot"
+    assert all(obs.observation_kind == "screenshot_capture" for obs in batch.observations)
+    assert all(obs.observation_kind != "render_observed" for obs in batch.observations)
+
+
+def test_dwm_capture_pid_is_revalidated_not_echoed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Independent GetWindowThreadProcessId must reject HWND/PID spoofing."""
+    from tools.evidence_gather_support import windows_capture as dwm_mod
+    from tools.evidence_gather_support.common import HostError
+
+    bounds = dwm_mod.PhysicalBounds(0, 0, 10, 10)
+    monkeypatch.setattr(dwm_mod, "query_dwm_extended_frame_bounds", lambda hwnd: bounds)
+    monkeypatch.setattr(
+        dwm_mod,
+        "query_dpi_context",
+        lambda hwnd: dwm_mod.DpiContext(96, 96, "system"),
+    )
+    monkeypatch.setattr(dwm_mod, "bitblt_region_png", lambda region: b"PNG")
+    monkeypatch.setattr(dwm_mod, "window_pid", lambda hwnd: 9999)
+
+    with pytest.raises(HostError) as exc_info:
+        dwm_mod.capture_window(hwnd=0xABC, expected_pid=4242)
+    assert exc_info.value.code == "dwm_pid_mismatch"
+
+
+def test_dwm_screenshot_collect_through_entry_point(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gather = _gather()
+    capture, workspace, agent, ndjson_path = _prepare_collect_workspace(tmp_path)
+    assert (
+        gather.main(
+            [
+                "prepare",
+                "--scenario",
+                str(FIXTURE.resolve()),
+                "--capture-root",
+                str(capture),
+                "--bind",
+                "model=operator-supplied",
+            ]
+        )
+        == 0
+    )
+    _stub_acp_for_collect(monkeypatch, ndjson_path)
+
+    from tools.evidence_gather_support import windows_capture as dwm_mod
+
+    png = b"\x89PNG\r\n\x1a\nfake"
+    monkeypatch.setattr(
+        dwm_mod,
+        "resolve_unique_visible_window",
+        lambda *, expected_pid: dwm_mod.WindowCandidate(
+            hwnd=0xABC, pid=expected_pid, title="Zed", visible=True
+        ),
+    )
+    monkeypatch.setattr(
+        dwm_mod,
+        "capture_window",
+        lambda **kwargs: dwm_mod.CaptureResult(
+            hwnd=0xABC,
+            pid=kwargs["expected_pid"],
+            bounds=dwm_mod.PhysicalBounds(1, 2, 101, 52),
+            dpi=dwm_mod.DpiContext(96, 96, "system"),
+            png_bytes=png,
+            sha256=hashlib.sha256(png).hexdigest(),
+            width=100,
+            height=50,
+            captured_at="1970-01-01T00:00:01Z",
+            monotonic_ns=1_000,
+        ),
+    )
+
+    code = gather.main(
+        [
+            "collect",
+            "--scenario",
+            str(FIXTURE.resolve()),
+            "--capture-root",
+            str(capture),
+            "--bind",
+            "model=operator-supplied",
+            "--workspace-root",
+            str(workspace),
+            "--agent-executable",
+            str(agent),
+            "--prompt",
+            "ping",
+            "--timeout-seconds",
+            "30",
+            "--ndjson-path",
+            str(ndjson_path.resolve()),
+            "--correlate-session-id",
+            "session-aaa",
+            "--correlate-request-id",
+            "req-1",
+            "--correlate-run-id",
+            "session-aaa:req-1",
+            "--debug-session-id",
+            "debug_abc",
+            "--dwm-pid",
+            "4242",
+        ]
+    )
+    err = capsys.readouterr().err
+    assert "stage_unavailable" not in err
+    assert code == 0
+    run_dirs = [path for path in capture.iterdir() if path.is_dir()]
+    raw = json.loads((run_dirs[0] / "raw-bundle.json").read_text(encoding="utf-8"))
+    dwm_batches = [batch for batch in raw["batches"] if batch["collector_id"] == "dwm_capture_collector"]
+    assert len(dwm_batches) == 1
+    assert dwm_batches[0]["artifacts"][0]["role"] == "screenshot"
+    assert all(obs["observation_kind"] == "screenshot_capture" for obs in dwm_batches[0]["observations"])
+    assert all(obs["observation_kind"] != "render_observed" for obs in dwm_batches[0]["observations"])

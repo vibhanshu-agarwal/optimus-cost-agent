@@ -21,6 +21,7 @@ from evidence_handoff.collector.scenarios import load_scenario, resolve_bindings
 
 from tools.evidence_gather_support import acp as acp_mod
 from tools.evidence_gather_support import ndjson as ndjson_mod
+from tools.evidence_gather_support import windows_capture as dwm_mod
 from tools.evidence_gather_support import zed_logs as zed_mod
 from tools.evidence_gather_support.common import HostError, require_absolute_path, require_directory, require_existing_file
 from tools.evidence_gather_support.fixtures import prepare_fixtures, run_preconditions
@@ -66,6 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     collect.add_argument("--zed-version", type=str, required=False)
     collect.add_argument("--zed-watch-seconds", type=float, required=False)
     collect.add_argument("--zed-pid", type=int, action="append", default=[])
+    collect.add_argument("--dwm-pid", type=int, required=False)
 
     classify = sub.add_parser("classify")
     classify.add_argument("--scenario", type=Path, required=True)
@@ -355,6 +357,45 @@ def _handle_collect(args: argparse.Namespace) -> int:
             "watch_ended_ns": zed_watch_ended_ns,
         }
 
+    dwm_summary: dict[str, object] | None = None
+    if args.dwm_pid is not None:
+        window = dwm_mod.resolve_unique_visible_window(expected_pid=int(args.dwm_pid))
+        capture = dwm_mod.capture_window(hwnd=window.hwnd, expected_pid=int(args.dwm_pid))
+        relative_shot = "artifacts/dwm/screenshot.png"
+        shot_path = run_dir / relative_shot
+        shot_path.parent.mkdir(parents=True, exist_ok=True)
+        shot_path.write_bytes(capture.png_bytes)
+        dwm_batch = dwm_mod.build_collection_batch(
+            scenario_id=scenario.scenario_id,
+            run_id=run_id,
+            monotonic_origin_ns=origin,
+            capture=capture,
+            artifact_relative=relative_shot,
+        )
+        # Hard gate: screenshot transport must never invent a render claim.
+        if any(obs.observation_kind == "render_observed" for obs in dwm_batch.observations):
+            raise HostError("render_claim_forbidden")
+        batches.append(dwm_batch)
+        dwm_summary = {
+            "hwnd": hex(capture.hwnd),
+            "pid": capture.pid,
+            "bounds": {
+                "left": capture.bounds.left,
+                "top": capture.bounds.top,
+                "right": capture.bounds.right,
+                "bottom": capture.bounds.bottom,
+            },
+            "dpi": {
+                "dpi_x": capture.dpi.dpi_x,
+                "dpi_y": capture.dpi.dpi_y,
+                "awareness": capture.dpi.awareness,
+            },
+            "width": capture.width,
+            "height": capture.height,
+            "sha256": capture.sha256,
+            "captured_at": capture.captured_at,
+        }
+
     context = RunContext(
         schema="evidence-run-v1",
         scenario_id=scenario.scenario_id,
@@ -374,6 +415,7 @@ def _handle_collect(args: argparse.Namespace) -> int:
         "completion_claim": claim.claim_kind.value,
         "completion_reason_code": claim.reason_code,
         "zed": zed_summary,
+        "dwm": dwm_summary,
     }
     result_path = run_dir / "collect-result.json"
     from evidence_handoff.collector.bundles import _atomic_write_json
@@ -385,6 +427,7 @@ def _handle_collect(args: argparse.Namespace) -> int:
                 "run_id": run_id,
                 "completion_claim": claim.claim_kind.value,
                 "zed_candidates": ([] if zed_summary is None else zed_summary["candidate_names"]),
+                "dwm_sha256": None if dwm_summary is None else dwm_summary["sha256"],
             },
             separators=(",", ":"),
             sort_keys=True,
