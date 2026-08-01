@@ -15,6 +15,7 @@ PRODUCT_FEATURE_IDS = frozenset(
     {
         "EVIDENCE-HANDOFF-FEAT-REDACTION-GATE",
         "EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR",
+        "EVIDENCE-HANDOFF-FEAT-ZED-RENDER-OBSERVATION",
         "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER",
         "EVIDENCE-HANDOFF-FEAT-APPROVAL-RECORD",
     }
@@ -23,6 +24,7 @@ PRODUCT_OWNED_DOCS = frozenset(
     {
         "docs/superpowers/specs/evidence-handoff-evidence-collector-design.md",
         "docs/superpowers/specs/evidence-handoff-redaction-gate-design.md",
+        "docs/superpowers/specs/evidence-handoff-zed-render-observation-design.md",
         "docs/superpowers/plans/evidence-handoff-evidence-collector-implementation.md",
         "docs/superpowers/plans/evidence-handoff-redaction-gate-implementation.md",
     }
