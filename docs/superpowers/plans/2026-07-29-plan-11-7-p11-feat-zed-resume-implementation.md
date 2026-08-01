@@ -18,19 +18,22 @@ compression, summarization, pruning, and eviction exclusively in Plan 12.
 
 **Tech Stack:** Python 3.12, Pydantic v2, `redis.asyncio`, JSON-RPC 2.0, ACP v1, pytest,
 pytest-asyncio, pytest-cov/coverage.py, Ruff, Redis 8 with TimeSeries, Optimus Gateway, external
-`acpx` 0.12.0, and Zed 1.12.1 stable build 330.
+`acpx` 0.12.0, and Zed 1.13.1 with source commit
+`00bd72e7838f4b875a913cd112b47a0ebe1ca62b`.
 
 **Status:** Draft for operator approval. Implementation is not authorized.
 
 ## Global Constraints
 
-- Drafting baseline is commit `012a0e0e2b0f56e99adf446628dba7a6c1d1fd49`.
+- Drafting baseline is commit `2cf2f42aa7d1072f09d0678a3c75eb43516c8808`, after the merged
+  redaction gate (PR #104, merge `398a6cf334938972d7df672914d98ac5fa54952c`) and evidence
+  collector (PR #105, merge `2cf2f42aa7d1072f09d0678a3c75eb43516c8808`).
 - ACP v1 schema fixture is
   `tests/fixtures/acp/acp-v1-schema.json`, SHA-256
   `92C1DFCDA10DD47E99127500A3763DA2B471F9AC61E12B9BF0430C32CF953796`.
-- The live Zed source pin is commit `2a37601c02a32b22e7700835c04b89ff75ffcd5d`
-  (Zed 1.12.1 stable build 330). Task 0 must re-hash the installed binary/source artifacts rather
-  than trusting this statement.
+- The live Zed source pin is commit `00bd72e7838f4b875a913cd112b47a0ebe1ca62b`
+  (Zed 1.13.1). Task 0 must re-hash the installed binary/source artifacts rather than trusting this
+  statement.
 - Scope is ACP `session/load` only. `session/resume`, `session/list`, `session/delete`,
   `session/close`, and non-empty `additionalDirectories` are not implemented or advertised.
 - Advertise `"loadSession": true` directly on `agentCapabilities`; keep
@@ -78,6 +81,18 @@ pytest-asyncio, pytest-cov/coverage.py, Ruff, Redis 8 with TimeSeries, Optimus G
 - Unit tests may use fakes. `requires_redis`, `requires_gateway`, and `e2e` evidence must use the
   real dependencies named by the marker. ACP protocol evidence must use independently authored
   `acpx`; Zed claims require real Zed.
+- Raw live artifacts are promoted only through the merged `tools/evidence_gather.py redact` entry
+  point and its `evidence_handoff.redaction` authority. Plan 11.7 must not restate sanitization
+  rules, implement a second redactor, or import `tools.evidence_gather_support` from its evidence
+  driver. Human approval remains mandatory only where the merged gate requires it, including any
+  screenshot promoted as evidence.
+- The merged collector's real `acp_stream_collector`, `zed_crash_collector`,
+  `dwm_capture_collector`, `hermetic_user_data_fixture`, and `discover_zed_editor_pids()` evidence
+  is consumed as the generic collection/capability baseline. Its current `collect` command creates
+  a fresh `acpx` session and cannot attach to an already-open Zed ACP connection, so Plan 11.7 keeps
+  only the minimal same-session Zed protocol orchestration needed to prove `session/load`. It must
+  not duplicate DWM/render detection or claim that prior collector evidence is correlated with the
+  Plan 11.7 session.
 - Maintain at least 80% aggregate Python production-code coverage and do not regress
   safety-critical coverage.
 - The reviewing agent owns
@@ -298,6 +313,8 @@ another model.
 | Cumulative session/project cost policy | `P9.85-FU-3` |
 | Ownership of FU-4A/FU-5 evidence re-pin | `P11-FU-4`; Plan 11.7 coordinates only |
 | Agent-side workaround for a current Zed rendering defect | Requires a separately approved plan and named external/internal custody |
+| Zed render-observation authority, DWM capture, and screenshot-based render claims | `EVIDENCE-HANDOFF-FEAT-ZED-RENDER-OBSERVATION`; Plan 11.7 proves ACP load/replay/stability only |
+| Changes to the merged evidence collector or direct reuse of its internal support adapters | Evidence-handoff collector lane; Plan 11.7 invokes only its public entry point where compatible |
 | Raising ACP prompt default from `$0.05` to live-run `$0.25` | Excluded; budget policy unchanged |
 
 Anything not listed in this table is in scope.
@@ -316,7 +333,7 @@ Anything not listed in this table is in scope.
 | Context exhaustion is typed, replayable, excluded, and unsealed | 6, 7B | Gateway boundary tests and adapter tests |
 | Error-code conformance and current mutation collision removal | 1 | Schema-extracted oracle, AST scan, README/frozen-doc disposition |
 | Total stop mapping and inverted-refusal fix | 1, 10 | Set-equality oracle and Zed 2x2 matrix |
-| Client refusal stability | 0, 10 | Pre/post Zed artifacts or explicit named defect custody |
+| Client refusal protocol/process stability | 0, 10 | Pre/post Zed stop-reason, process, and panic artifacts or explicit named defect custody; no render claim |
 | Plan 12 boundary and model-specific practical depth | 5, 8, 11 | Registry row and real Gateway `turns_to_first_limit` |
 | FU-4 coordination and mechanical closure | 11 | Reviewed disposition, manifests, ancestry, re-hash, zero unchecked boxes |
 
@@ -344,6 +361,18 @@ Anything not listed in this table is in scope.
 - `tests/integration/acp/test_server_stream_live_redis.py` is the existing real-Redis ACP tier.
 - `tools/run_plan987_acpx_live_evidence.py` and
   `tools/run_plan115_acpx_cost_obs_evidence.py` are existing external-`acpx` evidence patterns.
+- `tools/evidence_gather.py` is the merged public evidence entry point. Its `redact` stage owns
+  promotion policy; its generic collectors already establish hermetic-root, Zed-process/crash, and
+  DWM-capture capability, but its fresh-`acpx` `collect` path does not establish Plan 11.7
+  same-session custody.
+- Pinned Zed 1.13.1 source `crates/agent_ui/src/agent_panel.rs` stores a workspace-scoped
+  `agent_panel.last_active_thread` and automatically loads the matching persisted thread at panel
+  startup. At commit `00bd72e7838f4b875a913cd112b47a0ebe1ca62b`, that file's independently
+  verified SHA-256 is
+  `4409288c612d1247f8c16399b5d9a64fe626ff392d1e49b81597608a334ed59d`. A complete
+  pre-seeded hermetic profile may therefore eliminate the manual click, but a
+  `sidebar_threads.session_id` row alone cannot; Task 0 must prove the complete seed against the
+  real pinned binary before relying on unattended restore.
 - `reports/plan-9-8-task-aware-context-evidence.md` and
   `reports/plan-9-75-zed-hitl-runtime-evidence.md` anchor `P9.8-FU-5`.
 - Backlog/charter prose that attributes load support to `sessionCapabilities` is factually stale;
@@ -380,7 +409,7 @@ Anything not listed in this table is in scope.
 | `tests/integration/acp/test_session_store_live_redis.py` | Real Redis CAS/lease/TTL/recovery/malformed behavior. |
 | `tests/integration/acp/test_session_load_live_redis.py` | Real ACP process/store replay and failure semantics. |
 | `tests/integration/agent/test_session_history_live_gateway.py` | Real Gateway literal-history and exact usage/cost evidence. |
-| `tools/run_plan117_acpx_resume_evidence.py` | External-`acpx` restart/replay/depth capture. |
+| `tools/run_plan117_acpx_resume_evidence.py` | External-`acpx` restart/replay/depth capture plus minimal same-session Zed protocol orchestration; invokes the merged public redaction command and never imports collector internals. |
 | `tools/verify_plan117_resume_evidence.py` | Task 0 creates the baseline verifier; later evidence tasks extend it with restart/Zed/closure invariants. |
 | `tests/unit/tools/test_run_plan117_acpx_resume_evidence.py` | Evidence-driver commands, secret boundaries, and manifest tests. |
 | `tests/unit/tools/test_verify_plan117_resume_evidence.py` | Offline verifier tamper/ancestry/invariant tests. |
@@ -410,14 +439,15 @@ Anything not listed in this table is in scope.
   ```powershell
   git status --short --branch
   git rev-parse HEAD
-  git merge-base --is-ancestor 012a0e0e2b0f56e99adf446628dba7a6c1d1fd49 HEAD
-  git diff --exit-code 012a0e0e2b0f56e99adf446628dba7a6c1d1fd49 -- src tests
+  git merge-base --is-ancestor 2cf2f42aa7d1072f09d0678a3c75eb43516c8808 HEAD
+  git diff --exit-code 2cf2f42aa7d1072f09d0678a3c75eb43516c8808 -- src/optimus src/optimus_gateway
   Get-FileHash -Algorithm SHA256 -LiteralPath "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md"
   Get-FileHash -Algorithm SHA256 -LiteralPath "tests/fixtures/acp/acp-v1-schema.json"
   ```
 
-  Expected: commit `012a0e0e2b0f56e99adf446628dba7a6c1d1fd49` is an ancestor of `HEAD`;
-  `git diff --exit-code 012a0e0e2b0f56e99adf446628dba7a6c1d1fd49 -- src tests` is clean before
+  Expected: commit `2cf2f42aa7d1072f09d0678a3c75eb43516c8808` is an ancestor of `HEAD`;
+  `git diff --exit-code 2cf2f42aa7d1072f09d0678a3c75eb43516c8808 -- src/optimus src/optimus_gateway`
+  is clean before
   baseline capture; and the schema hash equals the Global Constraints value. A plan-only approval
   commit after the baseline is permitted. Record the operator's approval identity, UTC time, exact
   plan hash, baseline commit, and current plan-only commit in both report and reviewer checkpoint
@@ -434,9 +464,10 @@ Anything not listed in this table is in scope.
   ```
 
   Replace the quoted Zed source argument at execution with the absolute source path recorded in the
-  manifest; the command must resolve to `2a37601c02a32b22e7700835c04b89ff75ffcd5d`.
+  manifest; the command must resolve to `00bd72e7838f4b875a913cd112b47a0ebe1ca62b`.
   Record Redis image/container ID and TimeSeries module output, Gateway URL host with credentials
-  redacted, `acpx` 0.12.0 executable hash, Zed executable hash/version, source commit, and source
+  omitted from promoted output by the merged redaction gate, `acpx` 0.12.0 executable hash, Zed
+  executable hash/version, source commit, and source
   files proving top-level `loadSession` discovery and the load request path. Hash and identify the
   on-disk Zed agent-registry source already found during design review, and attach that provenance
   to `P11-FEAT-REGISTRY`'s research gate without expanding Plan 11.7 into registry submission.
@@ -446,31 +477,50 @@ Anything not listed in this table is in scope.
 
   On the same untouched live stack, capture:
 
-  1. a genuine `PLANNING_MODEL_REFUSED`, verifying legacy wire `end_turn` and Zed rendering;
+  1. a genuine `PLANNING_MODEL_REFUSED`, verifying legacy wire `end_turn` and Zed process stability;
   2. a best-effort reproduction of the historical ambiguous/unknown path that currently falls
      through to wire `refusal`.
 
-  Preserve raw NDJSON, sanitized Zed logs, screenshots, model/version, and exact construction. A
-  precise non-reproduction is a valid result for case 2; do not fabricate a new baseline harness or
-  rebuild baseline later.
+  Preserve raw NDJSON, Zed process/panic records, model/version, and exact construction in the raw
+  bundle, then promote only artifacts accepted by `tools/evidence_gather.py redact`. Screenshots
+  are neither required nor render authority; if one is retained as optional corroboration, it needs
+  the gate's explicit screenshot approval. A precise non-reproduction is a valid result for case 2;
+  do not fabricate a new baseline harness or rebuild baseline later.
 
 - [ ] **Step 4: Capture Zed discovery after the refusal baseline is sealed.**
 
   Preserve the clean-source hash from Step 1, then apply an explicitly recorded temporary
   capability/load probe that changes only top-level `loadSession` advertisement and returns an
   empty successful `session/load`. Launch that baseline agent with the same real Redis/Gateway and
-  Zed, create a session, close the agent process, reopen the same Zed thread, and capture whether
-  Zed reads top-level `loadSession`, issues `session/load`, requires `session/list`, or instead
-  creates a new session. Record the `sidebar_threads.session_id` row with unrelated content
-  redacted. Reverse only the recorded probe patch and re-run the Step 1 source-tree diff before
-  proceeding. The probe establishes client reachability; it is not implementation or conformance
-  evidence. If Zed does not issue `session/load`, requires list support, or the source tree does not
-  return exactly to baseline, stop and amend the plan before implementation.
+  Zed and create a session. In a disposable hermetic user-data root, pre-seed the complete
+  workspace-scoped restore state required by pinned Zed source: matching workspace identity,
+  `agent_panel.last_active_thread`, non-archived thread metadata with the target session ID, agent
+  registration, project path, working directories, and no active or restorable terminal. Before
+  launch, explicitly verify and record in the probe manifest that `last_active_terminal_id` is
+  absent and the seeded state resolves no `terminal_to_restore`; either terminal state takes
+  precedence over thread restoration in the pinned source. Close only the agent process and
+  relaunch the pinned Zed binary on that project. Capture whether Zed automatically restores the
+  target thread, reads top-level `loadSession`, issues `session/load`, requires `session/list`, or
+  instead creates a new session. A `sidebar_threads.session_id` row alone is explicitly
+  insufficient.
+
+  If automatic profile restore succeeds, Task 9 must use it and requires no manual click. If the
+  complete profile seed fails, first require the manifest to prove both no-terminal predicates. If
+  either predicate is false or unproven, record `profile_seed_terminal_precedence_confounded` and
+  treat the probe as invalid; do not emit `profile_auto_restore_unsupported`. If both are proven and
+  a single disclosed operator reopen causes the same pinned Zed process to issue `session/load`,
+  record `profile_auto_restore_unsupported` and retain that manual fallback in Task 9; this is a
+  scenario-automation limitation, not a failed load-custody result.
+  If Zed does not issue `session/load` after that fallback, requires list support, or the source tree
+  does not return exactly to baseline, stop and amend the plan before implementation. Route the raw
+  discovery bundle through `tools/evidence_gather.py redact`; do not add Plan-specific sanitization.
+  The probe establishes client reachability, not implementation or render conformance.
 
 - [ ] **Step 5: Write and run RED baseline-verifier tests.**
 
   Create tests that require the exact baseline/schema/`acpx`/Zed identities, artifact SHA-256
-  values, discovery outcome, case-1 result, and case-2 artifact-or-non-reproduction disposition.
+  values, automatic-profile-restore result plus any disclosed fallback, discovery outcome, case-1
+  result, and case-2 artifact-or-non-reproduction disposition.
   The verifier must reject a changed byte, missing identity, mismatched baseline, or a narrative
   timestamp used instead of a commit.
 
@@ -499,9 +549,10 @@ Anything not listed in this table is in scope.
   git diff --check
   ```
 
-  Expected: manifest hashes resolve, baseline/schema/client identities match, case 1 exists, and
-  case 2 records either an artifact or an exact non-reproduction. Commit Task 0 reports only after
-  separate authorization, with subject `test(acp): pin Plan 11.7 baseline evidence`.
+  Expected: manifest hashes resolve, baseline/schema/client identities match, automatic profile
+  restore has an exact supported-or-fallback disposition, case 1 exists, and case 2 records either
+  an artifact or an exact non-reproduction. Commit Task 0 reports only after separate authorization,
+  with subject `test(acp): pin Plan 11.7 baseline evidence`.
 
 ### Task 1: Pin the protocol oracle, total stop mapping, and error registry
 
@@ -916,10 +967,11 @@ Anything not listed in this table is in scope.
 
 - [ ] **Step 6: Run real-Gateway history evidence.**
 
-  Mark the integration file `requires_gateway`. Send two bounded prompts, capture redacted request
-  metadata at the Gateway boundary, and assert the second contains the exact first user/agent
-  history plus current user turn. Assert provider usage/cost fields, model/version, run ID, and
-  session ID are complete.
+  Mark the integration file `requires_gateway`. Send two bounded prompts, capture only allowlisted
+  content-free request metadata and history digests at the Gateway boundary, and assert the second
+  request contains the exact first user/agent history plus current user turn before it is reduced to
+  evidence. Assert provider usage/cost fields, model/version, run ID, and session ID are complete.
+  If a raw request artifact is retained, promote it only through the merged redaction gate.
 
   ```powershell
   uv run --frozen pytest -m requires_gateway tests/integration/agent/test_session_history_live_gateway.py -q
@@ -927,7 +979,7 @@ Anything not listed in this table is in scope.
 
 - [ ] **Step 7: Checkpoint Task 5.**
 
-  Record model/version and redacted history hashes, not source bodies. Commit only with separate
+  Record model/version and content-free history hashes, not source bodies. Commit only with separate
   authorization, subject `feat(agent): carry literal ACP session history`.
 
 ### Task 6: Normalize context-window exhaustion and preserve replay
@@ -956,9 +1008,10 @@ Anything not listed in this table is in scope.
 
 - [ ] **Step 1: Write RED provider/Gateway normalization tests.**
 
-  Supply structured upstream bodies with provider error `type`/`code` indicating context length and
-  unrelated messages containing similar words. Assert only structured fields produce
-  `CONTEXT_WINDOW_EXCEEDED`; redact provider bodies and preserve valid gateway usage when present.
+  Supply unit-fixture upstream bodies with provider error `type`/`code` indicating context length
+  and unrelated messages containing similar words. Assert only structured fields produce
+  `CONTEXT_WINDOW_EXCEEDED`; do not promote provider bodies, and preserve valid gateway usage when
+  present.
 
 - [ ] **Step 2: Write RED agent/ACP behavior tests.**
 
@@ -1145,8 +1198,9 @@ Anything not listed in this table is in scope.
 - [ ] **Step 1: Write RED driver/verifier tests.**
 
   Pin exact `acpx` version validation, `sessions ensure --resume-session $plan117SessionId`, two distinct
-  agent PIDs, no project-authored ACP client, no `sessions list`, sanitized environment, artifact
-  hashes, replay sequence equality, and verifier rejection of tampering/missing usage/cost fields.
+  agent PIDs, no project-authored ACP client, no `sessions list`, restricted child environment,
+  merged-redaction result, artifact hashes, replay sequence equality, and verifier rejection of
+  tampering/missing usage/cost fields.
 
 - [ ] **Step 2: Run RED selectors.**
 
@@ -1159,7 +1213,9 @@ Anything not listed in this table is in scope.
   The tool must initialize/new/prompt through `acpx`, record the session ID, terminate only its
   owned agent process, start a second process, load via
   `sessions ensure --resume-session $plan117SessionId`, verify replay, and continue with a second prompt.
-  Capture exact NDJSON and Redis TTL/revision metadata without logging credentials or source bodies.
+  Capture exact NDJSON and Redis TTL/revision metadata in a raw bundle without logging credentials
+  or source bodies. Invoke `tools/evidence_gather.py redact` for promotion; do not reproduce its
+  rules or import collector support modules.
 
 - [ ] **Step 4: Add the model-specific depth run.**
 
@@ -1202,13 +1258,15 @@ Anything not listed in this table is in scope.
 
 - Consumes Task 0's pinned Zed identity/discovery path.
 - Produces real-IDE evidence that Zed reuses the stored session ID, calls load after process restart,
-  renders replay, and continues the same literal model history.
+  receives ordered replay, continues the same literal model history, and remains process-stable.
+  Rendering is deliberately not a Plan 11.7 claim.
 
 - [ ] **Step 1: Extend RED verifier tests for Zed artifacts.**
 
   Require Zed executable/source hashes, pinned commit, two agent PIDs, one session ID, initialize
-  capability, load request, ordered replay updates, continued prompt, SQLite session-ID evidence,
-  sanitized logs/screenshots, and artifact hashes.
+  capability, load request, ordered replay updates, continued prompt, SQLite/workspace restore-state
+  evidence, Task 0's automatic-restore-or-fallback disposition, merged-redaction result, process and
+  panic evidence, and artifact hashes. Do not require screenshots or infer rendering.
 
 - [ ] **Step 2: Run RED verifier.**
 
@@ -1219,11 +1277,15 @@ Anything not listed in this table is in scope.
 - [ ] **Step 3: Capture the real reopen.**
 
   With real Redis/Gateway and the pinned Zed build: create and prompt; close only the agent process;
-  reopen the existing Zed thread; capture top-level capability discovery, `session/load`, replay,
-  and a follow-up prompt whose Gateway input contains exact prior committed history. Record that
-  Zed does not require `session/list`.
+  relaunch Zed with Task 0's proven complete hermetic profile seed. If Task 0 recorded
+  `profile_auto_restore_supported`, require unattended target-thread restore. Otherwise perform the
+  one disclosed manual reopen fallback already proven in Task 0. Capture top-level capability
+  discovery, `session/load`, replay receipt, and a follow-up prompt whose Gateway input contains
+  exact prior committed history. Record that Zed does not require `session/list`. Keep this
+  orchestration minimal: the merged collector's `collect` command cannot attach to this existing
+  session, and direct imports of its support adapters are forbidden.
 
-- [ ] **Step 4: Verify artifacts and render semantics.**
+- [ ] **Step 4: Verify artifacts and ACP/process semantics.**
 
   ```powershell
   uv run --frozen python tools/verify_plan117_resume_evidence.py --zed reports/plan-11-7-zed-resume-artifact-manifest.json
@@ -1234,8 +1296,9 @@ Anything not listed in this table is in scope.
 
 - [ ] **Step 5: Checkpoint Task 9.**
 
-  Record exact Zed/version/source/binary identities and screenshots. Commit only with separate
-  authorization, subject `test(acp): prove Zed session reopen`.
+  Record exact Zed/version/source/binary identities, automatic-restore-or-fallback disposition, and
+  promoted artifact hashes. Commit only with separate authorization, subject
+  `test(acp): prove Zed session reopen`.
 
 ### Task 10: Close `P9.8-FU-5` with the pre/post refusal matrix
 
@@ -1250,8 +1313,9 @@ Anything not listed in this table is in scope.
 **Interfaces:**
 
 - Consumes Task 0 cases 1/2 and Task 1 mapping.
-- Produces cases 3/4, ancestry-backed proof of ordering, and either stable Zed evidence or a named
-  externally owned defect disposition.
+- Produces cases 3/4, ancestry-backed proof of ordering, and either protocol/process-stable Zed
+  evidence or a named externally owned defect disposition. Render observation remains separately
+  owned.
 
 - [ ] **Step 1: Write RED matrix/verifier tests.**
 
@@ -1264,8 +1328,9 @@ Anything not listed in this table is in scope.
   | implementation | genuine model refusal | conformant `refusal` |
   | implementation | unknown internal reason | invariant failure; no spurious `refusal` |
 
-  Require each live row's Zed render/panic result and hashes. Verify the baseline commit is an
-  ancestor of the implementation commit; reject timestamps or prose as ordering proof.
+  Require each live row's Zed stop reason, process/panic result, merged-redaction result, and hashes.
+  Verify the baseline commit is an ancestor of the implementation commit; reject timestamps or
+  prose as ordering proof. Do not require or infer rendering.
 
 - [ ] **Step 2: Run RED verifier tests.**
 
@@ -1276,9 +1341,9 @@ Anything not listed in this table is in scope.
 - [ ] **Step 3: Capture cases 3 and 4 after Task 1.**
 
   Use the same real Zed build/dependency class as Task 0. Produce a real genuine model refusal and
-  verify `stopReason: refusal` plus stable rendering. Prove unknown internal reasons fail the unit
-  invariant and cannot be serialized as refusal. Do not recreate or overwrite Task 0 baseline
-  artifacts.
+  verify `stopReason: refusal` plus stable Zed process/panic evidence. Prove unknown internal
+  reasons fail the unit invariant and cannot be serialized as refusal. Do not recreate or overwrite
+  Task 0 baseline artifacts.
 
 - [ ] **Step 4: Verify ancestry and re-hash both halves.**
 
@@ -1292,8 +1357,9 @@ Anything not listed in this table is in scope.
 
 - [ ] **Step 5: Dispose `P9.8-FU-5`.**
 
-  If current Zed renders conformant refusal stably, close the backlog item with the matrix. If it
-  still panics, stop Plan 11.7 closure until an external Zed issue or a separately named internal
+  If current Zed accepts conformant refusal without a correlated panic/process failure, close the
+  backlog item with the matrix. If it still panics, stop Plan 11.7 closure until an external Zed
+  issue or a separately named internal
   follow-up/plan owns the defect; do not weaken ACP conformance or add an unreviewed workaround.
 
 - [ ] **Step 6: Checkpoint Task 10.**
