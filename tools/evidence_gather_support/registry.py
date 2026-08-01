@@ -10,7 +10,7 @@ from dataclasses import dataclass
 CLIENT_ADAPTER_IDS = frozenset({"zed_acp_client"})
 FIXTURE_ADAPTER_IDS = frozenset({"hermetic_user_data_fixture"})
 PRECONDITION_ADAPTER_IDS = frozenset({"capture_root_ready"})
-COLLECTOR_ADAPTER_IDS = frozenset({"acp_stream_collector"})
+COLLECTOR_ADAPTER_IDS = frozenset({"acp_stream_collector", "zed_crash_collector"})
 DETECTOR_ADAPTER_IDS = frozenset({"completion_detector"})
 
 

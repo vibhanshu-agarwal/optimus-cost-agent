@@ -808,3 +808,466 @@ def test_collect_handler_is_registered_not_stage_unavailable(
     err = capsys.readouterr().err
     assert "stage_unavailable" not in err
     assert code == 0
+
+
+# --- Task 6: Zed crash-log collection ---
+
+
+def _minidump_header() -> bytes:
+    return b"MDMP" + (b"\x00" * 28)
+
+
+def _prepare_collect_workspace(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
+    capture = (tmp_path / "capture").resolve()
+    workspace = (tmp_path / "workspace").resolve()
+    workspace.mkdir()
+    agent = (tmp_path / "optimus-agent").resolve()
+    agent.write_text("#!/bin/true\n", encoding="utf-8")
+    ndjson_path = workspace / ".optimus" / "debug-acp.ndjson"
+    ndjson_path.parent.mkdir(parents=True)
+    ndjson_path.write_text("", encoding="utf-8")
+    return capture, workspace, agent, ndjson_path
+
+
+def _stub_acp_for_collect(
+    monkeypatch: pytest.MonkeyPatch, ndjson_path: Path
+) -> None:
+    from tools.evidence_gather_support import acp as acp_mod
+
+    monkeypatch.setattr(acp_mod, "resolve_acpx", lambda: (r"C:\tools\acpx.exe", "acpx 0.1.0"))
+
+    def fake_spawn(*, command, cwd, env, timeout_seconds):
+        del command, cwd, env, timeout_seconds
+        entry = _prompt_entry()
+        exit_event = _exit_event()
+        with ndjson_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, separators=(",", ":")) + "\n")
+            handle.write(json.dumps(exit_event, separators=(",", ":")) + "\n")
+        return 0
+
+    monkeypatch.setattr(acp_mod, "spawn_acpx", fake_spawn)
+    monkeypatch.setattr(
+        acp_mod,
+        "build_acpx_command",
+        lambda **kwargs: ["acpx", "--format", "json", "exec", "ping"],
+    )
+
+
+def test_zed_crash_collector_is_registered() -> None:
+    from tools.evidence_gather_support.registry import build_registry
+
+    registry = build_registry()
+    assert "zed_crash_collector" in registry.collectors
+
+
+def test_zed_log_root_missing_is_content_free_host_error(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+    from tools.evidence_gather_support.common import HostError
+
+    missing = (tmp_path / "absent-logs").resolve()
+    with pytest.raises(HostError) as exc_info:
+        zed_mod.require_zed_log_root(missing)
+    assert exc_info.value.code == "zed_log_root_missing"
+
+
+def test_zed_log_root_mismatch_rejects_non_localappdata(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+    from tools.evidence_gather_support.common import HostError
+
+    fake_root = (tmp_path / "Zed" / "logs").resolve()
+    fake_root.mkdir(parents=True)
+    expected = (tmp_path / "expected" / "Zed" / "logs").resolve()
+    expected.mkdir(parents=True)
+    with pytest.raises(HostError) as exc_info:
+        zed_mod.require_zed_log_root(fake_root, expected_live_root=expected)
+    assert exc_info.value.code == "zed_log_root_mismatch"
+
+
+def test_zed_crash_version_mismatch_rejects_unsupported_client() -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+    from tools.evidence_gather_support.common import HostError
+
+    with pytest.raises(HostError) as exc_info:
+        zed_mod.require_supported_client_identity("zed-9.9.9", reported_version="Zed 9.9.9")
+    assert exc_info.value.code == "zed_version_mismatch"
+
+
+def test_zed_crash_version_rejects_prefix_substring_false_friend() -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+    from tools.evidence_gather_support.common import HostError
+
+    with pytest.raises(HostError) as exc_info:
+        zed_mod.require_supported_client_identity(
+            "zed-1.13.1",
+            reported_version="Zed 1.13.10 aabbccdd",
+        )
+    assert exc_info.value.code == "zed_version_mismatch"
+    zed_mod.require_supported_client_identity(
+        "zed-1.13.1",
+        reported_version="Zed 1.13.1 00bd72e7838f4b875a913cd112b47a0ebe1ca62b",
+    )
+
+
+def test_zed_crash_pre_run_snapshot_excludes_existing_artifacts(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+
+    root = (tmp_path / "logs").resolve()
+    root.mkdir()
+    preexisting = root / "already.dmp"
+    preexisting.write_bytes(_minidump_header() + b"old")
+    snap = zed_mod.snapshot_log_root(root, monotonic_ns=100, wall_clock="1970-01-01T00:00:01Z")
+    candidates = zed_mod.list_new_or_changed(snap, root)
+    assert candidates == ()
+    assert any(record.name == "already.dmp" for record in snap.records)
+
+
+def test_zed_crash_new_and_changed_identity_are_candidates(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+
+    root = (tmp_path / "logs").resolve()
+    root.mkdir()
+    rolling = root / "Zed.log"
+    rolling.write_text("pre\n", encoding="utf-8")
+    snap = zed_mod.snapshot_log_root(root, monotonic_ns=100, wall_clock="1970-01-01T00:00:01Z")
+    rolling.write_text("pre\npost\n", encoding="utf-8")
+    dump = root / "crash.dmp"
+    dump.write_bytes(_minidump_header() + b"new")
+    candidates = zed_mod.list_new_or_changed(snap, root)
+    names = {item.name for item in candidates}
+    assert names == {"Zed.log", "crash.dmp"}
+
+
+def test_zed_log_versus_dump_roles_are_distinct(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+
+    assert zed_mod.classify_artifact_role("Zed.log", b"hello") == "zed_log"
+    assert zed_mod.classify_artifact_role("crash.dmp", _minidump_header()) == "zed_process_dump"
+    assert (
+        zed_mod.classify_artifact_role("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json", b'{"panic":true}')
+        == "zed_panic_json"
+    )
+
+
+def test_zed_crash_timestamp_bounds_are_recorded(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+
+    root = (tmp_path / "logs").resolve()
+    root.mkdir()
+    snap = zed_mod.snapshot_log_root(root, monotonic_ns=1_000, wall_clock="1970-01-01T00:00:01Z")
+    (root / "new.dmp").write_bytes(_minidump_header())
+    batch = zed_mod.build_collection_batch(
+        scenario_id="zed-session",
+        run_id="run-1",
+        monotonic_origin_ns=0,
+        snapshot=snap,
+        candidates=zed_mod.list_new_or_changed(snap, root),
+        digests={"new.dmp": "a" * 64},
+        process_pids=(4242,),
+        watch_started_ns=1_000,
+        watch_ended_ns=2_000,
+        wall_started="1970-01-01T00:00:01Z",
+        wall_ended="1970-01-01T00:00:02Z",
+    )
+    assert batch.collector_id == "zed_crash_collector"
+    assert batch.observations
+    obs = batch.observations[0]
+    assert obs.monotonic_offset_ns >= 1_000
+    corr = dict(obs.correlation)
+    assert corr["watch_started_ns"] == "1000"
+    assert corr["watch_ended_ns"] == "2000"
+    assert corr["wall_started"] == "1970-01-01T00:00:01Z"
+    assert corr["wall_ended"] == "1970-01-01T00:00:02Z"
+
+
+def test_zed_crash_process_identity_is_correlated(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+
+    zed_mod.correlate_zed_processes(expected_pids=(100,), observed_pids=(100,))
+    batch_corr = zed_mod.process_correlation_fields(expected_pids=(100,), observed_pids=(100,))
+    assert ("pid", "100") in batch_corr
+
+
+def test_zed_crash_collect_discovers_observed_pids_independently(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gather = _gather()
+    capture, workspace, agent, ndjson_path = _prepare_collect_workspace(tmp_path)
+    log_root = (tmp_path / "Zed" / "logs").resolve()
+    log_root.mkdir(parents=True)
+
+    assert (
+        gather.main(
+            [
+                "prepare",
+                "--scenario",
+                str(FIXTURE.resolve()),
+                "--capture-root",
+                str(capture),
+                "--bind",
+                "model=operator-supplied",
+            ]
+        )
+        == 0
+    )
+    _stub_acp_for_collect(monkeypatch, ndjson_path)
+
+    from tools.evidence_gather_support import acp as acp_mod
+    from tools.evidence_gather_support import zed_logs as zed_mod
+
+    seen: dict[str, object] = {}
+
+    def fake_spawn(*, command, cwd, env, timeout_seconds):
+        del command, cwd, env, timeout_seconds
+        entry = _prompt_entry()
+        exit_event = _exit_event()
+        with ndjson_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, separators=(",", ":")) + "\n")
+            handle.write(json.dumps(exit_event, separators=(",", ":")) + "\n")
+        (log_root / "post-run.dmp").write_bytes(_minidump_header() + b"post")
+        return 0
+
+    def fake_discover() -> tuple[int, ...]:
+        seen["discover_called"] = True
+        return (4242, 9999)
+
+    monkeypatch.setattr(acp_mod, "spawn_acpx", fake_spawn)
+    monkeypatch.setattr(zed_mod, "discover_zed_editor_pids", fake_discover)
+
+    code = gather.main(
+        [
+            "collect",
+            "--scenario",
+            str(FIXTURE.resolve()),
+            "--capture-root",
+            str(capture),
+            "--bind",
+            "model=operator-supplied",
+            "--workspace-root",
+            str(workspace),
+            "--agent-executable",
+            str(agent),
+            "--prompt",
+            "ping",
+            "--timeout-seconds",
+            "30",
+            "--ndjson-path",
+            str(ndjson_path.resolve()),
+            "--correlate-session-id",
+            "session-aaa",
+            "--correlate-request-id",
+            "req-1",
+            "--correlate-run-id",
+            "session-aaa:req-1",
+            "--debug-session-id",
+            "debug_abc",
+            "--zed-log-root",
+            str(log_root),
+            "--zed-client-identity",
+            "zed-1.13.1",
+            "--zed-version",
+            "Zed 1.13.1 deadbeef",
+            "--zed-watch-seconds",
+            "1",
+            "--zed-pid",
+            "4242",
+        ]
+    )
+    err = capsys.readouterr().err
+    assert seen.get("discover_called") is True
+    assert "zed_multi_instance_ambiguous" in err
+    assert code == 2
+
+
+def test_zed_crash_multiple_instances_are_ambiguous() -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+    from tools.evidence_gather_support.common import HostError
+
+    with pytest.raises(HostError) as exc_info:
+        zed_mod.correlate_zed_processes(expected_pids=(), observed_pids=(1, 2))
+    assert exc_info.value.code == "zed_multi_instance_ambiguous"
+
+
+def test_zed_crash_expected_plus_extra_instance_is_ambiguous() -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+    from tools.evidence_gather_support.common import HostError
+
+    with pytest.raises(HostError) as exc_info:
+        zed_mod.correlate_zed_processes(expected_pids=(100,), observed_pids=(100, 200))
+    assert exc_info.value.code == "zed_multi_instance_ambiguous"
+
+
+def test_zed_crash_unrelated_process_is_rejected() -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+    from tools.evidence_gather_support.common import HostError
+
+    with pytest.raises(HostError) as exc_info:
+        zed_mod.correlate_zed_processes(expected_pids=(100,), observed_pids=(200,))
+    assert exc_info.value.code == "zed_unrelated_process"
+
+
+def test_zed_crash_process_lookup_failure_is_not_a_crash_claim() -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+    from tools.evidence_gather_support.common import HostError
+
+    with pytest.raises(HostError) as exc_info:
+        zed_mod.correlate_zed_processes(expected_pids=(100,), observed_pids=())
+    assert exc_info.value.code == "zed_process_lookup_failed"
+    assert exc_info.value.code != "client_crash_observed"
+
+
+def test_zed_crash_clock_ambiguity_is_content_free_failure() -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+    from tools.evidence_gather_support.common import HostError
+
+    with pytest.raises(HostError) as exc_info:
+        zed_mod.require_ordered_watch_window(
+            watch_started_ns=2_000,
+            watch_ended_ns=1_000,
+            wall_started="1970-01-01T00:00:02Z",
+            wall_ended="1970-01-01T00:00:01Z",
+        )
+    assert exc_info.value.code == "zed_clock_ambiguous"
+
+
+def test_zed_crash_watcher_timeout_is_content_free_failure(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+    from tools.evidence_gather_support.common import HostError
+
+    root = (tmp_path / "logs").resolve()
+    root.mkdir()
+    snap = zed_mod.snapshot_log_root(root, monotonic_ns=100, wall_clock="1970-01-01T00:00:01Z")
+    ticks = {"n": 0}
+
+    def fake_monotonic() -> float:
+        ticks["n"] += 1
+        return 0.0 if ticks["n"] < 3 else 1.0
+
+    with pytest.raises(HostError) as exc_info:
+        zed_mod.watch_log_root(
+            snap,
+            watch_seconds=0.5,
+            poll_interval_seconds=0.001,
+            sleep=lambda _seconds: None,
+            monotonic=fake_monotonic,
+        )
+    assert exc_info.value.code == "zed_watch_timeout"
+
+
+def test_zed_crash_changed_file_during_hash_is_raced(tmp_path: Path) -> None:
+    from tools.evidence_gather_support import zed_logs as zed_mod
+    from tools.evidence_gather_support.common import HostError
+
+    root = (tmp_path / "logs").resolve()
+    root.mkdir()
+    path = root / "growing.dmp"
+    path.write_bytes(_minidump_header() + b"a")
+    record = zed_mod.file_record_for(path)
+    path.write_bytes(_minidump_header() + b"ab")
+    with pytest.raises(HostError) as exc_info:
+        zed_mod.digest_stable(path, expected=record)
+    assert exc_info.value.code == "zed_hash_raced"
+
+
+def test_zed_crash_collect_through_entry_point_excludes_pre_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gather = _gather()
+    capture, workspace, agent, ndjson_path = _prepare_collect_workspace(tmp_path)
+    log_root = (tmp_path / "Zed" / "logs").resolve()
+    log_root.mkdir(parents=True)
+    pre = log_root / "pre-run.dmp"
+    pre.write_bytes(_minidump_header() + b"pre")
+
+    assert (
+        gather.main(
+            [
+                "prepare",
+                "--scenario",
+                str(FIXTURE.resolve()),
+                "--capture-root",
+                str(capture),
+                "--bind",
+                "model=operator-supplied",
+            ]
+        )
+        == 0
+    )
+    _stub_acp_for_collect(monkeypatch, ndjson_path)
+
+    def after_spawn(*, command, cwd, env, timeout_seconds):
+        from tools.evidence_gather_support import acp as acp_mod
+
+        # Re-use stub body then create a post-start dump.
+        code = 0
+        entry = _prompt_entry()
+        exit_event = _exit_event()
+        with ndjson_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, separators=(",", ":")) + "\n")
+            handle.write(json.dumps(exit_event, separators=(",", ":")) + "\n")
+        (log_root / "post-run.dmp").write_bytes(_minidump_header() + b"post")
+        del command, cwd, env, timeout_seconds, acp_mod
+        return code
+
+    from tools.evidence_gather_support import acp as acp_mod
+    from tools.evidence_gather_support import zed_logs as zed_mod
+
+    monkeypatch.setattr(acp_mod, "spawn_acpx", after_spawn)
+    monkeypatch.setattr(zed_mod, "discover_zed_editor_pids", lambda: (4242,))
+
+    code = gather.main(
+        [
+            "collect",
+            "--scenario",
+            str(FIXTURE.resolve()),
+            "--capture-root",
+            str(capture),
+            "--bind",
+            "model=operator-supplied",
+            "--workspace-root",
+            str(workspace),
+            "--agent-executable",
+            str(agent),
+            "--prompt",
+            "ping",
+            "--timeout-seconds",
+            "30",
+            "--ndjson-path",
+            str(ndjson_path.resolve()),
+            "--correlate-session-id",
+            "session-aaa",
+            "--correlate-request-id",
+            "req-1",
+            "--correlate-run-id",
+            "session-aaa:req-1",
+            "--debug-session-id",
+            "debug_abc",
+            "--zed-log-root",
+            str(log_root),
+            "--zed-client-identity",
+            "zed-1.13.1",
+            "--zed-version",
+            "Zed 1.13.1 deadbeef",
+            "--zed-watch-seconds",
+            "1",
+            "--zed-pid",
+            "4242",
+        ]
+    )
+    err = capsys.readouterr().err
+    assert "stage_unavailable" not in err
+    assert code == 0
+
+    run_dirs = [path for path in capture.iterdir() if path.is_dir()]
+    assert len(run_dirs) == 1
+    raw = json.loads((run_dirs[0] / "raw-bundle.json").read_text(encoding="utf-8"))
+    zed_batches = [batch for batch in raw["batches"] if batch["collector_id"] == "zed_crash_collector"]
+    assert len(zed_batches) == 1
+    artifact_roles = {item["role"] for item in zed_batches[0]["artifacts"]}
+    assert "zed_process_dump" in artifact_roles
+    relative_names = {Path(item["relative_locator"]).name for item in zed_batches[0]["artifacts"]}
+    assert "post-run.dmp" in relative_names
+    assert "pre-run.dmp" not in relative_names
+    # Collector emits observations/artifacts only — never a crash claim.
+    assert all(
+        obs.get("observation_kind") != "client_crash_observed" for obs in zed_batches[0]["observations"]
+    )
