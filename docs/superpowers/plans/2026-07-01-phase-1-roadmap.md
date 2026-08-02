@@ -1054,10 +1054,13 @@ Plan 12 is not a v1.0 prerequisite and begins only as the post-launch v1.x phase
 testing does not become a gate unless an explicit charter amendment says so.
 
 **Status:** Plan 11.7 (`P11-FEAT-ZED-RESUME`) is the active scoped feature gate after the closed
-Plan 11.1/11.2/11.4/11.5/11.6 slices. Its implementation plan was picked up on 2026-07-29 and must
-resolve Zed's `P9.8-FU-5` disposition plus the session-load storage/durability decision for owned
-`P11-FU-1`; the existing plan-only Redis state store is not sufficient by assumption. The charter
-and ratified feature sequencing map remain recorded in
+Plan 11.1/11.2/11.4/11.5/11.6 slices. Frozen Task 0 Steps 1-4 are sealed with disposition
+`stop_amend_plan_session_load_unreachable` (current Zed 1.13.1 does not issue `session/load` after
+full restart). Frozen Plan 11.7 Task 0 Steps 5-7 and Tasks 1-11 remain blocked. The standalone
+server-side custody feasibility amendment is approved and the probe is authorized but not yet
+completed; no feasibility conclusion is claimed. Owned `P11-FU-1` and `P9.8-FU-5` remain open
+pending that probe (and any later reviewed disposition); the existing plan-only Redis state store
+is not sufficient by assumption. The charter and ratified feature sequencing map remain recorded in
 [`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md).
 `P11-FEAT-GATEWAY-MCP` remains unscheduled pending its reviewed route/typed-contract design after
 the affirmative `P11-FU-3` operator decision. `P11-FEAT-REGISTRY` must research ACP registry

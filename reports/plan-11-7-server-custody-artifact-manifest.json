@@ -1,0 +1,68 @@
+{
+  "artifacts": [
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/trigger-chain.json",
+      "role": "trigger_chain",
+      "sha256": "0914340A0F2FEB24C5EE8B7F5A1C03983531283229077A8522AB8F7E92DE0CBC"
+    },
+    {
+      "hash_method": "git_blob_sha256",
+      "locator": "docs/superpowers/specs/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-design.md",
+      "role": "design",
+      "sha256": "8808E5212DCDB3B44198096D1A0AFE7E20A53E4A9B28438DA5AA23245D339F0E"
+    },
+    {
+      "hash_method": "git_blob_sha256",
+      "locator": "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md",
+      "role": "frozen_plan",
+      "sha256": "F52AD9A5A85DC50B0DFD3206B6BD09FD8FF0AE79B1A6049DF1017F978B1C462D"
+    },
+    {
+      "hash_method": "git_blob_sha256",
+      "locator": "docs/superpowers/plans/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md",
+      "role": "amendment",
+      "sha256": "79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-task0-artifacts/step4-discovery/evidence-report.json",
+      "role": "step4_evidence_report",
+      "sha256": "1579A5B1A84F1AE46C0B09B317F61B93D919E5E03725FFA8BD0F9F6BD32565BF"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-task0-artifacts/step4-discovery/discovery-finding.json",
+      "role": "step4_discovery_finding",
+      "sha256": "FC8B8E35A13DAAB02A09834F2D90DD6E0324FE2C89140900D5954F0F5BDCADE4"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "tests/fixtures/evidence/plan117-server-custody-prompt.txt",
+      "role": "prompt_fixture",
+      "sha256": "8EEA4738E72159A863FEA22A542F92D6A99E3681803BA21863F734C577480D82"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/target-identities.json",
+      "role": "target_identities",
+      "sha256": "714147BC8BCD5F8CEBF265231E9A1DE63BEE7C22267965EC9FD9CC88E69EA3A8"
+    },
+    {
+      "hash_method": "reviewer_owned_gitignored_not_hashed",
+      "locator": "docs/superpowers/reviews/plan-11-7-review-checkpoints.md",
+      "role": "checkpoint_log",
+      "sha256": null
+    }
+  ],
+  "checkpoint": "task0",
+  "complete": true,
+  "docs_refresh": {
+    "backlog": "updated",
+    "evidence_handoff_open_work_pool": "checked_no_change",
+    "readme": "checked_no_change",
+    "roadmap": "updated"
+  },
+  "head": "7bef78cf0c0fd02d08e56c874b9a35f28ee190ca",
+  "schema": "plan117-custody-artifact-manifest-v1"
+}
