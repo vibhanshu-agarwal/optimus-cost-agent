@@ -17,6 +17,13 @@ from tools.plan117_custody_contract import (  # noqa: E402
     VerificationResult,
     verify_manifest,
 )
+from tools.plan117_custody_relay import verify_relay_capture  # noqa: E402
+
+__all__ = (
+    "main",
+    "verify_manifest",
+    "verify_relay_capture",
+)
 
 
 def _summary_payload(result: VerificationResult) -> dict[str, object]:

@@ -1313,6 +1313,78 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan117_custody_relay:_LockedRecorder.__init__:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens private capture files (directional .bin and relay-index.ndjson) under an explicit capture-root/run-id path only; raw ACP bytes stay in private custody and are never logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_empty_streams_produce_eof_and_empty_bins",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:_LockedRecorder.record_chunk:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes only schema-limited index fields (sequence, direction, offsets, size, sha256) — never ACP message bodies — into NDJSON index lines.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_all_byte_values_round_trip",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:_LockedRecorder.record_chunk:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: appends one canonical LF NDJSON index record after fsyncing the corresponding raw chunk; content is structural custody metadata only.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_all_byte_values_round_trip",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:_LockedRecorder.record_eof:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes size-zero EOF index records with empty-blob SHA-256 and directional offsets only.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_empty_streams_produce_eof_and_empty_bins",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:_LockedRecorder.record_eof:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: appends EOF disposition lines to relay-index.ndjson with LF endings; no ACP payload is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_empty_streams_produce_eof_and_empty_bins",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:_emit_stderr:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only a fixed safe reason code string (relay_recorder_failure / relay_interrupted / relay_broken_pipe) to stderr; never raw bytes or secrets.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_recorder_failure_terminates_owned_child_no_fallback",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:_forward_child_to_parent:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: forwards opaque child-stdout bytes to parent stdout without decoding; AST flags .write as text_write but the sink is binary pipe forwarding only.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_stdout_contains_child_stdout_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:_forward_parent_to_child:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: forwards opaque parent-stdin bytes to child stdin without decoding; AST flags .write as text_write but the sink is binary pipe forwarding only.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_all_byte_values_round_trip",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:run_relay:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch on threading.Event.set() inside run_relay; no Redis client or hash write exists in the opaque relay.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_empty_streams_produce_eof_and_empty_bins",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.run_openrouter_web_search_spike:_post_chat:json_serialization",
       "policy": "protocol-only",
       "rationale": "Functional HTTPS request serialization sends only the bounded model, query, token limit, temperature, and web-plugin configuration to OpenRouter. The credential remains in the Authorization header, and the serialized request is not logged or persisted.",

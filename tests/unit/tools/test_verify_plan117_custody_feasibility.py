@@ -19,6 +19,12 @@ from tools.plan117_custody_contract import (
     sha256_file,
     verify_manifest,
 )
+from tools.plan117_custody_relay import (
+    DIR_ZED_TO_AGENT,
+    EOF_AGENT_TO_ZED,
+    EOF_ZED_TO_AGENT,
+    run_relay,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 VERIFIER = ROOT / "tools" / "verify_plan117_custody_feasibility.py"
@@ -840,3 +846,184 @@ def test_verify_manifest_eligible_flag_mismatch(tmp_path: Path) -> None:
     with pytest.raises(CustodyContractError) as exc_info:
         verify_manifest(manifest_path)
     assert exc_info.value.reason_code == "eligible_signal_flag_mismatch"
+
+
+def _make_valid_relay_capture(tmp_path: Path, *, run_id: str = "v1") -> Path:
+    parent_in = __import__("io").BytesIO(b"abc\x00\xff")
+    parent_out = __import__("io").BytesIO()
+    code = (
+        "import sys;"
+        "data=sys.stdin.buffer.read();"
+        "sys.stdout.buffer.write(data);"
+        "sys.stdout.buffer.flush()"
+    )
+    exit_code = run_relay(
+        capture_root=tmp_path,
+        run_id=run_id,
+        child_executable=sys.executable,
+        child_args=["-c", code],
+        stdin=parent_in,
+        stdout=parent_out,
+    )
+    assert exit_code == 0
+    return tmp_path / run_id
+
+
+def test_verify_relay_capture_accepts_valid(tmp_path: Path) -> None:
+    run_dir = _make_valid_relay_capture(tmp_path)
+    verifier_mod.verify_relay_capture(run_dir)
+
+
+@pytest.mark.parametrize(
+    ("mutator", "reason_substr"),
+    [
+        (
+            lambda d: (d / "zed-to-agent.bin").write_bytes(
+                (d / "zed-to-agent.bin").read_bytes() + b"Z"
+            ),
+            "relay_",
+        ),
+        (
+            lambda d: _mutate_index_field(d, "size", 999),
+            "relay_",
+        ),
+        (
+            lambda d: _mutate_index_field(d, "directional_offset", 999),
+            "relay_offset",
+        ),
+        (
+            lambda d: _mutate_index_field(d, "sequence", 99),
+            "relay_sequence",
+        ),
+        (
+            lambda d: _mutate_index_field(d, "direction", "mutated_direction"),
+            "relay_direction",
+        ),
+        (
+            lambda d: _mutate_index_field(d, "sha256", "0" * 64),
+            "relay_chunk_digest",
+        ),
+        (
+            lambda d: _mutate_index_field(d, "run_id", "other-run"),
+            "relay_run_id",
+        ),
+        (
+            lambda d: _mutate_summary_field(d, "child_argv_sha256", "1" * 64),
+            "relay_child_argv_digest_mismatch",
+        ),
+        (
+            lambda d: _mutate_summary_field(d, "relay_sha256", "2" * 64),
+            "relay_digest_mismatch",
+        ),
+        (
+            lambda d: _drop_summary_key(d, "child_exit_code"),
+            "relay_terminal_exit",
+        ),
+        (
+            lambda d: _drop_summary_key(d, "terminal_disposition"),
+            "relay_terminal_disposition",
+        ),
+        (
+            lambda d: _strip_eof_records(d),
+            "relay_missing_directional_eof",
+        ),
+    ],
+)
+def test_verify_relay_capture_rejects_independent_mutations(
+    tmp_path: Path,
+    mutator: Any,
+    reason_substr: str,
+) -> None:
+    run_dir = _make_valid_relay_capture(tmp_path, run_id=f"m-{abs(hash(reason_substr)) % 10_000_000}")
+    verifier_mod.verify_relay_capture(run_dir)
+    mutator(run_dir)
+    with pytest.raises(CustodyContractError) as exc_info:
+        verifier_mod.verify_relay_capture(run_dir)
+    assert reason_substr in exc_info.value.reason_code
+
+
+def test_verify_relay_capture_rejects_child_argv_digest_missing(tmp_path: Path) -> None:
+    run_dir = _make_valid_relay_capture(tmp_path, run_id="argv-missing")
+    _drop_summary_key(run_dir, "child_argv_sha256")
+    with pytest.raises(CustodyContractError) as exc_info:
+        verifier_mod.verify_relay_capture(run_dir)
+    assert exc_info.value.reason_code == "relay_child_argv_digest_missing"
+
+
+def test_verify_relay_capture_rejects_reordered_index(tmp_path: Path) -> None:
+    run_dir = _make_valid_relay_capture(tmp_path, run_id="reorder")
+    index_path = run_dir / "relay-index.ndjson"
+    lines = [line for line in index_path.read_text(encoding="utf-8").splitlines() if line]
+    assert len(lines) >= 2
+    lines[0], lines[1] = lines[1], lines[0]
+    index_path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    with pytest.raises(CustodyContractError) as exc_info:
+        verifier_mod.verify_relay_capture(run_dir)
+    assert exc_info.value.reason_code == "relay_sequence_gap"
+
+
+def test_verify_relay_capture_rejects_inserted_bytes_in_index_chunk(tmp_path: Path) -> None:
+    run_dir = _make_valid_relay_capture(tmp_path, run_id="insert")
+    index_path = run_dir / "relay-index.ndjson"
+    records = [json.loads(line) for line in index_path.read_text(encoding="utf-8").splitlines() if line]
+    data_records = [r for r in records if r["direction"] == DIR_ZED_TO_AGENT]
+    assert data_records
+    data_records[0]["size"] = int(data_records[0]["size"]) + 1
+    rebuilt = []
+    for record in records:
+        rebuilt.append(json.dumps(record, separators=(",", ":"), sort_keys=True))
+    index_path.write_text("\n".join(rebuilt) + "\n", encoding="utf-8", newline="\n")
+    with pytest.raises(CustodyContractError) as exc_info:
+        verifier_mod.verify_relay_capture(run_dir)
+    assert exc_info.value.reason_code in {
+        "relay_raw_bytes_mismatch",
+        "relay_chunk_digest_mismatch",
+        "relay_chunk_size_invalid",
+    }
+
+
+def _mutate_index_field(run_dir: Path, field: str, value: Any) -> None:
+    index_path = run_dir / "relay-index.ndjson"
+    records = [json.loads(line) for line in index_path.read_text(encoding="utf-8").splitlines() if line]
+    target = next(r for r in records if r["direction"] == DIR_ZED_TO_AGENT)
+    target[field] = value
+    index_path.write_text(
+        "\n".join(json.dumps(r, separators=(",", ":"), sort_keys=True) for r in records) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def _mutate_summary_field(run_dir: Path, field: str, value: Any) -> None:
+    summary_path = run_dir / "relay-summary.json"
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    if value is None and field in payload:
+        return
+    payload[field] = value
+    atomic_write_json(summary_path, payload)
+
+
+def _drop_summary_key(run_dir: Path, field: str) -> None:
+    summary_path = run_dir / "relay-summary.json"
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    payload.pop(field, None)
+    atomic_write_json(summary_path, payload)
+
+
+def _strip_eof_records(run_dir: Path) -> None:
+    index_path = run_dir / "relay-index.ndjson"
+    records = [json.loads(line) for line in index_path.read_text(encoding="utf-8").splitlines() if line]
+    kept = [r for r in records if r["direction"] not in {EOF_ZED_TO_AGENT, EOF_AGENT_TO_ZED}]
+    # Resequence to keep sequence gap-free so the missing-EOF reason wins.
+    for index, record in enumerate(kept):
+        record["sequence"] = index
+    index_path.write_text(
+        "\n".join(json.dumps(r, separators=(",", ":"), sort_keys=True) for r in kept) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    summary_path = run_dir / "relay-summary.json"
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    payload["zed_to_agent_eof"] = False
+    payload["agent_to_zed_eof"] = False
+    atomic_write_json(summary_path, payload)
