@@ -1812,6 +1812,179 @@ def test_settings_mutation_accepts_uppercase_approval_digest_on_jsonc(
     assert settings.read_bytes() == original
 
 
+def test_restore_settings_falls_back_when_direct_replace_permission_denied(
+    custody_roots: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Zed often locks settings.json; direct os.replace onto it raises WinError 5.
+
+    Restore must still succeed via rename-away then replace, without leaving the
+    mutated bytes as the live settings path.
+    """
+    import os
+
+    runner = _import_runner()
+    settings = custody_roots["settings_path"]
+    original = settings.read_bytes()
+    pre = _sha256_bytes(original)
+    approval = _approval(settings_path=settings, pre_image_sha256=pre)
+    proof = runner.mutate_settings_insert_relay(
+        settings_path=settings,
+        custody_root=custody_roots["custody_root"],
+        relay_command="python",
+        relay_args=["relay.py", "--x"],
+        approval=approval,
+        agent_server_name="optimus",
+    )
+    mutated = settings.read_bytes()
+    assert mutated != original
+
+    real_replace = os.replace
+    settings_resolved = settings.resolve()
+
+    def gated_replace(src: os.PathLike[str] | str, dst: os.PathLike[str] | str) -> None:
+        src_path = Path(src)
+        dst_path = Path(dst)
+        # Simulate Zed holding the live path: replacing *onto* settings.json fails.
+        if (
+            dst_path.resolve() == settings_resolved
+            and "partial-" in src_path.name
+        ):
+            raise PermissionError(5, "Access is denied", str(dst_path))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(runner.os, "replace", gated_replace)
+
+    restored = runner.restore_settings(
+        settings_path=settings,
+        custody_root=custody_roots["custody_root"],
+        expected_mutated_sha256=proof["mutated_sha256"],
+    )
+    assert restored["restored"] is True
+    assert restored["already_restored"] is False
+    assert settings.read_bytes() == original
+    assert restored["final_sha256"] == pre
+    assert restored.get("restore_method") == "rename_away_then_replace"
+    meta = json.loads(
+        (custody_roots["custody_root"] / "settings-transaction.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert meta["restored"] is True
+    assert meta["final_sha256"] == pre
+    assert meta["restore_method"] == "rename_away_then_replace"
+    assert meta.get("mutated_backup_path")
+    backup = Path(str(meta["mutated_backup_path"]))
+    assert backup.is_file()
+    assert backup.read_bytes() == mutated
+
+
+def test_restore_settings_still_fails_when_rename_away_also_blocked(
+    custody_roots: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+
+    runner = _import_runner()
+    settings = custody_roots["settings_path"]
+    original = settings.read_bytes()
+    pre = _sha256_bytes(original)
+    proof = runner.mutate_settings_insert_relay(
+        settings_path=settings,
+        custody_root=custody_roots["custody_root"],
+        relay_command="python",
+        relay_args=["relay.py"],
+        approval=_approval(settings_path=settings, pre_image_sha256=pre),
+    )
+
+    def always_denied(src: os.PathLike[str] | str, dst: os.PathLike[str] | str) -> None:
+        raise PermissionError(5, "Access is denied", str(dst))
+
+    monkeypatch.setattr(runner.os, "replace", always_denied)
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner.restore_settings(
+            settings_path=settings,
+            custody_root=custody_roots["custody_root"],
+            expected_mutated_sha256=proof["mutated_sha256"],
+        )
+    assert exc.value.reason_code == "settings_atomic_replace_failed"
+    # Mutated bytes must remain; do not claim restored.
+    assert settings.read_bytes() != original
+    meta = json.loads(
+        (custody_roots["custody_root"] / "settings-transaction.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert meta.get("restored") is False
+
+
+def test_restore_settings_rollback_when_final_place_fails_after_rename_away(
+    custody_roots: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If live settings are moved aside but the restored sibling cannot be placed,
+    rollback must put the mutated bytes back — never leave settings.json missing.
+    """
+    import os
+
+    runner = _import_runner()
+    settings = custody_roots["settings_path"]
+    settings_dir = settings.parent
+    original = settings.read_bytes()
+    pre = _sha256_bytes(original)
+    proof = runner.mutate_settings_insert_relay(
+        settings_path=settings,
+        custody_root=custody_roots["custody_root"],
+        relay_command="python",
+        relay_args=["relay.py", "--x"],
+        approval=_approval(settings_path=settings, pre_image_sha256=pre),
+    )
+    mutated = settings.read_bytes()
+    assert mutated != original
+
+    real_replace = os.replace
+    settings_resolved = settings.resolve()
+
+    def gated_replace(src: os.PathLike[str] | str, dst: os.PathLike[str] | str) -> None:
+        src_path = Path(src)
+        dst_path = Path(dst)
+        dst_resolved = dst_path.resolve()
+        # 1) Direct path: replacing onto live from *.partial-* fails (Zed lock).
+        if dst_resolved == settings_resolved and "partial-" in src_path.name:
+            raise PermissionError(5, "Access is denied", str(dst_path))
+        # 2) Fallback final place: replacing onto live from *.restored-* also fails.
+        if dst_resolved == settings_resolved and "restored-" in src_path.name:
+            raise PermissionError(5, "Access is denied", str(dst_path))
+        # Allow: partial->restored sibling, live->mutated-hold, and rollback hold->live.
+        real_replace(src, dst)
+
+    monkeypatch.setattr(runner.os, "replace", gated_replace)
+
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner.restore_settings(
+            settings_path=settings,
+            custody_root=custody_roots["custody_root"],
+            expected_mutated_sha256=proof["mutated_sha256"],
+        )
+    assert exc.value.reason_code == "settings_atomic_replace_failed"
+    assert settings.is_file()
+    assert settings.read_bytes() == mutated
+    meta = json.loads(
+        (custody_roots["custody_root"] / "settings-transaction.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert meta.get("restored") is False
+    leftovers = [
+        path
+        for path in settings_dir.iterdir()
+        if path.is_file()
+        and (
+            ".partial-" in path.name
+            or ".restored-" in path.name
+            or ".mutated-hold-" in path.name
+        )
+    ]
+    assert leftovers == [], f"unexpected leftover settings siblings: {leftovers}"
+
+
 def test_cli_accepts_positional_phase_matching_amendment(
     custody_roots: dict[str, Path],
 ) -> None:

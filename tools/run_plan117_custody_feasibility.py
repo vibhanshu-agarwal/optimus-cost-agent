@@ -316,7 +316,15 @@ def _load_settings_json(settings_path: Path) -> dict[str, Any]:
     return payload
 
 
-def _atomic_replace_settings(settings_path: Path, data: bytes) -> None:
+def _atomic_replace_settings(settings_path: Path, data: bytes) -> dict[str, str]:
+    """Atomically place ``data`` at ``settings_path``.
+
+    Prefer direct ``os.replace`` onto the live path. When that fails with a
+    permission/access error (common on Windows while Zed holds settings.json
+    open), fall back to rename-away-then-replace: move the live file aside,
+    then move the restored sibling into place. Returns the method used and,
+    when applicable, the mutated-backup path.
+    """
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = settings_path.with_name(f"{settings_path.name}.partial-{uuid.uuid4().hex}")
     try:
@@ -324,11 +332,77 @@ def _atomic_replace_settings(settings_path: Path, data: bytes) -> None:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, settings_path)
+        try:
+            os.replace(temporary, settings_path)
+            return {"restore_method": "direct_replace"}
+        except OSError as direct_exc:
+            if not _is_settings_replace_access_denied(direct_exc):
+                raise
+            return _atomic_replace_settings_rename_away(
+                settings_path=settings_path,
+                prepared_path=temporary,
+                direct_exc=direct_exc,
+            )
     except OSError as exc:
         if temporary.exists():
             temporary.unlink(missing_ok=True)
         raise CustodyRunnerError("settings_atomic_replace_failed", "settings_path") from exc
+
+
+def _is_settings_replace_access_denied(exc: OSError) -> bool:
+    winerror = getattr(exc, "winerror", None)
+    if winerror == 5:
+        return True
+    if isinstance(exc, PermissionError):
+        return True
+    if getattr(exc, "errno", None) in {13, 5}:  # EACCES / Windows errno surface
+        return True
+    return False
+
+
+def _atomic_replace_settings_rename_away(
+    *,
+    settings_path: Path,
+    prepared_path: Path,
+    direct_exc: OSError,
+) -> dict[str, str]:
+    """Move the locked live file aside, then place the prepared bytes."""
+    mutated_backup = settings_path.with_name(
+        f"{settings_path.name}.mutated-hold-{uuid.uuid4().hex}"
+    )
+    # Use a distinct sibling name so the final place is not the same "replace onto
+    # live path from *.partial-*" operation that just failed under a file lock.
+    restored_sibling = settings_path.with_name(
+        f"{settings_path.name}.restored-{uuid.uuid4().hex}"
+    )
+    try:
+        if prepared_path.resolve() != restored_sibling.resolve():
+            os.replace(prepared_path, restored_sibling)
+        if not settings_path.exists():
+            os.replace(restored_sibling, settings_path)
+            return {"restore_method": "direct_replace"}
+        os.replace(settings_path, mutated_backup)
+        try:
+            os.replace(restored_sibling, settings_path)
+        except OSError:
+            # Best-effort rollback of the mutated bytes to the live path.
+            try:
+                if not settings_path.exists() and mutated_backup.exists():
+                    os.replace(mutated_backup, settings_path)
+            except OSError:
+                pass
+            raise
+        return {
+            "restore_method": "rename_away_then_replace",
+            "mutated_backup_path": str(mutated_backup),
+        }
+    except OSError as exc:
+        for path in (prepared_path, restored_sibling):
+            if path.exists():
+                path.unlink(missing_ok=True)
+        raise CustodyRunnerError("settings_atomic_replace_failed", "settings_path") from (
+            exc if exc is not direct_exc else direct_exc
+        )
 
 
 def mutate_settings_insert_relay(
@@ -464,24 +538,32 @@ def restore_settings(
         pre_bytes = preimage_path.read_bytes()
         if _digest_bytes(pre_bytes) != pre_digest:
             raise CustodyRunnerError("settings_preimage_digest_mismatch", "preimage")
-        _atomic_replace_settings(settings_path, pre_bytes)
+        place = _atomic_replace_settings(settings_path, pre_bytes)
         final_existed = True
         final_digest = _digest_bytes(pre_bytes)
     else:
         settings_path.unlink()
+        place = {"restore_method": "unlink_absent_preimage"}
         final_existed = False
         final_digest = None
 
     proof["restored"] = True
     proof["final_existed"] = final_existed
     proof["final_sha256"] = final_digest
+    proof["restore_method"] = place.get("restore_method")
+    if place.get("mutated_backup_path"):
+        proof["mutated_backup_path"] = place["mutated_backup_path"]
     atomic_write_json(meta_path, proof)
-    return {
+    result = {
         "restored": True,
         "already_restored": False,
         "final_existed": final_existed,
         "final_sha256": final_digest,
+        "restore_method": place.get("restore_method"),
     }
+    if place.get("mutated_backup_path"):
+        result["mutated_backup_path"] = place["mutated_backup_path"]
+    return result
 
 
 def run_with_settings_transaction(
