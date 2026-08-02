@@ -395,7 +395,7 @@
     {
       "key": "optimus.acp.launch_approvals:KeyringApprovalStore.write_diagnostic_grant:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: write_diagnostic_grant serializes the fixed DiagnosticGrant record\u2014IDs, workspace digest, expiry, and record HMAC\u2014for keyring storage; it contains no credential literal fields.",
+      "rationale": "Inspection: write_diagnostic_grant serializes the fixed DiagnosticGrant record—IDs, workspace digest, expiry, and record HMAC—for keyring storage; it contains no credential literal fields.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_elevated_debug_writes_a_grant_that_verifies_against_its_own_store",
       "evidence_tier": "unit"
@@ -1099,7 +1099,7 @@
     {
       "key": "optimus_gateway.upstream_client:call_with_upstream_retry:exception_export",
       "policy": "safe-by-construction",
-      "rationale": "Inspection (Plan 11.4 re-verified): call_with_upstream_retry uses str(exc) only to rewrap a RetryableUpstreamError as RuntimeError in memory after transient-attempt exhaustion; no sanitizer runs at this site. The message is sanitized at the existing run_model_completion RuntimeError\u2192502 boundary (sanitize_error_message) before any HTTP response export. The on_attempt_failure callback added for model-path retry telemetry receives only attempt number, a literal transient/permanent classification string, latency, and disposition \u2014 never exception text, so it does not add a new exception_export surface. Non-retryable exceptions are re-raised as-is (bare raise, no str()/repr() conversion) and are outside this surface. Callers that reuse this helper without that outer catch must add their own sanitizing boundary.",
+      "rationale": "Inspection (Plan 11.4 re-verified): call_with_upstream_retry uses str(exc) only to rewrap a RetryableUpstreamError as RuntimeError in memory after transient-attempt exhaustion; no sanitizer runs at this site. The message is sanitized at the existing run_model_completion RuntimeError→502 boundary (sanitize_error_message) before any HTTP response export. The on_attempt_failure callback added for model-path retry telemetry receives only attempt number, a literal transient/permanent classification string, latency, and disposition — never exception text, so it does not add a new exception_export surface. Non-retryable exceptions are re-raised as-is (bare raise, no str()/repr() conversion) and are outside this surface. Callers that reuse this helper without that outer catch must add their own sanitizing boundary.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_upstream_retry.py::test_model_retry_ceiling_is_three_attempts",
       "evidence_tier": "unit"
@@ -1273,6 +1273,30 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan117_custody_contract:atomic_create_json:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens a destination path with O_CREAT|O_EXCL only to publish immutable reservation/stage/supersession JSON; fails closed if the path already exists; no diagnostic body retention.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_contract.py::test_immutable_reservation_exclusive_create_refuses_overwrite",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_contract:atomic_create_json:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes schema-limited stage/reservation payloads to canonical sorted-key JSON before exclusive create; content is not a diagnostic export.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_contract.py::test_immutable_reservation_exclusive_create_refuses_overwrite",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_contract:atomic_create_json:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only UTF-8 LF canonical JSON bytes through an exclusive-create fd; append-only custody artifacts stay schema-limited and are never logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_contract.py::test_immutable_reservation_exclusive_create_refuses_overwrite",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan117_custody_contract:atomic_write_bytes:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: opens a sibling temporary binary stage file only to publish private custody pre-image bytes via atomic replace; no diagnostic body retention.",
@@ -1321,6 +1345,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan117_custody_contract:stage_attempt_record_sha256:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes a schema-limited StageAttemptRecord to canonical sorted-key JSON solely to compute an in-memory SHA-256 for supersession parent binding; no path write or diagnostic export.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_contract.py::test_verify_supersession_rejects_gaps_duplicates_forks_cycles_and_digest",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan117_custody_contract:verify_manifest:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: verify_manifest wraps attempt-budget ValueError into CustodyContractError with a fixed reason code string and never exports raw exception text or secret values.",
@@ -1339,7 +1371,7 @@
     {
       "key": "tools.plan117_custody_relay:_LockedRecorder.record_chunk:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: serializes only schema-limited index fields (sequence, direction, offsets, size, sha256) \u2014 never ACP message bodies \u2014 into NDJSON index lines.",
+      "rationale": "Inspection: serializes only schema-limited index fields (sequence, direction, offsets, size, sha256) — never ACP message bodies — into NDJSON index lines.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_all_byte_values_round_trip",
       "evidence_tier": "unit"
@@ -1529,6 +1561,30 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.run_plan117_custody_feasibility:_operator_continue_wait:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints only the operator wait prompt, sentinel path, and optional Enter hint; no ACP bytes, credentials, or settings contents.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_operator_continue_wait_accepts_sentinel_file",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan117_custody_feasibility:_stdin_operator_wait:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints only the supplied operator wait prompt string before optional stdin Enter; no ACP bytes, credentials, or settings contents.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_direct_control_uses_custom_wait_fn",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan117_custody_feasibility:body:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: nested relay/origin-a phase body prints only fixed operator action lines naming the phase and that the runner sends no ACP bytes; no secret values.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_relay_control_holds_mutation_until_operator_wait_returns",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.run_plan117_custody_feasibility:main:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: finalize prints only a schema-limited phase/ok JSON status object with no secret or raw transcript content.",
@@ -1582,6 +1638,14 @@
       "rationale": "Inspection: prints only prior-thread affordance instructions and the required operator label choices; no UI automation or input injection.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_operator_instructions_print_exact_prompt_and_labels",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan117_custody_feasibility:run_direct_control_phase:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints only the fixed direct-control operator action instruction; no settings bytes, ACP traffic, or credentials.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_direct_and_relay_control_are_not_noop",
       "evidence_tier": "unit"
     },
     {

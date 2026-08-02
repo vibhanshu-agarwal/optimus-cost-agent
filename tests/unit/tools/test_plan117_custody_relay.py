@@ -489,6 +489,9 @@ def test_ctrl_c_termination_emits_summary(tmp_path: Path) -> None:
         def read(self, _n: int = -1) -> bytes:  # noqa: A003
             raise KeyboardInterrupt
 
+        def read1(self, _n: int = -1) -> bytes:
+            raise KeyboardInterrupt
+
     def fake_popen(*_a: Any, **_k: Any) -> _HangProc:
         return _HangProc()
 
@@ -850,6 +853,9 @@ def test_generic_oserror_in_forward_thread(tmp_path: Path) -> None:
         def read(self, _n: int = -1) -> bytes:  # noqa: A003
             raise OSError("read_failed")
 
+        def read1(self, _n: int = -1) -> bytes:
+            raise OSError("read_failed")
+
     class _Proc:
         def __init__(self) -> None:
             self.stdin = mock.Mock()
@@ -1131,3 +1137,42 @@ def test_main_remainder_without_double_dash_for_non_option_args(tmp_path: Path) 
         )
         assert code == 3
         assert mocked.call_args.kwargs["child_args"] == ["script.py", "arg1"]
+
+
+def test_read_pipe_chunk_prefers_read1_over_blocking_read() -> None:
+    class _Stream:
+        def __init__(self) -> None:
+            self.read1_calls = 0
+            self.read_calls = 0
+
+        def read1(self, size: int) -> bytes:
+            self.read1_calls += 1
+            return b"x" * min(size, 3)
+
+        def read(self, size: int) -> bytes:
+            self.read_calls += 1
+            return b"y" * size
+
+    stream = _Stream()
+    chunk = plan117_custody_relay._read_pipe_chunk(stream, 64)  # type: ignore[arg-type]
+    assert chunk == b"xxx"
+    assert stream.read1_calls == 1
+    assert stream.read_calls == 0
+
+
+def test_read_pipe_chunk_falls_back_to_read_without_read1() -> None:
+    class _Stream:
+        def read(self, size: int) -> bytes:
+            return b"z" * min(size, 2)
+
+    chunk = plan117_custody_relay._read_pipe_chunk(_Stream(), 64)  # type: ignore[arg-type]
+    assert chunk == b"zz"
+
+
+def test_forward_loops_do_not_call_blocking_read_on_buffered_pipes() -> None:
+    source = RELAY.read_text(encoding="utf-8")
+    assert "parent_in.read(READ_CHUNK)" not in source
+    assert "child_stdout.read(READ_CHUNK)" not in source
+    assert "_read_pipe_chunk(parent_in, READ_CHUNK)" in source
+    assert "_read_pipe_chunk(child_stdout, READ_CHUNK)" in source
+    assert "read1" in source

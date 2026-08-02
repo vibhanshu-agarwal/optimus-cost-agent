@@ -1082,3 +1082,1133 @@ def test_verify_transcript_debug_agreement_helper() -> None:
     with pytest.raises(CustodyContractError) as exc:
         verifier_mod.verify_transcript_debug_agreement(left, dict(left, server_session_id="x"))
     assert exc.value.reason_code == "invalid_probe_transcript_debug_divergence"
+
+
+# --- Origin-A fixture v2: offline supersession / stage / fixture verification -
+
+
+AMENDMENT_SHA256 = "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D"
+PROMPT_V2_SHA256 = "9195EFEEE3A2180CFB85EDE409FF7785F159F64E36426DCDB369251560E28A50"
+PYPROJECT_SHA256 = "AE28C0C3776F6B78DF23E86FC0E88B0088FEBB7241A04650C604D713E23EF697"
+
+
+def _verifier_stage_api() -> Any:
+    required = (
+        "verify_stage_ledger_payload",
+        "verify_supersession_payload",
+        "verify_supplemental_fact_payload",
+        "verify_fixture_v2_identity",
+        "verify_origin_a_original_hashes",
+        "verify_run_reservation_payload",
+    )
+    missing = [name for name in required if not hasattr(verifier_mod, name)]
+    if missing:
+        pytest.fail(f"missing origin-a fixture-v2 verifier API: {missing}")
+    return verifier_mod
+
+
+def test_verifier_accepts_valid_stage_ledger_and_rejects_tampered_fields() -> None:
+    v = _verifier_stage_api()
+    from tools.plan117_custody_contract import (
+        EvidenceReference,
+        FailureClass,
+        StageAttemptRecord,
+        StageKind,
+        StageStatus,
+        normalize_stage_ledger,
+        stage_attempt_record_payload,
+    )
+
+    records = (
+        StageAttemptRecord(
+            record_id="origin-a-1-correlation",
+            run_attempt_id="origin-a-1",
+            stage=StageKind.CORRELATION_CAPTURE,
+            ordinal=1,
+            status=StageStatus.FAILED,
+            failure_class=FailureClass.PERMANENT,
+            reason_code="invalid_probe_relay_capture_tooling_failure",
+            evidence=(EvidenceReference("a.json", "a" * 64, "raw_file_sha256"),),
+            supersedes_record_id="orig-a1",
+            supersedes_sha256="a" * 64,
+            amendment_sha256=AMENDMENT_SHA256.lower(),
+            created_by="plan117-task1",
+            created_utc="2026-08-02T16:00:00Z",
+        ),
+        StageAttemptRecord(
+            record_id="origin-a-2-correlation",
+            run_attempt_id="origin-a-2",
+            stage=StageKind.CORRELATION_CAPTURE,
+            ordinal=2,
+            status=StageStatus.SUCCEEDED,
+            failure_class=FailureClass.NONE,
+            reason_code=None,
+            evidence=(EvidenceReference("b.json", "b" * 64, "raw_file_sha256"),),
+            supersedes_record_id="orig-a2",
+            supersedes_sha256="b" * 64,
+            amendment_sha256=AMENDMENT_SHA256.lower(),
+            created_by="plan117-task1",
+            created_utc="2026-08-02T16:00:00Z",
+        ),
+        StageAttemptRecord(
+            record_id="origin-a-2-prompt",
+            run_attempt_id="origin-a-2",
+            stage=StageKind.POST_NEW_PROMPT,
+            ordinal=1,
+            status=StageStatus.FAILED,
+            failure_class=FailureClass.PERMANENT,
+            reason_code="AMBIGUOUS_WORKSPACE_REFERENCE",
+            evidence=(EvidenceReference("c.json", "c" * 64, "raw_file_sha256"),),
+            supersedes_record_id="orig-a2-prompt",
+            supersedes_sha256="c" * 64,
+            amendment_sha256=AMENDMENT_SHA256.lower(),
+            created_by="plan117-task1",
+            created_utc="2026-08-02T16:00:00Z",
+        ),
+    )
+    ledger = normalize_stage_ledger(records)
+    payload = {
+        "schema": "plan117-custody-stage-ledger-v1",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "records": [stage_attempt_record_payload(r) for r in records],
+        "next_correlation_ordinal": ledger.next_correlation_ordinal,
+        "next_prompt_ordinal": ledger.next_prompt_ordinal,
+    }
+    assert v.verify_stage_ledger_payload(payload)["next_correlation_ordinal"] == 3
+
+    bad = dict(payload, next_correlation_ordinal=1)
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_stage_ledger_payload(bad)
+    assert exc.value.reason_code == "invalid_probe_stage_accounting"
+
+    bad_schema = dict(payload, schema="wrong")
+    with pytest.raises(CustodyContractError) as schema_exc:
+        v.verify_stage_ledger_payload(bad_schema)
+    assert schema_exc.value.reason_code in {
+        "invalid_probe_stage_accounting",
+        "invalid_stage_ledger_schema",
+    }
+
+
+def test_verifier_fail_closed_on_supersession_fact_reservation_and_fixture_fields(
+    tmp_path: Path,
+) -> None:
+    v = _verifier_stage_api()
+    from tools.plan117_custody_contract import (
+        EvidenceReference,
+        FailureClass,
+        StageAttemptRecord,
+        StageKind,
+        StageStatus,
+        stage_attempt_record_payload,
+    )
+
+    record = StageAttemptRecord(
+        record_id="origin-a-1-correlation",
+        run_attempt_id="origin-a-1",
+        stage=StageKind.CORRELATION_CAPTURE,
+        ordinal=1,
+        status=StageStatus.FAILED,
+        failure_class=FailureClass.PERMANENT,
+        reason_code="invalid_probe_relay_capture_tooling_failure",
+        evidence=(EvidenceReference("a.json", "a" * 64, "raw_file_sha256"),),
+        supersedes_record_id="orig-a1",
+        supersedes_sha256="a" * 64,
+        amendment_sha256=AMENDMENT_SHA256.lower(),
+        created_by="plan117-task1",
+        created_utc="2026-08-02T16:00:00Z",
+    )
+    good = stage_attempt_record_payload(record)
+    good["schema"] = "plan117-custody-stage-attempt-record-v1"
+    assert v.verify_supersession_payload(good)["record_id"] == "origin-a-1-correlation"
+
+    for field in (
+        "record_id",
+        "run_attempt_id",
+        "stage",
+        "ordinal",
+        "status",
+        "failure_class",
+        "evidence",
+        "amendment_sha256",
+        "created_by",
+        "created_utc",
+        "supersedes_record_id",
+        "supersedes_sha256",
+    ):
+        tampered = dict(good)
+        if field == "ordinal":
+            tampered[field] = 0
+        elif field == "evidence":
+            tampered[field] = []
+        elif field in {"supersedes_record_id", "supersedes_sha256"}:
+            tampered[field] = None
+        else:
+            tampered[field] = "tampered"
+        with pytest.raises(CustodyContractError):
+            v.verify_supersession_payload(tampered)
+
+    fact = {
+        "schema": "plan117-custody-supplemental-fact-record-v1",
+        "record_id": "origin-a-2-client",
+        "run_attempt_id": "origin-a-2",
+        "fact_kind": "zed_client_crash",
+        "reason_code": "stop_probe_zed_client_crashed",
+        "evidence": [
+            {
+                "relative_path": "events.json",
+                "sha256": "e" * 64,
+                "hash_method": "raw_file_sha256",
+            }
+        ],
+        "supersedes_record_id": "orig-crash",
+        "supersedes_sha256": "e" * 64,
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "created_by": "plan117-task1",
+        "created_utc": "2026-08-02T16:00:00Z",
+    }
+    assert v.verify_supplemental_fact_payload(fact)["fact_kind"] == "zed_client_crash"
+    for field in (
+        "record_id",
+        "run_attempt_id",
+        "fact_kind",
+        "reason_code",
+        "evidence",
+        "amendment_sha256",
+        "created_by",
+        "created_utc",
+    ):
+        bad_fact = dict(fact)
+        bad_fact[field] = [] if field == "evidence" else "tampered"
+        with pytest.raises(CustodyContractError):
+            v.verify_supplemental_fact_payload(bad_fact)
+
+    reservation = {
+        "schema": "plan117-custody-run-reservation-v1",
+        "run_attempt_id": "origin-a-3",
+        "correlation_ordinal": 3,
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "created_utc": "2026-08-02T16:00:00Z",
+    }
+    assert v.verify_run_reservation_payload(reservation)["run_attempt_id"] == "origin-a-3"
+    with pytest.raises(CustodyContractError):
+        v.verify_run_reservation_payload(dict(reservation, correlation_ordinal=4))
+    with pytest.raises(CustodyContractError):
+        v.verify_run_reservation_payload(dict(reservation, amendment_sha256="0" * 64))
+
+    fixture = ROOT / "tests" / "fixtures" / "evidence" / "plan117-server-custody-prompt-v2.txt"
+    v.verify_fixture_v2_identity(prompt_fixture=fixture, workspace_root=ROOT)
+    with pytest.raises(CustodyContractError) as fix_exc:
+        v.verify_fixture_v2_identity(
+            prompt_fixture=tmp_path / "missing.txt",
+            workspace_root=ROOT,
+        )
+    assert fix_exc.value.reason_code == "invalid_probe_fixture_identity_mismatch"
+
+    original = tmp_path / "origin-a-1" / "attempt-manifest.json"
+    original.parent.mkdir(parents=True)
+    original.write_bytes(b'{"ok":true}\n')
+    digest = sha256_file(original)
+    v.verify_origin_a_original_hashes(
+        originals_root=tmp_path,
+        expected_relative_sha256={"origin-a-1/attempt-manifest.json": digest},
+    )
+    with pytest.raises(CustodyContractError) as orig_exc:
+        v.verify_origin_a_original_hashes(
+            originals_root=tmp_path,
+            expected_relative_sha256={"origin-a-1/attempt-manifest.json": "0" * 64},
+        )
+    assert orig_exc.value.reason_code == "invalid_probe_origin_attempt_original_mismatch"
+
+
+# --- Origin-A fixture v2 Task 3: classifications checkpoint + tamper matrix ---
+
+
+_A1_MANIFEST = "7d64d5943002b15dcd977b0bc7614fc4234f9dd6d823c1533da6a0677f9ff446"
+_A1_PHASE = "ce358bd9e715c733766fa7080dd0cfdc26aeae3368f0ad8aedde1dd74432c725"
+_EMPTY = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+_A2_MANIFEST = "083e0953c8d89781c8c3100545bfc2e4524e94cbbaae7b32574da4d88f597f63"
+_A2_PHASE = "cce1fac316f5961b6e1b3a57463d3deb5119111ff9856b7a405761b459e47ff1"
+_A2_Z2A = "cd7b2463acd6dbff71f9887bdec5cbc31b3c7b28504b294859dafda14b9a53e0"
+_A2_A2Z = "dc1ae7db33d1af23d94ff3da315e4f4dd2400bb12e9e671f279565298f928ecf"
+_A2_INDEX = "6d2e712d4f56c5225a2dbf5e9ce2787529d4f359aaa045b9802ff7cfcea5f610"
+_EVENT_FACTS = "75b12ded46b3deb9c6b2a4ba8982857616d29dd8485535454f435b98a2a491da"
+
+
+def _ev(relative_path: str, digest: str) -> dict[str, str]:
+    return {
+        "relative_path": relative_path,
+        "sha256": digest,
+        "hash_method": "raw_file_sha256",
+    }
+
+
+def _task3_stage_payload(
+    *,
+    record_id: str,
+    run_attempt_id: str,
+    stage: str,
+    ordinal: int,
+    status: str,
+    failure_class: str,
+    reason_code: str | None,
+    evidence: list[dict[str, str]],
+    supersedes_record_id: str,
+    supersedes_sha256: str,
+    notes: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema": "plan117-custody-stage-attempt-record-v1",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "created_by": "plan117-task3",
+        "created_utc": "2026-08-02T17:30:00Z",
+        "evidence": evidence,
+        "failure_class": failure_class,
+        "ordinal": ordinal,
+        "reason_code": reason_code,
+        "record_id": record_id,
+        "run_attempt_id": run_attempt_id,
+        "stage": stage,
+        "status": status,
+        "supersedes_record_id": supersedes_record_id,
+        "supersedes_sha256": supersedes_sha256,
+    }
+    if notes is not None:
+        payload["classification_notes"] = notes
+    return payload
+
+
+def _task3_valid_bundle() -> dict[str, Any]:
+    a1 = _task3_stage_payload(
+        record_id="origin-a-1-correlation",
+        run_attempt_id="origin-a-1",
+        stage="correlation_capture",
+        ordinal=1,
+        status="failed",
+        failure_class="permanent",
+        reason_code="invalid_probe_relay_capture_tooling_failure",
+        evidence=[
+            _ev("attempts/origin-a-1/attempt-manifest.json", _A1_MANIFEST),
+            _ev("attempts/origin-a-1/phase-observation.json", _A1_PHASE),
+            _ev("origin-a-1/zed-to-agent.bin", _EMPTY),
+            _ev("origin-a-1/agent-to-zed.bin", _EMPTY),
+            _ev("origin-a-1/relay-index.ndjson", _EMPTY),
+        ],
+        supersedes_record_id="origin-a-1-original-manifest",
+        supersedes_sha256=_A1_MANIFEST,
+        notes={
+            "full_duplex_deadlock": True,
+            "forced_termination": True,
+            "empty_capture": True,
+            "matching_zed_crash_event": False,
+            "event_facts_oa1_zed_fault_event_count": 0,
+            "event_facts_oa1_exception_0xc0000409_count": 0,
+            "prompt_stage_started": False,
+            "product_infeasibility_evidence": False,
+        },
+    )
+    a2_corr = _task3_stage_payload(
+        record_id="origin-a-2-correlation",
+        run_attempt_id="origin-a-2",
+        stage="correlation_capture",
+        ordinal=2,
+        status="succeeded",
+        failure_class="none",
+        reason_code=None,
+        evidence=[
+            _ev("attempts/origin-a-2/attempt-manifest.json", _A2_MANIFEST),
+            _ev("attempts/origin-a-2/phase-observation.json", _A2_PHASE),
+            _ev("origin-a-2/zed-to-agent.bin", _A2_Z2A),
+            _ev("origin-a-2/agent-to-zed.bin", _A2_A2Z),
+            _ev("origin-a-2/relay-index.ndjson", _A2_INDEX),
+        ],
+        supersedes_record_id="origin-a-2-original-manifest",
+        supersedes_sha256=_A2_MANIFEST,
+        notes={
+            "initialize_and_session_new": True,
+            "index_and_byte_consistency": True,
+            "relay_summary_present": False,
+        },
+    )
+    a2_prompt = _task3_stage_payload(
+        record_id="origin-a-2-prompt",
+        run_attempt_id="origin-a-2",
+        stage="post_new_prompt",
+        ordinal=1,
+        status="failed",
+        failure_class="permanent",
+        reason_code="AMBIGUOUS_WORKSPACE_REFERENCE",
+        evidence=[_ev("attempts/origin-a-2/phase-observation.json", _A2_PHASE)],
+        supersedes_record_id="origin-a-2-original-observation",
+        supersedes_sha256=_A2_PHASE,
+        notes={
+            "pre_gateway_fixture_failure": True,
+            "does_not_erase_correlation_success": True,
+        },
+    )
+    client = {
+        "schema": "plan117-custody-supplemental-fact-record-v1",
+        "record_id": "origin-a-2-client",
+        "run_attempt_id": "origin-a-2",
+        "fact_kind": "zed_client_crash",
+        "reason_code": "stop_probe_zed_client_crashed",
+        "evidence": [
+            _ev(
+                "reports/plan-11-7-server-custody-artifacts/amendments/"
+                "origin-a-fixture-v2/event-facts.json",
+                _EVENT_FACTS,
+            ),
+            {
+                "relative_path": "origin-a-2/relay-summary.json",
+                "sha256": "absent",
+                "hash_method": "presence_state",
+            },
+        ],
+        "supersedes_record_id": "origin-a-2-original-crash-label",
+        "supersedes_sha256": _A2_MANIFEST,
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "created_by": "plan117-task3",
+        "created_utc": "2026-08-02T17:30:00Z",
+        "classification_notes": {
+            "exception_code": "0xc0000409",
+            "application_error_event_id": 1000,
+            "application_error_provider": "Application Error",
+            "order_after_prompt_refusal": True,
+            "relay_summary_absent": True,
+            "does_not_change_correlation_success": True,
+            "does_not_reclassify_prompt_failure": True,
+        },
+    }
+    # Supplemental evidence with non-hex sha256 may fail _require_evidence only on type —
+    # use a dedicated absent marker object instead for the crash fact in real files.
+    client["evidence"] = [
+        _ev(
+            "reports/plan-11-7-server-custody-artifacts/amendments/"
+            "origin-a-fixture-v2/event-facts.json",
+            _EVENT_FACTS,
+        ),
+        _ev("event-facts/origin-a-2-exception-0xc0000409", _EVENT_FACTS),
+    ]
+    client["relay_summary_state"] = {"exists": False, "custody_relative": "origin-a-2/relay-summary.json"}
+    stage_records = [a1, a2_corr, a2_prompt]
+    ledger = {
+        "schema": "plan117-custody-stage-ledger-v1",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "records": stage_records,
+        "next_correlation_ordinal": 3,
+        "next_prompt_ordinal": 2,
+    }
+    expected_originals = {
+        "attempts/origin-a-1/attempt-manifest.json": _A1_MANIFEST,
+        "attempts/origin-a-1/phase-observation.json": _A1_PHASE,
+        "origin-a-1/zed-to-agent.bin": _EMPTY,
+        "origin-a-1/agent-to-zed.bin": _EMPTY,
+        "origin-a-1/relay-index.ndjson": _EMPTY,
+        "attempts/origin-a-2/attempt-manifest.json": _A2_MANIFEST,
+        "attempts/origin-a-2/phase-observation.json": _A2_PHASE,
+        "origin-a-2/zed-to-agent.bin": _A2_Z2A,
+        "origin-a-2/agent-to-zed.bin": _A2_A2Z,
+        "origin-a-2/relay-index.ndjson": _A2_INDEX,
+    }
+    return {
+        "origin_a_1_correlation": a1,
+        "origin_a_2_correlation": a2_corr,
+        "origin_a_2_prompt": a2_prompt,
+        "origin_a_2_client": client,
+        "stage_ledger": ledger,
+        "expected_originals": expected_originals,
+    }
+
+
+def _seed_originals(root: Path, expected: dict[str, str]) -> None:
+    """Create stand-in original files whose digests match ``expected`` via rewrite of bytes.
+
+    For unit tampers we only need presence + controllable digests; use empty file for EMPTY
+    and unique content otherwise by writing digest-tagged placeholder bytes then adjusting
+    expected map to actual hashes when seeding unique content.
+    """
+    for relative, digest in expected.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if digest == _EMPTY:
+            path.write_bytes(b"")
+            continue
+        # Write content that will not match pinned digest unless tests override expected.
+        path.write_bytes(f"placeholder:{relative}\n".encode())
+
+
+def test_verify_classifications_bundle_accepts_settled_accounting(tmp_path: Path) -> None:
+    v = _verifier_stage_api()
+    assert hasattr(v, "verify_origin_a_fixture_v2_classifications_bundle")
+    bundle = _task3_valid_bundle()
+    # Seed originals with bytes that match pinned digests only for empty; remap others
+    # to actual placeholder hashes for this isolated unit fixture.
+    originals_root = tmp_path / "private"
+    remapped: dict[str, str] = {}
+    for relative, digest in bundle["expected_originals"].items():
+        path = originals_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if digest == _EMPTY:
+            path.write_bytes(b"")
+            remapped[relative] = _EMPTY
+        else:
+            path.write_bytes(f"unit-original:{relative}\n".encode())
+            remapped[relative] = sha256_file(path)
+    # Rewrite evidence + supersedes to remapped digests while preserving structure.
+    a1 = dict(bundle["origin_a_1_correlation"])
+    a1["evidence"] = [
+        _ev(item["relative_path"], remapped[item["relative_path"]])
+        for item in a1["evidence"]
+    ]
+    a1["supersedes_sha256"] = remapped["attempts/origin-a-1/attempt-manifest.json"]
+    a2c = dict(bundle["origin_a_2_correlation"])
+    a2c["evidence"] = [
+        _ev(item["relative_path"], remapped[item["relative_path"]])
+        for item in a2c["evidence"]
+    ]
+    a2c["supersedes_sha256"] = remapped["attempts/origin-a-2/attempt-manifest.json"]
+    a2p = dict(bundle["origin_a_2_prompt"])
+    a2p["evidence"] = [
+        _ev("attempts/origin-a-2/phase-observation.json", remapped["attempts/origin-a-2/phase-observation.json"])
+    ]
+    a2p["supersedes_sha256"] = remapped["attempts/origin-a-2/phase-observation.json"]
+    client = dict(bundle["origin_a_2_client"])
+    client["supersedes_sha256"] = remapped["attempts/origin-a-2/attempt-manifest.json"]
+    client["evidence"] = [
+        _ev("event-facts/origin-a-2-exception-0xc0000409", remapped["attempts/origin-a-2/attempt-manifest.json"])
+    ]
+    ledger = {
+        "schema": "plan117-custody-stage-ledger-v1",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "records": [a1, a2c, a2p],
+        "next_correlation_ordinal": 3,
+        "next_prompt_ordinal": 2,
+    }
+    summary = v.verify_origin_a_fixture_v2_classifications_bundle(
+        origin_a_1_correlation=a1,
+        origin_a_2_correlation=a2c,
+        origin_a_2_prompt=a2p,
+        origin_a_2_client=client,
+        stage_ledger=ledger,
+        originals_root=originals_root,
+        expected_original_sha256=remapped,
+    )
+    assert summary["disposition_claimed"] is False
+    assert summary["next_correlation_ordinal"] == 3
+    assert summary["next_prompt_ordinal"] == 2
+    assert "feasible" not in str(summary.get("disposition", "")).lower()
+    assert "infeasible" not in str(summary.get("disposition", "")).lower()
+
+
+def test_verify_classifications_rejects_falsely_restored_correlation_slot(
+    tmp_path: Path,
+) -> None:
+    v = _verifier_stage_api()
+    bundle = _task3_valid_bundle()
+    originals_root = tmp_path / "private"
+    remapped: dict[str, str] = {}
+    for relative, digest in bundle["expected_originals"].items():
+        path = originals_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if digest == _EMPTY:
+            path.write_bytes(b"")
+            remapped[relative] = _EMPTY
+        else:
+            path.write_bytes(f"unit-original:{relative}\n".encode())
+            remapped[relative] = sha256_file(path)
+
+    def _remap_stage(payload: dict[str, Any], supersede_key: str) -> dict[str, Any]:
+        out = dict(payload)
+        out["evidence"] = [
+            _ev(item["relative_path"], remapped[item["relative_path"]])
+            for item in payload["evidence"]
+            if item["relative_path"] in remapped
+        ]
+        out["supersedes_sha256"] = remapped[supersede_key]
+        return out
+
+    a1 = _remap_stage(
+        bundle["origin_a_1_correlation"], "attempts/origin-a-1/attempt-manifest.json"
+    )
+    a1["status"] = "succeeded"
+    a1["failure_class"] = "none"
+    a1["reason_code"] = None
+    a2c = _remap_stage(
+        bundle["origin_a_2_correlation"], "attempts/origin-a-2/attempt-manifest.json"
+    )
+    a2p = _remap_stage(
+        bundle["origin_a_2_prompt"], "attempts/origin-a-2/phase-observation.json"
+    )
+    client = dict(bundle["origin_a_2_client"])
+    client["supersedes_sha256"] = remapped["attempts/origin-a-2/attempt-manifest.json"]
+    client["evidence"] = [
+        _ev("event-facts/x", remapped["attempts/origin-a-2/attempt-manifest.json"])
+    ]
+    ledger = {
+        "schema": "plan117-custody-stage-ledger-v1",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "records": [a1, a2c, a2p],
+        "next_correlation_ordinal": 3,
+        "next_prompt_ordinal": 2,
+    }
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_origin_a_fixture_v2_classifications_bundle(
+            origin_a_1_correlation=a1,
+            origin_a_2_correlation=a2c,
+            origin_a_2_prompt=a2p,
+            origin_a_2_client=client,
+            stage_ledger=ledger,
+            originals_root=originals_root,
+            expected_original_sha256=remapped,
+        )
+    assert exc.value.reason_code in {
+        "invalid_probe_attempt_supersession_chain",
+        "invalid_probe_stage_accounting",
+        "invalid_probe_relay_capture_tooling_failure",
+    }
+
+
+def test_verify_classifications_rejects_missing_crash_fact(tmp_path: Path) -> None:
+    v = _verifier_stage_api()
+    bundle = _task3_valid_bundle()
+    originals_root = tmp_path / "private"
+    remapped: dict[str, str] = {}
+    for relative, digest in bundle["expected_originals"].items():
+        path = originals_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if digest == _EMPTY:
+            path.write_bytes(b"")
+            remapped[relative] = _EMPTY
+        else:
+            path.write_bytes(f"unit-original:{relative}\n".encode())
+            remapped[relative] = sha256_file(path)
+
+    def _remap_stage(payload: dict[str, Any], supersede_key: str) -> dict[str, Any]:
+        out = dict(payload)
+        out["evidence"] = [
+            _ev(item["relative_path"], remapped[item["relative_path"]])
+            for item in payload["evidence"]
+            if item["relative_path"] in remapped
+        ]
+        out["supersedes_sha256"] = remapped[supersede_key]
+        return out
+
+    a1 = _remap_stage(
+        bundle["origin_a_1_correlation"], "attempts/origin-a-1/attempt-manifest.json"
+    )
+    a2c = _remap_stage(
+        bundle["origin_a_2_correlation"], "attempts/origin-a-2/attempt-manifest.json"
+    )
+    a2p = _remap_stage(
+        bundle["origin_a_2_prompt"], "attempts/origin-a-2/phase-observation.json"
+    )
+    ledger = {
+        "schema": "plan117-custody-stage-ledger-v1",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "records": [a1, a2c, a2p],
+        "next_correlation_ordinal": 3,
+        "next_prompt_ordinal": 2,
+    }
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_origin_a_fixture_v2_classifications_bundle(
+            origin_a_1_correlation=a1,
+            origin_a_2_correlation=a2c,
+            origin_a_2_prompt=a2p,
+            origin_a_2_client=None,
+            stage_ledger=ledger,
+            originals_root=originals_root,
+            expected_original_sha256=remapped,
+        )
+    assert exc.value.reason_code == "invalid_probe_attempt_supersession_chain"
+
+
+def test_verify_classifications_rejects_changed_original_hash(tmp_path: Path) -> None:
+    v = _verifier_stage_api()
+    bundle = _task3_valid_bundle()
+    originals_root = tmp_path / "private"
+    remapped: dict[str, str] = {}
+    for relative, digest in bundle["expected_originals"].items():
+        path = originals_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if digest == _EMPTY:
+            path.write_bytes(b"")
+            remapped[relative] = _EMPTY
+        else:
+            path.write_bytes(f"unit-original:{relative}\n".encode())
+            remapped[relative] = sha256_file(path)
+
+    def _remap_stage(payload: dict[str, Any], supersede_key: str) -> dict[str, Any]:
+        out = dict(payload)
+        out["evidence"] = [
+            _ev(item["relative_path"], remapped[item["relative_path"]])
+            for item in payload["evidence"]
+            if item["relative_path"] in remapped
+        ]
+        out["supersedes_sha256"] = remapped[supersede_key]
+        return out
+
+    a1 = _remap_stage(
+        bundle["origin_a_1_correlation"], "attempts/origin-a-1/attempt-manifest.json"
+    )
+    a2c = _remap_stage(
+        bundle["origin_a_2_correlation"], "attempts/origin-a-2/attempt-manifest.json"
+    )
+    a2p = _remap_stage(
+        bundle["origin_a_2_prompt"], "attempts/origin-a-2/phase-observation.json"
+    )
+    client = dict(bundle["origin_a_2_client"])
+    client["supersedes_sha256"] = remapped["attempts/origin-a-2/attempt-manifest.json"]
+    client["evidence"] = [
+        _ev("event-facts/x", remapped["attempts/origin-a-2/attempt-manifest.json"])
+    ]
+    ledger = {
+        "schema": "plan117-custody-stage-ledger-v1",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "records": [a1, a2c, a2p],
+        "next_correlation_ordinal": 3,
+        "next_prompt_ordinal": 2,
+    }
+    bad_expected = dict(remapped)
+    bad_expected["attempts/origin-a-1/attempt-manifest.json"] = "0" * 64
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_origin_a_fixture_v2_classifications_bundle(
+            origin_a_1_correlation=a1,
+            origin_a_2_correlation=a2c,
+            origin_a_2_prompt=a2p,
+            origin_a_2_client=client,
+            stage_ledger=ledger,
+            originals_root=originals_root,
+            expected_original_sha256=bad_expected,
+        )
+    assert exc.value.reason_code == "invalid_probe_origin_attempt_original_mismatch"
+
+
+def test_verify_classifications_rejects_replaced_original_file(tmp_path: Path) -> None:
+    v = _verifier_stage_api()
+    bundle = _task3_valid_bundle()
+    originals_root = tmp_path / "private"
+    remapped: dict[str, str] = {}
+    for relative, digest in bundle["expected_originals"].items():
+        path = originals_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if digest == _EMPTY:
+            path.write_bytes(b"")
+            remapped[relative] = _EMPTY
+        else:
+            path.write_bytes(f"unit-original:{relative}\n".encode())
+            remapped[relative] = sha256_file(path)
+
+    def _remap_stage(payload: dict[str, Any], supersede_key: str) -> dict[str, Any]:
+        out = dict(payload)
+        out["evidence"] = [
+            _ev(item["relative_path"], remapped[item["relative_path"]])
+            for item in payload["evidence"]
+            if item["relative_path"] in remapped
+        ]
+        out["supersedes_sha256"] = remapped[supersede_key]
+        return out
+
+    a1 = _remap_stage(
+        bundle["origin_a_1_correlation"], "attempts/origin-a-1/attempt-manifest.json"
+    )
+    a2c = _remap_stage(
+        bundle["origin_a_2_correlation"], "attempts/origin-a-2/attempt-manifest.json"
+    )
+    a2p = _remap_stage(
+        bundle["origin_a_2_prompt"], "attempts/origin-a-2/phase-observation.json"
+    )
+    client = dict(bundle["origin_a_2_client"])
+    client["supersedes_sha256"] = remapped["attempts/origin-a-2/attempt-manifest.json"]
+    client["evidence"] = [
+        _ev("event-facts/x", remapped["attempts/origin-a-2/attempt-manifest.json"])
+    ]
+    ledger = {
+        "schema": "plan117-custody-stage-ledger-v1",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "records": [a1, a2c, a2p],
+        "next_correlation_ordinal": 3,
+        "next_prompt_ordinal": 2,
+    }
+    # Replace an original after the expected digest was captured.
+    replaced = originals_root / "attempts/origin-a-2/attempt-manifest.json"
+    replaced.write_bytes(b'{"tampered":true}\n')
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_origin_a_fixture_v2_classifications_bundle(
+            origin_a_1_correlation=a1,
+            origin_a_2_correlation=a2c,
+            origin_a_2_prompt=a2p,
+            origin_a_2_client=client,
+            stage_ledger=ledger,
+            originals_root=originals_root,
+            expected_original_sha256=remapped,
+        )
+    assert exc.value.reason_code == "invalid_probe_origin_attempt_original_mismatch"
+
+
+def test_verify_classifications_rejects_prompt_only_origin_a1(tmp_path: Path) -> None:
+    v = _verifier_stage_api()
+    bundle = _task3_valid_bundle()
+    originals_root = tmp_path / "private"
+    remapped: dict[str, str] = {}
+    for relative, digest in bundle["expected_originals"].items():
+        path = originals_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if digest == _EMPTY:
+            path.write_bytes(b"")
+            remapped[relative] = _EMPTY
+        else:
+            path.write_bytes(f"unit-original:{relative}\n".encode())
+            remapped[relative] = sha256_file(path)
+
+    a1_prompt_only = _task3_stage_payload(
+        record_id="origin-a-1-prompt",
+        run_attempt_id="origin-a-1",
+        stage="post_new_prompt",
+        ordinal=1,
+        status="failed",
+        failure_class="permanent",
+        reason_code="AMBIGUOUS_WORKSPACE_REFERENCE",
+        evidence=[
+            _ev(
+                "attempts/origin-a-1/phase-observation.json",
+                remapped["attempts/origin-a-1/phase-observation.json"],
+            )
+        ],
+        supersedes_record_id="origin-a-1-original-observation",
+        supersedes_sha256=remapped["attempts/origin-a-1/phase-observation.json"],
+    )
+    a2c = dict(bundle["origin_a_2_correlation"])
+    a2c["evidence"] = [
+        _ev(item["relative_path"], remapped[item["relative_path"]])
+        for item in a2c["evidence"]
+    ]
+    a2c["supersedes_sha256"] = remapped["attempts/origin-a-2/attempt-manifest.json"]
+    a2p = dict(bundle["origin_a_2_prompt"])
+    a2p["evidence"] = [
+        _ev(
+            "attempts/origin-a-2/phase-observation.json",
+            remapped["attempts/origin-a-2/phase-observation.json"],
+        )
+    ]
+    a2p["supersedes_sha256"] = remapped["attempts/origin-a-2/phase-observation.json"]
+    # Gap in correlation ordinals (missing 1) — ledger must fail.
+    ledger = {
+        "schema": "plan117-custody-stage-ledger-v1",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "records": [a1_prompt_only, a2c, a2p],
+        "next_correlation_ordinal": 3,
+        "next_prompt_ordinal": 3,
+    }
+    client = dict(bundle["origin_a_2_client"])
+    client["supersedes_sha256"] = remapped["attempts/origin-a-2/attempt-manifest.json"]
+    client["evidence"] = [
+        _ev("event-facts/x", remapped["attempts/origin-a-2/attempt-manifest.json"])
+    ]
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_origin_a_fixture_v2_classifications_bundle(
+            origin_a_1_correlation=a1_prompt_only,
+            origin_a_2_correlation=a2c,
+            origin_a_2_prompt=a2p,
+            origin_a_2_client=client,
+            stage_ledger=ledger,
+            originals_root=originals_root,
+            expected_original_sha256=remapped,
+        )
+    assert exc.value.reason_code in {
+        "invalid_probe_stage_accounting",
+        "invalid_probe_attempt_supersession_chain",
+    }
+
+
+def test_verify_classifications_rejects_missing_origin_a2_correlation_success(
+    tmp_path: Path,
+) -> None:
+    v = _verifier_stage_api()
+    bundle = _task3_valid_bundle()
+    originals_root = tmp_path / "private"
+    remapped: dict[str, str] = {}
+    for relative, digest in bundle["expected_originals"].items():
+        path = originals_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if digest == _EMPTY:
+            path.write_bytes(b"")
+            remapped[relative] = _EMPTY
+        else:
+            path.write_bytes(f"unit-original:{relative}\n".encode())
+            remapped[relative] = sha256_file(path)
+
+    a1 = dict(bundle["origin_a_1_correlation"])
+    a1["evidence"] = [
+        _ev(item["relative_path"], remapped[item["relative_path"]])
+        for item in a1["evidence"]
+    ]
+    a1["supersedes_sha256"] = remapped["attempts/origin-a-1/attempt-manifest.json"]
+    a2_failed = dict(bundle["origin_a_2_correlation"])
+    a2_failed["status"] = "failed"
+    a2_failed["failure_class"] = "permanent"
+    a2_failed["reason_code"] = "invalid_probe_relay_capture_tooling_failure"
+    a2_failed["evidence"] = [
+        _ev(item["relative_path"], remapped[item["relative_path"]])
+        for item in a2_failed["evidence"]
+    ]
+    a2_failed["supersedes_sha256"] = remapped["attempts/origin-a-2/attempt-manifest.json"]
+    a2p = dict(bundle["origin_a_2_prompt"])
+    a2p["evidence"] = [
+        _ev(
+            "attempts/origin-a-2/phase-observation.json",
+            remapped["attempts/origin-a-2/phase-observation.json"],
+        )
+    ]
+    a2p["supersedes_sha256"] = remapped["attempts/origin-a-2/phase-observation.json"]
+    client = dict(bundle["origin_a_2_client"])
+    client["supersedes_sha256"] = remapped["attempts/origin-a-2/attempt-manifest.json"]
+    client["evidence"] = [
+        _ev("event-facts/x", remapped["attempts/origin-a-2/attempt-manifest.json"])
+    ]
+    ledger = {
+        "schema": "plan117-custody-stage-ledger-v1",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "records": [a1, a2_failed, a2p],
+        "next_correlation_ordinal": 3,
+        "next_prompt_ordinal": 2,
+    }
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_origin_a_fixture_v2_classifications_bundle(
+            origin_a_1_correlation=a1,
+            origin_a_2_correlation=a2_failed,
+            origin_a_2_prompt=a2p,
+            origin_a_2_client=client,
+            stage_ledger=ledger,
+            originals_root=originals_root,
+            expected_original_sha256=remapped,
+        )
+    assert exc.value.reason_code in {
+        "invalid_probe_attempt_supersession_chain",
+        "invalid_probe_stage_accounting",
+    }
+
+
+def test_verify_classifications_rejects_ledger_allocating_origin_a4(tmp_path: Path) -> None:
+    v = _verifier_stage_api()
+    bundle = _task3_valid_bundle()
+    originals_root = tmp_path / "private"
+    remapped: dict[str, str] = {}
+    for relative, digest in bundle["expected_originals"].items():
+        path = originals_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if digest == _EMPTY:
+            path.write_bytes(b"")
+            remapped[relative] = _EMPTY
+        else:
+            path.write_bytes(f"unit-original:{relative}\n".encode())
+            remapped[relative] = sha256_file(path)
+
+    a1 = dict(bundle["origin_a_1_correlation"])
+    a1["evidence"] = [
+        _ev(item["relative_path"], remapped[item["relative_path"]])
+        for item in a1["evidence"]
+    ]
+    a1["supersedes_sha256"] = remapped["attempts/origin-a-1/attempt-manifest.json"]
+    a2c = dict(bundle["origin_a_2_correlation"])
+    a2c["evidence"] = [
+        _ev(item["relative_path"], remapped[item["relative_path"]])
+        for item in a2c["evidence"]
+    ]
+    a2c["supersedes_sha256"] = remapped["attempts/origin-a-2/attempt-manifest.json"]
+    a2p = dict(bundle["origin_a_2_prompt"])
+    a2p["evidence"] = [
+        _ev(
+            "attempts/origin-a-2/phase-observation.json",
+            remapped["attempts/origin-a-2/phase-observation.json"],
+        )
+    ]
+    a2p["supersedes_sha256"] = remapped["attempts/origin-a-2/phase-observation.json"]
+    a3 = _task3_stage_payload(
+        record_id="origin-a-3-correlation",
+        run_attempt_id="origin-a-3",
+        stage="correlation_capture",
+        ordinal=3,
+        status="succeeded",
+        failure_class="none",
+        reason_code=None,
+        evidence=[_ev("attempts/origin-a-3/attempt-manifest.json", remapped["attempts/origin-a-2/attempt-manifest.json"])],
+        supersedes_record_id="origin-a-3-reservation",
+        supersedes_sha256=remapped["attempts/origin-a-2/attempt-manifest.json"],
+    )
+    a4 = _task3_stage_payload(
+        record_id="origin-a-4-correlation",
+        run_attempt_id="origin-a-4",
+        stage="correlation_capture",
+        ordinal=4,
+        status="succeeded",
+        failure_class="none",
+        reason_code=None,
+        evidence=[_ev("attempts/origin-a-4/attempt-manifest.json", remapped["attempts/origin-a-2/attempt-manifest.json"])],
+        supersedes_record_id="origin-a-4-reservation",
+        supersedes_sha256=remapped["attempts/origin-a-2/attempt-manifest.json"],
+    )
+    client = dict(bundle["origin_a_2_client"])
+    client["supersedes_sha256"] = remapped["attempts/origin-a-2/attempt-manifest.json"]
+    client["evidence"] = [
+        _ev("event-facts/x", remapped["attempts/origin-a-2/attempt-manifest.json"])
+    ]
+    ledger = {
+        "schema": "plan117-custody-stage-ledger-v1",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "records": [a1, a2c, a2p, a3, a4],
+        "next_correlation_ordinal": 5,
+        "next_prompt_ordinal": 2,
+    }
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_origin_a_fixture_v2_classifications_bundle(
+            origin_a_1_correlation=a1,
+            origin_a_2_correlation=a2c,
+            origin_a_2_prompt=a2p,
+            origin_a_2_client=client,
+            stage_ledger=ledger,
+            originals_root=originals_root,
+            expected_original_sha256=remapped,
+        )
+    assert exc.value.reason_code == "invalid_probe_retry_budget_exhausted"
+
+
+def test_cli_origin_a_fixture_v2_classifications_checkpoint_choice() -> None:
+    """argparse must accept the Task 3 classifications checkpoint name."""
+    parser_src = (ROOT / "tools" / "verify_plan117_custody_feasibility.py").read_text(
+        encoding="utf-8"
+    )
+    assert "origin-a-fixture-v2-classifications" in parser_src
+    assert "verify_origin_a_fixture_v2_classifications" in parser_src
+
+# --- Origin-A fixture v2 Task 4: execution-preflight checkpoint ---
+
+
+def _valid_execution_preflight_payload(
+    *,
+    head: str,
+    files: list[dict[str, str]],
+) -> dict[str, Any]:
+    return {
+        "schema": "plan117-origin-a-fixture-v2-execution-preflight-v1",
+        "amendment_sha256": AMENDMENT_SHA256,
+        "branch": "agent/cursor/p11-feat-zed-resume",
+        "head": head,
+        "intended_commit_subject": "test(acp): amend Plan 11.7 origin fixture accounting",
+        "production_baseline": {
+            "commit": "2cf2f42aa7d1072f09d0678a3c75eb43516c8808",
+            "paths": ["src/optimus", "src/optimus_gateway"],
+            "clean": True,
+        },
+        "fixture_pins": {
+            "prompt_fixture_v2_sha256": PROMPT_V2_SHA256,
+            "pyproject_target_sha256": PYPROJECT_SHA256,
+        },
+        "classifications": {
+            "next_correlation_ordinal": 3,
+            "next_prompt_ordinal": 2,
+        },
+        "files": files,
+        "notes": {
+            "live_launch": False,
+            "settings_mutation": False,
+            "feasibility_disposition_claimed": False,
+        },
+    }
+
+
+def test_verify_execution_preflight_payload_accepts_matching_identity() -> None:
+    v = _verifier_stage_api()
+    assert hasattr(v, "verify_execution_preflight_payload")
+    digest = "ab" * 32
+    files = [
+        {
+            "path": path,
+            "raw_file_sha256": digest,
+            "git_blob_sha256": digest,
+        }
+        for path in v.EXECUTION_IDENTITY_PATHS
+    ]
+    actual = {
+        path: {"raw_file_sha256": digest, "git_blob_sha256": digest}
+        for path in v.EXECUTION_IDENTITY_PATHS
+    }
+    payload = _valid_execution_preflight_payload(head="abc123", files=files)
+    v.verify_execution_preflight_payload(
+        payload,
+        actual_head="abc123",
+        actual_files=actual,
+        production_clean=True,
+    )
+
+
+def test_verify_execution_preflight_rejects_wrong_commit_digest() -> None:
+    v = _verifier_stage_api()
+    digest = "cd" * 32
+    files = [
+        {
+            "path": path,
+            "raw_file_sha256": digest,
+            "git_blob_sha256": digest,
+        }
+        for path in v.EXECUTION_IDENTITY_PATHS
+    ]
+    actual = {
+        path: {"raw_file_sha256": digest, "git_blob_sha256": digest}
+        for path in v.EXECUTION_IDENTITY_PATHS
+    }
+    payload = _valid_execution_preflight_payload(head="deadbeef", files=files)
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_execution_preflight_payload(
+            payload,
+            actual_head="cafebabe",
+            actual_files=actual,
+            production_clean=True,
+        )
+    assert exc.value.reason_code == "invalid_probe_execution_identity_mismatch"
+    assert exc.value.field_path == "head"
+
+
+def test_verify_execution_preflight_rejects_dirty_execution_identity() -> None:
+    v = _verifier_stage_api()
+    clean = "11" * 32
+    dirty = "22" * 32
+    files = []
+    actual: dict[str, dict[str, str]] = {}
+    for index, path in enumerate(v.EXECUTION_IDENTITY_PATHS):
+        if index == 0:
+            files.append(
+                {
+                    "path": path,
+                    "raw_file_sha256": dirty,
+                    "git_blob_sha256": clean,
+                }
+            )
+            actual[path] = {"raw_file_sha256": dirty, "git_blob_sha256": clean}
+        else:
+            files.append(
+                {
+                    "path": path,
+                    "raw_file_sha256": clean,
+                    "git_blob_sha256": clean,
+                }
+            )
+            actual[path] = {"raw_file_sha256": clean, "git_blob_sha256": clean}
+    payload = _valid_execution_preflight_payload(head="abc123", files=files)
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_execution_preflight_payload(
+            payload,
+            actual_head="abc123",
+            actual_files=actual,
+            production_clean=True,
+        )
+    assert exc.value.reason_code == "invalid_probe_execution_identity_mismatch"
+    assert exc.value.field_path.endswith(".dirty")
+
+
+def test_cli_origin_a_fixture_v2_preflight_checkpoint_choice() -> None:
+    parser_src = (ROOT / "tools" / "verify_plan117_custody_feasibility.py").read_text(
+        encoding="utf-8"
+    )
+    assert "origin-a-fixture-v2-preflight" in parser_src
+    assert "verify_origin_a_fixture_v2_preflight" in parser_src
+    assert "ORIGIN_A_FIXTURE_V2_PREFLIGHT_CHECKPOINT" in parser_src

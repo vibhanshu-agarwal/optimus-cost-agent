@@ -53,16 +53,130 @@
       "locator": "docs/superpowers/reviews/plan-11-7-review-checkpoints.md",
       "role": "checkpoint_log",
       "sha256": null
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/trigger-chain.json",
+      "role": "origin_a_fixture_v2_trigger_chain",
+      "sha256": "C5C1A6B17D2B6B90CEA5C789E3C459A2B4914A7153C111EE85169A619B6A5A8E"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/event-facts.json",
+      "role": "origin_a_fixture_v2_event_facts",
+      "sha256": "75B12DED46B3DEB9C6B2A4BA8982857616D29DD8485535454F435B98A2A491DA"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "tests/fixtures/evidence/plan117-server-custody-prompt-v2.txt",
+      "role": "prompt_fixture_v2",
+      "sha256": "9195EFEEE3A2180CFB85EDE409FF7785F159F64E36426DCDB369251560E28A50"
+    },
+    {
+      "hash_method": "git_blob_sha256",
+      "locator": "docs/superpowers/specs/2026-08-02-plan-11-7-origin-a-fixture-v2-and-stage-accounting-design.md",
+      "role": "origin_a_fixture_v2_design",
+      "sha256": "9ADD264B06B67B7BF6C85A3A1439BFED29F10C08366848761EED9C3D8B624347"
+    },
+    {
+      "hash_method": "git_blob_sha256",
+      "locator": "docs/superpowers/plans/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md",
+      "role": "origin_a_fixture_v2_amendment",
+      "sha256": "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task0-checkpoint.json",
+      "role": "origin_a_fixture_v2_task0_checkpoint",
+      "sha256": "1CB357617341312A1FE8661748CB5CFB3339DAE5A8DCAA4EE798689F2C8BF901"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task1-checkpoint.json",
+      "role": "origin_a_fixture_v2_task1_checkpoint",
+      "sha256": "4524B974400B496D3A5C3F2FC2E3C953332840BAEFB39E5AC9D11C33EC054673"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task2-checkpoint.json",
+      "role": "origin_a_fixture_v2_task2_checkpoint",
+      "sha256": "9BC565DAA3C425759FE4A13B935EA6101764D43B051319957C08F505D11811C6"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task2-step1-relay-pre-fix-red.txt",
+      "role": "origin_a_fixture_v2_task2_relay_pre_fix_red",
+      "sha256": "948DC4CD54659F695BB344151B4802BE357B1D7CCD13E3D4D3F0C4A4BAA1E506"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task2-step2-jsonc-red.txt",
+      "role": "origin_a_fixture_v2_task2_jsonc_red",
+      "sha256": "A85A0C863EC0CAE3E6643D8A6732A362777FEF5F4204EA99624B4009B589E773"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-1-correlation.json",
+      "role": "origin_a_fixture_v2_origin_a_1_correlation",
+      "sha256": "d140bc64e6beae12662103163d9d22af830bdd44eb25a8cc662cc17903682f19"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-2-correlation.json",
+      "role": "origin_a_fixture_v2_origin_a_2_correlation",
+      "sha256": "67da13b4039250ea1d58b62e64897b2a0ba9d9f7c9d30c86de4daf8efda0f547"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-2-prompt.json",
+      "role": "origin_a_fixture_v2_origin_a_2_prompt",
+      "sha256": "647fe779351e34bed4adf67265b7602a25534d174bcdb2234ae9ee5fc08facc3"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-2-client.json",
+      "role": "origin_a_fixture_v2_origin_a_2_client",
+      "sha256": "47b8c7ec7ad8b20af5395785ba90d2d03aa9aa630322b02e1f107f59b0de7865"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/stage-ledger.json",
+      "role": "origin_a_fixture_v2_stage_ledger",
+      "sha256": "7dc02cec1b60239b767c5cba9e7c31b41c03c14b915191794be3393b248c6aa3"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-feasibility.md",
+      "role": "origin_a_fixture_v2_feasibility_history",
+      "sha256": "d6987611d3b53d41d406d8975399cfbe0b60fee41c2c32a289332d973a327ac6"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task3-checkpoint.json",
+      "role": "origin_a_fixture_v2_task3_checkpoint",
+      "sha256": "46b3a73409bb55465003496949917d82e64567e95f9f08b49c29439c2395e487"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task3-step4-unit.txt",
+      "role": "origin_a_fixture_v2_task3_unit",
+      "sha256": "c33a32907ae6f8337d038eea634423728c68f9c6f06410cd24cb1e8cfadf1026"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/execution-preflight.json",
+      "role": "origin_a_fixture_v2_execution_preflight",
+      "sha256": "109F34DBF30FA8496859421B6347031EC077AF350C9EC0D904394991F3A76D1A"
     }
   ],
-  "checkpoint": "task0",
+  "checkpoint": "origin-a-fixture-v2-preflight",
   "complete": true,
   "docs_refresh": {
-    "backlog": "updated",
+    "backlog": "updated_approved_correction_pending",
     "evidence_handoff_open_work_pool": "checked_no_change",
     "readme": "checked_no_change",
-    "roadmap": "updated"
+    "roadmap": "updated_approved_correction_pending"
   },
-  "head": "7bef78cf0c0fd02d08e56c874b9a35f28ee190ca",
+  "head": "PENDING",
   "schema": "plan117-custody-artifact-manifest-v1"
 }

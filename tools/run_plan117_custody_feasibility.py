@@ -22,18 +22,29 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.plan117_custody_contract import (  # noqa: E402
+    ORIGIN_A_FIXTURE_V2_AMENDMENT_SHA256,
     SCHEMA_APPROVAL_EQUIVALENCE,
     SCHEMA_ATTEMPT_MANIFEST,
     SCHEMA_CUSTODY_STATE,
     SCHEMA_PROCESS_RECORD,
+    SCHEMA_RUN_RESERVATION,
     SCHEMA_SETTINGS_TRANSACTION,
+    SCHEMA_STAGE_ATTEMPT_RECORD,
     SCHEMA_TRANSCRIPT_PROJECTION,
     AttemptKind,
     CustodyContractError,
     FailureClass,
+    StageAttemptRecord,
+    StageKind,
+    StageLedger,
+    StageStatus,
+    atomic_create_json,
     atomic_write_bytes,
     atomic_write_json,
+    next_stage_ordinal,
     sha256_file,
+    sha256_hex_equal,
+    stage_attempt_record_payload,
     write_canonical_json,
 )
 
@@ -41,6 +52,7 @@ PHASES = (
     "direct-control",
     "relay-control",
     "origin-a",
+    "origin-a-prompt-retry",
     "restart-b",
     "fresh-control-c",
     "direct-ancestry-control",
@@ -52,6 +64,7 @@ PHASE_PREREQUISITES: dict[str, tuple[str, ...]] = {
     "direct-control": (),
     "relay-control": ("direct-control",),
     "origin-a": ("direct-control", "relay-control"),
+    "origin-a-prompt-retry": ("direct-control", "relay-control", "origin-a"),
     "restart-b": ("direct-control", "relay-control", "origin-a"),
     "fresh-control-c": ("direct-control", "relay-control", "origin-a", "restart-b"),
     "direct-ancestry-control": (
@@ -72,6 +85,15 @@ PROMPT_FIXTURE_SHA256 = (
     "8EEA4738E72159A863FEA22A542F92D6A99E3681803BA21863F734C577480D82"
 )
 PROMPT_FIXTURE_PATH = ROOT / "tests" / "fixtures" / "evidence" / "plan117-server-custody-prompt.txt"
+PROMPT_FIXTURE_V2_PATH = (
+    ROOT / "tests" / "fixtures" / "evidence" / "plan117-server-custody-prompt-v2.txt"
+)
+PROMPT_FIXTURE_V2_SHA256 = (
+    "9195EFEEE3A2180CFB85EDE409FF7785F159F64E36426DCDB369251560E28A50"
+)
+PYPROJECT_TARGET_SHA256 = (
+    "AE28C0C3776F6B78DF23E86FC0E88B0088FEBB7241A04650C604D713E23EF697"
+)
 
 SETTINGS_TX_META = "settings-transaction.json"
 SETTINGS_PREIMAGE = "settings-preimage.bin"
@@ -176,8 +198,9 @@ def _validate_settings_approval(
             raise CustodyRunnerError("settings_mutation_approval_incomplete", key)
     if Path(str(approval["settings_path"])).resolve() != settings_path.resolve():
         raise CustodyRunnerError("settings_mutation_approval_path_mismatch", "settings_path")
-    approved_digest = approval["pre_image_sha256"]
-    if approved_digest != pre_image_sha256:
+    approved_digest = str(approval["pre_image_sha256"] or "").upper()
+    actual_digest = str(pre_image_sha256 or "").upper()
+    if approved_digest != actual_digest:
         raise CustodyRunnerError("settings_mutation_approval_digest_mismatch", "pre_image_sha256")
     if not str(approval["operator_identity"]).strip():
         raise CustodyRunnerError("settings_mutation_approval_incomplete", "operator_identity")
@@ -190,11 +213,102 @@ def _settings_tx_paths(custody_root: Path) -> tuple[Path, Path]:
     return custody_root / SETTINGS_TX_META, custody_root / SETTINGS_PREIMAGE
 
 
+def _strip_jsonc(text: str) -> str:
+    """Strip // and /* */ comments and trailing commas for Zed settings.jsonc.
+
+    Trailing-comma removal tracks string/escape state so values such as
+    ``\"a, ]\"`` are never corrupted.
+    """
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    in_string = False
+    escape = False
+    while i < n:
+        ch = text[i]
+        if in_string:
+            out.append(ch)
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            i += 1
+            continue
+        if ch == '"':
+            in_string = True
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "/":
+            i += 2
+            while i < n and text[i] not in "\r\n":
+                i += 1
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "*":
+            i += 2
+            while i + 1 < n and not (text[i] == "*" and text[i + 1] == "/"):
+                i += 1
+            if i + 1 >= n:
+                # Unterminated block comment: leave remainder as-is so
+                # json.loads fails closed rather than inventing structure.
+                out.append(text[i - 2 :])
+                break
+            i += 2
+            continue
+        out.append(ch)
+        i += 1
+    stripped = "".join(out)
+    # Remove trailing commas before } or ] only outside strings.
+    cleaned: list[str] = []
+    j = 0
+    m = len(stripped)
+    in_string = False
+    escape = False
+    while j < m:
+        ch = stripped[j]
+        if in_string:
+            cleaned.append(ch)
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            j += 1
+            continue
+        if ch == '"':
+            in_string = True
+            cleaned.append(ch)
+            j += 1
+            continue
+        if ch == ",":
+            k = j + 1
+            while k < m and stripped[k] in " \t\r\n":
+                k += 1
+            if k < m and stripped[k] in "}]":
+                j += 1
+                continue
+        cleaned.append(ch)
+        j += 1
+    return "".join(cleaned)
+
+
+def parse_jsonc(text: str) -> Any:
+    """Parse JSON or JSONC (Zed settings). Fail closed on invalid input."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return json.loads(_strip_jsonc(text))
+
+
 def _load_settings_json(settings_path: Path) -> dict[str, Any]:
     if not settings_path.exists():
         return {}
     try:
-        payload = json.loads(settings_path.read_text(encoding="utf-8"))
+        text = settings_path.read_text(encoding="utf-8")
+        payload = parse_jsonc(text)
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise CustodyRunnerError("settings_json_invalid", "settings_path") from exc
     if not isinstance(payload, dict):
@@ -952,6 +1066,228 @@ def print_fresh_control_c_instructions() -> None:
     )
 
 
+def load_private_run_manifest(path: Path) -> dict[str, Any]:
+    path = path.resolve()
+    if path.is_symlink() or not path.is_file():
+        raise CustodyRunnerError("private_run_manifest_missing", "private_run_manifest")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise CustodyRunnerError("private_run_manifest_invalid", "private_run_manifest") from exc
+    if not isinstance(payload, dict):
+        raise CustodyRunnerError("private_run_manifest_invalid", "private_run_manifest")
+    return payload
+
+
+def _approval_from_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    approval = manifest.get("settings_mutation_approval")
+    if not isinstance(approval, dict):
+        raise CustodyRunnerError("settings_mutation_approval_required", "approval")
+    return dict(approval)
+
+
+def _relay_from_manifest(manifest: Mapping[str, Any]) -> tuple[str, list[str]]:
+    relay = manifest.get("relay")
+    if not isinstance(relay, dict):
+        raise CustodyRunnerError("relay_config_missing", "relay")
+    command = relay.get("command")
+    args = relay.get("args")
+    if not isinstance(command, str) or not command.strip():
+        raise CustodyRunnerError("relay_config_missing", "relay.command")
+    if not isinstance(args, list) or not all(isinstance(item, str) for item in args):
+        raise CustodyRunnerError("relay_config_missing", "relay.args")
+    return command, list(args)
+
+
+def _write_phase_observation(
+    attempt_dir: Path,
+    *,
+    phase: str,
+    settings_mutated: bool,
+) -> dict[str, Any]:
+    payload = {
+        "schema": "plan117-custody-phase-observation-v1",
+        "phase": phase,
+        "settings_mutated": settings_mutated,
+        "runner_sends_acp": False,
+        "ready_for_operator": True,
+    }
+    atomic_write_json(attempt_dir / "phase-observation.json", payload)
+    return payload
+
+
+def _stdin_operator_wait(prompt: str) -> None:
+    print(prompt, flush=True)
+    try:
+        input()
+    except EOFError as exc:
+        raise CustodyRunnerError("operator_wait_eof", "stdin") from exc
+
+
+def _operator_continue_wait(
+    attempt_dir: Path,
+    prompt: str,
+    *,
+    timeout_s: float = 3600.0,
+    poll_s: float = 0.5,
+) -> None:
+    """Wait for operator via sentinel file (agent-friendly) or stdin Enter when TTY."""
+    import time
+
+    sentinel = attempt_dir / "operator-continue.flag"
+    print(prompt, flush=True)
+    print(f"Create empty file to continue: {sentinel}", flush=True)
+    if sys.stdin.isatty():
+        print("(Or press Enter in this terminal.)", flush=True)
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if sentinel.is_file():
+            return
+        if sys.stdin.isatty():
+            # Non-blocking-ish: short select alternative - poll sentinel only on Windows
+            # when stdin is TTY we still prefer sentinel for agent orchestration.
+            pass
+        time.sleep(poll_s)
+    raise CustodyRunnerError("operator_wait_timeout", str(sentinel))
+
+
+def _next_attempt_ordinal(*, capture_root: Path, phase: str, kind: str) -> int:
+    """Pick the next free per-phase ordinal (1..3) for attempt directory naming."""
+    if kind == AttemptKind.CORRELATION_CAPTURE.value:
+        pattern = f"{phase}-"
+    else:
+        pattern = f"{phase}-prompt-"
+    attempts = capture_root / "attempts"
+    for ordinal in range(1, 4):
+        candidate = attempts / f"{pattern}{ordinal}"
+        if not candidate.exists():
+            return ordinal
+    raise CustodyRunnerError("attempt_budget_exceeded", "ordinal")
+
+
+def run_direct_control_phase(
+    *,
+    capture_root: Path,
+    state_path: Path,
+    operator_wait: bool = False,
+    wait_fn: Callable[[str], None] | None = None,
+) -> Path:
+    ordinal = _next_attempt_ordinal(
+        capture_root=capture_root,
+        phase="direct-control",
+        kind=AttemptKind.CORRELATION_CAPTURE.value,
+    )
+    attempt_dir = allocate_attempt_directory(
+        capture_root=capture_root,
+        state_path=state_path,
+        phase="direct-control",
+        kind=AttemptKind.CORRELATION_CAPTURE.value,
+        force_ordinal=ordinal,
+    )
+    write_attempt_manifest(
+        attempt_dir=attempt_dir,
+        phase="direct-control",
+        kind=AttemptKind.CORRELATION_CAPTURE.value,
+        ordinal=ordinal,
+        failure_class=FailureClass.NONE.value,
+        reason_code="observation_pending",
+        classification_evidence={"ready_for_operator": True},
+    )
+    _write_phase_observation(attempt_dir, phase="direct-control", settings_mutated=False)
+    print(
+        "Operator action (direct-control): launch Zed with the current Optimus "
+        "agent_servers.optimus command (no relay). Do not edit settings.json."
+    )
+    if operator_wait:
+        if wait_fn is not None:
+            wait_fn(
+                "Press Enter when the direct-control observation window is complete "
+                f"(attempt={attempt_dir})."
+            )
+        else:
+            _operator_continue_wait(
+                attempt_dir,
+                "Waiting for direct-control observation window to complete "
+                f"(attempt={attempt_dir}).",
+            )
+    return attempt_dir
+
+
+def run_relay_mediated_phase(
+    *,
+    phase: str,
+    capture_root: Path,
+    state_path: Path,
+    settings_path: Path,
+    custody_root: Path,
+    private_run_manifest: Path,
+    observe: Callable[[Path], None] | None = None,
+    operator_wait: bool = False,
+    wait_fn: Callable[[str], None] | None = None,
+) -> Path:
+    if phase not in {"relay-control", "origin-a"}:
+        raise CustodyRunnerError("unknown_phase", phase)
+    manifest = load_private_run_manifest(private_run_manifest)
+    approval = _approval_from_manifest(manifest)
+    relay_command, relay_args = _relay_from_manifest(manifest)
+
+    attempt_holder: dict[str, Path] = {}
+
+    def body() -> None:
+        ordinal = _next_attempt_ordinal(
+            capture_root=capture_root,
+            phase=phase,
+            kind=AttemptKind.CORRELATION_CAPTURE.value,
+        )
+        attempt_dir = allocate_attempt_directory(
+            capture_root=capture_root,
+            state_path=state_path,
+            phase=phase,
+            kind=AttemptKind.CORRELATION_CAPTURE.value,
+            force_ordinal=ordinal,
+        )
+        attempt_holder["path"] = attempt_dir
+        write_attempt_manifest(
+            attempt_dir=attempt_dir,
+            phase=phase,
+            kind=AttemptKind.CORRELATION_CAPTURE.value,
+            ordinal=ordinal,
+            failure_class=FailureClass.NONE.value,
+            reason_code="observation_pending",
+            classification_evidence={"ready_for_operator": True, "settings_mutated": True},
+        )
+        _write_phase_observation(attempt_dir, phase=phase, settings_mutated=True)
+        if phase == "relay-control":
+            print(
+                "Operator action (relay-control): launch Zed while settings point at the "
+                "custody relay. Runner sends no ACP bytes."
+            )
+        if observe is not None:
+            observe(attempt_dir)
+        elif operator_wait:
+            if wait_fn is not None:
+                wait_fn(
+                    "Press Enter when the relay observation window is complete "
+                    f"(settings will restore; attempt={attempt_dir})."
+                )
+            else:
+                _operator_continue_wait(
+                    attempt_dir,
+                    "Waiting for relay observation window to complete "
+                    f"(settings remain mutated until continue; attempt={attempt_dir}).",
+                )
+
+    run_with_settings_transaction(
+        settings_path=settings_path,
+        custody_root=custody_root,
+        relay_command=relay_command,
+        relay_args=relay_args,
+        approval=approval,
+        body=body,
+    )
+    return attempt_holder["path"]
+
+
 def record_operator_assertion(
     *,
     output_path: Path,
@@ -971,9 +1307,157 @@ def record_operator_assertion(
     return payload
 
 
+def _require_fixture_v2_digests(*, prompt_fixture: Path, workspace_root: Path) -> None:
+    require_regular_non_symlink(prompt_fixture, label="prompt_fixture")
+    prompt_digest = sha256_file(prompt_fixture)
+    if not sha256_hex_equal(prompt_digest, PROMPT_FIXTURE_V2_SHA256):
+        raise CustodyRunnerError("invalid_probe_fixture_identity_mismatch", "prompt_fixture")
+    target = workspace_root / "pyproject.toml"
+    require_regular_non_symlink(target, label="pyproject.toml")
+    target_digest = sha256_file(target)
+    if not sha256_hex_equal(target_digest, PYPROJECT_TARGET_SHA256):
+        raise CustodyRunnerError("invalid_probe_fixture_identity_mismatch", "pyproject.toml")
+
+
+def assert_origin_a3_preflight(
+    *,
+    expected_run_attempt_id: str,
+    ledger: StageLedger,
+    prompt_fixture: Path,
+    workspace_root: Path,
+    reservation_path: Path,
+) -> None:
+    """Fail closed unless origin-a-3 is the exact next correlation allocation."""
+    if expected_run_attempt_id != "origin-a-3":
+        raise CustodyRunnerError("invalid_probe_stage_accounting", "expected_run_attempt_id")
+    next_corr = next_stage_ordinal(ledger, StageKind.CORRELATION_CAPTURE)
+    if next_corr != 3:
+        raise CustodyRunnerError("invalid_probe_stage_accounting", "correlation_ordinal")
+    if next_corr > 3:
+        raise CustodyRunnerError("invalid_probe_retry_budget_exhausted", "correlation_ordinal")
+    if reservation_path.exists():
+        raise CustodyRunnerError("reservation_already_exists", str(reservation_path))
+    attempt_dir = reservation_path.parent.parent / "attempts" / "origin-a-3"
+    if attempt_dir.exists():
+        raise CustodyRunnerError("reservation_already_exists", str(attempt_dir))
+    _require_fixture_v2_digests(prompt_fixture=prompt_fixture, workspace_root=workspace_root)
+
+
+def reserve_origin_a_run(
+    *,
+    reservation_root: Path,
+    run_attempt_id: str,
+    ledger: StageLedger,
+) -> Path:
+    """Immutable exclusive reservation before settings mutation / launch."""
+    if run_attempt_id != "origin-a-3":
+        raise CustodyRunnerError("invalid_probe_stage_accounting", "run_attempt_id")
+    next_corr = next_stage_ordinal(ledger, StageKind.CORRELATION_CAPTURE)
+    if next_corr != 3:
+        raise CustodyRunnerError("invalid_probe_stage_accounting", "correlation_ordinal")
+    reservation_root.mkdir(parents=True, exist_ok=True)
+    path = reservation_root / f"{run_attempt_id}.json"
+    payload = {
+        "schema": SCHEMA_RUN_RESERVATION,
+        "run_attempt_id": run_attempt_id,
+        "correlation_ordinal": 3,
+        "prompt_ordinal_if_correlated": ledger.next_prompt_ordinal,
+        "amendment_sha256": ORIGIN_A_FIXTURE_V2_AMENDMENT_SHA256.lower(),
+        "created_utc": "reserved",
+    }
+    try:
+        atomic_create_json(path, payload)
+    except CustodyContractError as exc:
+        raise CustodyRunnerError(exc.reason_code, exc.field_path) from exc
+    return path
+
+
+def assert_prompt_retry_preflight(
+    *,
+    run_attempt_id: str,
+    ledger: StageLedger,
+    prompt_fixture: Path,
+    live_session_proof: Mapping[str, Any] | None,
+) -> None:
+    """Same-session prompt-only retry: no Zed launch, no settings mutation."""
+    if run_attempt_id != "origin-a-3":
+        raise CustodyRunnerError("invalid_probe_stage_accounting", "run_attempt_id")
+    corr = [
+        record
+        for record in ledger.terminal_records
+        if record.run_attempt_id == "origin-a-3"
+        and record.stage is StageKind.CORRELATION_CAPTURE
+        and record.status is StageStatus.SUCCEEDED
+    ]
+    if not corr:
+        raise CustodyRunnerError("invalid_probe_stage_accounting", "correlation_missing")
+    prompt_two = [
+        record
+        for record in ledger.terminal_records
+        if record.run_attempt_id == "origin-a-3"
+        and record.stage is StageKind.POST_NEW_PROMPT
+        and record.ordinal == 2
+        and record.status is StageStatus.FAILED
+        and record.failure_class is FailureClass.TRANSIENT
+    ]
+    if not prompt_two:
+        raise CustodyRunnerError("invalid_probe_stage_accounting", "prompt_ordinal_2")
+    if ledger.next_prompt_ordinal != 3:
+        raise CustodyRunnerError("invalid_probe_retry_budget_exhausted", "prompt_ordinal")
+    if (
+        live_session_proof is None
+        or live_session_proof.get("alive") is not True
+        or not live_session_proof.get("acp_session_id")
+        or not live_session_proof.get("zed_pid")
+        or not live_session_proof.get("connection_id")
+    ):
+        raise CustodyRunnerError(
+            "blocked_probe_same_session_prompt_retry_unavailable",
+            "live_session_proof",
+        )
+    require_regular_non_symlink(prompt_fixture, label="prompt_fixture")
+    if not sha256_hex_equal(sha256_file(prompt_fixture), PROMPT_FIXTURE_V2_SHA256):
+        raise CustodyRunnerError("invalid_probe_fixture_identity_mismatch", "prompt_fixture")
+
+
+def write_stage_outcome_exclusive(path: Path, record: StageAttemptRecord) -> None:
+    """Append-only stage outcome via exclusive create."""
+    payload = stage_attempt_record_payload(record)
+    payload["schema"] = SCHEMA_STAGE_ATTEMPT_RECORD
+    try:
+        atomic_create_json(path, payload)
+    except CustodyContractError as exc:
+        raise CustodyRunnerError(exc.reason_code, exc.field_path) from exc
+
+
+def verify_original_attempt_hashes(
+    *,
+    originals_root: Path,
+    expected_relative_sha256: Mapping[str, str],
+) -> None:
+    """Fail closed when an immutable original locator/hash disagrees."""
+    for relative, expected in expected_relative_sha256.items():
+        target = originals_root / relative
+        if not target.is_file() or target.is_symlink():
+            raise CustodyRunnerError(
+                "invalid_probe_origin_attempt_original_mismatch",
+                relative,
+            )
+        actual = sha256_file(target)
+        if not sha256_hex_equal(actual, expected):
+            raise CustodyRunnerError(
+                "invalid_probe_origin_attempt_original_mismatch",
+                relative,
+            )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--phase", choices=PHASES, required=True)
+    parser.add_argument(
+        "phase",
+        choices=PHASES,
+        help="Probe phase (positional; matches amendment CLI)",
+    )
     parser.add_argument("--workspace-root", type=Path, required=True)
     parser.add_argument("--capture-root", type=Path, required=True)
     parser.add_argument("--zed-executable", type=Path, required=True)
@@ -981,8 +1465,30 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--settings-path", type=Path, required=True)
     parser.add_argument("--debug-log", type=Path, required=True)
     parser.add_argument("--custody-root", type=Path, default=None)
+    parser.add_argument("--private-run-manifest", type=Path, default=None)
+    parser.add_argument(
+        "--no-operator-wait",
+        action="store_true",
+        help="Skip stdin operator wait (unit tests only; live Step 2 must wait)",
+    )
     parser.add_argument("--evidence-capture-root", type=Path, default=None)
     parser.add_argument("--result", type=Path, default=None)
+    parser.add_argument(
+        "--expected-run-attempt-id",
+        default=None,
+        help="Exact physical-run id required for origin-a (must be origin-a-3)",
+    )
+    parser.add_argument(
+        "--run-attempt-id",
+        default=None,
+        help="Physical-run id for origin-a-prompt-retry (must be origin-a-3)",
+    )
+    parser.add_argument(
+        "--prompt-fixture",
+        type=Path,
+        default=None,
+        help="Prompt fixture path (v2 required for origin-a / origin-a-prompt-retry)",
+    )
     return parser
 
 
@@ -999,28 +1505,76 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(2)
     custody_root = (args.custody_root or (args.capture_root / "custody")).resolve()
     resolve_probe_paths(
-        workspace_root=args.workspace_root,
-        capture_root=args.capture_root,
-        zed_executable=args.zed_executable,
-        zed_source=args.zed_source,
-        settings_path=args.settings_path,
-        debug_log=args.debug_log,
+        workspace_root=args.workspace_root.resolve(),
+        capture_root=args.capture_root.resolve(),
+        zed_executable=args.zed_executable.resolve(),
+        zed_source=args.zed_source.resolve(),
+        settings_path=args.settings_path.resolve(),
+        debug_log=args.debug_log.resolve(),
         custody_root=custody_root,
-        allowed_settings_roots=(args.settings_path.parent.resolve(), custody_root),
+        allowed_settings_roots=(args.settings_path.resolve().parent, custody_root),
     )
     state_path = args.capture_root.resolve() / STATE_FILENAME
     if not state_path.exists():
         init_phase_state(state_path)
     state = load_phase_state(state_path)
     assert_phase_allowed(state, args.phase)
+    operator_wait = not bool(args.no_operator_wait)
 
-    if args.phase == "origin-a":
-        require_readme_precondition(args.workspace_root.resolve())
-        if PROMPT_FIXTURE_PATH.is_file():
-            digest = sha256_file(PROMPT_FIXTURE_PATH).upper()
-            if digest != PROMPT_FIXTURE_SHA256:
-                raise CustodyRunnerError("prompt_fixture_digest_mismatch", "prompt")
-        print_origin_a_instructions()
+    if args.phase == "direct-control":
+        run_direct_control_phase(
+            capture_root=args.capture_root.resolve(),
+            state_path=state_path,
+            operator_wait=operator_wait,
+        )
+    elif args.phase in {"relay-control", "origin-a"}:
+        if args.private_run_manifest is None:
+            raise CustodyRunnerError("private_run_manifest_required", "private_run_manifest")
+        if args.phase == "origin-a":
+            if args.expected_run_attempt_id == "origin-a-3":
+                fixture = (args.prompt_fixture or PROMPT_FIXTURE_V2_PATH).resolve()
+                _require_fixture_v2_digests(
+                    prompt_fixture=fixture,
+                    workspace_root=args.workspace_root.resolve(),
+                )
+            else:
+                require_readme_precondition(args.workspace_root.resolve())
+                if PROMPT_FIXTURE_PATH.is_file():
+                    digest = sha256_file(PROMPT_FIXTURE_PATH).upper()
+                    if digest != PROMPT_FIXTURE_SHA256:
+                        raise CustodyRunnerError("prompt_fixture_digest_mismatch", "prompt")
+            # Print fixture before the mutation hold so the operator can act during the window.
+            print_origin_a_instructions()
+        run_relay_mediated_phase(
+            phase=args.phase,
+            capture_root=args.capture_root.resolve(),
+            state_path=state_path,
+            settings_path=args.settings_path.resolve(),
+            custody_root=custody_root,
+            private_run_manifest=args.private_run_manifest.resolve(),
+            operator_wait=operator_wait,
+        )
+    elif args.phase == "origin-a-prompt-retry":
+        if args.run_attempt_id != "origin-a-3":
+            raise CustodyRunnerError("invalid_probe_stage_accounting", "run_attempt_id")
+        fixture = (args.prompt_fixture or PROMPT_FIXTURE_V2_PATH).resolve()
+        require_regular_non_symlink(fixture, label="prompt_fixture")
+        if not sha256_hex_equal(sha256_file(fixture), PROMPT_FIXTURE_V2_SHA256):
+            raise CustodyRunnerError("invalid_probe_fixture_identity_mismatch", "prompt_fixture")
+        # Prompt-only retry never mutates settings and never launches Zed.
+        print(
+            json.dumps(
+                {
+                    "phase": "origin-a-prompt-retry",
+                    "run_attempt_id": "origin-a-3",
+                    "settings_mutated": False,
+                    "zed_launched": False,
+                    "prompt_fixture_sha256": PROMPT_FIXTURE_V2_SHA256.lower(),
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
     elif args.phase == "restart-b":
         print_restart_b_instructions()
     elif args.phase == "fresh-control-c":
@@ -1051,18 +1605,24 @@ __all__ = (
     "PHASES",
     "PROMPT_FIXTURE_SHA256",
     "PROMPT_FIXTURE_TEXT",
+    "PROMPT_FIXTURE_V2_SHA256",
+    "PYPROJECT_TARGET_SHA256",
     "CustodyRunnerError",
     "allocate_attempt_directory",
+    "assert_origin_a3_preflight",
     "assert_phase_allowed",
+    "assert_prompt_retry_preflight",
     "atomic_write_json",
     "capture_process_records",
     "compare_approval_equality",
     "compare_transcript_debug",
     "init_phase_state",
     "load_phase_state",
+    "load_private_run_manifest",
     "main",
     "mark_phase_complete",
     "mutate_settings_insert_relay",
+    "parse_jsonc",
     "parse_completed_transcript",
     "print_fresh_control_c_instructions",
     "print_origin_a_instructions",
@@ -1074,12 +1634,17 @@ __all__ = (
     "require_process_tree_exited",
     "require_readme_precondition",
     "require_regular_non_symlink",
+    "reserve_origin_a_run",
     "resolve_probe_paths",
     "restore_settings",
+    "run_direct_control_phase",
+    "run_relay_mediated_phase",
     "run_with_settings_transaction",
     "save_phase_state",
+    "verify_original_attempt_hashes",
     "write_attempt_manifest",
     "write_canonical_json",
+    "write_stage_outcome_exclusive",
 )
 
 

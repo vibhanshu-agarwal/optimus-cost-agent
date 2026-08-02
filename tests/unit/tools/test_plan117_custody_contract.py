@@ -603,3 +603,510 @@ def test_atomic_write_bytes_and_task3_schema_constants(tmp_path: Path) -> None:
     assert SCHEMA_TRANSCRIPT_PROJECTION == "plan117-custody-transcript-projection-v1"
     assert SCHEMA_ATTEMPT_MANIFEST == "plan117-custody-attempt-manifest-v1"
 
+
+# --- Origin-A fixture v2: stage ledger + append-only supersession -------------
+
+AMENDMENT_SHA256 = "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D"
+_PARENT_A1 = "7d64d5943002b15dcd977b0bc7614fc4234f9dd6d823c1533da6a0677f9ff446"
+_PARENT_A2 = "083e0953c8d89781c8c3100545bfc2e4524e94cbbaae7b32574da4d88f597f63"
+_DIGEST_D = "d" * 64
+_DIGEST_E = "e" * 64
+
+
+def _stage_api():
+    """Import stage-accounting surface; fail closed if symbols are absent."""
+    import tools.plan117_custody_contract as contract
+
+    required = (
+        "StageKind",
+        "StageStatus",
+        "EvidenceReference",
+        "StageAttemptRecord",
+        "SupplementalFactRecord",
+        "StageLedger",
+        "normalize_stage_ledger",
+        "next_stage_ordinal",
+        "verify_supersession_chain",
+        "stage_attempt_record_sha256",
+        "atomic_create_json",
+        "ORIGIN_A_FIXTURE_V2_AMENDMENT_SHA256",
+        "SCHEMA_STAGE_ATTEMPT_RECORD",
+        "SCHEMA_SUPPLEMENTAL_FACT_RECORD",
+        "SCHEMA_STAGE_LEDGER",
+        "SCHEMA_RUN_RESERVATION",
+    )
+    missing = [name for name in required if not hasattr(contract, name)]
+    if missing:
+        pytest.fail(f"missing stage-accounting API: {missing}")
+    return contract
+
+
+def _evidence(relative_path: str = "attempts/origin-a-1/attempt-manifest.json", digest: str = _PARENT_A1):
+    contract = _stage_api()
+    return contract.EvidenceReference(
+        relative_path=relative_path,
+        sha256=digest,
+        hash_method="raw_file_sha256",
+    )
+
+
+def _stage_record(
+    *,
+    record_id: str,
+    run_attempt_id: str,
+    stage: object,
+    ordinal: int,
+    status: object,
+    failure_class: FailureClass = FailureClass.NONE,
+    reason_code: str | None = None,
+    evidence: tuple[object, ...] | None = None,
+    supersedes_record_id: str | None = None,
+    supersedes_sha256: str | None = None,
+    amendment_sha256: str = AMENDMENT_SHA256.lower(),
+    created_by: str = "plan117-task1",
+    created_utc: str = "2026-08-02T16:00:00Z",
+):
+    contract = _stage_api()
+    return contract.StageAttemptRecord(
+        record_id=record_id,
+        run_attempt_id=run_attempt_id,
+        stage=stage,
+        ordinal=ordinal,
+        status=status,
+        failure_class=failure_class,
+        reason_code=reason_code,
+        evidence=evidence if evidence is not None else (_evidence(),),
+        supersedes_record_id=supersedes_record_id,
+        supersedes_sha256=supersedes_sha256,
+        amendment_sha256=amendment_sha256,
+        created_by=created_by,
+        created_utc=created_utc,
+    )
+
+
+def _fixed_origin_a1_a2_records():
+    """Canonical origin-a-1 / origin-a-2 terminal stage records after supersession."""
+    contract = _stage_api()
+    return (
+        _stage_record(
+            record_id="origin-a-1-correlation",
+            run_attempt_id="origin-a-1",
+            stage=contract.StageKind.CORRELATION_CAPTURE,
+            ordinal=1,
+            status=contract.StageStatus.FAILED,
+            failure_class=FailureClass.PERMANENT,
+            reason_code="invalid_probe_relay_capture_tooling_failure",
+            evidence=(_evidence("attempts/origin-a-1/attempt-manifest.json", _PARENT_A1),),
+            supersedes_record_id="origin-a-1-original-manifest",
+            supersedes_sha256=_PARENT_A1,
+        ),
+        _stage_record(
+            record_id="origin-a-2-correlation",
+            run_attempt_id="origin-a-2",
+            stage=contract.StageKind.CORRELATION_CAPTURE,
+            ordinal=2,
+            status=contract.StageStatus.SUCCEEDED,
+            failure_class=FailureClass.NONE,
+            reason_code=None,
+            evidence=(_evidence("attempts/origin-a-2/attempt-manifest.json", _PARENT_A2),),
+            supersedes_record_id="origin-a-2-original-manifest",
+            supersedes_sha256=_PARENT_A2,
+        ),
+        _stage_record(
+            record_id="origin-a-2-prompt",
+            run_attempt_id="origin-a-2",
+            stage=contract.StageKind.POST_NEW_PROMPT,
+            ordinal=1,
+            status=contract.StageStatus.FAILED,
+            failure_class=FailureClass.PERMANENT,
+            reason_code="AMBIGUOUS_WORKSPACE_REFERENCE",
+            evidence=(_evidence("attempts/origin-a-2/phase-observation.json", _DIGEST_D),),
+            supersedes_record_id="origin-a-2-original-prompt",
+            supersedes_sha256=_DIGEST_D,
+        ),
+    )
+
+
+def test_fixed_origin_a1_a2_ledger_derives_next_correlation_3_and_prompt_2() -> None:
+    contract = _stage_api()
+    records = _fixed_origin_a1_a2_records()
+    contract.verify_supersession_chain(records)
+    ledger = contract.normalize_stage_ledger(records)
+    assert contract.next_stage_ordinal(ledger, contract.StageKind.CORRELATION_CAPTURE) == 3
+    assert contract.next_stage_ordinal(ledger, contract.StageKind.POST_NEW_PROMPT) == 2
+    assert ledger.next_correlation_ordinal == 3
+    assert ledger.next_prompt_ordinal == 2
+
+
+def test_one_physical_run_may_consume_both_correlation_and_prompt_stages() -> None:
+    contract = _stage_api()
+    records = _fixed_origin_a1_a2_records()
+    ledger = contract.normalize_stage_ledger(records)
+    a2_stages = {
+        record.stage for record in ledger.terminal_records if record.run_attempt_id == "origin-a-2"
+    }
+    assert a2_stages == {
+        contract.StageKind.CORRELATION_CAPTURE,
+        contract.StageKind.POST_NEW_PROMPT,
+    }
+    # origin-a-1 consumed correlation only; prompt never started.
+    a1 = [r for r in ledger.terminal_records if r.run_attempt_id == "origin-a-1"]
+    assert len(a1) == 1
+    assert a1[0].stage is contract.StageKind.CORRELATION_CAPTURE
+
+
+def test_stage_ordinals_cannot_be_reclaimed_after_failure() -> None:
+    contract = _stage_api()
+    records = _fixed_origin_a1_a2_records()
+    reclaim = _stage_record(
+        record_id="reclaim-correlation-1",
+        run_attempt_id="origin-a-reclaim",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=1,
+        status=contract.StageStatus.SUCCEEDED,
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+    )
+    with pytest.raises(CustodyContractError) as excinfo:
+        contract.normalize_stage_ledger((*records, reclaim))
+    assert excinfo.value.reason_code == "invalid_probe_stage_accounting"
+
+
+def test_origin_a3_must_be_correlation_ordinal_3() -> None:
+    contract = _stage_api()
+    records = _fixed_origin_a1_a2_records()
+    wrong = _stage_record(
+        record_id="origin-a-3-correlation",
+        run_attempt_id="origin-a-3",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=2,
+        status=contract.StageStatus.SUCCEEDED,
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+        amendment_sha256=AMENDMENT_SHA256.lower(),
+    )
+    with pytest.raises(CustodyContractError) as excinfo:
+        contract.normalize_stage_ledger((*records, wrong))
+    assert excinfo.value.reason_code == "invalid_probe_stage_accounting"
+
+    correct = _stage_record(
+        record_id="origin-a-3-correlation",
+        run_attempt_id="origin-a-3",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=3,
+        status=contract.StageStatus.SUCCEEDED,
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+    )
+    ledger = contract.normalize_stage_ledger((*records, correct))
+    assert contract.next_stage_ordinal(ledger, contract.StageKind.CORRELATION_CAPTURE) == 4
+
+
+def test_same_session_prompt_only_retry_allocates_no_correlation_stage() -> None:
+    contract = _stage_api()
+    base = _fixed_origin_a1_a2_records()
+    a3_corr = _stage_record(
+        record_id="origin-a-3-correlation",
+        run_attempt_id="origin-a-3",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=3,
+        status=contract.StageStatus.SUCCEEDED,
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+    )
+    a3_prompt_fail = _stage_record(
+        record_id="origin-a-3-prompt-2",
+        run_attempt_id="origin-a-3",
+        stage=contract.StageKind.POST_NEW_PROMPT,
+        ordinal=2,
+        status=contract.StageStatus.FAILED,
+        failure_class=FailureClass.TRANSIENT,
+        reason_code="gateway_timeout",
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+    )
+    prompt_retry = _stage_record(
+        record_id="origin-a-3-prompt-retry",
+        run_attempt_id="origin-a-3",
+        stage=contract.StageKind.POST_NEW_PROMPT,
+        ordinal=3,
+        status=contract.StageStatus.SUCCEEDED,
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+    )
+    ledger = contract.normalize_stage_ledger((*base, a3_corr, a3_prompt_fail, prompt_retry))
+    corr_for_a3 = [
+        r
+        for r in ledger.terminal_records
+        if r.run_attempt_id == "origin-a-3" and r.stage is contract.StageKind.CORRELATION_CAPTURE
+    ]
+    assert len(corr_for_a3) == 1
+    assert corr_for_a3[0].ordinal == 3
+    assert ledger.next_correlation_ordinal == 4
+    assert ledger.next_prompt_ordinal == 4
+
+
+def test_fourth_correlation_launch_rejected_under_amendment() -> None:
+    contract = _stage_api()
+    base = _fixed_origin_a1_a2_records()
+    a3 = _stage_record(
+        record_id="origin-a-3-correlation",
+        run_attempt_id="origin-a-3",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=3,
+        status=contract.StageStatus.FAILED,
+        failure_class=FailureClass.TRANSIENT,
+        reason_code="transient_capture",
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+    )
+    a4 = _stage_record(
+        record_id="origin-a-4-correlation",
+        run_attempt_id="origin-a-4",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=4,
+        status=contract.StageStatus.SUCCEEDED,
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+    )
+    with pytest.raises(CustodyContractError) as excinfo:
+        contract.normalize_stage_ledger((*base, a3, a4))
+    assert excinfo.value.reason_code in {
+        "invalid_probe_retry_budget_exhausted",
+        "invalid_probe_stage_accounting",
+    }
+
+
+def test_immutable_reservation_exclusive_create_refuses_overwrite(tmp_path: Path) -> None:
+    contract = _stage_api()
+    path = tmp_path / "reservations" / "origin-a-3.json"
+    payload = {
+        "schema": contract.SCHEMA_RUN_RESERVATION,
+        "run_attempt_id": "origin-a-3",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+    }
+    contract.atomic_create_json(path, payload)
+    raw = path.read_bytes()
+    assert b"\r\n" not in raw
+    with pytest.raises((CustodyContractError, ValueError, OSError, FileExistsError)):
+        contract.atomic_create_json(path, {**payload, "tampered": True})
+    assert path.read_bytes() == raw
+
+
+def test_verify_supersession_rejects_gaps_duplicates_forks_cycles_and_digest() -> None:
+    contract = _stage_api()
+    parent = _stage_record(
+        record_id="parent-corr-1",
+        run_attempt_id="origin-a-1",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=1,
+        status=contract.StageStatus.FAILED,
+        failure_class=FailureClass.PERMANENT,
+        reason_code="invalid_probe_relay_capture_tooling_failure",
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+    )
+    parent_digest = contract.stage_attempt_record_sha256(parent)
+
+    # Gap: ordinal 2 without ordinal 1 terminal after normalize of only ordinal-2.
+    gap = _stage_record(
+        record_id="gap-corr-2",
+        run_attempt_id="origin-a-2",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=2,
+        status=contract.StageStatus.SUCCEEDED,
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+    )
+    with pytest.raises(CustodyContractError) as gap_exc:
+        contract.normalize_stage_ledger((gap,))
+    assert gap_exc.value.reason_code == "invalid_probe_stage_accounting"
+
+    # Duplicate terminal ordinals for the same stage.
+    dup = _stage_record(
+        record_id="dup-corr-1",
+        run_attempt_id="origin-a-dup",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=1,
+        status=contract.StageStatus.SUCCEEDED,
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+    )
+    with pytest.raises(CustodyContractError) as dup_exc:
+        contract.normalize_stage_ledger((parent, dup))
+    assert dup_exc.value.reason_code in {
+        "invalid_probe_stage_accounting",
+        "invalid_probe_attempt_supersession_chain",
+    }
+
+    # Fork: two children superseding the same parent.
+    child_a = _stage_record(
+        record_id="child-a",
+        run_attempt_id="origin-a-1",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=1,
+        status=contract.StageStatus.FAILED,
+        failure_class=FailureClass.PERMANENT,
+        reason_code="invalid_probe_relay_capture_tooling_failure",
+        supersedes_record_id=parent.record_id,
+        supersedes_sha256=parent_digest,
+    )
+    child_b = _stage_record(
+        record_id="child-b",
+        run_attempt_id="origin-a-1",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=1,
+        status=contract.StageStatus.FAILED,
+        failure_class=FailureClass.PERMANENT,
+        reason_code="invalid_probe_relay_capture_tooling_failure",
+        supersedes_record_id=parent.record_id,
+        supersedes_sha256=parent_digest,
+    )
+    with pytest.raises(CustodyContractError) as fork_exc:
+        contract.verify_supersession_chain((parent, child_a, child_b))
+    assert fork_exc.value.reason_code == "invalid_probe_attempt_supersession_chain"
+
+    # Cycle.
+    cyc_a = _stage_record(
+        record_id="cyc-a",
+        run_attempt_id="origin-a-1",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=1,
+        status=contract.StageStatus.SUPERSEDED,
+        failure_class=FailureClass.PERMANENT,
+        reason_code="invalid_probe_relay_capture_tooling_failure",
+        supersedes_record_id="cyc-b",
+        supersedes_sha256=_DIGEST_E,
+    )
+    cyc_b = _stage_record(
+        record_id="cyc-b",
+        run_attempt_id="origin-a-1",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=1,
+        status=contract.StageStatus.FAILED,
+        failure_class=FailureClass.PERMANENT,
+        reason_code="invalid_probe_relay_capture_tooling_failure",
+        supersedes_record_id="cyc-a",
+        supersedes_sha256=_DIGEST_E,
+    )
+    with pytest.raises(CustodyContractError) as cyc_exc:
+        contract.verify_supersession_chain((cyc_a, cyc_b))
+    assert cyc_exc.value.reason_code == "invalid_probe_attempt_supersession_chain"
+
+    # Missing parent hash (supersession requires raw SHA-256 of the predecessor).
+    orphan = _stage_record(
+        record_id="orphan",
+        run_attempt_id="origin-a-1",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=1,
+        status=contract.StageStatus.FAILED,
+        failure_class=FailureClass.PERMANENT,
+        reason_code="invalid_probe_relay_capture_tooling_failure",
+        supersedes_record_id="missing-parent",
+        supersedes_sha256=None,
+    )
+    with pytest.raises(CustodyContractError) as miss_exc:
+        contract.verify_supersession_chain((orphan,))
+    assert miss_exc.value.reason_code == "invalid_probe_attempt_supersession_chain"
+
+    # Hash mismatch against cited predecessor.
+    bad_hash = _stage_record(
+        record_id="bad-hash-child",
+        run_attempt_id="origin-a-1",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=1,
+        status=contract.StageStatus.FAILED,
+        failure_class=FailureClass.PERMANENT,
+        reason_code="invalid_probe_relay_capture_tooling_failure",
+        supersedes_record_id=parent.record_id,
+        supersedes_sha256=_DIGEST_E,
+    )
+    with pytest.raises(CustodyContractError) as hash_exc:
+        contract.verify_supersession_chain((parent, bad_hash))
+    assert hash_exc.value.reason_code == "invalid_probe_attempt_supersession_chain"
+
+    # Unsupported reason code on a superseding correction.
+    bad_reason = _stage_record(
+        record_id="bad-reason",
+        run_attempt_id="origin-a-1",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=1,
+        status=contract.StageStatus.FAILED,
+        failure_class=FailureClass.PERMANENT,
+        reason_code="not_a_supported_amendment_reason",
+        supersedes_record_id=parent.record_id,
+        supersedes_sha256=parent_digest,
+    )
+    with pytest.raises(CustodyContractError) as reason_exc:
+        contract.verify_supersession_chain((parent, bad_reason))
+    assert reason_exc.value.reason_code == "invalid_probe_attempt_supersession_chain"
+
+    # Wrong amendment digest.
+    wrong_amend = _stage_record(
+        record_id="wrong-amend",
+        run_attempt_id="origin-a-1",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=1,
+        status=contract.StageStatus.FAILED,
+        failure_class=FailureClass.PERMANENT,
+        reason_code="invalid_probe_relay_capture_tooling_failure",
+        supersedes_record_id=parent.record_id,
+        supersedes_sha256=parent_digest,
+        amendment_sha256="0" * 64,
+    )
+    with pytest.raises(CustodyContractError) as amend_exc:
+        contract.verify_supersession_chain((parent, wrong_amend))
+    assert amend_exc.value.reason_code == "invalid_probe_attempt_supersession_chain"
+
+
+def test_supplemental_fact_record_does_not_falsify_stage_outcomes() -> None:
+    contract = _stage_api()
+    records = _fixed_origin_a1_a2_records()
+    ledger = contract.normalize_stage_ledger(records)
+    fact = contract.SupplementalFactRecord(
+        record_id="origin-a-2-client-crash",
+        run_attempt_id="origin-a-2",
+        fact_kind="zed_client_crash",
+        reason_code="stop_probe_zed_client_crashed",
+        evidence=(_evidence("attempts/origin-a-2/event-facts.json", _DIGEST_E),),
+        supersedes_record_id="origin-a-2-original-crash-claim",
+        supersedes_sha256=_DIGEST_E,
+        amendment_sha256=AMENDMENT_SHA256.lower(),
+        created_by="plan117-task1",
+        created_utc="2026-08-02T16:00:00Z",
+    )
+    assert fact.fact_kind == "zed_client_crash"
+    assert fact.reason_code == "stop_probe_zed_client_crashed"
+    # Correlation remains succeeded; prompt remains failed; fact is separate.
+    a2_corr = next(
+        r
+        for r in ledger.terminal_records
+        if r.run_attempt_id == "origin-a-2" and r.stage is contract.StageKind.CORRELATION_CAPTURE
+    )
+    a2_prompt = next(
+        r
+        for r in ledger.terminal_records
+        if r.run_attempt_id == "origin-a-2" and r.stage is contract.StageKind.POST_NEW_PROMPT
+    )
+    assert a2_corr.status is contract.StageStatus.SUCCEEDED
+    assert a2_prompt.status is contract.StageStatus.FAILED
+    assert fact.record_id not in {r.record_id for r in ledger.terminal_records}
+
+
+def test_stage_accounting_schema_constants_and_pinned_amendment_digest() -> None:
+    contract = _stage_api()
+    assert contract.SCHEMA_STAGE_ATTEMPT_RECORD == "plan117-custody-stage-attempt-record-v1"
+    assert contract.SCHEMA_SUPPLEMENTAL_FACT_RECORD == "plan117-custody-supplemental-fact-record-v1"
+    assert contract.SCHEMA_STAGE_LEDGER == "plan117-custody-stage-ledger-v1"
+    assert contract.SCHEMA_RUN_RESERVATION == "plan117-custody-run-reservation-v1"
+    assert contract.sha256_hex_equal(
+        contract.ORIGIN_A_FIXTURE_V2_AMENDMENT_SHA256,
+        AMENDMENT_SHA256,
+    )
+    assert contract.StageKind.CORRELATION_CAPTURE.value == "correlation_capture"
+    assert contract.StageKind.POST_NEW_PROMPT.value == "post_new_prompt"
+    assert contract.StageStatus.NOT_STARTED.value == "not_started"
+    assert contract.StageStatus.SUCCEEDED.value == "succeeded"
+    assert contract.StageStatus.FAILED.value == "failed"
+    assert contract.StageStatus.SUPERSEDED.value == "superseded"
+

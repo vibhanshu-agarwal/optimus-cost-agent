@@ -1,0 +1,184 @@
+....FFF.F.FF                                                             [100%]
+================================== FAILURES ===================================
+_ test_parse_jsonc_commented_fallback_preserves_comma_bracket_inside_strings __
+
+    def test_parse_jsonc_commented_fallback_preserves_comma_bracket_inside_strings() -> None:
+        """Realistic Zed settings regression: commented JSONC must not corrupt string values.
+    
+        Pre-fix trailing-comma pass silently turns ``\"a, ]\"`` into ``\"a ]\"``.
+        """
+        runner = _import_runner()
+        text = (
+            "// Zed settings\n"
+            "{\n"
+            '  "label": "a, ]",\n'
+            '  "pair": "b,}",\n'
+            '  "agent_servers": {"optimus": {"command": "x", "args": [],}},\n'
+            "}\n"
+        )
+        stripped = runner._strip_jsonc(text)
+>       assert '"a, ]"' in stripped, (
+            f"silent corruption: expected '\"a, ]\"' preserved, got {stripped!r}"
+        )
+E       AssertionError: silent corruption: expected '"a, ]"' preserved, got '\n{\n  "label": "a ]",\n  "pair": "b}",\n  "agent_servers": {"optimus": {"command": "x", "args": []}}\n}\n'
+E       assert '"a, ]"' in '\n{\n  "label": "a ]",\n  "pair": "b}",\n  "agent_servers": {"optimus": {"command": "x", "args": []}}\n}\n'
+
+tests\unit\tools\test_run_plan117_custody_feasibility.py:1987: AssertionError
+__________ test_parse_jsonc_preserves_escaped_quotes_and_backslashes __________
+
+    def test_parse_jsonc_preserves_escaped_quotes_and_backslashes() -> None:
+        runner = _import_runner()
+        text = (
+            "// comment\n"
+            "{\n"
+            r'  "q": "say \"hi\", ]",' + "\n"
+            r'  "bs": "path\\to\\file,}",' + "\n"
+            '  "ok": true,' + "\n"
+            "}\n"
+        )
+        payload = runner.parse_jsonc(text)
+>       assert payload["q"] == 'say "hi", ]'
+E       assert 'say "hi" ]' == 'say "hi", ]'
+E         
+E         - say "hi", ]
+E         ?         -
+E         + say "hi" ]
+
+tests\unit\tools\test_run_plan117_custody_feasibility.py:2011: AssertionError
+__ test_parse_jsonc_preserves_line_and_block_comment_markers_inside_strings ___
+
+    def test_parse_jsonc_preserves_line_and_block_comment_markers_inside_strings() -> None:
+        runner = _import_runner()
+        text = (
+            "/* file header */\n"
+            "{\n"
+            '  "url": "https://example.com/path",\n'
+            '  "hint": "use // for line comments",\n'
+            '  "block": "not a /* real */ comment, ]",\n'
+            '  "trail": 1,' + "\n"
+            "}\n"
+        )
+>       payload = runner.parse_jsonc(text)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\tools\test_run_plan117_custody_feasibility.py:2027: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tools\run_plan117_custody_feasibility.py:270: in parse_jsonc
+    return json.loads(_strip_jsonc(text))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\pc\AppData\Local\Python\pythoncore-3.14-64\Lib\json\__init__.py:352: in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\pc\AppData\Local\Python\pythoncore-3.14-64\Lib\json\decoder.py:345: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <json.decoder.JSONDecoder object at 0x0000017A5639B230>
+s = '/* file header */\n{\n  "url": "https://example.com/path",\n  "hint": "use // for line comments",\n  "block": "not a /* real */ comment ]",\n  "trail": 1\n}\n'
+idx = 0
+
+    def raw_decode(self, s, idx=0):
+        """Decode a JSON document from ``s`` (a ``str`` beginning with
+        a JSON document) and return a 2-tuple of the Python
+        representation and the index in ``s`` where the document ended.
+    
+        This can be used to decode a JSON document from a string that may
+        have extraneous data at the end.
+    
+        """
+        try:
+            obj, end = self.scan_once(s, idx)
+        except StopIteration as err:
+>           raise JSONDecodeError("Expecting value", s, err.value) from None
+E           json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+C:\Users\pc\AppData\Local\Python\pythoncore-3.14-64\Lib\json\decoder.py:363: JSONDecodeError
+_________ test_parse_jsonc_comment_free_strict_json_bypasses_stripper _________
+
+    def test_parse_jsonc_comment_free_strict_json_bypasses_stripper() -> None:
+        runner = _import_runner()
+        # Valid strict JSON: must take the json.loads fast path (never need _strip_jsonc).
+        text = '{\n  "label": "a, ]",\n  "pair": "b,}"\n}\n'
+        payload = runner.parse_jsonc(text)
+        assert payload["label"] == "a, ]"
+        assert payload["pair"] == "b,}"
+        # And the stripper must also preserve these when invoked directly.
+        stripped = runner._strip_jsonc(text)
+>       assert '"a, ]"' in stripped
+E       assert '"a, ]"' in '{\n  "label": "a ]",\n  "pair": "b}"\n}\n'
+
+tests\unit\tools\test_run_plan117_custody_feasibility.py:2061: AssertionError
+______________ test_parse_jsonc_round_trip_semantic_values_exact ______________
+
+    def test_parse_jsonc_round_trip_semantic_values_exact() -> None:
+        runner = _import_runner()
+        text = (
+            "// settings\n"
+            "{\n"
+            '  "theme": "one-dark",\n'
+            '  "nums": [0, -1, 2.5,],\n'
+            '  "flags": {"on": true, "off": false, "empty": null,},\n'
+            '  "weird": "a, ] and b,} with // and /* markers",\n'
+            "}\n"
+        )
+        payload = runner.parse_jsonc(text)
+        assert payload["theme"] == "one-dark"
+        assert payload["nums"] == [0, -1, 2.5]
+        assert payload["flags"] == {"on": True, "off": False, "empty": None}
+>       assert payload["weird"] == "a, ] and b,} with // and /* markers"
+E       AssertionError: assert 'a ] and b} w...nd /* markers' == 'a, ] and b,}...nd /* markers'
+E         
+E         - a, ] and b,} with // and /* markers
+E         ?  -        -
+E         + a ] and b} with // and /* markers
+
+tests\unit\tools\test_run_plan117_custody_feasibility.py:2090: AssertionError
+_ test_settings_preimage_restored_after_mutation_window_failure_with_hostile_jsonc _
+
+custody_roots = {'workspace_root': WindowsPath('C:/Users/pc/AppData/Local/Temp/pytest-of-pc/pytest-2142/test_settings_preimage_restore...Path('C:/Users/pc/AppData/Local/Temp/pytest-of-pc/pytest-2142/test_settings_preimage_restore0/zed/settings.json'), ...}
+
+    def test_settings_preimage_restored_after_mutation_window_failure_with_hostile_jsonc(
+        custody_roots: dict[str, Path],
+    ) -> None:
+        """Hostile JSONC string values must not prevent exact pre-image restoration."""
+        runner = _import_runner()
+        settings = custody_roots["settings_path"]
+        original_text = (
+            "// Zed settings\n"
+            "{\n"
+            '  "theme": "one-dark",\n'
+            '  "label": "a, ]",\n'
+            '  "agent_servers": {\n'
+            '    "optimus": {\n'
+            '      "command": "optimus-agent",\n'
+            '      "args": ["--workspace-root", ".",],\n'
+            '      "env": {"KEEP": "me"},\n'
+            "    },\n"
+            "  },\n"
+            '  "unrelated": {"nested": true},\n'
+            "}\n"
+        )
+        settings.write_text(original_text, encoding="utf-8", newline="\n")
+        original = settings.read_bytes()
+        pre = _sha256_bytes(original)
+        approval = _approval(settings_path=settings, pre_image_sha256=pre)
+    
+        # In-window parse must preserve the hostile string (not silently corrupt it).
+        loaded = runner._load_settings_json(settings)
+>       assert loaded["label"] == "a, ]"
+E       AssertionError: assert 'a ]' == 'a, ]'
+E         
+E         - a, ]
+E         ?  -
+E         + a ]
+
+tests\unit\tools\test_run_plan117_custody_feasibility.py:2123: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/unit/tools/test_run_plan117_custody_feasibility.py::test_parse_jsonc_commented_fallback_preserves_comma_bracket_inside_strings
+FAILED tests/unit/tools/test_run_plan117_custody_feasibility.py::test_parse_jsonc_preserves_escaped_quotes_and_backslashes
+FAILED tests/unit/tools/test_run_plan117_custody_feasibility.py::test_parse_jsonc_preserves_line_and_block_comment_markers_inside_strings
+FAILED tests/unit/tools/test_run_plan117_custody_feasibility.py::test_parse_jsonc_comment_free_strict_json_bypasses_stripper
+FAILED tests/unit/tools/test_run_plan117_custody_feasibility.py::test_parse_jsonc_round_trip_semantic_values_exact
+FAILED tests/unit/tools/test_run_plan117_custody_feasibility.py::test_settings_preimage_restored_after_mutation_window_failure_with_hostile_jsonc
+6 failed, 6 passed, 62 deselected in 3.81s

@@ -1,0 +1,43 @@
+{
+  "schema": "plan117-origin-a-fixture-v2-task0-checkpoint-v1",
+  "complete": true,
+  "utc": "2026-08-02T16:21:48Z",
+  "head": "7df84f5f9a19fe70694a7700b17a8a9334f8f9e2",
+  "branch": "agent/cursor/p11-feat-zed-resume",
+  "amendment_checkboxes": {
+    "note": "Left unchecked in the digest-bound amendment file to preserve approval SHA-256 5BB327D8…9A4D (same practice as parent amendment 79F3C92A…C06E6). Progress claimed here after stated verification commands passed.",
+    "steps_verified": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+    ]
+  },
+  "digests": {
+    "amendment": "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D",
+    "design": "9ADD264B06B67B7BF6C85A3A1439BFED29F10C08366848761EED9C3D8B624347",
+    "parent_amendment": "79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6",
+    "frozen_plan": "F52AD9A5A85DC50B0DFD3206B6BD09FD8FF0AE79B1A6049DF1017F978B1C462D",
+    "prompt_fixture_v2": "9195EFEEE3A2180CFB85EDE409FF7785F159F64E36426DCDB369251560E28A50",
+    "pyproject_toml": "AE28C0C3776F6B78DF23E86FC0E88B0088FEBB7241A04650C604D713E23EF697",
+    "trigger_chain": "C5C1A6B17D2B6B90CEA5C789E3C459A2B4914A7153C111EE85169A619B6A5A8E",
+    "event_facts": "75B12DED46B3DEB9C6B2A4BA8982857616D29DD8485535454F435B98A2A491DA"
+  },
+  "gates": {
+    "logging_surface": "passed",
+    "pytest_unit": "2378 passed, 23 skipped",
+    "ruff": "passed",
+    "git_diff_check": "passed",
+    "originals_untouched": true,
+    "resolver_preflight": "resolved ./pyproject.toml within 16384 budget",
+    "live_launch": false,
+    "settings_mutation": false
+  },
+  "expected_pins": {
+    "amendment": "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D",
+    "design": "9ADD264B06B67B7BF6C85A3A1439BFED29F10C08366848761EED9C3D8B624347",
+    "fixture_v2": "9195EFEEE3A2180CFB85EDE409FF7785F159F64E36426DCDB369251560E28A50",
+    "pyproject": "AE28C0C3776F6B78DF23E86FC0E88B0088FEBB7241A04650C604D713E23EF697"
+  }
+}

@@ -23,7 +23,16 @@ SCHEMA_APPROVAL_EQUIVALENCE = "plan117-custody-approval-equivalence-v1"
 SCHEMA_PROCESS_RECORD = "plan117-custody-process-record-v1"
 SCHEMA_TRANSCRIPT_PROJECTION = "plan117-custody-transcript-projection-v1"
 SCHEMA_ATTEMPT_MANIFEST = "plan117-custody-attempt-manifest-v1"
+SCHEMA_STAGE_ATTEMPT_RECORD = "plan117-custody-stage-attempt-record-v1"
+SCHEMA_SUPPLEMENTAL_FACT_RECORD = "plan117-custody-supplemental-fact-record-v1"
+SCHEMA_STAGE_LEDGER = "plan117-custody-stage-ledger-v1"
+SCHEMA_RUN_RESERVATION = "plan117-custody-run-reservation-v1"
+ORIGIN_A_FIXTURE_V2_AMENDMENT_SHA256 = (
+    "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D"
+)
 MAX_ATTEMPTS_PER_KIND = 3
+MAX_CORRELATION_ORDINAL_UNDER_AMENDMENT = 3
+MAX_PROMPT_ORDINAL_UNDER_AMENDMENT = 3
 HASH_CHUNK_SIZE = 1 << 20  # 1 MiB
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _PRESUMPTIVE_INELIGIBLE_TOKENS = frozenset(
@@ -31,6 +40,25 @@ _PRESUMPTIVE_INELIGIBLE_TOKENS = frozenset(
 )
 _PARTIAL_CHECKPOINTS = frozenset({"task4", "task5"})
 _JSON_HASH_METHODS = frozenset({"raw_file_sha256"})
+_SUPPORTED_SUPERSESSION_REASON_CODES = frozenset(
+    {
+        "invalid_probe_relay_capture_tooling_failure",
+        "invalid_probe_origin_attempt_original_mismatch",
+        "invalid_probe_attempt_supersession_chain",
+        "invalid_probe_stage_accounting",
+        "invalid_probe_retry_budget_exhausted",
+        "invalid_probe_fixture_identity_mismatch",
+        "invalid_probe_execution_identity_mismatch",
+        "invalid_probe_jsonc_settings_safety",
+        "blocked_probe_same_session_prompt_retry_unavailable",
+        "blocked_probe_gateway_usage_cost_unavailable",
+        "AMBIGUOUS_WORKSPACE_REFERENCE",
+        "REQUIRED_WORKSPACE_FILE_TOO_LARGE",
+        "stop_probe_zed_client_crashed",
+        "gateway_timeout",
+        "transient_capture",
+    }
+)
 
 
 class CustodyContractError(ValueError):
@@ -68,6 +96,63 @@ class FailureClass(StrEnum):
     NONE = "none"
     TRANSIENT = "transient"
     PERMANENT = "permanent"
+
+
+class StageKind(StrEnum):
+    CORRELATION_CAPTURE = "correlation_capture"
+    POST_NEW_PROMPT = "post_new_prompt"
+
+
+class StageStatus(StrEnum):
+    NOT_STARTED = "not_started"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    SUPERSEDED = "superseded"
+
+
+@dataclass(frozen=True)
+class EvidenceReference:
+    relative_path: str
+    sha256: str
+    hash_method: str
+
+
+@dataclass(frozen=True)
+class StageAttemptRecord:
+    record_id: str
+    run_attempt_id: str
+    stage: StageKind
+    ordinal: int
+    status: StageStatus
+    failure_class: FailureClass
+    reason_code: str | None
+    evidence: tuple[EvidenceReference, ...]
+    supersedes_record_id: str | None
+    supersedes_sha256: str | None
+    amendment_sha256: str
+    created_by: str
+    created_utc: str
+
+
+@dataclass(frozen=True)
+class SupplementalFactRecord:
+    record_id: str
+    run_attempt_id: str
+    fact_kind: str
+    reason_code: str
+    evidence: tuple[EvidenceReference, ...]
+    supersedes_record_id: str | None
+    supersedes_sha256: str | None
+    amendment_sha256: str
+    created_by: str
+    created_utc: str
+
+
+@dataclass(frozen=True)
+class StageLedger:
+    terminal_records: tuple[StageAttemptRecord, ...]
+    next_correlation_ordinal: int
+    next_prompt_ordinal: int
 
 
 @dataclass(frozen=True)
@@ -378,6 +463,253 @@ def atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
 def write_canonical_json(path: Path, payload: Mapping[str, Any]) -> None:
     """Public alias for :func:`atomic_write_json`."""
     atomic_write_json(path, payload)
+
+
+def atomic_create_json(path: Path, payload: Mapping[str, Any]) -> None:
+    """Create-only canonical UTF-8 LF JSON; fails closed if the path already exists."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    data = encoded.encode("utf-8")
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+    if hasattr(os, "O_BINARY"):
+        flags |= os.O_BINARY
+    try:
+        fd = os.open(path, flags, 0o644)
+    except FileExistsError as exc:
+        raise CustodyContractError("reservation_already_exists", str(path)) from exc
+    except OSError as exc:
+        if getattr(exc, "errno", None) in {17, 183}:  # EEXIST (posix / win)
+            raise CustodyContractError("reservation_already_exists", str(path)) from exc
+        raise ValueError("atomic_create_failed") from None
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError:
+        if path.exists():
+            path.unlink(missing_ok=True)
+        raise ValueError("atomic_create_failed") from None
+    try:
+        dir_fd = os.open(path.parent, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
+
+
+def _evidence_to_canonical(evidence: Sequence[EvidenceReference]) -> list[dict[str, str]]:
+    return [
+        {
+            "hash_method": item.hash_method,
+            "relative_path": item.relative_path,
+            "sha256": item.sha256.lower(),
+        }
+        for item in evidence
+    ]
+
+
+def stage_attempt_record_payload(record: StageAttemptRecord) -> dict[str, Any]:
+    """Canonical JSON-object form of a stage attempt record (sorted keys via dumps)."""
+    return {
+        "amendment_sha256": record.amendment_sha256.lower(),
+        "created_by": record.created_by,
+        "created_utc": record.created_utc,
+        "evidence": _evidence_to_canonical(record.evidence),
+        "failure_class": record.failure_class.value,
+        "ordinal": record.ordinal,
+        "reason_code": record.reason_code,
+        "record_id": record.record_id,
+        "run_attempt_id": record.run_attempt_id,
+        "stage": record.stage.value,
+        "status": record.status.value,
+        "supersedes_record_id": record.supersedes_record_id,
+        "supersedes_sha256": (
+            None if record.supersedes_sha256 is None else record.supersedes_sha256.lower()
+        ),
+    }
+
+
+def stage_attempt_record_sha256(record: StageAttemptRecord) -> str:
+    """Raw-byte SHA-256 of the canonical LF JSON serialization of a stage record."""
+    payload = stage_attempt_record_payload(record)
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def verify_supersession_chain(records: Sequence[StageAttemptRecord]) -> None:
+    """Fail closed on cycles, forks, missing/mismatched parents, bad digests, or reasons."""
+    by_id: dict[str, StageAttemptRecord] = {}
+    for record in records:
+        if record.record_id in by_id:
+            raise CustodyContractError(
+                "invalid_probe_attempt_supersession_chain",
+                f"duplicate_record_id:{record.record_id}",
+            )
+        by_id[record.record_id] = record
+
+    children_by_parent: dict[str, list[str]] = {}
+    for record in records:
+        if not sha256_hex_equal(record.amendment_sha256, ORIGIN_A_FIXTURE_V2_AMENDMENT_SHA256):
+            raise CustodyContractError(
+                "invalid_probe_attempt_supersession_chain",
+                f"{record.record_id}.amendment_sha256",
+            )
+        if record.supersedes_record_id is None:
+            if record.supersedes_sha256 is not None:
+                raise CustodyContractError(
+                    "invalid_probe_attempt_supersession_chain",
+                    f"{record.record_id}.supersedes_sha256",
+                )
+            continue
+        if record.supersedes_sha256 is None or not _SHA256_RE.fullmatch(
+            record.supersedes_sha256.lower()
+        ):
+            raise CustodyContractError(
+                "invalid_probe_attempt_supersession_chain",
+                f"{record.record_id}.supersedes_sha256",
+            )
+        if (
+            record.reason_code is not None
+            and record.reason_code not in _SUPPORTED_SUPERSESSION_REASON_CODES
+        ):
+            raise CustodyContractError(
+                "invalid_probe_attempt_supersession_chain",
+                f"{record.record_id}.reason_code",
+            )
+        parent_id = record.supersedes_record_id
+        children_by_parent.setdefault(parent_id, []).append(record.record_id)
+        parent = by_id.get(parent_id)
+        if parent is not None:
+            expected = stage_attempt_record_sha256(parent)
+            if not sha256_hex_equal(expected, record.supersedes_sha256):
+                raise CustodyContractError(
+                    "invalid_probe_attempt_supersession_chain",
+                    f"{record.record_id}.supersedes_sha256",
+                )
+
+    for parent_id, child_ids in children_by_parent.items():
+        if len(child_ids) > 1:
+            raise CustodyContractError(
+                "invalid_probe_attempt_supersession_chain",
+                f"fork:{parent_id}",
+            )
+
+    # Cycle detection among in-set supersession edges only.
+    for start in by_id:
+        seen: set[str] = set()
+        current: str | None = start
+        while current is not None:
+            if current in seen:
+                raise CustodyContractError(
+                    "invalid_probe_attempt_supersession_chain",
+                    f"cycle:{current}",
+                )
+            seen.add(current)
+            node = by_id.get(current)
+            if node is None or node.supersedes_record_id is None:
+                break
+            nxt = node.supersedes_record_id
+            if nxt not in by_id:
+                break
+            current = nxt
+
+
+def normalize_stage_ledger(records: Sequence[StageAttemptRecord]) -> StageLedger:
+    """Derive terminal stage outcomes and next ordinals; fail closed on accounting defects."""
+    verify_supersession_chain(records)
+    superseded_ids = {
+        record.supersedes_record_id
+        for record in records
+        if record.supersedes_record_id is not None
+        and any(item.record_id == record.supersedes_record_id for item in records)
+    }
+    terminals: list[StageAttemptRecord] = []
+    for record in records:
+        if record.record_id in superseded_ids:
+            continue
+        if record.status is StageStatus.SUPERSEDED:
+            continue
+        if record.status is StageStatus.NOT_STARTED:
+            continue
+        terminals.append(record)
+
+    by_stage_ordinal: dict[tuple[StageKind, int], StageAttemptRecord] = {}
+    for record in terminals:
+        if record.ordinal < 1:
+            raise CustodyContractError("invalid_probe_stage_accounting", "ordinal")
+        key = (record.stage, record.ordinal)
+        if key in by_stage_ordinal:
+            raise CustodyContractError(
+                "invalid_probe_stage_accounting",
+                f"duplicate_terminal:{record.stage.value}:{record.ordinal}",
+            )
+        by_stage_ordinal[key] = record
+
+    for stage in (StageKind.CORRELATION_CAPTURE, StageKind.POST_NEW_PROMPT):
+        ordinals = sorted(ord for (stg, ord) in by_stage_ordinal if stg is stage)
+        if not ordinals:
+            continue
+        expected = list(range(1, max(ordinals) + 1))
+        if ordinals != expected:
+            raise CustodyContractError(
+                "invalid_probe_stage_accounting",
+                f"ordinal_gap:{stage.value}",
+            )
+        max_allowed = (
+            MAX_CORRELATION_ORDINAL_UNDER_AMENDMENT
+            if stage is StageKind.CORRELATION_CAPTURE
+            else MAX_PROMPT_ORDINAL_UNDER_AMENDMENT
+        )
+        if max(ordinals) > max_allowed:
+            raise CustodyContractError(
+                "invalid_probe_retry_budget_exhausted",
+                stage.value,
+            )
+
+    for record in terminals:
+        if (
+            record.run_attempt_id == "origin-a-3"
+            and record.stage is StageKind.CORRELATION_CAPTURE
+            and record.ordinal != 3
+        ):
+            raise CustodyContractError(
+                "invalid_probe_stage_accounting",
+                "origin-a-3.correlation_ordinal",
+            )
+
+    corr_ordinals = [
+        record.ordinal
+        for record in terminals
+        if record.stage is StageKind.CORRELATION_CAPTURE
+    ]
+    prompt_ordinals = [
+        record.ordinal for record in terminals if record.stage is StageKind.POST_NEW_PROMPT
+    ]
+    next_corr = (max(corr_ordinals) + 1) if corr_ordinals else 1
+    next_prompt = (max(prompt_ordinals) + 1) if prompt_ordinals else 1
+    ordered = tuple(
+        sorted(
+            terminals,
+            key=lambda item: (item.stage.value, item.ordinal, item.record_id),
+        )
+    )
+    return StageLedger(
+        terminal_records=ordered,
+        next_correlation_ordinal=next_corr,
+        next_prompt_ordinal=next_prompt,
+    )
+
+
+def next_stage_ordinal(ledger: StageLedger, stage: StageKind) -> int:
+    """Return the next free ordinal for ``stage`` from a normalized ledger."""
+    if stage is StageKind.CORRELATION_CAPTURE:
+        return ledger.next_correlation_ordinal
+    if stage is StageKind.POST_NEW_PROMPT:
+        return ledger.next_prompt_ordinal
+    raise CustodyContractError("invalid_probe_stage_accounting", "stage")
 
 
 def sha256_file(path: Path) -> str:

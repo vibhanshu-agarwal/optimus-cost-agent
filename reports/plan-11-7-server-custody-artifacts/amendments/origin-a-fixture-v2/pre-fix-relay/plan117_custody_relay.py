@@ -167,18 +167,6 @@ class _LockedRecorder:
             return dict(self._offsets)
 
 
-def _read_pipe_chunk(stream: BinaryIO, size: int) -> bytes:
-    """Read up to ``size`` bytes without waiting for a full buffer fill.
-
-    Prefer ``read1`` so full-duplex Windows pipe relays do not deadlock when the
-    peer is waiting for output before sending ``size`` more stdin bytes.
-    """
-    read1 = getattr(stream, "read1", None)
-    if callable(read1):
-        return read1(size)
-    return stream.read(size)
-
-
 def _forward_parent_to_child(
     *,
     parent_in: BinaryIO,
@@ -189,7 +177,7 @@ def _forward_parent_to_child(
 ) -> None:
     try:
         while not stop.is_set():
-            chunk = _read_pipe_chunk(parent_in, READ_CHUNK)
+            chunk = parent_in.read(READ_CHUNK)
             if not chunk:
                 break
             recorder.record_chunk(DIR_ZED_TO_AGENT, chunk)
@@ -218,7 +206,7 @@ def _forward_child_to_parent(
 ) -> None:
     try:
         while not stop.is_set():
-            chunk = _read_pipe_chunk(child_stdout, READ_CHUNK)
+            chunk = child_stdout.read(READ_CHUNK)
             if not chunk:
                 break
             recorder.record_chunk(DIR_AGENT_TO_ZED, chunk)

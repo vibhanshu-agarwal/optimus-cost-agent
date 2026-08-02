@@ -46,7 +46,7 @@ open-work inventory.
 | `P11-FEAT-GATEWAY-TOOLS` | Plan 11.2 — closed by PR #88 (merge `4590dbf`); migration follow-ups remain assigned here and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); migration custody: deterministic search/direct extract, route-specific dependency availability, replacement acceptance, and Tavily rollback-reviewed retirement; closure evidence: [Plan 11.2 approval](../reviews/2026-07-27-plan-11-2-implementation-plan-approval-v2.md), [local-process evidence](../../../reports/plan-11-2-gateway-tools-local-process-evidence.md), [staging evidence](../../../reports/plan-11-2-gateway-tools-staging-evidence.md), and [fitness report](../../../reports/plan-11-2-gateway-tools-task7-fitness.md) |
 | `P11-FEAT-GATEWAY-COST-OBS` | Plan 11.5 — closed by PR #95 (merge `e388258`), 2026-07-29; migration follow-ups remain assigned here (`P11.5-FU-1` open; `P11.5-FU-2` closed via Plan 11.6) and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); [implementation plan](2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration |
 | `P11-FEAT-GATEWAY-MCP` | Ratified; operator confirmed MCP support on 2026-07-29 (`P11-FU-3` decision half closed). Still blocked on the route/typed-contract design and fresh requirement extraction—no MCP endpoint is shown or implied yet; plan number assigned at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
-| `P11-FEAT-ZED-RESUME` | **Plan 11.7 active.** Frozen Task 0 Steps 1-4 sealed (`session/load` unreachable on current Zed 1.13.1); frozen Plan 11.7 Tasks 0 Steps 5-7 and Tasks 1-11 remain blocked. Standalone feasibility amendment approved (`79F3C92A…C06E6`, 2026-08-02) and probe authorized but not yet completed — does not claim server-side custody feasible. Carries owned `P11-FU-1` and `P9.8-FU-5`; coordinates, but does not own, `P11-FU-4` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume); [feasibility amendment](2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md). Dependency: the [evidence and handoff product pool](evidence-handoff-open-work-pool.md) entry `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` supplies its sanitized-evidence gate. |
+| `P11-FEAT-ZED-RESUME` | **Plan 11.7 active.** Frozen Task 0 Steps 1-4 sealed (`session/load` unreachable on current Zed 1.13.1); frozen Plan 11.7 Tasks 0 Steps 5-7 and Tasks 1-11 remain blocked. Standalone feasibility amendment approved (`79F3C92A…C06E6`, 2026-08-02); origin-A fixture v2 amendment approved and merged (`5BB327D8…9A4D` / PR #108, 2026-08-02) — **approved correction pending** (Task 0 freeze in progress; corrected `origin-a-3` not yet executed). Does not claim server-side custody feasible. Carries owned `P11-FU-1` and `P9.8-FU-5`; coordinates, but does not own, `P11-FU-4` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume); [feasibility amendment](2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md); [origin-A fixture v2 amendment](2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md). Dependency: the [evidence and handoff product pool](evidence-handoff-open-work-pool.md) entry `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` supplies its sanitized-evidence gate. |
 | `P11-FEAT-REGISTRY` | Ratified, unscheduled; blocked on its research gate — no authoritative source exists in any of the four pinned documents. Also owns the v1.0 release-version contract | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut) |
 | `P11-FEAT-IDE` | Conditional — opens only by explicit amendment if REGISTRY surfaces an unmet multi-IDE expectation | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing) |
 | `Plan 12` | Post-v1.0 context-window and intelligent-selection lane; outside the v1.0 cut | [Charter boundary](2026-07-25-plan-11-v1-milestone-charter.md#explicit-exclusions-and-unresolved-inputs) |
@@ -102,8 +102,8 @@ conformance.
 **Status:** Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`). Frozen Task 0 Steps 1-4 sealed the
 current-Zed Case 1/2 refusal-rendering evidence (Case 1 wire `end_turn` / stable; Case 2 wire
 `refusal` / Zed panic). Frozen Plan 11.7 implementation remains blocked; the standalone
-server-side custody feasibility amendment is approved and the probe is authorized but not yet
-completed. No reviewed final disposition yet.
+server-side custody feasibility amendment is approved; origin-A fixture v2 amendment approved —
+**approved correction pending**. No reviewed final disposition yet.
 
 ### P9.85-FU-1: Intelligent observation compression
 
@@ -211,9 +211,9 @@ resume store without an explicit design and migration decision.
 **Status:** Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`). Frozen Task 0 Steps 1-4 are sealed with
 disposition `stop_amend_plan_session_load_unreachable` (current Zed does not issue `session/load`
 after full restart). Frozen Plan 11.7 implementation remains blocked; the standalone server-side
-custody feasibility amendment is approved and the probe is authorized but not yet completed. This
-is still an unimplemented protocol capability pending that probe's reviewed disposition — not a
-flaky regression or a parked architecture blocker.
+custody feasibility amendment is approved; origin-A fixture v2 amendment approved — **approved
+correction pending**. This is still an unimplemented protocol capability pending that corrected
+probe's reviewed disposition — not a flaky regression or a parked architecture blocker.
 
 ### P11-FU-2: Package Lookup and Security Advisory Gateway Capability
 
@@ -606,6 +606,40 @@ the fail-closed unknown-cost path unchanged.
 successful ~16s response on the identical fixture/task, same worktree).
 
 **Status:** Tracked, not yet scheduled.
+
+### P11.7-FU-2: Gateway threaded-test flake under full-suite load
+
+**Raised:** 2026-08-02 during Plan 11.7 origin-A fixture v2 Task 3 review prep.
+Priority: **Test-infra flake; not a Task 3 blocker.**
+
+**Origin:** Pre-existing Gateway threaded-test instability observed under full `tests/unit`
+suite load (not introduced by origin-A fixture v2 supersession/ledger work).
+
+**Designated custody:** `P11-FEAT-ZED-RESUME` / Plan 11.7 deferred follow-ups until scheduled;
+coordinate with existing Gateway flake entries (`P11-FU-5` / `P11-FU-6`) if root cause overlaps.
+
+**Acceptance criteria (draft):** Reproduce under controlled full-suite vs narrow-suite
+isolation; classify race vs shared-fixture contamination; harden or quarantine with a named
+owning plan without weakening live Gateway evidence tiers.
+
+**Status:** Tracked, not yet scheduled. Does not block Task 3 classifications.
+
+### P11.7-FU-3: Committed `plan117_custody_relay.py` docstring `\ufffd` / em-dash corruption
+
+**Raised:** 2026-08-02 during Plan 11.7 origin-A fixture v2 Task 3 review prep.
+Priority: **Docstring hygiene; not a Task 3 blocker.**
+
+**Origin:** Pre-existing replacement-character / em-dash corruption in a committed
+`tools/plan117_custody_relay.py` docstring (distinct from the Task 3 ASCII fix already applied
+to `tools/run_plan117_custody_feasibility.py`).
+
+**Designated custody:** Plan 11.7 deferred follow-ups. Do not silently fold into Task 3
+classification seal.
+
+**Acceptance criteria (draft):** Replace corrupted codepoints with ASCII-safe wording; prove
+zero `\ufffd` and zero U+2014 remain in that docstring; keep relay behavior unchanged.
+
+**Status:** Tracked, not yet scheduled. Does not block Task 3 classifications.
 
 ### P11.5-FU-2: Consistent local env / Redis / Phoenix / Gateway startup for live runs
 

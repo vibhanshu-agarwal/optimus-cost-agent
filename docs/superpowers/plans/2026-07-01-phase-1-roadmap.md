@@ -1057,10 +1057,12 @@ testing does not become a gate unless an explicit charter amendment says so.
 Plan 11.1/11.2/11.4/11.5/11.6 slices. Frozen Task 0 Steps 1-4 are sealed with disposition
 `stop_amend_plan_session_load_unreachable` (current Zed 1.13.1 does not issue `session/load` after
 full restart). Frozen Plan 11.7 Task 0 Steps 5-7 and Tasks 1-11 remain blocked. The standalone
-server-side custody feasibility amendment is approved and the probe is authorized but not yet
-completed; no feasibility conclusion is claimed. Owned `P11-FU-1` and `P9.8-FU-5` remain open
-pending that probe (and any later reviewed disposition); the existing plan-only Redis state store
-is not sufficient by assumption. The charter and ratified feature sequencing map remain recorded in
+server-side custody feasibility amendment is approved; the origin-A fixture v2 correction amendment
+is also approved and merged (`5BB327D8…9A4D` / PR #108) — **approved correction pending** (corrected
+`origin-a-3` not yet executed). No feasibility conclusion is claimed. Owned `P11-FU-1` and
+`P9.8-FU-5` remain open pending that corrected probe (and any later reviewed disposition); the
+existing plan-only Redis state store is not sufficient by assumption. The charter and ratified
+feature sequencing map remain recorded in
 [`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md).
 `P11-FEAT-GATEWAY-MCP` remains unscheduled pending its reviewed route/typed-contract design after
 the affirmative `P11-FU-3` operator decision. `P11-FEAT-REGISTRY` must research ACP registry

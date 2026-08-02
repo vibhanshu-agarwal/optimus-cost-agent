@@ -1,0 +1,38 @@
+=== pre-fix source facts ===
+path=D:\Projects\Development\Python\optimus-cost-agent-wt-cursor\reports\plan-11-7-server-custody-artifacts\amendments\origin-a-fixture-v2\pre-fix-relay\plan117_custody_relay.py
+bytes=23103
+has_read1=False
+has__read_pipe_chunk=False
+blocking_parent=True
+blocking_child=True
+
+=== worktree source facts (must already be fixed; not reverted) ===
+path=D:\Projects\Development\Python\optimus-cost-agent-wt-cursor\tools\plan117_custody_relay.py
+has_read1=True
+has__read_pipe_chunk=True
+blocking_parent=False
+blocking_child=False
+
+=== source assertion results ===
+pre_fix_source_failures=5
+  FAIL: pre-fix: blocking parent_in.read(READ_CHUNK) present
+  FAIL: pre-fix: blocking child_stdout.read(READ_CHUNK) present
+  FAIL: pre-fix: missing _read_pipe_chunk(parent_in, READ_CHUNK)
+  FAIL: pre-fix: missing _read_pipe_chunk(child_stdout, READ_CHUNK)
+  FAIL: pre-fix: missing read1 preference
+worktree_source_failures=0
+
+=== behavior: prefer read1 over blocking read ===
+EXPECTED FAIL against pre-fix: AssertionError: pre-fix module has no _read_pipe_chunk helper
+worktree prefer-read1: PASS
+
+=== summary ===
+pre_fix_red_proven=True
+shared_worktree_relay_untouched_by_this_proof=True
+Traceback (most recent call last):
+  File "D:\Projects\Development\Python\optimus-cost-agent-wt-cursor\reports\plan-11-7-server-custody-artifacts\amendments\origin-a-fixture-v2\pre-fix-relay\proof_pre_fix_red.py", line 101, in main
+    _prefer_read1_behavior(pre_mod)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "D:\Projects\Development\Python\optimus-cost-agent-wt-cursor\reports\plan-11-7-server-custody-artifacts\amendments\origin-a-fixture-v2\pre-fix-relay\proof_pre_fix_red.py", line 61, in _prefer_read1_behavior
+    raise AssertionError("pre-fix module has no _read_pipe_chunk helper")
+AssertionError: pre-fix module has no _read_pipe_chunk helper

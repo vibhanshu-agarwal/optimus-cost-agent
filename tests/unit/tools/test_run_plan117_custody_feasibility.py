@@ -30,6 +30,7 @@ PHASES = (
     "direct-control",
     "relay-control",
     "origin-a",
+    "origin-a-prompt-retry",
     "restart-b",
     "fresh-control-c",
     "direct-ancestry-control",
@@ -1087,7 +1088,6 @@ def test_cli_phases_accepted() -> None:
     with pytest.raises(SystemExit):
         runner.main(
             [
-                "--phase",
                 "finalize",
                 "--workspace-root",
                 str(ROOT),
@@ -1114,6 +1114,19 @@ def test_writer_discipline_no_ad_hoc_json_dump_in_runner() -> None:
 
 def test_main_phases_and_finalize_gate(custody_roots: dict[str, Path], capsys: pytest.CaptureFixture[str]) -> None:
     runner = _import_runner()
+    settings = custody_roots["settings_path"]
+    manifest = custody_roots["capture_root"] / "private-run-manifest.json"
+    runner.atomic_write_json(
+        manifest,
+        {
+            "schema": "plan117-custody-private-run-manifest-v1",
+            "settings_mutation_approval": _approval(
+                settings_path=settings,
+                pre_image_sha256=_sha256_bytes(settings.read_bytes()),
+            ),
+            "relay": {"command": "python", "args": ["relay.py"]},
+        },
+    )
     common = [
         "--workspace-root",
         str(custody_roots["workspace_root"]),
@@ -1124,27 +1137,52 @@ def test_main_phases_and_finalize_gate(custody_roots: dict[str, Path], capsys: p
         "--zed-source",
         str(custody_roots["zed_source"]),
         "--settings-path",
-        str(custody_roots["settings_path"]),
+        str(settings),
         "--debug-log",
         str(custody_roots["debug_log"]),
         "--custody-root",
         str(custody_roots["custody_root"]),
+        "--private-run-manifest",
+        str(manifest),
+        "--no-operator-wait",
     ]
-    assert runner.main([*common, "--phase", "direct-control"]) == 0
-    assert runner.main([*common, "--phase", "relay-control"]) == 0
-    assert runner.main([*common, "--phase", "origin-a"]) == 0
+    assert runner.main(["direct-control", *common]) == 0
+    # refresh approval digest after any prior mutation/restore
+    runner.atomic_write_json(
+        manifest,
+        {
+            "schema": "plan117-custody-private-run-manifest-v1",
+            "settings_mutation_approval": _approval(
+                settings_path=settings,
+                pre_image_sha256=_sha256_bytes(settings.read_bytes()),
+            ),
+            "relay": {"command": "python", "args": ["relay.py"]},
+        },
+    )
+    assert runner.main(["relay-control", *common]) == 0
+    runner.atomic_write_json(
+        manifest,
+        {
+            "schema": "plan117-custody-private-run-manifest-v1",
+            "settings_mutation_approval": _approval(
+                settings_path=settings,
+                pre_image_sha256=_sha256_bytes(settings.read_bytes()),
+            ),
+            "relay": {"command": "python", "args": ["relay.py"]},
+        },
+    )
+    assert runner.main(["origin-a", *common]) == 0
     out = capsys.readouterr().out
     assert PROMPT_SHA256_UPPER in out.upper()
-    assert runner.main([*common, "--phase", "restart-b"]) == 0
-    assert runner.main([*common, "--phase", "fresh-control-c"]) == 0
-    assert runner.main([*common, "--phase", "direct-ancestry-control"]) == 0
-    assert runner.main([*common, "--phase", "restore-settings"]) == 0
+    assert runner.main(["restart-b", *common]) == 0
+    assert runner.main(["fresh-control-c", *common]) == 0
+    assert runner.main(["direct-ancestry-control", *common]) == 0
+    assert runner.main(["restore-settings", *common]) == 0
     assert (
         runner.main(
             [
-                *common,
-                "--phase",
                 "finalize",
+                *common,
                 "--evidence-capture-root",
                 str(custody_roots["capture_root"]),
                 "--result",
@@ -1172,7 +1210,6 @@ def test_main_restore_settings_phase_restores_active_tx(
     assert settings.read_bytes() != original
     code = runner.main(
         [
-            "--phase",
             "restore-settings",
             "--workspace-root",
             str(custody_roots["workspace_root"]),
@@ -1596,6 +1633,110 @@ def test_process_query_empty_stdout_and_single_object(
     assert len(records) == 1
 
 
+def test_parse_jsonc_preserves_urls_with_double_slash_inside_strings() -> None:
+    runner = _import_runner()
+    payload = runner.parse_jsonc(
+        "// header\n"
+        "{\n"
+        '  "db": "postgresql://myuser:secret@localhost:5432/db",\n'
+        '  "agent_servers": {"optimus": {"command": "x", "args": [],}},\n'
+        "}\n"
+    )
+    assert payload["db"] == "postgresql://myuser:secret@localhost:5432/db"
+    assert "// header" not in json.dumps(payload)
+
+
+def test_relay_control_holds_mutation_until_operator_wait_returns(
+    custody_roots: dict[str, Path],
+) -> None:
+    runner = _import_runner()
+    settings = custody_roots["settings_path"]
+    original = settings.read_bytes()
+    manifest = custody_roots["capture_root"] / "private-run-manifest.json"
+    runner.atomic_write_json(
+        manifest,
+        {
+            "schema": "plan117-custody-private-run-manifest-v1",
+            "settings_mutation_approval": _approval(
+                settings_path=settings,
+                pre_image_sha256=_sha256_bytes(original),
+            ),
+            "relay": {"command": "python", "args": ["relay.py"]},
+        },
+    )
+    state_path = custody_roots["capture_root"] / "plan117-custody-state.json"
+    runner.init_phase_state(state_path)
+    runner.mark_phase_complete(state_path, "direct-control")
+    seen_mutated = {"value": False}
+
+    def observe(attempt_dir: Path) -> None:
+        current = json.loads(settings.read_text(encoding="utf-8"))
+        seen_mutated["value"] = current["agent_servers"]["optimus"]["command"] == "python"
+        assert attempt_dir.is_dir()
+
+    runner.run_relay_mediated_phase(
+        phase="relay-control",
+        capture_root=custody_roots["capture_root"],
+        state_path=state_path,
+        settings_path=settings,
+        custody_root=custody_roots["custody_root"],
+        private_run_manifest=manifest,
+        observe=observe,
+    )
+    assert seen_mutated["value"] is True
+    assert settings.read_bytes() == original
+
+
+def test_operator_continue_wait_accepts_sentinel_file(
+    custody_roots: dict[str, Path],
+) -> None:
+    runner = _import_runner()
+    attempt = custody_roots["capture_root"] / "attempts" / "wait-1"
+    attempt.mkdir(parents=True)
+    sentinel = attempt / "operator-continue.flag"
+
+    def create_soon() -> None:
+        import threading
+        import time
+
+        def _write() -> None:
+            time.sleep(0.2)
+            sentinel.write_text("", encoding="utf-8")
+
+        threading.Thread(target=_write, daemon=True).start()
+
+    create_soon()
+    runner._operator_continue_wait(attempt, "waiting", timeout_s=5.0, poll_s=0.05)
+
+
+def test_operator_continue_wait_times_out(custody_roots: dict[str, Path]) -> None:
+    runner = _import_runner()
+    attempt = custody_roots["capture_root"] / "attempts" / "wait-timeout"
+    attempt.mkdir(parents=True)
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner._operator_continue_wait(attempt, "waiting", timeout_s=0.15, poll_s=0.05)
+    assert exc.value.reason_code == "operator_wait_timeout"
+
+
+def test_direct_control_uses_custom_wait_fn(custody_roots: dict[str, Path]) -> None:
+    runner = _import_runner()
+    state_path = custody_roots["capture_root"] / "plan117-custody-state.json"
+    runner.init_phase_state(state_path)
+    called = {"n": 0}
+
+    def wait_fn(prompt: str) -> None:
+        called["n"] += 1
+        assert "direct-control" in prompt
+
+    runner.run_direct_control_phase(
+        capture_root=custody_roots["capture_root"],
+        state_path=state_path,
+        operator_wait=True,
+        wait_fn=wait_fn,
+    )
+    assert called["n"] == 1
+
+
 def test_compare_transcript_debug_key_mismatch(custody_roots: dict[str, Path]) -> None:
     runner = _import_runner()
     left = {
@@ -1612,3 +1753,751 @@ def test_compare_transcript_debug_key_mismatch(custody_roots: dict[str, Path]) -
             output_path=custody_roots["capture_root"] / "td-bad.json",
         )
     assert exc.value.reason_code == "invalid_probe_transcript_debug_divergence"
+
+
+def test_load_settings_json_accepts_jsonc_comments_and_trailing_commas(
+    custody_roots: dict[str, Path],
+) -> None:
+    runner = _import_runner()
+    settings = custody_roots["settings_path"]
+    settings.write_text(
+        "// Zed settings\n"
+        "{\n"
+        '  "theme": "one-dark",\n'
+        '  "agent_servers": {\n'
+        '    "optimus": {\n'
+        '      "type": "custom",\n'
+        '      "command": "optimus-agent",\n'
+        '      "args": ["--workspace-root", ".",],\n'
+        "    },\n"
+        "  },\n"
+        "}\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    payload = runner._load_settings_json(settings)
+    assert payload["theme"] == "one-dark"
+    assert payload["agent_servers"]["optimus"]["command"] == "optimus-agent"
+    assert payload["agent_servers"]["optimus"]["args"] == ["--workspace-root", "."]
+
+
+def test_settings_mutation_accepts_uppercase_approval_digest_on_jsonc(
+    custody_roots: dict[str, Path],
+) -> None:
+    runner = _import_runner()
+    settings = custody_roots["settings_path"]
+    settings.write_text(
+        "// header\n"
+        '{\n  "agent_servers": {"optimus": {"command": "optimus-agent", "args": ["a"],}},\n'
+        '  "keep": true,\n}\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    original = settings.read_bytes()
+    pre_upper = hashlib.sha256(original).hexdigest().upper()
+    proof = runner.mutate_settings_insert_relay(
+        settings_path=settings,
+        custody_root=custody_roots["custody_root"],
+        relay_command="python",
+        relay_args=["relay.py"],
+        approval=_approval(settings_path=settings, pre_image_sha256=pre_upper),
+    )
+    assert settings.read_bytes() != original
+    restored = runner.restore_settings(
+        settings_path=settings,
+        custody_root=custody_roots["custody_root"],
+        expected_mutated_sha256=proof["mutated_sha256"],
+    )
+    assert restored["restored"] is True
+    assert settings.read_bytes() == original
+
+
+def test_cli_accepts_positional_phase_matching_amendment(
+    custody_roots: dict[str, Path],
+) -> None:
+    runner = _import_runner()
+    common = [
+        "--workspace-root",
+        str(custody_roots["workspace_root"]),
+        "--capture-root",
+        str(custody_roots["capture_root"]),
+        "--zed-executable",
+        str(custody_roots["zed_executable"]),
+        "--zed-source",
+        str(custody_roots["zed_source"]),
+        "--settings-path",
+        str(custody_roots["settings_path"]),
+        "--debug-log",
+        str(custody_roots["debug_log"]),
+        "--custody-root",
+        str(custody_roots["custody_root"]),
+        "--no-operator-wait",
+    ]
+    assert runner.main(["direct-control", *common]) == 0
+    attempt = custody_roots["capture_root"] / "attempts" / "direct-control-1"
+    assert attempt.is_dir()
+    assert (attempt / "attempt-manifest.json").is_file()
+    assert (attempt / "phase-observation.json").is_file()
+
+
+def test_direct_and_relay_control_are_not_noop(
+    custody_roots: dict[str, Path],
+) -> None:
+    runner = _import_runner()
+    settings = custody_roots["settings_path"]
+    original = settings.read_bytes()
+    manifest = custody_roots["capture_root"] / "private-run-manifest.json"
+    runner.atomic_write_json(
+        manifest,
+        {
+            "schema": "plan117-custody-private-run-manifest-v1",
+            "settings_mutation_approval": _approval(
+                settings_path=settings,
+                pre_image_sha256=_sha256_bytes(original),
+                operator_identity="Vibhanshu Agarwal",
+                approved_at_utc="2026-08-02T12:17:15Z",
+            ),
+            "relay": {"command": "python", "args": ["relay.py", "--x"]},
+        },
+    )
+    common = [
+        "--workspace-root",
+        str(custody_roots["workspace_root"]),
+        "--capture-root",
+        str(custody_roots["capture_root"]),
+        "--zed-executable",
+        str(custody_roots["zed_executable"]),
+        "--zed-source",
+        str(custody_roots["zed_source"]),
+        "--settings-path",
+        str(settings),
+        "--debug-log",
+        str(custody_roots["debug_log"]),
+        "--custody-root",
+        str(custody_roots["custody_root"]),
+        "--private-run-manifest",
+        str(manifest),
+        "--no-operator-wait",
+    ]
+    assert runner.main(["direct-control", *common]) == 0
+    direct = custody_roots["capture_root"] / "attempts" / "direct-control-1"
+    assert (direct / "phase-observation.json").is_file()
+    direct_obs = json.loads((direct / "phase-observation.json").read_text(encoding="utf-8"))
+    assert direct_obs["settings_mutated"] is False
+
+    assert runner.main(["relay-control", *common]) == 0
+    relay = custody_roots["capture_root"] / "attempts" / "relay-control-1"
+    assert (relay / "phase-observation.json").is_file()
+    relay_obs = json.loads((relay / "phase-observation.json").read_text(encoding="utf-8"))
+    assert relay_obs["settings_mutated"] is True
+    assert settings.read_bytes() == original
+    tx = json.loads(
+        (custody_roots["custody_root"] / "settings-transaction.json").read_text(encoding="utf-8")
+    )
+    assert tx["restored"] is True
+    assert set(tx["changed_key_paths"]) == {
+        "agent_servers.optimus.command",
+        "agent_servers.optimus.args",
+    }
+
+
+def test_relay_control_requires_private_run_manifest(
+    custody_roots: dict[str, Path],
+) -> None:
+    runner = _import_runner()
+    # complete direct first
+    common = [
+        "--workspace-root",
+        str(custody_roots["workspace_root"]),
+        "--capture-root",
+        str(custody_roots["capture_root"]),
+        "--zed-executable",
+        str(custody_roots["zed_executable"]),
+        "--zed-source",
+        str(custody_roots["zed_source"]),
+        "--settings-path",
+        str(custody_roots["settings_path"]),
+        "--debug-log",
+        str(custody_roots["debug_log"]),
+        "--custody-root",
+        str(custody_roots["custody_root"]),
+        "--no-operator-wait",
+    ]
+    assert runner.main(["direct-control", *common]) == 0
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner.main(["relay-control", *common])
+    assert exc.value.reason_code == "private_run_manifest_required"
+
+
+def test_private_run_manifest_and_relay_config_error_paths(
+    custody_roots: dict[str, Path],
+    tmp_path: Path,
+) -> None:
+    runner = _import_runner()
+    missing = tmp_path / "nope.json"
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner.load_private_run_manifest(missing)
+    assert exc.value.reason_code == "private_run_manifest_missing"
+
+    bad = tmp_path / "bad.json"
+    bad.write_text("{", encoding="utf-8")
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner.load_private_run_manifest(bad)
+    assert exc.value.reason_code == "private_run_manifest_invalid"
+
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner._approval_from_manifest({})
+    assert exc.value.reason_code == "settings_mutation_approval_required"
+
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner._relay_from_manifest({})
+    assert exc.value.reason_code == "relay_config_missing"
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner._relay_from_manifest({"relay": {"command": "", "args": []}})
+    assert exc.value.reason_code == "relay_config_missing"
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner._relay_from_manifest({"relay": {"command": "x", "args": [1]}})
+    assert exc.value.reason_code == "relay_config_missing"
+
+
+def test_parse_jsonc_rejects_still_invalid_payload() -> None:
+    runner = _import_runner()
+    with pytest.raises(json.JSONDecodeError):
+        runner.parse_jsonc("// only comment\nnot-json")
+
+
+# --- JSONC string-aware trailing-comma safety (Plan 11.7 Task 2) --------------
+
+
+def test_parse_jsonc_commented_fallback_preserves_comma_bracket_inside_strings() -> None:
+    """Realistic Zed settings regression: commented JSONC must not corrupt string values.
+
+    Pre-fix trailing-comma pass silently turns ``\"a, ]\"`` into ``\"a ]\"``.
+    """
+    runner = _import_runner()
+    text = (
+        "// Zed settings\n"
+        "{\n"
+        '  "label": "a, ]",\n'
+        '  "pair": "b,}",\n'
+        '  "agent_servers": {"optimus": {"command": "x", "args": [],}},\n'
+        "}\n"
+    )
+    stripped = runner._strip_jsonc(text)
+    assert '"a, ]"' in stripped, (
+        f"silent corruption: expected '\"a, ]\"' preserved, got {stripped!r}"
+    )
+    assert '"b,}"' in stripped, (
+        f"silent corruption: expected '\"b,}}\"' preserved, got {stripped!r}"
+    )
+    payload = runner.parse_jsonc(text)
+    assert payload["label"] == "a, ]"
+    assert payload["pair"] == "b,}"
+    assert payload["agent_servers"]["optimus"]["command"] == "x"
+    assert payload["agent_servers"]["optimus"]["args"] == []
+
+
+def test_parse_jsonc_preserves_escaped_quotes_and_backslashes() -> None:
+    runner = _import_runner()
+    text = (
+        "// comment\n"
+        "{\n"
+        r'  "q": "say \"hi\", ]",' + "\n"
+        r'  "bs": "path\\to\\file,}",' + "\n"
+        '  "ok": true,' + "\n"
+        "}\n"
+    )
+    payload = runner.parse_jsonc(text)
+    assert payload["q"] == 'say "hi", ]'
+    assert payload["bs"] == r"path\to\file,}"
+    assert payload["ok"] is True
+
+
+def test_parse_jsonc_preserves_line_and_block_comment_markers_inside_strings() -> None:
+    runner = _import_runner()
+    text = (
+        "/* file header */\n"
+        "{\n"
+        '  "url": "https://example.com/path",\n'
+        '  "hint": "use // for line comments",\n'
+        '  "block": "not a /* real */ comment, ]",\n'
+        '  "trail": 1,' + "\n"
+        "}\n"
+    )
+    payload = runner.parse_jsonc(text)
+    assert payload["url"] == "https://example.com/path"
+    assert payload["hint"] == "use // for line comments"
+    assert payload["block"] == "not a /* real */ comment, ]"
+    assert payload["trail"] == 1
+
+
+def test_parse_jsonc_strips_real_trailing_commas_outside_strings() -> None:
+    runner = _import_runner()
+    text = (
+        "// keep comments\n"
+        "{\n"
+        '  "arr": [1, 2, 3,],\n'
+        '  "obj": {"a": 1, "b": 2,},\n'
+        '  "nested": [{"x": "y",},],\n'
+        "}\n"
+    )
+    payload = runner.parse_jsonc(text)
+    assert payload == {
+        "arr": [1, 2, 3],
+        "obj": {"a": 1, "b": 2},
+        "nested": [{"x": "y"}],
+    }
+
+
+def test_parse_jsonc_comment_free_strict_json_bypasses_stripper() -> None:
+    runner = _import_runner()
+    # Valid strict JSON: must take the json.loads fast path (never need _strip_jsonc).
+    text = '{\n  "label": "a, ]",\n  "pair": "b,}"\n}\n'
+    payload = runner.parse_jsonc(text)
+    assert payload["label"] == "a, ]"
+    assert payload["pair"] == "b,}"
+    # And the stripper must also preserve these when invoked directly.
+    stripped = runner._strip_jsonc(text)
+    assert '"a, ]"' in stripped
+    assert '"b,}"' in stripped
+
+
+def test_parse_jsonc_malformed_jsonc_fails_closed() -> None:
+    runner = _import_runner()
+    with pytest.raises(json.JSONDecodeError):
+        runner.parse_jsonc("// header\n{not-json,}")
+    with pytest.raises(json.JSONDecodeError):
+        runner.parse_jsonc('{"unclosed": "string')
+    with pytest.raises(json.JSONDecodeError):
+        runner.parse_jsonc("/* only a block comment */")
+
+
+def test_parse_jsonc_round_trip_semantic_values_exact() -> None:
+    runner = _import_runner()
+    text = (
+        "// settings\n"
+        "{\n"
+        '  "theme": "one-dark",\n'
+        '  "nums": [0, -1, 2.5,],\n'
+        '  "flags": {"on": true, "off": false, "empty": null,},\n'
+        '  "weird": "a, ] and b,} with // and /* markers",\n'
+        "}\n"
+    )
+    payload = runner.parse_jsonc(text)
+    assert payload["theme"] == "one-dark"
+    assert payload["nums"] == [0, -1, 2.5]
+    assert payload["flags"] == {"on": True, "off": False, "empty": None}
+    assert payload["weird"] == "a, ] and b,} with // and /* markers"
+    # Round-trip through json.dumps/json.loads must preserve semantics.
+    assert json.loads(json.dumps(payload)) == payload
+
+
+def test_settings_preimage_restored_after_mutation_window_failure_with_hostile_jsonc(
+    custody_roots: dict[str, Path],
+) -> None:
+    """Hostile JSONC string values must not prevent exact pre-image restoration."""
+    runner = _import_runner()
+    settings = custody_roots["settings_path"]
+    original_text = (
+        "// Zed settings\n"
+        "{\n"
+        '  "theme": "one-dark",\n'
+        '  "label": "a, ]",\n'
+        '  "agent_servers": {\n'
+        '    "optimus": {\n'
+        '      "command": "optimus-agent",\n'
+        '      "args": ["--workspace-root", ".",],\n'
+        '      "env": {"KEEP": "me"},\n'
+        "    },\n"
+        "  },\n"
+        '  "unrelated": {"nested": true},\n'
+        "}\n"
+    )
+    settings.write_text(original_text, encoding="utf-8", newline="\n")
+    original = settings.read_bytes()
+    pre = _sha256_bytes(original)
+    approval = _approval(settings_path=settings, pre_image_sha256=pre)
+
+    # In-window parse must preserve the hostile string (not silently corrupt it).
+    loaded = runner._load_settings_json(settings)
+    assert loaded["label"] == "a, ]"
+
+    def boom() -> None:
+        raise RuntimeError("mutation-window failure")
+
+    with pytest.raises(RuntimeError, match="mutation-window failure"):
+        runner.run_with_settings_transaction(
+            settings_path=settings,
+            custody_root=custody_roots["custody_root"],
+            relay_command="python",
+            relay_args=["relay.py"],
+            approval=approval,
+            agent_server_name="optimus",
+            body=boom,
+        )
+    assert settings.read_bytes() == original
+    assert _sha256_bytes(settings.read_bytes()) == pre
+
+
+# --- Origin-A fixture v2: exact origin-a-3 allocation + prompt-only retry ------
+
+AMENDMENT_SHA256 = "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D"
+PROMPT_V2 = ROOT / "tests" / "fixtures" / "evidence" / "plan117-server-custody-prompt-v2.txt"
+PROMPT_V2_SHA256 = "9195EFEEE3A2180CFB85EDE409FF7785F159F64E36426DCDB369251560E28A50"
+PYPROJECT_SHA256 = "AE28C0C3776F6B78DF23E86FC0E88B0088FEBB7241A04650C604D713E23EF697"
+_PARENT_A1 = "7d64d5943002b15dcd977b0bc7614fc4234f9dd6d823c1533da6a0677f9ff446"
+_PARENT_A2 = "083e0953c8d89781c8c3100545bfc2e4524e94cbbaae7b32574da4d88f597f63"
+
+
+def _runner_stage_api(runner: Any) -> Any:
+    required = (
+        "reserve_origin_a_run",
+        "assert_origin_a3_preflight",
+        "assert_prompt_retry_preflight",
+        "write_stage_outcome_exclusive",
+        "verify_original_attempt_hashes",
+        "PROMPT_FIXTURE_V2_SHA256",
+        "PYPROJECT_TARGET_SHA256",
+    )
+    missing = [name for name in required if not hasattr(runner, name)]
+    if missing:
+        pytest.fail(f"missing origin-a fixture-v2 runner API: {missing}")
+    return runner
+
+
+def _fixed_ledger_records():
+    from tools.plan117_custody_contract import (
+        EvidenceReference,
+        FailureClass,
+        StageAttemptRecord,
+        StageKind,
+        StageStatus,
+    )
+
+    def ev(path: str, digest: str) -> EvidenceReference:
+        return EvidenceReference(path, digest, "raw_file_sha256")
+
+    return (
+        StageAttemptRecord(
+            record_id="origin-a-1-correlation",
+            run_attempt_id="origin-a-1",
+            stage=StageKind.CORRELATION_CAPTURE,
+            ordinal=1,
+            status=StageStatus.FAILED,
+            failure_class=FailureClass.PERMANENT,
+            reason_code="invalid_probe_relay_capture_tooling_failure",
+            evidence=(ev("attempts/origin-a-1/attempt-manifest.json", _PARENT_A1),),
+            supersedes_record_id="origin-a-1-original-manifest",
+            supersedes_sha256=_PARENT_A1,
+            amendment_sha256=AMENDMENT_SHA256.lower(),
+            created_by="plan117-task1",
+            created_utc="2026-08-02T16:00:00Z",
+        ),
+        StageAttemptRecord(
+            record_id="origin-a-2-correlation",
+            run_attempt_id="origin-a-2",
+            stage=StageKind.CORRELATION_CAPTURE,
+            ordinal=2,
+            status=StageStatus.SUCCEEDED,
+            failure_class=FailureClass.NONE,
+            reason_code=None,
+            evidence=(ev("attempts/origin-a-2/attempt-manifest.json", _PARENT_A2),),
+            supersedes_record_id="origin-a-2-original-manifest",
+            supersedes_sha256=_PARENT_A2,
+            amendment_sha256=AMENDMENT_SHA256.lower(),
+            created_by="plan117-task1",
+            created_utc="2026-08-02T16:00:00Z",
+        ),
+        StageAttemptRecord(
+            record_id="origin-a-2-prompt",
+            run_attempt_id="origin-a-2",
+            stage=StageKind.POST_NEW_PROMPT,
+            ordinal=1,
+            status=StageStatus.FAILED,
+            failure_class=FailureClass.PERMANENT,
+            reason_code="AMBIGUOUS_WORKSPACE_REFERENCE",
+            evidence=(ev("attempts/origin-a-2/phase-observation.json", "d" * 64),),
+            supersedes_record_id="origin-a-2-original-prompt",
+            supersedes_sha256="d" * 64,
+            amendment_sha256=AMENDMENT_SHA256.lower(),
+            created_by="plan117-task1",
+            created_utc="2026-08-02T16:00:00Z",
+        ),
+    )
+
+
+def test_origin_a3_reservation_before_launch_is_exclusive(custody_roots: dict[str, Path]) -> None:
+    runner = _runner_stage_api(_import_runner())
+    from tools.plan117_custody_contract import normalize_stage_ledger
+
+    ledger = normalize_stage_ledger(_fixed_ledger_records())
+    reservation_root = custody_roots["capture_root"] / "reservations"
+    path = runner.reserve_origin_a_run(
+        reservation_root=reservation_root,
+        run_attempt_id="origin-a-3",
+        ledger=ledger,
+    )
+    assert path.is_file()
+    assert b"\r\n" not in path.read_bytes()
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner.reserve_origin_a_run(
+            reservation_root=reservation_root,
+            run_attempt_id="origin-a-3",
+            ledger=ledger,
+        )
+    assert exc.value.reason_code in {
+        "reservation_already_exists",
+        "invalid_probe_stage_accounting",
+        "invalid_probe_retry_budget_exhausted",
+    }
+
+
+def test_origin_a3_requires_exact_expected_run_attempt_id(custody_roots: dict[str, Path]) -> None:
+    runner = _runner_stage_api(_import_runner())
+    from tools.plan117_custody_contract import normalize_stage_ledger
+
+    ledger = normalize_stage_ledger(_fixed_ledger_records())
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner.assert_origin_a3_preflight(
+            expected_run_attempt_id="origin-a-4",
+            ledger=ledger,
+            prompt_fixture=PROMPT_V2,
+            workspace_root=ROOT,
+            reservation_path=custody_roots["capture_root"] / "reservations" / "origin-a-3.json",
+        )
+    assert exc.value.reason_code in {
+        "invalid_probe_stage_accounting",
+        "invalid_probe_retry_budget_exhausted",
+        "invalid_probe_fixture_identity_mismatch",
+    }
+
+    # Exact origin-a-3 + fixture/target digests accepted before reservation exists.
+    runner.assert_origin_a3_preflight(
+        expected_run_attempt_id="origin-a-3",
+        ledger=ledger,
+        prompt_fixture=PROMPT_V2,
+        workspace_root=ROOT,
+        reservation_path=custody_roots["capture_root"] / "reservations" / "origin-a-3.json",
+    )
+
+
+def test_origin_a3_refuses_reuse_when_reservation_or_attempt_exists(
+    custody_roots: dict[str, Path],
+) -> None:
+    runner = _runner_stage_api(_import_runner())
+    from tools.plan117_custody_contract import normalize_stage_ledger
+
+    ledger = normalize_stage_ledger(_fixed_ledger_records())
+    reservation_root = custody_roots["capture_root"] / "reservations"
+    runner.reserve_origin_a_run(
+        reservation_root=reservation_root,
+        run_attempt_id="origin-a-3",
+        ledger=ledger,
+    )
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner.assert_origin_a3_preflight(
+            expected_run_attempt_id="origin-a-3",
+            ledger=ledger,
+            prompt_fixture=PROMPT_V2,
+            workspace_root=ROOT,
+            reservation_path=reservation_root / "origin-a-3.json",
+        )
+    assert exc.value.reason_code in {
+        "reservation_already_exists",
+        "invalid_probe_stage_accounting",
+    }
+
+
+def test_prompt_retry_requires_live_session_proof_and_skips_settings_launch(
+    custody_roots: dict[str, Path],
+) -> None:
+    runner = _runner_stage_api(_import_runner())
+    from tools.plan117_custody_contract import (
+        EvidenceReference,
+        FailureClass,
+        StageAttemptRecord,
+        StageKind,
+        StageStatus,
+        normalize_stage_ledger,
+    )
+
+    records = list(_fixed_ledger_records())
+    records.append(
+        StageAttemptRecord(
+            record_id="origin-a-3-correlation",
+            run_attempt_id="origin-a-3",
+            stage=StageKind.CORRELATION_CAPTURE,
+            ordinal=3,
+            status=StageStatus.SUCCEEDED,
+            failure_class=FailureClass.NONE,
+            reason_code=None,
+            evidence=(EvidenceReference("attempts/origin-a-3/manifest.json", "a" * 64, "raw_file_sha256"),),
+            supersedes_record_id=None,
+            supersedes_sha256=None,
+            amendment_sha256=AMENDMENT_SHA256.lower(),
+            created_by="plan117-task1",
+            created_utc="2026-08-02T16:00:00Z",
+        )
+    )
+    records.append(
+        StageAttemptRecord(
+            record_id="origin-a-3-prompt-2",
+            run_attempt_id="origin-a-3",
+            stage=StageKind.POST_NEW_PROMPT,
+            ordinal=2,
+            status=StageStatus.FAILED,
+            failure_class=FailureClass.TRANSIENT,
+            reason_code="gateway_timeout",
+            evidence=(EvidenceReference("attempts/origin-a-3/prompt.json", "b" * 64, "raw_file_sha256"),),
+            supersedes_record_id=None,
+            supersedes_sha256=None,
+            amendment_sha256=AMENDMENT_SHA256.lower(),
+            created_by="plan117-task1",
+            created_utc="2026-08-02T16:00:00Z",
+        )
+    )
+    ledger = normalize_stage_ledger(records)
+
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner.assert_prompt_retry_preflight(
+            run_attempt_id="origin-a-3",
+            ledger=ledger,
+            prompt_fixture=PROMPT_V2,
+            live_session_proof=None,
+        )
+    assert exc.value.reason_code == "blocked_probe_same_session_prompt_retry_unavailable"
+
+    proof = {
+        "zed_pid": 4242,
+        "acp_session_id": "sess-origin-a-3",
+        "connection_id": "conn-1",
+        "alive": True,
+    }
+    runner.assert_prompt_retry_preflight(
+        run_attempt_id="origin-a-3",
+        ledger=ledger,
+        prompt_fixture=PROMPT_V2,
+        live_session_proof=proof,
+    )
+    # Prompt-only retry must not mutate settings or allocate a new attempt launch dir.
+    assert not (custody_roots["settings_path"].parent / "mutated.marker").exists()
+    assert not (custody_roots["capture_root"] / "attempts" / "origin-a-4").exists()
+
+
+def test_stage_outcome_exclusive_write_and_originals_untouched(
+    custody_roots: dict[str, Path], tmp_path: Path
+) -> None:
+    runner = _runner_stage_api(_import_runner())
+    from tools.plan117_custody_contract import (
+        EvidenceReference,
+        FailureClass,
+        StageAttemptRecord,
+        StageKind,
+        StageStatus,
+    )
+
+    original_dir = tmp_path / "attempts" / "origin-a-1"
+    original_dir.mkdir(parents=True)
+    original = original_dir / "attempt-manifest.json"
+    original.write_bytes(b'{"immutable":true}\n')
+    before = original.read_bytes()
+
+    expected_hashes = {
+        "attempts/origin-a-1/attempt-manifest.json": _sha256_bytes(before),
+    }
+    runner.verify_original_attempt_hashes(
+        originals_root=tmp_path,
+        expected_relative_sha256=expected_hashes,
+    )
+
+    # Tamper detection.
+    original.write_bytes(b'{"immutable":false}\n')
+    with pytest.raises(runner.CustodyRunnerError) as tamper:
+        runner.verify_original_attempt_hashes(
+            originals_root=tmp_path,
+            expected_relative_sha256=expected_hashes,
+        )
+    assert tamper.value.reason_code == "invalid_probe_origin_attempt_original_mismatch"
+    original.write_bytes(before)
+
+    outcome_path = custody_roots["capture_root"] / "stages" / "origin-a-3-correlation.json"
+    record = StageAttemptRecord(
+        record_id="origin-a-3-correlation",
+        run_attempt_id="origin-a-3",
+        stage=StageKind.CORRELATION_CAPTURE,
+        ordinal=3,
+        status=StageStatus.SUCCEEDED,
+        failure_class=FailureClass.NONE,
+        reason_code=None,
+        evidence=(EvidenceReference("attempts/origin-a-3/x.json", "c" * 64, "raw_file_sha256"),),
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+        amendment_sha256=AMENDMENT_SHA256.lower(),
+        created_by="plan117-task1",
+        created_utc="2026-08-02T16:00:00Z",
+    )
+    runner.write_stage_outcome_exclusive(outcome_path, record)
+    with pytest.raises(runner.CustodyRunnerError):
+        runner.write_stage_outcome_exclusive(outcome_path, record)
+    assert original.read_bytes() == before
+
+
+def test_cli_accepts_origin_a3_and_prompt_retry_boundaries() -> None:
+    runner = _runner_stage_api(_import_runner())
+    assert "origin-a-prompt-retry" in runner.PHASES
+    parser = runner._build_parser()
+    args = parser.parse_args(
+        [
+            "origin-a",
+            "--expected-run-attempt-id",
+            "origin-a-3",
+            "--prompt-fixture",
+            str(PROMPT_V2),
+            "--workspace-root",
+            str(ROOT),
+            "--capture-root",
+            str(ROOT / "reports"),
+            "--zed-executable",
+            str(ROOT / "README.md"),
+            "--zed-source",
+            str(ROOT),
+            "--settings-path",
+            str(ROOT / "README.md"),
+            "--debug-log",
+            str(ROOT / "README.md"),
+        ]
+    )
+    assert args.expected_run_attempt_id == "origin-a-3"
+    assert Path(args.prompt_fixture) == PROMPT_V2
+
+    retry = parser.parse_args(
+        [
+            "origin-a-prompt-retry",
+            "--run-attempt-id",
+            "origin-a-3",
+            "--prompt-fixture",
+            str(PROMPT_V2),
+            "--workspace-root",
+            str(ROOT),
+            "--capture-root",
+            str(ROOT / "reports"),
+            "--zed-executable",
+            str(ROOT / "README.md"),
+            "--zed-source",
+            str(ROOT),
+            "--settings-path",
+            str(ROOT / "README.md"),
+            "--debug-log",
+            str(ROOT / "README.md"),
+        ]
+    )
+    assert retry.phase == "origin-a-prompt-retry"
+    assert retry.run_attempt_id == "origin-a-3"
+
+
+def test_fixture_v2_and_pyproject_digest_constants() -> None:
+    runner = _runner_stage_api(_import_runner())
+    assert runner.PROMPT_FIXTURE_V2_SHA256.upper() == PROMPT_V2_SHA256
+    assert runner.PYPROJECT_TARGET_SHA256.upper() == PYPROJECT_SHA256
+    assert _sha256_bytes(PROMPT_V2.read_bytes()).upper() == PROMPT_V2_SHA256
+    assert _sha256_bytes((ROOT / "pyproject.toml").read_bytes()).upper() == PYPROJECT_SHA256
