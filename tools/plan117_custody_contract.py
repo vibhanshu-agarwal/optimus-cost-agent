@@ -17,6 +17,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 SCHEMA_ARTIFACT_MANIFEST = "plan117-custody-artifact-manifest-v1"
 SCHEMA_VERIFIER_SUMMARY = "plan117-custody-verifier-summary-v1"
+SCHEMA_CUSTODY_STATE = "plan117-custody-state-v1"
+SCHEMA_SETTINGS_TRANSACTION = "plan117-custody-settings-transaction-v1"
+SCHEMA_APPROVAL_EQUIVALENCE = "plan117-custody-approval-equivalence-v1"
+SCHEMA_PROCESS_RECORD = "plan117-custody-process-record-v1"
+SCHEMA_TRANSCRIPT_PROJECTION = "plan117-custody-transcript-projection-v1"
+SCHEMA_ATTEMPT_MANIFEST = "plan117-custody-attempt-manifest-v1"
 MAX_ATTEMPTS_PER_KIND = 3
 HASH_CHUNK_SIZE = 1 << 20  # 1 MiB
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -318,6 +324,30 @@ class ArtifactManifestModel(_StrictModel):
     document_audit_present: bool | None = None
     valid_session_new_captured: bool | None = None
     reason_codes: list[str] = Field(default_factory=list)
+
+
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Write raw bytes via temp sibling + os.replace + fsync."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f"{path.name}.partial-{uuid.uuid4().hex}")
+    try:
+        with open(temporary, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        try:
+            dir_fd = os.open(path.parent, os.O_RDONLY)
+        except OSError:
+            return
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError:
+        if temporary.exists():
+            temporary.unlink(missing_ok=True)
+        raise ValueError("atomic_write_failed") from None
 
 
 def atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:

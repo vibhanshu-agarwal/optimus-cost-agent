@@ -1121,6 +1121,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.evidence_gather:_handle_classify:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_classify:json_serialization emits a schema-limited classify-result document (run_id, provisional outcome, reason codes, claim kinds, and raw-bundle digest) plus a content-free stdout summary; artifact bodies and credentials are omitted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_classify_handler_is_registered_not_stage_unavailable",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_classify:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_classify:stdout_export prints only run_id and provisional outcome and does not retain artifact bodies or credentials.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_classify_handler_is_registered_not_stage_unavailable",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.evidence_gather:_handle_collect:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: tools.evidence_gather:_handle_collect:file_open opens only the run-scoped NDJSON suffix bytes under an explicit capture-root relative locator after offset capture; it does not retain ambient diagnostics.",
@@ -1142,22 +1158,6 @@
       "rationale": "Inspection: tools.evidence_gather:_handle_collect:stdout_export prints only the content-free collect summary JSON and does not retain prompts, transcripts, or credentials.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_evidence_gather.py::test_collect_handler_is_registered_not_stage_unavailable",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.evidence_gather:_handle_classify:json_serialization",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: tools.evidence_gather:_handle_classify:json_serialization emits a schema-limited classify-result document (run_id, provisional outcome, reason codes, claim kinds, and raw-bundle digest) plus a content-free stdout summary; artifact bodies and credentials are omitted.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_evidence_gather.py::test_classify_handler_is_registered_not_stage_unavailable",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.evidence_gather:_handle_classify:stdout_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: tools.evidence_gather:_handle_classify:stdout_export prints only run_id and provisional outcome and does not retain artifact bodies or credentials.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_evidence_gather.py::test_classify_handler_is_registered_not_stage_unavailable",
       "evidence_tier": "unit"
     },
     {
@@ -1225,14 +1225,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.evidence_gather_support.fixtures:prepare_fixtures:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: tools.evidence_gather_support.fixtures:prepare_fixtures:exception_export wraps ValueError from _read_complete_json via HostError(str(exc)) where exc is already a fixed reason code (invalid_json/partial_stage); it does not export raw JSON diagnostics.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_evidence_gather.py::test_truncated_fixture_marker_fails_prepare_with_stable_code",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "tools.evidence_gather_support.acp:_pump_stream:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: tools.evidence_gather_support.acp:_pump_stream:file_open opens only an explicit private capture-root path to drain child stdio while waiting; drained bytes are not logged or exported as transcripts by this helper.",
@@ -1246,6 +1238,14 @@
       "rationale": "Inspection: tools.evidence_gather_support.acp:_pump_stream:text_write writes only drained child stdio into an operator-supplied private capture path to prevent pipe-buffer deadlock; it does not retain or export diagnostic content beyond that private file.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_evidence_gather.py::test_spawn_acpx_drains_pipes_instead_of_deadlocking",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.fixtures:prepare_fixtures:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather_support.fixtures:prepare_fixtures:exception_export wraps ValueError from _read_complete_json via HostError(str(exc)) where exc is already a fixed reason code (invalid_json/partial_stage); it does not export raw JSON diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather.py::test_truncated_fixture_marker_fails_prepare_with_stable_code",
       "evidence_tier": "unit"
     },
     {
@@ -1270,6 +1270,22 @@
       "rationale": "Inspection: _parse_manifest uses exception text only to choose among fixed reason codes (invalid_manifest_schema / sha256_not_lowercase) and never persists or exports raw exception bodies.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan117_custody_contract.py::test_artifact_manifest_rejects_unknown_fields_and_wrong_schema",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_contract:atomic_write_bytes:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens a sibling temporary binary stage file only to publish private custody pre-image bytes via atomic replace; no diagnostic body retention.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_contract.py::test_atomic_write_bytes_and_task3_schema_constants",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_contract:atomic_write_bytes:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only raw custody pre-image bytes to a temporary sibling before os.replace; content stays in private custody and is never logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_contract.py::test_atomic_write_bytes_and_task3_schema_constants",
       "evidence_tier": "unit"
     },
     {
@@ -1323,7 +1339,7 @@
     {
       "key": "tools.plan117_custody_relay:_LockedRecorder.record_chunk:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: serializes only schema-limited index fields (sequence, direction, offsets, size, sha256) — never ACP message bodies — into NDJSON index lines.",
+      "rationale": "Inspection: serializes only schema-limited index fields (sequence, direction, offsets, size, sha256) \u2014 never ACP message bodies \u2014 into NDJSON index lines.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_all_byte_values_round_trip",
       "evidence_tier": "unit"
@@ -1494,6 +1510,78 @@
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at tools.run_plan115_acpx_cost_obs_evidence:write_e7_report:text_file_write before this persistence or export boundary; sanitizer failure has no raw fallback. The report body receives only StreamingTextSanitizer output for stdout/stderr plus schema-limited summary fields.",
       "sanitizer": "optimus_security.sanitization.StreamingTextSanitizer",
       "test_node": "tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py::test_write_e7_report_persists_sanitized_transcript_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan117_custody_feasibility:_atomic_replace_settings:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens a sibling temporary file only to atomically replace the explicit Zed settings path during an approved mutation/restore transaction.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_settings_preimage_allowlist_atomic_replace_and_restore_success",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan117_custody_feasibility:_atomic_replace_settings:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes mutated or exact pre-image settings bytes to a temporary sibling before os.replace; restore always returns exact pre-image bytes.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_settings_preimage_allowlist_atomic_replace_and_restore_success",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan117_custody_feasibility:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: finalize prints only a schema-limited phase/ok JSON status object with no secret or raw transcript content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_main_phases_and_finalize_gate",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan117_custody_feasibility:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints only a fixed finalize argument-gate message to stderr before SystemExit; no secret values.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_cli_phases_accepted",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan117_custody_feasibility:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: finalize stdout is limited to a controlled phase status JSON object; content-bearing phases delegate to operator-instruction printers.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_main_phases_and_finalize_gate",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan117_custody_feasibility:mutate_settings_insert_relay:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes only the allowlisted agent_servers command/args mutation of an already-loaded settings object before atomic replace; unrelated keys are preserved for later exact byte restore.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_settings_preimage_allowlist_atomic_replace_and_restore_success",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan117_custody_feasibility:print_fresh_control_c_instructions:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints only the fixed fresh-thread control operator instruction; no ACP bytes or secret values.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_operator_instructions_print_exact_prompt_and_labels",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan117_custody_feasibility:print_origin_a_instructions:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints only the pinned prompt fixture text and its SHA-256 for operator submission; runner never sends the prompt itself.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_operator_instructions_print_exact_prompt_and_labels",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan117_custody_feasibility:print_restart_b_instructions:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints only prior-thread affordance instructions and the required operator label choices; no UI automation or input injection.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_operator_instructions_print_exact_prompt_and_labels",
       "evidence_tier": "unit"
     },
     {
@@ -1905,6 +1993,30 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.verify_plan117_custody_feasibility:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main serializes only schema, disposition, safe reason codes, artifact count, or field_path/reason_code failure envelopes; never raw secret values.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan117_custody_feasibility.py::test_main_module_entry_covers_success_and_failure",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan117_custody_feasibility:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: on failure prints only a canonical JSON object with field_path and safe reason_code to stderr; no raw secret values.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan117_custody_feasibility.py::test_main_module_entry_covers_success_and_failure",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan117_custody_feasibility:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: on success prints only the canonical verifier summary (schema, disposition, reason_codes, verified_artifact_count) to stdout.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan117_custody_feasibility.py::test_main_module_entry_covers_success_and_failure",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.verify_plan987_acpx_evidence:ledger_digest:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: ledger_digest canonicalizes supplied ledger records only to calculate a SHA-256 evidence digest; it does not persist or export the record content.",
@@ -1934,30 +2046,6 @@
       "rationale": "Inspection: tools.verify_plan987_acpx_evidence:main:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_verify_plan987_acpx_evidence.py::test_post_capture_verifier_is_directly_executable",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.verify_plan117_custody_feasibility:main:json_serialization",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: main serializes only schema, disposition, safe reason codes, artifact count, or field_path/reason_code failure envelopes; never raw secret values.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_verify_plan117_custody_feasibility.py::test_main_module_entry_covers_success_and_failure",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.verify_plan117_custody_feasibility:main:stderr_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: on failure prints only a canonical JSON object with field_path and safe reason_code to stderr; no raw secret values.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_verify_plan117_custody_feasibility.py::test_main_module_entry_covers_success_and_failure",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.verify_plan117_custody_feasibility:main:stdout_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: on success prints only the canonical verifier summary (schema, disposition, reason_codes, verified_artifact_count) to stdout.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_verify_plan117_custody_feasibility.py::test_main_module_entry_covers_success_and_failure",
       "evidence_tier": "unit"
     },
     {

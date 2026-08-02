@@ -581,3 +581,25 @@ def test_atomic_write_json_failure_cleans_temp(tmp_path: Path, monkeypatch: pyte
     with pytest.raises(ValueError, match="atomic_write_failed"):
         atomic_write_json(path, {"ok": True})
 
+
+def test_atomic_write_bytes_and_task3_schema_constants(tmp_path: Path) -> None:
+    from tools.plan117_custody_contract import (
+        SCHEMA_APPROVAL_EQUIVALENCE,
+        SCHEMA_ATTEMPT_MANIFEST,
+        SCHEMA_CUSTODY_STATE,
+        SCHEMA_PROCESS_RECORD,
+        SCHEMA_SETTINGS_TRANSACTION,
+        SCHEMA_TRANSCRIPT_PROJECTION,
+        atomic_write_bytes,
+    )
+
+    path = tmp_path / "preimage.bin"
+    atomic_write_bytes(path, b"\x00\xffsettings-preimage")
+    assert path.read_bytes() == b"\x00\xffsettings-preimage"
+    assert SCHEMA_CUSTODY_STATE == "plan117-custody-state-v1"
+    assert SCHEMA_SETTINGS_TRANSACTION == "plan117-custody-settings-transaction-v1"
+    assert SCHEMA_APPROVAL_EQUIVALENCE == "plan117-custody-approval-equivalence-v1"
+    assert SCHEMA_PROCESS_RECORD == "plan117-custody-process-record-v1"
+    assert SCHEMA_TRANSCRIPT_PROJECTION == "plan117-custody-transcript-projection-v1"
+    assert SCHEMA_ATTEMPT_MANIFEST == "plan117-custody-attempt-manifest-v1"
+

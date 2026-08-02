@@ -1027,3 +1027,58 @@ def _strip_eof_records(run_dir: Path) -> None:
     payload["zed_to_agent_eof"] = False
     payload["agent_to_zed_eof"] = False
     atomic_write_json(summary_path, payload)
+
+
+def test_verify_settings_transaction_and_approval_equivalence(tmp_path: Path) -> None:
+    settings_ok = {
+        "schema": "plan117-custody-settings-transaction-v1",
+        "settings_path": str(tmp_path / "settings.json"),
+        "pre_image_existed": True,
+        "pre_image_sha256": "a" * 64,
+        "mutated_sha256": "b" * 64,
+        "changed_key_paths": ["agent_servers.optimus.command"],
+        "restored": True,
+        "final_existed": True,
+        "final_sha256": "a" * 64,
+    }
+    settings_path = tmp_path / "settings-transaction.json"
+    atomic_write_json(settings_path, settings_ok)
+    assert verifier_mod.verify_settings_transaction_proof(settings_path)["restored"] is True
+
+    bad = dict(settings_ok, restored=False)
+    bad_path = tmp_path / "settings-bad.json"
+    atomic_write_json(bad_path, bad)
+    with pytest.raises(CustodyContractError) as exc:
+        verifier_mod.verify_settings_transaction_proof(bad_path)
+    assert exc.value.reason_code == "settings_not_restored"
+
+    eq = {
+        "schema": "plan117-custody-approval-equivalence-v1",
+        "equivalent": True,
+        "compared_fields": ["approval_id"],
+        "final_reason_code": "AUTHORIZED",
+        "record_hmac_verified": True,
+    }
+    eq_path = tmp_path / "approval-equivalence.json"
+    atomic_write_json(eq_path, eq)
+    assert verifier_mod.verify_approval_equivalence(eq_path)["equivalent"] is True
+
+    eq_bad = dict(eq, equivalent=False)
+    eq_bad_path = tmp_path / "approval-bad.json"
+    atomic_write_json(eq_bad_path, eq_bad)
+    with pytest.raises(CustodyContractError) as exc2:
+        verifier_mod.verify_approval_equivalence(eq_bad_path)
+    assert exc2.value.reason_code == "invalid_probe_relay_environment_mismatch"
+
+
+def test_verify_transcript_debug_agreement_helper() -> None:
+    left = {
+        "messages": [{"method": "initialize", "id": 1}],
+        "ordered_update_types": [],
+        "server_session_id": "s",
+        "interval": {"start_ns": 1, "end_ns": 2},
+    }
+    verifier_mod.verify_transcript_debug_agreement(left, left)
+    with pytest.raises(CustodyContractError) as exc:
+        verifier_mod.verify_transcript_debug_agreement(left, dict(left, server_session_id="x"))
+    assert exc.value.reason_code == "invalid_probe_transcript_debug_divergence"
