@@ -142,13 +142,13 @@
       "hash_method": "raw_file_sha256",
       "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/stage-ledger.json",
       "role": "origin_a_fixture_v2_stage_ledger",
-      "sha256": "7dc02cec1b60239b767c5cba9e7c31b41c03c14b915191794be3393b248c6aa3"
+      "sha256": "d470d1a974485f014c23d5c21c00777140de9f08f4a0a86ebc5a1616a82c34bb"
     },
     {
       "hash_method": "raw_file_sha256",
       "locator": "reports/plan-11-7-server-custody-feasibility.md",
       "role": "origin_a_fixture_v2_feasibility_history",
-      "sha256": "d6987611d3b53d41d406d8975399cfbe0b60fee41c2c32a289332d973a327ac6"
+      "sha256": "a5e446a92f5947cf341f55f890f2ab983e0a5c66194182ddc25837c1cccb06a3"
     },
     {
       "hash_method": "raw_file_sha256",
@@ -167,16 +167,72 @@
       "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/execution-preflight.json",
       "role": "origin_a_fixture_v2_execution_preflight",
       "sha256": "A1424ECEEEE9A003492A07B957A3537DD3028C97E1DF2D88849A967E5EAA1E4D"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-3-correlation.json",
+      "role": "origin_a_fixture_v2_origin_a_3_correlation",
+      "sha256": "72296b61d5525f2355f73f6d01150c52469786d75e680684dfde4eef56062d83"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-3-prompt-2.json",
+      "role": "origin_a_fixture_v2_origin_a_3_prompt_2",
+      "sha256": "44766a900de674e4506402d04eb26f0e549ddd5459c64f9fe62ce3c4fadb1649"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-3-ungated-reprompt.json",
+      "role": "origin_a_fixture_v2_origin_a_3_ungated_reprompt",
+      "sha256": "86e79e341ef3d5a861485196d2dbb99a7fbe40125a0aeca0c279bd55f24edba5"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/origin-a-3-seal-b.json",
+      "role": "origin_a_fixture_v2_origin_a_3_seal_b",
+      "sha256": "82c8725e47aa061e9092070087f7ed0d500914b3a403ad15faf8078a12c45802"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/origin-a-3-exchange-facts.json",
+      "role": "origin_a_fixture_v2_origin_a_3_exchange_facts",
+      "sha256": "456f1bc814c07ca34916c4fa89149f2df7c0158a985264db6b2e86dae3683b7e"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/origin-a-3-settings-restore-evidence.json",
+      "role": "origin_a_fixture_v2_origin_a_3_settings_restore",
+      "sha256": "84ebe5f326f8fa946a083f5c3c90efc44691d9c510fa1c24e6f7c8712744fccf"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/evidence-report.json",
+      "role": "origin_a_fixture_v2_evidence_report",
+      "sha256": "7bb9aa348ed61ffc3b778dc230bc18d98e9b1d3c2d051ea02f2f9536562081be"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-feasibility.json",
+      "role": "origin_a_fixture_v2_feasibility_json",
+      "sha256": "f01773a835f98961282792967a5d4fa4352c6dbc7b270a76e42c9f319c422eac"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/document-freshness-audit.json",
+      "role": "origin_a_fixture_v2_document_freshness_audit",
+      "sha256": "0b17f3812ed8afe4013a722b83c263fc6130e4a18456dfbcb32c2dcb5f21babf"
     }
   ],
-  "checkpoint": "origin-a-fixture-v2-preflight",
+  "checkpoint": "origin-a-fixture-v2-final",
   "complete": true,
   "docs_refresh": {
-    "backlog": "updated_approved_correction_pending",
+    "backlog": "updated_origin_a3_option_b_awaiting_review",
+    "roadmap": "updated_origin_a3_option_b_awaiting_review",
     "evidence_handoff_open_work_pool": "checked_no_change",
     "readme": "checked_no_change",
-    "roadmap": "updated_approved_correction_pending"
+    "feasibility_md": "updated_option_b_process_invalid",
+    "feasibility_json": "created_option_b_undecided"
   },
-  "head": "d9362c3967748108253acb28d6fe432ce5a8b6de",
+  "head": "0f3136abc53a6e2237e3aceb450a4e1afdf97441",
   "schema": "plan117-custody-artifact-manifest-v1"
 }

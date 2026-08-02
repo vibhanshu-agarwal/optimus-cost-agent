@@ -2212,3 +2212,311 @@ def test_cli_origin_a_fixture_v2_preflight_checkpoint_choice() -> None:
     assert "origin-a-fixture-v2-preflight" in parser_src
     assert "verify_origin_a_fixture_v2_preflight" in parser_src
     assert "ORIGIN_A_FIXTURE_V2_PREFLIGHT_CHECKPOINT" in parser_src
+
+
+def _a3_seal_valid_bundle(tmp_path: Path) -> dict[str, Any]:
+    """Build a remapped Option-B seal bundle with seeded private originals."""
+    v = _verifier_stage_api()
+    assert hasattr(v, "verify_origin_a3_seal_bundle")
+    base = _task3_valid_bundle()
+    originals_root = tmp_path / "private"
+    remapped: dict[str, str] = {}
+    a3_paths = {
+        "attempts/origin-a-3/attempt-manifest.json": b"a3-manifest\n",
+        "attempts/origin-a-3/phase-observation.json": b"a3-phase\n",
+        "origin-a-3/zed-to-agent.bin": b"a3-z2a",
+        "origin-a-3/agent-to-zed.bin": b"a3-a2z",
+        "origin-a-3/relay-index.ndjson": b"a3-index\n",
+        "reservations/origin-a-3.json": b'{"run_attempt_id":"origin-a-3"}\n',
+    }
+    for relative, digest in base["expected_originals"].items():
+        path = originals_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if digest == _EMPTY:
+            path.write_bytes(b"")
+            remapped[relative] = _EMPTY
+        else:
+            path.write_bytes(f"unit-original:{relative}\n".encode())
+            remapped[relative] = sha256_file(path)
+    for relative, payload in a3_paths.items():
+        path = originals_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        remapped[relative] = sha256_file(path)
+
+    def _remap_stage(payload: dict[str, Any], supersede_key: str) -> dict[str, Any]:
+        out = dict(payload)
+        out["evidence"] = [
+            _ev(item["relative_path"], remapped[item["relative_path"]])
+            for item in payload["evidence"]
+            if item["relative_path"] in remapped
+        ]
+        out["supersedes_sha256"] = remapped[supersede_key]
+        return out
+
+    a1 = _remap_stage(
+        base["origin_a_1_correlation"], "attempts/origin-a-1/attempt-manifest.json"
+    )
+    a2c = _remap_stage(
+        base["origin_a_2_correlation"], "attempts/origin-a-2/attempt-manifest.json"
+    )
+    a2p = _remap_stage(
+        base["origin_a_2_prompt"], "attempts/origin-a-2/phase-observation.json"
+    )
+    client = dict(base["origin_a_2_client"])
+    client["supersedes_sha256"] = remapped["attempts/origin-a-2/attempt-manifest.json"]
+    client["evidence"] = [
+        _ev("event-facts/x", remapped["attempts/origin-a-2/attempt-manifest.json"])
+    ]
+    a3c = _task3_stage_payload(
+        record_id="origin-a-3-correlation",
+        run_attempt_id="origin-a-3",
+        stage="correlation_capture",
+        ordinal=3,
+        status="succeeded",
+        failure_class="none",
+        reason_code=None,
+        evidence=[
+            _ev(
+                "attempts/origin-a-3/attempt-manifest.json",
+                remapped["attempts/origin-a-3/attempt-manifest.json"],
+            ),
+            _ev(
+                "attempts/origin-a-3/phase-observation.json",
+                remapped["attempts/origin-a-3/phase-observation.json"],
+            ),
+            _ev("origin-a-3/zed-to-agent.bin", remapped["origin-a-3/zed-to-agent.bin"]),
+            _ev("origin-a-3/agent-to-zed.bin", remapped["origin-a-3/agent-to-zed.bin"]),
+            _ev(
+                "origin-a-3/relay-index.ndjson",
+                remapped["origin-a-3/relay-index.ndjson"],
+            ),
+            _ev(
+                "reservations/origin-a-3.json",
+                remapped["reservations/origin-a-3.json"],
+            ),
+        ],
+        supersedes_record_id="origin-a-3-original-manifest",
+        supersedes_sha256=remapped["attempts/origin-a-3/attempt-manifest.json"],
+        notes={"reservation_present": True},
+    )
+    a3c["created_by"] = "plan117-origin-a3-seal-b"
+    exchange_digest = remapped["origin-a-3/zed-to-agent.bin"]
+    a3p = _task3_stage_payload(
+        record_id="origin-a-3-prompt-2",
+        run_attempt_id="origin-a-3",
+        stage="post_new_prompt",
+        ordinal=2,
+        status="failed",
+        failure_class="transient",
+        reason_code="transient_capture",
+        evidence=[
+            _ev("origin-a-3/zed-to-agent.bin", remapped["origin-a-3/zed-to-agent.bin"]),
+            _ev("origin-a-3/agent-to-zed.bin", remapped["origin-a-3/agent-to-zed.bin"]),
+            _ev(
+                "origin-a-3/relay-index.ndjson",
+                remapped["origin-a-3/relay-index.ndjson"],
+            ),
+            _ev(
+                "reports/plan-11-7-server-custody-artifacts/amendments/"
+                "origin-a-fixture-v2/origin-a-3-exchange-facts.json",
+                exchange_digest,
+            ),
+        ],
+        supersedes_record_id="origin-a-3-original-observation",
+        supersedes_sha256=remapped["attempts/origin-a-3/phase-observation.json"],
+        notes={"loop_stop": "PLANNING_UNPARSEABLE_RESPONSE"},
+    )
+    a3p["created_by"] = "plan117-origin-a3-seal-b"
+    ungated = {
+        "schema": "plan117-custody-supplemental-fact-record-v1",
+        "record_id": "origin-a-3-ungated-reprompt",
+        "run_attempt_id": "origin-a-3",
+        "fact_kind": "out_of_band_same_session_reprompt",
+        "reason_code": "invalid_probe_stage_accounting",
+        "evidence": [
+            _ev("origin-a-3/zed-to-agent.bin", remapped["origin-a-3/zed-to-agent.bin"]),
+            _ev("origin-a-3/agent-to-zed.bin", remapped["origin-a-3/agent-to-zed.bin"]),
+            _ev(
+                "reports/plan-11-7-server-custody-artifacts/amendments/"
+                "origin-a-fixture-v2/origin-a-3-exchange-facts.json",
+                exchange_digest,
+            ),
+        ],
+        "supersedes_record_id": "origin-a-3-ungated-reprompt-label",
+        "supersedes_sha256": remapped["origin-a-3/zed-to-agent.bin"],
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "created_by": "plan117-origin-a3-seal-b",
+        "created_utc": "2026-08-02T20:03:37Z",
+        "classification_notes": {
+            "does_not_consume_prompt_ordinal_3": True,
+            "origin_a_prompt_retry_gate_invoked": False,
+        },
+    }
+    ledger = {
+        "schema": "plan117-custody-stage-ledger-v1",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "records": [a1, a2c, a2p, a3c, a3p],
+        "next_correlation_ordinal": 4,
+        "next_prompt_ordinal": 3,
+        "derived_from": [
+            "origin-a-1-correlation",
+            "origin-a-2-correlation",
+            "origin-a-2-prompt",
+            "origin-a-3-correlation",
+            "origin-a-3-prompt-2",
+        ],
+    }
+    seal_b = {
+        "schema": "plan117-origin-a-3-seal-b-v1",
+        "option": "B",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "ending": {
+            "corrected_origin_a_dod_success": False,
+            "feasibility_disposition_claimed": False,
+            "budget_expansion_required_for_clean_relaunch": True,
+            "same_session_ordinal_3_not_consumed": True,
+        },
+        "derived_ordinals": {
+            "next_correlation_ordinal": 4,
+            "next_prompt_ordinal": 3,
+        },
+        "classifications": {
+            "correlation_ordinal_3": "succeeded",
+            "prompt_ordinal_2": "failed_transient",
+            "prompt_ordinal_3": "unclaimed_not_authorized",
+            "dcacf89a_exchange": "supplemental_out_of_band_same_session_reprompt",
+        },
+    }
+    exchange_facts = {
+        "schema": "plan117-origin-a-3-exchange-facts-v1",
+        "run_attempt_id": "origin-a-3",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "notes": {
+            "origin_a_prompt_retry_gate_invoked": False,
+            "third_prompt_authorized": False,
+        },
+        "exchanges": [
+            {
+                "classification_role": "prompt_ordinal_2_candidate",
+                "rpc_id": "ada61949-a060-4593-adf6-b56474b40d16",
+            },
+            {
+                "classification_role": "out_of_band_same_session_reprompt_not_ordinal_3",
+                "rpc_id": "dcacf89a-7c51-4f5b-a6b7-c8f67e7f4bc6",
+            },
+        ],
+    }
+    restore = {
+        "schema": "plan117-origin-a-3-settings-restore-evidence-v1",
+        "transaction_restored": True,
+        "continue_flag_created": True,
+        "completed_restore": {
+            "matches_approved_preimage": True,
+            "final_sha256": (
+                "DA99A0CDC4381092E4927A21CEC5217D0249D214969515F1022228DBA1D3A1F5"
+            ),
+            "method": "rename_away_then_replace",
+        },
+    }
+    return {
+        "origin_a_1_correlation": a1,
+        "origin_a_2_correlation": a2c,
+        "origin_a_2_prompt": a2p,
+        "origin_a_2_client": client,
+        "origin_a_3_correlation": a3c,
+        "origin_a_3_prompt_2": a3p,
+        "origin_a_3_ungated_reprompt": ungated,
+        "stage_ledger": ledger,
+        "seal_b": seal_b,
+        "exchange_facts": exchange_facts,
+        "restore_evidence": restore,
+        "originals_root": originals_root,
+        "expected_originals": remapped,
+    }
+
+
+def test_verify_origin_a3_seal_bundle_accepts_option_b(tmp_path: Path) -> None:
+    v = _verifier_stage_api()
+    bundle = _a3_seal_valid_bundle(tmp_path)
+    summary = v.verify_origin_a3_seal_bundle(
+        origin_a_1_correlation=bundle["origin_a_1_correlation"],
+        origin_a_2_correlation=bundle["origin_a_2_correlation"],
+        origin_a_2_prompt=bundle["origin_a_2_prompt"],
+        origin_a_2_client=bundle["origin_a_2_client"],
+        origin_a_3_correlation=bundle["origin_a_3_correlation"],
+        origin_a_3_prompt_2=bundle["origin_a_3_prompt_2"],
+        origin_a_3_ungated_reprompt=bundle["origin_a_3_ungated_reprompt"],
+        stage_ledger=bundle["stage_ledger"],
+        seal_b=bundle["seal_b"],
+        exchange_facts=bundle["exchange_facts"],
+        restore_evidence=bundle["restore_evidence"],
+        originals_root=bundle["originals_root"],
+        expected_original_sha256=bundle["expected_originals"],
+    )
+    assert summary["next_correlation_ordinal"] == 4
+    assert summary["next_prompt_ordinal"] == 3
+    assert summary["disposition_claimed"] is False
+    assert summary["corrected_origin_a_dod_success"] is False
+    assert summary["ending_option"] == "B"
+    assert summary["settings_restored"] is True
+
+
+def test_verify_origin_a3_seal_bundle_rejects_dod_success_claim(tmp_path: Path) -> None:
+    v = _verifier_stage_api()
+    bundle = _a3_seal_valid_bundle(tmp_path)
+    seal = dict(bundle["seal_b"])
+    ending = dict(seal["ending"])
+    ending["corrected_origin_a_dod_success"] = True
+    seal["ending"] = ending
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_origin_a3_seal_bundle(
+            origin_a_1_correlation=bundle["origin_a_1_correlation"],
+            origin_a_2_correlation=bundle["origin_a_2_correlation"],
+            origin_a_2_prompt=bundle["origin_a_2_prompt"],
+            origin_a_2_client=bundle["origin_a_2_client"],
+            origin_a_3_correlation=bundle["origin_a_3_correlation"],
+            origin_a_3_prompt_2=bundle["origin_a_3_prompt_2"],
+            origin_a_3_ungated_reprompt=bundle["origin_a_3_ungated_reprompt"],
+            stage_ledger=bundle["stage_ledger"],
+            seal_b=seal,
+            exchange_facts=bundle["exchange_facts"],
+            restore_evidence=bundle["restore_evidence"],
+            originals_root=bundle["originals_root"],
+            expected_original_sha256=bundle["expected_originals"],
+        )
+    assert exc.value.reason_code == "invalid_probe_stage_accounting"
+
+
+def test_verify_origin_a3_seal_bundle_rejects_unrestored_settings(tmp_path: Path) -> None:
+    v = _verifier_stage_api()
+    bundle = _a3_seal_valid_bundle(tmp_path)
+    restore = dict(bundle["restore_evidence"])
+    restore["transaction_restored"] = False
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_origin_a3_seal_bundle(
+            origin_a_1_correlation=bundle["origin_a_1_correlation"],
+            origin_a_2_correlation=bundle["origin_a_2_correlation"],
+            origin_a_2_prompt=bundle["origin_a_2_prompt"],
+            origin_a_2_client=bundle["origin_a_2_client"],
+            origin_a_3_correlation=bundle["origin_a_3_correlation"],
+            origin_a_3_prompt_2=bundle["origin_a_3_prompt_2"],
+            origin_a_3_ungated_reprompt=bundle["origin_a_3_ungated_reprompt"],
+            stage_ledger=bundle["stage_ledger"],
+            seal_b=bundle["seal_b"],
+            exchange_facts=bundle["exchange_facts"],
+            restore_evidence=restore,
+            originals_root=bundle["originals_root"],
+            expected_original_sha256=bundle["expected_originals"],
+        )
+    assert exc.value.reason_code == "settings_not_restored"
+
+
+def test_cli_origin_a3_and_final_checkpoint_choices() -> None:
+    parser_src = (ROOT / "tools" / "verify_plan117_custody_feasibility.py").read_text(
+        encoding="utf-8"
+    )
+    assert "origin-a-3" in parser_src
+    assert "origin-a-fixture-v2-final" in parser_src
+    assert "verify_origin_a3" in parser_src
+    assert "verify_origin_a_fixture_v2_final" in parser_src

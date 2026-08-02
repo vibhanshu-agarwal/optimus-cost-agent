@@ -45,12 +45,42 @@ PYPROJECT_TARGET_SHA256 = (
 )
 ORIGIN_A_FIXTURE_V2_CLASSIFICATIONS_CHECKPOINT = "origin-a-fixture-v2-classifications"
 ORIGIN_A_FIXTURE_V2_PREFLIGHT_CHECKPOINT = "origin-a-fixture-v2-preflight"
+ORIGIN_A_3_CHECKPOINT = "origin-a-3"
+ORIGIN_A_FIXTURE_V2_FINAL_CHECKPOINT = "origin-a-fixture-v2-final"
 _ORIGIN_A_FIXTURE_V2_CHECKPOINTS = frozenset(
     {
         ORIGIN_A_FIXTURE_V2_CLASSIFICATIONS_CHECKPOINT,
         ORIGIN_A_FIXTURE_V2_PREFLIGHT_CHECKPOINT,
+        ORIGIN_A_3_CHECKPOINT,
+        ORIGIN_A_FIXTURE_V2_FINAL_CHECKPOINT,
     }
 )
+SETTINGS_PREIMAGE_SHA256 = (
+    "DA99A0CDC4381092E4927A21CEC5217D0249D214969515F1022228DBA1D3A1F5"
+)
+SCHEMA_ORIGIN_A3_SEAL_B = "plan117-origin-a-3-seal-b-v1"
+SCHEMA_ORIGIN_A3_EXCHANGE_FACTS = "plan117-origin-a-3-exchange-facts-v1"
+SCHEMA_ORIGIN_A3_RESTORE_EVIDENCE = "plan117-origin-a-3-settings-restore-evidence-v1"
+_ORIGIN_A3_ORIGINAL_SHA256: dict[str, str] = {
+    "attempts/origin-a-3/attempt-manifest.json": (
+        "888d704b11365aa7dfb6d8dca1529b8f40a68ede176f901cc85292acd0065184"
+    ),
+    "attempts/origin-a-3/phase-observation.json": (
+        "cce1fac316f5961b6e1b3a57463d3deb5119111ff9856b7a405761b459e47ff1"
+    ),
+    "origin-a-3/zed-to-agent.bin": (
+        "df20c2d70e4a39f533d2f0552a4411ab226da33458e491f1375a8f640a8bc1e4"
+    ),
+    "origin-a-3/agent-to-zed.bin": (
+        "ebcb40ed12f51bf9baa8868e0d05a606bc06d55b12c7ebcdcba094c149e6ecc0"
+    ),
+    "origin-a-3/relay-index.ndjson": (
+        "b3ba95effc86cefa810ab56353c9cf78d1e351f567b3b362affcc626f5aa8057"
+    ),
+    "reservations/origin-a-3.json": (
+        "0cff1592653e683b482375fdbb0855e794799e2f26e2aa6c8a1b487c822e0ae9"
+    ),
+}
 SCHEMA_EXECUTION_PREFLIGHT = "plan117-origin-a-fixture-v2-execution-preflight-v1"
 PRODUCTION_BASELINE_COMMIT = "2cf2f42aa7d1072f09d0678a3c75eb43516c8808"
 EXECUTION_PREFLIGHT_RELATIVE = (
@@ -112,6 +142,8 @@ _DEFAULT_PRIVATE_CUSTODY_ROOT = Path(
 
 __all__ = (
     "EXECUTION_IDENTITY_PATHS",
+    "ORIGIN_A_3_CHECKPOINT",
+    "ORIGIN_A_FIXTURE_V2_FINAL_CHECKPOINT",
     "ORIGIN_A_FIXTURE_V2_PREFLIGHT_CHECKPOINT",
     "SCHEMA_EXECUTION_PREFLIGHT",
     "main",
@@ -119,8 +151,11 @@ __all__ = (
     "verify_execution_preflight_payload",
     "verify_fixture_v2_identity",
     "verify_manifest",
+    "verify_origin_a3",
+    "verify_origin_a3_seal_bundle",
     "verify_origin_a_fixture_v2_classifications",
     "verify_origin_a_fixture_v2_classifications_bundle",
+    "verify_origin_a_fixture_v2_final",
     "verify_origin_a_fixture_v2_preflight",
     "verify_origin_a_original_hashes",
     "verify_relay_capture",
@@ -1019,6 +1054,494 @@ def verify_origin_a_fixture_v2_preflight(
     }
 
 
+def verify_origin_a3_seal_bundle(
+    *,
+    origin_a_1_correlation: Mapping[str, Any],
+    origin_a_2_correlation: Mapping[str, Any],
+    origin_a_2_prompt: Mapping[str, Any],
+    origin_a_2_client: Mapping[str, Any] | None,
+    origin_a_3_correlation: Mapping[str, Any],
+    origin_a_3_prompt_2: Mapping[str, Any],
+    origin_a_3_ungated_reprompt: Mapping[str, Any],
+    stage_ledger: Mapping[str, Any],
+    seal_b: Mapping[str, Any],
+    exchange_facts: Mapping[str, Any],
+    restore_evidence: Mapping[str, Any],
+    originals_root: Path,
+    expected_original_sha256: Mapping[str, str],
+) -> dict[str, Any]:
+    """Verify Option-B origin-a-3 seal without claiming feasibility disposition."""
+    historical_ledger = {
+        "schema": SCHEMA_STAGE_LEDGER,
+        "amendment_sha256": stage_ledger.get("amendment_sha256"),
+        "records": [
+            origin_a_1_correlation,
+            origin_a_2_correlation,
+            origin_a_2_prompt,
+        ],
+        "next_correlation_ordinal": 3,
+        "next_prompt_ordinal": 2,
+    }
+    historical_expected = {
+        key: value
+        for key, value in expected_original_sha256.items()
+        if key in _ORIGIN_A_ORIGINAL_SHA256
+    }
+    verify_origin_a_fixture_v2_classifications_bundle(
+        origin_a_1_correlation=origin_a_1_correlation,
+        origin_a_2_correlation=origin_a_2_correlation,
+        origin_a_2_prompt=origin_a_2_prompt,
+        origin_a_2_client=origin_a_2_client,
+        stage_ledger=historical_ledger,
+        originals_root=originals_root,
+        expected_original_sha256=historical_expected,
+    )
+
+    verify_supersession_payload(origin_a_3_correlation)
+    verify_supersession_payload(origin_a_3_prompt_2)
+    verify_supplemental_fact_payload(origin_a_3_ungated_reprompt)
+
+    a3c = _stage_record_from_payload(origin_a_3_correlation)
+    if (
+        a3c.record_id != "origin-a-3-correlation"
+        or a3c.run_attempt_id != "origin-a-3"
+        or a3c.stage is not StageKind.CORRELATION_CAPTURE
+        or a3c.ordinal != 3
+        or a3c.status is not StageStatus.SUCCEEDED
+        or a3c.failure_class is not FailureClass.NONE
+    ):
+        raise CustodyContractError(
+            "invalid_probe_attempt_supersession_chain", "origin-a-3-correlation"
+        )
+
+    a3p = _stage_record_from_payload(origin_a_3_prompt_2)
+    if (
+        a3p.record_id != "origin-a-3-prompt-2"
+        or a3p.run_attempt_id != "origin-a-3"
+        or a3p.stage is not StageKind.POST_NEW_PROMPT
+        or a3p.ordinal != 2
+        or a3p.status is not StageStatus.FAILED
+        or a3p.failure_class is not FailureClass.TRANSIENT
+        or a3p.reason_code != "transient_capture"
+    ):
+        raise CustodyContractError(
+            "invalid_probe_attempt_supersession_chain", "origin-a-3-prompt-2"
+        )
+
+    if origin_a_3_ungated_reprompt.get("fact_kind") != "out_of_band_same_session_reprompt":
+        raise CustodyContractError(
+            "invalid_probe_attempt_supersession_chain",
+            "origin-a-3-ungated-reprompt.fact_kind",
+        )
+    if (
+        origin_a_3_ungated_reprompt.get("reason_code")
+        != "invalid_probe_stage_accounting"
+    ):
+        raise CustodyContractError(
+            "invalid_probe_attempt_supersession_chain",
+            "origin-a-3-ungated-reprompt.reason_code",
+        )
+    ungated_notes = origin_a_3_ungated_reprompt.get("classification_notes")
+    if not isinstance(ungated_notes, Mapping):
+        raise CustodyContractError(
+            "invalid_probe_attempt_supersession_chain",
+            "origin-a-3-ungated-reprompt.classification_notes",
+        )
+    if ungated_notes.get("does_not_consume_prompt_ordinal_3") is not True:
+        raise CustodyContractError(
+            "invalid_probe_attempt_supersession_chain",
+            "origin-a-3-ungated-reprompt.does_not_consume_prompt_ordinal_3",
+        )
+    if ungated_notes.get("origin_a_prompt_retry_gate_invoked") is not False:
+        raise CustodyContractError(
+            "invalid_probe_attempt_supersession_chain",
+            "origin-a-3-ungated-reprompt.origin_a_prompt_retry_gate_invoked",
+        )
+
+    ledger_info = verify_stage_ledger_payload(stage_ledger)
+    if ledger_info["next_correlation_ordinal"] != 4:
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting", "next_correlation_ordinal"
+        )
+    if ledger_info["next_prompt_ordinal"] != 3:
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting", "next_prompt_ordinal"
+        )
+
+    records = stage_ledger.get("records")
+    if not isinstance(records, list):
+        raise CustodyContractError("invalid_probe_stage_accounting", "records")
+    for item in records:
+        if not isinstance(item, Mapping):
+            raise CustodyContractError("invalid_probe_stage_accounting", "records")
+        if item.get("run_attempt_id") == "origin-a-4":
+            raise CustodyContractError(
+                "invalid_probe_retry_budget_exhausted", "run_attempt_id"
+            )
+        if item.get("stage") == "correlation_capture" and item.get("ordinal") == 4:
+            raise CustodyContractError(
+                "invalid_probe_retry_budget_exhausted", "ordinal"
+            )
+        if item.get("stage") == "post_new_prompt" and item.get("ordinal") == 3:
+            raise CustodyContractError(
+                "invalid_probe_stage_accounting", "prompt_ordinal_3_claimed"
+            )
+        if item.get("record_id") in {
+            "origin-a-2-client",
+            "origin-a-3-ungated-reprompt",
+        }:
+            raise CustodyContractError(
+                "invalid_probe_attempt_supersession_chain", "supplemental_in_ledger"
+            )
+
+    if seal_b.get("schema") != SCHEMA_ORIGIN_A3_SEAL_B:
+        raise CustodyContractError("invalid_probe_stage_accounting", "seal_b.schema")
+    if seal_b.get("option") != "B":
+        raise CustodyContractError("invalid_probe_stage_accounting", "seal_b.option")
+    if not sha256_hex_equal(
+        str(seal_b.get("amendment_sha256", "")), ORIGIN_A_FIXTURE_V2_AMENDMENT_SHA256
+    ):
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting", "seal_b.amendment_sha256"
+        )
+    ending = seal_b.get("ending")
+    if not isinstance(ending, Mapping):
+        raise CustodyContractError("invalid_probe_stage_accounting", "seal_b.ending")
+    if ending.get("corrected_origin_a_dod_success") is not False:
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting",
+            "seal_b.ending.corrected_origin_a_dod_success",
+        )
+    if ending.get("feasibility_disposition_claimed") is not False:
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting",
+            "seal_b.ending.feasibility_disposition_claimed",
+        )
+    if ending.get("same_session_ordinal_3_not_consumed") is not True:
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting",
+            "seal_b.ending.same_session_ordinal_3_not_consumed",
+        )
+    derived = seal_b.get("derived_ordinals")
+    if not isinstance(derived, Mapping):
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting", "seal_b.derived_ordinals"
+        )
+    if derived.get("next_correlation_ordinal") != 4:
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting",
+            "seal_b.derived_ordinals.next_correlation_ordinal",
+        )
+    if derived.get("next_prompt_ordinal") != 3:
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting",
+            "seal_b.derived_ordinals.next_prompt_ordinal",
+        )
+
+    if exchange_facts.get("schema") != SCHEMA_ORIGIN_A3_EXCHANGE_FACTS:
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting", "exchange_facts.schema"
+        )
+    if exchange_facts.get("run_attempt_id") != "origin-a-3":
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting", "exchange_facts.run_attempt_id"
+        )
+    exchange_notes = exchange_facts.get("notes")
+    if isinstance(exchange_notes, Mapping):
+        if exchange_notes.get("origin_a_prompt_retry_gate_invoked") is not False:
+            raise CustodyContractError(
+                "invalid_probe_stage_accounting",
+                "exchange_facts.notes.origin_a_prompt_retry_gate_invoked",
+            )
+        if exchange_notes.get("third_prompt_authorized") is not False:
+            raise CustodyContractError(
+                "invalid_probe_stage_accounting",
+                "exchange_facts.notes.third_prompt_authorized",
+            )
+
+    if restore_evidence.get("schema") != SCHEMA_ORIGIN_A3_RESTORE_EVIDENCE:
+        raise CustodyContractError(
+            "settings_not_restored", "restore_evidence.schema"
+        )
+    if restore_evidence.get("transaction_restored") is not True:
+        raise CustodyContractError("settings_not_restored", "transaction_restored")
+    completed = restore_evidence.get("completed_restore")
+    if not isinstance(completed, Mapping):
+        raise CustodyContractError("settings_not_restored", "completed_restore")
+    if completed.get("matches_approved_preimage") is not True:
+        raise CustodyContractError(
+            "settings_not_restored", "completed_restore.matches_approved_preimage"
+        )
+    if not sha256_hex_equal(
+        str(completed.get("final_sha256", "")), SETTINGS_PREIMAGE_SHA256
+    ):
+        raise CustodyContractError(
+            "settings_not_restored", "completed_restore.final_sha256"
+        )
+
+    verify_origin_a_original_hashes(
+        originals_root=originals_root,
+        expected_relative_sha256=expected_original_sha256,
+    )
+
+    return {
+        "schema": SCHEMA_VERIFIER_SUMMARY,
+        "checkpoint": ORIGIN_A_3_CHECKPOINT,
+        "disposition_claimed": False,
+        "corrected_origin_a_dod_success": False,
+        "ending_option": "B",
+        "settings_restored": True,
+        "next_correlation_ordinal": 4,
+        "next_prompt_ordinal": 3,
+        "terminal_stage_count": ledger_info["terminal_count"],
+        "reason_codes": [
+            "origin_a3_option_b_process_invalid_ending",
+            "invalid_probe_stage_accounting",
+        ],
+        "verified_artifact_count": 9,
+    }
+
+
+def _load_origin_a3_seal_artifacts(
+    *,
+    project_root: Path,
+    originals_root: Path | None,
+) -> tuple[dict[str, Any], Path]:
+    amendment_root = project_root / _AMENDMENT_DIR
+    paths = {
+        "origin_a_1_correlation": amendment_root
+        / "supersessions"
+        / "origin-a-1-correlation.json",
+        "origin_a_2_correlation": amendment_root
+        / "supersessions"
+        / "origin-a-2-correlation.json",
+        "origin_a_2_prompt": amendment_root / "supersessions" / "origin-a-2-prompt.json",
+        "origin_a_2_client": amendment_root / "supersessions" / "origin-a-2-client.json",
+        "origin_a_3_correlation": amendment_root
+        / "supersessions"
+        / "origin-a-3-correlation.json",
+        "origin_a_3_prompt_2": amendment_root
+        / "supersessions"
+        / "origin-a-3-prompt-2.json",
+        "origin_a_3_ungated_reprompt": amendment_root
+        / "supersessions"
+        / "origin-a-3-ungated-reprompt.json",
+        "stage_ledger": amendment_root / "stage-ledger.json",
+        "seal_b": amendment_root / "origin-a-3-seal-b.json",
+        "exchange_facts": amendment_root / "origin-a-3-exchange-facts.json",
+        "restore_evidence": amendment_root / "origin-a-3-settings-restore-evidence.json",
+    }
+    loaded: dict[str, Any] = {}
+    for key, path in paths.items():
+        if not path.is_file() or path.is_symlink():
+            raise CustodyContractError("artifact_missing_or_symlink", str(path))
+        text = path.read_text(encoding="utf-8")
+        _reject_text_crlf(text, field_path=str(path))
+        loaded[key] = json.loads(text)
+
+    trigger_path = amendment_root / "trigger-chain.json"
+    if not trigger_path.is_file():
+        raise CustodyContractError("artifact_missing_or_symlink", str(trigger_path))
+    trigger = json.loads(trigger_path.read_text(encoding="utf-8"))
+    custody_binding = trigger.get("custody_binding")
+    if not isinstance(custody_binding, Mapping):
+        raise CustodyContractError(
+            "invalid_probe_origin_attempt_original_mismatch", "custody_binding"
+        )
+    private_root = originals_root
+    if private_root is None:
+        raw_root = custody_binding.get("private_custody_root")
+        if isinstance(raw_root, str) and raw_root:
+            private_root = Path(raw_root)
+        else:
+            private_root = _DEFAULT_PRIVATE_CUSTODY_ROOT
+    return loaded, private_root
+
+
+def verify_origin_a3(
+    *,
+    project_root: Path,
+    manifest_path: Path,
+    originals_root: Path | None = None,
+) -> dict[str, Any]:
+    """Task 5 Step 6 offline checkpoint for the sealed origin-a-3 ending."""
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if payload.get("schema") != "plan117-custody-artifact-manifest-v1":
+        raise CustodyContractError("invalid_manifest_schema", "schema")
+    if payload.get("checkpoint") != ORIGIN_A_3_CHECKPOINT:
+        raise CustodyContractError("checkpoint_mismatch", "checkpoint")
+
+    loaded, private_root = _load_origin_a3_seal_artifacts(
+        project_root=project_root,
+        originals_root=originals_root,
+    )
+    artifacts = payload.get("artifacts")
+    if not isinstance(artifacts, list):
+        raise CustodyContractError("invalid_manifest_schema", "artifacts")
+    required_roles = {
+        "origin_a_fixture_v2_origin_a_1_correlation",
+        "origin_a_fixture_v2_origin_a_2_correlation",
+        "origin_a_fixture_v2_origin_a_2_prompt",
+        "origin_a_fixture_v2_origin_a_2_client",
+        "origin_a_fixture_v2_origin_a_3_correlation",
+        "origin_a_fixture_v2_origin_a_3_prompt_2",
+        "origin_a_fixture_v2_origin_a_3_ungated_reprompt",
+        "origin_a_fixture_v2_stage_ledger",
+        "origin_a_fixture_v2_origin_a_3_seal_b",
+        "origin_a_fixture_v2_origin_a_3_exchange_facts",
+        "origin_a_fixture_v2_origin_a_3_settings_restore",
+    }
+    found_roles = {
+        item.get("role") for item in artifacts if isinstance(item, Mapping)
+    }
+    missing = required_roles - found_roles
+    if missing:
+        raise CustodyContractError(
+            "invalid_probe_attempt_supersession_chain",
+            f"manifest_missing_roles:{sorted(missing)}",
+        )
+
+    expected = dict(_ORIGIN_A_ORIGINAL_SHA256)
+    expected.update(_ORIGIN_A3_ORIGINAL_SHA256)
+    summary = verify_origin_a3_seal_bundle(
+        origin_a_1_correlation=loaded["origin_a_1_correlation"],
+        origin_a_2_correlation=loaded["origin_a_2_correlation"],
+        origin_a_2_prompt=loaded["origin_a_2_prompt"],
+        origin_a_2_client=loaded["origin_a_2_client"],
+        origin_a_3_correlation=loaded["origin_a_3_correlation"],
+        origin_a_3_prompt_2=loaded["origin_a_3_prompt_2"],
+        origin_a_3_ungated_reprompt=loaded["origin_a_3_ungated_reprompt"],
+        stage_ledger=loaded["stage_ledger"],
+        seal_b=loaded["seal_b"],
+        exchange_facts=loaded["exchange_facts"],
+        restore_evidence=loaded["restore_evidence"],
+        originals_root=private_root,
+        expected_original_sha256=expected,
+    )
+    summary["checkpoint"] = ORIGIN_A_3_CHECKPOINT
+    return summary
+
+
+def verify_origin_a_fixture_v2_final(
+    *,
+    project_root: Path,
+    manifest_path: Path,
+    originals_root: Path | None = None,
+) -> dict[str, Any]:
+    """Task 6 final offline checkpoint: sealed Option-B ending + redacted report."""
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if payload.get("schema") != "plan117-custody-artifact-manifest-v1":
+        raise CustodyContractError("invalid_manifest_schema", "schema")
+    if payload.get("checkpoint") != ORIGIN_A_FIXTURE_V2_FINAL_CHECKPOINT:
+        raise CustodyContractError("checkpoint_mismatch", "checkpoint")
+
+    loaded, private_root = _load_origin_a3_seal_artifacts(
+        project_root=project_root,
+        originals_root=originals_root,
+    )
+    artifacts = payload.get("artifacts")
+    if not isinstance(artifacts, list):
+        raise CustodyContractError("invalid_manifest_schema", "artifacts")
+    required_roles = {
+        "origin_a_fixture_v2_origin_a_1_correlation",
+        "origin_a_fixture_v2_origin_a_2_correlation",
+        "origin_a_fixture_v2_origin_a_2_prompt",
+        "origin_a_fixture_v2_origin_a_2_client",
+        "origin_a_fixture_v2_origin_a_3_correlation",
+        "origin_a_fixture_v2_origin_a_3_prompt_2",
+        "origin_a_fixture_v2_origin_a_3_ungated_reprompt",
+        "origin_a_fixture_v2_stage_ledger",
+        "origin_a_fixture_v2_origin_a_3_seal_b",
+        "origin_a_fixture_v2_origin_a_3_exchange_facts",
+        "origin_a_fixture_v2_origin_a_3_settings_restore",
+        "origin_a_fixture_v2_evidence_report",
+        "origin_a_fixture_v2_feasibility_history",
+        "origin_a_fixture_v2_feasibility_json",
+    }
+    found_roles = {
+        item.get("role") for item in artifacts if isinstance(item, Mapping)
+    }
+    missing = required_roles - found_roles
+    if missing:
+        raise CustodyContractError(
+            "invalid_probe_attempt_supersession_chain",
+            f"manifest_missing_roles:{sorted(missing)}",
+        )
+
+    expected = dict(_ORIGIN_A_ORIGINAL_SHA256)
+    expected.update(_ORIGIN_A3_ORIGINAL_SHA256)
+    summary = verify_origin_a3_seal_bundle(
+        origin_a_1_correlation=loaded["origin_a_1_correlation"],
+        origin_a_2_correlation=loaded["origin_a_2_correlation"],
+        origin_a_2_prompt=loaded["origin_a_2_prompt"],
+        origin_a_2_client=loaded["origin_a_2_client"],
+        origin_a_3_correlation=loaded["origin_a_3_correlation"],
+        origin_a_3_prompt_2=loaded["origin_a_3_prompt_2"],
+        origin_a_3_ungated_reprompt=loaded["origin_a_3_ungated_reprompt"],
+        stage_ledger=loaded["stage_ledger"],
+        seal_b=loaded["seal_b"],
+        exchange_facts=loaded["exchange_facts"],
+        restore_evidence=loaded["restore_evidence"],
+        originals_root=private_root,
+        expected_original_sha256=expected,
+    )
+
+    report_path = (
+        project_root / "reports/plan-11-7-server-custody-artifacts/evidence-report.json"
+    )
+    if not report_path.is_file() or report_path.is_symlink():
+        raise CustodyContractError("artifact_missing_or_symlink", str(report_path))
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    if report.get("outcome") != "indeterminate":
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting", "evidence_report.outcome"
+        )
+    reason_codes = report.get("reason_codes")
+    if not isinstance(reason_codes, list) or "invalid_probe_stage_accounting" not in reason_codes:
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting", "evidence_report.reason_codes"
+        )
+
+    feasibility_json = project_root / "reports/plan-11-7-server-custody-feasibility.json"
+    if not feasibility_json.is_file() or feasibility_json.is_symlink():
+        raise CustodyContractError(
+            "artifact_missing_or_symlink", str(feasibility_json)
+        )
+    feasibility = json.loads(feasibility_json.read_text(encoding="utf-8"))
+    if feasibility.get("corrected_origin_a_dod_success") is not False:
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting",
+            "feasibility.corrected_origin_a_dod_success",
+        )
+    if feasibility.get("implementation_authorized") is not False:
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting",
+            "feasibility.implementation_authorized",
+        )
+    if feasibility.get("feasibility_disposition_claimed") is not False:
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting",
+            "feasibility.feasibility_disposition_claimed",
+        )
+
+    feasibility_md = project_root / "reports/plan-11-7-server-custody-feasibility.md"
+    if not feasibility_md.is_file() or feasibility_md.is_symlink():
+        raise CustodyContractError("artifact_missing_or_symlink", str(feasibility_md))
+
+    if not _production_src_clean_vs_baseline(project_root, PRODUCTION_BASELINE_COMMIT):
+        raise CustodyContractError(
+            "invalid_probe_execution_identity_mismatch", "production_baseline.clean"
+        )
+
+    summary["checkpoint"] = ORIGIN_A_FIXTURE_V2_FINAL_CHECKPOINT
+    summary["reason_codes"] = [
+        "origin_a_fixture_v2_final_option_b_sealed_no_disposition",
+        "origin_a3_option_b_process_invalid_ending",
+    ]
+    summary["verified_artifact_count"] = int(summary["verified_artifact_count"]) + 3
+    return summary
+
+
 def verify_settings_transaction_proof(path: Path) -> dict[str, Any]:
     """Offline-check a promoted settings-transaction proof artifact."""
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -1085,11 +1608,14 @@ def main(argv: list[str] | None = None) -> int:
             "task5",
             ORIGIN_A_FIXTURE_V2_CLASSIFICATIONS_CHECKPOINT,
             ORIGIN_A_FIXTURE_V2_PREFLIGHT_CHECKPOINT,
+            ORIGIN_A_3_CHECKPOINT,
+            ORIGIN_A_FIXTURE_V2_FINAL_CHECKPOINT,
         ),
         default=None,
         help=(
             "Allow a partial Task 4/5 manifest, or an origin-A fixture-v2 "
-            "classifications/preflight checkpoint; omit for the complete final seal"
+            "classifications/preflight/origin-a-3/final checkpoint; omit for the "
+            "complete parent final seal"
         ),
     )
     args = parser.parse_args(argv)
@@ -1104,6 +1630,20 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.checkpoint == ORIGIN_A_FIXTURE_V2_PREFLIGHT_CHECKPOINT:
             summary = verify_origin_a_fixture_v2_preflight(
+                project_root=ROOT,
+                manifest_path=args.manifest,
+            )
+            print(json.dumps(summary, separators=(",", ":"), sort_keys=True))
+            return 0
+        if args.checkpoint == ORIGIN_A_3_CHECKPOINT:
+            summary = verify_origin_a3(
+                project_root=ROOT,
+                manifest_path=args.manifest,
+            )
+            print(json.dumps(summary, separators=(",", ":"), sort_keys=True))
+            return 0
+        if args.checkpoint == ORIGIN_A_FIXTURE_V2_FINAL_CHECKPOINT:
+            summary = verify_origin_a_fixture_v2_final(
                 project_root=ROOT,
                 manifest_path=args.manifest,
             )

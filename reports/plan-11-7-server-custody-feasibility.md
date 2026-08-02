@@ -2,16 +2,20 @@
 
 Immutable history and correction accounting for the Plan 11.7 Zed server-side custody
 feasibility probe. This document records evidence history only. It does **not** claim a
-feasible or infeasible production disposition from corrected origin-A records alone.
+feasible production disposition. Corrected origin-A under the fixture-v2 amendment ended as a
+**process-invalid sealed stop** (Option B); feasibility remains undecided and returns to the
+operator. A clean DoD-qualifying relaunch requires a separate budget-expansion amendment.
 
 ## Parent probe context
 
-- Frozen Plan 11.7 Tasks 0 Steps 5-7 and Tasks 1-11 remain blocked pending a reviewed
-  corrected origin-A observation.
+- Frozen Plan 11.7 Tasks 0 Steps 5-7 and Tasks 1-11 remain blocked.
 - Parent feasibility amendment digest:
   `79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6`.
 - Origin-A fixture v2 amendment digest:
   `5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D`.
+- Execution tip at live launch: `400825c3291103b3d13d8da044ca86d3692d77db`.
+- Restore-fallback fix tip (post-launch tooling): `e0ca15b8530425d4958ceeefab2dd175deed82c0`.
+- Seal package commit: `0f3136abc53a6e2237e3aceb450a4e1afdf97441`.
 
 ## V1 attempt history (immutable originals)
 
@@ -31,9 +35,7 @@ contradicts that label:
 | origin-a-1/agent-to-zed.bin | `E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855` | 0 |
 | origin-a-1/relay-index.ndjson | `E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855` | 0 |
 
-Empty duplex streams, forced termination after full-duplex relay deadlock, and
-event-facts origin-a-1 window zeros (no Zed fault / no `0xc0000409`) are preserved as
-immutable parents. No prompt stage started.
+Empty duplex streams / relay deadlock tooling failure. No prompt stage started.
 
 ### origin-a-2 (correlation capture 2 + post-new prompt 1)
 
@@ -46,14 +48,12 @@ immutable parents. No prompt stage started.
 | origin-a-2/relay-index.ndjson | `6D2E712D4F56C5225A2DBF5E9CE2787529D4F359AAA045B9802FF7CFCEA5F610` | 1755 |
 | origin-a-2/relay-summary.json | absent | - |
 
-Raw capture shows three separate facts: successful `initialize`/`session/new` correlation,
-pre-Gateway `AMBIGUOUS_WORKSPACE_REFERENCE` prompt refusal, and a later Zed crash
-`0xc0000409` with absent relay-summary.
+Correlation succeeded; prompt failed permanently (`AMBIGUOUS_WORKSPACE_REFERENCE`); later Zed
+crash `0xc0000409` is supplemental only.
 
-## V2 correction accounting (append-only; Task 3)
+## V2 correction accounting (append-only)
 
-Promoted supersessions under
-`reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/`:
+### Task 3 historical supersessions
 
 | record | stage / fact | ordinal | status | reason |
 |---|---|---|---|---|
@@ -62,18 +62,53 @@ Promoted supersessions under
 | origin-a-2-prompt | post_new_prompt | 1 | failed (permanent) | `AMBIGUOUS_WORKSPACE_REFERENCE` |
 | origin-a-2-client | supplemental `zed_client_crash` | n/a | fact only | `stop_probe_zed_client_crashed` |
 
-Stage ledger
-(`.../amendments/origin-a-fixture-v2/stage-ledger.json`) includes only the three terminal
-stage records. Derived next ordinals:
+### origin-a-3 live attempt (Option B seal)
 
-- `next_correlation_ordinal` = **3**
-- `next_prompt_ordinal` = **2**
+One authorized Zed launch under tip `400825c`. Settings restored to pre-image
+`DA99A0CDC4381092E4927A21CEC5217D0249D214969515F1022228DBA1D3A1F5`.
 
-The supplemental crash fact does not change correlation success or prompt failure and is
-not a stage row.
+| record | stage / fact | ordinal | status | reason |
+|---|---|---|---|---|
+| origin-a-3-correlation | correlation_capture | 3 | succeeded | none |
+| origin-a-3-prompt-2 | post_new_prompt | 2 | failed (transient) | `transient_capture` (`PLANNING_UNPARSEABLE_RESPONSE`) |
+| origin-a-3-ungated-reprompt | supplemental `out_of_band_same_session_reprompt` | n/a | fact only | `invalid_probe_stage_accounting` |
 
-## Disposition boundary
+Wire facts (both real Gateway-backed; see `origin-a-3-exchange-facts.json`):
 
-Task 3 seals corrected historical accounting only. No feasible / infeasible production
-disposition is inferred from these records. `origin-a-3` remains the sole authorized next
-correlation capture under the amendment budget.
+1. `ada61949…` — cost `$0.008273`, planning-unparseable, no file reads.
+2. `dcacf89a…` — cost `$0.007565`, correct `optimus-cost-agent` answer after approve — **unauthorized**
+   same-session re-prompt; does **not** consume prompt ordinal 3.
+
+Derived ledger ordinals after seal: `next_correlation_ordinal=4`, `next_prompt_ordinal=3`.
+Correlation budget under this amendment is exhausted. Prompt ordinal 3 remains unclaimed by design
+(Option B: no third gated prompt after context contamination).
+
+Seal artifact: `…/origin-a-fixture-v2/origin-a-3-seal-b.json`
+(`corrected_origin_a_dod_success=false`, `feasibility_disposition_claimed=false`).
+
+## Collector / redaction
+
+- Scenario: `tests/fixtures/evidence/scenarios/plan117-server-custody.toml`
+- Promotable root: `D:\Projects\Development\Python\optimus-evidence-custody\plan117-task4-promotable`
+- Run id: `1883d81419cc4a00af152e7ffc41395d`
+- Collector outcome: `indeterminate` (probe-specific ending remains process-invalid Option B)
+- Evidence report: `reports/plan-11-7-server-custody-artifacts/evidence-report.json`
+- Raw private ACP bytes and settings pre-image remain private; promoted set is digest/classification JSON only.
+
+## Explicit non-claims
+
+This package does **not** claim:
+
+- production server-side custody feasibility;
+- ACP conformance;
+- `session/load` / resume affordance success;
+- corrected origin-A DoD success;
+- authorization to start frozen Plan 11.7 implementation Tasks 0.5–11;
+- that the ungated second prompt satisfies `assert_prompt_retry_preflight`.
+
+## Operator return
+
+Feasibility remains **undecided**. Corrected origin-A under fixture-v2 is a sealed invalid ending.
+A clean DoD-qualifying observation requires a **budget-expansion amendment** (and Zed re-hash /
+re-pin at the next launch if the installed binary has changed). Parent amendment Task 5
+(`restart-b` / later phases) is **not** unblocked by this result.
