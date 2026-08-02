@@ -1,0 +1,18 @@
+{
+  "schema": "plan117-origin-a-fixture-v2-task4-step3-checkpoint-v1",
+  "task": "task4-step3",
+  "created_by": "agent/cursor/p11-feat-zed-resume",
+  "created_utc": "2026-08-02T18:15:00Z",
+  "amendment_sha256": "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D",
+  "execution_commit": "d9362c3967748108253acb28d6fe432ce5a8b6de",
+  "execution_preflight_sha256": "A1424ECEEEE9A003492A07B957A3537DD3028C97E1DF2D88849A967E5EAA1E4D",
+  "identity_commit": null,
+  "production_baseline": "2cf2f42aa7d1072f09d0678a3c75eb43516c8808",
+  "production_src_clean": true,
+  "confirmations": {
+    "no_push": true,
+    "no_live_zed_launch": true,
+    "no_settings_mutation": true,
+    "steps_4_5_remain": true
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "schema": "plan117-origin-a-fixture-v2-task3-checkpoint-v1",
+  "task": "task3",
+  "created_by": "agent/cursor/p11-feat-zed-resume",
+  "created_utc": "2026-08-02T17:45:00Z",
+  "amendment_sha256": "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D",
+  "records_created": [
+    "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-1-correlation.json",
+    "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-2-correlation.json",
+    "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-2-prompt.json",
+    "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-2-client.json",
+    "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/stage-ledger.json"
+  ],
+  "derived_ordinals": {
+    "next_correlation_ordinal": 3,
+    "next_prompt_ordinal": 2,
+    "derivation": "normalize_stage_ledger(terminal stage records)"
+  },
+  "gate_results": {
+    "narrow_pytest": "99 passed, 1 skipped",
+    "classifications_verifier": "passed disposition_claimed=false next_corr=3 next_prompt=2",
+    "logging_surface_audit": "passed",
+    "full_unit_pytest": "2414 passed, 23 skipped, 1 warning",
+    "ruff": "All checks passed",
+    "git_diff_check": "clean (exit 0)"
+  },
+  "confirmations": {
+    "originals_untouched": true,
+    "original_hash_count_verified": 10,
+    "relay_summary_origin_a2_absent": true,
+    "no_feasibility_disposition_claimed": true,
+    "no_commit": true,
+    "no_push": true,
+    "no_live_zed_launch": true,
+    "no_settings_mutation": true,
+    "amendment_plan_checkboxes_unchecked": true,
+    "run_plan117_ascii_clean_ufffd0_emdash0": true,
+    "task4_plus_not_started": true
+  }
+}

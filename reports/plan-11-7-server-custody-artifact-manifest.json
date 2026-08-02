@@ -1,0 +1,238 @@
+{
+  "artifacts": [
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/trigger-chain.json",
+      "role": "trigger_chain",
+      "sha256": "0914340A0F2FEB24C5EE8B7F5A1C03983531283229077A8522AB8F7E92DE0CBC"
+    },
+    {
+      "hash_method": "git_blob_sha256",
+      "locator": "docs/superpowers/specs/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-design.md",
+      "role": "design",
+      "sha256": "8808E5212DCDB3B44198096D1A0AFE7E20A53E4A9B28438DA5AA23245D339F0E"
+    },
+    {
+      "hash_method": "git_blob_sha256",
+      "locator": "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md",
+      "role": "frozen_plan",
+      "sha256": "F52AD9A5A85DC50B0DFD3206B6BD09FD8FF0AE79B1A6049DF1017F978B1C462D"
+    },
+    {
+      "hash_method": "git_blob_sha256",
+      "locator": "docs/superpowers/plans/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md",
+      "role": "amendment",
+      "sha256": "79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-task0-artifacts/step4-discovery/evidence-report.json",
+      "role": "step4_evidence_report",
+      "sha256": "1579A5B1A84F1AE46C0B09B317F61B93D919E5E03725FFA8BD0F9F6BD32565BF"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-task0-artifacts/step4-discovery/discovery-finding.json",
+      "role": "step4_discovery_finding",
+      "sha256": "FC8B8E35A13DAAB02A09834F2D90DD6E0324FE2C89140900D5954F0F5BDCADE4"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "tests/fixtures/evidence/plan117-server-custody-prompt.txt",
+      "role": "prompt_fixture",
+      "sha256": "8EEA4738E72159A863FEA22A542F92D6A99E3681803BA21863F734C577480D82"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/target-identities.json",
+      "role": "target_identities",
+      "sha256": "714147BC8BCD5F8CEBF265231E9A1DE63BEE7C22267965EC9FD9CC88E69EA3A8"
+    },
+    {
+      "hash_method": "reviewer_owned_gitignored_not_hashed",
+      "locator": "docs/superpowers/reviews/plan-11-7-review-checkpoints.md",
+      "role": "checkpoint_log",
+      "sha256": null
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/trigger-chain.json",
+      "role": "origin_a_fixture_v2_trigger_chain",
+      "sha256": "C5C1A6B17D2B6B90CEA5C789E3C459A2B4914A7153C111EE85169A619B6A5A8E"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/event-facts.json",
+      "role": "origin_a_fixture_v2_event_facts",
+      "sha256": "75B12DED46B3DEB9C6B2A4BA8982857616D29DD8485535454F435B98A2A491DA"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "tests/fixtures/evidence/plan117-server-custody-prompt-v2.txt",
+      "role": "prompt_fixture_v2",
+      "sha256": "9195EFEEE3A2180CFB85EDE409FF7785F159F64E36426DCDB369251560E28A50"
+    },
+    {
+      "hash_method": "git_blob_sha256",
+      "locator": "docs/superpowers/specs/2026-08-02-plan-11-7-origin-a-fixture-v2-and-stage-accounting-design.md",
+      "role": "origin_a_fixture_v2_design",
+      "sha256": "9ADD264B06B67B7BF6C85A3A1439BFED29F10C08366848761EED9C3D8B624347"
+    },
+    {
+      "hash_method": "git_blob_sha256",
+      "locator": "docs/superpowers/plans/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md",
+      "role": "origin_a_fixture_v2_amendment",
+      "sha256": "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task0-checkpoint.json",
+      "role": "origin_a_fixture_v2_task0_checkpoint",
+      "sha256": "1CB357617341312A1FE8661748CB5CFB3339DAE5A8DCAA4EE798689F2C8BF901"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task1-checkpoint.json",
+      "role": "origin_a_fixture_v2_task1_checkpoint",
+      "sha256": "4524B974400B496D3A5C3F2FC2E3C953332840BAEFB39E5AC9D11C33EC054673"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task2-checkpoint.json",
+      "role": "origin_a_fixture_v2_task2_checkpoint",
+      "sha256": "9BC565DAA3C425759FE4A13B935EA6101764D43B051319957C08F505D11811C6"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task2-step1-relay-pre-fix-red.txt",
+      "role": "origin_a_fixture_v2_task2_relay_pre_fix_red",
+      "sha256": "948DC4CD54659F695BB344151B4802BE357B1D7CCD13E3D4D3F0C4A4BAA1E506"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task2-step2-jsonc-red.txt",
+      "role": "origin_a_fixture_v2_task2_jsonc_red",
+      "sha256": "A85A0C863EC0CAE3E6643D8A6732A362777FEF5F4204EA99624B4009B589E773"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-1-correlation.json",
+      "role": "origin_a_fixture_v2_origin_a_1_correlation",
+      "sha256": "d140bc64e6beae12662103163d9d22af830bdd44eb25a8cc662cc17903682f19"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-2-correlation.json",
+      "role": "origin_a_fixture_v2_origin_a_2_correlation",
+      "sha256": "67da13b4039250ea1d58b62e64897b2a0ba9d9f7c9d30c86de4daf8efda0f547"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-2-prompt.json",
+      "role": "origin_a_fixture_v2_origin_a_2_prompt",
+      "sha256": "647fe779351e34bed4adf67265b7602a25534d174bcdb2234ae9ee5fc08facc3"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-2-client.json",
+      "role": "origin_a_fixture_v2_origin_a_2_client",
+      "sha256": "47b8c7ec7ad8b20af5395785ba90d2d03aa9aa630322b02e1f107f59b0de7865"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/stage-ledger.json",
+      "role": "origin_a_fixture_v2_stage_ledger",
+      "sha256": "d470d1a974485f014c23d5c21c00777140de9f08f4a0a86ebc5a1616a82c34bb"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-feasibility.md",
+      "role": "origin_a_fixture_v2_feasibility_history",
+      "sha256": "a5e446a92f5947cf341f55f890f2ab983e0a5c66194182ddc25837c1cccb06a3"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task3-checkpoint.json",
+      "role": "origin_a_fixture_v2_task3_checkpoint",
+      "sha256": "46b3a73409bb55465003496949917d82e64567e95f9f08b49c29439c2395e487"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task3-step4-unit.txt",
+      "role": "origin_a_fixture_v2_task3_unit",
+      "sha256": "c33a32907ae6f8337d038eea634423728c68f9c6f06410cd24cb1e8cfadf1026"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/execution-preflight.json",
+      "role": "origin_a_fixture_v2_execution_preflight",
+      "sha256": "A1424ECEEEE9A003492A07B957A3537DD3028C97E1DF2D88849A967E5EAA1E4D"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-3-correlation.json",
+      "role": "origin_a_fixture_v2_origin_a_3_correlation",
+      "sha256": "72296b61d5525f2355f73f6d01150c52469786d75e680684dfde4eef56062d83"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-3-prompt-2.json",
+      "role": "origin_a_fixture_v2_origin_a_3_prompt_2",
+      "sha256": "44766a900de674e4506402d04eb26f0e549ddd5459c64f9fe62ce3c4fadb1649"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/supersessions/origin-a-3-ungated-reprompt.json",
+      "role": "origin_a_fixture_v2_origin_a_3_ungated_reprompt",
+      "sha256": "86e79e341ef3d5a861485196d2dbb99a7fbe40125a0aeca0c279bd55f24edba5"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/origin-a-3-seal-b.json",
+      "role": "origin_a_fixture_v2_origin_a_3_seal_b",
+      "sha256": "82c8725e47aa061e9092070087f7ed0d500914b3a403ad15faf8078a12c45802"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/origin-a-3-exchange-facts.json",
+      "role": "origin_a_fixture_v2_origin_a_3_exchange_facts",
+      "sha256": "456f1bc814c07ca34916c4fa89149f2df7c0158a985264db6b2e86dae3683b7e"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/origin-a-3-settings-restore-evidence.json",
+      "role": "origin_a_fixture_v2_origin_a_3_settings_restore",
+      "sha256": "84ebe5f326f8fa946a083f5c3c90efc44691d9c510fa1c24e6f7c8712744fccf"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/evidence-report.json",
+      "role": "origin_a_fixture_v2_evidence_report",
+      "sha256": "7bb9aa348ed61ffc3b778dc230bc18d98e9b1d3c2d051ea02f2f9536562081be"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-feasibility.json",
+      "role": "origin_a_fixture_v2_feasibility_json",
+      "sha256": "f01773a835f98961282792967a5d4fa4352c6dbc7b270a76e42c9f319c422eac"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/document-freshness-audit.json",
+      "role": "origin_a_fixture_v2_document_freshness_audit",
+      "sha256": "0b17f3812ed8afe4013a722b83c263fc6130e4a18456dfbcb32c2dcb5f21babf"
+    }
+  ],
+  "checkpoint": "origin-a-fixture-v2-final",
+  "complete": true,
+  "docs_refresh": {
+    "backlog": "updated_origin_a3_option_b_awaiting_review",
+    "roadmap": "updated_origin_a3_option_b_awaiting_review",
+    "evidence_handoff_open_work_pool": "checked_no_change",
+    "readme": "checked_no_change",
+    "feasibility_md": "updated_option_b_process_invalid",
+    "feasibility_json": "created_option_b_undecided"
+  },
+  "head": "0f3136abc53a6e2237e3aceb450a4e1afdf97441",
+  "schema": "plan117-custody-artifact-manifest-v1"
+}

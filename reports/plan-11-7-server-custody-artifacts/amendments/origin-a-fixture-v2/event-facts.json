@@ -1,0 +1,69 @@
+{
+  "schema": "plan117-origin-a-fixture-v2-event-facts-v1",
+  "window_utc": {
+    "start": "2026-08-02T13:40:00Z",
+    "end": "2026-08-02T14:30:00Z"
+  },
+  "log_name": "Application",
+  "raw_export": {
+    "custody_relative": "event-log/application-2026-08-02T1340Z-1430Z.json",
+    "hash_method": "raw_file_sha256",
+    "sha256": "1E688ECB7F0AE52448441136F09635FECE7E7070CE6D15D522FAFDF6B07728A8",
+    "bytes": 3859,
+    "event_count": 8
+  },
+  "focus_export": {
+    "custody_relative": "event-log/application-zed-fault-focus.json",
+    "hash_method": "raw_file_sha256",
+    "sha256": "293425B0F5C12AE628902A973441A686E8E065B4AE87EF83CD07AE097A13CB2E",
+    "bytes": 2730,
+    "event_count": 3
+  },
+  "attempt_windows": {
+    "origin-a-1": {
+      "start": "2026-08-02T13:50:00Z",
+      "end": "2026-08-02T14:00:00Z",
+      "zed_fault_event_count": 0,
+      "exception_0xc0000409_count": 0
+    },
+    "origin-a-2": {
+      "start": "2026-08-02T14:00:00Z",
+      "end": "2026-08-02T14:20:00Z",
+      "zed_fault_event_count": 3,
+      "exception_0xc0000409_count": 1
+    }
+  },
+  "normalized_facts": [
+    {
+      "time_created_utc": "2026-08-02T14:02:15.8776960Z",
+      "event_id": 1001,
+      "provider": "Windows Error Reporting",
+      "level": "Information",
+      "mentions_zed": true,
+      "mentions_0xc0000409": false,
+      "fault_lines": []
+    },
+    {
+      "time_created_utc": "2026-08-02T14:02:12.7603124Z",
+      "event_id": 1001,
+      "provider": "Windows Error Reporting",
+      "level": "Information",
+      "mentions_zed": true,
+      "mentions_0xc0000409": false,
+      "fault_lines": []
+    },
+    {
+      "time_created_utc": "2026-08-02T14:02:11.1244486Z",
+      "event_id": 1000,
+      "provider": "Application Error",
+      "level": "Error",
+      "mentions_zed": true,
+      "mentions_0xc0000409": true,
+      "fault_lines": [
+        "Faulting application name: Zed.exe, version: 1.13.1.0, time stamp: 0x6a6a175a",
+        "Faulting module name: Zed.exe, version: 1.13.1.0, time stamp: 0x6a6a175a",
+        "Exception code: 0xc0000409"
+      ]
+    }
+  ]
+}

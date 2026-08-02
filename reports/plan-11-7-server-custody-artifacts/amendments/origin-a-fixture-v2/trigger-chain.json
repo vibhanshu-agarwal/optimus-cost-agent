@@ -1,0 +1,217 @@
+{
+  "schema": "plan117-origin-a-fixture-v2-trigger-v1",
+  "complete": true,
+  "custody_binding": {
+    "worktree_root": "D:\\Projects\\Development\\Python\\optimus-cost-agent-wt-cursor",
+    "branch": "agent/cursor/p11-feat-zed-resume",
+    "head": "7df84f5f9a19fe70694a7700b17a8a9334f8f9e2",
+    "private_custody_root": "D:\\Projects\\Development\\Python\\optimus-evidence-custody\\plan117-task4-private",
+    "origin_main_merge_commit": "5b5ef0746a3cbe8c610317543cdd614fe8a450f8"
+  },
+  "frozen_plan": {
+    "locator": "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md",
+    "hash_method": "git_blob_sha256",
+    "sha256": "F52AD9A5A85DC50B0DFD3206B6BD09FD8FF0AE79B1A6049DF1017F978B1C462D"
+  },
+  "parent_amendment": {
+    "locator": "docs/superpowers/plans/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md",
+    "hash_method": "git_blob_sha256",
+    "sha256": "79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6"
+  },
+  "parent_design": {
+    "locator": "docs/superpowers/specs/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-design.md",
+    "hash_method": "git_blob_sha256",
+    "sha256": "8808E5212DCDB3B44198096D1A0AFE7E20A53E4A9B28438DA5AA23245D339F0E"
+  },
+  "amendment": {
+    "locator": "docs/superpowers/plans/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md",
+    "hash_method": "git_blob_sha256",
+    "sha256": "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D"
+  },
+  "design": {
+    "locator": "docs/superpowers/specs/2026-08-02-plan-11-7-origin-a-fixture-v2-and-stage-accounting-design.md",
+    "hash_method": "git_blob_sha256",
+    "sha256": "9ADD264B06B67B7BF6C85A3A1439BFED29F10C08366848761EED9C3D8B624347"
+  },
+  "amendment_approval": {
+    "approver": "Vibhanshu Agarwal",
+    "utc": "2026-08-02T15:49:16Z",
+    "amendment_sha256": "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D",
+    "design_sha256": "9ADD264B06B67B7BF6C85A3A1439BFED29F10C08366848761EED9C3D8B624347",
+    "checkpoint_log_locator": "docs/superpowers/reviews/plan-11-7-review-checkpoints.md",
+    "merge_pr": 108,
+    "merge_commit": "5b5ef0746a3cbe8c610317543cdd614fe8a450f8",
+    "merged_utc": "2026-08-02T15:58:27Z"
+  },
+  "discovery": {
+    "disposition": "stop_amend_plan_session_load_unreachable",
+    "evidence_report_locator": "reports/plan-11-7-task0-artifacts/step4-discovery/evidence-report.json",
+    "evidence_report_hash_method": "raw_file_sha256",
+    "evidence_report_sha256": "1579A5B1A84F1AE46C0B09B317F61B93D919E5E03725FFA8BD0F9F6BD32565BF"
+  },
+  "production_source": {
+    "drafting_baseline": "2cf2f42aa7d1072f09d0678a3c75eb43516c8808",
+    "clean_vs_baseline": true,
+    "roots": [
+      "src/optimus",
+      "src/optimus_gateway"
+    ]
+  },
+  "historical_prompt_fixture": {
+    "locator": "tests/fixtures/evidence/plan117-server-custody-prompt.txt",
+    "hash_method": "raw_file_sha256",
+    "sha256": "8EEA4738E72159A863FEA22A542F92D6A99E3681803BA21863F734C577480D82",
+    "bytes": 86,
+    "role": "immutable_historical_evidence_only"
+  },
+  "prompt_fixture_v2": {
+    "locator": "tests/fixtures/evidence/plan117-server-custody-prompt-v2.txt",
+    "hash_method": "raw_file_sha256",
+    "sha256": "9195EFEEE3A2180CFB85EDE409FF7785F159F64E36426DCDB369251560E28A50",
+    "bytes": 93,
+    "text": "Read ./pyproject.toml and answer with one sentence naming this project. Do not modify files.\n",
+    "encoding": "utf-8-no-bom",
+    "line_endings": "lf_only_one_terminal"
+  },
+  "target_identity": {
+    "locator": "pyproject.toml",
+    "hash_method": "raw_file_sha256_and_git_blob_sha256",
+    "sha256": "AE28C0C3776F6B78DF23E86FC0E88B0088FEBB7241A04650C604D713E23EF697",
+    "bytes": 2925,
+    "resolver_reference": "./pyproject.toml",
+    "resolver_status": "resolved",
+    "resolved_relative_path": "pyproject.toml",
+    "within_file_budget": true,
+    "file_budget_bytes": 16384
+  },
+  "fixed_budget_table": {
+    "correlation_capture_cap": 3,
+    "post_new_prompt_cap_before_origin_a_3": 1,
+    "origin_a_3_correlation_ordinal": 3,
+    "origin_a_3_prompt_ordinal_if_correlation_succeeds": 2,
+    "prompt_only_retry_ordinal_if_transient": 3,
+    "fourth_correlation_launch_authorized": false,
+    "rows": [
+      {
+        "run_attempt_id": "origin-a-1",
+        "correlation": {
+          "ordinal": 1,
+          "status": "failed_tooling_capture"
+        },
+        "prompt": {
+          "status": "not_started"
+        }
+      },
+      {
+        "run_attempt_id": "origin-a-2",
+        "correlation": {
+          "ordinal": 2,
+          "status": "succeeded"
+        },
+        "prompt": {
+          "ordinal": 1,
+          "status": "failed_pre_gateway_fixture"
+        }
+      },
+      {
+        "run_attempt_id": "origin-a-3",
+        "correlation": {
+          "ordinal": 3,
+          "status": "final_authorized_capture_pending"
+        },
+        "prompt": {
+          "ordinal": 2,
+          "status": "pending_if_correlation_succeeds"
+        }
+      }
+    ]
+  },
+  "original_attempt_artifacts": {
+    "origin-a-1": {
+      "attempt-manifest.json": {
+        "custody_relative": "attempts/origin-a-1/attempt-manifest.json",
+        "hash_method": "raw_file_sha256",
+        "sha256": "7D64D5943002B15DCD977B0BC7614FC4234F9DD6D823C1533DA6A0677F9FF446",
+        "bytes": 446
+      },
+      "phase-observation.json": {
+        "custody_relative": "attempts/origin-a-1/phase-observation.json",
+        "hash_method": "raw_file_sha256",
+        "sha256": "CE358BD9E715C733766FA7080DD0CFDC26AEAE3368F0AD8AEDDE1DD74432C725",
+        "bytes": 219
+      },
+      "zed-to-agent.bin": {
+        "custody_relative": "origin-a-1/zed-to-agent.bin",
+        "hash_method": "raw_file_sha256",
+        "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+        "bytes": 0
+      },
+      "agent-to-zed.bin": {
+        "custody_relative": "origin-a-1/agent-to-zed.bin",
+        "hash_method": "raw_file_sha256",
+        "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+        "bytes": 0
+      },
+      "relay-index.ndjson": {
+        "custody_relative": "origin-a-1/relay-index.ndjson",
+        "hash_method": "raw_file_sha256",
+        "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+        "bytes": 0
+      },
+      "relay-summary.json": {
+        "custody_relative": "origin-a-1/relay-summary.json",
+        "exists": false
+      }
+    },
+    "origin-a-2": {
+      "attempt-manifest.json": {
+        "custody_relative": "attempts/origin-a-2/attempt-manifest.json",
+        "hash_method": "raw_file_sha256",
+        "sha256": "083E0953C8D89781C8C3100545BFC2E4524E94CBBAAE7B32574DA4D88F597F63",
+        "bytes": 291
+      },
+      "phase-observation.json": {
+        "custody_relative": "attempts/origin-a-2/phase-observation.json",
+        "hash_method": "raw_file_sha256",
+        "sha256": "CCE1FAC316F5961B6E1B3A57463D3DEB5119111FF9856B7A405761B459E47FF1",
+        "bytes": 143
+      },
+      "zed-to-agent.bin": {
+        "custody_relative": "origin-a-2/zed-to-agent.bin",
+        "hash_method": "raw_file_sha256",
+        "sha256": "CD7B2463ACD6DBFF71F9887BDEC5CBC31B3C7B28504B294859DAFDA14B9A53E0",
+        "bytes": 932
+      },
+      "agent-to-zed.bin": {
+        "custody_relative": "origin-a-2/agent-to-zed.bin",
+        "hash_method": "raw_file_sha256",
+        "sha256": "DC1AE7DB33D1AF23D94FF3DA315E4F4DD2400BB12E9E671F279565298F928ECF",
+        "bytes": 1950
+      },
+      "relay-index.ndjson": {
+        "custody_relative": "origin-a-2/relay-index.ndjson",
+        "hash_method": "raw_file_sha256",
+        "sha256": "6D2E712D4F56C5225A2DBF5E9CE2787529D4F359AAA045B9802FF7CFCEA5F610",
+        "bytes": 1755
+      },
+      "relay-summary.json": {
+        "custody_relative": "origin-a-2/relay-summary.json",
+        "exists": false
+      }
+    }
+  },
+  "event_log": {
+    "promoted_facts_locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/event-facts.json",
+    "promoted_facts_hash_method": "raw_file_sha256",
+    "promoted_facts_sha256": "75B12DED46B3DEB9C6B2A4BA8982857616D29DD8485535454F435B98A2A491DA",
+    "window_utc": {
+      "start": "2026-08-02T13:40:00Z",
+      "end": "2026-08-02T14:30:00Z"
+    },
+    "distinct_crash_histories": {
+      "origin-a-1_zed_fault_events": 0,
+      "origin-a-2_zed_fault_events": 3,
+      "origin-a-2_exception_0xc0000409": true
+    }
+  }
+}

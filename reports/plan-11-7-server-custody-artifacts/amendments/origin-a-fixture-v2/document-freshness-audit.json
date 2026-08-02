@@ -1,0 +1,65 @@
+{
+  "schema": "plan117-origin-a-fixture-v2-document-freshness-audit-v1",
+  "created_by": "plan117-task6-step4",
+  "created_utc": "2026-08-02T21:00:00Z",
+  "amendment_sha256": "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D",
+  "ending": {
+    "option": "B",
+    "corrected_origin_a_dod_success": false,
+    "feasibility_disposition_claimed": false,
+    "implementation_authorized": false,
+    "parent_task_5_unblocked": false,
+    "operator_return_required": true,
+    "budget_expansion_amendment_required_for_clean_relaunch": true
+  },
+  "documents": [
+    {
+      "locator": "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md",
+      "role": "backlog",
+      "action": "updated",
+      "claim_now": "origin-a-3 Option B process-invalid sealed; awaiting independent review / operator return; parent Task 5 blocked"
+    },
+    {
+      "locator": "docs/superpowers/plans/2026-07-01-phase-1-roadmap.md",
+      "role": "roadmap",
+      "action": "updated",
+      "claim_now": "same as backlog summary for Plan 11.7 status"
+    },
+    {
+      "locator": "docs/superpowers/plans/evidence-handoff-open-work-pool.md",
+      "role": "evidence_handoff_open_work_pool",
+      "action": "checked_no_change",
+      "claim_now": "no Plan 11.7 / origin-a current-state claims requiring update"
+    },
+    {
+      "locator": "README.md",
+      "role": "readme",
+      "action": "checked_no_change",
+      "claim_now": "no Plan 11.7 current-state claims"
+    },
+    {
+      "locator": "reports/plan-11-7-server-custody-feasibility.md",
+      "role": "feasibility_history",
+      "action": "updated",
+      "claim_now": "v1 history immutable; a-3 Option B sealed; feasibility undecided"
+    },
+    {
+      "locator": "reports/plan-11-7-server-custody-feasibility.json",
+      "role": "feasibility_json",
+      "action": "created",
+      "claim_now": "DoD false; implementation_authorized false; ending process_invalid_sealed_stop"
+    },
+    {
+      "locator": "docs/superpowers/plans/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md",
+      "role": "amendment_plan",
+      "action": "checked_no_checkbox_mutation",
+      "claim_now": "digest-bound; checkboxes intentionally left unchecked by implementer"
+    }
+  ],
+  "explicit_non_claims": [
+    "production_server_side_custody_feasibility",
+    "corrected_origin_a_dod_success",
+    "authorization_to_start_frozen_plan_11_7_implementation",
+    "parent_amendment_task_5_unblocked"
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "schema": "plan117-origin-a-fixture-v2-execution-preflight-v1",
+  "amendment_sha256": "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D",
+  "branch": "agent/cursor/p11-feat-zed-resume",
+  "head": "d9362c3967748108253acb28d6fe432ce5a8b6de",
+  "intended_commit_subject": "test(acp): amend Plan 11.7 origin fixture accounting",
+  "production_baseline": {
+    "commit": "2cf2f42aa7d1072f09d0678a3c75eb43516c8808",
+    "paths": [
+      "src/optimus",
+      "src/optimus_gateway"
+    ],
+    "clean": true
+  },
+  "fixture_pins": {
+    "prompt_fixture_v2_sha256": "9195EFEEE3A2180CFB85EDE409FF7785F159F64E36426DCDB369251560E28A50",
+    "pyproject_target_sha256": "AE28C0C3776F6B78DF23E86FC0E88B0088FEBB7241A04650C604D713E23EF697"
+  },
+  "classifications": {
+    "next_correlation_ordinal": 3,
+    "next_prompt_ordinal": 2
+  },
+  "files": [
+    {
+      "path": "tools/plan117_custody_contract.py",
+      "raw_file_sha256": "6051212D9AF688D92E09F07E73680D9AD94A5FA2ED09BF6D189FB0E796E4D343",
+      "git_blob_sha256": "6051212D9AF688D92E09F07E73680D9AD94A5FA2ED09BF6D189FB0E796E4D343"
+    },
+    {
+      "path": "tools/plan117_custody_relay.py",
+      "raw_file_sha256": "EE10828EE90344CF246E379405C56FACF637D5644905B3E8221CF03F66C5D57E",
+      "git_blob_sha256": "EE10828EE90344CF246E379405C56FACF637D5644905B3E8221CF03F66C5D57E"
+    },
+    {
+      "path": "tools/run_plan117_custody_feasibility.py",
+      "raw_file_sha256": "98C13EDA074F898A1446824E728685588438F9CA30962600313CD7B9662D7C38",
+      "git_blob_sha256": "98C13EDA074F898A1446824E728685588438F9CA30962600313CD7B9662D7C38"
+    },
+    {
+      "path": "tools/verify_plan117_custody_feasibility.py",
+      "raw_file_sha256": "A3544F3D5057036B67A7AE6A68FA0B89D80C5F1D48E4E0934CA78F1922C191DC",
+      "git_blob_sha256": "A3544F3D5057036B67A7AE6A68FA0B89D80C5F1D48E4E0934CA78F1922C191DC"
+    },
+    {
+      "path": "tests/unit/tools/test_plan117_custody_contract.py",
+      "raw_file_sha256": "CE67AF7A36D36EE8C84EA6ADD67F29B7569731C5FFFDFC9A570BB4D806DFFFE1",
+      "git_blob_sha256": "CE67AF7A36D36EE8C84EA6ADD67F29B7569731C5FFFDFC9A570BB4D806DFFFE1"
+    },
+    {
+      "path": "tests/unit/tools/test_plan117_custody_relay.py",
+      "raw_file_sha256": "7DFA94B54EABB7B555AA29923B988483DAC02C7E95482EA4A7AE3CB6CE959A66",
+      "git_blob_sha256": "7DFA94B54EABB7B555AA29923B988483DAC02C7E95482EA4A7AE3CB6CE959A66"
+    },
+    {
+      "path": "tests/unit/tools/test_run_plan117_custody_feasibility.py",
+      "raw_file_sha256": "773E0D29C6F2607C0ECFAD3AFB1ACC08E7308AC2E59177076B1A11C65F905BD9",
+      "git_blob_sha256": "773E0D29C6F2607C0ECFAD3AFB1ACC08E7308AC2E59177076B1A11C65F905BD9"
+    },
+    {
+      "path": "tests/unit/tools/test_verify_plan117_custody_feasibility.py",
+      "raw_file_sha256": "E2E01C3651C77E8558FC23BEF83D1D4296816841EB7C9456DE59CC671BE6F620",
+      "git_blob_sha256": "E2E01C3651C77E8558FC23BEF83D1D4296816841EB7C9456DE59CC671BE6F620"
+    },
+    {
+      "path": "tests/fixtures/evidence/plan117-server-custody-prompt-v2.txt",
+      "raw_file_sha256": "9195EFEEE3A2180CFB85EDE409FF7785F159F64E36426DCDB369251560E28A50",
+      "git_blob_sha256": "9195EFEEE3A2180CFB85EDE409FF7785F159F64E36426DCDB369251560E28A50"
+    },
+    {
+      "path": "tests/fixtures/evidence/scenarios/plan117-server-custody.toml",
+      "raw_file_sha256": "D9B855E9091A51545D4710C0E7755F13E9742B1A45701FE3D3EE76261BC0667B",
+      "git_blob_sha256": "D9B855E9091A51545D4710C0E7755F13E9742B1A45701FE3D3EE76261BC0667B"
+    },
+    {
+      "path": "docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json",
+      "raw_file_sha256": "2B185AC4946D7A54FA460680B2101FE6D4A055F3DD4382E415924BDFA9E6C7C2",
+      "git_blob_sha256": "2B185AC4946D7A54FA460680B2101FE6D4A055F3DD4382E415924BDFA9E6C7C2"
+    }
+  ],
+  "notes": {
+    "live_launch": false,
+    "settings_mutation": false,
+    "feasibility_disposition_claimed": false,
+    "no_live_launch_yet": true
+  }
+}

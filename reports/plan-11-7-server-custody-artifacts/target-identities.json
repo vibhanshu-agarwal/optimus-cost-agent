@@ -1,0 +1,146 @@
+{
+  "acpx": {
+    "cli_js_locator": "C:\\Users\\pc\\AppData\\Roaming\\npm\\node_modules\\acpx\\dist\\cli.js",
+    "cli_js_sha256": "7DA1D8B2FE0FC19696FEBDDB3486729CE82B04B2A64A367E16DF0691776483A4",
+    "hash_method": "raw_file_sha256",
+    "version": "0.12.0"
+  },
+  "complete": true,
+  "gateway": {
+    "api_key_present": true,
+    "host": "127.0.0.1",
+    "path_empty": true,
+    "port": 8765,
+    "scheme": "http",
+    "tcp_connect_ok": true
+  },
+  "optimus": {
+    "check_config_strict_no_auto_start_exit": 0,
+    "executable": {
+      "hash_method": "raw_file_sha256",
+      "locator": "D:\\Projects\\Development\\Python\\optimus-cost-agent-wt-cursor\\.venv\\Scripts\\optimus-agent.exe",
+      "sha256": "FA24636D7B22F4131CD3AC6A44CBA28E9A419A5AC039303BA681B172A6715B79"
+    },
+    "git_commit": "7bef78cf0c0fd02d08e56c874b9a35f28ee190ca",
+    "package_name": "optimus-cost-agent",
+    "package_version": "0.1.0",
+    "python_executable": "D:\\Projects\\Development\\Python\\optimus-cost-agent-wt-cursor\\.venv\\Scripts\\python.exe",
+    "source_blobs": [
+      {
+        "hash_method": "git_blob_sha256",
+        "locator": "src/optimus/acp/server.py",
+        "sha256": "2EB6A0446B9E1AAA082FFCFB7C8A20B2BA17B25BFCACF4597354214C2A2D10D8"
+      },
+      {
+        "hash_method": "git_blob_sha256",
+        "locator": "src/optimus/acp/spec.py",
+        "sha256": "1977397E5739C0807B9E04CF5BAE6F43F82BA9B015B89EDCEAD2F81E8F23B6C6"
+      },
+      {
+        "hash_method": "git_blob_sha256",
+        "locator": "src/optimus/acp/launch_policy.py",
+        "sha256": "695818168989A02C9E58CDE037E9FD8FE0AF24B80FE68B4B62177A0A5E359F77"
+      },
+      {
+        "hash_method": "git_blob_sha256",
+        "locator": "src/optimus/acp/launch_gate.py",
+        "sha256": "F53D598D57E99618B202A2A3DD0A24928AE4DA0518027CCA08A9568EEB68982E"
+      },
+      {
+        "hash_method": "git_blob_sha256",
+        "locator": "src/optimus/acp/debug_trace.py",
+        "sha256": "8C334F80A79C17D18C8C103DC675DAC55147C8A1AE53FB63E9E107AF8C90330F"
+      }
+    ]
+  },
+  "plan117_env_vars_present": false,
+  "readme": {
+    "attributes": "Archive",
+    "bytes": 44191,
+    "exists_readable_regular_file": true,
+    "hash_method": "raw_file_sha256",
+    "locator": "README.md",
+    "sha256": "6A9B416F15BEDDDA12FBB1136A36FB12BF6A156AA235D834DC78F285849F7E6E"
+  },
+  "redis": {
+    "container_created": "2026-07-09T08:25:50.038372391Z",
+    "container_id": "013e6e4118e6b357d6b26644962013171b682deb8db293f1a0ec4e0e4728b241",
+    "container_name": "optimus-redis",
+    "container_status": "running",
+    "image_digest": "sha256:2838d5524559494f6f1cd66e97e76b200d64a633a8614200620755ed395daf32",
+    "image_name": "redis:8",
+    "os": "Linux 6.6.87.2-microsoft-standard-WSL2 x86_64",
+    "redis_version": "8.8.0",
+    "tcp_port": 6379,
+    "timeseries_module": {
+      "name": "timeseries",
+      "path": "/usr/local/lib/redis/modules//redistimeseries.so",
+      "ver": 80800
+    }
+  },
+  "recorded_at_utc": "2026-08-02T08:00:00Z",
+  "schema": "plan117-custody-target-v1",
+  "workspace": {
+    "branch": "agent/cursor/p11-feat-zed-resume",
+    "head": "7bef78cf0c0fd02d08e56c874b9a35f28ee190ca",
+    "root": "D:\\Projects\\Development\\Python\\optimus-cost-agent-wt-cursor"
+  },
+  "zed": {
+    "executable": {
+      "file_version": "1.13.1",
+      "hash_method": "raw_file_sha256",
+      "locator": "C:\\Users\\pc\\AppData\\Local\\Programs\\Zed\\Zed.exe",
+      "product_version": "1.13.1+stable.332.00bd72e7838f4b875a913cd112b47a0ebe1ca62b",
+      "sha256": "6ABBB512DA3FBBC3C783A9898B67F802501BA60847030F270E6401D7B3DA210C"
+    },
+    "registry_remote_catalog_provenance": {
+      "byte_count": 48739,
+      "contains_optimus_entry": false,
+      "cross_phase_identity_equality": "excluded",
+      "exclusion_reason": "Zed remote catalog of published third-party agents; Optimus launches via settings.json agent_servers.optimus type=custom and does not read this file. Catalog refreshes change content (and digest) at identical length; including it in equality would raise invalid_probe_target_identity_mismatch unrelated to the probe.",
+      "hash_method": "raw_file_sha256",
+      "locator": "C:\\Users\\pc\\AppData\\Local\\Zed\\external_agents\\registry\\registry.json",
+      "prior_session_sha256": "D12DF0B4A53C4BF3B7370300C3F866D4CC9BECE2B1006FE34F7EEFE211E69438",
+      "role": "provenance_only_not_target_identity",
+      "sha256": "C799D4050DE58DFE7A0FCBDAF79B509523D49B1EAF1B9626814F66C5FE540B03"
+    },
+    "selected_optimus_agent_server": {
+      "args": [
+        "--workspace-root",
+        ".",
+        "--debug-trace"
+      ],
+      "command": "optimus-agent",
+      "json_path": "$.agent_servers.optimus",
+      "settings_file": {
+        "bytes": 2619,
+        "format": "jsonc",
+        "hash_method": "raw_file_sha256",
+        "locator": "C:\\Users\\pc\\AppData\\Roaming\\Zed\\settings.json",
+        "sha256": "DA99A0CDC4381092E4927A21CEC5217D0249D214969515F1022228DBA1D3A1F5"
+      },
+      "type": "custom"
+    },
+    "source": {
+      "commit": "00bd72e7838f4b875a913cd112b47a0ebe1ca62b",
+      "locator": "D:\\Projects\\Development\\Python\\zed-plan117",
+      "source_blobs": [
+        {
+          "hash_method": "git_blob_sha256",
+          "locator": "crates/agent_servers/src/acp.rs",
+          "sha256": "5EB360B880ACE3D60C0EE54B95408DC67E64337DE357401139C552B37874A913"
+        },
+        {
+          "hash_method": "git_blob_sha256",
+          "locator": "crates/agent_ui/src/conversation_view.rs",
+          "sha256": "53283DACF81AB08C3C71C727AF12125137EF585276020B1756D377594B095A78"
+        },
+        {
+          "hash_method": "git_blob_sha256",
+          "locator": "crates/agent_ui/src/agent_panel.rs",
+          "sha256": "4409288C612D1247F8C16399B5D9A64FE626FF392D1E49B81597608A334ED59D"
+        }
+      ]
+    }
+  }
+}

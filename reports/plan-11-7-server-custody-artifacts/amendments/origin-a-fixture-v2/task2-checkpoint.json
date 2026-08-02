@@ -1,0 +1,89 @@
+{
+  "schema": "plan117-origin-a-fixture-v2-task2-checkpoint-v1",
+  "task": "task2",
+  "created_by": "agent/cursor/p11-feat-zed-resume",
+  "created_utc": "2026-08-02T17:00:24Z",
+  "head": "7df84f5f9a19fe70694a7700b17a8a9334f8f9e2",
+  "amendment_sha256": "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D",
+  "separability_note": "Relay-safety and JSONC-safety conclusions are independent. Neither is evidence for or against origin-A fixture feasibility.",
+  "relay_safety": {
+    "status": "implemented_awaiting_independent_review",
+    "worktree_preserved": true,
+    "head_lacked_read1": true,
+    "pre_fix_isolated_copy": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/pre-fix-relay/plan117_custody_relay.py",
+    "pre_fix_proof_script": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/pre-fix-relay/proof_pre_fix_red.py",
+    "red_evidence": {
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task2-step1-relay-pre-fix-red.txt",
+      "sha256": "948DC4CD54659F695BB344151B4802BE357B1D7CCD13E3D4D3F0C4A4BAA1E506",
+      "summary": "Isolated HEAD relay lacks _read_pipe_chunk/read1; blocking parent_in.read(READ_CHUNK) and child_stdout.read(READ_CHUNK) present; prefer-read1 behavior fails with AssertionError: pre-fix module has no _read_pipe_chunk helper. Shared worktree relay untouched by proof."
+    },
+    "green_tests": {
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task2-step4-narrow.txt",
+      "relay_file": "tests/unit/tools/test_plan117_custody_relay.py",
+      "result_note": "included in narrow suite 104 passed, 1 skipped"
+    },
+    "tool_digest_raw": {
+      "tools/plan117_custody_relay.py": "EE10828EE90344CF246E379405C56FACF637D5644905B3E8221CF03F66C5D57E",
+      "tests/unit/tools/test_plan117_custody_relay.py": "7DFA94B54EABB7B555AA29923B988483DAC02C7E95482EA4A7AE3CB6CE959A66"
+    }
+  },
+  "jsonc_safety": {
+    "status": "implemented_awaiting_independent_review",
+    "red_evidence": {
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task2-step2-jsonc-red.txt",
+      "sha256": "A85A0C863EC0CAE3E6643D8A6732A362777FEF5F4204EA99624B4009B589E773",
+      "result": "6 failed, 6 passed, 62 deselected",
+      "exact_corruption_assertion": "AssertionError: silent corruption: expected '\"a, ]\"' preserved, got '\\n{\\n  \"label\": \"a ]\",\\n  \"pair\": \"b}\",\\n  \"agent_servers\": {\"optimus\": {\"command\": \"x\", \"args\": []}}\\n}\\n'",
+      "failed_tests": [
+        "test_parse_jsonc_commented_fallback_preserves_comma_bracket_inside_strings",
+        "test_parse_jsonc_preserves_escaped_quotes_and_backslashes",
+        "test_parse_jsonc_preserves_line_and_block_comment_markers_inside_strings",
+        "test_parse_jsonc_comment_free_strict_json_bypasses_stripper",
+        "test_parse_jsonc_round_trip_semantic_values_exact",
+        "test_settings_preimage_restored_after_mutation_window_failure_with_hostile_jsonc"
+      ]
+    },
+    "fix": {
+      "scope": "tools/run_plan117_custody_feasibility.py::_strip_jsonc trailing-comma pass + /* */ block comments",
+      "string_aware_trailing_comma": true,
+      "block_comment_support": true,
+      "strict_json_fast_path_preserved": true,
+      "no_new_parser_dependency": true
+    },
+    "tool_digest_raw": {
+      "tools/run_plan117_custody_feasibility.py": "35C7CFDC2771CC72DD36D086E879E0BBE78000F141F7394DB2F232DA9F537340",
+      "tests/unit/tools/test_run_plan117_custody_feasibility.py": "773E0D29C6F2607C0ECFAD3AFB1ACC08E7308AC2E59177076B1A11C65F905BD9"
+    }
+  },
+  "green_gates": {
+    "narrow_pytest": "104 passed, 1 skipped",
+    "narrow_locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task2-step4-narrow.txt",
+    "narrow_sha256": "56F248574AC848EA40F0446A043A84F4185A0F947B1DE323B9C18C2BE114AD66",
+    "logging_surface_audit": "passed",
+    "logging_locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task2-step4-logging.txt",
+    "logging_sha256": "2CD06DED379B24D4ECE21EF459DF26AC49718DA9042638BD76411CBC2D034736",
+    "new_logging_sinks_introduced": false,
+    "full_unit_pytest": "2405 passed, 23 skipped, 1 warning",
+    "full_unit_locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task2-step4-unit.txt",
+    "full_unit_sha256": "EC1587B0B2855F9376B9837CC7C078930B33EBACACAA2858FB68892B6F06F864",
+    "ruff": "All checks passed",
+    "ruff_locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task2-step4-ruff.txt",
+    "ruff_sha256": "AECAEBC5E72BF09DAA34E48D64DBA55C240533F4434D81B9678E88DE9215E313",
+    "git_diff_check": "clean (exit 0)",
+    "diff_check_locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/task2-step4-diff-check.txt",
+    "diff_check_sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+  },
+  "confirmations": {
+    "no_commit": true,
+    "no_push": true,
+    "no_live_zed_launch": true,
+    "no_settings_mutation": true,
+    "settings_preimage_sha256": "DA99A0CDC4381092E4927A21CEC5217D0249D214969515F1022228DBA1D3A1F5",
+    "settings_preimage_unchanged": true,
+    "no_zed_or_agent_processes_for_this_task": true,
+    "production_source_untouched": true,
+    "src_optimus_and_src_optimus_gateway_clean_vs_HEAD": true,
+    "amendment_plan_checkboxes_unchecked": true,
+    "task3_plus_not_started": true
+  }
+}
