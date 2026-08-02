@@ -166,7 +166,7 @@
       "hash_method": "raw_file_sha256",
       "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/execution-preflight.json",
       "role": "origin_a_fixture_v2_execution_preflight",
-      "sha256": "109F34DBF30FA8496859421B6347031EC077AF350C9EC0D904394991F3A76D1A"
+      "sha256": "A1424ECEEEE9A003492A07B957A3537DD3028C97E1DF2D88849A967E5EAA1E4D"
     }
   ],
   "checkpoint": "origin-a-fixture-v2-preflight",
@@ -177,6 +177,6 @@
     "readme": "checked_no_change",
     "roadmap": "updated_approved_correction_pending"
   },
-  "head": "PENDING",
+  "head": "d9362c3967748108253acb28d6fe432ce5a8b6de",
   "schema": "plan117-custody-artifact-manifest-v1"
 }

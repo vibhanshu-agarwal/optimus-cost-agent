@@ -2,7 +2,7 @@
   "schema": "plan117-origin-a-fixture-v2-execution-preflight-v1",
   "amendment_sha256": "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D",
   "branch": "agent/cursor/p11-feat-zed-resume",
-  "head": "PENDING",
+  "head": "d9362c3967748108253acb28d6fe432ce5a8b6de",
   "intended_commit_subject": "test(acp): amend Plan 11.7 origin fixture accounting",
   "production_baseline": {
     "commit": "2cf2f42aa7d1072f09d0678a3c75eb43516c8808",
@@ -38,8 +38,8 @@
     },
     {
       "path": "tools/verify_plan117_custody_feasibility.py",
-      "raw_file_sha256": "01EB29D97EAEA607C6CB3EA91C6E4B40CCB1F7BA1FCC183EED00C6AFE233EAFF",
-      "git_blob_sha256": "01EB29D97EAEA607C6CB3EA91C6E4B40CCB1F7BA1FCC183EED00C6AFE233EAFF"
+      "raw_file_sha256": "A3544F3D5057036B67A7AE6A68FA0B89D80C5F1D48E4E0934CA78F1922C191DC",
+      "git_blob_sha256": "A3544F3D5057036B67A7AE6A68FA0B89D80C5F1D48E4E0934CA78F1922C191DC"
     },
     {
       "path": "tests/unit/tools/test_plan117_custody_contract.py",

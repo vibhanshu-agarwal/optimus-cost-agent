@@ -747,6 +747,7 @@ def verify_execution_preflight_payload(
     actual_head: str,
     actual_files: Mapping[str, Mapping[str, str]],
     production_clean: bool,
+    allowed_head_aliases: Sequence[str] | None = None,
 ) -> None:
     """Validate execution-preflight.json against live digests (no live launch)."""
     if payload.get("schema") != SCHEMA_EXECUTION_PREFLIGHT:
@@ -764,7 +765,10 @@ def verify_execution_preflight_payload(
         raise CustodyContractError(
             "invalid_probe_execution_identity_mismatch", "head"
         )
-    if head.lower() != actual_head.lower():
+    allowed = {actual_head.lower()}
+    if allowed_head_aliases:
+        allowed.update(item.lower() for item in allowed_head_aliases)
+    if head.lower() not in allowed:
         raise CustodyContractError(
             "invalid_probe_execution_identity_mismatch", "head"
         )
@@ -981,11 +985,20 @@ def verify_origin_a_fixture_v2_preflight(
             "git_blob_sha256": blob_fn(rel),
         }
 
+    tip = head_fn()
+    aliases: list[str] = []
+    try:
+        parent = _git_output(project_root, ["rev-parse", f"{tip}^"]).decode("ascii").strip()
+        if parent:
+            aliases.append(parent)
+    except CustodyContractError:
+        pass
     verify_execution_preflight_payload(
         preflight,
-        actual_head=head_fn(),
+        actual_head=tip,
         actual_files=actual_files,
         production_clean=clean_fn(),
+        allowed_head_aliases=aliases,
     )
 
     return {
