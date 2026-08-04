@@ -2097,6 +2097,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.verify_plan117_custody_feasibility:_verify_sealed_live_session_proof_artifact:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonicalizes already-loaded safe live-session-proof seal fields (ids, outcome, reason codes, evidence hashes) solely to recompute proof_sha256; credentials, control messages, and settings bytes are rejected before encoding and the encoded JSON is not exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan117_custody_feasibility.py::test_verify_retry_preflight_offline_rejects_persisted_snapshot_only_live_claim",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.verify_plan117_custody_feasibility:main:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: main serializes only schema, disposition, safe reason codes, artifact count, or field_path/reason_code failure envelopes; never raw secret values.",

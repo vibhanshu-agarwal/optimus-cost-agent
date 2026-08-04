@@ -13,17 +13,28 @@ MODULE_PATH = (
 )
 # The focused inventory tests do not exercise SVG font measurement. Keep the
 # validator importable in the minimal docs-test environment without changing
-# the production dependency boundary.
-if "PIL" not in sys.modules:
-    pil = types.ModuleType("PIL")
-    pil_image_font = types.ModuleType("PIL.ImageFont")
-    pil_image_font.ImageFont = object
-    sys.modules["PIL"] = pil
-    sys.modules["PIL.ImageFont"] = pil_image_font
-if "pypdf" not in sys.modules:
-    pypdf = types.ModuleType("pypdf")
-    pypdf.PdfReader = object
-    sys.modules["pypdf"] = pypdf
+# the production dependency boundary. Prefer the real packages when installed
+# so sibling unit suites (e.g. evidence_gather redaction) are not poisoned.
+try:
+    import PIL  # noqa: F401
+except ImportError:
+    if "PIL" not in sys.modules:
+        pil = types.ModuleType("PIL")
+        pil_image = types.ModuleType("PIL.Image")
+        pil_image.Image = object
+        pil_image_font = types.ModuleType("PIL.ImageFont")
+        pil_image_font.ImageFont = object
+        pil.Image = pil_image
+        sys.modules["PIL"] = pil
+        sys.modules["PIL.Image"] = pil_image
+        sys.modules["PIL.ImageFont"] = pil_image_font
+try:
+    import pypdf  # noqa: F401
+except ImportError:
+    if "pypdf" not in sys.modules:
+        pypdf = types.ModuleType("pypdf")
+        pypdf.PdfReader = object
+        sys.modules["pypdf"] = pypdf
 SPEC = importlib.util.spec_from_file_location("validate_publication", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
 validate_publication = importlib.util.module_from_spec(SPEC)

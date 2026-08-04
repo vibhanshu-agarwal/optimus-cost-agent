@@ -25,17 +25,26 @@ from tools.plan117_custody_contract import (  # noqa: E402
     SCHEMA_SUPPLEMENTAL_FACT_RECORD,
     SCHEMA_VERIFIER_SUMMARY,
     CustodyContractError,
+    EvidenceReference,
     FailureClass,
+    LaunchSessionIdentity,
+    LiveSessionProof,
     StageAttemptRecord,
     StageKind,
     StageStatus,
     VerificationResult,
+    live_session_proof_sha256,
     normalize_stage_ledger,
     sha256_file,
     sha256_hex_equal,
+    validate_live_session_proof,
     verify_manifest,
 )
-from tools.plan117_custody_relay import verify_relay_capture  # noqa: E402
+from tools.plan117_custody_relay import (  # noqa: E402
+    SCHEMA_CONTROL_DESCRIPTOR,
+    _descriptor_sha256,
+    verify_relay_capture,
+)
 
 PROMPT_FIXTURE_V2_SHA256 = (
     "9195EFEEE3A2180CFB85EDE409FF7785F159F64E36426DCDB369251560E28A50"
@@ -61,6 +70,33 @@ SETTINGS_PREIMAGE_SHA256 = (
 SCHEMA_ORIGIN_A3_SEAL_B = "plan117-origin-a-3-seal-b-v1"
 SCHEMA_ORIGIN_A3_EXCHANGE_FACTS = "plan117-origin-a-3-exchange-facts-v1"
 SCHEMA_ORIGIN_A3_RESTORE_EVIDENCE = "plan117-origin-a-3-settings-restore-evidence-v1"
+SCHEMA_LIVE_SESSION_PROOF = "plan117-custody-live-session-proof-v1"
+SCHEMA_LAUNCH_SESSION_IDENTITY = "plan117-custody-launch-session-identity-v1"
+SCHEMA_DEBUG_CORROBORATION = "plan117-custody-debug-corroboration-v1"
+SCHEMA_RELAY_SESSION_EVIDENCE = "plan117-custody-relay-session-evidence-v1"
+SCHEMA_RETRY_OFFLINE_SUMMARY = "plan117-custody-retry-preflight-offline-summary-v1"
+RETRY_OUTCOME_UNAVAILABLE_PROOF = "unavailable_proof"
+RETRY_OUTCOME_IDENTITY_MISMATCH = "identity_mismatch"
+RETRY_OUTCOME_CONTROL_FAILURE = "control_failure"
+RETRY_OUTCOME_SECOND_PROMPT_FAILURE = "second_prompt_failure"
+RETRY_OUTCOME_ACCEPTED_SAME_SESSION_RETRY = "accepted_same_session_retry"
+_PROMOTED_DESCRIPTOR_SECRET_KEYS = frozenset(
+    {
+        "authkey_hex",
+        "authkey",
+        "credential",
+        "credentials",
+        "environment",
+        "env",
+        "settings_bytes",
+        "raw_control_message",
+        "raw_control_messages",
+    }
+)
+_RETRY_PROOF_ARTIFACT_ROLE = "origin_a_3_live_session_proof"
+_RETRY_PROOF_RELATIVE = (
+    "reports/plan-11-7-server-custody-artifacts/attempts/origin-a-3/live-session-proof.json"
+)
 _ORIGIN_A3_ORIGINAL_SHA256: dict[str, str] = {
     "attempts/origin-a-3/attempt-manifest.json": (
         "888d704b11365aa7dfb6d8dca1529b8f40a68ede176f901cc85292acd0065184"
@@ -145,7 +181,14 @@ __all__ = (
     "ORIGIN_A_3_CHECKPOINT",
     "ORIGIN_A_FIXTURE_V2_FINAL_CHECKPOINT",
     "ORIGIN_A_FIXTURE_V2_PREFLIGHT_CHECKPOINT",
+    "RETRY_OUTCOME_ACCEPTED_SAME_SESSION_RETRY",
+    "RETRY_OUTCOME_CONTROL_FAILURE",
+    "RETRY_OUTCOME_IDENTITY_MISMATCH",
+    "RETRY_OUTCOME_SECOND_PROMPT_FAILURE",
+    "RETRY_OUTCOME_UNAVAILABLE_PROOF",
     "SCHEMA_EXECUTION_PREFLIGHT",
+    "SCHEMA_LIVE_SESSION_PROOF",
+    "SCHEMA_RETRY_OFFLINE_SUMMARY",
     "main",
     "verify_approval_equivalence",
     "verify_execution_preflight_payload",
@@ -159,6 +202,7 @@ __all__ = (
     "verify_origin_a_fixture_v2_preflight",
     "verify_origin_a_original_hashes",
     "verify_relay_capture",
+    "verify_retry_preflight_offline",
     "verify_run_reservation_payload",
     "verify_settings_transaction_proof",
     "verify_stage_ledger_payload",
@@ -1358,17 +1402,155 @@ def _load_origin_a3_seal_artifacts(
     return loaded, private_root
 
 
+def _verify_sealed_live_session_proof_artifact(
+    *,
+    project_root: Path,
+    artifacts: Sequence[Any],
+) -> dict[str, Any]:
+    """Verify the append-only promoted proof seal; reject secrets and live snapshot claims."""
+    proof_entries = [
+        item
+        for item in artifacts
+        if isinstance(item, Mapping) and item.get("role") == _RETRY_PROOF_ARTIFACT_ROLE
+    ]
+    if len(proof_entries) != 1:
+        raise CustodyContractError(
+            "invalid_probe_retry_proof_unavailable",
+            "manifest.live_session_proof_role",
+        )
+    entry = proof_entries[0]
+    locator = entry.get("locator")
+    if locator != _RETRY_PROOF_RELATIVE:
+        raise CustodyContractError(
+            "invalid_probe_retry_proof_unavailable",
+            "manifest.live_session_proof_locator",
+        )
+    # Private control descriptor must never be promoted.
+    for item in artifacts:
+        if not isinstance(item, Mapping):
+            continue
+        loc = item.get("locator")
+        if isinstance(loc, str) and loc.endswith("relay-control-descriptor.json"):
+            raise CustodyContractError(
+                "invalid_probe_retry_control_channel_failure",
+                "manifest.private_descriptor_promoted",
+            )
+        if isinstance(loc, str) and any(
+            secret in loc for secret in ("authkey", "credential", "settings-bytes")
+        ):
+            raise CustodyContractError(
+                "invalid_probe_retry_control_channel_failure",
+                "manifest.secret_locator",
+            )
+
+    proof_path = project_root / _RETRY_PROOF_RELATIVE
+    if proof_path.is_symlink() or not proof_path.is_file():
+        raise CustodyContractError(
+            "artifact_missing_or_symlink",
+            _RETRY_PROOF_RELATIVE,
+        )
+    raw = proof_path.read_bytes()
+    if b"\r\n" in raw:
+        raise CustodyContractError("crlf_line_endings", _RETRY_PROOF_RELATIVE)
+    digest = hashlib.sha256(raw).hexdigest()
+    declared = entry.get("sha256")
+    if not isinstance(declared, str) or not sha256_hex_equal(digest, declared):
+        raise CustodyContractError(
+            "invalid_probe_retry_proof_unavailable",
+            "manifest.live_session_proof_sha256",
+        )
+    try:
+        proof_payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise CustodyContractError(
+            "invalid_probe_retry_proof_unavailable",
+            "live_session_proof",
+        ) from exc
+    if not isinstance(proof_payload, dict):
+        raise CustodyContractError(
+            "invalid_probe_retry_proof_unavailable",
+            "live_session_proof",
+        )
+    if proof_payload.get("schema") != SCHEMA_LIVE_SESSION_PROOF:
+        raise CustodyContractError(
+            "invalid_probe_retry_proof_unavailable",
+            "live_session_proof.schema",
+        )
+    if proof_payload.get("run_attempt_id") != "origin-a-3":
+        raise CustodyContractError(
+            "invalid_probe_retry_proof_unavailable",
+            "live_session_proof.run_attempt_id",
+        )
+    secret_keys = sorted(
+        key for key in proof_payload if key in _PROMOTED_DESCRIPTOR_SECRET_KEYS
+    )
+    if secret_keys:
+        raise CustodyContractError(
+            "invalid_probe_retry_control_channel_failure",
+            f"live_session_proof.secret:{secret_keys[0]}",
+        )
+    if proof_payload.get("live_attestation") is True:
+        raise CustodyContractError(
+            "blocked_probe_same_session_prompt_retry_unavailable",
+            "live_session_proof.live_attestation",
+        )
+    if proof_payload.get("outcome") == RETRY_OUTCOME_ACCEPTED_SAME_SESSION_RETRY:
+        raise CustodyContractError(
+            "blocked_probe_same_session_prompt_retry_unavailable",
+            "live_session_proof.accepted_without_live_evidence",
+        )
+    if proof_payload.get("outcome") != RETRY_OUTCOME_UNAVAILABLE_PROOF:
+        raise CustodyContractError(
+            "invalid_probe_retry_proof_unavailable",
+            "live_session_proof.outcome",
+        )
+    if (
+        proof_payload.get("reason_code")
+        != "blocked_probe_same_session_prompt_retry_unavailable"
+    ):
+        raise CustodyContractError(
+            "invalid_probe_retry_proof_unavailable",
+            "live_session_proof.reason_code",
+        )
+    if proof_payload.get("settings_mutated") is not False:
+        raise CustodyContractError("settings_not_restored", "live_session_proof")
+    if proof_payload.get("zed_launched") is not False:
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting",
+            "live_session_proof.zed_launched",
+        )
+    body = {key: value for key, value in proof_payload.items() if key != "proof_sha256"}
+    encoded = json.dumps(body, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    recomputed = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    stored = proof_payload.get("proof_sha256")
+    if not isinstance(stored, str) or not sha256_hex_equal(recomputed, stored):
+        raise CustodyContractError(
+            "invalid_probe_retry_proof_unavailable",
+            "live_session_proof.proof_sha256",
+        )
+    return {
+        "outcome": RETRY_OUTCOME_UNAVAILABLE_PROOF,
+        "reason_codes": ["blocked_probe_same_session_prompt_retry_unavailable"],
+        "live_session_proof_sha256": stored.lower(),
+        "live_claim_accepted": False,
+    }
+
+
 def verify_origin_a3(
     *,
     project_root: Path,
     manifest_path: Path,
     originals_root: Path | None = None,
 ) -> dict[str, Any]:
-    """Task 5 Step 6 offline checkpoint for the sealed origin-a-3 ending."""
+    """Offline checkpoint for the sealed origin-a-3 ending plus retry proof seal."""
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     if payload.get("schema") != "plan117-custody-artifact-manifest-v1":
         raise CustodyContractError("invalid_manifest_schema", "schema")
-    if payload.get("checkpoint") != ORIGIN_A_3_CHECKPOINT:
+    # Parent final seal is a strict extension of origin-a-3; both are accepted here.
+    if payload.get("checkpoint") not in {
+        ORIGIN_A_3_CHECKPOINT,
+        ORIGIN_A_FIXTURE_V2_FINAL_CHECKPOINT,
+    }:
         raise CustodyContractError("checkpoint_mismatch", "checkpoint")
 
     loaded, private_root = _load_origin_a3_seal_artifacts(
@@ -1390,6 +1572,7 @@ def verify_origin_a3(
         "origin_a_fixture_v2_origin_a_3_seal_b",
         "origin_a_fixture_v2_origin_a_3_exchange_facts",
         "origin_a_fixture_v2_origin_a_3_settings_restore",
+        _RETRY_PROOF_ARTIFACT_ROLE,
     }
     found_roles = {
         item.get("role") for item in artifacts if isinstance(item, Mapping)
@@ -1418,7 +1601,16 @@ def verify_origin_a3(
         originals_root=private_root,
         expected_original_sha256=expected,
     )
+    retry_summary = _verify_sealed_live_session_proof_artifact(
+        project_root=project_root,
+        artifacts=artifacts,
+    )
     summary["checkpoint"] = ORIGIN_A_3_CHECKPOINT
+    summary["retry_preflight"] = retry_summary
+    summary["reason_codes"] = list(summary.get("reason_codes", [])) + list(
+        retry_summary["reason_codes"]
+    )
+    summary["verified_artifact_count"] = int(summary["verified_artifact_count"]) + 1
     return summary
 
 
@@ -1591,6 +1783,431 @@ def verify_transcript_debug_agreement(
     for key in ("messages", "ordered_update_types", "server_session_id", "interval"):
         if projection.get(key) != debug_suffix.get(key):
             raise CustodyContractError("invalid_probe_transcript_debug_divergence", key)
+
+
+def _launch_identity_from_payload(payload: Mapping[str, Any]) -> LaunchSessionIdentity:
+    schema = payload.get("schema")
+    if schema is not None and schema != SCHEMA_LAUNCH_SESSION_IDENTITY:
+        raise CustodyContractError(
+            "invalid_probe_retry_process_identity_mismatch",
+            "launch_identity.schema",
+        )
+    try:
+        return LaunchSessionIdentity(
+            run_attempt_id=str(payload["run_attempt_id"]),
+            zed_pid=int(payload["zed_pid"]),
+            zed_process_start_time_utc=str(payload["zed_process_start_time_utc"]),
+            connection_id=str(payload["connection_id"]),
+            acp_session_id=str(payload["acp_session_id"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise CustodyContractError(
+            "invalid_probe_retry_process_identity_mismatch",
+            "launch_identity",
+        ) from exc
+
+
+def _live_session_proof_from_payload(payload: Mapping[str, Any]) -> LiveSessionProof:
+    if payload.get("schema") != SCHEMA_LIVE_SESSION_PROOF:
+        raise CustodyContractError(
+            "invalid_probe_retry_proof_unavailable",
+            "proof.schema",
+        )
+    evidence_raw = payload.get("evidence")
+    if not isinstance(evidence_raw, list) or not evidence_raw:
+        raise CustodyContractError("invalid_probe_retry_proof_unavailable", "evidence")
+    evidence: list[EvidenceReference] = []
+    for index, item in enumerate(evidence_raw):
+        if not isinstance(item, Mapping):
+            raise CustodyContractError(
+                "invalid_probe_retry_proof_unavailable",
+                f"evidence[{index}]",
+            )
+        try:
+            evidence.append(
+                EvidenceReference(
+                    relative_path=str(item["relative_path"]),
+                    sha256=str(item["sha256"]).lower(),
+                    hash_method=str(item["hash_method"]),
+                )
+            )
+        except KeyError as exc:
+            raise CustodyContractError(
+                "invalid_probe_retry_proof_unavailable",
+                f"evidence[{index}]",
+            ) from exc
+    try:
+        return LiveSessionProof(
+            run_attempt_id=str(payload["run_attempt_id"]),
+            zed_pid=int(payload["zed_pid"]),
+            zed_process_start_time_utc=str(payload["zed_process_start_time_utc"]),
+            connection_id=str(payload["connection_id"]),
+            acp_session_id=str(payload["acp_session_id"]),
+            zed_alive=bool(payload["zed_alive"]),
+            relay_alive=bool(payload["relay_alive"]),
+            acp_session_observed=bool(payload["acp_session_observed"]),
+            captured_utc=str(payload["captured_utc"]),
+            evidence=tuple(evidence),
+            proof_sha256=str(payload["proof_sha256"]).lower(),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise CustodyContractError(
+            "invalid_probe_retry_proof_unavailable",
+            "proof",
+        ) from exc
+
+
+def _verify_control_descriptor_offline(
+    descriptor: Mapping[str, Any],
+    *,
+    promote_safe_only: bool,
+) -> str:
+    if descriptor.get("schema") != SCHEMA_CONTROL_DESCRIPTOR:
+        raise CustodyContractError(
+            "invalid_probe_retry_control_channel_failure",
+            "descriptor.schema",
+        )
+    if promote_safe_only:
+        secret_keys = sorted(key for key in descriptor if key in _PROMOTED_DESCRIPTOR_SECRET_KEYS)
+        if secret_keys:
+            raise CustodyContractError(
+                "invalid_probe_retry_control_channel_failure",
+                f"promoted_secret:{secret_keys[0]}",
+            )
+    digest = _descriptor_sha256(descriptor)
+    stored = descriptor.get("descriptor_sha256")
+    if not isinstance(stored, str) or not sha256_hex_equal(digest, stored):
+        raise CustodyContractError(
+            "invalid_probe_retry_control_channel_failure",
+            "descriptor_sha256",
+        )
+    if descriptor.get("prompt_sealed") is True:
+        raise CustodyContractError(
+            "invalid_probe_retry_second_prompt_failure",
+            "prompt_sealed",
+        )
+    if descriptor.get("terminal") is True:
+        raise CustodyContractError(
+            "invalid_probe_retry_control_channel_failure",
+            "descriptor_terminal",
+        )
+    return digest.lower()
+
+
+def _claim_requests_accepted(claim: Mapping[str, Any] | None) -> bool:
+    if not isinstance(claim, Mapping):
+        return False
+    return claim.get("outcome") == RETRY_OUTCOME_ACCEPTED_SAME_SESSION_RETRY
+
+
+def verify_retry_preflight_offline(
+    *,
+    proof: Mapping[str, Any] | None,
+    launch_identity: Mapping[str, Any],
+    control_descriptor: Mapping[str, Any] | None,
+    stage_ledger: Mapping[str, Any],
+    prompt_outcome: Mapping[str, Any] | None = None,
+    debug_corroboration: Mapping[str, Any] | None = None,
+    relay_session_evidence: Mapping[str, Any] | None = None,
+    claim: Mapping[str, Any] | None = None,
+    promote_safe_only: bool = False,
+) -> dict[str, Any]:
+    """Offline-only retry-preflight verifier; never inspects processes or opens the relay.
+
+    Distinguishes unavailable proof, identity mismatch, control failure, second prompt
+    failure, and accepted same-session retry. A persisted proof snapshot alone can never
+    authorize an accepted live claim.
+    """
+    launch = _launch_identity_from_payload(launch_identity)
+    if launch.run_attempt_id != "origin-a-3":
+        raise CustodyContractError(
+            "invalid_probe_stage_accounting",
+            "launch_identity.run_attempt_id",
+        )
+
+    if stage_ledger.get("schema") != SCHEMA_STAGE_LEDGER:
+        raise CustodyContractError("invalid_probe_retry_ledger_unavailable", "schema")
+    if not sha256_hex_equal(
+        str(stage_ledger.get("amendment_sha256", "")),
+        ORIGIN_A_FIXTURE_V2_AMENDMENT_SHA256,
+    ):
+        raise CustodyContractError(
+            "invalid_probe_retry_ledger_unavailable",
+            "amendment_sha256",
+        )
+    next_correlation_ordinal = stage_ledger.get("next_correlation_ordinal")
+    next_prompt_ordinal = stage_ledger.get("next_prompt_ordinal")
+    if not isinstance(next_correlation_ordinal, int) or not isinstance(
+        next_prompt_ordinal, int
+    ):
+        raise CustodyContractError(
+            "invalid_probe_retry_ledger_unavailable",
+            "derived_ordinals",
+        )
+    records = stage_ledger.get("records")
+    if not isinstance(records, list):
+        raise CustodyContractError("invalid_probe_retry_ledger_unavailable", "records")
+    saw_correlation = False
+    saw_prompt_two_transient = False
+    for item in records:
+        if not isinstance(item, Mapping):
+            raise CustodyContractError("invalid_probe_retry_ledger_unavailable", "records")
+        if item.get("run_attempt_id") == "origin-a-4":
+            raise CustodyContractError(
+                "invalid_probe_retry_budget_exhausted",
+                "run_attempt_id",
+            )
+        if item.get("stage") == "correlation_capture" and item.get("ordinal") == 4:
+            raise CustodyContractError(
+                "invalid_probe_retry_budget_exhausted",
+                "ordinal",
+            )
+        if (
+            item.get("run_attempt_id") == "origin-a-3"
+            and item.get("stage") == "correlation_capture"
+            and item.get("ordinal") == 3
+            and item.get("status") == "succeeded"
+        ):
+            saw_correlation = True
+        if (
+            item.get("run_attempt_id") == "origin-a-3"
+            and item.get("stage") == "post_new_prompt"
+            and item.get("ordinal") == 2
+            and item.get("status") == "failed"
+            and item.get("failure_class") == "transient"
+        ):
+            saw_prompt_two_transient = True
+    if not saw_correlation or not saw_prompt_two_transient:
+        raise CustodyContractError(
+            "invalid_probe_retry_ledger_unavailable",
+            "origin-a-3.eligibility",
+        )
+    ledger_info = {
+        "next_correlation_ordinal": next_correlation_ordinal,
+        "next_prompt_ordinal": next_prompt_ordinal,
+    }
+
+    wants_accepted = _claim_requests_accepted(claim)
+    hardcoded = isinstance(claim, Mapping) and claim.get("hardcoded") is True
+    live_supported = (
+        isinstance(claim, Mapping) and claim.get("supported_by_live_attestation") is True
+    )
+
+    if claim is not None and isinstance(claim, Mapping):
+        if claim.get("settings_mutated") is True:
+            raise CustodyContractError("settings_not_restored", "claim.settings_mutated")
+        if claim.get("zed_launched") is True:
+            raise CustodyContractError(
+                "invalid_probe_stage_accounting",
+                "claim.zed_launched",
+            )
+
+    if proof is None or hardcoded:
+        if wants_accepted:
+            raise CustodyContractError(
+                "blocked_probe_same_session_prompt_retry_unavailable",
+                "live_session_proof",
+            )
+        return {
+            "schema": SCHEMA_RETRY_OFFLINE_SUMMARY,
+            "outcome": RETRY_OUTCOME_UNAVAILABLE_PROOF,
+            "reason_codes": ["blocked_probe_same_session_prompt_retry_unavailable"],
+            "next_correlation_ordinal": ledger_info["next_correlation_ordinal"],
+            "next_prompt_ordinal": ledger_info["next_prompt_ordinal"],
+            "live_claim_accepted": False,
+        }
+
+    typed_proof = _live_session_proof_from_payload(proof)
+    recomputed = live_session_proof_sha256(typed_proof)
+    if not sha256_hex_equal(recomputed, typed_proof.proof_sha256):
+        raise CustodyContractError(
+            "invalid_probe_retry_proof_unavailable",
+            "proof_sha256",
+        )
+
+    try:
+        validate_live_session_proof(typed_proof, expected=launch)
+    except CustodyContractError:
+        # Preserve retry-specific identity mismatch taxonomy from the contract helper.
+        raise
+
+    if control_descriptor is None:
+        if wants_accepted:
+            raise CustodyContractError(
+                "invalid_probe_retry_control_channel_failure",
+                "control_descriptor",
+            )
+        return {
+            "schema": SCHEMA_RETRY_OFFLINE_SUMMARY,
+            "outcome": RETRY_OUTCOME_CONTROL_FAILURE,
+            "reason_codes": ["invalid_probe_retry_control_channel_failure"],
+            "next_correlation_ordinal": ledger_info["next_correlation_ordinal"],
+            "next_prompt_ordinal": ledger_info["next_prompt_ordinal"],
+            "live_claim_accepted": False,
+        }
+
+    _verify_control_descriptor_offline(
+        control_descriptor,
+        promote_safe_only=promote_safe_only,
+    )
+    if control_descriptor.get("connection_id") != launch.connection_id:
+        raise CustodyContractError(
+            "invalid_probe_retry_connection_identity_mismatch",
+            "descriptor.connection_id",
+        )
+    if control_descriptor.get("run_attempt_id") != launch.run_attempt_id:
+        raise CustodyContractError(
+            "invalid_probe_retry_control_channel_failure",
+            "descriptor.run_attempt_id",
+        )
+
+    live_attestation = proof.get("live_attestation") is True
+    if wants_accepted and (not live_attestation or not live_supported):
+        raise CustodyContractError(
+            "blocked_probe_same_session_prompt_retry_unavailable",
+            "persisted_snapshot_only",
+        )
+
+    if wants_accepted:
+        if debug_corroboration is None:
+            raise CustodyContractError(
+                "invalid_probe_transcript_debug_divergence",
+                "debug_corroboration",
+            )
+        if debug_corroboration.get("schema") != SCHEMA_DEBUG_CORROBORATION:
+            raise CustodyContractError(
+                "invalid_probe_transcript_debug_divergence",
+                "debug_corroboration.schema",
+            )
+        if (
+            debug_corroboration.get("acp_session_id") != launch.acp_session_id
+            or debug_corroboration.get("connection_id") != launch.connection_id
+            or debug_corroboration.get("session_new_observed") is not True
+        ):
+            raise CustodyContractError(
+                "invalid_probe_transcript_debug_divergence",
+                "debug_corroboration.identity",
+            )
+        if relay_session_evidence is None:
+            raise CustodyContractError(
+                "invalid_probe_retry_proof_unavailable",
+                "relay_session_evidence",
+            )
+        if relay_session_evidence.get("schema") != SCHEMA_RELAY_SESSION_EVIDENCE:
+            raise CustodyContractError(
+                "invalid_probe_retry_proof_unavailable",
+                "relay_session_evidence.schema",
+            )
+        if (
+            relay_session_evidence.get("acp_session_id") != launch.acp_session_id
+            or relay_session_evidence.get("connection_id") != launch.connection_id
+            or relay_session_evidence.get("session_new_observed") is not True
+        ):
+            raise CustodyContractError(
+                "invalid_probe_retry_acp_session_identity_mismatch",
+                "relay_session_evidence.identity",
+            )
+
+    if prompt_outcome is not None:
+        if not isinstance(prompt_outcome, Mapping):
+            raise CustodyContractError("invalid_probe_stage_accounting", "prompt_outcome")
+        ordinal = prompt_outcome.get("ordinal")
+        if not isinstance(ordinal, int) or ordinal > 3:
+            raise CustodyContractError(
+                "invalid_probe_retry_budget_exhausted",
+                "prompt_outcome.ordinal",
+            )
+        if ordinal != 3:
+            raise CustodyContractError(
+                "invalid_probe_stage_accounting",
+                "prompt_outcome.ordinal",
+            )
+        if prompt_outcome.get("settings_mutated") is True:
+            raise CustodyContractError(
+                "settings_not_restored",
+                "prompt_outcome.settings_mutated",
+            )
+        if prompt_outcome.get("zed_launched") is True:
+            raise CustodyContractError(
+                "invalid_probe_stage_accounting",
+                "prompt_outcome.zed_launched",
+            )
+        evidence = prompt_outcome.get("evidence")
+        if not isinstance(evidence, list):
+            raise CustodyContractError("invalid_probe_stage_accounting", "prompt_outcome.evidence")
+        reservation_paths = [
+            item.get("relative_path")
+            for item in evidence
+            if isinstance(item, Mapping)
+            and isinstance(item.get("relative_path"), str)
+            and "reservations/" in item["relative_path"]
+            and "prompt-3" in item["relative_path"]
+        ]
+        if len(reservation_paths) > 1:
+            raise CustodyContractError(
+                "reservation_already_exists",
+                "prompt_outcome.evidence.reservations",
+            )
+        if prompt_outcome.get("status") == "failed":
+            reason = prompt_outcome.get("reason_code") or "invalid_probe_retry_second_prompt_failure"
+            if wants_accepted:
+                raise CustodyContractError(
+                    "invalid_probe_retry_second_prompt_failure",
+                    "prompt_outcome.status",
+                )
+            return {
+                "schema": SCHEMA_RETRY_OFFLINE_SUMMARY,
+                "outcome": RETRY_OUTCOME_SECOND_PROMPT_FAILURE,
+                "reason_codes": [str(reason)],
+                "next_correlation_ordinal": ledger_info["next_correlation_ordinal"],
+                "next_prompt_ordinal": ledger_info["next_prompt_ordinal"],
+                "live_claim_accepted": False,
+                "live_session_proof_sha256": typed_proof.proof_sha256,
+            }
+        if prompt_outcome.get("status") != "succeeded":
+            raise CustodyContractError(
+                "invalid_probe_stage_accounting",
+                "prompt_outcome.status",
+            )
+
+    if wants_accepted:
+        if prompt_outcome is None:
+            raise CustodyContractError(
+                "blocked_probe_same_session_prompt_retry_unavailable",
+                "prompt_outcome",
+            )
+        return {
+            "schema": SCHEMA_RETRY_OFFLINE_SUMMARY,
+            "outcome": RETRY_OUTCOME_ACCEPTED_SAME_SESSION_RETRY,
+            "reason_codes": ["accepted_same_session_prompt_retry"],
+            "next_correlation_ordinal": ledger_info["next_correlation_ordinal"],
+            "next_prompt_ordinal": ledger_info["next_prompt_ordinal"],
+            "live_claim_accepted": True,
+            "live_session_proof_sha256": typed_proof.proof_sha256,
+            "settings_mutated": False,
+            "zed_launched": False,
+        }
+
+    if isinstance(claim, Mapping) and claim.get("outcome") == RETRY_OUTCOME_SECOND_PROMPT_FAILURE:
+        return {
+            "schema": SCHEMA_RETRY_OFFLINE_SUMMARY,
+            "outcome": RETRY_OUTCOME_SECOND_PROMPT_FAILURE,
+            "reason_codes": ["invalid_probe_retry_second_prompt_failure"],
+            "next_correlation_ordinal": ledger_info["next_correlation_ordinal"],
+            "next_prompt_ordinal": ledger_info["next_prompt_ordinal"],
+            "live_claim_accepted": False,
+            "live_session_proof_sha256": typed_proof.proof_sha256,
+        }
+
+    return {
+        "schema": SCHEMA_RETRY_OFFLINE_SUMMARY,
+        "outcome": RETRY_OUTCOME_UNAVAILABLE_PROOF,
+        "reason_codes": ["blocked_probe_same_session_prompt_retry_unavailable"],
+        "next_correlation_ordinal": ledger_info["next_correlation_ordinal"],
+        "next_prompt_ordinal": ledger_info["next_prompt_ordinal"],
+        "live_claim_accepted": False,
+        "live_session_proof_sha256": typed_proof.proof_sha256,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:

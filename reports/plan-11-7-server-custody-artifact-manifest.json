@@ -221,17 +221,23 @@
       "locator": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/document-freshness-audit.json",
       "role": "origin_a_fixture_v2_document_freshness_audit",
       "sha256": "0b17f3812ed8afe4013a722b83c263fc6130e4a18456dfbcb32c2dcb5f21babf"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/attempts/origin-a-3/live-session-proof.json",
+      "role": "origin_a_3_live_session_proof",
+      "sha256": "889AE9072AE9C353FA3C70249EDCE273BA45434F97D104239926BB19DDDCEAE0"
     }
   ],
   "checkpoint": "origin-a-fixture-v2-final",
   "complete": true,
   "docs_refresh": {
     "backlog": "updated_origin_a3_option_b_awaiting_review",
-    "roadmap": "updated_origin_a3_option_b_awaiting_review",
     "evidence_handoff_open_work_pool": "checked_no_change",
-    "readme": "checked_no_change",
+    "feasibility_json": "created_option_b_undecided",
     "feasibility_md": "updated_option_b_process_invalid",
-    "feasibility_json": "created_option_b_undecided"
+    "readme": "checked_no_change",
+    "roadmap": "updated_origin_a3_option_b_awaiting_review"
   },
   "head": "0f3136abc53a6e2237e3aceb450a4e1afdf97441",
   "schema": "plan117-custody-artifact-manifest-v1"
