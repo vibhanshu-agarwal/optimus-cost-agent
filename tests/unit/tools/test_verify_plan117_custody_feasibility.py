@@ -2737,12 +2737,20 @@ def test_verify_retry_preflight_offline_rejects_changed_proof_field() -> None:
     proof = dict(bundle["proof"])
     proof["zed_pid"] = 9999
     bundle["proof"] = proof
-    with pytest.raises(CustodyContractError) as exc:
-        v.verify_retry_preflight_offline(**bundle)
-    assert exc.value.reason_code in {
-        "invalid_probe_retry_proof_unavailable",
-        "invalid_probe_retry_process_identity_mismatch",
+    summary = v.verify_retry_preflight_offline(**bundle)
+    assert summary["outcome"] in {
+        v.RETRY_OUTCOME_IDENTITY_MISMATCH,
+        v.RETRY_OUTCOME_UNAVAILABLE_PROOF,
     }
+    assert summary["live_claim_accepted"] is False
+    assert any(
+        code
+        in {
+            "invalid_probe_retry_proof_unavailable",
+            "invalid_probe_retry_process_identity_mismatch",
+        }
+        for code in summary["reason_codes"]
+    )
 
 
 def test_verify_retry_preflight_offline_rejects_changed_evidence_hash() -> None:
@@ -2755,9 +2763,10 @@ def test_verify_retry_preflight_offline_rejects_changed_evidence_hash() -> None:
     evidence[0] = item
     proof["evidence"] = evidence
     bundle["proof"] = proof
-    with pytest.raises(CustodyContractError) as exc:
-        v.verify_retry_preflight_offline(**bundle)
-    assert exc.value.reason_code == "invalid_probe_retry_proof_unavailable"
+    summary = v.verify_retry_preflight_offline(**bundle)
+    assert summary["outcome"] == v.RETRY_OUTCOME_UNAVAILABLE_PROOF
+    assert summary["live_claim_accepted"] is False
+    assert "invalid_probe_retry_proof_unavailable" in summary["reason_codes"]
 
 
 def test_verify_retry_preflight_offline_rejects_descriptor_mismatch() -> None:
@@ -2766,21 +2775,20 @@ def test_verify_retry_preflight_offline_rejects_descriptor_mismatch() -> None:
     descriptor = dict(bundle["control_descriptor"])
     descriptor["descriptor_sha256"] = "0" * 64
     bundle["control_descriptor"] = descriptor
-    with pytest.raises(CustodyContractError) as exc:
-        v.verify_retry_preflight_offline(**bundle)
-    assert exc.value.reason_code == "invalid_probe_retry_control_channel_failure"
+    summary = v.verify_retry_preflight_offline(**bundle)
+    assert summary["outcome"] == v.RETRY_OUTCOME_CONTROL_FAILURE
+    assert summary["live_claim_accepted"] is False
+    assert "invalid_probe_retry_control_channel_failure" in summary["reason_codes"]
 
 
 def test_verify_retry_preflight_offline_rejects_stale_endpoint() -> None:
     v = _retry_offline_api()
     bundle = _accepted_retry_bundle()
     bundle["control_descriptor"] = _retry_control_descriptor(terminal=True)
-    with pytest.raises(CustodyContractError) as exc:
-        v.verify_retry_preflight_offline(**bundle)
-    assert exc.value.reason_code in {
-        "invalid_probe_retry_proof_unavailable",
-        "invalid_probe_retry_control_channel_failure",
-    }
+    summary = v.verify_retry_preflight_offline(**bundle)
+    assert summary["outcome"] == v.RETRY_OUTCOME_CONTROL_FAILURE
+    assert summary["live_claim_accepted"] is False
+    assert "invalid_probe_retry_control_channel_failure" in summary["reason_codes"]
 
 
 def test_verify_retry_preflight_offline_rejects_pid_reuse() -> None:
@@ -2816,9 +2824,10 @@ def test_verify_retry_preflight_offline_rejects_pid_reuse() -> None:
     payload["proof_sha256"] = reused.proof_sha256
     payload["live_attestation"] = True
     bundle["proof"] = payload
-    with pytest.raises(CustodyContractError) as exc:
-        v.verify_retry_preflight_offline(**bundle)
-    assert exc.value.reason_code == "invalid_probe_retry_process_identity_mismatch"
+    summary = v.verify_retry_preflight_offline(**bundle)
+    assert summary["outcome"] == v.RETRY_OUTCOME_IDENTITY_MISMATCH
+    assert summary["live_claim_accepted"] is False
+    assert "invalid_probe_retry_process_identity_mismatch" in summary["reason_codes"]
 
 
 def test_verify_retry_preflight_offline_rejects_wrong_session_id() -> None:
@@ -2853,9 +2862,10 @@ def test_verify_retry_preflight_offline_rejects_wrong_session_id() -> None:
     payload["proof_sha256"] = wrong.proof_sha256
     payload["live_attestation"] = True
     bundle["proof"] = payload
-    with pytest.raises(CustodyContractError) as exc:
-        v.verify_retry_preflight_offline(**bundle)
-    assert exc.value.reason_code == "invalid_probe_retry_acp_session_identity_mismatch"
+    summary = v.verify_retry_preflight_offline(**bundle)
+    assert summary["outcome"] == v.RETRY_OUTCOME_IDENTITY_MISMATCH
+    assert summary["live_claim_accepted"] is False
+    assert "invalid_probe_retry_acp_session_identity_mismatch" in summary["reason_codes"]
 
 
 def test_verify_retry_preflight_offline_rejects_wrong_connection_id() -> None:
@@ -2890,9 +2900,10 @@ def test_verify_retry_preflight_offline_rejects_wrong_connection_id() -> None:
     payload["proof_sha256"] = wrong.proof_sha256
     payload["live_attestation"] = True
     bundle["proof"] = payload
-    with pytest.raises(CustodyContractError) as exc:
-        v.verify_retry_preflight_offline(**bundle)
-    assert exc.value.reason_code == "invalid_probe_retry_connection_identity_mismatch"
+    summary = v.verify_retry_preflight_offline(**bundle)
+    assert summary["outcome"] == v.RETRY_OUTCOME_IDENTITY_MISMATCH
+    assert summary["live_claim_accepted"] is False
+    assert "invalid_probe_retry_connection_identity_mismatch" in summary["reason_codes"]
 
 
 def test_verify_retry_preflight_offline_rejects_missing_debug_corroboration() -> None:
@@ -3070,6 +3081,94 @@ def test_verify_retry_preflight_offline_rejects_promoted_descriptor_secrets() ->
 
     descriptor["descriptor_sha256"] = _descriptor_sha256(descriptor)
     bundle["control_descriptor"] = descriptor
+    summary = v.verify_retry_preflight_offline(**bundle, promote_safe_only=True)
+    assert summary["outcome"] == v.RETRY_OUTCOME_CONTROL_FAILURE
+    assert "invalid_probe_retry_control_channel_failure" in summary["reason_codes"]
+
+
+def test_verify_retry_preflight_offline_rejects_second_failure_claim_without_outcome() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle(
+        prompt_outcome=None,
+        claim={
+            "outcome": "second_prompt_failure",
+            "settings_mutated": False,
+            "zed_launched": False,
+            "supported_by_live_attestation": True,
+        },
+    )
     with pytest.raises(CustodyContractError) as exc:
-        v.verify_retry_preflight_offline(**bundle, promote_safe_only=True)
-    assert exc.value.reason_code == "invalid_probe_retry_control_channel_failure"
+        v.verify_retry_preflight_offline(**bundle)
+    assert exc.value.reason_code in {
+        "invalid_probe_stage_accounting",
+        "invalid_probe_retry_second_prompt_failure",
+    }
+
+
+def test_verify_retry_preflight_offline_rejects_second_failure_claim_on_success() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle(
+        prompt_outcome=_retry_prompt_outcome(status="succeeded", failure_class="none"),
+        claim={
+            "outcome": "second_prompt_failure",
+            "settings_mutated": False,
+            "zed_launched": False,
+            "supported_by_live_attestation": True,
+        },
+    )
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_retry_preflight_offline(**bundle)
+    assert exc.value.reason_code == "invalid_probe_stage_accounting"
+
+
+def test_verify_retry_preflight_offline_rejects_wrong_next_prompt_ordinal_for_accept() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle(
+        stage_ledger=_retry_ready_ledger_payload(next_prompt_ordinal=4),
+    )
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_retry_preflight_offline(**bundle)
+    assert exc.value.reason_code in {
+        "invalid_probe_retry_budget_exhausted",
+        "invalid_probe_stage_accounting",
+    }
+
+
+def test_verify_retry_preflight_offline_rejects_wrong_next_prompt_ordinal_for_second_failure() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle(
+        prompt_outcome=_retry_prompt_outcome(
+            status="failed",
+            failure_class="transient",
+            reason_code="invalid_probe_retry_second_prompt_failure",
+        ),
+        claim={
+            "outcome": "second_prompt_failure",
+            "settings_mutated": False,
+            "zed_launched": False,
+            "supported_by_live_attestation": True,
+        },
+        stage_ledger=_retry_ready_ledger_payload(next_prompt_ordinal=4),
+    )
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_retry_preflight_offline(**bundle)
+    assert exc.value.reason_code in {
+        "invalid_probe_retry_budget_exhausted",
+        "invalid_probe_stage_accounting",
+    }
+
+
+def test_verify_retry_preflight_offline_classifies_missing_descriptor_control_failure() -> None:
+    v = _retry_offline_api()
+    summary = v.verify_retry_preflight_offline(
+        proof=_retry_proof_payload(),
+        launch_identity=_retry_launch_identity(),
+        control_descriptor=None,
+        stage_ledger=_retry_ready_ledger_payload(next_prompt_ordinal=3),
+        prompt_outcome=None,
+        debug_corroboration=None,
+        relay_session_evidence=None,
+        claim=None,
+    )
+    assert summary["outcome"] == v.RETRY_OUTCOME_CONTROL_FAILURE
+    assert "invalid_probe_retry_control_channel_failure" in summary["reason_codes"]

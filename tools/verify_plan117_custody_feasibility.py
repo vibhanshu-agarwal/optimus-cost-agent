@@ -1649,6 +1649,7 @@ def verify_origin_a_fixture_v2_final(
         "origin_a_fixture_v2_evidence_report",
         "origin_a_fixture_v2_feasibility_history",
         "origin_a_fixture_v2_feasibility_json",
+        _RETRY_PROOF_ARTIFACT_ROLE,
     }
     found_roles = {
         item.get("role") for item in artifacts if isinstance(item, Mapping)
@@ -1677,6 +1678,11 @@ def verify_origin_a_fixture_v2_final(
         originals_root=private_root,
         expected_original_sha256=expected,
     )
+    retry_summary = _verify_sealed_live_session_proof_artifact(
+        project_root=project_root,
+        artifacts=artifacts,
+    )
+    summary["retry_preflight"] = retry_summary
 
     report_path = (
         project_root / "reports/plan-11-7-server-custody-artifacts/evidence-report.json"
@@ -1729,8 +1735,9 @@ def verify_origin_a_fixture_v2_final(
     summary["reason_codes"] = [
         "origin_a_fixture_v2_final_option_b_sealed_no_disposition",
         "origin_a3_option_b_process_invalid_ending",
+        *list(retry_summary["reason_codes"]),
     ]
-    summary["verified_artifact_count"] = int(summary["verified_artifact_count"]) + 3
+    summary["verified_artifact_count"] = int(summary["verified_artifact_count"]) + 4
     return summary
 
 
@@ -1900,6 +1907,60 @@ def _claim_requests_accepted(claim: Mapping[str, Any] | None) -> bool:
     return claim.get("outcome") == RETRY_OUTCOME_ACCEPTED_SAME_SESSION_RETRY
 
 
+def _claim_requests_second_prompt_failure(claim: Mapping[str, Any] | None) -> bool:
+    if not isinstance(claim, Mapping):
+        return False
+    return claim.get("outcome") == RETRY_OUTCOME_SECOND_PROMPT_FAILURE
+
+
+_IDENTITY_MISMATCH_REASON_CODES = frozenset(
+    {
+        "invalid_probe_retry_process_identity_mismatch",
+        "invalid_probe_retry_connection_identity_mismatch",
+        "invalid_probe_retry_acp_session_identity_mismatch",
+    }
+)
+
+
+def _retry_offline_summary(
+    *,
+    outcome: str,
+    reason_codes: Sequence[str],
+    ledger_info: Mapping[str, int],
+    live_claim_accepted: bool = False,
+    live_session_proof_sha256: str | None = None,
+    settings_mutated: bool | None = None,
+    zed_launched: bool | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema": SCHEMA_RETRY_OFFLINE_SUMMARY,
+        "outcome": outcome,
+        "reason_codes": list(reason_codes),
+        "next_correlation_ordinal": ledger_info["next_correlation_ordinal"],
+        "next_prompt_ordinal": ledger_info["next_prompt_ordinal"],
+        "live_claim_accepted": live_claim_accepted,
+    }
+    if live_session_proof_sha256 is not None:
+        payload["live_session_proof_sha256"] = live_session_proof_sha256
+    if settings_mutated is not None:
+        payload["settings_mutated"] = settings_mutated
+    if zed_launched is not None:
+        payload["zed_launched"] = zed_launched
+    return payload
+
+
+def _require_retry_ledger_next_prompt_three(
+    next_prompt_ordinal: int,
+    *,
+    field_path: str,
+) -> None:
+    if next_prompt_ordinal != 3:
+        raise CustodyContractError(
+            "invalid_probe_retry_budget_exhausted",
+            field_path,
+        )
+
+
 def verify_retry_preflight_offline(
     *,
     proof: Mapping[str, Any] | None,
@@ -1988,6 +2049,7 @@ def verify_retry_preflight_offline(
     }
 
     wants_accepted = _claim_requests_accepted(claim)
+    wants_second_failure = _claim_requests_second_prompt_failure(claim)
     hardcoded = isinstance(claim, Mapping) and claim.get("hardcoded") is True
     live_supported = (
         isinstance(claim, Mapping) and claim.get("supported_by_live_attestation") is True
@@ -2002,63 +2064,101 @@ def verify_retry_preflight_offline(
                 "claim.zed_launched",
             )
 
+    if wants_accepted or wants_second_failure:
+        _require_retry_ledger_next_prompt_three(
+            next_prompt_ordinal,
+            field_path="next_prompt_ordinal",
+        )
+
     if proof is None or hardcoded:
         if wants_accepted:
             raise CustodyContractError(
                 "blocked_probe_same_session_prompt_retry_unavailable",
                 "live_session_proof",
             )
-        return {
-            "schema": SCHEMA_RETRY_OFFLINE_SUMMARY,
-            "outcome": RETRY_OUTCOME_UNAVAILABLE_PROOF,
-            "reason_codes": ["blocked_probe_same_session_prompt_retry_unavailable"],
-            "next_correlation_ordinal": ledger_info["next_correlation_ordinal"],
-            "next_prompt_ordinal": ledger_info["next_prompt_ordinal"],
-            "live_claim_accepted": False,
-        }
+        if wants_second_failure:
+            raise CustodyContractError(
+                "invalid_probe_stage_accounting",
+                "prompt_outcome",
+            )
+        return _retry_offline_summary(
+            outcome=RETRY_OUTCOME_UNAVAILABLE_PROOF,
+            reason_codes=["blocked_probe_same_session_prompt_retry_unavailable"],
+            ledger_info=ledger_info,
+        )
 
-    typed_proof = _live_session_proof_from_payload(proof)
+    try:
+        typed_proof = _live_session_proof_from_payload(proof)
+    except CustodyContractError as exc:
+        if wants_accepted:
+            raise
+        return _retry_offline_summary(
+            outcome=RETRY_OUTCOME_UNAVAILABLE_PROOF,
+            reason_codes=[exc.reason_code],
+            ledger_info=ledger_info,
+        )
+
     recomputed = live_session_proof_sha256(typed_proof)
     if not sha256_hex_equal(recomputed, typed_proof.proof_sha256):
-        raise CustodyContractError(
-            "invalid_probe_retry_proof_unavailable",
-            "proof_sha256",
+        return _retry_offline_summary(
+            outcome=RETRY_OUTCOME_UNAVAILABLE_PROOF,
+            reason_codes=["invalid_probe_retry_proof_unavailable"],
+            ledger_info=ledger_info,
+            live_session_proof_sha256=typed_proof.proof_sha256,
         )
 
     try:
         validate_live_session_proof(typed_proof, expected=launch)
-    except CustodyContractError:
-        # Preserve retry-specific identity mismatch taxonomy from the contract helper.
-        raise
+    except CustodyContractError as exc:
+        if exc.reason_code in _IDENTITY_MISMATCH_REASON_CODES:
+            return _retry_offline_summary(
+                outcome=RETRY_OUTCOME_IDENTITY_MISMATCH,
+                reason_codes=[exc.reason_code],
+                ledger_info=ledger_info,
+                live_session_proof_sha256=typed_proof.proof_sha256,
+            )
+        if wants_accepted:
+            raise
+        return _retry_offline_summary(
+            outcome=RETRY_OUTCOME_UNAVAILABLE_PROOF,
+            reason_codes=[exc.reason_code],
+            ledger_info=ledger_info,
+            live_session_proof_sha256=typed_proof.proof_sha256,
+        )
 
     if control_descriptor is None:
-        if wants_accepted:
-            raise CustodyContractError(
-                "invalid_probe_retry_control_channel_failure",
-                "control_descriptor",
-            )
-        return {
-            "schema": SCHEMA_RETRY_OFFLINE_SUMMARY,
-            "outcome": RETRY_OUTCOME_CONTROL_FAILURE,
-            "reason_codes": ["invalid_probe_retry_control_channel_failure"],
-            "next_correlation_ordinal": ledger_info["next_correlation_ordinal"],
-            "next_prompt_ordinal": ledger_info["next_prompt_ordinal"],
-            "live_claim_accepted": False,
-        }
+        return _retry_offline_summary(
+            outcome=RETRY_OUTCOME_CONTROL_FAILURE,
+            reason_codes=["invalid_probe_retry_control_channel_failure"],
+            ledger_info=ledger_info,
+            live_session_proof_sha256=typed_proof.proof_sha256,
+        )
 
-    _verify_control_descriptor_offline(
-        control_descriptor,
-        promote_safe_only=promote_safe_only,
-    )
+    try:
+        _verify_control_descriptor_offline(
+            control_descriptor,
+            promote_safe_only=promote_safe_only,
+        )
+    except CustodyContractError as exc:
+        return _retry_offline_summary(
+            outcome=RETRY_OUTCOME_CONTROL_FAILURE,
+            reason_codes=[exc.reason_code],
+            ledger_info=ledger_info,
+            live_session_proof_sha256=typed_proof.proof_sha256,
+        )
     if control_descriptor.get("connection_id") != launch.connection_id:
-        raise CustodyContractError(
-            "invalid_probe_retry_connection_identity_mismatch",
-            "descriptor.connection_id",
+        return _retry_offline_summary(
+            outcome=RETRY_OUTCOME_IDENTITY_MISMATCH,
+            reason_codes=["invalid_probe_retry_connection_identity_mismatch"],
+            ledger_info=ledger_info,
+            live_session_proof_sha256=typed_proof.proof_sha256,
         )
     if control_descriptor.get("run_attempt_id") != launch.run_attempt_id:
-        raise CustodyContractError(
-            "invalid_probe_retry_control_channel_failure",
-            "descriptor.run_attempt_id",
+        return _retry_offline_summary(
+            outcome=RETRY_OUTCOME_CONTROL_FAILURE,
+            reason_codes=["invalid_probe_retry_control_channel_failure"],
+            ledger_info=ledger_info,
+            live_session_proof_sha256=typed_proof.proof_sha256,
         )
 
     live_attestation = proof.get("live_attestation") is True
@@ -2103,9 +2203,30 @@ def verify_retry_preflight_offline(
             or relay_session_evidence.get("connection_id") != launch.connection_id
             or relay_session_evidence.get("session_new_observed") is not True
         ):
+            return _retry_offline_summary(
+                outcome=RETRY_OUTCOME_IDENTITY_MISMATCH,
+                reason_codes=["invalid_probe_retry_acp_session_identity_mismatch"],
+                ledger_info=ledger_info,
+                live_session_proof_sha256=typed_proof.proof_sha256,
+            )
+
+    if wants_second_failure:
+        if prompt_outcome is None:
             raise CustodyContractError(
-                "invalid_probe_retry_acp_session_identity_mismatch",
-                "relay_session_evidence.identity",
+                "invalid_probe_stage_accounting",
+                "prompt_outcome",
+            )
+        if not isinstance(prompt_outcome, Mapping):
+            raise CustodyContractError("invalid_probe_stage_accounting", "prompt_outcome")
+        if prompt_outcome.get("status") == "succeeded":
+            raise CustodyContractError(
+                "invalid_probe_stage_accounting",
+                "claim.outcome",
+            )
+        if prompt_outcome.get("status") != "failed":
+            raise CustodyContractError(
+                "invalid_probe_stage_accounting",
+                "prompt_outcome.status",
             )
 
     if prompt_outcome is not None:
@@ -2149,21 +2270,25 @@ def verify_retry_preflight_offline(
                 "prompt_outcome.evidence.reservations",
             )
         if prompt_outcome.get("status") == "failed":
-            reason = prompt_outcome.get("reason_code") or "invalid_probe_retry_second_prompt_failure"
+            _require_retry_ledger_next_prompt_three(
+                next_prompt_ordinal,
+                field_path="next_prompt_ordinal",
+            )
+            reason = (
+                prompt_outcome.get("reason_code")
+                or "invalid_probe_retry_second_prompt_failure"
+            )
             if wants_accepted:
                 raise CustodyContractError(
                     "invalid_probe_retry_second_prompt_failure",
                     "prompt_outcome.status",
                 )
-            return {
-                "schema": SCHEMA_RETRY_OFFLINE_SUMMARY,
-                "outcome": RETRY_OUTCOME_SECOND_PROMPT_FAILURE,
-                "reason_codes": [str(reason)],
-                "next_correlation_ordinal": ledger_info["next_correlation_ordinal"],
-                "next_prompt_ordinal": ledger_info["next_prompt_ordinal"],
-                "live_claim_accepted": False,
-                "live_session_proof_sha256": typed_proof.proof_sha256,
-            }
+            return _retry_offline_summary(
+                outcome=RETRY_OUTCOME_SECOND_PROMPT_FAILURE,
+                reason_codes=[str(reason)],
+                ledger_info=ledger_info,
+                live_session_proof_sha256=typed_proof.proof_sha256,
+            )
         if prompt_outcome.get("status") != "succeeded":
             raise CustodyContractError(
                 "invalid_probe_stage_accounting",
@@ -2176,38 +2301,22 @@ def verify_retry_preflight_offline(
                 "blocked_probe_same_session_prompt_retry_unavailable",
                 "prompt_outcome",
             )
-        return {
-            "schema": SCHEMA_RETRY_OFFLINE_SUMMARY,
-            "outcome": RETRY_OUTCOME_ACCEPTED_SAME_SESSION_RETRY,
-            "reason_codes": ["accepted_same_session_prompt_retry"],
-            "next_correlation_ordinal": ledger_info["next_correlation_ordinal"],
-            "next_prompt_ordinal": ledger_info["next_prompt_ordinal"],
-            "live_claim_accepted": True,
-            "live_session_proof_sha256": typed_proof.proof_sha256,
-            "settings_mutated": False,
-            "zed_launched": False,
-        }
+        return _retry_offline_summary(
+            outcome=RETRY_OUTCOME_ACCEPTED_SAME_SESSION_RETRY,
+            reason_codes=["accepted_same_session_prompt_retry"],
+            ledger_info=ledger_info,
+            live_claim_accepted=True,
+            live_session_proof_sha256=typed_proof.proof_sha256,
+            settings_mutated=False,
+            zed_launched=False,
+        )
 
-    if isinstance(claim, Mapping) and claim.get("outcome") == RETRY_OUTCOME_SECOND_PROMPT_FAILURE:
-        return {
-            "schema": SCHEMA_RETRY_OFFLINE_SUMMARY,
-            "outcome": RETRY_OUTCOME_SECOND_PROMPT_FAILURE,
-            "reason_codes": ["invalid_probe_retry_second_prompt_failure"],
-            "next_correlation_ordinal": ledger_info["next_correlation_ordinal"],
-            "next_prompt_ordinal": ledger_info["next_prompt_ordinal"],
-            "live_claim_accepted": False,
-            "live_session_proof_sha256": typed_proof.proof_sha256,
-        }
-
-    return {
-        "schema": SCHEMA_RETRY_OFFLINE_SUMMARY,
-        "outcome": RETRY_OUTCOME_UNAVAILABLE_PROOF,
-        "reason_codes": ["blocked_probe_same_session_prompt_retry_unavailable"],
-        "next_correlation_ordinal": ledger_info["next_correlation_ordinal"],
-        "next_prompt_ordinal": ledger_info["next_prompt_ordinal"],
-        "live_claim_accepted": False,
-        "live_session_proof_sha256": typed_proof.proof_sha256,
-    }
+    return _retry_offline_summary(
+        outcome=RETRY_OUTCOME_UNAVAILABLE_PROOF,
+        reason_codes=["blocked_probe_same_session_prompt_retry_unavailable"],
+        ledger_info=ledger_info,
+        live_session_proof_sha256=typed_proof.proof_sha256,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
