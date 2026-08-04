@@ -2491,6 +2491,7 @@ def test_prompt_retry_requires_live_session_proof_and_skips_settings_launch(
         StageAttemptRecord,
         StageKind,
         StageStatus,
+        build_live_session_proof,
         normalize_stage_ledger,
     )
 
@@ -2536,22 +2537,40 @@ def test_prompt_retry_requires_live_session_proof_and_skips_settings_launch(
             run_attempt_id="origin-a-3",
             ledger=ledger,
             prompt_fixture=PROMPT_V2,
+            target_sha256=PYPROJECT_SHA256.lower(),
             live_session_proof=None,
         )
     assert exc.value.reason_code == "blocked_probe_same_session_prompt_retry_unavailable"
 
-    proof = {
-        "zed_pid": 4242,
-        "acp_session_id": "sess-origin-a-3",
-        "connection_id": "conn-1",
-        "alive": True,
-    }
-    runner.assert_prompt_retry_preflight(
+    proof = build_live_session_proof(
+        run_attempt_id="origin-a-3",
+        zed_pid=4242,
+        zed_process_start_time_utc="2026-08-04T12:00:00Z",
+        connection_id="conn-1",
+        acp_session_id="sess-origin-a-3",
+        zed_alive=True,
+        relay_alive=True,
+        acp_session_observed=True,
+        captured_utc="2026-08-04T12:05:00Z",
+        evidence=(
+            EvidenceReference(
+                "attempts/origin-a-3/relay-index.ndjson",
+                "c" * 64,
+                "raw_file_sha256",
+            ),
+        ),
+    )
+    result = runner.assert_prompt_retry_preflight(
         run_attempt_id="origin-a-3",
         ledger=ledger,
         prompt_fixture=PROMPT_V2,
+        target_sha256=PYPROJECT_SHA256.lower(),
         live_session_proof=proof,
     )
+    assert result.prompt_ordinal == 3
+    assert result.settings_mutated is False
+    assert result.zed_launched is False
+    assert result.live_session_proof_sha256 == proof.proof_sha256
     # Prompt-only retry must not mutate settings or allocate a new attempt launch dir.
     assert not (custody_roots["settings_path"].parent / "mutated.marker").exists()
     assert not (custody_roots["capture_root"] / "attempts" / "origin-a-4").exists()

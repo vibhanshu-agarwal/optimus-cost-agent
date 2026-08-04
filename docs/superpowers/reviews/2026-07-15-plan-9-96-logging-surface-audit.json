@@ -1353,6 +1353,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan117_custody_contract:live_session_proof_sha256:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes schema-limited LiveSessionProof safe fields (ids, liveness flags, evidence hashes) to canonical sorted-key JSON solely to compute an in-memory proof_sha256; no path write, credentials, or raw transcript export.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_contract.py::test_live_session_proof_canonical_digest_binds_safe_fields_only",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan117_custody_contract:verify_manifest:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: verify_manifest wraps attempt-budget ValueError into CustodyContractError with a fixed reason code string and never exports raw exception text or secret values.",

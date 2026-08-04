@@ -52,6 +52,13 @@ _SUPPORTED_SUPERSESSION_REASON_CODES = frozenset(
         "invalid_probe_jsonc_settings_safety",
         "blocked_probe_same_session_prompt_retry_unavailable",
         "blocked_probe_gateway_usage_cost_unavailable",
+        "invalid_probe_retry_ledger_unavailable",
+        "invalid_probe_retry_proof_unavailable",
+        "invalid_probe_retry_process_identity_mismatch",
+        "invalid_probe_retry_connection_identity_mismatch",
+        "invalid_probe_retry_acp_session_identity_mismatch",
+        "invalid_probe_retry_control_channel_failure",
+        "invalid_probe_retry_second_prompt_failure",
         "AMBIGUOUS_WORKSPACE_REFERENCE",
         "REQUIRED_WORKSPACE_FILE_TOO_LARGE",
         "stop_probe_zed_client_crashed",
@@ -153,6 +160,41 @@ class StageLedger:
     terminal_records: tuple[StageAttemptRecord, ...]
     next_correlation_ordinal: int
     next_prompt_ordinal: int
+
+
+@dataclass(frozen=True)
+class LaunchSessionIdentity:
+    run_attempt_id: str
+    zed_pid: int
+    zed_process_start_time_utc: str
+    connection_id: str
+    acp_session_id: str
+
+
+@dataclass(frozen=True)
+class LiveSessionProof:
+    run_attempt_id: str
+    zed_pid: int
+    zed_process_start_time_utc: str
+    connection_id: str
+    acp_session_id: str
+    zed_alive: bool
+    relay_alive: bool
+    acp_session_observed: bool
+    captured_utc: str
+    evidence: tuple[EvidenceReference, ...]
+    proof_sha256: str
+
+
+@dataclass(frozen=True)
+class RetryPreflightResult:
+    run_attempt_id: str
+    prompt_ordinal: int
+    prompt_fixture_sha256: str
+    target_sha256: str
+    live_session_proof_sha256: str
+    settings_mutated: bool
+    zed_launched: bool
 
 
 @dataclass(frozen=True)
@@ -710,6 +752,245 @@ def next_stage_ordinal(ledger: StageLedger, stage: StageKind) -> int:
     if stage is StageKind.POST_NEW_PROMPT:
         return ledger.next_prompt_ordinal
     raise CustodyContractError("invalid_probe_stage_accounting", "stage")
+
+
+def _require_nonempty_str(value: object, *, field_path: str, reason_code: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise CustodyContractError(reason_code, field_path)
+    return value
+
+
+def live_session_proof_payload(proof: LiveSessionProof) -> dict[str, Any]:
+    """Canonical safe-field payload for digest binding (excludes proof_sha256)."""
+    return {
+        "acp_session_id": proof.acp_session_id,
+        "acp_session_observed": proof.acp_session_observed,
+        "captured_utc": proof.captured_utc,
+        "connection_id": proof.connection_id,
+        "evidence": _evidence_to_canonical(proof.evidence),
+        "relay_alive": proof.relay_alive,
+        "run_attempt_id": proof.run_attempt_id,
+        "zed_alive": proof.zed_alive,
+        "zed_pid": proof.zed_pid,
+        "zed_process_start_time_utc": proof.zed_process_start_time_utc,
+    }
+
+
+def live_session_proof_sha256(proof: LiveSessionProof) -> str:
+    """SHA-256 over canonical live-session proof bytes."""
+    payload = live_session_proof_payload(proof)
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def build_live_session_proof(
+    *,
+    run_attempt_id: str,
+    zed_pid: int,
+    zed_process_start_time_utc: str,
+    connection_id: str,
+    acp_session_id: str,
+    zed_alive: bool,
+    relay_alive: bool,
+    acp_session_observed: bool,
+    captured_utc: str,
+    evidence: Sequence[EvidenceReference],
+) -> LiveSessionProof:
+    """Build an immutable proof with digest bound to safe normalized fields."""
+    if not isinstance(evidence, Sequence) or isinstance(evidence, (str, bytes)) or len(evidence) < 1:
+        raise CustodyContractError("invalid_probe_retry_proof_unavailable", "evidence")
+    if not isinstance(zed_pid, int) or isinstance(zed_pid, bool) or zed_pid <= 0:
+        raise CustodyContractError("invalid_probe_retry_proof_unavailable", "zed_pid")
+    run_id = _require_nonempty_str(
+        run_attempt_id,
+        field_path="run_attempt_id",
+        reason_code="invalid_probe_retry_proof_unavailable",
+    )
+    start_utc = _require_nonempty_str(
+        zed_process_start_time_utc,
+        field_path="zed_process_start_time_utc",
+        reason_code="invalid_probe_retry_proof_unavailable",
+    )
+    conn_id = _require_nonempty_str(
+        connection_id,
+        field_path="connection_id",
+        reason_code="invalid_probe_retry_proof_unavailable",
+    )
+    session_id = _require_nonempty_str(
+        acp_session_id,
+        field_path="acp_session_id",
+        reason_code="invalid_probe_retry_proof_unavailable",
+    )
+    captured = _require_nonempty_str(
+        captured_utc,
+        field_path="captured_utc",
+        reason_code="invalid_probe_retry_proof_unavailable",
+    )
+    for index, item in enumerate(evidence):
+        if not isinstance(item, EvidenceReference):
+            raise CustodyContractError("invalid_probe_retry_proof_unavailable", f"evidence[{index}]")
+        _require_lowercase_sha256(item.sha256.lower(), field_path=f"evidence[{index}].sha256")
+        if item.hash_method not in _JSON_HASH_METHODS:
+            raise CustodyContractError(
+                "invalid_probe_retry_proof_unavailable",
+                f"evidence[{index}].hash_method",
+            )
+        _require_nonempty_str(
+            item.relative_path,
+            field_path=f"evidence[{index}].relative_path",
+            reason_code="invalid_probe_retry_proof_unavailable",
+        )
+    normalized_evidence = tuple(
+        EvidenceReference(
+            relative_path=item.relative_path,
+            sha256=item.sha256.lower(),
+            hash_method=item.hash_method,
+        )
+        for item in evidence
+    )
+    provisional = LiveSessionProof(
+        run_attempt_id=run_id,
+        zed_pid=zed_pid,
+        zed_process_start_time_utc=start_utc,
+        connection_id=conn_id,
+        acp_session_id=session_id,
+        zed_alive=bool(zed_alive),
+        relay_alive=bool(relay_alive),
+        acp_session_observed=bool(acp_session_observed),
+        captured_utc=captured,
+        evidence=normalized_evidence,
+        proof_sha256="0" * 64,
+    )
+    digest = live_session_proof_sha256(provisional)
+    return LiveSessionProof(
+        run_attempt_id=provisional.run_attempt_id,
+        zed_pid=provisional.zed_pid,
+        zed_process_start_time_utc=provisional.zed_process_start_time_utc,
+        connection_id=provisional.connection_id,
+        acp_session_id=provisional.acp_session_id,
+        zed_alive=provisional.zed_alive,
+        relay_alive=provisional.relay_alive,
+        acp_session_observed=provisional.acp_session_observed,
+        captured_utc=provisional.captured_utc,
+        evidence=provisional.evidence,
+        proof_sha256=digest,
+    )
+
+
+def validate_live_session_proof(
+    proof: LiveSessionProof,
+    *,
+    expected: LaunchSessionIdentity,
+) -> None:
+    """Fail closed when proof identity/liveness disagrees with launch records."""
+    if not isinstance(proof, LiveSessionProof):
+        raise CustodyContractError("invalid_probe_retry_proof_unavailable", "live_session_proof")
+    if not proof.evidence:
+        raise CustodyContractError("invalid_probe_retry_proof_unavailable", "evidence")
+    recomputed = live_session_proof_sha256(proof)
+    if not sha256_hex_equal(recomputed, proof.proof_sha256):
+        raise CustodyContractError("invalid_probe_retry_proof_unavailable", "proof_sha256")
+    if proof.run_attempt_id != expected.run_attempt_id:
+        raise CustodyContractError(
+            "invalid_probe_retry_process_identity_mismatch",
+            "run_attempt_id",
+        )
+    if proof.zed_pid != expected.zed_pid or not proof.zed_alive:
+        raise CustodyContractError(
+            "invalid_probe_retry_process_identity_mismatch",
+            "zed_process_identity",
+        )
+    if proof.zed_process_start_time_utc != expected.zed_process_start_time_utc:
+        raise CustodyContractError(
+            "invalid_probe_retry_process_identity_mismatch",
+            "zed_process_start_time_utc",
+        )
+    if not proof.relay_alive or proof.connection_id != expected.connection_id:
+        raise CustodyContractError(
+            "invalid_probe_retry_connection_identity_mismatch",
+            "connection_id",
+        )
+    if not proof.acp_session_observed or proof.acp_session_id != expected.acp_session_id:
+        raise CustodyContractError(
+            "invalid_probe_retry_acp_session_identity_mismatch",
+            "acp_session_id",
+        )
+
+
+def evaluate_prompt_retry_preflight(
+    *,
+    run_attempt_id: str,
+    ledger: StageLedger,
+    prompt_fixture_sha256: str,
+    expected_prompt_fixture_sha256: str,
+    target_sha256: str,
+    expected_target_sha256: str,
+    live_session_proof: LiveSessionProof | None,
+    launch_identity: LaunchSessionIdentity,
+) -> RetryPreflightResult:
+    """Pure fail-closed eligibility check for the one same-session prompt retry."""
+    if run_attempt_id != "origin-a-3":
+        raise CustodyContractError("invalid_probe_stage_accounting", "run_attempt_id")
+    if launch_identity.run_attempt_id != "origin-a-3":
+        raise CustodyContractError("invalid_probe_stage_accounting", "launch_identity.run_attempt_id")
+    if not isinstance(ledger, StageLedger):
+        raise CustodyContractError("invalid_probe_retry_ledger_unavailable", "ledger")
+    if ledger.next_correlation_ordinal > MAX_CORRELATION_ORDINAL_UNDER_AMENDMENT + 1:
+        raise CustodyContractError("invalid_probe_retry_budget_exhausted", "correlation_ordinal")
+    if ledger.next_correlation_ordinal != MAX_CORRELATION_ORDINAL_UNDER_AMENDMENT + 1:
+        # Retry must not allocate a new correlation launch (ordinal 4).
+        raise CustodyContractError("invalid_probe_stage_accounting", "correlation_missing")
+
+    corr = [
+        record
+        for record in ledger.terminal_records
+        if record.run_attempt_id == "origin-a-3"
+        and record.stage is StageKind.CORRELATION_CAPTURE
+        and record.status is StageStatus.SUCCEEDED
+        and record.ordinal == 3
+    ]
+    if not corr:
+        raise CustodyContractError("invalid_probe_stage_accounting", "correlation_missing")
+
+    prompt_two = [
+        record
+        for record in ledger.terminal_records
+        if record.run_attempt_id == "origin-a-3"
+        and record.stage is StageKind.POST_NEW_PROMPT
+        and record.ordinal == 2
+        and record.status is StageStatus.FAILED
+        and record.failure_class is FailureClass.TRANSIENT
+        and record.evidence
+    ]
+    if not prompt_two:
+        raise CustodyContractError("invalid_probe_stage_accounting", "prompt_ordinal_2")
+
+    if ledger.next_prompt_ordinal != 3:
+        raise CustodyContractError("invalid_probe_retry_budget_exhausted", "prompt_ordinal")
+
+    if not sha256_hex_equal(prompt_fixture_sha256, expected_prompt_fixture_sha256):
+        raise CustodyContractError("invalid_probe_fixture_identity_mismatch", "prompt_fixture")
+    if not sha256_hex_equal(target_sha256, expected_target_sha256):
+        raise CustodyContractError("invalid_probe_fixture_identity_mismatch", "target")
+
+    if live_session_proof is None:
+        raise CustodyContractError(
+            "blocked_probe_same_session_prompt_retry_unavailable",
+            "live_session_proof",
+        )
+    if live_session_proof.run_attempt_id != "origin-a-3":
+        raise CustodyContractError("invalid_probe_stage_accounting", "live_session_proof.run_attempt_id")
+    validate_live_session_proof(live_session_proof, expected=launch_identity)
+
+    return RetryPreflightResult(
+        run_attempt_id="origin-a-3",
+        prompt_ordinal=3,
+        prompt_fixture_sha256=prompt_fixture_sha256.lower(),
+        target_sha256=target_sha256.lower(),
+        live_session_proof_sha256=live_session_proof.proof_sha256.lower(),
+        settings_mutated=False,
+        zed_launched=False,
+    )
 
 
 def sha256_file(path: Path) -> str:

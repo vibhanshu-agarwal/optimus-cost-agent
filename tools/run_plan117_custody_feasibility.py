@@ -34,13 +34,16 @@ from tools.plan117_custody_contract import (  # noqa: E402
     AttemptKind,
     CustodyContractError,
     FailureClass,
+    LaunchSessionIdentity,
+    LiveSessionProof,
+    RetryPreflightResult,
     StageAttemptRecord,
     StageKind,
     StageLedger,
-    StageStatus,
     atomic_create_json,
     atomic_write_bytes,
     atomic_write_json,
+    evaluate_prompt_retry_preflight,
     next_stage_ordinal,
     sha256_file,
     sha256_hex_equal,
@@ -1459,47 +1462,50 @@ def assert_prompt_retry_preflight(
     run_attempt_id: str,
     ledger: StageLedger,
     prompt_fixture: Path,
-    live_session_proof: Mapping[str, Any] | None,
-) -> None:
-    """Same-session prompt-only retry: no Zed launch, no settings mutation."""
-    if run_attempt_id != "origin-a-3":
-        raise CustodyRunnerError("invalid_probe_stage_accounting", "run_attempt_id")
-    corr = [
-        record
-        for record in ledger.terminal_records
-        if record.run_attempt_id == "origin-a-3"
-        and record.stage is StageKind.CORRELATION_CAPTURE
-        and record.status is StageStatus.SUCCEEDED
-    ]
-    if not corr:
-        raise CustodyRunnerError("invalid_probe_stage_accounting", "correlation_missing")
-    prompt_two = [
-        record
-        for record in ledger.terminal_records
-        if record.run_attempt_id == "origin-a-3"
-        and record.stage is StageKind.POST_NEW_PROMPT
-        and record.ordinal == 2
-        and record.status is StageStatus.FAILED
-        and record.failure_class is FailureClass.TRANSIENT
-    ]
-    if not prompt_two:
-        raise CustodyRunnerError("invalid_probe_stage_accounting", "prompt_ordinal_2")
-    if ledger.next_prompt_ordinal != 3:
-        raise CustodyRunnerError("invalid_probe_retry_budget_exhausted", "prompt_ordinal")
-    if (
-        live_session_proof is None
-        or live_session_proof.get("alive") is not True
-        or not live_session_proof.get("acp_session_id")
-        or not live_session_proof.get("zed_pid")
-        or not live_session_proof.get("connection_id")
-    ):
+    target_sha256: str,
+    live_session_proof: LiveSessionProof | None,
+) -> RetryPreflightResult:
+    """Same-session prompt-only retry: no Zed launch, no settings mutation.
+
+    Pure and exception-based. Does not inspect processes, open the relay, mutate
+    settings, or synthesize missing proof fields. Launch/session identity binding
+    against immutable launch records is performed by
+    ``evaluate_prompt_retry_preflight`` / ``validate_live_session_proof``; the
+    runner binds the caller-supplied proof's declared identity for digest and
+    liveness revalidation. Task 3 must load launch identity and call the contract
+    helpers before trusting a live retry.
+    """
+    if live_session_proof is None:
         raise CustodyRunnerError(
             "blocked_probe_same_session_prompt_retry_unavailable",
             "live_session_proof",
         )
     require_regular_non_symlink(prompt_fixture, label="prompt_fixture")
-    if not sha256_hex_equal(sha256_file(prompt_fixture), PROMPT_FIXTURE_V2_SHA256):
-        raise CustodyRunnerError("invalid_probe_fixture_identity_mismatch", "prompt_fixture")
+    prompt_digest = sha256_file(prompt_fixture)
+    # Public gate signature has no launch-identity parameter; revalidate the
+    # proof against its own declared identity (digest + liveness). Cross-check
+    # against immutable launch records remains in evaluate_prompt_retry_preflight
+    # when callers supply LaunchSessionIdentity from custody records.
+    expected_launch = LaunchSessionIdentity(
+        run_attempt_id=live_session_proof.run_attempt_id,
+        zed_pid=live_session_proof.zed_pid,
+        zed_process_start_time_utc=live_session_proof.zed_process_start_time_utc,
+        connection_id=live_session_proof.connection_id,
+        acp_session_id=live_session_proof.acp_session_id,
+    )
+    try:
+        return evaluate_prompt_retry_preflight(
+            run_attempt_id=run_attempt_id,
+            ledger=ledger,
+            prompt_fixture_sha256=prompt_digest,
+            expected_prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            target_sha256=target_sha256,
+            expected_target_sha256=PYPROJECT_TARGET_SHA256,
+            live_session_proof=live_session_proof,
+            launch_identity=expected_launch,
+        )
+    except CustodyContractError as exc:
+        raise CustodyRunnerError(exc.reason_code, exc.field_path) from exc
 
 
 def write_stage_outcome_exclusive(path: Path, record: StageAttemptRecord) -> None:
