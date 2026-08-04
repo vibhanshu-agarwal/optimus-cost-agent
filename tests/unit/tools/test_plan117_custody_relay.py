@@ -1185,6 +1185,7 @@ _CONTROL_RUN_ID = "origin-a-3"
 _CONTROL_CONN_ID = "conn-origin-a-3"
 _CONTROL_SESSION_ID = "sess-origin-a-3"
 _CONTROL_START_UTC = "2026-08-04T12:00:00Z"
+_CONTROL_OWNER = "unit-operator"
 
 
 def _control_api():
@@ -1253,7 +1254,7 @@ def _start_control_endpoint(
     connection_id: str = _CONTROL_CONN_ID,
     acp_session_id: str | None = _CONTROL_SESSION_ID,
     process_observer: Callable[[int], Any] | None = None,
-    owner_id: str = "unit-operator",
+    owner_id: str = _CONTROL_OWNER,
     prompt_forward: Callable[[bytes], None] | None = None,
     zed_proc: Any | None = None,
 ) -> Any:
@@ -1307,6 +1308,7 @@ def test_acquire_live_session_proof_returns_live_identity_and_liveness(
             run_attempt_id=_CONTROL_RUN_ID,
             descriptor_path=endpoint.descriptor_path,
             expected_descriptor_sha256=endpoint.descriptor_sha256,
+            caller_owner_id=_CONTROL_OWNER,
         )
         assert isinstance(proof, LiveSessionProof)
         assert proof.run_attempt_id == _CONTROL_RUN_ID
@@ -1350,6 +1352,7 @@ def test_acquire_live_session_proof_rejects_pid_reuse(tmp_path: Path) -> None:
                 run_attempt_id=_CONTROL_RUN_ID,
                 descriptor_path=endpoint.descriptor_path,
                 expected_descriptor_sha256=endpoint.descriptor_sha256,
+                caller_owner_id=_CONTROL_OWNER,
             )
         assert excinfo.value.reason_code == "invalid_probe_retry_process_identity_mismatch"
     finally:
@@ -1370,6 +1373,7 @@ def test_acquire_live_session_proof_rejects_process_exit(tmp_path: Path) -> None
                 run_attempt_id=_CONTROL_RUN_ID,
                 descriptor_path=endpoint.descriptor_path,
                 expected_descriptor_sha256=endpoint.descriptor_sha256,
+                caller_owner_id=_CONTROL_OWNER,
             )
         assert excinfo.value.reason_code == "invalid_probe_retry_process_identity_mismatch"
     finally:
@@ -1386,6 +1390,7 @@ def test_acquire_live_session_proof_rejects_connection_eof(tmp_path: Path) -> No
                 run_attempt_id=_CONTROL_RUN_ID,
                 descriptor_path=endpoint.descriptor_path,
                 expected_descriptor_sha256=endpoint.descriptor_sha256,
+                caller_owner_id=_CONTROL_OWNER,
             )
         assert excinfo.value.reason_code == "invalid_probe_retry_connection_identity_mismatch"
     finally:
@@ -1401,6 +1406,7 @@ def test_acquire_live_session_proof_rejects_wrong_run_id(tmp_path: Path) -> None
                 run_attempt_id="origin-a-2",
                 descriptor_path=endpoint.descriptor_path,
                 expected_descriptor_sha256=endpoint.descriptor_sha256,
+                caller_owner_id=_CONTROL_OWNER,
             )
         assert excinfo.value.reason_code in {
             "invalid_probe_retry_proof_unavailable",
@@ -1422,6 +1428,7 @@ def test_acquire_live_session_proof_rejects_stale_descriptor(tmp_path: Path) -> 
             run_attempt_id=_CONTROL_RUN_ID,
             descriptor_path=descriptor_path,
             expected_descriptor_sha256=digest,
+            caller_owner_id=_CONTROL_OWNER,
         )
     assert excinfo.value.reason_code in {
         "invalid_probe_retry_proof_unavailable",
@@ -1431,16 +1438,31 @@ def test_acquire_live_session_proof_rejects_stale_descriptor(tmp_path: Path) -> 
 
 def test_acquire_live_session_proof_rejects_unauthorized_caller(tmp_path: Path) -> None:
     mod = _control_api()
-    endpoint = _start_control_endpoint(tmp_path, owner_id="unit-operator")
+    endpoint = _start_control_endpoint(tmp_path, owner_id=_CONTROL_OWNER)
     try:
-        with pytest.raises(CustodyContractError) as excinfo:
+        with pytest.raises(CustodyContractError) as wrong_exc:
             mod.acquire_live_session_proof(
                 run_attempt_id=_CONTROL_RUN_ID,
                 descriptor_path=endpoint.descriptor_path,
                 expected_descriptor_sha256=endpoint.descriptor_sha256,
                 caller_owner_id="intruder",
             )
-        assert excinfo.value.reason_code == "invalid_probe_retry_control_channel_failure"
+        assert wrong_exc.value.reason_code == "invalid_probe_retry_control_channel_failure"
+        with pytest.raises(CustodyContractError) as omitted_exc:
+            mod.acquire_live_session_proof(
+                run_attempt_id=_CONTROL_RUN_ID,
+                descriptor_path=endpoint.descriptor_path,
+                expected_descriptor_sha256=endpoint.descriptor_sha256,
+            )
+        assert omitted_exc.value.reason_code == "invalid_probe_retry_control_channel_failure"
+        with pytest.raises(CustodyContractError) as blank_exc:
+            mod.acquire_live_session_proof(
+                run_attempt_id=_CONTROL_RUN_ID,
+                descriptor_path=endpoint.descriptor_path,
+                expected_descriptor_sha256=endpoint.descriptor_sha256,
+                caller_owner_id="   ",
+            )
+        assert blank_exc.value.reason_code == "invalid_probe_retry_control_channel_failure"
     finally:
         endpoint.close()
 
@@ -1456,11 +1478,60 @@ def test_acquire_live_session_proof_rejects_malformed_descriptor_digest(
                 run_attempt_id=_CONTROL_RUN_ID,
                 descriptor_path=endpoint.descriptor_path,
                 expected_descriptor_sha256="0" * 64,
+                caller_owner_id=_CONTROL_OWNER,
             )
         assert excinfo.value.reason_code in {
             "invalid_probe_retry_proof_unavailable",
             "invalid_probe_retry_control_channel_failure",
         }
+    finally:
+        endpoint.close()
+
+
+def test_control_channel_rejects_malformed_requests(tmp_path: Path) -> None:
+    """Malformed control requests fail closed distinct from descriptor digest mismatch."""
+    mod = _control_api()
+    endpoint = _start_control_endpoint(tmp_path)
+    try:
+        # Unknown op.
+        unknown = mod._control_request(
+            descriptor_path=endpoint.descriptor_path,
+            expected_descriptor_sha256=endpoint.descriptor_sha256,
+            request={
+                "op": "not_a_real_control_op",
+                "run_attempt_id": _CONTROL_RUN_ID,
+                "descriptor_sha256": endpoint.descriptor_sha256,
+                "caller_owner_id": _CONTROL_OWNER,
+            },
+        )
+        assert unknown.get("ok") is False
+        assert unknown.get("reason_code") == "invalid_probe_retry_control_channel_failure"
+        assert unknown.get("field_path") == "op"
+
+        # Missing required field (no caller_owner_id).
+        missing = mod._control_request(
+            descriptor_path=endpoint.descriptor_path,
+            expected_descriptor_sha256=endpoint.descriptor_sha256,
+            request={
+                "op": "get_live_session_proof",
+                "run_attempt_id": _CONTROL_RUN_ID,
+                "descriptor_sha256": endpoint.descriptor_sha256,
+            },
+        )
+        assert missing.get("ok") is False
+        assert missing.get("reason_code") == "invalid_probe_retry_control_channel_failure"
+
+        # Non-Mapping request body.
+        from multiprocessing.connection import Client
+
+        descriptor = json.loads(endpoint.descriptor_path.read_text(encoding="utf-8"))
+        with Client(descriptor["endpoint_path"], authkey=bytes.fromhex(descriptor["authkey_hex"])) as conn:
+            conn.send(["not", "a", "mapping"])
+            non_mapping = conn.recv()
+        assert isinstance(non_mapping, dict)
+        assert non_mapping.get("ok") is False
+        assert non_mapping.get("reason_code") == "invalid_probe_retry_control_channel_failure"
+        assert non_mapping.get("field_path") == "request"
     finally:
         endpoint.close()
 
@@ -1508,6 +1579,7 @@ def test_send_existing_session_prompt_forwards_one_prompt_never_session_new(
             connection_id=_CONTROL_CONN_ID,
             acp_session_id=_CONTROL_SESSION_ID,
             prompt_fixture=prompt_fixture,
+            caller_owner_id=_CONTROL_OWNER,
         )
         assert result["ok"] is True
         assert len(forwarded) == 1
@@ -1524,6 +1596,7 @@ def test_send_existing_session_prompt_forwards_one_prompt_never_session_new(
                 connection_id=_CONTROL_CONN_ID,
                 acp_session_id=_CONTROL_SESSION_ID,
                 prompt_fixture=prompt_fixture,
+                caller_owner_id=_CONTROL_OWNER,
             )
         assert excinfo.value.reason_code == "invalid_probe_retry_second_prompt_failure"
     finally:
@@ -1544,8 +1617,64 @@ def test_send_existing_session_prompt_rejects_identity_mismatch(tmp_path: Path) 
                 connection_id="wrong-conn",
                 acp_session_id=_CONTROL_SESSION_ID,
                 prompt_fixture=prompt_fixture,
+                caller_owner_id=_CONTROL_OWNER,
             )
         assert excinfo.value.reason_code == "invalid_probe_retry_connection_identity_mismatch"
+    finally:
+        endpoint.close()
+
+
+def test_send_existing_session_prompt_rejects_dead_or_reused_process(
+    tmp_path: Path,
+) -> None:
+    """Prompt forward must re-validate live process identity after proof time."""
+    mod = _control_api()
+    prompt_fixture = tmp_path / "prompt.txt"
+    prompt_fixture.write_text("retry\n", encoding="utf-8", newline="\n")
+    proc = _fake_zed_proc(pid=4242, alive=True)
+    state = {"start_utc": _CONTROL_START_UTC, "alive": True}
+
+    def mutating_observer(query_pid: int) -> Any:
+        if query_pid != 4242:
+            return None
+        return mod.ObservedProcessIdentity(
+            pid=query_pid,
+            process_start_time_utc=state["start_utc"],
+            alive=bool(state["alive"]),
+        )
+
+    forwarded: list[bytes] = []
+    endpoint = _start_control_endpoint(
+        tmp_path,
+        zed_proc=proc,
+        process_observer=mutating_observer,
+        prompt_forward=forwarded.append,
+    )
+    try:
+        proof = mod.acquire_live_session_proof(
+            run_attempt_id=_CONTROL_RUN_ID,
+            descriptor_path=endpoint.descriptor_path,
+            expected_descriptor_sha256=endpoint.descriptor_sha256,
+            caller_owner_id=_CONTROL_OWNER,
+        )
+        assert proof.zed_alive is True
+
+        # Process dies / PID reused after proof — prompt must fail closed.
+        proc.mark_exited()
+        state["alive"] = False
+        state["start_utc"] = "2026-08-04T18:00:00Z"
+        with pytest.raises(CustodyContractError) as excinfo:
+            mod.send_existing_session_prompt(
+                run_attempt_id=_CONTROL_RUN_ID,
+                descriptor_path=endpoint.descriptor_path,
+                expected_descriptor_sha256=endpoint.descriptor_sha256,
+                connection_id=_CONTROL_CONN_ID,
+                acp_session_id=_CONTROL_SESSION_ID,
+                prompt_fixture=prompt_fixture,
+                caller_owner_id=_CONTROL_OWNER,
+            )
+        assert excinfo.value.reason_code == "invalid_probe_retry_process_identity_mismatch"
+        assert forwarded == []
     finally:
         endpoint.close()
 
@@ -1561,6 +1690,7 @@ def test_control_path_does_not_mutate_acp_bytes_env_argv_or_cwd(tmp_path: Path) 
             run_attempt_id=_CONTROL_RUN_ID,
             descriptor_path=endpoint.descriptor_path,
             expected_descriptor_sha256=endpoint.descriptor_sha256,
+            caller_owner_id=_CONTROL_OWNER,
         )
         assert proof.zed_alive is True
         assert acp_writes == []

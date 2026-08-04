@@ -91,6 +91,16 @@ def _control_error(reason_code: str, field_path: str = "") -> CustodyContractErr
     return CustodyContractError(reason_code, field_path)
 
 
+def _require_caller_owner_id(caller_owner_id: str | None) -> str:
+    """Out-of-band operator identity is mandatory; never infer from the descriptor."""
+    if not isinstance(caller_owner_id, str) or not caller_owner_id.strip():
+        raise _control_error(
+            "invalid_probe_retry_control_channel_failure",
+            "caller_owner_id",
+        )
+    return caller_owner_id
+
+
 def _reject_network_endpoint_address(address: object) -> None:
     """Fail closed on TCP/IP or host-port network listeners."""
     if isinstance(address, tuple):
@@ -288,6 +298,37 @@ class RelayControlRuntime:
             self.closed = True
             self.relay_alive = False
 
+    def _require_live_zed_process_identity(self) -> int:
+        """Fail closed unless the relay-owned process PID/start identity is still live."""
+        pid = int(getattr(self._zed_proc, "pid", 0) or 0)
+        if pid <= 0:
+            raise _control_error(
+                "invalid_probe_retry_process_identity_mismatch",
+                "zed_pid",
+            )
+        observed = self._process_observer(pid)
+        if observed is None:
+            raise _control_error(
+                "invalid_probe_retry_process_identity_mismatch",
+                "zed_process_identity",
+            )
+        if (
+            observed.pid != pid
+            or observed.process_start_time_utc != self.zed_process_start_time_utc
+            or not observed.alive
+        ):
+            raise _control_error(
+                "invalid_probe_retry_process_identity_mismatch",
+                "zed_process_identity",
+            )
+        poll = getattr(self._zed_proc, "poll", None)
+        if callable(poll) and poll() is not None:
+            raise _control_error(
+                "invalid_probe_retry_process_identity_mismatch",
+                "zed_process_identity",
+            )
+        return pid
+
     def get_live_session_proof(
         self,
         *,
@@ -322,33 +363,7 @@ class RelayControlRuntime:
                     "invalid_probe_retry_connection_identity_mismatch",
                     "connection_eof",
                 )
-            pid = int(getattr(self._zed_proc, "pid", 0) or 0)
-            if pid <= 0:
-                raise _control_error(
-                    "invalid_probe_retry_process_identity_mismatch",
-                    "zed_pid",
-                )
-            observed = self._process_observer(pid)
-            if observed is None:
-                raise _control_error(
-                    "invalid_probe_retry_process_identity_mismatch",
-                    "zed_process_identity",
-                )
-            if (
-                observed.pid != pid
-                or observed.process_start_time_utc != self.zed_process_start_time_utc
-                or not observed.alive
-            ):
-                raise _control_error(
-                    "invalid_probe_retry_process_identity_mismatch",
-                    "zed_process_identity",
-                )
-            poll = getattr(self._zed_proc, "poll", None)
-            if callable(poll) and poll() is not None:
-                raise _control_error(
-                    "invalid_probe_retry_process_identity_mismatch",
-                    "zed_process_identity",
-                )
+            pid = self._require_live_zed_process_identity()
             if not self.acp_session_id:
                 raise _control_error(
                     "invalid_probe_retry_acp_session_identity_mismatch",
@@ -416,6 +431,8 @@ class RelayControlRuntime:
                     "invalid_probe_retry_acp_session_identity_mismatch",
                     "acp_session_id",
                 )
+            # Re-validate live process identity immediately before ACP forward.
+            self._require_live_zed_process_identity()
             fixture = Path(prompt_fixture)
             if fixture.is_symlink() or not fixture.is_file():
                 raise _control_error(
@@ -680,10 +697,15 @@ class RelayControlEndpoint:
         op = request.get("op")
         try:
             if op == CONTROL_OP_GET_PROOF:
+                caller = _require_caller_owner_id(
+                    request.get("caller_owner_id")
+                    if isinstance(request.get("caller_owner_id"), str)
+                    else None
+                )
                 proof = self._runtime.get_live_session_proof(
                     run_attempt_id=str(request.get("run_attempt_id", "")),
                     descriptor_sha256=str(request.get("descriptor_sha256", "")),
-                    caller_owner_id=str(request.get("caller_owner_id", "")),
+                    caller_owner_id=caller,
                     expected_descriptor_sha256=self.descriptor_sha256,
                 )
                 return {
@@ -710,12 +732,17 @@ class RelayControlEndpoint:
                     },
                 }
             if op == CONTROL_OP_SEND_PROMPT:
+                caller = _require_caller_owner_id(
+                    request.get("caller_owner_id")
+                    if isinstance(request.get("caller_owner_id"), str)
+                    else None
+                )
                 result = self._runtime.send_existing_session_prompt(
                     run_attempt_id=str(request.get("run_attempt_id", "")),
                     connection_id=str(request.get("connection_id", "")),
                     acp_session_id=str(request.get("acp_session_id", "")),
                     prompt_fixture=Path(str(request.get("prompt_fixture", ""))),
-                    caller_owner_id=str(request.get("caller_owner_id", "")),
+                    caller_owner_id=caller,
                     descriptor_sha256=str(request.get("descriptor_sha256", "")),
                     expected_descriptor_sha256=self.descriptor_sha256,
                 )
@@ -782,12 +809,12 @@ def acquire_live_session_proof(
     caller_owner_id: str | None = None,
 ) -> LiveSessionProof:
     """Query the active relay control path; never reconstruct proof from the descriptor."""
-    descriptor = _load_control_descriptor(
+    caller = _require_caller_owner_id(caller_owner_id)
+    # Descriptor is loaded only as a locator after operator identity is present.
+    _load_control_descriptor(
         descriptor_path,
         expected_descriptor_sha256=expected_descriptor_sha256,
     )
-    owner_id = str(descriptor.get("owner_id") or "")
-    caller = caller_owner_id if caller_owner_id is not None else owner_id
     response = _control_request(
         descriptor_path=descriptor_path,
         expected_descriptor_sha256=expected_descriptor_sha256,
@@ -826,12 +853,11 @@ def send_existing_session_prompt(
     caller_owner_id: str | None = None,
 ) -> dict[str, Any]:
     """Forward exactly one session/prompt over the existing ACP connection."""
-    descriptor = _load_control_descriptor(
+    caller = _require_caller_owner_id(caller_owner_id)
+    _load_control_descriptor(
         descriptor_path,
         expected_descriptor_sha256=expected_descriptor_sha256,
     )
-    owner_id = str(descriptor.get("owner_id") or "")
-    caller = caller_owner_id if caller_owner_id is not None else owner_id
     response = _control_request(
         descriptor_path=descriptor_path,
         expected_descriptor_sha256=expected_descriptor_sha256,
