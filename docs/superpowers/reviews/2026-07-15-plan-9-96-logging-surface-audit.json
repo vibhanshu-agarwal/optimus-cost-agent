@@ -1441,6 +1441,38 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan117_custody_relay:RelayControlEndpoint.close:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch on threading.Event.set() inside RelayControlEndpoint.close; no Redis client or hash write exists on the private control path.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_acquire_live_session_proof_returns_live_identity_and_liveness",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:RelayControlEndpoint._dispatch:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch on threading.Event.set() when sealing the control endpoint after prompt forward; no Redis client or hash write exists.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_send_existing_session_prompt_forwards_one_prompt_never_session_new",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:_descriptor_sha256:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes schema-limited control-descriptor locator fields (run_attempt_id, endpoint kind/path, connection_id, owner_id) to canonical sorted-key JSON solely to compute an in-memory descriptor_sha256; auth material stays under private custody and is not logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_acquire_live_session_proof_returns_live_identity_and_liveness",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:_encode_session_prompt:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes a single session/prompt ACP request from a preflight-approved fixture for opaque forward over the existing connection; never emits session/new, credentials, or control-plane traffic into the ACP byte stream.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_send_existing_session_prompt_forwards_one_prompt_never_session_new",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.run_openrouter_web_search_spike:_post_chat:json_serialization",
       "policy": "protocol-only",
       "rationale": "Functional HTTPS request serialization sends only the bounded model, query, token limit, temperature, and web-plugin configuration to OpenRouter. The credential remains in the Authorization header, and the serialized request is not logged or persisted.",
