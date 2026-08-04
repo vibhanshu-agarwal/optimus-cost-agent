@@ -2,7 +2,8 @@
   "schema": "plan117-retry-preflight-gate-task2-checkpoint-v1",
   "complete": true,
   "task": "task2",
-  "utc": "2026-08-04T16:33:22Z",
+  "utc": "2026-08-04T16:34:30Z",
+  "head": "12c4634b9f09686fa3fb15012530d85090391d09",
   "base": "19849e6771e756d431f7ca9ccf08c4794e06b156",
   "branch": "agent/cursor/p11-feat-zed-resume",
   "worktree": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor",
@@ -62,8 +63,8 @@
     "run_relay does not auto-start the control endpoint; Task 3 wires CLI/live lifecycle."
   ],
   "commit": {
-    "sha": "PENDING",
-    "short": "PENDING",
-    "subject": "PENDING"
+    "sha": "12c4634b9f09686fa3fb15012530d85090391d09",
+    "short": "12c4634",
+    "subject": "feat(plan-11.7): add live relay control proof acquisition"
   }
 }
