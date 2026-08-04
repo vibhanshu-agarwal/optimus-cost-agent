@@ -1,0 +1,75 @@
+{
+  "amendment_checkboxes": {
+    "note": "Left unchecked in the digest-bound amendment file to preserve approval SHA-256.",
+    "steps_verified": [
+      "1",
+      "2",
+      "3",
+      "4"
+    ]
+  },
+  "base": "8dde9aa586e68ac3b407e0cb8150543ecf486d99",
+  "branch": "agent/cursor/p11-feat-zed-resume",
+  "commit": {
+    "sha": "140805e0d6d4babca2752038caaa665284d88551",
+    "short": "140805e",
+    "subject": "feat(plan-11.7): extend offline retry proof verification"
+  },
+  "complete": true,
+  "concerns": [
+    "Sealed proof is intentionally unavailable_proof until Task 5 live acquisition.",
+    "Identity/control defects raise typed reason codes; outcome constants remain exported for taxonomy.",
+    "test_validate_publication now prefers real PIL/pypdf when installed to avoid suite pollution."
+  ],
+  "confirmations": {
+    "amendment_plan_checkboxes_unchecked": true,
+    "append_only_manifest": true,
+    "frozen_and_parent_docs_untouched": true,
+    "no_live_zed_launch": true,
+    "no_no_verify": true,
+    "no_push": true,
+    "no_settings_mutation": true,
+    "persisted_snapshot_not_accepted_live_claim": true,
+    "private_descriptor_not_promoted": true,
+    "production_source_untouched": true
+  },
+  "green_gates": {
+    "diff_check_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task4-step4-diff-check.txt",
+    "git_diff_check": "clean (exit 0)",
+    "logging_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task4-step4-logging.txt",
+    "logging_surface_audit": "passed",
+    "narrow_pytest": "18 passed, 57 deselected",
+    "origin_a3_checkpoint": "passed (unavailable_proof)",
+    "origin_a3_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task4-step4-verify-origin-a3.txt",
+    "ruff": "All checks passed",
+    "ruff_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task4-step4-ruff.txt",
+    "unit_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task4-step4-unit.txt",
+    "unit_tools": "656 passed, 2 skipped"
+  },
+  "head": "140805e0d6d4babca2752038caaa665284d88551",
+  "pool_entry": "P11-FU-11",
+  "public_api_added": [
+    "verify_retry_preflight_offline",
+    "RETRY_OUTCOME_UNAVAILABLE_PROOF",
+    "RETRY_OUTCOME_IDENTITY_MISMATCH",
+    "RETRY_OUTCOME_CONTROL_FAILURE",
+    "RETRY_OUTCOME_SECOND_PROMPT_FAILURE",
+    "RETRY_OUTCOME_ACCEPTED_SAME_SESSION_RETRY"
+  ],
+  "red_evidence": {
+    "command": "uv run --frozen pytest tests/unit/tools/test_verify_plan117_custody_feasibility.py -q --tb=line -k retry_preflight_offline",
+    "locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task4-step1-red.txt",
+    "result": "18 failed (missing offline verifier API)"
+  },
+  "schema": "plan117-retry-preflight-gate-task4-checkpoint-v1",
+  "task": "task4",
+  "tool_digests": {
+    "docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json": "763DE67371BFF9EB7E526BEDF166B85B8B81D9D05A77DC081937ACD4E5F7D9A6",
+    "reports/plan-11-7-server-custody-artifact-manifest.json": "2EBF688D30DA1F1723CC95B5CC9196D32C812B20B1B8782C9401880B6A67F7DB",
+    "reports/plan-11-7-server-custody-artifacts/attempts/origin-a-3/live-session-proof.json": "889AE9072AE9C353FA3C70249EDCE273BA45434F97D104239926BB19DDDCEAE0",
+    "tests/unit/tools/test_verify_plan117_custody_feasibility.py": "D1ABA8D92BFB12B9B93A0FD7EEECEB814A011CFF752F85A21D623863171C3863",
+    "tools/verify_plan117_custody_feasibility.py": "C62D4D9F986098D0AC0C2362F8836A0372EA0D81B84056FEF460A3C64ADF3471"
+  },
+  "utc": "2026-08-04T17:16:40Z",
+  "worktree": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor"
+}
