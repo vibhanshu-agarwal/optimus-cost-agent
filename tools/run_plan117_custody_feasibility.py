@@ -22,6 +22,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.plan117_custody_contract import (  # noqa: E402
+    MAX_CORRELATION_ORDINAL_UNDER_AMENDMENT,
     ORIGIN_A_FIXTURE_V2_AMENDMENT_SHA256,
     SCHEMA_APPROVAL_EQUIVALENCE,
     SCHEMA_ATTEMPT_MANIFEST,
@@ -1658,6 +1659,46 @@ def _descriptor_sha256_from_locator(descriptor_path: Path) -> str:
     return digest.lower()
 
 
+def assert_prompt_retry_ledger_eligible(
+    *,
+    run_attempt_id: str,
+    ledger: StageLedger,
+) -> None:
+    """Fail closed on ledger eligibility before any live control / proof query."""
+    if run_attempt_id != "origin-a-3":
+        raise CustodyRunnerError("invalid_probe_stage_accounting", "run_attempt_id")
+    if not isinstance(ledger, StageLedger):
+        raise CustodyRunnerError("invalid_probe_retry_ledger_unavailable", "ledger")
+    if ledger.next_correlation_ordinal > MAX_CORRELATION_ORDINAL_UNDER_AMENDMENT + 1:
+        raise CustodyRunnerError("invalid_probe_retry_budget_exhausted", "correlation_ordinal")
+    if ledger.next_correlation_ordinal != MAX_CORRELATION_ORDINAL_UNDER_AMENDMENT + 1:
+        raise CustodyRunnerError("invalid_probe_stage_accounting", "correlation_missing")
+    corr = [
+        record
+        for record in ledger.terminal_records
+        if record.run_attempt_id == "origin-a-3"
+        and record.stage is StageKind.CORRELATION_CAPTURE
+        and record.status is StageStatus.SUCCEEDED
+        and record.ordinal == 3
+    ]
+    if not corr:
+        raise CustodyRunnerError("invalid_probe_stage_accounting", "correlation_missing")
+    prompt_two = [
+        record
+        for record in ledger.terminal_records
+        if record.run_attempt_id == "origin-a-3"
+        and record.stage is StageKind.POST_NEW_PROMPT
+        and record.ordinal == 2
+        and record.status is StageStatus.FAILED
+        and record.failure_class is FailureClass.TRANSIENT
+        and record.evidence
+    ]
+    if not prompt_two:
+        raise CustodyRunnerError("invalid_probe_stage_accounting", "prompt_ordinal_2")
+    if ledger.next_prompt_ordinal != PROMPT_RETRY_ORDINAL:
+        raise CustodyRunnerError("invalid_probe_retry_budget_exhausted", "prompt_ordinal")
+
+
 def run_origin_a_prompt_retry(
     *,
     run_attempt_id: str,
@@ -1684,8 +1725,11 @@ def run_origin_a_prompt_retry(
         )
 
     ledger = load_stage_ledger(stage_ledger_path)
-    if ledger.next_prompt_ordinal != PROMPT_RETRY_ORDINAL:
-        raise CustodyRunnerError("invalid_probe_retry_budget_exhausted", "prompt_ordinal")
+    # Design order: correlation + prompt-2 transient eligibility before live proof.
+    assert_prompt_retry_ledger_eligible(
+        run_attempt_id=run_attempt_id,
+        ledger=ledger,
+    )
 
     launch_identity = load_launch_session_identity(launch_identity_path)
     _require_fixture_v2_digests(prompt_fixture=prompt_fixture, workspace_root=workspace_root)
@@ -2112,6 +2156,7 @@ __all__ = (
     "allocate_attempt_directory",
     "assert_origin_a3_preflight",
     "assert_phase_allowed",
+    "assert_prompt_retry_ledger_eligible",
     "assert_prompt_retry_preflight",
     "atomic_write_json",
     "capture_process_records",

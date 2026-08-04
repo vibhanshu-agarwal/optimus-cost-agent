@@ -2712,6 +2712,7 @@ def _retry_api(runner: Any) -> Any:
         "load_stage_ledger",
         "load_launch_session_identity",
         "reserve_prompt_ordinal",
+        "assert_prompt_retry_ledger_eligible",
         "assert_prompt_retry_preflight",
     )
     missing = [name for name in required if not hasattr(runner, name)]
@@ -2955,6 +2956,7 @@ def test_origin_a_prompt_retry_cli_order_ledger_proof_gate_reserve_prompt(
     call_order: list[str] = []
     real_load_ledger = runner.load_stage_ledger
     real_load_identity = runner.load_launch_session_identity
+    real_ledger_eligible = runner.assert_prompt_retry_ledger_eligible
     real_assert = runner.assert_prompt_retry_preflight
     real_reserve = runner.reserve_prompt_ordinal
     real_evaluate = evaluate_prompt_retry_preflight
@@ -2968,6 +2970,10 @@ def test_origin_a_prompt_retry_cli_order_ledger_proof_gate_reserve_prompt(
         call_order.append("load_stage_ledger")
         return real_load_ledger(path)
 
+    def ledger_eligible(**kwargs: Any) -> None:
+        call_order.append("assert_prompt_retry_ledger_eligible")
+        return real_ledger_eligible(**kwargs)
+
     def load_identity(path: Path) -> LaunchSessionIdentity:
         call_order.append("load_launch_session_identity")
         identity = real_load_identity(path)
@@ -2975,6 +2981,7 @@ def test_origin_a_prompt_retry_cli_order_ledger_proof_gate_reserve_prompt(
         return identity
 
     def acquire(**kwargs: Any) -> LiveSessionProof:
+        assert "assert_prompt_retry_ledger_eligible" in call_order
         call_order.append("acquire_live_session_proof")
         assert "acp_session_id" not in kwargs
         assert kwargs["caller_owner_id"] == _RETRY_OWNER
@@ -3011,6 +3018,7 @@ def test_origin_a_prompt_retry_cli_order_ledger_proof_gate_reserve_prompt(
         return real_send(**kwargs)
 
     monkeypatch.setattr(runner, "load_stage_ledger", load_ledger)
+    monkeypatch.setattr(runner, "assert_prompt_retry_ledger_eligible", ledger_eligible)
     monkeypatch.setattr(runner, "load_launch_session_identity", load_identity)
     monkeypatch.setattr(runner, "assert_prompt_retry_preflight", assert_gate)
     monkeypatch.setattr(runner, "reserve_prompt_ordinal", reserve)
@@ -3046,6 +3054,7 @@ def test_origin_a_prompt_retry_cli_order_ledger_proof_gate_reserve_prompt(
     # then nested inside assert_prompt_retry_preflight's public-gate revalidation.
     assert call_order == [
         "load_stage_ledger",
+        "assert_prompt_retry_ledger_eligible",
         "load_launch_session_identity",
         "acquire_live_session_proof",
         "evaluate_prompt_retry_preflight",
@@ -3163,38 +3172,71 @@ def test_origin_a_prompt_retry_rejects_cli_supplied_session_or_proof(
 
 
 def test_origin_a_prompt_retry_second_reservation_stops(
-    custody_roots: dict[str, Path], tmp_path: Path
+    custody_roots: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Prove immutable reservation via a path that reaches reserve twice.
+
+    First attempt reserves then fails at prompt (descriptor not sealed). Second
+    attempt must hit ``reservation_already_exists`` — not a sealed-descriptor stop.
+    """
     runner = _retry_api(_import_runner())
+    import tools.plan117_custody_relay as relay
+
     ledger_path = tmp_path / "stage-ledger.json"
     identity_path = tmp_path / "launch-identity.json"
     _write_stage_ledger(ledger_path, _retry_eligible_records())
     _write_launch_identity(identity_path)
     _prepare_retry_workspace(custody_roots)
-    endpoint = _start_retry_control_endpoint(tmp_path)
-    _prime_retry_prereq_phases(runner, custody_roots["capture_root"])
 
+    def boom_forward(_payload: bytes) -> None:
+        raise OSError("simulated prompt forward failure")
+
+    endpoint = _start_retry_control_endpoint(tmp_path, prompt_forward=boom_forward)
+    _prime_retry_prereq_phases(runner, custody_roots["capture_root"])
     args = _retry_cli_args(
         custody_roots,
         stage_ledger=ledger_path,
         launch_identity=identity_path,
         descriptor=endpoint.descriptor_path,
     )
-    assert runner.main(args) == 0
+
+    with pytest.raises(runner.CustodyRunnerError) as first:
+        runner.main(args)
+    assert first.value.reason_code == "invalid_probe_retry_control_channel_failure"
     reservation = (
         custody_roots["capture_root"] / "reservations" / "origin-a-3-prompt-3.json"
     )
     assert reservation.is_file()
     before = reservation.read_bytes()
+    # Descriptor must remain usable so the second attempt can reach reserve.
+    descriptor = json.loads(endpoint.descriptor_path.read_text(encoding="utf-8"))
+    assert descriptor.get("prompt_sealed") is not True
+    assert descriptor.get("terminal") is not True
 
-    # Second retry must see immutable reservation and stop (no reclaim).
-    with pytest.raises(runner.CustodyRunnerError) as exc:
+    reserve_calls = {"n": 0}
+    real_reserve = runner.reserve_prompt_ordinal
+
+    def counting_reserve(**kwargs: Any) -> Path:
+        reserve_calls["n"] += 1
+        return real_reserve(**kwargs)
+
+    monkeypatch.setattr(runner, "reserve_prompt_ordinal", counting_reserve)
+    acquire_calls = {"n": 0}
+    real_acquire = relay.acquire_live_session_proof
+
+    def counting_acquire(**kwargs: Any) -> Any:
+        acquire_calls["n"] += 1
+        return real_acquire(**kwargs)
+
+    monkeypatch.setattr(relay, "acquire_live_session_proof", counting_acquire)
+    if hasattr(runner, "acquire_live_session_proof"):
+        monkeypatch.setattr(runner, "acquire_live_session_proof", counting_acquire)
+
+    with pytest.raises(runner.CustodyRunnerError) as second:
         runner.main(args)
-    assert exc.value.reason_code in {
-        "reservation_already_exists",
-        "invalid_probe_retry_budget_exhausted",
-        "invalid_probe_retry_second_prompt_failure",
-    }
+    assert second.value.reason_code == "reservation_already_exists"
+    assert acquire_calls["n"] >= 1, "second attempt must reach live proof before reserve"
+    assert reserve_calls["n"] >= 1, "second attempt must consult reserve"
     assert reservation.read_bytes() == before
     endpoint.close()
 
@@ -3253,6 +3295,7 @@ def test_origin_a_prompt_retry_exit_after_proof_before_prompt_no_relaunch(
     _prepare_retry_workspace(custody_roots)
     endpoint = _start_retry_control_endpoint(tmp_path)
     _prime_retry_prereq_phases(runner, custody_roots["capture_root"])
+    settings_before = custody_roots["settings_path"].read_bytes()
 
     # After proof succeeds and reservation is taken, kill the process before prompt.
     real_reserve = runner.reserve_prompt_ordinal
@@ -3280,17 +3323,16 @@ def test_origin_a_prompt_retry_exit_after_proof_before_prompt_no_relaunch(
     finally:
         runner_mod.reserve_prompt_ordinal = original  # type: ignore[assignment]
 
-    assert exc.value.reason_code in {
-        "invalid_probe_retry_process_identity_mismatch",
-        "invalid_probe_retry_proof_unavailable",
-        "invalid_probe_retry_control_channel_failure",
-        "invalid_probe_retry_second_prompt_failure",
-    }
+    assert (
+        exc.value.reason_code == "invalid_probe_retry_process_identity_mismatch"
+    ), exc.value.reason_code
     reservation = (
         custody_roots["capture_root"] / "reservations" / "origin-a-3-prompt-3.json"
     )
     assert reservation.is_file()
     assert not (custody_roots["capture_root"] / "attempts" / "origin-a-4").exists()
+    assert custody_roots["settings_path"].read_bytes() == settings_before
+    assert not endpoint._test_forwarded  # type: ignore[attr-defined]
     endpoint.close()
 
 
@@ -3318,10 +3360,7 @@ def test_origin_a_prompt_retry_prompt_failure_cannot_reclaim_ordinal(
     )
     with pytest.raises(runner.CustodyRunnerError) as first:
         runner.main(args)
-    assert first.value.reason_code in {
-        "invalid_probe_retry_control_channel_failure",
-        "invalid_probe_retry_second_prompt_failure",
-    }
+    assert first.value.reason_code == "invalid_probe_retry_control_channel_failure"
     reservation = (
         custody_roots["capture_root"] / "reservations" / "origin-a-3-prompt-3.json"
     )
@@ -3329,11 +3368,106 @@ def test_origin_a_prompt_retry_prompt_failure_cannot_reclaim_ordinal(
     before = reservation.read_bytes()
     with pytest.raises(runner.CustodyRunnerError) as second:
         runner.main(args)
-    assert second.value.reason_code in {
-        "reservation_already_exists",
-        "invalid_probe_retry_budget_exhausted",
-        "invalid_probe_retry_second_prompt_failure",
-        "invalid_probe_retry_control_channel_failure",
-    }
+    assert second.value.reason_code == "reservation_already_exists"
     assert reservation.read_bytes() == before
+    endpoint.close()
+
+
+def test_origin_a_prompt_retry_ineligible_ledger_skips_live_proof(
+    custody_roots: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ledger eligibility (prompt-2 transient) must run before acquire."""
+    runner = _retry_api(_import_runner())
+    import tools.plan117_custody_relay as relay
+    from tools.plan117_custody_contract import (
+        EvidenceReference,
+        FailureClass,
+        StageAttemptRecord,
+        StageKind,
+        StageStatus,
+        normalize_stage_ledger,
+    )
+
+    records = list(_fixed_ledger_records())
+    records.append(
+        StageAttemptRecord(
+            record_id="origin-a-3-correlation",
+            run_attempt_id="origin-a-3",
+            stage=StageKind.CORRELATION_CAPTURE,
+            ordinal=3,
+            status=StageStatus.SUCCEEDED,
+            failure_class=FailureClass.NONE,
+            reason_code=None,
+            evidence=(
+                EvidenceReference(
+                    "attempts/origin-a-3/manifest.json",
+                    "a" * 64,
+                    "raw_file_sha256",
+                ),
+            ),
+            supersedes_record_id="origin-a-3-original-manifest",
+            supersedes_sha256="a" * 64,
+            amendment_sha256=AMENDMENT_SHA256.lower(),
+            created_by="plan117-task3",
+            created_utc="2026-08-04T16:00:00Z",
+        )
+    )
+    # next_prompt_ordinal == 3, but prompt-2 is permanent (not retry-eligible).
+    records.append(
+        StageAttemptRecord(
+            record_id="origin-a-3-prompt-2",
+            run_attempt_id="origin-a-3",
+            stage=StageKind.POST_NEW_PROMPT,
+            ordinal=2,
+            status=StageStatus.FAILED,
+            failure_class=FailureClass.PERMANENT,
+            reason_code="AMBIGUOUS_WORKSPACE_REFERENCE",
+            evidence=(
+                EvidenceReference(
+                    "attempts/origin-a-3/prompt.json",
+                    "b" * 64,
+                    "raw_file_sha256",
+                ),
+            ),
+            supersedes_record_id="origin-a-3-original-observation",
+            supersedes_sha256="b" * 64,
+            amendment_sha256=AMENDMENT_SHA256.lower(),
+            created_by="plan117-task3",
+            created_utc="2026-08-04T16:00:00Z",
+        )
+    )
+    ledger = normalize_stage_ledger(records)
+    assert ledger.next_prompt_ordinal == 3
+
+    ledger_path = tmp_path / "stage-ledger.json"
+    identity_path = tmp_path / "launch-identity.json"
+    _write_stage_ledger(ledger_path, tuple(records))
+    _write_launch_identity(identity_path)
+    _prepare_retry_workspace(custody_roots)
+    endpoint = _start_retry_control_endpoint(tmp_path)
+    _prime_retry_prereq_phases(runner, custody_roots["capture_root"])
+
+    def forbid_acquire(**_kwargs: Any) -> Any:
+        raise AssertionError("acquire_live_session_proof must not run for ineligible ledger")
+
+    monkeypatch.setattr(relay, "acquire_live_session_proof", forbid_acquire)
+    if hasattr(runner, "acquire_live_session_proof"):
+        monkeypatch.setattr(runner, "acquire_live_session_proof", forbid_acquire)
+
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner.main(
+            _retry_cli_args(
+                custody_roots,
+                stage_ledger=ledger_path,
+                launch_identity=identity_path,
+                descriptor=endpoint.descriptor_path,
+            )
+        )
+    assert exc.value.reason_code == "invalid_probe_stage_accounting"
+    assert exc.value.field_path == "prompt_ordinal_2"
+    assert not (
+        custody_roots["capture_root"] / "reservations" / "origin-a-3-prompt-3.json"
+    ).exists()
     endpoint.close()
