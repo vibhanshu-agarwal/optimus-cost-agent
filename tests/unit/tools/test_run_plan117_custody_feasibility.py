@@ -2693,3 +2693,647 @@ def test_fixture_v2_and_pyproject_digest_constants() -> None:
     assert runner.PYPROJECT_TARGET_SHA256.upper() == PYPROJECT_SHA256
     assert _sha256_bytes(PROMPT_V2.read_bytes()).upper() == PROMPT_V2_SHA256
     assert _sha256_bytes((ROOT / "pyproject.toml").read_bytes()).upper() == PYPROJECT_SHA256
+
+
+# --- Task 3: origin-a-prompt-retry CLI wiring ---------------------------------
+
+
+_RETRY_OWNER = "unit-retry-operator"
+_RETRY_ZED_PID = 4242
+_RETRY_START_UTC = "2026-08-04T12:00:00Z"
+_RETRY_CONN = "conn-origin-a-3"
+_RETRY_SESSION = "sess-origin-a-3"
+_RETRY_EVIDENCE = "c" * 64
+
+
+def _retry_api(runner: Any) -> Any:
+    required = (
+        "run_origin_a_prompt_retry",
+        "load_stage_ledger",
+        "load_launch_session_identity",
+        "reserve_prompt_ordinal",
+        "assert_prompt_retry_preflight",
+    )
+    missing = [name for name in required if not hasattr(runner, name)]
+    if missing:
+        pytest.fail(f"missing origin-a-prompt-retry runner API: {missing}")
+    return runner
+
+
+def _retry_eligible_records():
+    from tools.plan117_custody_contract import (
+        EvidenceReference,
+        FailureClass,
+        StageAttemptRecord,
+        StageKind,
+        StageStatus,
+    )
+
+    records = list(_fixed_ledger_records())
+    records.append(
+        StageAttemptRecord(
+            record_id="origin-a-3-correlation",
+            run_attempt_id="origin-a-3",
+            stage=StageKind.CORRELATION_CAPTURE,
+            ordinal=3,
+            status=StageStatus.SUCCEEDED,
+            failure_class=FailureClass.NONE,
+            reason_code=None,
+            evidence=(
+                EvidenceReference(
+                    "attempts/origin-a-3/manifest.json",
+                    "a" * 64,
+                    "raw_file_sha256",
+                ),
+            ),
+            supersedes_record_id="origin-a-3-original-manifest",
+            supersedes_sha256="a" * 64,
+            amendment_sha256=AMENDMENT_SHA256.lower(),
+            created_by="plan117-task3",
+            created_utc="2026-08-04T16:00:00Z",
+        )
+    )
+    records.append(
+        StageAttemptRecord(
+            record_id="origin-a-3-prompt-2",
+            run_attempt_id="origin-a-3",
+            stage=StageKind.POST_NEW_PROMPT,
+            ordinal=2,
+            status=StageStatus.FAILED,
+            failure_class=FailureClass.TRANSIENT,
+            reason_code="gateway_timeout",
+            evidence=(
+                EvidenceReference(
+                    "attempts/origin-a-3/prompt.json",
+                    "b" * 64,
+                    "raw_file_sha256",
+                ),
+            ),
+            supersedes_record_id="origin-a-3-original-observation",
+            supersedes_sha256="b" * 64,
+            amendment_sha256=AMENDMENT_SHA256.lower(),
+            created_by="plan117-task3",
+            created_utc="2026-08-04T16:00:00Z",
+        )
+    )
+    return tuple(records)
+
+
+def _write_stage_ledger(path: Path, records: tuple[Any, ...]) -> None:
+    from tools.plan117_custody_contract import (
+        SCHEMA_STAGE_LEDGER,
+        normalize_stage_ledger,
+        stage_attempt_record_payload,
+        write_canonical_json,
+    )
+
+    ledger = normalize_stage_ledger(records)
+    payload = {
+        "schema": SCHEMA_STAGE_LEDGER,
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "next_correlation_ordinal": ledger.next_correlation_ordinal,
+        "next_prompt_ordinal": ledger.next_prompt_ordinal,
+        "records": [stage_attempt_record_payload(record) for record in records],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_canonical_json(path, payload)
+
+
+def _write_launch_identity(path: Path) -> None:
+    from tools.plan117_custody_contract import write_canonical_json
+
+    write_canonical_json(
+        path,
+        {
+            "schema": "plan117-custody-launch-session-identity-v1",
+            "run_attempt_id": "origin-a-3",
+            "zed_pid": _RETRY_ZED_PID,
+            "zed_process_start_time_utc": _RETRY_START_UTC,
+            "connection_id": _RETRY_CONN,
+            "acp_session_id": _RETRY_SESSION,
+        },
+    )
+
+
+def _prime_retry_prereq_phases(runner: Any, capture_root: Path) -> None:
+    state_path = capture_root / runner.STATE_FILENAME
+    runner.init_phase_state(state_path)
+    for phase in ("direct-control", "relay-control", "origin-a"):
+        runner.mark_phase_complete(state_path, phase)
+
+
+def _prepare_retry_workspace(custody_roots: dict[str, Path]) -> None:
+    import shutil
+
+    shutil.copyfile(
+        ROOT / "pyproject.toml",
+        custody_roots["workspace_root"] / "pyproject.toml",
+    )
+
+
+def _start_retry_control_endpoint(tmp_path: Path, **kwargs: Any) -> Any:
+    import tools.plan117_custody_relay as relay
+    from tools.plan117_custody_contract import EvidenceReference
+
+    class _Proc:
+        def __init__(self) -> None:
+            self.pid = kwargs.get("zed_pid", _RETRY_ZED_PID)
+            self._alive = kwargs.get("alive", True)
+            self.returncode = None if self._alive else 0
+
+        def poll(self) -> int | None:
+            return None if self._alive else 0
+
+        def mark_exited(self) -> None:
+            self._alive = False
+            self.returncode = 0
+
+    proc = kwargs.get("zed_proc") or _Proc()
+    start_utc = kwargs.get("start_utc", _RETRY_START_UTC)
+    pid = kwargs.get("zed_pid", _RETRY_ZED_PID)
+
+    def _observe(query_pid: int) -> Any:
+        if query_pid != pid:
+            return None
+        return relay.ObservedProcessIdentity(
+            pid=query_pid,
+            process_start_time_utc=start_utc,
+            alive=proc.poll() is None,
+        )
+
+    custody_root = tmp_path / "private" / "origin-a-3"
+    custody_root.mkdir(parents=True, exist_ok=True)
+    forwarded: list[bytes] = []
+
+    def _forward(payload: bytes) -> None:
+        forwarded.append(payload)
+
+    endpoint = relay.RelayControlEndpoint.start(
+        run_attempt_id="origin-a-3",
+        custody_root=custody_root,
+        zed_proc=proc,
+        zed_process_start_time_utc=start_utc,
+        connection_id=kwargs.get("connection_id", _RETRY_CONN),
+        acp_session_id=kwargs.get("acp_session_id", _RETRY_SESSION),
+        evidence=(
+            EvidenceReference(
+                relative_path="attempts/origin-a-3/relay-index.ndjson",
+                sha256=_RETRY_EVIDENCE,
+                hash_method="raw_file_sha256",
+            ),
+        ),
+        process_observer=kwargs.get("process_observer") or _observe,
+        owner_id=kwargs.get("owner_id", _RETRY_OWNER),
+        prompt_forward=kwargs.get("prompt_forward") or _forward,
+    )
+    endpoint._test_proc = proc  # type: ignore[attr-defined]
+    endpoint._test_forwarded = forwarded  # type: ignore[attr-defined]
+    return endpoint
+
+
+def _retry_cli_args(
+    custody_roots: dict[str, Path],
+    *,
+    stage_ledger: Path,
+    launch_identity: Path,
+    descriptor: Path,
+) -> list[str]:
+    return [
+        "origin-a-prompt-retry",
+        "--run-attempt-id",
+        "origin-a-3",
+        "--prompt-fixture",
+        str(PROMPT_V2),
+        "--workspace-root",
+        str(custody_roots["workspace_root"]),
+        "--capture-root",
+        str(custody_roots["capture_root"]),
+        "--zed-executable",
+        str(custody_roots["zed_executable"]),
+        "--zed-source",
+        str(custody_roots["zed_source"]),
+        "--settings-path",
+        str(custody_roots["settings_path"]),
+        "--debug-log",
+        str(custody_roots["debug_log"]),
+        "--custody-root",
+        str(custody_roots["custody_root"]),
+        "--stage-ledger",
+        str(stage_ledger),
+        "--launch-identity",
+        str(launch_identity),
+        "--relay-control-descriptor",
+        str(descriptor),
+        "--caller-owner-id",
+        _RETRY_OWNER,
+        "--no-operator-wait",
+    ]
+
+
+def test_origin_a_prompt_retry_cli_order_ledger_proof_gate_reserve_prompt(
+    custody_roots: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runner = _retry_api(_import_runner())
+    from tools.plan117_custody_contract import (
+        LaunchSessionIdentity,
+        LiveSessionProof,
+        evaluate_prompt_retry_preflight,
+        normalize_stage_ledger,
+    )
+
+    ledger_path = tmp_path / "stage-ledger.json"
+    identity_path = tmp_path / "launch-identity.json"
+    _write_stage_ledger(ledger_path, _retry_eligible_records())
+    _write_launch_identity(identity_path)
+    _prepare_retry_workspace(custody_roots)
+    endpoint = _start_retry_control_endpoint(tmp_path)
+    _prime_retry_prereq_phases(runner, custody_roots["capture_root"])
+
+    call_order: list[str] = []
+    real_load_ledger = runner.load_stage_ledger
+    real_load_identity = runner.load_launch_session_identity
+    real_assert = runner.assert_prompt_retry_preflight
+    real_reserve = runner.reserve_prompt_ordinal
+    real_evaluate = evaluate_prompt_retry_preflight
+
+    import tools.plan117_custody_relay as relay
+
+    real_acquire = relay.acquire_live_session_proof
+    real_send = relay.send_existing_session_prompt
+
+    def load_ledger(path: Path) -> Any:
+        call_order.append("load_stage_ledger")
+        return real_load_ledger(path)
+
+    def load_identity(path: Path) -> LaunchSessionIdentity:
+        call_order.append("load_launch_session_identity")
+        identity = real_load_identity(path)
+        assert identity.acp_session_id == _RETRY_SESSION
+        return identity
+
+    def acquire(**kwargs: Any) -> LiveSessionProof:
+        call_order.append("acquire_live_session_proof")
+        assert "acp_session_id" not in kwargs
+        assert kwargs["caller_owner_id"] == _RETRY_OWNER
+        return real_acquire(**kwargs)
+
+    def evaluate(**kwargs: Any) -> Any:
+        call_order.append("evaluate_prompt_retry_preflight")
+        identity = kwargs["launch_identity"]
+        assert isinstance(identity, LaunchSessionIdentity)
+        assert identity.zed_pid == _RETRY_ZED_PID
+        assert identity.connection_id == _RETRY_CONN
+        assert identity.acp_session_id == _RETRY_SESSION
+        # Must not be vacuous self-bind from proof alone without prior load.
+        assert identity.run_attempt_id == "origin-a-3"
+        return real_evaluate(**kwargs)
+
+    def assert_gate(**kwargs: Any) -> Any:
+        call_order.append("assert_prompt_retry_preflight")
+        return real_assert(**kwargs)
+
+    def reserve(**kwargs: Any) -> Path:
+        assert "acquire_live_session_proof" in call_order
+        assert "evaluate_prompt_retry_preflight" in call_order
+        assert "assert_prompt_retry_preflight" in call_order
+        call_order.append("reserve_prompt_ordinal")
+        assert kwargs["prompt_ordinal"] == 3
+        return real_reserve(**kwargs)
+
+    def send(**kwargs: Any) -> dict[str, Any]:
+        assert call_order[-1] == "reserve_prompt_ordinal"
+        call_order.append("send_existing_session_prompt")
+        assert kwargs["connection_id"] == _RETRY_CONN
+        assert kwargs["acp_session_id"] == _RETRY_SESSION
+        return real_send(**kwargs)
+
+    monkeypatch.setattr(runner, "load_stage_ledger", load_ledger)
+    monkeypatch.setattr(runner, "load_launch_session_identity", load_identity)
+    monkeypatch.setattr(runner, "assert_prompt_retry_preflight", assert_gate)
+    monkeypatch.setattr(runner, "reserve_prompt_ordinal", reserve)
+    monkeypatch.setattr(runner, "evaluate_prompt_retry_preflight", evaluate)
+    monkeypatch.setattr(relay, "acquire_live_session_proof", acquire)
+    monkeypatch.setattr(relay, "send_existing_session_prompt", send)
+    # Ensure runner module sees patched relay symbols if already imported.
+    if hasattr(runner, "acquire_live_session_proof"):
+        monkeypatch.setattr(runner, "acquire_live_session_proof", acquire)
+    if hasattr(runner, "send_existing_session_prompt"):
+        monkeypatch.setattr(runner, "send_existing_session_prompt", send)
+
+    settings_before = custody_roots["settings_path"].read_bytes()
+    code = runner.main(
+        _retry_cli_args(
+            custody_roots,
+            stage_ledger=ledger_path,
+            launch_identity=identity_path,
+            descriptor=endpoint.descriptor_path,
+        )
+    )
+    assert code == 0
+    out = capsys.readouterr().out.strip().splitlines()[-1]
+    payload = json.loads(out)
+    assert payload["phase"] == "origin-a-prompt-retry"
+    assert payload["run_attempt_id"] == "origin-a-3"
+    assert payload["prompt_ordinal"] == 3
+    assert payload["settings_mutated"] is False
+    assert payload["zed_launched"] is False
+    assert payload["live_session_proof_sha256"]
+    assert "hardcoded" not in out.lower()
+    # evaluate appears twice: once with immutable launch identity (Task-1 gap close),
+    # then nested inside assert_prompt_retry_preflight's public-gate revalidation.
+    assert call_order == [
+        "load_stage_ledger",
+        "load_launch_session_identity",
+        "acquire_live_session_proof",
+        "evaluate_prompt_retry_preflight",
+        "assert_prompt_retry_preflight",
+        "evaluate_prompt_retry_preflight",
+        "reserve_prompt_ordinal",
+        "send_existing_session_prompt",
+    ]
+    assert custody_roots["settings_path"].read_bytes() == settings_before
+    assert not (custody_roots["capture_root"] / "attempts" / "origin-a-4").exists()
+    assert endpoint._test_forwarded  # type: ignore[attr-defined]
+    # Ledger next prompt was 3 before; reservation consumed ordinal 3.
+    reservation = (
+        custody_roots["capture_root"] / "reservations" / "origin-a-3-prompt-3.json"
+    )
+    assert reservation.is_file()
+    ledger = normalize_stage_ledger(_retry_eligible_records())
+    assert ledger.next_prompt_ordinal == 3
+    endpoint.close()
+
+
+def test_origin_a_prompt_retry_failure_before_reserve_has_no_side_effects(
+    custody_roots: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _retry_api(_import_runner())
+    import tools.plan117_custody_relay as relay
+
+    ledger_path = tmp_path / "stage-ledger.json"
+    identity_path = tmp_path / "launch-identity.json"
+    _write_stage_ledger(ledger_path, _retry_eligible_records())
+    _write_launch_identity(identity_path)
+    _prepare_retry_workspace(custody_roots)
+    endpoint = _start_retry_control_endpoint(tmp_path)
+    _prime_retry_prereq_phases(runner, custody_roots["capture_root"])
+
+    side_effects: list[str] = []
+
+    def boom_acquire(**_kwargs: Any) -> Any:
+        side_effects.append("acquire")
+        raise runner.CustodyRunnerError(
+            "blocked_probe_same_session_prompt_retry_unavailable",
+            "live_session_proof",
+        )
+
+    def forbid_send(**_kwargs: Any) -> Any:
+        side_effects.append("send")
+        raise AssertionError("send must not run before reservation")
+
+    def forbid_reserve(**_kwargs: Any) -> Any:
+        side_effects.append("reserve")
+        raise AssertionError("reserve must not run after proof failure")
+
+    monkeypatch.setattr(relay, "acquire_live_session_proof", boom_acquire)
+    monkeypatch.setattr(relay, "send_existing_session_prompt", forbid_send)
+    if hasattr(runner, "acquire_live_session_proof"):
+        monkeypatch.setattr(runner, "acquire_live_session_proof", boom_acquire)
+    if hasattr(runner, "send_existing_session_prompt"):
+        monkeypatch.setattr(runner, "send_existing_session_prompt", forbid_send)
+    monkeypatch.setattr(runner, "reserve_prompt_ordinal", forbid_reserve)
+
+    settings_before = custody_roots["settings_path"].read_bytes()
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner.main(
+            _retry_cli_args(
+                custody_roots,
+                stage_ledger=ledger_path,
+                launch_identity=identity_path,
+                descriptor=endpoint.descriptor_path,
+            )
+        )
+    assert exc.value.reason_code == "blocked_probe_same_session_prompt_retry_unavailable"
+    assert side_effects == ["acquire"]
+    assert custody_roots["settings_path"].read_bytes() == settings_before
+    assert not (custody_roots["capture_root"] / "reservations" / "origin-a-3-prompt-3.json").exists()
+    assert not (custody_roots["capture_root"] / "attempts" / "origin-a-4").exists()
+    assert not endpoint._test_forwarded  # type: ignore[attr-defined]
+    endpoint.close()
+
+
+def test_origin_a_prompt_retry_rejects_cli_supplied_session_or_proof(
+    custody_roots: dict[str, Path],
+) -> None:
+    runner = _retry_api(_import_runner())
+    parser = runner._build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "origin-a-prompt-retry",
+                "--run-attempt-id",
+                "origin-a-3",
+                "--acp-session-id",
+                "sess-forged",
+                "--workspace-root",
+                str(custody_roots["workspace_root"]),
+                "--capture-root",
+                str(custody_roots["capture_root"]),
+                "--zed-executable",
+                str(custody_roots["zed_executable"]),
+                "--zed-source",
+                str(custody_roots["zed_source"]),
+                "--settings-path",
+                str(custody_roots["settings_path"]),
+                "--debug-log",
+                str(custody_roots["debug_log"]),
+            ]
+        )
+    source = RUNNER_PATH.read_text(encoding="utf-8")
+    assert "--acp-session-id" not in source
+    assert "--live-session-proof" not in source
+    assert "hardcoded JSON" not in source
+    # Hardcoded success path must be gone from the retry branch.
+    assert '"settings_mutated": False' not in source or "run_origin_a_prompt_retry" in source
+
+
+def test_origin_a_prompt_retry_second_reservation_stops(
+    custody_roots: dict[str, Path], tmp_path: Path
+) -> None:
+    runner = _retry_api(_import_runner())
+    ledger_path = tmp_path / "stage-ledger.json"
+    identity_path = tmp_path / "launch-identity.json"
+    _write_stage_ledger(ledger_path, _retry_eligible_records())
+    _write_launch_identity(identity_path)
+    _prepare_retry_workspace(custody_roots)
+    endpoint = _start_retry_control_endpoint(tmp_path)
+    _prime_retry_prereq_phases(runner, custody_roots["capture_root"])
+
+    args = _retry_cli_args(
+        custody_roots,
+        stage_ledger=ledger_path,
+        launch_identity=identity_path,
+        descriptor=endpoint.descriptor_path,
+    )
+    assert runner.main(args) == 0
+    reservation = (
+        custody_roots["capture_root"] / "reservations" / "origin-a-3-prompt-3.json"
+    )
+    assert reservation.is_file()
+    before = reservation.read_bytes()
+
+    # Second retry must see immutable reservation and stop (no reclaim).
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner.main(args)
+    assert exc.value.reason_code in {
+        "reservation_already_exists",
+        "invalid_probe_retry_budget_exhausted",
+        "invalid_probe_retry_second_prompt_failure",
+    }
+    assert reservation.read_bytes() == before
+    endpoint.close()
+
+
+def test_origin_a_prompt_retry_stale_proof_cannot_reserve(
+    custody_roots: dict[str, Path],
+    tmp_path: Path,
+) -> None:
+    runner = _retry_api(_import_runner())
+    ledger_path = tmp_path / "stage-ledger.json"
+    identity_path = tmp_path / "launch-identity.json"
+    _write_stage_ledger(ledger_path, _retry_eligible_records())
+    # Launch identity disagrees with live proof identity (stale / wrong bind).
+    from tools.plan117_custody_contract import write_canonical_json
+
+    write_canonical_json(
+        identity_path,
+        {
+            "schema": "plan117-custody-launch-session-identity-v1",
+            "run_attempt_id": "origin-a-3",
+            "zed_pid": _RETRY_ZED_PID,
+            "zed_process_start_time_utc": _RETRY_START_UTC,
+            "connection_id": _RETRY_CONN,
+            "acp_session_id": "sess-stale-other",
+        },
+    )
+    _prepare_retry_workspace(custody_roots)
+    endpoint = _start_retry_control_endpoint(tmp_path)
+    _prime_retry_prereq_phases(runner, custody_roots["capture_root"])
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner.main(
+            _retry_cli_args(
+                custody_roots,
+                stage_ledger=ledger_path,
+                launch_identity=identity_path,
+                descriptor=endpoint.descriptor_path,
+            )
+        )
+    assert exc.value.reason_code == "invalid_probe_retry_acp_session_identity_mismatch"
+    assert not (
+        custody_roots["capture_root"] / "reservations" / "origin-a-3-prompt-3.json"
+    ).exists()
+    assert not endpoint._test_forwarded  # type: ignore[attr-defined]
+    endpoint.close()
+
+
+def test_origin_a_prompt_retry_exit_after_proof_before_prompt_no_relaunch(
+    custody_roots: dict[str, Path],
+    tmp_path: Path,
+) -> None:
+    runner = _retry_api(_import_runner())
+    ledger_path = tmp_path / "stage-ledger.json"
+    identity_path = tmp_path / "launch-identity.json"
+    _write_stage_ledger(ledger_path, _retry_eligible_records())
+    _write_launch_identity(identity_path)
+    _prepare_retry_workspace(custody_roots)
+    endpoint = _start_retry_control_endpoint(tmp_path)
+    _prime_retry_prereq_phases(runner, custody_roots["capture_root"])
+
+    # After proof succeeds and reservation is taken, kill the process before prompt.
+    real_reserve = runner.reserve_prompt_ordinal
+
+    def reserve_then_exit(**kwargs: Any) -> Path:
+        path = real_reserve(**kwargs)
+        endpoint._test_proc.mark_exited()  # type: ignore[attr-defined]
+        return path
+
+    import tools.run_plan117_custody_feasibility as runner_mod
+
+    # Patch on the module used by main.
+    original = runner_mod.reserve_prompt_ordinal
+    runner_mod.reserve_prompt_ordinal = reserve_then_exit  # type: ignore[assignment]
+    try:
+        with pytest.raises(runner.CustodyRunnerError) as exc:
+            runner.main(
+                _retry_cli_args(
+                    custody_roots,
+                    stage_ledger=ledger_path,
+                    launch_identity=identity_path,
+                    descriptor=endpoint.descriptor_path,
+                )
+            )
+    finally:
+        runner_mod.reserve_prompt_ordinal = original  # type: ignore[assignment]
+
+    assert exc.value.reason_code in {
+        "invalid_probe_retry_process_identity_mismatch",
+        "invalid_probe_retry_proof_unavailable",
+        "invalid_probe_retry_control_channel_failure",
+        "invalid_probe_retry_second_prompt_failure",
+    }
+    reservation = (
+        custody_roots["capture_root"] / "reservations" / "origin-a-3-prompt-3.json"
+    )
+    assert reservation.is_file()
+    assert not (custody_roots["capture_root"] / "attempts" / "origin-a-4").exists()
+    endpoint.close()
+
+
+def test_origin_a_prompt_retry_prompt_failure_cannot_reclaim_ordinal(
+    custody_roots: dict[str, Path],
+    tmp_path: Path,
+) -> None:
+    runner = _retry_api(_import_runner())
+    ledger_path = tmp_path / "stage-ledger.json"
+    identity_path = tmp_path / "launch-identity.json"
+    _write_stage_ledger(ledger_path, _retry_eligible_records())
+    _write_launch_identity(identity_path)
+    _prepare_retry_workspace(custody_roots)
+
+    def boom_forward(_payload: bytes) -> None:
+        raise OSError("simulated prompt forward failure")
+
+    endpoint = _start_retry_control_endpoint(tmp_path, prompt_forward=boom_forward)
+    _prime_retry_prereq_phases(runner, custody_roots["capture_root"])
+    args = _retry_cli_args(
+        custody_roots,
+        stage_ledger=ledger_path,
+        launch_identity=identity_path,
+        descriptor=endpoint.descriptor_path,
+    )
+    with pytest.raises(runner.CustodyRunnerError) as first:
+        runner.main(args)
+    assert first.value.reason_code in {
+        "invalid_probe_retry_control_channel_failure",
+        "invalid_probe_retry_second_prompt_failure",
+    }
+    reservation = (
+        custody_roots["capture_root"] / "reservations" / "origin-a-3-prompt-3.json"
+    )
+    assert reservation.is_file()
+    before = reservation.read_bytes()
+    with pytest.raises(runner.CustodyRunnerError) as second:
+        runner.main(args)
+    assert second.value.reason_code in {
+        "reservation_already_exists",
+        "invalid_probe_retry_budget_exhausted",
+        "invalid_probe_retry_second_prompt_failure",
+        "invalid_probe_retry_control_channel_failure",
+    }
+    assert reservation.read_bytes() == before
+    endpoint.close()
