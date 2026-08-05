@@ -1,0 +1,20 @@
+{
+  "schema": "plan117-retry-preflight-gate-review-fix-launch-identity-v1",
+  "complete": true,
+  "utc": "2026-08-05T05:50:00Z",
+  "base": "97beda39aa6f168c5eb1f8282cdee979f8c80761",
+  "finding": "Public assert_prompt_retry_preflight derived expected LaunchSessionIdentity from the proof under validation (tautological identity check).",
+  "fix": {
+    "required_launch_identity_parameter": true,
+    "removed_self_derived_LaunchSessionIdentity": true,
+    "collapsed_duplicate_cli_evaluate": true,
+    "new_mismatch_test": "test_assert_prompt_retry_preflight_rejects_proof_vs_launch_identity_mismatch"
+  },
+  "gates": {
+    "focused_green": "10 passed",
+    "plan117_unit": "274 passed, 2 skipped",
+    "ruff": "passed",
+    "git_diff_check": "passed"
+  },
+  "task_5": "still paused (operator choice C); not resumed"
+}

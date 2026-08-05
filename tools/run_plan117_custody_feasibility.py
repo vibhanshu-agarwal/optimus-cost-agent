@@ -1713,8 +1713,9 @@ def run_origin_a_prompt_retry(
     """Ledger -> identity -> live proof -> pure gate -> reserve ordinal 3 -> prompt.
 
     Never launches Zed, mutates settings, issues session/new, or accepts proof /
-    ACP session IDs / eligibility from CLI input. Closes the Task-1 vacuous bind by
-    loading immutable launch identity before trusting live proof.
+    ACP session IDs / eligibility from CLI input. Loads immutable launch identity
+    and passes it to ``assert_prompt_retry_preflight``, which is the trust boundary
+    binding live proof to that identity.
     """
     if run_attempt_id != "origin-a-3":
         raise CustodyRunnerError("invalid_probe_stage_accounting", "run_attempt_id")
@@ -1746,28 +1747,14 @@ def run_origin_a_prompt_retry(
     except CustodyContractError as exc:
         raise CustodyRunnerError(exc.reason_code, exc.field_path) from exc
 
-    prompt_digest = sha256_file(prompt_fixture)
-    # Bind proof against immutable launch records (not proof self-fields alone).
-    try:
-        evaluate_prompt_retry_preflight(
-            run_attempt_id=run_attempt_id,
-            ledger=ledger,
-            prompt_fixture_sha256=prompt_digest,
-            expected_prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
-            target_sha256=target_sha256,
-            expected_target_sha256=PYPROJECT_TARGET_SHA256,
-            live_session_proof=proof,
-            launch_identity=launch_identity,
-        )
-    except CustodyContractError as exc:
-        raise CustodyRunnerError(exc.reason_code, exc.field_path) from exc
-
+    # Public gate is the trust boundary: bind live proof to immutable launch identity.
     gate_result = assert_prompt_retry_preflight(
         run_attempt_id=run_attempt_id,
         ledger=ledger,
         prompt_fixture=prompt_fixture,
         target_sha256=target_sha256,
         live_session_proof=proof,
+        launch_identity=launch_identity,
     )
 
     reservation_path = reserve_prompt_ordinal(
@@ -1888,34 +1875,27 @@ def assert_prompt_retry_preflight(
     prompt_fixture: Path,
     target_sha256: str,
     live_session_proof: LiveSessionProof | None,
+    launch_identity: LaunchSessionIdentity,
 ) -> RetryPreflightResult:
     """Same-session prompt-only retry: no Zed launch, no settings mutation.
 
     Pure and exception-based. Does not inspect processes, open the relay, mutate
-    settings, or synthesize missing proof fields. The public signature has no
-    launch-identity parameter, so this gate revalidates the proof against its own
-    declared identity. ``run_origin_a_prompt_retry`` closes that bind by loading
-    immutable launch records and calling ``evaluate_prompt_retry_preflight`` with
-    a real ``LaunchSessionIdentity`` before trusting a live retry.
+    settings, or synthesize missing proof fields. ``launch_identity`` must come
+    from immutable custody records; the gate binds ``live_session_proof`` to that
+    identity and never treats the proof's own fields as ground truth.
     """
     if live_session_proof is None:
         raise CustodyRunnerError(
             "blocked_probe_same_session_prompt_retry_unavailable",
             "live_session_proof",
         )
+    if not isinstance(launch_identity, LaunchSessionIdentity):
+        raise CustodyRunnerError(
+            "invalid_probe_retry_process_identity_mismatch",
+            "launch_identity",
+        )
     require_regular_non_symlink(prompt_fixture, label="prompt_fixture")
     prompt_digest = sha256_file(prompt_fixture)
-    # Public gate signature has no launch-identity parameter; revalidate the
-    # proof against its own declared identity (digest + liveness). Cross-check
-    # against immutable launch records remains in evaluate_prompt_retry_preflight
-    # when callers supply LaunchSessionIdentity from custody records.
-    expected_launch = LaunchSessionIdentity(
-        run_attempt_id=live_session_proof.run_attempt_id,
-        zed_pid=live_session_proof.zed_pid,
-        zed_process_start_time_utc=live_session_proof.zed_process_start_time_utc,
-        connection_id=live_session_proof.connection_id,
-        acp_session_id=live_session_proof.acp_session_id,
-    )
     try:
         return evaluate_prompt_retry_preflight(
             run_attempt_id=run_attempt_id,
@@ -1925,7 +1905,7 @@ def assert_prompt_retry_preflight(
             target_sha256=target_sha256,
             expected_target_sha256=PYPROJECT_TARGET_SHA256,
             live_session_proof=live_session_proof,
-            launch_identity=expected_launch,
+            launch_identity=launch_identity,
         )
     except CustodyContractError as exc:
         raise CustodyRunnerError(exc.reason_code, exc.field_path) from exc

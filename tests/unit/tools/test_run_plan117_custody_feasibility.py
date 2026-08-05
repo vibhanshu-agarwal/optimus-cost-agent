@@ -2481,17 +2481,13 @@ def test_origin_a3_refuses_reuse_when_reservation_or_attempt_exists(
     }
 
 
-def test_prompt_retry_requires_live_session_proof_and_skips_settings_launch(
-    custody_roots: dict[str, Path],
-) -> None:
-    runner = _runner_stage_api(_import_runner())
+def _prompt_retry_eligible_ledger():
     from tools.plan117_custody_contract import (
         EvidenceReference,
         FailureClass,
         StageAttemptRecord,
         StageKind,
         StageStatus,
-        build_live_session_proof,
         normalize_stage_ledger,
     )
 
@@ -2530,7 +2526,27 @@ def test_prompt_retry_requires_live_session_proof_and_skips_settings_launch(
             created_utc="2026-08-02T16:00:00Z",
         )
     )
-    ledger = normalize_stage_ledger(records)
+    return normalize_stage_ledger(records)
+
+
+def test_prompt_retry_requires_live_session_proof_and_skips_settings_launch(
+    custody_roots: dict[str, Path],
+) -> None:
+    runner = _runner_stage_api(_import_runner())
+    from tools.plan117_custody_contract import (
+        EvidenceReference,
+        LaunchSessionIdentity,
+        build_live_session_proof,
+    )
+
+    ledger = _prompt_retry_eligible_ledger()
+    launch_identity = LaunchSessionIdentity(
+        run_attempt_id="origin-a-3",
+        zed_pid=4242,
+        zed_process_start_time_utc="2026-08-04T12:00:00Z",
+        connection_id="conn-1",
+        acp_session_id="sess-origin-a-3",
+    )
 
     with pytest.raises(runner.CustodyRunnerError) as exc:
         runner.assert_prompt_retry_preflight(
@@ -2539,6 +2555,7 @@ def test_prompt_retry_requires_live_session_proof_and_skips_settings_launch(
             prompt_fixture=PROMPT_V2,
             target_sha256=PYPROJECT_SHA256.lower(),
             live_session_proof=None,
+            launch_identity=launch_identity,
         )
     assert exc.value.reason_code == "blocked_probe_same_session_prompt_retry_unavailable"
 
@@ -2566,6 +2583,7 @@ def test_prompt_retry_requires_live_session_proof_and_skips_settings_launch(
         prompt_fixture=PROMPT_V2,
         target_sha256=PYPROJECT_SHA256.lower(),
         live_session_proof=proof,
+        launch_identity=launch_identity,
     )
     assert result.prompt_ordinal == 3
     assert result.settings_mutated is False
@@ -2574,6 +2592,54 @@ def test_prompt_retry_requires_live_session_proof_and_skips_settings_launch(
     # Prompt-only retry must not mutate settings or allocate a new attempt launch dir.
     assert not (custody_roots["settings_path"].parent / "mutated.marker").exists()
     assert not (custody_roots["capture_root"] / "attempts" / "origin-a-4").exists()
+
+
+def test_assert_prompt_retry_preflight_rejects_proof_vs_launch_identity_mismatch() -> None:
+    """Public gate must bind proof to immutable launch identity — not self-fields."""
+    runner = _runner_stage_api(_import_runner())
+    from tools.plan117_custody_contract import (
+        EvidenceReference,
+        LaunchSessionIdentity,
+        build_live_session_proof,
+    )
+
+    ledger = _prompt_retry_eligible_ledger()
+    launch_identity = LaunchSessionIdentity(
+        run_attempt_id="origin-a-3",
+        zed_pid=1111,
+        zed_process_start_time_utc="2026-08-04T11:00:00Z",
+        connection_id="conn-launch-record",
+        acp_session_id="sess-launch-record",
+    )
+    # Internally consistent proof that disagrees with launch records.
+    proof = build_live_session_proof(
+        run_attempt_id="origin-a-3",
+        zed_pid=4242,
+        zed_process_start_time_utc="2026-08-04T12:00:00Z",
+        connection_id="conn-1",
+        acp_session_id="sess-origin-a-3",
+        zed_alive=True,
+        relay_alive=True,
+        acp_session_observed=True,
+        captured_utc="2026-08-04T12:05:00Z",
+        evidence=(
+            EvidenceReference(
+                "attempts/origin-a-3/relay-index.ndjson",
+                "c" * 64,
+                "raw_file_sha256",
+            ),
+        ),
+    )
+    with pytest.raises(runner.CustodyRunnerError) as exc:
+        runner.assert_prompt_retry_preflight(
+            run_attempt_id="origin-a-3",
+            ledger=ledger,
+            prompt_fixture=PROMPT_V2,
+            target_sha256=PYPROJECT_SHA256.lower(),
+            live_session_proof=proof,
+            launch_identity=launch_identity,
+        )
+    assert exc.value.reason_code == "invalid_probe_retry_process_identity_mismatch"
 
 
 def test_stage_outcome_exclusive_write_and_originals_untouched(
@@ -3000,12 +3066,17 @@ def test_origin_a_prompt_retry_cli_order_ledger_proof_gate_reserve_prompt(
 
     def assert_gate(**kwargs: Any) -> Any:
         call_order.append("assert_prompt_retry_preflight")
+        identity = kwargs["launch_identity"]
+        assert isinstance(identity, LaunchSessionIdentity)
+        assert identity.zed_pid == _RETRY_ZED_PID
+        assert identity.connection_id == _RETRY_CONN
+        assert identity.acp_session_id == _RETRY_SESSION
         return real_assert(**kwargs)
 
     def reserve(**kwargs: Any) -> Path:
         assert "acquire_live_session_proof" in call_order
-        assert "evaluate_prompt_retry_preflight" in call_order
         assert "assert_prompt_retry_preflight" in call_order
+        assert "evaluate_prompt_retry_preflight" in call_order
         call_order.append("reserve_prompt_ordinal")
         assert kwargs["prompt_ordinal"] == 3
         return real_reserve(**kwargs)
@@ -3050,14 +3121,12 @@ def test_origin_a_prompt_retry_cli_order_ledger_proof_gate_reserve_prompt(
     assert payload["zed_launched"] is False
     assert payload["live_session_proof_sha256"]
     assert "hardcoded" not in out.lower()
-    # evaluate appears twice: once with immutable launch identity (Task-1 gap close),
-    # then nested inside assert_prompt_retry_preflight's public-gate revalidation.
+    # Public gate owns the single evaluate call with loaded LaunchSessionIdentity.
     assert call_order == [
         "load_stage_ledger",
         "assert_prompt_retry_ledger_eligible",
         "load_launch_session_identity",
         "acquire_live_session_proof",
-        "evaluate_prompt_retry_preflight",
         "assert_prompt_retry_preflight",
         "evaluate_prompt_retry_preflight",
         "reserve_prompt_ordinal",
