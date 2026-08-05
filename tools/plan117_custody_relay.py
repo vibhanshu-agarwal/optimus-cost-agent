@@ -20,11 +20,17 @@ import argparse
 import hashlib
 import json
 import os
+import secrets
 import subprocess
 import sys
+import tempfile
 import threading
 import time
-from collections.abc import Callable, Sequence
+import uuid
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from multiprocessing.connection import AuthenticationError, Client, Listener
 from pathlib import Path
 from typing import Any, BinaryIO, TextIO
 
@@ -34,12 +40,18 @@ if str(ROOT) not in sys.path:
 
 from tools.plan117_custody_contract import (  # noqa: E402
     CustodyContractError,
+    EvidenceReference,
+    LiveSessionProof,
+    atomic_create_json,
     atomic_write_json,
+    build_live_session_proof,
     sha256_file,
+    sha256_hex_equal,
 )
 
 SCHEMA_INDEX = "plan117-custody-relay-index-v1"
 SCHEMA_SUMMARY = "plan117-custody-relay-summary-v1"
+SCHEMA_CONTROL_DESCRIPTOR = "plan117-custody-relay-control-descriptor-v1"
 DIR_ZED_TO_AGENT = "zed_to_agent"
 DIR_AGENT_TO_ZED = "agent_to_zed"
 EOF_ZED_TO_AGENT = "zed_to_agent_eof"
@@ -49,8 +61,836 @@ READ_CHUNK = 1 << 16  # 64 KiB
 REASON_RECORDER_FAILURE = "relay_recorder_failure"
 REASON_INTERRUPTED = "relay_interrupted"
 REASON_BROKEN_PIPE = "relay_broken_pipe"
+CONTROL_OP_GET_PROOF = "get_live_session_proof"
+CONTROL_OP_SEND_PROMPT = "send_existing_session_prompt"
+CONTROL_DESCRIPTOR_FILENAME = "relay-control-descriptor.json"
 
 PopenFactory = Callable[..., Any]
+ProcessObserver = Callable[[int], "ObservedProcessIdentity | None"]
+PromptForwarder = Callable[[bytes], None]
+
+
+@dataclass(frozen=True)
+class ObservedProcessIdentity:
+    """Live process identity facts read from the OS/process observer."""
+
+    pid: int
+    process_start_time_utc: str
+    alive: bool
+
+
+def _utc_now_iso() -> str:
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def _control_error(reason_code: str, field_path: str = "") -> CustodyContractError:
+    return CustodyContractError(reason_code, field_path)
+
+
+def _require_caller_owner_id(caller_owner_id: str | None) -> str:
+    """Out-of-band operator identity is mandatory; never infer from the descriptor."""
+    if not isinstance(caller_owner_id, str) or not caller_owner_id.strip():
+        raise _control_error(
+            "invalid_probe_retry_control_channel_failure",
+            "caller_owner_id",
+        )
+    return caller_owner_id
+
+
+def _reject_network_endpoint_address(address: object) -> None:
+    """Fail closed on TCP/IP or host-port network listeners."""
+    if isinstance(address, tuple):
+        raise _control_error(
+            "invalid_probe_retry_control_channel_failure",
+            "endpoint_address",
+        )
+    if isinstance(address, str):
+        lowered = address.strip().lower()
+        if lowered.startswith("tcp://") or lowered.startswith("http://") or lowered.startswith(
+            "https://"
+        ):
+            raise _control_error(
+                "invalid_probe_retry_control_channel_failure",
+                "endpoint_address",
+            )
+        # host:port form (but allow Windows named-pipe paths).
+        if (
+            "\\" not in address
+            and "/" not in address
+            and address.count(":") == 1
+            and not address.lower().startswith("af_unix:")
+        ):
+            host, _, port = address.partition(":")
+            if host and port.isdigit():
+                raise _control_error(
+                    "invalid_probe_retry_control_channel_failure",
+                    "endpoint_address",
+                )
+
+
+def _default_local_control_address(run_attempt_id: str, custody_root: Path) -> tuple[str, str]:
+    """Return (endpoint_kind, address) for a local-only AF_PIPE / AF_UNIX endpoint.
+
+    On POSIX the socket must stay under sockaddr_un.sun_path (~108 bytes). Custody
+    roots under pytest/GHA checkouts routinely exceed that, so the descriptor stays
+    under ``custody_root`` while the bind path uses the system temp directory.
+    """
+    token = uuid.uuid4().hex[:16]
+    if os.name == "nt":
+        pipe = rf"\\.\pipe\plan117-relay-control-{run_attempt_id}-{token}"
+        return "af_pipe", pipe
+    _ = custody_root  # descriptor lives here; socket path must stay short
+    sock = Path(tempfile.gettempdir()) / f"p117rc-{token}.sock"
+    if sock.exists():
+        sock.unlink()
+    return "af_unix", str(sock)
+
+
+_DESCRIPTOR_DIGEST_EXCLUDE = frozenset(
+    {
+        "descriptor_sha256",
+        "terminal",
+        "prompt_sealed",
+    }
+)
+
+
+def _descriptor_payload_for_digest(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Locator identity only — mutable terminal flags are never digest-bound."""
+    return {
+        key: payload[key]
+        for key in sorted(payload)
+        if key not in _DESCRIPTOR_DIGEST_EXCLUDE
+    }
+
+
+def _descriptor_sha256(payload: Mapping[str, Any]) -> str:
+    body = _descriptor_payload_for_digest(payload)
+    encoded = json.dumps(body, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _load_control_descriptor(
+    descriptor_path: Path,
+    *,
+    expected_descriptor_sha256: str,
+) -> dict[str, Any]:
+    path = Path(descriptor_path)
+    if path.is_symlink() or not path.is_file():
+        raise _control_error("invalid_probe_retry_control_channel_failure", "descriptor_path")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise _control_error(
+            "invalid_probe_retry_control_channel_failure",
+            "descriptor_path",
+        ) from exc
+    if not isinstance(payload, dict):
+        raise _control_error("invalid_probe_retry_control_channel_failure", "descriptor")
+    if payload.get("schema") != SCHEMA_CONTROL_DESCRIPTOR:
+        raise _control_error("invalid_probe_retry_control_channel_failure", "schema")
+    digest = _descriptor_sha256(payload)
+    stored = payload.get("descriptor_sha256")
+    if not isinstance(stored, str) or not sha256_hex_equal(digest, stored):
+        raise _control_error("invalid_probe_retry_control_channel_failure", "descriptor_sha256")
+    if not sha256_hex_equal(digest, expected_descriptor_sha256):
+        raise _control_error("invalid_probe_retry_control_channel_failure", "descriptor_sha256")
+    if payload.get("prompt_sealed") is True:
+        raise _control_error(
+            "invalid_probe_retry_second_prompt_failure",
+            "prompt_sealed",
+        )
+    if payload.get("terminal") is True:
+        raise _control_error("invalid_probe_retry_control_channel_failure", "descriptor_terminal")
+    return payload
+
+
+def _proof_from_wire(payload: Mapping[str, Any]) -> LiveSessionProof:
+    evidence_raw = payload.get("evidence")
+    if not isinstance(evidence_raw, list) or not evidence_raw:
+        raise _control_error("invalid_probe_retry_proof_unavailable", "evidence")
+    evidence: list[EvidenceReference] = []
+    for index, item in enumerate(evidence_raw):
+        if not isinstance(item, Mapping):
+            raise _control_error("invalid_probe_retry_proof_unavailable", f"evidence[{index}]")
+        evidence.append(
+            EvidenceReference(
+                relative_path=str(item["relative_path"]),
+                sha256=str(item["sha256"]),
+                hash_method=str(item["hash_method"]),
+            )
+        )
+    try:
+        return build_live_session_proof(
+            run_attempt_id=str(payload["run_attempt_id"]),
+            zed_pid=int(payload["zed_pid"]),
+            zed_process_start_time_utc=str(payload["zed_process_start_time_utc"]),
+            connection_id=str(payload["connection_id"]),
+            acp_session_id=str(payload["acp_session_id"]),
+            zed_alive=bool(payload["zed_alive"]),
+            relay_alive=bool(payload["relay_alive"]),
+            acp_session_observed=bool(payload["acp_session_observed"]),
+            captured_utc=str(payload["captured_utc"]),
+            evidence=evidence,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise _control_error("invalid_probe_retry_proof_unavailable", "proof") from exc
+
+
+def _encode_session_prompt(*, session_id: str, prompt_text: str) -> bytes:
+    """Build opaque ACP session/prompt request bytes (never session/new)."""
+    message = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "session/prompt",
+        "params": {
+            "sessionId": session_id,
+            "prompt": [{"type": "text", "text": prompt_text}],
+        },
+    }
+    return (json.dumps(message, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+
+
+class RelayControlRuntime:
+    """In-memory live facts for one run-bound relay control endpoint."""
+
+    def __init__(
+        self,
+        *,
+        run_attempt_id: str,
+        zed_proc: Any,
+        zed_process_start_time_utc: str,
+        connection_id: str,
+        acp_session_id: str | None,
+        evidence: Sequence[EvidenceReference],
+        process_observer: ProcessObserver,
+        owner_id: str,
+        prompt_forward: PromptForwarder,
+    ) -> None:
+        self.run_attempt_id = run_attempt_id
+        self._zed_proc = zed_proc
+        self.zed_process_start_time_utc = zed_process_start_time_utc
+        self.connection_id = connection_id
+        self.acp_session_id = acp_session_id
+        self.evidence = tuple(evidence)
+        self._process_observer = process_observer
+        self.owner_id = owner_id
+        self._prompt_forward = prompt_forward
+        self._lock = threading.RLock()
+        self.connection_eof = False
+        self.prompt_forwarded = False
+        self.closed = False
+        self.relay_alive = True
+
+    def mark_connection_eof(self) -> None:
+        with self._lock:
+            self.connection_eof = True
+
+    def observe_acp_session(self, session_id: str) -> None:
+        with self._lock:
+            if not isinstance(session_id, str) or not session_id.strip():
+                raise _control_error(
+                    "invalid_probe_retry_acp_session_identity_mismatch",
+                    "acp_session_id",
+                )
+            self.acp_session_id = session_id
+
+    def close(self) -> None:
+        with self._lock:
+            self.closed = True
+            self.relay_alive = False
+
+    def _require_live_zed_process_identity(self) -> int:
+        """Fail closed unless the relay-owned process PID/start identity is still live."""
+        pid = int(getattr(self._zed_proc, "pid", 0) or 0)
+        if pid <= 0:
+            raise _control_error(
+                "invalid_probe_retry_process_identity_mismatch",
+                "zed_pid",
+            )
+        observed = self._process_observer(pid)
+        if observed is None:
+            raise _control_error(
+                "invalid_probe_retry_process_identity_mismatch",
+                "zed_process_identity",
+            )
+        if (
+            observed.pid != pid
+            or observed.process_start_time_utc != self.zed_process_start_time_utc
+            or not observed.alive
+        ):
+            raise _control_error(
+                "invalid_probe_retry_process_identity_mismatch",
+                "zed_process_identity",
+            )
+        poll = getattr(self._zed_proc, "poll", None)
+        if callable(poll) and poll() is not None:
+            raise _control_error(
+                "invalid_probe_retry_process_identity_mismatch",
+                "zed_process_identity",
+            )
+        return pid
+
+    def get_live_session_proof(
+        self,
+        *,
+        run_attempt_id: str,
+        descriptor_sha256: str,
+        caller_owner_id: str,
+        expected_descriptor_sha256: str,
+    ) -> LiveSessionProof:
+        with self._lock:
+            if self.closed or not self.relay_alive:
+                raise _control_error(
+                    "invalid_probe_retry_control_channel_failure",
+                    "relay_closed",
+                )
+            if caller_owner_id != self.owner_id:
+                raise _control_error(
+                    "invalid_probe_retry_control_channel_failure",
+                    "caller_owner_id",
+                )
+            if not sha256_hex_equal(descriptor_sha256, expected_descriptor_sha256):
+                raise _control_error(
+                    "invalid_probe_retry_control_channel_failure",
+                    "descriptor_sha256",
+                )
+            if run_attempt_id != self.run_attempt_id:
+                raise _control_error(
+                    "invalid_probe_retry_proof_unavailable",
+                    "run_attempt_id",
+                )
+            if self.connection_eof:
+                raise _control_error(
+                    "invalid_probe_retry_connection_identity_mismatch",
+                    "connection_eof",
+                )
+            pid = self._require_live_zed_process_identity()
+            if not self.acp_session_id:
+                raise _control_error(
+                    "invalid_probe_retry_acp_session_identity_mismatch",
+                    "acp_session_id",
+                )
+            return build_live_session_proof(
+                run_attempt_id=self.run_attempt_id,
+                zed_pid=pid,
+                zed_process_start_time_utc=self.zed_process_start_time_utc,
+                connection_id=self.connection_id,
+                acp_session_id=self.acp_session_id,
+                zed_alive=True,
+                relay_alive=True,
+                acp_session_observed=True,
+                captured_utc=_utc_now_iso(),
+                evidence=self.evidence,
+            )
+
+    def send_existing_session_prompt(
+        self,
+        *,
+        run_attempt_id: str,
+        connection_id: str,
+        acp_session_id: str,
+        prompt_fixture: Path,
+        caller_owner_id: str,
+        descriptor_sha256: str,
+        expected_descriptor_sha256: str,
+    ) -> dict[str, Any]:
+        with self._lock:
+            if self.closed or not self.relay_alive:
+                raise _control_error(
+                    "invalid_probe_retry_second_prompt_failure"
+                    if self.prompt_forwarded
+                    else "invalid_probe_retry_control_channel_failure",
+                    "relay_closed",
+                )
+            if self.prompt_forwarded:
+                raise _control_error(
+                    "invalid_probe_retry_second_prompt_failure",
+                    "prompt_ordinal",
+                )
+            if caller_owner_id != self.owner_id:
+                raise _control_error(
+                    "invalid_probe_retry_control_channel_failure",
+                    "caller_owner_id",
+                )
+            if not sha256_hex_equal(descriptor_sha256, expected_descriptor_sha256):
+                raise _control_error(
+                    "invalid_probe_retry_control_channel_failure",
+                    "descriptor_sha256",
+                )
+            if run_attempt_id != self.run_attempt_id:
+                raise _control_error(
+                    "invalid_probe_retry_control_channel_failure",
+                    "run_attempt_id",
+                )
+            if self.connection_eof or connection_id != self.connection_id:
+                raise _control_error(
+                    "invalid_probe_retry_connection_identity_mismatch",
+                    "connection_id",
+                )
+            if not self.acp_session_id or acp_session_id != self.acp_session_id:
+                raise _control_error(
+                    "invalid_probe_retry_acp_session_identity_mismatch",
+                    "acp_session_id",
+                )
+            # Re-validate live process identity immediately before ACP forward.
+            self._require_live_zed_process_identity()
+            fixture = Path(prompt_fixture)
+            if fixture.is_symlink() or not fixture.is_file():
+                raise _control_error(
+                    "invalid_probe_retry_control_channel_failure",
+                    "prompt_fixture",
+                )
+            prompt_text = fixture.read_text(encoding="utf-8")
+            payload = _encode_session_prompt(
+                session_id=self.acp_session_id,
+                prompt_text=prompt_text,
+            )
+            if b"session/new" in payload:
+                raise _control_error(
+                    "invalid_probe_retry_control_channel_failure",
+                    "session_method",
+                )
+            try:
+                self._prompt_forward(payload)
+            except Exception as exc:
+                raise _control_error(
+                    "invalid_probe_retry_control_channel_failure",
+                    "prompt_forward",
+                ) from exc
+            self.prompt_forwarded = True
+            return {
+                "ok": True,
+                "run_attempt_id": self.run_attempt_id,
+                "connection_id": self.connection_id,
+                "acp_session_id": self.acp_session_id,
+                "method": "session/prompt",
+            }
+
+
+class RelayControlEndpoint:
+    """Same-run local AF_PIPE/AF_UNIX control server bound to one run attempt."""
+
+    def __init__(
+        self,
+        *,
+        runtime: RelayControlRuntime,
+        descriptor_path: Path,
+        descriptor_sha256: str,
+        endpoint_kind: str,
+        endpoint_path: str,
+        authkey: bytes,
+        listener: Listener,
+        serve_thread: threading.Thread,
+        stop: threading.Event,
+    ) -> None:
+        self._runtime = runtime
+        self.descriptor_path = Path(descriptor_path)
+        self.descriptor_sha256 = descriptor_sha256
+        self.endpoint_kind = endpoint_kind
+        self.endpoint_path = endpoint_path
+        self._authkey = authkey
+        self._listener = listener
+        self._serve_thread = serve_thread
+        self._stop = stop
+
+    @classmethod
+    def start(
+        cls,
+        *,
+        run_attempt_id: str,
+        custody_root: Path,
+        zed_proc: Any,
+        zed_process_start_time_utc: str,
+        connection_id: str,
+        evidence: Sequence[EvidenceReference],
+        process_observer: ProcessObserver,
+        owner_id: str,
+        prompt_forward: PromptForwarder,
+        acp_session_id: str | None = None,
+        endpoint_address: object | None = None,
+    ) -> RelayControlEndpoint:
+        if endpoint_address is not None:
+            _reject_network_endpoint_address(endpoint_address)
+            if not isinstance(endpoint_address, str):
+                raise _control_error(
+                    "invalid_probe_retry_control_channel_failure",
+                    "endpoint_address",
+                )
+            endpoint_kind = "af_pipe" if endpoint_address.startswith("\\\\.\\pipe\\") else "af_unix"
+            address = endpoint_address
+        else:
+            endpoint_kind, address = _default_local_control_address(
+                run_attempt_id,
+                Path(custody_root),
+            )
+        _reject_network_endpoint_address(address)
+
+        custody_root = Path(custody_root)
+        custody_root.mkdir(parents=True, exist_ok=True)
+        authkey = secrets.token_bytes(32)
+        runtime = RelayControlRuntime(
+            run_attempt_id=run_attempt_id,
+            zed_proc=zed_proc,
+            zed_process_start_time_utc=zed_process_start_time_utc,
+            connection_id=connection_id,
+            acp_session_id=acp_session_id,
+            evidence=evidence,
+            process_observer=process_observer,
+            owner_id=owner_id,
+            prompt_forward=prompt_forward,
+        )
+        try:
+            listener = Listener(address, authkey=authkey)
+        except OSError as exc:
+            raise _control_error(
+                "invalid_probe_retry_control_channel_failure",
+                "listener",
+            ) from exc
+
+        descriptor_path = custody_root / CONTROL_DESCRIPTOR_FILENAME
+        provisional = {
+            "schema": SCHEMA_CONTROL_DESCRIPTOR,
+            "run_attempt_id": run_attempt_id,
+            "endpoint_kind": endpoint_kind,
+            "endpoint_path": address,
+            "connection_id": connection_id,
+            "owner_id": owner_id,
+            "authkey_hex": authkey.hex(),
+            "terminal": False,
+        }
+        digest = _descriptor_sha256(provisional)
+        provisional["descriptor_sha256"] = digest
+        try:
+            atomic_create_json(descriptor_path, provisional)
+        except CustodyContractError:
+            try:
+                listener.close()
+            except OSError:
+                pass
+            raise
+        except Exception as exc:
+            try:
+                listener.close()
+            except OSError:
+                pass
+            raise _control_error(
+                "invalid_probe_retry_control_channel_failure",
+                "descriptor_path",
+            ) from exc
+
+        stop = threading.Event()
+        endpoint = cls(
+            runtime=runtime,
+            descriptor_path=descriptor_path,
+            descriptor_sha256=digest,
+            endpoint_kind=endpoint_kind,
+            endpoint_path=address,
+            authkey=authkey,
+            listener=listener,
+            serve_thread=threading.Thread(target=lambda: None, daemon=True),
+            stop=stop,
+        )
+
+        def _serve() -> None:
+            endpoint._serve_loop()
+
+        serve_thread = threading.Thread(
+            target=_serve,
+            name=f"plan117-relay-control-{run_attempt_id}",
+            daemon=True,
+        )
+        endpoint._serve_thread = serve_thread
+        serve_thread.start()
+        return endpoint
+
+    def mark_connection_eof(self) -> None:
+        self._runtime.mark_connection_eof()
+
+    def observe_acp_session(self, session_id: str) -> None:
+        self._runtime.observe_acp_session(session_id)
+
+    def close(self) -> None:
+        self._runtime.close()
+        self._stop.set()
+
+        def _wakeup_accept() -> None:
+            try:
+                with Client(self.endpoint_path, authkey=self._authkey) as conn:
+                    conn.send({"op": "_shutdown"})
+            except Exception:
+                return
+
+        # Never block forever on Client(): after prompt seal the serve loop may
+        # already have exited, leaving no acceptor for a wakeup connect.
+        if self._serve_thread.is_alive():
+            waker = threading.Thread(
+                target=_wakeup_accept,
+                name="plan117-relay-control-wakeup",
+                daemon=True,
+            )
+            waker.start()
+            waker.join(timeout=1.0)
+        try:
+            self._listener.close()
+        except OSError:
+            pass
+        self._serve_thread.join(timeout=2.0)
+        self._mark_descriptor_terminal(
+            prompt_sealed=self._runtime.prompt_forwarded,
+        )
+        if self.endpoint_kind == "af_unix":
+            try:
+                Path(self.endpoint_path).unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    def _mark_descriptor_terminal(self, *, prompt_sealed: bool = False) -> None:
+        try:
+            payload = json.loads(self.descriptor_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, dict):
+            return
+        payload["terminal"] = True
+        if prompt_sealed or payload.get("prompt_sealed") is True:
+            payload["prompt_sealed"] = True
+        payload["descriptor_sha256"] = _descriptor_sha256(payload)
+        try:
+            atomic_write_json(self.descriptor_path, payload)
+        except Exception:
+            pass
+
+    def _serve_loop(self) -> None:
+        while not self._stop.is_set() and not self._runtime.closed:
+            try:
+                connection = self._listener.accept()
+            except (OSError, EOFError, AuthenticationError):
+                if self._stop.is_set() or self._runtime.closed:
+                    return
+                continue
+            except Exception:
+                if self._stop.is_set() or self._runtime.closed:
+                    return
+                continue
+            try:
+                with connection:
+                    try:
+                        request = connection.recv()
+                    except (EOFError, OSError):
+                        continue
+                    if not isinstance(request, Mapping):
+                        connection.send(
+                            {
+                                "ok": False,
+                                "reason_code": "invalid_probe_retry_control_channel_failure",
+                                "field_path": "request",
+                            }
+                        )
+                        continue
+                    if request.get("op") == "_shutdown":
+                        return
+                    response = self._dispatch(request)
+                    connection.send(response)
+            except Exception:
+                continue
+
+    def _dispatch(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        op = request.get("op")
+        try:
+            if op == CONTROL_OP_GET_PROOF:
+                caller = _require_caller_owner_id(
+                    request.get("caller_owner_id")
+                    if isinstance(request.get("caller_owner_id"), str)
+                    else None
+                )
+                proof = self._runtime.get_live_session_proof(
+                    run_attempt_id=str(request.get("run_attempt_id", "")),
+                    descriptor_sha256=str(request.get("descriptor_sha256", "")),
+                    caller_owner_id=caller,
+                    expected_descriptor_sha256=self.descriptor_sha256,
+                )
+                return {
+                    "ok": True,
+                    "proof": {
+                        "run_attempt_id": proof.run_attempt_id,
+                        "zed_pid": proof.zed_pid,
+                        "zed_process_start_time_utc": proof.zed_process_start_time_utc,
+                        "connection_id": proof.connection_id,
+                        "acp_session_id": proof.acp_session_id,
+                        "zed_alive": proof.zed_alive,
+                        "relay_alive": proof.relay_alive,
+                        "acp_session_observed": proof.acp_session_observed,
+                        "captured_utc": proof.captured_utc,
+                        "evidence": [
+                            {
+                                "relative_path": item.relative_path,
+                                "sha256": item.sha256,
+                                "hash_method": item.hash_method,
+                            }
+                            for item in proof.evidence
+                        ],
+                        "proof_sha256": proof.proof_sha256,
+                    },
+                }
+            if op == CONTROL_OP_SEND_PROMPT:
+                caller = _require_caller_owner_id(
+                    request.get("caller_owner_id")
+                    if isinstance(request.get("caller_owner_id"), str)
+                    else None
+                )
+                result = self._runtime.send_existing_session_prompt(
+                    run_attempt_id=str(request.get("run_attempt_id", "")),
+                    connection_id=str(request.get("connection_id", "")),
+                    acp_session_id=str(request.get("acp_session_id", "")),
+                    prompt_fixture=Path(str(request.get("prompt_fixture", ""))),
+                    caller_owner_id=caller,
+                    descriptor_sha256=str(request.get("descriptor_sha256", "")),
+                    expected_descriptor_sha256=self.descriptor_sha256,
+                )
+                # Seal control path after terminal prompt outcome.
+                self._runtime.close()
+                self._stop.set()
+                self._mark_descriptor_terminal(prompt_sealed=True)
+                return result
+            raise _control_error(
+                "invalid_probe_retry_control_channel_failure",
+                "op",
+            )
+        except CustodyContractError as exc:
+            return {
+                "ok": False,
+                "reason_code": exc.reason_code,
+                "field_path": exc.field_path,
+            }
+
+
+def _control_request(
+    *,
+    descriptor_path: Path,
+    expected_descriptor_sha256: str,
+    request: Mapping[str, Any],
+) -> dict[str, Any]:
+    descriptor = _load_control_descriptor(
+        descriptor_path,
+        expected_descriptor_sha256=expected_descriptor_sha256,
+    )
+    endpoint_path = descriptor.get("endpoint_path")
+    authkey_hex = descriptor.get("authkey_hex")
+    if not isinstance(endpoint_path, str) or not endpoint_path:
+        raise _control_error("invalid_probe_retry_control_channel_failure", "endpoint_path")
+    if not isinstance(authkey_hex, str) or not authkey_hex:
+        raise _control_error("invalid_probe_retry_control_channel_failure", "authkey_hex")
+    _reject_network_endpoint_address(endpoint_path)
+    try:
+        authkey = bytes.fromhex(authkey_hex)
+    except ValueError as exc:
+        raise _control_error(
+            "invalid_probe_retry_control_channel_failure",
+            "authkey_hex",
+        ) from exc
+    try:
+        with Client(endpoint_path, authkey=authkey) as conn:
+            conn.send(dict(request))
+            response = conn.recv()
+    except Exception as exc:
+        raise _control_error(
+            "invalid_probe_retry_control_channel_failure",
+            "control_channel",
+        ) from exc
+    if not isinstance(response, Mapping):
+        raise _control_error("invalid_probe_retry_control_channel_failure", "response")
+    return dict(response)
+
+
+def acquire_live_session_proof(
+    *,
+    run_attempt_id: str,
+    descriptor_path: Path,
+    expected_descriptor_sha256: str,
+    caller_owner_id: str | None = None,
+) -> LiveSessionProof:
+    """Query the active relay control path; never reconstruct proof from the descriptor."""
+    caller = _require_caller_owner_id(caller_owner_id)
+    # Descriptor is loaded only as a locator after operator identity is present.
+    _load_control_descriptor(
+        descriptor_path,
+        expected_descriptor_sha256=expected_descriptor_sha256,
+    )
+    response = _control_request(
+        descriptor_path=descriptor_path,
+        expected_descriptor_sha256=expected_descriptor_sha256,
+        request={
+            "op": CONTROL_OP_GET_PROOF,
+            "run_attempt_id": run_attempt_id,
+            "descriptor_sha256": expected_descriptor_sha256,
+            "caller_owner_id": caller,
+        },
+    )
+    if not response.get("ok"):
+        reason = str(response.get("reason_code") or "invalid_probe_retry_proof_unavailable")
+        field = str(response.get("field_path") or "")
+        raise CustodyContractError(reason, field)
+    proof_payload = response.get("proof")
+    if not isinstance(proof_payload, Mapping):
+        raise _control_error("invalid_probe_retry_proof_unavailable", "proof")
+    proof = _proof_from_wire(proof_payload)
+    # Never trust wire digest alone — rebind via builder.
+    if proof.run_attempt_id != run_attempt_id:
+        raise _control_error("invalid_probe_retry_proof_unavailable", "run_attempt_id")
+    wire_digest = proof_payload.get("proof_sha256")
+    if not isinstance(wire_digest, str) or not sha256_hex_equal(wire_digest, proof.proof_sha256):
+        raise _control_error("invalid_probe_retry_proof_unavailable", "proof_sha256")
+    return proof
+
+
+def send_existing_session_prompt(
+    *,
+    run_attempt_id: str,
+    descriptor_path: Path,
+    expected_descriptor_sha256: str,
+    connection_id: str,
+    acp_session_id: str,
+    prompt_fixture: Path,
+    caller_owner_id: str | None = None,
+) -> dict[str, Any]:
+    """Forward exactly one session/prompt over the existing ACP connection."""
+    caller = _require_caller_owner_id(caller_owner_id)
+    _load_control_descriptor(
+        descriptor_path,
+        expected_descriptor_sha256=expected_descriptor_sha256,
+    )
+    response = _control_request(
+        descriptor_path=descriptor_path,
+        expected_descriptor_sha256=expected_descriptor_sha256,
+        request={
+            "op": CONTROL_OP_SEND_PROMPT,
+            "run_attempt_id": run_attempt_id,
+            "descriptor_sha256": expected_descriptor_sha256,
+            "caller_owner_id": caller,
+            "connection_id": connection_id,
+            "acp_session_id": acp_session_id,
+            "prompt_fixture": str(Path(prompt_fixture)),
+        },
+    )
+    if not response.get("ok"):
+        reason = str(
+            response.get("reason_code") or "invalid_probe_retry_control_channel_failure"
+        )
+        field = str(response.get("field_path") or "")
+        raise CustodyContractError(reason, field)
+    return {
+        "ok": True,
+        "run_attempt_id": str(response.get("run_attempt_id") or run_attempt_id),
+        "connection_id": str(response.get("connection_id") or connection_id),
+        "acp_session_id": str(response.get("acp_session_id") or acp_session_id),
+        "method": str(response.get("method") or "session/prompt"),
+    }
 
 
 class RelayRecorderError(RuntimeError):

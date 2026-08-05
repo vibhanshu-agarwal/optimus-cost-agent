@@ -1353,6 +1353,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan117_custody_contract:live_session_proof_sha256:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes schema-limited LiveSessionProof safe fields (ids, liveness flags, evidence hashes) to canonical sorted-key JSON solely to compute an in-memory proof_sha256; no path write, credentials, or raw transcript export.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_contract.py::test_live_session_proof_canonical_digest_binds_safe_fields_only",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan117_custody_contract:verify_manifest:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: verify_manifest wraps attempt-budget ValueError into CustodyContractError with a fixed reason code string and never exports raw exception text or secret values.",
@@ -1430,6 +1438,38 @@
       "rationale": "Inspection: AST overmatch on threading.Event.set() inside run_relay; no Redis client or hash write exists in the opaque relay.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_empty_streams_produce_eof_and_empty_bins",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:RelayControlEndpoint.close:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch on threading.Event.set() inside RelayControlEndpoint.close; no Redis client or hash write exists on the private control path.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_acquire_live_session_proof_returns_live_identity_and_liveness",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:RelayControlEndpoint._dispatch:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch on threading.Event.set() when sealing the control endpoint after prompt forward; no Redis client or hash write exists.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_send_existing_session_prompt_forwards_one_prompt_never_session_new",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:_descriptor_sha256:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes schema-limited control-descriptor locator fields (run_attempt_id, endpoint kind/path, connection_id, owner_id) to canonical sorted-key JSON solely to compute an in-memory descriptor_sha256; auth material stays under private custody and is not logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_acquire_live_session_proof_returns_live_identity_and_liveness",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:_encode_session_prompt:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes a single session/prompt ACP request from a preflight-approved fixture for opaque forward over the existing connection; never emits session/new, credentials, or control-plane traffic into the ACP byte stream.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_send_existing_session_prompt_forwards_one_prompt_never_session_new",
       "evidence_tier": "unit"
     },
     {
@@ -2054,6 +2094,14 @@
       "rationale": "Writes content-free run-summary.json only under operator output root.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_run_redaction_gate_live_evidence.py::test_spawn_uses_shell_false",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan117_custody_feasibility:_verify_sealed_live_session_proof_artifact:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonicalizes already-loaded safe live-session-proof seal fields (ids, outcome, reason codes, evidence hashes) solely to recompute proof_sha256; credentials, control messages, and settings bytes are rejected before encoding and the encoded JSON is not exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan117_custody_feasibility.py::test_verify_retry_preflight_offline_rejects_persisted_snapshot_only_live_claim",
       "evidence_tier": "unit"
     },
     {

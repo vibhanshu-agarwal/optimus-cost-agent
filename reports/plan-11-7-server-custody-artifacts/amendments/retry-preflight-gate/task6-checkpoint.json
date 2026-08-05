@@ -1,0 +1,37 @@
+{
+  "schema": "plan117-retry-preflight-gate-task6-checkpoint-v1",
+  "complete": true,
+  "utc": "2026-08-05T08:25:00Z",
+  "cosmetic_fix_utc": "2026-08-05T08:40:00Z",
+  "branch": "agent/cursor/p11-feat-zed-resume",
+  "path_a_terminal": true,
+  "gates": {
+    "verify_origin_a3": "passed",
+    "logging_surface": "passed",
+    "ruff": "passed",
+    "git_diff_check": "passed",
+    "git_diff_check_scope": "range f8c51f2..WORKING_TREE (includes Path A / Task 6 commit content and cosmetic follow-up); prior bare git diff --check was pre-stage and could not see untracked paths",
+    "git_diff_check_command": "git diff --check f8c51f2",
+    "pytest_unit": "2485 passed, 23 skipped, 1 warning",
+    "pytest_integration": "91 passed, 2 skipped, 56 deselected"
+  },
+  "cosmetic_fixes": {
+    "path_a_terminal_report": "regenerated via file Write (not PowerShell); control bytes \\x07/\\x0b and mangled identifiers removed; verified control_bytes=none",
+    "signature_supersession_note": "trailing whitespace stripped on header lines; range-scoped git diff --check now clean",
+    "root_cause_report_corruption": "PowerShell backtick escapes in here-string (`n/`a/`v) when report was first generated"
+  },
+  "docs_freshness": {
+    "digest_pinned_amendment_untouched": true,
+    "amendment_digest": "106FD92B8E43F44A7115D7EDB1F9CF1E3EE643E4B6F594FA656FB4119A969B82",
+    "signature_supersession_note": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/assert-prompt-retry-preflight-signature-supersession-note.md",
+    "updated_current_state_docs": [
+      "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md",
+      "docs/superpowers/plans/2026-07-01-phase-1-roadmap.md",
+      "reports/plan-11-7-server-custody-feasibility.md",
+      "reports/plan-11-7-server-custody-feasibility.json"
+    ],
+    "readme_unchanged": true
+  },
+  "reviewer_disposition": "awaiting_independent_reviewer_and_operator",
+  "push_pr_merge": "not_authorized"
+}

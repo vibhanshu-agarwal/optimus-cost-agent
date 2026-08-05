@@ -1,0 +1,79 @@
+{
+  "schema": "plan117-retry-preflight-gate-task3-checkpoint-v1",
+  "complete": true,
+  "task": "task3",
+  "utc": "2026-08-04T16:50:00Z",
+  "head": "108ed1843b38a2f16b30c34f80237d96530bc2e0",
+  "base": "8470dc97e5429e56f62a1326139ecc886cae8da3",
+  "branch": "agent/cursor/p11-feat-zed-resume",
+  "worktree": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor",
+  "pool_entry": "P11-FU-11",
+  "amendment_checkboxes": {
+    "note": "Left unchecked in the digest-bound amendment file to preserve approval SHA-256.",
+    "steps_verified": ["1", "2", "3", "4"]
+  },
+  "public_api_added": [
+    "load_stage_ledger",
+    "load_launch_session_identity",
+    "reserve_prompt_ordinal",
+    "run_origin_a_prompt_retry"
+  ],
+  "cli_flags_added": [
+    "--stage-ledger",
+    "--launch-identity",
+    "--relay-control-descriptor",
+    "--caller-owner-id"
+  ],
+  "sequence": [
+    "load_stage_ledger",
+    "load_launch_session_identity",
+    "verify_fixture_and_target",
+    "acquire_live_session_proof",
+    "evaluate_prompt_retry_preflight_with_launch_identity",
+    "assert_prompt_retry_preflight",
+    "reserve_prompt_ordinal_3",
+    "send_existing_session_prompt",
+    "append_outcome_and_proof_refs"
+  ],
+  "tool_digests": {
+    "tools/run_plan117_custody_feasibility.py": "C8E850EC7D7A8D15984CA3A48ED4AB447FDCE9BE95AC9EB15580ADFFAA4D08D1",
+    "tests/unit/tools/test_run_plan117_custody_feasibility.py": "014204898416D153BB15DABCE28C598313A61BE2D2F8C606AD1AC58BADE99027"
+  },
+  "red_evidence": {
+    "locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task3-step1-red.txt",
+    "command": "uv run --frozen pytest tests/unit/tools/test_run_plan117_custody_feasibility.py -q --tb=line -k \"origin_a_prompt_retry\"",
+    "result": "7 failed (missing retry CLI API; not import-only noise)"
+  },
+  "green_gates": {
+    "narrow_pytest": "7 passed",
+    "narrow_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task3-step2-green.txt",
+    "focused_pytest": "192 passed, 2 skipped",
+    "unit_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task3-step4-unit.txt",
+    "ruff": "All checks passed",
+    "ruff_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task3-step4-ruff.txt",
+    "git_diff_check": "clean (exit 0)",
+    "diff_check_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task3-step4-diff-check.txt"
+  },
+  "confirmations": {
+    "amendment_plan_checkboxes_unchecked": true,
+    "no_push": true,
+    "no_no_verify": true,
+    "no_live_zed_launch": true,
+    "no_settings_mutation": true,
+    "production_source_untouched": true,
+    "frozen_and_parent_docs_untouched": true,
+    "hardcoded_success_path_removed": true,
+    "launch_identity_bind_closed": true,
+    "no_cli_proof_or_session_id_input": true
+  },
+  "concerns": [
+    "Public assert_prompt_retry_preflight remains self-binding by signature; CLI closes the gap via evaluate_prompt_retry_preflight with loaded LaunchSessionIdentity.",
+    "Outcome created_utc uses sentinel 'reserved'; live Task 5 may want a real capture timestamp.",
+    "Retry CLI queries an already-running control endpoint; it does not start one."
+  ],
+  "commit": {
+    "sha": "108ed1843b38a2f16b30c34f80237d96530bc2e0",
+    "short": "108ed18",
+    "subject": "feat(plan-11.7): wire origin-a-prompt-retry to live proof gate"
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "schema": "plan117-retry-preflight-gate-task2-checkpoint-v1",
+  "complete": true,
+  "task": "task2",
+  "utc": "2026-08-04T16:34:30Z",
+  "head": "12c4634b9f09686fa3fb15012530d85090391d09",
+  "base": "19849e6771e756d431f7ca9ccf08c4794e06b156",
+  "branch": "agent/cursor/p11-feat-zed-resume",
+  "worktree": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor",
+  "pool_entry": "P11-FU-11",
+  "amendment_checkboxes": {
+    "note": "Left unchecked in the digest-bound amendment file to preserve approval SHA-256.",
+    "steps_verified": ["1", "2", "3", "4"]
+  },
+  "public_api_added": [
+    "ObservedProcessIdentity",
+    "RelayControlRuntime",
+    "RelayControlEndpoint",
+    "acquire_live_session_proof",
+    "send_existing_session_prompt"
+  ],
+  "control_ops": [
+    "get_live_session_proof",
+    "send_existing_session_prompt"
+  ],
+  "tool_digests": {
+    "tools/plan117_custody_relay.py": "AF358FF62A9F05DDEB360BCDFE84C0EFCDE6F0E34940FF1E9E164DB6CDD52035",
+    "tests/unit/tools/test_plan117_custody_relay.py": "32B66EB64A976B11C14AECB0E2D874EE0DCB22534DFFC41CB669D2D2C6C66913",
+    "docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json": "045464E4C8997B3E2F0CF37C52BAFA254C16B920C6192F7D5C3532F1455FFB7D"
+  },
+  "red_evidence": {
+    "locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task2-step1-red.txt",
+    "command": "uv run --frozen pytest tests/unit/tools/test_plan117_custody_relay.py -q --tb=line -k \"acquire_live_session_proof or send_existing_session_prompt or control_endpoint or control_path\"",
+    "result": "12 failed (missing relay control API; not import-only noise)"
+  },
+  "green_gates": {
+    "narrow_pytest": "12 passed, 31 deselected",
+    "full_relay_pytest": "43 passed",
+    "unit_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task2-step4-unit.txt",
+    "logging_surface_audit": "passed",
+    "logging_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task2-step4-logging.txt",
+    "ruff": "All checks passed",
+    "ruff_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task2-step4-ruff.txt",
+    "git_diff_check": "clean (exit 0)",
+    "diff_check_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task2-step4-diff-check.txt"
+  },
+  "confirmations": {
+    "amendment_plan_checkboxes_unchecked": true,
+    "no_push": true,
+    "no_no_verify": true,
+    "no_live_zed_launch": true,
+    "no_settings_mutation": true,
+    "production_source_untouched": true,
+    "frozen_and_parent_docs_untouched": true,
+    "acp_bytes_unchanged": true,
+    "descriptor_is_locator_not_proof": true,
+    "network_listeners_rejected": true,
+    "cli_wiring_deferred_to_task3": true
+  },
+  "concerns": [
+    "Private descriptor stores authkey_hex under custody root for local endpoint auth.",
+    "Acquire against a prompt-sealed descriptor fails with invalid_probe_retry_second_prompt_failure; Task 3 should treat sealed descriptors as non-retryable before acquire.",
+    "run_relay does not auto-start the control endpoint; Task 3 wires CLI/live lifecycle."
+  ],
+  "commit": {
+    "sha": "12c4634b9f09686fa3fb15012530d85090391d09",
+    "short": "12c4634",
+    "subject": "feat(plan-11.7): add live relay control proof acquisition"
+  }
+}

@@ -1110,3 +1110,431 @@ def test_stage_accounting_schema_constants_and_pinned_amendment_digest() -> None
     assert contract.StageStatus.FAILED.value == "failed"
     assert contract.StageStatus.SUPERSEDED.value == "superseded"
 
+
+# --- Retry preflight gate: LiveSessionProof + pure eligibility ---------------
+
+PROMPT_FIXTURE_V2_SHA256 = (
+    "9195efeee3a2180cfb85ede409ff7785f159f64e36426dcdb369251560e28a50"
+)
+PYPROJECT_TARGET_SHA256 = (
+    "ae28c0c3776f6b78df23e86fc0e88b0088febb7241a04650c604d713e23ef697"
+)
+_PROOF_EVIDENCE_DIGEST = "f" * 64
+
+
+def _retry_api():
+    """Import retry-preflight surface; fail closed if symbols are absent."""
+    import tools.plan117_custody_contract as contract
+
+    required = (
+        "LiveSessionProof",
+        "RetryPreflightResult",
+        "LaunchSessionIdentity",
+        "build_live_session_proof",
+        "live_session_proof_payload",
+        "live_session_proof_sha256",
+        "validate_live_session_proof",
+        "evaluate_prompt_retry_preflight",
+    )
+    missing = [name for name in required if not hasattr(contract, name)]
+    if missing:
+        pytest.fail(f"missing retry-preflight API: {missing}")
+    return contract
+
+
+def _launch_identity(**overrides: object):
+    contract = _retry_api()
+    payload: dict[str, object] = {
+        "run_attempt_id": "origin-a-3",
+        "zed_pid": 4242,
+        "zed_process_start_time_utc": "2026-08-04T12:00:00Z",
+        "connection_id": "conn-origin-a-3",
+        "acp_session_id": "sess-origin-a-3",
+    }
+    payload.update(overrides)
+    return contract.LaunchSessionIdentity(**payload)
+
+
+def _proof_kwargs(**overrides: object) -> dict[str, object]:
+    contract = _retry_api()
+    base: dict[str, object] = {
+        "run_attempt_id": "origin-a-3",
+        "zed_pid": 4242,
+        "zed_process_start_time_utc": "2026-08-04T12:00:00Z",
+        "connection_id": "conn-origin-a-3",
+        "acp_session_id": "sess-origin-a-3",
+        "zed_alive": True,
+        "relay_alive": True,
+        "acp_session_observed": True,
+        "captured_utc": "2026-08-04T12:05:00Z",
+        "evidence": (
+            contract.EvidenceReference(
+                relative_path="attempts/origin-a-3/relay-index.ndjson",
+                sha256=_PROOF_EVIDENCE_DIGEST,
+                hash_method="raw_file_sha256",
+            ),
+        ),
+    }
+    base.update(overrides)
+    return base
+
+
+def _build_proof(**overrides: object):
+    contract = _retry_api()
+    return contract.build_live_session_proof(**_proof_kwargs(**overrides))
+
+
+def _retry_ready_ledger(*, include_prompt_retry: bool = False):
+    contract = _retry_api()
+    base = _fixed_origin_a1_a2_records()
+    a3_corr = _stage_record(
+        record_id="origin-a-3-correlation",
+        run_attempt_id="origin-a-3",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=3,
+        status=contract.StageStatus.SUCCEEDED,
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+    )
+    a3_prompt_fail = _stage_record(
+        record_id="origin-a-3-prompt-2",
+        run_attempt_id="origin-a-3",
+        stage=contract.StageKind.POST_NEW_PROMPT,
+        ordinal=2,
+        status=contract.StageStatus.FAILED,
+        failure_class=FailureClass.TRANSIENT,
+        reason_code="gateway_timeout",
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+    )
+    records: list[object] = [*base, a3_corr, a3_prompt_fail]
+    if include_prompt_retry:
+        records.append(
+            _stage_record(
+                record_id="origin-a-3-prompt-retry",
+                run_attempt_id="origin-a-3",
+                stage=contract.StageKind.POST_NEW_PROMPT,
+                ordinal=3,
+                status=contract.StageStatus.SUCCEEDED,
+                supersedes_record_id=None,
+                supersedes_sha256=None,
+            )
+        )
+    return contract.normalize_stage_ledger(records)
+
+
+def test_live_session_proof_canonical_digest_binds_safe_fields_only() -> None:
+    contract = _retry_api()
+    proof = _build_proof()
+    payload = contract.live_session_proof_payload(proof)
+    assert "proof_sha256" not in payload
+    assert set(payload) == {
+        "acp_session_id",
+        "acp_session_observed",
+        "captured_utc",
+        "connection_id",
+        "evidence",
+        "relay_alive",
+        "run_attempt_id",
+        "zed_alive",
+        "zed_pid",
+        "zed_process_start_time_utc",
+    }
+    recomputed = contract.live_session_proof_sha256(proof)
+    assert contract.sha256_hex_equal(recomputed, proof.proof_sha256)
+    assert len(proof.evidence) >= 1
+
+
+def test_evaluate_prompt_retry_preflight_accepts_positive_same_session_proof() -> None:
+    contract = _retry_api()
+    ledger = _retry_ready_ledger()
+    proof = _build_proof()
+    result = contract.evaluate_prompt_retry_preflight(
+        run_attempt_id="origin-a-3",
+        ledger=ledger,
+        prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+        expected_prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+        target_sha256=PYPROJECT_TARGET_SHA256,
+        expected_target_sha256=PYPROJECT_TARGET_SHA256,
+        live_session_proof=proof,
+        launch_identity=_launch_identity(),
+    )
+    assert isinstance(result, contract.RetryPreflightResult)
+    assert result.run_attempt_id == "origin-a-3"
+    assert result.prompt_ordinal == 3
+    assert result.settings_mutated is False
+    assert result.zed_launched is False
+    assert contract.sha256_hex_equal(result.live_session_proof_sha256, proof.proof_sha256)
+    assert contract.sha256_hex_equal(result.prompt_fixture_sha256, PROMPT_FIXTURE_V2_SHA256)
+    assert contract.sha256_hex_equal(result.target_sha256, PYPROJECT_TARGET_SHA256)
+    assert ledger.next_correlation_ordinal == 4
+    assert ledger.next_prompt_ordinal == 3
+
+
+def test_evaluate_prompt_retry_preflight_rejects_missing_proof() -> None:
+    contract = _retry_api()
+    with pytest.raises(CustodyContractError) as excinfo:
+        contract.evaluate_prompt_retry_preflight(
+            run_attempt_id="origin-a-3",
+            ledger=_retry_ready_ledger(),
+            prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            expected_prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            target_sha256=PYPROJECT_TARGET_SHA256,
+            expected_target_sha256=PYPROJECT_TARGET_SHA256,
+            live_session_proof=None,
+            launch_identity=_launch_identity(),
+        )
+    assert excinfo.value.reason_code == "blocked_probe_same_session_prompt_retry_unavailable"
+
+
+def test_evaluate_prompt_retry_preflight_rejects_wrong_run_attempt_id() -> None:
+    contract = _retry_api()
+    with pytest.raises(CustodyContractError) as excinfo:
+        contract.evaluate_prompt_retry_preflight(
+            run_attempt_id="origin-a-2",
+            ledger=_retry_ready_ledger(),
+            prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            expected_prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            target_sha256=PYPROJECT_TARGET_SHA256,
+            expected_target_sha256=PYPROJECT_TARGET_SHA256,
+            live_session_proof=_build_proof(),
+            launch_identity=_launch_identity(),
+        )
+    assert excinfo.value.reason_code == "invalid_probe_stage_accounting"
+
+
+def test_validate_live_session_proof_rejects_pid_or_process_start_mismatch() -> None:
+    contract = _retry_api()
+    proof = _build_proof()
+    with pytest.raises(CustodyContractError) as pid_exc:
+        contract.validate_live_session_proof(
+            proof,
+            expected=_launch_identity(zed_pid=9999),
+        )
+    assert pid_exc.value.reason_code == "invalid_probe_retry_process_identity_mismatch"
+
+    with pytest.raises(CustodyContractError) as start_exc:
+        contract.validate_live_session_proof(
+            proof,
+            expected=_launch_identity(zed_process_start_time_utc="2026-01-01T00:00:00Z"),
+        )
+    assert start_exc.value.reason_code == "invalid_probe_retry_process_identity_mismatch"
+
+
+def test_validate_live_session_proof_rejects_closed_process() -> None:
+    contract = _retry_api()
+    proof = _build_proof(zed_alive=False)
+    with pytest.raises(CustodyContractError) as excinfo:
+        contract.validate_live_session_proof(proof, expected=_launch_identity())
+    assert excinfo.value.reason_code == "invalid_probe_retry_process_identity_mismatch"
+
+
+def test_validate_live_session_proof_rejects_stale_or_closed_relay_connection() -> None:
+    contract = _retry_api()
+    closed = _build_proof(relay_alive=False)
+    with pytest.raises(CustodyContractError) as closed_exc:
+        contract.validate_live_session_proof(closed, expected=_launch_identity())
+    assert closed_exc.value.reason_code == "invalid_probe_retry_connection_identity_mismatch"
+
+    mismatched = _build_proof(connection_id="conn-other")
+    with pytest.raises(CustodyContractError) as mismatch_exc:
+        contract.validate_live_session_proof(mismatched, expected=_launch_identity())
+    assert mismatch_exc.value.reason_code == "invalid_probe_retry_connection_identity_mismatch"
+
+
+def test_validate_live_session_proof_rejects_unobserved_or_mismatched_session() -> None:
+    contract = _retry_api()
+    unobserved = _build_proof(acp_session_observed=False)
+    with pytest.raises(CustodyContractError) as unobs_exc:
+        contract.validate_live_session_proof(unobserved, expected=_launch_identity())
+    assert unobs_exc.value.reason_code == "invalid_probe_retry_acp_session_identity_mismatch"
+
+    mismatched = _build_proof(acp_session_id="sess-other")
+    with pytest.raises(CustodyContractError) as mismatch_exc:
+        contract.validate_live_session_proof(mismatched, expected=_launch_identity())
+    assert mismatch_exc.value.reason_code == "invalid_probe_retry_acp_session_identity_mismatch"
+
+
+def test_evaluate_prompt_retry_preflight_rejects_changed_fixture_or_target() -> None:
+    contract = _retry_api()
+    with pytest.raises(CustodyContractError) as fixture_exc:
+        contract.evaluate_prompt_retry_preflight(
+            run_attempt_id="origin-a-3",
+            ledger=_retry_ready_ledger(),
+            prompt_fixture_sha256="0" * 64,
+            expected_prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            target_sha256=PYPROJECT_TARGET_SHA256,
+            expected_target_sha256=PYPROJECT_TARGET_SHA256,
+            live_session_proof=_build_proof(),
+            launch_identity=_launch_identity(),
+        )
+    assert fixture_exc.value.reason_code == "invalid_probe_fixture_identity_mismatch"
+
+    with pytest.raises(CustodyContractError) as target_exc:
+        contract.evaluate_prompt_retry_preflight(
+            run_attempt_id="origin-a-3",
+            ledger=_retry_ready_ledger(),
+            prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            expected_prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            target_sha256="1" * 64,
+            expected_target_sha256=PYPROJECT_TARGET_SHA256,
+            live_session_proof=_build_proof(),
+            launch_identity=_launch_identity(),
+        )
+    assert target_exc.value.reason_code == "invalid_probe_fixture_identity_mismatch"
+
+
+def test_evaluate_prompt_retry_preflight_rejects_missing_correlation_success() -> None:
+    contract = _retry_api()
+    # Fixed a1/a2 only: next correlation would be 3, no origin-a-3 success yet.
+    ledger = contract.normalize_stage_ledger(_fixed_origin_a1_a2_records())
+    with pytest.raises(CustodyContractError) as excinfo:
+        contract.evaluate_prompt_retry_preflight(
+            run_attempt_id="origin-a-3",
+            ledger=ledger,
+            prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            expected_prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            target_sha256=PYPROJECT_TARGET_SHA256,
+            expected_target_sha256=PYPROJECT_TARGET_SHA256,
+            live_session_proof=_build_proof(),
+            launch_identity=_launch_identity(),
+        )
+    assert excinfo.value.reason_code == "invalid_probe_stage_accounting"
+
+
+def test_evaluate_prompt_retry_preflight_rejects_non_transient_prompt_failure() -> None:
+    contract = _retry_api()
+    base = _fixed_origin_a1_a2_records()
+    a3_corr = _stage_record(
+        record_id="origin-a-3-correlation",
+        run_attempt_id="origin-a-3",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=3,
+        status=contract.StageStatus.SUCCEEDED,
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+    )
+    permanent = _stage_record(
+        record_id="origin-a-3-prompt-2",
+        run_attempt_id="origin-a-3",
+        stage=contract.StageKind.POST_NEW_PROMPT,
+        ordinal=2,
+        status=contract.StageStatus.FAILED,
+        failure_class=FailureClass.PERMANENT,
+        reason_code="AMBIGUOUS_WORKSPACE_REFERENCE",
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+    )
+    ledger = contract.normalize_stage_ledger((*base, a3_corr, permanent))
+    with pytest.raises(CustodyContractError) as excinfo:
+        contract.evaluate_prompt_retry_preflight(
+            run_attempt_id="origin-a-3",
+            ledger=ledger,
+            prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            expected_prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            target_sha256=PYPROJECT_TARGET_SHA256,
+            expected_target_sha256=PYPROJECT_TARGET_SHA256,
+            live_session_proof=_build_proof(),
+            launch_identity=_launch_identity(),
+        )
+    assert excinfo.value.reason_code == "invalid_probe_stage_accounting"
+
+
+def test_evaluate_prompt_retry_preflight_rejects_prior_retry_and_ordinal_gap() -> None:
+    contract = _retry_api()
+    prior = _retry_ready_ledger(include_prompt_retry=True)
+    with pytest.raises(CustodyContractError) as prior_exc:
+        contract.evaluate_prompt_retry_preflight(
+            run_attempt_id="origin-a-3",
+            ledger=prior,
+            prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            expected_prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            target_sha256=PYPROJECT_TARGET_SHA256,
+            expected_target_sha256=PYPROJECT_TARGET_SHA256,
+            live_session_proof=_build_proof(),
+            launch_identity=_launch_identity(),
+        )
+    assert prior_exc.value.reason_code == "invalid_probe_retry_budget_exhausted"
+
+    # Gap: correlation succeeded but prompt ordinal 2 never recorded; next_prompt stays 2.
+    base = _fixed_origin_a1_a2_records()
+    a3_corr = _stage_record(
+        record_id="origin-a-3-correlation",
+        run_attempt_id="origin-a-3",
+        stage=contract.StageKind.CORRELATION_CAPTURE,
+        ordinal=3,
+        status=contract.StageStatus.SUCCEEDED,
+        supersedes_record_id=None,
+        supersedes_sha256=None,
+    )
+    gap_ledger = contract.normalize_stage_ledger((*base, a3_corr))
+    assert gap_ledger.next_prompt_ordinal == 2
+    with pytest.raises(CustodyContractError) as gap_exc:
+        contract.evaluate_prompt_retry_preflight(
+            run_attempt_id="origin-a-3",
+            ledger=gap_ledger,
+            prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            expected_prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            target_sha256=PYPROJECT_TARGET_SHA256,
+            expected_target_sha256=PYPROJECT_TARGET_SHA256,
+            live_session_proof=_build_proof(),
+            launch_identity=_launch_identity(),
+        )
+    assert gap_exc.value.reason_code in {
+        "invalid_probe_stage_accounting",
+        "invalid_probe_retry_budget_exhausted",
+    }
+
+
+def test_evaluate_prompt_retry_preflight_rejects_correlation_ordinal_4_request() -> None:
+    contract = _retry_api()
+    # Missing origin-a-3 correlation success means a retry would require a fourth launch.
+    ledger = contract.normalize_stage_ledger(_fixed_origin_a1_a2_records())
+    assert ledger.next_correlation_ordinal == 3
+    with pytest.raises(CustodyContractError) as excinfo:
+        contract.evaluate_prompt_retry_preflight(
+            run_attempt_id="origin-a-4",
+            ledger=ledger,
+            prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            expected_prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            target_sha256=PYPROJECT_TARGET_SHA256,
+            expected_target_sha256=PYPROJECT_TARGET_SHA256,
+            live_session_proof=_build_proof(run_attempt_id="origin-a-4"),
+            launch_identity=_launch_identity(run_attempt_id="origin-a-4"),
+        )
+    assert excinfo.value.reason_code in {
+        "invalid_probe_stage_accounting",
+        "invalid_probe_retry_budget_exhausted",
+    }
+
+
+def test_build_live_session_proof_rejects_empty_evidence_and_digest_tamper() -> None:
+    contract = _retry_api()
+    with pytest.raises(CustodyContractError) as empty_exc:
+        contract.build_live_session_proof(**_proof_kwargs(evidence=()))
+    assert empty_exc.value.reason_code in {
+        "invalid_probe_retry_proof_unavailable",
+        "blocked_probe_same_session_prompt_retry_unavailable",
+    }
+
+    proof = _build_proof()
+    tampered = contract.LiveSessionProof(
+        run_attempt_id=proof.run_attempt_id,
+        zed_pid=proof.zed_pid,
+        zed_process_start_time_utc=proof.zed_process_start_time_utc,
+        connection_id=proof.connection_id,
+        acp_session_id=proof.acp_session_id,
+        zed_alive=proof.zed_alive,
+        relay_alive=proof.relay_alive,
+        acp_session_observed=proof.acp_session_observed,
+        captured_utc=proof.captured_utc,
+        evidence=proof.evidence,
+        proof_sha256="0" * 64,
+    )
+    with pytest.raises(CustodyContractError) as digest_exc:
+        contract.validate_live_session_proof(tampered, expected=_launch_identity())
+    assert digest_exc.value.reason_code in {
+        "invalid_probe_retry_proof_unavailable",
+        "blocked_probe_same_session_prompt_retry_unavailable",
+    }
+

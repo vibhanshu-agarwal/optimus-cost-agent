@@ -1,0 +1,42 @@
+{
+  "branch": "agent/cursor/p11-feat-zed-resume",
+  "cli_field_path": "control_channel",
+  "cli_reason_code": "invalid_probe_retry_control_channel_failure",
+  "complete": true,
+  "correlation_ordinal_4_allocated": false,
+  "disposition": "fail_closed_terminal_stop",
+  "evidence": {
+    "cli_result": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/cli-result.json",
+    "offline_verify": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/offline-verify-result.json",
+    "stage_ledger": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/stage-ledger.json"
+  },
+  "explicit_non_claims": [
+    "accepted_same_session_prompt_retry",
+    "live_session_proof_from_real_zed",
+    "production_server_side_custody_feasibility",
+    "authorization_for_correlation_ordinal_4",
+    "settings_mutation",
+    "zed_relaunch"
+  ],
+  "head": "f8c51f217ea4c281dee50a4dd47d0dfc4b35160d",
+  "next_correlation_ordinal": 4,
+  "next_prompt_ordinal": 3,
+  "not_a_defect": true,
+  "offline_outcome": "unavailable_proof",
+  "offline_reason_codes": [
+    "blocked_probe_same_session_prompt_retry_unavailable"
+  ],
+  "operator_authorization": "Path A fail-closed Task 5 stop (2026-08-05)",
+  "path": "A",
+  "reservation_exists": false,
+  "schema": "plan117-retry-preflight-path-a-terminal-seal-v1",
+  "settings_mutated": false,
+  "utc": "2026-08-05T08:17:48Z",
+  "why": [
+    "Dead origin-a-3 live Zed/relay/ACP session (Option B seal; session not present)",
+    "Correlation budget exhausted at next_correlation_ordinal=4; fourth correlation unauthorized",
+    "Real origin-a-prompt-retry CLI fail-closed at acquire_live_session_proof with invalid_probe_retry_control_channel_failure (dead control pipe)",
+    "Offline verify_retry_preflight_offline classified unavailable_proof; settings_mutated=false; zed_launched=false"
+  ],
+  "zed_launched": false
+}

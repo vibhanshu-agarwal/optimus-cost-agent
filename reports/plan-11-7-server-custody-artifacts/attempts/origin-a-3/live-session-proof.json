@@ -1,0 +1,32 @@
+{
+  "evidence": [
+    {
+      "hash_method": "raw_file_sha256",
+      "relative_path": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/origin-a-3-seal-b.json",
+      "sha256": "82c8725e47aa061e9092070087f7ed0d500914b3a403ad15faf8078a12c45802"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "relative_path": "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/stage-ledger.json",
+      "sha256": "d470d1a974485f014c23d5c21c00777140de9f08f4a0a86ebc5a1616a82c34bb"
+    }
+  ],
+  "hardcoded_success_rejected": true,
+  "live_attestation": false,
+  "notes": {
+    "control_descriptor_promoted": false,
+    "credentials_excluded": true,
+    "live_acquisition_deferred_to_task_5": true,
+    "raw_control_messages_excluded": true,
+    "settings_bytes_excluded": true
+  },
+  "outcome": "unavailable_proof",
+  "parent_seal": "origin-a-3-option-b",
+  "persisted_snapshot_is_not_live_proof": true,
+  "proof_sha256": "327227deac0d49e2bc7ecbb1e980ec0e1a35e87595eff2b3d2f46a5590669259",
+  "reason_code": "blocked_probe_same_session_prompt_retry_unavailable",
+  "run_attempt_id": "origin-a-3",
+  "schema": "plan117-custody-live-session-proof-v1",
+  "settings_mutated": false,
+  "zed_launched": false
+}

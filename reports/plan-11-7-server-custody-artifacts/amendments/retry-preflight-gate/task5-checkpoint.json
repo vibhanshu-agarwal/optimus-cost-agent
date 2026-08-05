@@ -1,0 +1,29 @@
+{
+  "schema": "plan117-retry-preflight-gate-task5-checkpoint-v1",
+  "complete": true,
+  "path": "A",
+  "utc": "2026-08-05T08:20:00Z",
+  "base_head_at_authorization": "f8c51f217ea4c281dee50a4dd47d0dfc4b35160d",
+  "branch": "agent/cursor/p11-feat-zed-resume",
+  "operator_authorization": "Path A fail-closed Task 5 stop only; Path B unauthorized",
+  "cli_reason_code": "invalid_probe_retry_control_channel_failure",
+  "cli_field_path": "control_channel",
+  "offline_outcome": "unavailable_proof",
+  "settings_mutated": false,
+  "zed_launched": false,
+  "reservation_exists": false,
+  "correlation_ordinal_4_allocated": false,
+  "disposition": "fail_closed_terminal_stop",
+  "not_a_defect": true,
+  "evidence": {
+    "cli_result": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/cli-result.json",
+    "offline_verify": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/offline-verify-result.json",
+    "terminal_seal": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json",
+    "human_report": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/PATH-A-TERMINAL-REPORT.md",
+    "fail_closed_proof": "reports/plan-11-7-server-custody-artifacts/attempts/origin-a-3/path-a-fail-closed-proof.json"
+  },
+  "amendment_checkboxes": {
+    "note": "Left unchecked in digest-bound amendment (106FD92B…9B82). Progress claimed here.",
+    "steps_verified": ["3", "4"]
+  }
+}

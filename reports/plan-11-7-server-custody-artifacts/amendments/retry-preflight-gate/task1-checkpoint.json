@@ -1,0 +1,70 @@
+{
+  "schema": "plan117-retry-preflight-gate-task1-checkpoint-v1",
+  "complete": true,
+  "task": "task1",
+  "utc": "2026-08-04T16:10:00Z",
+  "head": "3d62a3d84fe09794c8eb653cb7de4a56949f44e9",
+  "base": "3d6900e72707ee5dc37cfbe9194dccebf4b5b44f",
+  "branch": "agent/cursor/p11-feat-zed-resume",
+  "worktree": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor",
+  "pool_entry": "P11-FU-11",
+  "amendment_sha256": "106FD92B8E43F44A7115D7EDB1F9CF1E3EE643E4B6F594FA656FB4119A969B82",
+  "amendment_checkboxes": {
+    "note": "Left unchecked in the digest-bound amendment file to preserve approval SHA-256.",
+    "steps_verified": ["1", "2", "3"]
+  },
+  "public_api_added": [
+    "LaunchSessionIdentity",
+    "LiveSessionProof",
+    "RetryPreflightResult",
+    "live_session_proof_payload",
+    "live_session_proof_sha256",
+    "build_live_session_proof",
+    "validate_live_session_proof",
+    "evaluate_prompt_retry_preflight"
+  ],
+  "runner_gate_signature": "assert_prompt_retry_preflight(*, run_attempt_id, ledger, prompt_fixture, target_sha256, live_session_proof: LiveSessionProof | None) -> RetryPreflightResult",
+  "tool_digests": {
+    "tools/plan117_custody_contract.py": "EA09FFA68FB9A13BA90C7D7F4AB8817D436425F1CBF51D4A0A33C9BD8C001CF6",
+    "tools/run_plan117_custody_feasibility.py": "0F74E33ED6F63B885BB30D5D84697F88BB836C351747825E65A82EEFACDCACF5",
+    "tests/unit/tools/test_plan117_custody_contract.py": "000018C474D3057E2CC572AA22FE7B04CC67632C298EB968B951A2B454FABCF6",
+    "tests/unit/tools/test_run_plan117_custody_feasibility.py": "DE132948ABF9F418AE84505508447C7D678735179943F35337EB1FBFF1FE5E21",
+    "docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json": "80DE526E8461040366349216932250909F134DA25833B8B438610E2E493EB241"
+  },
+  "red_evidence": {
+    "locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task1-step1-red.txt",
+    "command": "uv run --frozen pytest tests/unit/tools/test_plan117_custody_contract.py -q --tb=line -k \"live_session_proof or evaluate_prompt_retry or validate_live_session\"",
+    "result": "14 failed (stub/not-implemented call path and wrong reason codes; not import-only)"
+  },
+  "green_gates": {
+    "narrow_pytest": "64 passed, 1 skipped",
+    "narrow_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task1-step3-unit.txt",
+    "runner_pytest": "76 passed, 1 skipped",
+    "runner_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task1-step3-runner-unit.txt",
+    "logging_surface_audit": "passed",
+    "logging_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task1-step3-logging.txt",
+    "ruff": "All checks passed",
+    "ruff_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task1-step3-ruff.txt",
+    "git_diff_check": "clean (exit 0)",
+    "diff_check_locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task1-step3-diff-check.txt"
+  },
+  "confirmations": {
+    "amendment_plan_checkboxes_unchecked": true,
+    "no_push": true,
+    "no_no_verify": true,
+    "no_live_zed_launch": true,
+    "no_settings_mutation": true,
+    "production_source_untouched": true,
+    "frozen_and_parent_docs_untouched": true,
+    "acquire_live_session_proof_deferred_to_task2": true,
+    "cli_hardcoded_path_deferred_to_task3": true
+  },
+  "concerns": [
+    "Runner assert_prompt_retry_preflight revalidates proof against its own declared identity because the public signature has no launch_identity parameter; Task 3 must bind immutable launch records via evaluate_prompt_retry_preflight/validate_live_session_proof."
+  ],
+  "commit": {
+    "sha": "3d62a3d84fe09794c8eb653cb7de4a56949f44e9",
+    "short": "3d62a3d",
+    "subject": "feat(plan-11.7): add LiveSessionProof contract and pure retry preflight"
+  }
+}

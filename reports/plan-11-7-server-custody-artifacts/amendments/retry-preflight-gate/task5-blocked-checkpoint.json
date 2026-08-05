@@ -1,0 +1,51 @@
+{
+  "schema": "plan117-retry-preflight-gate-task5-checkpoint-v1",
+  "complete": false,
+  "blocked": true,
+  "utc": "2026-08-04T16:45:00Z",
+  "head": "97beda39aa6f168c5eb1f8282cdee979f8c80761",
+  "branch": "agent/cursor/p11-feat-zed-resume",
+  "status": "PAUSED_OPERATOR_CHOICE_C",
+  "operator_decision": {
+    "choice": "C",
+    "utc": "2026-08-04T17:39:00Z",
+    "meaning": "Pause Task 5/6. Reviewer verifies Tasks 0-4 task-by-task first, then revisits Task 5 blockers."
+  },
+  "tasks_0_through_4": {
+    "complete": true,
+    "head_range": "3d6900e..97beda3",
+    "review_status": "approved_per_task"
+  },
+  "blockers": [
+    {
+      "id": "dead_origin_a3_session",
+      "detail": "Sealed origin-a-3 Option B process-invalid (2026-08-02). Live Zed/relay/ACP session is not present. Prompt ordinal 3 remains unclaimed by design; gated origin-a-prompt-retry was never run against a live session."
+    },
+    {
+      "id": "correlation_budget_exhausted",
+      "detail": "Stage ledger next_correlation_ordinal=4. Amendment forbids a fourth correlation launch. Re-running origin-a-3 correlation would violate Global Constraints unless a separately authorized budget-expansion path exists."
+    },
+    {
+      "id": "settings_restore_and_approval",
+      "detail": "Seal records settings_restored=false. Fixture-v2 settings-approval-request.json is still awaiting_operator_approval (created 2026-08-02). Fresh settings-mutation approval is required before any new settings transaction; prior approval must not be reused."
+    },
+    {
+      "id": "zed_version_pin",
+      "detail": "Installed Zed reports 1.13.2 (5cdb7ab9...). Amendment Task 5 text requires real Zed 1.13.1. Operator must confirm pin acceptance or restore 1.13.1."
+    },
+    {
+      "id": "redis_gateway_reachability",
+      "detail": "redis-cli not on PATH; WSL redis-cli missing. OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY unset in this shell (keychain path not verified here)."
+    }
+  ],
+  "operator_choices_needed": [
+    "A) Authorize sealed fail-closed Task 5 stop: invoke origin-a-prompt-retry against dead/missing control endpoint, preserve blocked/unavailable proof as terminal, no correlation 4, no settings mutation",
+    "B) Authorize a separately scoped live path (new budget-expansion amendment / settings restore+approval / Redis+Gateway confirmation / Zed pin ruling) before attempting accepted same-session retry evidence",
+    "C) Pause Task 5/6 until reviewer/operator return on Option B seal and settings restore"
+  ],
+  "not_done": [
+    "No live acquire_live_session_proof against real Zed",
+    "No gated prompt ordinal 3 transmission",
+    "No Task 6 final gates / docs freshness / reviewer disposition"
+  ]
+}

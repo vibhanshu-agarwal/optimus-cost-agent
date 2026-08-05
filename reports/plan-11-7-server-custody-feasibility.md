@@ -112,3 +112,21 @@ Feasibility remains **undecided**. Corrected origin-A under fixture-v2 is a seal
 A clean DoD-qualifying observation requires a **budget-expansion amendment** (and Zed re-hash /
 re-pin at the next launch if the installed binary has changed). Parent amendment Task 5
 (`restart-b` / later phases) is **not** unblocked by this result.
+
+## Retry-preflight Path A (2026-08-05)
+
+Operator-authorized **Path A** fail-closed Task 5 stop on branch `agent/cursor/p11-feat-zed-resume`.
+Path B (accepted live same-session retry) was not authorized.
+
+| Field | Value |
+|---|---|
+| CLI reason_code | `invalid_probe_retry_control_channel_failure` |
+| Offline outcome | `unavailable_proof` |
+| settings_mutated | false |
+| zed_launched | false |
+| correlation ordinal 4 | not allocated |
+| Terminal seal | `reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json` |
+
+This is a custody-correct fail-closed stop, not a claim of accepted live retry and not a claim that
+production server-side custody is feasible. Feasibility remains undecided pending any future
+separately authorized live path.

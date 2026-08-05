@@ -22,6 +22,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.plan117_custody_contract import (  # noqa: E402
+    MAX_CORRELATION_ORDINAL_UNDER_AMENDMENT,
     ORIGIN_A_FIXTURE_V2_AMENDMENT_SHA256,
     SCHEMA_APPROVAL_EQUIVALENCE,
     SCHEMA_ATTEMPT_MANIFEST,
@@ -30,10 +31,15 @@ from tools.plan117_custody_contract import (  # noqa: E402
     SCHEMA_RUN_RESERVATION,
     SCHEMA_SETTINGS_TRANSACTION,
     SCHEMA_STAGE_ATTEMPT_RECORD,
+    SCHEMA_STAGE_LEDGER,
     SCHEMA_TRANSCRIPT_PROJECTION,
     AttemptKind,
     CustodyContractError,
+    EvidenceReference,
     FailureClass,
+    LaunchSessionIdentity,
+    LiveSessionProof,
+    RetryPreflightResult,
     StageAttemptRecord,
     StageKind,
     StageLedger,
@@ -41,11 +47,18 @@ from tools.plan117_custody_contract import (  # noqa: E402
     atomic_create_json,
     atomic_write_bytes,
     atomic_write_json,
+    evaluate_prompt_retry_preflight,
     next_stage_ordinal,
+    normalize_stage_ledger,
     sha256_file,
     sha256_hex_equal,
     stage_attempt_record_payload,
+    stage_attempt_record_sha256,
     write_canonical_json,
+)
+from tools.plan117_custody_relay import (  # noqa: E402
+    acquire_live_session_proof,
+    send_existing_session_prompt,
 )
 
 PHASES = (
@@ -98,6 +111,9 @@ PYPROJECT_TARGET_SHA256 = (
 SETTINGS_TX_META = "settings-transaction.json"
 SETTINGS_PREIMAGE = "settings-preimage.bin"
 STATE_FILENAME = "plan117-custody-state.json"
+SCHEMA_LAUNCH_SESSION_IDENTITY = "plan117-custody-launch-session-identity-v1"
+SCHEMA_PROMPT_RESERVATION = "plan117-custody-prompt-reservation-v1"
+PROMPT_RETRY_ORDINAL = 3
 CHANGED_KEY_ALLOWLIST = frozenset(
     {
         "agent_servers.optimus.command",
@@ -1454,22 +1470,216 @@ def reserve_origin_a_run(
     return path
 
 
-def assert_prompt_retry_preflight(
+def _stage_record_from_payload(payload: Mapping[str, Any]) -> StageAttemptRecord:
+    try:
+        stage = StageKind(str(payload["stage"]))
+        status = StageStatus(str(payload["status"]))
+        failure_class = FailureClass(str(payload["failure_class"]))
+        ordinal = int(payload["ordinal"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise CustodyRunnerError("invalid_probe_retry_ledger_unavailable", "stage_fields") from exc
+    evidence_raw = payload.get("evidence")
+    if not isinstance(evidence_raw, list) or not evidence_raw:
+        raise CustodyRunnerError("invalid_probe_retry_ledger_unavailable", "evidence")
+    evidence: list[EvidenceReference] = []
+    for index, item in enumerate(evidence_raw):
+        if not isinstance(item, Mapping):
+            raise CustodyRunnerError(
+                "invalid_probe_retry_ledger_unavailable",
+                f"evidence[{index}]",
+            )
+        try:
+            evidence.append(
+                EvidenceReference(
+                    relative_path=str(item["relative_path"]),
+                    sha256=str(item["sha256"]),
+                    hash_method=str(item["hash_method"]),
+                )
+            )
+        except KeyError as exc:
+            raise CustodyRunnerError(
+                "invalid_probe_retry_ledger_unavailable",
+                f"evidence[{index}]",
+            ) from exc
+    supersedes_record_id = payload.get("supersedes_record_id")
+    supersedes_sha256 = payload.get("supersedes_sha256")
+    if not isinstance(supersedes_record_id, str) or not supersedes_record_id:
+        raise CustodyRunnerError(
+            "invalid_probe_retry_ledger_unavailable",
+            "supersedes_record_id",
+        )
+    if not isinstance(supersedes_sha256, str) or not supersedes_sha256:
+        raise CustodyRunnerError(
+            "invalid_probe_retry_ledger_unavailable",
+            "supersedes_sha256",
+        )
+    reason_code = payload.get("reason_code")
+    if reason_code is not None and not isinstance(reason_code, str):
+        raise CustodyRunnerError("invalid_probe_retry_ledger_unavailable", "reason_code")
+    try:
+        return StageAttemptRecord(
+            record_id=str(payload["record_id"]),
+            run_attempt_id=str(payload["run_attempt_id"]),
+            stage=stage,
+            ordinal=ordinal,
+            status=status,
+            failure_class=failure_class,
+            reason_code=reason_code,
+            evidence=tuple(evidence),
+            supersedes_record_id=supersedes_record_id,
+            supersedes_sha256=supersedes_sha256,
+            amendment_sha256=str(payload["amendment_sha256"]),
+            created_by=str(payload["created_by"]),
+            created_utc=str(payload["created_utc"]),
+        )
+    except KeyError as exc:
+        raise CustodyRunnerError(
+            "invalid_probe_retry_ledger_unavailable",
+            "stage_record",
+        ) from exc
+
+
+def load_stage_ledger(path: Path) -> StageLedger:
+    """Load and recompute an immutable stage ledger; never trust stored next_* alone."""
+    require_regular_non_symlink(path, label="stage_ledger")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise CustodyRunnerError("invalid_probe_retry_ledger_unavailable", "stage_ledger") from exc
+    if not isinstance(payload, dict) or payload.get("schema") != SCHEMA_STAGE_LEDGER:
+        raise CustodyRunnerError("invalid_probe_retry_ledger_unavailable", "schema")
+    records_raw = payload.get("records")
+    if not isinstance(records_raw, list) or not records_raw:
+        raise CustodyRunnerError("invalid_probe_retry_ledger_unavailable", "records")
+    try:
+        records = tuple(
+            _stage_record_from_payload(item)
+            for item in records_raw
+            if isinstance(item, Mapping)
+        )
+        if len(records) != len(records_raw):
+            raise CustodyRunnerError("invalid_probe_retry_ledger_unavailable", "records")
+        return normalize_stage_ledger(records)
+    except CustodyContractError as exc:
+        raise CustodyRunnerError(exc.reason_code, exc.field_path) from exc
+
+
+def load_launch_session_identity(path: Path) -> LaunchSessionIdentity:
+    """Load immutable launch/session identity used to bind live proof (closes vacuous bind)."""
+    require_regular_non_symlink(path, label="launch_identity")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise CustodyRunnerError(
+            "invalid_probe_retry_process_identity_mismatch",
+            "launch_identity",
+        ) from exc
+    if not isinstance(payload, dict) or payload.get("schema") != SCHEMA_LAUNCH_SESSION_IDENTITY:
+        raise CustodyRunnerError(
+            "invalid_probe_retry_process_identity_mismatch",
+            "launch_identity.schema",
+        )
+    try:
+        return LaunchSessionIdentity(
+            run_attempt_id=str(payload["run_attempt_id"]),
+            zed_pid=int(payload["zed_pid"]),
+            zed_process_start_time_utc=str(payload["zed_process_start_time_utc"]),
+            connection_id=str(payload["connection_id"]),
+            acp_session_id=str(payload["acp_session_id"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise CustodyRunnerError(
+            "invalid_probe_retry_process_identity_mismatch",
+            "launch_identity",
+        ) from exc
+
+
+def reserve_prompt_ordinal(
+    *,
+    reservation_root: Path,
+    run_attempt_id: str,
+    prompt_ordinal: int,
+    live_session_proof_sha256: str,
+) -> Path:
+    """Atomically reserve the single same-session prompt retry ordinal."""
+    if run_attempt_id != "origin-a-3":
+        raise CustodyRunnerError("invalid_probe_stage_accounting", "run_attempt_id")
+    if prompt_ordinal != PROMPT_RETRY_ORDINAL:
+        raise CustodyRunnerError("invalid_probe_retry_budget_exhausted", "prompt_ordinal")
+    reservation_root.mkdir(parents=True, exist_ok=True)
+    path = reservation_root / f"{run_attempt_id}-prompt-{prompt_ordinal}.json"
+    payload = {
+        "schema": SCHEMA_PROMPT_RESERVATION,
+        "run_attempt_id": run_attempt_id,
+        "prompt_ordinal": prompt_ordinal,
+        "live_session_proof_sha256": live_session_proof_sha256.lower(),
+        "amendment_sha256": ORIGIN_A_FIXTURE_V2_AMENDMENT_SHA256.lower(),
+        "created_utc": "reserved",
+        "settings_mutated": False,
+        "zed_launched": False,
+    }
+    try:
+        atomic_create_json(path, payload)
+    except CustodyContractError as exc:
+        raise CustodyRunnerError(exc.reason_code, exc.field_path) from exc
+    return path
+
+
+def _descriptor_sha256_from_locator(descriptor_path: Path) -> str:
+    """Read locator digest only; never treat the descriptor as live proof."""
+    require_regular_non_symlink(descriptor_path, label="relay_control_descriptor")
+    try:
+        payload = json.loads(descriptor_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise CustodyRunnerError(
+            "invalid_probe_retry_control_channel_failure",
+            "relay_control_descriptor",
+        ) from exc
+    if not isinstance(payload, dict):
+        raise CustodyRunnerError(
+            "invalid_probe_retry_control_channel_failure",
+            "relay_control_descriptor",
+        )
+    if payload.get("prompt_sealed") is True:
+        raise CustodyRunnerError(
+            "invalid_probe_retry_second_prompt_failure",
+            "prompt_sealed",
+        )
+    if payload.get("terminal") is True:
+        raise CustodyRunnerError(
+            "invalid_probe_retry_control_channel_failure",
+            "descriptor_terminal",
+        )
+    digest = payload.get("descriptor_sha256")
+    if not isinstance(digest, str) or len(digest) != 64:
+        raise CustodyRunnerError(
+            "invalid_probe_retry_control_channel_failure",
+            "descriptor_sha256",
+        )
+    return digest.lower()
+
+
+def assert_prompt_retry_ledger_eligible(
     *,
     run_attempt_id: str,
     ledger: StageLedger,
-    prompt_fixture: Path,
-    live_session_proof: Mapping[str, Any] | None,
 ) -> None:
-    """Same-session prompt-only retry: no Zed launch, no settings mutation."""
+    """Fail closed on ledger eligibility before any live control / proof query."""
     if run_attempt_id != "origin-a-3":
         raise CustodyRunnerError("invalid_probe_stage_accounting", "run_attempt_id")
+    if not isinstance(ledger, StageLedger):
+        raise CustodyRunnerError("invalid_probe_retry_ledger_unavailable", "ledger")
+    if ledger.next_correlation_ordinal > MAX_CORRELATION_ORDINAL_UNDER_AMENDMENT + 1:
+        raise CustodyRunnerError("invalid_probe_retry_budget_exhausted", "correlation_ordinal")
+    if ledger.next_correlation_ordinal != MAX_CORRELATION_ORDINAL_UNDER_AMENDMENT + 1:
+        raise CustodyRunnerError("invalid_probe_stage_accounting", "correlation_missing")
     corr = [
         record
         for record in ledger.terminal_records
         if record.run_attempt_id == "origin-a-3"
         and record.stage is StageKind.CORRELATION_CAPTURE
         and record.status is StageStatus.SUCCEEDED
+        and record.ordinal == 3
     ]
     if not corr:
         raise CustodyRunnerError("invalid_probe_stage_accounting", "correlation_missing")
@@ -1481,25 +1691,224 @@ def assert_prompt_retry_preflight(
         and record.ordinal == 2
         and record.status is StageStatus.FAILED
         and record.failure_class is FailureClass.TRANSIENT
+        and record.evidence
     ]
     if not prompt_two:
         raise CustodyRunnerError("invalid_probe_stage_accounting", "prompt_ordinal_2")
-    if ledger.next_prompt_ordinal != 3:
+    if ledger.next_prompt_ordinal != PROMPT_RETRY_ORDINAL:
         raise CustodyRunnerError("invalid_probe_retry_budget_exhausted", "prompt_ordinal")
-    if (
-        live_session_proof is None
-        or live_session_proof.get("alive") is not True
-        or not live_session_proof.get("acp_session_id")
-        or not live_session_proof.get("zed_pid")
-        or not live_session_proof.get("connection_id")
-    ):
+
+
+def run_origin_a_prompt_retry(
+    *,
+    run_attempt_id: str,
+    workspace_root: Path,
+    capture_root: Path,
+    prompt_fixture: Path,
+    stage_ledger_path: Path,
+    launch_identity_path: Path,
+    descriptor_path: Path,
+    caller_owner_id: str,
+) -> dict[str, Any]:
+    """Ledger -> identity -> live proof -> pure gate -> reserve ordinal 3 -> prompt.
+
+    Never launches Zed, mutates settings, issues session/new, or accepts proof /
+    ACP session IDs / eligibility from CLI input. Loads immutable launch identity
+    and passes it to ``assert_prompt_retry_preflight``, which is the trust boundary
+    binding live proof to that identity.
+    """
+    if run_attempt_id != "origin-a-3":
+        raise CustodyRunnerError("invalid_probe_stage_accounting", "run_attempt_id")
+    if not isinstance(caller_owner_id, str) or not caller_owner_id.strip():
+        raise CustodyRunnerError(
+            "invalid_probe_retry_control_channel_failure",
+            "caller_owner_id",
+        )
+
+    ledger = load_stage_ledger(stage_ledger_path)
+    # Design order: correlation + prompt-2 transient eligibility before live proof.
+    assert_prompt_retry_ledger_eligible(
+        run_attempt_id=run_attempt_id,
+        ledger=ledger,
+    )
+
+    launch_identity = load_launch_session_identity(launch_identity_path)
+    _require_fixture_v2_digests(prompt_fixture=prompt_fixture, workspace_root=workspace_root)
+    target_sha256 = sha256_file(workspace_root / "pyproject.toml")
+
+    expected_descriptor_sha256 = _descriptor_sha256_from_locator(descriptor_path)
+    try:
+        proof = acquire_live_session_proof(
+            run_attempt_id=run_attempt_id,
+            descriptor_path=descriptor_path,
+            expected_descriptor_sha256=expected_descriptor_sha256,
+            caller_owner_id=caller_owner_id,
+        )
+    except CustodyContractError as exc:
+        raise CustodyRunnerError(exc.reason_code, exc.field_path) from exc
+
+    # Public gate is the trust boundary: bind live proof to immutable launch identity.
+    gate_result = assert_prompt_retry_preflight(
+        run_attempt_id=run_attempt_id,
+        ledger=ledger,
+        prompt_fixture=prompt_fixture,
+        target_sha256=target_sha256,
+        live_session_proof=proof,
+        launch_identity=launch_identity,
+    )
+
+    reservation_path = reserve_prompt_ordinal(
+        reservation_root=capture_root / "reservations",
+        run_attempt_id=run_attempt_id,
+        prompt_ordinal=PROMPT_RETRY_ORDINAL,
+        live_session_proof_sha256=proof.proof_sha256,
+    )
+
+    prompt_error: CustodyRunnerError | None = None
+    prompt_ok = False
+    try:
+        send_existing_session_prompt(
+            run_attempt_id=run_attempt_id,
+            descriptor_path=descriptor_path,
+            expected_descriptor_sha256=expected_descriptor_sha256,
+            connection_id=proof.connection_id,
+            acp_session_id=proof.acp_session_id,
+            prompt_fixture=prompt_fixture,
+            caller_owner_id=caller_owner_id,
+        )
+        prompt_ok = True
+    except CustodyContractError as exc:
+        prompt_error = CustodyRunnerError(exc.reason_code, exc.field_path)
+    except CustodyRunnerError as exc:
+        prompt_error = exc
+
+    # Append-only outcome + proof references; reservation is never reclaimed.
+    attempt_dir = capture_root / "attempts" / run_attempt_id
+    attempt_dir.mkdir(parents=True, exist_ok=True)
+    proof_ref = {
+        "schema": "plan117-custody-live-session-proof-ref-v1",
+        "run_attempt_id": run_attempt_id,
+        "live_session_proof_sha256": proof.proof_sha256.lower(),
+        "prompt_ordinal": PROMPT_RETRY_ORDINAL,
+        "reservation_path": str(reservation_path.relative_to(capture_root)).replace("\\", "/"),
+        "settings_mutated": False,
+        "zed_launched": False,
+    }
+    try:
+        atomic_create_json(attempt_dir / "live-session-proof-ref.json", proof_ref)
+    except CustodyContractError as exc:
+        # A prior failed-after-reserve retry may already have written the proof ref.
+        if exc.reason_code != "reservation_already_exists":
+            raise CustodyRunnerError(exc.reason_code, exc.field_path) from exc
+
+    prompt_two = [
+        record
+        for record in ledger.terminal_records
+        if record.run_attempt_id == run_attempt_id
+        and record.stage is StageKind.POST_NEW_PROMPT
+        and record.ordinal == 2
+    ]
+    if not prompt_two:
+        raise CustodyRunnerError("invalid_probe_stage_accounting", "prompt_ordinal_2")
+    parent_prompt = prompt_two[0]
+    outcome = StageAttemptRecord(
+        record_id=f"{run_attempt_id}-prompt-{PROMPT_RETRY_ORDINAL}",
+        run_attempt_id=run_attempt_id,
+        stage=StageKind.POST_NEW_PROMPT,
+        ordinal=PROMPT_RETRY_ORDINAL,
+        status=StageStatus.SUCCEEDED if prompt_ok else StageStatus.FAILED,
+        failure_class=FailureClass.NONE if prompt_ok else FailureClass.TRANSIENT,
+        reason_code=None if prompt_ok else (
+            prompt_error.reason_code
+            if prompt_error is not None
+            else "invalid_probe_retry_second_prompt_failure"
+        ),
+        evidence=(
+            EvidenceReference(
+                relative_path=f"attempts/{run_attempt_id}/live-session-proof-ref.json",
+                sha256=sha256_file(attempt_dir / "live-session-proof-ref.json"),
+                hash_method="raw_file_sha256",
+            ),
+            EvidenceReference(
+                relative_path=str(reservation_path.relative_to(capture_root)).replace(
+                    "\\", "/"
+                ),
+                sha256=sha256_file(reservation_path),
+                hash_method="raw_file_sha256",
+            ),
+        ),
+        supersedes_record_id=parent_prompt.record_id,
+        supersedes_sha256=stage_attempt_record_sha256(parent_prompt),
+        amendment_sha256=ORIGIN_A_FIXTURE_V2_AMENDMENT_SHA256.lower(),
+        created_by="plan117-origin-a-prompt-retry",
+        created_utc="reserved",
+    )
+    outcome_path = capture_root / "stages" / f"{run_attempt_id}-prompt-{PROMPT_RETRY_ORDINAL}.json"
+    try:
+        write_stage_outcome_exclusive(outcome_path, outcome)
+    except CustodyRunnerError as outcome_exc:
+        # Outcome may already exist from a prior failed-after-reserve attempt.
+        if prompt_error is not None:
+            raise prompt_error from outcome_exc
+        raise
+
+    if prompt_error is not None:
+        raise prompt_error
+
+    return {
+        "phase": "origin-a-prompt-retry",
+        "run_attempt_id": run_attempt_id,
+        "prompt_ordinal": gate_result.prompt_ordinal,
+        "prompt_fixture_sha256": gate_result.prompt_fixture_sha256,
+        "target_sha256": gate_result.target_sha256,
+        "live_session_proof_sha256": gate_result.live_session_proof_sha256,
+        "settings_mutated": False,
+        "zed_launched": False,
+        "reservation": str(reservation_path.relative_to(capture_root)).replace("\\", "/"),
+    }
+
+
+def assert_prompt_retry_preflight(
+    *,
+    run_attempt_id: str,
+    ledger: StageLedger,
+    prompt_fixture: Path,
+    target_sha256: str,
+    live_session_proof: LiveSessionProof | None,
+    launch_identity: LaunchSessionIdentity,
+) -> RetryPreflightResult:
+    """Same-session prompt-only retry: no Zed launch, no settings mutation.
+
+    Pure and exception-based. Does not inspect processes, open the relay, mutate
+    settings, or synthesize missing proof fields. ``launch_identity`` must come
+    from immutable custody records; the gate binds ``live_session_proof`` to that
+    identity and never treats the proof's own fields as ground truth.
+    """
+    if live_session_proof is None:
         raise CustodyRunnerError(
             "blocked_probe_same_session_prompt_retry_unavailable",
             "live_session_proof",
         )
+    if not isinstance(launch_identity, LaunchSessionIdentity):
+        raise CustodyRunnerError(
+            "invalid_probe_retry_process_identity_mismatch",
+            "launch_identity",
+        )
     require_regular_non_symlink(prompt_fixture, label="prompt_fixture")
-    if not sha256_hex_equal(sha256_file(prompt_fixture), PROMPT_FIXTURE_V2_SHA256):
-        raise CustodyRunnerError("invalid_probe_fixture_identity_mismatch", "prompt_fixture")
+    prompt_digest = sha256_file(prompt_fixture)
+    try:
+        return evaluate_prompt_retry_preflight(
+            run_attempt_id=run_attempt_id,
+            ledger=ledger,
+            prompt_fixture_sha256=prompt_digest,
+            expected_prompt_fixture_sha256=PROMPT_FIXTURE_V2_SHA256,
+            target_sha256=target_sha256,
+            expected_target_sha256=PYPROJECT_TARGET_SHA256,
+            live_session_proof=live_session_proof,
+            launch_identity=launch_identity,
+        )
+    except CustodyContractError as exc:
+        raise CustodyRunnerError(exc.reason_code, exc.field_path) from exc
 
 
 def write_stage_outcome_exclusive(path: Path, record: StageAttemptRecord) -> None:
@@ -1571,6 +1980,29 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Prompt fixture path (v2 required for origin-a / origin-a-prompt-retry)",
     )
+    parser.add_argument(
+        "--stage-ledger",
+        type=Path,
+        default=None,
+        help="Immutable stage ledger path (required for origin-a-prompt-retry)",
+    )
+    parser.add_argument(
+        "--launch-identity",
+        type=Path,
+        default=None,
+        help="Immutable launch/session identity path (required for origin-a-prompt-retry)",
+    )
+    parser.add_argument(
+        "--relay-control-descriptor",
+        type=Path,
+        default=None,
+        help="Private relay control descriptor locator (required for origin-a-prompt-retry)",
+    )
+    parser.add_argument(
+        "--caller-owner-id",
+        default=None,
+        help="Out-of-band operator identity for relay control (required for origin-a-prompt-retry)",
+    )
     return parser
 
 
@@ -1639,24 +2071,35 @@ def main(argv: list[str] | None = None) -> int:
     elif args.phase == "origin-a-prompt-retry":
         if args.run_attempt_id != "origin-a-3":
             raise CustodyRunnerError("invalid_probe_stage_accounting", "run_attempt_id")
-        fixture = (args.prompt_fixture or PROMPT_FIXTURE_V2_PATH).resolve()
-        require_regular_non_symlink(fixture, label="prompt_fixture")
-        if not sha256_hex_equal(sha256_file(fixture), PROMPT_FIXTURE_V2_SHA256):
-            raise CustodyRunnerError("invalid_probe_fixture_identity_mismatch", "prompt_fixture")
-        # Prompt-only retry never mutates settings and never launches Zed.
-        print(
-            json.dumps(
-                {
-                    "phase": "origin-a-prompt-retry",
-                    "run_attempt_id": "origin-a-3",
-                    "settings_mutated": False,
-                    "zed_launched": False,
-                    "prompt_fixture_sha256": PROMPT_FIXTURE_V2_SHA256.lower(),
-                },
-                separators=(",", ":"),
-                sort_keys=True,
+        if args.stage_ledger is None:
+            raise CustodyRunnerError("invalid_probe_retry_ledger_unavailable", "stage_ledger")
+        if args.launch_identity is None:
+            raise CustodyRunnerError(
+                "invalid_probe_retry_process_identity_mismatch",
+                "launch_identity",
             )
+        if args.relay_control_descriptor is None:
+            raise CustodyRunnerError(
+                "invalid_probe_retry_control_channel_failure",
+                "relay_control_descriptor",
+            )
+        if not isinstance(args.caller_owner_id, str) or not args.caller_owner_id.strip():
+            raise CustodyRunnerError(
+                "invalid_probe_retry_control_channel_failure",
+                "caller_owner_id",
+            )
+        fixture = (args.prompt_fixture or PROMPT_FIXTURE_V2_PATH).resolve()
+        result = run_origin_a_prompt_retry(
+            run_attempt_id=args.run_attempt_id,
+            workspace_root=args.workspace_root.resolve(),
+            capture_root=args.capture_root.resolve(),
+            prompt_fixture=fixture,
+            stage_ledger_path=args.stage_ledger.resolve(),
+            launch_identity_path=args.launch_identity.resolve(),
+            descriptor_path=args.relay_control_descriptor.resolve(),
+            caller_owner_id=args.caller_owner_id,
         )
+        print(json.dumps(result, separators=(",", ":"), sort_keys=True))
     elif args.phase == "restart-b":
         print_restart_b_instructions()
     elif args.phase == "fresh-control-c":
@@ -1693,14 +2136,17 @@ __all__ = (
     "allocate_attempt_directory",
     "assert_origin_a3_preflight",
     "assert_phase_allowed",
+    "assert_prompt_retry_ledger_eligible",
     "assert_prompt_retry_preflight",
     "atomic_write_json",
     "capture_process_records",
     "compare_approval_equality",
     "compare_transcript_debug",
     "init_phase_state",
+    "load_launch_session_identity",
     "load_phase_state",
     "load_private_run_manifest",
+    "load_stage_ledger",
     "main",
     "mark_phase_complete",
     "mutate_settings_insert_relay",
@@ -1717,9 +2163,11 @@ __all__ = (
     "require_readme_precondition",
     "require_regular_non_symlink",
     "reserve_origin_a_run",
+    "reserve_prompt_ordinal",
     "resolve_probe_paths",
     "restore_settings",
     "run_direct_control_phase",
+    "run_origin_a_prompt_retry",
     "run_relay_mediated_phase",
     "run_with_settings_transaction",
     "save_phase_state",

@@ -2520,3 +2520,655 @@ def test_cli_origin_a3_and_final_checkpoint_choices() -> None:
     assert "origin-a-fixture-v2-final" in parser_src
     assert "verify_origin_a3" in parser_src
     assert "verify_origin_a_fixture_v2_final" in parser_src
+
+
+# --- Plan 11.7 retry-preflight Task 4: offline proof verification + tampers ---
+
+
+_RETRY_PROOF_EVIDENCE = "c" * 64
+_RETRY_DEBUG_DIGEST = "d" * 64
+_RETRY_RELAY_DIGEST = "e" * 64
+
+
+def _retry_offline_api() -> Any:
+    required = (
+        "verify_retry_preflight_offline",
+        "RETRY_OUTCOME_UNAVAILABLE_PROOF",
+        "RETRY_OUTCOME_IDENTITY_MISMATCH",
+        "RETRY_OUTCOME_CONTROL_FAILURE",
+        "RETRY_OUTCOME_SECOND_PROMPT_FAILURE",
+        "RETRY_OUTCOME_ACCEPTED_SAME_SESSION_RETRY",
+    )
+    missing = [name for name in required if not hasattr(verifier_mod, name)]
+    if missing:
+        pytest.fail(f"missing retry offline verifier API: {missing}")
+    return verifier_mod
+
+
+def _retry_launch_identity(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema": "plan117-custody-launch-session-identity-v1",
+        "run_attempt_id": "origin-a-3",
+        "zed_pid": 4242,
+        "zed_process_start_time_utc": "2026-08-04T12:00:00Z",
+        "connection_id": "conn-origin-a-3",
+        "acp_session_id": "sess-origin-a-3",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _retry_control_descriptor(**overrides: Any) -> dict[str, Any]:
+    from tools.plan117_custody_relay import _descriptor_sha256
+
+    payload: dict[str, Any] = {
+        "schema": "plan117-custody-relay-control-descriptor-v1",
+        "run_attempt_id": "origin-a-3",
+        "endpoint_kind": "af_pipe",
+        "endpoint_path": r"\\.\pipe\plan117-origin-a-3-control",
+        "connection_id": "conn-origin-a-3",
+        "owner_id": "operator-test",
+        "terminal": False,
+        "prompt_sealed": False,
+    }
+    payload.update(overrides)
+    payload.pop("descriptor_sha256", None)
+    payload["descriptor_sha256"] = _descriptor_sha256(payload)
+    return payload
+
+
+def _retry_proof_payload(**overrides: Any) -> dict[str, Any]:
+    from tools.plan117_custody_contract import (
+        EvidenceReference,
+        build_live_session_proof,
+        live_session_proof_payload,
+    )
+
+    evidence = (
+        EvidenceReference(
+            relative_path="attempts/origin-a-3/relay-index.ndjson",
+            sha256=_RETRY_PROOF_EVIDENCE,
+            hash_method="raw_file_sha256",
+        ),
+    )
+    proof = build_live_session_proof(
+        run_attempt_id="origin-a-3",
+        zed_pid=4242,
+        zed_process_start_time_utc="2026-08-04T12:00:00Z",
+        connection_id="conn-origin-a-3",
+        acp_session_id="sess-origin-a-3",
+        zed_alive=True,
+        relay_alive=True,
+        acp_session_observed=True,
+        captured_utc="2026-08-04T12:05:00Z",
+        evidence=evidence,
+    )
+    payload = live_session_proof_payload(proof)
+    payload["schema"] = "plan117-custody-live-session-proof-v1"
+    payload["proof_sha256"] = proof.proof_sha256
+    payload["live_attestation"] = True
+    payload.update(overrides)
+    if "proof_sha256" not in overrides and set(overrides) - {"schema", "live_attestation"}:
+        # Caller changed digest-bound fields without supplying a digest: leave stale digest
+        # so the verifier can reject recomputation mismatch unless they override digest too.
+        pass
+    return payload
+
+
+def _retry_ready_ledger_payload(*, next_prompt_ordinal: int = 3) -> dict[str, Any]:
+    a3c = _task3_stage_payload(
+        record_id="origin-a-3-correlation",
+        run_attempt_id="origin-a-3",
+        stage="correlation_capture",
+        ordinal=3,
+        status="succeeded",
+        failure_class="none",
+        reason_code=None,
+        evidence=[_ev("attempts/origin-a-3/attempt-manifest.json", "a" * 64)],
+        supersedes_record_id="origin-a-3-reservation",
+        supersedes_sha256="b" * 64,
+    )
+    a3p = _task3_stage_payload(
+        record_id="origin-a-3-prompt-2",
+        run_attempt_id="origin-a-3",
+        stage="post_new_prompt",
+        ordinal=2,
+        status="failed",
+        failure_class="transient",
+        reason_code="transient_capture",
+        evidence=[_ev("origin-a-3/relay-index.ndjson", "a" * 64)],
+        supersedes_record_id="origin-a-3-original-observation",
+        supersedes_sha256="b" * 64,
+    )
+    return {
+        "schema": "plan117-custody-stage-ledger-v1",
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "records": [a3c, a3p],
+        "next_correlation_ordinal": 4,
+        "next_prompt_ordinal": next_prompt_ordinal,
+    }
+
+
+def _retry_prompt_outcome(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema": "plan117-custody-stage-attempt-record-v1",
+        "record_id": "origin-a-3-prompt-3",
+        "run_attempt_id": "origin-a-3",
+        "stage": "post_new_prompt",
+        "ordinal": 3,
+        "status": "succeeded",
+        "failure_class": "none",
+        "reason_code": None,
+        "evidence": [
+            _ev("attempts/origin-a-3/live-session-proof.json", "f" * 64),
+            _ev("reservations/origin-a-3-prompt-3.json", "1" * 64),
+        ],
+        "supersedes_record_id": "origin-a-3-prompt-2",
+        "supersedes_sha256": "2" * 64,
+        "amendment_sha256": AMENDMENT_SHA256.lower(),
+        "created_by": "plan117-origin-a-prompt-retry",
+        "created_utc": "2026-08-04T12:06:00Z",
+        "settings_mutated": False,
+        "zed_launched": False,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _retry_debug_corroboration(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema": "plan117-custody-debug-corroboration-v1",
+        "run_attempt_id": "origin-a-3",
+        "connection_id": "conn-origin-a-3",
+        "acp_session_id": "sess-origin-a-3",
+        "debug_relative_path": "attempts/origin-a-3/debug-acp.ndjson",
+        "debug_sha256": _RETRY_DEBUG_DIGEST,
+        "session_new_observed": True,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _retry_relay_session_evidence(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema": "plan117-custody-relay-session-evidence-v1",
+        "run_attempt_id": "origin-a-3",
+        "connection_id": "conn-origin-a-3",
+        "acp_session_id": "sess-origin-a-3",
+        "relay_index_relative_path": "origin-a-3/relay-index.ndjson",
+        "relay_index_sha256": _RETRY_RELAY_DIGEST,
+        "session_new_observed": True,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _accepted_retry_bundle(**overrides: Any) -> dict[str, Any]:
+    proof = _retry_proof_payload()
+    bundle: dict[str, Any] = {
+        "proof": proof,
+        "launch_identity": _retry_launch_identity(),
+        "control_descriptor": _retry_control_descriptor(),
+        "stage_ledger": _retry_ready_ledger_payload(next_prompt_ordinal=3),
+        "prompt_outcome": _retry_prompt_outcome(),
+        "debug_corroboration": _retry_debug_corroboration(),
+        "relay_session_evidence": _retry_relay_session_evidence(),
+        "claim": {
+            "outcome": "accepted_same_session_retry",
+            "settings_mutated": False,
+            "zed_launched": False,
+            "supported_by_live_attestation": True,
+        },
+    }
+    bundle.update(overrides)
+    return bundle
+
+
+def test_verify_retry_preflight_offline_accepts_same_session_retry() -> None:
+    v = _retry_offline_api()
+    summary = v.verify_retry_preflight_offline(**_accepted_retry_bundle())
+    assert summary["outcome"] == v.RETRY_OUTCOME_ACCEPTED_SAME_SESSION_RETRY
+    assert "invalid_probe_retry" not in " ".join(summary.get("reason_codes", []))
+
+
+def test_verify_retry_preflight_offline_rejects_changed_proof_field() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle()
+    proof = dict(bundle["proof"])
+    proof["zed_pid"] = 9999
+    bundle["proof"] = proof
+    summary = v.verify_retry_preflight_offline(**bundle)
+    assert summary["outcome"] in {
+        v.RETRY_OUTCOME_IDENTITY_MISMATCH,
+        v.RETRY_OUTCOME_UNAVAILABLE_PROOF,
+    }
+    assert summary["live_claim_accepted"] is False
+    assert any(
+        code
+        in {
+            "invalid_probe_retry_proof_unavailable",
+            "invalid_probe_retry_process_identity_mismatch",
+        }
+        for code in summary["reason_codes"]
+    )
+
+
+def test_verify_retry_preflight_offline_rejects_changed_evidence_hash() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle()
+    proof = dict(bundle["proof"])
+    evidence = list(proof["evidence"])
+    item = dict(evidence[0])
+    item["sha256"] = "9" * 64
+    evidence[0] = item
+    proof["evidence"] = evidence
+    bundle["proof"] = proof
+    summary = v.verify_retry_preflight_offline(**bundle)
+    assert summary["outcome"] == v.RETRY_OUTCOME_UNAVAILABLE_PROOF
+    assert summary["live_claim_accepted"] is False
+    assert "invalid_probe_retry_proof_unavailable" in summary["reason_codes"]
+
+
+def test_verify_retry_preflight_offline_rejects_descriptor_mismatch() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle()
+    descriptor = dict(bundle["control_descriptor"])
+    descriptor["descriptor_sha256"] = "0" * 64
+    bundle["control_descriptor"] = descriptor
+    summary = v.verify_retry_preflight_offline(**bundle)
+    assert summary["outcome"] == v.RETRY_OUTCOME_CONTROL_FAILURE
+    assert summary["live_claim_accepted"] is False
+    assert "invalid_probe_retry_control_channel_failure" in summary["reason_codes"]
+
+
+def test_verify_retry_preflight_offline_rejects_stale_endpoint() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle()
+    bundle["control_descriptor"] = _retry_control_descriptor(terminal=True)
+    summary = v.verify_retry_preflight_offline(**bundle)
+    assert summary["outcome"] == v.RETRY_OUTCOME_CONTROL_FAILURE
+    assert summary["live_claim_accepted"] is False
+    assert "invalid_probe_retry_control_channel_failure" in summary["reason_codes"]
+
+
+def test_verify_retry_preflight_offline_rejects_pid_reuse() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle()
+    # Same PID, different process-start identity => PID reuse.
+    from tools.plan117_custody_contract import (
+        EvidenceReference,
+        build_live_session_proof,
+        live_session_proof_payload,
+    )
+
+    reused = build_live_session_proof(
+        run_attempt_id="origin-a-3",
+        zed_pid=4242,
+        zed_process_start_time_utc="2026-08-04T18:00:00Z",
+        connection_id="conn-origin-a-3",
+        acp_session_id="sess-origin-a-3",
+        zed_alive=True,
+        relay_alive=True,
+        acp_session_observed=True,
+        captured_utc="2026-08-04T18:05:00Z",
+        evidence=(
+            EvidenceReference(
+                relative_path="attempts/origin-a-3/relay-index.ndjson",
+                sha256=_RETRY_PROOF_EVIDENCE,
+                hash_method="raw_file_sha256",
+            ),
+        ),
+    )
+    payload = live_session_proof_payload(reused)
+    payload["schema"] = "plan117-custody-live-session-proof-v1"
+    payload["proof_sha256"] = reused.proof_sha256
+    payload["live_attestation"] = True
+    bundle["proof"] = payload
+    summary = v.verify_retry_preflight_offline(**bundle)
+    assert summary["outcome"] == v.RETRY_OUTCOME_IDENTITY_MISMATCH
+    assert summary["live_claim_accepted"] is False
+    assert "invalid_probe_retry_process_identity_mismatch" in summary["reason_codes"]
+
+
+def test_verify_retry_preflight_offline_rejects_wrong_session_id() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle()
+    from tools.plan117_custody_contract import (
+        EvidenceReference,
+        build_live_session_proof,
+        live_session_proof_payload,
+    )
+
+    wrong = build_live_session_proof(
+        run_attempt_id="origin-a-3",
+        zed_pid=4242,
+        zed_process_start_time_utc="2026-08-04T12:00:00Z",
+        connection_id="conn-origin-a-3",
+        acp_session_id="sess-WRONG",
+        zed_alive=True,
+        relay_alive=True,
+        acp_session_observed=True,
+        captured_utc="2026-08-04T12:05:00Z",
+        evidence=(
+            EvidenceReference(
+                relative_path="attempts/origin-a-3/relay-index.ndjson",
+                sha256=_RETRY_PROOF_EVIDENCE,
+                hash_method="raw_file_sha256",
+            ),
+        ),
+    )
+    payload = live_session_proof_payload(wrong)
+    payload["schema"] = "plan117-custody-live-session-proof-v1"
+    payload["proof_sha256"] = wrong.proof_sha256
+    payload["live_attestation"] = True
+    bundle["proof"] = payload
+    summary = v.verify_retry_preflight_offline(**bundle)
+    assert summary["outcome"] == v.RETRY_OUTCOME_IDENTITY_MISMATCH
+    assert summary["live_claim_accepted"] is False
+    assert "invalid_probe_retry_acp_session_identity_mismatch" in summary["reason_codes"]
+
+
+def test_verify_retry_preflight_offline_rejects_wrong_connection_id() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle()
+    from tools.plan117_custody_contract import (
+        EvidenceReference,
+        build_live_session_proof,
+        live_session_proof_payload,
+    )
+
+    wrong = build_live_session_proof(
+        run_attempt_id="origin-a-3",
+        zed_pid=4242,
+        zed_process_start_time_utc="2026-08-04T12:00:00Z",
+        connection_id="conn-WRONG",
+        acp_session_id="sess-origin-a-3",
+        zed_alive=True,
+        relay_alive=True,
+        acp_session_observed=True,
+        captured_utc="2026-08-04T12:05:00Z",
+        evidence=(
+            EvidenceReference(
+                relative_path="attempts/origin-a-3/relay-index.ndjson",
+                sha256=_RETRY_PROOF_EVIDENCE,
+                hash_method="raw_file_sha256",
+            ),
+        ),
+    )
+    payload = live_session_proof_payload(wrong)
+    payload["schema"] = "plan117-custody-live-session-proof-v1"
+    payload["proof_sha256"] = wrong.proof_sha256
+    payload["live_attestation"] = True
+    bundle["proof"] = payload
+    summary = v.verify_retry_preflight_offline(**bundle)
+    assert summary["outcome"] == v.RETRY_OUTCOME_IDENTITY_MISMATCH
+    assert summary["live_claim_accepted"] is False
+    assert "invalid_probe_retry_connection_identity_mismatch" in summary["reason_codes"]
+
+
+def test_verify_retry_preflight_offline_rejects_missing_debug_corroboration() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle(debug_corroboration=None)
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_retry_preflight_offline(**bundle)
+    assert exc.value.reason_code in {
+        "invalid_probe_transcript_debug_divergence",
+        "invalid_probe_retry_proof_unavailable",
+        "blocked_probe_same_session_prompt_retry_unavailable",
+    }
+
+
+def test_verify_retry_preflight_offline_rejects_prompt_ordinal_4() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle(
+        prompt_outcome=_retry_prompt_outcome(
+            record_id="origin-a-3-prompt-4",
+            ordinal=4,
+        )
+    )
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_retry_preflight_offline(**bundle)
+    assert exc.value.reason_code == "invalid_probe_retry_budget_exhausted"
+
+
+def test_verify_retry_preflight_offline_rejects_second_reservation() -> None:
+    v = _retry_offline_api()
+    outcome = _retry_prompt_outcome(
+        evidence=[
+            _ev("attempts/origin-a-3/live-session-proof.json", "f" * 64),
+            _ev("reservations/origin-a-3-prompt-3.json", "1" * 64),
+            _ev("reservations/origin-a-3-prompt-3-duplicate.json", "2" * 64),
+        ]
+    )
+    bundle = _accepted_retry_bundle(prompt_outcome=outcome)
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_retry_preflight_offline(**bundle)
+    assert exc.value.reason_code in {
+        "reservation_already_exists",
+        "invalid_probe_retry_budget_exhausted",
+        "invalid_probe_stage_accounting",
+    }
+
+
+def test_verify_retry_preflight_offline_rejects_relaunch() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle(
+        claim={
+            "outcome": "accepted_same_session_retry",
+            "settings_mutated": False,
+            "zed_launched": True,
+            "supported_by_live_attestation": True,
+        },
+        prompt_outcome=_retry_prompt_outcome(zed_launched=True),
+    )
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_retry_preflight_offline(**bundle)
+    assert exc.value.reason_code in {
+        "invalid_probe_stage_accounting",
+        "invalid_probe_retry_budget_exhausted",
+        "blocked_probe_same_session_prompt_retry_unavailable",
+    }
+
+
+def test_verify_retry_preflight_offline_rejects_settings_mutation() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle(
+        claim={
+            "outcome": "accepted_same_session_retry",
+            "settings_mutated": True,
+            "zed_launched": False,
+            "supported_by_live_attestation": True,
+        },
+        prompt_outcome=_retry_prompt_outcome(settings_mutated=True),
+    )
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_retry_preflight_offline(**bundle)
+    assert exc.value.reason_code == "settings_not_restored"
+
+
+def test_verify_retry_preflight_offline_rejects_hardcoded_success_result() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle(
+        proof=None,
+        control_descriptor=None,
+        debug_corroboration=None,
+        relay_session_evidence=None,
+        prompt_outcome=None,
+        claim={
+            "outcome": "accepted_same_session_retry",
+            "settings_mutated": False,
+            "zed_launched": False,
+            "hardcoded": True,
+            "supported_by_live_attestation": False,
+        },
+    )
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_retry_preflight_offline(**bundle)
+    assert exc.value.reason_code in {
+        "blocked_probe_same_session_prompt_retry_unavailable",
+        "invalid_probe_retry_proof_unavailable",
+    }
+
+
+def test_verify_retry_preflight_offline_rejects_persisted_snapshot_only_live_claim() -> None:
+    v = _retry_offline_api()
+    # Proof JSON present but no debug/relay corroboration and no live attestation flag.
+    proof = _retry_proof_payload(live_attestation=False)
+    bundle = _accepted_retry_bundle(
+        proof=proof,
+        debug_corroboration=None,
+        relay_session_evidence=None,
+        claim={
+            "outcome": "accepted_same_session_retry",
+            "settings_mutated": False,
+            "zed_launched": False,
+            "supported_by_live_attestation": False,
+        },
+    )
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_retry_preflight_offline(**bundle)
+    assert exc.value.reason_code in {
+        "blocked_probe_same_session_prompt_retry_unavailable",
+        "invalid_probe_retry_proof_unavailable",
+    }
+
+
+def test_verify_retry_preflight_offline_classifies_unavailable_proof() -> None:
+    v = _retry_offline_api()
+    summary = v.verify_retry_preflight_offline(
+        proof=None,
+        launch_identity=_retry_launch_identity(),
+        control_descriptor=_retry_control_descriptor(),
+        stage_ledger=_retry_ready_ledger_payload(next_prompt_ordinal=3),
+        prompt_outcome=None,
+        debug_corroboration=None,
+        relay_session_evidence=None,
+        claim=None,
+    )
+    assert summary["outcome"] == v.RETRY_OUTCOME_UNAVAILABLE_PROOF
+    assert "blocked_probe_same_session_prompt_retry_unavailable" in summary["reason_codes"]
+
+
+def test_verify_retry_preflight_offline_classifies_second_prompt_failure() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle(
+        prompt_outcome=_retry_prompt_outcome(
+            status="failed",
+            failure_class="transient",
+            reason_code="invalid_probe_retry_second_prompt_failure",
+        ),
+        claim={
+            "outcome": "second_prompt_failure",
+            "settings_mutated": False,
+            "zed_launched": False,
+            "supported_by_live_attestation": True,
+        },
+        stage_ledger=_retry_ready_ledger_payload(next_prompt_ordinal=3),
+    )
+    summary = v.verify_retry_preflight_offline(**bundle)
+    assert summary["outcome"] == v.RETRY_OUTCOME_SECOND_PROMPT_FAILURE
+    assert "invalid_probe_retry_second_prompt_failure" in summary["reason_codes"]
+
+
+def test_verify_retry_preflight_offline_rejects_promoted_descriptor_secrets() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle()
+    descriptor = dict(bundle["control_descriptor"])
+    descriptor["authkey_hex"] = "ab" * 32
+    # Keep digest consistent with locator body that now includes authkey when present
+    # in the private descriptor; promoted verification must still reject secrets.
+    from tools.plan117_custody_relay import _descriptor_sha256
+
+    descriptor["descriptor_sha256"] = _descriptor_sha256(descriptor)
+    bundle["control_descriptor"] = descriptor
+    summary = v.verify_retry_preflight_offline(**bundle, promote_safe_only=True)
+    assert summary["outcome"] == v.RETRY_OUTCOME_CONTROL_FAILURE
+    assert "invalid_probe_retry_control_channel_failure" in summary["reason_codes"]
+
+
+def test_verify_retry_preflight_offline_rejects_second_failure_claim_without_outcome() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle(
+        prompt_outcome=None,
+        claim={
+            "outcome": "second_prompt_failure",
+            "settings_mutated": False,
+            "zed_launched": False,
+            "supported_by_live_attestation": True,
+        },
+    )
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_retry_preflight_offline(**bundle)
+    assert exc.value.reason_code in {
+        "invalid_probe_stage_accounting",
+        "invalid_probe_retry_second_prompt_failure",
+    }
+
+
+def test_verify_retry_preflight_offline_rejects_second_failure_claim_on_success() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle(
+        prompt_outcome=_retry_prompt_outcome(status="succeeded", failure_class="none"),
+        claim={
+            "outcome": "second_prompt_failure",
+            "settings_mutated": False,
+            "zed_launched": False,
+            "supported_by_live_attestation": True,
+        },
+    )
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_retry_preflight_offline(**bundle)
+    assert exc.value.reason_code == "invalid_probe_stage_accounting"
+
+
+def test_verify_retry_preflight_offline_rejects_wrong_next_prompt_ordinal_for_accept() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle(
+        stage_ledger=_retry_ready_ledger_payload(next_prompt_ordinal=4),
+    )
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_retry_preflight_offline(**bundle)
+    assert exc.value.reason_code in {
+        "invalid_probe_retry_budget_exhausted",
+        "invalid_probe_stage_accounting",
+    }
+
+
+def test_verify_retry_preflight_offline_rejects_wrong_next_prompt_ordinal_for_second_failure() -> None:
+    v = _retry_offline_api()
+    bundle = _accepted_retry_bundle(
+        prompt_outcome=_retry_prompt_outcome(
+            status="failed",
+            failure_class="transient",
+            reason_code="invalid_probe_retry_second_prompt_failure",
+        ),
+        claim={
+            "outcome": "second_prompt_failure",
+            "settings_mutated": False,
+            "zed_launched": False,
+            "supported_by_live_attestation": True,
+        },
+        stage_ledger=_retry_ready_ledger_payload(next_prompt_ordinal=4),
+    )
+    with pytest.raises(CustodyContractError) as exc:
+        v.verify_retry_preflight_offline(**bundle)
+    assert exc.value.reason_code in {
+        "invalid_probe_retry_budget_exhausted",
+        "invalid_probe_stage_accounting",
+    }
+
+
+def test_verify_retry_preflight_offline_classifies_missing_descriptor_control_failure() -> None:
+    v = _retry_offline_api()
+    summary = v.verify_retry_preflight_offline(
+        proof=_retry_proof_payload(),
+        launch_identity=_retry_launch_identity(),
+        control_descriptor=None,
+        stage_ledger=_retry_ready_ledger_payload(next_prompt_ordinal=3),
+        prompt_outcome=None,
+        debug_corroboration=None,
+        relay_session_evidence=None,
+        claim=None,
+    )
+    assert summary["outcome"] == v.RETRY_OUTCOME_CONTROL_FAILURE
+    assert "invalid_probe_retry_control_channel_failure" in summary["reason_codes"]

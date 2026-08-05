@@ -1,38 +1,14 @@
 {
-  "schema_version": 1,
-  "plan_id": "plan-11-7",
-  "probe": "server_custody_feasibility",
   "amendment": "origin-a-fixture-v2",
   "amendment_digest": "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D",
-  "parent_amendment_digest": "79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6",
-  "execution_tip_at_live_launch": "400825c3291103b3d13d8da044ca86d3692d77db",
-  "seal_package_commit": "0f3136abc53a6e2237e3aceb450a4e1afdf97441",
-  "restore_fallback_commit": "e0ca15b8530425d4958ceeefab2dd175deed82c0",
+  "budget_expansion_amendment_required_for_clean_relaunch": true,
+  "collector_outcome": "indeterminate",
   "corrected_origin_a_dod_success": false,
-  "feasibility_disposition_claimed": false,
-  "implementation_authorized": false,
-  "feasibility_status": "undecided",
   "ending_kind": "process_invalid_sealed_stop",
   "ending_option": "B",
-  "operator_return_required": true,
-  "budget_expansion_amendment_required_for_clean_relaunch": true,
-  "parent_task_5_unblocked": false,
-  "ledger": {
-    "next_correlation_ordinal": 4,
-    "next_prompt_ordinal": 3,
-    "correlation_budget_exhausted": true,
-    "prompt_ordinal_3_unclaimed_by_design": true
-  },
-  "seal_artifact": "D:\\Projects\\Development\\Python\\optimus-evidence-custody\\plan117-task4-private\\origin-a-fixture-v2\\origin-a-3-seal-b.json",
   "evidence_report": "reports/plan-11-7-server-custody-artifacts/evidence-report.json",
   "evidence_report_sha256": "7BB9AA348ED61FFC3B778DC230BC18D98E9B1D3C2D051EA02F2F9536562081BE",
-  "collector_outcome": "indeterminate",
-  "reason_codes": [
-    "invalid_probe_stage_accounting",
-    "origin_a3_option_b_process_invalid_ending",
-    "ungated_same_session_reprompt",
-    "transient_capture_planning_unparseable"
-  ],
+  "execution_tip_at_live_launch": "400825c3291103b3d13d8da044ca86d3692d77db",
   "explicit_non_claims": [
     "production_server_side_custody_feasibility",
     "acp_conformance",
@@ -40,5 +16,41 @@
     "corrected_origin_a_dod_success",
     "authorization_to_start_frozen_plan_11_7_implementation",
     "ungated_second_prompt_satisfies_assert_prompt_retry_preflight"
-  ]
+  ],
+  "feasibility_disposition_claimed": false,
+  "feasibility_status": "undecided",
+  "implementation_authorized": false,
+  "ledger": {
+    "correlation_budget_exhausted": true,
+    "next_correlation_ordinal": 4,
+    "next_prompt_ordinal": 3,
+    "prompt_ordinal_3_unclaimed_by_design": true
+  },
+  "operator_return_required": true,
+  "parent_amendment_digest": "79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6",
+  "parent_task_5_unblocked": false,
+  "plan_id": "plan-11-7",
+  "probe": "server_custody_feasibility",
+  "reason_codes": [
+    "invalid_probe_stage_accounting",
+    "origin_a3_option_b_process_invalid_ending",
+    "ungated_same_session_reprompt",
+    "transient_capture_planning_unparseable"
+  ],
+  "restore_fallback_commit": "e0ca15b8530425d4958ceeefab2dd175deed82c0",
+  "retry_preflight_path_a": {
+    "accepted_same_session_retry": false,
+    "authorized": true,
+    "cli_reason_code": "invalid_probe_retry_control_channel_failure",
+    "correlation_ordinal_4_allocated": false,
+    "disposition": "fail_closed_terminal_stop",
+    "offline_outcome": "unavailable_proof",
+    "path_b_authorized": false,
+    "seal": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json",
+    "settings_mutated": false,
+    "zed_launched": false
+  },
+  "schema_version": 1,
+  "seal_artifact": "D:\\Projects\\Development\\Python\\optimus-evidence-custody\\plan117-task4-private\\origin-a-fixture-v2\\origin-a-3-seal-b.json",
+  "seal_package_commit": "0f3136abc53a6e2237e3aceb450a4e1afdf97441"
 }
