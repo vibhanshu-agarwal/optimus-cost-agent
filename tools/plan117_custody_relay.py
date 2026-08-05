@@ -23,6 +23,7 @@ import os
 import secrets
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -133,12 +134,18 @@ def _reject_network_endpoint_address(address: object) -> None:
 
 
 def _default_local_control_address(run_attempt_id: str, custody_root: Path) -> tuple[str, str]:
-    """Return (endpoint_kind, address) for a local-only AF_PIPE / AF_UNIX endpoint."""
+    """Return (endpoint_kind, address) for a local-only AF_PIPE / AF_UNIX endpoint.
+
+    On POSIX the socket must stay under sockaddr_un.sun_path (~108 bytes). Custody
+    roots under pytest/GHA checkouts routinely exceed that, so the descriptor stays
+    under ``custody_root`` while the bind path uses the system temp directory.
+    """
     token = uuid.uuid4().hex[:16]
     if os.name == "nt":
         pipe = rf"\\.\pipe\plan117-relay-control-{run_attempt_id}-{token}"
         return "af_pipe", pipe
-    sock = custody_root / f"relay-control-{token}.sock"
+    _ = custody_root  # descriptor lives here; socket path must stay short
+    sock = Path(tempfile.gettempdir()) / f"p117rc-{token}.sock"
     if sock.exists():
         sock.unlink()
     return "af_unix", str(sock)

@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -1561,6 +1562,37 @@ def test_control_endpoint_rejects_network_listener_addresses(tmp_path: Path) -> 
             endpoint_address=("127.0.0.1", 9),
         )
     assert excinfo.value.reason_code == "invalid_probe_retry_control_channel_failure"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="AF_UNIX sun_path bound is POSIX-only")
+def test_default_unix_control_socket_stays_under_sun_path_with_long_custody_root(
+    tmp_path: Path,
+) -> None:
+    """Regression: GHA pytest tmp paths under the checkout exceed sockaddr_un (~108)."""
+    mod = _control_api()
+    long_base = tmp_path
+    probe = "relay-control-0123456789abcdef.sock"
+    while len(str(long_base / "private" / _CONTROL_RUN_ID / probe).encode()) < 120:
+        long_base = long_base / ("nest" * 8)
+    long_base.mkdir(parents=True, exist_ok=True)
+
+    endpoint = _start_control_endpoint(long_base)
+    try:
+        assert endpoint.endpoint_kind == "af_unix"
+        sock_path = Path(endpoint.endpoint_path)
+        assert sock_path.parent == Path(tempfile.gettempdir())
+        assert len(endpoint.endpoint_path.encode()) < 100
+        proof = mod.acquire_live_session_proof(
+            run_attempt_id=_CONTROL_RUN_ID,
+            descriptor_path=endpoint.descriptor_path,
+            expected_descriptor_sha256=endpoint.descriptor_sha256,
+            caller_owner_id=_CONTROL_OWNER,
+        )
+        assert proof.run_attempt_id == _CONTROL_RUN_ID
+        assert endpoint.descriptor_path.is_relative_to(long_base)
+    finally:
+        endpoint.close()
+        assert not Path(endpoint.endpoint_path).exists()
 
 
 def test_send_existing_session_prompt_forwards_one_prompt_never_session_new(
