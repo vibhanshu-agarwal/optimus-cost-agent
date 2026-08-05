@@ -1,9 +1,9 @@
 # Current-state note: `assert_prompt_retry_preflight` signature supersession
 
-**Status:** Current-state documentation only. Not a digest-bound amendment rewrite.  
-**Recorded:** 2026-08-05  
-**Branch/HEAD at note:** `agent/cursor/p11-feat-zed-resume` (see git for tip)  
-**Owning task:** Plan 11.7 retry-preflight amendment Task 6 docs-freshness  
+**Status:** Current-state documentation only. Not a digest-bound amendment rewrite.
+**Recorded:** 2026-08-05
+**Branch/HEAD at note:** `agent/cursor/p11-feat-zed-resume` (see git for tip)
+**Owning task:** Plan 11.7 retry-preflight amendment Task 6 docs-freshness
 **Related review fix:** commit `f8c51f2`
 
 ## Immutable parent

@@ -2,6 +2,7 @@
   "schema": "plan117-retry-preflight-gate-task6-checkpoint-v1",
   "complete": true,
   "utc": "2026-08-05T08:25:00Z",
+  "cosmetic_fix_utc": "2026-08-05T08:40:00Z",
   "branch": "agent/cursor/p11-feat-zed-resume",
   "path_a_terminal": true,
   "gates": {
@@ -9,8 +10,15 @@
     "logging_surface": "passed",
     "ruff": "passed",
     "git_diff_check": "passed",
+    "git_diff_check_scope": "range f8c51f2..WORKING_TREE (includes Path A / Task 6 commit content and cosmetic follow-up); prior bare git diff --check was pre-stage and could not see untracked paths",
+    "git_diff_check_command": "git diff --check f8c51f2",
     "pytest_unit": "2485 passed, 23 skipped, 1 warning",
     "pytest_integration": "91 passed, 2 skipped, 56 deselected"
+  },
+  "cosmetic_fixes": {
+    "path_a_terminal_report": "regenerated via file Write (not PowerShell); control bytes \\x07/\\x0b and mangled identifiers removed; verified control_bytes=none",
+    "signature_supersession_note": "trailing whitespace stripped on header lines; range-scoped git diff --check now clean",
+    "root_cause_report_corruption": "PowerShell backtick escapes in here-string (`n/`a/`v) when report was first generated"
   },
   "docs_freshness": {
     "digest_pinned_amendment_untouched": true,

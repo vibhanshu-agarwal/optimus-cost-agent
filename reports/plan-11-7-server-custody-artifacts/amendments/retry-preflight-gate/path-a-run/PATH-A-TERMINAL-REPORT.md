@@ -1,4 +1,4 @@
-# Plan 11.7 Retry Preflight — Path A Terminal Stop
+# Plan 11.7 Retry Preflight - Path A Terminal Stop
 
 **Disposition:** fail-closed terminal stop (not a defect)
 **Operator authorization:** Path A only (2026-08-05)
@@ -24,10 +24,9 @@ endpoint. No Redis/Gateway wiring, no Zed reinstall, no settings mutation, no co
 ## Why this is terminal (not a defect)
 
 1. The live origin-a-3 Zed/relay/ACP session from the Option B seal is dead.
-2. Correlation budget is exhausted (
-ext_correlation_ordinal=4); a fourth correlation launch remains unauthorized.
-3. The retry gate correctly fail-closed at cquire_live_session_proof when the control channel could not answer.
-4. Offline erify_retry_preflight_offline independently classified unavailable_proof.
+2. Correlation budget is exhausted (`next_correlation_ordinal`=4); a fourth correlation launch remains unauthorized.
+3. The retry gate correctly fail-closed at `acquire_live_session_proof` when the control channel could not answer.
+4. Offline `verify_retry_preflight_offline` independently classified `unavailable_proof`.
 
 Accepted same-session retry evidence was not produced and is not claimed.
 
