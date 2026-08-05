@@ -1,9 +1,9 @@
 # MCP Gateway Architecture Consolidated Document Redline — Draft
 
-**Date:** 2026-08-05  
-**Status:** Redraft for fresh review; earlier sign-off withdrawn; no authoritative document regenerated  
+**Date:** 2026-08-05
+**Status:** Redraft for fresh review; earlier sign-off withdrawn; no authoritative document regenerated
 **Normative design:**
-[`2026-08-05-mcp-gateway-brokering-architecture-amendment-design.md`](../specs/2026-08-05-mcp-gateway-brokering-architecture-amendment-design.md)  
+[`2026-08-05-mcp-gateway-brokering-architecture-amendment-design.md`](../specs/2026-08-05-mcp-gateway-brokering-architecture-amendment-design.md)
 **Required security reference:**
 [`2026-08-05-mcp-gateway-security-best-practices-reference.md`](2026-08-05-mcp-gateway-security-best-practices-reference.md)
 

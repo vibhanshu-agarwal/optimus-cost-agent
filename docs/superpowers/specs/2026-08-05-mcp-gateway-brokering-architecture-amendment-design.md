@@ -1,9 +1,9 @@
 # MCP Gateway Brokering Architecture Amendment Design
 
-**Date:** 2026-08-05  
-**Status:** Redraft for reviewer review; prior sign-off withdrawn  
-**Feature owner:** `P11-FEAT-GATEWAY-MCP`  
-**Decision source:** affirmative `P11-FU-3` operator ruling and redraft rulings 8-16  
+**Date:** 2026-08-05
+**Status:** Redraft for reviewer review; prior sign-off withdrawn
+**Feature owner:** `P11-FEAT-GATEWAY-MCP`
+**Decision source:** affirmative `P11-FU-3` operator ruling and redraft rulings 8-16
 **Required security reference:**
 [`2026-08-05-mcp-gateway-security-best-practices-reference.md`](../reports/2026-08-05-mcp-gateway-security-best-practices-reference.md)
 
