@@ -1,0 +1,12 @@
+{
+  "acp_session_id": "session-9ec170cb32f840eab034af108f8be8ab",
+  "connection_id": "path-a-no-live-connection",
+  "notes": {
+    "path": "A",
+    "source": "public origin-a-3-exchange-facts.json session id; pid/connection placeholders because live session is dead and Path A does not read private custody"
+  },
+  "run_attempt_id": "origin-a-3",
+  "schema": "plan117-custody-launch-session-identity-v1",
+  "zed_pid": 0,
+  "zed_process_start_time_utc": "1970-01-01T00:00:00Z"
+}

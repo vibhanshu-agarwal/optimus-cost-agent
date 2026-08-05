@@ -1,0 +1,85 @@
+{
+  "schema": "plan117-retry-preflight-gate-task0-checkpoint-v1",
+  "complete": true,
+  "utc": "2026-08-04T16:01:06Z",
+  "head": "3d6900e72707ee5dc37cfbe9194dccebf4b5b44f",
+  "branch": "agent/cursor/p11-feat-zed-resume",
+  "worktree": "D:/Projects/Development/Python/optimus-cost-agent-wt-cursor",
+  "pool_entry": {
+    "id": "P11-FU-11",
+    "locator": "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md",
+    "amendment_link_resolves": true,
+    "design_link_resolves": true,
+    "status_excerpt": "Promoted -> Plan 11.7 retry-preflight gate amendment, 2026-08-04; remains open pending paired-design approval, implementation, and independently reviewed real-process evidence."
+  },
+  "amendment_checkboxes": {
+    "note": "Left unchecked in the digest-bound amendment file to preserve approval SHA-256 106FD92B…9B82 (same practice as fixture-v2). Progress claimed here after stated verification commands passed.",
+    "steps_verified": ["1", "2", "3"]
+  },
+  "digests": {
+    "frozen_plan": "F52AD9A5A85DC50B0DFD3206B6BD09FD8FF0AE79B1A6049DF1017F978B1C462D",
+    "feasibility_amendment": "79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6",
+    "server_custody_design": "8808E5212DCDB3B44198096D1A0AFE7E20A53E4A9B28438DA5AA23245D339F0E",
+    "fixture_v2_design": "9ADD264B06B67B7BF6C85A3A1439BFED29F10C08366848761EED9C3D8B624347",
+    "fixture_v2_amendment": "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D",
+    "retry_amendment": "106FD92B8E43F44A7115D7EDB1F9CF1E3EE643E4B6F594FA656FB4119A969B82",
+    "retry_design": "EB34FA10148CE813A03E60E0770116ABA4AC9857E4DFBEE87E00C39BFDB0D392",
+    "runner_clean_source": "885F4EC8A57A8402CC3A556BD3B231DB578098F9E977155A5F939E287446679F"
+  },
+  "expected_pins": {
+    "frozen_plan": "F52AD9A5A85DC50B0DFD3206B6BD09FD8FF0AE79B1A6049DF1017F978B1C462D",
+    "feasibility_amendment": "79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6",
+    "server_custody_design": "8808E5212DCDB3B44198096D1A0AFE7E20A53E4A9B28438DA5AA23245D339F0E",
+    "fixture_v2_design": "9ADD264B06B67B7BF6C85A3A1439BFED29F10C08366848761EED9C3D8B624347",
+    "fixture_v2_amendment": "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D",
+    "retry_amendment": "106FD92B8E43F44A7115D7EDB1F9CF1E3EE643E4B6F594FA656FB4119A969B82",
+    "retry_design": "EB34FA10148CE813A03E60E0770116ABA4AC9857E4DFBEE87E00C39BFDB0D392"
+  },
+  "digest_paths": {
+    "frozen_plan": "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md",
+    "feasibility_amendment": "docs/superpowers/plans/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md",
+    "server_custody_design": "docs/superpowers/specs/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-design.md",
+    "fixture_v2_design": "docs/superpowers/specs/2026-08-02-plan-11-7-origin-a-fixture-v2-and-stage-accounting-design.md",
+    "fixture_v2_amendment": "docs/superpowers/plans/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md",
+    "retry_amendment": "docs/superpowers/plans/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md",
+    "retry_design": "docs/superpowers/specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md",
+    "runner": "tools/run_plan117_custody_feasibility.py"
+  },
+  "source_revalidation": {
+    "execution_commit": "3d6900e72707ee5dc37cfbe9194dccebf4b5b44f",
+    "matches_intake_description": true,
+    "assert_prompt_retry_preflight": {
+      "file": "tools/run_plan117_custody_feasibility.py",
+      "def_line": 1457,
+      "signature_end_line": 1463,
+      "body_end_line": 1502,
+      "in_module_all": true,
+      "all_line": 1696,
+      "current_signature": "assert_prompt_retry_preflight(*, run_attempt_id, ledger, prompt_fixture, live_session_proof: Mapping[str, Any] | None) -> None",
+      "called_from_origin_a_prompt_retry": false
+    },
+    "origin_a_prompt_retry_branch": {
+      "file": "tools/run_plan117_custody_feasibility.py",
+      "start_line": 1639,
+      "end_line": 1659,
+      "behavior": "validates run_attempt_id and fixture hash, then prints hardcoded JSON success blob; does not load ledger, acquire proof, or call assert_prompt_retry_preflight"
+    },
+    "live_session_proof_constructors": {
+      "LiveSessionProof_type_present": false,
+      "acquire_live_session_proof_present": false,
+      "note": "Only Mapping-based live_session_proof parameter/checks exist in the runner; no constructor from real Zed/relay process state"
+    }
+  },
+  "gates": {
+    "parents_present": true,
+    "all_digests_match": true,
+    "drafting_branch_not_used": true,
+    "live_launch": false,
+    "settings_mutation": false,
+    "src_optimus_untouched": true
+  },
+  "stop_conditions": {
+    "triggered": false,
+    "note": "All parent digests matched; source locations match intake (~1457 / ~1639-1659). Proceed to Task 1."
+  }
+}

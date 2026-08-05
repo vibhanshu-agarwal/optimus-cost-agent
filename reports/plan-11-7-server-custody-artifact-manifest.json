@@ -227,6 +227,54 @@
       "locator": "reports/plan-11-7-server-custody-artifacts/attempts/origin-a-3/live-session-proof.json",
       "role": "origin_a_3_live_session_proof",
       "sha256": "889AE9072AE9C353FA3C70249EDCE273BA45434F97D104239926BB19DDDCEAE0"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/cli-result.json",
+      "role": "origin_a_3_path_a_cli_result",
+      "sha256": "8007DE35961C5174B8168BA3C8AFAE872062A95E364D02BFAB126D606053D3D3"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/offline-verify-result.json",
+      "role": "origin_a_3_path_a_offline_verify",
+      "sha256": "B1C62CB69F8F0A8DC02B3C74ACAB61EA0F7DE63AF91FB5ED4E5D8D95C9D65BD1"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json",
+      "role": "origin_a_3_path_a_terminal_seal",
+      "sha256": "4B521EFE8EECD49E054246EB72564FD9564FB1FF0895D56F6D2DF57EA7B9BD95"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/attempts/origin-a-3/path-a-fail-closed-proof.json",
+      "role": "origin_a_3_path_a_fail_closed_proof",
+      "sha256": "065F84BA0B31EE7BDF8119F29D213B42CF0030DDA48977FE6A88C6936EA0E5AB"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/assert-prompt-retry-preflight-signature-supersession-note.md",
+      "role": "retry_preflight_signature_supersession_note",
+      "sha256": "FD854832A077E6E1B670D424F5F5CD8DE516D86ADCB84B5C2B6E552EF8DF68F8"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/PATH-A-TERMINAL-REPORT.md",
+      "role": "retry_preflight_path_a_terminal_report",
+      "sha256": "61BC14DAD31A58E93AFC00987FE172DBDCF2C69826C6AC5EDAEA5CAA78992039"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task5-checkpoint.json",
+      "role": "retry_preflight_task5_checkpoint",
+      "sha256": "C36F2F8E0B7441D2122481854040FFEB5ADFEC12F4D70F45F67FF1EF3FA2C214"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "locator": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task6-checkpoint.json",
+      "role": "retry_preflight_task6_checkpoint",
+      "sha256": "610C3CBA752393212491C7BC52FE22EABE6AB980BD80048B69F9979ADC4FC6D6"
     }
   ],
   "checkpoint": "origin-a-fixture-v2-final",

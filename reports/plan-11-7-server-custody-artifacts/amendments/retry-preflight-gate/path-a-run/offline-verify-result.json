@@ -1,0 +1,21 @@
+{
+  "cli_field_path": "control_channel",
+  "cli_reason_code": "invalid_probe_retry_control_channel_failure",
+  "offline_outcome_allowed": [
+    "control_failure",
+    "unavailable_proof"
+  ],
+  "offline_summary": {
+    "live_claim_accepted": false,
+    "next_correlation_ordinal": 4,
+    "next_prompt_ordinal": 3,
+    "outcome": "unavailable_proof",
+    "reason_codes": [
+      "blocked_probe_same_session_prompt_retry_unavailable"
+    ],
+    "schema": "plan117-custody-retry-preflight-offline-summary-v1"
+  },
+  "schema": "plan117-retry-preflight-path-a-offline-verify-v1",
+  "settings_mutated": false,
+  "zed_launched": false
+}

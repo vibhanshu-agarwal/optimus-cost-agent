@@ -1,0 +1,34 @@
+{
+  "cli_field_path": "control_channel",
+  "evidence": [
+    {
+      "hash_method": "raw_file_sha256",
+      "relative_path": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/cli-result.json",
+      "sha256": "8007de35961c5174b8168ba3c8afae872062a95e364d02bfab126d606053d3d3"
+    },
+    {
+      "hash_method": "raw_file_sha256",
+      "relative_path": "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/offline-verify-result.json",
+      "sha256": "b1c62cb69f8f0a8dc02b3c74acab61ea0f7de63af91fb5ed4e5d8d95c9d65bd1"
+    }
+  ],
+  "hardcoded_success_rejected": true,
+  "live_attestation": false,
+  "notes": {
+    "control_descriptor_promoted": false,
+    "credentials_excluded": true,
+    "fail_closed_at": "acquire_live_session_proof",
+    "live_acquisition_attempted": true
+  },
+  "offline_outcome": "unavailable_proof",
+  "outcome": "unavailable_proof",
+  "parent_seal": "origin-a-3-option-b",
+  "path": "A",
+  "persisted_snapshot_is_not_live_proof": true,
+  "proof_sha256": "06042772e1122bbf0b8522efed0d007af94541967f5430268442beeef1b6a334",
+  "reason_code": "invalid_probe_retry_control_channel_failure",
+  "run_attempt_id": "origin-a-3",
+  "schema": "plan117-custody-live-session-proof-v1",
+  "settings_mutated": false,
+  "zed_launched": false
+}
