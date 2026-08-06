@@ -176,7 +176,7 @@ only at the named seam; unrelated Plan 11.2 web/package/advisory behavior remain
   file ownership, marker inventory, and the no-mutation baseline. It never edits source, tests,
   PDFs, charter text, `tmp/`, or dependencies.
 
-- [ ] **Step 1: Verify branch, baseline, design commit, and worktree state.**
+- [x] **Step 1: Verify branch, baseline, design commit, and worktree state.**
 
   Run from the current worktree:
 
@@ -193,7 +193,7 @@ only at the named seam; unrelated Plan 11.2 web/package/advisory behavior remain
   and the pre-existing untracked `tmp/` remains the only unrelated worktree item. If any source,
   test, PDF, charter, lockfile, or dependency drift is present, stop and report it.
 
-- [ ] **Step 2: Hash the actual committed PDF blobs and approved design body.**
+- [x] **Step 2: Hash the actual committed PDF blobs and approved design body.**
 
   Use a binary-preserving command in Ubuntu-24.04 WSL2 or Git Bash; do not hash a checked-out PDF:
 
@@ -212,7 +212,7 @@ only at the named seam; unrelated Plan 11.2 web/package/advisory behavior remain
   digest `1eb6cb626e1ed74e83f9ce81b048cb68da8105a1468f8f12272620bf2325f911`. A mismatch blocks
   all later tasks.
 
-- [ ] **Step 3: Re-read the frozen scope and map every current seam.**
+- [x] **Step 3: Re-read the frozen scope and map every current seam.**
 
   Run:
 
@@ -226,7 +226,7 @@ only at the named seam; unrelated Plan 11.2 web/package/advisory behavior remain
   Record the path-level responsibility map and confirm that existing Plan 11.2 tool state and
   usage contracts are not silently assigned to MCP.
 
-- [ ] **Step 4: Write E0 and stop at the approval gate.**
+- [x] **Step 4: Write E0 and stop at the approval gate.**
 
   Record the exact outputs, source identities, scope exclusions, current branch, and the fact that
   no implementation mutation occurred in `reports/plan-11-8-gateway-mcp-baseline.md`. Do not create
@@ -352,21 +352,21 @@ class MCPProfileRegistry(Protocol):
   approved-manifest synchronization may activate the existing revision. There is no bearer-authenticated
   profile administration route.
 
-- [ ] **Step 1: Write failing lifecycle and credential-boundary tests.** Cover absent→pending→active,
+- [x] **Step 1: Write failing lifecycle and credential-boundary tests.** Cover absent→pending→active,
   refresh drift→stale→pending replacement, disabled/re-enable, revision changes, exact binding
   pair checks, profile-scoped allowlists, OAuth-field rejection, catalog/autoload rejection, and
   direct bearer attempts that cannot create or activate a profile.
-- [ ] **Step 2: Extend the HMAC startup manifest with non-secret profile bootstrap metadata only.**
+- [x] **Step 2: Extend the HMAC startup manifest with non-secret profile bootstrap metadata only.**
   Reuse the existing `GatewayChildManifest` verification domain and signed-bind checks. The child
   manifest may carry profile ID, revision, transport, endpoint/image digest, allowlist, limits,
   attribution policy, and a credential reference; it must carry no raw credential, token, password,
   credential fingerprint, secret-derived ID, or Gateway bearer. The Gateway child alone resolves
   the credential reference from Gateway-only bootstrap input and rejects a missing or divergent
   binding. Preserve direct unmanifested-startup failure and existing provider manifest tests.
-- [ ] **Step 3: Wire registry construction into `serve_gateway`/`__main__` without coupling MCP to
+- [x] **Step 3: Wire registry construction into `serve_gateway`/`__main__` without coupling MCP to
   Tavily or existing Plan 11.2 tool state.** Unit-inject profiles and registry dependencies. The
   standalone child must fail closed on malformed, duplicated, OAuth-bearing, or unbound profiles.
-- [ ] **Step 4: Run focused profile/security tests.**
+- [x] **Step 4: Run focused profile/security tests.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_mcp_profiles.py tests/unit/security/test_mcp_profile_manifest.py tests/unit/security/test_launch_manifest.py tests/unit/acp/test_local_infra.py tests/unit/acp/test_launch_approval_cli.py -q
@@ -408,16 +408,16 @@ class MCPDiscoveryBroker:
   partial failure return no approvable manifest. Only discovery/list transient faults use the
   existing retry policy, capped at three attempts; no resumable cursor checkpoint is created.
 
-- [ ] **Step 1: Write RED tests for protocol and pagination.** Cover exact HTTP `server/discover`
+- [x] **Step 1: Write RED tests for protocol and pagination.** Cover exact HTTP `server/discover`
   version/capability requirements, no legacy HTTP initialize fallback, modern/legacy stdio hook,
   page order, complete-or-absent behavior, cursor loops, cursor mutation, malformed pages,
   unmatched allowlist reporting, invalid schemas/headers, namespace collisions, refresh freshness,
   and stale marking after a recoverable refresh failure.
-- [ ] **Step 2: Implement paginator and broker against injected transport/protocol seams.** Keep
+- [x] **Step 2: Implement paginator and broker against injected transport/protocol seams.** Keep
   profile state immutable during a transport call except the explicit stale transition. Canonical
   manifest data must include the selected protocol era/version and ordered descriptors. Do not
   add semantic search, per-turn selection, background refresh, or a resumable cursor.
-- [ ] **Step 3: Run the focused discovery suite.**
+- [x] **Step 3: Run the focused discovery suite.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_mcp_discovery.py tests/unit/mcp/test_mcp_discovery_binding.py -q
@@ -455,14 +455,14 @@ class MCPConnectionManager:
   Object plus Linux/WSL2 process-limit seams. Opening or closing a transport must not mutate
   profile lifecycle or create activation.
 
-- [ ] **Step 1: Write RED policy tests.** Assert the exact outbound method/header/version set,
+- [x] **Step 1: Write RED policy tests.** Assert the exact outbound method/header/version set,
   redirect and origin rejection, TLS/loopback policy, no forbidden MCP capabilities, digest-only
   images, no mount/device/socket flags, exact safe env argument vector, byte/time limits, child
   cleanup, and profile/connection-axis separation.
-- [ ] **Step 2: Implement the two adapters and manager.** Use injected clock, HTTP opener, Docker
+- [x] **Step 2: Implement the two adapters and manager.** Use injected clock, HTTP opener, Docker
   process factory, and platform process-control seams for unit tests. Do not create a project-authored
   MCP server or client fixture to make live tests pass.
-- [ ] **Step 3: Run focused transport and existing route regressions.**
+- [x] **Step 3: Run focused transport and existing route regressions.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_mcp_transports.py tests/unit/optimus_gateway/test_mcp_connections.py tests/unit/optimus_gateway/test_server.py tests/unit/optimus_gateway/test_tool_handlers.py -q
@@ -495,15 +495,15 @@ class MCPGatewayRunner(Protocol):
   no upstream credential, endpoint, command, policy text, approval record, prompt, system message,
   conversation history, or secret-derived identifier.
 
-- [ ] **Step 1: Write RED tests for client paths and local ordering.** Cover exact route rejection,
+- [x] **Step 1: Write RED tests for client paths and local ordering.** Cover exact route rejection,
   bearer-only headers, canonical body, invalid response errors, local denial before any Gateway
   transport call, approved call after the existing guard, binding/revision drift hold, and no
   credential leakage in payloads, repr, logs, or errors.
-- [ ] **Step 2: Implement typed client methods and the narrow runtime runner seam.** Preserve all
+- [x] **Step 2: Implement typed client methods and the narrow runtime runner seam.** Preserve all
   current `MCPRuntimeTrustContext` behavior and existing `MCPTrustRegistry`/prompt-injection
   parity. If a binding adapter is added, it must bind the existing approval to `(manifest_hash,
   profile_revision)` without creating a second permission registry.
-- [ ] **Step 3: Run the focused agent/trust suite and one-key scans.**
+- [x] **Step 3: Run the focused agent/trust suite and one-key scans.**
 
   ```powershell
   uv run --frozen pytest tests/unit/gateway/test_client.py tests/unit/mcp/test_runtime.py tests/unit/mcp/test_gateway_runner.py tests/unit/mcp/test_gateway_payload_boundary.py tests/unit/guardrails/test_mcp_trust.py tests/unit/guardrails/test_pre_tool_guard.py tests/unit/guardrails/test_prompt_injection.py -q
@@ -556,16 +556,16 @@ def handle_mcp_request(
   tool, or become a trusted manifest. All errors are sanitized dispositions with no raw challenge,
   credential, secret-derived ID, or unredacted server text.
 
-- [ ] **Step 1: Write RED handler/invocation tests.** Cover unauthorized, malformed, wrong route,
+- [x] **Step 1: Write RED handler/invocation tests.** Cover unauthorized, malformed, wrong route,
   inactive/stale/disabled profile, wrong revision/hash, allowlist widening, wrong namespace,
   resource/budget denial, untrusted result/content rejection, `input_required`, complete-only
   release, direct-bearer policy limits, and preservation of all existing CORE/TOOLS/observability
   route status behavior.
-- [ ] **Step 2: Implement the invocation broker and handlers.** Keep profile and transport state
+- [x] **Step 2: Implement the invocation broker and handlers.** Keep profile and transport state
   separate, recheck the binding immediately before dispatch, derive the internal upstream tool name
   from the validated namespace, and delegate accounting to Task 7. Add exactly the two MCP paths to
   `server.py`; unknown routes and existing `TOOL_ROUTE_PATHS` remain unchanged.
-- [ ] **Step 3: Run focused route/invocation tests.**
+- [x] **Step 3: Run focused route/invocation tests.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_mcp_invocation.py tests/unit/optimus_gateway/test_mcp_handlers.py tests/unit/optimus_gateway/test_mcp_result_policy.py tests/unit/optimus_gateway/test_server.py tests/unit/optimus_gateway/test_tool_handlers.py -q
@@ -616,19 +616,29 @@ class MCPUsageWriter(Protocol):
   indeterminate: read-only may be explicitly re-invoked, side-effecting calls are held durably for
   operator acknowledgement.
 
-- [ ] **Step 1: Write RED accounting tests.** Cover all three attribution states, strict-dollar
+**Closure note (2026-08-06):** Task 7 closes on the delivered accounting core and the existing
+fail-closed invocation behavior: calls are never automatically redispatched or retried, and
+indeterminate outcomes surface as explicit errors. Durable effect-aware custody and re-invocation
+(read-only explicit re-invocation plus side-effecting operator-acknowledgment hold across agent
+restart) is deferred to the named backlog entry
+[`Durable effect-aware MCP indeterminate-call custody`](2026-07-23-consolidated-deferred-followups-backlog.md#durable-effect-aware-mcp-indeterminate-call-custody),
+which requires a `PreToolGuard` approval-store extension.
+
+- [x] **Step 1: Write RED accounting tests.** Cover all three attribution states, strict-dollar
   admission, explicit-zero revision binding, identical/divergent duplicate records, persistence
-  failure without redispatch, no call retry, discovery retry cap, read-only versus side-effecting
-  indeterminate custody, byte/duration fields, and sanitized error paths.
-- [ ] **Step 2: Implement the immutable record and Gateway-owned store.** Use a direct Gateway-side
+  failure without redispatch, the no-automatic-call-retry and explicit-indeterminate-error
+  behavior, byte/duration fields, and sanitized error paths. Discovery/list retry capping remains
+  covered by the Task 3 discovery tests. Durable effect-aware indeterminate custody and
+  re-invocation are deferred to the named backlog entry above.
+- [x] **Step 2: Implement the immutable record and Gateway-owned store.** Use a direct Gateway-side
   Redis boundary for live persistence; do not import `optimus.*` or reuse the agent’s Redis runtime.
   Preserve existing Plan 11.2 tool-state keys and TTL behavior. Make the route’s release decision
   depend on the same store result that records the response’s `gateway_request_id`.
-- [ ] **Step 3: Run focused accounting tests.**
+- [x] **Step 3: Run focused accounting tests.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_mcp_usage.py tests/unit/optimus_gateway/test_mcp_accounting.py tests/unit/optimus_gateway/test_tool_state.py tests/unit/gateway/test_usage_fields.py -q
-  uv run --frozen ruff check src/optimus_gateway/mcp_usage.py tests/unit/optimus_gateway/test_mcp_usage.py tests/unit/optimus_gateway/test_mcp_accounting.py
+  uv run --frozen ruff check src/optimus_gateway/mcp_usage.py src/optimus_gateway/mcp_invocation.py tests/unit/optimus_gateway/test_mcp_usage.py tests/unit/optimus_gateway/test_mcp_accounting.py
   ```
 
 ## Task 8: Exercise the complete local Gateway flow with real named dependencies
@@ -647,7 +657,7 @@ through these execution-only values: `OPTIMUS_MCP_HTTP_TEST_URL`, `OPTIMUS_MCP_H
 `OPTIMUS_MCP_STDIO_IMAGE_DIGEST`, `OPTIMUS_MCP_STDIO_CREDENTIAL_REF`, and the existing Gateway
 secret/configuration mechanism. Raw values must be redacted from reports.
 
-- [ ] **Step 1: Add RED integration coverage and markers.** Add `requires_mcp_http` and
+- [x] **Step 1: Add RED integration coverage and markers.** Add `requires_mcp_http` and
   `requires_mcp_stdio` to the `markers` list and add both `and not requires_mcp_http` and
   `and not requires_mcp_stdio` clauses to the default `addopts -m` deselection expression before
   marking tests precisely:

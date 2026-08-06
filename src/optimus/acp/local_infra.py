@@ -423,6 +423,7 @@ def ensure_local_gateway(
     system_env: Mapping[str, str] = _EMPTY_MAPPING,
     config_root: Path | None = None,
     otlp_endpoint: str | None = None,
+    mcp_profiles: tuple[Mapping[str, object], ...] = (),
     log: Callable[[str], None] = _noop_log,
 ) -> LocalGatewayProcess | None:
     """Start the local Gateway child using ALREADY-RESOLVED credentials.
@@ -496,6 +497,7 @@ def ensure_local_gateway(
         shared_secret=shared_secret,
         hmac_key=manifest_hmac_key,
         policy_version=policy_version,
+        mcp_profiles=mcp_profiles,
     )
     serialized_manifest = serialize_gateway_child_manifest(manifest)
 

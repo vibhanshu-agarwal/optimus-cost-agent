@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ _PERMISSION_SCOPE_LIMITS = {
 _SIDE_EFFECT_RANK = {"read": 0, "network": 1, "write": 2}
 _WRITE_HINTS = ("write", "delete", "remove", "create", "update", "mutate", "patch", "upload", "send", "execute", "run")
 _NETWORK_HINTS = ("fetch", "download", "http", "url", "request")
+_MANIFEST_HASH = re.compile(r"^[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,8 @@ class MCPServerTrustRecord:
     approved: bool
     approved_by: str
     scan_summary: str
+    profile_revision: str = "legacy"
+    gateway_manifest_hash: str | None = None
 
 
 @dataclass(frozen=True)
@@ -137,6 +141,7 @@ class MCPTrustRegistry:
         allowed_tools: tuple[str, ...],
         permission_scope: str,
         approved_by: str,
+        profile_revision: str = "legacy",
     ) -> MCPServerTrustRecord:
         _validate_permission_scope(permission_scope)
         scan = self._scanner.scan_text(
@@ -169,16 +174,21 @@ class MCPTrustRegistry:
             approved=True,
             approved_by=approved_by,
             scan_summary=f"{scan.sanitized_summary}; tool_effects={approved_effects}",
+            profile_revision=profile_revision,
         )
         self._records[manifest.server_id] = record
         return record
 
-    def validate_tool_call(self, *, server_id: str, manifest: MCPServerManifest, tool_name: str) -> MCPTrustDecision:
+    def validate_tool_call(
+        self, *, server_id: str, manifest: MCPServerManifest, tool_name: str, profile_revision: str | None = None
+    ) -> MCPTrustDecision:
         record = self._records.get(server_id)
         if record is None:
             return MCPTrustDecision(False, "mcp.server_not_registered", "MCP server requires explicit approval", True)
         if not record.approved:
             return MCPTrustDecision(False, "mcp.server_not_approved", "MCP server is not approved", True)
+        if profile_revision is not None and record.profile_revision != profile_revision:
+            return MCPTrustDecision(False, "mcp.profile_revision_changed", "MCP profile revision changed and requires reapproval", True)
         if record.manifest_hash != manifest.manifest_hash():
             return MCPTrustDecision(False, "mcp.manifest_hash_changed", "MCP manifest changed and requires reapproval", True)
         if tool_name not in record.allowed_tools:
@@ -198,6 +208,35 @@ class MCPTrustRegistry:
             rules = ",".join(finding.rule_id for finding in scan.findings)
             return MCPTrustDecision(False, "mcp.descriptor_injection", f"MCP descriptor rejected: {rules}")
         return MCPTrustDecision(True, "mcp.trusted_tool_allowed", "MCP tool is approved for this server")
+
+    def bind_gateway_manifest(
+        self,
+        *,
+        server_id: str,
+        manifest: MCPServerManifest,
+        profile_revision: str,
+        gateway_manifest_hash: str,
+    ) -> MCPTrustDecision:
+        record = self._records.get(server_id)
+        if record is None:
+            return MCPTrustDecision(False, "mcp.server_not_registered", "MCP server requires explicit approval", True)
+        if not record.approved:
+            return MCPTrustDecision(False, "mcp.server_not_approved", "MCP server is not approved", True)
+        if record.profile_revision != profile_revision:
+            return MCPTrustDecision(False, "mcp.profile_revision_changed", "MCP profile revision changed and requires reapproval", True)
+        if record.manifest_hash != manifest.manifest_hash():
+            return MCPTrustDecision(False, "mcp.manifest_hash_changed", "MCP manifest changed and requires reapproval", True)
+        if _MANIFEST_HASH.fullmatch(gateway_manifest_hash) is None:
+            return MCPTrustDecision(False, "mcp.gateway_manifest_invalid", "Gateway manifest hash is invalid", True)
+        self._records[server_id] = replace(record, gateway_manifest_hash=gateway_manifest_hash)
+        return MCPTrustDecision(True, "mcp.gateway_manifest_bound", "Gateway manifest hash is bound to local approval")
+
+    def gateway_manifest_hash_for(self, server_id: str) -> str | None:
+        record = self._records.get(server_id)
+        return None if record is None else record.gateway_manifest_hash
+
+    def record_for(self, server_id: str) -> MCPServerTrustRecord | None:
+        return self._records.get(server_id)
 
     def trusted_descriptors_for_planner(self, *, server_id: str, manifest: MCPServerManifest) -> tuple[MCPToolDescriptor, ...]:
         exposed: list[MCPToolDescriptor] = []
