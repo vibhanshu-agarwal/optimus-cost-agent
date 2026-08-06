@@ -292,15 +292,15 @@ class MCPCallResponse(BaseModel):
   metadata. Canonical manifest hashing must be deterministic over ordered namespaced descriptors,
   protocol/transport data, allowlist result, and profile revision; it must never include a secret.
 
-- [ ] **Step 1: Write failing validation and canonicalization tests.** Cover registration versus
+- [x] **Step 1: Write failing validation and canonicalization tests.** Cover registration versus
   refresh requirements, exact namespaced `profile_id.tool_name` parsing, duplicate/invalid names,
   unsupported content, `input_required`, non-finite numeric values, absent-versus-null attribution,
   stable descriptor ordering, stable manifest bytes, and cross-package JSON equivalence.
-- [ ] **Step 2: Implement the two independent Pydantic contract modules.** Keep field names,
+- [x] **Step 2: Implement the two independent Pydantic contract modules.** Keep field names,
   discriminators, canonical JSON separators/sorting, and error codes identical without importing
   one package from the other. `MCPCallRequest` must not contain endpoint, command, credential,
   policy, approval, prompt, system, or conversation fields.
-- [ ] **Step 3: Run focused unit tests and import-boundary checks.**
+- [x] **Step 3: Run focused unit tests and import-boundary checks.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_models.py tests/unit/optimus_gateway/test_mcp_models.py tests/unit/optimus_gateway/test_mcp_import_boundary.py -q
