@@ -995,7 +995,7 @@ If and only if the operator explicitly asks to commit, first rerun the Task 11 R
 and publication-validator commands. Then commit with the operator-approved message. Never use
 `--no-verify`.
 
-- [ ] **Step 7: Do not push or open a PR implicitly**
+- [x] **Step 7: Do not push or open a PR implicitly**
 
 Report the branch and commit hash, if any. Pushing and PR creation require separate explicit
 authorization and the branch must first be updated from `main` per repository policy.
