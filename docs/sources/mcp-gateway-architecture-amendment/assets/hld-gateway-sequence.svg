@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="680" viewBox="0 0 1400 680" role="img" aria-labelledby="title desc">
+  <title id="title">Gateway MCP guarded request sequence</title>
+  <desc id="desc">The agent passes approval context to the Gateway. The Gateway performs bearer, profile, binding, allowlist, resource, and budget checks, executes a profile-scoped HTTP or Docker-contained stdio call, validates untrusted results, persists MCP usage, and releases the result.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#365f8d"/></marker>
+    <style>
+      .head{fill:#173b6c;rx:10}.headtext{font:600 18px "DejaVu Sans",sans-serif;fill:#fff}.life{stroke:#98abc0;stroke-width:2;stroke-dasharray:6 6}.call{stroke:#365f8d;stroke-width:2.5;marker-end:url(#arrow)}.return{stroke:#217a55;stroke-width:2.5;marker-end:url(#arrow)}.audit{stroke:#7b4ba5;stroke-width:2.5;marker-end:url(#arrow)}.label{font:15px "DejaVu Sans",sans-serif;fill:#27384d}.note{fill:#fff8e7;stroke:#9a6700;stroke-width:1.5;rx:8}.gate{fill:#e7f2ff;stroke:#1f6fb2;stroke-width:2;rx:8}
+    </style>
+  </defs>
+  <rect class="head" x="35" y="35" width="240" height="48"/><rect class="head" x="375" y="35" width="280" height="48"/><rect class="head" x="755" y="35" width="280" height="48"/><rect class="head" x="1135" y="35" width="230" height="48"/>
+  <text class="headtext" text-anchor="middle" x="155" y="66">Local agent</text><text class="headtext" text-anchor="middle" x="515" y="66">Loopback Gateway</text><text class="headtext" text-anchor="middle" x="895" y="66">HTTP / Docker stdio</text><text class="headtext" text-anchor="middle" x="1250" y="66">Usage + audit</text>
+  <line class="life" x1="155" y1="83" x2="155" y2="635"/><line class="life" x1="515" y1="83" x2="515" y2="635"/><line class="life" x1="895" y1="83" x2="895" y2="635"/><line class="life" x1="1250" y1="83" x2="1250" y2="635"/>
+
+  <line class="call" x1="155" y1="130" x2="515" y2="130"/><text class="label" text-anchor="middle" x="335" y="118">candidate tool + context</text>
+  <rect class="gate" x="20" y="155" width="270" height="100"/><text class="label" text-anchor="middle" x="155" y="177">pre-tool approval</text><text class="label" text-anchor="middle" x="155" y="197">descriptor-context admission</text><text class="label" text-anchor="middle" x="155" y="217">permission + scope/effect</text><text class="label" text-anchor="middle" x="155" y="237">allowed namespaced tool</text>
+  <rect class="gate" x="390" y="155" width="250" height="100"/><text class="label" text-anchor="middle" x="515" y="177">bearer + active profile</text><text class="label" text-anchor="middle" x="515" y="197">binding + allowlist + freshness</text><text class="label" text-anchor="middle" x="515" y="217">pagination + resource + budget</text><text class="label" text-anchor="middle" x="515" y="237">agent and Gateway trust gates</text>
+  <line class="call" x1="155" y1="280" x2="515" y2="280"/><text class="label" text-anchor="middle" x="335" y="268">approved profile + revision + arguments</text>
+
+  <line class="call" x1="515" y1="325" x2="895" y2="325"/><text class="label" text-anchor="middle" x="705" y="313">open profile-scoped request or child</text>
+  <rect class="note" x="755" y="355" width="280" height="62"/><text class="label" text-anchor="middle" x="895" y="380">server/discover / tools/list</text><text class="label" text-anchor="middle" x="895" y="400">or tools/call; no HTTP session</text>
+  <line class="return" x1="895" y1="450" x2="515" y2="450"/><text class="label" text-anchor="middle" x="705" y="438">untrusted result + disposition</text>
+  <rect class="gate" x="390" y="475" width="250" height="62"/><text class="label" text-anchor="middle" x="515" y="500">validate content and schema</text><text class="label" text-anchor="middle" x="515" y="520">resource links remain inert</text>
+  <line class="audit" x1="515" y1="565" x2="1250" y2="565"/><text class="label" text-anchor="middle" x="880" y="553">persist MCPUsageRecord + audit correlation</text>
+  <line class="return" x1="515" y1="620" x2="155" y2="620"/><text class="label" text-anchor="middle" x="335" y="608">result release after accounting succeeds</text>
+  <text class="label" text-anchor="middle" x="895" y="655">connection lifetime is not provisioning state or MCP session resume</text>
+</svg>

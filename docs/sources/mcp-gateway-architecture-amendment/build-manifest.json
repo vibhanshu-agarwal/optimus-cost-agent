@@ -1,0 +1,191 @@
+{
+  "package": "mcp-gateway-architecture-amendment",
+  "status": "candidates-assembled",
+  "toolchain": {
+    "platform": "WSL2 Ubuntu-24.04",
+    "pandoc": "3.1.3",
+    "weasyprint": "61.1",
+    "poppler": "24.02.0",
+    "assembly_exception": {
+      "platform": "Windows Python",
+      "python": "C:\\Users\\pc\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
+      "pypdf": "6.10.2",
+      "reportlab": "5.0.0",
+      "scope": "Operator-authorized page-preserving header-stamping and assembly only; all fragment rendering, font copying, and Poppler verification remain in WSL2."
+    },
+    "validation_exception": {
+      "platform": "WSL2 Ubuntu-24.04 isolated uv venv",
+      "python": "3.12.3",
+      "venv": "tmp/pdfs/mcp-gateway/.venv",
+      "pypdf": "6.14.2",
+      "scope": "Operator-authorized PDF parsing for tools/validate_publication.py only; Pandoc, WeasyPrint, Poppler, font copying, and all other publication tooling remain on the pinned WSL2 system toolchain."
+    },
+    "fonts": [
+      "DejaVu Sans",
+      "DejaVu Sans Mono",
+      "Lato"
+    ],
+    "ocr": false,
+    "mermaid_cli": false
+  },
+  "approved_inputs": {
+    "design_lf_normalized_sha256": "fe92374944e609a263ef2e687434e15b8da56ea0430c77171c2e7d2bb115128a",
+    "redline_lf_normalized_sha256": "ecc53130967ede88673ae3b2568498d8dcf50dadc97c32f5407656d19b82eebf",
+    "security_reference_lf_normalized_sha256": "02dcde0da280c7a7dab0f69d0be5b355b6ba8146dbd117a869db703583bfab9b",
+    "publication_plan_lf_normalized_sha256": "21f4db5b04e27587724c3d8da3a5106327062b523eb08eed187b1d3cfefcf1c8"
+  },
+  "documents": [
+    {
+      "name": "HLD",
+      "source_pdf": "docs/Optimus-Cost-Agent-Architecture-v2.16.pdf",
+      "source_sha256": "6C2C98FE2327A6C466CAD3EB1800335EB59F0E1F65B2CB8E1E3401D7CFA05801",
+      "changed_source": "docs/sources/mcp-gateway-architecture-amendment/hld-v2.17-changed-pages.md",
+      "replacement_pages": [
+        1,
+        3,
+        4,
+        7,
+        9,
+        10,
+        11,
+        12
+      ],
+      "output_pdf": "docs/Optimus-Cost-Agent-Architecture-v2.17.pdf",
+      "metadata_title": "Optimus-Cost-Agent - Architecture v2.17",
+      "page_header": "Optimus-Cost-Agent - Architecture v2.17",
+      "expected_pages": 13,
+      "inline_text_replacements": [
+        {
+          "page": 2,
+          "x": 437.79316,
+          "y": 673.7097,
+          "erase_width": 28.5,
+          "erase_height": 12.5,
+          "font_size": 9.6,
+          "text": "v2.17"
+        }
+      ],
+      "completeness": {
+        "exceptions": [
+          {
+            "entry_id": "HLD-MCP-5",
+            "marker": "identifier:P11-FEAT"
+          },
+          {
+            "entry_id": "HLD-MCP-5",
+            "marker": "identifier:GATEWAY-MCP"
+          }
+        ],
+        "forbidden_markers": []
+      },
+      "sha256": "A21BDB01BC737FA3D8EBFFBA8B8B7DF96C65101812E17F31C3C7324368D15024"
+    },
+    {
+      "name": "LLD",
+      "source_pdf": "docs/Optimus-Cost-Agent-LLD-v2.39.pdf",
+      "source_sha256": "82513729FD1A6E87FAD310DD90A18C996981B68024204E56CCA65377495585DE",
+      "changed_source": "docs/sources/mcp-gateway-architecture-amendment/lld-v2.40-changed-pages.md",
+      "replacement_pages": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        20,
+        21,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40
+      ],
+      "output_pdf": "docs/Optimus-Cost-Agent-LLD-v2.40.pdf",
+      "metadata_title": "Optimus-Cost-Agent - LLD v2.40",
+      "page_header": "Optimus-Cost-Agent - LLD v2.40",
+      "expected_pages": 40,
+      "sha256": "0329AEF8B5392E05DDBB19AC3F76F3CE7F4FE3C4B728AEF6CBFC4DE84B324D03"
+    },
+    {
+      "name": "Guardrails",
+      "source_pdf": "docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.1.pdf",
+      "source_sha256": "27EF0657CCEC5568D3E3769C7320223D1BFE3CF6F4702564CBD0A8A391F11029",
+      "changed_source": "docs/sources/mcp-gateway-architecture-amendment/guardrails-v1.2-changed-pages.md",
+      "replacement_pages": [
+        1,
+        4,
+        6,
+        8,
+        10,
+        11,
+        12,
+        14,
+        16
+      ],
+      "output_pdf": "docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.2.pdf",
+      "metadata_title": "Optimus-Cost-Agent - Agent Execution Guardrails and Workflow Strategy v1.2",
+      "page_header": "Optimus-Cost-Agent - Guardrails and Workflow v1.2",
+      "expected_pages": 16,
+      "allowed_historical_version_pages": [
+        16
+      ],
+      "completeness": {
+        "exceptions": [
+          {
+            "entry_id": "GR-MCP-4",
+            "marker": "identifier:BecomesChanged-page"
+          }
+        ],
+        "forbidden_markers": []
+      },
+      "sha256": "461A720FA28576523C87C2F2F89EE1FC52C99971E51ACC22EDC85E8C375A7070"
+    },
+    {
+      "name": "Test Strategy",
+      "source_pdf": "docs/Optimus-Cost-Agent-Test-Strategy-v1.5.pdf",
+      "source_sha256": "F3D744EC175B1E18E8B1E4E271997A0BB12666CC33CA7154A40BF5298588DA8D",
+      "changed_source": "docs/sources/mcp-gateway-architecture-amendment/test-strategy-v1.6-changed-pages.md",
+      "replacement_pages": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "output_pdf": "docs/Optimus-Cost-Agent-Test-Strategy-v1.6.pdf",
+      "metadata_title": "Optimus-Cost-Agent - Test Strategy v1.6",
+      "page_header": "Optimus-Cost-Agent - Test Strategy v1.6",
+      "expected_pages": 14,
+      "completeness": {
+        "exceptions": [
+          {
+            "entry_id": "TS-MCP-4",
+            "marker": "identifier:P11-FEAT"
+          },
+          {
+            "entry_id": "TS-MCP-4",
+            "marker": "identifier:GATEWAY-MCP"
+          }
+        ],
+        "forbidden_markers": []
+      },
+      "sha256": "B435E55687116BD7C4D7E78B48E50D8DA9ED0801575B7B5485F262D35C1B31A4"
+    }
+  ]
+}

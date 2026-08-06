@@ -148,7 +148,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 **Plan file:** `docs/superpowers/plans/2026-07-05-retry-fitness-gates-golden-tasks-release-gate.md`
 
-**User story:** As a release owner, I can prove the system fails closed, retries boundedly, passes coverage, and completes one-key release gates.
+**User story:** As a release owner, I can prove the system fails closed, retries boundedly, passes coverage, and completes Gateway-only credential release gates.
 
 **Source anchors:**
 - Architecture sections 3, 6, 9, and 12.
@@ -163,7 +163,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 **Plan file:** `docs/superpowers/plans/2026-07-06-plan-8-5-release-gate-hardening.md`
 
-**User story:** As a release owner, I can trust that shadow-workspace promotion matches exactly what the fitness gates evaluated, that the one-key scanner covers every local artifact that could leak a provider key, and that the Phase 1 release-gate CLI can actually reach a real PASS end-to-end.
+**User story:** As a release owner, I can trust that shadow-workspace promotion matches exactly what the fitness gates evaluated, that the zero-upstream-credential scanner covers every local artifact that could leak a provider key, and that the Phase 1 release-gate CLI can actually reach a real PASS end-to-end.
 
 **Source anchors:**
 - PR #21 code review (2026-07-06).
@@ -173,7 +173,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 **Expected deliverables** (each maps to a review finding; keep traceability during implementation):
 
 1. **Shadow-workspace deletion propagation** — `changed_paths()` / `promote_shadow_changes()` must detect and promote file deletions (present in `workspace_root`, absent from `shadow_root`), preserving rollback-on-partial-promotion-failure. Closes P8-FU-1 and Critical Issue #1: gates can evaluate a shadow tree missing a file while promotion never removes it from the real workspace, so promoted state can diverge from what passed.
-2. **One-key scanner default wiring** — the one-key gate in `build_phase1_release_gates()` currently scans only `.env`, `.env.local`, and `pyproject.toml`, while `scan_local_credentials()` supports arbitrary `config_paths`. Either extend the default scan surface to every local artifact the release runner produces or reads, or explicitly document and test the accepted scan boundary so the gap is a reviewed decision, not an implicit one.
+2. **Zero-upstream-credential scanner default wiring** — the Gateway-only credential gate in `build_phase1_release_gates()` currently scans only `.env`, `.env.local`, and `pyproject.toml`, while `scan_local_credentials()` supports arbitrary `config_paths`. Either extend the default scan surface to every local artifact the release runner produces or reads, or explicitly document and test the accepted scan boundary so the gap is a reviewed decision, not an implicit one.
 3. **Golden-harness wiring for the default CLI** — `tools/run_phase1_release_gate.py` fails by default (`golden task harness not configured`) because no harness is injected. Provide either a deterministic local harness that runs `phase1_golden_tasks.json` against the real runtime with only Optimus credentials, or a documented CLI flag/config path to supply one, plus an explicit decision on whether staging Gateway E2E is required for Sprint 1 sign-off or stays a documented manual step. Closes Plan 8 PR unchecked test-plan items.
 4. **Release-gate command timeout** — `CommandGate` / `_run_command` has no `subprocess` timeout; a hung test run would hang the release gate indefinitely. Add a bounded timeout with a failed-gate result on expiry.
 5. **Shadow-workspace copy cost** — `ShadowWorkspace` recreates a full `copytree` on every gated-retry attempt, ignoring only `.git`, `__pycache__`, `.pytest_cache`. Add a broader/configurable ignore list (`.venv`, `node_modules`, build/dist output, etc.) and/or reuse one shadow copy across retry attempts instead of recopying from scratch each time.
@@ -183,7 +183,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 **Tests proving:**
 - A shadow candidate that deletes a file promotes the deletion and still rolls back cleanly on a later promotion failure.
-- The one-key gate fails when a provider key is resolvable from any in-scope local artifact, not only the three hardcoded paths.
+- The zero-upstream-credential gate fails when a provider key is resolvable from any in-scope local artifact, not only the three hardcoded paths.
 - The default `tools/run_phase1_release_gate.py` run reaches a real PASS/FAIL against golden-task fixtures without manual harness injection.
 - A release-gate command exceeding its timeout is reported as a failed gate rather than hanging.
 - Fitness-gate telemetry events carry non-placeholder cost figures.
@@ -212,7 +212,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 **Expected deliverables:**
 - `AgentRunner`, `AgentRunRequest`, `AgentRunResult`, guarded tool adapters, `optimus.agent.run`, and `AgentGoldenTaskHarness`.
-- Tests proving Plan/Chat advisory-only behavior, Agent-mode approval before mutation, guarded tool use, bounded-loop stop integration, skill selection, real golden harness execution, and one-key release evidence.
+- Tests proving Plan/Chat advisory-only behavior, Agent-mode approval before mutation, guarded tool use, bounded-loop stop integration, skill selection, real golden harness execution, and zero-upstream-credential release evidence.
 
 **Completion plan:** `docs/superpowers/plans/2026-07-07-plan-9-5-working-acp-agent-completion.md`
 
@@ -1005,7 +1005,7 @@ custody decision. This roadmap section retains the feasibility findings and hist
 
 ## Plan 11 (v1.0 Milestone; Unified Gateway Capabilities Broker and ACP Release)
 
-**Raised:** 2026-07-08, during Plan 9.7 review. The client-side one-key contract is already
+**Raised:** 2026-07-08, during Plan 9.7 review. The client-side zero-upstream-credential Gateway-only contract is already
 shaped for this: `src/optimus/evidence/acquisition.py` posts to `/v1/tools/web/search` and
 `src/optimus/telemetry/observability.py` posts to `/v1/observability/traces` through
 `GatewayClient`, the same gateway-only seam model calls already use — but the local gateway
@@ -1013,18 +1013,19 @@ shaped for this: `src/optimus/evidence/acquisition.py` posts to `/v1/tools/web/s
 the local gateway today. The gap is not in the agent-side contract; it's that the local gateway
 stub hasn't grown routes/upstream adapters for web search or observability export yet. Any real
 web-search or observability provider key (e.g. Tavily, LangSmith) would need to live gateway-side
-once those routes exist, per the same one-key model already enforced for model calls.
+once those routes exist, per the same zero-upstream-credential model already enforced for model calls.
 
-**User story:** As an operator, I hold exactly one local credential set, and the local gateway
-brokers web search, web extract, and observability export the same way it already brokers model
-calls — vendor keys for those capabilities live gateway-side only, never in the agent's own
+**User story:** As an operator, the agent process holds zero upstream credentials, and the local
+gateway brokers web search, web extract, observability export, and MCP tools the same way it brokers
+model calls — vendor keys for those capabilities live gateway-side only, never in the agent's own
 environment.
 
-The Gateway capability is ratified as three identities: `P11-FEAT-GATEWAY-CORE` (Plan 11.1,
+The Gateway capability is ratified as four identities: `P11-FEAT-GATEWAY-CORE` (Plan 11.1,
 including `/v1/observability/traces`), `P11-FEAT-GATEWAY-TOOLS` (web and package/advisory tool
-routes), and `P11-FEAT-GATEWAY-COST-OBS` (normalization, ledger, and observability-cost concerns).
-Plan numbers for the latter two identities are assigned at pickup. Plan 11.1 does not include
-budget enforcement; `P9.85-FU-3` remains parked pending the operator decision.
+routes), `P11-FEAT-GATEWAY-COST-OBS` (normalization, ledger, and observability-cost concerns), and
+`P11-FEAT-GATEWAY-MCP` (bounded static-profile, dual-transport, tools-only MCP brokering). Plan
+numbers for the latter three identities are assigned at pickup. Plan 11.1 does not include budget
+enforcement; `P9.85-FU-3` remains parked pending the operator decision.
 
 **Charter:** [`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md).
 
@@ -1042,10 +1043,13 @@ publication requires explicit operator approval at execution time.
 **Backlog rule:** `P9.8-FU-5` and `P9.87-FU-1` are carried into the consolidated open-work pool; the
 new `P11-FU-1` session-resume capability item is owned by `P11-FEAT-ZED-RESUME` (plan number assigned at pickup), not parked. New follow-ups
 discovered during Plan 11 feature development join that same backlog. `P11-FU-2` is owned by
-`P11-FEAT-GATEWAY-TOOLS` for the unimplemented package/advisory capability, and `P11-FU-3` is
-owned by LLD source repair for the clipped section 0.B and missing MCP endpoint contract. `P9.85-FU-3`
-remains parked and undecided outside Plan 11.1's initial scope; revisit it only if Plan 11 Gateway
-work organically reaches budget or cost policy.
+`P11-FEAT-GATEWAY-TOOLS` for the unimplemented package/advisory capability. `P11-FU-3` owns the
+conditional route/typed-contract publication gate for `P11-FEAT-GATEWAY-MCP`; it closes only after
+the charter amendment and all four amended PDFs are approved and published. `P11-FU-12` through
+`P11-FU-16` separately own MCP OAuth lifecycle, deferred capabilities/long-lived interaction,
+registry discover-and-connect, tool-search/context minimization, and reverse
+research-to-documentation freshness. `P9.85-FU-3` remains parked and undecided outside Plan 11.1's
+initial scope; revisit it only if Plan 11 Gateway work organically reaches budget or cost policy.
 
 **Completion gate:** Complete `P11-FEAT-GATEWAY-CORE` and its observability route as Plan 11.1's
 first gate, then assign and close the ratified TOOLS and COST-OBS slices and work through the
@@ -1067,11 +1071,14 @@ claimed. Owned `P11-FU-1` and `P9.8-FU-5` remain open pending any later reviewed
 existing plan-only Redis state store is not sufficient by assumption. The charter and ratified
 feature sequencing map remain recorded in
 [`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md).
-`P11-FEAT-GATEWAY-MCP` remains unscheduled pending its reviewed route/typed-contract design after
-the affirmative `P11-FU-3` operator decision. `P11-FEAT-REGISTRY` must research ACP registry
-requirements before freezing registration scope and must align both `pyproject.toml` and ACP
-`agentInfo.version` at the v1.0 cut. `P11-FEAT-IDE` remains conditional if registry registration
-does not satisfy the broader multi-IDE expectation.
+`P11-FEAT-GATEWAY-MCP` has a bounded v1 static-profile, dual-transport, tools-only design, but its
+`P11-FU-3` route/typed-contract gate closes only after the charter amendment and all four amended
+PDFs are approved and published. It remains distinct from client-supplied ACP `mcpServers` under
+`P11-FU-9`, `P11-FEAT-ZED-RESUME` session custody, and ACP registry publication under
+`P11-FEAT-REGISTRY`. `P11-FEAT-REGISTRY` must research ACP registry requirements before freezing
+registration scope and must align both `pyproject.toml` and ACP `agentInfo.version` at the v1.0 cut.
+`P11-FEAT-IDE` remains conditional if registry registration does not satisfy the broader multi-IDE
+expectation.
 
 ## Plan 12 (Post-v1.0 v1.x Phase; Context Window Optimization and Intelligent Selection)
 
@@ -1177,7 +1184,7 @@ consolidated backlog document, not owned by Plan 12.
     phase; starts only after Plan 11's feature and backlog-closure gates, Plan 9.8, Plan 9.5
     task-level agent orchestration, and the real golden harness are stable.
 
-The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, one-key scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 9.5 composes the Phase 1 primitives into a working local-first coding agent; Plan 9.8 establishes the specific task-aware context correctness floor before Plan 12 adds context-window intelligence. Plan 12 stays last regardless: it depends on Plan 9.8 and inputs from Plans 4, 5, 6, 6.5, 7, 9, and 9.5, and its PDF fold-in is explicitly deferred until calibration is accepted.
+The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, zero-upstream-credential scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 9.5 composes the Phase 1 primitives into a working local-first coding agent; Plan 9.8 establishes the specific task-aware context correctness floor before Plan 12 adds context-window intelligence. Plan 12 stays last regardless: it depends on Plan 9.8 and inputs from Plans 4, 5, 6, 6.5, 7, 9, and 9.5, and its PDF fold-in is explicitly deferred until calibration is accepted.
 
 Plan 9.9 follows Plan 9.8 as a separate operator-runtime hardening lane. It owns the two deferred
 Plan 9.7 packaging/credential diagnostics and does not expand Plan 9.8's context-selection scope.
