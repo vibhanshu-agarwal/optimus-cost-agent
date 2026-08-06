@@ -762,6 +762,115 @@ become a phantom requirement.
 The rejected signed per-call capability design is a decision record, not deferred work. It creates no
 sixth MCP follow-up without a real multi-user or off-box threat model.
 
+### P11-FU-17: WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer
+
+**Raised:** 2026-08-06 during the MCP Gateway architecture amendment publication plan's Task 11 WSL2
+full-suite gate. Priority: **Test-infra environment gap; not a code defect.**
+
+**Origin:** A linked worktree created by Windows' `git.exe` writes its `.git` file as
+`gitdir: D:/Projects/Development/Python/optimus-cost-agent/.git/worktrees/<name>` — a correct,
+absolute path for Windows git. When that same worktree is accessed from WSL2 and `git` resolves to
+Ubuntu's own `/usr/bin/git` (wins over `/mnt/c/Program Files/Git/...` because native `/usr/bin`
+entries sit earlier in WSL's default `PATH`), that Linux git binary cannot parse `D:/...` as
+absolute, treats it as relative, and prepends the current directory — producing a self-evidently
+mangled path in the error (`fatal: not a git repository:
+/mnt/d/.../<worktree>/D:/Projects/Development/Python/...`).
+
+**Reproduction:** Fully deterministic — reproduced identically 3 times across 2 independent reviewer
+reruns plus the executing agent's own reconciliation rerun, both during Task 11 and again during
+Task 12's final WSL2 suite rerun. Any test that shells out to `git` inside such a worktree fails
+with returncode 128 every time, for as long as that worktree exists and is tested via native WSL
+git — currently observed via
+`tests/unit/docs/test_open_work_pool_hygiene.py::test_product_checkpoint_log_location_remains_gitignored`
+(which calls `git check-ignore`), but the mechanism is general and not specific to that one test.
+
+**Suspected cause:** Not a code defect — confirmed root cause is the PATH-resolution mismatch above,
+not an assertion or production-code problem. A disposable Git-wrapper diagnostic (redirecting WSL's
+`git` to the Windows binary for one run) did make the suite pass, but was correctly not counted as
+clean POSIX evidence since it changes what is being tested rather than fixing the underlying
+mismatch.
+
+**Related prior art:** A different flake class from `P11-FU-5`/`P11-FU-6`/`P11-FU-7` (those are
+Windows-native subprocess/coverage timing races; this is WSL2-against-a-Windows-worktree path
+resolution) — do not conflate root causes across these entries at pickup.
+
+**Designated slice:** Future WSL2/test-infrastructure environment work; no plan number is allocated
+(lazy numbering — assign only if/when picked up for scoping).
+
+**Acceptance criteria (draft — refine at pickup):**
+
+- Reproduce (or confirm continued reproduction) against the current worktree layout before
+  attempting a fix.
+- Evaluate the two candidate real fixes already identified: recreate the worktree via WSL's own
+  `git worktree add` instead of Windows git's, or point WSL's `git` resolution at
+  `/mnt/c/Program Files/Git/cmd/git.exe` for this repo specifically (repo-local `PATH` override),
+  which — being Windows git — parses the `D:/...` pointer natively.
+- Any fix must not weaken `test_product_checkpoint_log_location_remains_gitignored`'s actual
+  assertion (the checkpoint log location must remain gitignored) — the fix targets the git-resolution
+  mismatch, not the test's intent.
+- Document the fix (or an explicit non-fix disposition) so future WSL2 gate runs against Windows-created
+  linked worktrees in this repo don't re-diagnose this from scratch.
+
+**Evidence anchors:** MCP Gateway architecture amendment publication plan Task 11/12 review notes;
+`tests/unit/docs/test_open_work_pool_hygiene.py::test_product_checkpoint_log_location_remains_gitignored`.
+
+**Status:** Tracked, not yet scheduled. Root cause fully established; not a code defect. Not
+blocking any plan closure — recorded as a known, accurately-disclosed environment gap each time it
+recurs, per [[wsl2-local-linux-ci-substitute]]'s "no silent omission" rule.
+
+### P11-FU-18: WSL2 directory `ctime` timestamp-coalescing test flake
+
+**Raised:** 2026-08-06 during the MCP Gateway architecture amendment publication plan's Task 12 final
+WSL2 suite rerun. Priority: **Test-infra environment flake; not a code defect.**
+
+**Origin:**
+`tests/unit/acp/test_trusted_paths.py::TestWorkspaceIdentityRevalidation::test_revalidation_fails_after_workspace_directory_metadata_change`
+asserts that adding a file to a directory changes that directory's `st_ctime_ns` (part of the
+workspace-identity digest `resolve_workspace_identity`/`revalidate_workspace_identity` use for
+path-trust revalidation in `src/optimus/acp/trusted_paths.py`), with no sleep between the two
+`stat()` calls. A direct filesystem probe in this WSL2 environment confirmed `st_ctime_ns` can read
+identically across two `stat()` calls that bracket a real file-creation write, despite genuine
+elapsed wall-clock time between them — a timestamp-coalescing artifact of this specific WSL2 /
+virtual-disk setup, not of the code under test.
+
+**Reproduction:** Nondeterministic. Reran the single test in isolation 5 times: 4 passed, 1 failed —
+confirmed as a timing race, not an order-dependent or environment-static failure. Not caused by
+the MCP Gateway publication work, which touched zero `src/`/`tests/` paths (independently verified).
+
+**Suspected cause:** WSL2's virtual-disk-backed filesystem appears to coalesce or truncate directory
+`ctime` updates under some timing conditions, unlike the nanosecond-resolution behavior the test
+assumes. This is distinct from `P11-FU-17`: that entry is a git-binary PATH-resolution problem;
+this one is filesystem-timestamp granularity/coalescing, and the two must not be conflated at
+pickup even though both surfaced during the same WSL2 gate runs.
+
+**Related prior art:** Same general "WSL2 as CI substitute has its own environment quirks" class as
+`P11-FU-17`, but a different mechanism. Also loosely related to the Windows-native timing flakes
+(`P11-FU-5`, `P11-FU-6`, `P11-FU-7`) in spirit (test asserts on OS-timestamp/scheduling behavior
+without a sleep) but on a different platform and different underlying primitive.
+
+**Designated slice:** Future WSL2/test-infrastructure environment work; no plan number is allocated
+(lazy numbering — assign only if/when picked up for scoping).
+
+**Acceptance criteria (draft — refine at pickup):**
+
+- Reproduce the nondeterminism under controlled reruns (isolation and full-suite) before attempting
+  a fix; do not treat a single passing rerun as resolution.
+- Distinguish this from `P11-FU-17` explicitly in any pickup — different mechanism, different fix
+  shape.
+- A reviewed fix must not weaken `resolve_workspace_identity`/`revalidate_workspace_identity`'s
+  actual security property (detecting workspace directory tampering via metadata change); acceptable
+  directions include a bounded retry/settle window in the *test* (not production code) or asserting
+  on a coarser, more reliable signal already captured in the identity digest.
+- Confirm whether this affects only WSL2/virtual-disk environments or also native Linux CI, since
+  that determines whether it is purely a local-dev-environment concern.
+
+**Evidence anchors:** MCP Gateway architecture amendment publication plan Task 12 review notes;
+`tests/unit/acp/test_trusted_paths.py::TestWorkspaceIdentityRevalidation::test_revalidation_fails_after_workspace_directory_metadata_change`;
+`src/optimus/acp/trusted_paths.py` (`resolve_workspace_identity`, `revalidate_workspace_identity`).
+
+**Status:** Tracked, not yet scheduled. Root cause diagnosed as environment-level timestamp
+coalescing, not a security or production-code defect. Not blocking any plan closure.
+
 ### P11.5-FU-2: Consistent local env / Redis / Phoenix / Gateway startup for live runs
 
 **Raised:** 2026-07-29 during Plan 11.5 Task 8 (real Redis / Phoenix / ACP release-evidence
