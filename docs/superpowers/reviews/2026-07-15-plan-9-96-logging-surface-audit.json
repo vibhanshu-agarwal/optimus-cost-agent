@@ -729,6 +729,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.gateway.client:GatewayClient._post_mcp:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.gateway.client:GatewayClient._post_mcp:exception_export uses exception text only for an in-memory API-key membership check before raising a generic typed error; it does not log, persist, or export raw diagnostics.",
+      "sanitizer": "fixed replacement error for matching key; no diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.gateway.mcp_models:canonical_manifest_bytes:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.gateway.mcp_models:canonical_manifest_bytes:json_serialization serializes the already normalized manifest identity only to compute its deterministic binding hash; it excludes response disposition and does not retain diagnostic content.",
+      "sanitizer": "canonical_manifest_payload allowlist and deterministic JSON; no diagnostic retention",
+      "test_node": "tests/unit/mcp/test_models.py::test_manifest_hash_is_stable_for_descriptor_order_and_excludes_response_disposition",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.gateway.models:parse_gateway_usage:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.gateway.models:parse_gateway_usage:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
@@ -2230,6 +2246,94 @@
       "rationale": "Inspection: parse_live_output parses ACPX JSON only to verify required end_turn and approval evidence in memory; it does not persist a diagnostic artifact.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_parse_live_output_requires_end_turn_and_permission_evidence",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_discovery:MCPDiscoveryPaginator._descriptor_from_tool:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Pydantic detail is retained only inside MCPDiscoveryError while the route returns its fixed disposition through sanitize_error_message; raw descriptor diagnostics are not persisted or exported.",
+      "sanitizer": "fixed discovery disposition at the route boundary; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_discovery.py::test_paginator_rejects_invalid_definitions_and_mcp_param_headers",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_discovery:MCPDiscoveryPaginator._descriptor_size:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonical JSON is measured in memory solely to enforce the descriptor-byte budget before a descriptor can enter the manifest; it is neither persisted nor exported.",
+      "sanitizer": "descriptor byte budget and schema validation; no diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_discovery.py::test_paginator_rejects_invalid_definitions_and_mcp_param_headers",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_invocation:MCPInvocationBroker.call:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes typed result and admitted request shapes only to calculate configured byte budgets before persistence; the serialized data is not retained or exported by this broker.",
+      "sanitizer": "typed MCP models, profile limits, and byte-budget checks; no diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_invocation.py::test_call_rechecks_gateway_binding_and_forwards_only_derived_name_and_arguments",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_transports:DockerStdioMCPTransport._request:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional MCP JSON-RPC serialization is written only to the digest-pinned, isolated stdio container; sanitizing the request would corrupt the protocol contract.",
+      "sanitizer": "MCP profile allowlist, digest-pinned container, isolated environment, and protocol validation",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_transports.py::test_stdio_transport_builds_digest_pinned_no_mount_docker_argv_and_safe_environment",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_transports:DockerStdioMCPTransport._request:text_write",
+      "policy": "protocol-only",
+      "rationale": "The stdio write is the functional MCP JSON-RPC request to the approved container, not diagnostic retention; sanitizing it would corrupt the protocol contract.",
+      "sanitizer": "MCP profile allowlist, digest-pinned container, isolated environment, and protocol validation",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_transports.py::test_stdio_transport_builds_digest_pinned_no_mount_docker_argv_and_safe_environment",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_transports:DockerStdioMCPTransport.server_discover:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: exception text is used only to recognize the fixed JSON-RPC method-not-found fallback; any remaining transport error is reduced to the generic discovery route failure rather than exported as raw upstream detail.",
+      "sanitizer": "fixed fallback predicate and generic discovery route failure; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_transports.py::test_stdio_transport_falls_back_to_tools_only_legacy_initialization",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_transports:StreamableHTTPMCPTransport._request:file_open",
+      "policy": "protocol-only",
+      "rationale": "AST classifies the injected opener.open network call as file_open; it is the functional JSON-RPC request to the profile-pinned endpoint, not a file or diagnostic-retention operation.",
+      "sanitizer": "pinned HTTPS origin, credential resolver, bounded response, and MCP protocol validation",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_transports.py::test_http_transport_posts_only_json_with_pinned_auth_and_request_metadata",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_transports:StreamableHTTPMCPTransport._request:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional MCP JSON-RPC serialization is sent only to the profile-pinned endpoint; sanitizing it would corrupt the protocol contract and it is not retained as diagnostic content.",
+      "sanitizer": "pinned HTTPS origin, credential resolver, bounded response, and MCP protocol validation",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_transports.py::test_http_transport_posts_only_json_with_pinned_auth_and_request_metadata",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_usage:RedisMCPUsageWriter.persist:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST classifies Redis SET as redis_hash_write; it persists the fixed MCPUsageRecord accounting schema with IDs, names, byte counts, attribution, and monetary fields, never raw arguments, result content, or diagnostics.",
+      "sanitizer": "typed MCPUsageRecord schema and idempotent TTL-bound key; no diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_usage.py::test_redis_writer_uses_direct_ttl_bound_idempotent_key_value_storage",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.launch_manifest:_normalize_mcp_profiles:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: validation detail remains inside LaunchManifestError while the standalone entrypoint reports only its fixed code; profile metadata is not persisted or exported as a diagnostic.",
+      "sanitizer": "fixed LaunchManifestError code at the entrypoint boundary; no raw diagnostic retention",
+      "test_node": "tests/unit/security/test_mcp_profile_manifest.py::test_profile_bootstrap_rejects_secret_material_and_secret_fingerprint_fields",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_models:canonical_manifest_bytes:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Gateway-runtime twin serializes the normalized structural manifest only to compute its deterministic binding hash; response disposition is excluded and the JSON is not persisted or exported.",
+      "sanitizer": "canonical_manifest_payload allowlist and deterministic JSON; no diagnostic retention",
+      "test_node": "tests/unit/mcp/test_models.py::test_manifest_hash_is_stable_for_descriptor_order_and_excludes_response_disposition",
       "evidence_tier": "unit"
     }
   ]

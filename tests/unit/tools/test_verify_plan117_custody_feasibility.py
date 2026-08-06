@@ -28,6 +28,7 @@ from tools.plan117_custody_relay import (
 
 ROOT = Path(__file__).resolve().parents[3]
 VERIFIER = ROOT / "tools" / "verify_plan117_custody_feasibility.py"
+PYPROJECT_FIXTURE_V2 = ROOT / "tests" / "fixtures" / "evidence" / "plan117-origin-a-pyproject-v2.toml"
 
 _DIGEST_A = "a" * 64
 _DIGEST_B = "a" * 64
@@ -1297,11 +1298,14 @@ def test_verifier_fail_closed_on_supersession_fact_reservation_and_fixture_field
         v.verify_run_reservation_payload(dict(reservation, amendment_sha256="0" * 64))
 
     fixture = ROOT / "tests" / "fixtures" / "evidence" / "plan117-server-custody-prompt-v2.txt"
-    v.verify_fixture_v2_identity(prompt_fixture=fixture, workspace_root=ROOT)
+    fixture_workspace = tmp_path / "fixture-workspace"
+    fixture_workspace.mkdir()
+    (fixture_workspace / "pyproject.toml").write_bytes(PYPROJECT_FIXTURE_V2.read_bytes())
+    v.verify_fixture_v2_identity(prompt_fixture=fixture, workspace_root=fixture_workspace)
     with pytest.raises(CustodyContractError) as fix_exc:
         v.verify_fixture_v2_identity(
             prompt_fixture=tmp_path / "missing.txt",
-            workspace_root=ROOT,
+            workspace_root=fixture_workspace,
         )
     assert fix_exc.value.reason_code == "invalid_probe_fixture_identity_mismatch"
 
