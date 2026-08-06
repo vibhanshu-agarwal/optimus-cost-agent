@@ -989,7 +989,7 @@ If and only if the operator explicitly asks to stage, use an exact path list wit
 use `git add .` or `git add -A`. Re-run `git diff --cached --name-only` and prove the checkpoint and
 temporary build files are absent.
 
-- [ ] **Step 6: Commit only if explicitly authorized**
+- [x] **Step 6: Commit only if explicitly authorized**
 
 If and only if the operator explicitly asks to commit, first rerun the Task 11 Ruff, full pytest,
 and publication-validator commands. Then commit with the operator-approved message. Never use
