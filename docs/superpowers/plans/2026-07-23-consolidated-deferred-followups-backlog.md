@@ -45,7 +45,7 @@ open-work inventory.
 | `P11-FEAT-GATEWAY-CORE` | Plan 11.1 — closed; merged to `main` as PR #85 (`6ae6997`, tip `6c39599`). Migration closed by **Plan 11.4**, merged to `main` as PR #91 (`d80e112`), 2026-07-28; no migration follow-ups remain open under this identity | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route); migration custody: strict-loopback completion, OpenRouter-default OpenAI-compatible aggregator transport, provider-reported accounting, and direct-adapter retirement — all implemented and independently re-verified task-by-task. The bounded Vercel Python transport check is complete as a design decision: Vercel is backlogged under this identity (its public OpenAI-compatible transport doesn't document the mandatory per-response provider-cost fields the settled `GatewayUsage` contract requires; no comparison matrix, no second endpoint added). Closure evidence: [design spec](../specs/2026-07-28-plan-11-4-p11-feat-gateway-core-migration-design.md), [implementation plan](2026-07-28-plan-11-4-gateway-core-migration.md) (all 36 checkboxes checked against their named verification commands) |
 | `P11-FEAT-GATEWAY-TOOLS` | Plan 11.2 — closed by PR #88 (merge `4590dbf`); migration follow-ups remain assigned here and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); migration custody: deterministic search/direct extract, route-specific dependency availability, replacement acceptance, and Tavily rollback-reviewed retirement; closure evidence: [Plan 11.2 approval](../reviews/2026-07-27-plan-11-2-implementation-plan-approval-v2.md), [local-process evidence](../../../reports/plan-11-2-gateway-tools-local-process-evidence.md), [staging evidence](../../../reports/plan-11-2-gateway-tools-staging-evidence.md), and [fitness report](../../../reports/plan-11-2-gateway-tools-task7-fitness.md) |
 | `P11-FEAT-GATEWAY-COST-OBS` | Plan 11.5 — closed by PR #95 (merge `e388258`), 2026-07-29; migration follow-ups remain assigned here (`P11.5-FU-1` open; `P11.5-FU-2` closed via Plan 11.6) and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); [implementation plan](2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration |
-| `P11-FEAT-GATEWAY-MCP` | Ratified bounded v1 design: static-profile, dual-transport, tools-only Gateway brokering. The `P11-FU-3` route/typed-contract gate may close only after the charter amendment and all four amended PDFs are approved and published; an implementation plan number is assigned only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
+| `P11-FEAT-GATEWAY-MCP` | Ratified bounded v1 design: static-profile, dual-transport, tools-only Gateway brokering. `P11-FU-3`'s route/typed-contract gate is now **closed** (2026-08-06): the charter amendment (PR #112) and all four amended PDFs — HLD v2.17, LLD v2.40, Guardrails v1.2, Test Strategy v1.6 (PR #113, merge `edd1f04`) — are approved and published. No implementation design spec or plan exists yet; an implementation plan number is assigned only at pickup (next unused Plan 11.x slot is 11.8 per the charter's own convention) | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
 | `P11-FEAT-ZED-RESUME` | **Plan 11.7 active.** Frozen Task 0 Steps 1-4 sealed (`session/load` unreachable on current Zed 1.13.1); frozen Plan 11.7 Tasks 0 Steps 5-7 and Tasks 1-11 remain blocked. Standalone feasibility amendment approved (`79F3C92A…C06E6`, 2026-08-02); origin-A fixture v2 amendment approved and merged (`5BB327D8…9A4D` / PR #108, 2026-08-02). Corrected `origin-a-3` executed and sealed as Option B process-invalid (`next_corr=4` / `next_prompt=3` unclaimed; DoD success false). Retry-preflight amendment (`P11-FU-11`, PR #110) implemented through Task 5 **Path A** fail-closed terminal stop (2026-08-05): real CLI fail-closed at acquire; offline `unavailable_proof`; no corr-4 / no settings mutation / no Zed launch; accepted live retry not obtained. Parent Task 5 remains blocked; clean relaunch needs a budget-expansion amendment. Does not claim server-side custody feasible. Carries owned `P11-FU-1`, `P9.8-FU-5`, and `P11-FU-11`; coordinates, but does not own, `P11-FU-4` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume); [feasibility amendment](2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md); [origin-A fixture v2 amendment](2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md); [retry-preflight amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md). Dependency: the [evidence and handoff product pool](evidence-handoff-open-work-pool.md) entry `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` supplies its sanitized-evidence gate. |
 | `P11-FEAT-REGISTRY` | Ratified, unscheduled; blocked on its research gate — no authoritative source exists in any of the four pinned documents. Also owns the v1.0 release-version contract | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut) |
 | `P11-FEAT-IDE` | Conditional — opens only by explicit amendment if REGISTRY surfaces an unmet multi-IDE expectation | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing) |
@@ -270,20 +270,25 @@ MCP implementation or endpoint inference.
 **Operator decision (2026-07-29):** Affirmative—MCP brokering is supported. Operator's stated
 rationale: non-negotiable for any agent, especially a coding agent.
 
-**Remaining acceptance criteria:**
+**Acceptance criteria (both now met):**
 
 - ~~The operator must explicitly decide whether MCP brokering is supported.~~ Decided 2026-07-29:
   yes.
-- The route and typed request/response contract must be represented in the amended, source-pinned
-  HLD, LLD, Guardrails, and Test Strategy PDFs. This gate is satisfied only after the charter
-  amendment and all four PDFs are approved and published; source fragments or a local render alone
-  do not authorize implementation planning.
+- ~~The route and typed request/response contract must be represented in the amended, source-pinned
+  HLD, LLD, Guardrails, and Test Strategy PDFs.~~ Satisfied 2026-08-06: the MCP Gateway architecture
+  amendment charter update (PR #112, merged 2026-08-05) and the publication of all four amended PDFs
+  — HLD v2.17, LLD v2.40, Guardrails v1.2, Test Strategy v1.6 (PR #113, merge commit `edd1f04`,
+  merged 2026-08-06) — are both live on `main`. Independently confirmed the typed contract is
+  actually present, not just nominally referenced: the published LLD contains
+  `POST /v1/tools/mcp/discover`, `POST /v1/tools/mcp/call`, and the named component types
+  (`MCPProfileRegistry`, `MCPDiscoveryBroker`, `MCPDiscoveryPaginator`, `MCPInvocationBroker`,
+  `MCPConnectionManager`).
 
-**Status:** Decision half closed (2026-07-29: MCP brokering is supported). The route/contract
-publication condition remains open until the charter amendment and all four amended PDFs are
-approved and published. `P11-FEAT-GATEWAY-MCP` is not ready for an implementation plan before that
-condition is met. `P11-FEAT-ZED-RESUME` was picked up instead as Plan 11.7; this entry stays open
-and unscheduled.
+**Status:** **Closed 2026-08-06.** Both acceptance criteria are met. `P11-FEAT-GATEWAY-MCP` is now
+eligible for an implementation design spec and plan; none exists yet as of this closure — drafting
+one is separate, not-yet-scheduled work. A Plan 11.x number is assigned only at pickup (next unused
+slot is **Plan 11.8**, per the charter's next-unused-single-decimal convention). `P11-FEAT-ZED-RESUME`
+was picked up first as Plan 11.7 and remains a separate, independently blocked lane.
 
 ### P11-FU-4: Re-pin FU-4A/FU-5 Live Evidence
 
