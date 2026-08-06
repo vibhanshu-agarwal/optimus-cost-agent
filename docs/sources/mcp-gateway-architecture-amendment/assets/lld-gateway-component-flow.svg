@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1000" viewBox="0 0 1400 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Gateway MCP component flow</title>
+  <desc id="desc">The agent-side MCPTrustRegistry and descriptor-context admission remain separate from Gateway profile, discovery, invocation, connection, transport, result, and usage components.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#365f8d"/></marker>
+    <style>
+      .gateway{fill:#f4f8fd;stroke:#2d73b9;stroke-width:3;rx:18}.agent{fill:#173b6c;stroke:#173b6c;stroke-width:2;rx:12}.box{fill:#fff;stroke:#365f8d;stroke-width:2;rx:10}.policy{fill:#e7f2ff;stroke:#1f6fb2;stroke-width:2;rx:10}.transport{fill:#fff7df;stroke:#9a6700;stroke-width:2;rx:10}.result{fill:#eaf7f0;stroke:#217a55;stroke-width:2;rx:10}.external{fill:#f8f5ff;stroke:#7653a6;stroke-width:2;rx:10}.title{font:700 21px "DejaVu Sans",sans-serif;fill:#173b6c}.white{font:600 16px "DejaVu Sans",sans-serif;fill:#fff}.white-small{font:600 15px "DejaVu Sans",sans-serif;fill:#fff}.label{font:600 15px "DejaVu Sans",sans-serif;fill:#173b6c}.small{font:12px "DejaVu Sans",sans-serif;fill:#27384d}.edge{stroke:#365f8d;stroke-width:2.2;fill:none;marker-end:url(#arrow)}.dash{stroke-dasharray:8 6}
+    </style>
+  </defs>
+
+  <rect class="agent" x="25" y="140" width="250" height="120"/>
+  <text class="white" text-anchor="middle" x="150" y="175">Agent MCPTrustRegistry</text>
+  <text class="white" text-anchor="middle" x="150" y="202">approval + scope/effect</text>
+  <text class="white" text-anchor="middle" x="150" y="229">namespaced descriptors</text>
+  <text class="white" text-anchor="middle" x="150" y="249">human authority</text>
+
+  <rect class="agent" x="25" y="330" width="250" height="120"/>
+  <text class="white-small" text-anchor="middle" x="150" y="365">Descriptor-context admission</text>
+  <text class="white" text-anchor="middle" x="150" y="392">approved subset only</text>
+  <text class="white" text-anchor="middle" x="150" y="419">count + UTF-8-byte ceilings</text>
+  <text class="white" text-anchor="middle" x="150" y="439">admitted identity record</text>
+
+  <rect class="agent" x="25" y="520" width="250" height="120"/>
+  <text class="white" text-anchor="middle" x="150" y="555">Agent MCP call</text>
+  <text class="white" text-anchor="middle" x="150" y="582">profile/revision + manifest</text>
+  <text class="white-small" text-anchor="middle" x="150" y="609">upstream tool + arguments</text>
+  <text class="white" text-anchor="middle" x="150" y="629">no upstream credential</text>
+
+  <rect class="gateway" x="320" y="35" width="790" height="900"/>
+  <text class="title" text-anchor="middle" x="715" y="72">Loopback Gateway MCP broker</text>
+  <text class="small" text-anchor="middle" x="715" y="94">bearer, binding, allowlist, freshness, resource, and budget checks</text>
+
+  <rect class="policy" x="370" y="120" width="330" height="100"/>
+  <text class="label" text-anchor="middle" x="535" y="152">MCPProfileRegistry</text>
+  <text class="small" text-anchor="middle" x="535" y="178">PENDING / ACTIVE / STALE / DISABLED</text>
+  <text class="small" text-anchor="middle" x="535" y="198">revision + binding + credential refs</text>
+
+  <rect class="policy" x="730" y="120" width="330" height="100"/>
+  <text class="label" text-anchor="middle" x="895" y="152">MCPDiscoveryPaginator</text>
+  <text class="small" text-anchor="middle" x="895" y="178">server/discover + complete nextCursor</text>
+  <text class="small" text-anchor="middle" x="895" y="198">integrity / transient / capacity outcomes</text>
+
+  <rect class="policy" x="370" y="275" width="330" height="100"/>
+  <text class="label" text-anchor="middle" x="535" y="307">MCPDiscoveryBroker</text>
+  <text class="small" text-anchor="middle" x="535" y="333">allowlist + descriptor validation</text>
+  <text class="small" text-anchor="middle" x="535" y="353">sanitized manifest, no partial prefix</text>
+
+  <rect class="policy" x="730" y="275" width="330" height="100"/>
+  <text class="label" text-anchor="middle" x="895" y="307">MCPInvocationBroker</text>
+  <text class="small" text-anchor="middle" x="895" y="333">active binding + resource/budget gate</text>
+  <text class="small" text-anchor="middle" x="895" y="353">arguments-only upstream payload</text>
+
+  <rect class="box" x="370" y="430" width="330" height="100"/>
+  <text class="label" text-anchor="middle" x="535" y="462">MCPConnectionManager</text>
+  <text class="small" text-anchor="middle" x="535" y="488">profile-scoped open / close</text>
+  <text class="small" text-anchor="middle" x="535" y="508">never mutates profile state</text>
+
+  <rect class="transport" x="730" y="430" width="330" height="100"/>
+  <text class="label" text-anchor="middle" x="895" y="462">Transport adapters</text>
+  <text class="small" text-anchor="middle" x="895" y="488">2026-07-28 Streamable HTTP</text>
+  <text class="small" text-anchor="middle" x="895" y="508">Docker-contained stdio negotiation</text>
+
+  <rect class="result" x="370" y="585" width="330" height="100"/>
+  <text class="label" text-anchor="middle" x="535" y="617">MCP result validator</text>
+  <text class="small" text-anchor="middle" x="535" y="643">complete-only + schema/content checks</text>
+  <text class="small" text-anchor="middle" x="535" y="663">resources remain inert untrusted data</text>
+
+  <rect class="result" x="730" y="585" width="330" height="100"/>
+  <text class="label" text-anchor="middle" x="895" y="617">MCP usage writer</text>
+  <text class="small" text-anchor="middle" x="895" y="643">MCPUsageRecord before result release</text>
+  <text class="small" text-anchor="middle" x="895" y="663">idempotent gateway_request_id</text>
+
+  <rect class="result" x="550" y="750" width="330" height="100"/>
+  <text class="label" text-anchor="middle" x="715" y="782">Typed disposition and release</text>
+  <text class="small" text-anchor="middle" x="715" y="808">retry / capability / safety outcome</text>
+  <text class="small" text-anchor="middle" x="715" y="828">no profile-wide disable for capability gaps</text>
+
+  <rect class="external" x="1160" y="300" width="215" height="100"/>
+  <text class="label" text-anchor="middle" x="1267" y="335">Remote MCP</text>
+  <text class="small" text-anchor="middle" x="1267" y="362">Streamable HTTP</text>
+  <text class="small" text-anchor="middle" x="1267" y="382">per-request metadata</text>
+
+  <rect class="external" x="1160" y="455" width="215" height="100"/>
+  <text class="label" text-anchor="middle" x="1267" y="490">MCP child</text>
+  <text class="small" text-anchor="middle" x="1267" y="517">Docker digest + stdio</text>
+  <text class="small" text-anchor="middle" x="1267" y="537">safe credential projection</text>
+
+  <rect class="external" x="1160" y="610" width="215" height="100"/>
+  <text class="label" text-anchor="middle" x="1267" y="645">Audit / ledger</text>
+  <text class="small" text-anchor="middle" x="1267" y="672">MCP usage + trace</text>
+  <text class="small" text-anchor="middle" x="1267" y="692">known vs unattributed cost</text>
+
+  <path class="edge" d="M150 260 V330"/><path class="edge" d="M150 450 V520"/><path class="edge" d="M275 580 H730 V325"/>
+  <path class="edge" d="M700 170 H730"/><path class="edge" d="M535 220 V275"/><path class="edge" d="M895 220 V275"/>
+  <path class="edge" d="M700 325 H730"/><path class="edge" d="M895 375 V430"/><path class="edge" d="M535 375 V430"/>
+  <path class="edge" d="M700 480 H730"/><path class="edge" d="M1060 480 H1160"/><path class="edge dash" d="M1060 480 H1120 V350 H1160"/>
+  <path class="edge" d="M535 530 V585"/><path class="edge" d="M895 530 V585"/><path class="edge" d="M700 635 H730"/>
+  <path class="edge" d="M895 685 V750 H880"/><path class="edge" d="M715 850 V885 H275 V580"/><path class="edge" d="M1060 635 H1160"/>
+</svg>

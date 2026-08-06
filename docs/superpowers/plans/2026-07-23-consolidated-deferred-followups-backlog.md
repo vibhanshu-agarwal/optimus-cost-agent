@@ -45,7 +45,7 @@ open-work inventory.
 | `P11-FEAT-GATEWAY-CORE` | Plan 11.1 — closed; merged to `main` as PR #85 (`6ae6997`, tip `6c39599`). Migration closed by **Plan 11.4**, merged to `main` as PR #91 (`d80e112`), 2026-07-28; no migration follow-ups remain open under this identity | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route); migration custody: strict-loopback completion, OpenRouter-default OpenAI-compatible aggregator transport, provider-reported accounting, and direct-adapter retirement — all implemented and independently re-verified task-by-task. The bounded Vercel Python transport check is complete as a design decision: Vercel is backlogged under this identity (its public OpenAI-compatible transport doesn't document the mandatory per-response provider-cost fields the settled `GatewayUsage` contract requires; no comparison matrix, no second endpoint added). Closure evidence: [design spec](../specs/2026-07-28-plan-11-4-p11-feat-gateway-core-migration-design.md), [implementation plan](2026-07-28-plan-11-4-gateway-core-migration.md) (all 36 checkboxes checked against their named verification commands) |
 | `P11-FEAT-GATEWAY-TOOLS` | Plan 11.2 — closed by PR #88 (merge `4590dbf`); migration follow-ups remain assigned here and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); migration custody: deterministic search/direct extract, route-specific dependency availability, replacement acceptance, and Tavily rollback-reviewed retirement; closure evidence: [Plan 11.2 approval](../reviews/2026-07-27-plan-11-2-implementation-plan-approval-v2.md), [local-process evidence](../../../reports/plan-11-2-gateway-tools-local-process-evidence.md), [staging evidence](../../../reports/plan-11-2-gateway-tools-staging-evidence.md), and [fitness report](../../../reports/plan-11-2-gateway-tools-task7-fitness.md) |
 | `P11-FEAT-GATEWAY-COST-OBS` | Plan 11.5 — closed by PR #95 (merge `e388258`), 2026-07-29; migration follow-ups remain assigned here (`P11.5-FU-1` open; `P11.5-FU-2` closed via Plan 11.6) and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); [implementation plan](2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration |
-| `P11-FEAT-GATEWAY-MCP` | Ratified; operator confirmed MCP support on 2026-07-29 (`P11-FU-3` decision half closed). Still blocked on the route/typed-contract design and fresh requirement extraction—no MCP endpoint is shown or implied yet; plan number assigned at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
+| `P11-FEAT-GATEWAY-MCP` | Ratified bounded v1 design: static-profile, dual-transport, tools-only Gateway brokering. The `P11-FU-3` route/typed-contract gate may close only after the charter amendment and all four amended PDFs are approved and published; an implementation plan number is assigned only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
 | `P11-FEAT-ZED-RESUME` | **Plan 11.7 active.** Frozen Task 0 Steps 1-4 sealed (`session/load` unreachable on current Zed 1.13.1); frozen Plan 11.7 Tasks 0 Steps 5-7 and Tasks 1-11 remain blocked. Standalone feasibility amendment approved (`79F3C92A…C06E6`, 2026-08-02); origin-A fixture v2 amendment approved and merged (`5BB327D8…9A4D` / PR #108, 2026-08-02). Corrected `origin-a-3` executed and sealed as Option B process-invalid (`next_corr=4` / `next_prompt=3` unclaimed; DoD success false). Retry-preflight amendment (`P11-FU-11`, PR #110) implemented through Task 5 **Path A** fail-closed terminal stop (2026-08-05): real CLI fail-closed at acquire; offline `unavailable_proof`; no corr-4 / no settings mutation / no Zed launch; accepted live retry not obtained. Parent Task 5 remains blocked; clean relaunch needs a budget-expansion amendment. Does not claim server-side custody feasible. Carries owned `P11-FU-1`, `P9.8-FU-5`, and `P11-FU-11`; coordinates, but does not own, `P11-FU-4` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume); [feasibility amendment](2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md); [origin-A fixture v2 amendment](2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md); [retry-preflight amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md). Dependency: the [evidence and handoff product pool](evidence-handoff-open-work-pool.md) entry `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` supplies its sanitized-evidence gate. |
 | `P11-FEAT-REGISTRY` | Ratified, unscheduled; blocked on its research gate — no authoritative source exists in any of the four pinned documents. Also owns the v1.0 release-version contract | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut) |
 | `P11-FEAT-IDE` | Conditional — opens only by explicit amendment if REGISTRY surfaces an unmet multi-IDE expectation | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing) |
@@ -239,7 +239,7 @@ and [implementation plan](2026-07-26-plan-11-2-p11-feat-gateway-tools-implementa
 
 - define and serve the package-registry lookup and security-advisory request/response contracts;
 - route `PACKAGE_AND_ADVISORY_METADATA` using `PACKAGE_VERSION` and `SECURITY_ADVISORY` signals;
-- preserve the one-key boundary, Gateway-side provider secrets, policy revalidation, usage/cost
+- preserve the zero-upstream-credential boundary, Gateway-side provider secrets, policy revalidation, usage/cost
   envelope, and evidence/provenance contracts; and
 - provide named unit, integration, and real-Gateway evidence for both endpoint families.
 
@@ -253,7 +253,7 @@ Named evidence reports are the [real local-process HTTP artifact](../../../repor
 evidence are complete. Remaining migration work stays with `P11-FEAT-GATEWAY-TOOLS` and is not a
 reopening of this closed item.
 
-### P11-FU-3: MCP Support Decision After LLD §0.B Source Repair
+### P11-FU-3: MCP Route/Typed-Contract Publication Gate
 
 **Raised:** 2026-07-25 during the Plan 11 Gateway requirement review. The original LLD §0.B was
 clipped at the rendered page boundary around `/v1/tools/web/extract`, and §0.C named MCP tool
@@ -274,14 +274,16 @@ rationale: non-negotiable for any agent, especially a coding agent.
 
 - ~~The operator must explicitly decide whether MCP brokering is supported.~~ Decided 2026-07-29:
   yes.
-- A separately reviewed Gateway route and typed request/response contract must still be authored,
-  source-pinned, and followed by fresh requirement extraction before any implementation plan is
-  promoted. This design/contract work has not started.
+- The route and typed request/response contract must be represented in the amended, source-pinned
+  HLD, LLD, Guardrails, and Test Strategy PDFs. This gate is satisfied only after the charter
+  amendment and all four PDFs are approved and published; source fragments or a local render alone
+  do not authorize implementation planning.
 
-**Status:** Decision half closed (2026-07-29: MCP brokering is supported).
-`P11-FEAT-GATEWAY-MCP` remains blocked pending the route/contract design and requirement
-extraction—not yet ready for an implementation plan. `P11-FEAT-ZED-RESUME` was picked up instead
-as Plan 11.7; this entry stays open and unscheduled.
+**Status:** Decision half closed (2026-07-29: MCP brokering is supported). The route/contract
+publication condition remains open until the charter amendment and all four amended PDFs are
+approved and published. `P11-FEAT-GATEWAY-MCP` is not ready for an implementation plan before that
+condition is met. `P11-FEAT-ZED-RESUME` was picked up instead as Plan 11.7; this entry stays open
+and unscheduled.
 
 ### P11-FU-4: Re-pin FU-4A/FU-5 Live Evidence
 
@@ -527,7 +529,7 @@ that Gateway-MCP implements this capability.
   deliberately unsupported, or honored through a separately reviewed agent-side MCP client.
 - Apply the decision consistently to every ACP lifecycle method that carries `mcpServers`; do not
   fix only `session/load` while leaving `session/new` semantically different.
-- Preserve the one-key/Gateway trust boundary, reject arbitrary side-effecting connectivity unless
+- Preserve the zero-upstream-credential/Gateway trust boundary, reject arbitrary side-effecting connectivity unless
   explicitly authorized, and distinguish client-nominated MCP from Gateway-brokered tools in docs
   and telemetry.
 - Add schema-pinned unit tests plus real-client evidence for empty and non-empty arrays, with no
@@ -687,6 +689,79 @@ Public gate signature supersession vs digest-pinned amendment Required interface
 non-digest current-state note (Task 6). Remains open only for independent reviewer/operator
 disposition of Path A and any future budget-expansion / live-retry path (separately authorized).
 
+### P11-FU-12: MCP OAuth 2.1 Lifecycle
+
+**Raised:** 2026-08-05 by the approved MCP Gateway architecture redline.
+
+**Designated custody:** This entry owns a future MCP OAuth 2.1 lifecycle design; a Plan 11.x number
+is assigned only when it is picked up.
+
+**Rationale and acceptance boundary:** v1 has static credential profiles only. OAuth acquisition,
+token custody, and step-up are absent. A future design must keep automatic same-binding refresh
+distinct from reapproval-triggering grant, issuer, resource, subject, scope, client, store, or
+policy rotation.
+
+**Status:** Tracked, not yet scheduled.
+
+### P11-FU-13: Deferred MCP Capabilities and Long-Lived Interaction
+
+**Raised:** 2026-08-05 by the approved MCP Gateway architecture redline.
+
+**Designated custody:** This entry owns future prompts, resources, elicitation, completion,
+subscriptions, tasks, and resumable discovery-cursor checkpoints; a Plan 11.x number is assigned
+only when it is picked up.
+
+**Rationale and acceptance boundary:** These capabilities need new trust and user-experience
+vocabulary. Roots are not access control; sampling reverses the prompt/cost direction and retains a
+separate double-human-approval and linked-accounting gate. External MCP logging remains unable to
+alter Optimus audit logging.
+
+**Status:** Tracked, not yet scheduled.
+
+### P11-FU-14: MCP Registry Discover-and-Connect
+
+**Raised:** 2026-08-05 by the approved MCP Gateway architecture redline.
+
+**Designated custody:** This entry owns future MCP catalog, discover, install, update, connect, and
+activation semantics; a Plan 11.x number is assigned only when it is picked up.
+
+**Rationale and acceptance boundary:** Catalog metadata is not code trust or operator approval.
+Automated install, update, or connect would invalidate v1's preprovisioned-only safety answer.
+This is explicitly distinct from ACP registry publication identity and release work under
+`P11-FEAT-REGISTRY`.
+
+**Status:** Tracked, not yet scheduled.
+
+### P11-FU-15: MCP Tool Search and Context Minimization
+
+**Raised:** 2026-08-05 by the approved MCP Gateway architecture redline.
+
+**Designated custody:** This entry owns future semantic per-turn tool selection and context
+minimization; a Plan 11.x number is assigned only when it is picked up.
+
+**Rationale and acceptance boundary:** v1 bounds and records an operator-selected descriptor subset,
+but provides no semantic per-turn selection seam and no code-mode sandbox.
+
+**Status:** Tracked, not yet scheduled.
+
+### P11-FU-16: Reverse Research-to-Documentation Freshness Gate
+
+**Raised:** 2026-08-05 by the approved MCP Gateway architecture redline.
+
+**Designated custody:** This entry owns a future reverse research-to-authoritative-documentation
+freshness gate; a Plan 11.x number is assigned only when it is picked up.
+
+**Rationale and acceptance boundary:** Current traceability catches normative document requirements
+missing from specifications, but not research or implementation learning that is absent from the
+authoritative documents. The generalized OWASP material lands in the current architecture amendment
+as `REFERENCE — Cross-cutting`; it is not deferred under this entry, and reference voice must not
+become a phantom requirement.
+
+**Status:** Tracked, not yet scheduled.
+
+The rejected signed per-call capability design is a decision record, not deferred work. It creates no
+sixth MCP follow-up without a real multi-user or off-box threat model.
+
 ### P11.5-FU-2: Consistent local env / Redis / Phoenix / Gateway startup for live runs
 
 **Raised:** 2026-07-29 during Plan 11.5 Task 8 (real Redis / Phoenix / ACP release-evidence
@@ -746,7 +821,8 @@ checkpoint without a reviewed amendment; retain named pool custody before Plan 1
 - Phoenix local startup is part of the same mechanism/runbook (not a fifth ad-hoc docker hint).
 - Runbook text and code paths are verified against each other (presence tests and/or a focused
   live smoke that follows the runbook steps).
-- Does not invent a fifth launcher family; does not weaken launch-trust / one-key / Gateway-only
+- Does not invent a fifth launcher family; does not weaken launch-trust / zero-upstream-credential /
+  Gateway-only OTLP contracts.
   OTLP contracts.
 
 **Evidence anchors:** Plan 11.5 Task 8 review conversation and evidence attempt (E7 /

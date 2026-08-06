@@ -28,7 +28,7 @@ separate from approval of this charter or a sub-plan.
 
 The Gateway capability partition remains the first primary slice:
 
-- `P11-FEAT-GATEWAY-CORE` (Plan 11.1) owns the one-key boundary, origin/secrets, model routing,
+- `P11-FEAT-GATEWAY-CORE` (Plan 11.1) owns the zero-upstream-credential boundary, origin/secrets, model routing,
   both model wire shapes, retries, normalized response-envelope validation, and the
   `/v1/observability/traces` route;
 - `P11-FEAT-GATEWAY-TOOLS` owns web search/extract adapters, provenance/domain revalidation, and
@@ -42,9 +42,10 @@ The Gateway capability partition remains the first primary slice:
   compatibility, and observability-field compatibility. Trace export has
   no allocated or amortized per-request charge, and LangSmith is not part of the architecture.
 
-All three slices preserve the one-key local credential boundary, with vendor keys owned and resolved
-gateway-side. `P9.85-FU-3` budget enforcement remains outside the Plan 11.1 scope pending the
-operator decision recorded in the consolidated backlog.
+All Gateway capability slices preserve zero upstream credentials in the agent process: the local
+runtime holds only its Gateway endpoint and API key, while vendor and upstream credentials are owned
+and resolved gateway-side. `P9.85-FU-3` budget enforcement remains outside the Plan 11.1 scope
+pending the operator decision recorded in the consolidated backlog.
 
 The Gateway design must continue to respect the authoritative HLD/LLD/Guardrails boundary. The
 parked `P9.85-FU-3` budget-enforcement question is not pulled into this charter's initial scope.
@@ -56,7 +57,7 @@ parked `P9.85-FU-3` budget-enforcement question is not pulled into this charter'
 | `P11-FEAT-GATEWAY-CORE` | Gateway core and `/v1/observability/traces` route | Plan 11.1 | First active feature slice; required. |
 | `P11-FEAT-GATEWAY-TOOLS` | Gateway web/evidence tool capability partition | Plan 11.2 | Ratified feature identity; implementation remains gated on review of the drafted spec and plan. |
 | `P11-FEAT-GATEWAY-COST-OBS` | Gateway normalized cost and observability capability partition | Assigned at pickup | Ratified feature identity; plan number is not reserved. |
-| `P11-FEAT-GATEWAY-MCP` | Gateway MCP tool-call brokering, transport, trust-registry integration, and typed request/response contract | Assigned at pickup | Ratified but gated; blocked on `P11-FU-3`, and no implementation scope may be frozen before the repaired LLD §0.D contract exists. |
+| `P11-FEAT-GATEWAY-MCP` | Gateway MCP tools-only brokering through static profiles over remote HTTP and Docker-contained stdio, with trust-registry integration and typed request/response contract | Assigned at pickup | Ratified and bounded by the published architecture gate; the `P11-FU-3` route/contract gate may close only after this amendment and all four amended PDFs are approved and published. |
 | `P11-FEAT-ZED-RESUME` | Zed integration fixes: `P9.8-FU-5` panic plus ACP session resume | 2nd | Required Zed proof slice; includes owned `P11-FU-1`. |
 | `P11-FEAT-REGISTRY` | ACP registry requirements, registration, and v1.0 cut | 3rd | Required release slice; outward publication requires separate operator approval. |
 | `P11-FEAT-IDE` | IDE-specific testing if registry registration does not surface or satisfy multi-IDE expectations | Conditional | Conditional; not an unconditional v1.0 gate. |
@@ -81,14 +82,14 @@ with the date and plan-file link, matching the consolidated backlog's existing p
 ## P11-FEAT-GATEWAY-CORE - Gateway Core and Observability Route
 
 `P11-FEAT-GATEWAY-CORE` is Plan 11.1. Its scope is the Gateway core plus the
-`/v1/observability/traces` route. Its design must resolve the one-key/origin boundary, the
+`/v1/observability/traces` route. Its design must resolve the zero-upstream-credential/origin boundary, the
 `/v1/responses` and served `/v1/chat/completions` route contracts, upstream/provider adapter boundary,
 gateway-side secret resolution, failure and retry behavior, normalized response-envelope validation,
 and the Gateway-to-observability ingress contract. It must not move vendor keys into the agent runtime
 or silently create a second local provider path.
 
 The `P11-FEAT-GATEWAY-CORE` specification must identify the capability-level release evidence needed
-for the model routes, observability ingress, one-key scans, provider failure behavior, response-envelope
+for the model routes, observability ingress, agent credential scans, provider failure behavior, response-envelope
 fail-closed behavior, and the preserved ledger/trace interfaces. It must also identify any new follow-ups
 in the consolidated backlog. Budget enforcement is not part of this scope; all such inventory rows
 remain deferred to `P9.85-FU-3 (parked; operator decision pending)`.
@@ -110,16 +111,29 @@ Plan 11.x number is assigned at pickup. Neither identity expands Plan 11.1's imp
 
 ## P11-FEAT-GATEWAY-MCP - Gateway MCP tool-call brokering
 
-`P11-FEAT-GATEWAY-MCP` is the ratified but gated owner for MCP tool-call brokering through the
-Gateway. Its scope will cover the Gateway transport, integration with the existing local trust and
-pre-tool guardrail layer in `src/optimus/mcp/runtime.py`, and the typed Gateway request/response
-contract once that contract is authoritative.
+`P11-FEAT-GATEWAY-MCP` is the ratified owner for a bounded v1 MCP tool-call broker through the
+Gateway. Its v1 scope is tools-only method/result/content handling through operator-provisioned,
+static credential profiles, over the separately specified remote HTTP and Docker-contained stdio
+transports. It includes integration with the existing local trust and pre-tool guardrail layer in
+`src/optimus/mcp/runtime.py` and the typed Gateway request/response contract. The agent process
+keeps zero upstream credentials; the Gateway owns the upstream credentials and runtime connection
+state.
 
-This feature is blocked on `P11-FU-3`, which owns repair or replacement of the clipped LLD §0.B
-component-flow source and the missing MCP endpoint shape in §0.D. No MCP implementation scope,
-route, payload, or response envelope may be inferred or frozen before that source repair and its
-fresh digest-pinned requirement extraction complete. The Plan 11.x number is assigned at pickup
+`P11-FU-3` records the route/typed-contract design gate. That gate may be marked satisfied only
+after this charter amendment and all four amended HLD, LLD, Guardrails, and Test Strategy PDFs are
+approved and published. Until then, no MCP implementation plan, route, payload, or response envelope
+may be promoted from this charter or its source fragments. The Plan 11.x number is assigned at pickup
 under the same next-unused-single-decimal convention used for TOOLS, COST-OBS, and ZED-RESUME.
+
+Context7 is a named remote-compatibility acceptance dependency of this feature, not a sixth
+follow-up. Before Context7 support may be claimed, a Gateway-originated, authenticated
+discovery/version/tools probe of the configured endpoint must prove the `2026-07-28` protocol floor
+against the real service; a fake or a different HTTP server cannot discharge that dependency.
+
+Gateway-brokered MCP remains distinct from `P11-FU-9` client-supplied ACP `mcpServers`, which would
+ask the agent to connect to client-nominated servers, and from `P11-FEAT-ZED-RESUME` ACP session
+custody. MCP catalog/discover-and-connect remains deferred under `P11-FU-14`; it is not ACP
+publication identity or registry work owned by `P11-FEAT-REGISTRY`.
 
 ## P11-FEAT-ZED-RESUME - Zed integration fixes and session resume
 
@@ -198,14 +212,16 @@ The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-bac
 single source of truth for the carried `P9.8-FU-5` and `P9.87-FU-1` items, `P11-FU-4` evidence-
 freshness work, and follow-ups discovered during Plan 11 feature work. `P11-FU-1` is owned by
 `P11-FEAT-ZED-RESUME`, not parked. `P11-FU-2` is owned by
-`P11-FEAT-GATEWAY-TOOLS` as an unimplemented package/advisory capability, and `P11-FU-3`
-is owned by `LLD source repair` for the clipped §0.B and missing MCP endpoint contract. The
-source-repair item blocks `P11-FEAT-GATEWAY-MCP` and prevents MCP implementation scoping. The
-`P11-FEAT-ZED-RESUME` Zed live-evidence work should
-coordinate with the re-pin, but the freshness item still needs explicit fresh-evidence closure or
-a reviewed disposition. The budget-enforcement item `P9.85-FU-3` remains parked and undecided
-outside Plan 11.1's initial scope; revisit it only if Gateway work organically reaches budget or cost
-policy.
+`P11-FEAT-GATEWAY-TOOLS` as an unimplemented package/advisory capability. `P11-FU-3` owns the
+conditional route/typed-contract publication gate for `P11-FEAT-GATEWAY-MCP`; it closes only after
+this charter amendment and all four amended PDFs are approved and published. The five distinct MCP
+deferred-work entries are `P11-FU-12` OAuth lifecycle, `P11-FU-13` deferred capabilities and
+long-lived interaction, `P11-FU-14` registry discover-and-connect, `P11-FU-15` tool-search/context
+minimization, and `P11-FU-16` reverse research-to-documentation freshness. The
+`P11-FEAT-ZED-RESUME` Zed live-evidence work should coordinate with the re-pin, but the freshness
+item still needs explicit fresh-evidence closure or a reviewed disposition. The budget-enforcement
+item `P9.85-FU-3` remains parked and undecided outside Plan 11.1's initial scope; revisit it only if
+Gateway work organically reaches budget or cost policy.
 
 Primary `P11-FEAT-GATEWAY-CORE`, `P11-FEAT-ZED-RESUME`, and `P11-FEAT-REGISTRY` work is sequenced first. Before v1.0 sign-off, every item in the consolidated open-work pool
 must be closed with evidence or an explicit reviewed disposition; v1.0 does not ship with an open
@@ -214,7 +230,7 @@ become a v1.0 gate merely because an IDE candidate exists.
 
 The v1.0 Definition of Done is therefore:
 
-- Gateway capability work is complete within the one-key architecture, with Plan 11.1 closing the
+- Gateway capability work is complete with zero upstream credentials in the agent process, with Plan 11.1 closing the
   CORE plus observability-route gate and the ratified TOOLS/COST-OBS slices accounted for separately;
 - the agent is feature-complete against the Phase 1 charter except for Plan 12's context/intelligence
   work, with every excluded capability named rather than implied;
@@ -231,9 +247,10 @@ The v1.0 Definition of Done is therefore:
 - Plan 12's context-window optimization and intelligent selection remain post-v1.0 v1.x work.
 - `P9.85-FU-3` remains outside the initial Plan 11 scope pending the Gateway budget authority
   decision.
-- MCP Gateway brokering remains outside the CORE and TOOLS scopes. It is carried by the ratified
-  `P11-FEAT-GATEWAY-MCP` identity but is gated on `P11-FU-3`; no MCP endpoint or transport contract
-  is assumed from the clipped or missing LLD source.
+- MCP Gateway brokering remains outside the CORE and TOOLS scopes. `P11-FEAT-GATEWAY-MCP` carries
+  the bounded tools-only, static-profile, dual-transport v1 design. Its `P11-FU-3` route/contract
+  gate closes only after this amendment and all four amended PDFs are approved and published; neither
+  catalog automation nor client-supplied ACP `mcpServers` is part of that Gateway feature.
 - The **Windows Subprocess Handle-Duplication Flake, WinError 6/50** remains explicitly excluded
   from the initial Plan 11 feature scope and v1.0 gate. The `P11-FU-5` entry in the consolidated open-work
   pool owns its future Windows investigation state; the no-reproduction result, lack of a

@@ -1,12 +1,12 @@
 # Optimus Cost Agent
 
-Local-first Python ACP (Agent Client Protocol) server for building **cost-aware AI agents**. All model and provider access routes through the **local Optimus Gateway** so the agent process runs with a single API key; provider credentials stay isolated in the Gateway process.
+Local-first Python ACP (Agent Client Protocol) server for building **cost-aware AI agents**. All model and provider access routes through the **local Optimus Gateway** so the agent process resolves zero upstream provider credentials; only the Gateway URL and agent-facing API key are local inputs, while provider credentials stay isolated in the Gateway process.
 
 **Status:** Early initialization (Phase 1). Design docs and project standards are in place; application code is under active development.
 
 ## Features (Phase 1)
 
-- **One-key runtime** — only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` required locally
+- **Gateway-only credential runtime** — only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` are required locally; no upstream provider credential is resolved in the agent process
 - **Gateway-native usage and cost** — parse billing from gateway responses, not post-hoc estimates
 - **Plan and Agent modes** — advisory planning vs. gated mutations with approval workflows
 - **Structured telemetry** — JSON Lines logging tied by `session_id` / `run_id`
@@ -32,8 +32,9 @@ violated.
 
 ### Phase 1 Gateway Configuration Foundation
 
-The gateway configuration foundation keeps the agent process on the one-key
-model: `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY`. `OptimusGatewaySettings`
+The gateway configuration foundation keeps zero upstream provider credentials in
+the agent process: `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` are the only local
+inputs. `OptimusGatewaySettings`
 masks the Optimus API key in safe dumps and representations, rejects local
 provider keys, and accepts strict loopback Gateway URLs only. The gateway client
 posts model requests to `/v1/responses` using the Responses API `input` shape and
@@ -143,10 +144,11 @@ trajectory, cost band, final state, and mutation count. LLM-judged evaluation
 remains a Gateway-routed extension and is not required locally.
 
 The Phase 1 release runner composes ordered unit, integration, coverage,
-golden-task-suite, diff-hygiene, and one-key credential gates into a single
-`ReleaseGateReport`. `scan_local_credentials()` enforces the one-key model by
+golden-task-suite, diff-hygiene, and Gateway-only credential gates into a single
+`ReleaseGateReport`. `scan_local_credentials()` enforces the zero-upstream-credential
+invariant by
 rejecting resolvable provider keys from the local environment and configured
-release scan artifacts. The default one-key gate scans the local process
+release scan artifacts. The default Gateway-only credential gate scans the local process
 environment plus `.env`, `.env.local`, `pyproject.toml`,
 `reports/phase1-release-gate.json`, `reports/phase1-golden-results.json`, and
 `reports/process-state.json`. These report paths are scanned because the release
@@ -505,8 +507,8 @@ override) remains the file-backed alternative for agent credential resolution �
 [Install and configure](#2-install-and-configure-keychain--operator-path) above.
 
 For this project the Optimus Gateway is a **local process you run yourself**, not a hosted
-service that issues credentials. The agent keeps the one-key model: only
-`OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` in the agent environment.
+service that issues credentials. The agent resolves zero upstream provider credentials: only
+`OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` are in the agent environment.
 If the agent and Gateway run under WSL2, they must share the same WSL2 network namespace; a
 Windows-host Gateway is not loopback from an agent running inside WSL2.
 

@@ -161,13 +161,13 @@ WSL2 Ubuntu-24.04, DejaVu Sans/Mono, Lato, Ruff, pytest.
 - Consumes: formal operator approval of the design and this plan.
 - Produces: immutable source hashes and a checkpoint record used by every later task.
 
-- [ ] **Step 1: Confirm the formal approval gates**
+- [x] **Step 1: Confirm the formal approval gates**
 
 Read the latest task message and the checkpoint log. Stop unless the operator has explicitly
 approved the consolidated design and this publication plan. Approval to draft the plan is not
 approval to execute it.
 
-- [ ] **Step 2: Verify the worktree and branch**
+- [x] **Step 2: Verify the worktree and branch**
 
 Run:
 
@@ -180,7 +180,7 @@ git rev-parse --show-toplevel
 Expected: branch `agent/codex/mcp-gateway-architecture-amendment`; only the reviewed draft/reference
 files and checkpoint log are untracked or modified. Stop on any unrelated overlap.
 
-- [ ] **Step 3: Pin the four binary source PDFs and the tracked charter blob**
+- [x] **Step 3: Pin the four binary source PDFs and the tracked charter blob**
 
 Run:
 
@@ -204,7 +204,7 @@ Test Strategy v1.5: F3D744EC175B1E18E8B1E4E271997A0BB12666CC33CA7154A40BF5298588
 Stop if a PDF differs. Record the charter digest as `git_blob_sha256`; keeping `git show` and
 `sha256sum` inside WSL prevents PowerShell from transforming the blob's line endings.
 
-- [ ] **Step 4: Pin the approved wording inputs using LF-normalized content**
+- [x] **Step 4: Pin the approved wording inputs using LF-normalized content**
 
 The four untracked Markdown drafts have no Git blob yet. Hash their UTF-8 content after normalizing
 CRLF to LF, and record each digest as `lf_normalized_sha256`. Run:
@@ -220,12 +220,12 @@ Record all four hashes and their digest kind in the checkpoint log and later in
 `build-manifest.json`. Recompute the same LF-normalized digests immediately before final staging;
 after the first commit, record the committed blob hashes as the durable publication pins.
 
-- [ ] **Step 5: Record the execution checkpoint**
+- [x] **Step 5: Record the execution checkpoint**
 
 Use `apply_patch` to write a `Current State` section and a newest-first UTC entry containing the
 approval evidence, branch, source hashes, accepted rulings, and next task.
 
-- [ ] **Step 6: Verify Task 1**
+- [x] **Step 6: Verify Task 1**
 
 Run:
 
@@ -250,13 +250,13 @@ Expected: the checkpoint path is ignored; no authoritative PDF or charter has ch
 - Consumes: Task 1 source pins and the v3 splice implementation.
 - Produces: a version-correct source package with no changed-page prose yet treated as final.
 
-- [ ] **Step 1: Copy the approved reusable baseline mechanically**
+- [x] **Step 1: Copy the approved reusable baseline mechanically**
 
 Copy `print.css`, `tools/build_publication.py`, and `tools/validate_publication.py` from
 `local-gateway-architecture-v3`. Copy the three SVGs as editing baselines. Create the README,
 manifest, changed-page, audit, and verification files with `apply_patch`.
 
-- [ ] **Step 2: Replace package names and target versions**
+- [x] **Step 2: Replace package names and target versions**
 
 Use `apply_patch` to set:
 
@@ -270,13 +270,13 @@ Test Strategy v1.6
 Set the four pinned source filenames and hashes exactly as verified in Task 1. Do not guess
 replacement pages yet.
 
-- [ ] **Step 3: Document the splice policy**
+- [x] **Step 3: Document the splice policy**
 
 The README must state that unchanged pages are copied from the four pinned PDFs, image-backed LLD
 code pages are not OCR-retyped, target metadata/headers are version-consistent, and any inline body
 replacement outside a changed page must be manifest-declared and pixel-bounded.
 
-- [ ] **Step 4: Scan for stale precedent identifiers**
+- [x] **Step 4: Scan for stale precedent identifiers**
 
 Run:
 
@@ -288,7 +288,7 @@ Expected: old versions appear only as explicit pinned-source or provenance refer
 package path or current no-MCP conclusion remains. The v3 exclusion may appear only in the clearly
 labelled historical provenance record, never as current architecture.
 
-- [ ] **Step 5: Review checkpoint**
+- [x] **Step 5: Review checkpoint**
 
 Update the checkpoint log with created files, stale-scan output, and approval request for the source
 skeleton. Do not begin prose redlining until the reviewer accepts the package shape.
@@ -309,7 +309,7 @@ skeleton. Do not begin prose redlining until the reviewer accepts the package sh
 - Consumes: redline clusters HLD-MCP-1 through HLD-MCP-6 and revised ruling 9's two-voice rule.
 - Produces: complete HLD wording for §§5A, 6, 10.A, 10.C, 11, 11.1, and 12 plus two diagrams.
 
-- [ ] **Step 1: Re-extract the pinned HLD pages**
+- [x] **Step 1: Re-extract the pinned HLD pages**
 
 Run under WSL2:
 
@@ -320,7 +320,7 @@ pdftotext -layout docs/Optimus-Cost-Agent-Architecture-v2.16.pdf tmp/pdfs/mcp-ga
 Compare the extracted sections to the section map and v3 changed-page source. Do not author from
 memory.
 
-- [ ] **Step 2: Write the changed HLD sheets**
+- [x] **Step 2: Write the changed HLD sheets**
 
 Use `apply_patch` and preserve unchanged surrounding text. Insert the exact approved rules for:
 
@@ -342,21 +342,21 @@ Use `apply_patch` and preserve unchanged surrounding text. Insert the exact appr
   separately labelled normative MCP controls; and
 - expanded quality/evidence gates and honest exclusion provenance.
 
-- [ ] **Step 3: Update the system-context SVG**
+- [x] **Step 3: Update the system-context SVG**
 
 Add Gateway-owned stdio and remote HTTP MCP edges, profile/credential custody, and both trust gates.
 Keep all secrets inside the Gateway boundary. Preserve the local network-namespace warning. A
 catalog may appear only as operator-side pre-provisioning reference; draw no registry-to-agent,
 registry-to-model, or registry-to-Gateway-data-plane edge.
 
-- [ ] **Step 4: Update the sequence SVG**
+- [x] **Step 4: Update the sequence SVG**
 
 Show agent pre-tool/context-admission gates, Gateway bearer/profile/freshness/binding/allowlist/
 pagination/resource/budget checks, profile-scoped connection open/close and execution, untrusted-
 result validation, MCP usage persistence, and result release. Connection lifetime must not look
 like profile activation or MCP session resume.
 
-- [ ] **Step 5: Run the HLD content scan**
+- [x] **Step 5: Run the HLD content scan**
 
 Run:
 
@@ -367,7 +367,7 @@ rg -n "No MCP endpoint|no MCP endpoint|exactly one upstream credential|Gateway r
 
 Expected: every required anchor is present; the exclusion scan returns no stale normative claim.
 
-- [ ] **Step 6: Review checkpoint**
+- [x] **Step 6: Review checkpoint**
 
 Record the exact HLD sections/pages and request reviewer approval before starting LLD authoring.
 
@@ -387,7 +387,7 @@ Record the exact HLD sections/pages and request reviewer approval before startin
 - Produces: the typed route/profile/state/accounting/trust contract used by later implementation
   planning.
 
-- [ ] **Step 1: Re-extract the pinned LLD target pages**
+- [x] **Step 1: Re-extract the pinned LLD target pages**
 
 Run:
 
@@ -398,7 +398,7 @@ pdftotext -layout docs/Optimus-Cost-Agent-LLD-v2.39.pdf tmp/pdfs/mcp-gateway/lld
 Inspect §§0.B-0.E, §0A, §§9/9E-10A, and §§12/12B/12D. Preserve image-backed code pages unless they
 are explicitly replaced by the approved changed-page map.
 
-- [ ] **Step 2: Write the route and profile contract**
+- [x] **Step 2: Write the route and profile contract**
 
 Add only:
 
@@ -418,7 +418,7 @@ restarts complete scans and defers cursor checkpoints under `P11-FU-13`. Record 
 named real-server HTTP compatibility dependency: its configured endpoint must pass the authenticated
 Gateway discovery/version/tools probe before any Context7 reachability claim.
 
-- [ ] **Step 3: Write trust, result, transport, and failure contracts**
+- [x] **Step 3: Write trust, result, transport, and failure contracts**
 
 Include complete-only results, inert resources, image/audio disposition, `x-mcp-header` validation
 without `Mcp-Param-*`, call-scoped input-required denial, HTTP POST-SSE bounds, mandatory Docker
@@ -428,20 +428,20 @@ persistence-only accounting recovery, durable indeterminate holds, and external 
 without changing Optimus audit logging. Add generalized OWASP reference rows with explicit
 `REFERENCE — Cross-cutting` labels and a separate normative MCP table.
 
-- [ ] **Step 4: Write the separate MCP accounting contract**
+- [x] **Step 4: Write the separate MCP accounting contract**
 
 Keep legacy settled rows unchanged. Define `MCPUsageRecord`, the three attribution states,
 operator-declared-free revision-bound `explicit_zero`, strict-budget denial for `unavailable`,
 consumer sweep, and never-zero-for-unknown display/reconciliation semantics.
 
-- [ ] **Step 5: Update the component-flow SVG**
+- [x] **Step 5: Update the component-flow SVG**
 
 Show the existing agent `MCPTrustRegistry` separately from Gateway `MCPProfileRegistry`, discovery
 paginator and call brokers, connection manager, two transport adapters, result validation, usage
 writing, and agent-side descriptor-context admission. Do not show the Gateway re-evaluating
 permission scope/effect class or a registry performing runtime connect/activation.
 
-- [ ] **Step 6: Run the LLD completeness scan**
+- [x] **Step 6: Run the LLD completeness scan**
 
 Run:
 
@@ -452,7 +452,7 @@ rg -n "arbitrary MCP method|runtime activation endpoint|roots.*security boundary
 
 Expected: required anchors are present and rejected claims are absent.
 
-- [ ] **Step 7: Review checkpoint**
+- [x] **Step 7: Review checkpoint**
 
 Record LLD sections/pages and obtain reviewer approval before Guardrails/Test Strategy authoring.
 
@@ -470,7 +470,7 @@ Record LLD sections/pages and obtain reviewer approval before Guardrails/Test St
 - Consumes: GR-MCP-1 through GR-MCP-4.
 - Produces: normative split-authority, result-trust, stdio-residual, and acknowledgment policy.
 
-- [ ] **Step 1: Re-extract the Guardrails target sections**
+- [x] **Step 1: Re-extract the Guardrails target sections**
 
 Run:
 
@@ -480,7 +480,7 @@ pdftotext -layout docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflo
 
 Inspect §§1-3, 5/5.2, 9, 11, and page-16 §13 document control before authoring.
 
-- [ ] **Step 2: Author the changed sheets**
+- [x] **Step 2: Author the changed sheets**
 
 Preserve Plan 6.5 no-autoload, descriptor scanning, manifest reapproval, allowed tools, scope, and
 effect rules. Add Gateway allowlist/detected-drift freshness enforcement, stale-marked last-binding
@@ -496,17 +496,17 @@ Gateway correction entry, and adding the v1.2 amendment entry. State that v3 exp
 no-MCP as global rule 14 but recorded no causal rationale; the hosted-SaaS-premise theory remains
 unconfirmed.
 
-- [ ] **Step 3: Run the Guardrails scan**
+- [x] **Step 3: Run the Guardrails scan**
 
 Run:
 
 ```powershell
-rg -n "Gateway allowlist|server/discover|nextCursor|stale_marked|profile_id\.tool_name|durable|indeterminate|arguments|system prompt|input_required|resource_link|explicit_zero|unavailable|RetryPolicy|Windows Job Object|Docker|--env NAME|v1\.1|v1\.2|global rule 14|unconfirmed" docs/sources/mcp-gateway-architecture-amendment/guardrails-v1.2-changed-pages.md
+rg -n "Gateway allowlist|server/discover|nextCursor|stale_marked|profile_id\.tool_name|durable|indeterminate|arguments|system prompt|input_required|resource_link|explicit_zero|unavailable|RetryPolicy|Windows Job Object|Docker|--env NAME|v1\.1|v1\.2|global rule 14|unconfirmed|split agency|Plan 6\.5|sampling|human decision|complete-only|inert|image/audio|enforced|platform-gated|code-execution" docs/sources/mcp-gateway-architecture-amendment/guardrails-v1.2-changed-pages.md
 ```
 
 Expected: every control and residual appears explicitly.
 
-- [ ] **Step 4: Review checkpoint**
+- [x] **Step 4: Review checkpoint**
 
 Record the Guardrails sections/pages and obtain reviewer approval.
 
@@ -524,7 +524,7 @@ Record the Guardrails sections/pages and obtain reviewer approval.
 - Consumes: TS-MCP-1 through TS-MCP-4 and every design evidence row.
 - Produces: executable evidence requirements without implementing runtime tests in this lane.
 
-- [ ] **Step 1: Re-extract the Test Strategy target sections**
+- [x] **Step 1: Re-extract the Test Strategy target sections**
 
 Run:
 
@@ -534,7 +534,7 @@ pdftotext -layout docs/Optimus-Cost-Agent-Test-Strategy-v1.5.pdf tmp/pdfs/mcp-ga
 
 Inspect §§1-3, 6-10, and 11-14, especially §8A and §§14.4-14.5.
 
-- [ ] **Step 2: Author scope, tier, and interoperability wording**
+- [x] **Step 2: Author scope, tier, and interoperability wording**
 
 Bring tools-only Gateway MCP into scope for both transports. Require real Gateway plus
 independently authored stdio and HTTP MCP servers for live claims. Keep fakes in unit tier and keep
@@ -543,7 +543,7 @@ dependency: its configured endpoint must receive a live authenticated Gateway-or
 probe proving `2026-07-28` plus tools support before any Context7 reachability claim. A fake or
 another HTTP server is insufficient; unsupported or indeterminate evidence is fail-closed.
 
-- [ ] **Step 3: Author the security and accounting matrices**
+- [x] **Step 3: Author the security and accounting matrices**
 
 Map every design evidence row, including direct bearer misuse, freshness on both sides, profile
 changes, rotation successor test, restart activation, namespace collisions, deferred features,
@@ -554,17 +554,17 @@ integration, elicitation triple denial, sampling producing no model call or spen
 logging unable to alter Optimus audit logging, and the Context7 exact-version probe. Reference-only
 HLD/LLD OWASP statements must not acquire Test Strategy acceptance criteria.
 
-- [ ] **Step 4: Run the Test Strategy scan**
+- [x] **Step 4: Run the Test Strategy scan**
 
 Run:
 
 ```powershell
-rg -n "independently authored|Streamable HTTP|stdio|server/discover|nextCursor|ttlMs|mcp\.protocol_version_unsupported|Context7|logging|Gateway-side freshness|agent restart|test_launch_env_change_forces_reapproval_without_logging_secret_values|unattributed|consumer sweep|input_required|sampling|catalog|descriptor-context|RetryPolicy|x-mcp-header|Mcp-Param|P11-FU-9|P11-FEAT-ZED-RESUME" docs/sources/mcp-gateway-architecture-amendment/test-strategy-v1.6-changed-pages.md
+rg -n "independently authored|Streamable HTTP|stdio|server/discover|nextCursor|ttlMs|mcp\.protocol_version_unsupported|Context7|logging|Gateway-side freshness|agent restart|test_launch_env_change_forces_reapproval_without_logging_secret_values|unattributed|consumer sweep|input_required|sampling|catalog|descriptor-context|RetryPolicy|x-mcp-header|Mcp-Param|P11-FU-9|P11-FEAT-ZED-RESUME|split agency|Plan 6\.5|human decision|complete-only|inert|image/audio|enforced|platform-gated|code-execution|MCPUsageRecord" docs/sources/mcp-gateway-architecture-amendment/test-strategy-v1.6-changed-pages.md
 ```
 
 Expected: every anchor appears and §§14.4-14.5 are extended rather than replaced.
 
-- [ ] **Step 5: Review checkpoint**
+- [x] **Step 5: Review checkpoint**
 
 Record the Test Strategy sections/pages and obtain reviewer approval.
 
@@ -584,7 +584,7 @@ Record the Test Strategy sections/pages and obtain reviewer approval.
 - Produces: authoritative feature scope and named custody without assigning speculative Plan 11.x
   numbers.
 
-- [ ] **Step 1: Re-read the current charter and pool entries**
+- [x] **Step 1: Re-read the current charter and pool entries**
 
 Run:
 
@@ -592,7 +592,7 @@ Run:
 rg -n -C 5 "P11-FEAT-GATEWAY-MCP|P11-FU-3|P11-FU-9|one-key|Explicit exclusions" docs/superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md docs/superpowers/plans/2026-07-01-phase-1-roadmap.md
 ```
 
-- [ ] **Step 2: Apply the charter amendment**
+- [x] **Step 2: Apply the charter amendment**
 
 Use `apply_patch` to replace the one-upstream-key wording with zero upstream credentials in the
 agent, define the approved v1 static-profile/dual-transport/tools-only scope, and state that the
@@ -601,7 +601,7 @@ remote-compatibility dependency of `P11-FEAT-GATEWAY-MCP`, requiring a configure
 authenticated Gateway discovery/version/tools probe before Context7 support may be claimed; do not
 create a sixth follow-up for this in-scope feature acceptance dependency.
 
-- [ ] **Step 3: Add exactly five custody entries**
+- [x] **Step 3: Add exactly five custody entries**
 
 Add `P11-FU-12` MCP OAuth lifecycle, `P11-FU-13` deferred capabilities/long-lived interaction,
 `P11-FU-14` MCP registry discover-and-connect, `P11-FU-15` tool-search/context minimization, and
@@ -611,13 +611,13 @@ it is not deferred under `P11-FU-16`.
 
 Do not create a follow-up for signed per-call capabilities.
 
-- [ ] **Step 4: Preserve non-conflation**
+- [x] **Step 4: Preserve non-conflation**
 
 Keep `P11-FU-9` client-supplied ACP `mcpServers` and `P11-FEAT-ZED-RESUME` session custody explicitly
 separate from Gateway-brokered MCP. Keep MCP catalog/discover-and-connect custody under
 `P11-FU-14` separate from ACP publication identity `P11-FEAT-REGISTRY`.
 
-- [ ] **Step 5: Run custody hygiene tests**
+- [x] **Step 5: Run custody hygiene tests**
 
 Run:
 
@@ -628,7 +628,7 @@ rg -n "unowned|UNOWNED" docs/superpowers/plans/2026-07-25-plan-11-v1-milestone-c
 
 Expected: hygiene tests pass; no new MCP deferral is unowned.
 
-- [ ] **Step 6: Review checkpoint**
+- [x] **Step 6: Review checkpoint**
 
 Record the exact charter/pool/roadmap diff and obtain reviewer approval.
 
@@ -649,7 +649,7 @@ Record the exact charter/pool/roadmap diff and obtain reviewer approval.
 - Consumes: approved changed-page sources from Tasks 3-6.
 - Produces: one fragment PDF per document and an exact replacement-page map.
 
-- [ ] **Step 1: Verify the approved toolchain without installing anything**
+- [x] **Step 1: Verify the approved toolchain without installing anything**
 
 Run:
 
@@ -659,7 +659,7 @@ wsl -d Ubuntu-24.04 -- bash -lc "pandoc --version | head -1; weasyprint --versio
 
 Expected: Pandoc 3.1.3, WeasyPrint 61.1, Poppler 24.02.0. Stop on version drift and request review.
 
-- [ ] **Step 2: Render each Markdown fragment**
+- [x] **Step 2: Render each Markdown fragment**
 
 From the WSL-mounted repository path, run Pandoc and WeasyPrint for:
 
@@ -673,7 +673,7 @@ test-strategy-v1.6-changed-pages.md -> tmp/pdfs/mcp-gateway/build/test.pdf
 Use `--standalone`, the package `print.css`, matching metadata titles, and the package directory as
 WeasyPrint's base URL.
 
-- [ ] **Step 3: Count and inspect fragment pages**
+- [x] **Step 3: Count and inspect fragment pages**
 
 Run:
 
@@ -687,18 +687,18 @@ pdfinfo tmp/pdfs/mcp-gateway/build/test.pdf
 Update `replacement_pages` only from actual fragment cardinality and the approved source-page map.
 Record every mapping in `changed-pages-manifest.md`.
 
-- [ ] **Step 4: Render fragment contact sheets**
+- [x] **Step 4: Render fragment contact sheets**
 
 Use Poppler to render every fragment page at 150 dpi under `tmp/pdfs/mcp-gateway/rendered-fragments/`.
 Inspect headings, tables, diagrams, line wrapping, clipping, and page transitions. Fix source/layout
 with `apply_patch`, rerender, and repeat until clean.
 
-- [ ] **Step 5: Run stale-version and anchor scans**
+- [x] **Step 5: Run stale-version and anchor scans**
 
 Extract fragment text and verify target versions, required MCP anchors, and absence of stale
 exclusion wording. Record commands and results in `verification.md`.
 
-- [ ] **Step 6: Review checkpoint**
+- [x] **Step 6: Review checkpoint**
 
 Record fragment page counts and replacement mapping; obtain reviewer approval before assembly.
 
@@ -717,19 +717,19 @@ Record fragment page counts and replacement mapping; obtain reviewer approval be
 - Consumes: pinned sources, approved fragments, exact page map, and approved font files.
 - Produces: four candidate authoritative PDFs with output hashes.
 
-- [ ] **Step 1: Adapt the assembler narrowly**
+- [x] **Step 1: Adapt the assembler narrowly**
 
 Use `apply_patch` to change input/output filenames, metadata titles, version assertions, fragment
 names, and manifest path. Preserve the v3 cardinality, old-header, carried-page, metadata, and hash
 checks. Remove only exceptions that are demonstrably inapplicable; add new historical-version
 exceptions explicitly.
 
-- [ ] **Step 2: Copy the exact approved fonts to the temporary build directory**
+- [x] **Step 2: Copy the exact approved fonts to the temporary build directory**
 
 Copy DejaVu Sans, DejaVu Sans Bold, DejaVu Sans Oblique, and Lato Italic from Ubuntu-24.04 into
 `tmp/pdfs/mcp-gateway/fonts/`, matching the precedent.
 
-- [ ] **Step 3: Run the assembler**
+- [x] **Step 3: Run the assembler**
 
 Run:
 
@@ -740,11 +740,11 @@ wsl -d Ubuntu-24.04 -- bash -lc "cd /mnt/d/Projects/Development/Python/optimus-c
 Expected: exit 0; four new PDFs created; output hashes written to the manifest; source PDFs
 unchanged.
 
-- [ ] **Step 4: Verify source immutability immediately**
+- [x] **Step 4: Verify source immutability immediately**
 
 Re-run the four source hashes from Task 1. Expected: exact match.
 
-- [ ] **Step 5: Review checkpoint**
+- [x] **Step 5: Review checkpoint**
 
 Record candidate PDF paths, sizes, page counts, and hashes. Do not call them authoritative yet.
 
@@ -828,7 +828,7 @@ in `verification.md`.
 Record filename, metadata title, cover version, page count, page size, source hash, output hash,
 changed pages, carried pages, and preservation result for each document.
 
-- [ ] **Step 8: Review checkpoint**
+- [x] **Step 8: Review checkpoint**
 
 Provide the validator output, contact-sheet locations, completeness audit, and hashes to the
 reviewer. Candidate PDFs remain unapproved until this checkpoint passes.
@@ -850,7 +850,7 @@ reviewer. Candidate PDFs remain unapproved until this checkpoint passes.
 - Consumes: reviewer-approved candidate PDFs and charter/custody edits.
 - Produces: consistent current-state claims and clean repository quality gates.
 
-- [ ] **Step 1: Audit all current-state claims**
+- [x] **Step 1: Audit all current-state claims**
 
 Run:
 
@@ -861,17 +861,17 @@ rg -n -i "no mcp endpoint|mcp.*out of scope|mcp.*blocked|P11-FU-3|P11-FEAT-GATEW
 Classify every hit as updated normative state, historical evidence, or stale text requiring an
 approved edit. Record the classification in `completeness-audit.md`.
 
-- [ ] **Step 2: Refresh the authoritative section map**
+- [x] **Step 2: Refresh the authoritative section map**
 
 Update filenames, versions, page counts, hashes, diagram survey, and MCP section ownership. Replace
 the old no-endpoint conclusion with the approved typed-contract summary.
 
-- [ ] **Step 3: Verify custody consistency**
+- [x] **Step 3: Verify custody consistency**
 
 Confirm the charter, pool, roadmap, section map, redline, and PDFs use identical feature and
 follow-up names, and keep `P11-FU-9`/`P11-FEAT-ZED-RESUME` separate.
 
-- [ ] **Step 4: Run documentation tests**
+- [x] **Step 4: Run documentation tests**
 
 Run:
 
@@ -881,7 +881,7 @@ python -m pytest tests/unit/docs -v
 
 Expected: all documentation hygiene tests pass.
 
-- [ ] **Step 5: Run Ruff**
+- [x] **Step 5: Run Ruff**
 
 Run:
 
@@ -891,7 +891,7 @@ python -m ruff check .
 
 Expected: exit 0 with no findings.
 
-- [ ] **Step 6: Run the full test suite**
+- [x] **Step 6: Run the full test suite**
 
 Run:
 
@@ -914,7 +914,7 @@ Expected: exit 0. Record pass/skip/deselection counts and warnings separately fr
 This is the required pre-finalize POSIX evidence; an environment-blocked or partial run is not a
 pass.
 
-- [ ] **Step 8: Run the publication validator again**
+- [x] **Step 8: Run the publication validator again**
 
 Run the exact Task 10 validator inside Ubuntu-24.04 WSL2 after all freshness edits:
 
@@ -924,7 +924,7 @@ wsl -d Ubuntu-24.04 -- bash -lc "cd /mnt/d/Projects/Development/Python/optimus-c
 
 Expected: exit 0 and unchanged output hashes.
 
-- [ ] **Step 9: Review checkpoint**
+- [x] **Step 9: Review checkpoint**
 
 Record all gate outputs and the final freshness audit. Request approval for the final diff.
 
@@ -943,7 +943,7 @@ Record all gate outputs and the final freshness audit. Request approval for the 
 - Consumes: approved outputs and clean gates from Tasks 1-11.
 - Produces: an operator-approved publication changeset; staging/commit only if separately ordered.
 
-- [ ] **Step 1: Inspect the complete diff and untracked set**
+- [x] **Step 1: Inspect the complete diff and untracked set**
 
 Run:
 
@@ -956,7 +956,7 @@ git diff -- docs/superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md do
 
 Review new files directly because ordinary `git diff` omits untracked content.
 
-- [ ] **Step 2: Confirm lane purity**
+- [x] **Step 2: Confirm lane purity**
 
 Run:
 
@@ -967,7 +967,7 @@ git status --short | Select-String -Pattern '^.. (src|tests)/'
 Expected: no production or runtime-test file appears. Documentation tests may remain unchanged; this
 lane specifies them but does not implement MCP behavior.
 
-- [ ] **Step 3: Confirm the checkpoint is excluded**
+- [x] **Step 3: Confirm the checkpoint is excluded**
 
 Run:
 
@@ -978,24 +978,24 @@ git diff --cached --name-only
 
 Expected: checkpoint is ignored and absent from the index.
 
-- [ ] **Step 4: Obtain final operator approval**
+- [x] **Step 4: Obtain final operator approval**
 
 Present the complete file list, four PDF hashes, validation/test outputs, residuals, custody entries,
 and freshness audit. Stop until the operator approves the publication changeset.
 
-- [ ] **Step 5: Stage only if explicitly authorized**
+- [x] **Step 5: Stage only if explicitly authorized**
 
 If and only if the operator explicitly asks to stage, use an exact path list with `git add`; do not
 use `git add .` or `git add -A`. Re-run `git diff --cached --name-only` and prove the checkpoint and
 temporary build files are absent.
 
-- [ ] **Step 6: Commit only if explicitly authorized**
+- [x] **Step 6: Commit only if explicitly authorized**
 
 If and only if the operator explicitly asks to commit, first rerun the Task 11 Ruff, full pytest,
 and publication-validator commands. Then commit with the operator-approved message. Never use
 `--no-verify`.
 
-- [ ] **Step 7: Do not push or open a PR implicitly**
+- [x] **Step 7: Do not push or open a PR implicitly**
 
 Report the branch and commit hash, if any. Pushing and PR creation require separate explicit
 authorization and the branch must first be updated from `main` per repository policy.
