@@ -7,8 +7,11 @@ from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from pydantic import ValidationError
+
 from optimus.config.gateway import OptimusGatewaySettings
-from optimus.gateway.errors import GatewayHttpError
+from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
+from optimus.gateway.mcp_models import MCPCallRequest, MCPCallResponse, MCPDiscoverRequest, MCPDiscoverResponse
 from optimus.gateway.models import (
     GatewayResponse,
     GatewayUsage,
@@ -28,8 +31,9 @@ class GatewayRequest:
 
     def __repr__(self) -> str:
         safe_headers = dict(self.headers)
-        if "Authorization" in safe_headers:
-            safe_headers["Authorization"] = "Bearer **********"
+        for key in tuple(safe_headers):
+            if key.lower() == "authorization":
+                safe_headers[key] = "Bearer **********"
         return (
             "GatewayRequest("
             f"method={self.method!r}, url={self.url!r}, headers={safe_headers!r}, "
@@ -121,6 +125,8 @@ class GatewayClient:
     def post_tool_json(self, *, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not path.startswith("/v1/tools/"):
             raise ValueError("tool path must start with /v1/tools/")
+        if path.startswith("/v1/tools/mcp/"):
+            raise ValueError("typed MCP methods are required for MCP routes")
         self._settings.validate_trusted_gateway()
         return self._transport.post_json(
             GatewayRequest(
@@ -131,6 +137,40 @@ class GatewayClient:
                 timeout_seconds=self._timeout_seconds,
             )
         )
+
+    def discover_mcp(self, *, request: MCPDiscoverRequest) -> MCPDiscoverResponse:
+        body = self._post_mcp(path="/v1/tools/mcp/discover", payload=request.model_dump(mode="json", exclude_none=True))
+        try:
+            return MCPDiscoverResponse.model_validate(body)
+        except ValidationError as exc:
+            raise GatewayResponseError("invalid MCP response", audit_code="MCP_RESPONSE_INVALID") from exc
+
+    def call_mcp(self, *, request: MCPCallRequest) -> MCPCallResponse:
+        body = self._post_mcp(path="/v1/tools/mcp/call", payload=request.model_dump(mode="json", exclude_none=True))
+        try:
+            return MCPCallResponse.model_validate(body)
+        except ValidationError as exc:
+            raise GatewayResponseError("invalid MCP response", audit_code="MCP_RESPONSE_INVALID") from exc
+
+    def _post_mcp(self, *, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if path not in {"/v1/tools/mcp/discover", "/v1/tools/mcp/call"}:
+            raise ValueError("MCP route is not allowed")
+        self._settings.validate_trusted_gateway()
+        try:
+            return self._transport.post_json(
+                GatewayRequest(
+                    method="POST",
+                    url=self._url(path),
+                    headers=self._json_headers(),
+                    payload=payload,
+                    timeout_seconds=self._timeout_seconds,
+                )
+            )
+        except GatewayHttpError as exc:
+            secret = self._settings.optimus_api_key.get_secret_value()
+            if secret and secret in str(exc):
+                raise GatewayHttpError(exc.status_code, "MCP Gateway request failed", gateway_usage=exc.gateway_usage) from exc
+            raise
 
     def post_observability_json(self, *, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not path.startswith("/v1/observability/"):

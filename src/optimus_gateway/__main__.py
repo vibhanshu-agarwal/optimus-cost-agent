@@ -6,6 +6,7 @@ import sys
 
 import keyring as _keyring_module
 
+from optimus_gateway.mcp_profiles import MCPProfileDefinitionError, MCPProfileRegistry
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.server import serve_gateway
 from optimus_security.launch_manifest import (
@@ -80,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         hmac_key = read_manifest_hmac_key(_keyring_module)
-        verify_gateway_child_manifest(
+        verified_manifest = verify_gateway_child_manifest(
             args.manifest,
             hmac_key=hmac_key,
             provider=config.provider,
@@ -94,7 +95,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"optimus-local-gateway: manifest validation failed ({exc.code}); refusing to start.", file=sys.stderr)
         return 2
 
-    server = serve_gateway(config=config)
+    try:
+        mcp_registry = MCPProfileRegistry.from_startup_metadata(verified_manifest.mcp_profiles)
+    except MCPProfileDefinitionError as exc:
+        print(f"optimus-local-gateway: MCP profile bootstrap validation failed ({exc}); refusing to start.", file=sys.stderr)
+        return 2
+
+    server = serve_gateway(config=config, mcp_registry=mcp_registry)
     host, port = server.server_address
     print(
         f"optimus local gateway listening on http://{host}:{port} "

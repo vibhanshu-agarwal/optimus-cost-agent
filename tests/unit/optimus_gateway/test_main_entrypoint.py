@@ -182,7 +182,7 @@ class TestManifestValidation:
             def shutdown(self) -> None:
                 pass
 
-        monkeypatch.setattr(gateway_main, "serve_gateway", lambda *, config: FakeServer())
+        monkeypatch.setattr(gateway_main, "serve_gateway", lambda **_kwargs: FakeServer())
 
         exit_code = gateway_main.main(["--bind-host", "127.0.0.1", "--port", "8765", "--manifest", manifest])
         assert exit_code == 0

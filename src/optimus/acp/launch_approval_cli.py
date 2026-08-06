@@ -15,6 +15,7 @@ import os
 import secrets
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 from optimus.acp.launch_approvals import (
@@ -531,6 +532,7 @@ def _cmd_run_gateway(
     trusted_roots: TrustedOperatorRoots,
     credential_keyring_backend: object,
     with_local_phoenix: bool = False,
+    mcp_profiles: tuple[Mapping[str, object], ...] = (),
 ) -> int:
     """Start the local Gateway with the approval ceremony, reading the
     repository's own .env.gateway as untrusted DATA — never sourced or
@@ -621,6 +623,7 @@ def _cmd_run_gateway(
         shared_secret=shared_secret,
         hmac_key=hmac_key_source.hmac_key,
         policy_version=LAUNCH_POLICY_COMPATIBILITY,
+        mcp_profiles=mcp_profiles,
     )
     serialized_manifest = serialize_gateway_child_manifest(manifest)
 

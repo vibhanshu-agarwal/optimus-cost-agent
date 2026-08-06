@@ -29,7 +29,7 @@ import json
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Mapping
 
 MANIFEST_SCHEMA_VERSION = 1
 MANIFEST_MAX_AGE_SECONDS = 60
@@ -71,6 +71,40 @@ _HMAC_KEY_ENTRY = "hmac_integrity_key"
 
 _MANIFEST_SIGNATURE_DOMAIN = b"p996-gateway-child-manifest-v1"
 _MANIFEST_FINGERPRINT_DOMAIN = b"p996-manifest-credential-fingerprint-v1"
+_MCP_PROFILE_ALLOWED_FIELDS = frozenset(
+    {
+        "profile_id",
+        "revision",
+        "manifest_hash",
+        "transport",
+        "credential_ref",
+        "upstream_allowlist",
+        "limits",
+        "attribution_policy",
+        "transport_config",
+    }
+)
+_MCP_PROFILE_FORBIDDEN_FIELDS = frozenset(
+    {
+        "oauth",
+        "client_id",
+        "client_secret",
+        "access_token",
+        "refresh_token",
+        "authorization_url",
+        "token_url",
+        "scope",
+        "catalog_url",
+        "autoload",
+        "install",
+        "update",
+        "credential",
+        "password",
+        "bearer",
+        "credential_fingerprint",
+        "secret_fingerprint",
+    }
+)
 
 
 class LaunchManifestError(ValueError):
@@ -101,6 +135,7 @@ class GatewayChildManifest:
     expires_at: datetime
     nonce: str
     signature: str
+    mcp_profiles: tuple[dict[str, Any], ...] = ()
 
 
 def read_manifest_hmac_key(keyring_backend: Any) -> bytes:
@@ -139,6 +174,7 @@ def _canonical_fields(
     issued_at: str,
     expires_at: str,
     nonce: str,
+    mcp_profiles: tuple[dict[str, Any], ...] = (),
 ) -> dict[str, Any]:
     """Canonical field mapping used for BOTH signing and serialization.
 
@@ -161,6 +197,7 @@ def _canonical_fields(
         "issued_at": issued_at,
         "expires_at": expires_at,
         "nonce": nonce,
+        "mcp_profiles": list(mcp_profiles),
     }
 
 
@@ -182,6 +219,7 @@ def build_gateway_child_manifest(
     shared_secret: str,
     hmac_key: bytes,
     policy_version: str,
+    mcp_profiles: tuple[Mapping[str, Any], ...] = (),
 ) -> GatewayChildManifest:
     """Build a signed manifest. issued_at/expires_at are exactly
     MANIFEST_MAX_AGE_SECONDS apart."""
@@ -195,6 +233,7 @@ def build_gateway_child_manifest(
     provider_fp = _fingerprint_credential(provider_api_key, field_name="provider_api_key", hmac_key=hmac_key)
     shared_fp = _fingerprint_credential(shared_secret, field_name="shared_secret", hmac_key=hmac_key)
 
+    normalized_profiles = _normalize_mcp_profiles(mcp_profiles)
     fields = _canonical_fields(
         schema_version=MANIFEST_SCHEMA_VERSION,
         policy_version=policy_version,
@@ -209,6 +248,7 @@ def build_gateway_child_manifest(
         issued_at=now.isoformat(),
         expires_at=expires_at.isoformat(),
         nonce=nonce,
+        mcp_profiles=normalized_profiles,
     )
     signature = _compute_signature(fields, hmac_key=hmac_key)
 
@@ -227,6 +267,7 @@ def build_gateway_child_manifest(
         expires_at=expires_at,
         nonce=nonce,
         signature=signature,
+        mcp_profiles=normalized_profiles,
     )
 
 
@@ -247,6 +288,7 @@ def serialize_gateway_child_manifest(manifest: GatewayChildManifest) -> str:
         "expires_at": manifest.expires_at.isoformat(),
         "nonce": manifest.nonce,
         "signature": manifest.signature,
+        "mcp_profiles": list(manifest.mcp_profiles),
     }
     return json.dumps(data, sort_keys=True, separators=(",", ":"))
 
@@ -282,6 +324,7 @@ def verify_gateway_child_manifest(
         raise LaunchManifestError(code="MANIFEST_CORRUPT", detail="invalid JSON") from exc
 
     try:
+        normalized_profiles = _normalize_mcp_profiles(data.get("mcp_profiles", ()))
         fields = _canonical_fields(
             schema_version=data["schema_version"],
             policy_version=data["policy_version"],
@@ -296,6 +339,7 @@ def verify_gateway_child_manifest(
             issued_at=data["issued_at"],
             expires_at=data["expires_at"],
             nonce=data["nonce"],
+            mcp_profiles=normalized_profiles,
         )
         signature = data["signature"]
     except (KeyError, TypeError) as exc:
@@ -356,4 +400,55 @@ def verify_gateway_child_manifest(
         expires_at=expires_at,
         nonce=data["nonce"],
         signature=signature,
+        mcp_profiles=normalized_profiles,
     )
+
+
+def _normalize_mcp_profiles(value: Any) -> tuple[dict[str, Any], ...]:
+    if value in (None, ()):
+        return ()
+    if not isinstance(value, (list, tuple)):
+        raise LaunchManifestError(code="MANIFEST_MCP_PROFILE_INVALID", detail="profiles must be a list")
+
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    try:
+        for item in value:
+            if not isinstance(item, Mapping):
+                raise ValueError("profile must be an object")
+            _reject_mcp_profile_fields(item)
+            if set(item) != _MCP_PROFILE_ALLOWED_FIELDS:
+                raise ValueError("profile fields are not exact")
+            profile_id = item["profile_id"]
+            if not isinstance(profile_id, str) or not profile_id.strip() or profile_id in seen:
+                raise ValueError("profile_id is missing or duplicated")
+            seen.add(profile_id)
+            profile = {str(key): _json_value(value) for key, value in item.items()}
+            if not isinstance(profile["upstream_allowlist"], list):
+                raise ValueError("upstream_allowlist must be a list")
+            normalized.append(profile)
+    except (TypeError, ValueError) as exc:
+        raise LaunchManifestError(code="MANIFEST_MCP_PROFILE_INVALID", detail=str(exc)) from exc
+    return tuple(sorted(normalized, key=lambda item: item["profile_id"]))
+
+
+def _reject_mcp_profile_fields(value: Mapping[str, Any]) -> None:
+    for key, nested in value.items():
+        if str(key).lower() in _MCP_PROFILE_FORBIDDEN_FIELDS:
+            raise ValueError(f"forbidden profile field: {key}")
+        if isinstance(nested, Mapping):
+            _reject_mcp_profile_fields(nested)
+        elif isinstance(nested, (list, tuple)):
+            for item in nested:
+                if isinstance(item, Mapping):
+                    _reject_mcp_profile_fields(item)
+
+
+def _json_value(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, Mapping):
+        return {str(key): _json_value(nested) for key, nested in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_value(item) for item in value]
+    raise ValueError("profile metadata must contain JSON values only")

@@ -767,6 +767,22 @@ become a phantom requirement.
 The rejected signed per-call capability design is a decision record, not deferred work. It creates no
 sixth MCP follow-up without a real multi-user or off-box threat model.
 
+### Durable effect-aware MCP indeterminate-call custody
+
+**Raised:** 2026-08-06 during Plan 11.8 Task 7 closure review.
+
+**Designated custody:** This entry owns durable effect-aware MCP indeterminate-call custody: read-only
+explicit re-invocation and side-effecting operator-acknowledgment hold across agent restart. The
+follow-up identifier and Plan 11.x number are assigned only when this item is picked up.
+
+**Acceptance criteria:** Extend `PreToolGuard` and its approval store so a post-dispatch timeout or
+loss is durably classified by effect: read-only calls can be explicitly re-invoked with the original
+binding and `gateway_request_id`, while side-effecting calls remain held until an operator
+acknowledges the outcome. Custody must survive agent restart, preserve no-automatic-redispatch
+behavior, and produce auditable disposition and accounting evidence.
+
+**Status:** Tracked, not yet scheduled.
+
 ### P11-FU-17: WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer
 
 **Raised:** 2026-08-06 during the MCP Gateway architecture amendment publication plan's Task 11 WSL2
