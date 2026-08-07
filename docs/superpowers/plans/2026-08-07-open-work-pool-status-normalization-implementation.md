@@ -653,7 +653,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   are made after their commands pass, stage only this implementation plan and commit them as
   `docs: record pool normalization verification`.
 
-- [ ] **Step 7: Update from current main and rerun the complete safety gates.**
+- [x] **Step 7: Update from current main and rerun the complete safety gates.**
 
   ```powershell
   git fetch origin main
