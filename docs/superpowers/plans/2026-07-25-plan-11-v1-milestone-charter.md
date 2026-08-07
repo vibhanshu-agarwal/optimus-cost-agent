@@ -59,7 +59,7 @@ parked `P9.85-FU-3` budget-enforcement question is not pulled into this charter'
 | `P11-FEAT-GATEWAY-COST-OBS` | Gateway normalized cost and observability capability partition | Assigned at pickup | Ratified feature identity; plan number is not reserved. |
 | `P11-FEAT-GATEWAY-MCP` | Gateway MCP tools-only brokering through static profiles over remote HTTP and Docker-contained stdio, with trust-registry integration and typed request/response contract | Assigned at pickup | Ratified and bounded by the published architecture gate; the `P11-FU-3` route/contract gate may close only after this amendment and all four amended PDFs are approved and published. |
 | `P11-FEAT-ZED-RESUME` | Zed integration fixes: `P9.8-FU-5` panic plus ACP session resume | 2nd | Required Zed proof slice; includes owned `P11-FU-1`. |
-| `P11-FEAT-REGISTRY` | ACP registry requirements, registration, and v1.0 cut | 3rd | Required release slice; outward publication requires separate operator approval. |
+| `P11-FEAT-REGISTRY` | ACP registry validation, registration, and v1.0 cut | Last primary Plan 11 slice (holding position) | Required release slice; reassess 11.x-last versus a split outward-publication lane in 13.x after the consolidated open-work pool closes. |
 | `P11-FEAT-IDE` | IDE-specific testing if registry registration does not surface or satisfy multi-IDE expectations | Conditional | Conditional; not an unconditional v1.0 gate. |
 
 The feature IDs are permanent, greppable slice identities. They use the `P11-FEAT-*` prefix;
@@ -177,14 +177,31 @@ for the v1.0 gate.
 
 ## P11-FEAT-REGISTRY - ACP registry registration and v1.0 cut
 
-`P11-FEAT-REGISTRY` begins with a research gate. ACP registry publication and registration requirements are not
-yet known and must be researched against the current registry process before the implementation
-scope is frozen. The research record must identify package metadata, naming/identity, protocol and
-version declarations, validation, discoverability, release artifacts, ownership, and rollback or
-withdrawal expectations that actually apply. `P11-FEAT-REGISTRY` also owns the v1.0 release inventory: a named
-list of every capability excluded from the cut, with its rationale, custody, and next-phase or
-conditional destination. That inventory is the authoritative answer to the DoD's
-"feature-complete except Plan 12" boundary and must be reviewed before sign-off.
+The ACP registry is a public, stabilized process with a maintained
+[registry repository](https://github.com/agentclientprotocol/registry),
+[submission guide](https://github.com/agentclientprotocol/registry/blob/main/CONTRIBUTING.md), and
+[published schema and format](https://github.com/agentclientprotocol/registry/blob/main/FORMAT.md).
+`P11-FEAT-REGISTRY` therefore begins with a source-revalidation and scope gate against the live
+process, not research for an unknown authoritative source. At pickup, pin the exact upstream
+revision and verify the applicable validator and CI behavior by execution before freezing scope;
+published prose is a requirements input, not proof of enforcement. The research record must identify
+package metadata, naming/identity, protocol and version declarations, validation, discoverability,
+release artifacts, ownership, and rollback or withdrawal expectations that actually apply.
+
+The current Optimus side of a likely authentication collision is verified: `pyproject.toml` and
+`src/optimus/acp/spec.py` both declare version `0.1.0`, while the ACP `initialize` response declares
+`authMethods: []`. The registry's current
+[authentication guidance](https://github.com/agentclientprotocol/registry/blob/main/AUTHENTICATION.md)
+and submission guide describe admission as requiring at least one Agent Auth or Terminal Auth
+method. That registry-side behavior remains an external claim to reproduce through the live
+registry validator/auth check at pickup, not a settled implementation requirement in this charter.
+The eventual design must resolve any confirmed collision without weakening the one-key Gateway
+boundary or inventing unsupported authentication behavior.
+
+`P11-FEAT-REGISTRY` also owns the v1.0 release inventory: a named list of every capability excluded
+from the cut, with its rationale, custody, and next-phase or conditional destination. That inventory
+is the authoritative answer to the DoD's "feature-complete except Plan 12" boundary and must be
+reviewed before sign-off.
 
 The v1.0 cut must update both known version locations together:
 
@@ -195,6 +212,13 @@ The `P11-FEAT-REGISTRY` sub-plan must establish one release-version contract so 
 must add a check that fails when the package and ACP-reported versions disagree. Actual outward
 registry registration/publication is an operator-controlled action and requires explicit approval
 at the time the researched procedure is executed.
+
+The release-version contract and excluded-capability inventory are part of the v1.0 cut and remain
+inside Plan 11. Outward registration/publication is separable discoverability work. Once the
+consolidated open-work pool closes, the operator and reviewer must record a placement decision:
+retain outward publication in this last primary Plan 11 slice, or split only that publication action
+into a 13.x train while keeping the v1.0 contract and inventory in Plan 11. Moving the whole slice to
+13.x would require a separate v1.0 boundary amendment; this charter does not make that move.
 
 ## P11-FEAT-IDE - Conditional IDE-specific testing
 
@@ -223,10 +247,13 @@ item still needs explicit fresh-evidence closure or a reviewed disposition. The 
 item `P9.85-FU-3` remains parked and undecided outside Plan 11.1's initial scope; revisit it only if
 Gateway work organically reaches budget or cost policy.
 
-Primary `P11-FEAT-GATEWAY-CORE`, `P11-FEAT-ZED-RESUME`, and `P11-FEAT-REGISTRY` work is sequenced first. Before v1.0 sign-off, every item in the consolidated open-work pool
-must be closed with evidence or an explicit reviewed disposition; v1.0 does not ship with an open
-consolidated open-work pool. Conditional `P11-FEAT-IDE` is handled according to its explicit amendment and does not
-become a v1.0 gate merely because an IDE candidate exists.
+Primary `P11-FEAT-GATEWAY-CORE` and `P11-FEAT-ZED-RESUME` work is sequenced first.
+`P11-FEAT-REGISTRY` is the last primary Plan 11 slice as a holding position. Its final placement is
+reassessed after the consolidated open-work pool closes under the split rule above. Before v1.0
+sign-off, every item in that pool must be closed with evidence or an explicit reviewed disposition;
+v1.0 does not ship with an open consolidated open-work pool. Conditional `P11-FEAT-IDE` is handled
+according to its explicit amendment and does not become a v1.0 gate merely because an IDE candidate
+exists.
 
 The v1.0 Definition of Done is therefore:
 
@@ -259,5 +286,5 @@ The v1.0 Definition of Done is therefore:
   reviewed custody decision is made.
 - JetBrains Air and JetBrains AI Assistant are conditional/post-v1.0 candidates, not unconditional
   v1.0 gates.
-- ACP registry requirements remain an open research input; this charter does not assume them or
-  authorize external publication.
+- ACP registry requirements have a public authoritative source, but their exact live enforcement
+  remains a pickup-time validation input; this charter does not authorize external publication.
