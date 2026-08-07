@@ -793,6 +793,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.guardrails.mcp_trust:assemble_tool_descriptor_scan_text:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: assemble_tool_descriptor_scan_text json.dumps only public MCP tool input-schema metadata into ConfigTrustScanner MCP_DESCRIPTOR scan text; it is untrusted descriptor input, not credential retention or diagnostic export.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/guardrails/test_mcp_trust.py::test_exported_descriptor_scan_primitives_remain_usable_for_client_path",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.guardrails.pre_tool:PreToolGuard._validate_surface:text_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.guardrails.pre_tool:PreToolGuard._validate_surface:text_write is an AST-overmatch with no sink call in its scoped body.",
@@ -838,6 +846,14 @@
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.loops.ledger:JsonlProgressLedger.entries:file_open before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.mcp.client_catalog:arguments_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: arguments_digest json.dumps only canonicalizes MCP call arguments in memory to compute a SHA-256 binding digest for one-call approval; the payload is not persisted, audited, or exported as diagnostic content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/mcp/test_client_catalog.py::test_one_call_token_replay_and_mismatch_denied",
       "evidence_tier": "unit"
     },
     {

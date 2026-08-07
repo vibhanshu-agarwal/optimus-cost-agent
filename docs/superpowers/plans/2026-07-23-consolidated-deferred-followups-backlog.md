@@ -951,6 +951,50 @@ without a sleep) but on a different platform and different underlying primitive.
 **Status:** Tracked, not yet scheduled. Root cause diagnosed as environment-level timestamp
 coalescing, not a security or production-code defect. Not blocking any plan closure.
 
+**Recurrence:** 2026-08-07 during P11-FU-9 Task 4 independent review (operator + Cursor WSL full
+`tests/unit` runs). The same node failed intermittently under full-suite WSL/DrvFs load and passed
+standalone — same custody as this entry; do not open a duplicate FU.
+
+### P11-FU-19: WSL full-suite load flake in client SDK operation-deadline unit test
+
+**Raised:** 2026-08-07 during P11-FU-9 Task 4 independent review (operator Vibhanshu / Cursor).
+Priority: **Test-infra load flake; not a Task 4 or production SDK defect.**
+
+**Origin:**
+`tests/unit/mcp/test_client_sdk.py::test_operation_deadline_is_enforced` uses a 0.2s
+`operation_timeout_seconds` budget around a deliberately slow fake `initialize`. Under full
+`tests/unit` load on WSL2 against a Windows-mounted worktree it intermittently fails; the same
+node passes standalone. Observed alongside the known `P11-FU-17` git-path failure and the
+`P11-FU-18` trusted-paths recurrence on alternating full-suite runs — different pair of failures
+each time, load-induced rather than a Task 4 regression.
+
+**Suspected cause:** Tight wall-clock timeout under suite scheduling / DrvFs I/O pressure, same
+general class as `P11-FU-7` (deadline vs harness load) but on WSL full-suite rather than Windows
+coverage/`sys.settrace`. Not evidence of a broken `MCPAsyncSupervisor` / `ClientMcpSdkAdapter`
+deadline path when the focused Task 3/4 selectors are green.
+
+**Designated slice:** Future WSL2/test-infrastructure reliability work; no plan number is
+allocated (lazy numbering — assign only if/when picked up for scoping).
+
+**Acceptance criteria (draft — refine at pickup):**
+
+- Reproduce under full-suite WSL load vs isolation before changing production deadlines.
+- Prefer a narrowly scoped test-harness remedy (e.g. slightly more tolerant fake sleep/timeout
+  ratio under load) that preserves the assertion that over-budget opens raise
+  `ClientMcpSdkError(code="OPERATION_TIMEOUT")`.
+- Do not weaken production default 30s operation deadlines to paper over the flake.
+- Keep custody distinct from `P11-FU-7` (Windows coverage/trace) and `P11-FU-18` (ctime coalescing).
+
+**Evidence anchors:** P11-FU-9 Task 4 review notes (2026-08-07);
+`tests/unit/mcp/test_client_sdk.py::test_operation_deadline_is_enforced`;
+`src/optimus/mcp/client_sdk.py`.
+
+**Related prior art:** `P11-FU-7` (NDJSON / coverage timing), `P11-FU-18` (WSL ctime), and the
+Task 2 review note that the NDJSON flake remains backlog-owned and non-blocking.
+
+**Status:** Tracked, not yet scheduled; no implementation plan exists. Not blocking P11-FU-9 Task 4
+sign-off.
+
 ### P11.5-FU-2: Consistent local env / Redis / Phoenix / Gateway startup for live runs
 
 **Raised:** 2026-07-29 during Plan 11.5 Task 8 (real Redis / Phoenix / ACP release-evidence

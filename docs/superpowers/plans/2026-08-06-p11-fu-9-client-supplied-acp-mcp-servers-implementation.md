@@ -325,7 +325,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   HOLD until its bound one-call token is supplied. The legacy registry/manifest branch and its order
   remain unchanged.
 
-- [ ] **Step 1: Write RED catalog and guard tests.**
+- [x] **Step 1: Write RED catalog and guard tests.**
 
   Cover descriptor count/page/byte/cursor/duplicate budget failures yielding no catalog; individual
   malformed or scanner-blocked soft drops; safe availability metadata for tools above a ceiling;
@@ -335,13 +335,13 @@ independently authored `acpx` ACP client for ACP live evidence.
   HOLD then one-call-token ALLOW; token replay, cross-session use, tool/argument mismatch denial; and
   legacy registry/exposure behavior unchanged.
 
-- [ ] **Step 2: Run the RED selectors.**
+- [x] **Step 2: Run the RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_catalog.py tests/unit/guardrails/test_mcp_trust.py tests/unit/guardrails/test_pre_tool_guard.py tests/unit/guardrails/test_permissions.py -q
   ```
 
-- [ ] **Step 3: Implement the client-only catalog adapter and authorizer seam.**
+- [x] **Step 3: Implement the client-only catalog adapter and authorizer seam.**
 
   Extract only reusable descriptor scanning/normalization primitives from `mcp_trust.py`; do not
   change manifest registration, allowlists, or `_PERMISSION_SCOPE_LIMITS`. Classify client effects as
@@ -349,14 +349,14 @@ independently authored `acpx` ACP client for ACP live evidence.
   current transport lease, catalog identity, descriptor membership, and durable ceiling before
   dispatch; let ordinary `PreToolGuard`/ACP approval decide every write-classified call.
 
-- [ ] **Step 4: Run focused GREEN and static fitness.**
+- [x] **Step 4: Run focused GREEN and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_catalog.py tests/unit/guardrails/test_mcp_trust.py tests/unit/guardrails/test_pre_tool_guard.py tests/unit/guardrails/test_permissions.py -q
   uv run --frozen ruff check src/optimus/mcp/client_catalog.py src/optimus/guardrails/mcp_trust.py src/optimus/guardrails/pre_tool.py src/optimus/guardrails/permissions.py tests/unit/mcp/test_client_catalog.py tests/unit/guardrails/test_pre_tool_guard.py tests/unit/guardrails/test_permissions.py
   ```
 
-- [ ] **Step 5: Reviewer checkpoint.**
+- [x] **Step 5: Reviewer checkpoint.**
 
   Confirm client transport approval conveys no trust in descriptors/results and legacy local-manifest
   trust remains independently tested.

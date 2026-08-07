@@ -279,3 +279,53 @@ def test_pre_tool_guard_passes_shell_environment_to_command_validator(tmp_path):
 
     assert result.verdict is PreToolVerdict.BLOCK
     assert result.rule_id == "shell.git_config_env_bypass"
+
+
+def test_client_session_authority_bypasses_legacy_manifest_requirement(tmp_path):
+    from optimus.guardrails.prompt_injection import ConfigTrustScanner
+    from optimus.mcp.client_catalog import ClientMcpCallAuthorizer, ClientMcpDescriptorExposureAdapter
+    from optimus.mcp.client_config import ClientMcpSafeIdentity
+    from optimus.mcp.client_trust import ClientMcpSessionLease
+
+    identity = ClientMcpSafeIdentity(
+        transport="http",
+        server_name="tools",
+        canonical_target="https://mcp.example.com/a",
+        arguments=(),
+        credential_name_fingerprints=(),
+    )
+    catalog = ClientMcpDescriptorExposureAdapter(scanner=ConfigTrustScanner()).build(
+        identity,
+        [{"tools": [{"name": "list_providers", "description": "List", "inputSchema": {"type": "object"}}]}],
+        identity_fingerprint="fp-1",
+    )
+    lease = ClientMcpSessionLease(
+        session_id="session-1",
+        workspace_digest="a" * 64,
+        server_name="tools",
+        identity_fingerprint="fp-1",
+        effect_ceiling="non_mutating",
+    )
+    authorizer = ClientMcpCallAuthorizer(catalog=catalog, lease=lease)
+    guard = PreToolGuard.for_workspace(
+        workspace_root=tmp_path,
+        allowed_network_hosts=(),
+        client_mcp_authorizer=authorizer,
+    )
+
+    result = guard.check(
+        PreToolRequest(
+            run_id="run-1",
+            session_id="session-1",
+            execution_mode=ExecutionMode.AGENT,
+            tool_surface=ToolSurface.MCP,
+            action="tools.list_providers",
+            mcp_authority="client_session",
+            mcp_server_id="tools",
+            mcp_tool_name="list_providers",
+            mcp_arguments={"q": "secret-arg-should-not-audit"},
+        )
+    )
+
+    assert result.verdict is PreToolVerdict.ALLOW
+    assert "secret-arg-should-not-audit" not in guard.audit_events()[-1].sanitized_subject

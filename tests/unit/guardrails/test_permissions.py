@@ -189,6 +189,47 @@ def test_approved_mcp_reaches_pre_tool_validation():
     assert decision.rule_id == "allow.mcp.approved_pre_tool_validation"
 
 
+def test_client_session_read_effect_allows_without_plan_approval():
+    policy = PermissionPolicy()
+
+    decision = policy.decide(
+        PermissionRequest(
+            run_id="run-1",
+            session_id="session-1",
+            execution_mode=ExecutionMode.AGENT,
+            tool_surface=ToolSurface.MCP,
+            action="tools.list_providers",
+            generation_scope=GenerationScope.INLINE_SNIPPET,
+            approval_granted=False,
+            metadata={"mcp_authority": "client_session", "mcp_effect": "read"},
+        )
+    )
+
+    assert decision.verdict is PermissionVerdict.ALLOW
+    assert decision.rule_id == "allow.mcp.client_session_non_mutating"
+
+
+def test_client_session_write_effect_holds_for_one_call_approval():
+    policy = PermissionPolicy()
+
+    decision = policy.decide(
+        PermissionRequest(
+            run_id="run-1",
+            session_id="session-1",
+            execution_mode=ExecutionMode.AGENT,
+            tool_surface=ToolSurface.MCP,
+            action="tools.delete_resource",
+            generation_scope=GenerationScope.INLINE_SNIPPET,
+            approval_granted=False,
+            metadata={"mcp_authority": "client_session", "mcp_effect": "write"},
+        )
+    )
+
+    assert decision.verdict is PermissionVerdict.HOLD
+    assert decision.requires_human_approval is True
+    assert "one_call" in decision.rule_id or "write" in decision.rule_id
+
+
 def test_high_impact_file_mutation_holds_for_human_approval():
     policy = PermissionPolicy()
 
