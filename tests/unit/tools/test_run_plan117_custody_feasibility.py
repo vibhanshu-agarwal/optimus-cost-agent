@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[3]
 RUNNER_PATH = ROOT / "tools" / "run_plan117_custody_feasibility.py"
 SCENARIO_PATH = ROOT / "tests" / "fixtures" / "evidence" / "scenarios" / "plan117-server-custody.toml"
 PROMPT_FIXTURE = ROOT / "tests" / "fixtures" / "evidence" / "plan117-server-custody-prompt.txt"
+PYPROJECT_FIXTURE_V2 = ROOT / "tests" / "fixtures" / "evidence" / "plan117-origin-a-pyproject-v2.toml"
 PROMPT_SHA256_UPPER = "8EEA4738E72159A863FEA22A542F92D6A99E3681803BA21863F734C577480D82"
 
 FORBIDDEN_TOKENS = (
@@ -2429,13 +2430,14 @@ def test_origin_a3_requires_exact_expected_run_attempt_id(custody_roots: dict[st
     runner = _runner_stage_api(_import_runner())
     from tools.plan117_custody_contract import normalize_stage_ledger
 
+    _prepare_retry_workspace(custody_roots)
     ledger = normalize_stage_ledger(_fixed_ledger_records())
     with pytest.raises(runner.CustodyRunnerError) as exc:
         runner.assert_origin_a3_preflight(
             expected_run_attempt_id="origin-a-4",
             ledger=ledger,
             prompt_fixture=PROMPT_V2,
-            workspace_root=ROOT,
+            workspace_root=custody_roots["workspace_root"],
             reservation_path=custody_roots["capture_root"] / "reservations" / "origin-a-3.json",
         )
     assert exc.value.reason_code in {
@@ -2449,7 +2451,7 @@ def test_origin_a3_requires_exact_expected_run_attempt_id(custody_roots: dict[st
         expected_run_attempt_id="origin-a-3",
         ledger=ledger,
         prompt_fixture=PROMPT_V2,
-        workspace_root=ROOT,
+        workspace_root=custody_roots["workspace_root"],
         reservation_path=custody_roots["capture_root"] / "reservations" / "origin-a-3.json",
     )
 
@@ -2460,6 +2462,7 @@ def test_origin_a3_refuses_reuse_when_reservation_or_attempt_exists(
     runner = _runner_stage_api(_import_runner())
     from tools.plan117_custody_contract import normalize_stage_ledger
 
+    _prepare_retry_workspace(custody_roots)
     ledger = normalize_stage_ledger(_fixed_ledger_records())
     reservation_root = custody_roots["capture_root"] / "reservations"
     runner.reserve_origin_a_run(
@@ -2472,7 +2475,7 @@ def test_origin_a3_refuses_reuse_when_reservation_or_attempt_exists(
             expected_run_attempt_id="origin-a-3",
             ledger=ledger,
             prompt_fixture=PROMPT_V2,
-            workspace_root=ROOT,
+            workspace_root=custody_roots["workspace_root"],
             reservation_path=reservation_root / "origin-a-3.json",
         )
     assert exc.value.reason_code in {
@@ -2753,12 +2756,13 @@ def test_cli_accepts_origin_a3_and_prompt_retry_boundaries() -> None:
     assert retry.run_attempt_id == "origin-a-3"
 
 
-def test_fixture_v2_and_pyproject_digest_constants() -> None:
+def test_fixture_v2_and_historical_pyproject_digest_constants() -> None:
     runner = _runner_stage_api(_import_runner())
     assert runner.PROMPT_FIXTURE_V2_SHA256.upper() == PROMPT_V2_SHA256
     assert runner.PYPROJECT_TARGET_SHA256.upper() == PYPROJECT_SHA256
     assert _sha256_bytes(PROMPT_V2.read_bytes()).upper() == PROMPT_V2_SHA256
-    assert _sha256_bytes((ROOT / "pyproject.toml").read_bytes()).upper() == PYPROJECT_SHA256
+    # Origin-A's sealed target is historical; current repository configuration may legitimately drift.
+    assert _sha256_bytes(PYPROJECT_FIXTURE_V2.read_bytes()).upper() == PYPROJECT_SHA256
 
 
 # --- Task 3: origin-a-prompt-retry CLI wiring ---------------------------------
@@ -2890,11 +2894,8 @@ def _prime_retry_prereq_phases(runner: Any, capture_root: Path) -> None:
 
 
 def _prepare_retry_workspace(custody_roots: dict[str, Path]) -> None:
-    import shutil
-
-    shutil.copyfile(
-        ROOT / "pyproject.toml",
-        custody_roots["workspace_root"] / "pyproject.toml",
+    (custody_roots["workspace_root"] / "pyproject.toml").write_bytes(
+        PYPROJECT_FIXTURE_V2.read_bytes()
     )
 
 

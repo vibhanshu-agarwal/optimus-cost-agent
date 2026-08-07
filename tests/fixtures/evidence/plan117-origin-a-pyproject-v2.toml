@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "optimus-cost-agent"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+  "confusable-homoglyphs>=3.3",
+  "defusedxml>=0.7.1",
+  "keyring>=25,<26",
+  "opentelemetry-api>=1.44,<2",
+  "opentelemetry-exporter-otlp-proto-http>=1.44,<2",
+  "opentelemetry-sdk>=1.44,<2",
+  "Pillow>=12.3,<13",
+  "pydantic>=2.8",
+  "redis>=5",
+]
+
+[project.scripts]
+optimus-agent = "optimus.acp.__main__:main"
+optimus-local-gateway = "optimus_gateway.__main__:main"
+optimus-trust = "optimus.acp.launch_approval_cli:main"
+
+[project.optional-dependencies]
+dev = [
+  "bandit>=1.7",
+  "coverage>=7.6",
+  "detect-secrets>=1.5",
+  "pre-commit>=3.7",
+  "python-dotenv>=1.0",
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=5.0",
+  "ruff>=0.5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+asyncio_mode = "auto"
+addopts = [
+  "--strict-config",
+  "--strict-markers",
+  "--import-mode=importlib",
+  "-m",
+  "not requires_redis and not requires_gateway and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring and not requires_acpx and not requires_zed and not requires_windows_desktop and not evidence_investigation",
+]
+markers = [
+  "requires_redis: integration test that needs a live TimeSeries-capable Redis server",
+  "requires_gateway: integration test that needs real Optimus Gateway credentials",
+  "e2e: end-to-end test that spawns the real ACP stdio process",
+  "requires_live_gateway: integration test that needs the local Optimus Gateway service process and Anthropic API key on that process only",
+  "requires_phoenix: integration test that needs a live Phoenix trace collector reachable via the Gateway-only OTLP endpoint",
+  "requires_os_keyring: integration test that reads existing operator-approved credentials from the real OS credential store without writing or deleting them",
+  "requires_acpx: requires independently authored acpx and a real agent process",
+  "requires_zed: requires a real supported Zed instance and its real logs",
+  "requires_windows_desktop: requires an interactive Windows desktop and real DWM",
+  "evidence_investigation: runs a named evidence-only investigation with its real dependency",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src/optimus", "src/optimus_gateway", "src/optimus_security", "src/evidence_handoff"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 80
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["E402"]
+"tools/verify_live_agent.py" = ["E402"]
+"tools/evidence_gather.py" = ["E402", "I001"]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+skips = ["B101", "B105", "B310", "B404", "B603"]
