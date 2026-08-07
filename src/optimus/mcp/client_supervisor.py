@@ -57,7 +57,22 @@ class MCPAsyncSupervisor:
 
             def _run() -> None:
                 asyncio.set_event_loop(loop)
-                loop.run_forever()
+                try:
+                    loop.run_forever()
+                finally:
+                    # Drain + close on the owning thread. Stopping first then
+                    # cancel/gather avoids Windows ProactorEventLoop leaving
+                    # tasks stuck in "cancelling" and leaking IOCP handles.
+                    try:
+                        pending = asyncio.all_tasks(loop)
+                        for task in pending:
+                            task.cancel()
+                        if pending:
+                            loop.run_until_complete(
+                                asyncio.gather(*pending, return_exceptions=True)
+                            )
+                    finally:
+                        loop.close()
 
             thread = threading.Thread(target=_run, name="optimus-client-mcp-supervisor", daemon=True)
             thread.start()
@@ -68,6 +83,7 @@ class MCPAsyncSupervisor:
     def submit(self, coro: Coroutine[object, object, T], *, timeout_seconds: float) -> T:
         with self._lock:
             if self._state is not MCPSupervisorState.RUNNING or self._loop is None:
+                coro.close()
                 raise MCPSupervisorError("SUPERVISOR_DEAD")
             loop = self._loop
             future: concurrent.futures.Future[T] = asyncio.run_coroutine_threadsafe(coro, loop)
@@ -96,12 +112,19 @@ class MCPAsyncSupervisor:
             loop = self._loop
             thread = self._thread
             inflight = list(self._inflight)
+
         for future in inflight:
             future.cancel()
-        if loop is not None:
-            loop.call_soon_threadsafe(loop.stop)
+
+        if loop is not None and not loop.is_closed():
+            try:
+                loop.call_soon_threadsafe(loop.stop)
+            except RuntimeError:
+                pass
+
         if thread is not None and thread.is_alive():
             thread.join(timeout=5.0)
+
         with self._lock:
             self._loop = None
             self._thread = None

@@ -143,6 +143,7 @@ class PendingClientMcpCandidateEndpoint:
         with self._lock:
             self._stop.set()
             listener = self._listener
+            thread = self._thread
             endpoint = self._endpoint_address
             self._listener = None
             self._thread = None
@@ -151,6 +152,13 @@ class PendingClientMcpCandidateEndpoint:
                 listener.close()
             except Exception:
                 pass
+        # consume_snapshot() may stop the listener from inside _serve; never join self.
+        if (
+            thread is not None
+            and thread.is_alive()
+            and thread is not threading.current_thread()
+        ):
+            thread.join(timeout=2.0)
         with self._lock:
             if endpoint is not None and endpoint[0] == "af_unix" and endpoint[1]:
                 sock = Path(endpoint[1])
@@ -196,12 +204,33 @@ class PendingClientMcpCandidateEndpoint:
 
     @staticmethod
     def consume_remote_snapshot(
-        *, address: str, authkey: bytes, candidate_id: str
+        *,
+        address: str,
+        authkey: bytes,
+        candidate_id: str,
+        timeout_seconds: float = 2.0,
     ) -> SafeCandidateSnapshot:
         reject_network_endpoint_address(address)
-        with Client(address, authkey=authkey) as conn:
-            conn.send({"op": _OP_CONSUME, "candidate_id": candidate_id})
-            response: dict[str, Any] = conn.recv()
+        box: dict[str, Any] = {}
+
+        def _run() -> None:
+            try:
+                with Client(address, authkey=authkey) as conn:
+                    conn.send({"op": _OP_CONSUME, "candidate_id": candidate_id})
+                    box["response"] = conn.recv()
+            except BaseException as exc:  # noqa: BLE001 - marshal to caller thread
+                box["error"] = exc
+
+        # Windows AF_PIPE Client() can block indefinitely when no Listener remains
+        # (CreateFile/WaitNamedPipe). Bound the wait so ceremony CLI fails closed.
+        worker = threading.Thread(target=_run, name="client-mcp-ipc-consume", daemon=True)
+        worker.start()
+        worker.join(timeout=timeout_seconds)
+        if worker.is_alive():
+            raise LocalIpcError("client_mcp.ipc_timeout")
+        if "error" in box:
+            raise LookupError(candidate_id) from box["error"]
+        response: dict[str, Any] = box["response"]
         if not response.get("ok"):
             raise LookupError(candidate_id)
         payload = response["snapshot"]

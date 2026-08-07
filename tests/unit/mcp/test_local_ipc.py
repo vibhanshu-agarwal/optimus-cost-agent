@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ import pytest
 from optimus.mcp.client_config import ClientMcpSafeIdentity
 from optimus.mcp.client_trust import derive_ipc_auth_key
 from optimus.mcp.local_ipc import (
+    LocalIpcError,
     PendingClientMcpCandidate,
     PendingClientMcpCandidateEndpoint,
     SafeCandidateSnapshot,
@@ -156,5 +158,30 @@ def test_remote_client_can_consume_via_local_ipc_only() -> None:
         assert result and result[0].rendered_fingerprint == "via-ipc"
         with pytest.raises(LookupError):
             endpoint.consume_snapshot(candidate_id)
+    finally:
+        endpoint.close()
+
+
+def test_remote_consume_after_listener_stop_fails_quickly() -> None:
+    """Windows named-pipe Client() blocks forever if the Listener is already gone.
+
+    Ceremony CLI must fail-closed with a bounded wait, not hang the process.
+    """
+    authkey = derive_ipc_auth_key(b"2" * 32)
+    endpoint = PendingClientMcpCandidateEndpoint(authkey=authkey)
+    try:
+        candidate_id = endpoint.publish(_candidate())
+        _kind, address = endpoint.endpoint_address
+        endpoint.consume_snapshot(candidate_id)
+        assert endpoint.is_listening is False
+        started = time.monotonic()
+        with pytest.raises((LookupError, LocalIpcError)):
+            PendingClientMcpCandidateEndpoint.consume_remote_snapshot(
+                address=address,
+                authkey=authkey,
+                candidate_id=candidate_id,
+                timeout_seconds=1.0,
+            )
+        assert time.monotonic() - started < 3.0
     finally:
         endpoint.close()

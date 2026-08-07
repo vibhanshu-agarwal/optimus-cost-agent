@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import gc
+import inspect
 import os
+import threading
 import time
+import warnings
 
 import pytest
 
@@ -93,8 +97,6 @@ def test_close_cancels_in_flight_and_surfaces_shutdown_error() -> None:
             supervisor.submit(_hang(), timeout_seconds=5.0)
         assert exc_info.value.code in {"SUPERVISOR_SHUTDOWN", "SUBMIT_TIMEOUT", "SUPERVISOR_DEAD"}
 
-    import threading
-
     worker = threading.Thread(target=_run_hang)
     worker.start()
     deadline = time.monotonic() + 2.0
@@ -113,3 +115,51 @@ def test_process_tree_teardown_seam_selection_is_platform_specific() -> None:
         assert seam == "windows_job_object"
     else:
         assert seam == "posix_process_group"
+
+
+def test_close_drains_pending_tasks_and_closes_event_loop() -> None:
+    """Windows ProactorEventLoop must be closed after join or IOCP handles leak."""
+    supervisor = MCPAsyncSupervisor()
+    supervisor.start()
+    loop = supervisor._loop
+    assert loop is not None
+    entered = threading.Event()
+
+    async def _hang() -> None:
+        entered.set()
+        await asyncio.Event().wait()
+
+    def _run_hang() -> None:
+        with pytest.raises(MCPSupervisorError):
+            supervisor.submit(_hang(), timeout_seconds=5.0)
+
+    worker = threading.Thread(target=_run_hang)
+    worker.start()
+    assert entered.wait(timeout=2.0)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        supervisor.close()
+        worker.join(timeout=3.0)
+        assert not worker.is_alive()
+        gc.collect()
+    assert loop.is_closed()
+    assert supervisor.state is MCPSupervisorState.DEAD
+    pending = [w for w in caught if "pending" in str(w.message).lower()]
+    unclosed = [w for w in caught if "unclosed event loop" in str(w.message)]
+    assert not pending, pending
+    assert not unclosed, unclosed
+
+
+def test_submit_after_close_closes_rejected_coroutine() -> None:
+    supervisor = MCPAsyncSupervisor()
+    supervisor.start()
+    supervisor.close()
+
+    async def _probe() -> str:
+        return "nope"
+
+    coro = _probe()
+    with pytest.raises(MCPSupervisorError) as exc_info:
+        supervisor.submit(coro, timeout_seconds=1.0)
+    assert exc_info.value.code == "SUPERVISOR_DEAD"
+    assert inspect.getcoroutinestate(coro) == inspect.CORO_CLOSED

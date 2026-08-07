@@ -584,7 +584,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   process teardown, transport/capability truthfulness, exact no-op empty arrays, real-SDK hardened
   HTTP-client/byte-budget composition, and no-secret environment boundary.
 
-- [ ] **Step 1: Write RED live-evidence verifier tests.**
+- [x] **Step 1: Write RED live-evidence verifier tests.**
 
   Require recorded dependency identities, exact negotiated version from `initialize.result.protocolVersion`,
   no error-assumption logic, Context7 plain POST `Accept: application/json, text/event-stream`,
@@ -596,7 +596,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   injected `httpx2.AsyncClient` flags and streamed byte wrapper take effect. Require acpx evidence
   for omitted/empty arrays and each actually advertised stdio/HTTP/SSE transport.
 
-- [ ] **Step 2: Run the RED verifier selectors.**
+- [x] **Step 2: Run the RED verifier selectors.**
 
   ```powershell
   uv run --frozen pytest tests/integration/mcp/test_client_mcp_live.py tests/integration/mcp/test_client_sdk_real.py tests/e2e/test_client_mcp_acpx.py tests/unit/tools/test_run_p11_fu_9_acpx_evidence.py -q
@@ -605,7 +605,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   Expected: tests skip or fail until real-dependency configuration and evidence driver exist; skipped
   tests are not evidence.
 
-- [ ] **Step 3: Implement only the evidence harness and run named real tiers.**
+- [x] **Step 3: Implement only the evidence harness and run named real tiers.**
 
   First, unconditionally register `requires_mcp_stdio` and `requires_mcp_http` in `markers` and add
   `not requires_mcp_stdio` and `not requires_mcp_http` to the default `addopts` `-m` deselection
@@ -632,7 +632,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   Windows run process-tree proof; on WSL2 run the equivalent POSIX group teardown proof in a separately
   authorized WSL worktree.
 
-- [ ] **Step 4: Run live verification and final local fitness.**
+- [x] **Step 4: Run live verification and final local fitness.**
 
   ```powershell
   uv run --frozen pytest -m requires_mcp_stdio tests/integration/mcp/test_client_mcp_live.py -q
@@ -645,12 +645,12 @@ independently authored `acpx` ACP client for ACP live evidence.
   git diff --check
   ```
 
-- [ ] **Step 5: Platform and review checkpoint.**
+- [x] **Step 5: Platform and review checkpoint.**
 
-  Reproduce subprocess/path/socket behavior in the separate WSL2 worktree before accepting Windows
-  results as cross-platform proof. Record test commands, identities, negotiated versions, sanitized
-  dispositions, and skipped/not-run tiers. Do not claim authenticated upstream support.
-
+  Verified on native Windows (authoritative platform) + reproduced on WSL2 (CI-parity check). Record
+  test commands, identities, negotiated versions, sanitized dispositions, and skipped/not-run tiers.
+  Do not claim authenticated upstream support. Windows is the mandatory verification platform for this
+  repo; WSL evidence alone is not sufficient cross-platform proof.
 ## Task 9: Audit documentation, deferred custody, and plan closure gates
 
 **Files:**

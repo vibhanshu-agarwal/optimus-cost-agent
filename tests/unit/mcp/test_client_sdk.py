@@ -101,25 +101,25 @@ class FakeHttpClient:
     stream_chunks: list[bytes] = field(default_factory=list)
     opened_urls: list[str] = field(default_factory=list)
 
-    async def stream(self, method: str, url: str, **_kwargs: Any) -> Any:
+    def stream(self, method: str, url: str, **_kwargs: Any) -> Any:
+        """Match httpx2.AsyncClient.stream: return an async context manager."""
         self.opened_urls.append(url)
-        await asyncio.sleep(0)
+        outer = self
 
         class _Stream:
-            def __init__(self, outer: FakeHttpClient) -> None:
-                self._outer = outer
-
             async def __aenter__(self) -> FakeHttpClient:
-                return self._outer
+                await asyncio.sleep(0)
+                return outer
 
             async def __aexit__(self, *_exc: object) -> None:
                 return None
 
-            async def aiter_bytes(self) -> Any:
-                for chunk in self._outer.stream_chunks:
-                    yield chunk
+        return _Stream()
 
-        return _Stream(self)
+    async def aiter_bytes(self) -> Any:
+        for chunk in self.stream_chunks:
+            yield chunk
+            await asyncio.sleep(0)
 
 
 @dataclass

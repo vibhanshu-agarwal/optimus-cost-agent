@@ -1657,6 +1657,70 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.run_p11_fu_9_acpx_evidence:assert_report_has_no_secrets:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: assert_report_has_no_secrets json.dumps the already schema-limited evidence summary solely for an in-memory known-secret substring scan, then discards the rendered text; failure raises before any report write.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_p11_fu_9_acpx_evidence.py::test_assert_report_has_no_secrets_rejects_known_secret_tokens",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_p11_fu_9_acpx_evidence:main:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main uses str(exc) only to print a typed AcpxNotFoundError/AcpxEvidenceError message to stderr and return exit 2; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_p11_fu_9_acpx_evidence.py::test_main_prints_controlled_stderr_when_acpx_missing",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_p11_fu_9_acpx_evidence:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main stderr_export prints only controlled operational or typed failure text (acpx-not-found, evidence-check rejection, timeout) and does not retain raw child diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_p11_fu_9_acpx_evidence.py::test_main_prints_controlled_stderr_when_acpx_missing",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_p11_fu_9_acpx_evidence:run_capture:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: run_capture writes raw acpx stdout/stderr only under gitignored scratch tmp/ after check-ignore (or .gitignore fallback) succeeds; Plan 9.96-qualified reports never read those bodies and instead persist extract_safe_evidence fields only.",
+      "sanitizer": "schema-limited functional path; raw capture confined to ignored scratch, not qualifying evidence",
+      "test_node": "tests/unit/tools/test_run_p11_fu_9_acpx_evidence.py::test_run_capture_writes_raw_transcript_only_under_ignored_scratch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_p11_fu_9_acpx_evidence:write_reports:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: write_reports json.dumps only the schema-limited content-free evidence summary (versions, digests, session id, stop reason, capability flags, tool titles, permission option ids) after assert_report_has_no_secrets; raw transcript bodies are omitted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_p11_fu_9_acpx_evidence.py::test_write_reports_persists_content_free_summary_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_p11_fu_9_acpx_evidence:write_reports:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: write_reports persists only the schema-limited content-free summary JSON (and an md wrapper quoting that same object) into reports/; credentials and raw acpx transcript bodies have no write path.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_p11_fu_9_acpx_evidence.py::test_write_reports_persists_content_free_summary_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_p11_fu_9_acpx_evidence:write_scratch_configs:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: write_scratch_configs json.dumps only the harness .acpxrc argv array and operator-supplied mcpServers fixture into paths that must already pass git check-ignore; this is ignored scratch for the live driver, not Plan 9.96-qualified diagnostic retention.",
+      "sanitizer": "schema-limited functional path; scratch confined by check-ignore gate",
+      "test_node": "tests/unit/tools/test_run_p11_fu_9_acpx_evidence.py::test_write_scratch_configs_writes_ignored_files",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_p11_fu_9_acpx_evidence:write_scratch_configs:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: write_scratch_configs writes .acpxrc.json and mcpServers.json only after assert_scratch_paths_ignored succeeds; files remain gitignored local scratch for acpx invocation and are excluded from qualifying evidence reports.",
+      "sanitizer": "schema-limited functional path; scratch confined by check-ignore gate",
+      "test_node": "tests/unit/tools/test_run_p11_fu_9_acpx_evidence.py::test_write_scratch_configs_writes_ignored_files",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.run_plan115_acpx_cost_obs_evidence:main:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: tools.run_plan115_acpx_cost_obs_evidence:main:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",

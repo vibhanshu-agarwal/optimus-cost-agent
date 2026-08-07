@@ -128,9 +128,15 @@ class ClientMcpSdkAdapter:
         seam = select_process_tree_teardown_seam()
         self._process_control.terminate_tree(seam=seam)
 
-    def read_streamed_bytes_for_tests(self, client: Any, *, budget_bytes: int) -> bytes:
+    def read_streamed_bytes_for_tests(
+        self,
+        client: Any,
+        *,
+        budget_bytes: int,
+        url: str = "https://example.invalid/stream",
+    ) -> bytes:
         return self._supervisor.submit(
-            self._read_streamed_bytes(client, budget_bytes=budget_bytes),
+            self._read_streamed_bytes(client, budget_bytes=budget_bytes, url=url),
             timeout_seconds=self._operation_timeout_seconds + 1.0,
         )
 
@@ -245,11 +251,21 @@ class ClientMcpSdkAdapter:
             except Exception as exc:
                 raise ClientMcpSdkError("CALL_FAILED") from exc
 
-    async def _read_streamed_bytes(self, client: Any, *, budget_bytes: int) -> bytes:
-        stream_cm = await client.stream("GET", "https://example.invalid/stream")
+    async def _read_streamed_bytes(self, client: Any, *, budget_bytes: int, url: str) -> bytes:
+        """Enforce an Optimus-owned streamed byte budget on a real or test HTTP client.
+
+        Matches ``httpx2.AsyncClient.stream`` (async context manager). Legacy awaitable
+        stream factories used by unit fakes are still accepted.
+        """
+        stream_obj = client.stream("GET", url)
+        if hasattr(stream_obj, "__await__"):
+            stream_obj = await stream_obj
         total = bytearray()
-        async with stream_cm:
-            async for chunk in stream_cm.aiter_bytes():
+        async with stream_obj as response:
+            aiter = getattr(response, "aiter_bytes", None)
+            if aiter is None:
+                aiter = stream_obj.aiter_bytes
+            async for chunk in aiter():
                 total.extend(chunk)
                 if len(total) > budget_bytes:
                     raise ClientMcpSdkError("REMOTE_BYTE_OVERFLOW")

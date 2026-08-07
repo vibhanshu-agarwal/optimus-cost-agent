@@ -1,0 +1,37 @@
+{
+  "schema_version": "p11-fu-9-client-mcp-live-evidence-v1",
+  "status": "partial",
+  "note": "Honest status only. Skipped tiers are not DoD evidence. Negotiated versions below are only those observed from real runs.",
+  "unit_harness": {
+    "passed": 17,
+    "skipped": 0,
+    "failed": 0
+  },
+  "tiers": {
+    "requires_mcp_stdio_terraform": {
+      "status": "skipped",
+      "reason": "docker_daemon_unavailable_in_wsl"
+    },
+    "requires_mcp_http_context7_catalog": {
+      "status": "passed",
+      "negotiated_protocol_version": "2025-11-25",
+      "tokenized": {"read": 2, "network": 0, "write": 0},
+      "legacy": {"read": 0, "network": 2, "write": 0}
+    },
+    "requires_mcp_http_real_sdk_httpx2": {
+      "status": "passed",
+      "follow_redirects": false,
+      "trust_env": false,
+      "negotiated_protocol_version": "2025-11-25",
+      "task3_composition_claim": "closable"
+    },
+    "requires_mcp_http_byte_budget": {
+      "status": "passed",
+      "code": "REMOTE_BYTE_OVERFLOW"
+    },
+    "requires_acpx_empty_array_live": {
+      "status": "skipped",
+      "reason": "acpx_capture_incomplete"
+    }
+  }
+}
