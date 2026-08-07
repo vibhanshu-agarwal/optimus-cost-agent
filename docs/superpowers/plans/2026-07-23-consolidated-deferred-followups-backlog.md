@@ -995,6 +995,49 @@ Task 2 review note that the NDJSON flake remains backlog-owned and non-blocking.
 **Status:** Tracked, not yet scheduled; no implementation plan exists. Not blocking P11-FU-9 Task 4
 sign-off.
 
+### P11-FU-20: Attach per-server catalog/authorizer to session tool service for real one-call issuance
+
+**Raised:** 2026-08-07 during P11-FU-9 Task 6 independent review (operator Vibhanshu). Priority:
+**Real functional gap on the write-approval path; fail-closed seam is in place for Task 6.**
+
+**Origin:** `AcpDuplexAdapter._mcp_permission_broker_for` originally fabricated a
+`ClientMcpOneCallApproval` (`token=one-call-…`, empty `identity_fingerprint`) instead of calling
+`ClientMcpCallAuthorizer.issue_one_call_approval`. Root cause: `ClientMcpSessionState._tool_service`
+never receives `.register(...)` of a per-server `ClientMcpToolService` during
+`disposition_for_new_session` (disposition intentionally never opens transport / builds catalogs).
+A fabricated token would fail downstream as `mcp.client.one_call_unknown` after an IDE allow —
+misleading ceremony. Task 6 now fails closed (`issue` → `None`) until this attachment exists.
+Neither Task 7 nor Task 8 in the frozen P11-FU-9 plan covers attaching a real per-server
+catalog/authorizer to the session tool service.
+
+**Designated slice:** P11-FU-9 follow-up (plan amendment or Task 8 scope expansion — assign at
+pickup; do not silently fold into Task 6 close). Plan ownership decision (Codex/operator) required
+before implementation.
+
+**Acceptance criteria (draft — refine at pickup):**
+
+- On allow_once transport lease (and later discovery), register identity-bound
+  `ClientMcpToolService` instances on `ClientMcpSessionState.tool_service`.
+- `_mcp_permission_broker_for` / `_issue` must call the real
+  `ClientMcpCallAuthorizer.issue_one_call_approval` for the matched server/tool/args digest — never
+  fabricate unbound tokens.
+- Evidence must exercise the **real** adapter closure (not only `AcpMcpPermissionBroker` with a
+  hand-fed `issue_approval` lambda), covering allow → usable one-call token → PreToolGuard ALLOW
+  for a write-classified tool under `side_effect_eligible`.
+- Preserve fail-closed behavior when no authorizer is registered (return `None`, no fake token).
+- Do not open MCP transport merely to attach the authorizer during `session/new` disposition.
+
+**Evidence anchors:** P11-FU-9 Task 6 review (2026-08-07);
+`src/optimus/acp/spec.py` (`_mcp_permission_broker_for`);
+`src/optimus/mcp/client_disposition.py` (`disposition_for_new_session`);
+`tests/unit/acp/test_spec_protocol.py::test_spec_mcp_broker_issue_fails_closed_until_catalog_authorizer_attached`.
+
+**Related prior art:** Same "mock manufactures agreement" shape as Task 5's FakeClientMcpService
+gap; disposition-never-opens-transport constraint from P11-FU-9 design §3.
+
+**Status:** Tracked, not yet scheduled; no implementation plan exists. Task 6 may close with the
+fail-closed seam + this named custody entry. Not an undisclosed residual.
+
 ### P11.5-FU-2: Consistent local env / Redis / Phoenix / Gateway startup for live runs
 
 **Raised:** 2026-07-29 during Plan 11.5 Task 8 (real Redis / Phoenix / ACP release-evidence

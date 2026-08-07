@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from optimus.acp.debug_trace import log_planning_replan_event, log_workspace_context_result
 from optimus.acp.dispatcher import JsonRpcDispatcher
@@ -138,4 +139,58 @@ def build_configured_server(
     # authorized/sanitized) agent environ passed into this function, rather
     # than read from os.environ per-request deep inside AcpDuplexAdapter.
     max_planning_turns = resolve_max_planning_turns(environ)
-    return AcpStreamServer(dispatcher=dispatcher, max_planning_turns=max_planning_turns)
+    client_mcp_runtime = build_client_mcp_runtime(workspace_root=resolved_workspace)
+    return AcpStreamServer(
+        dispatcher=dispatcher,
+        max_planning_turns=max_planning_turns,
+        client_mcp_runtime=client_mcp_runtime,
+    )
+
+
+def build_client_mcp_runtime(*, workspace_root: Path) -> Any:
+    """Build one process-lifetime client-MCP runtime (supervisor + disposition seam).
+
+    HTTP/SSE capability flags stay false until adapters and verification exist.
+    Runtime capabilities are never inserted into Pydantic dumps or dispatcher payloads.
+    """
+    import os
+    import secrets
+    import sys
+
+    import keyring
+
+    from optimus.acp.launch_approvals import KeyringApprovalStore
+    from optimus.acp.trusted_paths import resolve_trusted_operator_roots, resolve_workspace_identity
+    from optimus.mcp.client_config import ClientMcpConfigNormalizer
+    from optimus.mcp.client_disposition import ClientMcpDisposition, ClientMcpRuntime
+    from optimus.mcp.client_supervisor import MCPAsyncSupervisor
+    from optimus.mcp.client_trust import ClientMcpDurableStore, ClientMcpLeaseAuthority, derive_ipc_auth_key
+    from optimus.mcp.local_ipc import PendingClientMcpCandidateEndpoint
+
+    roots = resolve_trusted_operator_roots(platform_name=sys.platform)
+    approval_store = KeyringApprovalStore(
+        keyring_backend=keyring,
+        runtime_root=roots.approval_runtime_root,
+        hmac_key=secrets.token_bytes(32) if os.environ.get("OPTIMUS_CLIENT_MCP_EPHEMERAL_HMAC") else None,
+    )
+    hmac_key = approval_store.hmac_key
+    workspace_identity = resolve_workspace_identity(workspace_root)
+    durable = ClientMcpDurableStore(keyring_backend=approval_store._keyring, hmac_key=hmac_key)
+    supervisor = MCPAsyncSupervisor()
+    supervisor.start()
+    candidate_endpoint = PendingClientMcpCandidateEndpoint(authkey=derive_ipc_auth_key(hmac_key))
+    disposition = ClientMcpDisposition(
+        normalizer=ClientMcpConfigNormalizer(),
+        lease_authority=ClientMcpLeaseAuthority(store=durable),
+        hmac_key=hmac_key,
+        controlled_path=os.environ.get("PATH", ""),
+        workspace_digest=workspace_identity.digest,
+        candidate_endpoint=candidate_endpoint,
+    )
+    return ClientMcpRuntime(
+        disposition=disposition,
+        supervisor=supervisor,
+        mcp_http_enabled=False,
+        mcp_sse_enabled=False,
+        candidate_endpoint=candidate_endpoint,
+    )

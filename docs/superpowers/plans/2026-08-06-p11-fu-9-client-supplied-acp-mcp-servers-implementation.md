@@ -468,7 +468,7 @@ independently authored `acpx` ACP client for ACP live evidence.
 - ACP initialize advertises `mcpCapabilities.http`/`sse` only after the corresponding adapter is
   implemented; no `loadSession` capability is added.
 
-- [ ] **Step 1: Write RED ACP disposition tests.**
+- [x] **Step 1: Write RED ACP disposition tests.**
 
   Cover absent/empty exact no-op; malformed/duplicate config before any transport action; valid entry
   producing a pending safe approval disposition without opening transport; `session/new` awaiting
@@ -479,13 +479,13 @@ independently authored `acpx` ACP client for ACP live evidence.
   provisional session; process EOF, handler exception, and pending-request cancellation closing only
   owned session connections; and no `session/load` request/capability behavior change.
 
-- [ ] **Step 2: Run the RED selectors.**
+- [x] **Step 2: Run the RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_stdio_ndjson.py tests/unit/acp/test_bootstrap.py tests/unit/mcp/test_client_disposition.py -q
   ```
 
-- [ ] **Step 3: Implement `ClientMcpDisposition` and session wiring.**
+- [x] **Step 3: Implement `ClientMcpDisposition` and session wiring.**
 
   Make `_handle_session_new` async and await it from `handle_client_request`. Create a provisional
   in-memory session after input-shape validation; normalize before any transport, remove it on
@@ -498,14 +498,14 @@ independently authored `acpx` ACP client for ACP live evidence.
   them, call adapter/store `close_all()`, then close the supervisor. Keep future `session/load` as a
   documented consumer of this interface only.
 
-- [ ] **Step 4: Run focused GREEN and static fitness.**
+- [x] **Step 4: Run focused GREEN and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_stdio_ndjson.py tests/unit/acp/test_bootstrap.py tests/unit/mcp/test_client_disposition.py -q
   uv run --frozen ruff check src/optimus/mcp/client_disposition.py src/optimus/acp/spec.py src/optimus/acp/server.py src/optimus/acp/shapes.py src/optimus/acp/bootstrap.py src/optimus/acp/dispatcher.py tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_stdio_ndjson.py tests/unit/acp/test_bootstrap.py tests/unit/mcp/test_client_disposition.py
   ```
 
-- [ ] **Step 5: Reviewer checkpoint.**
+- [x] **Step 5: Reviewer checkpoint.**
 
   Verify the live ACP surface advertises only implemented transports and never starts a connection
   merely because a client supplied an entry.

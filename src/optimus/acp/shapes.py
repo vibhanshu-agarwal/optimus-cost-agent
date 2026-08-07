@@ -108,6 +108,68 @@ def build_request_permission_params(
     }
 
 
+def build_client_mcp_permission_params(
+    *,
+    session_id: str,
+    candidate_id: str,
+    server_name: str,
+    transport: str,
+    identity_fingerprint: str,
+    tool_name: str | None = None,
+    effect: str | None = None,
+) -> dict[str, Any]:
+    """ACP session/request_permission params for client-MCP transport or write approval.
+
+    Payload contains only opaque candidate id and safe name/transport/fingerprint
+    metadata. Options are allow_once/reject_once only — never allow_always.
+    Safe text names ``optimus-trust mcp review`` as the durable-trust route.
+    """
+    title = "Approve client MCP server"
+    if tool_name:
+        title = f"Approve client MCP write: {server_name}.{tool_name}"
+    detail_lines = [
+        f"Server: {server_name}",
+        f"Transport: {transport}",
+        f"Identity fingerprint: {identity_fingerprint}",
+        "Durable trust: run `optimus-trust mcp review`.",
+    ]
+    if effect is not None:
+        detail_lines.insert(2, f"Effect: {effect}")
+    tool_call_id = new_tool_call_id()
+    return {
+        "sessionId": session_id,
+        "candidateId": candidate_id,
+        "serverName": server_name,
+        "transport": transport,
+        "identityFingerprint": identity_fingerprint,
+        "toolCall": {
+            "toolCallId": tool_call_id,
+            "title": title,
+            "status": "pending",
+            "kind": "other",
+            "content": [tool_call_text_content("\n".join(detail_lines))],
+        },
+        "options": [
+            {
+                "optionId": "allow_once",
+                "name": "Allow once",
+                "kind": "allow_once",
+                "metadata": {"candidateId": candidate_id, "identityFingerprint": identity_fingerprint},
+            },
+            {
+                "optionId": "reject_once",
+                "name": "Reject",
+                "kind": "reject_once",
+                "metadata": {"candidateId": candidate_id, "identityFingerprint": identity_fingerprint},
+            },
+        ],
+        "_meta": {
+            "candidateId": candidate_id,
+            "identityFingerprint": identity_fingerprint,
+            "reviewHint": "optimus-trust mcp review",
+        },
+    }
+
 def tool_kind_for_name(tool_name: str) -> str:
     return {
         "file_reader": "read",

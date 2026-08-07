@@ -162,6 +162,7 @@ class TestFailClosedBehavior:
             "OPTIMUS_LOCAL_GATEWAY_BIND_HOST",
             "OPTIMUS_LOCAL_GATEWAY_PORT",
             "OPTIMUS_ACP_DEBUG_TRACE",
+            "OPTIMUS_CLIENT_MCP_EPHEMERAL_HMAC",
             "OPTIMUS_ACP_DEBUG_LOG",
             "OPTIMUS_ACP_PROVENANCE_ROOT",
         ]
