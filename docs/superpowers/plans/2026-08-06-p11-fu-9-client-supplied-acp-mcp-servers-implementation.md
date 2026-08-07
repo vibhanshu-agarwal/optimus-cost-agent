@@ -245,7 +245,7 @@ independently authored `acpx` ACP client for ACP live evidence.
 - `ClientMcpConnection.negotiated_protocol_version` is populated only from successful
   `initialize.result.protocolVersion`.
 
-- [ ] **Step 1: Write RED supervisor and adapter contract tests without adding the dependency.**
+- [x] **Step 1: Write RED supervisor and adapter contract tests without adding the dependency.**
 
   Use injected fake sessions/transports to prove bounded submission, dead/stopping-loop safe errors,
   cancellation, per-connection call serialization, per-session isolation, no retry/replay,
@@ -256,7 +256,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   version rejection, initialize-result scanner denial, ignored prompts/resources capabilities, and
   complete process-tree teardown seam selection.
 
-- [ ] **Step 2: Run the RED selectors.**
+- [x] **Step 2: Run the RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_supervisor.py tests/unit/mcp/test_client_sdk.py -q
@@ -264,13 +264,13 @@ independently authored `acpx` ACP client for ACP live evidence.
 
   Expected: no supervisor or SDK adapter imports.
 
-- [ ] **Step 3: Stop for the explicit dependency gate.**
+- [x] **Step 3: Stop for the explicit dependency gate.**
 
   Present the resolved `mcp>=2.0,<3` version, exact `uv.lock` diff, and `httpx2` transitive review
   to the operator. Do not edit `pyproject.toml`, `uv.lock`, or install packages until approval is
   recorded. If declined, leave this task open and do not hand-roll a substitute client.
 
-- [ ] **Step 4: Implement the approved SDK seam and bounds.**
+- [x] **Step 4: Implement the approved SDK seam and bounds.**
 
   After approval, constrain the dependency, freeze the exact lock, and prove the SDK accepts the
   injected `httpx2.AsyncClient` with `follow_redirects=False`, `trust_env=False`, explicit timeouts,
@@ -281,14 +281,14 @@ independently authored `acpx` ACP client for ACP live evidence.
   termination. Treat every initialize field as untrusted, take only returned protocol version, and
   ignore unsupported capabilities rather than rejecting a server that advertises them.
 
-- [ ] **Step 5: Run focused GREEN and static fitness.**
+- [x] **Step 5: Run focused GREEN and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_supervisor.py tests/unit/mcp/test_client_sdk.py -q
   uv run --frozen ruff check src/optimus/mcp/client_supervisor.py src/optimus/mcp/client_sdk.py tests/unit/mcp/test_client_supervisor.py tests/unit/mcp/test_client_sdk.py
   ```
 
-- [ ] **Step 6: Reviewer checkpoint.**
+- [x] **Step 6: Reviewer checkpoint.**
 
   Confirm no fake session/transport result is represented as proof of the SDK's hardened injected
   HTTP-client or streamed-byte composition; leave this task and the real-composition claim open until
