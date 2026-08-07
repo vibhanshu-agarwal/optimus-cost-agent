@@ -27,12 +27,19 @@ not duplicate this content.
   with the same fields every other entry uses (Raised / Origin / Designated future plan /
   Trigger or acceptance criteria / Status). Other documents may link to the entry, but must not
   carry its live open-item status or become a second pool.
-- **Promoting an item:** When an item is scheduled into a real numbered plan, mark its Status as
-  `Promoted -> Plan N` with the date and a link to the new plan file, and leave the entry in place
+- **Using status tokens:** Make the first text after `**Status:**` exactly one of these five
+  canonical forms, terminated by a period or colon: `Open`, `Promoted -> <markdown link to a file
+  under docs/superpowers/plans/>`, `Partially implemented`, `Closed`, or `Reviewed disposition`.
+  Free prose may follow the terminating punctuation. `Partially implemented` means merged work
+  advances this entry's own acceptance criteria, not merely that work exists in the owning lane.
+- **Promoting an item:** When an item is scheduled into an implementation plan or amendment, mark
+  its Status as `Promoted -> <linked plan or amendment>` with the date, and leave the entry in place
   (do not delete history) rather than removing the row.
 - **Closing an item:** When an item is fully implemented, mark Status as `Closed` with the
   implementation commit/PR and evidence citation, the same way other closed follow-ups are recorded
   elsewhere in this project's roadmap.
+- **Applying the v1.0 pool-closure gate:** Only `Closed` and `Reviewed disposition` satisfy the
+  gate. `Open`, `Promoted -> ...`, and `Partially implemented` remain incomplete for that purpose.
 
 ## Feature slices
 
@@ -78,7 +85,7 @@ Do not reconcile those historical files by changing their status lines or checkb
 policy, measures wrong-target regret, and retains a fail-closed threshold. Until this lands,
 ambiguity stays visible and deterministic (Plan 9.8's current behavior).
 
-**Status:** The bounded Plan 11.7 current-Zed evidence/correction cycle reached its reviewed
+**Status:** Open. The bounded Plan 11.7 current-Zed evidence/correction cycle reached its reviewed
 Task 5 Path A fail-closed terminal stop on 2026-08-05: no accepted same-session live retry, no
 correlation ordinal 4, no settings mutation, and no Zed relaunch. No approved correction remains
 pending in that cycle. This did not implement intelligent ambiguous-reference ranking;
@@ -94,7 +101,7 @@ pending in that cycle. This did not implement intelligent ambiguous-reference ra
 **Acceptance criteria:** Budget changes are model-aware, cost-attributed, injection-safe, measured
 against the null baseline, and never silently omit required evidence.
 
-**Status:** Open, not yet scheduled.
+**Status:** Open. Not yet scheduled.
 
 ### P9.8-FU-5: Zed Refusal-Rendering Stability
 
@@ -116,7 +123,8 @@ conformance.
 **Evidence anchors:** `reports/plan-9-8-task-aware-context-evidence.md`,
 `reports/plan-9-75-zed-hitl-runtime-evidence.md`, and the Plan 9.8 `P9.8-FU-5` acceptance criteria.
 
-**Status:** Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`). Frozen Task 0 Steps 1-4 sealed the
+**Status:** Promoted -> [Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md).
+Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`). Frozen Task 0 Steps 1-4 sealed the
 current-Zed Case 1/2 refusal-rendering evidence (Case 1 wire `end_turn` / stable; Case 2 wire
 `refusal` / Zed panic). The bounded origin-A/retry-preflight correction cycle reached Task 5
 **Path A** fail-closed terminal stop on 2026-08-05; no approved correction remains pending. An
@@ -136,7 +144,7 @@ budget-expansion/live-evidence path. Evidence:
 provenance-preserving compression, regret measurement, and calibration gates. Until then, overflow
 remains terminal (Plan 9.85's current behavior).
 
-**Status:** Open, not yet scheduled.
+**Status:** Open. Not yet scheduled.
 
 ### P9.85-FU-2: Dynamic planning-evidence partition
 
@@ -148,7 +156,7 @@ remains terminal (Plan 9.85's current behavior).
 **Acceptance criteria:** Calibrated evidence justifies changing the fixed 4 KiB/12 KiB
 observation/current-read split without weakening Plan 9.8's completeness and ambiguity guarantees.
 
-**Status:** Open, not yet scheduled.
+**Status:** Open. Not yet scheduled.
 
 ### P9.85-FU-3: Cross-Run/Session Spend Policy
 
@@ -176,7 +184,7 @@ undesigned, and unscheduled under a future budget-governance plan.
 **Plan 11 disposition:** Architecture-unblocked; no implementation or cumulative cross-run policy
 design is included in Plan 11. Revisit only under the future budget-governance plan.
 
-**Status:** Open, not yet scheduled.
+**Status:** Open. Not yet scheduled.
 
 ### P9.87-FU-1: Mechanical Current-Raw-Evidence Grounding Guard
 
@@ -195,7 +203,7 @@ through observations despite the prompt prohibition.
 raw ranges without logging source bodies or silently absorbing Plan 12's intelligent-selection
 scope. This lane must not absorb or be absorbed by Plan 12.
 
-**Status:** Open, not yet scheduled. This pool records promotion and disposition when this item is
+**Status:** Open. Not yet scheduled. This pool records promotion and disposition when this item is
 picked up; no Plan 10.x slot is reserved.
 
 ### P11-FU-1: ACP Session Resume Capability
@@ -228,7 +236,8 @@ owned by `P11-FEAT-ZED-RESUME`, not parked or deferred to a later milestone.
 (`AgentPlanRecord`), not ACP session or conversation state, and cannot be treated as an existing
 resume store without an explicit design and migration decision.
 
-**Status:** Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`). Frozen Task 0 Steps 1-4 are sealed with
+**Status:** Promoted -> [Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md).
+Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`). Frozen Task 0 Steps 1-4 are sealed with
 disposition `stop_amend_plan_session_load_unreachable` (current Zed does not issue `session/load`
 after full restart). The bounded origin-A/retry-preflight correction cycle reached Task 5
 **Path A** fail-closed terminal stop on 2026-08-05; no approved correction remains pending. The
@@ -271,7 +280,7 @@ Named evidence reports are the [real local-process HTTP artifact](../../../repor
 [real staging-Gateway artifact](../../../reports/plan-11-2-gateway-tools-staging-evidence.md), and
 [fitness/release-gate report](../../../reports/plan-11-2-gateway-tools-task7-fitness.md).
 
-**Status:** Closed by PR #88 / merge `4590dbf`; the dedicated package/advisory routes and their
+**Status:** Closed. Closed by PR #88 / merge `4590dbf`; the dedicated package/advisory routes and their
 evidence are complete. Remaining migration work stays with `P11-FEAT-GATEWAY-TOOLS` and is not a
 reopening of this closed item.
 
@@ -306,7 +315,7 @@ rationale: non-negotiable for any agent, especially a coding agent.
   (`MCPProfileRegistry`, `MCPDiscoveryBroker`, `MCPDiscoveryPaginator`, `MCPInvocationBroker`,
   `MCPConnectionManager`).
 
-**Status:** **Closed 2026-08-06.** Both acceptance criteria are met. `P11-FEAT-GATEWAY-MCP` is now
+**Status:** Closed. **Closed 2026-08-06.** Both acceptance criteria are met. `P11-FEAT-GATEWAY-MCP` is now
 eligible for an implementation design spec and plan; none exists yet as of this closure — drafting
 one is separate, not-yet-scheduled work. A Plan 11.x number is assigned only at pickup (next unused
 slot is **Plan 11.8**, per the charter's next-unused-single-decimal convention). `P11-FEAT-ZED-RESUME`
@@ -327,7 +336,7 @@ capture path overlaps; no Plan 11.x plan number is allocated by this entry.
 codebase, select the reviewed sanitized capture path, record the exact evidence and implementation
 SHAs, and close or explicitly disposition the freshness gap before the v1.0 cut.
 
-**Status:** Tracked, not yet scheduled; no implementation plan exists. Evidence-freshness class.
+**Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Evidence-freshness class.
 
 ### P11-FU-5: Windows Subprocess Handle-Duplication Flake (WinError 6/50)
 
@@ -344,7 +353,7 @@ Windows flake and the actionable durable-approval identity concern, establish th
 reproduction or non-reproduction disposition, and receive a reviewed custody decision before any
 fix or exclusion is claimed.
 
-**Status:** Tracked, not yet scheduled; root cause is not established. The feasibility findings
+**Status:** Open. Tracked, not yet scheduled; root cause is not established. The feasibility findings
 live in the roadmap entry, and no plan number was allocated. Deliberately not picked up after the
 feasibility pass.
 
@@ -378,7 +387,7 @@ whether this is the same root cause as `P11-FU-5` or a distinct bind/teardown ra
 `_start_server`/`_stop_server` (or equivalent) only after a reviewed feasibility pass; preserve
 the CORE-route unit coverage that already passes in isolation.
 
-**Status:** Tracked, not yet scheduled; no implementation plan exists. Feasibility pass required
+**Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Feasibility pass required
 before promotion.
 
 ### P11-FU-7: Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test
@@ -419,7 +428,7 @@ port/teardown race). This item is distinct: its established mechanism is coverag
 instrumentation / `sys.settrace` scheduling pressure around an `asyncio.wait_for` deadline
 in a unit test, with no current evidence of a subprocess-handle or port-teardown defect.
 
-**Status:** Tracked, not yet scheduled; no implementation plan exists. Root cause is already
+**Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Root cause is already
 diagnosed as coverage/trace instrumentation timing sensitivity; do not reopen ACP production
 debugging from scratch when this entry is picked up.
 
@@ -469,7 +478,7 @@ for every event with no `parent_span_id`, so multiple independent root-level eve
 a wire `trace_id` may land as separate real OTel traces. Task 4 tests only exercise single-root
 batches; Plan 11.5 Task 8 real Phoenix evidence must prove or disposition this.
 
-**Status:** Tracked, not yet scheduled; no implementation plan exists. Drafted 2026-07-29 for
+**Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Drafted 2026-07-29 for
 operator review of pool custody wording.
 
 ### P11-FU-8: Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming
@@ -530,7 +539,7 @@ fingerprint path; sibling env names `OPTIMUS_GATEWAY_TAVILY_BASE_URL` /
 (`docs/superpowers/plans/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md`)
 as process precedent.
 
-**Status:** Tracked, not yet scheduled; **needs deeper investigation / migration design before
+**Status:** Open. Tracked, not yet scheduled; **needs deeper investigation / migration design before
 scoping**. No implementation plan exists. Filed 2026-07-29 for pool custody.
 
 ### P11-FU-9: Client-Supplied ACP `mcpServers` Disposition
@@ -601,7 +610,7 @@ belongs to Plan 11.7 and does not block on this follow-up.
 - Current user-facing documentation is updated when codes move, while frozen historical plans
   remain byte-for-byte historical records with explicit audit disposition.
 
-**Status:** Tracked, not yet scheduled. It does not gate Plan 11.7 closure; Plan 11.7 owns only the
+**Status:** Open. Tracked, not yet scheduled. It does not gate Plan 11.7 closure; Plan 11.7 owns only the
 forced `-32002`/mutation-refusal correction and a no-new-bypasses baseline gate.
 
 ### P11.7-FU-1: Configurable Gateway request timeout for debug/investigation workflows
@@ -641,7 +650,7 @@ the fail-closed unknown-cost path unchanged.
 (two consecutive `PLANNING_GATEWAY_COST_UNKNOWN` timeouts on `z-ai/glm-5.2`, ~30s each, vs. a prior
 successful ~16s response on the identical fixture/task, same worktree).
 
-**Status:** Tracked, not yet scheduled.
+**Status:** Open. Tracked, not yet scheduled.
 
 ### P11.7-FU-2: Gateway threaded-test flake under full-suite load
 
@@ -658,7 +667,7 @@ coordinate with existing Gateway flake entries (`P11-FU-5` / `P11-FU-6`) if root
 isolation; classify race vs shared-fixture contamination; harden or quarantine with a named
 owning plan without weakening live Gateway evidence tiers.
 
-**Status:** Tracked, not yet scheduled. Does not block Task 3 classifications.
+**Status:** Open. Tracked, not yet scheduled. Does not block Task 3 classifications.
 
 ### P11.7-FU-3: Committed `plan117_custody_relay.py` docstring `\ufffd` / em-dash corruption
 
@@ -675,7 +684,7 @@ classification seal.
 **Acceptance criteria (draft):** Replace corrupted codepoints with ASCII-safe wording; prove
 zero `\ufffd` and zero U+2014 remain in that docstring; keep relay behavior unchanged.
 
-**Status:** Tracked, not yet scheduled. Does not block Task 3 classifications.
+**Status:** Open. Tracked, not yet scheduled. Does not block Task 3 classifications.
 
 ### P11-FU-11: Plan 11.7 Retry Preflight and Live Session Proof
 
@@ -712,7 +721,7 @@ a new Plan 11.x number or authorize a fourth correlation launch.
   liveness, PID reuse protection, and channel failure; real-Zed/relay evidence proves the accepted
   same-session retry path and the no-relaunch/no-settings-mutation invariants.
 
-**Status:** Implemented on `agent/cursor/p11-feat-zed-resume` through Task 5 Path A
+**Status:** Partially implemented. Implemented on `agent/cursor/p11-feat-zed-resume` through Task 5 Path A
 fail-closed terminal stop (2026-08-05). Real `origin-a-prompt-retry` CLI fail-closed at
 `acquire_live_session_proof` with `invalid_probe_retry_control_channel_failure`; offline
 verifier classified `unavailable_proof`; `settings_mutated=false`, `zed_launched=false`; no
@@ -735,7 +744,7 @@ token custody, and step-up are absent. A future design must keep automatic same-
 distinct from reapproval-triggering grant, issuer, resource, subject, scope, client, store, or
 policy rotation.
 
-**Status:** Tracked, not yet scheduled.
+**Status:** Open. Tracked, not yet scheduled.
 
 ### P11-FU-13: Deferred MCP Capabilities and Long-Lived Interaction
 
@@ -750,7 +759,7 @@ vocabulary. Roots are not access control; sampling reverses the prompt/cost dire
 separate double-human-approval and linked-accounting gate. External MCP logging remains unable to
 alter Optimus audit logging.
 
-**Status:** Tracked, not yet scheduled.
+**Status:** Open. Tracked, not yet scheduled.
 
 ### P11-FU-14: MCP Registry Discover-and-Connect
 
@@ -764,7 +773,7 @@ Automated install, update, or connect would invalidate v1's preprovisioned-only 
 This is explicitly distinct from ACP registry publication identity and release work under
 `P11-FEAT-REGISTRY`.
 
-**Status:** Tracked, not yet scheduled.
+**Status:** Open. Tracked, not yet scheduled.
 
 ### P11-FU-15: MCP Tool Search and Context Minimization
 
@@ -776,7 +785,7 @@ minimization; a Plan 11.x number is assigned only when it is picked up.
 **Rationale and acceptance boundary:** v1 bounds and records an operator-selected descriptor subset,
 but provides no semantic per-turn selection seam and no code-mode sandbox.
 
-**Status:** Tracked, not yet scheduled.
+**Status:** Open. Tracked, not yet scheduled.
 
 ### P11-FU-16: Reverse Research-to-Documentation Freshness Gate
 
@@ -791,7 +800,7 @@ authoritative documents. The generalized OWASP material lands in the current arc
 as `REFERENCE — Cross-cutting`; it is not deferred under this entry, and reference voice must not
 become a phantom requirement.
 
-**Status:** Tracked, not yet scheduled.
+**Status:** Open. Tracked, not yet scheduled.
 
 The rejected signed per-call capability design is a decision record, not deferred work. It creates no
 sixth MCP follow-up without a real multi-user or off-box threat model.
@@ -810,7 +819,7 @@ binding and `gateway_request_id`, while side-effecting calls remain held until a
 acknowledges the outcome. Custody must survive agent restart, preserve no-automatic-redispatch
 behavior, and produce auditable disposition and accounting evidence.
 
-**Status:** Tracked, not yet scheduled.
+**Status:** Open. Tracked, not yet scheduled.
 
 ### Durable client-MCP descriptor-surface pinning and named tool allowlists
 
@@ -824,7 +833,7 @@ identifier and Plan 11.x number are assigned only when this item is picked up.
 transport approval as descriptor/content trust; bind a reviewed catalog revision to safe identity;
 define drift/review/revocation; and preserve `PreToolGuard` as the per-call authority.
 
-**Status:** Tracked, not yet scheduled.
+**Status:** Open. Tracked, not yet scheduled.
 
 ### Client-MCP durable HTTP/SSE trust relaxation
 
@@ -838,7 +847,7 @@ assigned only when this item is picked up.
 address URL identity, redirects, DNS rebinding, private-address policy, and record migration; and
 show why the new path does not mint durable trust from an in-flow IDE decision.
 
-**Status:** Tracked, not yet scheduled.
+**Status:** Open. Tracked, not yet scheduled.
 
 ### Authenticated client-owned MCP upstream evidence
 
@@ -852,7 +861,7 @@ assigned only when this item is picked up.
 server and prove that env/header/query values reach only the intended connection, never model context,
 argv, telemetry, evidence, durable records, or another server connection.
 
-**Status:** Tracked, not yet scheduled.
+**Status:** Open. Tracked, not yet scheduled.
 
 ### Plan 11.8 Windows `WinError 10053` MCP test flake
 
@@ -866,7 +875,7 @@ when this item is picked up.
 separate test-fixture teardown/network timing from product behavior; reproduce on Windows and WSL2
 where relevant; and avoid weakening production transport safety or masking the failure with retries.
 
-**Status:** Tracked, not yet scheduled.
+**Status:** Open. Tracked, not yet scheduled.
 
 ### P11-FU-17: WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer
 
@@ -920,7 +929,7 @@ resolution) — do not conflate root causes across these entries at pickup.
 **Evidence anchors:** MCP Gateway architecture amendment publication plan Task 11/12 review notes;
 `tests/unit/docs/test_open_work_pool_hygiene.py::test_product_checkpoint_log_location_remains_gitignored`.
 
-**Status:** Tracked, not yet scheduled. Root cause fully established; not a code defect. Not
+**Status:** Open. Tracked, not yet scheduled. Root cause fully established; not a code defect. Not
 blocking any plan closure — recorded as a known, accurately-disclosed environment gap each time it
 recurs, per [[wsl2-local-linux-ci-substitute]]'s "no silent omission" rule.
 
@@ -975,7 +984,7 @@ without a sleep) but on a different platform and different underlying primitive.
 `tests/unit/acp/test_trusted_paths.py::TestWorkspaceIdentityRevalidation::test_revalidation_fails_after_workspace_directory_metadata_change`;
 `src/optimus/acp/trusted_paths.py` (`resolve_workspace_identity`, `revalidate_workspace_identity`).
 
-**Status:** Tracked, not yet scheduled. Root cause diagnosed as environment-level timestamp
+**Status:** Open. Tracked, not yet scheduled. Root cause diagnosed as environment-level timestamp
 coalescing, not a security or production-code defect. Not blocking any plan closure.
 
 **Recurrence:** 2026-08-07 during P11-FU-9 Task 4 independent review (operator + Cursor WSL full
@@ -1024,7 +1033,7 @@ allocated (lazy numbering — assign only if/when picked up for scoping).
 **Related prior art:** `P11-FU-7` (NDJSON / coverage timing), `P11-FU-18` (WSL ctime), and the
 Task 2 review note that the NDJSON flake remains backlog-owned and non-blocking.
 
-**Status:** Tracked, not yet scheduled; no implementation plan exists. Not blocking P11-FU-9 Task 4
+**Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Not blocking P11-FU-9 Task 4
 sign-off.
 
 ### P11-FU-20: Attach per-server catalog/authorizer to session tool service for real one-call issuance
@@ -1067,7 +1076,7 @@ before implementation.
 **Related prior art:** Same "mock manufactures agreement" shape as Task 5's FakeClientMcpService
 gap; disposition-never-opens-transport constraint from P11-FU-9 design §3.
 
-**Status:** Tracked, not yet scheduled; no implementation plan exists. Task 6 may close with the
+**Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Task 6 may close with the
 fail-closed seam + this named custody entry. Not an undisclosed residual.
 
 ### P11.5-FU-2: Consistent local env / Redis / Phoenix / Gateway startup for live runs
@@ -1155,7 +1164,7 @@ instead of one shared, documented one. The eventual design must nail this down e
 project-specific non-default port, or an explicit identity check) rather than depend on ambient
 port availability.
 
-**Status:** **Closed** (2026-07-29): Plan 11.6 implemented on
+**Status:** Closed. **Closed** (2026-07-29): Plan 11.6 implemented on
 `agent/cursor/plan-11-6-local-startup-consolidation` with commits
 `d123779`, `01f7849`, `24158ce`, `1618591`, `ef3dbd8` (Tasks 1–5) and Task 6 live evidence in
 [`reports/plan-11-6-local-startup-live-evidence.md`](../../reports/plan-11-6-local-startup-live-evidence.md)
@@ -1188,7 +1197,8 @@ as the A2A ledger's hardened-Redis fallback path—already changes Redis persist
 In that case, fix persistence once in the consolidated startup mechanism under the single-config
 rule.
 
-**Status:** Accepted as-is by the operator on 2026-07-30; recorded warning, not open work.
+**Status:** Reviewed disposition. Accepted as-is by the operator on 2026-07-30; recorded warning,
+not open work.
 
 ## P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)
 
@@ -1246,7 +1256,7 @@ may omit keyring-resolved `OPTIMUS_API_KEY` because audit precedes `apply_local_
 post-default audit remains the authoritative child-key evidence source. This is a custody note, not
 an additional Plan 10 item.
 
-**Status:** `P9.96-FU-1` through `P9.96-FU-4` and `P9.96-FU-6` are closed by Plan 10.1 (see the
+**Status:** Closed. `P9.96-FU-1` through `P9.96-FU-4` and `P9.96-FU-6` are closed by Plan 10.1 (see the
 dispositions table above); `P9.96-FU-5` is closed by Plan 10.1 evidence with no source/test change;
 `P9.96-FU-7` is **closed** under its original stable ID: Plan 10.1 closed the confirmation-gate half
 and Plan 10.2 (commit `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef`) closed the effective-row display
@@ -1258,12 +1268,16 @@ remaining open items are now carried by this pool, except for the parked, undeci
 
 ### Plan 10.3 frozen-plan status correction (historical)
 
+**Status:** Closed.
+
 The frozen Plan 10.3 implementation plan retains its pre-approval draft status because its
 approval record pins the plan bytes. The digest-pinned approval record and the roadmap's closed
 Plan 10.3 entry are authoritative for the lane's closed state; this pool records the closure
 without editing the historical frozen plan.
 
 ### `uv.lock` missing direct dependencies: `keyring`, `redis`, and their transitive chain (disclosed 2026-07-23 during Plan 10.1 Task 1)
+
+**Status:** Closed.
 
 The committed `uv.lock` is out of sync with `pyproject.toml`, not just stale: `uv lock --dry-run`
 shows 13 packages a regeneration would add, including `keyring` and `redis` (both **direct**
@@ -1297,6 +1311,8 @@ WSL2 Ubuntu-24.04 disposable fresh-sync import printed `keyring redis cryptograp
 ID; this note is closed by Plan 10.3.
 
 ### Tools: `SurfaceAuditError` frozen-dataclass CI wart (disclosed 2026-07-23 during Plan 10.1 Task 7)
+
+**Status:** Closed.
 
 `tools/verify_plan996_logging_surfaces.py` raises a `@dataclass(frozen=True)` `SurfaceAuditError`.
 When that exception is raised under pytest's generator-based failure capture, pytest teardown can

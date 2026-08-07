@@ -35,6 +35,16 @@ FEATURE_ID_RE = re.compile(rf"(?<![A-Z0-9-]){FEATURE_ID_BODY}(?![A-Z0-9-])")
 FEATURE_ROW_RE = re.compile(rf"^\|\s*`(?P<identity>{FEATURE_ID_BODY})`\s*\|", re.MULTILINE)
 PLAN_NUMBER_RE = re.compile(r"\bPlan [0-9]|\bplan-[0-9]")
 MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\((?P<target>[^)]+)\)")
+FU_ID_BODY = r"P\d+(?:\.\d+)*-FU-\d+"
+SECTION_HEADING_RE = re.compile(r"^(?P<level>##|###) (?P<title>.+)$", re.MULTILINE)
+FU_HEADING_RE = re.compile(rf"^(?P<identity>{FU_ID_BODY}): (?P<title>.+)$")
+STATUS_LINE_RE = re.compile(r"^\*\*Status:\*\*\s*(?P<value>.+)$", re.MULTILINE)
+FIXED_STATUS_RE = re.compile(
+    r"^(?P<token>Open|Partially implemented|Closed|Reviewed disposition)[.:](?:\s|$)"
+)
+PROMOTED_STATUS_RE = re.compile(
+    r"^(?P<token>Promoted -> \[[^\]]+\]\((?P<target>[^)]+)\))[.:](?:\s|$)"
+)
 
 
 def _read(path: Path) -> str:
@@ -45,6 +55,31 @@ def _feature_rows(text: str) -> Counter[str]:
     return Counter(match.group("identity") for match in FEATURE_ROW_RE.finditer(text))
 
 
+def _entry_sections(text: str) -> dict[str, str]:
+    headings = tuple(SECTION_HEADING_RE.finditer(text))
+    entries: dict[str, str] = {}
+    for index, heading in enumerate(headings):
+        if heading.group("level") != "###":
+            continue
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
+        title = heading.group("title")
+        assert title not in entries
+        entries[title] = text[heading.end() : end]
+    return entries
+
+
+def _status_token(section_body: str) -> str:
+    matches = tuple(STATUS_LINE_RE.finditer(section_body))
+    assert len(matches) == 1
+    value = matches[0].group("value").strip()
+    promoted = PROMOTED_STATUS_RE.match(value)
+    if promoted is not None:
+        return promoted.group("token")
+    fixed = FIXED_STATUS_RE.match(value)
+    assert fixed is not None, value
+    return fixed.group("token")
+
+
 def test_product_features_have_exactly_one_pool_owner() -> None:
     optimus_rows = _feature_rows(_read(OPTIMUS_POOL))
     product_rows = _feature_rows(_read(PRODUCT_POOL))
@@ -52,6 +87,22 @@ def test_product_features_have_exactly_one_pool_owner() -> None:
     assert not (optimus_rows.keys() & product_rows.keys())
     assert all(optimus_rows[feature_id] + product_rows[feature_id] == 1 for feature_id in PRODUCT_FEATURE_IDS)
     assert PRODUCT_FEATURE_IDS <= product_rows.keys()
+
+
+def test_every_optimus_pool_entry_has_one_canonical_status() -> None:
+    entries = _entry_sections(_read(OPTIMUS_POOL))
+
+    assert len(entries) >= 41
+    assert all(_status_token(body) for body in entries.values())
+
+
+def test_p996_aggregate_uses_canonical_closed_status() -> None:
+    pool_text = _read(OPTIMUS_POOL)
+    section = pool_text.split("## P9.96 Task 9 Disclosed Follow-Ups", 1)[1].split(
+        "\n## Closed Historical Follow-Ups", 1
+    )[0]
+
+    assert _status_token(section) == "Closed"
 
 
 def test_new_pool_has_no_scheduling_plan_numbers() -> None:
