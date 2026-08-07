@@ -188,7 +188,7 @@ independently authored `acpx` ACP client for ACP live evidence.
 - Produces `PendingClientMcpCandidateEndpoint.publish(candidate)`, `consume_snapshot(id)`, and
   `close()`; IPC accepts read-only snapshot retrieval only.
 
-- [ ] **Step 1: Write RED durable-record and IPC tests.**
+- [x] **Step 1: Write RED durable-record and IPC tests.**
 
   Assert domain/policy/key separation from launch approvals; HMAC tamper rejection; record keying by
   workspace/name/identity; changed identity requiring a new ceremony; default `non_mutating` and
@@ -196,7 +196,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   addresses; TCP rejection; derived IPC auth key; retrieval one-time consumption; concurrent matching
   candidate behavior; pending-only listener lifetime; and manual review fallback when IPC is absent.
 
-- [ ] **Step 2: Run the RED selectors.**
+- [x] **Step 2: Run the RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_trust.py tests/unit/mcp/test_local_ipc.py tests/unit/acp/test_launch_approvals.py tests/unit/acp/test_launch_approval_cli.py -q
@@ -204,7 +204,7 @@ independently authored `acpx` ACP client for ACP live evidence.
 
   Expected: no client record schema, lease authority, local IPC helper, or CLI subcommand.
 
-- [ ] **Step 3: Implement isolated record and IPC seams.**
+- [x] **Step 3: Implement isolated record and IPC seams.**
 
   Reuse `KeyringApprovalStore.hmac_key` only as a root; derive client-record signature,
   credential-fingerprint, and IPC-auth subkeys with distinct domain strings. Follow the Plan 11.7
@@ -213,14 +213,14 @@ independently authored `acpx` ACP client for ACP live evidence.
   immutable rendered fingerprint only; the CLI writes exactly the rendered fingerprint and never
   approves over IPC.
 
-- [ ] **Step 4: Run focused GREEN and static fitness.**
+- [x] **Step 4: Run focused GREEN and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_trust.py tests/unit/mcp/test_local_ipc.py tests/unit/acp/test_launch_approvals.py tests/unit/acp/test_launch_approval_cli.py -q
   uv run --frozen ruff check src/optimus/mcp/client_trust.py src/optimus/mcp/local_ipc.py src/optimus/acp/launch_approvals.py src/optimus/acp/launch_approval_cli.py tests/unit/mcp/test_client_trust.py tests/unit/mcp/test_local_ipc.py
   ```
 
-- [ ] **Step 5: Reviewer checkpoint.**
+- [x] **Step 5: Reviewer checkpoint.**
 
   Review that the CLI is the only durable-record writer, no raw configuration crosses IPC/keyring,
   and no caller can actuate a session through the local socket.

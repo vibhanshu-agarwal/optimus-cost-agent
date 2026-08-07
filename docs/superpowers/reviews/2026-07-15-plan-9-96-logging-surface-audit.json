@@ -321,6 +321,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.launch_approval_cli:_cmd_mcp_review:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.launch_approval_cli:_cmd_mcp_review:stdout_export prints only controlled operational status and the ASCII-validated server_name; it does not retain credentials, raw MCP configuration, or fingerprints beyond the reviewed outcome line.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_mcp_review_manual_path_binds_derived_fingerprint",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.launch_approval_cli:_cmd_revoke:stdout_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.acp.launch_approval_cli:_cmd_revoke:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
@@ -830,6 +838,46 @@
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.loops.ledger:JsonlProgressLedger.entries:file_open before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.mcp.client_trust:ClientMcpDurableStore.write:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: ClientMcpDurableStore.write serializes only the fixed client-MCP durable schema (digests, safe identity fields, credential-name fingerprints, policy, ceiling, and record HMAC) for keyring storage; raw header/env values never enter the payload.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/mcp/test_client_trust.py::test_durable_record_never_contains_raw_configuration",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.mcp.client_trust:compute_identity_fingerprint:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: compute_identity_fingerprint json.dumps only canonicalizes already-safe identity argument and credential-name fingerprint tuples into the HMAC message; it does not retain raw configuration or credentials.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/mcp/test_client_trust.py::test_write_accepts_only_derived_identity_fingerprint",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.mcp.client_trust:compute_record_hmac:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: compute_record_hmac json.dumps only the fixed durable-record field set for HMAC input; secret-bearing inputs are already domain-separated fingerprints and no raw MCP configuration is present.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/mcp/test_client_trust.py::test_hmac_tamper_rejects_durable_record",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.mcp.client_trust:write_client_mcp_durable_from_fingerprint:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch on ClientMcpDurableStore.write(...) method call inside write_client_mcp_durable_from_fingerprint; no file or stream write occurs—the call persists the already schema-limited durable record via the keyring store.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/mcp/test_client_trust.py::test_write_rejects_fingerprint_that_does_not_match_identity",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.mcp.local_ipc:PendingClientMcpCandidateEndpoint._stop_listener:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch on threading.Event.set() inside PendingClientMcpCandidateEndpoint._stop_listener; no Redis client or hash write exists on the local AF_PIPE/AF_UNIX pending-candidate path.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/mcp/test_local_ipc.py::test_listener_is_pending_only_and_exposes_no_approve_operation",
       "evidence_tier": "unit"
     },
     {

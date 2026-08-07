@@ -923,3 +923,10 @@ def _build_padded_record(*, target_bytes: int, hmac_key: bytes) -> ApprovalRecor
         padded = dc_replace(padded, record_hmac=compute_record_hmac(padded, hmac_key=hmac_key))
 
     return padded
+
+def test_client_mcp_policy_constant_is_not_launch_policy() -> None:
+    """P11-FU-9 Task 2: client MCP policy must not reuse launch approval policy."""
+    from optimus.mcp.client_trust import MCP_POLICY_COMPATIBILITY
+
+    assert MCP_POLICY_COMPATIBILITY != LAUNCH_POLICY_COMPATIBILITY
+    assert MCP_POLICY_COMPATIBILITY.startswith("P11-FU-9")
