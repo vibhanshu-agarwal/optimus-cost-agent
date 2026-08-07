@@ -1,55 +1,63 @@
-# P11-FU-9 Task 8 live evidence status (honest; not fabricated)
+# P11-FU-9 Task 8 live evidence status
 
-**Generated:** 2026-08-07 (Task 8 reviewer checkpoint). Plan checkboxes not marked.
+**Commit:** `fb231f2`  
+**Generated:** 2026-08-07 (post-commit evidence refresh).  
+**Platforms:** verified on native Windows (authoritative platform) + reproduced on WSL2 (CI-parity check).  
+**Secrets:** content-free only — no credentials, raw transcripts, or env values.
 
-## Commands run (WSL, `UV_PROJECT_ENVIRONMENT=.venv-wsl`)
+## Commands (native Windows authoritative)
 
-```bash
-UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --frozen pytest tests/unit/tools/test_run_p11_fu_9_acpx_evidence.py -q
-# 17 passed
+```powershell
+uv run --frozen pytest tests/unit/tools/test_run_p11_fu_9_acpx_evidence.py -q
+# 20 passed
 
-UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --frozen pytest -m requires_mcp_stdio tests/integration/mcp/test_client_mcp_live.py -rs
-# 1 skipped — docker_daemon_unavailable (WSL Docker Desktop integration off;
-#   docker.exe PE binary not exec-able from Linux; Windows .venv broken)
+uv run --frozen pytest -m requires_mcp_stdio tests/integration/mcp/test_client_mcp_live.py -q
+# 1 passed, 1 deselected — Terraform digest-pinned stdio via Docker Desktop
 
-UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --frozen pytest -m requires_mcp_http tests/integration/mcp/ -rs
-# 3 passed, 1 skipped(stdio) — Context7 catalog + real SDK httpx2 composition + byte budget GREEN
+uv run --frozen pytest -m requires_mcp_http tests/integration/mcp/ -q
+# 3 passed, 1 deselected — Context7 catalog + real SDK httpx2 composition + byte budget
 
-UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --frozen pytest -m requires_acpx tests/e2e/test_client_mcp_acpx.py -rs
+uv run --frozen pytest -m requires_acpx tests/e2e/test_client_mcp_acpx.py -q -rs
 # 2 passed, 1 skipped — scratch ignore + harness verifier GREEN;
-#   live empty-array acpx capture incomplete (exit=1, stop=None) — NOT evidence
+#   live empty-array acpx capture incomplete (exit=1, stop=None) — NOT DoD evidence
 
-UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --frozen ruff check tools/run_p11_fu_9_acpx_evidence.py \
-  tests/unit/tools/test_run_p11_fu_9_acpx_evidence.py \
-  tests/integration/mcp/test_client_mcp_live.py \
-  tests/integration/mcp/test_client_sdk_real.py \
-  tests/e2e/test_client_mcp_acpx.py \
-  src/optimus/mcp/client_sdk.py tests/unit/mcp/test_client_sdk.py
+uv run --frozen pytest tests/unit/mcp tests/unit/acp tests/unit/guardrails tests/unit/agent -q
+# 999 passed, 19 skipped
+
+uv run --frozen pytest tests/unit -q
+# 2772 passed, 25 skipped, 0 failed
+
+uv run --frozen ruff check .
+git diff --check
+uv run --frozen python tools/verify_plan996_logging_surfaces.py --manifest docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json
+# Plan 9.96 logging-surface audit passed
 ```
 
 ## Tier outcomes
 
 | Tier | Result | Notes |
 |---|---|---|
-| Unit harness (`test_run_p11_fu_9_acpx_evidence`) | PASSED (17) | JSONL parse, check-ignore/.gitignore fallback, no secrets |
-| `requires_mcp_stdio` Terraform digest `bd095e2b…f18d324` | SKIPPED | No usable Docker from WSL; Windows uv `.venv` broken — **not DoD evidence** |
-| `requires_mcp_http` Context7 catalog distributions | PASSED | Negotiated `2025-11-25`; tokenized read=2/network=0/write=0; legacy false positives; Accept header |
-| `requires_mcp_http` real SDK httpx2 composition | PASSED | Injected `httpx2.AsyncClient(follow_redirects=False, trust_env=False)` + Context7 initialize/list_tools |
+| Unit harness (`test_run_p11_fu_9_acpx_evidence`) | PASSED (20) | JSONL parse, check-ignore/.gitignore fallback, report secret scan, write_reports/main/run_capture sinks |
+| `requires_mcp_stdio` Terraform digest `bd095e2b…f18d324` | PASSED | Negotiated `2025-11-25`; tokenized read=9/network=0/write=0; legacy differs; native Docker Desktop |
+| `requires_mcp_http` Context7 catalog distributions | PASSED | Negotiated `2025-11-25`; tokenized read=2/network=0/write=0; Accept `application/json, text/event-stream` |
+| `requires_mcp_http` real SDK httpx2 composition | PASSED | Injected `httpx2.AsyncClient(follow_redirects=False, trust_env=False)` + Context7 initialize/list_tools; no fake session/transport |
 | `requires_mcp_http` real httpx2 byte budget | PASSED | Adapter `REMOTE_BYTE_OVERFLOW` against real httpx2 stream |
-| `requires_acpx` empty `mcpServers` live capture | SKIPPED | Capture incomplete — **not DoD evidence** |
 | `requires_acpx` scratch ignore + verifier | PASSED | |
+| `requires_acpx` empty `mcpServers` live capture | SKIPPED | `acpx_capture_incomplete exit=1 stop=None` — known acpx↔optimus-agent gap; **not DoD evidence** |
 
 ## Task 3 httpx2 composition claim
 
-**May close:** real-SDK tests in `tests/integration/mcp/test_client_sdk_real.py` ran green with official `mcp` Streamable HTTP + injected hardened `httpx2.AsyncClient` and Optimus streamed byte-budget enforcement. No fake session/transport.
+**Closed:** real-SDK tests in `tests/integration/mcp/test_client_sdk_real.py` ran green with official `mcp` Streamable HTTP + injected hardened `httpx2.AsyncClient` and Optimus streamed byte-budget enforcement. No fake session/transport.
 
-## Residuals (not closed by this checkpoint)
+## Residuals (still open)
 
-1. Terraform stdio digest-pinned catalog distributions (Docker unavailable in this environment).
-2. Live acpx empty-array / per-advertised-transport ACP evidence (capture incomplete).
-3. Process-tree teardown proof on Windows vs WSL POSIX group (deferred to authorized WSL worktree with working Docker/gitdir).
-4. Authenticated upstream support remains out of scope.
+1. Live acpx empty-array / per-advertised-transport ACP capture (`acpx_capture_incomplete`) — pre-existing, documented skip; not a Task 8 regression.
+2. Authenticated upstream support remains out of scope.
+
+## Windows hang fix (verification note)
+
+Step 4’s four-directory selector previously hung indefinitely on native Windows due to leaked `ProactorEventLoop` in `MCPAsyncSupervisor.close()` and blocking named-pipe `Client()` after listener stop in `local_ipc`. Both fixed in `fb231f2`; selector completes (~999 passed / 19 skipped).
 
 ## pyproject / .gitignore
 
-Verified already complete on branch: `requires_mcp_stdio` / `requires_mcp_http` markers + default deselection; `.acpxrc.json`, `mcpServers.json`, `tmp/` ignored. No changes required.
+Verified complete on branch: `requires_mcp_stdio` / `requires_mcp_http` markers + default deselection; `.acpxrc.json`, `mcpServers.json`, `tmp/` ignored.
