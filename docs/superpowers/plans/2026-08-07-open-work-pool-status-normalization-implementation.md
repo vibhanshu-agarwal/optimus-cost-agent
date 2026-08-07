@@ -100,7 +100,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   every frozen input in the ledger.
 - Produces a verified baseline in the execution log. It changes no repository file.
 
-- [ ] **Step 1: Verify branch, merge base, and clean execution baseline.**
+- [x] **Step 1: Verify branch, merge base, and clean execution baseline.**
 
   Run:
 
@@ -115,7 +115,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   `364fc9d6bc122ace3e7c9fc5042b7b2c094827cf` unless main advanced, in which case stop and merge main
   before proceeding; only this implementation plan may be untracked or modified.
 
-- [ ] **Step 2: Recompute the approved design body from its committed blob.**
+- [x] **Step 2: Recompute the approved design body from its committed blob.**
 
   Run:
 
@@ -125,7 +125,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
 
   Expected: exactly `4ff6cc2591e2fe446d422847206769cfa96e20fad1356cb37947824a82525446`.
 
-- [ ] **Step 3: Verify every protected file and the mutable Plan 11.8 pre-image.**
+- [x] **Step 3: Verify every protected file and the mutable Plan 11.8 pre-image.**
 
   Run this exact script from the repository root:
 
@@ -148,7 +148,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
 
   Expected: exit 0 with no output.
 
-- [ ] **Step 4: Confirm the Plan 11.8 status edit has no downstream digest pin.**
+- [x] **Step 4: Confirm the Plan 11.8 status edit has no downstream digest pin.**
 
   Run:
 
@@ -172,7 +172,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
 - Produces `_entry_sections(text) -> dict[str, str]`,
   `_status_token(section_body) -> str`, and canonical-status tests used by Tasks 2 and 3.
 
-- [ ] **Step 1: Add the section and status-token parser.**
+- [x] **Step 1: Add the section and status-token parser.**
 
   Add these constants and helpers below the existing Markdown regular expressions:
 
@@ -214,7 +214,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
       return fixed.group("token")
   ```
 
-- [ ] **Step 2: Add failing canonical-status and history-retention tests.**
+- [x] **Step 2: Add failing canonical-status and history-retention tests.**
 
   Add:
 
@@ -235,7 +235,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
       assert _status_token(section) == "Closed"
   ```
 
-- [ ] **Step 3: Run the new tests and verify RED.**
+- [x] **Step 3: Run the new tests and verify RED.**
 
   Run:
 
@@ -246,7 +246,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   Expected: FAIL because three `###` entries lack `**Status:**`, existing entries use noncanonical
   prefixes, and the P9.96 aggregate does not start with `Closed.`.
 
-- [ ] **Step 4: Normalize every status without changing its substantive disposition.**
+- [x] **Step 4: Normalize every status without changing its substantive disposition.**
 
   Apply this exact mapping, preserving the existing explanatory prose after the new token:
 
@@ -262,7 +262,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   `## How to use this document`. Keep the existing Raised, ownership, acceptance, evidence, and
   non-claim prose intact.
 
-- [ ] **Step 5: Run the status tests and all existing pool hygiene tests.**
+- [x] **Step 5: Run the status tests and all existing pool hygiene tests.**
 
   Run:
 
@@ -273,7 +273,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
 
   Expected: all tests pass at this checkpoint and Ruff is clean.
 
-- [ ] **Step 6: Commit the canonical vocabulary slice.**
+- [x] **Step 6: Commit the canonical vocabulary slice.**
 
   ```powershell
   git add tests/unit/docs/test_open_work_pool_hygiene.py docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md
@@ -293,7 +293,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
 - Produces `_fu_index_rows(text) -> dict[str, tuple[str, str]]` and an exact ID/title/status
   projection invariant.
 
-- [ ] **Step 1: Add the index parser and bijection test.**
+- [x] **Step 1: Add the index parser and bijection test.**
 
   Add:
 
@@ -330,7 +330,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
       assert _fu_index_rows(pool_text) == expected
   ```
 
-- [ ] **Step 2: Run the index test and verify RED.**
+- [x] **Step 2: Run the index test and verify RED.**
 
   Run:
 
@@ -340,7 +340,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
 
   Expected: FAIL because `## Follow-up status index` does not exist.
 
-- [ ] **Step 3: Insert the exact 32-row index before `## Open items`.**
+- [x] **Step 3: Insert the exact 32-row index before `## Open items`.**
 
   Use these rows; copy status cells byte-for-byte from the corresponding entry token:
 
@@ -382,7 +382,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   Precede the table with one sentence stating that entries own explanatory prose and tests enforce
   ID/title/status projection. Do not add the nine unnumbered/historical headings to this table.
 
-- [ ] **Step 4: Run the index and complete pool hygiene tests.**
+- [x] **Step 4: Run the index and complete pool hygiene tests.**
 
   ```powershell
   .venv\Scripts\python.exe -m pytest tests/unit/docs/test_open_work_pool_hygiene.py -v
@@ -392,7 +392,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   Expected: all tests pass; the index parser returns the same 32 ID/title/status tuples as the
   detailed headings; Ruff is clean.
 
-- [ ] **Step 5: Commit the index slice.**
+- [x] **Step 5: Commit the index slice.**
 
   ```powershell
   git add tests/unit/docs/test_open_work_pool_hygiene.py docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md
@@ -413,7 +413,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
 - Produces blanket relative-link validation, promoted-target confinement, settled-history wording
   protection, and targeted Plan 11.8/feature-row regression assertions.
 
-- [ ] **Step 1: Add relative-link and promoted-target tests.**
+- [x] **Step 1: Add relative-link and promoted-target tests.**
 
   Add `from urllib.parse import urlsplit` to the imports, add
   `PLANS_ROOT = REPO_ROOT / "docs/superpowers/plans"`, and add:
@@ -458,7 +458,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
           assert resolved.is_file()
   ```
 
-- [ ] **Step 2: Add settled-history and targeted factual regression tests.**
+- [x] **Step 2: Add settled-history and targeted factual regression tests.**
 
   Add:
 
@@ -514,7 +514,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
       assert f"{checked} of {checked + unchecked}" in normalized
   ```
 
-- [ ] **Step 3: Run the new tests and verify RED.**
+- [x] **Step 3: Run the new tests and verify RED.**
 
   Run:
 
@@ -525,7 +525,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   Expected: FAIL on the four broken report links, stale settled-entry labels, false Gateway-MCP row,
   and stale Plan 11.8 status. The promoted-target test may already pass from Task 1.
 
-- [ ] **Step 4: Apply the verified feature and Plan 11.8 corrections.**
+- [x] **Step 4: Apply the verified feature and Plan 11.8 corrections.**
 
   Make these exact semantic changes:
 
@@ -541,7 +541,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   - `P11-FEAT-GATEWAY-CORE`: remove `no migration follow-ups remain open under this identity` while
     retaining the verified Plan 11.1/11.4 closure and Vercel backlog disposition.
 
-- [ ] **Step 5: Convert resolved findings to dated history and repair evidence links.**
+- [x] **Step 5: Convert resolved findings to dated history and repair evidence links.**
 
   - `P11-FU-3`: retain `Closed`; replace the no-plan/Plan-11.8-next-slot prose with a later-pickup
     pointer to the Plan 11.8 design, plan, and partial checkpoint.
@@ -559,7 +559,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   - Change the P11-FU-11 seal and the three Plan 11.6 report targets from `../../reports/` to
     `../../../reports/`.
 
-- [ ] **Step 6: Run the complete pool hygiene file and diff checks.**
+- [x] **Step 6: Run the complete pool hygiene file and diff checks.**
 
   ```powershell
   .venv\Scripts\python.exe -m pytest tests/unit/docs/test_open_work_pool_hygiene.py -v
@@ -569,7 +569,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
 
   Expected: all pool hygiene tests pass, Ruff is clean, and diff hygiene is clean.
 
-- [ ] **Step 7: Commit the factual/link correction slice.**
+- [x] **Step 7: Commit the factual/link correction slice.**
 
   ```powershell
   git add tests/unit/docs/test_open_work_pool_hygiene.py docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md docs/superpowers/plans/2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md
@@ -586,7 +586,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
 - Produces a clean, pushed branch and one draft PR whose description separates factual corrections
   from structural changes and records the feature-State residual.
 
-- [ ] **Step 1: Re-run the negative-existence sweep and disposition every hit.**
+- [x] **Step 1: Re-run the negative-existence sweep and disposition every hit.**
 
   ```powershell
   rg -in "no .{0,40}(exists|yet)|does not exist|nothing in-repo|unresearched|not yet known" docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md docs/superpowers/plans/2026-07-01-phase-1-roadmap.md
@@ -595,7 +595,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   Expected: no false current-state denial remains. Retained hits must correspond to rechecked facts:
   absent `session/load`, genuinely unallocated/open work, or explicitly dated historical findings.
 
-- [ ] **Step 2: Verify structural counts without making additions brittle.**
+- [x] **Step 2: Verify structural counts without making additions brittle.**
 
   Run:
 
@@ -607,7 +607,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   bijection currently has 32 rows; every entry has exactly one canonical status; every relative
   link resolves.
 
-- [ ] **Step 3: Recompute all frozen hashes and the Plan 11.8 checkbox boundary.**
+- [x] **Step 3: Recompute all frozen hashes and the Plan 11.8 checkbox boundary.**
 
   Re-run Task 0 Step 3 without the mutable Plan 11.8 plan row, then run:
 
@@ -619,7 +619,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
 
   Expected: every frozen hash is unchanged; Plan 11.8 remains 27 checked and 19 unchecked.
 
-- [ ] **Step 4: Run documentation tests, full suite, Ruff, and diff hygiene.**
+- [x] **Step 4: Run documentation tests, full suite, Ruff, and diff hygiene.**
 
   ```powershell
   .venv\Scripts\python.exe -m pytest tests/unit/docs -q
@@ -630,7 +630,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
 
   Expected: all commands exit 0. Record exact pass/skip/deselect counts in the PR description.
 
-- [ ] **Step 5: Audit README and roadmap current-state claims.**
+- [x] **Step 5: Audit README and roadmap current-state claims.**
 
   ```powershell
   rg -n -i "Plan 11\.8|P11-FEAT-GATEWAY-MCP|P11-FEAT-ZED-RESUME|P11-FU-9|Phoenix|open.work pool|follow-up" README.md docs/superpowers/plans/2026-07-01-phase-1-roadmap.md
@@ -639,7 +639,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   Expected: no directly affected current-state claim is false. If one is false, stop for operator
   approval before widening the file set; do not silently edit it.
 
-- [ ] **Step 6: Check final scope and commit any verification-only plan checkbox updates.**
+- [x] **Step 6: Check final scope and commit any verification-only plan checkbox updates.**
 
   ```powershell
   git status --short
