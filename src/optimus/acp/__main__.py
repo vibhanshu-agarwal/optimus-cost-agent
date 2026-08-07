@@ -39,10 +39,22 @@ from optimus.acp.trusted_paths import (
     resolve_workspace_identity,
     revalidate_workspace_identity,
 )
+from optimus.gateway.client import DEFAULT_GATEWAY_TIMEOUT_SECONDS, validate_gateway_timeout_seconds
 
 
 def _print_log(message: str) -> None:
     print(message, file=sys.stderr)
+
+
+def _parse_gateway_timeout_seconds(value: str) -> float:
+    try:
+        return validate_gateway_timeout_seconds(value)
+    except ValueError:
+        # Stable message matches validate_gateway_timeout_seconds; avoid str(exc)
+        # so Plan 9.96 surface discovery does not classify this as exception_export.
+        raise argparse.ArgumentTypeError(
+            "gateway timeout must be a positive finite number of seconds"
+        ) from None
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -91,6 +103,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Debug trace log path. Relative paths resolve under --workspace-root. "
             "Default with --debug-trace: .optimus/debug-acp.ndjson"
         ),
+    )
+    parser.add_argument(
+        "--gateway-timeout-seconds",
+        type=_parse_gateway_timeout_seconds,
+        default=None,
+        metavar="SECONDS",
+        help=f"Gateway request timeout in seconds for this process (default: {DEFAULT_GATEWAY_TIMEOUT_SECONDS:.1f}).",
     )
     # Internal-only arguments (Plan 9.96, Task 5 Step 2). Never documented as
     # a public operator-facing flag beyond the optimus-trust CLI, which is
@@ -440,7 +459,14 @@ def main(argv: list[str] | None = None) -> int:
     # other exception — stops it exactly once.
     try:
         try:
-            server = build_configured_server(environ=agent_environ, workspace_root=workspace_root, model=args.model)
+            build_server_kwargs: dict[str, object] = {
+                "environ": agent_environ,
+                "workspace_root": workspace_root,
+                "model": args.model,
+            }
+            if args.gateway_timeout_seconds is not None:
+                build_server_kwargs["gateway_timeout_seconds"] = args.gateway_timeout_seconds
+            server = build_configured_server(**build_server_kwargs)
         except StartupConfigurationError as exc:
             print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
             return exc.exit_code

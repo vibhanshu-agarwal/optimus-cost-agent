@@ -77,9 +77,59 @@ def test_bootstrap_builds_agent_configured_server(tmp_path, monkeypatch):
         },
         workspace_root=tmp_path,
         model="glm-5.2",
+        gateway_timeout_seconds=90.0,
     )
 
     assert server is not None
+    assert server._dispatcher._gateway_client._timeout_seconds == 90.0
+    assert server._dispatcher._agent_runner._gateway_client._timeout_seconds == 90.0
+
+
+def test_bootstrap_gateway_timeout_defaults_to_thirty_seconds(tmp_path, monkeypatch):
+    class FakeStore:
+        def ping(self):
+            return None
+
+    class FakeRuntime:
+        def ping(self):
+            return None
+
+        def sync_state_store(self):
+            return FakeStore()
+
+        def telemetry_adapter(self):
+            return object()
+
+    class FakeClientRuntime:
+        disposition = object()
+        supervisor = object()
+        mcp_http_enabled = False
+        mcp_sse_enabled = False
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "optimus.acp.preflight.run_preflight",
+        lambda environ, **kwargs: "redis://localhost:6379/0",
+    )
+    monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: FakeRuntime())
+    monkeypatch.setattr(
+        "optimus.acp.bootstrap.build_client_mcp_runtime",
+        lambda **kwargs: FakeClientRuntime(),
+    )
+    server = build_configured_server(
+        environ={
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "opt-test",
+            "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
+        },
+        workspace_root=tmp_path,
+        model="glm-5.2",
+    )
+
+    assert server._dispatcher._gateway_client._timeout_seconds == 30.0
+    assert server._dispatcher._agent_runner._gateway_client._timeout_seconds == 30.0
 
 
 def test_bootstrap_reports_unreachable_redis(tmp_path, monkeypatch):

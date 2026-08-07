@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Protocol
@@ -20,6 +21,18 @@ from optimus.gateway.models import (
     parse_gateway_usage,
 )
 
+DEFAULT_GATEWAY_TIMEOUT_SECONDS = 30.0
+
+
+def validate_gateway_timeout_seconds(value: object) -> float:
+    try:
+        parsed = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        raise ValueError("gateway timeout must be a positive finite number of seconds") from None
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise ValueError("gateway timeout must be a positive finite number of seconds")
+    return parsed
+
 
 @dataclass(frozen=True)
 class GatewayRequest:
@@ -27,7 +40,7 @@ class GatewayRequest:
     url: str
     headers: dict[str, str]
     payload: dict[str, Any]
-    timeout_seconds: float = 30.0
+    timeout_seconds: float = DEFAULT_GATEWAY_TIMEOUT_SECONDS
 
     def __repr__(self) -> str:
         safe_headers = dict(self.headers)
@@ -97,11 +110,11 @@ class GatewayClient:
         *,
         settings: OptimusGatewaySettings,
         transport: GatewayTransport | None = None,
-        timeout_seconds: float = 30.0,
+        timeout_seconds: float = DEFAULT_GATEWAY_TIMEOUT_SECONDS,
     ) -> None:
         self._settings = settings
         self._transport = transport or UrllibGatewayTransport()
-        self._timeout_seconds = timeout_seconds
+        self._timeout_seconds = validate_gateway_timeout_seconds(timeout_seconds)
 
     def create_response(
         self,

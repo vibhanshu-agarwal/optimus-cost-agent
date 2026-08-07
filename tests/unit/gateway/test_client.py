@@ -292,6 +292,30 @@ def test_post_tool_json_rejects_non_tool_path():
         client.post_tool_json(path="/v1/responses", payload={})
 
 
+def test_gateway_client_default_timeout_remains_thirty_seconds():
+    transport = FakeTransport()
+    client = GatewayClient(settings=settings(), transport=transport)
+
+    client.create_response(model="glm-5.2", input_text="hello")
+
+    assert transport.requests[0].timeout_seconds == 30.0
+
+
+def test_gateway_client_explicit_timeout_reaches_transport():
+    transport = FakeTransport()
+    client = GatewayClient(settings=settings(), transport=transport, timeout_seconds=90.0)
+
+    client.create_response(model="glm-5.2", input_text="hello")
+
+    assert transport.requests[0].timeout_seconds == 90.0
+
+
+@pytest.mark.parametrize("value", [0.0, -1.0, float("inf"), float("-inf"), float("nan")])
+def test_gateway_client_rejects_non_positive_or_non_finite_timeout(value):
+    with pytest.raises(ValueError):
+        GatewayClient(settings=settings(), transport=FakeTransport(), timeout_seconds=value)
+
+
 # --- Plan 9.95 Task 1 Step 3: transport tests for reported and unknown HTTP-error cost ---
 
 
