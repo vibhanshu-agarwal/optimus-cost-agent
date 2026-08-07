@@ -540,8 +540,11 @@ that Gateway-MCP implements this capability.
 - Add schema-pinned unit tests plus real-client evidence for empty and non-empty arrays, with no
   raw server credentials or untrusted configuration persisted or logged.
 
-**Status:** Tracked, not yet scheduled. Explicitly not a hard prerequisite for Plan 11.7 and not
-owned by `P11-FEAT-GATEWAY-MCP`.
+**Status:** Design drafted for independent review in
+[`2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md`](../specs/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md).
+The design chooses a separately reviewed agent-side MCP client with session-only ACP approval and
+CLI-only durable transport trust. No implementation plan exists. This is explicitly not a hard
+prerequisite for Plan 11.7 and is not owned by `P11-FEAT-GATEWAY-MCP`.
 
 ### P11-FU-10: Complete ACP Error-Code Registry Audit
 
@@ -780,6 +783,62 @@ loss is durably classified by effect: read-only calls can be explicitly re-invok
 binding and `gateway_request_id`, while side-effecting calls remain held until an operator
 acknowledges the outcome. Custody must survive agent restart, preserve no-automatic-redispatch
 behavior, and produce auditable disposition and accounting evidence.
+
+**Status:** Tracked, not yet scheduled.
+
+### Durable client-MCP descriptor-surface pinning and named tool allowlists
+
+**Raised:** 2026-08-06 by the P11-FU-9 client-supplied ACP MCP design.
+
+**Designated custody:** This entry owns an optional second-stage durable approval that pins a
+discovered client-MCP descriptor surface and supports named tool allowlist selection. The follow-up
+identifier and Plan 11.x number are assigned only when this item is picked up.
+
+**Acceptance criteria:** A design must resolve discovery-before-approval ordering without treating a
+transport approval as descriptor/content trust; bind a reviewed catalog revision to safe identity;
+define drift/review/revocation; and preserve `PreToolGuard` as the per-call authority.
+
+**Status:** Tracked, not yet scheduled.
+
+### Client-MCP durable HTTP/SSE trust relaxation
+
+**Raised:** 2026-08-06 by the P11-FU-9 client-supplied ACP MCP design.
+
+**Designated custody:** This entry owns any proposal to relax the equal CLI-ceremony baseline for
+durable stdio, HTTP, and SSE transport trust. The follow-up identifier and Plan 11.x number are
+assigned only when this item is picked up.
+
+**Acceptance criteria:** Establish a materially safer, reviewable HTTP/SSE-specific trust case;
+address URL identity, redirects, DNS rebinding, private-address policy, and record migration; and
+show why the new path does not mint durable trust from an in-flow IDE decision.
+
+**Status:** Tracked, not yet scheduled.
+
+### Authenticated client-owned MCP upstream evidence
+
+**Raised:** 2026-08-06 by the P11-FU-9 client-supplied ACP MCP design.
+
+**Designated custody:** This entry owns real-dependency evidence for a client-owned authenticated MCP
+upstream after the base client path is implemented. The follow-up identifier and Plan 11.x number are
+assigned only when this item is picked up.
+
+**Acceptance criteria:** Use an operator-approved non-secret test credential with an independent MCP
+server and prove that env/header/query values reach only the intended connection, never model context,
+argv, telemetry, evidence, durable records, or another server connection.
+
+**Status:** Tracked, not yet scheduled.
+
+### Plan 11.8 Windows `WinError 10053` MCP test flake
+
+**Raised:** 2026-08-06 during the paused Plan 11.8 Gateway-MCP lane's test review.
+
+**Designated custody:** This entry owns investigation of the intermittent Windows connection-aborted
+(`WinError 10053`) MCP test failure. The follow-up identifier and Plan 11.x number are assigned only
+when this item is picked up.
+
+**Acceptance criteria:** Establish a minimized reproduction or bounded no-reproduction evidence;
+separate test-fixture teardown/network timing from product behavior; reproduce on Windows and WSL2
+where relevant; and avoid weakening production transport safety or masking the failure with retries.
 
 **Status:** Tracked, not yet scheduled.
 

@@ -95,3 +95,8 @@ pip-delete-this-directory.txt
 
 # Reviewer checkpoint logs (handoff continuity; never committed into task commits)
 docs/superpowers/reviews/*-review-checkpoints.md
+
+# Local ACP/MCP evidence scratch; never stage client configuration or transcripts
+.acpxrc.json
+mcpServers.json
+tmp/
