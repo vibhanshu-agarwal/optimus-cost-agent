@@ -2,9 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Use `superpowers:test-driven-development` for every production behavior change. Steps use checkbox (`- [ ]`) syntax for tracking. Do not mark a checkbox complete until its stated verification command has actually passed.
 
-**Status:** Draft revision 2 for operator and independent-reviewer approval. This document authorizes no source,
-test, dependency, lockfile, credential, live-configuration, commit, push, or PR mutation until the
-operator approves this exact plan.
+**Status:** Closed. All 9 tasks implemented and independently reviewed/approved on branch
+`agent/cursor/p11-fu-9-client-mcp`. Deferred capabilities remain owned by their named backlog entries
+(descriptor pinning/allowlists, HTTP/SSE trust relaxation, authenticated upstream evidence, Plan 11.8
+`WinError 10053` flake) and are not resolved by this plan.
 
 **Goal:** Honor client-supplied ACP `mcpServers` through a guarded agent-side MCP client, exposing
 only static generic `mcp_list_tools` and `mcp_call` operations without importing Gateway MCP modules
@@ -668,7 +669,7 @@ independently authored `acpx` ACP client for ACP live evidence.
 - Produces a claim-to-evidence map that distinguishes client-supplied ACP MCP from Gateway-brokered
   MCP and lists every deferred capability with an owning backlog entry.
 
-- [ ] **Step 1: Write RED documentation/closure tests.**
+- [x] **Step 1: Write RED documentation/closure tests.**
 
   Require the closure evidence to name the approved design digest, real dependency artifacts,
   scanner/credential boundaries, current transport capability status, generic-tool-only model surface,
@@ -677,20 +678,20 @@ independently authored `acpx` ACP client for ACP live evidence.
   empty-array and per-advertised-transport evidence, `session/load` exclusion ownership, and the
   three P11-FU-9 deferrals plus the Plan 11.8 flake.
 
-- [ ] **Step 2: Run the RED closure selector.**
+- [x] **Step 2: Run the RED closure selector.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_mcp_closure.py -q
   ```
 
-- [ ] **Step 3: Perform the documentation freshness audit and create closure evidence.**
+- [x] **Step 3: Perform the documentation freshness audit and create closure evidence.**
 
   Audit every current-state claim in README, roadmap, and consolidated backlog. Update only factual
   prose made stale by this implementation; never rewrite frozen historical plan bodies. Keep durable
   descriptor pinning/tool allowlists, HTTP/SSE trust relaxation, authenticated-upstream evidence, and
   `session/load` visibly owned by their named backlog/charter entries.
 
-- [ ] **Step 4: Run full final gates.**
+- [x] **Step 4: Run full final gates.**
 
   ```powershell
   uv run --frozen pytest -q
@@ -701,14 +702,14 @@ independently authored `acpx` ACP client for ACP live evidence.
   git status --short --branch
   ```
 
-- [ ] **Step 5: Apply progress and integration gates only with authorization.**
+- [x] **Step 5: Apply progress and integration gates only with authorization.**
 
   Mark a task checkbox only after its exact command passed and attach the named evidence. Before any
   commit, push, or PR, rerun Ruff and `git diff --check`, verify no reviewer checkpoint, secret,
   raw evidence, `tmp/`, paused Plan 11.8 work, or unrelated change is staged, and obtain explicit
   authorization.
 
-- [ ] **Step 6: Reviewer closure checkpoint.**
+- [x] **Step 6: Reviewer closure checkpoint.**
 
   Independently verify the documentation freshness audit, every named evidence artifact, live-tier
   execution status, deferred-work ownership, clean staging boundary, and the exact commands recorded

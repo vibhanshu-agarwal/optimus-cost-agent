@@ -540,11 +540,14 @@ that Gateway-MCP implements this capability.
 - Add schema-pinned unit tests plus real-client evidence for empty and non-empty arrays, with no
   raw server credentials or untrusted configuration persisted or logged.
 
-**Status:** Design drafted for independent review in
-[`2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md`](../specs/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md).
-The design chooses a separately reviewed agent-side MCP client with session-only ACP approval and
-CLI-only durable transport trust. No implementation plan exists. This is explicitly not a hard
-prerequisite for Plan 11.7 and is not owned by `P11-FEAT-GATEWAY-MCP`.
+**Status:** Implementation complete on branch `agent/cursor/p11-fu-9-client-mcp` through Tasks 1–8
+(live evidence + Windows async/IPC hang fix); Task 9 is the documentation/custody closure gate.
+Design:
+[`2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md`](../specs/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md)
+(frozen body SHA-256 `66606036b37ddc59cf9f2f4c8a713156a1f839fb771679a16937a5263c9ca4a2`). Deferred capabilities remain
+owned by their named backlog headers (descriptor pinning/allowlists, HTTP/SSE trust relaxation,
+authenticated upstream evidence, Plan 11.8 `WinError 10053` flake) and are not closed by this entry.
+Not a hard prerequisite for Plan 11.7 and not owned by `P11-FEAT-GATEWAY-MCP`.
 
 ### P11-FU-10: Complete ACP Error-Code Registry Audit
 
