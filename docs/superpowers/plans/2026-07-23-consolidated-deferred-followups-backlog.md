@@ -49,11 +49,11 @@ open-work inventory.
 
 | Identity | State | Scope detail |
 |---|---|---|
-| `P11-FEAT-GATEWAY-CORE` | Plan 11.1 — closed; merged to `main` as PR #85 (`6ae6997`, tip `6c39599`). Migration closed by **Plan 11.4**, merged to `main` as PR #91 (`d80e112`), 2026-07-28; no migration follow-ups remain open under this identity | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route); migration custody: strict-loopback completion, OpenRouter-default OpenAI-compatible aggregator transport, provider-reported accounting, and direct-adapter retirement — all implemented and independently re-verified task-by-task. The bounded Vercel Python transport check is complete as a design decision: Vercel is backlogged under this identity (its public OpenAI-compatible transport doesn't document the mandatory per-response provider-cost fields the settled `GatewayUsage` contract requires; no comparison matrix, no second endpoint added). Closure evidence: [design spec](../specs/2026-07-28-plan-11-4-p11-feat-gateway-core-migration-design.md), [implementation plan](2026-07-28-plan-11-4-gateway-core-migration.md) (all 36 checkboxes checked against their named verification commands) |
+| `P11-FEAT-GATEWAY-CORE` | Plan 11.1 — closed; merged to `main` as PR #85 (`6ae6997`, tip `6c39599`). Migration closed by **Plan 11.4**, merged to `main` as PR #91 (`d80e112`), 2026-07-28 | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route); migration custody: strict-loopback completion, OpenRouter-default OpenAI-compatible aggregator transport, provider-reported accounting, and direct-adapter retirement — all implemented and independently re-verified task-by-task. The bounded Vercel Python transport check is complete as a design decision: Vercel is backlogged under this identity (its public OpenAI-compatible transport doesn't document the mandatory per-response provider-cost fields the settled `GatewayUsage` contract requires; no comparison matrix, no second endpoint added). Closure evidence: [design spec](../specs/2026-07-28-plan-11-4-p11-feat-gateway-core-migration-design.md), [implementation plan](2026-07-28-plan-11-4-gateway-core-migration.md) (all 36 checkboxes checked against their named verification commands) |
 | `P11-FEAT-GATEWAY-TOOLS` | Plan 11.2 — closed by PR #88 (merge `4590dbf`); migration follow-ups remain assigned here and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); migration custody: deterministic search/direct extract, route-specific dependency availability, replacement acceptance, and Tavily rollback-reviewed retirement; closure evidence: [Plan 11.2 approval](../reviews/2026-07-27-plan-11-2-implementation-plan-approval-v2.md), [local-process evidence](../../../reports/plan-11-2-gateway-tools-local-process-evidence.md), [staging evidence](../../../reports/plan-11-2-gateway-tools-staging-evidence.md), and [fitness report](../../../reports/plan-11-2-gateway-tools-task7-fitness.md) |
 | `P11-FEAT-GATEWAY-COST-OBS` | Plan 11.5 — closed by PR #95 (merge `e388258`), 2026-07-29; migration follow-ups remain assigned here (`P11.5-FU-1` open; `P11.5-FU-2` closed via Plan 11.6) and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); [implementation plan](2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration |
-| `P11-FEAT-GATEWAY-MCP` | Ratified bounded v1 design: static-profile, dual-transport, tools-only Gateway brokering. `P11-FU-3`'s route/typed-contract gate is now **closed** (2026-08-06): the charter amendment (PR #112) and all four amended PDFs — HLD v2.17, LLD v2.40, Guardrails v1.2, Test Strategy v1.6 (PR #113, merge `edd1f04`) — are approved and published. No implementation design spec or plan exists yet; an implementation plan number is assigned only at pickup (next unused Plan 11.x slot is 11.8 per the charter's own convention) | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
-| `P11-FEAT-ZED-RESUME` | **Plan 11.7 active.** Frozen Task 0 Steps 1-4 sealed (`session/load` unreachable on current Zed 1.13.1); frozen Plan 11.7 Tasks 0 Steps 5-7 and Tasks 1-11 remain blocked. Standalone feasibility amendment approved (`79F3C92A…C06E6`, 2026-08-02); origin-A fixture v2 amendment approved and merged (`5BB327D8…9A4D` / PR #108, 2026-08-02). Corrected `origin-a-3` executed and sealed as Option B process-invalid (`next_corr=4` / `next_prompt=3` unclaimed; DoD success false). Retry-preflight amendment (`P11-FU-11`, PR #110) implemented through Task 5 **Path A** fail-closed terminal stop (2026-08-05): real CLI fail-closed at acquire; offline `unavailable_proof`; no corr-4 / no settings mutation / no Zed launch; accepted live retry not obtained. Parent Task 5 remains blocked; clean relaunch needs a budget-expansion amendment. Does not claim server-side custody feasible. Carries owned `P11-FU-1`, `P9.8-FU-5`, and `P11-FU-11`; coordinates, but does not own, `P11-FU-4` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume); [feasibility amendment](2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md); [origin-A fixture v2 amendment](2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md); [retry-preflight amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md). Dependency: the [evidence and handoff product pool](evidence-handoff-open-work-pool.md) entry `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` supplies its sanitized-evidence gate. |
+| `P11-FEAT-GATEWAY-MCP` | Partially implemented. The [frozen design](../specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md) and living [Plan 11.8 implementation plan](2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md) record the bounded static-profile, dual-transport, tools-only Gateway brokering. 27 of 46 checks are complete: Tasks 0-7 are complete; Task 8 Step 1 is complete; Task 8 Steps 2-4 and Task 9 are incomplete. PR #116 merged implementation work and PR #118 repaired its CI custody regressions. The lane paused/pivoted on 2026-08-06; future allocation follows the charter's Plan 11 numbering convention. `P11-FU-3`'s route/typed-contract gate closed through the charter amendment (PR #112) and four amended PDFs (PR #113, merge `edd1f04`). | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
+| `P11-FEAT-ZED-RESUME` | Partially implemented; blocked. Frozen Task 0 Steps 1-4 sealed (`session/load` unreachable on current Zed 1.13.1); frozen Plan 11.7 Tasks 0 Steps 5-7 and Tasks 1-11 remain blocked. Standalone feasibility amendment approved (`79F3C92A…C06E6`, 2026-08-02); origin-A fixture v2 amendment approved and merged (`5BB327D8…9A4D` / PR #108, 2026-08-02). Corrected `origin-a-3` executed and sealed as Option B process-invalid (`next_corr=4` / `next_prompt=3` unclaimed; DoD success false). Retry-preflight amendment (`P11-FU-11`, PR #110) implemented through Task 5 **Path A** fail-closed terminal stop (2026-08-05): real CLI fail-closed at acquire; offline `unavailable_proof`; no corr-4 / no settings mutation / no Zed launch; accepted live retry not obtained. Parent Task 5 remains blocked; clean relaunch needs a budget-expansion amendment. Does not claim server-side custody feasible. Carries owned `P11-FU-1`, `P9.8-FU-5`, and `P11-FU-11`; coordinates, but does not own, `P11-FU-4` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume); [feasibility amendment](2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md); [origin-A fixture v2 amendment](2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md); [retry-preflight amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md). Dependency: the [evidence and handoff product pool](evidence-handoff-open-work-pool.md) entry `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` supplies its sanitized-evidence gate. |
 | `P11-FEAT-REGISTRY` | Ratified, unscheduled, and held as the last primary Plan 11 slice. The ACP registry has a public authoritative repository, schema, submission guide, and stabilized live process; pickup begins by pinning and executing against the then-current validator/CI behavior, not by searching for an unknown source. Reassess 11.x-last versus a 13.x split for outward publication once this consolidated pool closes. The v1.0 release-version contract and excluded-capability inventory remain in Plan 11 | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut). Verified local finding carried to pickup: package and ACP versions are both `0.1.0`, and ACP currently returns `authMethods: []`. The registry guide's Agent/Terminal Auth admission rule is an external claim to verify by live execution before implementation scope is frozen. |
 | `P11-FEAT-IDE` | Conditional — opens only by explicit amendment if REGISTRY surfaces an unmet multi-IDE expectation | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing) |
 | `Plan 12` | Post-v1.0 context-window and intelligent-selection lane; outside the v1.0 cut | [Charter boundary](2026-07-25-plan-11-v1-milestone-charter.md#explicit-exclusions-and-unresolved-inputs) |
@@ -320,7 +320,7 @@ Named evidence reports are the [real local-process HTTP artifact](../../../repor
 [real staging-Gateway artifact](../../../reports/plan-11-2-gateway-tools-staging-evidence.md), and
 [fitness/release-gate report](../../../reports/plan-11-2-gateway-tools-task7-fitness.md).
 
-**Status:** Closed. Closed by PR #88 / merge `4590dbf`; the dedicated package/advisory routes and their
+**Status:** Closed. Implemented by PR #88 / merge `4590dbf`; the dedicated package/advisory routes and their
 evidence are complete. Remaining migration work stays with `P11-FEAT-GATEWAY-TOOLS` and is not a
 reopening of this closed item.
 
@@ -355,11 +355,12 @@ rationale: non-negotiable for any agent, especially a coding agent.
   (`MCPProfileRegistry`, `MCPDiscoveryBroker`, `MCPDiscoveryPaginator`, `MCPInvocationBroker`,
   `MCPConnectionManager`).
 
-**Status:** Closed. **Closed 2026-08-06.** Both acceptance criteria are met. `P11-FEAT-GATEWAY-MCP` is now
-eligible for an implementation design spec and plan; none exists yet as of this closure — drafting
-one is separate, not-yet-scheduled work. A Plan 11.x number is assigned only at pickup (next unused
-slot is **Plan 11.8**, per the charter's next-unused-single-decimal convention). `P11-FEAT-ZED-RESUME`
-was picked up first as Plan 11.7 and remains a separate, independently blocked lane.
+**Status:** Closed. On 2026-08-06, both acceptance criteria were met. Later pickup produced the
+[Plan 11.8 design](../specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md) and living
+[Plan 11.8 implementation plan](2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md).
+Its partial checkpoint is 27 of 46 checks complete (Tasks 0-7 and Task 8 Step 1 complete; Task 8
+Steps 2-4 and Task 9 incomplete), with implementation in PR #116 and CI custody repair in PR #118.
+`P11-FEAT-ZED-RESUME` remains a separate, independently blocked lane.
 
 ### P11-FU-4: Re-pin FU-4A/FU-5 Live Evidence
 
@@ -587,9 +588,9 @@ scoping**. No implementation plan exists. Filed 2026-07-29 for pool custody.
 **Raised:** 2026-07-29 during Plan 11.7 design review after validating the vendored ACP v1 schema.
 Priority: **Protocol-honesty / trust-boundary follow-up; not a Plan 11.7 prerequisite.**
 
-**Origin / current behavior:** ACP requires `mcpServers` on both `NewSessionRequest` and
-`LoadSessionRequest`. Optimus has long accepted `session/new` while ignoring that field; existing
-tests and live payloads send `[]`. This is not the same system as `P11-FEAT-GATEWAY-MCP`:
+**Intake finding (2026-07-29):** ACP requires `mcpServers` on both `NewSessionRequest` and
+`LoadSessionRequest`. At raising, Optimus accepted `session/new` while ignoring that field; existing
+tests and live payloads sent `[]`. This is not the same system as `P11-FEAT-GATEWAY-MCP`:
 ACP `mcpServers` asks the agent to connect outward to client-nominated servers, while Gateway MCP
 brokering routes Optimus-owned tool calls through the Gateway. Sequencing Gateway-MCP first would
 not resolve the current ACP behavior.
@@ -598,6 +599,9 @@ not resolve the current ACP behavior.
 `session/new` and future methods, including `session/load`. Plan 11.7 preserves the shipped
 posture and records the field without creating a client-nominated connection; it does not claim
 that Gateway-MCP implements this capability.
+
+PR #119 subsequently resolved the ignored-`mcpServers` behavior under this entry's acceptance
+criteria.
 
 **Acceptance criteria:**
 
@@ -731,13 +735,13 @@ zero `\ufffd` and zero U+2014 remain in that docstring; keep relay behavior unch
 **Raised:** 2026-08-04 during review of the Plan 11.7 origin-A fixture-v2 execution amendment.
 Priority: **HIGH**. This is a newly discovered custody-gate gap, not a correlation-budget expansion.
 
-**Origin / current behavior:** The bounded runner contains a complete
-`assert_prompt_retry_preflight` function, but the function is never called. The
-`origin-a-prompt-retry` CLI branch currently validates the fixture hash and prints a hardcoded JSON
-result; it does not load the stage ledger, invoke the preflight gate, or verify
-`live_session_proof`. No runner or relay path currently constructs that proof from the real Zed
-process, relay connection, and ACP session state. The source-level line references are recorded in
-the linked amendment and must be revalidated against the exact execution commit at pickup.
+**Pre-implementation finding (2026-08-04):** At raising, the bounded runner contained a complete
+`assert_prompt_retry_preflight` function, but never called it. The `origin-a-prompt-retry` CLI
+branch then validated the fixture hash and printed a hardcoded JSON result; it did not load the
+stage ledger, invoke the preflight gate, or verify `live_session_proof`. No runner or relay path
+then constructed that proof from the real Zed process, relay connection, and ACP session state. The
+source-level line references are recorded in the linked amendment and must be revalidated against
+the exact execution commit at pickup.
 
 **Designated slice / plan shape:** `P11-FEAT-ZED-RESUME`, through the standalone
 [retry-preflight gate amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md) and its
@@ -761,13 +765,13 @@ a new Plan 11.x number or authorize a fourth correlation launch.
   liveness, PID reuse protection, and channel failure; real-Zed/relay evidence proves the accepted
   same-session retry path and the no-relaunch/no-settings-mutation invariants.
 
-**Status:** Partially implemented. Implemented on `agent/cursor/p11-feat-zed-resume` through Task 5 Path A
+**Status:** Partially implemented. Work on `agent/cursor/p11-feat-zed-resume` reached Task 5 Path A
 fail-closed terminal stop (2026-08-05). Real `origin-a-prompt-retry` CLI fail-closed at
 `acquire_live_session_proof` with `invalid_probe_retry_control_channel_failure`; offline
 verifier classified `unavailable_proof`; `settings_mutated=false`, `zed_launched=false`; no
 correlation ordinal 4. Accepted same-session live retry was **not** obtained (dead origin-a-3
 session + exhausted correlation budget). Evidence:
-[path-a-terminal-seal](../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json).
+[path-a-terminal-seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json).
 Public gate signature supersession vs digest-pinned amendment Required interfaces is recorded as a
 non-digest current-state note (Task 6). Remains open only for independent reviewer/operator
 disposition of Path A and any future budget-expansion / live-retry path (separately authorized).
@@ -1126,16 +1130,16 @@ capture), by operator ([Vibhanshu]). Priority: **HIGH**. Surfaced while attempti
 `acpx` capture and `requires_gateway` evidence and hitting four inconsistent mechanisms for
 getting local dependencies running before landing on a workaround.
 
-**Origin / core problem:** `optimus-agent` startup (`__main__.py`) already resolves runtime
-configuration from the OS keychain + sensible defaults with **zero required env vars** — the
-documented Plan 9.7 / Plan 9.6 Phase C "no `.env` files required" path, confirmed still working.
-But `src/optimus/acp/subprocess_env.py`'s `build_acp_subprocess_env` (used by both the Plan 11.5
-Task 8 `acpx` evidence tool and the older Plan 9.87 one) imposes a separate, stricter gate that
+**Origin / core problem at raising (2026-07-29):** `optimus-agent` startup (`__main__.py`) resolved
+runtime configuration from the OS keychain + sensible defaults with **zero required env vars** — the
+documented Plan 9.7 / Plan 9.6 Phase C "no `.env` files required" path, confirmed then working. But
+`src/optimus/acp/subprocess_env.py`'s `build_acp_subprocess_env` (used by both the Plan 11.5 Task 8
+`acpx` evidence tool and the older Plan 9.87 one) imposed a separate, stricter gate that
 `OPTIMUS_GATEWAY_URL` / `OPTIMUS_API_KEY` / `OPTIMUS_REDIS_URL` be **explicitly present in the
 shell**. That stricter gate is not technically required by the agent contract and is what forced
 a manual workaround during Task 8.
 
-**Four divergent mechanisms found this session (do not add a fifth):**
+**Four divergent mechanisms found on 2026-07-29 (do not add a fifth):**
 
 1. **`optimus-agent` auto-start** (`ensure_local_gateway` / `ensure_local_redis`) — zero env vars,
    keychain-based, non-interactive.
@@ -1153,9 +1157,11 @@ documented — and #3 must be deleted or clearly repointed so it is not a false 
 direction, there must be exactly one documented answer to "how do I get local deps running for a
 live run," not several scripts that look interchangeable but aren't.
 
-**Also found:** No launcher exists for **Phoenix** at all — only an inline `docker run` hint
-buried in a test docstring. Bring Phoenix into the **same** single consistent mechanism rather
-than adding another ad-hoc path.
+**Also found at raising (2026-07-29):** No launcher existed for **Phoenix** — only an inline
+`docker run` hint was buried in a test docstring. Plan 11.6 / PR #97 subsequently added the
+`optimus-phoenix` launcher using `arizephoenix/phoenix:latest` on port 6006, with `/healthz` and
+port-identity checks, and documented the living runbook. Phoenix is now part of the same local
+dependency mechanism rather than an ad-hoc path.
 
 **Deliverable:** One short operator runbook (matching the existing Plan 9.6 Phase C runbook
 precedent at
@@ -1204,13 +1210,13 @@ instead of one shared, documented one. The eventual design must nail this down e
 project-specific non-default port, or an explicit identity check) rather than depend on ambient
 port availability.
 
-**Status:** Closed. **Closed** (2026-07-29): Plan 11.6 implemented on
+**Status:** Closed. On 2026-07-29, Plan 11.6 implemented on
 `agent/cursor/plan-11-6-local-startup-consolidation` with commits
 `d123779`, `01f7849`, `24158ce`, `1618591`, `ef3dbd8` (Tasks 1–5) and Task 6 live evidence in
-[`reports/plan-11-6-local-startup-live-evidence.md`](../../reports/plan-11-6-local-startup-live-evidence.md)
-(plus [`reports/plan-11-6-local-startup-acpx-evidence.md`](../../reports/plan-11-6-local-startup-acpx-evidence.md)
+[`reports/plan-11-6-local-startup-live-evidence.md`](../../../reports/plan-11-6-local-startup-live-evidence.md)
+(plus [`reports/plan-11-6-local-startup-acpx-evidence.md`](../../../reports/plan-11-6-local-startup-acpx-evidence.md)
 and WSL residual
-[`reports/plan-11-6-local-startup-acpx-wsl-evidence.md`](../../reports/plan-11-6-local-startup-acpx-wsl-evidence.md)).
+[`reports/plan-11-6-local-startup-acpx-wsl-evidence.md`](../../../reports/plan-11-6-local-startup-acpx-wsl-evidence.md)).
 Operator runbook:
 [`docs/runbooks/local-live-dependencies.md`](../../runbooks/local-live-dependencies.md).
 Retain this entry for history; do not reopen without a new deferred-follow-up ID.
@@ -1319,7 +1325,8 @@ without editing the historical frozen plan.
 
 **Status:** Closed.
 
-The committed `uv.lock` is out of sync with `pyproject.toml`, not just stale: `uv lock --dry-run`
+At disclosure on 2026-07-23, the committed `uv.lock` was out of sync with `pyproject.toml`, not
+just stale: `uv lock --dry-run`
 shows 13 packages a regeneration would add, including `keyring` and `redis` (both **direct**
 dependencies declared in `pyproject.toml`, not stray transitives) and the Linux SecretStorage
 keyring-backend chain (`cryptography`, `jeepney`, `secretstorage`, `cffi`, `pycparser`, `jaraco-*`).
@@ -1354,7 +1361,8 @@ ID; this note is closed by Plan 10.3.
 
 **Status:** Closed.
 
-`tools/verify_plan996_logging_surfaces.py` raises a `@dataclass(frozen=True)` `SurfaceAuditError`.
+At disclosure on 2026-07-23, `tools/verify_plan996_logging_surfaces.py` raised a
+`@dataclass(frozen=True)` `SurfaceAuditError`.
 When that exception is raised under pytest's generator-based failure capture, pytest teardown can
 attempt to attach `.__traceback__` and surface a secondary `FrozenInstanceError` in the CI log.
 Standalone `main()` outside pytest raises `SurfaceAuditError` cleanly with no crash — this is a

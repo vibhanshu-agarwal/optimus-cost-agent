@@ -2,9 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Use `superpowers:test-driven-development` for every production behavior change. Steps use checkbox (`- [ ]`) syntax for tracking. Do not mark a checkbox complete until its stated verification command has actually passed.
 
-**Status:** Draft for operator/reviewer approval. This document authorizes no source, test,
-authoritative-PDF, charter, dependency, lockfile, runtime, commit, or push mutation until the
-operator approves this plan.
+**Status:** Partially implemented. PR #116 merged implementation work and PR #118 repaired the
+resulting CI custody regressions. At the 2026-08-06 pause/pivot, 27 of 46 checkboxes were complete:
+Tasks 0-7 are complete, Task 8 Step 1 is complete, and Task 8 Steps 2-4 and Task 9 are incomplete.
+Remaining work is paused pending a separately authorized resumption.
 
 **Goal:** Implement the bounded v1 MCP Gateway data plane ratified by the approved design spec:
 typed discovery and call routes, static Gateway-owned profiles, complete tools-only discovery over
