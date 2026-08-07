@@ -1,8 +1,11 @@
 # P11-FU-9 Task 8 live evidence status
 
-**Commit:** `fb231f2`  
-**Generated:** 2026-08-07 (post-commit evidence refresh).  
-**Platforms:** verified on native Windows (authoritative platform) + reproduced on WSL2 (CI-parity check).  
+**Commit:** `fb231f2`
+
+**Generated:** 2026-08-07 (post-commit evidence refresh).
+
+**Platforms:** verified on native Windows (authoritative platform) + reproduced on WSL2 (CI-parity check).
+
 **Secrets:** content-free only — no credentials, raw transcripts, or env values.
 
 ## Commands (native Windows authoritative)
