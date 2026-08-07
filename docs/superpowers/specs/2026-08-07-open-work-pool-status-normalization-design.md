@@ -1,6 +1,6 @@
 # Consolidated Open-Work Pool Status Normalization Design
 
-**Frozen design-body SHA-256:** `0000000000000000000000000000000000000000000000000000000000000000`
+**Frozen design-body SHA-256:** `4ff6cc2591e2fe446d422847206769cfa96e20fad1356cb37947824a82525446`
 
 The digest above is the SHA-256 of the committed UTF-8 LF-normalized file after removing only the
 `**Frozen design-body SHA-256:**` line and its trailing line ending. The provisional zero value is
