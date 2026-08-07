@@ -1043,9 +1043,10 @@ publication requires explicit operator approval at execution time.
 **Backlog rule:** `P9.8-FU-5` and `P9.87-FU-1` are carried into the consolidated open-work pool; the
 new `P11-FU-1` session-resume capability item is owned by `P11-FEAT-ZED-RESUME` (plan number assigned at pickup), not parked. New follow-ups
 discovered during Plan 11 feature development join that same backlog. `P11-FU-2` is owned by
-`P11-FEAT-GATEWAY-TOOLS` for the unimplemented package/advisory capability. `P11-FU-3` owns the
-conditional route/typed-contract publication gate for `P11-FEAT-GATEWAY-MCP`; it closes only after
-the charter amendment and all four amended PDFs are approved and published. `P11-FU-12` through
+`P11-FEAT-GATEWAY-TOOLS` for the unimplemented package/advisory capability. `P11-FU-3` owned the
+conditional route/typed-contract publication gate for `P11-FEAT-GATEWAY-MCP`; it closed on
+2026-08-06 after the charter amendment and all four amended PDFs were approved and published.
+`P11-FU-12` through
 `P11-FU-16` separately own MCP OAuth lifecycle, deferred capabilities/long-lived interaction,
 registry discover-and-connect, tool-search/context minimization, and reverse
 research-to-documentation freshness. `P9.85-FU-3` remains parked and undecided outside Plan 11.1's
@@ -1060,7 +1061,7 @@ is held as the last primary Plan 11 slice. Once the consolidated pool closes, th
 reviewer must record whether outward publication stays in 11.x-last or splits into a 13.x train; the
 v1.0 release-version contract and excluded-capability inventory remain in Plan 11 either way.
 
-**Status:** Plan 11.7 (`P11-FEAT-ZED-RESUME`) is the active scoped feature gate after the closed
+**Status:** Plan 11.7 (`P11-FEAT-ZED-RESUME`) is partially implemented and blocked after the closed
 Plan 11.1/11.2/11.4/11.5/11.6 slices. Frozen Task 0 Steps 1-4 are sealed with disposition
 `stop_amend_plan_session_load_unreachable` (current Zed 1.13.1 does not issue `session/load` after
 full restart). Frozen Plan 11.7 Task 0 Steps 5-7 and Tasks 1-11 remain blocked. The standalone
@@ -1078,9 +1079,9 @@ approval-time draft labels and unchecked boxes; the living consolidated pool and
 checkpoints/seals own current execution status. The existing plan-only Redis state store is not
 sufficient by assumption. The charter and ratified feature sequencing map remain recorded in
 [`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md).
-`P11-FEAT-GATEWAY-MCP` has a bounded v1 static-profile, dual-transport, tools-only design, but its
-`P11-FU-3` route/typed-contract gate closes only after the charter amendment and all four amended
-PDFs are approved and published. It remains distinct from client-supplied ACP `mcpServers` under
+`P11-FEAT-GATEWAY-MCP` has a bounded v1 static-profile, dual-transport, tools-only design, and its
+`P11-FU-3` route/typed-contract gate closed on 2026-08-06 after the charter amendment and all four
+amended PDFs were approved and published. It remains distinct from client-supplied ACP `mcpServers` under
 `P11-FU-9` (all nine tasks closed through PR #119 / merge `9a93137`; deferred pinning/HTTP-SSE
 relaxation/authenticated-upstream/Plan 11.8 flake custody remain in the consolidated backlog),
 `P11-FEAT-ZED-RESUME` session custody, and ACP registry publication under
