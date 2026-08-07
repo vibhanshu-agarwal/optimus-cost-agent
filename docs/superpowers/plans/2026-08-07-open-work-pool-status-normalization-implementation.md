@@ -667,7 +667,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   Expected: merge completes without unresolved conflicts; focused and full tests, Ruff, and diff
   hygiene pass.
 
-- [ ] **Step 8: Push and open one draft documentation PR.**
+- [x] **Step 8: Push and open one draft documentation PR.**
 
   ```powershell
   $body = @'
