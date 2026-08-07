@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 import threading
@@ -148,10 +149,8 @@ class PendingClientMcpCandidateEndpoint:
             self._listener = None
             self._thread = None
         if listener is not None:
-            try:
+            with contextlib.suppress(OSError, ValueError):
                 listener.close()
-            except Exception:
-                pass
         # consume_snapshot() may stop the listener from inside _serve; never join self.
         if (
             thread is not None
@@ -163,10 +162,8 @@ class PendingClientMcpCandidateEndpoint:
             if endpoint is not None and endpoint[0] == "af_unix" and endpoint[1]:
                 sock = Path(endpoint[1])
                 if sock.exists():
-                    try:
+                    with contextlib.suppress(OSError):
                         sock.unlink()
-                    except OSError:
-                        pass
             if not self._pending:
                 self._endpoint_address = None
 
@@ -175,9 +172,13 @@ class PendingClientMcpCandidateEndpoint:
             listener = self._listener
             if listener is None:
                 return
+            conn = None
             try:
                 conn = listener.accept()
-            except Exception:
+            except OSError:
+                # Closed/interrupted listener while stopping, or transient accept failure.
+                conn = None
+            if conn is None:
                 continue
             try:
                 request = conn.recv()
@@ -192,15 +193,11 @@ class PendingClientMcpCandidateEndpoint:
                 else:
                     conn.send({"ok": True, "snapshot": snapshot.__dict__})
             except Exception:
-                try:
+                with contextlib.suppress(OSError, ValueError, BrokenPipeError):
                     conn.send({"ok": False, "error": "ipc_failure"})
-                except Exception:
-                    pass
             finally:
-                try:
+                with contextlib.suppress(OSError, ValueError):
                     conn.close()
-                except Exception:
-                    pass
 
     @staticmethod
     def consume_remote_snapshot(
