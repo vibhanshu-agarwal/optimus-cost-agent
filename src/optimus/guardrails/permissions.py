@@ -206,8 +206,28 @@ def _project_allow_decision(request: PermissionRequest, impact: ImpactClass) -> 
         return PermissionDecision(PermissionVerdict.ALLOW, PermissionLayer.PROJECT_ALLOW, "allow.shadow_apply.approved_pre_tool_validation", "approved shadow apply may proceed to deterministic pre-tool validation", impact)
     if request.tool_surface is ToolSurface.WEB and request.approval_granted:
         return PermissionDecision(PermissionVerdict.ALLOW, PermissionLayer.PROJECT_ALLOW, "allow.web.approved_pre_tool_validation", "approved web call may proceed to deterministic pre-tool validation", impact)
-    if request.tool_surface is ToolSurface.MCP and request.approval_granted:
-        return PermissionDecision(PermissionVerdict.ALLOW, PermissionLayer.PROJECT_ALLOW, "allow.mcp.approved_pre_tool_validation", "approved MCP call may proceed to deterministic pre-tool validation", impact)
+    if request.tool_surface is ToolSurface.MCP:
+        metadata = request.metadata or {}
+        if metadata.get("mcp_authority") == "client_session":
+            effect = metadata.get("mcp_effect", "write")
+            if effect in {"read", "network"}:
+                return PermissionDecision(
+                    PermissionVerdict.ALLOW,
+                    PermissionLayer.PROJECT_ALLOW,
+                    "allow.mcp.client_session_non_mutating",
+                    "client-session read/network MCP call may proceed under active lease",
+                    impact,
+                )
+            return PermissionDecision(
+                PermissionVerdict.HOLD,
+                PermissionLayer.IMPACT,
+                "mcp.client.write_one_call_required",
+                "client-session write MCP call requires one-call approval",
+                impact,
+                requires_human_approval=True,
+            )
+        if request.approval_granted:
+            return PermissionDecision(PermissionVerdict.ALLOW, PermissionLayer.PROJECT_ALLOW, "allow.mcp.approved_pre_tool_validation", "approved MCP call may proceed to deterministic pre-tool validation", impact)
     return None
 
 

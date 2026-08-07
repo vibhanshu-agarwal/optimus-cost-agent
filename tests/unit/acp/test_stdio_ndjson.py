@@ -201,3 +201,82 @@ class _CapturingNdjsonWriter:
 
     async def write_line(self, message):
         self.messages.append(dict(message))
+
+
+async def test_serve_ndjson_eof_cancels_pending_requests_and_closes_owned_state_once(tmp_path):
+    """EOF must cancel tracked process_request tasks, close adapter/store once, then supervisor."""
+    from unittest.mock import MagicMock
+
+    from optimus.acp.dispatcher import JsonRpcDispatcher
+    from optimus.acp.server import AcpStreamServer
+    from optimus.guardrails.pre_tool import PreToolGuard
+    from optimus.mcp.client_disposition import ClientMcpRuntime
+    from optimus.mcp.client_supervisor import MCPAsyncSupervisor
+
+    workspace_root = tmp_path.resolve()
+    guard = PreToolGuard.for_workspace(workspace_root=workspace_root, allowed_network_hosts=())
+
+    class SlowRunner:
+        def run(self, request, **kwargs):
+            import time
+
+            time.sleep(5)
+            raise AssertionError("should have been cancelled before completion")
+
+    runner = SlowRunner()
+    dispatcher = JsonRpcDispatcher(
+        agent_runner=runner,
+        pre_tool_guard=guard,
+        workspace_root=workspace_root,
+    )
+    supervisor = MCPAsyncSupervisor()
+    supervisor.start()
+    close_counts = {"adapter": 0, "store": 0, "supervisor": 0}
+
+    # Minimal runtime: disposition unused for empty mcpServers EOF path.
+    runtime = MagicMock(spec=ClientMcpRuntime)
+    runtime.supervisor = supervisor
+    runtime.close = lambda: close_counts.__setitem__(
+        "supervisor", close_counts["supervisor"] + 1
+    ) or supervisor.close()
+
+    server = AcpStreamServer(dispatcher=dispatcher, client_mcp_runtime=runtime)
+
+    class SlowReader:
+        def __init__(self) -> None:
+            self._sent = False
+
+        async def readline(self) -> bytes:
+            if not self._sent:
+                self._sent = True
+                return (
+                    b'{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":"'
+                    + str(workspace_root).replace("\\", "\\\\").encode()
+                    + b'","mcpServers":[]}}\n'
+                )
+            await asyncio.sleep(0.05)
+            return b""
+
+    writer = _CapturingNdjsonWriter()
+
+    async def _run():
+        await asyncio.wait_for(server.serve_ndjson(SlowReader(), writer), timeout=2)
+
+    await _run()
+    # Supervisor/runtime close must happen exactly once on EOF teardown.
+    assert close_counts["supervisor"] == 1
+
+
+async def test_serve_ndjson_handler_exception_still_tears_down_owned_state(tmp_path, monkeypatch):
+    configured = configured_test_agent_server(tmp_path, output_text="READ example.py\n")
+    closes = {"n": 0}
+
+    def tracking_close_all(self):
+        closes["n"] += 1
+
+    monkeypatch.setattr(server.AcpDuplexAdapter, "close_all", tracking_close_all)
+    reader = StdioNdjsonLineReader(
+        io.BytesIO(b'{"jsonrpc":"2.0","id":1,"method":"session/prompt","params":{}}\n')
+    )
+    await asyncio.wait_for(configured.server.serve_ndjson(reader, _CapturingNdjsonWriter()), timeout=2)
+    assert closes["n"] == 1

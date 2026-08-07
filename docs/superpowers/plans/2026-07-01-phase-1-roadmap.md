@@ -1074,7 +1074,9 @@ feature sequencing map remain recorded in
 `P11-FEAT-GATEWAY-MCP` has a bounded v1 static-profile, dual-transport, tools-only design, but its
 `P11-FU-3` route/typed-contract gate closes only after the charter amendment and all four amended
 PDFs are approved and published. It remains distinct from client-supplied ACP `mcpServers` under
-`P11-FU-9`, `P11-FEAT-ZED-RESUME` session custody, and ACP registry publication under
+`P11-FU-9` (agent-owned client path implemented through Tasks 1–8; deferred pinning/HTTP-SSE
+relaxation/authenticated-upstream/Plan 11.8 flake custody remain in the consolidated backlog),
+`P11-FEAT-ZED-RESUME` session custody, and ACP registry publication under
 `P11-FEAT-REGISTRY`. `P11-FEAT-REGISTRY` must research ACP registry requirements before freezing
 registration scope and must align both `pyproject.toml` and ACP `agentInfo.version` at the v1.0 cut.
 `P11-FEAT-IDE` remains conditional if registry registration does not satisfy the broader multi-IDE

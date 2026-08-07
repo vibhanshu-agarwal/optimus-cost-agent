@@ -192,12 +192,24 @@ class AcpStreamServer:
         requests and route them to the correct handling functions.
     :type dispatcher: JsonRpcDispatcher
     """
-    def __init__(self, dispatcher: JsonRpcDispatcher | None = None, *, max_planning_turns: int | None = None) -> None:
+    def __init__(
+        self,
+        dispatcher: JsonRpcDispatcher | None = None,
+        *,
+        max_planning_turns: int | None = None,
+        client_mcp_runtime: Any | None = None,
+    ) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
         # Plan 9.96, Task 5 Step 2: resolved once by build_configured_server()
         # from the authorized agent environ and threaded down into
         # AcpDuplexAdapter via serve_ndjson — never read from os.environ here.
         self._max_planning_turns = max_planning_turns
+        self._client_mcp_runtime = client_mcp_runtime
+        self._request_tasks: set[asyncio.Task[Any]] = set()
+
+    @property
+    def client_mcp_runtime(self) -> Any | None:
+        return self._client_mcp_runtime
 
     async def handle_one(self, reader: AsyncByteReader, writer: AsyncByteWriter) -> None:
         # reader/writer are typed by Protocol: no shared base class required.
@@ -237,14 +249,17 @@ class AcpStreamServer:
             raise RuntimeError("agent runner not configured for ndjson ACP serving")
         workspace_root = self._dispatcher.workspace_root or Path.cwd()
         outbound = NdjsonOutboundChannel(writer)
+        sessions = InMemoryAcpSpecSessionStore()
         adapter = AcpDuplexAdapter(
             runner=agent_runner,
             workspace_root=workspace_root,
-            sessions=InMemoryAcpSpecSessionStore(),
+            sessions=sessions,
             outbound=outbound,
             max_planning_turns=self._max_planning_turns,
+            client_mcp_runtime=self._client_mcp_runtime,
         )
         message_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+        request_tasks: set[asyncio.Task[Any]] = set()
 
         async def read_lines() -> None:
             try:
@@ -356,6 +371,15 @@ class AcpStreamServer:
                     outbound.deliver_client_response(message)
                     continue
                 if "method" in message and "id" in message:
-                    asyncio.create_task(process_request(message))
+                    task = asyncio.create_task(process_request(message))
+                    request_tasks.add(task)
+                    task.add_done_callback(request_tasks.discard)
         finally:
+            for task in list(request_tasks):
+                task.cancel()
+            if request_tasks:
+                await asyncio.gather(*request_tasks, return_exceptions=True)
+            adapter.close_all()
+            if self._client_mcp_runtime is not None:
+                self._client_mcp_runtime.close()
             await reader_task

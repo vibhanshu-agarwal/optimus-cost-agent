@@ -1010,3 +1010,36 @@ def test_non_alphabetical_multi_file_read_telemetry_preserves_association(tmp_pa
     )
     assert event.source_sha256s == (alpha_sha, zeta_sha)
     assert event.read_byte_counts == (7, 3)
+
+
+def test_planning_loop_runner_accepts_keyword_only_client_mcp_service(tmp_path):
+    from optimus.agent.models import AgentMcpToolOutput, AgentToolCall
+
+    class _Svc:
+        def list_tools(self, server: str):
+            return (
+                AgentMcpToolOutput(server_name=server, tool_name="mcp_list_tools", text='{"tools":["t"]}'),
+                AgentToolCall(tool_name="mcp_list_tools", summary="listed", authorization_outcome="ALLOW"),
+            )
+
+    (tmp_path / "a.py").write_text("x\n", encoding="utf-8")
+    gateway = ScriptingGateway(
+        [
+            ("MCP_LIST tools\n", Decimal("0.001"), "gw-1"),
+            ("WRITE a.py\ny\n", Decimal("0.001"), "gw-2"),
+        ]
+    )
+    result = PlanningLoopRunner(
+        gateway_client=gateway,
+        model="glm-5.2",
+        policy=PlanningLoopPolicy(max_planning_turns=3),
+        workspace_root=tmp_path,
+        execution_mode=ExecutionMode.AGENT,
+        guard=PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=()),
+        max_cost_usd=Decimal("0.05"),
+        client_mcp_service=_Svc(),
+    ).run(run_id="run-mcp", session_id=None, task="mcp then write")
+    assert result.stop_reason is None
+    assert "client_mcp_service" not in result.model_dump()
+    assert len(gateway.calls) == 2
+    assert "untrusted" in str(gateway.calls[1]["input_text"]).lower()

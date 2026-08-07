@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import shlex
 from dataclasses import dataclass
@@ -8,6 +9,9 @@ from pathlib import Path
 _READ_DIRECTIVE = re.compile(r"^READ\s+(\S+)\s*$")
 _WRITE_DIRECTIVE = re.compile(r"^WRITE\s+(\S+)\s*$")
 _TEST_DIRECTIVE = re.compile(r"^TEST\s+(.+)$")
+_MCP_LIST_DIRECTIVE = re.compile(r"^MCP_LIST\s+(\S+)\s*$")
+_MCP_CALL_DIRECTIVE = re.compile(r"^MCP_CALL\s+(\S+)\s+(\S+)\s+(\{.*\})\s*$")
+_MCP_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _SHELL_METACHARACTERS = re.compile(r"[;|&`$<>]|&&|\|\||\$\(")
 _ABSOLUTE_PATH = re.compile(r"^[A-Za-z]:[\\/]|^/")
 
@@ -27,6 +31,55 @@ class AgentPlanDirectives:
     read_paths: tuple[str, ...]
     write: AgentWriteDirective | None
     tests: tuple[tuple[str, ...], ...]
+
+
+@dataclass(frozen=True)
+class AgentMcpListDirective:
+    server: str
+
+
+@dataclass(frozen=True)
+class AgentMcpCallDirective:
+    server: str
+    tool: str
+    arguments: dict[str, object]
+
+
+def parse_canonical_json_object(text: str) -> dict[str, object]:
+    """Parse a JSON object that must already be in canonical dump form."""
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise AgentDirectiveParseError("MCP_CALL arguments must be valid JSON") from exc
+    if not isinstance(value, dict):
+        raise AgentDirectiveParseError("MCP_CALL arguments must be a JSON object")
+    canonical = json.dumps(value, sort_keys=True, separators=(",", ":"))
+    if canonical != text:
+        raise AgentDirectiveParseError("MCP_CALL arguments must be canonical JSON")
+    return value
+
+
+def validate_mcp_name(name: str, *, label: str) -> str:
+    if _MCP_NAME_RE.fullmatch(name) is None:
+        raise AgentDirectiveParseError(f"unsafe MCP {label} name")
+    return name
+
+
+def parse_mcp_list_line(line: str) -> AgentMcpListDirective | None:
+    match = _MCP_LIST_DIRECTIVE.match(_normalize_directive_line(line))
+    if match is None:
+        return None
+    return AgentMcpListDirective(server=validate_mcp_name(match.group(1), label="server"))
+
+
+def parse_mcp_call_line(line: str) -> AgentMcpCallDirective | None:
+    match = _MCP_CALL_DIRECTIVE.match(_normalize_directive_line(line))
+    if match is None:
+        return None
+    server = validate_mcp_name(match.group(1), label="server")
+    tool = validate_mcp_name(match.group(2), label="tool")
+    arguments = parse_canonical_json_object(match.group(3))
+    return AgentMcpCallDirective(server=server, tool=tool, arguments=arguments)
 
 
 def parse_agent_plan(plan_text: str) -> AgentPlanDirectives:
@@ -53,6 +106,9 @@ def parse_agent_plan(plan_text: str) -> AgentPlanDirectives:
 
     while index < len(lines):
         line = _normalize_directive_line(lines[index])
+        if _MCP_LIST_DIRECTIVE.match(line) is not None or _MCP_CALL_DIRECTIVE.match(line) is not None:
+            raise AgentDirectiveParseError("MCP directives are not valid in a final mutation plan")
+
         read_match = _READ_DIRECTIVE.match(line)
         if read_match is not None:
             path = read_match.group(1)
@@ -100,6 +156,8 @@ def _is_directive_line(line: str) -> bool:
         _READ_DIRECTIVE.match(normalized) is not None
         or _WRITE_DIRECTIVE.match(normalized) is not None
         or _TEST_DIRECTIVE.match(normalized) is not None
+        or _MCP_LIST_DIRECTIVE.match(normalized) is not None
+        or _MCP_CALL_DIRECTIVE.match(normalized) is not None
     )
 
 

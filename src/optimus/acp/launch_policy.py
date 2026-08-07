@@ -591,6 +591,15 @@ _register(
     uri_userinfo=False,
 )
 _register(
+    "OPTIMUS_CLIENT_MCP_EPHEMERAL_HMAC",
+    tier=LaunchVariableTier.INTERNAL_ONLY,
+    propagation=frozenset({PropagationTarget.NEVER}),
+    parser=_parse_internal_only,
+    display=_display_internal,
+    approval="reject_inherited",
+    uri_userinfo=False,
+)
+_register(
     "OPTIMUS_ACP_DEBUG_LOG",
     tier=LaunchVariableTier.INTERNAL_ONLY,
     propagation=frozenset({PropagationTarget.NEVER}),

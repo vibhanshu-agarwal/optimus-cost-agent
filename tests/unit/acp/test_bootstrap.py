@@ -51,11 +51,24 @@ def test_bootstrap_builds_agent_configured_server(tmp_path, monkeypatch):
         def telemetry_adapter(self):
             return object()
 
+    class FakeClientRuntime:
+        disposition = object()
+        supervisor = object()
+        mcp_http_enabled = False
+        mcp_sse_enabled = False
+
+        def close(self) -> None:
+            return None
+
     monkeypatch.setattr(
         "optimus.acp.preflight.run_preflight",
         lambda environ, **kwargs: "redis://localhost:6379/0",
     )
     monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: FakeRuntime())
+    monkeypatch.setattr(
+        "optimus.acp.bootstrap.build_client_mcp_runtime",
+        lambda **kwargs: FakeClientRuntime(),
+    )
     server = build_configured_server(
         environ={
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
@@ -184,3 +197,79 @@ def test_bootstrap_wires_one_telemetry_fanout_with_jsonl_redis_and_gateway_expor
     assert fanout.jsonl_writer.path == tmp_path.resolve() / ".optimus" / "telemetry.jsonl"
     assert isinstance(fanout.redis_sink, RedisTelemetryEventSink)
     assert isinstance(fanout.gateway_exporter, GatewayObservabilityExporter)
+
+
+def test_bootstrap_builds_process_lifetime_client_mcp_runtime(tmp_path, monkeypatch):
+    class FakeStore:
+        def ping(self):
+            return None
+
+    class FakeRuntime:
+        def ping(self):
+            return None
+
+        def sync_state_store(self):
+            return FakeStore()
+
+        def telemetry_adapter(self):
+            return object()
+
+    from optimus.mcp.client_config import ClientMcpConfigNormalizer
+    from optimus.mcp.client_disposition import ClientMcpDisposition, ClientMcpRuntime
+    from optimus.mcp.client_supervisor import MCPAsyncSupervisor
+    from optimus.mcp.client_trust import ClientMcpDurableStore, ClientMcpLeaseAuthority
+
+    class _MemKeyring:
+        def __init__(self) -> None:
+            self._store = {}
+
+        def get_password(self, service, key):
+            return self._store.get((service, key))
+
+        def set_password(self, service, key, value):
+            self._store[(service, key)] = value
+
+        def delete_password(self, service, key):
+            self._store.pop((service, key), None)
+
+    mem = _MemKeyring()
+    hmac_key = b"0" * 32
+    durable = ClientMcpDurableStore(keyring_backend=mem, hmac_key=hmac_key)
+    supervisor = MCPAsyncSupervisor()
+    supervisor.start()
+    runtime = ClientMcpRuntime(
+        disposition=ClientMcpDisposition(
+            normalizer=ClientMcpConfigNormalizer(),
+            lease_authority=ClientMcpLeaseAuthority(store=durable),
+            hmac_key=hmac_key,
+            controlled_path="",
+            workspace_digest="c" * 64,
+        ),
+        supervisor=supervisor,
+        mcp_http_enabled=False,
+        mcp_sse_enabled=False,
+    )
+
+    monkeypatch.setattr(
+        "optimus.acp.preflight.run_preflight",
+        lambda environ, **kwargs: "redis://localhost:6379/0",
+    )
+    monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: FakeRuntime())
+    monkeypatch.setattr("optimus.acp.bootstrap.build_client_mcp_runtime", lambda **kwargs: runtime)
+
+    server = build_configured_server(
+        environ={
+            "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+            "OPTIMUS_API_KEY": "opt-test",
+            "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
+        },
+        workspace_root=tmp_path,
+        model="glm-5.2",
+    )
+    assert server.client_mcp_runtime is runtime
+    assert runtime.disposition is not None
+    assert runtime.supervisor is not None
+    assert runtime.mcp_http_enabled is False
+    assert runtime.mcp_sse_enabled is False
+    assert not hasattr(server._dispatcher, "client_mcp_capability")
+    runtime.close()

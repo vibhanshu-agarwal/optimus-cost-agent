@@ -650,3 +650,69 @@ class KeyringApprovalStore:
         encoded = base64.urlsafe_b64encode(key).decode("ascii")
         self._keyring.set_password(self._service_name, _HMAC_KEY_ENTRY, encoded)
         self._hmac_key = key
+
+
+# --- P11-FU-9 client-MCP ceremony helpers (CLI display + keyed fingerprints) ---
+
+# Must match optimus.mcp.client_config credential fingerprint domain so manual
+# ceremony fingerprints bind to the same identity surface as normalization.
+_CLIENT_MCP_CREDENTIAL_FP_DOMAIN = b"p11-fu-9-client-mcp-credential-fingerprint-v1"
+
+
+@dataclass(frozen=True)
+class ClientMcpReviewDisplay:
+    """Safe ceremony display inputs — names and fingerprints only, never raw values."""
+
+    workspace_digest: str
+    session_id: str
+    received_at: str
+    server_name: str
+    transport: str
+    canonical_target: str
+    credential_field_names: tuple[str, ...]
+    credential_name_fingerprints: tuple[str, ...]
+    rendered_fingerprint: str
+    provenance: str = "client_supplied_acp"
+    scanner_rule_ids: tuple[str, ...] = ()
+
+
+def compute_client_mcp_credential_fingerprint(
+    value: str,
+    *,
+    kind: str,
+    name: str,
+    index: int,
+    hmac_key: bytes,
+) -> str:
+    """Domain-separated HMAC fingerprint keyed by kind, canonical name, and index."""
+    msg = (
+        _CLIENT_MCP_CREDENTIAL_FP_DOMAIN
+        + b"\0"
+        + f"{kind}\0{name}\0{index}\0{value}".encode("utf-8")
+    )
+    return hmac.new(hmac_key, msg, hashlib.sha256).hexdigest()
+
+
+def format_client_mcp_review_lines(display: ClientMcpReviewDisplay) -> tuple[str, ...]:
+    """Render operator-facing review lines with names/fingerprints only."""
+    names = ", ".join(display.credential_field_names) if display.credential_field_names else "(none)"
+    fingerprints = (
+        ", ".join(display.credential_name_fingerprints)
+        if display.credential_name_fingerprints
+        else "(none)"
+    )
+    rules = ", ".join(display.scanner_rule_ids) if display.scanner_rule_ids else "(none)"
+    return (
+        "optimus-trust: client MCP candidate for review:",
+        f"  Provenance: {display.provenance}",
+        f"  Session: {display.session_id or '(manual)'}",
+        f"  Workspace digest: {display.workspace_digest[:16]}...",
+        f"  Received-at: {display.received_at or '(not provided)'}",
+        f"  Server: {display.server_name}",
+        f"  Transport: {display.transport}",
+        f"  Canonical target: {display.canonical_target}",
+        f"  Credential field names: {names}",
+        f"  Credential fingerprints: {fingerprints}",
+        f"  Identity fingerprint: {display.rendered_fingerprint}",
+        f"  Scanner rules: {rules}",
+    )

@@ -82,7 +82,10 @@ repositories. `MCPTrustRegistry` requires explicit approval, records manifest
 hashes, launch-parameter digests, allowed tools, permission scopes, and derived
 tool side-effect classes, and forces reapproval when a manifest changes.
 Planner descriptor exposure and MCP tool execution both go through the
-registry. Local pre-commit configuration and CI use the same named guardrail
+registry for Gateway/legacy manifest-backed servers. Client-supplied ACP
+`mcpServers` (P11-FU-9) use a separate agent-owned client path with CLI durable
+trust and `PreToolGuard` / `ConfigTrustScanner`; they are not auto-loaded from
+cloned repositories and are not Gateway-brokered. Local pre-commit configuration and CI use the same named guardrail
 checks so skipped hooks and clean-checkout drift are caught by CI; a generated
 detect-secrets baseline keeps the real secret scan separate from the
 config-trust scan.

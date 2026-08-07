@@ -540,11 +540,14 @@ that Gateway-MCP implements this capability.
 - Add schema-pinned unit tests plus real-client evidence for empty and non-empty arrays, with no
   raw server credentials or untrusted configuration persisted or logged.
 
-**Status:** Design drafted for independent review in
-[`2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md`](../specs/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md).
-The design chooses a separately reviewed agent-side MCP client with session-only ACP approval and
-CLI-only durable transport trust. No implementation plan exists. This is explicitly not a hard
-prerequisite for Plan 11.7 and is not owned by `P11-FEAT-GATEWAY-MCP`.
+**Status:** Implementation complete on branch `agent/cursor/p11-fu-9-client-mcp` through Tasks 1–8
+(live evidence + Windows async/IPC hang fix); Task 9 is the documentation/custody closure gate.
+Design:
+[`2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md`](../specs/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md)
+(frozen body SHA-256 `66606036b37ddc59cf9f2f4c8a713156a1f839fb771679a16937a5263c9ca4a2`). Deferred capabilities remain
+owned by their named backlog headers (descriptor pinning/allowlists, HTTP/SSE trust relaxation,
+authenticated upstream evidence, Plan 11.8 `WinError 10053` flake) and are not closed by this entry.
+Not a hard prerequisite for Plan 11.7 and not owned by `P11-FEAT-GATEWAY-MCP`.
 
 ### P11-FU-10: Complete ACP Error-Code Registry Audit
 
@@ -913,9 +916,10 @@ identically across two `stat()` calls that bracket a real file-creation write, d
 elapsed wall-clock time between them — a timestamp-coalescing artifact of this specific WSL2 /
 virtual-disk setup, not of the code under test.
 
-**Reproduction:** Nondeterministic. Reran the single test in isolation 5 times: 4 passed, 1 failed —
-confirmed as a timing race, not an order-dependent or environment-static failure. Not caused by
-the MCP Gateway publication work, which touched zero `src/`/`tests/` paths (independently verified).
+**Reproduction:** Nondeterministic. Original isolation probe (2026-08-06): 4 passed, 1 failed in 5
+standalone runs. Refined (2026-08-07 Task 7 review): 2 failures in 5 repeated isolated runs on
+WSL2 — confirmed as a timing race even without full-suite load, not an order-dependent or
+environment-static failure. Not caused by P11-FU-9 Task 7 (different file list).
 
 **Suspected cause:** WSL2's virtual-disk-backed filesystem appears to coalesce or truncate directory
 `ctime` updates under some timing conditions, unlike the nanosecond-resolution behavior the test
@@ -950,6 +954,98 @@ without a sleep) but on a different platform and different underlying primitive.
 
 **Status:** Tracked, not yet scheduled. Root cause diagnosed as environment-level timestamp
 coalescing, not a security or production-code defect. Not blocking any plan closure.
+
+**Recurrence:** 2026-08-07 during P11-FU-9 Task 4 independent review (operator + Cursor WSL full
+`tests/unit` runs). The same node failed intermittently under full-suite WSL/DrvFs load and passed
+standalone — same custody as this entry; do not open a duplicate FU.
+
+**Refinement (2026-08-07, P11-FU-9 Task 7 review):** Confirmed flaky even in isolation — 2 failures
+in 5 repeated standalone runs on WSL2, not only under full-suite load. Characterization upgraded
+from "full-suite-only" to "standalone-reproducible ctime coalescing race"; still not a product defect
+and still unrelated to Task 7's file list.
+
+### P11-FU-19: WSL full-suite load flake in client SDK operation-deadline unit test
+
+**Raised:** 2026-08-07 during P11-FU-9 Task 4 independent review (operator Vibhanshu / Cursor).
+Priority: **Test-infra load flake; not a Task 4 or production SDK defect.**
+
+**Origin:**
+`tests/unit/mcp/test_client_sdk.py::test_operation_deadline_is_enforced` uses a 0.2s
+`operation_timeout_seconds` budget around a deliberately slow fake `initialize`. Under full
+`tests/unit` load on WSL2 against a Windows-mounted worktree it intermittently fails; the same
+node passes standalone. Observed alongside the known `P11-FU-17` git-path failure and the
+`P11-FU-18` trusted-paths recurrence on alternating full-suite runs — different pair of failures
+each time, load-induced rather than a Task 4 regression.
+
+**Suspected cause:** Tight wall-clock timeout under suite scheduling / DrvFs I/O pressure, same
+general class as `P11-FU-7` (deadline vs harness load) but on WSL full-suite rather than Windows
+coverage/`sys.settrace`. Not evidence of a broken `MCPAsyncSupervisor` / `ClientMcpSdkAdapter`
+deadline path when the focused Task 3/4 selectors are green.
+
+**Designated slice:** Future WSL2/test-infrastructure reliability work; no plan number is
+allocated (lazy numbering — assign only if/when picked up for scoping).
+
+**Acceptance criteria (draft — refine at pickup):**
+
+- Reproduce under full-suite WSL load vs isolation before changing production deadlines.
+- Prefer a narrowly scoped test-harness remedy (e.g. slightly more tolerant fake sleep/timeout
+  ratio under load) that preserves the assertion that over-budget opens raise
+  `ClientMcpSdkError(code="OPERATION_TIMEOUT")`.
+- Do not weaken production default 30s operation deadlines to paper over the flake.
+- Keep custody distinct from `P11-FU-7` (Windows coverage/trace) and `P11-FU-18` (ctime coalescing).
+
+**Evidence anchors:** P11-FU-9 Task 4 review notes (2026-08-07);
+`tests/unit/mcp/test_client_sdk.py::test_operation_deadline_is_enforced`;
+`src/optimus/mcp/client_sdk.py`.
+
+**Related prior art:** `P11-FU-7` (NDJSON / coverage timing), `P11-FU-18` (WSL ctime), and the
+Task 2 review note that the NDJSON flake remains backlog-owned and non-blocking.
+
+**Status:** Tracked, not yet scheduled; no implementation plan exists. Not blocking P11-FU-9 Task 4
+sign-off.
+
+### P11-FU-20: Attach per-server catalog/authorizer to session tool service for real one-call issuance
+
+**Raised:** 2026-08-07 during P11-FU-9 Task 6 independent review (operator Vibhanshu). Priority:
+**Real functional gap on the write-approval path; fail-closed seam is in place for Task 6.**
+
+**Origin:** `AcpDuplexAdapter._mcp_permission_broker_for` originally fabricated a
+`ClientMcpOneCallApproval` (`token=one-call-…`, empty `identity_fingerprint`) instead of calling
+`ClientMcpCallAuthorizer.issue_one_call_approval`. Root cause: `ClientMcpSessionState._tool_service`
+never receives `.register(...)` of a per-server `ClientMcpToolService` during
+`disposition_for_new_session` (disposition intentionally never opens transport / builds catalogs).
+A fabricated token would fail downstream as `mcp.client.one_call_unknown` after an IDE allow —
+misleading ceremony. Task 6 now fails closed (`issue` → `None`) until this attachment exists.
+Neither Task 7 nor Task 8 in the frozen P11-FU-9 plan covers attaching a real per-server
+catalog/authorizer to the session tool service.
+
+**Designated slice:** P11-FU-9 follow-up (plan amendment or Task 8 scope expansion — assign at
+pickup; do not silently fold into Task 6 close). Plan ownership decision (Codex/operator) required
+before implementation.
+
+**Acceptance criteria (draft — refine at pickup):**
+
+- On allow_once transport lease (and later discovery), register identity-bound
+  `ClientMcpToolService` instances on `ClientMcpSessionState.tool_service`.
+- `_mcp_permission_broker_for` / `_issue` must call the real
+  `ClientMcpCallAuthorizer.issue_one_call_approval` for the matched server/tool/args digest — never
+  fabricate unbound tokens.
+- Evidence must exercise the **real** adapter closure (not only `AcpMcpPermissionBroker` with a
+  hand-fed `issue_approval` lambda), covering allow → usable one-call token → PreToolGuard ALLOW
+  for a write-classified tool under `side_effect_eligible`.
+- Preserve fail-closed behavior when no authorizer is registered (return `None`, no fake token).
+- Do not open MCP transport merely to attach the authorizer during `session/new` disposition.
+
+**Evidence anchors:** P11-FU-9 Task 6 review (2026-08-07);
+`src/optimus/acp/spec.py` (`_mcp_permission_broker_for`);
+`src/optimus/mcp/client_disposition.py` (`disposition_for_new_session`);
+`tests/unit/acp/test_spec_protocol.py::test_spec_mcp_broker_issue_fails_closed_until_catalog_authorizer_attached`.
+
+**Related prior art:** Same "mock manufactures agreement" shape as Task 5's FakeClientMcpService
+gap; disposition-never-opens-transport constraint from P11-FU-9 design §3.
+
+**Status:** Tracked, not yet scheduled; no implementation plan exists. Task 6 may close with the
+fail-closed seam + this named custody entry. Not an undisclosed residual.
 
 ### P11.5-FU-2: Consistent local env / Redis / Phoenix / Gateway startup for live runs
 

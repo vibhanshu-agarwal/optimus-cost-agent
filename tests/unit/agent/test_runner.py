@@ -1043,7 +1043,7 @@ def test_run_flushes_event_sink_after_the_final_agent_run_event(tmp_path):
 
 def test_run_flushes_event_sink_even_when_an_inner_run_raises_a_controlled_failure(tmp_path):
     class _RaisingRunner(AgentRunner):
-        def _run_once(self, request, *, planning_progress_observer=None):
+        def _run_once(self, request, *, planning_progress_observer=None, **_kwargs):
             raise RuntimeError("controlled failure injected by test")
 
     sink = _FlushCountingEventSink()
@@ -1155,3 +1155,45 @@ def test_run_with_telemetry_fanout_isolates_gateway_trace_failure_from_agent_res
     # Local sinks received every event exactly once regardless of the trace failure.
     assert jsonl_writer.path.read_text(encoding="utf-8").count("\n") == 2
     assert [event.kind for event in redis_sink.events] == [TelemetryEventKind.AGENT_RUN, TelemetryEventKind.AGENT_RUN]
+
+
+def test_agent_runner_run_accepts_keyword_only_mcp_runtime_without_request_fields(tmp_path):
+    from optimus.agent.models import AgentMcpToolOutput, AgentToolCall
+
+    class _Svc:
+        list_calls: list[str]
+
+        def __init__(self) -> None:
+            self.list_calls = []
+
+        def list_tools(self, server: str):
+            self.list_calls.append(server)
+            return (
+                AgentMcpToolOutput(server_name=server, tool_name="mcp_list_tools", text='{"tools":[]}'),
+                AgentToolCall(tool_name="mcp_list_tools", summary="listed", authorization_outcome="ALLOW"),
+            )
+
+    (tmp_path / "a.py").write_text("x\n", encoding="utf-8")
+    service = _Svc()
+    gateway = ScriptingGateway(
+        [
+            ("MCP_LIST tools\n", Decimal("0.001"), "gw-1"),
+            ("WRITE a.py\ny\n", Decimal("0.001"), "gw-2"),
+        ]
+    )
+    request = AgentRunRequest(
+        run_id="run-kw-mcp",
+        session_id="s1",
+        task="mcp",
+        execution_mode=ExecutionMode.AGENT,
+        workspace_root=tmp_path,
+        max_planning_turns=3,
+    )
+    assert "client_mcp_service" not in request.model_dump()
+    result = AgentRunner(gateway_client=gateway, model="glm-5.2").run(
+        request,
+        client_mcp_service=service,
+    )
+    assert "client_mcp_service" not in result.model_dump()
+    assert service.list_calls == ["tools"]
+    assert all(call.tool_name != "lookup" for call in result.tool_calls)

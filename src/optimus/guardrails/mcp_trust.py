@@ -19,6 +19,7 @@ _PERMISSION_SCOPE_LIMITS = {
     "network_read": "network",
 }
 _SIDE_EFFECT_RANK = {"read": 0, "network": 1, "write": 2}
+SIDE_EFFECT_RANK = _SIDE_EFFECT_RANK
 _WRITE_HINTS = ("write", "delete", "remove", "create", "update", "mutate", "patch", "upload", "send", "execute", "run")
 _NETWORK_HINTS = ("fetch", "download", "http", "url", "request")
 _MANIFEST_HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -310,22 +311,46 @@ def _secret_digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def assemble_tool_descriptor_scan_text(
+    *,
+    name: str,
+    description: str,
+    input_schema: dict[str, Any],
+    side_effect_class: str = "read",
+) -> str:
+    """Assemble a single-tool descriptor text for ConfigTrustScanner (legacy + client)."""
+    return "\n".join(
+        (
+            name,
+            description,
+            json.dumps(input_schema, sort_keys=True),
+            f"side_effect_class={side_effect_class}",
+        )
+    )
+
+
+def normalize_side_effect_class(side_effect_class: str) -> str:
+    """Normalize a declared side-effect class to read|network|write."""
+    normalized = side_effect_class.lower().strip()
+    if normalized not in _SIDE_EFFECT_RANK:
+        raise MCPTrustError(f"mcp.unknown_side_effect_class: {side_effect_class}")
+    return normalized
+
+
 def _validate_permission_scope(permission_scope: str) -> None:
     if permission_scope not in _PERMISSION_SCOPE_LIMITS:
         raise MCPTrustError(f"mcp.unknown_permission_scope: {permission_scope}")
 
 
 def _effective_side_effect_class(tool: MCPToolDescriptor) -> str:
-    declared = _normalize_side_effect_class(tool.side_effect_class)
+    declared = normalize_side_effect_class(tool.side_effect_class)
     derived = _derive_side_effect_class(tool)
     return max((declared, derived), key=lambda effect: _SIDE_EFFECT_RANK[effect])
 
 
 def _normalize_side_effect_class(side_effect_class: str) -> str:
-    normalized = side_effect_class.lower().strip()
-    if normalized not in _SIDE_EFFECT_RANK:
-        raise MCPTrustError(f"mcp.unknown_side_effect_class: {side_effect_class}")
-    return normalized
+    # Legacy private alias — keep call sites stable; behavior unchanged.
+    return normalize_side_effect_class(side_effect_class)
 
 
 def _derive_side_effect_class(tool: MCPToolDescriptor) -> str:

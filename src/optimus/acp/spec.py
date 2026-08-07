@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import itertools
 import uuid
 from collections.abc import Mapping
@@ -22,6 +23,9 @@ from optimus.acp.shapes import (
 )
 from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus
 from optimus.agent.planning_loop import PlanningProgressEvent
+from optimus.mcp.client_catalog import ClientMcpOneCallApproval
+from optimus.mcp.client_config import ClientMcpConfigError
+from optimus.mcp.client_disposition import AcpMcpPermissionBroker, ClientMcpRuntime, ClientMcpSessionState
 from optimus.runtime.modes import ExecutionMode
 
 ACP_PROTOCOL_VERSION = 1
@@ -69,6 +73,7 @@ class AcpSpecSession:
     session_id: str
     cwd: Path
     execution_mode: ExecutionMode = ExecutionMode.AGENT
+    client_mcp_state: ClientMcpSessionState | None = None
 
 
 @dataclass
@@ -84,6 +89,7 @@ class AcpPromptTurn:
 class InMemoryAcpSpecSessionStore:
     def __init__(self) -> None:
         self._sessions: dict[str, AcpSpecSession] = {}
+        self._closed_state_ids: set[str] = set()
 
     def create(self, *, cwd: Path) -> AcpSpecSession:
         session = AcpSpecSession(session_id=f"session-{uuid.uuid4().hex}", cwd=cwd.resolve())
@@ -92,6 +98,24 @@ class InMemoryAcpSpecSessionStore:
 
     def get(self, session_id: str) -> AcpSpecSession | None:
         return self._sessions.get(session_id)
+
+    def remove(self, session_id: str) -> None:
+        session = self._sessions.pop(session_id, None)
+        if session is not None and session.client_mcp_state is not None:
+            self._close_state_once(session)
+
+    def close_all(self) -> None:
+        for session in list(self._sessions.values()):
+            self._close_state_once(session)
+
+    def _close_state_once(self, session: AcpSpecSession) -> None:
+        state = session.client_mcp_state
+        if state is None:
+            return
+        if session.session_id in self._closed_state_ids:
+            return
+        self._closed_state_ids.add(session.session_id)
+        state.close()
 
 
 class RecordingOutboundChannel:
@@ -172,6 +196,7 @@ class AcpDuplexAdapter:
         sessions: InMemoryAcpSpecSessionStore,
         outbound: AcpOutboundChannel,
         max_planning_turns: int | None = None,
+        client_mcp_runtime: ClientMcpRuntime | None = None,
     ) -> None:
         self._runner = runner
         self._workspace_root = Path(workspace_root).resolve()
@@ -182,6 +207,8 @@ class AcpDuplexAdapter:
         # resolve_max_planning_turns(authorized_launch.candidate.agent_environ))
         # and threaded in here, rather than read from os.environ per prompt.
         self._max_planning_turns = max_planning_turns
+        self._client_mcp_runtime = client_mcp_runtime
+        self._closed = False
 
     async def handle_client_request(self, request: dict[str, Any]) -> dict[str, Any]:
         request_id = request.get("id")
@@ -192,12 +219,26 @@ class AcpDuplexAdapter:
         if method == "initialize":
             return self._handle_initialize(request)
         if method == "session/new":
-            return self._handle_session_new(request)
+            return await self._handle_session_new(request)
         if method == "session/prompt":
             return await self._handle_session_prompt(request)
         if method in {"session/update", "session/request_permission"}:
             return error_response(request_id, JsonRpcError(code=METHOD_NOT_FOUND, message=f"method not found: {method}"))
         return error_response(request_id, JsonRpcError(code=METHOD_NOT_FOUND, message=f"method not found: {method}"))
+
+    def close_all(self) -> None:
+        """Cancel outstanding ACP permission work, then close session states exactly once."""
+        if self._closed:
+            return
+        self._closed = True
+        for turn in list(self._active_turns.values()):
+            if turn.pending_permission_request_id is not None:
+                self._outbound.cancel_request(
+                    turn.pending_permission_request_id,
+                    {"outcome": {"outcome": "cancelled"}},
+                )
+                turn.pending_permission_request_id = None
+        self._sessions.close_all()
 
     async def handle_client_notification(self, notification: dict[str, Any]) -> None:
         if notification.get("method") != "session/cancel":
@@ -227,24 +268,30 @@ class AcpDuplexAdapter:
         params = request.get("params")
         if not isinstance(params, dict) or not isinstance(params.get("protocolVersion"), int):
             return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
+        agent_capabilities: dict[str, Any] = {
+            "promptCapabilities": {
+                "image": False,
+                "audio": False,
+                "embeddedContext": False,
+            },
+            # session/load remains P11-FEAT-ZED-RESUME; do not advertise loadSession.
+            "sessionCapabilities": {},
+        }
+        # Advertise HTTP/SSE only after adapters + gates are proven (Task 8).
+        http_enabled = bool(self._client_mcp_runtime and self._client_mcp_runtime.mcp_http_enabled)
+        sse_enabled = bool(self._client_mcp_runtime and self._client_mcp_runtime.mcp_sse_enabled)
+        agent_capabilities["mcpCapabilities"] = {"http": http_enabled, "sse": sse_enabled}
         return success_response(
             request_id=request.get("id"),
             result={
                 "protocolVersion": ACP_PROTOCOL_VERSION,
-                "agentCapabilities": {
-                    "promptCapabilities": {
-                        "image": False,
-                        "audio": False,
-                        "embeddedContext": False,
-                    },
-                    "sessionCapabilities": {},
-                },
+                "agentCapabilities": agent_capabilities,
                 "agentInfo": {"name": "optimus", "version": "0.1.0"},
                 "authMethods": [],
             },
         )
 
-    def _handle_session_new(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_session_new(self, request: dict[str, Any]) -> dict[str, Any]:
         params = request.get("params")
         if not isinstance(params, dict) or not isinstance(params.get("cwd"), str):
             return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
@@ -254,7 +301,46 @@ class AcpDuplexAdapter:
                 request.get("id"),
                 JsonRpcError(code=INVALID_REQUEST, message="session cwd outside configured workspace"),
             )
+        mcp_servers = params.get("mcpServers", [])
+        if mcp_servers is None:
+            mcp_servers = []
+        if not isinstance(mcp_servers, list):
+            return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
+
+        # Provisional in-memory session after input-shape validation.
         session = self._sessions.create(cwd=cwd)
+        empty_state = ClientMcpSessionState(session_id=session.session_id)
+        session.client_mcp_state = empty_state
+
+        if len(mcp_servers) == 0:
+            return success_response(request_id=request.get("id"), result={"sessionId": session.session_id})
+
+        runtime = self._client_mcp_runtime
+        if runtime is None:
+            self._sessions.remove(session.session_id)
+            return error_response(
+                request.get("id"),
+                JsonRpcError(code=INVALID_REQUEST, message="client MCP runtime not configured"),
+            )
+
+        try:
+            async def request_permission(permission_params: dict[str, Any]) -> dict[str, Any]:
+                return await self._outbound.request("session/request_permission", permission_params)
+
+            state = await runtime.disposition.disposition_for_new_session(
+                session.session_id,
+                cwd,
+                mcp_servers,
+                request_permission,
+            )
+        except ClientMcpConfigError:
+            self._sessions.remove(session.session_id)
+            return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
+        except Exception:
+            self._sessions.remove(session.session_id)
+            return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
+
+        session.client_mcp_state = state
         return success_response(request_id=request.get("id"), result={"sessionId": session.session_id})
 
     async def _handle_session_prompt(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -312,7 +398,10 @@ class AcpDuplexAdapter:
             planning_result = await asyncio.to_thread(
                 self._runner.run,
                 planning_request,
-                planning_progress_observer=_session_progress_observer,
+                **self._runner_runtime_kwargs(
+                    planning_progress_observer=_session_progress_observer,
+                    session=session,
+                ),
             )
             # region agent log
             acp_debug_log(
@@ -367,7 +456,11 @@ class AcpDuplexAdapter:
                     )
                 }
             )
-            approved_result = await asyncio.to_thread(self._runner.run, approved_request)
+            approved_result = await asyncio.to_thread(
+                self._runner.run,
+                approved_request,
+                **self._runner_runtime_kwargs(session=session),
+            )
             # region agent log
             acp_debug_log(
                 location="spec.py:_handle_session_prompt:approved_done",
@@ -433,6 +526,53 @@ class AcpDuplexAdapter:
             elif getattr(self._outbound, "last_outbound_request_id", None) is not None:
                 turn.pending_permission_request_id = self._outbound.last_outbound_request_id
         return await request_task
+
+    def _runner_runtime_kwargs(
+        self,
+        *,
+        session: AcpSpecSession,
+        planning_progress_observer: Any | None = None,
+    ) -> dict[str, Any]:
+        """Pass client-MCP runtime kwargs only when the runner accepts them."""
+        kwargs: dict[str, Any] = {}
+        try:
+            parameters = inspect.signature(self._runner.run).parameters
+        except (TypeError, ValueError):
+            parameters = {}
+        accepts_var_kw = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values())
+
+        def _maybe(name: str, value: object) -> None:
+            if accepts_var_kw or name in parameters:
+                kwargs[name] = value
+
+        if planning_progress_observer is not None:
+            _maybe("planning_progress_observer", planning_progress_observer)
+        _maybe("client_mcp_service", _client_mcp_service(session))
+        _maybe("mcp_permission_broker", self._mcp_permission_broker_for(session))
+        return kwargs
+
+    def _mcp_permission_broker_for(self, session: AcpSpecSession) -> AcpMcpPermissionBroker | None:
+        if session.client_mcp_state is None:
+            return None
+        loop = asyncio.get_running_loop()
+
+        async def _request(params: dict[str, Any]) -> dict[str, Any]:
+            return await self._outbound.request("session/request_permission", params)
+
+        def _issue(request: Any) -> ClientMcpOneCallApproval | None:
+            # Fail closed until a per-server ClientMcpCallAuthorizer is attached to the
+            # session tool service (P11-FU-20). Fabricating a token here would look like an
+            # IDE allow succeeded while downstream authorize() rejects with one_call_unknown.
+            del request
+            return None
+
+        return AcpMcpPermissionBroker(
+            session_id=session.session_id,
+            request_permission=_request,
+            issue_approval=_issue,
+            timeout_seconds=30.0,
+            loop=loop,
+        )
 
     async def _emit_result_updates(self, *, session_id: str, result: AgentRunResult, planning: bool) -> None:
         if planning:
@@ -556,6 +696,13 @@ def _completion_message(result: AgentRunResult) -> str:
     if result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
         return result.output_text
     return "Turn completed."
+
+
+def _client_mcp_service(session: AcpSpecSession) -> object | None:
+    state = session.client_mcp_state
+    if state is None:
+        return None
+    return state.tool_service
 
 
 def _permission_approved(permission_result: dict[str, Any]) -> bool:

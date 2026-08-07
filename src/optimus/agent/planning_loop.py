@@ -11,8 +11,16 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from optimus.agent.directives import AgentDirectiveParseError, AgentPlanDirectives, parse_agent_plan
-from optimus.agent.prompts import build_multi_turn_planner_input
+from optimus.agent.directives import (
+    AgentDirectiveParseError,
+    AgentPlanDirectives,
+    parse_agent_plan,
+    parse_mcp_call_line,
+    parse_mcp_list_line,
+)
+from optimus.agent.models import AgentMcpToolOutput, AgentToolCall
+from optimus.agent.prompts import build_multi_turn_planner_input, format_mcp_evidence_envelope
+from optimus.agent.tools import AgentToolbox
 from optimus.agent.workspace_context import DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
 from optimus.gateway.errors import GatewayError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
@@ -23,6 +31,7 @@ from optimus.loops.ledger import InMemoryProgressLedger
 from optimus.loops.models import IterationOutcome, IterationState, LoopBudgetPolicy, LoopStopReason, LoopToolExecutorProtocol
 from optimus.retry.policy import RetryController, RetryPolicy
 from optimus.runtime.modes import ExecutionMode
+from optimus.runtime.state import RuntimeContext
 from optimus.telemetry.subjects import sanitize_workspace_text
 
 PlanningGatewayUsageCallback = Callable[[GatewayUsage, int, int], None]
@@ -35,15 +44,16 @@ _OBSERVE_DIRECTIVE = re.compile(r"^OBSERVE:\s*(.*)$", re.DOTALL)
 _READ_RANGE_DIRECTIVE = re.compile(r"^READ:\s+(\S+)#bytes=(\d+):(\d+)\s*$")
 _REFUSE_DIRECTIVE = re.compile(r"^REFUSE:\s*(.+)$")
 _WRITE_DIRECTIVE = re.compile(r"^WRITE\s+(\S+)\s*$")
-_DIRECTIVE_PREFIXES = ("OBSERVE:", "READ:", "WRITE", "TEST", "REFUSE:", "PLAN:")
+_DIRECTIVE_PREFIXES = ("OBSERVE:", "READ:", "WRITE", "TEST", "REFUSE:", "PLAN:", "MCP_LIST", "MCP_CALL")
 _REFUSE_REASON_DIRECTIVE_PREFIX = re.compile(
-    r"^(?:OBSERVE:|READ:|WRITE(?:\s|$)|TEST\s|PLAN:|CONTENT:|END_CONTENT)"
+    r"^(?:OBSERVE:|READ:|WRITE(?:\s|$)|TEST\s|PLAN:|CONTENT:|END_CONTENT|MCP_LIST\s|MCP_CALL\s)"
 )
 _BULLET_PREFIXES = ("- ", "* ", "+ ")
 
 
 class PlanningTurnKind(StrEnum):
     READ_MORE = "READ_MORE"
+    MCP_TOOL = "MCP_TOOL"
     FINAL_PLAN = "FINAL_PLAN"
     REFUSE = "REFUSE"
 
@@ -135,6 +145,10 @@ class PlanningTurnDecision(BaseModel):
     plan_text: str | None = None
     directives: AgentPlanDirectives | None = None
     reason: str | None = None
+    mcp_operation: str | None = None
+    mcp_server: str | None = None
+    mcp_tool: str | None = None
+    mcp_arguments: dict[str, object] | None = None
 
 
 class PlanningLoopResult(BaseModel):
@@ -419,6 +433,10 @@ def parse_planning_turn(text: str) -> PlanningTurnDecision:
     if stripped.startswith("REFUSE:"):
         raise PlanningTurnParseError("REFUSE reason must be one non-empty line")
 
+    mcp_decision = _try_parse_mcp_turn(stripped)
+    if mcp_decision is not None:
+        return mcp_decision
+
     surface_lines = _directive_surface_lines(stripped)
     if _surface_has_observe(surface_lines):
         return _parse_intermediate_turn(stripped)
@@ -431,6 +449,47 @@ def parse_planning_turn(text: str) -> PlanningTurnDecision:
         return _parse_intermediate_turn(stripped)
 
     raise PlanningTurnParseError("no recognized planning-turn grammar")
+
+
+def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return None
+    if not (lines[0].startswith("MCP_LIST") or lines[0].startswith("MCP_CALL")):
+        # If MCP appears mixed later with other content, reject below when surface has MCP.
+        if any(line.startswith("MCP_LIST") or line.startswith("MCP_CALL") for line in lines):
+            raise PlanningTurnParseError("MCP directives must be a single intermediate tool request")
+        return None
+    if len(lines) != 1:
+        raise PlanningTurnParseError("MCP turn must contain exactly one MCP_LIST or MCP_CALL directive")
+
+    try:
+        list_directive = parse_mcp_list_line(lines[0])
+    except AgentDirectiveParseError as exc:
+        raise PlanningTurnParseError(str(exc)) from exc
+    if list_directive is not None:
+        return PlanningTurnDecision(
+            kind=PlanningTurnKind.MCP_TOOL,
+            mcp_operation="list",
+            mcp_server=list_directive.server,
+        )
+
+    try:
+        call_directive = parse_mcp_call_line(lines[0])
+    except AgentDirectiveParseError as exc:
+        raise PlanningTurnParseError(str(exc)) from exc
+    if call_directive is not None:
+        return PlanningTurnDecision(
+            kind=PlanningTurnKind.MCP_TOOL,
+            mcp_operation="call",
+            mcp_server=call_directive.server,
+            mcp_tool=call_directive.tool,
+            mcp_arguments=call_directive.arguments,
+        )
+
+    if lines[0].startswith("MCP_LIST") or lines[0].startswith("MCP_CALL"):
+        raise PlanningTurnParseError("malformed MCP directive")
+    return None
 
 
 def _directive_surface_lines(text: str) -> tuple[str, ...]:
@@ -469,6 +528,10 @@ def _is_final_directive_line(line: str) -> bool:
         _FINAL_READ_DIRECTIVE.match(normalized) is not None
         or _WRITE_DIRECTIVE.match(normalized) is not None
         or _FINAL_TEST_DIRECTIVE.match(normalized) is not None
+        or normalized.startswith("MCP_LIST ")
+        or normalized.startswith("MCP_CALL ")
+        or normalized == "MCP_LIST"
+        or normalized == "MCP_CALL"
     )
 
 
@@ -706,6 +769,8 @@ class PlanningLoopRunner:
         usage_callback: PlanningGatewayUsageCallback | None = None,
         retry_controller: RetryController | None = None,
         progress_observer: PlanningProgressObserver | None = None,
+        client_mcp_service: object | None = None,
+        mcp_permission_broker: object | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -725,6 +790,8 @@ class PlanningLoopRunner:
             sleep_ms=lambda _delay_ms: None,
         )
         self._progress_observer = progress_observer
+        self._client_mcp_service = client_mcp_service
+        self._mcp_permission_broker = mcp_permission_broker
 
     def run(
         self,
@@ -734,11 +801,16 @@ class PlanningLoopRunner:
         task: str,
         initial_workspace_context: str = "",
         initial_workspace_file_sizes: dict[str, int] | None = None,
+        client_mcp_service: object | None = None,
+        mcp_permission_broker: object | None = None,
     ) -> PlanningLoopResult:
         if self._max_cost_usd <= Decimal("0"):
             return PlanningLoopResult(stop_reason="PLANNING_BUDGET_EXHAUSTED", settled_turns=0)
 
         from optimus.loops.tools import GuardedLoopToolExecutor
+
+        service = client_mcp_service if client_mcp_service is not None else self._client_mcp_service
+        broker = mcp_permission_broker if mcp_permission_broker is not None else self._mcp_permission_broker
 
         iteration_runner = _PlanningIterationRunner(
             gateway_client=self._gateway_client,
@@ -758,6 +830,9 @@ class PlanningLoopRunner:
             retry_controller=self._retry_controller,
             progress_observer=self._progress_observer,
             halt_requested=self._halt_requested,
+            guard=self._guard,
+            client_mcp_service=service,
+            mcp_permission_broker=broker,
         )
         controller = GoalLoopController(
             policy=iteration_runner.loop_budget_policy,
@@ -806,6 +881,9 @@ class _PlanningIterationRunner:
         retry_controller: RetryController,
         progress_observer: PlanningProgressObserver | None,
         halt_requested: Callable[[], bool] | None = None,
+        guard: PreToolGuard | None = None,
+        client_mcp_service: object | None = None,
+        mcp_permission_broker: object | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -825,6 +903,8 @@ class _PlanningIterationRunner:
         self._progress_observer = progress_observer
         self._observations: list[PlanningObservation] = []
         self._current_reads: tuple[PlanningReadEvidence, ...] = ()
+        self._mcp_evidence_envelope: str = ""
+        self._mcp_tool_calls: list[AgentToolCall] = []
         self._gateway_request_ids: list[str] = []
         self._total_cost_usd = Decimal("0")
         self._cost_complete = True
@@ -833,8 +913,23 @@ class _PlanningIterationRunner:
         self._last_provider: str | None = None
         self._last_wire_retry_count = 0
         self._typed_planning_stop_reason: str | None = None
-        self._last_non_progress_kind: Literal["GATEWAY_FAILURE", "READ_MORE", "UNPARSEABLE"] | None = None
+        self._last_non_progress_kind: Literal["GATEWAY_FAILURE", "READ_MORE", "MCP_TOOL", "UNPARSEABLE"] | None = None
         self._halt_requested = halt_requested or (lambda: False)
+        self._guard = guard or PreToolGuard.for_workspace(
+            workspace_root=workspace_root,
+            allowed_network_hosts=(),
+        )
+        self._client_mcp_service = client_mcp_service
+        self._mcp_permission_broker = mcp_permission_broker
+        self._mcp_toolbox = AgentToolbox.for_workspace(
+            workspace_root=workspace_root,
+            context=RuntimeContext(execution_mode=execution_mode),
+            run_id=run_id,
+            session_id=session_id,
+            guard=self._guard,
+            client_mcp_service=client_mcp_service,
+            mcp_permission_broker=mcp_permission_broker,
+        )
 
     def _typed_planning_failure(
         self,
@@ -996,6 +1091,7 @@ class _PlanningIterationRunner:
             remaining_wall_clock_minutes=remaining_wall_clock,
             carried_observations_envelope=carried_envelope,
             current_read_evidence_envelope=current_envelope,
+            mcp_evidence_envelope=self._mcp_evidence_envelope,
             initial_workspace_context=self._initial_workspace_context if planning_turn == 1 else "",
             initial_workspace_file_sizes=(
                 self._initial_workspace_file_sizes if planning_turn == 1 else {}
@@ -1006,6 +1102,8 @@ class _PlanningIterationRunner:
                 DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES,
             ),
         )
+        # MCP evidence is one-shot for the turn that just received it.
+        self._mcp_evidence_envelope = ""
         try:
             response, attempt_cost = self._invoke_planning_gateway(planning_turn=planning_turn, prompt=prompt)
         except _PlanningGatewayInvocationError as exc:
@@ -1116,6 +1214,36 @@ class _PlanningIterationRunner:
                 summary="planning requested guarded read evidence",
                 deterministic_completion=False,
                 failure_signature=decision.failure_signature,
+                cost_usd=attempt_cost,
+            )
+
+        if decision.kind is PlanningTurnKind.MCP_TOOL:
+            self._last_non_progress_kind = "MCP_TOOL"
+            # MCP evidence is single-turn: clear prior envelope before attaching the new one.
+            self._mcp_evidence_envelope = ""
+            output: AgentMcpToolOutput
+            call: AgentToolCall
+            if decision.mcp_operation == "list":
+                output, call = self._mcp_toolbox.mcp_list_tools(decision.mcp_server or "")
+            elif decision.mcp_operation == "call":
+                output, call = self._mcp_toolbox.mcp_call(
+                    decision.mcp_server or "",
+                    decision.mcp_tool or "",
+                    decision.mcp_arguments or {},
+                )
+            else:
+                return self._typed_planning_failure(
+                    stop_reason="PLANNING_UNPARSEABLE_RESPONSE",
+                    summary="unsupported MCP operation",
+                    cost_usd=attempt_cost,
+                )
+            self._mcp_tool_calls.append(call)
+            self._mcp_evidence_envelope = format_mcp_evidence_envelope(output)
+            self._current_reads = ()
+            return IterationOutcome(
+                summary="planning requested generic MCP tool evidence",
+                deterministic_completion=False,
+                failure_signature=f"MCP:{decision.mcp_operation}:{decision.mcp_server}",
                 cost_usd=attempt_cost,
             )
 

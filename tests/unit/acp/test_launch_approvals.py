@@ -923,3 +923,73 @@ def _build_padded_record(*, target_bytes: int, hmac_key: bytes) -> ApprovalRecor
         padded = dc_replace(padded, record_hmac=compute_record_hmac(padded, hmac_key=hmac_key))
 
     return padded
+
+def test_client_mcp_policy_constant_is_not_launch_policy() -> None:
+    """P11-FU-9 Task 2: client MCP policy must not reuse launch approval policy."""
+    from optimus.mcp.client_trust import MCP_POLICY_COMPATIBILITY
+
+    assert MCP_POLICY_COMPATIBILITY != LAUNCH_POLICY_COMPATIBILITY
+    assert MCP_POLICY_COMPATIBILITY.startswith("P11-FU-9")
+
+
+def test_client_mcp_keyed_credential_fingerprint_is_domain_separated() -> None:
+    """P11-FU-9 Task 7: ceremony fingerprints are keyed by kind/name/index."""
+    from optimus.acp.launch_approvals import compute_client_mcp_credential_fingerprint
+
+    hmac_key = b"0" * 32
+    same_value = "raw-secret-value"
+    fp_header = compute_client_mcp_credential_fingerprint(
+        same_value, kind="header", name="authorization", index=0, hmac_key=hmac_key
+    )
+    fp_env = compute_client_mcp_credential_fingerprint(
+        same_value, kind="env", name="authorization", index=0, hmac_key=hmac_key
+    )
+    fp_query = compute_client_mcp_credential_fingerprint(
+        same_value, kind="query", name="authorization", index=0, hmac_key=hmac_key
+    )
+    fp_header_other_index = compute_client_mcp_credential_fingerprint(
+        same_value, kind="header", name="authorization", index=1, hmac_key=hmac_key
+    )
+    assert same_value not in fp_header
+    assert fp_header != fp_env != fp_query
+    assert fp_header != fp_header_other_index
+    assert (
+        compute_client_mcp_credential_fingerprint(
+            same_value, kind="header", name="authorization", index=0, hmac_key=hmac_key
+        )
+        == fp_header
+    )
+
+
+def test_client_mcp_review_display_formats_names_without_values() -> None:
+    """P11-FU-9 Task 7: review display shows session/workspace/received-at and names only."""
+    from optimus.acp.launch_approvals import (
+        ClientMcpReviewDisplay,
+        format_client_mcp_review_lines,
+    )
+
+    secret = "must-not-appear-in-display"
+    display = ClientMcpReviewDisplay(
+        workspace_digest="b" * 64,
+        session_id="sess-display-1",
+        received_at="2026-08-06T15:30:00+00:00",
+        server_name="tools",
+        transport="http",
+        canonical_target="https://mcp.example.com/x",
+        credential_field_names=("Authorization", "api_key", "TOKEN"),
+        credential_name_fingerprints=("fp1", "fp2", "fp3"),
+        rendered_fingerprint="immutable-fp-abc",
+        provenance="client_supplied_acp",
+        scanner_rule_ids=("rule.x",),
+    )
+    lines = "\n".join(format_client_mcp_review_lines(display))
+    assert "sess-display-1" in lines
+    assert "2026-08-06T15:30:00+00:00" in lines
+    assert ("b" * 64)[:16] in lines
+    assert "Authorization" in lines
+    assert "api_key" in lines
+    assert "TOKEN" in lines
+    assert "immutable-fp-abc" in lines
+    assert "client_supplied_acp" in lines
+    assert secret not in lines
+    assert "gateway_brokered_mcp" not in lines

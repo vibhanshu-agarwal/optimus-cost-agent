@@ -13,6 +13,7 @@ from pathlib import Path
 from evidence_handoff.redaction.models import RedactionRuntimeInputs
 from optimus.acp.launch_gate import AuthorizedLaunch, LaunchCandidate
 from optimus.acp.local_gateway_secrets import CredentialLayer
+from optimus.mcp.client_config import ClientMcpRuntimeCapability, ClientMcpSafeView
 from optimus_security.sanitization import PathAliasRule
 from optimus_security.sensitive_values import (
     SensitiveValueError,
@@ -227,3 +228,37 @@ def assert_portable_runtime_inputs(result: RedactionRuntimeInputs) -> None:
             raise EvidenceRedactionAdapterError("non_portable_path_type")
         if isinstance(path, forbidden_types):
             raise EvidenceRedactionAdapterError("optimus_type_crossed_portable_boundary")
+
+
+def build_client_mcp_audit_fields(
+    *,
+    safe_view: ClientMcpSafeView | None = None,
+    runtime_capability: ClientMcpRuntimeCapability | None = None,
+    outcome: str,
+) -> dict[str, object]:
+    """Build redacted client-MCP audit/evidence fields from a safe view only.
+
+    Never emits raw header/env/query values and never labels this path as
+    ``gateway_brokered_mcp``.
+    """
+    view = safe_view
+    if view is None and runtime_capability is not None:
+        view = runtime_capability.safe_view()
+    if view is None or not isinstance(view, ClientMcpSafeView):
+        raise EvidenceRedactionAdapterError("invalid_client_mcp_safe_view")
+
+    provenance = view.provenance
+    if provenance != "client_supplied_acp":
+        # Force the only permitted provenance label for this adapter path.
+        provenance = "client_supplied_acp"
+
+    return {
+        "provenance": provenance,
+        "transport": view.transport,
+        "server_name": view.server_name,
+        "disposition": view.disposition,
+        "outcome": outcome,
+        "credential_present": bool(view.credential_names or view.credential_name_fingerprints),
+        "credential_names": tuple(view.credential_names),
+        "credential_name_fingerprints": tuple(view.credential_name_fingerprints),
+    }

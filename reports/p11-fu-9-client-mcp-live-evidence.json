@@ -1,0 +1,74 @@
+{
+  "schema_version": "p11-fu-9-client-mcp-live-evidence-v1",
+  "status": "passed_with_documented_residual",
+  "commit": "fb231f2",
+  "verification_platforms": {
+    "authoritative": "native_windows",
+    "ci_parity": "wsl2"
+  },
+  "note": "Verified on native Windows (authoritative platform) + reproduced on WSL2 (CI-parity check). Skipped tiers are not DoD evidence. Negotiated versions below are only those observed from real runs. No credentials or raw transcripts are retained.",
+  "fitness": {
+    "step4_selector": {
+      "command": "uv run --frozen pytest tests/unit/mcp tests/unit/acp tests/unit/guardrails tests/unit/agent -q",
+      "passed": 999,
+      "skipped": 19,
+      "failed": 0
+    },
+    "full_unit": {
+      "command": "uv run --frozen pytest tests/unit -q",
+      "passed": 2772,
+      "skipped": 25,
+      "failed": 0
+    },
+    "ruff": "clean",
+    "git_diff_check": "clean",
+    "plan996_custody_gate": "passed"
+  },
+  "unit_harness": {
+    "passed": 20,
+    "skipped": 0,
+    "failed": 0
+  },
+  "tiers": {
+    "requires_mcp_stdio_terraform": {
+      "status": "passed",
+      "image_digest": "sha256:bd095e2b442a2cb61255fe4db52f9e824f35d307a2044784c95d37a93f18d324",
+      "negotiated_protocol_version": "2025-11-25",
+      "tool_count": 9,
+      "tokenized": {"read": 9, "network": 0, "write": 0},
+      "legacy": {"read": 0, "network": 6, "write": 3},
+      "platform": "native_windows_docker_desktop"
+    },
+    "requires_mcp_http_context7_catalog": {
+      "status": "passed",
+      "negotiated_protocol_version": "2025-11-25",
+      "tool_count": 2,
+      "tokenized": {"read": 2, "network": 0, "write": 0},
+      "legacy": {"read": 0, "network": 2, "write": 0},
+      "accept": "application/json, text/event-stream"
+    },
+    "requires_mcp_http_real_sdk_httpx2": {
+      "status": "passed",
+      "follow_redirects": false,
+      "trust_env": false,
+      "negotiated_protocol_version": "2025-11-25",
+      "task3_composition_claim": "closed"
+    },
+    "requires_mcp_http_byte_budget": {
+      "status": "passed",
+      "code": "REMOTE_BYTE_OVERFLOW"
+    },
+    "requires_acpx_scratch_and_verifier": {
+      "status": "passed"
+    },
+    "requires_acpx_empty_array_live": {
+      "status": "skipped",
+      "reason": "acpx_capture_incomplete exit=1 stop=None",
+      "note": "Pre-existing acpx↔optimus-agent empty-array capture gap; not a Task 8 regression"
+    }
+  },
+  "residuals": [
+    "requires_acpx empty mcpServers live capture remains skipped (acpx_capture_incomplete)",
+    "Authenticated upstream support remains out of scope"
+  ]
+}

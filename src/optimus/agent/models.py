@@ -41,6 +41,51 @@ class AgentToolCall(BaseModel):
     authorization_outcome: str = "ALLOW"
 
 
+class AgentMcpToolOutput:
+    """Bounded, safe, untrusted in-memory MCP observation for the next planning turn.
+
+    Distinct from audit-only ``AgentToolCall``. Never a field on ``AgentRunRequest``,
+    persisted plans, telemetry events, or ``AgentRunResult``.
+    """
+
+    __slots__ = ("server_name", "tool_name", "text", "untrusted")
+
+    def __init__(
+        self,
+        *,
+        server_name: str,
+        tool_name: str,
+        text: str,
+        untrusted: bool = True,
+    ) -> None:
+        object.__setattr__(self, "server_name", server_name)
+        object.__setattr__(self, "tool_name", tool_name)
+        object.__setattr__(self, "text", text)
+        object.__setattr__(self, "untrusted", bool(untrusted))
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise TypeError("AgentMcpToolOutput is immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise TypeError("AgentMcpToolOutput is immutable")
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, AgentMcpToolOutput):
+            return NotImplemented
+        return (
+            self.server_name == other.server_name
+            and self.tool_name == other.tool_name
+            and self.text == other.text
+            and self.untrusted == other.untrusted
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"AgentMcpToolOutput(server_name={self.server_name!r}, "
+            f"tool_name={self.tool_name!r}, untrusted={self.untrusted})"
+        )
+
+
 class AgentRunRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 

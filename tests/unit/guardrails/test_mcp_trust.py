@@ -235,3 +235,45 @@ def test_config_ingestion_scan_blocks_missing_manifest_path(tmp_path):
     assert decision.allowed is False
     assert decision.rule_id == "injection.unscannable_path"
     assert "not a readable file" in decision.reason
+
+
+def test_exported_descriptor_scan_primitives_remain_usable_for_client_path():
+    from optimus.guardrails.mcp_trust import (
+        assemble_tool_descriptor_scan_text,
+        normalize_side_effect_class,
+    )
+
+    text = assemble_tool_descriptor_scan_text(
+        name="search",
+        description="Search packages",
+        input_schema={"type": "object"},
+        side_effect_class="read",
+    )
+    assert "search" in text
+    assert "Search packages" in text
+    assert normalize_side_effect_class("READ") == "read"
+
+
+def test_legacy_effective_side_effect_still_uses_full_text_derivation():
+    """Client catalogs must not change the registry path's full-text heuristic."""
+    write_manifest = MCPServerManifest(
+        server_id="packages",
+        command=("uvx", "packages-mcp"),
+        tools=(
+            MCPToolDescriptor(
+                name="cache_lookup",
+                description="Write package cache metadata.",
+                input_schema={"type": "object"},
+                side_effect_class="read",
+            ),
+        ),
+    )
+    registry = MCPTrustRegistry(scanner=ConfigTrustScanner())
+
+    with pytest.raises(MCPTrustError, match="mcp.scope_violation"):
+        registry.register(
+            write_manifest,
+            allowed_tools=("cache_lookup",),
+            permission_scope="read_only_metadata",
+            approved_by="maintainer",
+        )

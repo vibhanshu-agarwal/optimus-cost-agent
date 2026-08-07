@@ -2,9 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Use `superpowers:test-driven-development` for every production behavior change. Steps use checkbox (`- [ ]`) syntax for tracking. Do not mark a checkbox complete until its stated verification command has actually passed.
 
-**Status:** Draft revision 2 for operator and independent-reviewer approval. This document authorizes no source,
-test, dependency, lockfile, credential, live-configuration, commit, push, or PR mutation until the
-operator approves this exact plan.
+**Status:** Closed. All 9 tasks implemented and independently reviewed/approved on branch
+`agent/cursor/p11-fu-9-client-mcp`. Deferred capabilities remain owned by their named backlog entries
+(descriptor pinning/allowlists, HTTP/SSE trust relaxation, authenticated upstream evidence, Plan 11.8
+`WinError 10053` flake) and are not resolved by this plan.
 
 **Goal:** Honor client-supplied ACP `mcpServers` through a guarded agent-side MCP client, exposing
 only static generic `mcp_list_tools` and `mcp_call` operations without importing Gateway MCP modules
@@ -126,7 +127,7 @@ independently authored `acpx` ACP client for ACP live evidence.
 - Produces `ClientMcpSafeIdentity` keyed by `(transport, server_name, canonical_target, arguments,
   credential_name_fingerprints)` and rejects invalid/malformed inputs with a safe rule ID.
 
-- [ ] **Step 1: Write RED parsing and identity tests.**
+- [x] **Step 1: Write RED parsing and identity tests.**
 
   Cover absent/empty arrays as an exact no-op; ASCII model-safe names; duplicate server names;
   case-insensitive duplicate headers; platform-aware duplicate env names; ignored `_meta`; untagged
@@ -134,7 +135,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   canonical URL normalization; URL userinfo/fragment rejection; query-name display with
   value fingerprints; and same-name identity drift.
 
-- [ ] **Step 2: Run the RED selector.**
+- [x] **Step 2: Run the RED selector.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_config.py tests/unit/guardrails/test_prompt_injection.py -q
@@ -142,7 +143,7 @@ independently authored `acpx` ACP client for ACP live evidence.
 
   Expected: import/behavior failures because no client normalizer or scanner subjects exist.
 
-- [ ] **Step 3: Implement the smallest normalizer and opaque capability.**
+- [x] **Step 3: Implement the smallest normalizer and opaque capability.**
 
   Use ACP wire arrays as arrays, reject duplicate names before scanning, resolve bare commands only
   with the controlled resolver, and launch/fingerprint only canonical paths. Add
@@ -153,14 +154,14 @@ independently authored `acpx` ACP client for ACP live evidence.
   credentials, or telemetry state. Reject injection-capable env names and make raw-value holders
   non-serializable by construction.
 
-- [ ] **Step 4: Run focused GREEN and static fitness.**
+- [x] **Step 4: Run focused GREEN and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_config.py tests/unit/guardrails/test_prompt_injection.py -q
   uv run --frozen ruff check src/optimus/mcp/client_config.py src/optimus/guardrails/prompt_injection.py tests/unit/mcp/test_client_config.py tests/unit/guardrails/test_prompt_injection.py
   ```
 
-- [ ] **Step 5: Reviewer checkpoint.**
+- [x] **Step 5: Reviewer checkpoint.**
 
   Record the exact normalizer tests and scanner findings. Do not commit, modify `tmp/`, or mark a
   checkbox without separate authorization.
@@ -188,7 +189,7 @@ independently authored `acpx` ACP client for ACP live evidence.
 - Produces `PendingClientMcpCandidateEndpoint.publish(candidate)`, `consume_snapshot(id)`, and
   `close()`; IPC accepts read-only snapshot retrieval only.
 
-- [ ] **Step 1: Write RED durable-record and IPC tests.**
+- [x] **Step 1: Write RED durable-record and IPC tests.**
 
   Assert domain/policy/key separation from launch approvals; HMAC tamper rejection; record keying by
   workspace/name/identity; changed identity requiring a new ceremony; default `non_mutating` and
@@ -196,7 +197,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   addresses; TCP rejection; derived IPC auth key; retrieval one-time consumption; concurrent matching
   candidate behavior; pending-only listener lifetime; and manual review fallback when IPC is absent.
 
-- [ ] **Step 2: Run the RED selectors.**
+- [x] **Step 2: Run the RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_trust.py tests/unit/mcp/test_local_ipc.py tests/unit/acp/test_launch_approvals.py tests/unit/acp/test_launch_approval_cli.py -q
@@ -204,7 +205,7 @@ independently authored `acpx` ACP client for ACP live evidence.
 
   Expected: no client record schema, lease authority, local IPC helper, or CLI subcommand.
 
-- [ ] **Step 3: Implement isolated record and IPC seams.**
+- [x] **Step 3: Implement isolated record and IPC seams.**
 
   Reuse `KeyringApprovalStore.hmac_key` only as a root; derive client-record signature,
   credential-fingerprint, and IPC-auth subkeys with distinct domain strings. Follow the Plan 11.7
@@ -213,14 +214,14 @@ independently authored `acpx` ACP client for ACP live evidence.
   immutable rendered fingerprint only; the CLI writes exactly the rendered fingerprint and never
   approves over IPC.
 
-- [ ] **Step 4: Run focused GREEN and static fitness.**
+- [x] **Step 4: Run focused GREEN and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_trust.py tests/unit/mcp/test_local_ipc.py tests/unit/acp/test_launch_approvals.py tests/unit/acp/test_launch_approval_cli.py -q
   uv run --frozen ruff check src/optimus/mcp/client_trust.py src/optimus/mcp/local_ipc.py src/optimus/acp/launch_approvals.py src/optimus/acp/launch_approval_cli.py tests/unit/mcp/test_client_trust.py tests/unit/mcp/test_local_ipc.py
   ```
 
-- [ ] **Step 5: Reviewer checkpoint.**
+- [x] **Step 5: Reviewer checkpoint.**
 
   Review that the CLI is the only durable-record writer, no raw configuration crosses IPC/keyring,
   and no caller can actuate a session through the local socket.
@@ -245,7 +246,7 @@ independently authored `acpx` ACP client for ACP live evidence.
 - `ClientMcpConnection.negotiated_protocol_version` is populated only from successful
   `initialize.result.protocolVersion`.
 
-- [ ] **Step 1: Write RED supervisor and adapter contract tests without adding the dependency.**
+- [x] **Step 1: Write RED supervisor and adapter contract tests without adding the dependency.**
 
   Use injected fake sessions/transports to prove bounded submission, dead/stopping-loop safe errors,
   cancellation, per-connection call serialization, per-session isolation, no retry/replay,
@@ -256,7 +257,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   version rejection, initialize-result scanner denial, ignored prompts/resources capabilities, and
   complete process-tree teardown seam selection.
 
-- [ ] **Step 2: Run the RED selectors.**
+- [x] **Step 2: Run the RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_supervisor.py tests/unit/mcp/test_client_sdk.py -q
@@ -264,13 +265,13 @@ independently authored `acpx` ACP client for ACP live evidence.
 
   Expected: no supervisor or SDK adapter imports.
 
-- [ ] **Step 3: Stop for the explicit dependency gate.**
+- [x] **Step 3: Stop for the explicit dependency gate.**
 
   Present the resolved `mcp>=2.0,<3` version, exact `uv.lock` diff, and `httpx2` transitive review
   to the operator. Do not edit `pyproject.toml`, `uv.lock`, or install packages until approval is
   recorded. If declined, leave this task open and do not hand-roll a substitute client.
 
-- [ ] **Step 4: Implement the approved SDK seam and bounds.**
+- [x] **Step 4: Implement the approved SDK seam and bounds.**
 
   After approval, constrain the dependency, freeze the exact lock, and prove the SDK accepts the
   injected `httpx2.AsyncClient` with `follow_redirects=False`, `trust_env=False`, explicit timeouts,
@@ -281,14 +282,14 @@ independently authored `acpx` ACP client for ACP live evidence.
   termination. Treat every initialize field as untrusted, take only returned protocol version, and
   ignore unsupported capabilities rather than rejecting a server that advertises them.
 
-- [ ] **Step 5: Run focused GREEN and static fitness.**
+- [x] **Step 5: Run focused GREEN and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_supervisor.py tests/unit/mcp/test_client_sdk.py -q
   uv run --frozen ruff check src/optimus/mcp/client_supervisor.py src/optimus/mcp/client_sdk.py tests/unit/mcp/test_client_supervisor.py tests/unit/mcp/test_client_sdk.py
   ```
 
-- [ ] **Step 6: Reviewer checkpoint.**
+- [x] **Step 6: Reviewer checkpoint.**
 
   Confirm no fake session/transport result is represented as proof of the SDK's hardened injected
   HTTP-client or streamed-byte composition; leave this task and the real-composition claim open until
@@ -325,7 +326,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   HOLD until its bound one-call token is supplied. The legacy registry/manifest branch and its order
   remain unchanged.
 
-- [ ] **Step 1: Write RED catalog and guard tests.**
+- [x] **Step 1: Write RED catalog and guard tests.**
 
   Cover descriptor count/page/byte/cursor/duplicate budget failures yielding no catalog; individual
   malformed or scanner-blocked soft drops; safe availability metadata for tools above a ceiling;
@@ -335,13 +336,13 @@ independently authored `acpx` ACP client for ACP live evidence.
   HOLD then one-call-token ALLOW; token replay, cross-session use, tool/argument mismatch denial; and
   legacy registry/exposure behavior unchanged.
 
-- [ ] **Step 2: Run the RED selectors.**
+- [x] **Step 2: Run the RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_catalog.py tests/unit/guardrails/test_mcp_trust.py tests/unit/guardrails/test_pre_tool_guard.py tests/unit/guardrails/test_permissions.py -q
   ```
 
-- [ ] **Step 3: Implement the client-only catalog adapter and authorizer seam.**
+- [x] **Step 3: Implement the client-only catalog adapter and authorizer seam.**
 
   Extract only reusable descriptor scanning/normalization primitives from `mcp_trust.py`; do not
   change manifest registration, allowlists, or `_PERMISSION_SCOPE_LIMITS`. Classify client effects as
@@ -349,14 +350,14 @@ independently authored `acpx` ACP client for ACP live evidence.
   current transport lease, catalog identity, descriptor membership, and durable ceiling before
   dispatch; let ordinary `PreToolGuard`/ACP approval decide every write-classified call.
 
-- [ ] **Step 4: Run focused GREEN and static fitness.**
+- [x] **Step 4: Run focused GREEN and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_catalog.py tests/unit/guardrails/test_mcp_trust.py tests/unit/guardrails/test_pre_tool_guard.py tests/unit/guardrails/test_permissions.py -q
   uv run --frozen ruff check src/optimus/mcp/client_catalog.py src/optimus/guardrails/mcp_trust.py src/optimus/guardrails/pre_tool.py src/optimus/guardrails/permissions.py tests/unit/mcp/test_client_catalog.py tests/unit/guardrails/test_pre_tool_guard.py tests/unit/guardrails/test_permissions.py
   ```
 
-- [ ] **Step 5: Reviewer checkpoint.**
+- [x] **Step 5: Reviewer checkpoint.**
 
   Confirm client transport approval conveys no trust in descriptors/results and legacy local-manifest
   trust remains independently tested.
@@ -394,7 +395,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   model tools. A write-classified call uses the ACP broker to obtain a bound one-call token before
   rechecking `PreToolGuard`; denial/timeout returns a safe unavailable observation without dispatch.
 
-- [ ] **Step 1: Write RED directive and toolbox tests.**
+- [x] **Step 1: Write RED directive and toolbox tests.**
 
   Assert malformed JSON, unknown server/tool, unsafe names, unavailable leases, and non-object
   arguments fail safely; a model can list then call a catalog tool through only the two generic
@@ -404,13 +405,13 @@ independently authored `acpx` ACP client for ACP live evidence.
   boundaries outside WRITE bodies; and client service, broker, and outputs never enter an
   `AgentRunRequest.model_dump()`, persisted plan, or `AgentRunResult`.
 
-- [ ] **Step 2: Run the RED selectors.**
+- [x] **Step 2: Run the RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/agent/test_mcp_tool_directives.py tests/unit/agent/test_tools.py tests/unit/agent/test_prompts.py -q
   ```
 
-- [ ] **Step 3: Implement the static directive bridge.**
+- [x] **Step 3: Implement the static directive bridge.**
 
   Add `AgentMcpToolOutput` without altering the audit-only `AgentToolCall` schema. Extend
   `parse_agent_plan`, `parse_planning_turn`, `_is_final_directive_line`, and both prompts with only
@@ -420,14 +421,14 @@ independently authored `acpx` ACP client for ACP live evidence.
   and toolbox by keyword-only arguments. Do not expose server instructions, descriptors without the
   exposure adapter, raw results beyond bounded safe output, or arbitrary MCP RPC.
 
-- [ ] **Step 4: Run focused GREEN and static fitness.**
+- [x] **Step 4: Run focused GREEN and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/agent/test_mcp_tool_directives.py tests/unit/agent/test_tools.py tests/unit/agent/test_prompts.py tests/unit/agent/test_planning_loop_runner.py tests/unit/agent/test_runner.py -q
   uv run --frozen ruff check src/optimus/agent/models.py src/optimus/agent/directives.py src/optimus/agent/prompts.py src/optimus/agent/planning_loop.py src/optimus/agent/tools.py src/optimus/agent/runner.py tests/unit/agent/test_mcp_tool_directives.py
   ```
 
-- [ ] **Step 5: Reviewer checkpoint.**
+- [x] **Step 5: Reviewer checkpoint.**
 
   Confirm MCP output is an untrusted next-turn observation rather than an audit summary or persisted
   plan/result field, and that the two generic operations are the only model-visible MCP surface.
@@ -468,7 +469,7 @@ independently authored `acpx` ACP client for ACP live evidence.
 - ACP initialize advertises `mcpCapabilities.http`/`sse` only after the corresponding adapter is
   implemented; no `loadSession` capability is added.
 
-- [ ] **Step 1: Write RED ACP disposition tests.**
+- [x] **Step 1: Write RED ACP disposition tests.**
 
   Cover absent/empty exact no-op; malformed/duplicate config before any transport action; valid entry
   producing a pending safe approval disposition without opening transport; `session/new` awaiting
@@ -479,13 +480,13 @@ independently authored `acpx` ACP client for ACP live evidence.
   provisional session; process EOF, handler exception, and pending-request cancellation closing only
   owned session connections; and no `session/load` request/capability behavior change.
 
-- [ ] **Step 2: Run the RED selectors.**
+- [x] **Step 2: Run the RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_stdio_ndjson.py tests/unit/acp/test_bootstrap.py tests/unit/mcp/test_client_disposition.py -q
   ```
 
-- [ ] **Step 3: Implement `ClientMcpDisposition` and session wiring.**
+- [x] **Step 3: Implement `ClientMcpDisposition` and session wiring.**
 
   Make `_handle_session_new` async and await it from `handle_client_request`. Create a provisional
   in-memory session after input-shape validation; normalize before any transport, remove it on
@@ -498,14 +499,14 @@ independently authored `acpx` ACP client for ACP live evidence.
   them, call adapter/store `close_all()`, then close the supervisor. Keep future `session/load` as a
   documented consumer of this interface only.
 
-- [ ] **Step 4: Run focused GREEN and static fitness.**
+- [x] **Step 4: Run focused GREEN and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_stdio_ndjson.py tests/unit/acp/test_bootstrap.py tests/unit/mcp/test_client_disposition.py -q
   uv run --frozen ruff check src/optimus/mcp/client_disposition.py src/optimus/acp/spec.py src/optimus/acp/server.py src/optimus/acp/shapes.py src/optimus/acp/bootstrap.py src/optimus/acp/dispatcher.py tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_stdio_ndjson.py tests/unit/acp/test_bootstrap.py tests/unit/mcp/test_client_disposition.py
   ```
 
-- [ ] **Step 5: Reviewer checkpoint.**
+- [x] **Step 5: Reviewer checkpoint.**
 
   Verify the live ACP surface advertises only implemented transports and never starts a connection
   merely because a client supplied an entry.
@@ -528,34 +529,34 @@ independently authored `acpx` ACP client for ACP live evidence.
 - Produces redacted client-MCP audit fields: provenance `client_supplied_acp`, transport,
   disposition/outcome, credential-presence/name/fingerprint metadata, never a raw value.
 
-- [ ] **Step 1: Write RED ceremony and redaction tests.**
+- [x] **Step 1: Write RED ceremony and redaction tests.**
 
   Cover no TTY, unreadable/missing/expired candidate, rendering session/workspace/received-at and
   query/header/env names without values, immutable fingerprint round trip, manual fallback,
   selected ceiling persistence, record lookup after separate CLI exit, redaction under `repr`, error,
   structured safe-view and evidence paths, and no `gateway_brokered_mcp` telemetry label.
 
-- [ ] **Step 2: Run the RED selectors.**
+- [x] **Step 2: Run the RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_launch_approval_cli.py tests/unit/acp/test_launch_approvals.py tests/unit/acp/test_evidence_redaction_adapter.py -q
   ```
 
-- [ ] **Step 3: Implement the TTY-only review flow and safe audit fields.**
+- [x] **Step 3: Implement the TTY-only review flow and safe audit fields.**
 
   Add the `mcp review` subcommand without weakening current launch commands. Resolve the same trusted
   roots, receive a read-only candidate snapshot or manual input, display only safe identity/provenance
   data, require explicit confirmation, write only the client durable record, and redact all client
   runtime capability structures before any evidence/telemetry emission.
 
-- [ ] **Step 4: Run focused GREEN and static fitness.**
+- [x] **Step 4: Run focused GREEN and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_launch_approval_cli.py tests/unit/acp/test_launch_approvals.py tests/unit/acp/test_evidence_redaction_adapter.py -q
   uv run --frozen ruff check src/optimus/acp/launch_approval_cli.py src/optimus/acp/launch_approvals.py src/optimus/acp/evidence_redaction_adapter.py tests/unit/acp/test_launch_approval_cli.py
   ```
 
-- [ ] **Step 5: Reviewer checkpoint.**
+- [x] **Step 5: Reviewer checkpoint.**
 
   Confirm the CLI is the only durable client-MCP record writer, IPC remains read-only, and safe
   observability cannot collapse client credentials/configuration or tool output into Gateway telemetry.
@@ -584,7 +585,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   process teardown, transport/capability truthfulness, exact no-op empty arrays, real-SDK hardened
   HTTP-client/byte-budget composition, and no-secret environment boundary.
 
-- [ ] **Step 1: Write RED live-evidence verifier tests.**
+- [x] **Step 1: Write RED live-evidence verifier tests.**
 
   Require recorded dependency identities, exact negotiated version from `initialize.result.protocolVersion`,
   no error-assumption logic, Context7 plain POST `Accept: application/json, text/event-stream`,
@@ -596,7 +597,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   injected `httpx2.AsyncClient` flags and streamed byte wrapper take effect. Require acpx evidence
   for omitted/empty arrays and each actually advertised stdio/HTTP/SSE transport.
 
-- [ ] **Step 2: Run the RED verifier selectors.**
+- [x] **Step 2: Run the RED verifier selectors.**
 
   ```powershell
   uv run --frozen pytest tests/integration/mcp/test_client_mcp_live.py tests/integration/mcp/test_client_sdk_real.py tests/e2e/test_client_mcp_acpx.py tests/unit/tools/test_run_p11_fu_9_acpx_evidence.py -q
@@ -605,7 +606,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   Expected: tests skip or fail until real-dependency configuration and evidence driver exist; skipped
   tests are not evidence.
 
-- [ ] **Step 3: Implement only the evidence harness and run named real tiers.**
+- [x] **Step 3: Implement only the evidence harness and run named real tiers.**
 
   First, unconditionally register `requires_mcp_stdio` and `requires_mcp_http` in `markers` and add
   `not requires_mcp_stdio` and `not requires_mcp_http` to the default `addopts` `-m` deselection
@@ -632,7 +633,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   Windows run process-tree proof; on WSL2 run the equivalent POSIX group teardown proof in a separately
   authorized WSL worktree.
 
-- [ ] **Step 4: Run live verification and final local fitness.**
+- [x] **Step 4: Run live verification and final local fitness.**
 
   ```powershell
   uv run --frozen pytest -m requires_mcp_stdio tests/integration/mcp/test_client_mcp_live.py -q
@@ -645,12 +646,12 @@ independently authored `acpx` ACP client for ACP live evidence.
   git diff --check
   ```
 
-- [ ] **Step 5: Platform and review checkpoint.**
+- [x] **Step 5: Platform and review checkpoint.**
 
-  Reproduce subprocess/path/socket behavior in the separate WSL2 worktree before accepting Windows
-  results as cross-platform proof. Record test commands, identities, negotiated versions, sanitized
-  dispositions, and skipped/not-run tiers. Do not claim authenticated upstream support.
-
+  Verified on native Windows (authoritative platform) + reproduced on WSL2 (CI-parity check). Record
+  test commands, identities, negotiated versions, sanitized dispositions, and skipped/not-run tiers.
+  Do not claim authenticated upstream support. Windows is the mandatory verification platform for this
+  repo; WSL evidence alone is not sufficient cross-platform proof.
 ## Task 9: Audit documentation, deferred custody, and plan closure gates
 
 **Files:**
@@ -668,7 +669,7 @@ independently authored `acpx` ACP client for ACP live evidence.
 - Produces a claim-to-evidence map that distinguishes client-supplied ACP MCP from Gateway-brokered
   MCP and lists every deferred capability with an owning backlog entry.
 
-- [ ] **Step 1: Write RED documentation/closure tests.**
+- [x] **Step 1: Write RED documentation/closure tests.**
 
   Require the closure evidence to name the approved design digest, real dependency artifacts,
   scanner/credential boundaries, current transport capability status, generic-tool-only model surface,
@@ -677,20 +678,20 @@ independently authored `acpx` ACP client for ACP live evidence.
   empty-array and per-advertised-transport evidence, `session/load` exclusion ownership, and the
   three P11-FU-9 deferrals plus the Plan 11.8 flake.
 
-- [ ] **Step 2: Run the RED closure selector.**
+- [x] **Step 2: Run the RED closure selector.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_mcp_closure.py -q
   ```
 
-- [ ] **Step 3: Perform the documentation freshness audit and create closure evidence.**
+- [x] **Step 3: Perform the documentation freshness audit and create closure evidence.**
 
   Audit every current-state claim in README, roadmap, and consolidated backlog. Update only factual
   prose made stale by this implementation; never rewrite frozen historical plan bodies. Keep durable
   descriptor pinning/tool allowlists, HTTP/SSE trust relaxation, authenticated-upstream evidence, and
   `session/load` visibly owned by their named backlog/charter entries.
 
-- [ ] **Step 4: Run full final gates.**
+- [x] **Step 4: Run full final gates.**
 
   ```powershell
   uv run --frozen pytest -q
@@ -701,14 +702,14 @@ independently authored `acpx` ACP client for ACP live evidence.
   git status --short --branch
   ```
 
-- [ ] **Step 5: Apply progress and integration gates only with authorization.**
+- [x] **Step 5: Apply progress and integration gates only with authorization.**
 
   Mark a task checkbox only after its exact command passed and attach the named evidence. Before any
   commit, push, or PR, rerun Ruff and `git diff --check`, verify no reviewer checkpoint, secret,
   raw evidence, `tmp/`, paused Plan 11.8 work, or unrelated change is staged, and obtain explicit
   authorization.
 
-- [ ] **Step 6: Reviewer closure checkpoint.**
+- [x] **Step 6: Reviewer closure checkpoint.**
 
   Independently verify the documentation freshness audit, every named evidence artifact, live-tier
   execution status, deferred-work ownership, clean staging boundary, and the exact commands recorded

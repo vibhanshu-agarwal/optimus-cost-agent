@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+from typing import Any, Literal, Protocol
 
 from optimus.guardrails.audit import InMemoryAuditSink, ToolInvocationAuditEvent
 from optimus.guardrails.command_safety import CommandSafetyValidator
@@ -14,6 +15,8 @@ from optimus.guardrails.permissions import PermissionPolicy, PermissionRequest, 
 from optimus.guardrails.validation import ValidationVerdict
 from optimus.runtime.modes import ExecutionMode, GenerationScope
 from optimus.telemetry.subjects import sanitize_workspace_text
+
+McpAuthority = Literal["legacy_manifest", "client_session"]
 
 
 class PreToolVerdict(StrEnum):
@@ -39,6 +42,9 @@ class PreToolRequest:
     mcp_tool_name: str | None = None
     mcp_manifest: MCPServerManifest | None = None
     environment: Mapping[str, str] = field(default_factory=dict)
+    mcp_authority: McpAuthority = "legacy_manifest"
+    mcp_arguments: Mapping[str, Any] | None = None
+    mcp_one_call_approval: str | None = None
 
 
 @dataclass(frozen=True)
@@ -51,6 +57,10 @@ class PreToolResult:
     @property
     def allowed(self) -> bool:
         return self.verdict is PreToolVerdict.ALLOW
+
+
+class ClientMcpAuthorizerProtocol(Protocol):
+    def authorize(self, request: PreToolRequest) -> Any: ...
 
 
 class PreToolGuard:
@@ -88,6 +98,7 @@ class PreToolGuard:
         workspace_root: str | Path | None = None,
         audit_sink: InMemoryAuditSink | None = None,
         mcp_trust_registry: MCPTrustRegistry | None = None,
+        client_mcp_authorizer: ClientMcpAuthorizerProtocol | None = None,
     ) -> None:
         self._permission_policy = permission_policy
         self._command_validator = command_validator
@@ -96,6 +107,7 @@ class PreToolGuard:
         self._workspace_root = Path(workspace_root).resolve() if workspace_root is not None else None
         self._audit_sink = audit_sink or InMemoryAuditSink()
         self._mcp_trust_registry = mcp_trust_registry
+        self._client_mcp_authorizer = client_mcp_authorizer
 
     @classmethod
     def for_workspace(
@@ -104,6 +116,7 @@ class PreToolGuard:
         workspace_root: str | Path,
         allowed_network_hosts: tuple[str, ...],
         mcp_trust_registry: MCPTrustRegistry | None = None,
+        client_mcp_authorizer: ClientMcpAuthorizerProtocol | None = None,
     ) -> "PreToolGuard":
         return cls(
             permission_policy=PermissionPolicy(),
@@ -112,9 +125,13 @@ class PreToolGuard:
             network_validator=NetworkSafetyValidator(allowed_hosts=allowed_network_hosts),
             workspace_root=workspace_root,
             mcp_trust_registry=mcp_trust_registry,
+            client_mcp_authorizer=client_mcp_authorizer,
         )
 
     def check(self, request: PreToolRequest) -> PreToolResult:
+        if request.tool_surface is ToolSurface.MCP and request.mcp_authority == "client_session":
+            return self._check_client_mcp(request)
+
         permission = self._permission_policy.decide(
             PermissionRequest(
                 run_id=request.run_id,
@@ -150,6 +167,79 @@ class PreToolGuard:
 
     def audit_events(self) -> tuple[ToolInvocationAuditEvent, ...]:
         return self._audit_sink.events()
+
+    def _check_client_mcp(self, request: PreToolRequest) -> PreToolResult:
+        if self._client_mcp_authorizer is None:
+            result = PreToolResult(
+                PreToolVerdict.HOLD,
+                "mcp.client.authorizer_required",
+                "client_session MCP calls require a ClientMcpCallAuthorizer",
+                True,
+            )
+            self._audit(request, result, "pre_tool", (result.rule_id,))
+            return result
+
+        # Mode gate first (Plan/Chat must still deny side effects).
+        mode_permission = self._permission_policy.decide(
+            PermissionRequest(
+                run_id=request.run_id,
+                session_id=request.session_id,
+                execution_mode=request.execution_mode,
+                tool_surface=request.tool_surface,
+                action=request.action,
+                command=request.command,
+                target_path=request.target_path,
+                generation_scope=request.generation_scope,
+                approval_granted=request.approval_granted,
+                first_time_tool=request.first_time_tool,
+                metadata={"mcp_authority": "client_session", "mcp_effect": "read"},
+            )
+        )
+        if mode_permission.verdict is PermissionVerdict.DENY:
+            result = PreToolResult(PreToolVerdict.BLOCK, mode_permission.rule_id, mode_permission.reason)
+            self._audit(request, result, mode_permission.layer.value, (mode_permission.rule_id,))
+            return result
+
+        decision = self._client_mcp_authorizer.authorize(request)
+        effect = getattr(decision, "effective_effect", "write")
+        # Pass effective effect through PermissionPolicy for project-allow / write HOLD handoff.
+        permission = self._permission_policy.decide(
+            PermissionRequest(
+                run_id=request.run_id,
+                session_id=request.session_id,
+                execution_mode=request.execution_mode,
+                tool_surface=request.tool_surface,
+                action=request.action,
+                command=request.command,
+                target_path=request.target_path,
+                generation_scope=request.generation_scope,
+                approval_granted=bool(getattr(decision, "allowed", False)),
+                first_time_tool=request.first_time_tool,
+                metadata={"mcp_authority": "client_session", "mcp_effect": str(effect)},
+            )
+        )
+        if permission.verdict is PermissionVerdict.DENY:
+            result = PreToolResult(PreToolVerdict.BLOCK, permission.rule_id, permission.reason)
+            self._audit(request, result, permission.layer.value, (permission.rule_id,))
+            return result
+
+        verdict_name = str(getattr(decision, "verdict", "BLOCK"))
+        if verdict_name == "ALLOW" and getattr(decision, "allowed", False):
+            result = PreToolResult(PreToolVerdict.ALLOW, decision.rule_id, decision.reason)
+            self._audit(request, result, "pre_tool", ())
+            return result
+        if verdict_name == "HOLD" or getattr(decision, "requires_human_approval", False):
+            result = PreToolResult(
+                PreToolVerdict.HOLD,
+                decision.rule_id,
+                decision.reason,
+                True,
+            )
+            self._audit(request, result, "pre_tool", (decision.rule_id,))
+            return result
+        result = PreToolResult(PreToolVerdict.BLOCK, decision.rule_id, decision.reason)
+        self._audit(request, result, "pre_tool", (decision.rule_id,))
+        return result
 
     def _validate_surface(self, request: PreToolRequest) -> PreToolResult | None:
         if request.tool_surface is ToolSurface.SHELL:
@@ -221,6 +311,7 @@ def _pre_tool_result(verdict: ValidationVerdict, rule_id: str, reason: str) -> P
 
 
 def _sanitize_subject(request: PreToolRequest, *, workspace_root: Path | None) -> str:
+    # mcp_arguments must never appear in sanitized audit subjects.
     subject = " ".join(request.command) if request.command else request.target_path or request.action
     if subject is None:
         return ""
