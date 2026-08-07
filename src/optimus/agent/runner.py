@@ -131,6 +131,8 @@ class AgentRunner:
         request: AgentRunRequest,
         *,
         planning_progress_observer: PlanningProgressObserver | None = None,
+        client_mcp_service: object | None = None,
+        mcp_permission_broker: object | None = None,
     ) -> AgentRunResult:
         observer = (
             planning_progress_observer
@@ -142,7 +144,12 @@ class AgentRunner:
             if request.completion_condition:
                 result = self._run_bounded_loop(request, matched_skills=matched_skills)
             else:
-                result = self._run_once(request, planning_progress_observer=observer)
+                result = self._run_once(
+                    request,
+                    planning_progress_observer=observer,
+                    client_mcp_service=client_mcp_service,
+                    mcp_permission_broker=mcp_permission_broker,
+                )
             self._emit_agent_run(request, result, matched_skills=matched_skills)
             return result
         finally:
@@ -220,6 +227,8 @@ class AgentRunner:
         request: AgentRunRequest,
         *,
         planning_progress_observer: PlanningProgressObserver | None = None,
+        client_mcp_service: object | None = None,
+        mcp_permission_broker: object | None = None,
     ) -> AgentRunResult:
         context = RuntimeContext(execution_mode=request.execution_mode)
         toolbox = AgentToolbox.for_workspace(
@@ -229,6 +238,8 @@ class AgentRunner:
             session_id=request.session_id,
             guard=self._guard,
             shell_runner=self._shell_runner,
+            client_mcp_service=client_mcp_service,
+            mcp_permission_broker=mcp_permission_broker,
         )
         tool_calls: list[AgentToolCall] = []
 
@@ -254,6 +265,8 @@ class AgentRunner:
                     initial_workspace_context="",
                     initial_workspace_file_sizes={},
                     progress_observer=planning_progress_observer,
+                    client_mcp_service=client_mcp_service,
+                    mcp_permission_broker=mcp_permission_broker,
                 )
             return self._build_result(
                 request=request,
@@ -275,6 +288,8 @@ class AgentRunner:
                     workspace_context.prioritized_paths,
                 ),
                 progress_observer=planning_progress_observer,
+                client_mcp_service=client_mcp_service,
+                mcp_permission_broker=mcp_permission_broker,
             )
         planner_input = build_agent_planner_input(request.task, workspace_context=workspace_context.text)
         response = self._gateway_client.create_response(
@@ -317,6 +332,8 @@ class AgentRunner:
         initial_workspace_context: str = "",
         initial_workspace_file_sizes: dict[str, int] | None = None,
         progress_observer: PlanningProgressObserver | None = None,
+        client_mcp_service: object | None = None,
+        mcp_permission_broker: object | None = None,
     ) -> AgentRunResult:
         from optimus.agent.planning_loop import PlanningLoopPolicy, PlanningLoopRunner
 
@@ -347,6 +364,8 @@ class AgentRunner:
             guard=guard,
             usage_callback=usage_callback,
             progress_observer=progress_observer,
+            client_mcp_service=client_mcp_service,
+            mcp_permission_broker=mcp_permission_broker,
         )
         planning_result = planner.run(
             run_id=request.run_id,

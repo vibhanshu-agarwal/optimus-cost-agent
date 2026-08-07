@@ -51,3 +51,29 @@ def test_toolbox_runs_pytest_through_guard(tmp_path):
     assert calls == [["pytest", "tests/unit/agent", "-q"]]
     assert call.tool_name == "test_runner"
     assert call.authorization_outcome == "ALLOW"
+
+
+def test_toolbox_mcp_methods_exist_and_return_audit_only_tool_call(tmp_path):
+    from optimus.agent.models import AgentMcpToolOutput
+
+    class _Svc:
+        def list_tools(self, server: str):
+            return (
+                AgentMcpToolOutput(server_name=server, tool_name="mcp_list_tools", text='{"tools":[]}'),
+                __import__("optimus.agent.models", fromlist=["AgentToolCall"]).AgentToolCall(
+                    tool_name="mcp_list_tools",
+                    summary="listed 0 tools",
+                    authorization_outcome="ALLOW",
+                ),
+            )
+
+    toolbox = AgentToolbox.for_workspace(
+        workspace_root=tmp_path,
+        context=approved_context(),
+        run_id="run-1",
+        client_mcp_service=_Svc(),
+    )
+    out, call = toolbox.mcp_list_tools("tools")
+    assert out.untrusted is True
+    assert call.tool_name == "mcp_list_tools"
+    assert set(call.model_dump()) <= {"tool_name", "summary", "cost_usd", "authorization_outcome"}

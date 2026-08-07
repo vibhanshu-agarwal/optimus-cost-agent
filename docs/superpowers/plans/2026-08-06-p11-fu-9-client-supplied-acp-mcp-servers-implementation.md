@@ -394,7 +394,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   model tools. A write-classified call uses the ACP broker to obtain a bound one-call token before
   rechecking `PreToolGuard`; denial/timeout returns a safe unavailable observation without dispatch.
 
-- [ ] **Step 1: Write RED directive and toolbox tests.**
+- [x] **Step 1: Write RED directive and toolbox tests.**
 
   Assert malformed JSON, unknown server/tool, unsafe names, unavailable leases, and non-object
   arguments fail safely; a model can list then call a catalog tool through only the two generic
@@ -404,13 +404,13 @@ independently authored `acpx` ACP client for ACP live evidence.
   boundaries outside WRITE bodies; and client service, broker, and outputs never enter an
   `AgentRunRequest.model_dump()`, persisted plan, or `AgentRunResult`.
 
-- [ ] **Step 2: Run the RED selectors.**
+- [x] **Step 2: Run the RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/agent/test_mcp_tool_directives.py tests/unit/agent/test_tools.py tests/unit/agent/test_prompts.py -q
   ```
 
-- [ ] **Step 3: Implement the static directive bridge.**
+- [x] **Step 3: Implement the static directive bridge.**
 
   Add `AgentMcpToolOutput` without altering the audit-only `AgentToolCall` schema. Extend
   `parse_agent_plan`, `parse_planning_turn`, `_is_final_directive_line`, and both prompts with only
@@ -420,14 +420,14 @@ independently authored `acpx` ACP client for ACP live evidence.
   and toolbox by keyword-only arguments. Do not expose server instructions, descriptors without the
   exposure adapter, raw results beyond bounded safe output, or arbitrary MCP RPC.
 
-- [ ] **Step 4: Run focused GREEN and static fitness.**
+- [x] **Step 4: Run focused GREEN and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/agent/test_mcp_tool_directives.py tests/unit/agent/test_tools.py tests/unit/agent/test_prompts.py tests/unit/agent/test_planning_loop_runner.py tests/unit/agent/test_runner.py -q
   uv run --frozen ruff check src/optimus/agent/models.py src/optimus/agent/directives.py src/optimus/agent/prompts.py src/optimus/agent/planning_loop.py src/optimus/agent/tools.py src/optimus/agent/runner.py tests/unit/agent/test_mcp_tool_directives.py
   ```
 
-- [ ] **Step 5: Reviewer checkpoint.**
+- [x] **Step 5: Reviewer checkpoint.**
 
   Confirm MCP output is an untrusted next-turn observation rather than an audit summary or persisted
   plan/result field, and that the two generic operations are the only model-visible MCP surface.

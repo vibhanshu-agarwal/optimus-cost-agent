@@ -13,6 +13,8 @@ def test_planner_prompt_mandates_directive_grammar():
     assert "READ <relative-path>" in prompt
     assert "WRITE <relative-path>" in prompt
     assert "TEST pytest <relative-test-path-or-args>" in prompt
+    assert "MCP_LIST <server>" in prompt
+    assert "MCP_CALL <server> <tool> <canonical-json-object>" in prompt
     assert "Do not emit prose before the directives" in prompt
     assert "Emit at most one WRITE directive per plan" in prompt
     assert "fully replaces any" in prompt
@@ -63,6 +65,8 @@ def test_build_multi_turn_planner_input_includes_turn_budget_and_grammar():
     assert "Remaining wall-clock minutes: 12" in prompt
     assert "OBSERVE:" in prompt
     assert "REFUSE:" in prompt
+    assert "MCP_LIST <server>" in prompt
+    assert "MCP_CALL <server> <tool> <canonical-json-object>" in prompt
     assert "Never request a byte range already present" in prompt
     assert "Carried planning observations" in prompt
     assert "Current guarded read evidence" in prompt

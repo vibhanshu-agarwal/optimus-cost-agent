@@ -11,7 +11,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from optimus.agent.models import AgentToolCall
+from optimus.agent.models import AgentMcpToolOutput, AgentToolCall
 from optimus.guardrails.mcp_trust import (
     SIDE_EFFECT_RANK,
     assemble_tool_descriptor_scan_text,
@@ -108,16 +108,6 @@ class ClientMcpOneCallApproval:
     identity_fingerprint: str
     tool_name: str
     arguments_digest: str
-
-
-@dataclass(frozen=True)
-class AgentMcpToolOutput:
-    """Bounded, safe, untrusted in-memory MCP observation (Task 4 minimal)."""
-
-    server_name: str
-    tool_name: str
-    text: str
-    untrusted: bool = True
 
 
 def arguments_digest(arguments: Mapping[str, Any] | None) -> str:
@@ -535,7 +525,46 @@ class ClientMcpToolService:
     def _dispatch(self, tool_name: str, arguments: dict[str, Any]) -> str:
         raise NotImplementedError("ClientMcpToolService subclasses must implement _dispatch")
 
-    def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> tuple[AgentMcpToolOutput, AgentToolCall]:
+    def list_tools(self) -> tuple[AgentMcpToolOutput, AgentToolCall]:
+        """Return identity-bound catalog metadata only (no credentials/config/process detail)."""
+        catalog: ClientMcpCatalog = object.__getattribute__(self, "_catalog")
+        payload = {
+            "tools": [
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "side_effect_class": tool.side_effect_class,
+                    "availability": tool.availability,
+                }
+                for tool in catalog.tools
+            ]
+        }
+        text = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return (
+            AgentMcpToolOutput(
+                server_name=catalog.identity.server_name,
+                tool_name="mcp_list_tools",
+                text=text,
+            ),
+            AgentToolCall(
+                tool_name="mcp_list_tools",
+                summary=f"listed {len(catalog.tools)} tools for {catalog.identity.server_name}",
+                authorization_outcome="ALLOW",
+            ),
+        )
+
+    def requires_write_approval(self, tool_name: str) -> bool:
+        catalog: ClientMcpCatalog = object.__getattribute__(self, "_catalog")
+        tool = catalog.tool_by_name(tool_name)
+        return tool is not None and tool.side_effect_class == "write"
+
+    def call_tool(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        *,
+        one_call_approval: str | None = None,
+    ) -> tuple[AgentMcpToolOutput, AgentToolCall]:
         from optimus.guardrails.permissions import ToolSurface
 
         catalog: ClientMcpCatalog = object.__getattribute__(self, "_catalog")
@@ -554,6 +583,7 @@ class ClientMcpToolService:
             mcp_server_id=catalog.identity.server_name,
             mcp_tool_name=tool_name,
             mcp_arguments=arguments,
+            mcp_one_call_approval=one_call_approval,
         )
         result: PreToolResult = guard.check(request)
         if result.verdict is not PreToolVerdict.ALLOW:
@@ -582,3 +612,76 @@ class ClientMcpToolService:
                 authorization_outcome="ALLOW",
             ),
         )
+
+
+class ClientMcpSessionService:
+    """Session-scoped multi-server facade for AgentToolbox.
+
+    Each registered ClientMcpToolService stays identity-bound (Task 4). This registry only
+    dispatches by validated server name so mcp_list_tools(server)/mcp_call(server, ...) work
+    without collapsing multi-server sessions into one catalog.
+    """
+
+    __slots__ = ("_services",)
+
+    def __init__(self, services: Mapping[str, ClientMcpToolService] | None = None) -> None:
+        object.__setattr__(self, "_services", dict(services or {}))
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise TypeError("client mcp session service is immutable except via register()")
+
+    def __delattr__(self, name: str) -> None:
+        raise TypeError("client mcp session service is immutable")
+
+    def __getattribute__(self, name: str) -> object:
+        if name == "__dict__":
+            raise TypeError("client mcp session service is not serializable")
+        return object.__getattribute__(self, name)
+
+    def register(self, service: ClientMcpToolService) -> None:
+        catalog: ClientMcpCatalog = object.__getattribute__(service, "_catalog")
+        services: dict[str, ClientMcpToolService] = object.__getattribute__(self, "_services")
+        services[catalog.identity.server_name] = service
+
+    def _lookup(self, server: str) -> ClientMcpToolService | None:
+        services: dict[str, ClientMcpToolService] = object.__getattribute__(self, "_services")
+        return services.get(server)
+
+    def list_tools(self, server: str) -> tuple[AgentMcpToolOutput, AgentToolCall]:
+        service = self._lookup(server)
+        if service is None:
+            return (
+                AgentMcpToolOutput(server_name=server, tool_name="mcp_list_tools", text="unavailable:unknown_server"),
+                AgentToolCall(
+                    tool_name="mcp_list_tools",
+                    summary=f"list unavailable for {server}",
+                    authorization_outcome="BLOCK",
+                ),
+            )
+        return service.list_tools()
+
+    def requires_write_approval(self, server: str, tool: str) -> bool:
+        service = self._lookup(server)
+        if service is None:
+            return False
+        return service.requires_write_approval(tool)
+
+    def call_tool(
+        self,
+        server: str,
+        tool: str,
+        arguments: dict[str, Any],
+        *,
+        one_call_approval: str | None = None,
+    ) -> tuple[AgentMcpToolOutput, AgentToolCall]:
+        service = self._lookup(server)
+        if service is None:
+            return (
+                AgentMcpToolOutput(server_name=server, tool_name=tool, text="unavailable:unknown_server"),
+                AgentToolCall(
+                    tool_name="mcp_call",
+                    summary=f"call unavailable for {server}",
+                    authorization_outcome="BLOCK",
+                ),
+            )
+        return service.call_tool(tool, arguments, one_call_approval=one_call_approval)

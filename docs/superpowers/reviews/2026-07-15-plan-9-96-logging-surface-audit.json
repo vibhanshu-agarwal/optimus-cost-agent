@@ -649,6 +649,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.agent.directives:parse_canonical_json_object:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: parse_canonical_json_object json.loads/dumps only validates that MCP_CALL arguments are a canonical JSON object in memory for directive parsing; it neither persists nor exports argument bodies as diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/agent/test_mcp_tool_directives.py::test_parse_planning_turn_accepts_mcp_call_with_canonical_json_object",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.planning_loop:_try_parse_mcp_turn:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _try_parse_mcp_turn uses AgentDirectiveParseError only to decide that a planning turn is not an MCP intermediate; exception text is not persisted or exported as diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/agent/test_mcp_tool_directives.py::test_parse_planning_turn_rejects_malformed_or_noncanonical_mcp_call_json",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.agent.runner:AgentRunner._finish_agent_planning:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.agent.runner:AgentRunner._finish_agent_planning:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
@@ -702,6 +718,14 @@
       "rationale": "optimus.agent.state_store:_record_to_mapping:json_serialization performs short-TTL functional plan replay; task, plan_text, and workspace_root require exact round-trip fidelity, so diagnostic sanitization would break replay.",
       "sanitizer": "functional replay schema and TTL; no diagnostic sanitization",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.tools:AgentToolbox.mcp_call:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AgentToolbox.mcp_call:text_write is an AST-overmatch with no sink call in its scoped body; MCP call dispatch returns in-memory AgentMcpToolOutput/AgentToolCall only.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/agent/test_mcp_tool_directives.py::test_toolbox_operates_against_real_client_mcp_tool_service",
       "evidence_tier": "unit"
     },
     {
@@ -854,6 +878,14 @@
       "rationale": "Inspection: arguments_digest json.dumps only canonicalizes MCP call arguments in memory to compute a SHA-256 binding digest for one-call approval; the payload is not persisted, audited, or exported as diagnostic content.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/mcp/test_client_catalog.py::test_one_call_token_replay_and_mismatch_denied",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.mcp.client_catalog:ClientMcpToolService.list_tools:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: ClientMcpToolService.list_tools json.dumps only name/description/side_effect_class/availability from the already-guarded identity-bound catalog into an in-memory AgentMcpToolOutput; credentials, headers, env, and process detail are omitted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/agent/test_mcp_tool_directives.py::test_toolbox_operates_against_real_client_mcp_tool_service",
       "evidence_tier": "unit"
     },
     {
