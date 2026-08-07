@@ -45,6 +45,11 @@ FIXED_STATUS_RE = re.compile(
 PROMOTED_STATUS_RE = re.compile(
     r"^(?P<token>Promoted -> \[[^\]]+\]\((?P<target>[^)]+)\))[.:](?:\s|$)"
 )
+FU_INDEX_ROW_RE = re.compile(
+    rf"^\|\s*`(?P<identity>{FU_ID_BODY})`\s*\|\s*(?P<item>[^|]+?)\s*\|"
+    r"\s*(?P<status>.*?)\s*\|\s*(?P<owner>.*?)\s*\|\s*(?P<evidence>.*?)\s*\|\s*$",
+    re.MULTILINE,
+)
 
 
 def _read(path: Path) -> str:
@@ -80,6 +85,16 @@ def _status_token(section_body: str) -> str:
     return fixed.group("token")
 
 
+def _fu_index_rows(text: str) -> dict[str, tuple[str, str]]:
+    section = text.split("## Follow-up status index", 1)[1].split("\n## ", 1)[0]
+    rows: dict[str, tuple[str, str]] = {}
+    for match in FU_INDEX_ROW_RE.finditer(section):
+        identity = match.group("identity")
+        assert identity not in rows
+        rows[identity] = (match.group("item").strip(), match.group("status").strip())
+    return rows
+
+
 def test_product_features_have_exactly_one_pool_owner() -> None:
     optimus_rows = _feature_rows(_read(OPTIMUS_POOL))
     product_rows = _feature_rows(_read(PRODUCT_POOL))
@@ -103,6 +118,21 @@ def test_p996_aggregate_uses_canonical_closed_status() -> None:
     )[0]
 
     assert _status_token(section) == "Closed"
+
+
+def test_fu_index_is_an_exact_projection_of_stable_id_entries() -> None:
+    pool_text = _read(OPTIMUS_POOL)
+    entries = _entry_sections(pool_text)
+    expected: dict[str, tuple[str, str]] = {}
+    for heading, body in entries.items():
+        match = FU_HEADING_RE.fullmatch(heading)
+        if match is None:
+            continue
+        identity = match.group("identity")
+        assert identity not in expected
+        expected[identity] = (match.group("title"), _status_token(body))
+
+    assert _fu_index_rows(pool_text) == expected
 
 
 def test_new_pool_has_no_scheduling_plan_numbers() -> None:
