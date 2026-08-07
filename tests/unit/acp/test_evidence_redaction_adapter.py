@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import get_type_hints
 
+import pytest
+
 from optimus.acp.evidence_redaction_adapter import (
     EvidenceRedactionHostContext,
     assert_portable_runtime_inputs,
@@ -217,3 +219,89 @@ def test_adapter_source_does_not_call_ambient_resolvers() -> None:
             if node.module == "os" and any(alias.name in {"environ", "getenv"} for alias in node.names):
                 hits.append("os.environ")
     assert hits == []
+
+
+def test_client_mcp_audit_fields_redact_raw_values_and_forbid_gateway_label() -> None:
+    """P11-FU-9 Task 7: evidence/audit paths expose only safe client-MCP metadata."""
+    from optimus.acp.evidence_redaction_adapter import build_client_mcp_audit_fields
+    from optimus.mcp.client_config import ClientMcpSafeView
+
+    raw_secret = "sk-live-must-never-cross-evidence"
+    view = ClientMcpSafeView(
+        provenance="client_supplied_acp",
+        transport="http",
+        server_name="tools",
+        canonical_target="https://mcp.example.com/audit",
+        arguments=(),
+        credential_names=("Authorization", "api_key"),
+        credential_name_fingerprints=("fp-auth", "fp-query"),
+        scanner_rule_ids=(),
+        disposition="normalized",
+    )
+    fields = build_client_mcp_audit_fields(safe_view=view, outcome="allow_once")
+    blob = repr(fields)
+    assert fields["provenance"] == "client_supplied_acp"
+    assert fields["transport"] == "http"
+    assert fields["disposition"] == "normalized"
+    assert fields["outcome"] == "allow_once"
+    assert fields["credential_present"] is True
+    assert fields["credential_names"] == ("Authorization", "api_key")
+    assert fields["credential_name_fingerprints"] == ("fp-auth", "fp-query")
+    assert raw_secret not in blob
+    assert "gateway_brokered_mcp" not in blob
+    assert "gateway_brokered_mcp" not in fields.values()
+    assert all(v != raw_secret for v in fields.values())
+
+
+def test_client_mcp_audit_fields_from_runtime_capability_safe_view_only() -> None:
+    """Structured safe-view path must not serialize runtime header/env values."""
+    from optimus.acp.evidence_redaction_adapter import build_client_mcp_audit_fields
+    from optimus.mcp.client_config import (
+        ClientMcpRuntimeCapability,
+        ClientMcpSafeIdentity,
+        ClientMcpSafeView,
+    )
+
+    secret = "runtime-header-secret-value"
+    identity = ClientMcpSafeIdentity(
+        transport="http",
+        server_name="tools",
+        canonical_target="https://mcp.example.com/cap",
+        arguments=(),
+        credential_name_fingerprints=("fp1",),
+    )
+    view = ClientMcpSafeView(
+        provenance="client_supplied_acp",
+        transport="http",
+        server_name="tools",
+        canonical_target="https://mcp.example.com/cap",
+        arguments=(),
+        credential_names=("Authorization",),
+        credential_name_fingerprints=("fp1",),
+        scanner_rule_ids=(),
+        disposition="normalized",
+    )
+    capability = ClientMcpRuntimeCapability(
+        safe_identity=identity,
+        safe_view=view,
+        header_values={"Authorization": secret},
+        env_values={},
+    )
+    fields = build_client_mcp_audit_fields(runtime_capability=capability, outcome="leased")
+    assert secret not in repr(fields)
+    assert secret not in repr(capability)
+    assert fields["provenance"] == "client_supplied_acp"
+    assert "gateway_brokered_mcp" not in repr(fields)
+
+
+def test_client_mcp_audit_error_path_does_not_leak_raw_values() -> None:
+    from optimus.acp.evidence_redaction_adapter import (
+        EvidenceRedactionAdapterError,
+        build_client_mcp_audit_fields,
+    )
+
+    with pytest.raises(EvidenceRedactionAdapterError) as exc_info:
+        build_client_mcp_audit_fields(safe_view=None, outcome="denied")  # type: ignore[arg-type]
+    assert "sk-" not in repr(exc_info.value)
+    assert "gateway_brokered_mcp" not in repr(exc_info.value)
+    assert str(exc_info.value) == exc_info.value.code

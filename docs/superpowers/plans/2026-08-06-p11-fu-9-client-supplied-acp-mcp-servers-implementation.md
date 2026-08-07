@@ -528,34 +528,34 @@ independently authored `acpx` ACP client for ACP live evidence.
 - Produces redacted client-MCP audit fields: provenance `client_supplied_acp`, transport,
   disposition/outcome, credential-presence/name/fingerprint metadata, never a raw value.
 
-- [ ] **Step 1: Write RED ceremony and redaction tests.**
+- [x] **Step 1: Write RED ceremony and redaction tests.**
 
   Cover no TTY, unreadable/missing/expired candidate, rendering session/workspace/received-at and
   query/header/env names without values, immutable fingerprint round trip, manual fallback,
   selected ceiling persistence, record lookup after separate CLI exit, redaction under `repr`, error,
   structured safe-view and evidence paths, and no `gateway_brokered_mcp` telemetry label.
 
-- [ ] **Step 2: Run the RED selectors.**
+- [x] **Step 2: Run the RED selectors.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_launch_approval_cli.py tests/unit/acp/test_launch_approvals.py tests/unit/acp/test_evidence_redaction_adapter.py -q
   ```
 
-- [ ] **Step 3: Implement the TTY-only review flow and safe audit fields.**
+- [x] **Step 3: Implement the TTY-only review flow and safe audit fields.**
 
   Add the `mcp review` subcommand without weakening current launch commands. Resolve the same trusted
   roots, receive a read-only candidate snapshot or manual input, display only safe identity/provenance
   data, require explicit confirmation, write only the client durable record, and redact all client
   runtime capability structures before any evidence/telemetry emission.
 
-- [ ] **Step 4: Run focused GREEN and static fitness.**
+- [x] **Step 4: Run focused GREEN and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_launch_approval_cli.py tests/unit/acp/test_launch_approvals.py tests/unit/acp/test_evidence_redaction_adapter.py -q
   uv run --frozen ruff check src/optimus/acp/launch_approval_cli.py src/optimus/acp/launch_approvals.py src/optimus/acp/evidence_redaction_adapter.py tests/unit/acp/test_launch_approval_cli.py
   ```
 
-- [ ] **Step 5: Reviewer checkpoint.**
+- [x] **Step 5: Reviewer checkpoint.**
 
   Confirm the CLI is the only durable client-MCP record writer, IPC remains read-only, and safe
   observability cannot collapse client credentials/configuration or tool output into Gateway telemetry.

@@ -1285,6 +1285,33 @@ class TestOutputContainsNoSecrets:
 class TestClientMcpReviewSubcommand:
     """P11-FU-9 Task 2: optimus-trust mcp review is the durable-record writer ceremony."""
 
+    @staticmethod
+    def _allow_ceremony(monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("optimus.acp.launch_approval_cli._require_tty", lambda: None)
+        monkeypatch.setattr(
+            "optimus.acp.launch_approval_cli._confirm_client_mcp_review",
+            lambda: True,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "optimus.acp.launch_approval_cli._select_effect_ceiling",
+            lambda explicit: explicit or "non_mutating",
+            raising=False,
+        )
+
+    def test_confirm_client_mcp_review_cancel_prints_safe_status(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from optimus.acp.launch_approval_cli import _confirm_client_mcp_review
+
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "n")
+        assert _confirm_client_mcp_review() is False
+        out = capsys.readouterr().out
+        assert "cancelled" in out
+        assert "no record was written" in out
+        assert "secret" not in out.casefold()
+        assert "password" not in out.casefold()
+
     def test_mcp_review_parses_as_nested_subcommand(self) -> None:
         from optimus.acp.launch_approval_cli import _parse_args
 
@@ -1315,7 +1342,7 @@ class TestClientMcpReviewSubcommand:
         from optimus.mcp.client_trust import ClientMcpDurableStore
         from tests.unit.mcp.test_client_trust import FakeKeyring
 
-        monkeypatch.setattr("optimus.acp.launch_approval_cli._require_tty", lambda: None)
+        self._allow_ceremony(monkeypatch)
         keyring = FakeKeyring()
         launch = KeyringApprovalStore(keyring_backend=keyring, runtime_root=tmp_path, hmac_key=b"0" * 32)
         monkeypatch.setattr(
@@ -1358,7 +1385,7 @@ class TestClientMcpReviewSubcommand:
         )
         from tests.unit.mcp.test_client_trust import FakeKeyring
 
-        monkeypatch.setattr("optimus.acp.launch_approval_cli._require_tty", lambda: None)
+        self._allow_ceremony(monkeypatch)
         keyring = FakeKeyring()
         launch = KeyringApprovalStore(keyring_backend=keyring, runtime_root=tmp_path, hmac_key=b"0" * 32)
         monkeypatch.setattr(
@@ -1417,7 +1444,7 @@ class TestClientMcpReviewSubcommand:
         from optimus.mcp.local_ipc import PendingClientMcpCandidate, PendingClientMcpCandidateEndpoint
         from tests.unit.mcp.test_client_trust import FakeKeyring
 
-        monkeypatch.setattr("optimus.acp.launch_approval_cli._require_tty", lambda: None)
+        self._allow_ceremony(monkeypatch)
         keyring = FakeKeyring()
         hmac_key = b"0" * 32
         launch = KeyringApprovalStore(keyring_backend=keyring, runtime_root=tmp_path, hmac_key=hmac_key)
@@ -1473,3 +1500,395 @@ class TestClientMcpReviewSubcommand:
                 endpoint.consume_snapshot(candidate_id)
         finally:
             endpoint.close()
+
+
+class TestClientMcpReviewCeremonyTask7:
+    """P11-FU-9 Task 7: complete TTY ceremony, provenance rendering, ceiling, lookup."""
+
+    @staticmethod
+    def _patch_store(
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        *,
+        hmac_key: bytes = b"0" * 32,
+    ):
+        from optimus.acp.launch_approvals import KeyringApprovalStore
+        from tests.unit.mcp.test_client_trust import FakeKeyring
+
+        keyring = FakeKeyring()
+        launch = KeyringApprovalStore(keyring_backend=keyring, runtime_root=tmp_path, hmac_key=hmac_key)
+        monkeypatch.setattr("optimus.acp.launch_approval_cli._require_tty", lambda: None)
+        monkeypatch.setattr(
+            "optimus.acp.launch_approval_cli._resolve_store",
+            lambda _workspace_root: (launch, tmp_path),
+        )
+        monkeypatch.setattr(
+            "optimus.acp.launch_approval_cli.resolve_workspace_identity",
+            lambda _root: type("Identity", (), {"digest": "a" * 64})(),
+        )
+        # Confirmation is required by Task 7; existing Task 2 paths also need it.
+        monkeypatch.setattr(
+            "optimus.acp.launch_approval_cli._confirm_client_mcp_review",
+            lambda: True,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "optimus.acp.launch_approval_cli._select_effect_ceiling",
+            lambda explicit: explicit or "non_mutating",
+            raising=False,
+        )
+        return keyring, launch
+
+    def test_mcp_review_rejects_non_tty(self) -> None:
+        with patch("sys.stdin") as mock_stdin, patch("sys.stdout") as mock_stdout:
+            mock_stdin.isatty.return_value = False
+            mock_stdout.isatty.return_value = False
+            result = main(
+                [
+                    "mcp",
+                    "review",
+                    "--no-ipc",
+                    "--server-name",
+                    "tools",
+                    "--canonical-target",
+                    "https://mcp.example.com/a",
+                    "--fingerprint",
+                    "deadbeef",
+                ]
+            )
+            assert result == 2
+
+    def test_mcp_review_rejects_missing_candidate(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        self._patch_store(monkeypatch, tmp_path)
+        result = main(
+            [
+                "--workspace-root",
+                str(tmp_path),
+                "mcp",
+                "review",
+                "--candidate-id",
+                "missing-candidate",
+                "--ipc-address",
+                r"\\.\pipe\optimus-client-mcp-missing",
+            ]
+        )
+        assert result == 2
+
+    def test_mcp_review_rejects_unreadable_or_expired_candidate(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Already-consumed / unreadable IPC snapshots must not write a durable record."""
+        from optimus.mcp.client_config import ClientMcpSafeIdentity
+        from optimus.mcp.client_trust import (
+            ClientMcpDurableStore,
+            compute_identity_fingerprint,
+            derive_ipc_auth_key,
+        )
+        from optimus.mcp.local_ipc import PendingClientMcpCandidate, PendingClientMcpCandidateEndpoint
+
+        keyring, launch = self._patch_store(monkeypatch, tmp_path)
+        hmac_key = launch.hmac_key
+        identity = ClientMcpSafeIdentity(
+            transport="http",
+            server_name="tools",
+            canonical_target="https://mcp.example.com/expired?Token=fpdead",
+            arguments=(),
+            credential_name_fingerprints=("fpdead",),
+        )
+        fingerprint = compute_identity_fingerprint(identity, hmac_key=hmac_key)
+        authkey = derive_ipc_auth_key(hmac_key)
+        endpoint = PendingClientMcpCandidateEndpoint(authkey=authkey)
+        try:
+            candidate_id = endpoint.publish(
+                PendingClientMcpCandidate(
+                    workspace_digest="a" * 64,
+                    session_id="session-expired",
+                    identity=identity,
+                    rendered_fingerprint=fingerprint,
+                    provenance="client_supplied_acp",
+                    scanner_rule_ids=(),
+                )
+            )
+            kind, address = endpoint.endpoint_address
+            assert kind in {"af_pipe", "af_unix"}
+            # First consume expires the one-time snapshot.
+            endpoint.consume_snapshot(candidate_id)
+            result = main(
+                [
+                    "--workspace-root",
+                    str(tmp_path),
+                    "mcp",
+                    "review",
+                    "--candidate-id",
+                    candidate_id,
+                    "--ipc-address",
+                    address,
+                ]
+            )
+            assert result == 2
+            client = ClientMcpDurableStore(keyring_backend=keyring, hmac_key=hmac_key)
+            assert client.read("a" * 64, "tools", fingerprint) is None
+        finally:
+            endpoint.close()
+
+    def test_mcp_review_renders_provenance_names_without_values(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from optimus.mcp.client_config import ClientMcpSafeIdentity
+        from optimus.mcp.client_trust import compute_identity_fingerprint, derive_ipc_auth_key
+        from optimus.mcp.local_ipc import PendingClientMcpCandidate, PendingClientMcpCandidateEndpoint
+
+        _keyring, launch = self._patch_store(monkeypatch, tmp_path)
+        hmac_key = launch.hmac_key
+        identity = ClientMcpSafeIdentity(
+            transport="http",
+            server_name="tools",
+            canonical_target="https://mcp.example.com/render?api_key=fpquery1",
+            arguments=(),
+            credential_name_fingerprints=("fpquery1", "fpheader1"),
+        )
+        fingerprint = compute_identity_fingerprint(identity, hmac_key=hmac_key)
+        authkey = derive_ipc_auth_key(hmac_key)
+        endpoint = PendingClientMcpCandidateEndpoint(authkey=authkey)
+        try:
+            candidate_id = endpoint.publish(
+                PendingClientMcpCandidate(
+                    workspace_digest="a" * 64,
+                    session_id="session-render-1",
+                    identity=identity,
+                    rendered_fingerprint=fingerprint,
+                    provenance="client_supplied_acp",
+                    scanner_rule_ids=("rule.a",),
+                )
+            )
+            _kind, address = endpoint.endpoint_address
+            secret_value = "super-secret-header-value-must-not-print"
+            monkeypatch.setattr(
+                "optimus.acp.launch_approval_cli._client_mcp_credential_names_for_display",
+                lambda **_kwargs: ("api_key", "Authorization"),
+            )
+            result = main(
+                [
+                    "--workspace-root",
+                    str(tmp_path),
+                    "mcp",
+                    "review",
+                    "--candidate-id",
+                    candidate_id,
+                    "--ipc-address",
+                    address,
+                    "--received-at",
+                    "2026-08-06T12:00:00+00:00",
+                    "--effect-ceiling",
+                    "non_mutating",
+                ]
+            )
+            assert result == 0
+            out = capsys.readouterr().out
+            assert "session-render-1" in out
+            assert "a" * 16 in out or ("a" * 64)[:16] in out
+            assert "2026-08-06T12:00:00+00:00" in out
+            assert "api_key" in out
+            assert "Authorization" in out
+            assert fingerprint in out
+            assert secret_value not in out
+            assert "super-secret" not in out
+            assert "Bearer" not in out
+        finally:
+            endpoint.close()
+
+    def test_mcp_review_immutable_fingerprint_round_trip(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from optimus.mcp.client_config import ClientMcpSafeIdentity
+        from optimus.mcp.client_trust import ClientMcpDurableStore, compute_identity_fingerprint
+
+        keyring, launch = self._patch_store(monkeypatch, tmp_path)
+        hmac_key = launch.hmac_key
+        # Manual path with named credential fields + keyed fingerprints.
+        from optimus.acp.launch_approvals import compute_client_mcp_credential_fingerprint
+
+        header_fp = compute_client_mcp_credential_fingerprint(
+            "raw-header-secret",
+            kind="header",
+            name="authorization",
+            index=0,
+            hmac_key=hmac_key,
+        )
+        identity = ClientMcpSafeIdentity(
+            transport="http",
+            server_name="tools",
+            canonical_target="https://mcp.example.com/rt",
+            arguments=(),
+            credential_name_fingerprints=(header_fp,),
+        )
+        fingerprint = compute_identity_fingerprint(identity, hmac_key=hmac_key)
+        result = main(
+            [
+                "--workspace-root",
+                str(tmp_path),
+                "mcp",
+                "review",
+                "--no-ipc",
+                "--server-name",
+                "tools",
+                "--transport",
+                "http",
+                "--canonical-target",
+                "https://mcp.example.com/rt",
+                "--credential-name",
+                "Authorization",
+                "--credential-fingerprint",
+                header_fp,
+                "--fingerprint",
+                fingerprint,
+                "--effect-ceiling",
+                "non_mutating",
+            ]
+        )
+        assert result == 0
+        client = ClientMcpDurableStore(keyring_backend=keyring, hmac_key=hmac_key)
+        stored = client.read("a" * 64, "tools", fingerprint)
+        assert stored is not None
+        assert stored.identity_fingerprint == fingerprint
+        assert stored.credential_name_fingerprints == (header_fp,)
+
+    def test_mcp_review_manual_fallback_when_ipc_flags_absent(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from optimus.mcp.client_config import ClientMcpSafeIdentity
+        from optimus.mcp.client_trust import compute_identity_fingerprint
+
+        self._patch_store(monkeypatch, tmp_path)
+        identity = ClientMcpSafeIdentity(
+            transport="http",
+            server_name="tools",
+            canonical_target="https://mcp.example.com/manual",
+            arguments=(),
+            credential_name_fingerprints=(),
+        )
+        fingerprint = compute_identity_fingerprint(identity, hmac_key=b"0" * 32)
+        result = main(
+            [
+                "--workspace-root",
+                str(tmp_path),
+                "mcp",
+                "review",
+                "--no-ipc",
+                "--server-name",
+                "tools",
+                "--canonical-target",
+                "https://mcp.example.com/manual",
+                "--fingerprint",
+                fingerprint,
+            ]
+        )
+        assert result == 0
+        assert "manual" in capsys.readouterr().out.lower()
+
+    def test_mcp_review_persists_selected_ceiling(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from optimus.mcp.client_config import ClientMcpSafeIdentity
+        from optimus.mcp.client_trust import ClientMcpDurableStore, compute_identity_fingerprint
+
+        keyring, _launch = self._patch_store(monkeypatch, tmp_path)
+        identity = ClientMcpSafeIdentity(
+            transport="http",
+            server_name="tools",
+            canonical_target="https://mcp.example.com/ceil",
+            arguments=(),
+            credential_name_fingerprints=(),
+        )
+        fingerprint = compute_identity_fingerprint(identity, hmac_key=b"0" * 32)
+        result = main(
+            [
+                "--workspace-root",
+                str(tmp_path),
+                "mcp",
+                "review",
+                "--no-ipc",
+                "--server-name",
+                "tools",
+                "--canonical-target",
+                "https://mcp.example.com/ceil",
+                "--fingerprint",
+                fingerprint,
+                "--effect-ceiling",
+                "side_effect_eligible",
+            ]
+        )
+        assert result == 0
+        client = ClientMcpDurableStore(keyring_backend=keyring, hmac_key=b"0" * 32)
+        stored = client.read("a" * 64, "tools", fingerprint)
+        assert stored is not None
+        assert stored.effect_ceiling == "side_effect_eligible"
+
+    def test_mcp_review_record_lookup_after_separate_cli_exit(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Durable write from one CLI invocation must be readable after a fresh store open."""
+        from optimus.acp.launch_approvals import KeyringApprovalStore
+        from optimus.mcp.client_config import ClientMcpSafeIdentity
+        from optimus.mcp.client_trust import ClientMcpDurableStore, compute_identity_fingerprint
+        from tests.unit.mcp.test_client_trust import FakeKeyring
+
+        keyring = FakeKeyring()
+        hmac_key = b"0" * 32
+        launch = KeyringApprovalStore(keyring_backend=keyring, runtime_root=tmp_path, hmac_key=hmac_key)
+        monkeypatch.setattr("optimus.acp.launch_approval_cli._require_tty", lambda: None)
+        monkeypatch.setattr(
+            "optimus.acp.launch_approval_cli._resolve_store",
+            lambda _workspace_root: (launch, tmp_path),
+        )
+        monkeypatch.setattr(
+            "optimus.acp.launch_approval_cli.resolve_workspace_identity",
+            lambda _root: type("Identity", (), {"digest": "a" * 64})(),
+        )
+        monkeypatch.setattr(
+            "optimus.acp.launch_approval_cli._confirm_client_mcp_review",
+            lambda: True,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "optimus.acp.launch_approval_cli._select_effect_ceiling",
+            lambda explicit: explicit or "non_mutating",
+            raising=False,
+        )
+        identity = ClientMcpSafeIdentity(
+            transport="http",
+            server_name="tools",
+            canonical_target="https://mcp.example.com/persist",
+            arguments=(),
+            credential_name_fingerprints=(),
+        )
+        fingerprint = compute_identity_fingerprint(identity, hmac_key=hmac_key)
+        assert (
+            main(
+                [
+                    "--workspace-root",
+                    str(tmp_path),
+                    "mcp",
+                    "review",
+                    "--no-ipc",
+                    "--server-name",
+                    "tools",
+                    "--canonical-target",
+                    "https://mcp.example.com/persist",
+                    "--fingerprint",
+                    fingerprint,
+                    "--effect-ceiling",
+                    "non_mutating",
+                ]
+            )
+            == 0
+        )
+        # Separate "exit": new store instance over the same keyring backend.
+        relaunch = KeyringApprovalStore(keyring_backend=keyring, runtime_root=tmp_path, hmac_key=hmac_key)
+        client = ClientMcpDurableStore(keyring_backend=keyring, hmac_key=relaunch.hmac_key)
+        stored = client.read("a" * 64, "tools", fingerprint)
+        assert stored is not None
+        assert stored.canonical_target == "https://mcp.example.com/persist"
+        assert stored.effect_ceiling == "non_mutating"

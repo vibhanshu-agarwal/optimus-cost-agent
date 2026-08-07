@@ -913,9 +913,10 @@ identically across two `stat()` calls that bracket a real file-creation write, d
 elapsed wall-clock time between them — a timestamp-coalescing artifact of this specific WSL2 /
 virtual-disk setup, not of the code under test.
 
-**Reproduction:** Nondeterministic. Reran the single test in isolation 5 times: 4 passed, 1 failed —
-confirmed as a timing race, not an order-dependent or environment-static failure. Not caused by
-the MCP Gateway publication work, which touched zero `src/`/`tests/` paths (independently verified).
+**Reproduction:** Nondeterministic. Original isolation probe (2026-08-06): 4 passed, 1 failed in 5
+standalone runs. Refined (2026-08-07 Task 7 review): 2 failures in 5 repeated isolated runs on
+WSL2 — confirmed as a timing race even without full-suite load, not an order-dependent or
+environment-static failure. Not caused by P11-FU-9 Task 7 (different file list).
 
 **Suspected cause:** WSL2's virtual-disk-backed filesystem appears to coalesce or truncate directory
 `ctime` updates under some timing conditions, unlike the nanosecond-resolution behavior the test
@@ -954,6 +955,11 @@ coalescing, not a security or production-code defect. Not blocking any plan clos
 **Recurrence:** 2026-08-07 during P11-FU-9 Task 4 independent review (operator + Cursor WSL full
 `tests/unit` runs). The same node failed intermittently under full-suite WSL/DrvFs load and passed
 standalone — same custody as this entry; do not open a duplicate FU.
+
+**Refinement (2026-08-07, P11-FU-9 Task 7 review):** Confirmed flaky even in isolation — 2 failures
+in 5 repeated standalone runs on WSL2, not only under full-suite load. Characterization upgraded
+from "full-suite-only" to "standalone-reproducible ctime coalescing race"; still not a product defect
+and still unrelated to Task 7's file list.
 
 ### P11-FU-19: WSL full-suite load flake in client SDK operation-deadline unit test
 

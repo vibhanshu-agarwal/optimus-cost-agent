@@ -17,13 +17,16 @@ import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
+from urllib.parse import parse_qsl, urlsplit
 
 from optimus.acp.launch_approvals import (
     LAUNCH_POLICY_COMPATIBILITY,
     ApprovalError,
+    ClientMcpReviewDisplay,
     KeyringApprovalStore,
     build_approval_record,
     compute_secret_fingerprint,
+    format_client_mcp_review_lines,
 )
 from optimus.acp.launch_gate import (
     LaunchCandidate,
@@ -55,11 +58,12 @@ from optimus.mcp.client_config import ClientMcpSafeIdentity
 from optimus.mcp.client_trust import (
     ClientMcpDurableStore,
     ClientMcpTrustError,
+    EffectCeiling,
     compute_identity_fingerprint,
     derive_ipc_auth_key,
     write_client_mcp_durable_from_fingerprint,
 )
-from optimus.mcp.local_ipc import PendingClientMcpCandidateEndpoint
+from optimus.mcp.local_ipc import PendingClientMcpCandidateEndpoint, SafeCandidateSnapshot
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 from optimus_security.sanitization import mask_uri_userinfo
 
@@ -175,6 +179,29 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Local AF_PIPE/AF_UNIX address for pending-candidate IPC.",
     )
+    mcp_review.add_argument(
+        "--effect-ceiling",
+        default=None,
+        choices=["non_mutating", "side_effect_eligible"],
+        help="Operator-selected client effect ceiling (default: prompt / non_mutating).",
+    )
+    mcp_review.add_argument(
+        "--credential-name",
+        action="append",
+        default=[],
+        help="Named credential field (header/env/query name) for manual review display/binding.",
+    )
+    mcp_review.add_argument(
+        "--credential-fingerprint",
+        action="append",
+        default=[],
+        help="Keyed credential fingerprint matching --credential-name order (manual path).",
+    )
+    mcp_review.add_argument(
+        "--received-at",
+        default=None,
+        help="Optional ISO-8601 received-at provenance for operator display.",
+    )
     return parser.parse_args(argv)
 
 
@@ -219,6 +246,10 @@ def main(argv: list[str] | None = None) -> int:
                 canonical_target=args.canonical_target,
                 candidate_id=args.candidate_id,
                 ipc_address=args.ipc_address,
+                effect_ceiling=getattr(args, "effect_ceiling", None),
+                credential_names=tuple(getattr(args, "credential_name", None) or ()),
+                credential_fingerprints=tuple(getattr(args, "credential_fingerprint", None) or ()),
+                received_at=getattr(args, "received_at", None),
             )
     except CliError as exc:
         print(exc.message, file=sys.stderr)
@@ -450,6 +481,66 @@ def _cmd_inspect(workspace_root: Path) -> int:
     return 0
 
 
+def _confirm_client_mcp_review() -> bool:
+    """Require explicit operator confirmation before writing a durable client-MCP record."""
+    try:
+        answer = input("optimus-trust: write durable client MCP trust for this identity? [y/N]: ")
+    except EOFError:
+        answer = ""
+    if answer.strip().casefold() in {"y", "yes"}:
+        return True
+    print("optimus-trust: client MCP review cancelled; no record was written.")
+    return False
+
+
+def _select_effect_ceiling(explicit: str | None) -> EffectCeiling:
+    if explicit in {"non_mutating", "side_effect_eligible"}:
+        return explicit  # type: ignore[return-value]
+    try:
+        answer = input(
+            "optimus-trust: effect ceiling [non_mutating/side_effect_eligible] "
+            "(default non_mutating): "
+        )
+    except EOFError:
+        answer = ""
+    choice = answer.strip().casefold()
+    if choice in {"", "non_mutating", "n", "non-mutating"}:
+        return "non_mutating"
+    if choice in {"side_effect_eligible", "s", "side-effect-eligible"}:
+        return "side_effect_eligible"
+    raise CliError(
+        "optimus-trust: effect ceiling must be non_mutating or side_effect_eligible",
+        exit_code=2,
+    )
+
+
+def _credential_names_from_canonical_target(canonical_target: str) -> tuple[str, ...]:
+    """Extract query parameter names (values are fingerprints in canonical URLs)."""
+    try:
+        query = urlsplit(canonical_target).query
+    except ValueError:
+        return ()
+    if not query:
+        return ()
+    return tuple(name for name, _value in parse_qsl(query, keep_blank_values=True) if name)
+
+
+def _client_mcp_credential_names_for_display(
+    *,
+    canonical_target: str,
+    explicit_names: tuple[str, ...],
+) -> tuple[str, ...]:
+    if explicit_names:
+        return explicit_names
+    return _credential_names_from_canonical_target(canonical_target)
+
+
+def _display_client_mcp_review(display: ClientMcpReviewDisplay) -> None:
+    for line in format_client_mcp_review_lines(display):
+        print(line)
+    print()
+
+
 def _cmd_mcp_review(
     workspace_root: Path,
     *,
@@ -460,6 +551,10 @@ def _cmd_mcp_review(
     canonical_target: str | None,
     candidate_id: str | None,
     ipc_address: str | None,
+    effect_ceiling: str | None = None,
+    credential_names: tuple[str, ...] = (),
+    credential_fingerprints: tuple[str, ...] = (),
+    received_at: str | None = None,
 ) -> int:
     """Author a durable client-MCP record bound to a derived identity fingerprint."""
     _require_tty()
@@ -468,6 +563,17 @@ def _cmd_mcp_review(
     workspace_identity = resolve_workspace_identity(workspace_root)
     client_store = ClientMcpDurableStore(keyring_backend=launch_store._keyring, hmac_key=launch_store.hmac_key)
 
+    snapshot: SafeCandidateSnapshot | None = None
+    session_id = ""
+    provenance = "client_supplied_acp"
+    scanner_rule_ids: tuple[str, ...] = ()
+    rendered_fingerprint = fingerprint
+    identity_transport = transport
+    identity_server = server_name
+    identity_target = canonical_target
+    identity_arguments: tuple[str, ...] = ()
+    identity_cred_fps = credential_fingerprints
+
     if no_ipc:
         print("optimus-trust: manual client MCP review (IPC absent)")
         if not server_name or not canonical_target or not fingerprint:
@@ -475,72 +581,107 @@ def _cmd_mcp_review(
                 "optimus-trust: --no-ipc requires --server-name, --canonical-target, and --fingerprint",
                 exit_code=2,
             )
-        identity = ClientMcpSafeIdentity(
-            transport=transport,
-            server_name=server_name,
-            canonical_target=canonical_target,
-            arguments=(),
-            credential_name_fingerprints=(),
-        )
-        try:
-            write_client_mcp_durable_from_fingerprint(
-                store=client_store,
-                workspace_digest=workspace_identity.digest,
-                identity=identity,
-                rendered_fingerprint=fingerprint,
+        if len(credential_names) != len(credential_fingerprints) and credential_fingerprints:
+            raise CliError(
+                "optimus-trust: --credential-name and --credential-fingerprint counts must match",
+                exit_code=2,
             )
-        except ClientMcpTrustError as exc:
-            raise CliError(f"optimus-trust: {exc.code}", exit_code=2) from exc
-        print(f"optimus-trust: reviewed client MCP server={server_name}")
-        return 0
+        identity_server = server_name
+        identity_target = canonical_target
+        identity_transport = transport
+        identity_cred_fps = credential_fingerprints
+        rendered_fingerprint = fingerprint
+    else:
+        if not candidate_id or not ipc_address:
+            raise CliError(
+                "optimus-trust: mcp review requires --candidate-id and --ipc-address, or --no-ipc",
+                exit_code=2,
+            )
+        authkey = derive_ipc_auth_key(launch_store.hmac_key)
+        try:
+            snapshot = PendingClientMcpCandidateEndpoint.consume_remote_snapshot(
+                address=ipc_address,
+                authkey=authkey,
+                candidate_id=candidate_id,
+            )
+        except LookupError as exc:
+            raise CliError(
+                "optimus-trust: pending candidate not found or expired "
+                "(use --no-ipc for manual review)",
+                exit_code=2,
+            ) from exc
+        except Exception as exc:
+            raise CliError(
+                "optimus-trust: IPC unavailable or unreadable "
+                "(use --no-ipc for manual review)",
+                exit_code=2,
+            ) from exc
 
-    if not candidate_id or not ipc_address:
-        raise CliError(
-            "optimus-trust: mcp review requires --candidate-id and --ipc-address, or --no-ipc",
-            exit_code=2,
-        )
-    authkey = derive_ipc_auth_key(launch_store.hmac_key)
-    try:
-        snapshot = PendingClientMcpCandidateEndpoint.consume_remote_snapshot(
-            address=ipc_address,
-            authkey=authkey,
-            candidate_id=candidate_id,
-        )
-    except LookupError as exc:
-        raise CliError(
-            "optimus-trust: pending candidate not found (use --no-ipc for manual review)",
-            exit_code=2,
-        ) from exc
-    except Exception as exc:
-        raise CliError(
-            "optimus-trust: IPC unavailable (use --no-ipc for manual review)",
-            exit_code=2,
-        ) from exc
+        identity_transport = snapshot.transport
+        identity_server = snapshot.server_name
+        identity_target = snapshot.canonical_target
+        identity_arguments = snapshot.arguments
+        identity_cred_fps = snapshot.credential_name_fingerprints
+        rendered_fingerprint = snapshot.rendered_fingerprint
+        session_id = snapshot.session_id
+        provenance = snapshot.provenance or "client_supplied_acp"
+        scanner_rule_ids = snapshot.scanner_rule_ids
+        if fingerprint is not None and fingerprint != snapshot.rendered_fingerprint:
+            raise CliError("optimus-trust: IDENTITY_MISMATCH", exit_code=2)
+        if snapshot.workspace_digest != workspace_identity.digest:
+            raise CliError("optimus-trust: workspace digest mismatch", exit_code=2)
+
+    assert identity_server is not None
+    assert identity_target is not None
+    assert rendered_fingerprint is not None
 
     identity = ClientMcpSafeIdentity(
-        transport=snapshot.transport,
-        server_name=snapshot.server_name,
-        canonical_target=snapshot.canonical_target,
-        arguments=snapshot.arguments,
-        credential_name_fingerprints=snapshot.credential_name_fingerprints,
+        transport=identity_transport,
+        server_name=identity_server,
+        canonical_target=identity_target,
+        arguments=identity_arguments,
+        credential_name_fingerprints=identity_cred_fps,
     )
     derived = compute_identity_fingerprint(identity, hmac_key=launch_store.hmac_key)
-    if fingerprint is not None and fingerprint != snapshot.rendered_fingerprint:
+    if rendered_fingerprint != derived:
         raise CliError("optimus-trust: IDENTITY_MISMATCH", exit_code=2)
-    if snapshot.rendered_fingerprint != derived:
-        raise CliError("optimus-trust: IDENTITY_MISMATCH", exit_code=2)
-    if snapshot.workspace_digest != workspace_identity.digest:
-        raise CliError("optimus-trust: workspace digest mismatch", exit_code=2)
+
+    display_names = _client_mcp_credential_names_for_display(
+        canonical_target=identity_target,
+        explicit_names=credential_names,
+    )
+    display = ClientMcpReviewDisplay(
+        workspace_digest=workspace_identity.digest if snapshot is None else snapshot.workspace_digest,
+        session_id=session_id,
+        received_at=received_at or "",
+        server_name=identity_server,
+        transport=identity_transport,
+        canonical_target=identity_target,
+        credential_field_names=display_names,
+        credential_name_fingerprints=identity_cred_fps,
+        rendered_fingerprint=rendered_fingerprint,
+        provenance=provenance if provenance == "client_supplied_acp" else "client_supplied_acp",
+        scanner_rule_ids=scanner_rule_ids,
+    )
+    _display_client_mcp_review(display)
+
+    selected_ceiling = _select_effect_ceiling(effect_ceiling)
+    print(f"optimus-trust: selected effect ceiling: {selected_ceiling}")
+
+    if not _confirm_client_mcp_review():
+        return 1
+
     try:
         write_client_mcp_durable_from_fingerprint(
             store=client_store,
-            workspace_digest=snapshot.workspace_digest,
+            workspace_digest=display.workspace_digest,
             identity=identity,
-            rendered_fingerprint=snapshot.rendered_fingerprint,
+            rendered_fingerprint=rendered_fingerprint,
+            effect_ceiling=selected_ceiling,
         )
     except ClientMcpTrustError as exc:
         raise CliError(f"optimus-trust: {exc.code}", exit_code=2) from exc
-    print(f"optimus-trust: reviewed client MCP server={snapshot.server_name}")
+    print(f"optimus-trust: reviewed client MCP server={identity_server}")
     return 0
 
 

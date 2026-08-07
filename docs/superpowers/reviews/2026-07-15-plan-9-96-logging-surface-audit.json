@@ -323,9 +323,25 @@
     {
       "key": "optimus.acp.launch_approval_cli:_cmd_mcp_review:stdout_export",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.acp.launch_approval_cli:_cmd_mcp_review:stdout_export prints only controlled operational status and the ASCII-validated server_name; it does not retain credentials, raw MCP configuration, or fingerprints beyond the reviewed outcome line.",
+      "rationale": "Inspection: _cmd_mcp_review stdout prints only controlled ceremony status, ASCII-validated server_name, selected effect ceiling, and reviewed outcome lines; credential values and raw MCP configuration are never printed (names/fingerprints only via _display_client_mcp_review).",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_mcp_review_manual_path_binds_derived_fingerprint",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_confirm_client_mcp_review:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _confirm_client_mcp_review prints only a fixed cancel status line when the operator declines; it never prints identity fields, credentials, or MCP configuration.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_confirm_client_mcp_review_cancel_prints_safe_status",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_display_client_mcp_review:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _display_client_mcp_review prints only ClientMcpReviewDisplay safe provenance lines (session/workspace/received-at, transport, server name, credential names and fingerprints); raw header/env/query values are absent by construction.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_mcp_review_renders_provenance_names_without_values",
       "evidence_tier": "unit"
     },
     {
