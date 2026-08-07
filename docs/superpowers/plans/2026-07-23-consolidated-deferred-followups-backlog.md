@@ -97,7 +97,7 @@ projection of every stable-ID follow-up heading.
 | `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Open | Future Gateway migration design | Acceptance criteria in entry |
 | `P11-FU-9` | Client-Supplied ACP `mcpServers` Disposition | Closed | Dedicated P11-FU-9 lane | PR #119 / `9a93137`; [closure evidence](../../../reports/p11-fu-9-client-mcp-closure-evidence.md) |
 | `P11-FU-10` | Complete ACP Error-Code Registry Audit | Open | Future ACP audit | Acceptance criteria in entry |
-| `P11.7-FU-1` | Configurable Gateway request timeout for debug/investigation workflows | Promoted -> [Plan 11.9](2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-implementation.md) | Plan 11.9 | Acceptance criteria in entry |
+| `P11.7-FU-1` | Configurable Gateway request timeout for debug/investigation workflows | Closed | Plan 11.9 | PR #123 / `d0253be` |
 | `P11.7-FU-2` | Gateway threaded-test flake under full-suite load | Open | Plan 11.7 deferred follow-up | Acceptance criteria in entry |
 | `P11.7-FU-3` | Committed `plan117_custody_relay.py` docstring `\ufffd` / em-dash corruption | Open | Plan 11.7 deferred follow-up | Acceptance criteria in entry |
 | `P11-FU-11` | Plan 11.7 Retry Preflight and Live Session Proof | Partially implemented | [Plan 11.7 retry-preflight amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md) | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
@@ -694,7 +694,7 @@ the fail-closed unknown-cost path unchanged.
 (two consecutive `PLANNING_GATEWAY_COST_UNKNOWN` timeouts on `z-ai/glm-5.2`, ~30s each, vs. a prior
 successful ~16s response on the identical fixture/task, same worktree).
 
-**Status:** Promoted -> [Plan 11.9](2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-implementation.md). Drafted 2026-08-08 on the dedicated Plan 11.9 branch; source implementation remains pending design/operator approval.
+**Status:** Closed. Implemented and merged to `main` through PR #123 (implementation commit `d0253be`, merge commit `11448fe`). All Plan 11.9 Definition-of-Done gates were independently re-verified on Windows (focused tests, full suite, coverage ≥80%, Ruff, diff-check, `--help`); no dedicated `reports/` evidence bundle is required for this single-commit CLI-only follow-up.
 
 ### P11.7-FU-2: Gateway threaded-test flake under full-suite load
 
