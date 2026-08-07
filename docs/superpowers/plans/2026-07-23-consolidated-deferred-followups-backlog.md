@@ -47,9 +47,23 @@ open-work inventory.
 | `P11-FEAT-GATEWAY-COST-OBS` | Plan 11.5 — closed by PR #95 (merge `e388258`), 2026-07-29; migration follow-ups remain assigned here (`P11.5-FU-1` open; `P11.5-FU-2` closed via Plan 11.6) and receive a new Plan 11.x number only at pickup | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); [implementation plan](2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration |
 | `P11-FEAT-GATEWAY-MCP` | Ratified bounded v1 design: static-profile, dual-transport, tools-only Gateway brokering. `P11-FU-3`'s route/typed-contract gate is now **closed** (2026-08-06): the charter amendment (PR #112) and all four amended PDFs — HLD v2.17, LLD v2.40, Guardrails v1.2, Test Strategy v1.6 (PR #113, merge `edd1f04`) — are approved and published. No implementation design spec or plan exists yet; an implementation plan number is assigned only at pickup (next unused Plan 11.x slot is 11.8 per the charter's own convention) | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
 | `P11-FEAT-ZED-RESUME` | **Plan 11.7 active.** Frozen Task 0 Steps 1-4 sealed (`session/load` unreachable on current Zed 1.13.1); frozen Plan 11.7 Tasks 0 Steps 5-7 and Tasks 1-11 remain blocked. Standalone feasibility amendment approved (`79F3C92A…C06E6`, 2026-08-02); origin-A fixture v2 amendment approved and merged (`5BB327D8…9A4D` / PR #108, 2026-08-02). Corrected `origin-a-3` executed and sealed as Option B process-invalid (`next_corr=4` / `next_prompt=3` unclaimed; DoD success false). Retry-preflight amendment (`P11-FU-11`, PR #110) implemented through Task 5 **Path A** fail-closed terminal stop (2026-08-05): real CLI fail-closed at acquire; offline `unavailable_proof`; no corr-4 / no settings mutation / no Zed launch; accepted live retry not obtained. Parent Task 5 remains blocked; clean relaunch needs a budget-expansion amendment. Does not claim server-side custody feasible. Carries owned `P11-FU-1`, `P9.8-FU-5`, and `P11-FU-11`; coordinates, but does not own, `P11-FU-4` | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume); [feasibility amendment](2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md); [origin-A fixture v2 amendment](2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md); [retry-preflight amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md). Dependency: the [evidence and handoff product pool](evidence-handoff-open-work-pool.md) entry `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` supplies its sanitized-evidence gate. |
-| `P11-FEAT-REGISTRY` | Ratified, unscheduled; blocked on its research gate — no authoritative source exists in any of the four pinned documents. Also owns the v1.0 release-version contract | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut) |
+| `P11-FEAT-REGISTRY` | Ratified, unscheduled, and held as the last primary Plan 11 slice. The ACP registry has a public authoritative repository, schema, submission guide, and stabilized live process; pickup begins by pinning and executing against the then-current validator/CI behavior, not by searching for an unknown source. Reassess 11.x-last versus a 13.x split for outward publication once this consolidated pool closes. The v1.0 release-version contract and excluded-capability inventory remain in Plan 11 | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut). Verified local finding carried to pickup: package and ACP versions are both `0.1.0`, and ACP currently returns `authMethods: []`. The registry guide's Agent/Terminal Auth admission rule is an external claim to verify by live execution before implementation scope is frozen. |
 | `P11-FEAT-IDE` | Conditional — opens only by explicit amendment if REGISTRY surfaces an unmet multi-IDE expectation | [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing) |
 | `Plan 12` | Post-v1.0 context-window and intelligent-selection lane; outside the v1.0 cut | [Charter boundary](2026-07-25-plan-11-v1-milestone-charter.md#explicit-exclusions-and-unresolved-inputs) |
+
+**Plan 11.7 digest-pinned amendment status convention:** the
+[server-side custody feasibility amendment](2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md),
+[origin-A fixture-v2 amendment](2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md), and
+[retry-preflight amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md) intentionally
+retain their approval-time `Draft` status text and unchecked checkboxes. That is a load-bearing
+choice to preserve their approval digests, not incomplete progress tracking. Current execution state
+is owned by this living pool and the committed evidence chain: the
+[artifact manifest](../../../reports/plan-11-7-server-custody-artifact-manifest.json),
+[origin-A Option B seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/origin-a-3-seal-b.json),
+[retry Task 0 digest checkpoint](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task0-checkpoint.json),
+[Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json), and
+[Task 6 checkpoint](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task6-checkpoint.json).
+Do not reconcile those historical files by changing their status lines or checkboxes.
 
 ## Open items
 
@@ -64,8 +78,11 @@ open-work inventory.
 policy, measures wrong-target regret, and retains a fail-closed threshold. Until this lands,
 ambiguity stays visible and deterministic (Plan 9.8's current behavior).
 
-**Status:** Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`); open pending the current-Zed
-pre/post refusal-rendering evidence and reviewed disposition.
+**Status:** The bounded Plan 11.7 current-Zed evidence/correction cycle reached its reviewed
+Task 5 Path A fail-closed terminal stop on 2026-08-05: no accepted same-session live retry, no
+correlation ordinal 4, no settings mutation, and no Zed relaunch. No approved correction remains
+pending in that cycle. This did not implement intelligent ambiguous-reference ranking;
+`P9.8-FU-2` remains open under Plan 12 with its original acceptance criteria.
 
 ### P9.8-FU-3: Dynamic context budgets and required-file summarization
 
@@ -101,9 +118,12 @@ conformance.
 
 **Status:** Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`). Frozen Task 0 Steps 1-4 sealed the
 current-Zed Case 1/2 refusal-rendering evidence (Case 1 wire `end_turn` / stable; Case 2 wire
-`refusal` / Zed panic). Frozen Plan 11.7 implementation remains blocked; the standalone
-server-side custody feasibility amendment is approved; origin-A fixture v2 amendment approved —
-**approved correction pending**. No reviewed final disposition yet.
+`refusal` / Zed panic). The bounded origin-A/retry-preflight correction cycle reached Task 5
+**Path A** fail-closed terminal stop on 2026-08-05; no approved correction remains pending. An
+accepted same-session live retry was not obtained, frozen Plan 11.7 remains blocked, and this item
+stays open pending an explicit reviewed Zed-defect disposition or a separately authorized future
+budget-expansion/live-evidence path. Evidence:
+[Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json).
 
 ### P9.85-FU-1: Intelligent observation compression
 
@@ -210,10 +230,12 @@ resume store without an explicit design and migration decision.
 
 **Status:** Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`). Frozen Task 0 Steps 1-4 are sealed with
 disposition `stop_amend_plan_session_load_unreachable` (current Zed does not issue `session/load`
-after full restart). Frozen Plan 11.7 implementation remains blocked; the standalone server-side
-custody feasibility amendment is approved; origin-A fixture v2 amendment approved — **approved
-correction pending**. This is still an unimplemented protocol capability pending that corrected
-probe's reviewed disposition — not a flaky regression or a parked architecture blocker.
+after full restart). The bounded origin-A/retry-preflight correction cycle reached Task 5
+**Path A** fail-closed terminal stop on 2026-08-05; no approved correction remains pending. The
+accepted same-session live retry was not obtained, parent Task 5 and frozen Plan 11.7 remain blocked,
+and a clean relaunch requires a separately authorized budget-expansion amendment. This is still an
+unimplemented protocol capability, not a flaky regression or parked architecture blocker. Evidence:
+[Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json).
 
 ### P11-FU-2: Package Lookup and Security Advisory Gateway Capability
 
@@ -540,9 +562,10 @@ that Gateway-MCP implements this capability.
 - Add schema-pinned unit tests plus real-client evidence for empty and non-empty arrays, with no
   raw server credentials or untrusted configuration persisted or logged.
 
-**Status:** Implementation complete on branch `agent/cursor/p11-fu-9-client-mcp` through Tasks 1–8
-(live evidence + Windows async/IPC hang fix); Task 9 is the documentation/custody closure gate.
-Design:
+**Status:** Closed. All nine tasks were implemented and independently reviewed, then merged to
+`main` through PR #119 (`9a93137`) on 2026-08-07. Task 9 completed the documentation/custody audit;
+the [closure evidence](../../../reports/p11-fu-9-client-mcp-closure-evidence.md) records the
+real-dependency and fitness gates. Design:
 [`2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md`](../specs/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md)
 (frozen body SHA-256 `66606036b37ddc59cf9f2f4c8a713156a1f839fb771679a16937a5263c9ca4a2`). Deferred capabilities remain
 owned by their named backlog headers (descriptor pinning/allowlists, HTTP/SSE trust relaxation,

@@ -1055,7 +1055,10 @@ initial scope; revisit it only if Plan 11 Gateway work organically reaches budge
 first gate, then assign and close the ratified TOOLS and COST-OBS slices and work through the
 consolidated open-work pool before v1.0 sign-off. Plan 11 does not ship with open backlog items.
 Plan 12 is not a v1.0 prerequisite and begins only as the post-launch v1.x phase. Conditional IDE
-testing does not become a gate unless an explicit charter amendment says so.
+testing does not become a gate unless an explicit charter amendment says so. `P11-FEAT-REGISTRY`
+is held as the last primary Plan 11 slice. Once the consolidated pool closes, the operator and
+reviewer must record whether outward publication stays in 11.x-last or splits into a 13.x train; the
+v1.0 release-version contract and excluded-capability inventory remain in Plan 11 either way.
 
 **Status:** Plan 11.7 (`P11-FEAT-ZED-RESUME`) is the active scoped feature gate after the closed
 Plan 11.1/11.2/11.4/11.5/11.6 slices. Frozen Task 0 Steps 1-4 are sealed with disposition
@@ -1067,18 +1070,26 @@ as Option B process-invalid (`next_corr=4` / `next_prompt=3` unclaimed; DoD succ
 Retry-preflight amendment (`P11-FU-11` / PR #110) implemented through Task 5 Path A fail-closed
 terminal stop (2026-08-05; offline `unavailable_proof`; no accepted live retry). Parent Task 5
 remains blocked; clean relaunch needs a budget-expansion amendment. No feasibility conclusion is
-claimed. Owned `P11-FU-1` and `P9.8-FU-5` remain open pending any later reviewed disposition; the
-existing plan-only Redis state store is not sufficient by assumption. The charter and ratified
-feature sequencing map remain recorded in
+claimed. The bounded correction cycle has no approved correction pending after that Path A stop.
+Owned `P11-FU-1` and `P9.8-FU-5` remain open because resume is still unimplemented and the required
+Zed defect/live-evidence disposition has not been obtained; any budget-expansion/live-retry path
+requires a separate amendment. The three digest-pinned amendment files intentionally retain their
+approval-time draft labels and unchecked boxes; the living consolidated pool and committed
+checkpoints/seals own current execution status. The existing plan-only Redis state store is not
+sufficient by assumption. The charter and ratified feature sequencing map remain recorded in
 [`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md).
 `P11-FEAT-GATEWAY-MCP` has a bounded v1 static-profile, dual-transport, tools-only design, but its
 `P11-FU-3` route/typed-contract gate closes only after the charter amendment and all four amended
 PDFs are approved and published. It remains distinct from client-supplied ACP `mcpServers` under
-`P11-FU-9` (agent-owned client path implemented through Tasks 1–8; deferred pinning/HTTP-SSE
+`P11-FU-9` (all nine tasks closed through PR #119 / merge `9a93137`; deferred pinning/HTTP-SSE
 relaxation/authenticated-upstream/Plan 11.8 flake custody remain in the consolidated backlog),
 `P11-FEAT-ZED-RESUME` session custody, and ACP registry publication under
-`P11-FEAT-REGISTRY`. `P11-FEAT-REGISTRY` must research ACP registry requirements before freezing
-registration scope and must align both `pyproject.toml` and ACP `agentInfo.version` at the v1.0 cut.
+`P11-FEAT-REGISTRY`. The ACP registry has a public authoritative process; pickup must pin and
+execute against the then-current validator/CI behavior before freezing registration scope. The
+verified local state remains version `0.1.0` in both `pyproject.toml` and ACP `agentInfo.version`,
+with `authMethods: []`; the registry guide's Agent/Terminal Auth admission rule remains an external
+claim to reproduce at pickup. REGISTRY must align both version declarations at the v1.0 cut and is
+held last in 11.x pending the post-pool placement decision for outward publication.
 `P11-FEAT-IDE` remains conditional if registry registration does not satisfy the broader multi-IDE
 expectation.
 
@@ -1182,6 +1193,8 @@ consolidated backlog document, not owned by Plan 12.
     except for Plan 12, Zed ACP proof, ACP registry registration/readiness, and closure of the
     consolidated open-work pool before sign-off. Registry registration is expected to satisfy the
     broader multi-IDE requirement; IDE-specific testing is conditional and not an unconditional gate.
+    REGISTRY is the last primary 11.x holding position, with outward publication reassessed for a
+    possible 13.x split after the consolidated pool closes.
 26. Plan 12: Context window optimization and intelligent selection — explicit **post-v1.0 v1.x**
     phase; starts only after Plan 11's feature and backlog-closure gates, Plan 9.8, Plan 9.5
     task-level agent orchestration, and the real golden harness are stable.
