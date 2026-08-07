@@ -14,6 +14,8 @@ class TrustScanSubject(StrEnum):
     CONFIG_FILE = "config_file"
     MCP_DESCRIPTOR = "mcp_descriptor"
     TOOL_OUTPUT = "tool_output"
+    CLIENT_MCP_CONFIG = "client_mcp_config"
+    MCP_INITIALIZE_RESULT = "mcp_initialize_result"
 
 
 class TrustScanVerdict(StrEnum):

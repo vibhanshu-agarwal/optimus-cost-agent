@@ -126,7 +126,7 @@ independently authored `acpx` ACP client for ACP live evidence.
 - Produces `ClientMcpSafeIdentity` keyed by `(transport, server_name, canonical_target, arguments,
   credential_name_fingerprints)` and rejects invalid/malformed inputs with a safe rule ID.
 
-- [ ] **Step 1: Write RED parsing and identity tests.**
+- [x] **Step 1: Write RED parsing and identity tests.**
 
   Cover absent/empty arrays as an exact no-op; ASCII model-safe names; duplicate server names;
   case-insensitive duplicate headers; platform-aware duplicate env names; ignored `_meta`; untagged
@@ -134,7 +134,7 @@ independently authored `acpx` ACP client for ACP live evidence.
   canonical URL normalization; URL userinfo/fragment rejection; query-name display with
   value fingerprints; and same-name identity drift.
 
-- [ ] **Step 2: Run the RED selector.**
+- [x] **Step 2: Run the RED selector.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_config.py tests/unit/guardrails/test_prompt_injection.py -q
@@ -142,7 +142,7 @@ independently authored `acpx` ACP client for ACP live evidence.
 
   Expected: import/behavior failures because no client normalizer or scanner subjects exist.
 
-- [ ] **Step 3: Implement the smallest normalizer and opaque capability.**
+- [x] **Step 3: Implement the smallest normalizer and opaque capability.**
 
   Use ACP wire arrays as arrays, reject duplicate names before scanning, resolve bare commands only
   with the controlled resolver, and launch/fingerprint only canonical paths. Add
@@ -153,14 +153,14 @@ independently authored `acpx` ACP client for ACP live evidence.
   credentials, or telemetry state. Reject injection-capable env names and make raw-value holders
   non-serializable by construction.
 
-- [ ] **Step 4: Run focused GREEN and static fitness.**
+- [x] **Step 4: Run focused GREEN and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/mcp/test_client_config.py tests/unit/guardrails/test_prompt_injection.py -q
   uv run --frozen ruff check src/optimus/mcp/client_config.py src/optimus/guardrails/prompt_injection.py tests/unit/mcp/test_client_config.py tests/unit/guardrails/test_prompt_injection.py
   ```
 
-- [ ] **Step 5: Reviewer checkpoint.**
+- [x] **Step 5: Reviewer checkpoint.**
 
   Record the exact normalizer tests and scanner findings. Do not commit, modify `tmp/`, or mark a
   checkbox without separate authorization.
