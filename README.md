@@ -452,6 +452,13 @@ run live evidence or IDE sessions. Skipping step 1 after a code change produces 
 | `--setup` | One-time wizard: store provider key + shared secret in the OS keychain, then exit |
 | `--no-auto-start` | Skip auto-starting Redis and the local gateway; assume both are already running |
 | `--check-config` | Validate credentials, Redis, and workspace; exit without serving |
+| `--gateway-timeout-seconds SECONDS` | Raise the Gateway request timeout for this process; default is 30 seconds |
+
+For a slow Gateway/model response during a one-off investigation, run
+`optimus-agent --gateway-timeout-seconds 90`. The value applies only to that agent process;
+omitting it preserves the 30-second default. It changes how long the first Gateway request may
+wait; it does not enable retries or weaken the fail-closed `PLANNING_GATEWAY_COST_UNKNOWN`
+behavior when the Gateway cannot report cost.
 
 `--no-auto-start` disables **both** Redis and gateway auto-start consistently.
 

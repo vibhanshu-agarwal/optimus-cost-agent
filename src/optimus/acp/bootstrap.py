@@ -32,11 +32,18 @@ def _missing_env_names(environ: Mapping[str, str], names: tuple[str, ...]) -> tu
     return tuple(name for name in names if not environ.get(name, "").strip())
 
 
+def _build_gateway_client(*, settings, timeout_seconds):
+    if timeout_seconds is None:
+        return GatewayClient(settings=settings)
+    return GatewayClient(settings=settings, timeout_seconds=timeout_seconds)
+
+
 def build_agent_runner_for_harness(
     *,
     environ: Mapping[str, str],
     workspace_root: Path,
     model: str | None = None,
+    gateway_timeout_seconds: float | None = None,
 ) -> AgentRunner:
     """
     Builds and initializes an AgentRunner instance configured for use with a harness.
@@ -70,7 +77,7 @@ def build_agent_runner_for_harness(
     settings = OptimusGatewaySettings.from_env(environ)
     resolved_workspace = workspace_root.resolve()
     guard = PreToolGuard.for_workspace(workspace_root=resolved_workspace, allowed_network_hosts=())
-    gateway_client = GatewayClient(settings=settings)
+    gateway_client = _build_gateway_client(settings=settings, timeout_seconds=gateway_timeout_seconds)
     state_store = redis_runtime.sync_state_store()
     # Plan 11.5, Task 5: one fanout writes every telemetry event to the local
     # append-only JSONL log and the existing Redis sink unconditionally, and
@@ -100,6 +107,7 @@ def build_configured_server(
     environ: Mapping[str, str],
     workspace_root: Path | None = None,
     model: str | None = None,
+    gateway_timeout_seconds: float | None = None,
 ) -> AcpStreamServer:
     """
     Builds and configures an `AcpStreamServer` instance with the specified environment
@@ -124,10 +132,11 @@ def build_configured_server(
         environ=environ,
         workspace_root=Path(workspace_root or "."),
         model=model,
+        gateway_timeout_seconds=gateway_timeout_seconds,
     )
     resolved_workspace = Path(workspace_root or ".").resolve()
     settings = OptimusGatewaySettings.from_env(environ)
-    gateway_client = GatewayClient(settings=settings)
+    gateway_client = _build_gateway_client(settings=settings, timeout_seconds=gateway_timeout_seconds)
     guard = PreToolGuard.for_workspace(workspace_root=resolved_workspace, allowed_network_hosts=())
     dispatcher = JsonRpcDispatcher(
         gateway_client=gateway_client,

@@ -960,6 +960,90 @@ def test_check_config_exits_2_on_redis_port_conflict(monkeypatch, tmp_path, caps
 # --- Plan 11.6 Task 3: optional local Phoenix ---
 
 
+def test_parse_args_accepts_gateway_timeout_seconds() -> None:
+    args = acp_main.parse_args(["--gateway-timeout-seconds", "90"])
+
+    assert args.gateway_timeout_seconds == 90.0
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf", "not-a-number"])
+def test_parse_args_rejects_invalid_gateway_timeout_seconds(value) -> None:
+    with pytest.raises(SystemExit):
+        acp_main.parse_args(["--gateway-timeout-seconds", value])
+
+
+def test_parse_args_help_includes_gateway_timeout_seconds(capsys) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        acp_main.parse_args(["--help"])
+
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "--gateway-timeout-seconds" in captured.out
+    assert "SECONDS" in captured.out
+
+
+def test_main_forwards_gateway_timeout_seconds_to_build_configured_server(monkeypatch, tmp_path) -> None:
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+    captured_kwargs: dict[str, object] = {}
+
+    def capturing_build(**kwargs):
+        captured_kwargs.update(kwargs)
+
+        class FakeServer:
+            def serve_ndjson(self, *_a, **_k):
+                async def _noop():
+                    return None
+
+                return _noop()
+
+        return FakeServer()
+
+    _patch_common(monkeypatch, server_factory=capturing_build)
+
+    exit_code = acp_main.main(
+        [
+            "--no-auto-start",
+            "--workspace-root",
+            str(tmp_path),
+            "--gateway-timeout-seconds",
+            "90",
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured_kwargs.get("gateway_timeout_seconds") == 90.0
+
+
+def test_main_omits_gateway_timeout_override_when_flag_absent(monkeypatch, tmp_path) -> None:
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+    captured_kwargs: dict[str, object] = {}
+
+    def capturing_build(*, environ, workspace_root, model):
+        captured_kwargs.update(
+            {"environ": environ, "workspace_root": workspace_root, "model": model}
+        )
+
+        class FakeServer:
+            def serve_ndjson(self, *_a, **_k):
+                async def _noop():
+                    return None
+
+                return _noop()
+
+        return FakeServer()
+
+    monkeypatch.setattr(acp_main, "build_configured_server", capturing_build)
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineReader", lambda *_a, **_k: object())
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineWriter", lambda *_a, **_k: object())
+
+    exit_code = acp_main.main(["--no-auto-start", "--workspace-root", str(tmp_path)])
+
+    assert exit_code == 0
+    assert "gateway_timeout_seconds" not in captured_kwargs
+
+
 def test_parse_args_rejects_with_local_phoenix_and_no_auto_start() -> None:
     with pytest.raises(SystemExit):
         acp_main.parse_args(["--with-local-phoenix", "--no-auto-start"])
