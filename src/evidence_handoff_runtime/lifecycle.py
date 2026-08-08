@@ -22,7 +22,7 @@ from evidence_handoff_runtime.config import (
 from evidence_handoff_runtime.inputs import RuntimeInputSupplier
 from evidence_handoff_runtime.process import ProcessRunner, SubprocessRunner
 
-_READY_TIMEOUT_SECONDS = 60.0
+_READY_TIMEOUT_SECONDS = 90.0
 _POLL_INTERVAL_SECONDS = 0.25
 
 
@@ -50,6 +50,7 @@ class LifecycleStatus:
     projected_credential: str | None
     ledger_instance_id: str | None = None
     backend_id: str | None = None
+    integrity_incident: object | None = None
 
     def __repr__(self) -> str:
         return (
@@ -61,7 +62,8 @@ class LifecycleStatus:
             f"may_start_infrastructure={self.may_start_infrastructure!r}, "
             f"projected_credential={self.projected_credential!r}, "
             f"ledger_instance_id={self.ledger_instance_id!r}, "
-            f"backend_id={self.backend_id!r})"
+            f"backend_id={self.backend_id!r}, "
+            f"integrity_incident={self.integrity_incident!r})"
         )
 
 
@@ -115,8 +117,24 @@ class LifecycleManager:
             f"ledger_instance_id={self._ledger_instance_id!r})"
         )
 
+    def status(self) -> LifecycleStatus:
+        with self._lifecycle_lock():
+            integrity = self._load_integrity_incident()
+            if integrity is not None:
+                return self._integrity_failed_status(integrity)
+            if not self._config.enabled:
+                return self._disabled_status()
+            if self._running and self._is_ready():
+                return self._ready_status()
+            if not self._wslc:
+                return self._unavailable_status("wslc_unavailable")
+            return self._unavailable_status("store_not_running")
+
     def start(self) -> LifecycleStatus:
         with self._lifecycle_lock():
+            integrity = self._load_integrity_incident()
+            if integrity is not None:
+                return self._integrity_failed_status(integrity)
             if not self._config.enabled:
                 return self._disabled_status()
             if not self._wslc:
@@ -162,10 +180,15 @@ class LifecycleManager:
 
     def stop(self) -> LifecycleStatus:
         with self._lifecycle_lock():
+            integrity = self._load_integrity_incident()
             if not self._config.enabled and not self._running:
+                if integrity is not None:
+                    return self._integrity_failed_status(integrity)
                 return self._disabled_status()
             if not self._wslc:
                 self._running = False
+                if integrity is not None:
+                    return self._integrity_failed_status(integrity)
                 return self._unavailable_status("wslc_unavailable")
             try:
                 backend = self._backend()
@@ -173,22 +196,18 @@ class LifecycleManager:
                     result = self._runner.run(backend.build_stop_argv())
                     if getattr(result, "returncode", 1) != 0:
                         self._running = False
+                        if integrity is not None:
+                            return self._integrity_failed_status(integrity)
                         return self._unavailable_status("store_stop_failed")
             except StoreBackendError as exc:
                 self._running = False
+                if integrity is not None:
+                    return self._integrity_failed_status(integrity)
                 return self._unavailable_status(exc.code)
             self._running = False
+            if integrity is not None:
+                return self._integrity_failed_status(integrity)
             return self._unavailable_status("store_stopped")
-
-    def status(self) -> LifecycleStatus:
-        with self._lifecycle_lock():
-            if not self._config.enabled:
-                return self._disabled_status()
-            if self._running and self._is_ready():
-                return self._ready_status()
-            if not self._wslc:
-                return self._unavailable_status("wslc_unavailable")
-            return self._unavailable_status("store_not_running")
 
     def initialize(self) -> LifecycleStatus:
         with self._lifecycle_lock():
@@ -362,6 +381,29 @@ class LifecycleManager:
 
     def _lifecycle_lock(self):
         return _LifecycleLock(self._thread_lock, self._bootstrap.lock_path)
+
+    def _load_integrity_incident(self):
+        if self._bootstrap.control_root is None:
+            return None
+        from evidence_handoff_runtime.integrity import IntegrityLatch, IntegrityLatchError
+
+        try:
+            return IntegrityLatch(control_root=self._bootstrap.control_root).load()
+        except IntegrityLatchError as exc:
+            raise LifecycleError(exc.code) from exc
+
+    def _integrity_failed_status(self, incident) -> LifecycleStatus:
+        return LifecycleStatus(
+            availability=Availability.UNAVAILABLE,
+            running=False,
+            active_route="integrity_hold",
+            summary_code="ledger_integrity_failed",
+            may_start_infrastructure=False,
+            projected_credential=None,
+            ledger_instance_id=self._ledger_instance_id,
+            backend_id=self._config.backend_id,
+            integrity_incident=incident,
+        )
 
     def _disabled_status(self) -> LifecycleStatus:
         return LifecycleStatus(

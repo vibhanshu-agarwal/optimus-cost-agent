@@ -17,6 +17,10 @@ _PINNED: tuple[tuple[str, str], ...] = (
         "001_ledger_v1.sql",
         "bd0851fa6be469d545a05b4fa352f16605bcaa840ac633c18d3adebb52f80ee1",
     ),
+    (
+        "002_sequence_unique_per_instance.sql",
+        "ebacad0524aa02420eafbdcc0c9f640ad90bed65f72745064520360ffa695489",
+    ),
 )
 
 
