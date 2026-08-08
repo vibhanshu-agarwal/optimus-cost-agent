@@ -374,7 +374,10 @@ Use real PostgreSQL rows/control state to induce and detect duplicate sequence, 
 sequence, broken predecessor/content digest, counter/head mismatch, instance mismatch, witness
 ahead of restored head, and rollback witness conflict. After each failure assert stable cause,
 non-retryable class, durable latch, stopped normal operations, no automatic relay, and content-free
-status. Restart the real process and assert persistence.
+status. Restart the real process and assert persistence. After an integrity latch, explicitly
+disable the feature and, in a separate run, make PostgreSQL unavailable; lifecycle status must keep
+reporting the same ledger_integrity_failed incident ID, cause, and safe boundary without clearing,
+suppressing, reclassifying, or automatically relaying the incident.
 
 Recovery must quarantine the predecessor read-only, select only the last verified anchor, preserve
 tail rows without copying/calling them repaired, reject automatic clearing, create a linked

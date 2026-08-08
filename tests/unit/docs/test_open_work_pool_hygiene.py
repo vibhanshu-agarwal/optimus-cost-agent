@@ -141,6 +141,7 @@ def test_a2a_ledger_reachability_blocker_is_resolved_and_design_is_owned() -> No
 
 def test_a2a_ledger_plan_freezes_ordered_risk_slice_scope() -> None:
     plan = _read(A2A_LEDGER_IMPLEMENTATION_PLAN)
+    normalized = " ".join(plan.split())
 
     assert "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER" in plan
     assert "Ordered Subplan A: Persistence, Lifecycle, Integrity, and Recovery" in plan
@@ -150,6 +151,7 @@ def test_a2a_ledger_plan_freezes_ordered_risk_slice_scope() -> None:
     assert "Evidence bridge" in plan
     assert "Operations and extraction" in plan
     assert "Real Claude Code, Codex, and Cursor" in plan
+    assert "After an integrity latch, explicitly disable the feature and, in a separate run, make PostgreSQL unavailable" in normalized
     assert PLAN_NUMBER_RE.search(plan) is None
 
 
