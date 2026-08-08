@@ -15,6 +15,7 @@ dependencies = [
   "opentelemetry-exporter-otlp-proto-http>=1.44,<2",
   "opentelemetry-sdk>=1.44,<2",
   "Pillow>=12.3,<13",
+  "psycopg[binary]>=3.2,<4",
   "pydantic>=2.8",
   "redis>=5",
 ]
@@ -23,6 +24,7 @@ dependencies = [
 optimus-agent = "optimus.acp.__main__:main"
 optimus-local-gateway = "optimus_gateway.__main__:main"
 optimus-trust = "optimus.acp.launch_approval_cli:main"
+evidence-handoff-lifecycle = "evidence_handoff_runtime.lifecycle_cli:main"
 
 [project.optional-dependencies]
 dev = [
@@ -46,7 +48,7 @@ addopts = [
   "--strict-markers",
   "--import-mode=importlib",
   "-m",
-  "not requires_redis and not requires_gateway and not requires_mcp_http and not requires_mcp_stdio and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring and not requires_acpx and not requires_zed and not requires_windows_desktop and not evidence_investigation",
+  "not requires_redis and not requires_gateway and not requires_mcp_http and not requires_mcp_stdio and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring and not requires_acpx and not requires_zed and not requires_windows_desktop and not evidence_investigation and not requires_evidence_handoff_postgres",
 ]
 markers = [
   "requires_redis: integration test that needs a live TimeSeries-capable Redis server",
@@ -61,6 +63,7 @@ markers = [
   "requires_zed: requires a real supported Zed instance and its real logs",
   "requires_windows_desktop: requires an interactive Windows desktop and real DWM",
   "evidence_investigation: runs a named evidence-only investigation with its real dependency",
+  "requires_evidence_handoff_postgres: integration test that needs real PostgreSQL started via the wslc CLI on loopback",
 ]
 
 [tool.coverage.run]

@@ -100,3 +100,6 @@ docs/superpowers/reviews/*-review-checkpoints.md
 .acpxrc.json
 mcpServers.json
 tmp/
+
+# Evidence handoff local lifecycle/runtime artifacts (never commit)
+.evidence-handoff/
