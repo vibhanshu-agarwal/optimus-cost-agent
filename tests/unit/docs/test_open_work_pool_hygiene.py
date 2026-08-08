@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 REPO_ROOT = Path(__file__).resolve().parents[3]
 OPTIMUS_POOL = REPO_ROOT / "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md"
 PRODUCT_POOL = REPO_ROOT / "docs/superpowers/plans/evidence-handoff-open-work-pool.md"
+A2A_LEDGER_DESIGN = REPO_ROOT / "docs/superpowers/specs/evidence-handoff-a2a-ledger-design.md"
 PLANS_ROOT = REPO_ROOT / "docs/superpowers/plans"
 
 PRODUCT_FEATURE_IDS = frozenset(
@@ -24,6 +25,7 @@ PRODUCT_FEATURE_IDS = frozenset(
 )
 PRODUCT_OWNED_DOCS = frozenset(
     {
+        "docs/superpowers/specs/evidence-handoff-a2a-ledger-design.md",
         "docs/superpowers/specs/evidence-handoff-evidence-collector-design.md",
         "docs/superpowers/specs/evidence-handoff-redaction-gate-design.md",
         "docs/superpowers/specs/evidence-handoff-zed-render-observation-design.md",
@@ -121,6 +123,16 @@ def test_product_features_have_exactly_one_pool_owner() -> None:
     assert not (optimus_rows.keys() & product_rows.keys())
     assert all(optimus_rows[feature_id] + product_rows[feature_id] == 1 for feature_id in PRODUCT_FEATURE_IDS)
     assert PRODUCT_FEATURE_IDS <= product_rows.keys()
+
+
+def test_a2a_ledger_reachability_blocker_is_resolved_and_design_is_owned() -> None:
+    row = _feature_row(_read(PRODUCT_POOL), "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER")
+
+    assert "The cross-agent reachability blocker is resolved" in row
+    assert "Blocked on the cross-agent localhost-TCP reachability investigation" not in row
+    assert "[Design](../specs/evidence-handoff-a2a-ledger-design.md)" in row
+    assert A2A_LEDGER_DESIGN.is_file()
+    assert PLAN_NUMBER_RE.search(_read(A2A_LEDGER_DESIGN)) is None
 
 
 def test_every_optimus_pool_entry_has_one_canonical_status() -> None:
