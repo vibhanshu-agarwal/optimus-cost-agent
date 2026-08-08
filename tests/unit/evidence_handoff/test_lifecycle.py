@@ -189,6 +189,97 @@ def test_stop_and_status_are_idempotent_and_content_free(tmp_path: Path) -> None
         assert password not in repr(item)
 
 
+def test_stop_surfaces_nonzero_wslc_returncode(tmp_path: Path) -> None:
+    from evidence_handoff_runtime.config import Availability
+    from evidence_handoff_runtime.lifecycle import LifecycleManager
+
+    class _FailStopRunner:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, ...]] = []
+            self._created = False
+
+        def run(self, argv: list[str], **_kwargs: object) -> object:
+            self.calls.append(tuple(argv))
+            if "inspect" in argv:
+                returncode = 0 if self._created else 1
+            elif "run" in argv:
+                self._created = True
+                returncode = 0
+            elif "stop" in argv:
+                returncode = 1
+            else:
+                returncode = 0
+            return type("Result", (), {"returncode": returncode, "stdout": "", "stderr": ""})()
+
+    runner = _FailStopRunner()
+    manager = LifecycleManager(
+        _enabled_config(),
+        _bootstrap(tmp_path),
+        process_runner=runner,
+        probe_ready=lambda: True,
+        probe_version=lambda: "PostgreSQL 16.0",
+    )
+    assert manager.start().running is True
+    status = manager.stop()
+    assert status.availability is Availability.UNAVAILABLE
+    assert status.summary_code == "store_stop_failed"
+    assert status.running is False
+    assert any("stop" in call for call in runner.calls)
+
+
+def test_destroy_for_test_cleanup_raises_on_nonzero_remove(tmp_path: Path) -> None:
+    from evidence_handoff_runtime.lifecycle import LifecycleError, LifecycleManager
+
+    class _FailRemoveRunner:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, ...]] = []
+
+        def run(self, argv: list[str], **_kwargs: object) -> object:
+            self.calls.append(tuple(argv))
+            # inspect succeeds (resource present); remove fails (transient wslc error)
+            if "remove" in argv:
+                returncode = 1
+            else:
+                returncode = 0
+            return type("Result", (), {"returncode": returncode, "stdout": "", "stderr": ""})()
+
+    manager = LifecycleManager(
+        _enabled_config(),
+        _bootstrap(tmp_path),
+        process_runner=_FailRemoveRunner(),
+        probe_ready=lambda: True,
+        probe_version=lambda: "PostgreSQL 16.0",
+        wslc_executable="wslc",
+    )
+    with pytest.raises(LifecycleError) as raised:
+        manager.destroy_for_test_cleanup()
+    assert raised.value.code == "store_destroy_failed"
+
+
+def test_destroy_for_test_cleanup_skips_missing_resources(tmp_path: Path) -> None:
+    from evidence_handoff_runtime.lifecycle import LifecycleManager
+
+    class _MissingResourcesRunner:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, ...]] = []
+
+        def run(self, argv: list[str], **_kwargs: object) -> object:
+            self.calls.append(tuple(argv))
+            # inspect/volume inspect miss; remove must not be attempted
+            return type("Result", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+
+    runner = _MissingResourcesRunner()
+    manager = LifecycleManager(
+        _enabled_config(),
+        _bootstrap(tmp_path),
+        process_runner=runner,
+        wslc_executable="wslc",
+    )
+    manager.destroy_for_test_cleanup()
+    assert any("inspect" in call for call in runner.calls)
+    assert not any("remove" in call for call in runner.calls)
+
+
 def test_unavailable_when_wslc_missing(tmp_path: Path) -> None:
     from evidence_handoff_runtime.config import Availability
     from evidence_handoff_runtime.lifecycle import LifecycleManager

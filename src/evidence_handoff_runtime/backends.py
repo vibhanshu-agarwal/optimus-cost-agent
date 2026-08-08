@@ -105,6 +105,9 @@ class WslcPostgresBackend:
     def build_inspect_argv(self) -> list[str]:
         return require_argv([self._wslc, "inspect", self.container_name])
 
+    def build_volume_inspect_argv(self) -> list[str]:
+        return require_argv([self._wslc, "volume", "inspect", self.volume_name])
+
     def build_volume_create_argv(self) -> list[str]:
         return require_argv([self._wslc, "volume", "create", self.volume_name])
 

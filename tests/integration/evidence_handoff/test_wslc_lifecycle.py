@@ -144,7 +144,10 @@ def test_wslc_postgres_lifecycle_loopback_restart_persistence(tmp_path: Path) ->
             manager.stop()
         except Exception:
             pass
-        manager.destroy_for_test_cleanup()
+        try:
+            manager.destroy_for_test_cleanup()
+        except Exception:
+            pass
 
     ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
     artifact_path = ARTIFACT_ROOT / f"wslc-lifecycle-{suffix}.json"

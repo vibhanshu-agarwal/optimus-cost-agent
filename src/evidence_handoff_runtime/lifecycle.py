@@ -170,7 +170,10 @@ class LifecycleManager:
             try:
                 backend = self._backend()
                 if self._container_exists(backend):
-                    self._runner.run(backend.build_stop_argv())
+                    result = self._runner.run(backend.build_stop_argv())
+                    if getattr(result, "returncode", 1) != 0:
+                        self._running = False
+                        return self._unavailable_status("store_stop_failed")
             except StoreBackendError as exc:
                 self._running = False
                 return self._unavailable_status(exc.code)
@@ -246,8 +249,17 @@ class LifecycleManager:
                 backend = self._backend()
             except StoreBackendError:
                 return
-            self._runner.run(backend.build_remove_container_argv())
-            self._runner.run(backend.build_remove_volume_argv())
+            # Only remove resources that exist: bare `remove` / `volume remove` of a
+            # missing name returns nonzero on wslc, and raising early would skip the
+            # volume when start failed after `volume create` but before a container.
+            if self._container_exists(backend):
+                remove_container = self._runner.run(backend.build_remove_container_argv())
+                if getattr(remove_container, "returncode", 1) != 0:
+                    raise LifecycleError("store_destroy_failed")
+            if self._volume_exists(backend):
+                remove_volume = self._runner.run(backend.build_remove_volume_argv())
+                if getattr(remove_volume, "returncode", 1) != 0:
+                    raise LifecycleError("store_destroy_failed")
             self._running = False
 
     def _backend(self) -> WslcPostgresBackend:
@@ -264,6 +276,10 @@ class LifecycleManager:
 
     def _container_exists(self, backend: WslcPostgresBackend) -> bool:
         result = self._runner.run(backend.build_inspect_argv())
+        return getattr(result, "returncode", 1) == 0
+
+    def _volume_exists(self, backend: WslcPostgresBackend) -> bool:
+        result = self._runner.run(backend.build_volume_inspect_argv())
         return getattr(result, "returncode", 1) == 0
 
     def _wait_until_ready(self) -> bool:

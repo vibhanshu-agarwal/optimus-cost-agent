@@ -133,7 +133,7 @@ def test_request_and_startup_inputs_omit_values_from_repr(tmp_path: Path) -> Non
 
 
 def test_structured_ingress_sanitizes_draft_with_request_inputs(tmp_path: Path) -> None:
-    from evidence_handoff.redaction.ingress import EntryDraft, StructuredIngress
+    from evidence_handoff.redaction.ingress import IngressTextDraft, StructuredIngress
     from evidence_handoff_runtime.config import FeatureConfig
     from evidence_handoff_runtime.inputs import RuntimeInputSupplier
 
@@ -144,7 +144,7 @@ def test_structured_ingress_sanitizes_draft_with_request_inputs(tmp_path: Path) 
     supplier = RuntimeInputSupplier(config=config, startup=bootstrap)
     inputs = supplier.request_inputs(request_credential)
 
-    draft = EntryDraft(
+    draft = IngressTextDraft(
         kind="review-ruling",
         message_text=f"ruling body contains {secret} and {request_credential}",
     )
@@ -164,8 +164,8 @@ def test_structured_ingress_rejects_empty_inventory_without_leaking_values(
     tmp_path: Path,
 ) -> None:
     from evidence_handoff.redaction.ingress import (
-        EntryDraft,
         IngressRejection,
+        IngressTextDraft,
         RequestRedactionInputs,
         StructuredIngress,
     )
@@ -186,7 +186,7 @@ def test_structured_ingress_rejects_empty_inventory_without_leaking_values(
             forbidden_persistence_roots=(forbidden,),
         )
     )
-    draft = EntryDraft(kind="review-ruling", message_text="harmless text")
+    draft = IngressTextDraft(kind="review-ruling", message_text="harmless text")
     result = StructuredIngress().sanitize(draft, empty)
     assert result.ok is False
     assert result.reason_code == "empty_runtime_inventory"

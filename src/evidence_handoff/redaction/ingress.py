@@ -3,6 +3,16 @@
 Validates a primitive typed draft, sanitizes through the shared optimus_security
 rule engine, deterministically serializes, and returns a closed result with
 content-free rule counts. Does not stage unredacted entries on disk.
+
+Naming (Task 1 vs Task 3 reconciliation):
+- This module keeps narrow text-only ingress stubs as IngressTextDraft /
+  IngressSanitizedText.
+- The canonical EntryDraft / SanitizedDraft contracts live in
+  evidence_handoff.ledger.models (Task 3). Task 7 will point StructuredIngress at
+  those ledger types for full Message/Part sanitization.
+- Temporary aliases were intentionally not kept: importing EntryDraft from
+  ingress would collide with ledger.models.EntryDraft. Call sites use the
+  Ingress* names explicitly.
 """
 
 from __future__ import annotations
@@ -18,7 +28,9 @@ from .models import RedactionRuntimeInputs
 
 
 @dataclass(frozen=True)
-class EntryDraft:
+class IngressTextDraft:
+    """Narrow Task 1 text-only ingress draft. Not the ledger EntryDraft."""
+
     kind: str
     message_text: str
 
@@ -45,7 +57,9 @@ class RequestRedactionInputs:
 
 
 @dataclass(frozen=True)
-class SanitizedDraft:
+class IngressSanitizedText:
+    """Narrow Task 1 sanitized text result. Not the ledger SanitizedDraft."""
+
     kind: str
     message_text: str
     content_sha256: str
@@ -61,7 +75,7 @@ class SanitizedDraft:
 
     def __repr__(self) -> str:
         return (
-            "SanitizedDraft("
+            "IngressSanitizedText("
             f"kind={self.kind!r}, "
             f"content_sha256={self.content_sha256!r}, "
             f"rule_counts={dict(self.rule_counts)!r})"
@@ -97,14 +111,14 @@ class IngressRejection:
 
 
 class StructuredIngress:
-    """Fail-closed in-memory sanitization boundary for ledger entry drafts."""
+    """Fail-closed in-memory sanitization boundary for narrow text drafts."""
 
     def sanitize(
         self,
-        draft: EntryDraft,
+        draft: IngressTextDraft,
         inputs: RequestRedactionInputs,
-    ) -> SanitizedDraft | IngressRejection:
-        if not isinstance(draft, EntryDraft):
+    ) -> IngressSanitizedText | IngressRejection:
+        if not isinstance(draft, IngressTextDraft):
             return IngressRejection(reason_code="invalid_entry_draft", rule_counts={})
         if not isinstance(inputs, RequestRedactionInputs):
             return IngressRejection(reason_code="invalid_request_inputs", rule_counts={})
@@ -130,7 +144,7 @@ class StructuredIngress:
             sort_keys=True,
         )
         digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
-        return SanitizedDraft(
+        return IngressSanitizedText(
             kind=draft.kind,
             message_text=message_text,
             content_sha256=digest,
@@ -139,9 +153,9 @@ class StructuredIngress:
 
 
 __all__ = [
-    "EntryDraft",
     "IngressRejection",
+    "IngressSanitizedText",
+    "IngressTextDraft",
     "RequestRedactionInputs",
-    "SanitizedDraft",
     "StructuredIngress",
 ]
