@@ -12,6 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 OPTIMUS_POOL = REPO_ROOT / "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md"
 PRODUCT_POOL = REPO_ROOT / "docs/superpowers/plans/evidence-handoff-open-work-pool.md"
 A2A_LEDGER_DESIGN = REPO_ROOT / "docs/superpowers/specs/evidence-handoff-a2a-ledger-design.md"
+A2A_LEDGER_IMPLEMENTATION_PLAN = REPO_ROOT / "docs/superpowers/plans/evidence-handoff-risk-bearing-slice-implementation.md"
 PLANS_ROOT = REPO_ROOT / "docs/superpowers/plans"
 
 PRODUCT_FEATURE_IDS = frozenset(
@@ -31,6 +32,7 @@ PRODUCT_OWNED_DOCS = frozenset(
         "docs/superpowers/specs/evidence-handoff-zed-render-observation-design.md",
         "docs/superpowers/plans/evidence-handoff-evidence-collector-implementation.md",
         "docs/superpowers/plans/evidence-handoff-redaction-gate-implementation.md",
+        "docs/superpowers/plans/evidence-handoff-risk-bearing-slice-implementation.md",
     }
 )
 
@@ -131,8 +133,24 @@ def test_a2a_ledger_reachability_blocker_is_resolved_and_design_is_owned() -> No
     assert "The cross-agent reachability blocker is resolved" in row
     assert "Blocked on the cross-agent localhost-TCP reachability investigation" not in row
     assert "[Design](../specs/evidence-handoff-a2a-ledger-design.md)" in row
+    assert "[Implementation plan](evidence-handoff-risk-bearing-slice-implementation.md)" in row
     assert A2A_LEDGER_DESIGN.is_file()
+    assert A2A_LEDGER_IMPLEMENTATION_PLAN.is_file()
     assert PLAN_NUMBER_RE.search(_read(A2A_LEDGER_DESIGN)) is None
+
+
+def test_a2a_ledger_plan_freezes_ordered_risk_slice_scope() -> None:
+    plan = _read(A2A_LEDGER_IMPLEMENTATION_PLAN)
+
+    assert "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER" in plan
+    assert "Ordered Subplan A: Persistence, Lifecycle, Integrity, and Recovery" in plan
+    assert "Ordered Subplan B: Streamable HTTP Service, Identity, Security, and Redaction" in plan
+    assert "Ordered Subplan C: Recipient Delivery, Capabilities, Observability, and Three-Agent Evidence" in plan
+    assert "Ledger protocol completion" in plan
+    assert "Evidence bridge" in plan
+    assert "Operations and extraction" in plan
+    assert "Real Claude Code, Codex, and Cursor" in plan
+    assert PLAN_NUMBER_RE.search(plan) is None
 
 
 def test_a2a_ledger_freezes_recipient_visibility_in_the_first_slice() -> None:
