@@ -1,13 +1,15 @@
 """HTTP preamble gates for the evidence-handoff Streamable HTTP service.
 
-PreParseAuthGateStub sits at the exact pipeline position Task 6's CredentialValidator
-will replace in place. It is intentionally NOT real authentication.
+CredentialValidator (via validate_authorization) sits at the auth pipeline
+position formerly occupied by PreParseAuthGateStub.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Mapping
+
+from evidence_handoff_runtime.auth import AuthError, CredentialValidator, validate_authorization
 
 LEGACY_SSE_PATHS = frozenset({"/sse", "/messages", "/mcp/sse"})
 
@@ -16,7 +18,6 @@ def is_legacy_sse_path(path: str) -> bool:
     normalized = path.split("?", 1)[0].rstrip("/") or "/"
     if normalized in LEGACY_SSE_PATHS:
         return True
-    # Keep exact legacy markers even when trailing slash was stripped oddly.
     return path.rstrip("/") in {p.rstrip("/") for p in LEGACY_SSE_PATHS} or path in LEGACY_SSE_PATHS
 
 
@@ -29,27 +30,6 @@ class TransportDecision:
     auth_gate_class: str | None = None
 
 
-class PreParseAuthGateStub:
-    """STUB auth gate — Task 6 replaces this class in place with CredentialValidator.
-
-    This stub only checks that an Authorization material is present so that an absent
-    Origin header cannot by itself bypass the authentication position in the pipeline.
-    It does NOT validate issuer, audience, expiry, signature, or session binding.
-    Tokens are never forwarded to PostgreSQL from this stub.
-    """
-
-    def evaluate(self, *, auth_present: bool) -> TransportDecision | None:
-        if auth_present:
-            return None
-        return TransportDecision(
-            allowed=False,
-            http_status=401,
-            code="auth_gate_rejected",
-            reached_mcp_parse=False,
-            auth_gate_class=self.__class__.__name__,
-        )
-
-
 def evaluate_http_preamble(
     *,
     bind_host: str,
@@ -60,6 +40,8 @@ def evaluate_http_preamble(
     max_body_bytes: int,
     auth_present: bool,
     allowed_protocol_versions: frozenset[str] | None = None,
+    credential_validator: CredentialValidator | None = None,
+    ledger_instance_id: str | None = None,
 ) -> TransportDecision:
     """Evaluate Host/Origin/limits/protocol/auth gates before any MCP body parse."""
     normalized = {str(key).lower(): str(value) for key, value in headers.items()}
@@ -100,23 +82,34 @@ def evaluate_http_preamble(
                 reached_mcp_parse=False,
             )
 
-    # Task 6 replacement point: PreParseAuthGateStub -> CredentialValidator
-    auth_decision = PreParseAuthGateStub().evaluate(auth_present=auth_present)
-    if auth_decision is not None:
-        return auth_decision
+    # In-place Task 6 replacement of PreParseAuthGateStub.
+    authorization_header = normalized.get("authorization") if auth_present else None
+    try:
+        validate_authorization(
+            authorization_header=authorization_header,
+            validator=credential_validator,
+            request={"ledger_instance_id": ledger_instance_id} if ledger_instance_id else {},
+        )
+    except AuthError as exc:
+        return TransportDecision(
+            allowed=False,
+            http_status=401,
+            code=exc.code,
+            reached_mcp_parse=False,
+            auth_gate_class="CredentialValidator",
+        )
 
     return TransportDecision(
         allowed=True,
         http_status=200,
         code="ok",
         reached_mcp_parse=True,
-        auth_gate_class="PreParseAuthGateStub",
+        auth_gate_class="CredentialValidator",
     )
 
 
 __all__ = [
     "LEGACY_SSE_PATHS",
-    "PreParseAuthGateStub",
     "TransportDecision",
     "evaluate_http_preamble",
     "is_legacy_sse_path",

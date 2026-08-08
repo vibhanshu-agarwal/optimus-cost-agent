@@ -122,7 +122,9 @@ def running_ledger_service(tmp_path: Path):
             request_limits={"max_body_bytes": 65536},
             protocol_versions=(EXPECTED_PROTOCOL,),
         )
-        service = LedgerService.start(service_config, store, bootstrap)
+        service = LedgerService.start(
+            service_config, store, bootstrap, allow_unauthenticated_stub=True
+        )
         service.wait_ready(timeout_seconds=30.0)
         yield {
             "service": service,

@@ -34,6 +34,18 @@ from evidence_handoff_runtime.integrity import (
 )
 
 
+def _reject_credential_shaped_identity(identity: ServerIdentity) -> None:
+    """Task 6: store must never accept bearer/token material as identity fields."""
+    for value in (
+        identity.principal_id,
+        identity.agent_id,
+        identity.caller_role,
+        identity.authority,
+    ):
+        if "Bearer " in value or value.startswith("eh1."):
+            raise LedgerValidationError("identity_looks_like_credential")
+
+
 class PostgresLedgerStore:
     def __init__(
         self,
@@ -83,6 +95,7 @@ class PostgresLedgerStore:
         idempotency_key: str,
     ) -> AppendResult:
         self._refuse_if_integrity_latched()
+        _reject_credential_shaped_identity(identity)
         if not idempotency_key.strip():
             raise LedgerValidationError("idempotency_key_required")
         with psycopg.connect(self._conninfo) as conn:

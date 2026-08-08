@@ -154,17 +154,12 @@ def test_no_legacy_http_sse_fallback_route() -> None:
     assert is_legacy_sse_path("/mcp") is False
 
 
-def test_preparse_auth_gate_stub_runs_before_mcp_parse_and_is_named() -> None:
-    """Structural only: stub exists at Task-6 replacement point; does not prove auth."""
-    from evidence_handoff_runtime.transport import (
-        PreParseAuthGateStub,
-        evaluate_http_preamble,
-    )
+def test_credential_validator_gate_runs_before_mcp_parse() -> None:
+    """Task 6: CredentialValidator occupies the former stub position."""
+    from evidence_handoff_runtime.auth import validate_authorization
+    from evidence_handoff_runtime.transport import evaluate_http_preamble
 
-    assert PreParseAuthGateStub.__name__ == "PreParseAuthGateStub"
-    assert PreParseAuthGateStub.__doc__ is not None
-    assert "stub" in PreParseAuthGateStub.__doc__.lower()
-    assert "task 6" in PreParseAuthGateStub.__doc__.lower()
+    assert callable(validate_authorization)
 
     decision = evaluate_http_preamble(
         bind_host="127.0.0.1",
@@ -178,7 +173,7 @@ def test_preparse_auth_gate_stub_runs_before_mcp_parse_and_is_named() -> None:
     assert decision.allowed is False
     assert decision.code == "auth_gate_rejected"
     assert decision.reached_mcp_parse is False
-    assert decision.auth_gate_class == "PreParseAuthGateStub"
+    assert decision.auth_gate_class == "CredentialValidator"
 
 
 def test_mcp_tool_surface_excludes_forbidden_capabilities() -> None:
@@ -236,6 +231,29 @@ def test_health_status_catches_integrity_latch_corrupt(tmp_path: Path) -> None:
         IntegrityLatch(control_root=control).load()
 
 
+def test_ledger_service_start_requires_auth_by_default(tmp_path: Path) -> None:
+    from evidence_handoff_runtime.service import LedgerService, ServiceConfig, ServiceConfigError
+
+    config = ServiceConfig(
+        bind_host="127.0.0.1",
+        bind_port=8765,
+        allowed_origins=("http://127.0.0.1:8765",),
+        request_limits={"max_body_bytes": 65536},
+        protocol_versions=("2025-11-25",),
+    )
+
+    class _Store:
+        pass
+
+    class _Bootstrap:
+        control_root = tmp_path / "control"
+
+    (_Bootstrap.control_root).mkdir()
+    with pytest.raises(ServiceConfigError) as raised:
+        LedgerService.start(config, _Store(), _Bootstrap())
+    assert raised.value.code == "auth_required"
+
+
 def test_service_runtime_manifest_never_persists_store_password(tmp_path: Path) -> None:
     """Task 5 must not write Postgres passwords into service_runtime.json (design 263-265)."""
     import socket
@@ -266,7 +284,9 @@ def test_service_runtime_manifest_never_persists_store_password(tmp_path: Path) 
     class _Bootstrap:
         control_root = control
 
-    running = LedgerService.start(config, _Store(), _Bootstrap())
+    running = LedgerService.start(
+        config, _Store(), _Bootstrap(), allow_unauthenticated_stub=True
+    )
     try:
         runtime_path = control / "service_runtime.json"
         assert runtime_path.is_file()

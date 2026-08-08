@@ -1,9 +1,8 @@
 """CLI for the evidence-handoff Streamable HTTP service.
 
 Credentials are accepted only via files — never as argv string values.
-Task 5 bind settings come from --runtime-file only (no unused bind CLI flags).
---admin-password-file is declared so password-on-argv stays forbidden; Task 5
-does not open a DB connection, so the file path is rejected if supplied.
+--auth-bundle-file carries signing key / store conninfo for Task 6; the child
+process loads it into memory and deletes the file immediately.
 """
 
 from __future__ import annotations
@@ -24,13 +23,19 @@ def build_parser() -> argparse.ArgumentParser:
         required=False,
         help=(
             "Password file path only (never pass the password on argv). "
-            "Unused until a later task wires store access; supplying it now errors."
+            "Unused when --auth-bundle-file supplies store conninfo."
         ),
+    )
+    parser.add_argument(
+        "--auth-bundle-file",
+        type=Path,
+        required=False,
+        help="Ephemeral auth bundle path (signing key + store conninfo). Deleted after read.",
     )
     return parser
 
 
-def _serve(runtime_file: Path) -> int:
+def _serve(runtime_file: Path, auth_bundle_file: Path | None) -> int:
     import uvicorn
 
     from evidence_handoff_runtime.service import build_asgi_app
@@ -40,7 +45,18 @@ def _serve(runtime_file: Path) -> int:
         "password=" in str(value).lower() for value in runtime.values() if isinstance(value, str)
     ):
         raise SystemExit("runtime_file_must_not_contain_credentials")
-    app = build_asgi_app(runtime)
+    if "signing_key" in runtime or "signing_key_b64" in runtime:
+        raise SystemExit("runtime_file_must_not_contain_credentials")
+
+    auth_bundle = None
+    if auth_bundle_file is not None:
+        auth_bundle = json.loads(auth_bundle_file.read_text(encoding="utf-8"))
+        try:
+            auth_bundle_file.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    app = build_asgi_app(runtime, auth_bundle=auth_bundle)
     uvicorn.run(
         app,
         host=str(runtime["bind_host"]),
@@ -54,12 +70,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "serve":
-        if args.admin_password_file is not None:
+        if args.admin_password_file is not None and args.auth_bundle_file is None:
             parser.error(
-                "--admin-password-file is reserved for later store wiring; "
-                "Task 5 serve does not consume DB credentials"
+                "--admin-password-file requires store wiring; prefer --auth-bundle-file for Task 6"
             )
-        return _serve(args.runtime_file)
+        return _serve(args.runtime_file, args.auth_bundle_file)
     parser.error(f"unknown command {args.command!r}")
     return 2
 
