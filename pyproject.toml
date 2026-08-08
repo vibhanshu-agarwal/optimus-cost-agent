@@ -25,6 +25,7 @@ optimus-agent = "optimus.acp.__main__:main"
 optimus-local-gateway = "optimus_gateway.__main__:main"
 optimus-trust = "optimus.acp.launch_approval_cli:main"
 evidence-handoff-lifecycle = "evidence_handoff_runtime.lifecycle_cli:main"
+evidence-handoff-service = "evidence_handoff_runtime.service_cli:main"
 
 [project.optional-dependencies]
 dev = [
@@ -48,7 +49,7 @@ addopts = [
   "--strict-markers",
   "--import-mode=importlib",
   "-m",
-  "not requires_redis and not requires_gateway and not requires_mcp_http and not requires_mcp_stdio and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring and not requires_acpx and not requires_zed and not requires_windows_desktop and not evidence_investigation and not requires_evidence_handoff_postgres",
+  "not requires_redis and not requires_gateway and not requires_mcp_http and not requires_mcp_stdio and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring and not requires_acpx and not requires_zed and not requires_windows_desktop and not evidence_investigation and not requires_evidence_handoff_postgres and not requires_evidence_handoff_service",
 ]
 markers = [
   "requires_redis: integration test that needs a live TimeSeries-capable Redis server",
@@ -64,6 +65,7 @@ markers = [
   "requires_windows_desktop: requires an interactive Windows desktop and real DWM",
   "evidence_investigation: runs a named evidence-only investigation with its real dependency",
   "requires_evidence_handoff_postgres: integration test that needs real PostgreSQL started via the wslc CLI on loopback",
+  "requires_evidence_handoff_service: integration test that needs real wslc PostgreSQL plus a real evidence-handoff Streamable HTTP service subprocess",
 ]
 
 [tool.coverage.run]

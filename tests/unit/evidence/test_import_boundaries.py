@@ -11,7 +11,16 @@ import pytest
 
 ALLOWED_EVIDENCE_IMPORT_ROOTS = frozenset({"PIL", "optimus_security"})
 FORBIDDEN_EVIDENCE_IMPORT_ROOTS = frozenset({"optimus", "optimus_gateway", "tools"})
-ALLOWED_RUNTIME_IMPORT_ROOTS = frozenset({"evidence_handoff", "optimus_security", "psycopg"})
+ALLOWED_RUNTIME_IMPORT_ROOTS = frozenset(
+    {
+        "evidence_handoff",
+        "optimus_security",
+        "psycopg",
+        "mcp",
+        "starlette",
+        "uvicorn",
+    }
+)
 FORBIDDEN_RUNTIME_IMPORT_ROOTS = frozenset({"optimus", "optimus_gateway", "tools"})
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
