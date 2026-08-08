@@ -50,6 +50,8 @@ not silently weaken authentication, schema handling, session binding, or deliver
 - Server-derived `authority` based on an authenticated principal's configured role.
 - At-least-once delivery: an unconfirmed page may be returned again, and entry IDs make duplicates
   detectable.
+- Integrity failures are loud, stop the ledger channel, and are never silently downgraded to
+  operator relay.
 - Graceful operator relay when the feature is disabled or unavailable.
 
 ## What users should not expect
@@ -70,6 +72,8 @@ not silently weaken authentication, schema handling, session binding, or deliver
   through an authorized shell workflow, but collection is not a network-callable ledger tool.
 - **SSE as a delivery guarantee.** SSE is optional within Streamable HTTP and never participates in
   ordering, durability, cursor advancement, or wakeup correctness.
+- **Quiet integrity degradation.** Corruption is never treated as ordinary unavailability,
+  transient retry, or automatic operator relay.
 
 ## Binding constraints and naming
 
@@ -197,6 +201,17 @@ The reserved `attestation` field exists in the v1 physical and entry schema but 
 Any non-null v1 write is rejected. Future attestation can be additive only through a new entry
 schema and can never substitute for authorization.
 
+If rollback occurs before any external client witness has advanced beyond the restored head, the
+restored prefix has the same instance ID, a valid chain, and matching counter state. It is
+indistinguishable from a history in which the rolled-back entries were never committed. This is an
+inherent detection limit, not a verified absence of loss. The mitigation is an external backup
+manifest that records the ledger instance ID, head sequence and digest, counter state, and backup
+identity at backup time outside the database snapshot. Restore procedures compare that manifest
+before activation; periodic at-rest checks remain defense in depth. A manifest proves that the
+restored snapshot matches the selected backup anchor, but it cannot witness entries committed after
+that backup. Those later entries remain detectable only when a client witness or newer external
+checkpoint recorded them.
+
 ### Principal and authority mapping
 
 Each provisioned client instance receives a distinct short-lived, audience-bound credential. The
@@ -260,6 +275,7 @@ Every committed entry has one immutable envelope:
 | Field | Contract |
 |---|---|
 | `sequence` | Server-assigned, gapless, strictly increasing total-order integer. |
+| `ledger_instance_id` | Immutable identifier for the logical ledger instance that produced the entry. |
 | `entry_id` | Server-generated globally unique entry identifier. |
 | `schema_id` | Immutable entry-kind schema identifier including its major version. |
 | `kind` | One of the six v1 entry kinds. |
@@ -276,10 +292,68 @@ Every committed entry has one immutable envelope:
 | `attestation` | Always `null` in v1; non-null writes fail. |
 | `created_at` | Server timestamp for display and audit only. |
 | `idempotency_key` | Principal-scoped retry key. |
-| `content_sha256` | Digest of the canonical sanitized envelope excluding this digest. |
+| `prev_content_sha256` | Digest of the immediately preceding committed entry, or the declared recovery anchor for a replacement instance. |
+| `content_sha256` | Digest of the canonical sanitized envelope, including sequence, instance, and predecessor fields but excluding this digest. |
 
 The request body contains only client-authorable fields. Server-owned fields are absent from the
 client schema rather than accepted and overwritten.
+
+### Ledger instance and hash-chain integrity
+
+Store initialization creates one immutable `ledger_instance_id`. The lifecycle manager, service
+configuration, credentials, durable delivery cursors, delivery tokens, client enrollment state,
+and every entry bind to that identifier. A mismatch is an integrity failure, not a reason to adopt
+whichever backend answered. Agent IDs and ledger instance IDs occupy separate namespaces.
+
+`sequence` has a database `UNIQUE NOT NULL` constraint and a positive-value check. The singleton
+counter row stores `ledger_instance_id`, `last_committed`, and `last_content_sha256`. An ordinary
+new ledger initializes the counter to sequence zero with a null digest; its first entry therefore
+has a null `prev_content_sha256`. A replacement initializes the counter from its independently
+verified predecessor sequence and digest, and its first local entry continues at the next sequence
+with that digest as its predecessor. Every later entry stores the exact `content_sha256` of
+sequence `n - 1`. The current entry digest covers the canonical sanitized envelope including
+`sequence`, `ledger_instance_id`, and `prev_content_sha256`. Duplicate sequence allocation therefore
+fails in PostgreSQL, while insertion, deletion, reordering, counter drift, and divergent history
+are detectable through counter/head and chain verification.
+
+The transaction that already locks the counter obtains `last_content_sha256` without another
+round-trip. Before assigning a sequence, it also verifies that the immutable instance metadata and
+counter agree. If local rows exist, the maximum stored sequence must equal `last_committed`, and
+that head row's digest must equal `last_content_sha256`; this also rejects unexpected rows above the
+counter. If no local rows exist, the counter must equal the instance metadata's declared ordinary
+genesis or recovery anchor. Any missing row or disagreement stops the append. On success, the
+transaction assigns `last_committed + 1`, sets the predecessor digest, computes the new content
+digest, inserts the entry, and advances the counter sequence and digest atomically.
+
+Readiness performs a full declared-genesis-or-recovery-anchor-to-head sequence, instance, and chain
+verification before the service accepts traffic. The first slice also exposes an explicit
+operator-triggered full audit. Every normal read verifies the same unfiltered global sequence range
+it already scans, from `reader_cursor + 1` through the scan watermark, anchored by the digest
+recorded with the confirmed cursor, before recipient filtering; it adds no second range pass. It
+verifies every global position, instance ID, predecessor link, content digest, and counter/head
+boundary represented by that snapshot. A missing global position or broken link fails the entire
+query, returns no entries or delivery token, and leaves the cursor unchanged.
+
+Visible sequence gaps are expected under recipient filtering and are never treated as corruption.
+Chain verification is service-side and operator-audit work: a reader cannot verify links across
+entries it is not permitted to see, and the service does not disclose hidden-entry commitments,
+existence, or count. Reader integrations receive integrity assurance transitively from the
+verified service response and page digest.
+
+The single serialized chain is a correctness requirement, not an interchangeable implementation
+detail. v1 cannot shard sequence assignment, partition independent writer chains, or run a second
+active ledger head without a new reviewed protocol and recovery lineage. Per append, the chain adds
+one SHA-256 computation and one 32-byte predecessor digest; the existing counter lock supplies the
+prior digest without a network round-trip. Counter/head agreement adds an indexed head lookup in
+the same transaction. A full audit remains O(n). Later checkpoint digests may bound audit work from
+a previously trusted anchor, but they cannot replace the canonical chain or bless an unverified
+skip.
+
+After delivery confirmation, the reader integration persists the accepted
+`ledger_instance_id`, scan watermark, and chain-head digest outside the ledger database and
+presents that witness on its next request. A witness ahead of the current database head or a digest
+conflict at the same sequence detects rollback or divergence. Delivery tokens bind the prior and
+proposed witnesses so confirmation cannot cross an instance or chain boundary.
 
 ### Frozen v1 recipient visibility
 
@@ -353,8 +427,10 @@ sequenceDiagram
                 Redaction-->>Client: "Stable failure code; no sequence or row"
             else "Sanitized canonical draft"
                 Redaction->>Store: "Begin serialized append transaction"
-                Store->>Store: "Lock counter; assign next sequence; insert; advance counter"
-                alt "Insert or commit fails"
+                Store->>Store: "Lock counter; verify instance and head; chain, insert, advance"
+                alt "Constraint, instance, counter, or chain check fails"
+                    Store-->>Client: "Rollback; latch non-retryable integrity failure"
+                else "Classified transient insert or commit failure"
                     Store-->>Client: "Rollback counter and row; retry-safe failure"
                 else "Commit succeeds"
                     Store-->>Client: "Immutable entry ID, sequence, and digest"
@@ -364,9 +440,11 @@ sequenceDiagram
     end
 ```
 
-The append transaction locks one product-owned counter row, computes `last_committed + 1`, inserts
-the sanitized entry, advances the counter, and commits both changes together. Rollback restores
-both, so committed entries remain gapless. The database lock preserves correctness if a later
+The append transaction locks one product-owned counter row, verifies its instance, sequence, and
+digest against immutable instance metadata and the current head, computes `last_committed + 1`,
+inserts the sanitized chained entry, advances the counter, and commits both changes together.
+Rollback restores both, so committed entries remain gapless. The database uniqueness constraint
+is the final duplicate-sequence backstop. The database lock preserves correctness if a later
 deployment runs more than one service process; an in-process mutex alone is insufficient.
 
 Idempotency is principal-scoped. Reusing a key with the same sanitized request digest returns the
@@ -409,8 +487,12 @@ sequenceDiagram
     participant Store as "PostgreSQL"
 
     Client->>Ledger: "Read after durable cursor with supported schema set"
-    Ledger->>Store: "Snapshot visible entries and scan watermark by sequence"
-    Store-->>Ledger: "Page plus current head"
+    Ledger->>Store: "Snapshot unfiltered global range and scan watermark"
+    Store-->>Ledger: "Global rows, current head, and chain anchor"
+    alt "Global gap, chain break, or instance mismatch"
+        Ledger-->>Client: "Latch integrity failure; no page, token, or cursor change"
+    else "Global range verifies before recipient filtering"
+        Ledger->>Ledger: "Filter immutable recipients and check visible schemas"
     alt "Any visible entry schema is unsupported"
         Ledger-->>Client: "Fail entire query; no partial page and no cursor change"
     else "Whole page is supported"
@@ -423,17 +505,23 @@ sequenceDiagram
             Ledger->>Store: "New ordered acknowledgement entry"
         end
     end
+    end
 ```
 
 The server cannot prove receipt merely by writing an HTTP response; bytes may remain buffered or a
 connection may fail. `read_entries` therefore does not advance the cursor. It returns a short-lived
-delivery token bound to the reader principal, previous cursor, scan watermark, entry IDs, and page
-digest. The reader integration confirms only after receiving and validating the complete page.
+delivery token bound to the reader principal, ledger instance, previous cursor and chain anchor,
+scan watermark and resulting chain anchor, visible entry IDs, and page digest. The reader
+integration confirms only after receiving and validating the complete page.
 
 If confirmation is lost, the same entries may be delivered again. If confirmation succeeds, the
 cursor advances atomically to the scan watermark, including non-visible sequence positions already
 examined for that reader. This gives at-least-once delivery without silent omission. Entry IDs and
 content digests make replay detection deterministic.
+
+The service scans and verifies global positions before applying the immutable recipient predicate.
+The delivered page may therefore contain non-contiguous sequence values. That is normal visibility
+filtering; only a missing position in the unfiltered global scan is an integrity failure.
 
 Delivery confirmation is passive protocol bookkeeping: it proves only that the reader client
 confirmed the page. An `acknowledgement` is a new deliberate ledger entry proving that the agent
@@ -447,8 +535,10 @@ The service exposes an operator-readable, content-free delivery view for every r
 - cursor sequence and timestamp of its last confirmed advance;
 - count of currently visible unread entries;
 - last successful authenticated request time;
-- last acknowledgement sequence and timestamp; and
-- schema-capability freshness and any upgrade block.
+- last acknowledgement sequence and timestamp;
+- schema-capability freshness and any upgrade block; and
+- global ledger integrity state, incident identifier, cause, detection time, affected instance and
+  sequence boundary, and whether operator recovery is required.
 
 The view reports facts, not guessed process liveness. It must not label an agent online, dead, or
 healthy solely from cursor activity.
@@ -539,6 +629,79 @@ An armed listener may be documented later as a harness-specific optimization onl
 duration ceiling, restart behavior, credential lifetime, missed-event recovery, and false-wakeup
 behavior are proven. It never replaces durable polling.
 
+## Integrity failure classification and alerting
+
+The product keeps three operational outcomes distinct:
+
+| Condition | Required behavior |
+|---|---|
+| Feature disabled | Quiet and expected; operator relay is the configured active route. |
+| Store unavailable | Surface an unavailable, potentially transient condition; bounded retries are allowed and operator relay may be used meanwhile. |
+| Integrity failure | Return `ledger_integrity_failed`; stop ledger delivery and appends, alert the human, and never silently activate relay. |
+
+`ledger_integrity_failed` is a distinguished non-retryable class. Its stable causes are
+`sequence_duplicate` for duplicate sequence, `sequence_gap` for a global sequence gap,
+`chain_break` for a predecessor or content-digest break, `counter_head_mismatch` for counter/head
+disagreement, `rollback_divergence` for rollback or divergence, and `ledger_instance_mismatch` for
+a ledger-instance mismatch. It is explicitly excluded from database-unavailable and
+classified-transient retry handling; replaying a request against a suspect history is not recovery.
+
+Detection durably latches the service into integrity-failed state in lifecycle-manager-owned,
+content-free product control state outside the ledger database and canonical append chain. That
+state uses restrictive local permissions and atomic replacement, and the service mirrors the
+incident into database control metadata where possible. Failure to persist the external latch is a
+fail-closed readiness error: the current process remains stopped, and restart must repeat full
+verification before serving. The latch survives an ordinary service restart. While latched, every
+subsequent response that passes authentication carries the stable class, cause, incident
+identifier, instance ID, and safe sequence boundary; pre-authentication failures disclose nothing.
+Append, read, delivery-confirmation, cursor-advance, and acknowledgement operations remain stopped;
+only content-free status, audit, quarantine, and recovery operations remain available. The service
+never silently activates operator relay while this latch is set. Explicit manual relay may occur
+only as a human decision made after the integrity warning, outside automatic degradation logic.
+The latch takes precedence if PostgreSQL later becomes unavailable or the feature is subsequently
+disabled: neither transition clears, suppresses, or reclassifies the incident, and lifecycle status
+continues to expose it.
+
+Reader integrations must treat the service-reported class as a user-visible warning, stop the
+automated ledger handoff path, and preserve the incident identifier in safe diagnostics. They must
+not swallow it into logs, retry it, label it ordinary unavailability, or continue through relay
+without an explicit human decision. Wakeup remains out of scope, so the precise promise is that
+each participating agent warns on its next ledger interaction. Agents do not independently detect
+chain failures; they surface the service's result.
+
+The operator-readable delivery view exposes the global latched integrity state independently of
+any agent taking a turn. Its per-agent rows distinguish agents to which the service has returned
+the current incident from those that have not yet made a subsequent authenticated request. This
+does not prove that an integration rendered its required warning or that a human saw it. The view
+reports only the service-observable fact and does not label an idle agent unhealthy.
+
+## Chain-break recovery
+
+Detection does not authorize history rewriting. The lifecycle manager first stops normal traffic,
+captures the content-free incident metadata and external witnesses, and leaves the failed ledger
+instance quarantined read-only. A full audit proceeds from the declared genesis or recovery anchor
+until the first invalid position and identifies the last independently verified sequence and
+digest. Client witnesses and backup manifests may prove a later expected anchor, but rows beyond a
+chain break remain untrusted. Untrusted tail entries are never called final, repaired, or copied
+into another canonical chain.
+
+A successful full verification for same-instance latch clearing requires a repeated full audit of
+the complete chain, counter/head agreement, instance bindings, and every available external
+witness. Only then may an operator explicitly clear a proven false-positive latch on that instance.
+Automatic clearing is forbidden. A genuine chain break, sequence gap, divergent history, or
+unresolved rollback cannot be cleared in place.
+
+For a genuine break, the operator creates a new `ledger_instance_id` and immutable recovery
+metadata containing the incident ID, predecessor instance ID, and last independently verified
+sequence and digest. Its counter starts at that verified sequence and digest with no local entry
+rows; the first new entry receives the next sequence and uses the verified digest as the declared
+recovery anchor covered by its own `content_sha256`. Sequence never restarts within a recovery
+lineage. New client enrollment starts from the same anchor. The verified prefix remains in the
+quarantined predecessor and is not copied. The operator provisions new instance-bound credentials
+and client enrollment, verifies the recovery link, then explicitly activates the replacement. The
+predecessor's integrity latch remains part of its permanent status; operational recovery means
+switching to the linked replacement, never making the broken instance appear healthy.
+
 ## Default-off behavior and graceful degradation
 
 The feature toggle defaults to disabled. When disabled:
@@ -563,6 +726,9 @@ accepting traffic.
   with a stable content-free code; allocate no sequence and write no row.
 - Database transaction failure: roll back entry and counter together. Retry only classified
   transient failures and reuse the idempotency key.
+- Duplicate sequence, global sequence gap, chain break, counter/head disagreement, rollback or
+  divergence, or ledger-instance mismatch: return non-retryable `ledger_integrity_failed`, latch
+  the incident, and stop normal ledger operations without automatic relay.
 - Unknown entry schema: fail the whole read query and leave the cursor unchanged.
 - Lost delivery confirmation: redeliver at least once; never infer delivery.
 - Invalid, expired, replayed, or principal-mismatched delivery token: reject without cursor change.
@@ -584,6 +750,9 @@ entry, sequence, and delivery token identifiers without logging content or crede
 - append sequence, idempotency disposition, latency, and transaction outcome;
 - read range, scan watermark, page digest, delivery confirmation, cursor advance, and unread count;
 - schema capability reports and upgrade blockers;
+- integrity verification range and anchor, full-audit outcome, latched incident class and cause,
+  integrity-error delivery to each agent, explicit operator disposition, and replacement-instance
+  activation;
 - lifecycle backend, migration, readiness, and recovery outcomes; and
 - stable failure classification and final disposition.
 
@@ -600,6 +769,15 @@ reserved here.
 - Product-owned lifecycle manager and PostgreSQL-in-wslc loopback startup.
 - Migration framework, immutable envelope v1, transactional sequence counter, and schema
   capability/activation machinery.
+- Continuous integrity verification: sequence uniqueness, ledger-instance binding, chained
+  appends, counter/head agreement, readiness and on-demand full audits, and unfiltered global-range
+  verification before recipient filtering.
+- Integrity state and alerting: distinguished non-retryable causes, a restart-durable latch,
+  content-free operator status, user-visible warnings from each agent on its next interaction, and
+  no silent relay degradation.
+- Required chain-break recovery: quarantine the failed instance read-only, identify the last
+  verified anchor, preserve untrusted tail rows without laundering them, and activate a linked
+  replacement instance explicitly.
 - Streamable HTTP service with Origin, DNS-rebinding, authentication, session, and replay controls.
 - Per-instance principal mapping with asserted `agent_id`, role policy, and server-derived
   `authority`.
@@ -632,8 +810,11 @@ reserved here.
 ### Operations and extraction
 
 - PostgreSQL-in-Docker and native-Windows fallback deployment paths.
-- Credential rotation, backup/restore, corruption detection, restart/recovery, and upgrade
-  rehearsals.
+- Credential rotation plus periodic and at-rest integrity audits layered on continuous first-slice
+  verification.
+- Backup/restore manifests recorded outside the database snapshot; compare the backup manifest
+  during restore before activation, and rehearse rollback, divergence, restart, and recovery.
+- Upgrade and linked-instance recovery rehearsals without rewriting or copying untrusted history.
 - Independent package/service/container naming, distribution metadata, install/uninstall, and
   extraction from the Optimus repository.
 - Content-free operational observability and real release evidence across supported platforms.
@@ -649,11 +830,19 @@ reserved here.
   rulings and no entry satisfies approval.
 - Redaction tests use populated exact-secret/PII inventories, split/encoded secrets, path aliases,
   entropy candidates, deterministic serialization, final scans, and fail-closed errors.
-- Sequence tests cover concurrent appends, rollback, idempotent retry, conflicting retry, and no
-  committed gaps.
+- Sequence tests cover the database uniqueness constraint, concurrent appends, rollback,
+  idempotent retry, conflicting retry, counter/head drift, instance mismatch, predecessor and
+  content-digest validation, and no committed gaps.
 - Cursor tests cover page confirmation, lost confirmation, replay, compare-and-swap conflict,
   required explicit recipients, no implicit broadcast, immutable recipient filtering,
-  no-visible-entry watermarks, unread counts, and acknowledgement separation.
+  legitimate visible gaps, global-range gaps, instance/chain witness conflicts, rollback ahead of
+  the restored head, no-visible-entry watermarks, unread counts, and acknowledgement separation.
+- Integrity-state tests distinguish disabled, unavailable, and corrupt outcomes; verify every cause
+  latches across restart; reject retry, append, read, confirmation, cursor advance, acknowledgement,
+  and automatic relay; and require content-free operator status plus next-interaction client alerts.
+- Recovery tests quarantine the predecessor, reject in-place repair and automatic latch clearing,
+  select only the last verified anchor, preserve untrusted tails, bind the replacement genesis to
+  its recovery metadata, compare external backup manifests, and require explicit activation.
 - Version tests cover per-query failure, no partial result, no cursor movement, reader-first
   activation, stale client blockers, explicit retirement, and projection rebuilds.
 - Origin, token, audience, expiry, scope, session binding, replay, rate, and request-size tests fail

@@ -149,6 +149,69 @@ def test_a2a_ledger_freezes_recipient_visibility_in_the_first_slice() -> None:
     assert "recipient visibility" not in protocol_completion
 
 
+def test_a2a_ledger_integrity_detection_is_a_first_slice_contract() -> None:
+    design = _read(A2A_LEDGER_DESIGN)
+    normalized = " ".join(design.split())
+    first_slice = design.split("### Risk-bearing vertical slice", 1)[1].split("\n### ", 1)[0]
+
+    assert "`ledger_instance_id`" in design
+    assert "`prev_content_sha256`" in design
+    assert "`sequence` has a database `UNIQUE NOT NULL` constraint" in normalized
+    assert "unfiltered global sequence range" in normalized
+    assert "before recipient filtering" in normalized
+    assert "Visible sequence gaps are expected" in normalized
+    assert "Chain verification is service-side" in normalized
+    assert "Continuous integrity verification" in first_slice
+
+
+def test_a2a_ledger_integrity_failure_is_loud_latched_and_non_retryable() -> None:
+    design = _read(A2A_LEDGER_DESIGN)
+    normalized = " ".join(design.split())
+    first_slice = design.split("### Risk-bearing vertical slice", 1)[1].split("\n### ", 1)[0]
+
+    assert "## Integrity failure classification and alerting" in design
+    assert "`ledger_integrity_failed`" in design
+    assert "non-retryable" in normalized
+    assert "never silently activates operator relay" in normalized
+    assert "every subsequent response" in normalized
+    assert "user-visible warning" in normalized
+    assert "each participating agent warns on its next ledger interaction" in normalized
+    assert "Integrity state and alerting" in first_slice
+    for cause in (
+        "duplicate sequence",
+        "global sequence gap",
+        "chain break",
+        "counter/head disagreement",
+        "rollback or divergence",
+        "ledger-instance mismatch",
+    ):
+        assert cause in normalized
+
+
+def test_a2a_ledger_chain_break_recovery_and_rollback_residual_are_explicit() -> None:
+    design = _read(A2A_LEDGER_DESIGN)
+    normalized = " ".join(design.split())
+    accepted_residuals = design.split("### Accepted residuals", 1)[1].split("\n## ", 1)[0]
+    first_slice = design.split("### Risk-bearing vertical slice", 1)[1].split("\n### ", 1)[0]
+    operations = design.split("### Operations and extraction", 1)[1].split("\n## ", 1)[0]
+    normalized_lower = normalized.lower()
+    accepted_residuals_lower = " ".join(accepted_residuals.split()).lower()
+    first_slice_lower = " ".join(first_slice.split()).lower()
+    operations_lower = " ".join(operations.split()).lower()
+
+    assert "## Chain-break recovery" in design
+    assert "last independently verified sequence and digest" in normalized_lower
+    assert "untrusted tail entries are never called final, repaired, or copied" in normalized_lower
+    assert "quarantined read-only" in normalized_lower
+    assert "successful full verification" in normalized_lower
+    assert "linked replacement instance" in first_slice_lower
+    assert "rollback occurs before any external client witness" in accepted_residuals_lower
+    assert "backup manifest" in accepted_residuals_lower
+    assert "head sequence and digest" in accepted_residuals_lower
+    assert "periodic and at-rest integrity audits" in operations_lower
+    assert "compare the backup manifest during restore" in operations_lower
+
+
 def test_every_optimus_pool_entry_has_one_canonical_status() -> None:
     entries = _entry_sections(_read(OPTIMUS_POOL))
 
