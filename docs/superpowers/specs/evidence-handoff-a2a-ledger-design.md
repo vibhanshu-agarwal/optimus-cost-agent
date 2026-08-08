@@ -266,7 +266,7 @@ Every committed entry has one immutable envelope:
 | `context_id` | A2A-aligned logical interaction grouping. |
 | `task_id` | Optional A2A-aligned handoff/task identity. |
 | `in_reply_to` | Optional immutable reference to an earlier entry. |
-| `recipient_agent_ids` | Explicit registered recipients; used for visibility and unread counts. |
+| `recipient_agent_ids` | Required non-empty, duplicate-free set of registered recipients; immutable input to visibility and unread counts. |
 | `message` | A2A-aligned sanitized `Message` with bounded `Part` values. |
 | `artifacts` | Zero or more A2A-aligned metadata-only `Artifact` references. |
 | `principal_id` | Server-observed credential principal; never accepted from the body. |
@@ -280,6 +280,27 @@ Every committed entry has one immutable envelope:
 
 The request body contains only client-authorable fields. Server-owned fields are absent from the
 client schema rather than accepted and overwritten.
+
+### Frozen v1 recipient visibility
+
+Every v1 append, including the first-slice `review-ruling`, must name at least one registered
+recipient. The server rejects an empty list, duplicates, unknown or retired agent IDs, wildcards,
+and role or context aliases before redaction and sequence assignment. v1 has no implicit sender
+copy, broadcast audience, empty-list default, context-membership expansion, or role-derived
+audience. A sender that also needs delivery through its own reader cursor names itself explicitly.
+
+The recipient set is canonicalized and stored in the immutable envelope. An entry is visible in a
+reader's delivery feed if and only if that reader's stable asserted `agent_id` is in the stored
+`recipient_agent_ids`. Registration, role, context membership, principal status, and later schema
+activation cannot reinterpret an existing entry's visibility. Agent IDs used by committed entries
+are never reassigned.
+
+Unread count is the number of committed entries after the reader's confirmed cursor whose stored
+recipient set contains that reader. The cursor may therefore advance to a scan watermark past
+non-visible positions without risking future omission: those existing entries can never become
+visible to that reader. A future audience model may govern newly appended entries only. Historical
+content needed by a newly eligible recipient must be appended as a new referenced entry; v1 never
+mutates recipients, retroactively broadens visibility, or rewinds cursors to reinterpret history.
 
 ### A2A correspondence
 
@@ -307,7 +328,7 @@ or A2A transport support.
 | `acknowledgement` | Records deliberate action or acceptance against a referenced entry. | Named recipient or operator principal; separate from delivery confirmation. |
 
 There is no approval entry kind. An acknowledgement is not approval, and a review ruling is not
-operator authorization.
+operator authorization. The global non-empty explicit-recipient rule applies to all six kinds.
 
 ## Write path and total ordering
 
@@ -583,6 +604,9 @@ reserved here.
 - Per-instance principal mapping with asserted `agent_id`, role policy, and server-derived
   `authority`.
 - Product-owned redaction runtime-input supplier and in-memory structured ingress path.
+- Frozen v1 recipient visibility: non-empty explicit recipients on every entry, immutable
+  membership-based delivery, no implicit broadcast, and safe advancement past non-visible
+  positions.
 - `review-ruling` append/read only, proving reviewer succeeds, implementer is rejected,
   client-supplied authority is rejected, and no unredacted row exists after any failure.
 - Delivery token, cursor confirmation, unread count, and per-agent delivery view.
@@ -592,8 +616,8 @@ reserved here.
 
 - Add `question`, `answer`, `evidence-notice`, `handoff`, and `acknowledgement` through the already
   proven version-activation gate.
-- Freeze A2A correspondence, recipient visibility, replies, task projections, artifact-reference
-  shape, pagination, idempotency, concurrency, and acknowledgement semantics.
+- Freeze the remaining A2A correspondence, replies, task projections, artifact-reference shape,
+  pagination, idempotency, concurrency, and acknowledgement semantics.
 - Prove coordinated reader-first activation before any new writer schema is enabled.
 
 ### Evidence bridge
@@ -628,7 +652,8 @@ reserved here.
 - Sequence tests cover concurrent appends, rollback, idempotent retry, conflicting retry, and no
   committed gaps.
 - Cursor tests cover page confirmation, lost confirmation, replay, compare-and-swap conflict,
-  recipient filtering, no-visible-entry watermarks, unread counts, and acknowledgement separation.
+  required explicit recipients, no implicit broadcast, immutable recipient filtering,
+  no-visible-entry watermarks, unread counts, and acknowledgement separation.
 - Version tests cover per-query failure, no partial result, no cursor movement, reader-first
   activation, stale client blockers, explicit retirement, and projection rebuilds.
 - Origin, token, audience, expiry, scope, session binding, replay, rate, and request-size tests fail

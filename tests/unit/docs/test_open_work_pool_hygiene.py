@@ -135,6 +135,20 @@ def test_a2a_ledger_reachability_blocker_is_resolved_and_design_is_owned() -> No
     assert PLAN_NUMBER_RE.search(_read(A2A_LEDGER_DESIGN)) is None
 
 
+def test_a2a_ledger_freezes_recipient_visibility_in_the_first_slice() -> None:
+    design = _read(A2A_LEDGER_DESIGN)
+    normalized = " ".join(design.split())
+    first_slice = design.split("### Risk-bearing vertical slice", 1)[1].split("\n### ", 1)[0]
+    protocol_completion = design.split("### Ledger protocol completion", 1)[1].split("\n### ", 1)[0]
+
+    assert "### Frozen v1 recipient visibility" in design
+    assert "must name at least one registered recipient" in normalized
+    assert "if and only if" in normalized
+    assert "cannot reinterpret an existing entry's visibility" in design
+    assert "Frozen v1 recipient visibility" in first_slice
+    assert "recipient visibility" not in protocol_completion
+
+
 def test_every_optimus_pool_entry_has_one_canonical_status() -> None:
     entries = _entry_sections(_read(OPTIMUS_POOL))
 
