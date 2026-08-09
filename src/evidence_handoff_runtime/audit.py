@@ -1,7 +1,7 @@
-"""Narrow content-free audit recorder for review-ruling append/read (Task 7).
+"""Narrow content-free audit recorder for review-ruling and admin events.
 
-Records only kind, schema, digest, counts, identity IDs, sequence, and stable
-failure code. Delivery/cursor/integrity/lifecycle fields belong to later tasks.
+Task 7: kind, schema, digest, counts, identity IDs, sequence, failure code.
+Task 9: administrative retirement/activation facts (no entry bodies).
 """
 
 from __future__ import annotations
@@ -21,6 +21,9 @@ _ALLOWED_FIELDS = frozenset(
         "agent_id",
         "sequence",
         "failure_code",
+        "audit_event_id",
+        "retired",
+        "event_type",
     }
 )
 _FORBIDDEN_SUBSTRINGS = frozenset(

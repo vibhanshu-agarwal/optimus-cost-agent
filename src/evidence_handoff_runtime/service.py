@@ -363,7 +363,13 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
     from evidence_handoff.redaction.ingress import RequestRedactionInputs, StructuredIngress
     from evidence_handoff.redaction.models import RedactionRuntimeInputs
     from evidence_handoff_runtime.auth import AuthError
+    from evidence_handoff_runtime.capabilities import (
+        ActivationError,
+        CapabilityCoordinator,
+        ReaderCapability,
+    )
     from evidence_handoff_runtime.delivery import DeliveryError, DeliveryService
+    from evidence_handoff_runtime.observability import build_delivery_views
     from evidence_handoff_runtime.policy import (
         PolicyError,
         attempt_review_ruling_append,
@@ -387,6 +393,8 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
             "ledger.review_ruling_read",
             "ledger.delivery_read",
             "ledger.delivery_confirm",
+            "ledger.capabilities_status",
+            "ledger.delivery_status",
         }
     )
 
@@ -489,7 +497,10 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
                     store=auth_ctx["store"],
                     request_inputs=_request_inputs(credential),
                     known_agent_ids=auth_ctx["known_agent_ids"],
-                    retired_agent_ids=auth_ctx["retired_agent_ids"],
+                    # Authoritative retirement comes from ReaderCapability.retired (Task 9),
+                    # unioned with any static bootstrap set from Task 8.
+                    retired_agent_ids=frozenset(auth_ctx["retired_agent_ids"])
+                    | frozenset(auth_ctx["store"].retired_agent_ids()),
                 )
             except PolicyError as exc:
                 raise RuntimeError(f"policy_rejected:{exc.code}") from exc
@@ -523,6 +534,16 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
                 raise RuntimeError(f"policy_rejected:{exc.code}") from exc
 
         delivery = DeliveryService(store=auth_ctx["store"])
+        _enrollments = auth_ctx["validator"].enrollments
+        _registered_readers = {
+            enrollment.principal_id: enrollment.agent_id
+            for enrollment in _enrollments.values()
+            if "ledger.read" in enrollment.scopes
+        }
+        capabilities = CapabilityCoordinator(
+            store=auth_ctx["store"],
+            registered_readers=_registered_readers,
+        )
 
         def _serialize_witness(witness: Any) -> dict[str, Any]:
             return {
@@ -633,6 +654,162 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
                 "unread_count": int(status.unread_count),
                 "witness": _serialize_witness(status.witness),
             }
+
+        @server.tool(
+            name="ledger.capabilities_status",
+            description="Report reader capabilities, activate writers, or retire principals",
+            structured_output=False,
+        )
+        def capabilities_status(
+            action: str = "status",
+            supported_schemas: list[str] | None = None,
+            schema_id: str | None = None,
+            principal_id: str | None = None,
+        ):
+            header, sid, bound = _bound_auth()
+            try:
+                principal = auth_ctx["validator"].validate(
+                    header=header,
+                    request={
+                        "ledger_instance_id": auth_ctx["ledger_instance_id"],
+                        "required_scope": "ledger.read",
+                    },
+                )
+                auth_ctx["sessions"].validate(
+                    sid,
+                    principal,
+                    protocol_version=str(bound.get("protocol_version") or "2025-11-25"),
+                )
+                now = datetime.now(tz=UTC)
+                integrity = auth_ctx["store"].global_integrity_fact()
+                warning_incident = (
+                    str(integrity["incident_id"])
+                    if integrity.get("latched") and integrity.get("incident_id")
+                    else None
+                )
+                auth_ctx["store"].touch_authenticated_request(
+                    principal_id=principal.principal_id,
+                    agent_id=principal.agent_id,
+                    now=now,
+                    warning_incident_id=warning_incident,
+                )
+                action_name = str(action or "status")
+                if action_name == "report":
+                    schemas = frozenset(str(item) for item in (supported_schemas or ()))
+                    if not schemas:
+                        raise ActivationError("supported_schemas_required")
+                    cap = ReaderCapability(
+                        agent_id=principal.agent_id,
+                        principal_id=principal.principal_id,
+                        supported_schemas=schemas,
+                        reported_at=now,
+                        retired=False,
+                    )
+                    capabilities.record_capability(cap)
+                    return {
+                        "principal_id": cap.principal_id,
+                        "agent_id": cap.agent_id,
+                        "supported_schemas": sorted(cap.supported_schemas),
+                        "reported_at": cap.reported_at.isoformat(),
+                        "retired": False,
+                    }
+                if action_name == "activate_writer":
+                    if not schema_id:
+                        raise ActivationError("schema_id_required")
+                    status = capabilities.activate_writer(str(schema_id), caller=principal)
+                    return {
+                        "schema_id": status.schema_id,
+                        "writer_active": status.writer_active,
+                        "activated_at": status.activated_at.isoformat(),
+                    }
+                if action_name == "retire_principal":
+                    target = str(principal_id or "")
+                    if not target:
+                        raise ActivationError("principal_id_required")
+                    agent = _registered_readers.get(target)
+                    result = capabilities.retire_principal(
+                        target, caller=principal, agent_id=agent
+                    )
+                    return {
+                        "principal_id": result.principal_id,
+                        "agent_id": result.agent_id,
+                        "retired": result.retired,
+                        "audit_event_id": result.audit_event_id,
+                    }
+                # Default: content-free capability/preflight surface.
+                blockers = (
+                    capabilities.preflight_activation(str(schema_id)).stale_or_incompatible_principal_ids
+                    if schema_id
+                    else frozenset()
+                )
+                return {
+                    "action": "status",
+                    "active_writer_schemas": sorted(
+                        sid
+                        for sid in ("review-ruling.v1", "handoff.v1")
+                        if auth_ctx["store"].is_writer_active(sid)
+                    ),
+                    "activation_blockers": sorted(blockers),
+                }
+            except (ActivationError, AuthError, SessionError) as exc:
+                code = getattr(exc, "code", str(exc))
+                raise RuntimeError(f"capability_rejected:{code}") from exc
+
+        @server.tool(
+            name="ledger.delivery_status",
+            description="Content-free per-reader delivery facts (no liveness guesses)",
+            structured_output=False,
+        )
+        def delivery_status():
+            header, sid, bound = _bound_auth()
+            try:
+                principal = auth_ctx["validator"].validate(
+                    header=header,
+                    request={
+                        "ledger_instance_id": auth_ctx["ledger_instance_id"],
+                        "required_scope": "ledger.read",
+                    },
+                )
+                auth_ctx["sessions"].validate(
+                    sid,
+                    principal,
+                    protocol_version=str(bound.get("protocol_version") or "2025-11-25"),
+                )
+                now = datetime.now(tz=UTC)
+                integrity = auth_ctx["store"].global_integrity_fact()
+                warning_incident = (
+                    str(integrity["incident_id"])
+                    if integrity.get("latched") and integrity.get("incident_id")
+                    else None
+                )
+                auth_ctx["store"].touch_authenticated_request(
+                    principal_id=principal.principal_id,
+                    agent_id=principal.agent_id,
+                    now=now,
+                    warning_incident_id=warning_incident,
+                )
+                # Ensure enrolled readers appear even before first capability report.
+                for pid, aid in _registered_readers.items():
+                    try:
+                        auth_ctx["store"].get_reader_capability(pid)
+                    except Exception:
+                        auth_ctx["store"].upsert_reader_capability(
+                            ReaderCapability(
+                                agent_id=aid,
+                                principal_id=pid,
+                                supported_schemas=frozenset(),
+                                reported_at=now,
+                                retired=False,
+                            )
+                        )
+                views = build_delivery_views(store=auth_ctx["store"])
+                return {
+                    "readers": [view.to_mapping() for view in views],
+                    "integrity": dict(integrity),
+                }
+            except (AuthError, SessionError) as exc:
+                code = getattr(exc, "code", str(exc))
+                raise RuntimeError(f"delivery_status_rejected:{code}") from exc
 
     security = TransportSecuritySettings(
         enable_dns_rebinding_protection=True,

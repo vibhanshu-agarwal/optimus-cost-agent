@@ -224,6 +224,13 @@ class LifecycleManager:
             self._migrate_unlocked()
             return self._ready_status() if self._running else self._unavailable_status("migrate_preflight_ok")
 
+    def preflight_schema_activation(self, coordinator: object, schema_id: str) -> object:
+        """Task 9: delegate writer-activation preflight to CapabilityCoordinator (facts only)."""
+        preflight = getattr(coordinator, "preflight_activation", None)
+        if not callable(preflight):
+            raise LifecycleError("capability_coordinator_required")
+        return preflight(schema_id)
+
     def _initialize_unlocked(self) -> None:
         if self._ledger_instance_id is None:
             self._ledger_instance_id = str(uuid.uuid4())

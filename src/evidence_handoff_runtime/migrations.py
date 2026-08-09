@@ -21,6 +21,10 @@ _PINNED: tuple[tuple[str, str], ...] = (
         "002_sequence_unique_per_instance.sql",
         "ebacad0524aa02420eafbdcc0c9f640ad90bed65f72745064520360ffa695489",
     ),
+    (
+        "003_reader_capabilities.sql",
+        "c6daf5548eb6043bb8fb0ef036ac43d4f0890ceb08dff103b31fa370fb96b973",
+    ),
 )
 
 

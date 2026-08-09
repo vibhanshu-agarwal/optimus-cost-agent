@@ -28,6 +28,12 @@ from evidence_handoff.ledger.models import (
     StoreStatus,
     VerifiedRange,
 )
+from evidence_handoff_runtime.capabilities import (
+    ActivationStatus,
+    AdministrativeAuditResult,
+    ReaderCapability,
+    capability_report_is_fresh,
+)
 from evidence_handoff_runtime.delivery import DeliveryError
 from evidence_handoff_runtime.integrity import (
     IntegrityCause,
@@ -636,11 +642,13 @@ class PostgresLedgerStore:
             conn.execute(
                 """
                 INSERT INTO evidence_handoff_delivery_cursors(
-                    principal_id, agent_id, ledger_instance_id, confirmed_sequence, chain_head_sha256
-                ) VALUES (%s, %s, %s, %s, %s)
+                    principal_id, agent_id, ledger_instance_id, confirmed_sequence,
+                    chain_head_sha256, last_advanced_at
+                ) VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (principal_id, agent_id, ledger_instance_id) DO UPDATE
                 SET confirmed_sequence = EXCLUDED.confirmed_sequence,
-                    chain_head_sha256 = EXCLUDED.chain_head_sha256
+                    chain_head_sha256 = EXCLUDED.chain_head_sha256,
+                    last_advanced_at = EXCLUDED.last_advanced_at
                 """,
                 (
                     token.principal_id,
@@ -648,6 +656,7 @@ class PostgresLedgerStore:
                     token.ledger_instance_id,
                     int(token.watermark),
                     chain_head,
+                    now,
                 ),
             )
             conn.commit()
@@ -964,6 +973,332 @@ class PostgresLedgerStore:
             idempotency_key=row["idempotency_key"],
             prev_content_sha256=row["prev_content_sha256"],
             content_sha256=row["content_sha256"],
+        )
+
+    def upsert_reader_capability(self, capability: ReaderCapability) -> None:
+        schemas = sorted(str(item) for item in capability.supported_schemas)
+        with psycopg.connect(self._conninfo) as conn:
+            conn.execute(
+                """
+                INSERT INTO evidence_handoff_reader_capabilities(
+                    principal_id, agent_id, ledger_instance_id, supported_schemas,
+                    reported_at, retired
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (principal_id, ledger_instance_id) DO UPDATE
+                SET agent_id = EXCLUDED.agent_id,
+                    supported_schemas = EXCLUDED.supported_schemas,
+                    reported_at = EXCLUDED.reported_at,
+                    retired = EXCLUDED.retired
+                """,
+                (
+                    capability.principal_id,
+                    capability.agent_id,
+                    self._ledger_instance_id,
+                    schemas,
+                    capability.reported_at,
+                    bool(capability.retired),
+                ),
+            )
+            conn.commit()
+
+    def get_reader_capability(self, principal_id: str) -> ReaderCapability:
+        with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
+            row = conn.execute(
+                """
+                SELECT principal_id, agent_id, supported_schemas, reported_at, retired
+                FROM evidence_handoff_reader_capabilities
+                WHERE principal_id = %s AND ledger_instance_id = %s
+                """,
+                (principal_id, self._ledger_instance_id),
+            ).fetchone()
+        if row is None:
+            raise LedgerStoreError("capability_not_found")
+        return self._row_to_reader_capability(row)
+
+    def list_reader_capabilities(self) -> tuple[ReaderCapability, ...]:
+        with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
+            rows = conn.execute(
+                """
+                SELECT principal_id, agent_id, supported_schemas, reported_at, retired
+                FROM evidence_handoff_reader_capabilities
+                WHERE ledger_instance_id = %s
+                ORDER BY principal_id ASC
+                """,
+                (self._ledger_instance_id,),
+            ).fetchall()
+        return tuple(self._row_to_reader_capability(row) for row in rows)
+
+    def retired_agent_ids(self) -> frozenset[str]:
+        with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
+            rows = conn.execute(
+                """
+                SELECT agent_id
+                FROM evidence_handoff_reader_capabilities
+                WHERE ledger_instance_id = %s AND retired = TRUE
+                """,
+                (self._ledger_instance_id,),
+            ).fetchall()
+        return frozenset(str(row["agent_id"]) for row in rows)
+
+    def is_writer_active(self, schema_id: str) -> bool:
+        with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
+            row = conn.execute(
+                """
+                SELECT writer_active
+                FROM evidence_handoff_capabilities
+                WHERE schema_id = %s
+                """,
+                (schema_id,),
+            ).fetchone()
+        return bool(row and row["writer_active"])
+
+    def set_writer_active(self, schema_id: str, *, active: bool) -> ActivationStatus:
+        now = datetime.now(tz=UTC)
+        with psycopg.connect(self._conninfo) as conn:
+            updated = conn.execute(
+                """
+                UPDATE evidence_handoff_capabilities
+                SET writer_active = %s
+                WHERE schema_id = %s
+                """,
+                (bool(active), schema_id),
+            )
+            if updated.rowcount == 0:
+                conn.execute(
+                    """
+                    INSERT INTO evidence_handoff_capabilities(
+                        schema_id, kind, writer_active, reader_active
+                    ) VALUES (%s, %s, %s, TRUE)
+                    """,
+                    (schema_id, schema_id.split(".")[0], bool(active)),
+                )
+            conn.commit()
+        return ActivationStatus(schema_id=schema_id, writer_active=bool(active), activated_at=now)
+
+    def retire_principal(
+        self, principal_id: str, *, agent_id: str | None = None
+    ) -> AdministrativeAuditResult:
+        with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
+            row = conn.execute(
+                """
+                SELECT agent_id
+                FROM evidence_handoff_reader_capabilities
+                WHERE principal_id = %s AND ledger_instance_id = %s
+                FOR UPDATE
+                """,
+                (principal_id, self._ledger_instance_id),
+            ).fetchone()
+            if row is None:
+                if not agent_id:
+                    raise LedgerStoreError("capability_not_found")
+                conn.execute(
+                    """
+                    INSERT INTO evidence_handoff_reader_capabilities(
+                        principal_id, agent_id, ledger_instance_id, supported_schemas,
+                        reported_at, retired
+                    ) VALUES (%s, %s, %s, %s, %s, TRUE)
+                    """,
+                    (
+                        principal_id,
+                        agent_id,
+                        self._ledger_instance_id,
+                        [],
+                        datetime.now(tz=UTC),
+                    ),
+                )
+                resolved_agent = str(agent_id)
+            else:
+                resolved_agent = str(row["agent_id"])
+                conn.execute(
+                    """
+                    UPDATE evidence_handoff_reader_capabilities
+                    SET retired = TRUE
+                    WHERE principal_id = %s AND ledger_instance_id = %s
+                    """,
+                    (principal_id, self._ledger_instance_id),
+                )
+            agent_id = resolved_agent
+            audit_id = str(uuid.uuid4())
+            conn.execute(
+                """
+                INSERT INTO evidence_handoff_audit(event_type, payload_json)
+                VALUES (%s, %s::jsonb)
+                """,
+                (
+                    "administrative_retire_principal",
+                    json.dumps(
+                        {
+                            "principal_id": principal_id,
+                            "agent_id": agent_id,
+                            "audit_event_id": audit_id,
+                            "retired": True,
+                        },
+                        sort_keys=True,
+                    ),
+                ),
+            )
+            conn.commit()
+        return AdministrativeAuditResult(
+            principal_id=principal_id,
+            agent_id=agent_id,
+            retired=True,
+            audit_event_id=audit_id,
+        )
+
+    def touch_authenticated_request(
+        self,
+        *,
+        principal_id: str,
+        agent_id: str,
+        now: datetime,
+        warning_incident_id: str | None = None,
+    ) -> None:
+        with psycopg.connect(self._conninfo) as conn:
+            conn.execute(
+                """
+                INSERT INTO evidence_handoff_reader_capabilities(
+                    principal_id, agent_id, ledger_instance_id, supported_schemas,
+                    reported_at, retired, last_authenticated_request_at,
+                    warning_delivered_incident_id
+                ) VALUES (%s, %s, %s, %s, %s, FALSE, %s, %s)
+                ON CONFLICT (principal_id, ledger_instance_id) DO UPDATE
+                SET last_authenticated_request_at = EXCLUDED.last_authenticated_request_at,
+                    warning_delivered_incident_id = COALESCE(
+                        EXCLUDED.warning_delivered_incident_id,
+                        evidence_handoff_reader_capabilities.warning_delivered_incident_id
+                    )
+                """,
+                (
+                    principal_id,
+                    agent_id,
+                    self._ledger_instance_id,
+                    [],
+                    now,
+                    now,
+                    warning_incident_id,
+                ),
+            )
+            conn.commit()
+
+    def global_integrity_fact(self) -> dict[str, Any]:
+        if self._control_root is None:
+            return {
+                "latched": False,
+                "incident_id": None,
+                "cause": None,
+                "safe_boundary_sequence": None,
+            }
+        incident = IntegrityLatch(control_root=self._control_root).load()
+        if incident is None:
+            return {
+                "latched": False,
+                "incident_id": None,
+                "cause": None,
+                "safe_boundary_sequence": None,
+            }
+        cause = getattr(incident.cause, "value", incident.cause)
+        return {
+            "latched": True,
+            "incident_id": incident.incident_id,
+            "cause": str(cause),
+            "safe_boundary_sequence": incident.safe_boundary_sequence,
+        }
+
+    def list_delivery_facts(
+        self,
+        *,
+        now: datetime | None = None,
+        stale_after: Any | None = None,
+    ) -> tuple[dict[str, Any], ...]:
+        from datetime import timedelta as _timedelta
+
+        from evidence_handoff_runtime.capabilities import CAPABILITY_STALE_AFTER
+
+        integrity = self.global_integrity_fact()
+        incident_id = integrity.get("incident_id")
+        clock = now or datetime.now(tz=UTC)
+        freshness_window = (
+            stale_after if isinstance(stale_after, _timedelta) else CAPABILITY_STALE_AFTER
+        )
+        with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    rc.principal_id,
+                    rc.agent_id,
+                    rc.supported_schemas,
+                    rc.reported_at,
+                    rc.retired,
+                    rc.last_authenticated_request_at,
+                    rc.warning_delivered_incident_id,
+                    dc.confirmed_sequence,
+                    dc.last_advanced_at
+                FROM evidence_handoff_reader_capabilities rc
+                LEFT JOIN evidence_handoff_delivery_cursors dc
+                  ON dc.principal_id = rc.principal_id
+                 AND dc.agent_id = rc.agent_id
+                 AND dc.ledger_instance_id = rc.ledger_instance_id
+                WHERE rc.ledger_instance_id = %s
+                ORDER BY rc.principal_id ASC
+                """,
+                (self._ledger_instance_id,),
+            ).fetchall()
+        facts: list[dict[str, Any]] = []
+        for row in rows:
+            confirmed = int(row["confirmed_sequence"] or 0)
+            unread = self.count_visible_unread(
+                agent_id=str(row["agent_id"]),
+                ledger_instance_id=self._ledger_instance_id,
+                after_sequence=confirmed,
+            )
+            warning = "not_yet_requested"
+            delivered_id = row.get("warning_delivered_incident_id")
+            if incident_id and delivered_id and str(delivered_id) == str(incident_id):
+                warning = "delivered"
+            schemas = row.get("supported_schemas") or ()
+            facts.append(
+                {
+                    "agent_id": str(row["agent_id"]),
+                    "principal_id": str(row["principal_id"]),
+                    "principal_status": "retired" if row["retired"] else "active",
+                    "confirmed_sequence": confirmed,
+                    "last_confirmed_at": row.get("last_advanced_at"),
+                    "visible_unread_count": unread,
+                    "last_authenticated_request_at": row.get("last_authenticated_request_at"),
+                    "last_acknowledgement_sequence": None,
+                    "last_acknowledgement_at": None,
+                    "capability_reported_at": row.get("reported_at"),
+                    "capability_fresh": capability_report_is_fresh(
+                        row.get("reported_at"),
+                        now=clock,
+                        stale_after=freshness_window,
+                        has_schemas=bool(schemas),
+                    ),
+                    "activation_blocked": False,
+                    "warning_delivery": warning,
+                }
+            )
+        return tuple(facts)
+
+    def rebuild_delivery_projection(self) -> dict[str, Any]:
+        facts = self.list_delivery_facts()
+        return {
+            "rebuilt_rows": len(facts),
+            "source": "canonical_entries",
+            "authoritative_for_entry_content": False,
+        }
+
+    def _row_to_reader_capability(self, row: dict[str, Any]) -> ReaderCapability:
+        schemas = row["supported_schemas"] or ()
+        reported = row["reported_at"]
+        if getattr(reported, "tzinfo", None) is None:
+            reported = reported.replace(tzinfo=UTC)
+        return ReaderCapability(
+            agent_id=str(row["agent_id"]),
+            principal_id=str(row["principal_id"]),
+            supported_schemas=frozenset(str(item) for item in schemas),
+            reported_at=reported,
+            retired=bool(row["retired"]),
         )
 
 
