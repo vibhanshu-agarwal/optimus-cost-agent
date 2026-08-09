@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
@@ -340,10 +341,47 @@ class StoreStatus:
     last_content_sha256: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class DeliveryToken:
+    token_id: str
+    principal_id: str
+    agent_id: str
+    ledger_instance_id: str
+    previous_cursor: int
+    previous_witness: IntegrityWitness
+    watermark: int
+    resulting_witness: IntegrityWitness
+    visible_entry_ids: tuple[str, ...]
+    page_digest: str
+    expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class DeliveryPage:
+    entries: tuple[ImmutableEntryEnvelope, ...]
+    watermark: int
+    page_digest: str
+    delivery_token: DeliveryToken
+    unread_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class CursorStatus:
+    principal_id: str
+    agent_id: str
+    confirmed_sequence: int
+    last_advanced_at: datetime
+    unread_count: int
+    witness: IntegrityWitness
+
+
 __all__ = [
     "ACTIVE_WRITER_KINDS",
     "AppendResult",
     "ArtifactRef",
+    "CursorStatus",
+    "DeliveryPage",
+    "DeliveryToken",
     "EntryDraft",
     "EntryKind",
     "EntryMessage",

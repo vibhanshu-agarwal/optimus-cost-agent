@@ -73,20 +73,44 @@ class PolicyDecision:
         return PolicyDecision(allowed=True, identity=identity)
 
 
-def _validate_recipients(
+def validate_recipients(
     recipients: list[str] | tuple[str, ...],
     *,
     known_agent_ids: frozenset[str],
+    retired_agent_ids: frozenset[str] = frozenset(),
 ) -> None:
+    """Reject empty, duplicate, unknown, retired, wildcard, and alias recipients."""
     if not recipients:
         raise PolicyError("recipients_required")
     if len(recipients) != len(set(recipients)):
         raise PolicyError("duplicate_recipients")
     for agent_id in recipients:
-        if not str(agent_id).strip():
+        value = str(agent_id)
+        if not value.strip():
             raise PolicyError("invalid_recipient")
-        if str(agent_id) not in known_agent_ids:
+        if value == "*":
+            raise PolicyError("wildcard_recipient")
+        if value.startswith("role:"):
+            raise PolicyError("role_alias_recipient")
+        if value.startswith("context:"):
+            raise PolicyError("context_alias_recipient")
+        if value in retired_agent_ids:
+            raise PolicyError("retired_recipient")
+        if value not in known_agent_ids:
             raise PolicyError("unknown_recipient")
+
+
+def _validate_recipients(
+    recipients: list[str] | tuple[str, ...],
+    *,
+    known_agent_ids: frozenset[str],
+    retired_agent_ids: frozenset[str] = frozenset(),
+) -> None:
+    validate_recipients(
+        recipients,
+        known_agent_ids=known_agent_ids,
+        retired_agent_ids=retired_agent_ids,
+    )
 
 
 def _entry_draft_from_client_fields(client_fields: Mapping[str, Any]) -> EntryDraft:
@@ -161,6 +185,7 @@ def attempt_review_ruling_append(
     store: Any,
     request_inputs: Any,
     known_agent_ids: frozenset[str],
+    retired_agent_ids: frozenset[str] = frozenset(),
     audit: Any | None = None,
 ) -> Any:
     """Auth → session → policy → real StructuredIngress(EntryDraft) → store.append."""
@@ -179,7 +204,11 @@ def attempt_review_ruling_append(
         client_fields=client_fields,
     )
     recipients = list(client_fields.get("recipient_agent_ids") or ())
-    _validate_recipients(recipients, known_agent_ids=known_agent_ids)
+    _validate_recipients(
+        recipients,
+        known_agent_ids=known_agent_ids,
+        retired_agent_ids=retired_agent_ids,
+    )
     draft = _entry_draft_from_client_fields(client_fields)
     sanitized = ingress.sanitize(draft, request_inputs)
     if isinstance(sanitized, IngressRejection) or getattr(sanitized, "ok", True) is False:
@@ -294,4 +323,5 @@ __all__ = [
     "PolicyError",
     "attempt_review_ruling_append",
     "attempt_review_ruling_read",
+    "validate_recipients",
 ]

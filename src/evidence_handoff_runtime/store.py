@@ -16,6 +16,8 @@ from evidence_handoff.ledger.errors import LedgerStoreError, LedgerValidationErr
 from evidence_handoff.ledger.models import (
     AppendResult,
     ArtifactRef,
+    CursorStatus,
+    DeliveryToken,
     EntryKind,
     EntryMessage,
     ImmutableEntryEnvelope,
@@ -26,6 +28,7 @@ from evidence_handoff.ledger.models import (
     StoreStatus,
     VerifiedRange,
 )
+from evidence_handoff_runtime.delivery import DeliveryError
 from evidence_handoff_runtime.integrity import (
     IntegrityCause,
     IntegrityIncident,
@@ -415,23 +418,301 @@ class PostgresLedgerStore:
         watermark: int,
         anchor: object,
     ) -> VerifiedRange:
+        """Verify contiguous global positions from start through watermark.
+
+        ``reader_cursor`` is the first sequence to include (confirmed_cursor + 1).
+        Chain continuity is anchored by ``anchor``'s digest (cursor chain head).
+        """
         self._refuse_if_integrity_latched()
+        start = int(reader_cursor)
+        end = int(watermark)
+        if start < 1 or end < start:
+            raise LedgerValidationError("invalid_range")
+        expected_prev = getattr(anchor, "last_content_sha256", None)
+        if expected_prev is None and isinstance(anchor, dict):
+            expected_prev = anchor.get("last_content_sha256")
         try:
-            return self.read_verified_global_range(start=reader_cursor, watermark=watermark)
+            with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM evidence_handoff_entries
+                    WHERE ledger_instance_id = %s AND sequence >= %s AND sequence <= %s
+                    ORDER BY sequence ASC
+                    """,
+                    (self._ledger_instance_id, start, end),
+                ).fetchall()
+                expected = list(range(start, end + 1))
+                actual = [int(row["sequence"]) for row in rows]
+                if actual != expected:
+                    raise LedgerStoreError("sequence_gap")
+                entries = tuple(self._row_to_envelope(row) for row in rows)
+                self._verify_chain_from(entries, expected_prev=expected_prev)
+                return VerifiedRange(entries=entries, start=start, watermark=end)
         except LedgerStoreError as exc:
             if exc.code == "sequence_gap":
                 raise LedgerIntegrityError(
                     cause=IntegrityCause.SEQUENCE_GAP,
                     ledger_instance_id=self._ledger_instance_id,
-                    safe_boundary_sequence=max(reader_cursor - 1, 0),
+                    safe_boundary_sequence=max(start - 1, 0),
                 ) from exc
             if exc.code == "chain_break":
                 raise LedgerIntegrityError(
                     cause=IntegrityCause.CHAIN_BREAK,
                     ledger_instance_id=self._ledger_instance_id,
-                    safe_boundary_sequence=max(reader_cursor - 1, 0),
+                    safe_boundary_sequence=max(start - 1, 0),
                 ) from exc
             raise
+
+    def head_witness(self) -> IntegrityWitness:
+        status = self.current_status()
+        return IntegrityWitness(
+            ledger_instance_id=self._ledger_instance_id,
+            last_committed=status.last_committed,
+            last_content_sha256=status.last_content_sha256,
+            verified=True,
+        )
+
+    def get_cursor(
+        self,
+        *,
+        principal_id: str,
+        agent_id: str,
+        ledger_instance_id: str,
+    ) -> Any:
+        if ledger_instance_id != self._ledger_instance_id:
+            raise LedgerStoreError("ledger_instance_mismatch")
+        with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
+            row = conn.execute(
+                """
+                SELECT confirmed_sequence, chain_head_sha256
+                FROM evidence_handoff_delivery_cursors
+                WHERE principal_id = %s AND agent_id = %s AND ledger_instance_id = %s
+                """,
+                (principal_id, agent_id, ledger_instance_id),
+            ).fetchone()
+        if row is None:
+            return type(
+                "CursorRow",
+                (),
+                {"confirmed_sequence": 0, "chain_head_sha256": None},
+            )()
+        return type(
+            "CursorRow",
+            (),
+            {
+                "confirmed_sequence": int(row["confirmed_sequence"]),
+                "chain_head_sha256": row["chain_head_sha256"],
+            },
+        )()
+
+    def count_visible_unread(
+        self,
+        *,
+        agent_id: str,
+        ledger_instance_id: str,
+        after_sequence: int,
+    ) -> int:
+        if ledger_instance_id != self._ledger_instance_id:
+            raise LedgerStoreError("ledger_instance_mismatch")
+        with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*)::int AS n
+                FROM evidence_handoff_entries
+                WHERE ledger_instance_id = %s
+                  AND sequence > %s
+                  AND %s = ANY (recipient_agent_ids)
+                """,
+                (ledger_instance_id, int(after_sequence), str(agent_id)),
+            ).fetchone()
+        return int(row["n"] if row is not None else 0)
+
+    def issue_delivery_token(self, *, token: DeliveryToken) -> DeliveryToken:
+        if token.ledger_instance_id != self._ledger_instance_id:
+            raise DeliveryError("token_instance_mismatch")
+        payload = {
+            "token_id": token.token_id,
+            "principal_id": token.principal_id,
+            "agent_id": token.agent_id,
+            "ledger_instance_id": token.ledger_instance_id,
+            "previous_cursor": token.previous_cursor,
+            "previous_witness": {
+                "ledger_instance_id": token.previous_witness.ledger_instance_id,
+                "last_committed": token.previous_witness.last_committed,
+                "last_content_sha256": token.previous_witness.last_content_sha256,
+                "verified": token.previous_witness.verified,
+            },
+            "watermark": token.watermark,
+            "resulting_witness": {
+                "ledger_instance_id": token.resulting_witness.ledger_instance_id,
+                "last_committed": token.resulting_witness.last_committed,
+                "last_content_sha256": token.resulting_witness.last_content_sha256,
+                "verified": token.resulting_witness.verified,
+            },
+            "visible_entry_ids": list(token.visible_entry_ids),
+            "page_digest": token.page_digest,
+            "expires_at": token.expires_at.isoformat(),
+        }
+        with psycopg.connect(self._conninfo) as conn:
+            conn.execute(
+                """
+                INSERT INTO evidence_handoff_delivery_tokens(
+                    token_id, principal_id, ledger_instance_id, payload_json, expires_at, consumed_at
+                ) VALUES (%s, %s, %s, %s::jsonb, %s, NULL)
+                """,
+                (
+                    token.token_id,
+                    token.principal_id,
+                    token.ledger_instance_id,
+                    json.dumps(payload, sort_keys=True),
+                    token.expires_at,
+                ),
+            )
+            conn.commit()
+        return token
+
+    def consume_delivery_token(
+        self,
+        *,
+        token_id: str,
+        principal_id: str,
+        now: datetime,
+    ) -> DeliveryToken:
+        with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
+            row = conn.execute(
+                """
+                SELECT token_id, principal_id, ledger_instance_id, payload_json, expires_at, consumed_at
+                FROM evidence_handoff_delivery_tokens
+                WHERE token_id = %s
+                FOR UPDATE
+                """,
+                (token_id,),
+            ).fetchone()
+            if row is None:
+                raise DeliveryError("token_invalid")
+            if str(row["principal_id"]) != str(principal_id):
+                raise DeliveryError("token_principal_mismatch")
+            if row["consumed_at"] is not None:
+                raise DeliveryError("token_replayed")
+            expires_at = row["expires_at"]
+            if getattr(expires_at, "tzinfo", None) is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            if now >= expires_at:
+                raise DeliveryError("token_expired")
+            if str(row["ledger_instance_id"]) != self._ledger_instance_id:
+                raise DeliveryError("token_instance_mismatch")
+            conn.execute(
+                """
+                UPDATE evidence_handoff_delivery_tokens
+                SET consumed_at = %s
+                WHERE token_id = %s AND consumed_at IS NULL
+                """,
+                (now, token_id),
+            )
+            conn.commit()
+            payload = row["payload_json"]
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+        return self._token_from_payload(payload)
+
+    def confirm_cursor_cas(self, *, token: DeliveryToken, now: datetime) -> CursorStatus:
+        if token.ledger_instance_id != self._ledger_instance_id:
+            raise DeliveryError("token_instance_mismatch")
+        chain_head = token.resulting_witness.last_content_sha256
+        with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
+            existing = conn.execute(
+                """
+                SELECT confirmed_sequence, chain_head_sha256
+                FROM evidence_handoff_delivery_cursors
+                WHERE principal_id = %s AND agent_id = %s AND ledger_instance_id = %s
+                FOR UPDATE
+                """,
+                (token.principal_id, token.agent_id, token.ledger_instance_id),
+            ).fetchone()
+            current = int(existing["confirmed_sequence"]) if existing is not None else 0
+            if current != int(token.previous_cursor):
+                raise DeliveryError("cursor_cas_conflict")
+            conn.execute(
+                """
+                INSERT INTO evidence_handoff_delivery_cursors(
+                    principal_id, agent_id, ledger_instance_id, confirmed_sequence, chain_head_sha256
+                ) VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (principal_id, agent_id, ledger_instance_id) DO UPDATE
+                SET confirmed_sequence = EXCLUDED.confirmed_sequence,
+                    chain_head_sha256 = EXCLUDED.chain_head_sha256
+                """,
+                (
+                    token.principal_id,
+                    token.agent_id,
+                    token.ledger_instance_id,
+                    int(token.watermark),
+                    chain_head,
+                ),
+            )
+            conn.commit()
+        unread = self.count_visible_unread(
+            agent_id=token.agent_id,
+            ledger_instance_id=token.ledger_instance_id,
+            after_sequence=int(token.watermark),
+        )
+        return CursorStatus(
+            principal_id=token.principal_id,
+            agent_id=token.agent_id,
+            confirmed_sequence=int(token.watermark),
+            last_advanced_at=now,
+            unread_count=unread,
+            witness=token.resulting_witness,
+        )
+
+    def _token_from_payload(self, payload: dict[str, Any]) -> DeliveryToken:
+        prev = payload["previous_witness"]
+        resulting = payload["resulting_witness"]
+        expires_raw = payload["expires_at"]
+        if isinstance(expires_raw, str):
+            expires_at = datetime.fromisoformat(expires_raw)
+        else:
+            expires_at = expires_raw
+        if getattr(expires_at, "tzinfo", None) is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        return DeliveryToken(
+            token_id=str(payload["token_id"]),
+            principal_id=str(payload["principal_id"]),
+            agent_id=str(payload["agent_id"]),
+            ledger_instance_id=str(payload["ledger_instance_id"]),
+            previous_cursor=int(payload["previous_cursor"]),
+            previous_witness=IntegrityWitness(
+                ledger_instance_id=str(prev["ledger_instance_id"]),
+                last_committed=int(prev["last_committed"]),
+                last_content_sha256=prev.get("last_content_sha256"),
+                verified=bool(prev.get("verified", True)),
+            ),
+            watermark=int(payload["watermark"]),
+            resulting_witness=IntegrityWitness(
+                ledger_instance_id=str(resulting["ledger_instance_id"]),
+                last_committed=int(resulting["last_committed"]),
+                last_content_sha256=resulting.get("last_content_sha256"),
+                verified=bool(resulting.get("verified", True)),
+            ),
+            visible_entry_ids=tuple(str(item) for item in payload.get("visible_entry_ids") or ()),
+            page_digest=str(payload["page_digest"]),
+            expires_at=expires_at,
+        )
+
+    def _verify_chain_from(
+        self,
+        entries: tuple[ImmutableEntryEnvelope, ...],
+        *,
+        expected_prev: str | None,
+    ) -> None:
+        prev_digest = expected_prev
+        for entry in entries:
+            if entry.prev_content_sha256 != prev_digest:
+                raise LedgerStoreError("chain_break")
+            fields = entry.to_mapping()
+            if content_sha256_for_envelope(fields) != entry.content_sha256:
+                raise LedgerStoreError("chain_break")
+            prev_digest = entry.content_sha256
 
     def find_last_verified_anchor(self, instance_id: str) -> Any:
         from evidence_handoff_runtime.recovery import RecoveryAnchor

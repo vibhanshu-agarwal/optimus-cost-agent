@@ -223,12 +223,14 @@ class LedgerService:
                     "identity_values": list(getattr(bootstrap, "identity_values", ()) or ()),
                 },
             )
+            retired_raw = auth.get("retired_agent_ids") or ()
             payload.update(
                 {
                     "ledger_instance_id": instance_id,
                     "issuer": auth["issuer"],
                     "audience": auth["audience"],
                     "enrollments": _serialize_enrollments(enrollments),
+                    "retired_agent_ids": [str(item) for item in retired_raw],
                     "temporary_capture_root": str(bootstrap.temporary_capture_root),
                     "staging_root": str(bootstrap.staging_root),
                     "quarantine_root": str(bootstrap.quarantine_root),
@@ -329,12 +331,16 @@ def _load_auth_context(runtime: dict[str, Any], auth_bundle: dict[str, Any] | No
         for item in runtime.get("path_aliases") or ()
     )
     known_agent_ids = frozenset(enrollment.agent_id for enrollment in enrollments.values())
+    retired_agent_ids = frozenset(
+        str(item) for item in (runtime.get("retired_agent_ids") or ())
+    )
     return {
         "validator": validator,
         "sessions": sessions,
         "store": store,
         "ledger_instance_id": instance_id,
         "known_agent_ids": known_agent_ids,
+        "retired_agent_ids": retired_agent_ids,
         "service_secrets": tuple(auth_bundle.get("service_secrets") or ()),
         "identity_values": tuple(auth_bundle.get("identity_values") or ()),
         "path_aliases": path_aliases,
@@ -357,6 +363,7 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
     from evidence_handoff.redaction.ingress import RequestRedactionInputs, StructuredIngress
     from evidence_handoff.redaction.models import RedactionRuntimeInputs
     from evidence_handoff_runtime.auth import AuthError
+    from evidence_handoff_runtime.delivery import DeliveryError, DeliveryService
     from evidence_handoff_runtime.policy import (
         PolicyError,
         attempt_review_ruling_append,
@@ -374,7 +381,14 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
 
     server = MCPServer(name="evidence-handoff-ledger", version="0.1.0")
     ingress = StructuredIngress()
-    _real_tools = frozenset({"ledger.review_ruling_append", "ledger.review_ruling_read"})
+    _real_tools = frozenset(
+        {
+            "ledger.review_ruling_append",
+            "ledger.review_ruling_read",
+            "ledger.delivery_read",
+            "ledger.delivery_confirm",
+        }
+    )
 
     def _request_inputs(credential: str) -> RequestRedactionInputs:
         assert auth_ctx is not None
@@ -475,6 +489,7 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
                     store=auth_ctx["store"],
                     request_inputs=_request_inputs(credential),
                     known_agent_ids=auth_ctx["known_agent_ids"],
+                    retired_agent_ids=auth_ctx["retired_agent_ids"],
                 )
             except PolicyError as exc:
                 raise RuntimeError(f"policy_rejected:{exc.code}") from exc
@@ -506,6 +521,118 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
                 )
             except PolicyError as exc:
                 raise RuntimeError(f"policy_rejected:{exc.code}") from exc
+
+        delivery = DeliveryService(store=auth_ctx["store"])
+
+        def _serialize_witness(witness: Any) -> dict[str, Any]:
+            return {
+                "ledger_instance_id": witness.ledger_instance_id,
+                "last_committed": int(witness.last_committed),
+                "last_content_sha256": witness.last_content_sha256,
+                "verified": bool(witness.verified),
+            }
+
+        def _serialize_token(token: Any) -> dict[str, Any]:
+            return {
+                "token_id": token.token_id,
+                "principal_id": token.principal_id,
+                "agent_id": token.agent_id,
+                "ledger_instance_id": token.ledger_instance_id,
+                "previous_cursor": int(token.previous_cursor),
+                "previous_witness": _serialize_witness(token.previous_witness),
+                "watermark": int(token.watermark),
+                "resulting_witness": _serialize_witness(token.resulting_witness),
+                "visible_entry_ids": list(token.visible_entry_ids),
+                "page_digest": token.page_digest,
+                "expires_at": token.expires_at.isoformat(),
+            }
+
+        @server.tool(
+            name="ledger.delivery_read",
+            description="Read visible ledger entries after the confirmed cursor",
+            structured_output=False,
+        )
+        def delivery_read(
+            cursor: int = 0,
+            supported_schemas: list[str] | None = None,
+        ):
+            header, sid, bound = _bound_auth()
+            try:
+                principal = auth_ctx["validator"].validate(
+                    header=header,
+                    request={
+                        "ledger_instance_id": auth_ctx["ledger_instance_id"],
+                        "required_scope": "ledger.read",
+                    },
+                )
+                auth_ctx["sessions"].validate(
+                    sid,
+                    principal,
+                    protocol_version=str(bound.get("protocol_version") or "2025-11-25"),
+                )
+                schemas = frozenset(str(item) for item in (supported_schemas or ()))
+                if not schemas:
+                    raise DeliveryError("supported_schemas_required")
+                page = delivery.read_entries(
+                    principal_id=principal.principal_id,
+                    agent_id=principal.agent_id,
+                    ledger_instance_id=auth_ctx["ledger_instance_id"],
+                    cursor=int(cursor),
+                    supported_schemas=schemas,
+                )
+            except (DeliveryError, AuthError, SessionError) as exc:
+                code = getattr(exc, "code", str(exc))
+                raise RuntimeError(f"delivery_rejected:{code}") from exc
+            except Exception as exc:
+                from evidence_handoff_runtime.integrity import LedgerIntegrityError
+
+                if isinstance(exc, LedgerIntegrityError):
+                    raise RuntimeError("delivery_rejected:ledger_integrity_failed") from exc
+                raise
+            return {
+                "entries": [entry.to_mapping() for entry in page.entries],
+                "watermark": int(page.watermark),
+                "page_digest": page.page_digest,
+                "delivery_token": _serialize_token(page.delivery_token),
+                "token_id": page.delivery_token.token_id,
+                "unread_count": int(page.unread_count),
+            }
+
+        @server.tool(
+            name="ledger.delivery_confirm",
+            description="Confirm a delivery page and advance the reader cursor",
+            structured_output=False,
+        )
+        def delivery_confirm(token_id: str):
+            header, sid, bound = _bound_auth()
+            try:
+                principal = auth_ctx["validator"].validate(
+                    header=header,
+                    request={
+                        "ledger_instance_id": auth_ctx["ledger_instance_id"],
+                        "required_scope": "ledger.read",
+                    },
+                )
+                auth_ctx["sessions"].validate(
+                    sid,
+                    principal,
+                    protocol_version=str(bound.get("protocol_version") or "2025-11-25"),
+                )
+                status = delivery.confirm_delivery(
+                    token_id=str(token_id),
+                    principal_id=principal.principal_id,
+                )
+            except (DeliveryError, AuthError, SessionError) as exc:
+                code = getattr(exc, "code", str(exc))
+                raise RuntimeError(f"delivery_rejected:{code}") from exc
+            return {
+                "principal_id": status.principal_id,
+                "agent_id": status.agent_id,
+                "confirmed_sequence": int(status.confirmed_sequence),
+                "last_advanced_at": status.last_advanced_at.isoformat(),
+                "unread_count": int(status.unread_count),
+                "witness": _serialize_witness(status.witness),
+            }
 
     security = TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
