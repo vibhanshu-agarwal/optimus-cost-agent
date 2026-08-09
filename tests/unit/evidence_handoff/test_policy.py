@@ -186,6 +186,7 @@ def test_implementer_rejected_before_ingress_and_counter_unchanged() -> None:
             ingress=ingress,
             store=store,
             request_inputs=MagicMock(),
+            known_agent_ids=frozenset({"implementer-1"}),
         )
     assert raised.value.code == "role_not_permitted"
     ingress.sanitize.assert_not_called()
@@ -227,6 +228,7 @@ def test_closed_schema_rejection_skips_ingress() -> None:
             ingress=ingress,
             store=store,
             request_inputs=MagicMock(),
+            known_agent_ids=frozenset({"implementer-1"}),
         )
     assert raised.value.code == "closed_schema_field_rejected"
     ingress.sanitize.assert_not_called()
@@ -263,10 +265,9 @@ def test_invalid_origin_before_parse_skips_ingress() -> None:
 
 def test_reviewer_success_invokes_real_ingress_then_store_append(tmp_path: Path) -> None:
     """Boundary ruling: reviewer success reaches real ingress + store.append (no fake seam)."""
-    from evidence_handoff.ledger.models import EntryKind
+    from evidence_handoff.ledger.models import EntryDraft, EntryKind, SanitizedDraft
     from evidence_handoff.redaction.ingress import (
         IngressSanitizedText,
-        IngressTextDraft,
         RequestRedactionInputs,
         StructuredIngress,
     )
@@ -303,7 +304,7 @@ def test_reviewer_success_invokes_real_ingress_then_store_append(tmp_path: Path)
     request_inputs = RequestRedactionInputs(runtime=runtime)
 
     real_ingress = StructuredIngress()
-    sanitize_calls: list[IngressTextDraft] = []
+    sanitize_calls: list[Any] = []
     original_sanitize = real_ingress.sanitize
 
     def _spy(draft, inputs):
@@ -319,6 +320,7 @@ def test_reviewer_success_invokes_real_ingress_then_store_append(tmp_path: Path)
             return MagicMock(last_committed=len(appended), last_content_sha256=None)
 
         def append(self, sanitized, identity, *, idempotency_key: str):
+            assert isinstance(sanitized, SanitizedDraft)
             assert sanitized.kind == EntryKind.REVIEW_RULING
             assert identity.caller_role == "reviewer"
             assert identity.authority == "review-ruling"
@@ -349,9 +351,11 @@ def test_reviewer_success_invokes_real_ingress_then_store_append(tmp_path: Path)
         ingress=real_ingress,
         store=_Store(),
         request_inputs=request_inputs,
+        known_agent_ids=frozenset({"implementer-1", "reviewer-1"}),
     )
     assert result.sequence == 1
     assert len(sanitize_calls) == 1
-    assert sanitize_calls[0].kind == "review-ruling"
+    assert isinstance(sanitize_calls[0], EntryDraft)
+    assert sanitize_calls[0].kind == EntryKind.REVIEW_RULING
     assert len(appended) == 1
     assert not isinstance(appended[0][0], IngressSanitizedText)

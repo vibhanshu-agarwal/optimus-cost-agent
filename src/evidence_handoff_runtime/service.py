@@ -328,11 +328,13 @@ def _load_auth_context(runtime: dict[str, Any], auth_bundle: dict[str, Any] | No
         PathAliasRule(source_root=str(item["source_root"]), alias=str(item["alias"]))
         for item in runtime.get("path_aliases") or ()
     )
+    known_agent_ids = frozenset(enrollment.agent_id for enrollment in enrollments.values())
     return {
         "validator": validator,
         "sessions": sessions,
         "store": store,
         "ledger_instance_id": instance_id,
+        "known_agent_ids": known_agent_ids,
         "service_secrets": tuple(auth_bundle.get("service_secrets") or ()),
         "identity_values": tuple(auth_bundle.get("identity_values") or ()),
         "path_aliases": path_aliases,
@@ -346,7 +348,7 @@ def _load_auth_context(runtime: dict[str, Any], auth_bundle: dict[str, Any] | No
 
 
 def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | None = None):
-    """Build Starlette Streamable HTTP app with preamble middleware and Task 6 tools."""
+    """Build Starlette Streamable HTTP app with auth, policy, and redaction ingress."""
     from mcp.server.mcpserver import MCPServer
     from mcp.server.transport_security import TransportSecuritySettings
     from starlette.responses import PlainTextResponse, Response
@@ -355,7 +357,11 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
     from evidence_handoff.redaction.ingress import RequestRedactionInputs, StructuredIngress
     from evidence_handoff.redaction.models import RedactionRuntimeInputs
     from evidence_handoff_runtime.auth import AuthError
-    from evidence_handoff_runtime.policy import PolicyError, attempt_review_ruling_append
+    from evidence_handoff_runtime.policy import (
+        PolicyError,
+        attempt_review_ruling_append,
+        attempt_review_ruling_read,
+    )
     from evidence_handoff_runtime.sessions import SessionError
     from optimus_security.sensitive_values import SensitiveValueInventory, SensitiveValueSourceClass
 
@@ -368,6 +374,7 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
 
     server = MCPServer(name="evidence-handoff-ledger", version="0.1.0")
     ingress = StructuredIngress()
+    _real_tools = frozenset({"ledger.review_ruling_append", "ledger.review_ruling_read"})
 
     def _request_inputs(credential: str) -> RequestRedactionInputs:
         assert auth_ctx is not None
@@ -390,6 +397,15 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
         )
         return RequestRedactionInputs(runtime=runtime_inputs)
 
+    def _bound_auth() -> tuple[str, str, dict[str, Any]]:
+        assert auth_ctx is not None
+        bound = _BOUND_REQUEST.get() or auth_ctx.get("_bound_request") or {}
+        header = bound.get("authorization")
+        sid = bound.get("session_id")
+        if not header or not sid:
+            raise RuntimeError("auth_gate_rejected:missing_bound_request")
+        return str(header), str(sid), bound
+
     def _stub_tool(name: str):
         @server.tool(name=name, description=f"Task 5/6 surface: {name}")
         def _handler() -> dict[str, str]:
@@ -401,7 +417,7 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
         for tool_name in sorted(ALLOWED_TOOL_NAMES):
             _stub_tool(tool_name)
     else:
-        for tool_name in sorted(ALLOWED_TOOL_NAMES - {"ledger.review_ruling_append"}):
+        for tool_name in sorted(ALLOWED_TOOL_NAMES - _real_tools):
             _stub_tool(tool_name)
 
         @server.tool(
@@ -412,28 +428,30 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
         def review_ruling_append(
             context_id: str,
             recipient_agent_ids: list[str],
-            message_text: str,
             idempotency_key: str,
+            message: dict[str, Any] | None = None,
+            message_text: str | None = None,
             schema_id: str = "review-ruling.v1",
             agent_id: str | None = None,
             caller_role: str | None = None,
             authority: str | None = None,
             principal_id: str | None = None,
-            attestation: str | None = None,
+            attestation: Any | None = None,
         ):
-            bound = _BOUND_REQUEST.get() or auth_ctx.get("_bound_request") or {}
-            header = bound.get("authorization")
-            sid = bound.get("session_id")
-            if not header or not sid:
-                raise RuntimeError("auth_gate_rejected:missing_bound_request")
+            # Dual-accept: structured message is primary; legacy message_text is
+            # adapted into a single text part before EntryDraft ingress/final-scan.
+            header, sid, bound = _bound_auth()
             client_fields: dict[str, Any] = {
                 "kind": "review-ruling",
                 "schema_id": schema_id,
                 "context_id": context_id,
                 "recipient_agent_ids": list(recipient_agent_ids),
-                "message_text": message_text,
                 "idempotency_key": idempotency_key,
             }
+            if message is not None:
+                client_fields["message"] = message
+            if message_text is not None:
+                client_fields["message_text"] = message_text
             for key, value in (
                 ("agent_id", agent_id),
                 ("caller_role", caller_role),
@@ -444,23 +462,50 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
                 if value is not None:
                     client_fields[key] = value
             credential = header[7:].strip() if header.lower().startswith("bearer ") else header
-            result = attempt_review_ruling_append(
-                authorization_header=header,
-                session_id=str(sid),
-                protocol_version=str(bound.get("protocol_version") or "2025-11-25"),
-                ledger_instance_id=auth_ctx["ledger_instance_id"],
-                client_fields=client_fields,
-                validator=auth_ctx["validator"],
-                sessions=auth_ctx["sessions"],
-                ingress=ingress,
-                store=auth_ctx["store"],
-                request_inputs=_request_inputs(credential),
-            )
+            try:
+                result = attempt_review_ruling_append(
+                    authorization_header=header,
+                    session_id=sid,
+                    protocol_version=str(bound.get("protocol_version") or "2025-11-25"),
+                    ledger_instance_id=auth_ctx["ledger_instance_id"],
+                    client_fields=client_fields,
+                    validator=auth_ctx["validator"],
+                    sessions=auth_ctx["sessions"],
+                    ingress=ingress,
+                    store=auth_ctx["store"],
+                    request_inputs=_request_inputs(credential),
+                    known_agent_ids=auth_ctx["known_agent_ids"],
+                )
+            except PolicyError as exc:
+                raise RuntimeError(f"policy_rejected:{exc.code}") from exc
             return {
+                "entry_id": str(result.entry_id),
                 "sequence": int(result.sequence),
+                "ledger_instance_id": str(result.ledger_instance_id),
                 "content_sha256": str(result.content_sha256),
                 "idempotent_replay": bool(result.idempotent_replay),
             }
+
+        @server.tool(
+            name="ledger.review_ruling_read",
+            description="Read a review-ruling entry summary",
+            structured_output=False,
+        )
+        def review_ruling_read(sequence: int):
+            header, sid, bound = _bound_auth()
+            try:
+                return attempt_review_ruling_read(
+                    authorization_header=header,
+                    session_id=sid,
+                    protocol_version=str(bound.get("protocol_version") or "2025-11-25"),
+                    ledger_instance_id=auth_ctx["ledger_instance_id"],
+                    sequence=int(sequence),
+                    validator=auth_ctx["validator"],
+                    sessions=auth_ctx["sessions"],
+                    store=auth_ctx["store"],
+                )
+            except PolicyError as exc:
+                raise RuntimeError(f"policy_rejected:{exc.code}") from exc
 
     security = TransportSecuritySettings(
         enable_dns_rebinding_protection=True,

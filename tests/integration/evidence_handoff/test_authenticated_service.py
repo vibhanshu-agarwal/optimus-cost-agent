@@ -152,6 +152,16 @@ def authenticated_ledger(tmp_path: Path):
             },
         )
         service.wait_ready(timeout_seconds=30.0)
+        import time
+
+        for _probe in range(20):
+            try:
+                store.current_status()
+                break
+            except Exception:
+                time.sleep(0.5)
+        else:
+            raise RuntimeError("store_unreachable_after_service_start")
         yield {
             "endpoint": service.endpoint,
             "store": store,

@@ -329,6 +329,28 @@ class PostgresLedgerStore:
                 last_content_sha256=row["last_content_sha256"],
             )
 
+    def get_entry_by_sequence(self, sequence: int) -> dict[str, Any]:
+        """Return content-free identity fields for a committed sequence."""
+        if sequence < 1:
+            raise LedgerValidationError("invalid_sequence")
+        with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
+            row = conn.execute(
+                """
+                SELECT entry_id, sequence, ledger_instance_id, content_sha256
+                FROM evidence_handoff_entries
+                WHERE ledger_instance_id = %s AND sequence = %s
+                """,
+                (self._ledger_instance_id, int(sequence)),
+            ).fetchone()
+        if row is None:
+            raise LedgerStoreError("entry_not_found")
+        return {
+            "entry_id": str(row["entry_id"]),
+            "sequence": int(row["sequence"]),
+            "ledger_instance_id": str(row["ledger_instance_id"]),
+            "content_sha256": str(row["content_sha256"]),
+        }
+
     def read_verified_global_range(self, *, start: int, watermark: int) -> VerifiedRange:
         if start < 1 or watermark < start:
             raise LedgerValidationError("invalid_range")
