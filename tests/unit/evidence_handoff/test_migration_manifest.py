@@ -37,3 +37,27 @@ def test_migration_manifest_detects_tampered_sql(tmp_path: Path, monkeypatch: py
     with pytest.raises(MigrationError) as raised:
         fake.verify()
     assert raised.value.code == "migration_digest_mismatch"
+
+
+def test_digest_file_stable_across_crlf_and_lf(tmp_path: Path) -> None:
+    """Pinned digests must match git text=auto LF blobs, not local CRLF checkouts."""
+    from evidence_handoff_runtime.migrations import MigrationManifest
+
+    sql_lf = b"-- sample migration\nSELECT 1;\n"
+    sql_crlf = sql_lf.replace(b"\n", b"\r\n")
+    assert b"\r\n" in sql_crlf
+    assert b"\r" not in sql_lf
+
+    lf_path = tmp_path / "lf.sql"
+    crlf_path = tmp_path / "crlf.sql"
+    lf_path.write_bytes(sql_lf)
+    crlf_path.write_bytes(sql_crlf)
+
+    lf_digest = MigrationManifest.digest_file(lf_path)
+    crlf_digest = MigrationManifest.digest_file(crlf_path)
+    assert lf_digest == crlf_digest
+    assert len(lf_digest) == 64
+
+    changed = tmp_path / "changed.sql"
+    changed.write_bytes(sql_lf + b"-- different\n")
+    assert MigrationManifest.digest_file(changed) != lf_digest

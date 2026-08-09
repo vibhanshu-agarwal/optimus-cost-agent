@@ -11,11 +11,12 @@ import psycopg
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIGRATIONS_ROOT = REPO_ROOT / "migrations" / "evidence_handoff"
 
-# Digests are pinned to committed SQL bytes. Changing a migration requires a new file.
+# Digests are pinned to LF-normalized SQL bytes (git text=auto blob shape).
+# Changing a migration requires a new file.
 _PINNED: tuple[tuple[str, str], ...] = (
     (
         "001_ledger_v1.sql",
-        "bd0851fa6be469d545a05b4fa352f16605bcaa840ac633c18d3adebb52f80ee1",
+        "beea88b48f628a0ce736a3a37ea94e0b340ebaa2c7e16ba97ccfb68d99a5736a",
     ),
     (
         "002_sequence_unique_per_instance.sql",
@@ -23,7 +24,7 @@ _PINNED: tuple[tuple[str, str], ...] = (
     ),
     (
         "003_reader_capabilities.sql",
-        "c6daf5548eb6043bb8fb0ef036ac43d4f0890ceb08dff103b31fa370fb96b973",
+        "1391bf0370e50ed00a8162fb9c4f092061e1f83cb7a0cad294f16b0b7d1c168c",
     ),
 )
 
@@ -52,7 +53,9 @@ class MigrationManifest:
 
     @staticmethod
     def digest_file(path: Path) -> str:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
+        # Match git text=auto blobs: hash LF-normalized bytes, not local CRLF checkouts.
+        normalized = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+        return hashlib.sha256(normalized).hexdigest()
 
     @classmethod
     def load(cls) -> MigrationManifest:
