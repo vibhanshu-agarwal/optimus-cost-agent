@@ -6,6 +6,7 @@ Full credential/session evidence belongs to Task 6.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -143,6 +144,150 @@ def test_transport_rejects_unsupported_protocol_version_header() -> None:
     assert decision.allowed is False
     assert decision.code == "unsupported_protocol_version"
     assert decision.reached_mcp_parse is False
+
+
+def test_transport_accepts_comma_joined_duplicate_protocol_version_header() -> None:
+    """RFC 9110 joins repeated MCP-Protocol-Version into a comma-separated field.
+
+    Cursor sends the header twice after session establish; exact string match
+    rejects ``2025-11-25, 2025-11-25`` and breaks tools/list discovery.
+    """
+    from evidence_handoff_runtime.transport import evaluate_http_preamble
+
+    decision = evaluate_http_preamble(
+        bind_host="127.0.0.1",
+        bind_port=8765,
+        allowed_origins=frozenset({"http://127.0.0.1:8765"}),
+        headers={
+            "host": "127.0.0.1:8765",
+            "origin": "http://127.0.0.1:8765",
+            "mcp-protocol-version": "2025-11-25, 2025-11-25",
+        },
+        content_length=10,
+        max_body_bytes=65536,
+        auth_present=True,
+        allowed_protocol_versions=frozenset({"2025-11-25"}),
+    )
+    # Auth gate still runs; without a validator/header this is auth_gate_rejected,
+    # but must NOT be unsupported_protocol_version.
+    assert decision.code != "unsupported_protocol_version"
+    assert decision.http_status != 400 or decision.code != "unsupported_protocol_version"
+
+
+def test_transport_rejects_comma_joined_protocol_versions_when_none_allowed() -> None:
+    from evidence_handoff_runtime.transport import evaluate_http_preamble
+
+    decision = evaluate_http_preamble(
+        bind_host="127.0.0.1",
+        bind_port=8765,
+        allowed_origins=frozenset({"http://127.0.0.1:8765"}),
+        headers={
+            "host": "127.0.0.1:8765",
+            "origin": "http://127.0.0.1:8765",
+            "mcp-protocol-version": "1999-01-01, 1999-01-02",
+        },
+        content_length=10,
+        max_body_bytes=65536,
+        auth_present=True,
+        allowed_protocol_versions=frozenset({"2025-11-25"}),
+    )
+    assert decision.allowed is False
+    assert decision.code == "unsupported_protocol_version"
+    assert decision.reached_mcp_parse is False
+
+
+def test_resolve_mcp_protocol_version_canonicalizes_comma_joined_duplicates() -> None:
+    from evidence_handoff_runtime.transport import resolve_mcp_protocol_version
+
+    assert (
+        resolve_mcp_protocol_version(
+            "2025-11-25, 2025-11-25",
+            allowed_protocol_versions=frozenset({"2025-11-25"}),
+        )
+        == "2025-11-25"
+    )
+
+
+def test_scope_with_canonical_mcp_protocol_version_collapses_duplicates() -> None:
+    from evidence_handoff_runtime.service import _scope_with_canonical_mcp_protocol_version
+
+    scope = {
+        "type": "http",
+        "headers": [
+            (b"host", b"127.0.0.1:8901"),
+            (b"mcp-protocol-version", b"2025-11-25"),
+            (b"mcp-protocol-version", b"2025-11-25"),
+            (b"authorization", b"Bearer x"),
+        ],
+    }
+    rewritten = _scope_with_canonical_mcp_protocol_version(scope, "2025-11-25")
+    versions = [
+        value.decode("latin-1")
+        for key, value in rewritten["headers"]
+        if key.lower() == b"mcp-protocol-version"
+    ]
+    assert versions == ["2025-11-25"]
+
+
+def test_scope_with_canonical_mcp_protocol_version_rewrites_joined_value() -> None:
+    from evidence_handoff_runtime.service import _scope_with_canonical_mcp_protocol_version
+
+    scope = {
+        "type": "http",
+        "headers": [
+            (b"mcp-protocol-version", b"2025-11-25, 2025-11-25"),
+        ],
+    }
+    rewritten = _scope_with_canonical_mcp_protocol_version(scope, "2025-11-25")
+    versions = [
+        value.decode("latin-1")
+        for key, value in rewritten["headers"]
+        if key.lower() == b"mcp-protocol-version"
+    ]
+    assert versions == ["2025-11-25"]
+
+
+def test_scope_with_canonical_mcp_protocol_version_leaves_absent_header_absent() -> None:
+    from evidence_handoff_runtime.service import _scope_with_canonical_mcp_protocol_version
+
+    scope = {
+        "type": "http",
+        "headers": [
+            (b"host", b"127.0.0.1:8901"),
+            (b"authorization", b"Bearer x"),
+        ],
+    }
+    rewritten = _scope_with_canonical_mcp_protocol_version(scope, "2025-11-25")
+    assert rewritten is scope
+    assert not any(
+        key.lower() == b"mcp-protocol-version" for key, _ in rewritten["headers"]
+    )
+
+
+def test_session_validate_requires_resolved_protocol_not_raw_joined_header() -> None:
+    """Post-initialize tools/list sends a comma-joined version; sessions must see one token."""
+    from evidence_handoff_runtime.auth import AuthenticatedPrincipal
+    from evidence_handoff_runtime.sessions import SessionError, SessionRegistry
+    from evidence_handoff_runtime.transport import resolve_mcp_protocol_version
+
+    registry = SessionRegistry(ttl=timedelta(minutes=10), now=lambda: datetime.now(tz=UTC))
+    principal = AuthenticatedPrincipal(
+        principal_id="principal-cursor",
+        agent_id="cursor-reviewer-1",
+        caller_role="reviewer",
+        token_id="tok-1",
+        scope=frozenset({"ledger.write", "ledger.read"}),
+    )
+    binding = registry.create(principal, protocol_version="2025-11-25")
+    raw_joined = "2025-11-25, 2025-11-25"
+    with pytest.raises(SessionError) as raised:
+        registry.validate(binding.session_id, principal, protocol_version=raw_joined)
+    assert raised.value.code == "session_protocol_mismatch"
+    resolved = resolve_mcp_protocol_version(
+        raw_joined,
+        allowed_protocol_versions=frozenset({"2025-11-25"}),
+    )
+    registry.validate(binding.session_id, principal, protocol_version=resolved)
 
 
 def test_no_legacy_http_sse_fallback_route() -> None:

@@ -24,6 +24,7 @@ from evidence_handoff_runtime.integrity import IntegrityLatchError
 from evidence_handoff_runtime.transport import (
     evaluate_http_preamble,
     is_legacy_sse_path,
+    resolve_mcp_protocol_version,
 )
 
 ALLOWED_TOOL_NAMES = frozenset(
@@ -37,6 +38,27 @@ ALLOWED_TOOL_NAMES = frozenset(
         "ledger.integrity_recovery_status",
     }
 )
+
+
+def _scope_with_canonical_mcp_protocol_version(
+    scope: dict[str, Any],
+    protocol_version: str,
+) -> dict[str, Any]:
+    """Collapse repeated/joined MCP-Protocol-Version to one token; leave absent headers absent."""
+    raw_headers = list(scope.get("headers") or [])
+    if not any(key.lower() == b"mcp-protocol-version" for key, _ in raw_headers):
+        return scope
+    rewritten: list[tuple[bytes, bytes]] = []
+    replaced = False
+    encoded = protocol_version.encode("latin-1")
+    for key, value in raw_headers:
+        if key.lower() == b"mcp-protocol-version":
+            if not replaced:
+                rewritten.append((b"mcp-protocol-version", encoded))
+                replaced = True
+            continue
+        rewritten.append((key, value))
+    return {**scope, "headers": rewritten}
 
 _BOUND_REQUEST: ContextVar[dict[str, Any] | None] = ContextVar("eh_bound_request", default=None)
 
@@ -861,6 +883,19 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
             await response(scope, receive, send)
             return
 
+        # Cursor may send MCP-Protocol-Version twice (RFC 9110 → comma-joined). The MCP
+        # SDK rejects the joined string; rewrite ASGI headers to one allowed token.
+        # Do not synthesize the header when the client omitted it (avoids injecting the
+        # resolve() default over a session negotiated on a different allowed version).
+        raw_protocol_header = headers.get("mcp-protocol-version")
+        protocol_version = resolve_mcp_protocol_version(
+            raw_protocol_header,
+            allowed_protocol_versions=protocol_versions,
+        )
+        if raw_protocol_header is not None and str(raw_protocol_header).strip() != "":
+            headers["mcp-protocol-version"] = protocol_version
+            scope = _scope_with_canonical_mcp_protocol_version(scope, protocol_version)
+
         if auth_ctx is not None and auth_present:
             try:
                 principal = auth_ctx["validator"].validate(
@@ -871,7 +906,6 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
                     },
                 )
                 session_header = headers.get("mcp-session-id")
-                protocol_version = headers.get("mcp-protocol-version") or "2025-11-25"
                 # Request path: validate only. Never adopt a client-presented unknown
                 # session id here — that is the hijack vector. Adoption happens only
                 # when this authenticated response carries a new MCP session id.

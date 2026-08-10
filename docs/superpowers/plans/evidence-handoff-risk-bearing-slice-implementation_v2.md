@@ -518,6 +518,14 @@ this task supersedes it in full.
 - Modify only the already-approved Task 10 verifier/evidence files and the checkpoint as permitted
   by its separate authorization; do not rewrite v1 Task 10.
 
+**Mid-run interop fix (not Task 6 evidence):** Cursor Streamable HTTP discovery failed when
+`MCP-Protocol-Version` was sent twice and joined as `2025-11-25, 2025-11-25`. Production fix lives
+in `src/evidence_handoff_runtime/transport.py` + `service.py` (parse/resolve joined tokens; rewrite
+ASGI scope to one canonical token; leave an absent header absent). Land that change as its **own
+reviewed commit** with unit coverage in `tests/unit/evidence_handoff/test_transport.py` — do not
+fold it into Task 6 / v1 Task 10 evidence commits. Remaining OAuth/`WWW-Authenticate`/`/.well-known`
+discovery gaps stay owned by `EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE`.
+
 **Produces:** v1 Task 10 Step 3–5 evidence using Docker and durable custody after v2 Tasks 3–5
 pass.
 
