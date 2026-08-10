@@ -96,6 +96,19 @@ class PostgresLedgerStore:
             )
             conn.commit()
 
+    def instance_row_present(self) -> bool:
+        """True when this store's ledger_instance_id already has a durable instance row."""
+        with psycopg.connect(self._conninfo) as conn:
+            row = conn.execute(
+                """
+                SELECT 1
+                FROM evidence_handoff_ledger_instance
+                WHERE ledger_instance_id = %s
+                """,
+                (self._ledger_instance_id,),
+            ).fetchone()
+            return row is not None
+
     def append(
         self,
         sanitized: SanitizedDraft,

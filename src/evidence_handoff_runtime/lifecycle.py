@@ -282,6 +282,37 @@ class LifecycleManager:
         stdout = getattr(result, "stdout", "") or ""
         return stdout.strip() or "docker"
 
+    def resolve_installation_signing_key(
+        self,
+        *,
+        keyring_backend: object,
+        store: object,
+    ) -> bytes:
+        """Lifecycle-owned mint/load of the installation signing key (design line 265)."""
+        from evidence_handoff_runtime.signing_key_custody import (
+            SigningKeyCustodyError,
+            resolve_signing_key,
+        )
+
+        if store is None:
+            raise LifecycleError("signing_key_instance_fact_unavailable")
+        try:
+            store_instance_present = bool(store.instance_row_present())
+        except Exception as exc:  # noqa: BLE001 — any probe failure is fail-closed
+            raise LifecycleError("signing_key_instance_fact_unavailable") from exc
+
+        control_root = self._control_root()
+        instance_record_present = self._load_instance_id() is not None
+        try:
+            return resolve_signing_key(
+                control_root=control_root,
+                keyring_backend=keyring_backend,
+                instance_record_present=instance_record_present,
+                store_instance_present=store_instance_present,
+            )
+        except SigningKeyCustodyError as exc:
+            raise LifecycleError(exc.code) from exc
+
     def destroy_for_test_cleanup(self) -> None:
         """Test-only cleanup of container and volume. Not part of operator stop."""
         with self._lifecycle_lock():
