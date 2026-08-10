@@ -488,6 +488,8 @@ in a unit test, with no current evidence of a subprocess-handle or port-teardown
 diagnosed as coverage/trace instrumentation timing sensitivity; do not reopen ACP production
 debugging from scratch when this entry is picked up.
 
+**Recurrence:** 2026-08-10 — ACP NDJSON sanitization flake reproduced in the full suite only (passed isolated and in-file); same coverage/`sys.settrace` timing diagnosis; do not widen `P11-FU-6` or merge these entries.
+
 ### P11.5-FU-1: Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics
 
 **Raised:** 2026-07-29 during Plan 11.5 Task 4 independent operator verification (and matching
