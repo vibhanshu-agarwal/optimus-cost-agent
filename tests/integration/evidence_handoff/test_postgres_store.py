@@ -1,4 +1,7 @@
-"""Real PostgreSQL store ordering, idempotency, concurrency, and rollback evidence."""
+"""Real PostgreSQL store ordering, idempotency, concurrency, and rollback evidence.
+
+Uses real Docker Desktop PostgreSQL on loopback (backend_id=docker).
+"""
 
 from __future__ import annotations
 
@@ -40,7 +43,7 @@ def postgres_store(tmp_path: Path):
     config = FeatureConfig.from_mapping(
         {
             "enabled": "true",
-            "backend_id": "wslc",
+            "backend_id": "docker",
             "bind_host": "127.0.0.1",
             "postgres_port": str(port),
             "container_name": f"evidence-handoff-store-{suffix}",
@@ -67,7 +70,8 @@ def postgres_store(tmp_path: Path):
     manager = LifecycleManager(config, bootstrap)
     try:
         started = manager.start()
-        assert started.running is True
+        assert started.running is True, getattr(started, "summary_code", None)
+        assert started.backend_id == "docker"
         instance_id = started.ledger_instance_id
         assert instance_id
         conninfo = (

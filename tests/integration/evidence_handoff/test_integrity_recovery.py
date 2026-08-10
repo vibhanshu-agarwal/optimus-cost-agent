@@ -55,7 +55,7 @@ def integrity_harness(tmp_path: Path):
     config = FeatureConfig.from_mapping(
         {
             "enabled": "true",
-            "backend_id": "wslc",
+            "backend_id": "docker",
             "bind_host": "127.0.0.1",
             "postgres_port": str(port),
             "container_name": f"evidence-handoff-integrity-{suffix}",
@@ -83,7 +83,7 @@ def integrity_harness(tmp_path: Path):
     try:
         started = manager.start()
         if not started.running:
-            # Transient wslc/Postgres readiness flakes under sequential container churn.
+            # Transient Docker/Postgres readiness flakes under sequential container churn.
             try:
                 manager.stop()
             except Exception:
@@ -95,6 +95,7 @@ def integrity_harness(tmp_path: Path):
             manager = LifecycleManager(config, bootstrap)
             started = manager.start()
         assert started.running is True, started.summary_code
+        assert started.backend_id == "docker"
         instance_id = started.ledger_instance_id
         assert instance_id
         conninfo = (
@@ -406,7 +407,7 @@ def test_latch_precedes_feature_disable_and_postgres_unavailable(integrity_harne
     disabled_config = FeatureConfig.from_mapping(
         {
             "enabled": "false",
-            "backend_id": "wslc",
+            "backend_id": "docker",
             "bind_host": "127.0.0.1",
             "postgres_port": str(h.port),
             "container_name": h.config.container_name,

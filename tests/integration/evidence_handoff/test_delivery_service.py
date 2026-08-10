@@ -1,6 +1,6 @@
 """Live delivery / cursor evidence (Task 8).
 
-Real wslc PostgreSQL + LedgerService + official MCP client.
+Real Docker Desktop PostgreSQL + LedgerService + official MCP client.
 """
 
 from __future__ import annotations
@@ -92,7 +92,7 @@ def delivery_ledger(tmp_path: Path):
             config = FeatureConfig.from_mapping(
                 {
                     "enabled": "true",
-                    "backend_id": "wslc",
+                    "backend_id": "docker",
                     "bind_host": "127.0.0.1",
                     "postgres_port": str(pg_port),
                     "container_name": f"evidence-handoff-delivery-{suffix}",
@@ -130,6 +130,7 @@ def delivery_ledger(tmp_path: Path):
                 started = manager.start()
                 if not started.running:
                     raise RuntimeError("lifecycle_not_running")
+                assert started.backend_id == "docker"
                 for _probe in range(30):
                     try:
                         with psycopg.connect(conninfo) as conn:

@@ -1,6 +1,6 @@
 """Live redaction / review-ruling evidence (Task 7).
 
-Real wslc PostgreSQL + LedgerService + official MCP client. Canaries must not
+Real Docker Desktop PostgreSQL + LedgerService + official MCP client. Canaries must not
 appear in rows, logs, errors, or MCP responses after success or failure.
 """
 
@@ -84,7 +84,7 @@ def redaction_ledger(tmp_path: Path):
             config = FeatureConfig.from_mapping(
                 {
                     "enabled": "true",
-                    "backend_id": "wslc",
+                    "backend_id": "docker",
                     "bind_host": "127.0.0.1",
                     "postgres_port": str(pg_port),
                     "container_name": f"evidence-handoff-redact-{suffix}",
@@ -117,6 +117,7 @@ def redaction_ledger(tmp_path: Path):
                 started = manager.start()
                 if not started.running:
                     raise RuntimeError("lifecycle_not_running")
+                assert started.backend_id == "docker"
                 for _probe in range(30):
                     try:
                         with psycopg.connect(conninfo) as conn:
@@ -178,7 +179,7 @@ def redaction_ledger(tmp_path: Path):
                     },
                 )
                 service.wait_ready(timeout_seconds=30.0)
-                # Re-check store after the service child attaches — wslc port
+                # Re-check store after the service child attaches — Docker loopback port
                 # forwarding can flap briefly around process start.
                 for _probe in range(20):
                     try:

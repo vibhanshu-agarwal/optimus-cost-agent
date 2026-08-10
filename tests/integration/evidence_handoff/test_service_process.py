@@ -43,7 +43,7 @@ def _abs(root: Path, name: str) -> Path:
 
 @pytest.fixture()
 def running_ledger_service(tmp_path: Path):
-    """Start real wslc PostgreSQL + real LedgerService subprocess on loopback."""
+    """Start real Docker Desktop PostgreSQL + real LedgerService subprocess on loopback."""
     from evidence_handoff_runtime.config import FeatureConfig, LifecycleBootstrapContext
     from evidence_handoff_runtime.lifecycle import LifecycleError, LifecycleManager
     from evidence_handoff_runtime.migrations import apply_migrations
@@ -60,7 +60,7 @@ def running_ledger_service(tmp_path: Path):
     config = FeatureConfig.from_mapping(
         {
             "enabled": "true",
-            "backend_id": "wslc",
+            "backend_id": "docker",
             "bind_host": "127.0.0.1",
             "postgres_port": str(pg_port),
             "container_name": f"evidence-handoff-svc-{suffix}",
@@ -102,6 +102,7 @@ def running_ledger_service(tmp_path: Path):
                 pass
             manager = LifecycleManager(config, bootstrap)
         assert started is not None and started.running is True, getattr(started, "summary_code", None)
+        assert started.backend_id == "docker"
         instance_id = started.ledger_instance_id
         assert instance_id
         conninfo = (

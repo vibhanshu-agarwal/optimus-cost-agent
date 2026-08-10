@@ -219,7 +219,7 @@ def test_destroy_for_test_cleanup_raises_on_nonzero_remove(tmp_path: Path) -> No
         def run(self, argv: list[str], **_kwargs: object) -> object:
             self.calls.append(tuple(argv))
             # inspect succeeds (resource present); remove fails (transient docker error)
-            if "remove" in argv:
+            if "rm" in argv or "remove" in argv:
                 returncode = 1
             else:
                 returncode = 0
@@ -259,7 +259,7 @@ def test_destroy_for_test_cleanup_skips_missing_resources(tmp_path: Path) -> Non
     )
     manager.destroy_for_test_cleanup()
     assert any("inspect" in call for call in runner.calls)
-    assert not any("remove" in call for call in runner.calls)
+    assert not any(("rm" in call or "remove" in call) for call in runner.calls)
 
 
 def test_refusal_to_switch_backend_while_running(tmp_path: Path) -> None:

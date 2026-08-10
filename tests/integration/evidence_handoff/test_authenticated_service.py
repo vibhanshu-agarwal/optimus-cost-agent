@@ -1,6 +1,6 @@
 """Live authenticated service evidence (Task 6).
 
-Real wslc PostgreSQL + real LedgerService subprocess + official MCP client.
+Real Docker Desktop PostgreSQL + real LedgerService subprocess + official MCP client.
 Reviewer success must reach a real append; rejections leave counter/head unchanged.
 """
 
@@ -53,7 +53,7 @@ def authenticated_ledger(tmp_path: Path):
     config = FeatureConfig.from_mapping(
         {
             "enabled": "true",
-            "backend_id": "wslc",
+            "backend_id": "docker",
             "bind_host": "127.0.0.1",
             "postgres_port": str(pg_port),
             "container_name": f"evidence-handoff-auth-{suffix}",
@@ -94,6 +94,7 @@ def authenticated_ledger(tmp_path: Path):
             except Exception:
                 pass
         assert started is not None and started.running is True
+        assert started.backend_id == "docker"
         instance_id = started.ledger_instance_id
         assert instance_id
         conninfo = (

@@ -158,10 +158,11 @@ class DockerPostgresBackend:
         return require_argv([self._docker, "volume", "create", self.volume_name])
 
     def build_remove_container_argv(self) -> list[str]:
-        return require_argv([self._docker, "remove", "--force", self.container_name])
+        # Docker CLI: `rm` / `container remove` (there is no top-level `docker remove`).
+        return require_argv([self._docker, "rm", "--force", self.container_name])
 
     def build_remove_volume_argv(self) -> list[str]:
-        return require_argv([self._docker, "volume", "remove", self.volume_name])
+        return require_argv([self._docker, "volume", "rm", self.volume_name])
 
     def build_version_argv(self) -> list[str]:
         return require_argv([self._docker, "version"])
