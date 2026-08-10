@@ -91,7 +91,7 @@ projection of every stable-ID follow-up heading.
 | `P11-FU-3` | MCP Route/Typed-Contract Publication Gate | Closed | `P11-FEAT-GATEWAY-MCP` | PR #112; PR #113 / `edd1f04` |
 | `P11-FU-4` | Re-pin FU-4A/FU-5 Live Evidence | Open | Coordinated with `P11-FEAT-ZED-RESUME` | Acceptance criteria in entry |
 | `P11-FU-5` | Windows Subprocess Handle-Duplication Flake (WinError 6/50) | Open | Future Windows investigation | Acceptance criteria in entry |
-| `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | Future Gateway unit-harness investigation | Acceptance criteria in entry; 2026-08-10 sibling observation on `test_unknown_route_remains_not_found` |
+| `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | Future Gateway unit-harness investigation | Acceptance criteria in entry; 2026-08-10 two sibling harness failures same evening |
 | `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Open | Future Windows test-infrastructure work | Acceptance criteria in entry |
 | `P11.5-FU-1` | Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics | Open | `P11-FEAT-GATEWAY-COST-OBS` | Acceptance criteria in entry |
 | `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Open | Future Gateway migration design | Acceptance criteria in entry |
@@ -438,6 +438,13 @@ failed once, then passed in isolation, in its own file, and on a clean full re-r
 `test_tools_routes_remain_not_found` observation; still unreproduced for root-cause. Do not dismiss
 as "just flaky" without a disposition — this entry remains the named owner. Unrelated to the
 evidence-handoff MCP-Protocol-Version transport fix under review the same day.
+
+**Additional observation (2026-08-10 evening, Option B integrity-latch review):** A second distinct
+sibling in the same `test_server` harness failed once during a full-suite run for the
+`evidence_handoff_runtime` latch-mirror fix, then passed isolated, in-file, and on a clean full
+re-run (3132 passed / 0 failed). `optimus_gateway` was untouched by that change. Two different
+harness siblings failing the same evening is stronger race evidence than either alone — keep both
+on this entry; do not open a second FU.
 
 ### P11-FU-7: Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test
 
