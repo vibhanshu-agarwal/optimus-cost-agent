@@ -49,7 +49,7 @@ addopts = [
   "--strict-markers",
   "--import-mode=importlib",
   "-m",
-  "not requires_redis and not requires_gateway and not requires_mcp_http and not requires_mcp_stdio and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring and not requires_acpx and not requires_zed and not requires_windows_desktop and not evidence_investigation and not requires_evidence_handoff_postgres and not requires_evidence_handoff_service",
+  "not requires_redis and not requires_gateway and not requires_mcp_http and not requires_mcp_stdio and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring and not requires_os_keyring_write and not requires_acpx and not requires_zed and not requires_windows_desktop and not evidence_investigation and not requires_evidence_handoff_postgres and not requires_evidence_handoff_service and not requires_real_agents",
 ]
 markers = [
   "requires_redis: integration test that needs a live TimeSeries-capable Redis server",
@@ -60,12 +60,14 @@ markers = [
   "requires_live_gateway: integration test that needs the local Optimus Gateway service process and Anthropic API key on that process only",
   "requires_phoenix: integration test that needs a live Phoenix trace collector reachable via the Gateway-only OTLP endpoint",
   "requires_os_keyring: integration test that reads existing operator-approved credentials from the real OS credential store without writing or deleting them",
+  "requires_os_keyring_write: integration test that may create, overwrite, or delete evidence-handoff ledger signing-key entries in the real OS credential store under an isolated test service name",
   "requires_acpx: requires independently authored acpx and a real agent process",
   "requires_zed: requires a real supported Zed instance and its real logs",
   "requires_windows_desktop: requires an interactive Windows desktop and real DWM",
   "evidence_investigation: runs a named evidence-only investigation with its real dependency",
-  "requires_evidence_handoff_postgres: integration test that needs real PostgreSQL started via the wslc CLI on loopback",
-  "requires_evidence_handoff_service: integration test that needs real wslc PostgreSQL plus a real evidence-handoff Streamable HTTP service subprocess",
+  "requires_evidence_handoff_postgres: integration test that needs real PostgreSQL started via Docker Desktop on loopback",
+  "requires_evidence_handoff_service: integration test that needs real Docker Desktop PostgreSQL on loopback plus a real evidence-handoff Streamable HTTP service subprocess",
+  "requires_real_agents: end-to-end evidence that needs real native Claude Code, Codex, and Cursor clients with distinct credentials",
 ]
 
 [tool.coverage.run]

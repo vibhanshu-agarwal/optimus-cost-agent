@@ -1,8 +1,10 @@
-"""Store backend contracts. This slice supports only PostgreSQL-in-wslc on loopback."""
+"""Store backend contracts. This slice supports only PostgreSQL-in-Docker on loopback."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import Protocol
 
 from evidence_handoff_runtime.config import FeatureConfig, LifecycleBootstrapContext
 from evidence_handoff_runtime.process import require_argv
@@ -22,29 +24,73 @@ class StoreBackendError(Exception):
         return self.code
 
 
-class WslcPostgresBackend:
-    """wslc-managed PostgreSQL published only on 127.0.0.1."""
+class StoreBackend(Protocol):
+    """Loopback store backend selected by stopped-lifecycle ``backend_id``."""
+
+    @property
+    def backend_id(self) -> str: ...
+
+    @property
+    def bind_host(self) -> str: ...
+
+    @property
+    def port(self) -> int: ...
+
+    @property
+    def container_name(self) -> str: ...
+
+    @property
+    def volume_name(self) -> str: ...
+
+    @property
+    def image(self) -> str: ...
+
+    def write_env_file(self, path: Path) -> Path: ...
+
+    def build_run_argv(self, *, env_file: Path) -> list[str]: ...
+
+    def build_start_argv(self) -> list[str]: ...
+
+    def build_stop_argv(self) -> list[str]: ...
+
+    def build_inspect_argv(self) -> list[str]: ...
+
+    def build_volume_inspect_argv(self) -> list[str]: ...
+
+    def build_volume_create_argv(self) -> list[str]: ...
+
+    def build_remove_container_argv(self) -> list[str]: ...
+
+    def build_remove_volume_argv(self) -> list[str]: ...
+
+    def build_pull_argv(self) -> list[str]: ...
+
+    def build_version_argv(self) -> list[str]: ...
+
+
+class DockerPostgresBackend:
+    """Docker Desktop-managed PostgreSQL published only on 127.0.0.1."""
 
     def __init__(
         self,
         *,
         config: FeatureConfig,
         bootstrap: LifecycleBootstrapContext,
-        wslc_executable: str,
+        docker_executable: str,
     ) -> None:
-        if config.backend_id != "wslc":
+        if config.backend_id != "docker":
             raise StoreBackendError("unsupported_backend")
         if config.bind_host != "127.0.0.1":
             raise StoreBackendError("non_loopback_bind_rejected")
-        if not wslc_executable:
-            raise StoreBackendError("wslc_executable_missing")
+        if not docker_executable:
+            raise StoreBackendError("docker_executable_missing")
         self._config = config
         self._bootstrap = bootstrap
-        self._wslc = wslc_executable
+        self._docker = docker_executable
 
     @property
     def backend_id(self) -> str:
-        return "wslc"
+        return "docker"
 
     @property
     def bind_host(self) -> str:
@@ -69,7 +115,7 @@ class WslcPostgresBackend:
     def build_run_argv(self, *, env_file: Path) -> list[str]:
         publish = f"{self.bind_host}:{self.port}:5432"
         argv = [
-            self._wslc,
+            self._docker,
             "run",
             "--detach",
             "--name",
@@ -97,34 +143,72 @@ class WslcPostgresBackend:
         return path
 
     def build_start_argv(self) -> list[str]:
-        return require_argv([self._wslc, "start", self.container_name])
+        return require_argv([self._docker, "start", self.container_name])
 
     def build_stop_argv(self) -> list[str]:
-        return require_argv([self._wslc, "stop", self.container_name])
+        return require_argv([self._docker, "stop", self.container_name])
 
     def build_inspect_argv(self) -> list[str]:
-        return require_argv([self._wslc, "inspect", self.container_name])
+        return require_argv([self._docker, "inspect", self.container_name])
 
     def build_volume_inspect_argv(self) -> list[str]:
-        return require_argv([self._wslc, "volume", "inspect", self.volume_name])
+        return require_argv([self._docker, "volume", "inspect", self.volume_name])
 
     def build_volume_create_argv(self) -> list[str]:
-        return require_argv([self._wslc, "volume", "create", self.volume_name])
+        return require_argv([self._docker, "volume", "create", self.volume_name])
 
     def build_remove_container_argv(self) -> list[str]:
-        return require_argv([self._wslc, "remove", "--force", self.container_name])
+        return require_argv([self._docker, "remove", "--force", self.container_name])
 
     def build_remove_volume_argv(self) -> list[str]:
-        return require_argv([self._wslc, "volume", "remove", self.volume_name])
+        return require_argv([self._docker, "volume", "remove", self.volume_name])
 
     def build_version_argv(self) -> list[str]:
-        return require_argv([self._wslc, "version"])
+        return require_argv([self._docker, "version"])
 
     def build_pull_argv(self) -> list[str]:
-        return require_argv([self._wslc, "pull", self.image])
+        return require_argv([self._docker, "pull", self.image])
+
+
+def _build_docker_backend(
+    *,
+    config: FeatureConfig,
+    bootstrap: LifecycleBootstrapContext,
+    executable: str,
+) -> DockerPostgresBackend:
+    return DockerPostgresBackend(
+        config=config,
+        bootstrap=bootstrap,
+        docker_executable=executable,
+    )
+
+
+_BACKEND_FACTORIES: dict[
+    str,
+    Callable[..., StoreBackend],
+] = {"docker": _build_docker_backend}
+
+
+def registered_backend_ids() -> frozenset[str]:
+    return frozenset(_BACKEND_FACTORIES)
+
+
+def build_store_backend(
+    *,
+    config: FeatureConfig,
+    bootstrap: LifecycleBootstrapContext,
+    executable: str,
+) -> StoreBackend:
+    factory = _BACKEND_FACTORIES.get(config.backend_id)
+    if factory is None:
+        raise StoreBackendError("unsupported_backend")
+    return factory(config=config, bootstrap=bootstrap, executable=executable)
 
 
 __all__ = [
+    "DockerPostgresBackend",
+    "StoreBackend",
     "StoreBackendError",
-    "WslcPostgresBackend",
+    "build_store_backend",
+    "registered_backend_ids",
 ]

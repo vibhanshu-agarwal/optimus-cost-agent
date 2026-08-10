@@ -12,7 +12,7 @@ from optimus_security.sanitization import PathAliasRule
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 _FALSY = frozenset({"0", "false", "no", "off", ""})
 
-_DEFAULT_BACKEND = "wslc"
+_DEFAULT_BACKEND = "docker"
 _DEFAULT_BIND_HOST = "127.0.0.1"
 _DEFAULT_POSTGRES_PORT = 55432
 _DEFAULT_CONTAINER_NAME = "evidence-handoff-postgres"

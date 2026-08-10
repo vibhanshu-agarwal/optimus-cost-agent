@@ -78,6 +78,51 @@ def test_pyproject_requires_os_keyring_marker_is_descriptive() -> None:
     assert FEATURE_ID_RE.search(text) is None or "requires_os_keyring" in text
     # Marker name itself must not encode a feature id.
     assert "FEAT-" not in text.split("requires_os_keyring", 1)[0][-80:]
-    marker_line = next(line for line in text.splitlines() if "requires_os_keyring" in line)
+    marker_line = next(
+        line
+        for line in text.splitlines()
+        if "requires_os_keyring:" in line and "requires_os_keyring_write" not in line
+    )
     assert FEATURE_ID_RE.search(marker_line) is None
     assert PLAN_NUMBER_RE.search(marker_line) is None
+    # Read-only contract must remain explicit — do not silently overload for writes.
+    assert "without writing or deleting" in marker_line
+
+
+def test_pyproject_requires_os_keyring_write_marker_is_descriptive_and_deselected() -> None:
+    text = PYPROJECT.read_text(encoding="utf-8")
+    assert "requires_os_keyring_write" in text
+    marker_line = next(line for line in text.splitlines() if "requires_os_keyring_write:" in line)
+    assert FEATURE_ID_RE.search(marker_line) is None
+    assert PLAN_NUMBER_RE.search(marker_line) is None
+    assert "write" in marker_line.lower() or "create" in marker_line.lower()
+    assert "not requires_os_keyring_write" in text
+    # Distinct from the read-only marker — both must remain registered.
+    assert "requires_os_keyring:" in text
+    assert "requires_os_keyring_write:" in text
+
+
+def test_pyproject_requires_evidence_handoff_postgres_marker_names_docker_loopback() -> None:
+    text = PYPROJECT.read_text(encoding="utf-8")
+    marker_line = next(
+        line for line in text.splitlines() if "requires_evidence_handoff_postgres:" in line
+    )
+    assert FEATURE_ID_RE.search(marker_line) is None
+    assert PLAN_NUMBER_RE.search(marker_line) is None
+    assert "docker" in marker_line.lower()
+    assert "loopback" in marker_line.lower()
+    assert "wslc" not in marker_line.lower()
+    assert "not requires_evidence_handoff_postgres" in text
+
+
+def test_pyproject_requires_evidence_handoff_service_marker_names_docker_loopback() -> None:
+    text = PYPROJECT.read_text(encoding="utf-8")
+    marker_line = next(
+        line for line in text.splitlines() if "requires_evidence_handoff_service:" in line
+    )
+    assert FEATURE_ID_RE.search(marker_line) is None
+    assert PLAN_NUMBER_RE.search(marker_line) is None
+    assert "docker" in marker_line.lower()
+    assert "loopback" in marker_line.lower() or "service" in marker_line.lower()
+    assert "wslc" not in marker_line.lower()
+    assert "not requires_evidence_handoff_service" in text

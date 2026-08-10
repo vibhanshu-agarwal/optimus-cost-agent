@@ -12,7 +12,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from evidence_handoff_runtime.backends import StoreBackendError, WslcPostgresBackend
+from evidence_handoff_runtime.backends import (
+    StoreBackend,
+    StoreBackendError,
+    build_store_backend,
+    registered_backend_ids,
+)
 from evidence_handoff_runtime.config import (
     Availability,
     FeatureConfig,
@@ -83,7 +88,7 @@ class HealthReport:
 
 
 class LifecycleManager:
-    """Idempotent, lock-serialized lifecycle operations for the wslc PostgreSQL store."""
+    """Idempotent, lock-serialized lifecycle operations for the Docker PostgreSQL store."""
 
     def __init__(
         self,
@@ -91,17 +96,20 @@ class LifecycleManager:
         bootstrap: LifecycleBootstrapContext,
         *,
         process_runner: ProcessRunner | None = None,
-        wslc_executable: str | None | object = ...,
+        docker_executable: str | None | object = ...,
         probe_ready: Callable[[], bool] | None = None,
         probe_version: Callable[[], str] | None = None,
     ) -> None:
         self._config = config
         self._bootstrap = bootstrap
         self._runner: ProcessRunner = process_runner or SubprocessRunner()
-        if wslc_executable is ...:
-            self._wslc = shutil.which("wslc")
+        if docker_executable is ...:
+            if config.backend_id in registered_backend_ids():
+                self._executable = shutil.which("docker")
+            else:
+                self._executable = None
         else:
-            self._wslc = wslc_executable  # type: ignore[assignment]
+            self._executable = docker_executable  # type: ignore[assignment]
         self._probe_ready = probe_ready
         self._probe_version = probe_version
         self._thread_lock = threading.RLock()
@@ -126,8 +134,10 @@ class LifecycleManager:
                 return self._disabled_status()
             if self._running and self._is_ready():
                 return self._ready_status()
-            if not self._wslc:
-                return self._unavailable_status("wslc_unavailable")
+            if self._config.backend_id not in registered_backend_ids():
+                return self._unavailable_status("unsupported_backend")
+            if not self._executable:
+                return self._unavailable_status("docker_unavailable")
             return self._unavailable_status("store_not_running")
 
     def start(self) -> LifecycleStatus:
@@ -137,14 +147,15 @@ class LifecycleManager:
                 return self._integrity_failed_status(integrity)
             if not self._config.enabled:
                 return self._disabled_status()
-            if not self._wslc:
-                return self._unavailable_status("wslc_unavailable")
             try:
                 RuntimeInputSupplier(config=self._config, startup=self._bootstrap).startup_inputs()
             except LifecycleBootstrapError as exc:
                 return self._unavailable_status(exc.code)
-            if self._config.backend_id != "wslc":
+            # Unknown backend must fail closed before any process spawn.
+            if self._config.backend_id not in registered_backend_ids():
                 return self._unavailable_status("unsupported_backend")
+            if not self._executable:
+                return self._unavailable_status("docker_unavailable")
             try:
                 backend = self._backend()
             except StoreBackendError as exc:
@@ -185,11 +196,16 @@ class LifecycleManager:
                 if integrity is not None:
                     return self._integrity_failed_status(integrity)
                 return self._disabled_status()
-            if not self._wslc:
+            if self._config.backend_id not in registered_backend_ids():
                 self._running = False
                 if integrity is not None:
                     return self._integrity_failed_status(integrity)
-                return self._unavailable_status("wslc_unavailable")
+                return self._unavailable_status("unsupported_backend")
+            if not self._executable:
+                self._running = False
+                if integrity is not None:
+                    return self._integrity_failed_status(integrity)
+                return self._unavailable_status("docker_unavailable")
             try:
                 backend = self._backend()
                 if self._container_exists(backend):
@@ -258,26 +274,28 @@ class LifecycleManager:
             if backend_id != self._config.backend_id:
                 raise LifecycleError("backend_switch_not_supported_in_slice")
 
-    def wslc_version(self) -> str:
-        if not self._wslc:
+    def docker_version(self) -> str:
+        if not self._executable:
             return ""
         backend = self._backend()
         result = self._runner.run(backend.build_version_argv())
         stdout = getattr(result, "stdout", "") or ""
-        return stdout.strip() or "wslc"
+        return stdout.strip() or "docker"
 
     def destroy_for_test_cleanup(self) -> None:
         """Test-only cleanup of container and volume. Not part of operator stop."""
         with self._lifecycle_lock():
-            if not self._wslc:
+            if self._config.backend_id not in registered_backend_ids():
+                return
+            if not self._executable:
                 return
             try:
                 backend = self._backend()
             except StoreBackendError:
                 return
             # Only remove resources that exist: bare `remove` / `volume remove` of a
-            # missing name returns nonzero on wslc, and raising early would skip the
-            # volume when start failed after `volume create` but before a container.
+            # missing name returns nonzero, and raising early would skip the volume when
+            # start failed after `volume create` but before a container.
             if self._container_exists(backend):
                 remove_container = self._runner.run(backend.build_remove_container_argv())
                 if getattr(remove_container, "returncode", 1) != 0:
@@ -288,23 +306,23 @@ class LifecycleManager:
                     raise LifecycleError("store_destroy_failed")
             self._running = False
 
-    def _backend(self) -> WslcPostgresBackend:
-        if not self._wslc:
-            raise StoreBackendError("wslc_executable_missing")
-        return WslcPostgresBackend(
+    def _backend(self) -> StoreBackend:
+        if not self._executable:
+            raise StoreBackendError("docker_executable_missing")
+        return build_store_backend(
             config=self._config,
             bootstrap=self._bootstrap,
-            wslc_executable=str(self._wslc),
+            executable=str(self._executable),
         )
 
-    def _ensure_volume(self, backend: WslcPostgresBackend) -> None:
+    def _ensure_volume(self, backend: StoreBackend) -> None:
         self._runner.run(backend.build_volume_create_argv())
 
-    def _container_exists(self, backend: WslcPostgresBackend) -> bool:
+    def _container_exists(self, backend: StoreBackend) -> bool:
         result = self._runner.run(backend.build_inspect_argv())
         return getattr(result, "returncode", 1) == 0
 
-    def _volume_exists(self, backend: WslcPostgresBackend) -> bool:
+    def _volume_exists(self, backend: StoreBackend) -> bool:
         result = self._runner.run(backend.build_volume_inspect_argv())
         return getattr(result, "returncode", 1) == 0
 

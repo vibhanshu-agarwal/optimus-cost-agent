@@ -92,3 +92,59 @@ def test_missing_password_file_fails_closed(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as raised:
         main(argv)
     assert raised.value.code != 0
+
+
+def _required_status_argv(tmp_path: Path, password_file: Path, *extra: str) -> list[str]:
+    roots = _roots(tmp_path)
+    return [
+        "status",
+        "--control-root",
+        str(roots["control"]),
+        "--lock-path",
+        str(tmp_path / "lifecycle.lock"),
+        "--capture-root",
+        str(roots["capture"]),
+        "--staging-root",
+        str(roots["staging"]),
+        "--quarantine-root",
+        str(roots["quarantine"]),
+        "--forbidden-root",
+        str(roots["forbidden"]),
+        "--admin-password-file",
+        str(password_file),
+        *extra,
+    ]
+
+
+def test_parser_exposes_explicit_backend_id_defaulting_to_docker(tmp_path: Path) -> None:
+    from evidence_handoff_runtime.lifecycle_cli import _build_parser
+
+    parser = _build_parser()
+    option_strings = {option for action in parser._actions for option in action.option_strings}
+    assert "--backend-id" in option_strings
+
+    password_file = tmp_path / "admin.password"
+    password_file.write_text("cli-admin-password-canary-value\n", encoding="utf-8")
+    args = parser.parse_args(_required_status_argv(tmp_path, password_file))
+    assert args.backend_id == "docker"
+
+
+def test_parser_accepts_only_implemented_docker_backend_id(tmp_path: Path) -> None:
+    from evidence_handoff_runtime.lifecycle_cli import _build_parser
+
+    parser = _build_parser()
+    password_file = tmp_path / "admin.password"
+    password_file.write_text("cli-admin-password-canary-value\n", encoding="utf-8")
+
+    accepted = parser.parse_args(_required_status_argv(tmp_path, password_file, "--backend-id", "docker"))
+    assert accepted.backend_id == "docker"
+
+    with pytest.raises(SystemExit) as raised:
+        parser.parse_args(_required_status_argv(tmp_path, password_file, "--backend-id", "wslc"))
+    assert raised.value.code != 0
+
+    with pytest.raises(SystemExit) as raised_unknown:
+        parser.parse_args(
+            _required_status_argv(tmp_path, password_file, "--backend-id", "native-windows")
+        )
+    assert raised_unknown.value.code != 0

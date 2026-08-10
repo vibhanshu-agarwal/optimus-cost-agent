@@ -49,6 +49,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "evidence_handoff.ledger.canonical:canonical_json:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonical_json canonicalizes already-validated ledger envelope fields solely so content_sha256_for_envelope can compute an in-memory SHA-256 digest; the encoded JSON bytes are not persisted or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_canonical_hashing.py::test_canonical_json_is_deterministic_sorted_utf8",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "evidence_handoff.redaction.gate:_read_magic:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: magic-byte peek only; no body retention before kind dispatch.",
@@ -102,6 +110,14 @@
       "rationale": "Canonical PNG write of re-encoded raster only; no metadata/text chunks retained.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/evidence/test_image_redaction.py::test_canonical_png_strips_metadata_and_uses_role_name",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff.redaction.ingress:StructuredIngress.sanitize:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Inspection: StructuredIngress.sanitize serializes in-memory sanitized draft/part mappings only for fail-closed final canary and sanitize_for_persistence residual scans before returning SanitizedDraft; the encoded JSON is not persisted or exported by this method.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/evidence/test_structured_ingress.py::test_exact_secret_and_request_credential_are_sanitized",
       "evidence_tier": "unit"
     },
     {
@@ -174,6 +190,262 @@
       "rationale": "Shared sanitizer protects text artifact output before private staging write.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/evidence/test_text_redaction.py::test_exact_secret_split_across_every_stream_boundary",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.audit:AuditRecorder.record:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AuditRecorder.record opens an append-only JSONL path for a closed content-free field set only; rejected fields never reach the file handle.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_review_ruling.py::test_audit_module_records_only_narrow_content_free_fields",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.audit:AuditRecorder.record:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AuditRecorder.record json.dumps only a sorted closed allowlist of content-free audit fields after rejecting bodies/secrets; not a diagnostic export.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_review_ruling.py::test_audit_module_records_only_narrow_content_free_fields",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.audit:AuditRecorder.record:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AuditRecorder.record appends only the already-validated content-free JSONL line; no raw entry body retention.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_review_ruling.py::test_audit_module_records_only_narrow_content_free_fields",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.auth:CredentialIssuer.issue:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: CredentialIssuer.issue serializes signing claims in memory to produce an opaque token digest/signature; token material is not persisted under the control root by this path.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_auth.py::test_no_token_persisted_under_control_root",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.backends:DockerPostgresBackend.write_env_file:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: write_env_file writes private backend env keys for the local Docker Postgres process only; credentials are not logged or exported as diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_lifecycle.py::test_docker_run_argv_is_credential_safe_loopback_env_file",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.delivery:_page_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _page_digest canonicalizes already-verified page identity fields solely to compute an in-memory SHA-256 delivery digest; encoded JSON is not exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_delivery.py::test_read_entries_filters_after_unfiltered_verify_and_returns_token",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.integrity:IntegrityLatch.persist:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: IntegrityLatch.persist serializes content-free latch incident fields (cause/ids/sequences) for local control-state durability; no entry bodies.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_integrity.py::test_integrity_latch_persists_atomically_and_reloads",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.integrity:IntegrityLatch.persist:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: IntegrityLatch.persist writes only the content-free latch JSON under the private control root.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_integrity.py::test_integrity_latch_persists_atomically_and_reloads",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.lifecycle:LifecycleManager._persist_instance_id:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _persist_instance_id serializes the ledger instance identity document for local control-root durability; content-free.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_lifecycle.py::test_enabled_start_uses_spawn_seam_without_projecting_credentials",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.lifecycle:LifecycleManager._persist_instance_id:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _persist_instance_id writes only the instance-identity JSON under the private control root.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_lifecycle.py::test_enabled_start_uses_spawn_seam_without_projecting_credentials",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.lifecycle:_LifecycleLock.__enter__:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: lifecycle lock opens a private lock file for mutual exclusion only; no diagnostic payload is written through this open.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_lifecycle.py::test_concurrent_start_is_serialized_by_lifecycle_lock",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.lifecycle:_LifecycleLock._lock_file:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: lifecycle lock writes only a process ownership marker into the private lock file; not a diagnostic export.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_lifecycle.py::test_concurrent_start_is_serialized_by_lifecycle_lock",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.lifecycle_cli:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: lifecycle_cli main serializes content-free status/result objects for operator stdout; secrets stay out of argv and structured output.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_lifecycle_cli.py::test_status_reads_password_file_and_keeps_secret_out_of_argv",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.lifecycle_cli:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: lifecycle_cli main prints only controlled operational JSON/status to stdout and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_lifecycle_cli.py::test_status_reads_password_file_and_keeps_secret_out_of_argv",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.recovery:RecoveryManager.quarantine:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: RecoveryManager.quarantine serializes content-free recovery/quarantine metadata for the private quarantine root; predecessor bodies are not re-exported as diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_recovery.py::test_recovery_quarantines_predecessor_read_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.recovery:RecoveryManager.quarantine:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: RecoveryManager.quarantine writes only content-free quarantine metadata under the private quarantine root.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_recovery.py::test_recovery_quarantines_predecessor_read_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.service:LedgerService.start:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: LedgerService.start opens private runtime manifest/control files under the service control root; store passwords are excluded from persisted manifests.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_transport.py::test_service_runtime_manifest_never_persists_store_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.service:_write_json_private:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _write_json_private serializes already-selected content-free service control documents for private atomic write; not a diagnostic dump.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_transport.py::test_service_runtime_manifest_never_persists_store_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.service:_write_json_private:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _write_json_private atomically writes private content-free JSON under the service control root.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_transport.py::test_service_runtime_manifest_never_persists_store_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.service:app:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: Streamable HTTP exception handlers emit typed content-free error codes/messages to the MCP client; raw tracebacks and entry bodies are not exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_transport.py::test_transport_enforces_request_limits_before_parse",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.service:app:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch on contextvars.ContextVar.set() (_BOUND_REQUEST); no Redis client or hash write exists. The bound credential is reused only for in-process re-authentication and is never logged or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_sessions.py::test_resolve_or_adopt_attaches_unknown_transport_session",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.service:capabilities_status:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: capabilities_status returns typed content-free tool errors without exporting raw exception bodies.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_capabilities.py::test_delivery_view_is_facts_only_never_guesses_liveness",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.service:delivery_confirm:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: delivery_confirm returns typed content-free tool errors without exporting raw exception bodies.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_delivery.py::test_confirm_delivery_cas_advances_past_non_visible",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.service:delivery_read:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: delivery_read returns typed content-free tool errors without exporting raw exception bodies.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_delivery.py::test_read_entries_filters_after_unfiltered_verify_and_returns_token",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.service:delivery_status:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: delivery_status returns typed content-free tool errors without exporting raw exception bodies.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_capabilities.py::test_delivery_view_capability_fresh_uses_staleness_not_emptiness",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.service:send_with_session:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch on contextvars.ContextVar.set() (_BOUND_REQUEST); no Redis client or hash write exists. The bound credential is reused only for in-process re-authentication and is never logged or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_sessions.py::test_resolve_or_adopt_attaches_unknown_transport_session",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.service_cli:main:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: service_cli logging emits controlled operational status lines; credential flags are rejected before process start.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_transport.py::test_service_cli_rejects_password_on_argv",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.store:PostgresLedgerStore._append_in_txn:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _append_in_txn serializes already-sanitized envelope/metadata fields for PostgreSQL persistence of canonical ledger rows; raw ingress text never reaches this serializer.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_policy.py::test_reviewer_success_invokes_real_ingress_then_store_append",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.store:PostgresLedgerStore.create_linked_replacement:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: create_linked_replacement serializes content-free recovery linkage metadata for the replacement instance row.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_recovery.py::test_activate_linked_replacement_preserves_predecessor_latch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.store:PostgresLedgerStore.issue_delivery_token:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: issue_delivery_token serializes page-identity claims in memory to mint a delivery token digest; token secrets are not written as diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_delivery.py::test_read_entries_filters_after_unfiltered_verify_and_returns_token",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.store:PostgresLedgerStore.mirror_integrity_incident:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: mirror_integrity_incident serializes content-free integrity incident fields into store control tables.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_integrity.py::test_monitor_latches_on_verify_full_and_blocks_normal_ops",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.store:PostgresLedgerStore.retire_principal:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: retire_principal serializes content-free retirement facts for capability/principal rows; no entry bodies.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_capabilities.py::test_retire_principal_is_authoritative_for_retired_agent_ids_path",
       "evidence_tier": "unit"
     },
     {
@@ -329,22 +601,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.launch_approval_cli:_confirm_client_mcp_review:stdout_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: _confirm_client_mcp_review prints only a fixed cancel status line when the operator declines; it never prints identity fields, credentials, or MCP configuration.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_confirm_client_mcp_review_cancel_prints_safe_status",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus.acp.launch_approval_cli:_display_client_mcp_review:stdout_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: _display_client_mcp_review prints only ClientMcpReviewDisplay safe provenance lines (session/workspace/received-at, transport, server name, credential names and fingerprints); raw header/env/query values are absent by construction.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_mcp_review_renders_provenance_names_without_values",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "optimus.acp.launch_approval_cli:_cmd_revoke:stdout_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.acp.launch_approval_cli:_cmd_revoke:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
@@ -393,11 +649,27 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.launch_approval_cli:_confirm_client_mcp_review:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _confirm_client_mcp_review prints only a fixed cancel status line when the operator declines; it never prints identity fields, credentials, or MCP configuration.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_confirm_client_mcp_review_cancel_prints_safe_status",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.launch_approval_cli:_display_candidate:stdout_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.acp.launch_approval_cli:_display_candidate:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_run_command_accepts_elevated_debug",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_display_client_mcp_review:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _display_client_mcp_review prints only ClientMcpReviewDisplay safe provenance lines (session/workspace/received-at, transport, server name, credential names and fingerprints); raw header/env/query values are absent by construction.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_mcp_review_renders_provenance_names_without_values",
       "evidence_tier": "unit"
     },
     {
@@ -419,7 +691,7 @@
     {
       "key": "optimus.acp.launch_approvals:KeyringApprovalStore.write_diagnostic_grant:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: write_diagnostic_grant serializes the fixed DiagnosticGrant record—IDs, workspace digest, expiry, and record HMAC—for keyring storage; it contains no credential literal fields.",
+      "rationale": "Inspection: write_diagnostic_grant serializes the fixed DiagnosticGrant record\u2014IDs, workspace digest, expiry, and record HMAC\u2014for keyring storage; it contains no credential literal fields.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_elevated_debug_writes_a_grant_that_verifies_against_its_own_store",
       "evidence_tier": "unit"
@@ -657,19 +929,19 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.agent.planning_loop:_PlanningIterationRunner.run_iteration:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.agent.planning_loop:_PlanningIterationRunner.run_iteration:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/agent/test_planning_loop_runner.py::test_unexpected_attempt_exception_logs_type_only_and_stops_cost_unknown",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "optimus.agent.directives:parse_canonical_json_object:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: parse_canonical_json_object json.loads/dumps only validates that MCP_CALL arguments are a canonical JSON object in memory for directive parsing; it neither persists nor exports argument bodies as diagnostics.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/agent/test_mcp_tool_directives.py::test_parse_planning_turn_accepts_mcp_call_with_canonical_json_object",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.planning_loop:_PlanningIterationRunner.run_iteration:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.agent.planning_loop:_PlanningIterationRunner.run_iteration:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/agent/test_planning_loop_runner.py::test_unexpected_attempt_exception_logs_type_only_and_stops_cost_unknown",
       "evidence_tier": "unit"
     },
     {
@@ -769,18 +1041,18 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.gateway.client:GatewayRequest.body_bytes:json_serialization",
-      "policy": "protocol-only",
-      "rationale": "Functional protocol serialization at optimus.gateway.client:GatewayRequest.body_bytes:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
-      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
-      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "optimus.gateway.client:GatewayClient._post_mcp:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.gateway.client:GatewayClient._post_mcp:exception_export uses exception text only for an in-memory API-key membership check before raising a generic typed error; it does not log, persist, or export raw diagnostics.",
       "sanitizer": "fixed replacement error for matching key; no diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.gateway.client:GatewayRequest.body_bytes:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus.gateway.client:GatewayRequest.body_bytes:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
       "evidence_tier": "unit"
     },
@@ -889,19 +1161,19 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.mcp.client_catalog:arguments_digest:json_serialization",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: arguments_digest json.dumps only canonicalizes MCP call arguments in memory to compute a SHA-256 binding digest for one-call approval; the payload is not persisted, audited, or exported as diagnostic content.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/mcp/test_client_catalog.py::test_one_call_token_replay_and_mismatch_denied",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "optimus.mcp.client_catalog:ClientMcpToolService.list_tools:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: ClientMcpToolService.list_tools json.dumps only name/description/side_effect_class/availability from the already-guarded identity-bound catalog into an in-memory AgentMcpToolOutput; credentials, headers, env, and process detail are omitted.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/agent/test_mcp_tool_directives.py::test_toolbox_operates_against_real_client_mcp_tool_service",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.mcp.client_catalog:arguments_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: arguments_digest json.dumps only canonicalizes MCP call arguments in memory to compute a SHA-256 binding digest for one-call approval; the payload is not persisted, audited, or exported as diagnostic content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/mcp/test_client_catalog.py::test_one_call_token_replay_and_mismatch_denied",
       "evidence_tier": "unit"
     },
     {
@@ -931,7 +1203,7 @@
     {
       "key": "optimus.mcp.client_trust:write_client_mcp_durable_from_fingerprint:text_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: AST overmatch on ClientMcpDurableStore.write(...) method call inside write_client_mcp_durable_from_fingerprint; no file or stream write occurs—the call persists the already schema-limited durable record via the keyring store.",
+      "rationale": "Inspection: AST overmatch on ClientMcpDurableStore.write(...) method call inside write_client_mcp_durable_from_fingerprint; no file or stream write occurs\u2014the call persists the already schema-limited durable record via the keyring store.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/mcp/test_client_trust.py::test_write_rejects_fingerprint_that_does_not_match_identity",
       "evidence_tier": "unit"
@@ -1097,6 +1369,86 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.mcp_discovery:MCPDiscoveryPaginator._descriptor_from_tool:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Pydantic detail is retained only inside MCPDiscoveryError while the route returns its fixed disposition through sanitize_error_message; raw descriptor diagnostics are not persisted or exported.",
+      "sanitizer": "fixed discovery disposition at the route boundary; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_discovery.py::test_paginator_rejects_invalid_definitions_and_mcp_param_headers",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_discovery:MCPDiscoveryPaginator._descriptor_size:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonical JSON is measured in memory solely to enforce the descriptor-byte budget before a descriptor can enter the manifest; it is neither persisted nor exported.",
+      "sanitizer": "descriptor byte budget and schema validation; no diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_discovery.py::test_paginator_rejects_invalid_definitions_and_mcp_param_headers",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_invocation:MCPInvocationBroker.call:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes typed result and admitted request shapes only to calculate configured byte budgets before persistence; the serialized data is not retained or exported by this broker.",
+      "sanitizer": "typed MCP models, profile limits, and byte-budget checks; no diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_invocation.py::test_call_rechecks_gateway_binding_and_forwards_only_derived_name_and_arguments",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_models:canonical_manifest_bytes:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Gateway-runtime twin serializes the normalized structural manifest only to compute its deterministic binding hash; response disposition is excluded and the JSON is not persisted or exported.",
+      "sanitizer": "canonical_manifest_payload allowlist and deterministic JSON; no diagnostic retention",
+      "test_node": "tests/unit/mcp/test_models.py::test_manifest_hash_is_stable_for_descriptor_order_and_excludes_response_disposition",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_transports:DockerStdioMCPTransport._request:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional MCP JSON-RPC serialization is written only to the digest-pinned, isolated stdio container; sanitizing the request would corrupt the protocol contract.",
+      "sanitizer": "MCP profile allowlist, digest-pinned container, isolated environment, and protocol validation",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_transports.py::test_stdio_transport_builds_digest_pinned_no_mount_docker_argv_and_safe_environment",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_transports:DockerStdioMCPTransport._request:text_write",
+      "policy": "protocol-only",
+      "rationale": "The stdio write is the functional MCP JSON-RPC request to the approved container, not diagnostic retention; sanitizing it would corrupt the protocol contract.",
+      "sanitizer": "MCP profile allowlist, digest-pinned container, isolated environment, and protocol validation",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_transports.py::test_stdio_transport_builds_digest_pinned_no_mount_docker_argv_and_safe_environment",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_transports:DockerStdioMCPTransport.server_discover:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: exception text is used only to recognize the fixed JSON-RPC method-not-found fallback; any remaining transport error is reduced to the generic discovery route failure rather than exported as raw upstream detail.",
+      "sanitizer": "fixed fallback predicate and generic discovery route failure; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_transports.py::test_stdio_transport_falls_back_to_tools_only_legacy_initialization",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_transports:StreamableHTTPMCPTransport._request:file_open",
+      "policy": "protocol-only",
+      "rationale": "AST classifies the injected opener.open network call as file_open; it is the functional JSON-RPC request to the profile-pinned endpoint, not a file or diagnostic-retention operation.",
+      "sanitizer": "pinned HTTPS origin, credential resolver, bounded response, and MCP protocol validation",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_transports.py::test_http_transport_posts_only_json_with_pinned_auth_and_request_metadata",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_transports:StreamableHTTPMCPTransport._request:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional MCP JSON-RPC serialization is sent only to the profile-pinned endpoint; sanitizing it would corrupt the protocol contract and it is not retained as diagnostic content.",
+      "sanitizer": "pinned HTTPS origin, credential resolver, bounded response, and MCP protocol validation",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_transports.py::test_http_transport_posts_only_json_with_pinned_auth_and_request_metadata",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.mcp_usage:RedisMCPUsageWriter.persist:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST classifies Redis SET as redis_hash_write; it persists the fixed MCPUsageRecord accounting schema with IDs, names, byte counts, attribution, and monetary fields, never raw arguments, result content, or diagnostics.",
+      "sanitizer": "typed MCPUsageRecord schema and idempotent TTL-bound key; no diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_mcp_usage.py::test_redis_writer_uses_direct_ttl_bound_idempotent_key_value_storage",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.observability:_coerce_attribute_value:json_serialization",
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.observability:_coerce_attribute_value:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback. `_coerce_attribute_value` only runs on the already-`sanitize_for_persistence`-processed value returned by `_redact_field` in `_apply_redacted_attributes`; it never receives raw untrusted content directly.",
@@ -1227,7 +1579,7 @@
     {
       "key": "optimus_gateway.upstream_client:call_with_upstream_retry:exception_export",
       "policy": "safe-by-construction",
-      "rationale": "Inspection (Plan 11.4 re-verified): call_with_upstream_retry uses str(exc) only to rewrap a RetryableUpstreamError as RuntimeError in memory after transient-attempt exhaustion; no sanitizer runs at this site. The message is sanitized at the existing run_model_completion RuntimeError→502 boundary (sanitize_error_message) before any HTTP response export. The on_attempt_failure callback added for model-path retry telemetry receives only attempt number, a literal transient/permanent classification string, latency, and disposition — never exception text, so it does not add a new exception_export surface. Non-retryable exceptions are re-raised as-is (bare raise, no str()/repr() conversion) and are outside this surface. Callers that reuse this helper without that outer catch must add their own sanitizing boundary.",
+      "rationale": "Inspection (Plan 11.4 re-verified): call_with_upstream_retry uses str(exc) only to rewrap a RetryableUpstreamError as RuntimeError in memory after transient-attempt exhaustion; no sanitizer runs at this site. The message is sanitized at the existing run_model_completion RuntimeError\u2192502 boundary (sanitize_error_message) before any HTTP response export. The on_attempt_failure callback added for model-path retry telemetry receives only attempt number, a literal transient/permanent classification string, latency, and disposition \u2014 never exception text, so it does not add a new exception_export surface. Non-retryable exceptions are re-raised as-is (bare raise, no str()/repr() conversion) and are outside this surface. Callers that reuse this helper without that outer catch must add their own sanitizing boundary.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_upstream_retry.py::test_model_retry_ceiling_is_three_attempts",
       "evidence_tier": "unit"
@@ -1238,6 +1590,14 @@
       "rationale": "Inspection: _compute_signature canonicalizes the already value-safe gateway-child manifest solely as the HMAC input and returns a signature digest, not retained diagnostic content.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/security/test_launch_manifest.py::test_manifest_contains_no_raw_secret",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.launch_manifest:_normalize_mcp_profiles:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: validation detail remains inside LaunchManifestError while the standalone entrypoint reports only its fixed code; profile metadata is not persisted or exported as a diagnostic.",
+      "sanitizer": "fixed LaunchManifestError code at the entrypoint boundary; no raw diagnostic retention",
+      "test_node": "tests/unit/security/test_mcp_profile_manifest.py::test_profile_bootstrap_rejects_secret_material_and_secret_fingerprint_fields",
       "evidence_tier": "unit"
     },
     {
@@ -1465,6 +1825,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan117_custody_contract:live_session_proof_sha256:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes schema-limited LiveSessionProof safe fields (ids, liveness flags, evidence hashes) to canonical sorted-key JSON solely to compute an in-memory proof_sha256; no path write, credentials, or raw transcript export.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_contract.py::test_live_session_proof_canonical_digest_binds_safe_fields_only",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan117_custody_contract:sha256_file:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: opens a regular evidence file only to stream 1 MiB chunks for SHA-256; symlinks are rejected and no file content is retained beyond the digest.",
@@ -1481,19 +1849,27 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.plan117_custody_contract:live_session_proof_sha256:json_serialization",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: serializes schema-limited LiveSessionProof safe fields (ids, liveness flags, evidence hashes) to canonical sorted-key JSON solely to compute an in-memory proof_sha256; no path write, credentials, or raw transcript export.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan117_custody_contract.py::test_live_session_proof_canonical_digest_binds_safe_fields_only",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "tools.plan117_custody_contract:verify_manifest:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: verify_manifest wraps attempt-budget ValueError into CustodyContractError with a fixed reason code string and never exports raw exception text or secret values.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_verify_plan117_custody_feasibility.py::test_verify_manifest_missing_artifact_and_budget_and_seal_gates",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:RelayControlEndpoint._dispatch:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch on threading.Event.set() when sealing the control endpoint after prompt forward; no Redis client or hash write exists.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_send_existing_session_prompt_forwards_one_prompt_never_session_new",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:RelayControlEndpoint.close:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch on threading.Event.set() inside RelayControlEndpoint.close; no Redis client or hash write exists on the private control path.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_acquire_live_session_proof_returns_live_identity_and_liveness",
       "evidence_tier": "unit"
     },
     {
@@ -1507,7 +1883,7 @@
     {
       "key": "tools.plan117_custody_relay:_LockedRecorder.record_chunk:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: serializes only schema-limited index fields (sequence, direction, offsets, size, sha256) — never ACP message bodies — into NDJSON index lines.",
+      "rationale": "Inspection: serializes only schema-limited index fields (sequence, direction, offsets, size, sha256) \u2014 never ACP message bodies \u2014 into NDJSON index lines.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_all_byte_values_round_trip",
       "evidence_tier": "unit"
@@ -1537,11 +1913,27 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan117_custody_relay:_descriptor_sha256:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes schema-limited control-descriptor locator fields (run_attempt_id, endpoint kind/path, connection_id, owner_id) to canonical sorted-key JSON solely to compute an in-memory descriptor_sha256; auth material stays under private custody and is not logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_acquire_live_session_proof_returns_live_identity_and_liveness",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan117_custody_relay:_emit_stderr:text_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: writes only a fixed safe reason code string (relay_recorder_failure / relay_interrupted / relay_broken_pipe) to stderr; never raw bytes or secrets.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_recorder_failure_terminates_owned_child_no_fallback",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan117_custody_relay:_encode_session_prompt:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes a single session/prompt ACP request from a preflight-approved fixture for opaque forward over the existing connection; never emits session/new, credentials, or control-plane traffic into the ACP byte stream.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_send_existing_session_prompt_forwards_one_prompt_never_session_new",
       "evidence_tier": "unit"
     },
     {
@@ -1566,38 +1958,6 @@
       "rationale": "Inspection: AST overmatch on threading.Event.set() inside run_relay; no Redis client or hash write exists in the opaque relay.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_empty_streams_produce_eof_and_empty_bins",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.plan117_custody_relay:RelayControlEndpoint.close:redis_hash_write",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: AST overmatch on threading.Event.set() inside RelayControlEndpoint.close; no Redis client or hash write exists on the private control path.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_acquire_live_session_proof_returns_live_identity_and_liveness",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.plan117_custody_relay:RelayControlEndpoint._dispatch:redis_hash_write",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: AST overmatch on threading.Event.set() when sealing the control endpoint after prompt forward; no Redis client or hash write exists.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_send_existing_session_prompt_forwards_one_prompt_never_session_new",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.plan117_custody_relay:_descriptor_sha256:json_serialization",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: serializes schema-limited control-descriptor locator fields (run_attempt_id, endpoint kind/path, connection_id, owner_id) to canonical sorted-key JSON solely to compute an in-memory descriptor_sha256; auth material stays under private custody and is not logged.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_acquire_live_session_proof_returns_live_identity_and_liveness",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.plan117_custody_relay:_encode_session_prompt:json_serialization",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: serializes a single session/prompt ACP request from a preflight-approved fixture for opaque forward over the existing connection; never emits session/new, credentials, or control-plane traffic into the ACP byte stream.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_send_existing_session_prompt_forwards_one_prompt_never_session_new",
       "evidence_tier": "unit"
     },
     {
@@ -1630,30 +1990,6 @@
       "rationale": "Standard output receives only the schema-limited spike report described above; it excludes credentials, assistant text, citation content, and extracted page text.",
       "sanitizer": "schema-limited experimental report; content represented by counts and SHA-256 digests",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.run_phase1_release_gate:main:stderr_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: tools.run_phase1_release_gate:main:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_accepts_golden_results_argument",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.run_phase1_release_gate:main:stdout_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: tools.run_phase1_release_gate:main:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_accepts_golden_results_argument",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.run_phase1_release_gate:main:text_write",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: tools.run_phase1_release_gate:main:text_write writes only an already constrained functional artifact rather than raw diagnostic content.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_accepts_golden_results_argument",
       "evidence_tier": "unit"
     },
     {
@@ -1718,6 +2054,30 @@
       "rationale": "Inspection: write_scratch_configs writes .acpxrc.json and mcpServers.json only after assert_scratch_paths_ignored succeeds; files remain gitignored local scratch for acpx invocation and are excluded from qualifying evidence reports.",
       "sanitizer": "schema-limited functional path; scratch confined by check-ignore gate",
       "test_node": "tests/unit/tools/test_run_p11_fu_9_acpx_evidence.py::test_write_scratch_configs_writes_ignored_files",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_phase1_release_gate:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_phase1_release_gate:main:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_accepts_golden_results_argument",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_phase1_release_gate:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_phase1_release_gate:main:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_accepts_golden_results_argument",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_phase1_release_gate:main:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.run_phase1_release_gate:main:text_write writes only an already constrained functional artifact rather than raw diagnostic content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_accepts_golden_results_argument",
       "evidence_tier": "unit"
     },
     {
@@ -2289,6 +2649,46 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.verify_evidence_handoff_live:main:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: verify_evidence_handoff_live main reports typed VerificationError codes to stderr JSON; it does not dump raw agent transcripts.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_evidence_handoff_live.py::test_verify_rejects_missing_and_relative_evidence_root",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_evidence_handoff_live:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: verify_evidence_handoff_live main json.dumps content-free verification/inspect summaries for operator stdout/stderr only.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_evidence_handoff_live.py::test_verifier_entrypoints_exist",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_evidence_handoff_live:main:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: verify_evidence_handoff_live CLI logging is limited to controlled operational status; evidence bodies are not logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_evidence_handoff_live.py::test_verifier_entrypoints_exist",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_evidence_handoff_live:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: verify_evidence_handoff_live main prints only controlled structured error JSON to stderr.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_evidence_handoff_live.py::test_verify_rejects_missing_and_relative_evidence_root",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_evidence_handoff_live:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: verify_evidence_handoff_live main prints only controlled structured verification/inspect JSON to stdout.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_evidence_handoff_live.py::test_verifier_entrypoints_exist",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.verify_plan117_custody_feasibility:_verify_sealed_live_session_proof_artifact:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: canonicalizes already-loaded safe live-session-proof seal fields (ids, outcome, reason codes, evidence hashes) solely to recompute proof_sha256; credentials, control messages, and settings bytes are rejected before encoding and the encoded JSON is not exported.",
@@ -2422,94 +2822,6 @@
       "rationale": "Inspection: parse_live_output parses ACPX JSON only to verify required end_turn and approval evidence in memory; it does not persist a diagnostic artifact.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_parse_live_output_requires_end_turn_and_permission_evidence",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.mcp_discovery:MCPDiscoveryPaginator._descriptor_from_tool:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: the Pydantic detail is retained only inside MCPDiscoveryError while the route returns its fixed disposition through sanitize_error_message; raw descriptor diagnostics are not persisted or exported.",
-      "sanitizer": "fixed discovery disposition at the route boundary; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_mcp_discovery.py::test_paginator_rejects_invalid_definitions_and_mcp_param_headers",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.mcp_discovery:MCPDiscoveryPaginator._descriptor_size:json_serialization",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: canonical JSON is measured in memory solely to enforce the descriptor-byte budget before a descriptor can enter the manifest; it is neither persisted nor exported.",
-      "sanitizer": "descriptor byte budget and schema validation; no diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_mcp_discovery.py::test_paginator_rejects_invalid_definitions_and_mcp_param_headers",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.mcp_invocation:MCPInvocationBroker.call:json_serialization",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: serializes typed result and admitted request shapes only to calculate configured byte budgets before persistence; the serialized data is not retained or exported by this broker.",
-      "sanitizer": "typed MCP models, profile limits, and byte-budget checks; no diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_mcp_invocation.py::test_call_rechecks_gateway_binding_and_forwards_only_derived_name_and_arguments",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.mcp_transports:DockerStdioMCPTransport._request:json_serialization",
-      "policy": "protocol-only",
-      "rationale": "Functional MCP JSON-RPC serialization is written only to the digest-pinned, isolated stdio container; sanitizing the request would corrupt the protocol contract.",
-      "sanitizer": "MCP profile allowlist, digest-pinned container, isolated environment, and protocol validation",
-      "test_node": "tests/unit/optimus_gateway/test_mcp_transports.py::test_stdio_transport_builds_digest_pinned_no_mount_docker_argv_and_safe_environment",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.mcp_transports:DockerStdioMCPTransport._request:text_write",
-      "policy": "protocol-only",
-      "rationale": "The stdio write is the functional MCP JSON-RPC request to the approved container, not diagnostic retention; sanitizing it would corrupt the protocol contract.",
-      "sanitizer": "MCP profile allowlist, digest-pinned container, isolated environment, and protocol validation",
-      "test_node": "tests/unit/optimus_gateway/test_mcp_transports.py::test_stdio_transport_builds_digest_pinned_no_mount_docker_argv_and_safe_environment",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.mcp_transports:DockerStdioMCPTransport.server_discover:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: exception text is used only to recognize the fixed JSON-RPC method-not-found fallback; any remaining transport error is reduced to the generic discovery route failure rather than exported as raw upstream detail.",
-      "sanitizer": "fixed fallback predicate and generic discovery route failure; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_mcp_transports.py::test_stdio_transport_falls_back_to_tools_only_legacy_initialization",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.mcp_transports:StreamableHTTPMCPTransport._request:file_open",
-      "policy": "protocol-only",
-      "rationale": "AST classifies the injected opener.open network call as file_open; it is the functional JSON-RPC request to the profile-pinned endpoint, not a file or diagnostic-retention operation.",
-      "sanitizer": "pinned HTTPS origin, credential resolver, bounded response, and MCP protocol validation",
-      "test_node": "tests/unit/optimus_gateway/test_mcp_transports.py::test_http_transport_posts_only_json_with_pinned_auth_and_request_metadata",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.mcp_transports:StreamableHTTPMCPTransport._request:json_serialization",
-      "policy": "protocol-only",
-      "rationale": "Functional MCP JSON-RPC serialization is sent only to the profile-pinned endpoint; sanitizing it would corrupt the protocol contract and it is not retained as diagnostic content.",
-      "sanitizer": "pinned HTTPS origin, credential resolver, bounded response, and MCP protocol validation",
-      "test_node": "tests/unit/optimus_gateway/test_mcp_transports.py::test_http_transport_posts_only_json_with_pinned_auth_and_request_metadata",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.mcp_usage:RedisMCPUsageWriter.persist:redis_hash_write",
-      "policy": "safe-by-construction",
-      "rationale": "AST classifies Redis SET as redis_hash_write; it persists the fixed MCPUsageRecord accounting schema with IDs, names, byte counts, attribution, and monetary fields, never raw arguments, result content, or diagnostics.",
-      "sanitizer": "typed MCPUsageRecord schema and idempotent TTL-bound key; no diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_mcp_usage.py::test_redis_writer_uses_direct_ttl_bound_idempotent_key_value_storage",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_security.launch_manifest:_normalize_mcp_profiles:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: validation detail remains inside LaunchManifestError while the standalone entrypoint reports only its fixed code; profile metadata is not persisted or exported as a diagnostic.",
-      "sanitizer": "fixed LaunchManifestError code at the entrypoint boundary; no raw diagnostic retention",
-      "test_node": "tests/unit/security/test_mcp_profile_manifest.py::test_profile_bootstrap_rejects_secret_material_and_secret_fingerprint_fields",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.mcp_models:canonical_manifest_bytes:json_serialization",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: the Gateway-runtime twin serializes the normalized structural manifest only to compute its deterministic binding hash; response disposition is excluded and the JSON is not persisted or exported.",
-      "sanitizer": "canonical_manifest_payload allowlist and deterministic JSON; no diagnostic retention",
-      "test_node": "tests/unit/mcp/test_models.py::test_manifest_hash_is_stable_for_descriptor_order_and_excludes_response_disposition",
       "evidence_tier": "unit"
     }
   ]

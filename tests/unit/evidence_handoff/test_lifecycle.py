@@ -1,4 +1,4 @@
-"""Unit tests for evidence handoff lifecycle locking and wslc backend argv contracts."""
+"""Unit tests for evidence handoff lifecycle locking and Docker backend argv contracts."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def _enabled_config(**overrides: object):
 
     values = {
         "enabled": "true",
-        "backend_id": "wslc",
+        "backend_id": "docker",
         "bind_host": "127.0.0.1",
         "postgres_port": "55432",
         "container_name": "evidence-handoff-postgres-test",
@@ -88,28 +88,6 @@ def test_disabled_start_does_not_spawn_and_names_operator_relay(tmp_path: Path) 
     assert runner.calls == []
 
 
-def test_wslc_run_argv_is_loopback_only_and_excludes_wildcard_bind(tmp_path: Path) -> None:
-    from evidence_handoff_runtime.backends import WslcPostgresBackend
-
-    backend = WslcPostgresBackend(
-        config=_enabled_config(),
-        bootstrap=_bootstrap(tmp_path),
-        wslc_executable="wslc",
-    )
-    env_file = tmp_path / "store.env"
-    backend.write_env_file(env_file)
-    argv = backend.build_run_argv(env_file=env_file)
-    assert argv[0] == "wslc"
-    assert "run" in argv
-    publish = next(arg for arg in argv if arg.startswith("127.0.0.1:") or "0.0.0.0" in arg)
-    assert publish.startswith("127.0.0.1:")
-    assert "0.0.0.0" not in " ".join(argv)
-    assert "admin-secret-canary" not in " ".join(argv)
-    assert "--env-file" in argv
-    assert backend.backend_id == "wslc"
-    assert backend.bind_host == "127.0.0.1"
-
-
 def test_enabled_start_uses_spawn_seam_without_projecting_credentials(tmp_path: Path) -> None:
     from evidence_handoff_runtime.lifecycle import LifecycleManager
 
@@ -119,6 +97,7 @@ def test_enabled_start_uses_spawn_seam_without_projecting_credentials(tmp_path: 
         _enabled_config(),
         _bootstrap(tmp_path, password=password),
         process_runner=runner,
+        docker_executable="docker",
         probe_ready=lambda: True,
         probe_version=lambda: "PostgreSQL 16.0",
     )
@@ -141,6 +120,7 @@ def test_concurrent_start_is_serialized_by_lifecycle_lock(tmp_path: Path) -> Non
         _enabled_config(),
         _bootstrap(tmp_path),
         process_runner=runner,
+        docker_executable="docker",
         probe_ready=lambda: True,
         probe_version=lambda: "PostgreSQL 16.0",
     )
@@ -174,6 +154,7 @@ def test_stop_and_status_are_idempotent_and_content_free(tmp_path: Path) -> None
         _enabled_config(),
         _bootstrap(tmp_path, password=password),
         process_runner=runner,
+        docker_executable="docker",
         probe_ready=lambda: True,
         probe_version=lambda: "PostgreSQL 16.0",
     )
@@ -189,7 +170,7 @@ def test_stop_and_status_are_idempotent_and_content_free(tmp_path: Path) -> None
         assert password not in repr(item)
 
 
-def test_stop_surfaces_nonzero_wslc_returncode(tmp_path: Path) -> None:
+def test_stop_surfaces_nonzero_docker_returncode(tmp_path: Path) -> None:
     from evidence_handoff_runtime.config import Availability
     from evidence_handoff_runtime.lifecycle import LifecycleManager
 
@@ -216,6 +197,7 @@ def test_stop_surfaces_nonzero_wslc_returncode(tmp_path: Path) -> None:
         _enabled_config(),
         _bootstrap(tmp_path),
         process_runner=runner,
+        docker_executable="docker",
         probe_ready=lambda: True,
         probe_version=lambda: "PostgreSQL 16.0",
     )
@@ -236,7 +218,7 @@ def test_destroy_for_test_cleanup_raises_on_nonzero_remove(tmp_path: Path) -> No
 
         def run(self, argv: list[str], **_kwargs: object) -> object:
             self.calls.append(tuple(argv))
-            # inspect succeeds (resource present); remove fails (transient wslc error)
+            # inspect succeeds (resource present); remove fails (transient docker error)
             if "remove" in argv:
                 returncode = 1
             else:
@@ -249,7 +231,7 @@ def test_destroy_for_test_cleanup_raises_on_nonzero_remove(tmp_path: Path) -> No
         process_runner=_FailRemoveRunner(),
         probe_ready=lambda: True,
         probe_version=lambda: "PostgreSQL 16.0",
-        wslc_executable="wslc",
+        docker_executable="docker",
     )
     with pytest.raises(LifecycleError) as raised:
         manager.destroy_for_test_cleanup()
@@ -273,26 +255,11 @@ def test_destroy_for_test_cleanup_skips_missing_resources(tmp_path: Path) -> Non
         _enabled_config(),
         _bootstrap(tmp_path),
         process_runner=runner,
-        wslc_executable="wslc",
+        docker_executable="docker",
     )
     manager.destroy_for_test_cleanup()
     assert any("inspect" in call for call in runner.calls)
     assert not any("remove" in call for call in runner.calls)
-
-
-def test_unavailable_when_wslc_missing(tmp_path: Path) -> None:
-    from evidence_handoff_runtime.config import Availability
-    from evidence_handoff_runtime.lifecycle import LifecycleManager
-
-    manager = LifecycleManager(
-        _enabled_config(),
-        _bootstrap(tmp_path),
-        process_runner=_RecordingRunner(),
-        wslc_executable=None,
-    )
-    status = manager.start()
-    assert status.availability is Availability.UNAVAILABLE
-    assert status.active_route == "operator_relay"
 
 
 def test_refusal_to_switch_backend_while_running(tmp_path: Path) -> None:
@@ -303,22 +270,168 @@ def test_refusal_to_switch_backend_while_running(tmp_path: Path) -> None:
         _enabled_config(),
         _bootstrap(tmp_path),
         process_runner=runner,
+        docker_executable="docker",
         probe_ready=lambda: True,
         probe_version=lambda: "PostgreSQL 16.0",
     )
     manager.start()
     with pytest.raises(LifecycleError) as raised:
-        manager.switch_backend("docker")
+        manager.switch_backend("native-windows")
     assert raised.value.code == "backend_switch_refused_while_running"
 
 
-def test_store_backend_rejects_non_loopback_bind(tmp_path: Path) -> None:
-    from evidence_handoff_runtime.backends import StoreBackendError, WslcPostgresBackend
+def test_feature_config_default_backend_id_is_docker() -> None:
+    from evidence_handoff_runtime.config import FeatureConfig
+
+    assert FeatureConfig.from_mapping({}).backend_id == "docker"
+    assert FeatureConfig.from_mapping({"enabled": "true"}).backend_id == "docker"
+
+
+def test_build_store_backend_factory_returns_docker(tmp_path: Path) -> None:
+    from evidence_handoff_runtime.backends import DockerPostgresBackend, build_store_backend
+
+    backend = build_store_backend(
+        config=_enabled_config(backend_id="docker"),
+        bootstrap=_bootstrap(tmp_path),
+        executable="docker",
+    )
+    assert isinstance(backend, DockerPostgresBackend)
+    assert backend.backend_id == "docker"
+
+
+def test_build_store_backend_unknown_identifier_is_unsupported(tmp_path: Path) -> None:
+    from evidence_handoff_runtime.backends import StoreBackendError, build_store_backend
 
     with pytest.raises(StoreBackendError) as raised:
-        WslcPostgresBackend(
-            config=_enabled_config(bind_host="0.0.0.0"),
+        build_store_backend(
+            config=_enabled_config(backend_id="native-windows-not-registered"),
             bootstrap=_bootstrap(tmp_path),
-            wslc_executable="wslc",
+            executable="docker",
+        )
+    assert raised.value.code == "unsupported_backend"
+
+
+def test_docker_run_argv_is_credential_safe_loopback_env_file(tmp_path: Path) -> None:
+    from evidence_handoff_runtime.backends import DockerPostgresBackend
+
+    password = "admin-secret-canary"
+    config = _enabled_config(backend_id="docker")
+    backend = DockerPostgresBackend(
+        config=config,
+        bootstrap=_bootstrap(tmp_path, password=password),
+        docker_executable="docker",
+    )
+    env_file = tmp_path / "store.env"
+    backend.write_env_file(env_file)
+    argv = backend.build_run_argv(env_file=env_file)
+    assert argv == [
+        "docker",
+        "run",
+        "--detach",
+        "--name",
+        config.container_name,
+        "--publish",
+        f"127.0.0.1:{config.postgres_port}:5432",
+        "--volume",
+        f"{config.volume_name}:/var/lib/postgresql/data",
+        "--env-file",
+        str(env_file),
+        "postgres:16-alpine",
+    ]
+    assert password not in " ".join(argv)
+    assert backend.backend_id == "docker"
+
+
+def test_docker_backend_rejects_non_loopback_bind(tmp_path: Path) -> None:
+    from evidence_handoff_runtime.backends import DockerPostgresBackend, StoreBackendError
+
+    with pytest.raises(StoreBackendError) as raised:
+        DockerPostgresBackend(
+            config=_enabled_config(backend_id="docker", bind_host="0.0.0.0"),
+            bootstrap=_bootstrap(tmp_path),
+            docker_executable="docker",
         )
     assert raised.value.code == "non_loopback_bind_rejected"
+
+
+def test_enabled_start_reports_docker_backend_id(tmp_path: Path) -> None:
+    from evidence_handoff_runtime.lifecycle import LifecycleManager
+
+    password = "admin-secret-canary"
+    runner = _RecordingRunner()
+    manager = LifecycleManager(
+        _enabled_config(backend_id="docker"),
+        _bootstrap(tmp_path, password=password),
+        process_runner=runner,
+        docker_executable="docker",
+        probe_ready=lambda: True,
+        probe_version=lambda: "PostgreSQL 16.0",
+    )
+    status = manager.start()
+    assert status.running is True
+    assert status.backend_id == "docker"
+    assert runner.calls, "enabled docker start must invoke the process seam"
+    joined = " ".join(" ".join(call) for call in runner.calls)
+    assert password not in joined
+    run_argv = next(call for call in runner.calls if "run" in call)
+    assert run_argv[0] == "docker"
+    assert "--env-file" in run_argv
+    assert password not in " ".join(run_argv)
+
+
+def test_unknown_backend_unavailable_without_subprocess(tmp_path: Path) -> None:
+    from evidence_handoff_runtime.config import Availability
+    from evidence_handoff_runtime.lifecycle import LifecycleManager
+
+    runner = _RecordingRunner()
+    manager = LifecycleManager(
+        _enabled_config(backend_id="native-windows-not-registered"),
+        _bootstrap(tmp_path),
+        process_runner=runner,
+        docker_executable="docker",
+    )
+    status = manager.start()
+    assert status.availability is Availability.UNAVAILABLE
+    assert status.summary_code == "unsupported_backend"
+    assert status.active_route == "operator_relay"
+    assert runner.calls == []
+
+
+def test_unavailable_when_docker_executable_missing(tmp_path: Path) -> None:
+    from evidence_handoff_runtime.config import Availability
+    from evidence_handoff_runtime.lifecycle import LifecycleManager
+
+    runner = _RecordingRunner()
+    manager = LifecycleManager(
+        _enabled_config(backend_id="docker"),
+        _bootstrap(tmp_path),
+        process_runner=runner,
+        docker_executable=None,
+    )
+    status = manager.start()
+    assert status.availability is Availability.UNAVAILABLE
+    assert status.summary_code == "docker_unavailable"
+    assert status.active_route == "operator_relay"
+    assert runner.calls == []
+
+
+def test_runtime_source_has_neither_wslc_backend_nor_wslc_backend_id() -> None:
+    """Regression: Task 2 must remove WslcPostgresBackend and every wslc backend_id option."""
+    runtime_root = Path(__file__).resolve().parents[3] / "src" / "evidence_handoff_runtime"
+    hits: list[str] = []
+    for path in sorted(runtime_root.rglob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        rel = path.relative_to(runtime_root).as_posix()
+        if "WslcPostgresBackend" in text:
+            hits.append(f"{rel}: WslcPostgresBackend")
+        if 'backend_id="wslc"' in text or "backend_id='wslc'" in text:
+            hits.append(f"{rel}: backend_id=wslc literal")
+        if '"backend_id": "wslc"' in text or "'backend_id': 'wslc'" in text:
+            hits.append(f"{rel}: backend_id wslc mapping")
+        if '_DEFAULT_BACKEND = "wslc"' in text or "_DEFAULT_BACKEND = 'wslc'" in text:
+            hits.append(f"{rel}: _DEFAULT_BACKEND=wslc")
+        if "wslc" in text.lower():
+            for line_no, line in enumerate(text.splitlines(), start=1):
+                if "wslc" in line.lower():
+                    hits.append(f"{rel}:{line_no}: {line.strip()}")
+    assert hits == []

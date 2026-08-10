@@ -7,9 +7,12 @@ import json
 import sys
 from pathlib import Path
 
+from evidence_handoff_runtime.backends import registered_backend_ids
 from evidence_handoff_runtime.config import FeatureConfig, LifecycleBootstrapContext
 from evidence_handoff_runtime.lifecycle import LifecycleManager
 from optimus_security.sanitization import PathAliasRule
+
+_IMPLEMENTED_BACKENDS = tuple(sorted(registered_backend_ids()))
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -28,6 +31,12 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         required=True,
         help="Path to a file containing the store admin password (password never accepted via argv).",
+    )
+    parser.add_argument(
+        "--backend-id",
+        default="docker",
+        choices=_IMPLEMENTED_BACKENDS,
+        help="Stopped-lifecycle store backend selection (implemented: docker only).",
     )
     parser.add_argument("--postgres-port", type=int, default=55432)
     parser.add_argument("--container-name", default="evidence-handoff-postgres")
@@ -52,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     config = FeatureConfig.from_mapping(
         {
             "enabled": "true" if args.enabled else "false",
-            "backend_id": "wslc",
+            "backend_id": args.backend_id,
             "bind_host": "127.0.0.1",
             "postgres_port": str(args.postgres_port),
             "container_name": args.container_name,
