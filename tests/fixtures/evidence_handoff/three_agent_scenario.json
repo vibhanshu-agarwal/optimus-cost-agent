@@ -1,0 +1,51 @@
+{
+  "schema_version": "evidence-handoff-three-agent-scenario-v1",
+  "purpose": "scenario_shape_only",
+  "disclaimer": "This fixture defines the three-agent scenario shape for contract tests. It must never be accepted as a passing live evidence root: digests, credentials, process/store identities, and outcomes must come from operator-run native Claude Code, Codex, and Cursor clients against a real service.",
+  "agents": [
+    {
+      "role": "reviewer",
+      "client_name": "claude_code",
+      "agent_id": "REVIEWER_CLAUDE_AGENT_ID",
+      "principal_id": "REVIEWER_CLAUDE_PRINCIPAL_ID",
+      "may_append_review_ruling": true
+    },
+    {
+      "role": "reviewer",
+      "client_name": "cursor",
+      "agent_id": "REVIEWER_CURSOR_AGENT_ID",
+      "principal_id": "REVIEWER_CURSOR_PRINCIPAL_ID",
+      "may_append_review_ruling": true
+    },
+    {
+      "role": "implementer",
+      "client_name": "codex",
+      "agent_id": "IMPLEMENTER_CODEX_AGENT_ID",
+      "principal_id": "IMPLEMENTER_CODEX_PRINCIPAL_ID",
+      "may_append_review_ruling": false
+    }
+  ],
+  "required_manifest_fields": [
+    "client_name",
+    "client_version",
+    "agent_id",
+    "principal_id",
+    "service_identity",
+    "store_identity",
+    "request_digest",
+    "entry_digest",
+    "delivery_digest",
+    "outcome"
+  ],
+  "expected_outcomes": [
+    "reviewer_append_succeeds",
+    "explicit_recipient_delivery_reaches_other_agents",
+    "implementer_review_ruling_append_rejected",
+    "sequence_and_counter_unchanged_on_implementer_reject",
+    "client_supplied_authority_rejected",
+    "each_client_confirms_a_real_page",
+    "post_latch_next_interaction_emits_ledger_integrity_failed",
+    "no_automatic_relay_after_latch"
+  ],
+  "pass_forbidden_without_real_evidence": true
+}

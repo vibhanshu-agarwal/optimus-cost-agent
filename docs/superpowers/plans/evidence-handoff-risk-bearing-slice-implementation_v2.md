@@ -539,7 +539,7 @@ when that design refresh lands; A is the deliberate pragmatic form for this caps
 **Produces:** v1 Task 10 Step 3–5 evidence using Docker and durable custody after v2 Tasks 3–5
 pass.
 
-- [ ] **Step 1: Reconfirm the v1 Task 10 Step 1–2 uncommitted paths and approval.**
+- [x] **Step 1: Reconfirm the v1 Task 10 Step 1–2 uncommitted paths and approval.**
 
   ```bash
   git status --short -- tests/e2e/evidence_handoff tests/fixtures/evidence_handoff tests/unit/tools/test_verify_evidence_handoff_live.py tools/evidence_handoff_live_support tools/verify_evidence_handoff_live.py
@@ -548,7 +548,7 @@ pass.
   Expected: only the separately approved uncommitted v1 Task 10 paths. If they changed outside that
   approval, stop for review rather than absorb them into Docker/custody commits.
 
-- [ ] **Step 2: Run the real native-agent scenario and evidence inspection.**
+- [x] **Step 2: Run the real native-agent scenario and evidence inspection.**
 
   ```bash
   uv run --frozen pytest tests/e2e/evidence_handoff/test_three_agent_live.py -m requires_real_agents -q
@@ -560,7 +560,7 @@ pass.
   existing delivery/rejection/latch scenario using Docker and durable custody. The independent
   client rule, raw-canary scan, and no-fake-agent rule remain load-bearing.
 
-- [ ] **Step 3: Stop for named-agent evidence review.**
+- [x] **Step 3: Stop for named-agent evidence review.**
 
   Stage and commit only the named v1 Task 10 paths after their own approval. Do not combine them with
   Docker/custody files or this plan.
