@@ -838,10 +838,50 @@ class PostgresLedgerStore:
             )
             conn.commit()
 
-    def _refuse_if_integrity_latched(self) -> None:
+    def _load_mirrored_integrity_incident(self) -> IntegrityIncident | None:
+        """Load the durable latch from evidence_handoff_control_state (always available)."""
+        with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
+            row = conn.execute(
+                """
+                SELECT value_json
+                FROM evidence_handoff_control_state
+                WHERE key = %s
+                """,
+                ("integrity_latch",),
+            ).fetchone()
+        if row is None or row.get("value_json") is None:
+            return None
+        payload = row["value_json"]
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                return None
+        if not isinstance(payload, dict):
+            return None
+        try:
+            return IntegrityIncident(
+                incident_id=str(payload["incident_id"]),
+                cause=IntegrityCause(str(payload["cause"])),
+                ledger_instance_id=str(payload["ledger_instance_id"]),
+                safe_boundary_sequence=int(payload["safe_boundary_sequence"]),
+                detected_at=str(payload["detected_at"]),
+                disposition=str(payload["disposition"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    def _load_integrity_incident(self) -> IntegrityIncident | None:
+        """DB mirror is primary; control_root file is an optional secondary source."""
+        mirrored = self._load_mirrored_integrity_incident()
+        if mirrored is not None:
+            return mirrored
         if self._control_root is None:
-            return
-        incident = IntegrityLatch(control_root=self._control_root).load()
+            return None
+        return IntegrityLatch(control_root=self._control_root).load()
+
+    def _refuse_if_integrity_latched(self) -> None:
+        incident = self._load_integrity_incident()
         if incident is None:
             return
         # Latch binds to the failed instance; a linked replacement must still accept writes.
@@ -1194,14 +1234,7 @@ class PostgresLedgerStore:
             conn.commit()
 
     def global_integrity_fact(self) -> dict[str, Any]:
-        if self._control_root is None:
-            return {
-                "latched": False,
-                "incident_id": None,
-                "cause": None,
-                "safe_boundary_sequence": None,
-            }
-        incident = IntegrityLatch(control_root=self._control_root).load()
+        incident = self._load_integrity_incident()
         if incident is None:
             return {
                 "latched": False,

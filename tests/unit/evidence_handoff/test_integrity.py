@@ -215,3 +215,106 @@ def test_clear_false_positive_rejected_without_repeated_verification(tmp_path: P
         monitor.clear_false_positive(witnesses=())
     assert raised.value.code in {"false_positive_clear_refused", "genuine_corruption_uncleared"}
     assert monitor.status().incident is not None
+
+
+def _mirrored_latch_payload(
+    *,
+    incident_id: str = "ca00677d-133d-4ec0-9934-4563d54db2ed",
+    ledger_instance_id: str = "inst-live",
+) -> dict:
+    return {
+        "incident_id": incident_id,
+        "cause": "chain_break",
+        "ledger_instance_id": ledger_instance_id,
+        "safe_boundary_sequence": 0,
+        "detected_at": "2026-08-10T17:00:00+00:00",
+        "disposition": "latched",
+        "failure_class": "ledger_integrity_failed",
+        "retryable": False,
+    }
+
+
+def _patch_control_state_latch(monkeypatch: pytest.MonkeyPatch, payload: dict | None) -> None:
+    """Stub psycopg.connect so control_state SELECT returns ``payload`` (or no row)."""
+    import evidence_handoff_runtime.store as store_mod
+
+    class _Result:
+        def fetchone(self):
+            if payload is None:
+                return None
+            return {"value_json": payload}
+
+    class _Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> bool:
+            return False
+
+        def execute(self, query: str, params: object = None):  # noqa: ANN001
+            assert "evidence_handoff_control_state" in str(query)
+            assert params == ("integrity_latch",)
+            return _Result()
+
+        def commit(self) -> None:
+            return None
+
+    monkeypatch.setattr(store_mod.psycopg, "connect", lambda *a, **k: _Conn())
+
+
+def test_store_without_control_root_reports_db_mirrored_latch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Production shape: service builds PostgresLedgerStore with control_root=None."""
+    from evidence_handoff_runtime.store import PostgresLedgerStore
+
+    payload = _mirrored_latch_payload()
+    _patch_control_state_latch(monkeypatch, payload)
+    store = PostgresLedgerStore(
+        conninfo="host=unused dbname=postgres",
+        ledger_instance_id="inst-live",
+        control_root=None,
+    )
+    fact = store.global_integrity_fact()
+    assert fact["latched"] is True
+    assert fact["incident_id"] == payload["incident_id"]
+    assert fact["cause"] == "chain_break"
+    assert fact["safe_boundary_sequence"] == 0
+
+
+def test_store_without_control_root_refuses_when_db_latch_matches_instance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from evidence_handoff_runtime.integrity import LedgerIntegrityError
+    from evidence_handoff_runtime.store import PostgresLedgerStore
+
+    _patch_control_state_latch(monkeypatch, _mirrored_latch_payload(ledger_instance_id="inst-live"))
+    store = PostgresLedgerStore(
+        conninfo="host=unused dbname=postgres",
+        ledger_instance_id="inst-live",
+        control_root=None,
+    )
+    with pytest.raises(LedgerIntegrityError) as raised:
+        store._refuse_if_integrity_latched()
+    assert raised.value.cause.value == "chain_break"
+    assert raised.value.ledger_instance_id == "inst-live"
+
+
+def test_store_without_control_root_permits_when_db_latch_is_predecessor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Task 4: predecessor latch must not block a linked replacement instance."""
+    from evidence_handoff_runtime.store import PostgresLedgerStore
+
+    _patch_control_state_latch(
+        monkeypatch,
+        _mirrored_latch_payload(ledger_instance_id="inst-predecessor"),
+    )
+    replacement = PostgresLedgerStore(
+        conninfo="host=unused dbname=postgres",
+        ledger_instance_id="inst-replacement",
+        control_root=None,
+    )
+    replacement._refuse_if_integrity_latched()  # must not raise
+    fact = replacement.global_integrity_fact()
+    # Fact remains content-free and global; refuse path is what scopes by instance.
+    assert fact["latched"] is True
+    assert fact["incident_id"] == "ca00677d-133d-4ec0-9934-4563d54db2ed"
