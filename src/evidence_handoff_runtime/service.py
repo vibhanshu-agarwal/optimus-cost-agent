@@ -343,7 +343,11 @@ def _load_auth_context(runtime: dict[str, Any], auth_bundle: dict[str, Any] | No
         revoked_token_ids=frozenset(),
         consumed_jti=set(),
     )
-    sessions = SessionRegistry(ttl=timedelta(minutes=30), now=lambda: datetime.now(tz=UTC))
+    sessions = SessionRegistry(
+        ttl=timedelta(minutes=30),
+        now=lambda: datetime.now(tz=UTC),
+        allowed_protocol_versions=frozenset(str(item) for item in runtime["protocol_versions"]),
+    )
     store = PostgresLedgerStore(
         conninfo=str(auth_bundle["store_conninfo"]),
         ledger_instance_id=instance_id,

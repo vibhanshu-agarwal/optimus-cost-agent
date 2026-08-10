@@ -251,3 +251,48 @@ def test_session_binding_repr_has_no_token_fields() -> None:
     rendered = repr(binding).lower()
     assert "bearer" not in rendered
     assert "signing_key" not in rendered
+
+
+def test_session_accepts_admitted_protocol_after_headerless_initialize_default() -> None:
+    """Codex: omit MCP-Protocol-Version on initialize; follow up with negotiated 2025-06-18.
+
+    Headerless initialize resolves to the service default (2025-11-25) for session create.
+    Spec-correct clients then send the body-negotiated version on later requests. Option A:
+    any version in the admitted set is accepted — not an exact match to the create-time bind.
+    """
+    from evidence_handoff_runtime.sessions import SessionRegistry
+
+    admitted = frozenset({"2025-11-25", "2025-06-18", "2025-03-26"})
+    registry = SessionRegistry(
+        ttl=timedelta(minutes=10),
+        now=lambda: datetime(2026, 8, 8, 12, 0, 0, tzinfo=UTC),
+        allowed_protocol_versions=admitted,
+    )
+    principal = _principal()
+    binding = registry.create(principal, protocol_version="2025-11-25")
+    registry.validate(
+        binding.session_id,
+        principal,
+        protocol_version="2025-06-18",
+    )
+
+
+def test_session_rejects_non_admitted_protocol_on_live_session() -> None:
+    """Inverse of Option A: versions outside the admitted set still mismatch."""
+    from evidence_handoff_runtime.sessions import SessionError, SessionRegistry
+
+    admitted = frozenset({"2025-11-25", "2025-06-18", "2025-03-26"})
+    registry = SessionRegistry(
+        ttl=timedelta(minutes=10),
+        now=lambda: datetime(2026, 8, 8, 12, 0, 0, tzinfo=UTC),
+        allowed_protocol_versions=admitted,
+    )
+    principal = _principal()
+    binding = registry.create(principal, protocol_version="2025-11-25")
+    with pytest.raises(SessionError) as raised:
+        registry.validate(
+            binding.session_id,
+            principal,
+            protocol_version="2024-11-05",
+        )
+    assert raised.value.code == "session_protocol_mismatch"

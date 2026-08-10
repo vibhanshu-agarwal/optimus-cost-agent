@@ -526,6 +526,16 @@ reviewed commit** with unit coverage in `tests/unit/evidence_handoff/test_transp
 fold it into Task 6 / v1 Task 10 evidence commits. Remaining OAuth/`WWW-Authenticate`/`/.well-known`
 discovery gaps stay owned by `EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE`.
 
+**Session protocol admission (Option A, operator ruling 2026-08-10):** Spec-correct clients omit
+`MCP-Protocol-Version` on `initialize` (version negotiates in the JSON-RPC body). Headerless
+initialize still defaults the create-time bind to `2025-11-25`, then follow-ups carry the
+genuinely negotiated version (Codex: `2025-06-18`), which exact-match validation rejected as
+`session_protocol_mismatch`. **Option A** (shipped): `SessionRegistry` accepts any version in the
+service's admitted `protocol_versions` set; non-admitted versions still raise
+`session_protocol_mismatch`. **Option B** (not shipped): bind the session to the version actually
+negotiated in the initialize *response* — the strictly-faithful reading of "bound to the negotiated
+protocol version." B remains on the agenda for `EVIDENCE-HANDOFF-FEAT-A2A-LEDGER-DESIGN-REFRESH`
+when that design refresh lands; A is the deliberate pragmatic form for this capstone.
 **Produces:** v1 Task 10 Step 3–5 evidence using Docker and durable custody after v2 Tasks 3–5
 pass.
 

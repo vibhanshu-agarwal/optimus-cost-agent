@@ -46,6 +46,9 @@ class SessionBinding:
 class SessionRegistry:
     ttl: timedelta
     now: Callable[[], datetime]
+    # When set (production): Option A — any admitted protocol version is accepted on
+    # validate/attach. When None (legacy unit harness): exact-match the create-time bind.
+    allowed_protocol_versions: frozenset[str] | None = None
 
     def __post_init__(self) -> None:
         self._bindings: dict[str, SessionBinding] = {}
@@ -61,6 +64,13 @@ class SessionRegistry:
         self._bindings[session_id] = binding
         return binding
 
+    def _protocol_accepted(self, bound: str, requested: str) -> bool:
+        if self.allowed_protocol_versions is None:
+            return bound == requested
+        # Option A (operator ruling): any version in the admitted service set is
+        # accepted; reject only versions outside that set.
+        return requested in self.allowed_protocol_versions
+
     def validate(
         self,
         session_id: str,
@@ -73,7 +83,9 @@ class SessionRegistry:
             raise SessionError("session_expired_or_unknown")
         if binding.principal_id != principal.principal_id:
             raise SessionError("session_principal_mismatch")
-        if protocol_version is not None and binding.protocol_version != protocol_version:
+        if protocol_version is not None and not self._protocol_accepted(
+            binding.protocol_version, protocol_version
+        ):
             raise SessionError("session_protocol_mismatch")
         return binding
 
@@ -94,7 +106,7 @@ class SessionRegistry:
         if existing is not None and existing.expires_at > self.now():
             if existing.principal_id != principal.principal_id:
                 raise SessionError("session_principal_mismatch")
-            if existing.protocol_version != protocol_version:
+            if not self._protocol_accepted(existing.protocol_version, protocol_version):
                 raise SessionError("session_protocol_mismatch")
             return existing
         binding = SessionBinding(
