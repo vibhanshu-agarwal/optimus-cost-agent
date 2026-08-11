@@ -91,7 +91,7 @@ projection of every stable-ID follow-up heading.
 | `P11-FU-3` | MCP Route/Typed-Contract Publication Gate | Closed | `P11-FEAT-GATEWAY-MCP` | PR #112; PR #113 / `edd1f04` |
 | `P11-FU-4` | Re-pin FU-4A/FU-5 Live Evidence | Open | Coordinated with `P11-FEAT-ZED-RESUME` | Acceptance criteria in entry |
 | `P11-FU-5` | Windows Subprocess Handle-Duplication Flake (WinError 6/50) | Open | Future Windows investigation | Acceptance criteria in entry |
-| `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | Future Gateway unit-harness investigation | Acceptance criteria in entry; 2026-08-10 two sibling harness failures same evening |
+| `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | Future Gateway unit-harness investigation | Acceptance criteria in entry; 2026-08-10 two sibling harness failures same evening; 2026-08-11 DoD coverage pair recurrence |
 | `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Open | Future Windows test-infrastructure work | Acceptance criteria in entry |
 | `P11.5-FU-1` | Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics | Open | `P11-FEAT-GATEWAY-COST-OBS` | Acceptance criteria in entry |
 | `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Open | Future Gateway migration design | Acceptance criteria in entry |
@@ -445,6 +445,10 @@ sibling in the same `test_server` harness failed once during a full-suite run fo
 re-run (3132 passed / 0 failed). `optimus_gateway` was untouched by that change. Two different
 harness siblings failing the same evening is stronger race evidence than either alone — keep both
 on this entry; do not open a second FU.
+
+**Recurrence:** 2026-08-11 — DoD coverage run: the P11-FU-6 pair recurred (both `test_server`
+harness tests) under `--cov`; passed isolated, in-file, and on coverage re-run at 81.34%. Same
+port/teardown harness class; do not merge with `P11-FU-7`.
 
 ### P11-FU-7: Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test
 

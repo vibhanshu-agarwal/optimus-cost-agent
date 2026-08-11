@@ -591,19 +591,34 @@ explicit-path documentation commit.
 
 ## Definition of done
 
-- [ ] Docker is the real, loopback-only sole implemented PostgreSQL backend; the pluggable
+- [x] Docker is the real, loopback-only sole implemented PostgreSQL backend; the pluggable
   protocol/factory remains, and no lifecycle operation performs implicit failover.
-- [ ] Docker lifecycle and service evidence use real Docker Desktop/PostgreSQL/official MCP client,
+- [x] Docker lifecycle and service evidence use real Docker Desktop/PostgreSQL/official MCP client,
   record identities, and clean their named containers and volumes.
-- [ ] Durable lifecycle OS-keyring custody preserves a pre-crash credential across restart and
+- [x] Durable lifecycle OS-keyring custody preserves a pre-crash credential across restart and
   fails closed with typed errors after any existing-instance signal.
-- [ ] R9 and R10 remain true, AST proves service/supplier keyring exclusion, and `requires_os_keyring_write`
+- [x] R9 and R10 remain true, AST proves service/supplier keyring exclusion, and `requires_os_keyring_write`
   remains distinct from the read-only marker.
-- [ ] Windows repository/coverage gates, WSL2 parity, static boundary/package checks,
+- [x] Windows repository/coverage gates, WSL2 parity, static boundary/package checks,
   documentation freshness audit, and v1 Task 10's real native-agent evidence are recorded; no
   deferred OAuth/rotation/design-refresh work is left unowned.
-- [ ] v1 and frozen design pins match, the amendment is deleted only after v2 approval, and no
+- [x] v1 and frozen design pins match, the amendment is deleted only after v2 approval, and no
   unrelated shared-worktree path was staged or committed.
+
+### DoD / closure note (2026-08-11)
+
+PASS on all six criteria.
+
+Criterion 2 cites Task 3's Docker artifacts (`bd17dac`; client/server 29.6.2, image
+`sha256:57c72fd2…`, PostgreSQL 16.14, `restart_persistence` true) rather than re-running, because
+the live infrastructure is torn down — as the plan permits.
+
+Task 6 evidence is archived at `C:\evidence-handoff-archive\task6\` (`task6-manifest.json` sha256
+`5f9e5fe4…`).
+
+The `P11-FU-6` pair recurred during the DoD coverage run (both `test_server` harness tests, under
+`--cov`; passed isolated, in-file, and on coverage re-run at 81.34%). Recorded as a recurrence on
+`P11-FU-6` only — do not merge with `P11-FU-7`.
 
 ## Review handoff
 
