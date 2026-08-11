@@ -110,6 +110,7 @@ projection of every stable-ID follow-up heading.
 | `P11-FU-18` | WSL2 directory `ctime` timestamp-coalescing test flake | Open | Future WSL2 test infrastructure | Acceptance criteria in entry |
 | `P11-FU-19` | WSL full-suite load flake in client SDK operation-deadline unit test | Open | Future WSL2 test infrastructure | Acceptance criteria in entry |
 | `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Open | Future client-MCP runtime follow-up | Acceptance criteria in entry |
+| `P11-FU-21` | Linux/CI Subprocess Exit-Code Flake in Custody Relay EOF Test | Open | Future Linux/CI test-infrastructure work | Acceptance criteria in entry; PR #128 guardrails flake |
 | `P11.5-FU-2` | Consistent local env / Redis / Phoenix / Gateway startup for live runs | Closed | Plan 11.6 | PR #97 / `dc9a080`; [operator runbook](../../runbooks/local-live-dependencies.md) |
 
 ## Open items
@@ -1143,6 +1144,50 @@ gap; disposition-never-opens-transport constraint from P11-FU-9 design §3.
 
 **Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Task 6 may close with the
 fail-closed seam + this named custody entry. Not an undisclosed residual.
+
+### P11-FU-21: Linux/CI Subprocess Exit-Code Flake in Custody Relay EOF Test
+
+**Raised:** 2026-08-11 during PR #128 guardrails / `clean-environment-recheck` on
+`ubuntu-latest` (operator Vibhanshu / Cursor). Priority: **Test-infra flake; not a product
+defect in the evidence-handoff risk-bearing slice.**
+
+**Origin:**
+`tests/unit/tools/test_plan117_custody_relay.py::test_eof_either_direction_and_child_first_exit`
+failed once with `assert exit_code == 7` observing `1` — the custody-relay child process exited
+`1` instead of the expected `7`. Not a WinError, not an assertion about payload content.
+
+**Environment:** GitHub Actions guardrails / `clean-environment-recheck` on `ubuntu-latest`,
+PR #128, full suite (3148 passed, 12 skipped, 116 deselected). Immediate re-run with **no code
+change** was green — no durable local reproduction.
+
+**Not caused by PR #128:** that branch never touched any `plan117` path, and the code is
+pre-existing on `main` (`128af65` is an ancestor of `origin/main`). The commit immediately
+before the failure was docs-only (+25 lines of markdown).
+
+**Context worth pinning:** the most recent change to `tools/plan117_custody_relay.py` was
+`128af65` ("bind Unix relay control sockets under short temp paths") — a Linux socket-path fix
+in the same subsystem now flaking on Linux. Investigate whether relay child teardown races the
+exit-code propagation under CI-runner contention.
+
+**Related prior art — do not merge:** Distinct from `P11-FU-5` (Windows-specific WinError 6/50
+handle duplication) and from `P11.7-FU-3` (docstring `\ufffd` / em-dash corruption in the same
+file). Neither entry covers this Linux/CI exit-code race.
+
+**Designated slice:** Future Linux/CI test-infrastructure reliability work; no plan number is
+allocated (lazy numbering — assign only if/when picked up for scoping).
+
+**Acceptance criteria:**
+
+- Reproduce under CI-like contention (or record a durable non-reproduction disposition);
+- Identify whether the child truly exits `1` or the harness misreads the exit code;
+- Apply a narrowly scoped fix without weakening the EOF / exit-code assertions.
+
+**Evidence anchors:** PR #128 CI run that failed then passed on re-run with no code change;
+`tests/unit/tools/test_plan117_custody_relay.py::test_eof_either_direction_and_child_first_exit`;
+`tools/plan117_custody_relay.py`; precursor Linux socket-path fix `128af65`.
+
+**Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Root cause not yet
+established beyond the one-shot CI observation.
 
 ### P11.5-FU-2: Consistent local env / Redis / Phoenix / Gateway startup for live runs
 
