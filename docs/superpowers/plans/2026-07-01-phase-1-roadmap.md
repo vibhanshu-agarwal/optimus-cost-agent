@@ -1029,6 +1029,24 @@ enforcement; `P9.85-FU-3` remains parked pending the operator decision.
 
 **Charter:** [`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md).
 
+### Execution snapshot
+
+This milestone-level snapshot records the Plan 11 lanes without duplicating item-level state. The
+[`consolidated open-work pool`](2026-07-23-consolidated-deferred-followups-backlog.md) owns live
+feature and follow-up status.
+
+| Plan | Summary state | Evidence |
+|---|---|---|
+| Plan 11.1 | Closed | PR #85 |
+| Plan 11.2 | Closed | PR #88 |
+| Plan 11.3 | Closed | PR #88 |
+| Plan 11.4 | Closed | PR #91 |
+| Plan 11.5 | Closed | PR #95 |
+| Plan 11.6 | Merged | PR #97 |
+| Plan 11.7 | Partially implemented | blocked |
+| Plan 11.8 | Partially implemented | 27 of 46 checks; PR #116; PR #118 |
+| Plan 11.9 | Closed | PR #123; PR #124 |
+
 **Milestone charter:** Plan 11 is the v1.0 milestone. `P11-FEAT-GATEWAY-CORE` (Plan 11.1)
 closes the Gateway core and observability-route gate; the ratified TOOLS and COST-OBS identities
 are accounted for separately. The milestone retains the Gateway Capabilities Broker scope above

@@ -2,8 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Use `superpowers:test-driven-development` for every production behavior change. Steps use checkbox (`- [ ]`) syntax for tracking. Do not mark a checkbox complete until its stated verification command has actually passed.
 
-**Status:** Draft implementation plan. Execution requires approval of the companion design
-specification: `docs/superpowers/specs/2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-design.md`.
+**Status:** Closed. Implemented through PR #123 and PR #124.
 
 **Goal:** Add a documented, per-process `--gateway-timeout-seconds` override that reaches both
 ACP Gateway clients while preserving the 30-second default and fail-closed unknown-cost behavior.

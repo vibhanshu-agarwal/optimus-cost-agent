@@ -1,5 +1,7 @@
 # Plan 9.99: Credential URI Security-Snapshot Canonicalization Implementation Plan
 
+**Status:** Partially implemented. Tasks 1-6 landed; three final verification and handoff checkboxes remain visibly unchecked.
+
 > For agentic workers: REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Make every credential-bearing SECURITY-tier URI display-safe and persistence-safe while ensuring URI-userinfo changes and presence transitions invalidate the Plan 9.99 security snapshot.
