@@ -1,5 +1,7 @@
 # Plan 11.4 Gateway Core Migration Implementation Plan
 
+**Status:** Closed. Implemented and merged to `main` through PR #91 (`d80e112`).
+
 > For agentic workers: REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** Complete the Phase 1 local-first Gateway migration so the agent has one strict-loopback trust boundary, the Gateway has one OpenRouter-compatible model transport, and settled model cost comes only from provider-reported accounting.

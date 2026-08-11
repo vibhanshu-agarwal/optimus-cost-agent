@@ -1,5 +1,7 @@
 # Plan 9.87: Model-Initiated Replanning and Live Refusal Evidence Implementation Plan
 
+**Status:** Closed through [Plan 9.88 Task 8 Outcome B](2026-07-13-plan-9-88-fu4b-evidence-remediation-and-plan-9-87-closure.md#task-8-run-the-point-in-time-closure-ceremony-and-amend-plan-987-honestly). FU-4B remains accepted-open (exhausted, not qualifying). One unchecked commit step and the entire ten-item Definition of Done were never ticked and remain preserved as historical record; this status does not claim those checkboxes passed.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. A checkbox may be marked complete only after its stated verification command has run and passed. Do not start implementation without reviewer and operator approval of this plan.
 
 **Goal:** Let fitting-context AGENT tasks opt into the existing bounded guarded `READ_MORE` loop through an explicit model decision, while preserving one-turn settlement for tasks that can finish immediately and producing fresh live `acpx` proof of both model-initiated replanning and model-emitted refusal.

@@ -1,5 +1,7 @@
 # Plan 9.85: Multi-Turn Read-Observe-Replan Workflow Implementation Plan
 
+**Status:** Partially implemented. 72 of 78 plan checkboxes are complete; six historical execution/evidence checkboxes remain visibly unchecked. Nested follow-ups own their own status.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. A checkbox may be marked complete only after its stated verification command has run and passed. Do not start implementation without reviewer and operator approval of this plan.
 
 **Goal:** Extend Plan 9.8's fail-closed, task-aware planning floor with a bounded READ -> observe -> replan workflow that can gather required evidence across settled planning turns and expose only the final plan for approval.

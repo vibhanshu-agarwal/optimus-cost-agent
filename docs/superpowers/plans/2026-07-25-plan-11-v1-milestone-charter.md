@@ -2,13 +2,13 @@
 
 ## Status and baseline
 
-**Status:** Charter amendment draft for review; no implementation sub-plan is authorized by this document.
+**Status:** Ratified milestone charter. The revised sub-plan map below records Plan 11 execution
+lanes; the [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md) owns
+live item-level status.
 
-**Baseline:** `origin/main` at `bd216388c0da995e04df254ec198a00e4aab23d4` (current main after the
-merged Plan 11.1 CORE implementation and the `P11-FU-6` flake entry). The [consolidated open-work
-pool](2026-07-23-consolidated-deferred-followups-backlog.md) is the single source of truth for all
-open work. This charter defines feature scope and sequencing; detailed sub-plan specifications land
-in separate reviewed PRs.
+**Baseline:** Ratified Plan 11 feature scope and sequencing. Detailed sub-plan specifications and
+implementations land through separate reviewed PRs; this charter does not replace their evidence or
+the pool's current-state custody.
 
 ## Milestone objective
 
@@ -52,15 +52,19 @@ parked `P9.85-FU-3` budget-enforcement question is not pulled into this charter'
 
 ## Revised sub-plan map
 
-| Feature ID | Scope | Intended order | v1.0 relationship |
+| Feature ID | Scope | Implemented plans / intended order | v1.0 relationship |
 |---|---|---|---|
-| `P11-FEAT-GATEWAY-CORE` | Gateway core and `/v1/observability/traces` route | Plan 11.1 | First active feature slice; required. |
-| `P11-FEAT-GATEWAY-TOOLS` | Gateway web/evidence tool capability partition | Plan 11.2 | Ratified feature identity; implementation remains gated on review of the drafted spec and plan. |
-| `P11-FEAT-GATEWAY-COST-OBS` | Gateway normalized cost and observability capability partition | Assigned at pickup | Ratified feature identity; plan number is not reserved. |
-| `P11-FEAT-GATEWAY-MCP` | Gateway MCP tools-only brokering through static profiles over remote HTTP and Docker-contained stdio, with trust-registry integration and typed request/response contract | Assigned at pickup | Ratified and bounded by the published architecture gate; the `P11-FU-3` route/contract gate may close only after this amendment and all four amended PDFs are approved and published. |
-| `P11-FEAT-ZED-RESUME` | Zed integration fixes: `P9.8-FU-5` panic plus ACP session resume | 2nd | Required Zed proof slice; includes owned `P11-FU-1`. |
+| `P11-FEAT-GATEWAY-CORE` | Gateway core and `/v1/observability/traces` route | Plan 11.1 / Plan 11.4 | Closed through PR #85 and PR #91. |
+| `P11-FEAT-GATEWAY-TOOLS` | Gateway web/evidence tools and real provider adapters | Plan 11.2 / Plan 11.3 | Closed through PR #88. |
+| `P11-FEAT-GATEWAY-COST-OBS` | Gateway normalized cost, observability, and local startup consolidation | Plan 11.5 / Plan 11.6 | Plan 11.5 closed through PR #95; Plan 11.6 merged through PR #97. |
+| `P11-FEAT-GATEWAY-MCP` | Gateway MCP tools-only brokering through static profiles over remote HTTP and Docker-contained stdio, with trust-registry integration and typed request/response contract | Plan 11.8 | Partially implemented: 27 of 46 checks through PR #116 and PR #118. |
+| `P11-FEAT-ZED-RESUME` | Zed integration fixes, ACP session resume, and the configurable Gateway-timeout follow-up | Plan 11.7 / Plan 11.9 | Plan 11.7 is partially implemented and blocked; Plan 11.9 closed `P11.7-FU-1` through PR #123 and PR #124. |
 | `P11-FEAT-REGISTRY` | ACP registry validation, registration, and v1.0 cut | Last primary Plan 11 slice (holding position) | Required release slice; reassess 11.x-last versus a split outward-publication lane in 13.x after the consolidated open-work pool closes. |
 | `P11-FEAT-IDE` | IDE-specific testing if registry registration does not surface or satisfy multi-IDE expectations | Conditional | Conditional; not an unconditional v1.0 gate. |
+
+This map is the charter's current execution snapshot. The detailed feature sections below retain
+ratification-time design requirements; where they describe pre-pickup authorization or numbering,
+the map records the landed lane and the consolidated pool owns live work status.
 
 The feature IDs are permanent, greppable slice identities. They use the `P11-FEAT-*` prefix;
 `FEAT` identifies milestone features and is distinct from `FU`, which identifies follow-ups. Slugs
@@ -69,11 +73,11 @@ before implementation.
 
 ## Plan 11 feature-ID and plan-number allocation
 
-Plan 11.x numbers are not reserved in advance. When a feature or backlog item is actually picked up
-for scoping, it takes the next unused single-decimal slot at that moment. The number records
-scheduling order only - never priority or scope identity. Two-decimal numbers such as `11.11` are
-never valid. If new work must precede a planned slice, the new work takes the next number and the
-planned slice takes a later number.
+Plan numbers are scheduling labels only, never priority or scope identity. New independently
+schedulable work takes the next linear plan number without a decimal-depth limit: `11.9` -> `11.10`
+-> `11.11`. A revision keeps the same plan number and increments `_vN`. Interstitial allocations
+such as the historical `9.8` -> `9.85` -> `9.975` sequence are forbidden going forward. Nested
+`N.M.1` plan numbers are also forbidden.
 
 Feature IDs (`P11-FEAT-*`) and source IDs (`P9.8-FU-5`, `P11-FU-1`, and other stable backlog IDs)
 are the durable identifiers; plan numbers are not. Promotion is recorded as `Promoted -> Plan 11.N`
@@ -122,8 +126,8 @@ state.
 `P11-FU-3` records the route/typed-contract design gate. That gate may be marked satisfied only
 after this charter amendment and all four amended HLD, LLD, Guardrails, and Test Strategy PDFs are
 approved and published. Until then, no MCP implementation plan, route, payload, or response envelope
-may be promoted from this charter or its source fragments. The Plan 11.x number is assigned at pickup
-under the same next-unused-single-decimal convention used for TOOLS, COST-OBS, and ZED-RESUME.
+may be promoted from this charter or its source fragments. At pickup, independently schedulable work
+takes the next linear plan number under the charter rule used for TOOLS, COST-OBS, and ZED-RESUME.
 
 Context7 is a named remote-compatibility acceptance dependency of this feature, not a sixth
 follow-up. Before Context7 support may be claimed, a Gateway-originated, authenticated
