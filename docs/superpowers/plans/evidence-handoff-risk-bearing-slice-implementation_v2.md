@@ -620,6 +620,31 @@ The `P11-FU-6` pair recurred during the DoD coverage run (both `test_server` har
 `--cov`; passed isolated, in-file, and on coverage re-run at 81.34%). Recorded as a recurrence on
 `P11-FU-6` only — do not merge with `P11-FU-7`.
 
+### DoD addendum (post-closure, 2026-08-11)
+
+The six checkboxes above remain correctly passed on their own terms. This addendum records what
+was found after closure when PR CI first ran against the branch.
+
+1. **Gate gap found after closure.** Criterion 5's "Windows repository/coverage gates" did not
+   include four checks that exist only in CI: `bandit`, `pre-commit optimus-ast-grep`,
+   `optimus.guardrails.prompt_injection`, and `detect-secrets`. Because the branch's 22 commits
+   had never been pushed, CI had never run against them once — so a bandit B110 failure had been
+   latent since the affected lines were written, and the DoD passed without exercising it.
+
+2. **Sixth defect, fourth fail-open, fixed at `c963416`**
+   (`fix(evidence-handoff): fail closed when the integrity mirror cannot be written`).
+   `IntegrityMonitor._persist_latch` swallowed `mirror_integrity_incident` failures and
+   duck-checked the method's presence. Since the Option B change made the DB mirror the
+   service's **only** latch source in production (`control_root=None` there), a swallowed mirror
+   failure meant a tampered ledger would keep serving as healthy. Now the mirror is called
+   directly and failures propagate; the file latch still persists first.
+
+3. **Process lesson for future slices:** run the **full** CI gate set locally before claiming a
+   DoD pass, not just the plan's named gates. Future DoD criteria should name `bandit`,
+   `ast-grep`, `prompt-injection`, and `detect-secrets` explicitly. Also: never read `$?` after
+   a pipe — that returns the last pipeline element's exit code, which is how the bandit failure
+   was initially misreported as passing.
+
 ## Review handoff
 
 Review this v2 against the two pinned parents, the checkpoint's custody-amendment Task 0/1 evidence,
