@@ -1,5 +1,10 @@
 """Portable redaction gate surface."""
 
+from .ingress import (
+    IngressRejection,
+    RequestRedactionInputs,
+    StructuredIngress,
+)
 from .models import (
     ArtifactKind,
     Disposition,
@@ -13,9 +18,12 @@ from .models import (
 __all__ = [
     "ArtifactKind",
     "Disposition",
+    "IngressRejection",
     "PathAliasRule",
     "RedactionGateResult",
     "RedactionRequest",
     "RedactionRuntimeInputs",
+    "RequestRedactionInputs",
     "ScreenshotApproval",
+    "StructuredIngress",
 ]

@@ -11,9 +11,21 @@ import pytest
 
 ALLOWED_EVIDENCE_IMPORT_ROOTS = frozenset({"PIL", "optimus_security"})
 FORBIDDEN_EVIDENCE_IMPORT_ROOTS = frozenset({"optimus", "optimus_gateway", "tools"})
+ALLOWED_RUNTIME_IMPORT_ROOTS = frozenset(
+    {
+        "evidence_handoff",
+        "optimus_security",
+        "psycopg",
+        "mcp",
+        "starlette",
+        "uvicorn",
+    }
+)
+FORBIDDEN_RUNTIME_IMPORT_ROOTS = frozenset({"optimus", "optimus_gateway", "tools"})
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EVIDENCE_ROOT = REPO_ROOT / "src" / "evidence_handoff"
+RUNTIME_ROOT = REPO_ROOT / "src" / "evidence_handoff_runtime"
 SECURITY_ROOT = REPO_ROOT / "src" / "optimus_security"
 
 
@@ -218,3 +230,43 @@ def test_collector_subtree_rejects_dynamic_and_escaping_relative_imports() -> No
         if _relative_import_escapes(tree, package_depth=_package_depth(path, EVIDENCE_ROOT)):
             offenders.append(path.relative_to(REPO_ROOT).as_posix())
     assert offenders == []
+
+
+def test_evidence_handoff_runtime_tree_exists_for_scanning() -> None:
+    assert RUNTIME_ROOT.is_dir()
+    assert _python_files(RUNTIME_ROOT), "runtime package must contain Python modules"
+
+
+def test_evidence_handoff_runtime_imports_only_allowlisted_roots() -> None:
+    violations: list[str] = []
+    for path in _python_files(RUNTIME_ROOT):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for root in _imported_roots(tree):
+            if _is_stdlib(root) or root == "evidence_handoff_runtime":
+                continue
+            if root in ALLOWED_RUNTIME_IMPORT_ROOTS:
+                continue
+            violations.append(f"{path.relative_to(REPO_ROOT).as_posix()}: {root}")
+    assert violations == []
+
+
+def test_evidence_handoff_runtime_rejects_forbidden_and_dynamic_imports() -> None:
+    offenders: list[str] = []
+    for path in _python_files(RUNTIME_ROOT):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for root in _imported_roots(tree):
+            if root in FORBIDDEN_RUNTIME_IMPORT_ROOTS:
+                offenders.append(f"{path.relative_to(REPO_ROOT).as_posix()}: {root}")
+        if _has_dynamic_import(tree):
+            offenders.append(path.relative_to(REPO_ROOT).as_posix())
+    assert offenders == []
+
+
+def test_portable_evidence_handoff_does_not_import_runtime_package() -> None:
+    violations: list[str] = []
+    for path in _python_files(EVIDENCE_ROOT):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for root in _imported_roots(tree):
+            if root == "evidence_handoff_runtime":
+                violations.append(path.relative_to(REPO_ROOT).as_posix())
+    assert violations == []

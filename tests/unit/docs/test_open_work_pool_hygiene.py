@@ -21,7 +21,11 @@ PRODUCT_FEATURE_IDS = frozenset(
         "EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR",
         "EVIDENCE-HANDOFF-FEAT-ZED-RENDER-OBSERVATION",
         "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER",
+        "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER-DESIGN-REFRESH",
         "EVIDENCE-HANDOFF-FEAT-APPROVAL-RECORD",
+        "EVIDENCE-HANDOFF-FEAT-PEER-LIVENESS-SIGNAL",
+        "EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE",
+        "EVIDENCE-HANDOFF-FEAT-AT-REST-INTEGRITY",
     }
 )
 PRODUCT_OWNED_DOCS = frozenset(
@@ -33,6 +37,7 @@ PRODUCT_OWNED_DOCS = frozenset(
         "docs/superpowers/plans/evidence-handoff-evidence-collector-implementation.md",
         "docs/superpowers/plans/evidence-handoff-redaction-gate-implementation.md",
         "docs/superpowers/plans/evidence-handoff-risk-bearing-slice-implementation.md",
+        "docs/superpowers/plans/evidence-handoff-risk-bearing-slice-implementation_v2.md",
     }
 )
 
@@ -133,9 +138,13 @@ def test_a2a_ledger_reachability_blocker_is_resolved_and_design_is_owned() -> No
     assert "The cross-agent reachability blocker is resolved" in row
     assert "Blocked on the cross-agent localhost-TCP reachability investigation" not in row
     assert "[Design](../specs/evidence-handoff-a2a-ledger-design.md)" in row
-    assert "[Implementation plan](evidence-handoff-risk-bearing-slice-implementation.md)" in row
+    assert "[v2 plan](evidence-handoff-risk-bearing-slice-implementation_v2.md)" in row
+    assert "[v1 plan](evidence-handoff-risk-bearing-slice-implementation.md)" in row
     assert A2A_LEDGER_DESIGN.is_file()
     assert A2A_LEDGER_IMPLEMENTATION_PLAN.is_file()
+    assert (
+        REPO_ROOT / "docs/superpowers/plans/evidence-handoff-risk-bearing-slice-implementation_v2.md"
+    ).is_file()
     assert PLAN_NUMBER_RE.search(_read(A2A_LEDGER_DESIGN)) is None
 
 

@@ -100,3 +100,12 @@ docs/superpowers/reviews/*-review-checkpoints.md
 .acpxrc.json
 mcpServers.json
 tmp/
+
+# Evidence handoff local lifecycle/runtime artifacts (never commit)
+.evidence-handoff/
+
+# Task 10 named local live evidence / credential roots (never commit)
+/evidence-handoff-live/
+.evidence-handoff-live/
+evidence-handoff-live-credentials.json
+mcp-evidence-handoff.credentials.json
