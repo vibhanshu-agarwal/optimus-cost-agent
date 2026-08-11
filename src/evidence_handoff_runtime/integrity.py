@@ -308,12 +308,8 @@ class IntegrityMonitor:
     def _persist_latch(self, error: LedgerIntegrityError) -> None:
         incident = error.to_incident()
         self._latch.persist(incident)
-        mirror = getattr(self._store, "mirror_integrity_incident", None)
-        if callable(mirror):
-            try:
-                mirror(incident)
-            except Exception:
-                pass
+        # Production (control_root=None on the store) reads only the DB mirror — never swallow.
+        self._store.mirror_integrity_incident(incident)
 
 
 __all__ = [

@@ -118,6 +118,9 @@ def test_monitor_latches_on_verify_full_and_blocks_normal_ops(tmp_path: Path) ->
                 safe_boundary_sequence=1,
             )
 
+        def mirror_integrity_incident(self, incident: object) -> None:
+            return None
+
         def append(self, *_args, **_kwargs):  # noqa: ANN002,ANN003
             raise AssertionError("append must be refused while latched")
 
@@ -161,6 +164,9 @@ def test_monitor_verify_unfiltered_range_latches_on_gap(tmp_path: Path) -> None:
                 ledger_instance_id=self.ledger_instance_id,
                 safe_boundary_sequence=reader_cursor,
             )
+
+        def mirror_integrity_incident(self, incident: object) -> None:
+            return None
 
     control_root = tmp_path / "control"
     control_root.mkdir()
@@ -318,3 +324,61 @@ def test_store_without_control_root_permits_when_db_latch_is_predecessor(
     # Fact remains content-free and global; refuse path is what scopes by instance.
     assert fact["latched"] is True
     assert fact["incident_id"] == "ca00677d-133d-4ec0-9934-4563d54db2ed"
+
+
+def test_persist_latch_propagates_mirror_failure_after_file_persist(tmp_path: Path) -> None:
+    """DB mirror is production's only latch source; swallow would fail open."""
+    from evidence_handoff_runtime.integrity import (
+        IntegrityCause,
+        IntegrityMonitor,
+        LedgerIntegrityError,
+    )
+
+    class _MirrorBoomStore:
+        ledger_instance_id = "inst-mirror-boom"
+
+        def verify_full(self):  # noqa: ANN202
+            raise LedgerIntegrityError(
+                cause=IntegrityCause.CHAIN_BREAK,
+                ledger_instance_id=self.ledger_instance_id,
+                safe_boundary_sequence=1,
+            )
+
+        def mirror_integrity_incident(self, incident: object) -> None:
+            raise RuntimeError("mirror_write_failed")
+
+    control_root = tmp_path / "control"
+    control_root.mkdir()
+    monitor = IntegrityMonitor(store=_MirrorBoomStore(), control_root=control_root)
+
+    with pytest.raises(RuntimeError, match="mirror_write_failed"):
+        monitor.verify_full()
+
+    # File latch must still have been written before the mirror failure.
+    assert (control_root / "integrity_latch.json").is_file()
+
+
+def test_persist_latch_requires_mirror_method_on_store(tmp_path: Path) -> None:
+    """A store without mirror_integrity_incident must not silently skip mirroring."""
+    from evidence_handoff_runtime.integrity import (
+        IntegrityCause,
+        IntegrityMonitor,
+        LedgerIntegrityError,
+    )
+
+    class _NoMirrorStore:
+        ledger_instance_id = "inst-no-mirror"
+
+        def verify_full(self):  # noqa: ANN202
+            raise LedgerIntegrityError(
+                cause=IntegrityCause.CHAIN_BREAK,
+                ledger_instance_id=self.ledger_instance_id,
+                safe_boundary_sequence=2,
+            )
+
+    control_root = tmp_path / "control"
+    control_root.mkdir()
+    monitor = IntegrityMonitor(store=_NoMirrorStore(), control_root=control_root)
+
+    with pytest.raises(AttributeError):
+        monitor.verify_full()

@@ -8,6 +8,7 @@ file (path on argv); never via service_runtime.json.
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import os
 import socket
@@ -290,10 +291,8 @@ class LedgerService:
         try:
             running.wait_ready(timeout_seconds=30.0)
         except Exception:
-            try:
+            with contextlib.suppress(Exception):
                 stderr_handle.close()
-            except Exception:
-                pass
             detail = ""
             try:
                 detail = stderr_path.read_text(encoding="utf-8", errors="replace")[-4000:]
@@ -301,10 +300,8 @@ class LedgerService:
                 detail = ""
             running.stop()
             raise RuntimeError(f"service_start_failed: {detail}") from None
-        try:
+        with contextlib.suppress(Exception):
             stderr_handle.close()
-        except Exception:
-            pass
         # Child should already have unlinked the bundle; parent best-effort sweep.
         if auth_bundle_path is not None:
             try:
