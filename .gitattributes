@@ -2,10 +2,21 @@
 # platform's core.autocrlf setting. Without this, Windows core.autocrlf=true
 # silently rewrites LF blobs to CRLF on every fresh checkout/branch/worktree,
 # which breaks any raw-bytes SHA-256 check (frozen security contracts, plan
-# approval records) with zero real content change. Every text file in this
-# repository is already stored LF-only, so this is a no-op for existing
-# content and only prevents future drift.
+# approval records) with zero real content change. A small, enumerated set of
+# preserved A2A audit records below is exempt via `-text` to protect their raw
+# bytes (deliberate CRLF and intentional Markdown hard breaks); every other
+# text file in this repository remains LF-only, so this is a no-op for all
+# other existing content and only prevents future drift there.
 * text=auto eol=lf
 
 # Explicitly binary; skip line-ending normalization and text diffing.
 *.pdf binary
+
+# Preserved A2A audit/custody records: raw bytes must survive staging and
+# commit unchanged (deliberate CRLF, intentional Markdown hard breaks).
+docs/superpowers/reviews/evidence-handoff-a2a-ledger-independent-audit.md          -text
+docs/superpowers/reviews/evidence-handoff-a2a-ledger-sealed-reviewer-findings.md   -text
+docs/superpowers/reviews/evidence-handoff-a2a-remediation-scoping-review.md        -text
+docs/superpowers/reviews/evidence-handoff-a2a-not-shipped-closure-review.md        -text
+docs/superpowers/specs/evidence-handoff-a2a-ledger-remediation-scoping.md          -text
+docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure.md                 -text

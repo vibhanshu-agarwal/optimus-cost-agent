@@ -5,6 +5,7 @@ repos:
       - id: trailing-whitespace
         name: "optimus-check: hygiene trailing whitespace"
         exclude: ^reports/
+        args: [--markdown-linebreak-ext=md]
       - id: check-yaml
         name: "optimus-check: hygiene yaml"
       - id: check-toml
