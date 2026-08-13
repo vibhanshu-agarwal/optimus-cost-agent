@@ -186,3 +186,35 @@ def test_startup_metadata_requires_an_existing_manifest_binding():
 
     with pytest.raises(MCPProfileDefinitionError, match="manifest_hash"):
         MCPProfileRegistry.from_startup_metadata([_profile_kwargs()])
+
+
+def test_http_bearer_is_the_default_and_requires_a_credential_ref():
+    from optimus_gateway.mcp_profiles import MCPProfileDefinitionError, profile_from_mapping
+
+    with pytest.raises(MCPProfileDefinitionError, match="credential_ref"):
+        profile_from_mapping(_profile_kwargs(credential_ref=None))
+
+
+def test_http_none_requires_explicit_mode_and_has_no_credential_ref():
+    from optimus_gateway.mcp_profiles import profile_from_mapping
+
+    profile = profile_from_mapping(
+        _profile_kwargs(
+            credential_ref=None,
+            transport_config={"endpoint": "https://mcp.context7.com/mcp", "auth_mode": "none"},
+        )
+    )
+    assert profile.transport_config.auth_mode == "none"
+    assert profile.credential_ref is None
+
+
+def test_empty_credential_does_not_infer_http_none():
+    from optimus_gateway.mcp_profiles import MCPProfileDefinitionError, profile_from_mapping
+
+    with pytest.raises(MCPProfileDefinitionError):
+        profile_from_mapping(
+            _profile_kwargs(
+                credential_ref="",
+                transport_config={"endpoint": "https://mcp.context7.com/mcp", "auth_mode": "none"},
+            )
+        )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Literal
 
 import pytest
 
@@ -20,18 +21,24 @@ from optimus_gateway.mcp_transports import (
 )
 
 
-def _http_profile(*, endpoint: str = "https://mcp.example/tools", allow_insecure_loopback: bool = False) -> MCPProfile:
+def _http_profile(
+    *,
+    endpoint: str = "https://mcp.example/tools",
+    allow_insecure_loopback: bool = False,
+    credential_ref: str | None = "context7-token",
+    auth_mode: Literal["bearer", "none"] = "bearer",
+) -> MCPProfile:
     return MCPProfile(
         profile_id="context7",
         revision="rev-1",
         state=MCPProfileState.PENDING_REGISTRATION,
         transport="http",
-        credential_ref="context7-token",
+        credential_ref=credential_ref,
         upstream_allowlist=("fetch",),
         manifest_hash=None,
         limits=MCPResourceLimits(max_result_bytes=1024),
         attribution_policy=MCPAttributionPolicy(),
-        transport_config=MCPHTTPProfile(endpoint, allow_insecure_loopback=allow_insecure_loopback),
+        transport_config=MCPHTTPProfile(endpoint, allow_insecure_loopback=allow_insecure_loopback, auth_mode=auth_mode),
     )
 
 
@@ -105,18 +112,68 @@ def test_http_transport_posts_only_json_with_pinned_auth_and_request_metadata() 
     assert request.method == "POST"
     assert request.full_url == "https://mcp.example/tools"
     assert request.headers["Content-type"] == "application/json"
-    assert request.headers["Accept"] == "application/json"
+    assert request.headers["Accept"] == "application/json, text/event-stream"
     assert request.headers["Authorization"] == "Bearer secret"
     assert request.headers["Mcp-protocol-version"] == "2026-07-28"
     assert "Mcp-session-id" not in request.headers
     assert payload["method"] == "server/discover"
     assert payload["params"]["_meta"] == {
-        "protocolVersion": "2026-07-28",
-        "clientInfo": {"name": "client", "version": "1"},
-        "capabilities": {"tools": {}},
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientInfo": {"name": "client", "version": "1"},
+        "io.modelcontextprotocol/clientCapabilities": {"tools": {}},
     }
     assert result["protocolVersion"] == "2026-07-28"
     assert timeout == 30.0
+
+
+def test_http_transport_emits_namespaced_2026_metadata_and_method_headers():
+    opener = _HTTPOpener(
+        _HTTPResponse(
+            {"result": {"capabilities": {"tools": {}}}},
+            url="https://mcp.example/tools",
+        )
+    )
+    transport = StreamableHTTPMCPTransport(
+        _http_profile(), opener=opener, credential_resolver=lambda _ref: "secret"
+    )
+
+    transport.tools_call(
+        upstream_tool_name="resolve-library-id",
+        arguments={"libraryName": "pytest"},
+        protocol_version="2026-07-28",
+    )
+
+    request, _timeout = opener.requests[0]
+    payload = json.loads(request.data)
+    assert request.headers["Accept"] == "application/json, text/event-stream"
+    assert request.headers["Mcp-method"] == "tools/call"
+    assert request.headers["Mcp-name"] == "resolve-library-id"
+    assert payload["params"]["_meta"] == {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientInfo": {"name": "optimus-gateway", "version": "1.0"},
+        "io.modelcontextprotocol/clientCapabilities": {"tools": {}},
+    }
+
+
+def test_http_none_does_not_resolve_or_send_a_bearer_credential():
+    opener = _HTTPOpener(
+        _HTTPResponse(
+            {"result": {"capabilities": {"tools": {}}}},
+            url="https://mcp.example/tools",
+        )
+    )
+    resolver_calls: list[str | None] = []
+    transport = StreamableHTTPMCPTransport(
+        _http_profile(auth_mode="none", credential_ref=None),
+        opener=opener,
+        credential_resolver=lambda ref: resolver_calls.append(ref) or "must-not-be-used",
+    )
+
+    transport.server_discover(protocol_version="2026-07-28", client_meta={"name": "client", "version": "1"})
+
+    request, _timeout = opener.requests[0]
+    assert resolver_calls == []
+    assert "Authorization" not in request.headers
 
 
 @pytest.mark.parametrize(

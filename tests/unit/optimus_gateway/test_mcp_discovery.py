@@ -280,3 +280,30 @@ def test_broker_marks_active_profile_stale_after_recoverable_refresh_failure():
             connection_manager=manager,
         )
     assert registry.get("context7").state.value == "STALE"
+
+
+def test_server_discover_accepts_supported_versions_at_the_protocol_floor():
+    from optimus_gateway.mcp_discovery import MCPDiscoveryPaginator
+
+    assert MCPDiscoveryPaginator._validate_server_discover(
+        {"supportedVersions": ["2026-07-28"], "capabilities": {"tools": {}}}
+    ) == "2026-07-28"
+
+
+@pytest.mark.parametrize(
+    "server_info",
+    [
+        {"supportedVersions": "2026-07-28", "capabilities": {"tools": {}}},
+        {"supportedVersions": ["2025-11-25"], "capabilities": {"tools": {}}},
+        {
+            "protocolVersion": "2026-07-28",
+            "supportedVersions": ["2025-11-25"],
+            "capabilities": {"tools": {}},
+        },
+    ],
+)
+def test_server_discover_rejects_invalid_or_conflicting_version_shapes(server_info):
+    from optimus_gateway.mcp_discovery import MCPDiscoveryError, MCPDiscoveryPaginator
+
+    with pytest.raises(MCPDiscoveryError, match="mcp.protocol_version_unsupported"):
+        MCPDiscoveryPaginator._validate_server_discover(server_info)

@@ -80,9 +80,9 @@ def _meta(protocol_version: str, client_meta: MCPClientMeta) -> dict[str, object
     if not isinstance(capabilities, dict) or set(capabilities) - {"tools"}:
         raise MCPTransportError("client metadata advertises forbidden capabilities")
     return {
-        "protocolVersion": protocol_version,
-        "clientInfo": {"name": name, "version": version},
-        "capabilities": {"tools": {}},
+        "io.modelcontextprotocol/protocolVersion": protocol_version,
+        "io.modelcontextprotocol/clientInfo": {"name": name, "version": version},
+        "io.modelcontextprotocol/clientCapabilities": {"tools": {}},
     }
 
 
@@ -146,14 +146,26 @@ class StreamableHTTPMCPTransport:
                 "_meta": _meta(protocol_version, {"name": "optimus-gateway", "version": "1.0"}),
             },
             protocol_version=protocol_version,
+            mcp_name=upstream_tool_name,
         )
 
     def close(self) -> None:
         return None
 
-    def _request(self, *, method: str, params: dict[str, object], protocol_version: str) -> dict[str, Any]:
-        if self._credential_resolver is None:
-            raise MCPTransportError("HTTP credential resolver is required")
+    def _request(
+        self, *, method: str, params: dict[str, object], protocol_version: str, mcp_name: str | None = None
+    ) -> dict[str, Any]:
+        auth_mode = getattr(self.profile.transport_config, "auth_mode", "bearer")
+        credential: str | None = None
+        if auth_mode != "none":
+            if self._credential_resolver is None:
+                raise MCPTransportError("HTTP credential resolver is required")
+            credential_ref = self.profile.credential_ref
+            if not isinstance(credential_ref, str) or not credential_ref:
+                raise MCPTransportError("HTTP credential resolver is required")
+            credential = self._credential_resolver(credential_ref)
+            if not isinstance(credential, str) or not credential:
+                raise MCPTransportError("HTTP credential resolver returned no credential")
         self._request_id += 1
         body = json.dumps(
             {"jsonrpc": "2.0", "id": self._request_id, "method": method, "params": params},
@@ -161,13 +173,14 @@ class StreamableHTTPMCPTransport:
             separators=(",", ":"),
         ).encode("utf-8")
         request = Request(self.endpoint, data=body, method="POST")
-        request.add_header("Accept", "application/json")
+        request.add_header("Accept", "application/json, text/event-stream")
         request.add_header("Content-Type", "application/json")
         request.add_header("MCP-Protocol-Version", protocol_version)
-        credential = self._credential_resolver(self.profile.credential_ref)
-        if not isinstance(credential, str) or not credential:
-            raise MCPTransportError("HTTP credential resolver returned no credential")
-        request.add_header("Authorization", f"Bearer {credential}")
+        request.add_header("Mcp-Method", method)
+        if mcp_name is not None:
+            request.add_header("Mcp-Name", mcp_name)
+        if credential is not None:
+            request.add_header("Authorization", f"Bearer {credential}")
         started = self._clock()
         timeout = min(30.0, self.profile.limits.max_call_duration_seconds)
         try:

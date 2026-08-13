@@ -49,13 +49,14 @@ addopts = [
   "--strict-markers",
   "--import-mode=importlib",
   "-m",
-  "not requires_redis and not requires_gateway and not requires_mcp_http and not requires_mcp_stdio and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring and not requires_os_keyring_write and not requires_acpx and not requires_zed and not requires_windows_desktop and not evidence_investigation and not requires_evidence_handoff_postgres and not requires_evidence_handoff_service and not requires_real_agents",
+  "not requires_redis and not requires_gateway and not requires_mcp_http and not requires_mcp_stdio and not requires_mcp_context7 and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring and not requires_os_keyring_write and not requires_acpx and not requires_zed and not requires_windows_desktop and not evidence_investigation and not requires_evidence_handoff_postgres and not requires_evidence_handoff_service and not requires_real_agents",
 ]
 markers = [
   "requires_redis: integration test that needs a live TimeSeries-capable Redis server",
   "requires_gateway: integration test that needs real Optimus Gateway credentials",
   "requires_mcp_http: integration test that needs an independent real Streamable HTTP MCP server",
   "requires_mcp_stdio: integration test that needs an independent real digest-pinned Docker MCP server",
+  "requires_mcp_context7: integration test that needs the real public Context7 Streamable HTTP MCP endpoint",
   "e2e: end-to-end test that spawns the real ACP stdio process",
   "requires_live_gateway: integration test that needs the local Optimus Gateway service process and Anthropic API key on that process only",
   "requires_phoenix: integration test that needs a live Phoenix trace collector reachable via the Gateway-only OTLP endpoint",

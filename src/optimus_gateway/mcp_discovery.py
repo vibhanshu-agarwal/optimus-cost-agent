@@ -142,15 +142,41 @@ class MCPDiscoveryPaginator:
 
     @staticmethod
     def _validate_server_discover(server_info: dict[str, object]) -> str:
-        protocol_version = server_info.get("protocolVersion")
-        if not isinstance(protocol_version, str) or _PROTOCOL_VERSION.fullmatch(protocol_version) is None:
-            raise MCPDiscoveryError("mcp.protocol_version_unsupported")
-        if protocol_version < MCP_PROTOCOL_FLOOR:
-            raise MCPDiscoveryError("mcp.protocol_version_unsupported")
+        protocol_version = MCPDiscoveryPaginator._normalize_protocol_version(server_info)
         capabilities = server_info.get("capabilities")
         if not isinstance(capabilities, dict) or "tools" not in capabilities:
             raise MCPDiscoveryError("mcp.tools_capability_missing")
         return protocol_version
+
+    @staticmethod
+    def _normalize_protocol_version(server_info: dict[str, object]) -> str:
+        singular = server_info.get("protocolVersion")
+        supported = server_info.get("supportedVersions")
+        if supported is not None:
+            selected = MCPDiscoveryPaginator._select_supported_version(supported)
+            if singular is not None and singular != selected:
+                raise MCPDiscoveryError("mcp.protocol_version_unsupported")
+            return selected
+        if not isinstance(singular, str) or _PROTOCOL_VERSION.fullmatch(singular) is None:
+            raise MCPDiscoveryError("mcp.protocol_version_unsupported")
+        if singular < MCP_PROTOCOL_FLOOR:
+            raise MCPDiscoveryError("mcp.protocol_version_unsupported")
+        return singular
+
+    @staticmethod
+    def _select_supported_version(supported: object) -> str:
+        if not isinstance(supported, list) or not supported:
+            raise MCPDiscoveryError("mcp.protocol_version_unsupported")
+        seen: set[str] = set()
+        for item in supported:
+            if not isinstance(item, str) or _PROTOCOL_VERSION.fullmatch(item) is None:
+                raise MCPDiscoveryError("mcp.protocol_version_unsupported")
+            if item in seen:
+                raise MCPDiscoveryError("mcp.protocol_version_unsupported")
+            seen.add(item)
+        if MCP_PROTOCOL_FLOOR not in seen:
+            raise MCPDiscoveryError("mcp.protocol_version_unsupported")
+        return MCP_PROTOCOL_FLOOR
 
     @staticmethod
     def _validate_page(page: dict[str, object], *, cursor: str | None) -> tuple[list[object], str | None]:
