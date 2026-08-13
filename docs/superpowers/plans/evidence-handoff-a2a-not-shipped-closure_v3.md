@@ -30,7 +30,9 @@ eight-record baseline.** A documentation-ledger defect in that commit (Task 1E's
 current-state prose) was found and **the selected amend topology has completed**: K3 passed;
 after a fresh ref re-pin immediately beforehand, the operator-authorized `git commit --amend` and
 exact-lease `git push --force-with-lease` updated PR #132 in place, preserving the
-one-commit/eight-record baseline. **PR #132 remains unmerged; Tasks 2-5 remain separately gated.**
+one-commit/eight-record baseline. **PR #132 is merged into `main`** (merge commit
+`cdc0df309b436d6b93dcb3423e82ae4aee1b0d14`, containing reviewed head
+`ec73ba48628c051d07db06f10fa816fac681616c`); **Tasks 2-5 remain separately gated.**
 This document does not embed any transient index/status state or any mutable ref/object ID as a
 self-identifier — those change by design as work proceeds and are **external review evidence**,
 recorded in the reviewer chronology, never inside this mutable document (the same self-reference J1
@@ -1415,7 +1417,7 @@ force-with-lease is issued against the current PR head `2bae3ed2645e5239c366b50e
 
 ## Task 2 — atomic link, ownership, and allowlist
 
-- [ ] **Step 1 (RED):** Add **four** literal paths to `PRODUCT_OWNED_DOCS`:
+- [x] **Step 1 (RED):** Add **four** literal paths to `PRODUCT_OWNED_DOCS`:
       `docs/superpowers/specs/evidence-handoff-a2a-ledger-remediation-scoping.md`,
       `docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure.md` (historical v1),
       `docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure_v2.md` (historical v2, per
@@ -1425,10 +1427,10 @@ force-with-lease is issued against the current PR head `2bae3ed2645e5239c366b50e
       (`test_open_work_pool_hygiene.py:226-227`; product pool lines 81-82), extended one level for
       this plan's own v1→v2→v3 chain. Narrow docs test → expect FAIL on
       `listed_docs == PRODUCT_OWNED_DOCS`.
-- [ ] **Step 2 (GREEN):** In the same cycle add all four to the pool's
+- [x] **Step 2 (GREEN):** In the same cycle add all four to the pool's
       `## Product-owned documents temporarily hosted in Optimus` section and add the pool links.
       Re-run narrow docs test → green.
-- [ ] **Step 3:** Assert no `reviews/` artifact appears as a markdown link anywhere in the pool.
+- [x] **Step 3:** Assert no `reviews/` artifact appears as a markdown link anywhere in the pool.
       Stop for review.
 
 ## Task 3 — A2A row, six slice rows, Priority on Feature slices
@@ -1464,7 +1466,7 @@ Six new rows, `Tracked, Not Yet Scheduled` 2026-08-12, `MEDIUM`, order `Pre-A �
 `LEDGER-DATAPATH` (H4,H5,H6) · `LEDGER-RUNTIME-BOUNDARY` (H8,M14,M16b) ·
 `LEDGER-AUDIT-WIRING` (M16a) · `LEDGER-EVIDENCE-DOD` (H10,H11,H12b).
 
-- [ ] **Step 1 (RED):** Add the six IDs to `PRODUCT_FEATURE_IDS`; replace
+- [x] **Step 1 (RED):** Add the six IDs to `PRODUCT_FEATURE_IDS`; replace
       `test_a2a_ledger_reachability_blocker_is_resolved_and_design_is_owned` with
       `test_a2a_ledger_row_records_not_shipped_state` asserting the wording, `658042d`, `25`,
       `PR #128`, `PR #129`, default-off, no ordinary Optimus ledger/runtime import, the
@@ -1474,8 +1476,8 @@ Six new rows, `Tracked, Not Yet Scheduled` 2026-08-12, `MEDIUM`, order `Pre-A �
       is exactly one of `HIGH`, `MEDIUM`, or `LOW`; `EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE` is
       the **sole** `HIGH` row and every other row is `MEDIUM`; and no body line anywhere in the pool
       matches a residual inline `Priority:` or `**HIGH** priority` label. Expect FAIL.
-- [ ] **Step 2 (GREEN):** Make the edits; re-run to green.
-- [ ] **Step 3:** Verify no `Plan N` token entered the pool. Stop for review.
+- [x] **Step 2 (GREEN):** Make the edits; re-run to green.
+- [x] **Step 3:** Verify no `Plan N` token entered the pool. Stop for review.
 
 ## Task 4 — obligations table
 
@@ -1509,12 +1511,12 @@ Counts: 3 CRITICAL, 11 HIGH, 6 MEDIUM. Owners: COMPOSITION 5, INTEGRITY-BOUNDARY
 RUNTIME-BOUNDARY 3, EVIDENCE-DOD 3, AUDIT-WIRING 1, gate contract 1, closure plan 1. This table is an
 index projecting slice state, not a second owner.
 
-- [ ] **Step 1 (RED):** Encode `EXPECTED_OBLIGATIONS` as the exact `{obligation: (severity, owner)}`
+- [x] **Step 1 (RED):** Encode `EXPECTED_OBLIGATIONS` as the exact `{obligation: (severity, owner)}`
       mapping; assert table equality, Status `Open|Closed` with M17 the sole `Closed`, all six slice
       states `Tracked, Not Yet Scheduled`, the parent A2A row not `Closed`, and this table's Priority
       contract. Expect FAIL.
-- [ ] **Step 2 (GREEN):** Add the table; re-run to green.
-- [ ] **Step 3:** Stop for review.
+- [x] **Step 2 (GREEN):** Add the table; re-run to green.
+- [x] **Step 3:** Stop for review.
 
 ## Task 5 — adjacent custody, freshness, gates, closure commit
 
@@ -1530,13 +1532,13 @@ phrasing.
 hardened-Redis fallback path"*; no such path exists (the runtime is PostgreSQL). Narrow to generic
 future consolidated-startup work.
 
-- [ ] **Step 1 (RED):** Pin each adjacent-custody clause against restored dual ownership; pin the
+- [x] **Step 1 (RED):** Pin each adjacent-custody clause against restored dual ownership; pin the
       corrected Optimus Redis wording. Expect FAIL.
-- [ ] **Step 2 (GREEN):** Make the edits; narrow docs test → green.
-- [ ] **Step 3:** Full gate set below. A known flake is diagnostic context, **not** permission to
+- [x] **Step 2 (GREEN):** Make the edits; narrow docs test → green.
+- [x] **Step 3:** Full gate set below. A known flake is diagnostic context, **not** permission to
       check a failed gate: isolate, then rerun the original full command to exit 0. A
       deselected-or-failed command never becomes `[x]`.
-- [ ] **Step 4:** Write the tracked custody manifest — deferred here from Task 1E per the chosen
+- [x] **Step 4:** Write the tracked custody manifest — deferred here from Task 1E per the chosen
       topology — into record 4 **outside** its preserved region, labelling every digest explicitly as
       a hash **of the custody commit**. The manifest covers **all eight** custody-baseline paths, not
       only the six preserved records. Both record 7 (`_v2`, now historical) and record 8 (`_v3`,
@@ -1582,9 +1584,9 @@ future consolidated-startup work.
       done
       cat /tmp/custody_manifest.txt
       ```
-- [ ] **Step 5:** Documentation-freshness audit across the product pool, Optimus pool, README and
+- [x] **Step 5:** Documentation-freshness audit across the product pool, Optimus pool, README and
       `AGENTS.md` for A2A current-state claims.
-- [ ] **Step 6:** **Stop for explicit operator authorization** for the closure commit. No review
+- [x] **Step 6:** **Stop for explicit operator authorization** for the closure commit. No review
       grants it.
 
       **Step 7 — external evidence, not a checkbox.** On authorization: re-run `git status --short`
@@ -1627,31 +1629,36 @@ tracked flakes: `P11-FU-7`, `P11-FU-6`.
 
 **Part 1 — custody PR (Tasks 1A-1E):**
 
-- [ ] Tooling PR merged; `check-attr` reports `text: unset` for the six and `text: auto`/`eol: lf`
+- [x] Tooling PR merged; `check-attr` reports `text: unset` for the six and `text: auto`/`eol: lf`
       for **both** `_v2` and `_v3`.
-- [ ] Eight records committed; every preserved body (records 1-6) byte-identical to its `$SDD`
+- [x] Eight records committed; every preserved body (records 1-6) byte-identical to its `$SDD`
       source **in the index**, with full SHA-256, byte and line counts recorded. Record 7 (`_v2`)
       reconstructed once with its status line corrected to historical; record 8 (`_v3`) is the live
       execution ledger.
-- [ ] The configured hook ran at exit 0 and changed neither working files nor staged blobs, for all
+- [x] The configured hook ran at exit 0 and changed neither working files nor staged blobs, for all
       eight paths.
-- [ ] v1's wrapper is static history; `_v2`'s wrapper is now **also** static history (superseded by
+- [x] v1's wrapper is static history; `_v2`'s wrapper is now **also** static history (superseded by
       `_v3`); `_v3` is live; record 4 names `_v3` as the latest disposition.
-- [ ] No `src/`, tests, pool, or digest-pinned artifact touched.
-- [ ] **No tracked manifest is required in Part 1** — digests are verified against the custody commit
+- [x] No `src/`, tests, pool, or digest-pinned artifact touched.
+- [x] **No tracked manifest is required in Part 1** — digests are verified against the custody commit
       and recorded in Task 5 Step 4.
 
 **Part 2 — M17 closure (Tasks 2-5), explicitly NOT satisfied by Part 1:**
 
-- [ ] Four paths in the ownership list and `PRODUCT_OWNED_DOCS` (scoping, v1, `_v2`, `_v3`); pool
+- [x] Four paths in the ownership list and `PRODUCT_OWNED_DOCS` (scoping, v1, `_v2`, `_v3`); pool
       links only plans/specs.
-- [ ] A2A row not-shipped with corrected facts; six slice rows; both product tables carry one
+- [x] A2A row not-shipped with corrected facts; six slice rows; both product tables carry one
       Priority column with `CREDENTIAL-LIFECYCLE` the sole HIGH.
-- [ ] Obligations table matches `EXPECTED_OBLIGATIONS` exactly; M17 the sole `Closed`.
-- [ ] Four adjacent custody rows corrected; Optimus Redis reference narrowed.
-- [ ] Tracked custody manifest present, digests labelled as hashes of the custody commit.
-- [ ] Every gate exits 0, any isolated flake followed by a clean rerun of the full command.
+- [x] Obligations table matches `EXPECTED_OBLIGATIONS` exactly; M17 the sole `Closed`.
+- [x] Four adjacent custody rows corrected; Optimus Redis reference narrowed.
+- [x] Tracked custody manifest present, digests labelled as hashes of the custody commit.
+- [x] Every gate exits 0, any isolated flake followed by a clean rerun of the full command.
 
-Until Part 2 completes: **M17 stays open**, the pool still records the ledger as `Closed`, the
-obligations table does not exist, the six slices are unscheduled, and these records are not
-discoverable through the pool.
+**M17's documentation-closure bookkeeping is Closed** — this closure plan's own obligations-table
+entry, matching the obligations table above — now that Part 2's six items are evidenced. That closes
+only the *paperwork*; it does not close the feature. **The A2A ledger itself remains not shipped, not
+supported, not trusted**, exactly as the pool's A2A row states, and nothing in Part 2 changes that
+disposition or grants any remediation-slice design/implementation authority. The pool correctly
+records the ledger's not-shipped state (never `Closed`), the 20-row obligations table exists, and the
+six remediation slices are discoverable in the pool as `Tracked, Not Yet Scheduled` — none of them is
+scheduled or implemented by this documentation work.

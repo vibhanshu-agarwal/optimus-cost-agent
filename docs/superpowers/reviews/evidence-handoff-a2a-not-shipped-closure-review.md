@@ -1211,3 +1211,28 @@ Task 1B yet.** No document reconstruction, staging, custody commit, Tasks 2-5, M
 remediation scheduling is authorized by this checkpoint.
 
 <!-- PRESERVED-BODY-END -->
+
+## Task 5 Step 4 — tracked custody manifest (outside the preserved region)
+
+Every digest below is a hash **of the custody commit** `ec73ba48628c051d07db06f10fa816fac681616c`
+(Task 1E's custody commit, later merged to `main` as `cdc0df309b436d6b93dcb3423e82ae4aee1b0d14`),
+not of any later working-tree state. Record 7 (`_v2`) is not touched again after Task 1D, and its
+digest below matches its current tracked bytes exactly (independently reverified via fresh
+`git show HEAD:...`). Record 8 (`_v3`) is the closure plan's own custody-baseline digest as committed;
+it legitimately differs from `_v3`'s current working-tree bytes (Tasks 2-5 have since edited `_v3`'s
+checkboxes and current-state prose) — that difference is expected, not a mismatch to reconcile.
+
+| # | Path | SHA-256 (of the custody commit) | Bytes | Lines |
+|---|---|---|---|---|
+| 1 | `docs/superpowers/reviews/evidence-handoff-a2a-ledger-independent-audit.md` | `af3ccb0f306b7902ac0e7de1aa79c2cd1725b5263d73a110163947ab2c06cf06` | 41108 | 692 |
+| 2 | `docs/superpowers/reviews/evidence-handoff-a2a-ledger-sealed-reviewer-findings.md` | `196dc171cf130eae96c3265fc3a26b36c9550389762cd314b1232094e189bb72` | 5107 | 85 |
+| 3 | `docs/superpowers/reviews/evidence-handoff-a2a-remediation-scoping-review.md` | `aa89bf21c583f40ecfb0b44c822b1a2d2aa80f2d019e30c103da6f5961559cf9` | 26218 | 468 |
+| 4 | `docs/superpowers/reviews/evidence-handoff-a2a-not-shipped-closure-review.md` | `06bafea8f91d86646656a997da34688e12fd6b729c978d72efa9a8f74dc90d8a` | 72592 | 1213 |
+| 5 | `docs/superpowers/specs/evidence-handoff-a2a-ledger-remediation-scoping.md` | `c6e62f06a658956b986ca77b697177458da848e0d33984f8ba4d60de8ed4fad9` | 18379 | 313 |
+| 6 | `docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure.md` | `c9724c618338a331121e84b16e59b81e672079b882e236308dab6eea192d8e06` | 20309 | 310 |
+| 7 | `docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure_v2.md` | `6d6c0e6a82dba0317260ba077ccb0874f2dcea5994dfaa220a3f764c77fc3aa2` | 33501 | 609 |
+| 8 | `docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure_v3.md` | `c93c178bf00da99d002e2273bb004f8535f2f1d219375d24f4b2e6bac39f8063` | 105574 | 1657 |
+
+Row 4 is this record's own custody-commit digest (`docs/superpowers/reviews/evidence-handoff-a2a-not-shipped-closure-review.md`
+at commit `ec73ba48628c051d07db06f10fa816fac681616c`) — it does not and cannot include this
+Step 4 section itself, which is later, non-preserved material appended after that commit.
