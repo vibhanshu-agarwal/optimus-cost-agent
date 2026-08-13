@@ -72,12 +72,15 @@ class MCPAttributionPolicy:
 class MCPHTTPProfile:
     endpoint: str
     allow_insecure_loopback: bool = False
+    auth_mode: Literal["bearer", "none"] = "bearer"
 
     def __post_init__(self) -> None:
         if not self.endpoint or self.endpoint != self.endpoint.strip():
             raise MCPProfileDefinitionError("HTTP endpoint must be non-empty")
         if not self.endpoint.startswith(("https://", "http://")):
             raise MCPProfileDefinitionError("HTTP endpoint must use http or https")
+        if self.auth_mode not in ("bearer", "none"):
+            raise MCPProfileDefinitionError("HTTP auth_mode must be 'bearer' or 'none'")
 
 
 @dataclass(frozen=True)
@@ -100,7 +103,7 @@ class MCPProfile:
     revision: str
     state: MCPProfileState
     transport: Literal["http", "stdio"]
-    credential_ref: str
+    credential_ref: str | None
     upstream_allowlist: tuple[str, ...]
     manifest_hash: str | None
     limits: MCPResourceLimits
@@ -113,10 +116,6 @@ class MCPProfile:
         if not self.revision or self.revision != self.revision.strip():
             raise MCPProfileDefinitionError("revision must be non-empty")
         object.__setattr__(self, "state", MCPProfileState(self.state))
-        if not self.credential_ref or self.credential_ref != self.credential_ref.strip():
-            raise MCPProfileDefinitionError("credential_ref must be non-empty")
-        if _HASH.fullmatch(self.credential_ref):
-            raise MCPProfileDefinitionError("credential_ref must not be a secret-derived fingerprint")
         if not self.upstream_allowlist or len(set(self.upstream_allowlist)) != len(self.upstream_allowlist):
             raise MCPProfileDefinitionError("upstream_allowlist must be non-empty and unique")
         if any(not name or name != name.strip() for name in self.upstream_allowlist):
@@ -127,6 +126,14 @@ class MCPProfile:
             raise MCPProfileDefinitionError("HTTP profiles require MCPHTTPProfile")
         if self.transport == "stdio" and not isinstance(self.transport_config, MCPStdioProfile):
             raise MCPProfileDefinitionError("stdio profiles require MCPStdioProfile")
+        if self.transport == "http" and self.transport_config.auth_mode == "none":
+            if self.credential_ref is not None:
+                raise MCPProfileDefinitionError("credential_ref must be None when HTTP auth_mode is none")
+        else:
+            if not isinstance(self.credential_ref, str) or not self.credential_ref or self.credential_ref != self.credential_ref.strip():
+                raise MCPProfileDefinitionError("credential_ref must be non-empty")
+            if _HASH.fullmatch(self.credential_ref):
+                raise MCPProfileDefinitionError("credential_ref must not be a secret-derived fingerprint")
 
 
 @dataclass(frozen=True)
@@ -323,6 +330,7 @@ def profile_from_mapping(values: Mapping[str, Any]) -> MCPProfile:
             transport_config: MCPHTTPProfile | MCPStdioProfile = MCPHTTPProfile(
                 endpoint=str(transport_config_values["endpoint"]),
                 allow_insecure_loopback=bool(transport_config_values.get("allow_insecure_loopback", False)),
+                auth_mode=transport_config_values.get("auth_mode", "bearer"),
             )
         elif transport == "stdio":
             transport_config = MCPStdioProfile(
@@ -337,12 +345,21 @@ def profile_from_mapping(values: Mapping[str, Any]) -> MCPProfile:
         attribution_values = values.get("attribution_policy", {})
         if not isinstance(limits_values, Mapping) or not isinstance(attribution_values, Mapping):
             raise MCPProfileDefinitionError("limits and attribution_policy must be objects")
+        raw_credential = values.get("credential_ref")
+        if isinstance(transport_config, MCPHTTPProfile) and transport_config.auth_mode == "none":
+            if raw_credential is not None:
+                raise MCPProfileDefinitionError("credential_ref must be None when HTTP auth_mode is none")
+            credential_ref: str | None = None
+        else:
+            if raw_credential is None:
+                raise MCPProfileDefinitionError("credential_ref must be non-empty")
+            credential_ref = str(raw_credential)
         return MCPProfile(
             profile_id=str(values["profile_id"]),
             revision=str(values["revision"]),
             state=MCPProfileState(values.get("state", MCPProfileState.PENDING_REGISTRATION)),
             transport=transport,
-            credential_ref=str(values["credential_ref"]),
+            credential_ref=credential_ref,
             upstream_allowlist=tuple(values["upstream_allowlist"]),
             manifest_hash=values.get("manifest_hash"),
             limits=MCPResourceLimits(**limits_values),

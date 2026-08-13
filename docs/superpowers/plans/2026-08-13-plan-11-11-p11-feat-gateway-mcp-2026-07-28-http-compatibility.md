@@ -79,7 +79,7 @@ Do not modify the frozen Plan 11.8 plan/design, the Plan 11.8 generic HTTP/stdio
 - `profile_from_mapping()` must require the explicit `transport_config.auth_mode="none"` before accepting a missing/null HTTP `credential_ref`; a missing auth mode keeps the default `"bearer"` and therefore rejects a missing credential.
 - Startup metadata, `_copy_profile()`, `update_profile()`, `reenable()`, and any safe profile serialization must preserve `auth_mode` and the nullable credential reference without serializing a secret.
 
-- [ ] **Step 1: Write the failing profile tests.** Reuse the existing `_profile_kwargs()` fixture factory in `tests/unit/optimus_gateway/test_mcp_profiles.py` and add these exact behavioral assertions. Import `MCPProfileDefinitionError` and `profile_from_mapping` inside the tests, matching the existing test-file import pattern:
+- [x] **Step 1: Write the failing profile tests.** Reuse the existing `_profile_kwargs()` fixture factory in `tests/unit/optimus_gateway/test_mcp_profiles.py` and add these exact behavioral assertions. Import `MCPProfileDefinitionError` and `profile_from_mapping` inside the tests, matching the existing test-file import pattern:
 
 ```python
 def test_http_bearer_is_the_default_and_requires_a_credential_ref():
@@ -110,7 +110,7 @@ def test_empty_credential_does_not_infer_http_none():
 
 The test file must retain its existing authenticated profile and stdio fixtures; the new tests add only the explicit `None`/`auth_mode` cases.
 
-- [ ] **Step 2: Run the focused tests to verify they fail for the current model.**
+- [x] **Step 2: Run the focused tests to verify they fail for the current model.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_mcp_profiles.py -k "auth_mode or credential" -q
@@ -118,7 +118,7 @@ The test file must retain its existing authenticated profile and stdio fixtures;
 
   Expected: FAIL because `MCPHTTPProfile` has no `auth_mode`, `MCPProfile` rejects `None`, and the mapping path always stringifies `credential_ref`.
 
-- [ ] **Step 3: Implement the smallest profile-model change.** Add the explicit auth mode and cross-field validation. Keep the existing fingerprint rejection, profile allowlist, revision, manifest, and forbidden-field checks. Update every profile copy/update/startup path so changing `transport_config.auth_mode` mints a new revision and so a no-auth HTTP profile cannot accidentally inherit a previous bearer reference.
+- [x] **Step 3: Implement the smallest profile-model change.** Add the explicit auth mode and cross-field validation. Keep the existing fingerprint rejection, profile allowlist, revision, manifest, and forbidden-field checks. Update every profile copy/update/startup path so changing `transport_config.auth_mode` mints a new revision and so a no-auth HTTP profile cannot accidentally inherit a previous bearer reference.
 
   The implementation must preserve this invariant:
 
@@ -129,7 +129,7 @@ The test file must retain its existing authenticated profile and stdio fixtures;
       assert isinstance(profile.credential_ref, str) and profile.credential_ref.strip()
   ```
 
-- [ ] **Step 4: Run the profile and serialization regression tests.**
+- [x] **Step 4: Run the profile and serialization regression tests.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_mcp_profiles.py tests/unit/optimus_gateway/test_mcp_handlers.py -q
@@ -165,7 +165,7 @@ The test file must retain its existing authenticated profile and stdio fixtures;
 - `auth_mode="none"` never calls the credential resolver and never emits an `Authorization` header. Supplying a resolver is harmless but it must not be invoked.
 - Extend the existing test helper `_http_profile()` with keyword arguments `credential_ref: str | None = "context7-token"` and `auth_mode: Literal["bearer", "none"] = "bearer"` so both auth branches use the same profile construction path.
 
-- [ ] **Step 1: Write failing wire-contract tests.** Extend the existing HTTP transport tests with these assertions:
+- [x] **Step 1: Write failing wire-contract tests.** Extend the existing HTTP transport tests with these assertions:
 
 ```python
 def test_http_transport_emits_namespaced_2026_metadata_and_method_headers():
@@ -218,7 +218,7 @@ def test_http_none_does_not_resolve_or_send_a_bearer_credential():
     assert "Authorization" not in request.headers
 ```
 
-- [ ] **Step 2: Run the focused transport tests to verify the current failure.**
+- [x] **Step 2: Run the focused transport tests to verify the current failure.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_mcp_transports.py -q
@@ -226,9 +226,9 @@ def test_http_none_does_not_resolve_or_send_a_bearer_credential():
 
   Expected: FAIL on legacy metadata, the single-value Accept header, missing MCP method/name headers, and unconditional bearer resolution.
 
-- [ ] **Step 3: Implement the wire and credential branching changes.** Keep the existing origin pinning, bounded reads, timeout, redirect denial, JSON validation, error classification, and transport close behavior. Add no compatibility fallback for legacy HTTP initialization. Pass the validated `tools/call` name explicitly into `_request()` and keep all header values derived from fixed method/tool validation.
+- [x] **Step 3: Implement the wire and credential branching changes.** Keep the existing origin pinning, bounded reads, timeout, redirect denial, JSON validation, error classification, and transport close behavior. Add no compatibility fallback for legacy HTTP initialization. Pass the validated `tools/call` name explicitly into `_request()` and keep all header values derived from fixed method/tool validation.
 
-- [ ] **Step 4: Run transport and connection regressions.**
+- [x] **Step 4: Run transport and connection regressions.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_mcp_transports.py tests/unit/optimus_gateway/test_mcp_connections.py -q
@@ -254,7 +254,7 @@ def test_http_none_does_not_resolve_or_send_a_bearer_credential():
 - If both fields are present, require the singular field to equal the selected supported version; conflicting fields fail closed with `mcp.protocol_version_unsupported`.
 - A missing, malformed, duplicate, unsupported, or below-floor version list fails closed with `mcp.protocol_version_unsupported`. Capability validation remains unchanged: `tools` is required and forbidden capabilities remain denied.
 
-- [ ] **Step 1: Write failing discovery tests.** Add tests covering plural success, malformed plural failure, below-floor failure, and conflicting dual-field failure:
+- [x] **Step 1: Write failing discovery tests.** Add tests covering plural success, malformed plural failure, below-floor failure, and conflicting dual-field failure:
 
 ```python
 def test_server_discover_accepts_supported_versions_at_the_protocol_floor():
@@ -280,7 +280,7 @@ def test_server_discover_rejects_invalid_or_conflicting_version_shapes(server_in
         MCPDiscoveryPaginator._validate_server_discover(server_info)
 ```
 
-- [ ] **Step 2: Run the focused discovery tests to verify the plural response currently fails.**
+- [x] **Step 2: Run the focused discovery tests to verify the plural response currently fails.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_mcp_discovery.py -q
@@ -288,9 +288,9 @@ def test_server_discover_rejects_invalid_or_conflicting_version_shapes(server_in
 
   Expected: the new `supportedVersions` test fails with the current singular-field-only validator.
 
-- [ ] **Step 3: Implement deterministic version normalization.** Keep the existing retry cap, page/cursor validation, capability rejection, allowlist, manifest, and freshness semantics. The normalization must not turn an unsupported Context7 response into a successful result; it succeeds only when the exact floor is proven.
+- [x] **Step 3: Implement deterministic version normalization.** Keep the existing retry cap, page/cursor validation, capability rejection, allowlist, manifest, and freshness semantics. The normalization must not turn an unsupported Context7 response into a successful result; it succeeds only when the exact floor is proven.
 
-- [ ] **Step 4: Run discovery, model, and handler regressions.**
+- [x] **Step 4: Run discovery, model, and handler regressions.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_mcp_discovery.py tests/unit/optimus_gateway/test_mcp_models.py tests/unit/optimus_gateway/test_mcp_handlers.py -q
@@ -313,7 +313,7 @@ def test_server_discover_rejects_invalid_or_conflicting_version_shapes(server_in
 - Invoke only `POST /v1/tools/mcp/discover` through `GatewayClient`. Assert the selected protocol is `2026-07-28`, the tools capability is accepted, the returned descriptors are complete, the Context7 names are namespaced, the allowlist is satisfied, and the disposition is complete/unchanged as appropriate.
 - The report must include the Gateway and repository commit, endpoint hostname/path without secrets, test command, real dependency marker, result counts, selected protocol, sanitized disposition, and explicit assertions that no Authorization header or upstream credential was used. Do not claim the full Plan 11.8 Task 9 result from this focused probe.
 
-- [ ] **Step 1: Add the marker and write the RED live-test skeleton.** Follow the existing `requires_gateway`/real-dependency marker convention. The test must fail clearly when `OPTIMUS_MCP_CONTEXT7_URL` or the real Gateway material is absent; a skipped or deselected test is not evidence.
+- [x] **Step 1: Add the marker and write the RED live-test skeleton.** Follow the existing `requires_gateway`/real-dependency marker convention. The test must fail clearly when `OPTIMUS_MCP_CONTEXT7_URL` or the real Gateway material is absent; a skipped or deselected test is not evidence.
 
   ```python
   @pytest.mark.requires_gateway
@@ -346,7 +346,7 @@ def test_server_discover_rejects_invalid_or_conflicting_version_shapes(server_in
 
   The helper must use the existing Gateway setup seam; do not add a second MCP protocol client or an upstream fake server.
 
-- [ ] **Step 2: Run the live test before implementation to establish the compatibility failure.**
+- [x] **Step 2: Run the live test before implementation to establish the compatibility failure.**
 
   ```powershell
   uv run --frozen pytest tests/integration/optimus_gateway/test_gateway_mcp_context7_live.py -m "requires_gateway and requires_mcp_context7" -q
@@ -354,9 +354,9 @@ def test_server_discover_rejects_invalid_or_conflicting_version_shapes(server_in
 
   Expected before Tasks 1-3: profile construction or Gateway discovery fails because the current profile cannot represent explicit no-auth, the current HTTP wire shape is incompatible, or the singular discovery validator rejects Context7’s plural version response.
 
-- [ ] **Step 3: Implement the real probe after Tasks 1-3 pass.** Use the configured real endpoint and Gateway path. Do not replace the endpoint with a local fixture, direct curl, fake transport, or project-authored MCP client. Preserve the agent one-key assertion and redact all endpoint query material and response content not required to prove the contract.
+- [x] **Step 3: Implement the real probe after Tasks 1-3 pass.** Use the configured real endpoint and Gateway path. Do not replace the endpoint with a local fixture, direct curl, fake transport, or project-authored MCP client. Preserve the agent one-key assertion and redact all endpoint query material and response content not required to prove the contract.
 
-- [ ] **Step 4: Run the real Context7 evidence command and write the sanitized report.**
+- [x] **Step 4: Run the real Context7 evidence command and write the sanitized report.**
 
   ```powershell
   uv run --frozen pytest tests/integration/optimus_gateway/test_gateway_mcp_context7_live.py -m "requires_gateway and requires_mcp_context7" -q
@@ -375,7 +375,7 @@ def test_server_discover_rejects_invalid_or_conflicting_version_shapes(server_in
 - Read: `docs/superpowers/plans/2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md` and the frozen design to confirm no edits occurred.
 - Read: `reports/plan-11-11-gateway-mcp-context7-compatibility.md`.
 
-- [ ] **Step 1: Run the complete affected unit suite and coverage.**
+- [x] **Step 1: Run the complete affected unit suite and coverage.**
 
   ```powershell
   uv run --frozen pytest tests/unit/optimus_gateway/test_mcp_profiles.py tests/unit/optimus_gateway/test_mcp_transports.py tests/unit/optimus_gateway/test_mcp_discovery.py tests/unit/optimus_gateway/test_mcp_connections.py tests/unit/optimus_gateway/test_mcp_handlers.py tests/unit/optimus_gateway/test_mcp_models.py -q
@@ -384,7 +384,7 @@ def test_server_discover_rejects_invalid_or_conflicting_version_shapes(server_in
 
   Expected: all affected tests pass and the changed production paths do not fall below the project’s 80% aggregate coverage gate when the full release gate is later run by Plan 11.8.
 
-- [ ] **Step 2: Run the repository lint and diff hygiene checks.**
+- [x] **Step 2: Run the repository lint and diff hygiene checks.**
 
   ```powershell
   uv run --frozen ruff check src/optimus_gateway/mcp_profiles.py src/optimus_gateway/mcp_transports.py src/optimus_gateway/mcp_discovery.py tests/unit/optimus_gateway/test_mcp_profiles.py tests/unit/optimus_gateway/test_mcp_transports.py tests/unit/optimus_gateway/test_mcp_discovery.py tests/integration/optimus_gateway/test_gateway_mcp_context7_live.py
@@ -392,7 +392,7 @@ def test_server_discover_rejects_invalid_or_conflicting_version_shapes(server_in
   git status --short --branch
   ```
 
-- [ ] **Step 3: Perform the scope and credential audit.** Confirm with `rg` that:
+- [x] **Step 3: Perform the scope and credential audit.** Confirm with `rg` that:
 
   ```powershell
   rg -n "auth_mode|credential_ref|Authorization|MCP-Protocol-Version|Mcp-Method|Mcp-Name|supportedVersions|protocolVersion" src/optimus_gateway tests/unit/optimus_gateway tests/integration/optimus_gateway
@@ -401,7 +401,7 @@ def test_server_discover_rejects_invalid_or_conflicting_version_shapes(server_in
 
   The audit must show that authenticated bearer behavior remains the default, no-auth is explicit, no upstream credential is present in agent configuration, and no Plan 11.8 Task 8/9 evidence claim was copied into the new report.
 
-- [ ] **Step 4: Hand off for review.** Stop with the working tree uncommitted. Give Claude and the operator the changed-file list, focused test output, live Context7 report, coverage output, Ruff output, and explicit confirmation that:
+- [x] **Step 4: Hand off for review.** Stop with the working tree uncommitted. Give Claude and the operator the changed-file list, focused test output, live Context7 report, coverage output, Ruff output, and explicit confirmation that:
 
   - Plan 11.8 Task 8 Steps 2-4 remain incomplete and owned by Plan 11.8.
   - Plan 11.8 Task 9 Steps 2-4 remain incomplete and owned by Plan 11.8.
