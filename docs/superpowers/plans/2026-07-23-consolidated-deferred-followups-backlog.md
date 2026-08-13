@@ -1394,7 +1394,8 @@ the latest RDB snapshot. The accepted Plan 11.7 meaning of "durable" is survival
 process/agent restarts, not container lifecycle events.
 
 **Revisit trigger:** Revisit only if session-state loss occurs in practice or a future plan—such
-as the A2A ledger's hardened-Redis fallback path—already changes Redis persistence configuration.
+as the consolidated local-startup configuration source of truth—already changes Redis persistence
+configuration.
 In that case, fix persistence once in the consolidated startup mechanism under the single-config
 rule.
 

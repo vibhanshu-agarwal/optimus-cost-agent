@@ -213,6 +213,12 @@ PRODUCT_FEATURE_IDS = frozenset(
         "EVIDENCE-HANDOFF-FEAT-PEER-LIVENESS-SIGNAL",
         "EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE",
         "EVIDENCE-HANDOFF-FEAT-AT-REST-INTEGRITY",
+        "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION",
+        "EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY",
+        "EVIDENCE-HANDOFF-FEAT-LEDGER-DATAPATH",
+        "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY",
+        "EVIDENCE-HANDOFF-FEAT-LEDGER-AUDIT-WIRING",
+        "EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD",
     }
 )
 PRODUCT_OWNED_DOCS = frozenset(
@@ -221,10 +227,14 @@ PRODUCT_OWNED_DOCS = frozenset(
         "docs/superpowers/specs/evidence-handoff-evidence-collector-design.md",
         "docs/superpowers/specs/evidence-handoff-redaction-gate-design.md",
         "docs/superpowers/specs/evidence-handoff-zed-render-observation-design.md",
+        "docs/superpowers/specs/evidence-handoff-a2a-ledger-remediation-scoping.md",
         "docs/superpowers/plans/evidence-handoff-evidence-collector-implementation.md",
         "docs/superpowers/plans/evidence-handoff-redaction-gate-implementation.md",
         "docs/superpowers/plans/evidence-handoff-risk-bearing-slice-implementation.md",
         "docs/superpowers/plans/evidence-handoff-risk-bearing-slice-implementation_v2.md",
+        "docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure.md",
+        "docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure_v2.md",
+        "docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure_v3.md",
     }
 )
 
@@ -757,20 +767,180 @@ def test_product_features_have_exactly_one_pool_owner() -> None:
     assert PRODUCT_FEATURE_IDS <= product_rows.keys()
 
 
-def test_a2a_ledger_reachability_blocker_is_resolved_and_design_is_owned() -> None:
-    row = _feature_row(_read(PRODUCT_POOL), "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER")
+A2A_NOT_SHIPPED_VERBATIM = (
+    "The feature is not on the ordinary Optimus runtime path and lifecycle activation is opt-in by "
+    "default. However, merged code and installed console entry points remain manually callable. "
+    "They are unsupported and untrusted and must not be enabled or used for trusted workflows."
+)
+A2A_REMEDIATION_SLICE_IDS = (
+    "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION",
+    "EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY",
+    "EVIDENCE-HANDOFF-FEAT-LEDGER-DATAPATH",
+    "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY",
+    "EVIDENCE-HANDOFF-FEAT-LEDGER-AUDIT-WIRING",
+    "EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD",
+)
+A2A_BACKTICK_ONLY_REVIEW_DOCS = (
+    "docs/superpowers/reviews/evidence-handoff-a2a-ledger-independent-audit.md",
+    "docs/superpowers/reviews/evidence-handoff-a2a-ledger-sealed-reviewer-findings.md",
+    "docs/superpowers/reviews/evidence-handoff-a2a-remediation-scoping-review.md",
+    "docs/superpowers/reviews/evidence-handoff-a2a-not-shipped-closure-review.md",
+)
 
-    assert "The cross-agent reachability blocker is resolved" in row
-    assert "Blocked on the cross-agent localhost-TCP reachability investigation" not in row
-    assert "[Design](../specs/evidence-handoff-a2a-ledger-design.md)" in row
-    assert "[v2 plan](evidence-handoff-risk-bearing-slice-implementation_v2.md)" in row
-    assert "[v1 plan](evidence-handoff-risk-bearing-slice-implementation.md)" in row
-    assert A2A_LEDGER_DESIGN.is_file()
-    assert A2A_LEDGER_IMPLEMENTATION_PLAN.is_file()
+
+def test_a2a_ledger_row_records_not_shipped_state() -> None:
+    pool_text = _read(PRODUCT_POOL)
+    row = _feature_row(pool_text, "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER")
+    row_lower = row.lower()
+
+    assert "**Closed**" not in row
+    assert "72c3b82" not in row
+    assert "not shipped" in row_lower
+    assert "not supported" in row_lower
+    assert "not trusted" in row_lower
+    assert "`e5f7e339`" in row
+    assert "NOT SOUND" in row
+    assert "17 findings, 3 Critical" in row
+    assert "`658042d`" in row
+    assert "25 inclusive commits from `8735885`" in row
+    assert "PR #128" in row and "`7b5865f`" in row
+    assert "PR #129" in row and "`74f7104`" in row
+    assert "code remains merged" in row
+    assert "console scripts remain installed" in row
+    assert "default-off" in row
+    assert "No ordinary Optimus" in row and "runtime import" in row
+    assert A2A_NOT_SHIPPED_VERBATIM in row
+    assert "[closure plan `_v3`](evidence-handoff-a2a-not-shipped-closure_v3.md)" in row
     assert (
-        REPO_ROOT / "docs/superpowers/plans/evidence-handoff-risk-bearing-slice-implementation_v2.md"
-    ).is_file()
-    assert PLAN_NUMBER_RE.search(_read(A2A_LEDGER_DESIGN)) is None
+        "[remediation-scoping contract](../specs/evidence-handoff-a2a-ledger-remediation-scoping.md)"
+    ) in row
+    for doc in A2A_BACKTICK_ONLY_REVIEW_DOCS:
+        assert f"`{doc}`" in row
+        assert f"]({doc})" not in row
+    for slice_id in A2A_REMEDIATION_SLICE_IDS:
+        assert f"`{slice_id}`" in row
+    assert A2A_LEDGER_DESIGN.is_file()
+
+    header_line = next(
+        line
+        for line in pool_text.splitlines()
+        if line.strip() == "| Identity | State | Priority | Scope detail |"
+    )
+    assert header_line.count("Priority") == 1
+
+    non_medium: dict[str, str] = {}
+    for line in pool_text.splitlines():
+        match = FEATURE_ROW_RE.match(line)
+        if match is None:
+            continue
+        cells = _markdown_table_cells(line)
+        assert len(cells) == 4
+        identity = cells[0].strip("`")
+        priority = cells[2]
+        assert priority in ALLOWED_PRIORITIES
+        if priority != "MEDIUM":
+            non_medium[identity] = priority
+    assert non_medium == {"EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE": "HIGH"}
+    assert PRODUCT_FEATURE_IDS <= _feature_rows(pool_text).keys()
+
+    assert re.search(r"\bPriority:", pool_text) is None
+    assert "**HIGH** priority" not in pool_text
+
+
+EXPECTED_OBLIGATIONS: dict[str, tuple[str, str]] = {
+    "C1": ("CRITICAL", "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION"),
+    "C2": ("CRITICAL", "EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY"),
+    "C3": ("CRITICAL", "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION"),
+    "H4": ("HIGH", "EVIDENCE-HANDOFF-FEAT-LEDGER-DATAPATH"),
+    "H5": ("HIGH", "EVIDENCE-HANDOFF-FEAT-LEDGER-DATAPATH"),
+    "H6": ("HIGH", "EVIDENCE-HANDOFF-FEAT-LEDGER-DATAPATH"),
+    "H7": ("HIGH", "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION"),
+    "H8": ("HIGH", "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY"),
+    "H9": ("HIGH", "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION"),
+    "H10": ("HIGH", "EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD"),
+    "H11": ("HIGH", "EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD"),
+    "H12a": ("HIGH", "program gate contract (pre-work, unscheduled)"),
+    "H12b": ("HIGH", "EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD"),
+    "H13": ("HIGH", "EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY"),
+    "M14": ("MEDIUM", "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY"),
+    "M15": ("MEDIUM", "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION"),
+    "M16a": ("MEDIUM", "EVIDENCE-HANDOFF-FEAT-LEDGER-AUDIT-WIRING"),
+    "M16b": ("MEDIUM", "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY"),
+    "M16c": ("MEDIUM", "EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY"),
+    "M17": ("MEDIUM", "this closure plan"),
+}
+
+
+def test_a2a_ledger_obligations_table_matches_expected() -> None:
+    pool_text = _read(PRODUCT_POOL)
+    section = _h2_section(pool_text, "A2A ledger audit obligations")
+    table_lines = [line for line in section.splitlines() if line.strip().startswith("|")]
+
+    header = _markdown_table_cells(table_lines[0])
+    assert header == ("Obligation", "Severity", "Owning slice", "Status", "Priority")
+    assert header.count("Priority") == 1
+
+    body_rows = [_markdown_table_cells(line) for line in table_lines[2:]]
+    assert len(body_rows) == 20
+
+    actual_obligations: dict[str, tuple[str, str]] = {}
+    statuses: dict[str, str] = {}
+    for cells in body_rows:
+        assert len(cells) == 5
+        obligation = cells[0].strip("`")
+        severity, owner, status, priority = cells[1], cells[2].strip("`"), cells[3], cells[4]
+        assert obligation not in actual_obligations
+        actual_obligations[obligation] = (severity, owner)
+        statuses[obligation] = status
+        assert priority == "MEDIUM"
+
+    assert actual_obligations == EXPECTED_OBLIGATIONS
+    assert set(statuses.values()) <= {"Open", "**Closed**"}
+    assert {obligation for obligation, status in statuses.items() if status == "**Closed**"} == {"M17"}
+
+    a2a_row = _feature_row(pool_text, "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER")
+    assert "**Closed**" not in a2a_row
+
+    for slice_id in A2A_REMEDIATION_SLICE_IDS:
+        slice_row = _feature_row(pool_text, slice_id)
+        assert "Tracked, Not Yet Scheduled" in slice_row
+
+
+def test_adjacent_custody_rows_reflect_restored_dual_ownership() -> None:
+    pool_text = _read(PRODUCT_POOL)
+
+    design_refresh_row = _feature_row(pool_text, "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER-DESIGN-REFRESH")
+    assert "integrity guards belong at operation entry" not in design_refresh_row
+    assert "Restate the local store ladder as Docker Desktop PostgreSQL" in design_refresh_row
+    assert "wslc removed" in design_refresh_row
+    assert (
+        "read-path verification only covers the unread range behind confirmed cursors"
+        in design_refresh_row
+    )
+    assert "Session protocol admission is Option A" in design_refresh_row
+    assert "EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY" in design_refresh_row
+    assert "remains on this agenda" not in design_refresh_row
+    assert "Option B session protocol admission vs binding" not in design_refresh_row
+
+    at_rest_row = _feature_row(pool_text, "EVIDENCE-HANDOFF-FEAT-AT-REST-INTEGRITY")
+    assert "operator-invoked" not in at_rest_row
+    assert "scheduled `IntegrityMonitor.verify_full()`" in at_rest_row
+    assert "in-flight Task 6" not in at_rest_row
+    assert "completed and archived Task 6" in at_rest_row
+
+    credential_row = _feature_row(pool_text, "EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE")
+    assert "OAuth (MCP's OAuth 2.1 authorization framework)" in credential_row
+    assert "Cursor (probe) fails tool discovery" in credential_row
+    assert "EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD" in credential_row
+
+    peer_row = _feature_row(pool_text, "EVIDENCE-HANDOFF-FEAT-PEER-LIVENESS-SIGNAL")
+    assert "Task 10 capstone" not in peer_row
+    assert "Task 11 release gates" not in peer_row
+    assert "in-flight" not in peer_row
+
+    optimus_text = _read(OPTIMUS_POOL)
+    assert "hardened-Redis fallback path" not in optimus_text
+    assert "the consolidated local-startup configuration source of truth" in optimus_text
 
 
 def test_a2a_ledger_plan_freezes_ordered_risk_slice_scope() -> None:
