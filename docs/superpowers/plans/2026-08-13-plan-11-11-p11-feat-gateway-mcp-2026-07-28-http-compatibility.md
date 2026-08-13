@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.14, dataclass profile models, `urllib.request` Streamable HTTP transport, `pytest`, `pytest-asyncio`, `coverage.py`, `pytest-cov`, Ruff, the existing `GatewayClient` and `serve_gateway` path, and the real public Context7 MCP endpoint.
 
-**Status:** Draft for Claude review and operator approval. This document authorizes planning only; it does not authorize implementation, commit, push, or PR creation.
+**Status:** Implemented and merged. PR #135 (`93958ce8c783a952be1bc9611a2a3089c39762b1`), merged 2026-08-13T16:32:08Z. All 5 tasks and every Acceptance Criteria line closed; see `reports/plan-11-11-gateway-mcp-context7-compatibility.md` for the live Context7 evidence.
 
 ## Global Constraints
 
