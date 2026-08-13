@@ -1046,6 +1046,8 @@ feature and follow-up status.
 | Plan 11.7 | Partially implemented | blocked |
 | Plan 11.8 | Partially implemented | 27 of 46 checks; PR #116; PR #118 |
 | Plan 11.9 | Closed | PR #123; PR #124 |
+| Plan 11.10 | Closed | PR #130 |
+| Plan 11.11 | Closed | PR #134; PR #135 |
 
 **Milestone charter:** Plan 11 is the v1.0 milestone. `P11-FEAT-GATEWAY-CORE` (Plan 11.1)
 closes the Gateway core and observability-route gate; the ratified TOOLS and COST-OBS identities
