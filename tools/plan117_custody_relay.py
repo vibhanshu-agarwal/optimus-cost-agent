@@ -1236,19 +1236,31 @@ def run_relay(
                 terminal_disposition = "recorder_failure"
                 reason_code = first.reason_code
             elif isinstance(first, BrokenPipeError):
-                terminal_disposition = "broken_pipe"
-                reason_code = REASON_BROKEN_PIPE
+                child_exit = proc.poll()
+                stop.set()
+                _close_child_pipes(proc)
+                if child_exit is not None:
+                    terminal_disposition = "child_exited"
+                    reason_code = None
+                    return_code = int(child_exit)
+                else:
+                    terminal_disposition = "broken_pipe"
+                    reason_code = REASON_BROKEN_PIPE
+                    _terminate_owned_child(proc)
+                    _emit_stderr(err_out, reason_code)
+                    return_code = 1
             else:
                 terminal_disposition = "recorder_failure"
                 reason_code = REASON_RECORDER_FAILURE
-            stop.set()
-            _close_child_pipes(proc)
-            _terminate_owned_child(proc)
-            _emit_stderr(err_out, reason_code)
-            child_exit = proc.poll()
-            if child_exit is None:
-                child_exit = 1
-            return_code = 1 if reason_code else int(child_exit)
+            if not isinstance(first, BrokenPipeError):
+                stop.set()
+                _close_child_pipes(proc)
+                _terminate_owned_child(proc)
+                _emit_stderr(err_out, reason_code)
+                child_exit = proc.poll()
+                if child_exit is None:
+                    child_exit = 1
+                return_code = 1 if reason_code else int(child_exit)
         else:
             child_exit = proc.wait()
             return_code = int(child_exit)
