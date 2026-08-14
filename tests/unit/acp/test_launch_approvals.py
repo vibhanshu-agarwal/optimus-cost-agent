@@ -32,7 +32,7 @@ from optimus.acp.launch_approvals import (
     derive_one_shot_handle,
     serialize_approval_record,
 )
-from optimus.acp.trusted_paths import WorkspaceIdentity
+from optimus.acp.trusted_paths import WorkspaceIdentity, absent_git_context, present_git_context
 
 
 def _sample_diagnostic_grant(
@@ -76,13 +76,12 @@ class FakeKeyring:
 
 def _sample_workspace_identity() -> WorkspaceIdentity:
     return WorkspaceIdentity(
+        format_version=3,
         lexical_path="/tmp/test-workspace",
         canonical_path="/tmp/test-workspace",
         device=1,
         inode=12345,
-        change_time_ns=1,
-        repository_root="/tmp/test-workspace",
-        git_common_dir="/tmp/test-workspace/.git",
+        git_context=present_git_context("/tmp/test-workspace", "/tmp/test-workspace/.git"),
         digest="a" * 64,
     )
 
@@ -227,13 +226,12 @@ class TestRecordHmac:
         from dataclasses import replace
 
         tampered_ws = WorkspaceIdentity(
+            format_version=3,
             lexical_path="/tmp/evil",
             canonical_path="/tmp/evil",
             device=1,
             inode=99999,
-            change_time_ns=1,
-            repository_root=None,
-            git_common_dir=None,
+            git_context=absent_git_context(),
             digest="b" * 64,
         )
         tampered = replace(record, workspace_identity=tampered_ws)
@@ -306,7 +304,7 @@ class TestKeyringApprovalStore:
         assert retrieved.approval_id == record.approval_id
         assert retrieved.workspace_identity.digest == ws_digest
         assert retrieved.workspace_identity.lexical_path == ""
-        assert retrieved.workspace_identity.change_time_ns == 0
+        assert retrieved.workspace_identity.format_version == 2
 
     def test_read_durable_returns_none_when_absent(self, tmp_path: Path) -> None:
         store, _, _ = self._make_store_and_record(tmp_path)

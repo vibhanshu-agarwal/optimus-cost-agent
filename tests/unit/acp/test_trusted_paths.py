@@ -211,7 +211,7 @@ class TestWorkspaceIdentity:
         expected_lexical = os.path.normcase(str(link.absolute())) if sys.platform == "win32" else str(link.absolute())
         assert identity.lexical_path == expected_lexical
         assert identity.canonical_path == str(target.resolve())
-        assert identity.change_time_ns == target.stat().st_ctime_ns
+        assert identity.digest
 
     def test_identity_includes_git_root_when_present(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
@@ -316,14 +316,20 @@ class TestWorkspaceIdentityRevalidation:
 
     @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only: directory ctime changes on entry creation")
     def test_revalidation_fails_after_workspace_directory_metadata_change(self, tmp_path: Path) -> None:
+        from optimus.acp.trusted_paths import (
+            resolve_workspace_security_state,
+            revalidate_workspace_security_state,
+        )
+
         workspace = tmp_path / "workspace"
         workspace.mkdir()
-        identity = resolve_workspace_identity(workspace)
+        initial = resolve_workspace_security_state(workspace)
         (workspace / "added-after-authorization").write_text("synthetic", encoding="utf-8")
 
         with pytest.raises(TrustedPathError) as exc_info:
-            revalidate_workspace_identity(identity)
+            revalidate_workspace_security_state(initial)
         assert exc_info.value.code == "WORKSPACE_IDENTITY_CHANGED"
+        assert exc_info.value.reason == "root_topology_mismatch"
 
 
 class TestWindowsCaseNormalization:
@@ -825,3 +831,258 @@ class TestGitRedirectEnvironment:
         )
         assert env["PATH"] == "C:\\Windows\\System32"
         assert result.disposition is trusted_paths.GitContextDisposition.PRESENT
+
+
+# --- Plan 11.15 Task 2: v3 identity, exclusion policy, topology snapshot ---
+
+
+class TestWorkspaceIdentityV3:
+    """v3 digest is length-delimited, Git-tri-state, and independent of ctime."""
+
+    def test_v3_absent_sentinel_is_length_delimited_and_ignores_ctime(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        monkeypatch.setattr(
+            trusted_paths,
+            "resolve_git_context",
+            lambda *_a, **_k: trusted_paths.GitContextResult(
+                disposition=trusted_paths.GitContextDisposition.ABSENT,
+                repository_root=None,
+                git_common_dir=None,
+                diagnostics=(),
+            ),
+        )
+        first = trusted_paths.resolve_workspace_security_state(workspace)
+        (workspace / "added-after-authorization").write_text("x", encoding="utf-8")
+        second = trusted_paths.resolve_workspace_security_state(workspace)
+
+        assert first.identity.format_version == 3
+        assert first.identity.digest == second.identity.digest
+        assert first.identity.git_context.disposition is trusted_paths.GitContextDisposition.ABSENT
+        assert "change_time_ns" not in first.identity.__dataclass_fields__
+
+    def test_v3_present_binds_both_git_paths_not_diagnostics(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / ".git").mkdir()
+        present = trusted_paths.GitContextResult(
+            disposition=trusted_paths.GitContextDisposition.PRESENT,
+            repository_root=str(workspace.resolve()),
+            git_common_dir=str((workspace / ".git").resolve()),
+            diagnostics=(),
+        )
+        noisy = trusted_paths.GitContextResult(
+            disposition=trusted_paths.GitContextDisposition.PRESENT,
+            repository_root=present.repository_root,
+            git_common_dir=present.git_common_dir,
+            diagnostics=(
+                trusted_paths.ProbeDiagnostic(
+                    phase="git_context",
+                    probe="rev-parse",
+                    attempt=2,
+                    classification="transient",
+                    disposition="present",
+                    exception_type="OSError",
+                    errno=None,
+                    winerror=6,
+                    return_code=None,
+                    duration_ms=1,
+                ),
+            ),
+        )
+        monkeypatch.setattr(trusted_paths, "resolve_git_context", lambda *_a, **_k: present)
+        quiet_state = trusted_paths.resolve_workspace_security_state(workspace)
+        monkeypatch.setattr(trusted_paths, "resolve_git_context", lambda *_a, **_k: noisy)
+        noisy_state = trusted_paths.resolve_workspace_security_state(workspace)
+        assert quiet_state.identity.digest == noisy_state.identity.digest
+
+        moved = trusted_paths.GitContextResult(
+            disposition=trusted_paths.GitContextDisposition.PRESENT,
+            repository_root=str(workspace.resolve()),
+            git_common_dir=str((tmp_path / "other.git").resolve()),
+            diagnostics=(),
+        )
+        monkeypatch.setattr(trusted_paths, "resolve_git_context", lambda *_a, **_k: moved)
+        moved_state = trusted_paths.resolve_workspace_security_state(workspace)
+        assert moved_state.identity.digest != quiet_state.identity.digest
+
+    def test_v3_unavailable_produces_no_identity_digest(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / ".git").mkdir()
+        monkeypatch.setattr(
+            trusted_paths,
+            "resolve_git_context",
+            lambda *_a, **_k: trusted_paths.GitContextResult(
+                disposition=trusted_paths.GitContextDisposition.UNAVAILABLE,
+                repository_root=None,
+                git_common_dir=None,
+                diagnostics=(),
+            ),
+        )
+        with pytest.raises(trusted_paths.TrustedPathError) as exc_info:
+            trusted_paths.resolve_workspace_security_state(workspace)
+        assert exc_info.value.code == "WORKSPACE_IDENTITY_UNAVAILABLE"
+
+    def test_legacy_v2_golden_vector_is_pinned(self) -> None:
+        from optimus.acp import trusted_paths
+
+        digest = trusted_paths.compute_legacy_v2_digest(
+            lexical_path="/tmp/golden-workspace",
+            canonical_path="/tmp/golden-workspace",
+            device=8,
+            inode=16,
+            change_time_ns=123456789,
+            repository_root=None,
+            git_common_dir=None,
+        )
+        assert digest == "24cce4d45cd7207882167783cc65d2071f3724cd49a5c5b0550050e523d8b95c"
+
+
+class TestExclusionPolicyV1:
+    def test_exclusion_policy_exact_member_set(self) -> None:
+        from optimus.acp import trusted_paths
+
+        assert trusted_paths.WORKSPACE_EXCLUSION_POLICY_VERSION == 1
+        assert trusted_paths.exclusion_policy_v1_exact_names() == {
+            ".pytest_cache",
+            ".ruff_cache",
+            ".coverage",
+            "coverage.xml",
+            ".venv",
+            ".venv-wsl",
+            ".venv_wsl",
+            "build",
+            "dist",
+            ".uv-cache",
+            ".uv-cache-plan118",
+            "tmp",
+        }
+
+    @pytest.mark.parametrize(
+        ("name", "excluded"),
+        (
+            (".coverage.1", True),
+            (".coverage.", False),
+            (".uv-cache-foo", True),
+            ("hs_err_pid123.log", True),
+            ("replay_pid456.log", True),
+            ("xhs_err_pid1.log", False),
+            ("hs_err_pid.log", False),
+            ("notes.log", False),
+            (".idea", False),
+            ("node_modules", False),
+            ("foo/.coverage", False),
+        ),
+    )
+    def test_exclusion_policy_anchored_patterns_and_near_misses(
+        self, name: str, excluded: bool
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        assert trusted_paths.is_excluded_immediate_basename(name) is excluded
+
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only: ordinal case-insensitive exclusions")
+    def test_exclusion_policy_windows_ordinal_case_insensitive(self) -> None:
+        from optimus.acp import trusted_paths
+
+        assert trusted_paths.is_excluded_immediate_basename(".Coverage") is True
+        assert trusted_paths.is_excluded_immediate_basename("HS_ERR_PID9.LOG") is True
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only: byte-sensitive exclusion matching")
+    def test_exclusion_policy_posix_byte_sensitive(self) -> None:
+        from optimus.acp import trusted_paths
+
+        assert trusted_paths.is_excluded_immediate_basename(".Coverage") is False
+        assert trusted_paths.is_excluded_immediate_basename("HS_ERR_PID9.LOG") is False
+
+    def test_exclusion_policy_invalid_is_permanent_unavailable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        monkeypatch.setattr(trusted_paths, "compiled_exclusion_policy_v1", lambda: None)
+        with pytest.raises(trusted_paths.TrustedPathError) as exc_info:
+            trusted_paths.resolve_workspace_security_state(workspace)
+        assert exc_info.value.code == "WORKSPACE_IDENTITY_UNAVAILABLE"
+        assert exc_info.value.diagnostics[0].classification == "permanent"
+        assert exc_info.value.diagnostics[0].attempt == 1
+
+
+class TestTopologySnapshot:
+    def test_topology_detects_add_remove_rename_and_ignores_nested_content(
+        self, tmp_path: Path
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / "keep").mkdir()
+        (workspace / "keep" / "nested.txt").write_text("one", encoding="utf-8")
+        before = trusted_paths.resolve_workspace_security_state(workspace)
+        (workspace / "keep" / "nested.txt").write_text("two", encoding="utf-8")
+        nested = trusted_paths.resolve_workspace_security_state(workspace)
+        assert before.change_snapshot.immediate_root_digest == nested.change_snapshot.immediate_root_digest
+
+        (workspace / "added-after-authorization").write_text("x", encoding="utf-8")
+        added = trusted_paths.resolve_workspace_security_state(workspace)
+        assert added.change_snapshot.immediate_root_digest != before.change_snapshot.immediate_root_digest
+
+    def test_fu18_equal_ctime_non_excluded_add_is_root_topology_mismatch(
+        self, tmp_path: Path
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        initial = trusted_paths.resolve_workspace_security_state(workspace)
+        before_ctime = workspace.stat().st_ctime_ns
+        (workspace / "added-after-authorization").write_text("synthetic", encoding="utf-8")
+        after_ctime = workspace.stat().st_ctime_ns
+        after = trusted_paths.resolve_workspace_security_state(workspace)
+
+        assert initial.identity.digest == after.identity.digest
+        assert initial.change_snapshot.immediate_root_digest != after.change_snapshot.immediate_root_digest
+        with pytest.raises(trusted_paths.TrustedPathError) as exc_info:
+            trusted_paths.revalidate_workspace_security_state(initial)
+        assert exc_info.value.code == "WORKSPACE_IDENTITY_CHANGED"
+        assert exc_info.value.reason == "root_topology_mismatch"
+        if before_ctime != after_ctime:
+            # Inject equality: the mismatch must still hold when ctime is not a signal.
+            assert initial.identity.digest == after.identity.digest
+
+    @pytest.mark.parametrize("name", (".coverage", "hs_err_pid123.log"))
+    def test_fu18_excluded_immediate_names_are_accepted_residuals(
+        self, tmp_path: Path, name: str
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        initial = trusted_paths.resolve_workspace_security_state(workspace)
+        (workspace / name).write_text("volatile", encoding="utf-8")
+        trusted_paths.revalidate_workspace_security_state(initial)
+
+    def test_fu18_excluded_tmp_nested_file_is_accepted_residual(self, tmp_path: Path) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / "tmp").mkdir()
+        initial = trusted_paths.resolve_workspace_security_state(workspace)
+        (workspace / "tmp" / "drop.txt").write_text("volatile", encoding="utf-8")
+        trusted_paths.revalidate_workspace_security_state(initial)

@@ -22,20 +22,19 @@ from optimus.acp.launch_gate import (
 )
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
 from optimus.acp.operator_paths import OperatorPaths
-from optimus.acp.trusted_paths import WorkspaceIdentity
+from optimus.acp.trusted_paths import WorkspaceIdentity, present_git_context
 
 _HMAC_KEY = b"test-gate-hmac-key-32-bytes!!!!"
 
 
 def _sample_workspace_identity() -> WorkspaceIdentity:
     return WorkspaceIdentity(
+        format_version=3,
         lexical_path="/tmp/test-workspace",
         canonical_path="/tmp/test-workspace",
         device=1,
         inode=12345,
-        change_time_ns=1,
-        repository_root="/tmp/test-workspace",
-        git_common_dir="/tmp/test-workspace/.git",
+        git_context=present_git_context("/tmp/test-workspace", "/tmp/test-workspace/.git"),
         digest="a" * 64,
     )
 

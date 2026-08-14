@@ -11,11 +11,14 @@ from __future__ import annotations
 import errno
 import hashlib
 import os
+import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
@@ -30,9 +33,12 @@ _CONFIG_DIR_NAME = "optimus-cost-agent"
 class TrustedPathError(ValueError):
     """Raised when trusted path resolution or workspace identity fails."""
 
-    def __init__(self, *, code: str, detail: str = "") -> None:
+    def __init__(self, *, code: str, detail: str = "", reason: str | None = None,
+                 diagnostics: tuple[ProbeDiagnostic, ...] = ()) -> None:
         self.code = code
         self.detail = detail
+        self.reason = reason
+        self.diagnostics = diagnostics
         super().__init__(f"{code}: {detail}" if detail else code)
 
     def __str__(self) -> str:
@@ -91,21 +97,45 @@ class GitContextResult:
 
 
 @dataclass(frozen=True)
+class WorkspaceChangeSnapshot:
+    """Ephemeral immediate-root topology snapshot. Never stored in approvals."""
+
+    canonical_path: str
+    device: int
+    inode: int
+    exclusion_policy_version: int
+    immediate_root_digest: str
+    diagnostics: tuple[ProbeDiagnostic, ...]
+
+
+@dataclass(frozen=True)
+class WorkspaceSecurityState:
+    """One successful resolution of stable identity, topology, and legacy v2 address."""
+
+    identity: WorkspaceIdentity
+    change_snapshot: WorkspaceChangeSnapshot
+    legacy_v2_digest: str
+
+
+@dataclass(frozen=True)
 class WorkspaceIdentity:
-    """Canonical identity of a workspace directory bound to filesystem metadata.
+    """Stable v3 workspace identity. Does not bind timestamps or snapshots."""
 
-    Used to bind approval records to a specific workspace location. Changes to
-    the path, inode, device, or git state invalidate existing approvals.
-    """
-
+    format_version: int
     lexical_path: str
     canonical_path: str
     device: int
     inode: int
-    change_time_ns: int
-    repository_root: str | None
-    git_common_dir: str | None
+    git_context: GitContextResult
     digest: str
+
+    @property
+    def repository_root(self) -> str | None:
+        return self.git_context.repository_root
+
+    @property
+    def git_common_dir(self) -> str | None:
+        return self.git_context.git_common_dir
 
 
 _GIT_REDIRECT_KEYS = frozenset(
@@ -124,6 +154,48 @@ _TRANSIENT_ERRNOS = frozenset({errno.EINTR, errno.EAGAIN, errno.ETIMEDOUT})
 _GIT_PROBE_ATTEMPTS = 3
 _GIT_PROBE_BACKOFFS = (0.025, 0.100)
 _GIT_PROBE_TIMEOUT_SECONDS = 5.0
+
+
+def absent_git_context() -> GitContextResult:
+    return GitContextResult(
+        disposition=GitContextDisposition.ABSENT,
+        repository_root=None,
+        git_common_dir=None,
+        diagnostics=(),
+    )
+
+
+def present_git_context(repository_root: str, git_common_dir: str) -> GitContextResult:
+    return GitContextResult(
+        disposition=GitContextDisposition.PRESENT,
+        repository_root=repository_root,
+        git_common_dir=git_common_dir,
+        diagnostics=(),
+    )
+WORKSPACE_IDENTITY_FORMAT_VERSION = 3
+WORKSPACE_EXCLUSION_POLICY_VERSION = 1
+_EXCLUSION_EXACT_NAMES = frozenset(
+    {
+        ".pytest_cache",
+        ".ruff_cache",
+        ".coverage",
+        "coverage.xml",
+        ".venv",
+        ".venv-wsl",
+        ".venv_wsl",
+        "build",
+        "dist",
+        ".uv-cache",
+        ".uv-cache-plan118",
+        "tmp",
+    }
+)
+_EXCLUSION_PATTERNS = (
+    re.compile(r"^\.coverage\..+$"),
+    re.compile(r"^\.uv-cache-.+$"),
+    re.compile(r"^hs_err_pid\d+\.log$"),
+    re.compile(r"^replay_pid\d+\.log$"),
+)
 
 
 # --- Injectable platform adapters ---
@@ -309,91 +381,28 @@ def _real_posix_home() -> _RealPosixHome:
 
 
 def resolve_workspace_identity(workspace_root: Path) -> WorkspaceIdentity:
-    """Resolve canonical workspace identity from filesystem.
-
-    Captures:
-    - Canonical (resolved) path
-    - Filesystem device and inode (st_dev, st_ino)
-    - Git repository root and common dir (if present)
-    - SHA-256 digest binding all identity fields
-
-    Uses shell=False subprocess calls for git. Does not create any directories.
-
-    Raises TrustedPathError with code WORKSPACE_NOT_FOUND if the path doesn't exist.
-    """
-    lexical_path = str(workspace_root.absolute())
-    if sys.platform == "win32":
-        lexical_path = os.path.normcase(lexical_path)
-    resolved = Path(lexical_path).resolve()
-
-    if not resolved.exists():
-        raise TrustedPathError(
-            code="WORKSPACE_NOT_FOUND",
-            detail="workspace directory does not exist",
-        )
-
-    try:
-        stat = resolved.stat()
-    except OSError as exc:
-        raise TrustedPathError(
-            code="WORKSPACE_NOT_FOUND",
-            detail="cannot stat workspace directory",
-        ) from exc
-
-    device = stat.st_dev
-    inode = stat.st_ino
-
-    git_context = resolve_git_context(resolved)
-    if git_context.disposition is GitContextDisposition.PRESENT:
-        repository_root = git_context.repository_root
-        git_common_dir = git_context.git_common_dir
-    else:
-        repository_root = None
-        git_common_dir = None
-
-    # Compute identity digest from all binding fields.
-    digest = _compute_identity_digest(
-        lexical_path=lexical_path,
-        canonical_path=str(resolved),
-        device=device,
-        inode=inode,
-        change_time_ns=stat.st_ctime_ns,
-        repository_root=repository_root,
-        git_common_dir=git_common_dir,
-    )
-
-    return WorkspaceIdentity(
-        lexical_path=lexical_path,
-        canonical_path=str(resolved),
-        device=device,
-        inode=inode,
-        change_time_ns=stat.st_ctime_ns,
-        repository_root=repository_root,
-        git_common_dir=git_common_dir,
-        digest=digest,
-    )
+    """Resolve the stable v3 identity. Topology lives on WorkspaceSecurityState."""
+    return resolve_workspace_security_state(workspace_root).identity
 
 
 def revalidate_workspace_identity(identity: WorkspaceIdentity) -> None:
-    """Revalidate a previously captured workspace identity.
-
-    Reconstructs identity from the original lexical path and compares the
-    full digest. Raises TrustedPathError with code WORKSPACE_IDENTITY_CHANGED
-    if the path no longer resolves to the authorized target or any bound
-    identity field differs.
-    """
+    """Revalidate stable v3 identity only. Topology uses revalidate_workspace_security_state."""
     try:
         current = resolve_workspace_identity(Path(identity.lexical_path))
     except TrustedPathError as exc:
+        if exc.code == "WORKSPACE_IDENTITY_UNAVAILABLE":
+            raise
         raise TrustedPathError(
             code="WORKSPACE_IDENTITY_CHANGED",
             detail="workspace directory no longer resolves to the authorized identity",
+            reason="stable_identity_mismatch",
         ) from exc
 
     if current.digest != identity.digest:
         raise TrustedPathError(
             code="WORKSPACE_IDENTITY_CHANGED",
             detail="workspace identity digest mismatch",
+            reason="stable_identity_mismatch",
         )
 
 
@@ -682,7 +691,7 @@ def _duration_ms(started: float) -> int:
 # --- Digest computation ---
 
 
-def _compute_identity_digest(
+def compute_legacy_v2_digest(
     *,
     lexical_path: str,
     canonical_path: str,
@@ -692,12 +701,7 @@ def _compute_identity_digest(
     repository_root: str | None,
     git_common_dir: str | None,
 ) -> str:
-    """Compute a SHA-256 digest binding all workspace identity fields.
-
-    The digest changes when any bound field changes, ensuring that approval
-    records are invalidated on workspace relocation, symlink retargeting,
-    or git common-dir changes.
-    """
+    """Exact pre-change v2 digest. Used only as a migration address."""
     hasher = hashlib.sha256()
     hasher.update(b"workspace-identity-v2\x00")
     hasher.update(lexical_path.encode("utf-8"))
@@ -714,3 +718,313 @@ def _compute_identity_digest(
     hasher.update(b"\x00")
     hasher.update((git_common_dir or "").encode("utf-8"))
     return hasher.hexdigest()
+
+
+def compute_workspace_identity_v3_digest(
+    *,
+    lexical_path: str,
+    canonical_path: str,
+    device: int,
+    inode: int,
+    git_context: GitContextResult,
+) -> str:
+    if git_context.disposition is GitContextDisposition.UNAVAILABLE:
+        raise TrustedPathError(
+            code="WORKSPACE_IDENTITY_UNAVAILABLE",
+            detail="unavailable git context cannot be hashed",
+            diagnostics=git_context.diagnostics,
+        )
+    hasher = hashlib.sha256()
+    _put_bytes(hasher, b"workspace-identity-v3")
+    _put_bytes(hasher, str(WORKSPACE_IDENTITY_FORMAT_VERSION).encode("ascii"))
+    _put_bytes(hasher, lexical_path.encode("utf-8"))
+    _put_bytes(hasher, canonical_path.encode("utf-8"))
+    _put_bytes(hasher, str(device).encode("ascii"))
+    _put_bytes(hasher, str(inode).encode("ascii"))
+    if git_context.disposition is GitContextDisposition.ABSENT:
+        _put_bytes(hasher, b"git:absent")
+    else:
+        _put_bytes(hasher, b"git:present")
+        _put_bytes(hasher, (git_context.repository_root or "").encode("utf-8"))
+        _put_bytes(hasher, (git_context.git_common_dir or "").encode("utf-8"))
+    return hasher.hexdigest()
+
+
+def _put_bytes(hasher: Any, data: bytes) -> None:
+    hasher.update(len(data).to_bytes(8, "big"))
+    hasher.update(data)
+
+
+@dataclass(frozen=True)
+class ExclusionPolicyV1:
+    version: int
+    exact_names: frozenset[str]
+    patterns: tuple[re.Pattern[str], ...]
+
+
+def compiled_exclusion_policy_v1() -> ExclusionPolicyV1 | None:
+    if WORKSPACE_EXCLUSION_POLICY_VERSION != 1:
+        return None
+    return ExclusionPolicyV1(
+        version=1,
+        exact_names=_EXCLUSION_EXACT_NAMES,
+        patterns=_EXCLUSION_PATTERNS,
+    )
+
+
+def exclusion_policy_v1_exact_names() -> set[str]:
+    policy = compiled_exclusion_policy_v1()
+    if policy is None:
+        raise TrustedPathError(
+            code="WORKSPACE_IDENTITY_UNAVAILABLE",
+            detail="exclusion policy is missing or invalid",
+        )
+    return set(policy.exact_names)
+
+
+def is_excluded_immediate_basename(name: str) -> bool:
+    policy = compiled_exclusion_policy_v1()
+    if policy is None:
+        raise TrustedPathError(
+            code="WORKSPACE_IDENTITY_UNAVAILABLE",
+            detail="exclusion policy is missing or invalid",
+        )
+    candidate = name.casefold() if sys.platform == "win32" else name
+    exact = (
+        {item.casefold() for item in policy.exact_names}
+        if sys.platform == "win32"
+        else policy.exact_names
+    )
+    if candidate in exact:
+        return True
+    return any(pattern.fullmatch(candidate) is not None for pattern in policy.patterns)
+
+
+def resolve_workspace_security_state(
+    workspace_root: Path,
+    *,
+    git_probe: Callable[..., GitContextResult] | None = None,
+    scandir: Callable[[str], AbstractContextManager[Iterator[os.DirEntry[str]]]] = os.scandir,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> WorkspaceSecurityState:
+    probe = git_probe if git_probe is not None else resolve_git_context
+    lexical_path, resolved, root_stat = _stat_workspace_root(workspace_root)
+    policy = compiled_exclusion_policy_v1()
+    if policy is None:
+        raise TrustedPathError(
+            code="WORKSPACE_IDENTITY_UNAVAILABLE",
+            detail="exclusion policy is missing or invalid",
+            diagnostics=(
+                _probe_diagnostic(
+                    probe="exclusion_policy",
+                    attempt=1,
+                    classification="permanent",
+                    disposition="unavailable",
+                    exception_type=None,
+                    errno_value=None,
+                    winerror=None,
+                    return_code=None,
+                    duration_ms=0,
+                ),
+            ),
+        )
+
+    git_context = probe(resolved)
+    if git_context.disposition is GitContextDisposition.UNAVAILABLE:
+        raise TrustedPathError(
+            code="WORKSPACE_IDENTITY_UNAVAILABLE",
+            detail="git context is unavailable",
+            diagnostics=git_context.diagnostics,
+        )
+
+    identity = WorkspaceIdentity(
+        format_version=WORKSPACE_IDENTITY_FORMAT_VERSION,
+        lexical_path=lexical_path,
+        canonical_path=str(resolved),
+        device=root_stat.st_dev,
+        inode=root_stat.st_ino,
+        git_context=git_context,
+        digest=compute_workspace_identity_v3_digest(
+            lexical_path=lexical_path,
+            canonical_path=str(resolved),
+            device=root_stat.st_dev,
+            inode=root_stat.st_ino,
+            git_context=git_context,
+        ),
+    )
+    snapshot = _capture_change_snapshot(
+        resolved,
+        root_stat=root_stat,
+        policy=policy,
+        scandir=scandir,
+        sleeper=sleeper,
+    )
+    present = git_context.disposition is GitContextDisposition.PRESENT
+    return WorkspaceSecurityState(
+        identity=identity,
+        change_snapshot=snapshot,
+        legacy_v2_digest=compute_legacy_v2_digest(
+            lexical_path=lexical_path,
+            canonical_path=str(resolved),
+            device=root_stat.st_dev,
+            inode=root_stat.st_ino,
+            change_time_ns=root_stat.st_ctime_ns,
+            repository_root=git_context.repository_root if present else None,
+            git_common_dir=git_context.git_common_dir if present else None,
+        ),
+    )
+
+
+def revalidate_workspace_security_state(expected: WorkspaceSecurityState) -> None:
+    try:
+        current = resolve_workspace_security_state(Path(expected.identity.lexical_path))
+    except TrustedPathError as exc:
+        if exc.code == "WORKSPACE_IDENTITY_UNAVAILABLE":
+            raise
+        raise TrustedPathError(
+            code="WORKSPACE_IDENTITY_CHANGED",
+            detail="workspace directory no longer resolves to the authorized identity",
+            reason="stable_identity_mismatch",
+        ) from exc
+
+    if current.identity.digest != expected.identity.digest:
+        raise TrustedPathError(
+            code="WORKSPACE_IDENTITY_CHANGED",
+            detail="stable workspace identity mismatch",
+            reason="stable_identity_mismatch",
+        )
+    if current.change_snapshot.immediate_root_digest != expected.change_snapshot.immediate_root_digest:
+        raise TrustedPathError(
+            code="WORKSPACE_IDENTITY_CHANGED",
+            detail="immediate-root topology mismatch",
+            reason="root_topology_mismatch",
+        )
+
+
+def _stat_workspace_root(workspace_root: Path) -> tuple[str, Path, os.stat_result]:
+    lexical_path = str(workspace_root.absolute())
+    if sys.platform == "win32":
+        lexical_path = os.path.normcase(lexical_path)
+    resolved = Path(lexical_path).resolve()
+    if not resolved.exists():
+        raise TrustedPathError(
+            code="WORKSPACE_NOT_FOUND",
+            detail="workspace directory does not exist",
+        )
+    try:
+        root_stat = resolved.stat()
+    except OSError as exc:
+        raise TrustedPathError(
+            code="WORKSPACE_NOT_FOUND",
+            detail="cannot stat workspace directory",
+        ) from exc
+    return lexical_path, resolved, root_stat
+
+
+def _capture_change_snapshot(
+    resolved: Path,
+    *,
+    root_stat: os.stat_result,
+    policy: ExclusionPolicyV1,
+    scandir: Callable[[str], AbstractContextManager[Iterator[os.DirEntry[str]]]],
+    sleeper: Callable[[float], None],
+) -> WorkspaceChangeSnapshot:
+    entries: list[bytes] = []
+    try:
+        with scandir(str(resolved)) as listing:
+            children = list(listing)
+    except OSError as exc:
+        raise TrustedPathError(
+            code="WORKSPACE_IDENTITY_UNAVAILABLE",
+            detail="cannot scan workspace root",
+            diagnostics=(
+                _diagnostic_from_exception(
+                    probe="scandir",
+                    attempt=1,
+                    exc=exc,
+                    transient=_is_transient_git_error(exc),
+                    duration_ms=0,
+                ),
+            ),
+        ) from exc
+
+    seen: set[bytes] = set()
+    for child in children:
+        name = child.name
+        if is_excluded_immediate_basename(name):
+            continue
+        try:
+            info = child.stat(follow_symlinks=False)
+        except OSError as exc:
+            raise TrustedPathError(
+                code="WORKSPACE_IDENTITY_UNAVAILABLE",
+                detail="cannot lstat immediate-root entry",
+                diagnostics=(
+                    _diagnostic_from_exception(
+                        probe="lstat",
+                        attempt=1,
+                        exc=exc,
+                        transient=_is_transient_git_error(exc),
+                        duration_ms=0,
+                    ),
+                ),
+            ) from exc
+        encoded = _encode_topology_entry(name, info, resolved / name)
+        if encoded in seen:
+            raise TrustedPathError(
+                code="WORKSPACE_IDENTITY_UNAVAILABLE",
+                detail="duplicate topology encoding",
+            )
+        seen.add(encoded)
+        entries.append(encoded)
+
+    entries.sort()
+    hasher = hashlib.sha256()
+    _put_bytes(hasher, b"workspace-topology-v1")
+    _put_bytes(hasher, str(policy.version).encode("ascii"))
+    for encoded in entries:
+        _put_bytes(hasher, encoded)
+    return WorkspaceChangeSnapshot(
+        canonical_path=str(resolved),
+        device=root_stat.st_dev,
+        inode=root_stat.st_ino,
+        exclusion_policy_version=policy.version,
+        immediate_root_digest=hasher.hexdigest(),
+        diagnostics=(),
+    )
+
+
+def _encode_topology_entry(name: str, info: os.stat_result, path: Path) -> bytes:
+    try:
+        name_bytes = os.fsencode(name)
+    except (TypeError, ValueError, OSError) as exc:
+        raise TrustedPathError(
+            code="WORKSPACE_IDENTITY_UNAVAILABLE",
+            detail="unencodable topology name",
+        ) from exc
+    mode = info.st_mode
+    if stat.S_ISLNK(mode):
+        kind = b"symlink"
+        try:
+            target = os.fsencode(os.readlink(path))
+        except OSError as exc:
+            raise TrustedPathError(
+                code="WORKSPACE_IDENTITY_UNAVAILABLE",
+                detail="cannot read symlink target",
+            ) from exc
+    elif stat.S_ISDIR(mode):
+        kind = b"dir"
+        target = b""
+    elif stat.S_ISREG(mode):
+        kind = b"file"
+        target = b""
+    else:
+        kind = f"mode:{mode}".encode("ascii")
+        target = b""
+    hasher = hashlib.sha256()
+    _put_bytes(hasher, name_bytes)
+    _put_bytes(hasher, kind)
+    _put_bytes(hasher, str(info.st_dev).encode("ascii"))
+    _put_bytes(hasher, str(info.st_ino).encode("ascii"))
+    _put_bytes(hasher, target)
+    return hasher.digest()

@@ -23,7 +23,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Literal
 
-from optimus.acp.trusted_paths import WorkspaceIdentity
+from optimus.acp.trusted_paths import WorkspaceIdentity, absent_git_context
 
 # --- Constants ---
 
@@ -370,13 +370,12 @@ def _deserialize_approval_record(raw: str, *, hmac_key: bytes) -> ApprovalRecord
 
     try:
         workspace_identity = WorkspaceIdentity(
-            lexical_path="",  # Not stored in serialized form for size.
-            canonical_path="",  # Not stored in serialized form for size.
+            format_version=2,
+            lexical_path="",
+            canonical_path="",
             device=0,
             inode=0,
-            change_time_ns=0,
-            repository_root=None,
-            git_common_dir=None,
+            git_context=absent_git_context(),
             digest=data["workspace_digest"],
         )
         created_at = datetime.fromisoformat(data["created_at"])
