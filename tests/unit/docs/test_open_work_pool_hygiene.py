@@ -101,6 +101,9 @@ PROTECTED_BLOB_SHA256 = {
     "docs/superpowers/specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md": (
         "AC48C0AEF1778D6EBE93005BC3993AE204F81A1C59CDC8DB17CFB7EDB6A040F8"
     ),
+    "docs/superpowers/specs/2026-08-15-p11-fu-18-29-durable-approval-workspace-identity-design.md": (
+        "B445693AFB9B110E61D860F1B63D8836FF0EA651E0AC327BABA1CC906C84543B"
+    ),
 }
 
 EXPECTED_DOCUMENT_STATUSES = {
