@@ -248,6 +248,88 @@ def test_eof_either_direction_and_child_first_exit(tmp_path: Path) -> None:
     assert summary["terminal_disposition"] == "child_exited"
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="pytest FD capture makes post-exit stdout reads raise OSError on win32",
+)
+def test_post_exit_broken_pipe_preserves_child_exit_and_summary(tmp_path: Path) -> None:
+    class _InjectedBrokenPipeStdin:
+        def __init__(self, wrapped: Any) -> None:
+            self._wrapped = wrapped
+
+        def write(self, _data: bytes) -> int:
+            raise BrokenPipeError("injected-after-child-exit")
+
+        def flush(self) -> None:
+            raise AssertionError("flush must not follow a failed write")
+
+        def close(self) -> None:
+            self._wrapped.close()
+
+    def exited_child_popen(*args: Any, **kwargs: Any) -> subprocess.Popen[bytes]:
+        proc = subprocess.Popen(*args, **kwargs)
+        assert proc.wait(timeout=5) == 7
+        assert proc.poll() == 7
+        assert proc.stdin is not None
+        proc.stdin = _InjectedBrokenPipeStdin(proc.stdin)  # type: ignore[assignment]
+        return proc
+
+    exit_code, _forwarded, err, run_dir = _run_relay_inprocess(
+        capture_root=tmp_path,
+        run_id="post-exit-broken-pipe",
+        child_argv=_exit_first_child_args(code=7),
+        stdin_bytes=b"write-after-child-exit",
+        popen_factory=exited_child_popen,
+    )
+    summary = json.loads((run_dir / "relay-summary.json").read_text(encoding="utf-8"))
+    assert exit_code == 7
+    assert summary["child_exit_code"] == 7
+    assert summary["terminal_disposition"] == "child_exited"
+    assert summary["reason_code"] is None
+    assert err == b""
+
+
+def test_unknown_exit_broken_pipe_preserves_fail_closed_summary(tmp_path: Path) -> None:
+    class _UnknownExitProc:
+        def __init__(self) -> None:
+            self.stdin = mock.Mock()
+            self.stdin.write = mock.Mock(side_effect=BrokenPipeError())
+            self.stdin.close = mock.Mock()
+            self.stdin.flush = mock.Mock()
+            self.stdout = io.BytesIO(b"")
+            self.returncode: int | None = None
+            self.pid = 42
+            self._terminated = False
+
+        def poll(self) -> int | None:
+            return None if self.returncode is None else self.returncode
+
+        def wait(self, timeout: float | None = None) -> int:
+            if self.returncode is None:
+                self.returncode = -15
+            return self.returncode
+
+        def terminate(self) -> None:
+            self._terminated = True
+            self.returncode = -15
+
+        def kill(self) -> None:
+            self.returncode = -9
+
+    exit_code, _forwarded, err, run_dir = _run_relay_inprocess(
+        capture_root=tmp_path,
+        run_id="unknown-exit-broken-pipe",
+        child_argv=[str(tmp_path / "child.exe")],
+        stdin_bytes=b"write-while-child-alive",
+        popen_factory=lambda *_a, **_k: _UnknownExitProc(),
+    )
+    summary = json.loads((run_dir / "relay-summary.json").read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert summary["terminal_disposition"] == "broken_pipe"
+    assert summary["reason_code"] == plan117_custody_relay.REASON_BROKEN_PIPE
+    assert b"relay_broken_pipe" in err
+
+
 def test_parent_first_eof_closes_child_stdin(tmp_path: Path) -> None:
     exit_code, forwarded, _err, run_dir = _run_relay_inprocess(
         capture_root=tmp_path,
@@ -721,20 +803,22 @@ def test_broken_pipe_error_path(tmp_path: Path) -> None:
             self.stdin.close = mock.Mock()
             self.stdin.flush = mock.Mock()
             self.stdout = io.BytesIO(b"")
-            self.returncode = 0
+            self.returncode: int | None = None
             self.pid = 3
 
         def poll(self) -> int | None:
-            return 0
+            return None if self.returncode is None else self.returncode
 
         def wait(self, timeout: float | None = None) -> int:
-            return 0
+            if self.returncode is None:
+                self.returncode = -15
+            return self.returncode
 
         def terminate(self) -> None:
-            pass
+            self.returncode = -15
 
         def kill(self) -> None:
-            pass
+            self.returncode = -9
 
     exit_code, _fwd, err, run_dir = _run_relay_inprocess(
         capture_root=tmp_path,
