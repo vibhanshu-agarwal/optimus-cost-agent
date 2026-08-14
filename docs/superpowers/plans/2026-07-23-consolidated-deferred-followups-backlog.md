@@ -155,7 +155,7 @@ status changes through the normal status workflow; the target plan's status is n
 | `P11-FU-18` | Workspace-identity `ctime` coalescing fail-open | Open | MEDIUM | Future durable-approval security design | Batch A 2026-08-14 refile; acceptance criteria in entry |
 | `P11-FU-19` | WSL client-SDK operation-deadline supervisor race | Open | MEDIUM | Future WSL2 test reliability plan | Batch A 2026-08-14 re-triage; acceptance criteria in entry |
 | `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Open | MEDIUM | Future client-MCP runtime follow-up | Acceptance criteria in entry |
-| `P11-FU-21` | Custody Relay Broken-Pipe Exit-Code Propagation Defect | Open | MEDIUM | Future custody-relay product behavior plan | Batch B 2026-08-14 refile from test infra; acceptance criteria in entry |
+| `P11-FU-21` | Custody Relay Broken-Pipe Exit-Code Propagation Defect | Closed | MEDIUM | Plan 11.14 | Plan 11.14; `reports/plan-11-14-p11-fu-21-custody-relay-exit-code-evidence.md` |
 | `P11.5-FU-2` | Consistent local env / Redis / Phoenix / Gateway startup for live runs | Closed | HIGH | Plan 11.6 | PR #97 / `dc9a080`; [operator runbook](../../runbooks/local-live-dependencies.md) |
 
 ## Settled risks and historical entries
@@ -1379,7 +1379,8 @@ code exists. The relay therefore overwrites the child exit code rather than the 
 handle duplication) and from `P11.7-FU-3` (docstring `\ufffd` / em-dash corruption in the same
 file). Neither entry covers this relay behavior defect.
 
-**Designated slice:** Future custody-relay product behavior plan; no plan number is allocated.
+**Designated slice:** Plan 11.14
+([`2026-08-14-plan-11-14-p11-fu-21-custody-relay-exit-code.md`](2026-08-14-plan-11-14-p11-fu-21-custody-relay-exit-code.md)).
 
 **Acceptance criteria:** Define the contract for expected child-first exit and the error precedence
 between benign post-exit pipe closure and true relay failure; preserve real relay errors; implement
@@ -1389,9 +1390,18 @@ only after a reviewed product plan; and retain the EOF / exit-code assertions as
 `tests/unit/tools/test_plan117_custody_relay.py::test_eof_either_direction_and_child_first_exit`;
 `tools/plan117_custody_relay.py`; precursor Linux socket-path fix `128af65`.
 
-**Status:** Open. Tracked as a product bug awaiting a written plan. Batch B reproduced the exact
-`7` -> `1` transition twice in 200 focused WSL2 runs (1%); no test suppression or code change was
-made.
+**Resolution (2026-08-14):** Plan 11.14 restores opaque-relay transparency. `BrokenPipeError` with
+non-`None` pre-cleanup `proc.poll()` returns that child code and records `child_exited` /
+`reason_code is None`. `BrokenPipeError` with `proc.poll() is None` remains exit `1`,
+`broken_pipe`, and `REASON_BROKEN_PIPE`. Interruption and recorder-failure paths still force `1`.
+A deterministic stdin-boundary injection test fails red at `assert exit_code == 7` observing `1`
+before the edit and proves `7` / `child_exit_code == 7` / `child_exited` after it. The unchanged
+`test_eof_either_direction_and_child_first_exit` is 200/200 on the native WSL ext4 clone. Full
+suite, bare `--cov` >=80, Ruff, pool hygiene, and sealed-artifact hash equality are in
+[`reports/plan-11-14-p11-fu-21-custody-relay-exit-code-evidence.md`](../../../reports/plan-11-14-p11-fu-21-custody-relay-exit-code-evidence.md).
+
+**Status:** Closed. Plan 11.14 implemented the known-exit versus unknown-pipe discriminator; PR #128
+and Batch B remain the historical discovery record.
 
 ### P11.5-FU-2: Consistent local env / Redis / Phoenix / Gateway startup for live runs
 
