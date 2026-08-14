@@ -138,7 +138,7 @@
 - Consumes: merged Plan 11.12 document on the updated `origin/main`.
 - Produces: a clean implementation branch and an immutable pre-removal coverage baseline.
 
-- [ ] **Step 1: Cut the implementation branch from the updated main.** Cursor must run this after the plan PR merges:
+- [x] **Step 1: Cut the implementation branch from the updated main.** Cursor must run this after the plan PR merges:
 
 ```powershell
 git fetch origin main
@@ -150,7 +150,7 @@ git rev-parse origin/main
 
 Expected before edits: clean status and identical `HEAD`/`origin/main` hashes. If the hashes differ, stop and rebase/recreate from the current `origin/main`; do not proceed from a feature branch.
 
-- [ ] **Step 2: Verify the marker boundary before changing configuration.**
+- [x] **Step 2: Verify the marker boundary before changing configuration.**
 
 ```powershell
 git grep -n -E 'requires_mcp_(http|stdio)' -- pyproject.toml tests/integration/mcp/test_client_mcp_live.py tests/integration/mcp/test_client_sdk_real.py
@@ -159,7 +159,7 @@ git grep -n 'requires_mcp_context7' -- pyproject.toml tests/integration/optimus_
 
 Expected: HTTP/stdio matches remain in `pyproject.toml` and retained client tests; Context7 matches exist only in the Gateway configuration/test slated for removal.
 
-- [ ] **Step 3: Run the pre-removal coverage baseline with raw JSON outside the repository.**
+- [x] **Step 3: Run the pre-removal coverage baseline with raw JSON outside the repository.**
 
 ```powershell
 $baselineJson = Join-Path $env:TEMP 'optimus-plan-11-12-pre-removal-coverage.json'
@@ -190,11 +190,11 @@ Record the aggregate percentage, `$baselineExit`, the command, `git rev-parse HE
 - Consumes: the pre-removal Gateway/client boundary and common MCP guardrail types.
 - Produces: non-MCP Gateway startup/routes and a client/local MCP runtime whose public execution signature is `MCPToolRunner -> dict[str, Any]`.
 
-- [ ] **Step 1: Remove the Gateway MCP client surface.** Delete the agent-side Gateway MCP model imports and remove `GatewayClient.discover_mcp`, `GatewayClient.call_mcp`, `_post_mcp`, and any `/v1/tools/mcp/` special-case dispatch. Preserve ordinary `post_tool_json` behavior and all non-MCP typed Gateway operations.
+- [x] **Step 1: Remove the Gateway MCP client surface.** Delete the agent-side Gateway MCP model imports and remove `GatewayClient.discover_mcp`, `GatewayClient.call_mcp`, `_post_mcp`, and any `/v1/tools/mcp/` special-case dispatch. Preserve ordinary `post_tool_json` behavior and all non-MCP typed Gateway operations.
 
-- [ ] **Step 2: Remove Gateway MCP server/bootstrap wiring.** Delete the MCP route table and dispatch from `server.py`, remove `MCPProfileRegistry` and `GatewayMCPDependencies` imports/fields/parameters, and simplify `serve_gateway` to the non-MCP startup contract. In `__main__.py`, stop reading `verified_manifest.mcp_profiles` and stop constructing or passing a Gateway MCP registry.
+- [x] **Step 2: Remove Gateway MCP server/bootstrap wiring.** Delete the MCP route table and dispatch from `server.py`, remove `MCPProfileRegistry` and `GatewayMCPDependencies` imports/fields/parameters, and simplify `serve_gateway` to the non-MCP startup contract. In `__main__.py`, stop reading `verified_manifest.mcp_profiles` and stop constructing or passing a Gateway MCP registry.
 
-- [ ] **Step 3: Narrow `src/optimus/mcp/runtime.py` without moving the guard boundary.** Remove the `GatewayClient` and `optimus.gateway.mcp_models` imports, `MCPGatewayRunner`, `GatewayClientMCPRunner`, `bind_gateway_discovery`, and the `hasattr(runner, "call")` branch. Change `execute_tool` to:
+- [x] **Step 3: Narrow `src/optimus/mcp/runtime.py` without moving the guard boundary.** Remove the `GatewayClient` and `optimus.gateway.mcp_models` imports, `MCPGatewayRunner`, `GatewayClientMCPRunner`, `bind_gateway_discovery`, and the `hasattr(runner, "call")` branch. Change `execute_tool` to:
 
 ```python
 runner: MCPToolRunner
@@ -203,9 +203,9 @@ runner: MCPToolRunner
 
 Keep `registry.validate_tool_call(...)` and `self.pre_tool_guard.check(...)` before `return runner(manifest.server_id, tool_name, arguments)`. The retained path must still fail closed on a rejected trust binding or pre-tool verdict.
 
-- [ ] **Step 4: Remove only Gateway binding state from `mcp_trust.py`.** Delete `gateway_manifest_hash`, `bind_gateway_manifest`, and Gateway-specific lookup/state. Preserve `MCPServerTrustRecord` fields and registry methods required by local/client explicit registration, descriptor exposure, and `validate_tool_call`.
+- [x] **Step 4: Remove only Gateway binding state from `mcp_trust.py`.** Delete `gateway_manifest_hash`, `bind_gateway_manifest`, and Gateway-specific lookup/state. Preserve `MCPServerTrustRecord` fields and registry methods required by local/client explicit registration, descriptor exposure, and `validate_tool_call`.
 
-- [ ] **Step 5: Run the retained guard/server tests.**
+- [x] **Step 5: Run the retained guard/server tests.**
 
 ```powershell
 uv run --frozen pytest tests/unit/mcp/test_runtime.py tests/unit/guardrails/test_mcp_trust.py tests/unit/optimus_gateway/test_server.py -q
@@ -231,11 +231,11 @@ Expected: retained local/client guard behavior and ordinary Gateway server tests
 - Consumes: the non-MCP launch manifest and approval metadata contracts.
 - Produces: launch-manifest serialization, verification, and local startup with no Gateway `mcp_profiles` field or forwarding path.
 
-- [ ] **Step 1: Remove `mcp_profiles` from the launch manifest contract.** Delete the dataclass field, canonical field, normalization helper, build/serialize/verify handling, and any Gateway profile validation that exists only to bootstrap `MCPProfileRegistry`. Preserve all non-MCP manifest signatures, hashes, and verification behavior.
+- [x] **Step 1: Remove `mcp_profiles` from the launch manifest contract.** Delete the dataclass field, canonical field, normalization helper, build/serialize/verify handling, and any Gateway profile validation that exists only to bootstrap `MCPProfileRegistry`. Preserve all non-MCP manifest signatures, hashes, and verification behavior.
 
-- [ ] **Step 2: Remove local bootstrap forwarding.** Delete Gateway MCP profile parameters and forwarding from `local_infra.py` and `launch_approval_cli.py`. Remove only the Gateway profile fixture and assertion from `tests/unit/acp/test_local_infra.py`; retain non-secret launch metadata tests.
+- [x] **Step 2: Remove local bootstrap forwarding.** Delete Gateway MCP profile parameters and forwarding from `local_infra.py` and `launch_approval_cli.py`. Remove only the Gateway profile fixture and assertion from `tests/unit/acp/test_local_infra.py`; retain non-secret launch metadata tests.
 
-- [ ] **Step 3: Run launch/manifest regression tests.**
+- [x] **Step 3: Run launch/manifest regression tests.**
 
 ```powershell
 uv run --frozen pytest tests/unit/acp/test_local_infra.py tests/unit/security -q
@@ -262,11 +262,11 @@ Expected: non-MCP launch-manifest signing/verification remains green and no `mcp
 - Consumes: the narrowed source/runtime contracts from Tasks 1–2.
 - Produces: no Gateway-MCP tests, while retained client-MCP tests continue to collect under strict markers and remain default-deselected when their real dependencies are unavailable.
 
-- [ ] **Step 1: Delete only Gateway-owned tests.** Delete the exact Gateway integration/unit/model/profile/usage tests in the File Map, including `test_gateway_mcp_context7_live.py`, `test_mcp_discovery_binding.py`, and `test_models.py` after verifying their imports are Gateway-owned.
+- [x] **Step 1: Delete only Gateway-owned tests.** Delete the exact Gateway integration/unit/model/profile/usage tests in the File Map, including `test_gateway_mcp_context7_live.py`, `test_mcp_discovery_binding.py`, and `test_models.py` after verifying their imports are Gateway-owned.
 
-- [ ] **Step 2: Prune mixed files instead of deleting them.** In `tests/unit/optimus_gateway/test_server.py`, remove MCP fixtures, route tests, and Gateway MCP imports while retaining ordinary server tests. In `tests/unit/acp/test_local_infra.py`, remove only the Gateway profile bootstrap fixture/assertion.
+- [x] **Step 2: Prune mixed files instead of deleting them.** In `tests/unit/optimus_gateway/test_server.py`, remove MCP fixtures, route tests, and Gateway MCP imports while retaining ordinary server tests. In `tests/unit/acp/test_local_infra.py`, remove only the Gateway profile bootstrap fixture/assertion.
 
-- [ ] **Step 3: Verify retained client markers and closure evidence.**
+- [x] **Step 3: Verify retained client markers and closure evidence.**
 
 ```powershell
 uv run --frozen pytest tests/integration/mcp/test_client_mcp_live.py tests/integration/mcp/test_client_sdk_real.py tests/unit/mcp/test_client_mcp_closure.py -q
@@ -288,9 +288,9 @@ Expected: client real-dependency tests remain collected and default-deselected b
 - Consumes: the deleted Gateway modules/tests and retained client-MCP marker contract.
 - Produces: a zero-match live-code census that cannot be satisfied by deleting shared client infrastructure.
 
-- [ ] **Step 1: Remove only the Context7 marker.** Delete `requires_mcp_context7` from the `addopts` deselection expression and marker declarations in `pyproject.toml`. Keep both `requires_mcp_http` and `requires_mcp_stdio` in place, byte-for-byte in meaning, and keep them in the default deselection expression.
+- [x] **Step 1: Remove only the Context7 marker.** Delete `requires_mcp_context7` from the `addopts` deselection expression and marker declarations in `pyproject.toml`. Keep both `requires_mcp_http` and `requires_mcp_stdio` in place, byte-for-byte in meaning, and keep them in the default deselection expression.
 
-- [ ] **Step 2: Run the retained-marker assertion.**
+- [x] **Step 2: Run the retained-marker assertion.**
 
 ```powershell
 git grep -n -E 'requires_mcp_(http|stdio)' -- pyproject.toml tests/integration/mcp/test_client_mcp_live.py tests/integration/mcp/test_client_sdk_real.py
@@ -298,7 +298,7 @@ git grep -n -E 'requires_mcp_(http|stdio)' -- pyproject.toml tests/integration/m
 
 Expected: known retained matches in `pyproject.toml` and the two client test files.
 
-- [ ] **Step 3: Run the exact live-code residue census.**
+- [x] **Step 3: Run the exact live-code residue census.**
 
 ```powershell
 git grep -n -E '/v1/tools/mcp|discover_mcp|call_mcp|MCPUsageRecord|MCPProfileRegistry|GatewayMCPDependencies|MCPGatewayRunner|GatewayClientMCPRunner|bind_gateway_discovery|gateway_manifest_hash|bind_gateway_manifest|mcp_profiles|MCPDiscover(Request|Response)|MCPCall(Request|Response)|requires_mcp_context7|OPTIMUS_MCP_CONTEXT7_|optimus_gateway\.mcp_|optimus\.gateway\.mcp_models' -- src tests tools
@@ -306,7 +306,7 @@ git grep -n -E '/v1/tools/mcp|discover_mcp|call_mcp|MCPUsageRecord|MCPProfileReg
 
 Expected: no matches. This command intentionally includes `MCPProfileRegistry`, `GatewayMCPDependencies`, `optimus_gateway.mcp_*`, and `optimus.gateway.mcp_models` because modified server/bootstrap/runtime files are residue risks. It intentionally excludes `requires_mcp_http`, `requires_mcp_stdio`, `docs`, and `reports`.
 
-- [ ] **Step 4: Run focused configuration/path assertions.**
+- [x] **Step 4: Run focused configuration/path assertions.**
 
 ```powershell
 git grep -n 'requires_mcp_context7' -- pyproject.toml src tests tools
@@ -331,17 +331,17 @@ Expected: no matches. The historical Context7 report is not part of these assert
 - Consumes: the verified removal and residue evidence from Tasks 1–4.
 - Produces: a current pool/charter/roadmap state in which Gateway MCP is retired, every deferred Gateway-MCP follow-up has named custody or a documented closure, and Plan 11.13 is an explicit pre-Registry/v1.0 dependency.
 
-- [ ] **Step 1: Retire the feature in the pool, charter, and roadmap.** Change `P11-FEAT-GATEWAY-MCP` to `Retired`, cite Plan 11.12, and identify Plans 11.8 and 11.11 as historical work. Do not rewrite their frozen or merged historical details.
+- [x] **Step 1: Retire the feature in the pool, charter, and roadmap.** Change `P11-FEAT-GATEWAY-MCP` to `Retired`, cite Plan 11.12, and identify Plans 11.8 and 11.11 as historical work. Do not rewrite their frozen or merged historical details.
 
-- [ ] **Step 2: Close Gateway-only deferred follow-ups.** Mark `P11-FU-12`, `P11-FU-13`, `P11-FU-14`, `P11-FU-15`, and `P11-FU-22` closed as won’t-do because the Gateway MCP feature is retired. Preserve their identifiers and record the retirement rationale rather than silently deleting them.
+- [x] **Step 2: Close Gateway-only deferred follow-ups.** Mark `P11-FU-12`, `P11-FU-13`, `P11-FU-14`, `P11-FU-15`, and `P11-FU-22` closed as won’t-do because the Gateway MCP feature is retired. Preserve their identifiers and record the retirement rationale rather than silently deleting them.
 
-- [ ] **Step 3: Resolve the Windows MCP flake custody.** Mark `P11-FU-26` closed as obsolete-by-retirement with this rationale: its original reproduction criteria target transport/test code removed by Plan 11.12, so the investigation can no longer be performed meaningfully. Transfer the observed Windows `WinError 10053` socket-teardown signal to the still-open `P11-FU-6`, which owns Gateway `test_server` port/teardown flake custody. State that no production retry or safety weakening was added.
+- [x] **Step 3: Resolve the Windows MCP flake custody.** Mark `P11-FU-26` closed as obsolete-by-retirement with this rationale: its original reproduction criteria target transport/test code removed by Plan 11.12, so the investigation can no longer be performed meaningfully. Transfer the observed Windows `WinError 10053` socket-teardown signal to the still-open `P11-FU-6`, which owns Gateway `test_server` port/teardown flake custody. State that no production retry or safety weakening was added.
 
-- [ ] **Step 4: Pin the documentation dependency.** Record that Plan 11.13 must reverse HLD v2.17, LLD v2.40, Guardrails v1.2, Test Strategy v1.6, and the amendment source tree before `P11-FEAT-REGISTRY` or the v1.0 cut. Leave those authoritative documents untouched in this plan.
+- [x] **Step 4: Pin the documentation dependency.** Record that Plan 11.13 must reverse HLD v2.17, LLD v2.40, Guardrails v1.2, Test Strategy v1.6, and the amendment source tree before `P11-FEAT-REGISTRY` or the v1.0 cut. Leave those authoritative documents untouched in this plan.
 
-- [ ] **Step 5: Update the hygiene tests.** Change only assertions that encode the current Gateway-MCP feature/follow-up/plan status. Add assertions for the retired feature, closed won’t-do rows, obsolete-by-retirement P11-FU-26, retained open P11-FU-6 custody, and historical Plan 11.8/11.11 status.
+- [x] **Step 5: Update the hygiene tests.** Change only assertions that encode the current Gateway-MCP feature/follow-up/plan status. Add assertions for the retired feature, closed won’t-do rows, obsolete-by-retirement P11-FU-26, retained open P11-FU-6 custody, and historical Plan 11.8/11.11 status.
 
-- [ ] **Step 6: Run the documentation hygiene tests.**
+- [x] **Step 6: Run the documentation hygiene tests.**
 
 ```powershell
 uv run --frozen pytest tests/unit/docs/test_open_work_pool_hygiene.py -q
@@ -364,7 +364,7 @@ Expected: status surfaces agree with the pool and no unrelated current-state doc
 - Consumes: all source, test, configuration, and custody changes from Tasks 1–5.
 - Produces: named evidence for each Definition of Done claim and a clean implementation PR boundary.
 
-- [ ] **Step 1: Run the post-removal coverage command with the same inherited configuration.**
+- [x] **Step 1: Run the post-removal coverage command with the same inherited configuration.**
 
 ```powershell
 $postJson = Join-Path $env:TEMP 'optimus-plan-11-12-post-removal-coverage.json'
@@ -374,7 +374,7 @@ $postExit = $LASTEXITCODE
 
 Record the aggregate, exit disposition, command, commit hash, and inherited five-package source list in `reports/plan-11-12-coverage-evidence.md`. The aggregate must be at least 80% for the retirement PR to claim the coverage DoD. If the pre-removal baseline was already below 80%, report that fact separately from any post-removal change; do not manufacture tests for deleted Gateway code.
 
-- [ ] **Step 2: Run the full Windows gate.**
+- [x] **Step 2: Run the full Windows gate.**
 
 ```powershell
 uv run --frozen pytest -q
@@ -384,13 +384,13 @@ git diff --check
 
 Expected: full default suite green with the shared HTTP/stdio markers still deselected, Ruff clean, and no whitespace errors.
 
-- [ ] **Step 3: Run the alternate-platform gate.** From the WSL2 path for this same implementation branch, run `uv sync --frozen --extra dev` and `uv run pytest -q`. If the retained Gateway `test_server` harness reproduces the known Windows teardown signal, record it under `P11-FU-6`; do not mask it with retries or close `P11-FU-6` from this plan.
+- [x] **Step 3: Run the alternate-platform gate.** From the WSL2 path for this same implementation branch, run `uv sync --frozen --extra dev` and `uv run pytest -q`. If the retained Gateway `test_server` harness reproduces the known Windows teardown signal, record it under `P11-FU-6`; do not mask it with retries or close `P11-FU-6` from this plan. WSL2 result: 2 failed / 3065 passed; both failures are `P11-FU-17` (Windows worktree `.git` pointer). `P11-FU-6` did not reproduce. No clean-WSL2 claim.
 
-- [ ] **Step 4: Re-run the exact live-code census and marker assertions.** The commands from Task 4 must produce zero live Gateway-MCP matches, known retained HTTP/stdio matches, and no Context7 marker/file matches.
+- [x] **Step 4: Re-run the exact live-code census and marker assertions.** The commands from Task 4 must produce zero live Gateway-MCP matches, known retained HTTP/stdio matches, and no Context7 marker/file matches.
 
-- [ ] **Step 5: Audit the documentation freshness boundary.** Confirm that every current-state claim changed by this plan is current in the pool, charter, roadmap, and README/environment surfaces, while historical Plan 11.8/11.11 and Context7 evidence remain intentionally historical.
+- [x] **Step 5: Audit the documentation freshness boundary.** Confirm that every current-state claim changed by this plan is current in the pool, charter, roadmap, and README/environment surfaces, while historical Plan 11.8/11.11 and Context7 evidence remain intentionally historical.
 
-- [ ] **Step 6: Check the final PR boundary.**
+- [x] **Step 6: Check the final PR boundary.**
 
 ```powershell
 git status --short --branch

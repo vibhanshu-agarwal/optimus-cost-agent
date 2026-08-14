@@ -152,7 +152,7 @@ PLAN_11_SUMMARY_EVIDENCE = {
     "Plan 11.5": ("Closed", "PR #95"),
     "Plan 11.6": ("Merged", "PR #97"),
     "Plan 11.7": ("Partially implemented", "blocked"),
-    "Plan 11.8": ("Partially implemented", "27 of 46", "PR #116", "PR #118"),
+    "Plan 11.8": ("Historical", "Plan 11.12"),
     "Plan 11.9": ("Closed", "PR #123", "PR #124"),
 }
 
@@ -181,7 +181,7 @@ EXPECTED_FEATURE_STATUS = {
     "P11-FEAT-GATEWAY-CORE": "Closed",
     "P11-FEAT-GATEWAY-TOOLS": "Closed",
     "P11-FEAT-GATEWAY-COST-OBS": "Closed",
-    "P11-FEAT-GATEWAY-MCP": "Partially implemented",
+    "P11-FEAT-GATEWAY-MCP": "Retired",
     "P11-FEAT-ZED-RESUME": "Partially implemented",
     "P11-FEAT-REGISTRY": "Open",
     "P11-FEAT-IDE": "Open",
@@ -191,7 +191,7 @@ EXPECTED_FEATURE_SCOPE_TOKENS = {
     "P11-FEAT-GATEWAY-CORE": ("Plan 11.1", "PR #85", "Plan 11.4", "PR #91"),
     "P11-FEAT-GATEWAY-TOOLS": ("Plan 11.2", "PR #88"),
     "P11-FEAT-GATEWAY-COST-OBS": ("Plan 11.5", "PR #95", "P11.5-FU-1", "P11.5-FU-2"),
-    "P11-FEAT-GATEWAY-MCP": ("27 of 46", "PR #116", "PR #118"),
+    "P11-FEAT-GATEWAY-MCP": ("Retired", "Plan 11.12", "Plan 11.8", "Plan 11.11", "Plan 11.13"),
     "P11-FEAT-ZED-RESUME": ("Partially implemented; blocked", "PR #108", "P11-FU-11", "Path A"),
     "P11-FEAT-REGISTRY": ("Ratified, unscheduled", "package and ACP versions are both `0.1.0`"),
     "P11-FEAT-IDE": ("Conditional",),
@@ -1211,21 +1211,56 @@ def test_settled_entries_do_not_label_historical_defects_as_current() -> None:
         assert all(phrase not in body for phrase in forbidden)
 
 
-def test_gateway_mcp_row_records_the_real_plan_118_boundary() -> None:
+def test_gateway_mcp_retirement_custody_is_current() -> None:
     pool_text = _read(OPTIMUS_POOL)
     row = _feature_row(pool_text, "P11-FEAT-GATEWAY-MCP")
-    plan = _read(
-        REPO_ROOT / "docs/superpowers/plans/2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md"
+    indexed = _fu_index_rows(pool_text)
+    entries = _entry_sections(pool_text)
+    roadmap = _read(PHASE_1_ROADMAP)
+    charter = _read(PLAN_11_CHARTER)
+    wont_do_ids = (
+        "P11-FU-12",
+        "P11-FU-13",
+        "P11-FU-14",
+        "P11-FU-15",
+        "P11-FU-22",
     )
-    checked = len(re.findall(r"^- \[x\]", plan, re.MULTILINE))
-    unchecked = len(re.findall(r"^- \[ \]", plan, re.MULTILINE))
 
-    assert "2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md" in row
-    assert "2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md" in row
-    assert checked and unchecked
-    assert f"{checked} of {checked + unchecked}" in row
-    assert "PR #116" in row and "PR #118" in row
-    assert "next unused" not in pool_text.lower()
+    assert "| Retired |" in row
+    assert "Plan 11.12" in row
+    assert "historical" in row.lower()
+    assert "Plan 11.8" in row and "Plan 11.11" in row
+    assert "Plan 11.13" in row
+    assert "P11-FEAT-REGISTRY" in row
+
+    for fu_id in wont_do_ids:
+        item, status = indexed[fu_id]
+        assert status == "Closed"
+        body = entries[f"{fu_id}: {item}"]
+        assert _status_token(body) == "Closed"
+        assert "won't-do" in body.casefold()
+        assert "Plan 11.12" in body
+
+    fu26_item, fu26_status = indexed["P11-FU-26"]
+    fu26 = entries[f"P11-FU-26: {fu26_item}"]
+    assert fu26_status == "Closed"
+    assert _status_token(fu26) == "Closed"
+    assert "obsolete-by-retirement" in fu26.casefold()
+    assert "P11-FU-6" in fu26
+    assert "WinError 10053" in fu26
+
+    fu6_item, fu6_status = indexed["P11-FU-6"]
+    fu6 = entries[f"P11-FU-6: {fu6_item}"]
+    assert fu6_status == "Open"
+    assert _status_token(fu6) == "Open"
+    assert "WinError 10053" in fu6
+    assert "Plan 11.12" in fu6
+    assert "no production retry" in fu6.casefold()
+
+    assert "Plan 11.13" in roadmap
+    assert "historical" in _h2_section(roadmap, "Plan 11 (").casefold()
+    assert "Plan 11.13" in charter
+    assert "P11-FEAT-REGISTRY" in charter
 
 
 def test_plan_118_status_matches_its_checked_task_boundary() -> None:

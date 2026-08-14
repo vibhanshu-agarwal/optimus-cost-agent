@@ -85,7 +85,7 @@ open-work inventory.
 | `P11-FEAT-GATEWAY-CORE` | Closed | MEDIUM | Plan 11.1 — closed; merged to `main` as PR #85 (`6ae6997`, tip `6c39599`). Migration closed by **Plan 11.4**, merged to `main` as PR #91 (`d80e112`), 2026-07-28. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route); migration custody: strict-loopback completion, OpenRouter-default OpenAI-compatible aggregator transport, provider-reported accounting, and direct-adapter retirement — all implemented and independently re-verified task-by-task. The bounded Vercel Python transport check is complete as a design decision: Vercel is backlogged under this identity (its public OpenAI-compatible transport doesn't document the mandatory per-response provider-cost fields the settled `GatewayUsage` contract requires; no comparison matrix, no second endpoint added). Closure evidence: [design spec](../specs/2026-07-28-plan-11-4-p11-feat-gateway-core-migration-design.md), [implementation plan](2026-07-28-plan-11-4-gateway-core-migration.md) (all 36 checkboxes checked against their named verification commands) |
 | `P11-FEAT-GATEWAY-TOOLS` | Closed | MEDIUM | Plan 11.2 — closed by PR #88 (merge `4590dbf`); migration follow-ups remain assigned here and receive a new Plan 11.x number only at pickup. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); migration custody: deterministic search/direct extract, route-specific dependency availability, replacement acceptance, and Tavily rollback-reviewed retirement; closure evidence: [Plan 11.2 approval](../reviews/2026-07-27-plan-11-2-implementation-plan-approval-v2.md), [local-process evidence](../../../reports/plan-11-2-gateway-tools-local-process-evidence.md), [staging evidence](../../../reports/plan-11-2-gateway-tools-staging-evidence.md), and [fitness report](../../../reports/plan-11-2-gateway-tools-task7-fitness.md) |
 | `P11-FEAT-GATEWAY-COST-OBS` | Closed | MEDIUM | Plan 11.5 — closed by PR #95 (merge `e388258`), 2026-07-29; migration follow-ups remain assigned here (`P11.5-FU-1` open; `P11.5-FU-2` closed via Plan 11.6) and receive a new Plan 11.x number only at pickup. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); [implementation plan](2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration |
-| `P11-FEAT-GATEWAY-MCP` | Partially implemented | MEDIUM | Partially implemented. The [frozen design](../specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md) and living [Plan 11.8 implementation plan](2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md) record the bounded static-profile, dual-transport, tools-only Gateway brokering. 27 of 46 checks are complete: Tasks 0-7 are complete; Task 8 Step 1 is complete; Task 8 Steps 2-4 and Task 9 are incomplete. PR #116 merged implementation work and PR #118 repaired its CI custody regressions. The lane paused/pivoted on 2026-08-06; future allocation follows the charter's Plan 11 numbering convention. `P11-FU-3`'s route/typed-contract gate closed through the charter amendment (PR #112) and four amended PDFs (PR #113, merge `edd1f04`). Plan 11.11 closed the Gateway HTTP/profile/discovery 2026-07-28 Streamable HTTP compatibility gap that blocked the real Context7 fixture, via PR #135 (`93958ce8`), 2026-08-13 — see [Plan 11.11](2026-08-13-plan-11-11-p11-feat-gateway-mcp-2026-07-28-http-compatibility.md). Task 8 Steps 2-4 and Task 9 remain open and are now unblocked for resumption. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
+| `P11-FEAT-GATEWAY-MCP` | Retired | MEDIUM | Retired by Plan 11.12. [Plan 11.8](2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md) and [Plan 11.11](2026-08-13-plan-11-11-p11-feat-gateway-mcp-2026-07-28-http-compatibility.md) are historical precursor work; their frozen design and merged implementation records are not rewritten. Client-owned MCP remains live. Plan 11.13 must reverse HLD v2.17, LLD v2.40, Guardrails v1.2, Test Strategy v1.6, and the amendment source tree before `P11-FEAT-REGISTRY` or the v1.0 cut. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering) |
 | `P11-FEAT-ZED-RESUME` | Partially implemented | MEDIUM | Partially implemented; blocked. Frozen Task 0 Steps 1-4 sealed (`session/load` unreachable on current Zed 1.13.1); frozen Plan 11.7 Tasks 0 Steps 5-7 and Tasks 1-11 remain blocked. Standalone feasibility amendment approved (`79F3C92A…C06E6`, 2026-08-02); origin-A fixture v2 amendment approved and merged (`5BB327D8…9A4D` / PR #108, 2026-08-02). Corrected `origin-a-3` executed and sealed as Option B process-invalid (`next_corr=4` / `next_prompt=3` unclaimed; DoD success false). Retry-preflight amendment (`P11-FU-11`, PR #110) implemented through Task 5 **Path A** fail-closed terminal stop (2026-08-05): real CLI fail-closed at acquire; offline `unavailable_proof`; no corr-4 / no settings mutation / no Zed launch; accepted live retry not obtained. Parent Task 5 remains blocked; clean relaunch needs a budget-expansion amendment. Does not claim server-side custody feasible. Carries owned `P11-FU-1`, `P9.8-FU-5`, and `P11-FU-11`; coordinates, but does not own, `P11-FU-4`. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume); [feasibility amendment](2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md); [origin-A fixture v2 amendment](2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md); [retry-preflight amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md). Dependency: the [evidence and handoff product pool](evidence-handoff-open-work-pool.md) entry `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` supplies its sanitized-evidence gate. |
 | `P11-FEAT-REGISTRY` | Open | MEDIUM | Ratified, unscheduled, and held as the last primary Plan 11 slice. The ACP registry has a public authoritative repository, schema, submission guide, and stabilized live process; pickup begins by pinning and executing against the then-current validator/CI behavior, not by searching for an unknown source. Reassess 11.x-last versus a 13.x split for outward publication once this consolidated pool closes. The v1.0 release-version contract and excluded-capability inventory remain in Plan 11. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut). Verified local finding carried to pickup: package and ACP versions are both `0.1.0`, and ACP currently returns `authMethods: []`. The registry guide's Agent/Terminal Auth admission rule is an external claim to verify by live execution before implementation scope is frozen. |
 | `P11-FEAT-IDE` | Open | MEDIUM | Conditional — opens only by explicit amendment if REGISTRY surfaces an unmet multi-IDE expectation. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing) |
@@ -128,7 +128,7 @@ status changes through the normal status workflow; the target plan's status is n
 | `P11-FU-3` | MCP Route/Typed-Contract Publication Gate | Closed | MEDIUM | `P11-FEAT-GATEWAY-MCP` | PR #112; PR #113 / `edd1f04` |
 | `P11-FU-4` | Re-pin FU-4A/FU-5 Live Evidence | Open | MEDIUM | Coordinated with `P11-FEAT-ZED-RESUME` | Acceptance criteria in entry |
 | `P11-FU-5` | Windows Subprocess Handle-Duplication Flake (WinError 6/50) | Open | MEDIUM | Future Windows investigation | Acceptance criteria in entry |
-| `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | MEDIUM | Future Gateway unit-harness investigation | Acceptance criteria in entry; 2026-08-10 two sibling harness failures same evening; 2026-08-11 DoD coverage pair recurrence |
+| `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | MEDIUM | Future Gateway unit-harness investigation | Acceptance criteria in entry; 2026-08-10 two sibling harness failures same evening; 2026-08-11 DoD coverage pair recurrence; Plan 11.12 transferred WinError 10053 |
 | `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Open | MEDIUM | Future Windows test-infrastructure work | Acceptance criteria in entry |
 | `P11.5-FU-1` | Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics | Open | MEDIUM | `P11-FEAT-GATEWAY-COST-OBS` | Acceptance criteria in entry |
 | `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Open | LOW | Future Gateway migration design | Acceptance criteria in entry |
@@ -138,16 +138,16 @@ status changes through the normal status workflow; the target plan's status is n
 | `P11.7-FU-2` | Gateway threaded-test flake under full-suite load | Open | MEDIUM | Plan 11.7 deferred follow-up | Acceptance criteria in entry |
 | `P11.7-FU-3` | Committed `plan117_custody_relay.py` docstring `\ufffd` / em-dash corruption | Open | MEDIUM | Plan 11.7 deferred follow-up | Acceptance criteria in entry |
 | `P11-FU-11` | Plan 11.7 Retry Preflight and Live Session Proof | Partially implemented | HIGH | [Plan 11.7 retry-preflight amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md) | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
-| `P11-FU-12` | MCP OAuth 2.1 Lifecycle | Open | MEDIUM | Future `P11-FEAT-GATEWAY-MCP` follow-up | Acceptance criteria in entry |
-| `P11-FU-13` | Deferred MCP Capabilities and Long-Lived Interaction | Open | MEDIUM | Future `P11-FEAT-GATEWAY-MCP` follow-up | Acceptance criteria in entry |
-| `P11-FU-14` | MCP Registry Discover-and-Connect | Open | MEDIUM | Future `P11-FEAT-GATEWAY-MCP` follow-up | Acceptance criteria in entry |
-| `P11-FU-15` | MCP Tool Search and Context Minimization | Open | MEDIUM | Future `P11-FEAT-GATEWAY-MCP` follow-up | Acceptance criteria in entry |
+| `P11-FU-12` | MCP OAuth 2.1 Lifecycle | Closed | MEDIUM | Retired `P11-FEAT-GATEWAY-MCP` | Plan 11.12; won't-do |
+| `P11-FU-13` | Deferred MCP Capabilities and Long-Lived Interaction | Closed | MEDIUM | Retired `P11-FEAT-GATEWAY-MCP` | Plan 11.12; won't-do |
+| `P11-FU-14` | MCP Registry Discover-and-Connect | Closed | MEDIUM | Retired `P11-FEAT-GATEWAY-MCP` | Plan 11.12; won't-do |
+| `P11-FU-15` | MCP Tool Search and Context Minimization | Closed | MEDIUM | Retired `P11-FEAT-GATEWAY-MCP` | Plan 11.12; won't-do |
 | `P11-FU-16` | Reverse Research-to-Documentation Freshness Gate | Open | MEDIUM | Future cross-cutting documentation gate | Acceptance criteria in entry |
-| `P11-FU-22` | Durable effect-aware MCP indeterminate-call custody | Open | MEDIUM | Future MCP indeterminate-call custody work | Acceptance criteria in entry |
+| `P11-FU-22` | Durable effect-aware MCP indeterminate-call custody | Closed | MEDIUM | Retired `P11-FEAT-GATEWAY-MCP` | Plan 11.12; won't-do |
 | `P11-FU-23` | Durable client-MCP descriptor-surface pinning and named tool allowlists | Open | MEDIUM | Future client-MCP trust follow-up | Acceptance criteria in entry |
 | `P11-FU-24` | Client-MCP durable HTTP/SSE trust relaxation | Open | MEDIUM | Future client-MCP trust follow-up | Acceptance criteria in entry |
 | `P11-FU-25` | Authenticated client-owned MCP upstream evidence | Open | MEDIUM | Future client-MCP evidence follow-up | Acceptance criteria in entry |
-| `P11-FU-26` | Plan 11.8 Windows `WinError 10053` MCP test flake | Open | MEDIUM | Future Windows test-infrastructure work | Acceptance criteria in entry |
+| `P11-FU-26` | Plan 11.8 Windows `WinError 10053` MCP test flake | Closed | MEDIUM | Retired `P11-FEAT-GATEWAY-MCP`; signal under `P11-FU-6` | Plan 11.12; obsolete-by-retirement |
 | `P11-FU-27` | Publication-Plan Historical-State Reconciliation | Open | MEDIUM | Future documentation-history reconciliation | Excluded publication plan; PR #113 / `verification.md` |
 | `P11-FU-17` | WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer | Open | MEDIUM | Future WSL2 test infrastructure | Acceptance criteria in entry |
 | `P11-FU-18` | WSL2 directory `ctime` timestamp-coalescing test flake | Open | MEDIUM | Future WSL2 test infrastructure | Acceptance criteria in entry |
@@ -506,6 +506,11 @@ on this entry; do not open a second FU.
 **Recurrence:** 2026-08-11 — DoD coverage run: the P11-FU-6 pair recurred (both `test_server`
 harness tests) under `--cov`; passed isolated, in-file, and on coverage re-run at 81.34%. Same
 port/teardown harness class; do not merge with `P11-FU-7`.
+
+**Additional observation (Plan 11.12):** The Windows `WinError 10053` socket-teardown signal
+previously tracked under `P11-FU-26` is transferred here because Plan 11.12 retired the Gateway MCP
+transport surface. This entry remains open and continues to own Gateway `test_server` port/teardown
+flake custody. No production retry or safety weakening was added.
 
 ### P11-FU-7: Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test
 
@@ -866,7 +871,8 @@ token custody, and step-up are absent. A future design must keep automatic same-
 distinct from reapproval-triggering grant, issuer, resource, subject, scope, client, store, or
 policy rotation.
 
-**Status:** Open. Tracked, not yet scheduled.
+**Status:** Closed. Won't-do because Plan 11.12 retired the Gateway MCP feature. This follow-up
+targeted Gateway-brokered OAuth 2.1 lifecycle that no longer exists. Identifier preserved.
 
 ### P11-FU-13: Deferred MCP Capabilities and Long-Lived Interaction
 
@@ -881,7 +887,9 @@ vocabulary. Roots are not access control; sampling reverses the prompt/cost dire
 separate double-human-approval and linked-accounting gate. External MCP logging remains unable to
 alter Optimus audit logging.
 
-**Status:** Open. Tracked, not yet scheduled.
+**Status:** Closed. Won't-do because Plan 11.12 retired the Gateway MCP feature. This follow-up
+targeted Gateway-brokered prompts, resources, elicitation, completion, subscriptions, tasks, and
+resumable discovery that no longer exist. Identifier preserved.
 
 ### P11-FU-14: MCP Registry Discover-and-Connect
 
@@ -895,7 +903,9 @@ Automated install, update, or connect would invalidate v1's preprovisioned-only 
 This is explicitly distinct from ACP registry publication identity and release work under
 `P11-FEAT-REGISTRY`.
 
-**Status:** Open. Tracked, not yet scheduled.
+**Status:** Closed. Won't-do because Plan 11.12 retired the Gateway MCP feature. This follow-up
+targeted Gateway catalog/discover/install/update/connect semantics that no longer exist. Identifier
+preserved. Distinct from ACP registry publication identity under `P11-FEAT-REGISTRY`.
 
 ### P11-FU-15: MCP Tool Search and Context Minimization
 
@@ -907,7 +917,9 @@ minimization; a Plan 11.x number is assigned only when it is picked up.
 **Rationale and acceptance boundary:** v1 bounds and records an operator-selected descriptor subset,
 but provides no semantic per-turn selection seam and no code-mode sandbox.
 
-**Status:** Open. Tracked, not yet scheduled.
+**Status:** Closed. Won't-do because Plan 11.12 retired the Gateway MCP feature. This follow-up
+targeted Gateway-brokered semantic per-turn tool selection that no longer exists. Identifier
+preserved.
 
 ### P11-FU-16: Reverse Research-to-Documentation Freshness Gate
 
@@ -941,7 +953,9 @@ binding and `gateway_request_id`, while side-effecting calls remain held until a
 acknowledges the outcome. Custody must survive agent restart, preserve no-automatic-redispatch
 behavior, and produce auditable disposition and accounting evidence.
 
-**Status:** Open. Tracked, not yet scheduled.
+**Status:** Closed. Won't-do because Plan 11.12 retired the Gateway MCP feature. This follow-up
+targeted Gateway-brokered indeterminate-call custody (`gateway_request_id` re-invocation / hold)
+that no longer exists. Identifier preserved.
 
 ### P11-FU-23: Durable client-MCP descriptor-surface pinning and named tool allowlists
 
@@ -997,7 +1011,11 @@ when this item is picked up.
 separate test-fixture teardown/network timing from product behavior; reproduce on Windows and WSL2
 where relevant; and avoid weakening production transport safety or masking the failure with retries.
 
-**Status:** Open. Tracked, not yet scheduled.
+**Status:** Closed. Obsolete-by-retirement: Plan 11.12 removed the Gateway MCP transport and test
+code that this investigation targeted, so the original reproduction criteria can no longer be
+performed meaningfully. The observed Windows `WinError 10053` socket-teardown signal is transferred
+to still-open `P11-FU-6`, which owns Gateway `test_server` port/teardown flake custody. No production
+retry or safety weakening was added.
 
 ### P11-FU-27: Publication-Plan Historical-State Reconciliation
 

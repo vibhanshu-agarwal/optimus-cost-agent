@@ -8,9 +8,6 @@ from typing import Any
 
 import pytest
 
-from optimus_gateway.mcp_handlers import GatewayMCPDependencies
-from optimus_gateway.mcp_models import MCPDiscoverResponse
-from optimus_gateway.mcp_profiles import MCPProfileRegistry
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.observability import GatewayTraceBatch, GatewayTraceExportResult, TraceDeliveryState, TraceExporter
 from optimus_gateway.server import serve_gateway
@@ -59,83 +56,22 @@ def _config() -> GatewayServiceConfig:
     )
 
 
-def test_serve_gateway_accepts_an_injected_mcp_registry_without_tool_dependencies():
-    server = serve_gateway(
-        config=_config(),
-        upstream_client=_SmokeUpstreamClient(),
-        mcp_registry=MCPProfileRegistry(()),
-    )
-    try:
-        assert server.RequestHandlerClass.mcp_registry.profiles == ()
-    finally:
-        server.server_close()
-
-
 def _start_server(
     *,
     upstream_client: Any | None = None,
     tool_dependencies: GatewayToolDependencies | None = None,
     trace_exporter: TraceExporter | None = None,
-    mcp_dependencies: GatewayMCPDependencies | None = None,
 ):
     server = serve_gateway(
         config=_config(),
         upstream_client=upstream_client if upstream_client is not None else _SmokeUpstreamClient(),
         tool_dependencies=tool_dependencies,
         trace_exporter=trace_exporter,
-        mcp_dependencies=mcp_dependencies,
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     host, port = server.server_address
     return server, thread, host, port
-
-
-class _SmokeMCPDiscovery:
-    def discover(self, *, request: object, registry: object, connection_manager: object) -> MCPDiscoverResponse:
-        del request, registry, connection_manager
-        return MCPDiscoverResponse(
-            profile_id="context7",
-            profile_revision="rev-1",
-            transport="http",
-            protocol_version="2026-07-28",
-            descriptors=(),
-            manifest_hash="a" * 64,
-            freshness="fresh",
-            disposition="mcp.discover.complete",
-        )
-
-
-def test_mcp_routes_are_additive_and_require_the_existing_bearer_auth():
-    dependencies = GatewayMCPDependencies(
-        registry=MCPProfileRegistry(()),
-        discovery_broker=_SmokeMCPDiscovery(),
-        connection_manager=object(),
-        invocation_broker=object(),
-        usage_writer=object(),
-    )
-    server, thread, host, port = _start_server(mcp_dependencies=dependencies)
-    try:
-        status, body = _post_json(
-            host,
-            port,
-            "/v1/tools/mcp/discover",
-            body=json.dumps({"profile_id": "context7", "profile_revision": "rev-1"}),
-        )
-        assert status == 200
-        assert body["disposition"] == "mcp.discover.complete"
-
-        unauthorized_status, unauthorized_body = _post_json(
-            host,
-            port,
-            "/v1/tools/mcp/discover",
-            body=json.dumps({"profile_id": "context7", "profile_revision": "rev-1"}),
-            headers={"Content-Type": "application/json"},
-        )
-        assert unauthorized_status == 401
-        assert unauthorized_body == {"error": "unauthorized"}
-    finally:
-        _stop_server(server, thread)
 
 
 def _trace_event_payload(

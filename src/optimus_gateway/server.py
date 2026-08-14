@@ -6,8 +6,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from optimus_gateway.chat_completions import handle_chat_completions_request
-from optimus_gateway.mcp_handlers import MCP_ROUTE_PATHS, GatewayMCPDependencies, handle_mcp_request
-from optimus_gateway.mcp_profiles import MCPProfileRegistry
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.observability import (
     OpenTelemetryTraceExporter,
@@ -25,8 +23,6 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
     upstream_client: UpstreamClient
     tool_dependencies: GatewayToolDependencies | None = None
     trace_exporter: TraceExporter
-    mcp_registry: MCPProfileRegistry
-    mcp_dependencies: GatewayMCPDependencies | None = None
 
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -34,10 +30,7 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         tool_mode = False
         trace_mode = False
-        mcp_mode = self.path in MCP_ROUTE_PATHS and self.mcp_dependencies is not None
-        if mcp_mode:
-            handler = handle_mcp_request
-        elif self.path == "/v1/responses":
+        if self.path == "/v1/responses":
             handler = handle_responses_request
         elif self.path == "/v1/chat/completions":
             handler = handle_chat_completions_request
@@ -68,14 +61,6 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
                 request_body=request_body,
                 config=self.config,
                 dependencies=self.tool_dependencies,
-            )
-        elif mcp_mode:
-            status, body = handler(
-                authorization_header=self.headers.get("Authorization"),
-                path=self.path,
-                request_body=request_body,
-                config=self.config,
-                dependencies=self.mcp_dependencies,
             )
         elif trace_mode:
             status, body = handler(
@@ -110,8 +95,6 @@ def serve_gateway(
     upstream_client: UpstreamClient | None = None,
     tool_dependencies: GatewayToolDependencies | None = None,
     trace_exporter: TraceExporter | None = None,
-    mcp_registry: MCPProfileRegistry | None = None,
-    mcp_dependencies: GatewayMCPDependencies | None = None,
 ) -> ThreadingHTTPServer:
     client = upstream_client or build_upstream_client(config)
     resolved_tool_dependencies = (
@@ -125,7 +108,6 @@ def serve_gateway(
     resolved_trace_exporter = (
         trace_exporter if trace_exporter is not None else OpenTelemetryTraceExporter(otlp_endpoint=config.otlp_endpoint)
     )
-    resolved_mcp_registry = mcp_registry if mcp_registry is not None else MCPProfileRegistry(())
 
     class _BoundHandler(OptimusGatewayHandler):
         pass
@@ -134,7 +116,5 @@ def serve_gateway(
     _BoundHandler.upstream_client = client
     _BoundHandler.tool_dependencies = resolved_tool_dependencies
     _BoundHandler.trace_exporter = resolved_trace_exporter
-    _BoundHandler.mcp_registry = resolved_mcp_registry
-    _BoundHandler.mcp_dependencies = mcp_dependencies
     server = ThreadingHTTPServer((config.bind_host, config.bind_port), _BoundHandler)
     return server

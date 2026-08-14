@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 from unittest.mock import MagicMock
@@ -16,17 +15,6 @@ from optimus.acp.local_gateway_secrets import (
 )
 
 _HMAC_KEY = b"test-local-infra-hmac-key-32byt!"
-_MCP_PROFILE = {
-    "profile_id": "context7",
-    "revision": "rev-1",
-    "manifest_hash": "a" * 64,
-    "transport": "http",
-    "credential_ref": "gateway://mcp/context7",
-    "upstream_allowlist": ["search"],
-    "limits": {"max_pages": 10, "max_tools": 50, "max_descriptor_bytes": 65536},
-    "attribution_policy": {"allow_unattributed_spend": False},
-    "transport_config": {"endpoint": "https://context7.example/mcp"},
-}
 
 
 def _resolution(secrets: ProviderSecrets | None) -> ProviderCredentialResolution:
@@ -517,42 +505,6 @@ def test_ensure_local_gateway_spawns_with_exact_cli_args_and_manifest(tmp_path, 
     assert "shared-secret-value" not in startup_output
     # The manifest itself must not contain the raw secret either.
     manifest_arg = args[args.index("--manifest") + 1]
-    assert "sk-or-test" not in manifest_arg
-    assert "shared-secret-value" not in manifest_arg
-
-
-def test_ensure_local_gateway_forwards_non_secret_mcp_profile_bootstrap(tmp_path, monkeypatch) -> None:
-    reachable_calls = {"n": 0}
-
-    def fake_tcp_reachable(host, port, *, timeout=1.0):
-        reachable_calls["n"] += 1
-        return reachable_calls["n"] > 1
-
-    monkeypatch.setattr(local_infra, "_tcp_reachable", fake_tcp_reachable)
-    monkeypatch.setattr(local_infra.time, "sleep", lambda _seconds: None)
-    captured: dict[str, object] = {}
-
-    class FakeProcess:
-        pid = 4322
-        returncode = None
-
-        def poll(self):
-            return None
-
-    def fake_popen(args, *, env, stdin, stdout, stderr):
-        captured["args"] = args
-        return FakeProcess()
-
-    monkeypatch.setattr(local_infra.subprocess, "Popen", fake_popen)
-    local_infra.ensure_local_gateway(
-        **_ensure_gateway_kwargs(),
-        runtime_root=tmp_path / ".optimus",
-        mcp_profiles=(_MCP_PROFILE,),
-    )
-
-    args = captured["args"]
-    manifest_arg = args[args.index("--manifest") + 1]
-    assert json.loads(manifest_arg)["mcp_profiles"][0]["profile_id"] == "context7"
     assert "sk-or-test" not in manifest_arg
     assert "shared-secret-value" not in manifest_arg
 

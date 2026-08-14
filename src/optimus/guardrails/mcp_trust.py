@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +21,6 @@ _SIDE_EFFECT_RANK = {"read": 0, "network": 1, "write": 2}
 SIDE_EFFECT_RANK = _SIDE_EFFECT_RANK
 _WRITE_HINTS = ("write", "delete", "remove", "create", "update", "mutate", "patch", "upload", "send", "execute", "run")
 _NETWORK_HINTS = ("fetch", "download", "http", "url", "request")
-_MANIFEST_HASH = re.compile(r"^[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True)
@@ -102,7 +100,6 @@ class MCPServerTrustRecord:
     approved_by: str
     scan_summary: str
     profile_revision: str = "legacy"
-    gateway_manifest_hash: str | None = None
 
 
 @dataclass(frozen=True)
@@ -209,32 +206,6 @@ class MCPTrustRegistry:
             rules = ",".join(finding.rule_id for finding in scan.findings)
             return MCPTrustDecision(False, "mcp.descriptor_injection", f"MCP descriptor rejected: {rules}")
         return MCPTrustDecision(True, "mcp.trusted_tool_allowed", "MCP tool is approved for this server")
-
-    def bind_gateway_manifest(
-        self,
-        *,
-        server_id: str,
-        manifest: MCPServerManifest,
-        profile_revision: str,
-        gateway_manifest_hash: str,
-    ) -> MCPTrustDecision:
-        record = self._records.get(server_id)
-        if record is None:
-            return MCPTrustDecision(False, "mcp.server_not_registered", "MCP server requires explicit approval", True)
-        if not record.approved:
-            return MCPTrustDecision(False, "mcp.server_not_approved", "MCP server is not approved", True)
-        if record.profile_revision != profile_revision:
-            return MCPTrustDecision(False, "mcp.profile_revision_changed", "MCP profile revision changed and requires reapproval", True)
-        if record.manifest_hash != manifest.manifest_hash():
-            return MCPTrustDecision(False, "mcp.manifest_hash_changed", "MCP manifest changed and requires reapproval", True)
-        if _MANIFEST_HASH.fullmatch(gateway_manifest_hash) is None:
-            return MCPTrustDecision(False, "mcp.gateway_manifest_invalid", "Gateway manifest hash is invalid", True)
-        self._records[server_id] = replace(record, gateway_manifest_hash=gateway_manifest_hash)
-        return MCPTrustDecision(True, "mcp.gateway_manifest_bound", "Gateway manifest hash is bound to local approval")
-
-    def gateway_manifest_hash_for(self, server_id: str) -> str | None:
-        record = self._records.get(server_id)
-        return None if record is None else record.gateway_manifest_hash
 
     def record_for(self, server_id: str) -> MCPServerTrustRecord | None:
         return self._records.get(server_id)
