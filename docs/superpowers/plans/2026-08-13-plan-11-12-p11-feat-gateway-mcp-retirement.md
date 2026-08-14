@@ -293,7 +293,7 @@ Expected: client real-dependency tests remain collected and default-deselected b
 - [ ] **Step 2: Run the retained-marker assertion.**
 
 ```powershell
-rg -n 'requires_mcp_(http|stdio)' pyproject.toml tests/integration/mcp/test_client_mcp_live.py tests/integration/mcp/test_client_sdk_real.py
+git grep -n -E 'requires_mcp_(http|stdio)' -- pyproject.toml tests/integration/mcp/test_client_mcp_live.py tests/integration/mcp/test_client_sdk_real.py
 ```
 
 Expected: known retained matches in `pyproject.toml` and the two client test files.
@@ -301,7 +301,7 @@ Expected: known retained matches in `pyproject.toml` and the two client test fil
 - [ ] **Step 3: Run the exact live-code residue census.**
 
 ```powershell
-rg -n '/v1/tools/mcp|discover_mcp|call_mcp|MCPUsageRecord|MCPProfileRegistry|GatewayMCPDependencies|MCPGatewayRunner|GatewayClientMCPRunner|bind_gateway_discovery|gateway_manifest_hash|bind_gateway_manifest|mcp_profiles|MCPDiscover(Request|Response)|MCPCall(Request|Response)|requires_mcp_context7|OPTIMUS_MCP_CONTEXT7_|optimus_gateway\\.mcp_|optimus\\.gateway\\.mcp_models' src tests tools
+git grep -n -E '/v1/tools/mcp|discover_mcp|call_mcp|MCPUsageRecord|MCPProfileRegistry|GatewayMCPDependencies|MCPGatewayRunner|GatewayClientMCPRunner|bind_gateway_discovery|gateway_manifest_hash|bind_gateway_manifest|mcp_profiles|MCPDiscover(Request|Response)|MCPCall(Request|Response)|requires_mcp_context7|OPTIMUS_MCP_CONTEXT7_|optimus_gateway\.mcp_|optimus\.gateway\.mcp_models' -- src tests tools
 ```
 
 Expected: no matches. This command intentionally includes `MCPProfileRegistry`, `GatewayMCPDependencies`, `optimus_gateway.mcp_*`, and `optimus.gateway.mcp_models` because modified server/bootstrap/runtime files are residue risks. It intentionally excludes `requires_mcp_http`, `requires_mcp_stdio`, `docs`, and `reports`.
@@ -309,8 +309,8 @@ Expected: no matches. This command intentionally includes `MCPProfileRegistry`, 
 - [ ] **Step 4: Run focused configuration/path assertions.**
 
 ```powershell
-rg -n 'requires_mcp_context7' pyproject.toml src tests tools
-rg --files src tests | rg 'test_gateway_mcp_context7_live\\.py|optimus_gateway/mcp_|optimus/gateway/mcp_models\\.py'
+git grep -n 'requires_mcp_context7' -- pyproject.toml src tests tools
+git ls-files src tests | Select-String 'test_gateway_mcp_context7_live\.py|optimus_gateway/mcp_|optimus/gateway/mcp_models\.py'
 ```
 
 Expected: no matches. The historical Context7 report is not part of these assertions.
