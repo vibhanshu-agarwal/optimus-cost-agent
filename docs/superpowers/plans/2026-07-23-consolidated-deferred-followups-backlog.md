@@ -135,7 +135,7 @@ status changes through the normal status workflow; the target plan's status is n
 | `P11-FU-9` | Client-Supplied ACP `mcpServers` Disposition | Closed | MEDIUM | Dedicated P11-FU-9 lane | PR #119 / `9a93137`; [closure evidence](../../../reports/p11-fu-9-client-mcp-closure-evidence.md) |
 | `P11-FU-10` | Complete ACP Error-Code Registry Audit | Open | MEDIUM | Future ACP audit | Acceptance criteria in entry |
 | `P11.7-FU-1` | Configurable Gateway request timeout for debug/investigation workflows | Closed | HIGH | Plan 11.9 | PR #123 / `d0253be` |
-| `P11.7-FU-2` | Gateway threaded-test flake under full-suite load | Open | MEDIUM | Plan 11.7 deferred follow-up | Acceptance criteria in entry |
+| `P11.7-FU-2` | Gateway threaded-test flake under full-suite load | Closed | MEDIUM | `P11-FU-6` Gateway harness custody | Batch B 2026-08-14; misfiled duplicate |
 | `P11.7-FU-3` | Committed `plan117_custody_relay.py` docstring `\ufffd` / em-dash corruption | Open | MEDIUM | Plan 11.7 deferred follow-up | Acceptance criteria in entry |
 | `P11-FU-11` | Plan 11.7 Retry Preflight and Live Session Proof | Partially implemented | HIGH | [Plan 11.7 retry-preflight amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md) | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
 | `P11-FU-12` | MCP OAuth 2.1 Lifecycle | Closed | MEDIUM | Retired `P11-FEAT-GATEWAY-MCP` | Plan 11.12; won't-do |
@@ -150,11 +150,12 @@ status changes through the normal status workflow; the target plan's status is n
 | `P11-FU-26` | Plan 11.8 Windows `WinError 10053` MCP test flake | Closed | MEDIUM | Retired `P11-FEAT-GATEWAY-MCP`; signal under `P11-FU-6` | Plan 11.12; obsolete-by-retirement |
 | `P11-FU-27` | Publication-Plan Historical-State Reconciliation | Open | MEDIUM | Future documentation-history reconciliation | Excluded publication plan; PR #113 / `verification.md` |
 | `P11-FU-28` | WSL2 `uv sync` shared-Windows-`.venv` destruction hazard | Open | MEDIUM | Future WSL2 test infrastructure | Batch A 2026-08-14 operating constraint |
+| `P11-FU-29` | Durable-approval identity instability on transient Git probe failure | Open | MEDIUM | Future durable-approval security design | Split from `P11-FU-5` by Batch B 2026-08-14; distinct from `P11-FU-18` ctime coalescing |
 | `P11-FU-17` | WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer | Open | MEDIUM | Future WSL2 test infrastructure | Acceptance criteria in entry |
 | `P11-FU-18` | Workspace-identity `ctime` coalescing fail-open | Open | MEDIUM | Future durable-approval security design | Batch A 2026-08-14 refile; acceptance criteria in entry |
 | `P11-FU-19` | WSL client-SDK operation-deadline supervisor race | Open | MEDIUM | Future WSL2 test reliability plan | Batch A 2026-08-14 re-triage; acceptance criteria in entry |
 | `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Open | MEDIUM | Future client-MCP runtime follow-up | Acceptance criteria in entry |
-| `P11-FU-21` | Linux/CI Subprocess Exit-Code Flake in Custody Relay EOF Test | Open | MEDIUM | Future Linux/CI test-infrastructure work | Acceptance criteria in entry; PR #128 guardrails flake |
+| `P11-FU-21` | Custody Relay Broken-Pipe Exit-Code Propagation Defect | Open | MEDIUM | Future custody-relay product behavior plan | Batch B 2026-08-14 refile from test infra; acceptance criteria in entry |
 | `P11.5-FU-2` | Consistent local env / Redis / Phoenix / Gateway startup for live runs | Closed | HIGH | Plan 11.6 | PR #97 / `dc9a080`; [operator runbook](../../runbooks/local-live-dependencies.md) |
 
 ## Settled risks and historical entries
@@ -441,27 +442,64 @@ SHAs, and close or explicitly disposition the freshness gap before the v1.0 cut.
 
 **Raised:** 2026-07-22 during Plan 9.99 Task 7 repository-wide verification.
 
+**Classification:** MISFILED as one combined item. The unreproduced Windows flake and the
+deterministically demonstrable durable-approval identity concern have separate mechanisms and
+must have separate custody.
+
 **Origin:** `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`, historical backlog section §861.
-The feasibility findings, including the no-reproduction result and the separately identified
-durable-approval identity concern, remain in that roadmap entry.
+The feasibility findings include both the no-reproduction result and the separately identified
+durable-approval identity concern. Batch B splits the latter into `P11-FU-29`; this entry retains
+only the rare Windows `DuplicateHandle` flake custody.
 
 **Designated slice:** Future Windows investigation; no plan number is allocated.
 
-**Acceptance criteria:** A future pickup must preserve the distinction between the unreproduced
-Windows flake and the actionable durable-approval identity concern, establish the applicable
-reproduction or non-reproduction disposition, and receive a reviewed custody decision before any
-fix or exclusion is claimed.
+**Acceptance criteria:** A future pickup must establish an applicable reproduction or durable
+non-reproduction disposition for the original Windows flake, and receive a reviewed custody
+decision before any fix or exclusion is claimed. It must not fold the independent `P11-FU-29`
+identity concern back into this test-infrastructure entry.
 
 **Status:** Open. Tracked, not yet scheduled; root cause is not established. The feasibility findings
 live in the roadmap entry, and no plan number was allocated. Deliberately not picked up after the
 feasibility pass.
 
+**Batch B split (2026-08-14):** The historical ten-run no-reproduction result remains evidence for
+the rare Windows flake, not a product fix. The roadmap's fault-injectable behavior in
+`_git_repository_root` / `_git_common_dir` is now owned by `P11-FU-29`. It is related to
+`P11-FU-18` because both feed the durable workspace-identity/approval contract, but is distinct:
+this path can spuriously invalidate approval when a Git probe fails (fail closed), whereas
+`P11-FU-18` can miss a real in-place change when `ctime` coalesces (fail open).
+
+### P11-FU-29: Durable-approval identity instability on transient Git probe failure
+
+**Raised:** 2026-08-14 by Batch B triage, split from `P11-FU-5`'s historical feasibility findings.
+
+**Classification:** Durable-approval workspace-identity security design concern; not a test flake.
+
+**Origin:** `src/optimus/acp/trusted_paths.py` catches `OSError` from
+`_git_repository_root` / `_git_common_dir` and returns `None`. Those values feed the workspace
+identity digest that names durable approval. The roadmap records that fault injection of a transient
+Windows `WinError 6` makes an otherwise unchanged workspace acquire a different digest and therefore
+produce a spurious `NO_APPROVAL`.
+
+**Designated slice:** Future durable-approval/workspace-identity security design, coordinated with
+but not merged into `P11-FU-18`; no plan number is allocated.
+
+**Acceptance criteria (draft):** Define the identity contract for transient Git-probe failure,
+including whether to fail closed without changing identity, how to retain diagnostic evidence, and
+how any digest/migration behavior affects already-issued approvals. Prove the selected behavior by
+fault injection. Do not treat a clean rerun of the unrelated Windows handle flake as resolution.
+
+**Status:** Open. Tracked as a security-design concern. It is a sibling of `P11-FU-18`, not the
+same issue: `P11-FU-29` is false change / spurious reauthorization; `P11-FU-18` is missed change /
+fail-open revalidation.
+
 ### P11-FU-6: Gateway `test_server` Full-Suite Port/Teardown Flake
 
 **Raised:** 2026-07-26 during Plan 11.1 Task 7 final sign-off (PR #85 / `P11-FEAT-GATEWAY-CORE`).
 
-**Origin:** Intermittent failure of
-`tests/unit/optimus_gateway/test_server.py::test_tools_routes_remain_not_found` observed once in
+**Origin:** Intermittent failure of the predecessor of current
+`tests/unit/optimus_gateway/test_server.py::test_tools_routes_return_not_found_when_dependencies_are_not_configured`
+(`test_tools_routes_remain_not_found` at raising) observed once in
 five consecutive full-suite runs (`uv run --frozen pytest -q` and the same suite under `--cov`).
 The same test passed every isolation run (single node and the full 24-test `test_server.py` file).
 Not connected to Plan 11.1 CORE-route feature correctness — focused and live CORE evidence stayed
@@ -513,6 +551,19 @@ previously tracked under `P11-FU-26` is transferred here because Plan 11.12 reti
 transport surface. This entry remains open and continues to own Gateway `test_server` port/teardown
 flake custody. No production retry or safety weakening was added.
 
+**Batch B recurrence (2026-08-14):** On current `origin/main` base `da2fc78`, 20 Windows
+`pytest tests/unit -q` processes produced 18 clean suites and two unrelated suite failures. The
+obsolete predecessor node did not exist and therefore had 0/20 hits; its current successor above
+failed once (1/20, 5%) with `ConnectionAbortedError: [WinError 10053]` in
+`HTTPConnection.getresponse()` while requesting one of its tool routes. The same
+`_start_server()` / `_stop_server()` real `ThreadingHTTPServer` harness is implicated, but this
+sample does not establish whether readiness, shutdown, or server-thread exception propagation is
+the root cause.
+
+**Classification (Batch B):** REPRODUCED test-infrastructure flake; needs a written Gateway
+harness plan. Preserve the route assertions. Do not add retries, widen request timing, or weaken
+production safety behavior. `P11.7-FU-2` is duplicate custody and is merged here.
+
 ### P11-FU-7: Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test
 
 **Raised:** 2026-07-27 during the Plan 11.3 Task 1 independent review (operator Vibhanshu).
@@ -556,6 +607,13 @@ diagnosed as coverage/trace instrumentation timing sensitivity; do not reopen AC
 debugging from scratch when this entry is picked up.
 
 **Recurrence:** 2026-08-10 — ACP NDJSON sanitization flake reproduced in the full suite only (passed isolated and in-file); same coverage/`sys.settrace` timing diagnosis; do not widen `P11-FU-6` or merge these entries.
+
+**Batch B recurrence (2026-08-14):** Five Windows full-suite runs under `pytest --cov -q`
+produced four clean passes and one failure of
+`test_serve_ndjson_sanitizes_request_processing_response_and_stderr` (1/5, 20%). This confirms
+the coverage-specific flake at the bounded sample; it does not establish general suite-load as a
+necessary condition. **Classification (Batch B):** REPRODUCED test-infrastructure flake; retain the
+controlled timing/readiness-seam plan and do not widen either existing one-second deadline.
 
 ### P11.5-FU-1: Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics
 
@@ -783,19 +841,18 @@ successful ~16s response on the identical fixture/task, same worktree).
 ### P11.7-FU-2: Gateway threaded-test flake under full-suite load
 
 **Raised:** 2026-08-02 during Plan 11.7 origin-A fixture v2 Task 3 review prep.
-**Classification:** Test-infra flake; not a Task 3 blocker.
+**Classification:** MISFILED duplicate of `P11-FU-6`; not a Task 3 blocker.
 
 **Origin:** Pre-existing Gateway threaded-test instability observed under full `tests/unit`
 suite load (not introduced by origin-A fixture v2 supersession/ledger work).
 
-**Designated custody:** `P11-FEAT-ZED-RESUME` / Plan 11.7 deferred follow-ups until scheduled;
-coordinate with existing Gateway flake entries (`P11-FU-5` / `P11-FU-6`) if root cause overlaps.
+**Designated custody:** `P11-FU-6` only. Batch B reproduced the same current `test_server.py`
+ThreadingHTTPServer/`WinError 10053` class under full-suite load; this entry had no independently
+identified node or mechanism.
 
-**Acceptance criteria (draft):** Reproduce under controlled full-suite vs narrow-suite
-isolation; classify race vs shared-fixture contamination; harden or quarantine with a named
-owning plan without weakening live Gateway evidence tiers.
+**Disposition (2026-08-14):** Merge into `P11-FU-6`; do not create a second Gateway harness plan.
 
-**Status:** Open. Tracked, not yet scheduled. Does not block Task 3 classifications.
+**Status:** Closed. Misfiled duplicate; `P11-FU-6` retains the live Gateway harness custody.
 
 ### P11.7-FU-3: Committed `plan117_custody_relay.py` docstring `\ufffd` / em-dash corruption
 
@@ -1271,13 +1328,12 @@ gap; disposition-never-opens-transport constraint from P11-FU-9 design §3.
 **Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Task 6 may close with the
 fail-closed seam + this named custody entry. Not an undisclosed residual.
 
-### P11-FU-21: Linux/CI Subprocess Exit-Code Flake in Custody Relay EOF Test
+### P11-FU-21: Custody Relay Broken-Pipe Exit-Code Propagation Defect
 
 **Raised:** 2026-08-11 during PR #128 guardrails / `clean-environment-recheck` on
 `ubuntu-latest` (operator Vibhanshu / Cursor).
 
-**Classification:** Test-infra flake; not a product defect in the evidence-handoff risk-bearing
-slice.
+**Classification:** MISFILED product bug; not a test-infrastructure flake.
 
 **Origin:**
 `tests/unit/tools/test_plan117_custody_relay.py::test_eof_either_direction_and_child_first_exit`
@@ -1292,30 +1348,29 @@ change** was green — no durable local reproduction.
 pre-existing on `main` (`128af65` is an ancestor of `origin/main`). The commit immediately
 before the failure was docs-only (+25 lines of markdown).
 
-**Context worth pinning:** the most recent change to `tools/plan117_custody_relay.py` was
-`128af65` ("bind Unix relay control sockets under short temp paths") — a Linux socket-path fix
-in the same subsystem now flaking on Linux. Investigate whether relay child teardown races the
-exit-code propagation under CI-runner contention.
+**Batch B root cause (2026-08-14):** In the observed child-first-exit race, the child correctly
+exits `7` and the parent-to-child forwarding task then receives the normal `BrokenPipeError` caused
+by writing its remaining input to the already-exited child. `run_relay()` records that exception,
+sets `REASON_BROKEN_PIPE`, terminates/cleans up, and unconditionally returns `1` whenever a reason
+code exists. The relay therefore overwrites the child exit code rather than the test misreading it.
 
 **Related prior art — do not merge:** Distinct from `P11-FU-5` (Windows-specific WinError 6/50
 handle duplication) and from `P11.7-FU-3` (docstring `\ufffd` / em-dash corruption in the same
-file). Neither entry covers this Linux/CI exit-code race.
+file). Neither entry covers this relay behavior defect.
 
-**Designated slice:** Future Linux/CI test-infrastructure reliability work; no plan number is
-allocated (lazy numbering — assign only if/when picked up for scoping).
+**Designated slice:** Future custody-relay product behavior plan; no plan number is allocated.
 
-**Acceptance criteria:**
-
-- Reproduce under CI-like contention (or record a durable non-reproduction disposition);
-- Identify whether the child truly exits `1` or the harness misreads the exit code;
-- Apply a narrowly scoped fix without weakening the EOF / exit-code assertions.
+**Acceptance criteria:** Define the contract for expected child-first exit and the error precedence
+between benign post-exit pipe closure and true relay failure; preserve real relay errors; implement
+only after a reviewed product plan; and retain the EOF / exit-code assertions as proof.
 
 **Evidence anchors:** PR #128 CI run that failed then passed on re-run with no code change;
 `tests/unit/tools/test_plan117_custody_relay.py::test_eof_either_direction_and_child_first_exit`;
 `tools/plan117_custody_relay.py`; precursor Linux socket-path fix `128af65`.
 
-**Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Root cause not yet
-established beyond the one-shot CI observation.
+**Status:** Open. Tracked as a product bug awaiting a written plan. Batch B reproduced the exact
+`7` -> `1` transition twice in 200 focused WSL2 runs (1%); no test suppression or code change was
+made.
 
 ### P11.5-FU-2: Consistent local env / Redis / Phoenix / Gateway startup for live runs
 
