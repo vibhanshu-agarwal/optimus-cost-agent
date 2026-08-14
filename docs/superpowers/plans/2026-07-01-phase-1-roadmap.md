@@ -1044,10 +1044,12 @@ feature and follow-up status.
 | Plan 11.5 | Closed | PR #95 |
 | Plan 11.6 | Merged | PR #97 |
 | Plan 11.7 | Partially implemented | blocked |
-| Plan 11.8 | Partially implemented | 27 of 46 checks; PR #116; PR #118 |
+| Plan 11.8 | Historical | Plan 11.12 retirement; precursor PR #116; PR #118 |
 | Plan 11.9 | Closed | PR #123; PR #124 |
 | Plan 11.10 | Closed | PR #130 |
-| Plan 11.11 | Closed | PR #134; PR #135 |
+| Plan 11.11 | Historical | Plan 11.12 retirement; precursor PR #134; PR #135 |
+| Plan 11.12 | Retired | Gateway MCP code removal and living-status custody |
+| Plan 11.13 | Required before REGISTRY / v1.0 | Reverse HLD v2.17, LLD v2.40, Guardrails v1.2, Test Strategy v1.6, and the amendment source tree |
 
 **Milestone charter:** Plan 11 is the v1.0 milestone. `P11-FEAT-GATEWAY-CORE` (Plan 11.1)
 closes the Gateway core and observability-route gate; the ratified TOOLS and COST-OBS identities
@@ -1066,10 +1068,8 @@ discovered during Plan 11 feature development join that same backlog. `P11-FU-2`
 `P11-FEAT-GATEWAY-TOOLS` for the unimplemented package/advisory capability. `P11-FU-3` owned the
 conditional route/typed-contract publication gate for `P11-FEAT-GATEWAY-MCP`; it closed on
 2026-08-06 after the charter amendment and all four amended PDFs were approved and published.
-`P11-FU-12` through
-`P11-FU-16` separately own MCP OAuth lifecycle, deferred capabilities/long-lived interaction,
-registry discover-and-connect, tool-search/context minimization, and reverse
-research-to-documentation freshness. `P9.85-FU-3` remains parked and undecided outside Plan 11.1's
+`P11-FU-12` through `P11-FU-15` and `P11-FU-22` are closed won't-do by Plan 11.12's Gateway MCP
+retirement; `P11-FU-16` separately owns reverse research-to-documentation freshness. `P9.85-FU-3` remains parked and undecided outside Plan 11.1's
 initial scope; revisit it only if Plan 11 Gateway work organically reaches budget or cost policy.
 
 **Completion gate:** Complete `P11-FEAT-GATEWAY-CORE` and its observability route as Plan 11.1's
@@ -1099,11 +1099,12 @@ approval-time draft labels and unchecked boxes; the living consolidated pool and
 checkpoints/seals own current execution status. The existing plan-only Redis state store is not
 sufficient by assumption. The charter and ratified feature sequencing map remain recorded in
 [`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md).
-`P11-FEAT-GATEWAY-MCP` has a bounded v1 static-profile, dual-transport, tools-only design, and its
-`P11-FU-3` route/typed-contract gate closed on 2026-08-06 after the charter amendment and all four
-amended PDFs were approved and published. It remains distinct from client-supplied ACP `mcpServers` under
+`P11-FEAT-GATEWAY-MCP` is retired by Plan 11.12. Plan 11.8 and Plan 11.11 are historical precursor
+work. Plan 11.13 must reverse HLD v2.17, LLD v2.40, Guardrails v1.2, Test Strategy v1.6, and the
+amendment source tree before `P11-FEAT-REGISTRY` or the v1.0 cut. It remains distinct from client-supplied ACP `mcpServers` under
 `P11-FU-9` (all nine tasks closed through PR #119 / merge `9a93137`; deferred pinning/HTTP-SSE
-relaxation/authenticated-upstream/Plan 11.8 flake custody remain in the consolidated backlog),
+relaxation/authenticated-upstream remain in the consolidated backlog; Plan 11.8 flake custody now
+lives under still-open `P11-FU-6`),
 `P11-FEAT-ZED-RESUME` session custody, and ACP registry publication under
 `P11-FEAT-REGISTRY`. The ACP registry has a public authoritative process; pickup must pin and
 execute against the then-current validator/CI behavior before freezing registration scope. The

@@ -2,16 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
-from optimus.gateway.client import GatewayClient
-from optimus.gateway.mcp_models import (
-    MCPCallRequest,
-    MCPCallResponse,
-    MCPDiscoverRequest,
-    MCPDiscoverResponse,
-    namespace_tool_name,
-)
 from optimus.guardrails.mcp_trust import (
     MCPConfigIngestionGuard,
     MCPDescriptorExposureGuard,
@@ -27,23 +19,6 @@ from optimus.guardrails.prompt_injection import ConfigTrustScanner
 from optimus.runtime.modes import ExecutionMode
 
 MCPToolRunner = Callable[[str, str, dict[str, Any]], dict[str, Any]]
-
-
-class MCPGatewayRunner(Protocol):
-    def discover(self, request: MCPDiscoverRequest) -> MCPDiscoverResponse: ...
-
-    def call(self, request: MCPCallRequest) -> MCPCallResponse: ...
-
-
-class GatewayClientMCPRunner:
-    def __init__(self, *, client: GatewayClient) -> None:
-        self._client = client
-
-    def discover(self, request: MCPDiscoverRequest) -> MCPDiscoverResponse:
-        return self._client.discover_mcp(request=request)
-
-    def call(self, request: MCPCallRequest) -> MCPCallResponse:
-        return self._client.call_mcp(request=request)
 
 
 class MCPRuntimeBlocked(RuntimeError):
@@ -116,22 +91,6 @@ class MCPRuntimeTrustContext:
     def expose_descriptors(self, *, server_id: str, manifest: MCPServerManifest) -> tuple[MCPToolDescriptor, ...]:
         return self.exposure_guard.expose_trusted_descriptors(server_id=server_id, manifest=manifest)
 
-    def bind_gateway_discovery(self, *, manifest: MCPServerManifest, discovery: MCPDiscoverResponse) -> MCPServerTrustRecord:
-        if discovery.profile_id != manifest.server_id:
-            raise MCPRuntimeBlocked("mcp.gateway_profile_mismatch: discovery profile does not match local server")
-        decision = self.registry.bind_gateway_manifest(
-            server_id=manifest.server_id,
-            manifest=manifest,
-            profile_revision=discovery.profile_revision,
-            gateway_manifest_hash=discovery.manifest_hash,
-        )
-        if not decision.allowed:
-            raise MCPRuntimeBlocked(f"{decision.rule_id}: {decision.reason}")
-        record = self.registry.record_for(manifest.server_id)
-        if record is None:
-            raise MCPRuntimeBlocked("mcp.gateway_manifest_unbound: local approval disappeared")
-        return record
-
     def execute_tool(
         self,
         *,
@@ -144,8 +103,9 @@ class MCPRuntimeTrustContext:
         arguments: dict[str, Any],
         execution_mode: ExecutionMode,
         approval_granted: bool,
-        runner: MCPToolRunner | MCPGatewayRunner,
-    ) -> dict[str, Any] | MCPCallResponse:
+        runner: MCPToolRunner,
+    ) -> dict[str, Any]:
+        del request_id
         binding = self.registry.validate_tool_call(
             server_id=manifest.server_id,
             manifest=manifest,
@@ -169,28 +129,4 @@ class MCPRuntimeTrustContext:
         )
         if result.verdict is not PreToolVerdict.ALLOW:
             raise MCPRuntimeBlocked(f"{result.rule_id}: {result.reason}")
-        if hasattr(runner, "call"):
-            gateway_manifest_hash = self.registry.gateway_manifest_hash_for(manifest.server_id)
-            if gateway_manifest_hash is None:
-                raise MCPRuntimeBlocked("mcp.gateway_manifest_unbound: typed calls require Gateway discovery binding")
-            request = MCPCallRequest(
-                run_id=run_id,
-                session_id=session_id,
-                request_id=request_id or f"{run_id}:{manifest.server_id}:{tool_name}",
-                profile_id=manifest.server_id,
-                profile_revision=profile_revision,
-                manifest_hash=gateway_manifest_hash,
-                tool_name=namespace_tool_name(profile_id=manifest.server_id, tool_name=tool_name),
-                arguments=arguments,
-            )
-            response = runner.call(request)
-            if not isinstance(response, MCPCallResponse):
-                raise MCPRuntimeBlocked("mcp.gateway_response_invalid: typed MCP response required")
-            if (
-                response.binding.profile_id != request.profile_id
-                or response.binding.profile_revision != request.profile_revision
-                or response.binding.manifest_hash != request.manifest_hash
-            ):
-                raise MCPRuntimeBlocked("mcp.gateway_binding_drift: Gateway response binding changed")
-            return response
         return runner(manifest.server_id, tool_name, arguments)

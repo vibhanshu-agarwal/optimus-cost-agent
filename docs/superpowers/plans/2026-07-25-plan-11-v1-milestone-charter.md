@@ -57,9 +57,9 @@ parked `P9.85-FU-3` budget-enforcement question is not pulled into this charter'
 | `P11-FEAT-GATEWAY-CORE` | Gateway core and `/v1/observability/traces` route | Plan 11.1 / Plan 11.4 | Closed through PR #85 and PR #91. |
 | `P11-FEAT-GATEWAY-TOOLS` | Gateway web/evidence tools and real provider adapters | Plan 11.2 / Plan 11.3 | Closed through PR #88. |
 | `P11-FEAT-GATEWAY-COST-OBS` | Gateway normalized cost, observability, and local startup consolidation | Plan 11.5 / Plan 11.6 | Plan 11.5 closed through PR #95; Plan 11.6 merged through PR #97. |
-| `P11-FEAT-GATEWAY-MCP` | Gateway MCP tools-only brokering through static profiles over remote HTTP and Docker-contained stdio, with trust-registry integration and typed request/response contract | Plan 11.8 | Partially implemented: 27 of 46 checks through PR #116 and PR #118. |
+| `P11-FEAT-GATEWAY-MCP` | Gateway MCP tools-only brokering through static profiles over remote HTTP and Docker-contained stdio, with trust-registry integration and typed request/response contract | Plan 11.8 / Plan 11.11 (historical); Plan 11.12 retirement; Plan 11.13 PDF reversal | Retired by Plan 11.12. Plan 11.13 must reverse the authoritative PDFs/source tree before `P11-FEAT-REGISTRY` or the v1.0 cut. |
 | `P11-FEAT-ZED-RESUME` | Zed integration fixes, ACP session resume, and the configurable Gateway-timeout follow-up | Plan 11.7 / Plan 11.9 | Plan 11.7 is partially implemented and blocked; Plan 11.9 closed `P11.7-FU-1` through PR #123 and PR #124. |
-| `P11-FEAT-REGISTRY` | ACP registry validation, registration, and v1.0 cut | Last primary Plan 11 slice (holding position) | Required release slice; reassess 11.x-last versus a split outward-publication lane in 13.x after the consolidated open-work pool closes. |
+| `P11-FEAT-REGISTRY` | ACP registry validation, registration, and v1.0 cut | Last primary Plan 11 slice (holding position) | Required release slice; Plan 11.13 must land first. Reassess 11.x-last versus a split outward-publication lane in 13.x after the consolidated open-work pool closes. |
 | `P11-FEAT-IDE` | IDE-specific testing if registry registration does not surface or satisfy multi-IDE expectations | Conditional | Conditional; not an unconditional v1.0 gate. |
 
 This map is the charter's current execution snapshot. The detailed feature sections below retain
@@ -114,6 +114,11 @@ no allocated or amortized per-request charge, and LangSmith is not part of the a
 Plan 11.x number is assigned at pickup. Neither identity expands Plan 11.1's implementation scope.
 
 ## P11-FEAT-GATEWAY-MCP - Gateway MCP tool-call brokering
+
+Living status: retired by Plan 11.12. Plan 11.8 and Plan 11.11 are historical precursor work.
+Plan 11.13 must reverse HLD v2.17, LLD v2.40, Guardrails v1.2, Test Strategy v1.6, and the
+amendment source tree before `P11-FEAT-REGISTRY` or the v1.0 cut. The ratification-time design
+requirements below are retained as historical charter text.
 
 `P11-FEAT-GATEWAY-MCP` is the ratified owner for a bounded v1 MCP tool-call broker through the
 Gateway. Its v1 scope is tools-only method/result/content handling through operator-provisioned,
@@ -278,10 +283,10 @@ The v1.0 Definition of Done is therefore:
 - Plan 12's context-window optimization and intelligent selection remain post-v1.0 v1.x work.
 - `P9.85-FU-3` remains outside the initial Plan 11 scope pending the Gateway budget authority
   decision.
-- MCP Gateway brokering remains outside the CORE and TOOLS scopes. `P11-FEAT-GATEWAY-MCP` carries
-  the bounded tools-only, static-profile, dual-transport v1 design. Its `P11-FU-3` route/contract
-  gate closes only after this amendment and all four amended PDFs are approved and published; neither
-  catalog automation nor client-supplied ACP `mcpServers` is part of that Gateway feature.
+- MCP Gateway brokering remains outside the CORE and TOOLS scopes. `P11-FEAT-GATEWAY-MCP` is
+  retired by Plan 11.12. Plan 11.13 must reverse the authoritative PDFs/source tree before
+  `P11-FEAT-REGISTRY` or the v1.0 cut; neither catalog automation nor client-supplied ACP
+  `mcpServers` is part of that retired Gateway feature.
 - The **Windows Subprocess Handle-Duplication Flake, WinError 6/50** remains explicitly excluded
   from the initial Plan 11 feature scope and v1.0 gate. The `P11-FU-5` entry in the consolidated open-work
   pool owns its future Windows investigation state; the no-reproduction result, lack of a
