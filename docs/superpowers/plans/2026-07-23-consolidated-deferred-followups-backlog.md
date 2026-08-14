@@ -149,9 +149,10 @@ status changes through the normal status workflow; the target plan's status is n
 | `P11-FU-25` | Authenticated client-owned MCP upstream evidence | Open | MEDIUM | Future client-MCP evidence follow-up | Acceptance criteria in entry |
 | `P11-FU-26` | Plan 11.8 Windows `WinError 10053` MCP test flake | Closed | MEDIUM | Retired `P11-FEAT-GATEWAY-MCP`; signal under `P11-FU-6` | Plan 11.12; obsolete-by-retirement |
 | `P11-FU-27` | Publication-Plan Historical-State Reconciliation | Open | MEDIUM | Future documentation-history reconciliation | Excluded publication plan; PR #113 / `verification.md` |
+| `P11-FU-28` | WSL2 `uv sync` shared-Windows-`.venv` destruction hazard | Open | MEDIUM | Future WSL2 test infrastructure | Batch A 2026-08-14 operating constraint |
 | `P11-FU-17` | WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer | Open | MEDIUM | Future WSL2 test infrastructure | Acceptance criteria in entry |
-| `P11-FU-18` | WSL2 directory `ctime` timestamp-coalescing test flake | Open | MEDIUM | Future WSL2 test infrastructure | Acceptance criteria in entry |
-| `P11-FU-19` | WSL full-suite load flake in client SDK operation-deadline unit test | Open | MEDIUM | Future WSL2 test infrastructure | Acceptance criteria in entry |
+| `P11-FU-18` | Workspace-identity `ctime` coalescing fail-open | Open | MEDIUM | Future durable-approval security design | Batch A 2026-08-14 refile; acceptance criteria in entry |
+| `P11-FU-19` | WSL client-SDK operation-deadline supervisor race | Open | MEDIUM | Future WSL2 test reliability plan | Batch A 2026-08-14 re-triage; acceptance criteria in entry |
 | `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Open | MEDIUM | Future client-MCP runtime follow-up | Acceptance criteria in entry |
 | `P11-FU-21` | Linux/CI Subprocess Exit-Code Flake in Custody Relay EOF Test | Open | MEDIUM | Future Linux/CI test-infrastructure work | Acceptance criteria in entry; PR #128 guardrails flake |
 | `P11.5-FU-2` | Consistent local env / Redis / Phoenix / Gateway startup for live runs | Closed | HIGH | Plan 11.6 | PR #97 / `dc9a080`; [operator runbook](../../runbooks/local-live-dependencies.md) |
@@ -1099,12 +1100,30 @@ resolution) — do not conflate root causes across these entries at pickup.
 blocking any plan closure — recorded as a known, accurately-disclosed environment gap each time it
 recurs, per [[wsl2-local-linux-ci-substitute]]'s "no silent omission" rule.
 
-### P11-FU-18: WSL2 directory `ctime` timestamp-coalescing test flake
+### P11-FU-28: WSL2 `uv sync` shared-Windows-`.venv` destruction hazard
+
+**Raised:** 2026-08-14 during corrected Batch A triage on `origin/main`.
+
+**Classification:** Test-infrastructure operator hazard; not a product-code defect.
+
+**Origin:** A WSL2 `uv sync` against a Windows-hosted worktree can select and replace the
+repository's shared Windows `.venv`, corrupting the Windows environment and making the WSL
+evidence non-isolated.
+
+**Required mitigation:** Every WSL2 `uv` command for a Windows-hosted worktree must set
+`UV_PROJECT_ENVIRONMENT=/tmp/<task>-venv`. If the shared Windows environment is clobbered,
+restore it from Windows with `uv sync --frozen --extra dev`.
+
+**Status:** Open. Documented operating constraint beside P11-FU-17. WSL evidence reports must name
+the isolated environment used. No source change is required.
+
+### P11-FU-18: Workspace-identity `ctime` coalescing fail-open
 
 **Raised:** 2026-08-06 during the MCP Gateway architecture amendment publication plan's Task 12 final
 WSL2 suite rerun.
 
-**Classification:** Test-infra environment flake; not a code defect.
+**Classification:** Durable-approval workspace-identity security concern; prior test-infrastructure
+classification was misfiled.
 
 **Origin:**
 `tests/unit/acp/test_trusted_paths.py::TestWorkspaceIdentityRevalidation::test_revalidation_fails_after_workspace_directory_metadata_change`
@@ -1113,8 +1132,10 @@ workspace-identity digest `resolve_workspace_identity`/`revalidate_workspace_ide
 path-trust revalidation in `src/optimus/acp/trusted_paths.py`), with no sleep between the two
 `stat()` calls. A direct filesystem probe in this WSL2 environment confirmed `st_ctime_ns` can read
 identically across two `stat()` calls that bracket a real file-creation write, despite genuine
-elapsed wall-clock time between them — a timestamp-coalescing artifact of this specific WSL2 /
-virtual-disk setup, not of the code under test.
+elapsed wall-clock time between them. Because `resolve_workspace_identity()` binds that value into
+the durable workspace identity digest, and `revalidate_workspace_identity()` accepts an unchanged
+digest, the coalescing can fail open for an in-place workspace-directory change whose path,
+device, inode, and Git topology remain unchanged.
 
 **Reproduction:** Nondeterministic. Original isolation probe (2026-08-06): 4 passed, 1 failed in 5
 standalone runs. Refined (2026-08-07 Task 7 review): 2 failures in 5 repeated isolated runs on
@@ -1132,28 +1153,25 @@ pickup even though both surfaced during the same WSL2 gate runs.
 (`P11-FU-5`, `P11-FU-6`, `P11-FU-7`) in spirit (test asserts on OS-timestamp/scheduling behavior
 without a sleep) but on a different platform and different underlying primitive.
 
-**Designated slice:** Future WSL2/test-infrastructure environment work; no plan number is allocated
-(lazy numbering — assign only if/when picked up for scoping).
+**Designated slice:** Future durable-approval/workspace-identity security design. It must define a
+cross-filesystem tamper-detection invariant before any production change; no plan number is
+allocated (lazy numbering — assign only if/when picked up for scoping).
 
 **Acceptance criteria (draft — refine at pickup):**
 
-- Reproduce the nondeterminism under controlled reruns (isolation and full-suite) before attempting
-  a fix; do not treat a single passing rerun as resolution.
-- Distinguish this from `P11-FU-17` explicitly in any pickup — different mechanism, different fix
-  shape.
-- A reviewed fix must not weaken `resolve_workspace_identity`/`revalidate_workspace_identity`'s
-  actual security property (detecting workspace directory tampering via metadata change); acceptable
-  directions include a bounded retry/settle window in the *test* (not production code) or asserting
-  on a coarser, more reliable signal already captured in the identity digest.
-- Confirm whether this affects only WSL2/virtual-disk environments or also native Linux CI, since
-  that determines whether it is purely a local-dev-environment concern.
+- Preserve fail-closed revalidation when an authorized workspace changes in place, across the
+  supported filesystem matrix; a passing rerun cannot establish this property.
+- Design and review a reliable replacement or augmentation for the weak metadata signal. Do not use
+  sleeps, retries, or marker skips to conceal it.
+- Define migration and durable-approval invalidation behavior before changing the identity digest.
 
 **Evidence anchors:** MCP Gateway architecture amendment publication plan Task 12 review notes;
 `tests/unit/acp/test_trusted_paths.py::TestWorkspaceIdentityRevalidation::test_revalidation_fails_after_workspace_directory_metadata_change`;
 `src/optimus/acp/trusted_paths.py` (`resolve_workspace_identity`, `revalidate_workspace_identity`).
 
-**Status:** Open. Tracked, not yet scheduled. Root cause diagnosed as environment-level timestamp
-coalescing, not a security or production-code defect. Not blocking any plan closure.
+**Status:** Open. Tracked as a security-design concern. The filesystem behavior is environmental,
+but the current identity contract can fail open because it relies on that behavior; it is therefore
+not closable as a test flake.
 
 **Recurrence:** 2026-08-07 during P11-FU-9 Task 4 independent review (operator + Cursor WSL full
 `tests/unit` runs). The same node failed intermittently under full-suite WSL/DrvFs load and passed
@@ -1164,35 +1182,38 @@ in 5 repeated standalone runs on WSL2, not only under full-suite load. Character
 from "full-suite-only" to "standalone-reproducible ctime coalescing race"; still not a product defect
 and still unrelated to Task 7's file list.
 
-### P11-FU-19: WSL full-suite load flake in client SDK operation-deadline unit test
+### P11-FU-19: WSL client-SDK operation-deadline supervisor race
 
 **Raised:** 2026-08-07 during P11-FU-9 Task 4 independent review (operator Vibhanshu / Cursor).
 
-**Classification:** Test-infra load flake; not a Task 4 or production SDK defect.
+**Classification:** Test-harness/supervisor timing race; requires a written reliability plan. Not a
+Task 4 feature regression.
 
 **Origin:**
 `tests/unit/mcp/test_client_sdk.py::test_operation_deadline_is_enforced` uses a 0.2s
-`operation_timeout_seconds` budget around a deliberately slow fake `initialize`. Under full
-`tests/unit` load on WSL2 against a Windows-mounted worktree it intermittently fails; the same
-node passes standalone. Observed alongside the known `P11-FU-17` git-path failure and the
-`P11-FU-18` trusted-paths recurrence on alternating full-suite runs — different pair of failures
-each time, load-induced rather than a Task 4 regression.
+`operation_timeout_seconds` budget around a deliberately slow fake `initialize`. Corrected Batch A
+triage on a fresh `origin/main` worktree reproduced 2 failures in 100 standalone WSL2 runs (2%).
+Both failures were `MCPSupervisorError(code="SUBMIT_TIMEOUT")` from the outer
+`future.result(timeout=1.2)`, rather than the expected `ClientMcpSdkError(code="OPERATION_TIMEOUT")`
+from the inner `asyncio.wait_for(..., timeout=0.2)`. One full `tests/unit` WSL2 run passed this
+node; its only two failures were the known P11-FU-17 native-Git-pointer tests.
 
-**Suspected cause:** Tight wall-clock timeout under suite scheduling / DrvFs I/O pressure, same
-general class as `P11-FU-7` (deadline vs harness load) but on WSL full-suite rather than Windows
-coverage/`sys.settrace`. Not evidence of a broken `MCPAsyncSupervisor` / `ClientMcpSdkAdapter`
-deadline path when the focused Task 3/4 selectors are green.
+**Mechanism:** The cross-thread supervisor's outer 1.2s wait can expire before the event-loop task
+reaches its inner 0.2s timeout. This makes host scheduling the test oracle and exposes either a
+supervisor-start/readiness race or an inadequately controlled deadline seam. It is not evidence
+that the production 30s default deadline should change.
 
 **Designated slice:** Future WSL2/test-infrastructure reliability work; no plan number is
 allocated (lazy numbering — assign only if/when picked up for scoping).
 
 **Acceptance criteria (draft — refine at pickup):**
 
-- Reproduce under full-suite WSL load vs isolation before changing production deadlines.
-- Prefer a narrowly scoped test-harness remedy (e.g. slightly more tolerant fake sleep/timeout
-  ratio under load) that preserves the assertion that over-budget opens raise
-  `ClientMcpSdkError(code="OPERATION_TIMEOUT")`.
-- Do not weaken production default 30s operation deadlines to paper over the flake.
+- Preserve the assertion that an over-budget initialize raises
+  `ClientMcpSdkError(code="OPERATION_TIMEOUT")`, while removing host scheduling as its oracle.
+- Design a controlled supervisor-readiness/deadline test seam; do not widen the 0.2s test budget
+  merely to reduce the hit rate, and do not change the production 30s default deadline.
+- Establish whether the controlled seam belongs solely in the test harness or requires a
+  production supervisor readiness contract before implementation.
 - Keep custody distinct from `P11-FU-7` (Windows coverage/trace) and `P11-FU-18` (ctime coalescing).
 
 **Evidence anchors:** P11-FU-9 Task 4 review notes (2026-08-07);
