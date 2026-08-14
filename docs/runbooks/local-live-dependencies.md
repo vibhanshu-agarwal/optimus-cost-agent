@@ -195,6 +195,48 @@ Restore any renamed `.env` / operator `.env.gateway` backups only if you moved t
 
 ---
 
+## 12. WSL2 Linux/CI-parity gates
+
+Run Linux/CI-parity gates from a **native WSL clone on the WSL ext4 filesystem**, such as
+`~/src/optimus-cost-agent`. Do not use a Windows-created linked worktree under `/mnt/d` for those
+gates: its Windows `gitdir: D:/...` pointer cannot be interpreted by native `/usr/bin/git` and
+invalidates POSIX Git evidence.
+
+```bash
+git clone --branch main --single-branch https://github.com/vibhanshu-agarwal/optimus-cost-agent.git ~/src/optimus-cost-agent
+cd ~/src/optimus-cost-agent
+git rev-parse HEAD
+git rev-parse origin/main
+command -v git                 # expected: /usr/bin/git
+uv sync --frozen --extra dev   # native clone creates its own .venv
+uv run pytest tests/unit -q
+```
+
+Do not set `UV_PROJECT_ENVIRONMENT` for the native clone unless a task explicitly needs a different
+Linux environment: its local `.venv` is isolated from Windows by construction. The verified
+`P11-FU-17` proof used this configuration and passed the full unit suite, including the two
+Git-calling pool-hygiene assertions, with unchanged tests.
+
+Reject these alternatives for Linux-parity gates:
+
+- A PATH override to Windows `git.exe` makes the suite pass by changing the Git implementation
+  under test, so it is not POSIX/CI-parity evidence and incurs WSL/Windows boundary overhead.
+- A WSL-created linked worktree remains on `drvfs` and places mixed-path administrative metadata
+  in the shared `.git`, creating a different cross-platform administrative hazard.
+
+If a temporary diagnostic must run from a mounted Windows worktree, it is not Linux-parity proof and
+must isolate dependencies explicitly:
+
+```bash
+export UV_PROJECT_ENVIRONMENT=/tmp/<task>-venv
+uv sync --frozen --extra dev
+uv run pytest tests/unit -q
+```
+
+This exception protects the Windows `.venv`; return to the native clone for the authoritative gate.
+
+---
+
 ## Quick reference
 
 | Goal | Command |

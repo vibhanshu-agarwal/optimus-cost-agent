@@ -149,9 +149,9 @@ status changes through the normal status workflow; the target plan's status is n
 | `P11-FU-25` | Authenticated client-owned MCP upstream evidence | Open | MEDIUM | Future client-MCP evidence follow-up | Acceptance criteria in entry |
 | `P11-FU-26` | Plan 11.8 Windows `WinError 10053` MCP test flake | Closed | MEDIUM | Retired `P11-FEAT-GATEWAY-MCP`; signal under `P11-FU-6` | Plan 11.12; obsolete-by-retirement |
 | `P11-FU-27` | Publication-Plan Historical-State Reconciliation | Open | MEDIUM | Future documentation-history reconciliation | Excluded publication plan; PR #113 / `verification.md` |
-| `P11-FU-28` | WSL2 `uv sync` shared-Windows-`.venv` destruction hazard | Open | MEDIUM | Future WSL2 test infrastructure | Batch A 2026-08-14 operating constraint |
+| `P11-FU-28` | WSL2 `uv sync` shared-Windows-`.venv` destruction hazard | Closed | MEDIUM | Native WSL clone operating decision | Obsolete for supported Linux-parity gates; `P11-FU-17` proof 2026-08-14 |
 | `P11-FU-29` | Durable-approval identity instability on transient Git probe failure | Open | MEDIUM | Future durable-approval security design | Split from `P11-FU-5` by Batch B 2026-08-14; distinct from `P11-FU-18` ctime coalescing |
-| `P11-FU-17` | WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer | Open | MEDIUM | Future WSL2 test infrastructure | Acceptance criteria in entry |
+| `P11-FU-17` | WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer | Closed | MEDIUM | Native WSL clone operating decision | Resolved by verified ext4 native-clone gate; proof report 2026-08-14 |
 | `P11-FU-18` | Workspace-identity `ctime` coalescing fail-open | Open | MEDIUM | Future durable-approval security design | Batch A 2026-08-14 refile; acceptance criteria in entry |
 | `P11-FU-19` | WSL client-SDK operation-deadline supervisor race | Open | MEDIUM | Future WSL2 test reliability plan | Batch A 2026-08-14 re-triage; acceptance criteria in entry |
 | `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Open | MEDIUM | Future client-MCP runtime follow-up | Acceptance criteria in entry |
@@ -1104,7 +1104,7 @@ avoid changing unrelated architecture or implementation scope.
 **Raised:** 2026-08-06 during the MCP Gateway architecture amendment publication plan's Task 11 WSL2
 full-suite gate.
 
-**Classification:** Test-infra environment gap; not a code defect.
+**Classification:** Resolved test-infrastructure operating decision; not a code defect.
 
 **Origin:** A linked worktree created by Windows' `git.exe` writes its `.git` file as
 `gitdir: D:/Projects/Development/Python/optimus-cost-agent/.git/worktrees/<name>` — a correct,
@@ -1133,46 +1133,67 @@ mismatch.
 Windows-native subprocess/coverage timing races; this is WSL2-against-a-Windows-worktree path
 resolution) — do not conflate root causes across these entries at pickup.
 
-**Designated slice:** Future WSL2/test-infrastructure environment work; no plan number is allocated
-(lazy numbering — assign only if/when picked up for scoping).
+**Designated slice:** Resolved by the native WSL clone operating decision; no numbered plan or source
+change is required.
 
-**Acceptance criteria (draft — refine at pickup):**
-
-- Reproduce (or confirm continued reproduction) against the current worktree layout before
-  attempting a fix.
-- Evaluate the two candidate real fixes already identified: recreate the worktree via WSL's own
-  `git worktree add` instead of Windows git's, or point WSL's `git` resolution at
-  `/mnt/c/Program Files/Git/cmd/git.exe` for this repo specifically (repo-local `PATH` override),
-  which — being Windows git — parses the `D:/...` pointer natively.
-- Any fix must not weaken `test_product_checkpoint_log_location_remains_gitignored`'s actual
-  assertion (the checkpoint log location must remain gitignored) — the fix targets the git-resolution
-  mismatch, not the test's intent.
-- Document the fix (or an explicit non-fix disposition) so future WSL2 gate runs against Windows-created
-  linked worktrees in this repo don't re-diagnose this from scratch.
+**Closure criteria (satisfied 2026-08-14):** Demonstrate the current mounted-worktree failure,
+choose a POSIX-valid operating environment, retain both Git-calling assertions unchanged, and prove
+they pass there under native `/usr/bin/git`. Record the setup and any mounted-worktree exception
+rule so future Linux gates do not re-diagnose the pointer mismatch.
 
 **Evidence anchors:** MCP Gateway architecture amendment publication plan Task 11/12 review notes;
 `tests/unit/docs/test_open_work_pool_hygiene.py::test_product_checkpoint_log_location_remains_gitignored`.
 
-**Status:** Open. Tracked, not yet scheduled. Root cause fully established; not a code defect. Not
-blocking any plan closure — recorded as a known, accurately-disclosed environment gap each time it
-recurs, per [[wsl2-local-linux-ci-substitute]]'s "no silent omission" rule.
+**Resolution (2026-08-14):** Linux/CI-parity gates run only from a native WSL clone on the WSL ext4
+filesystem (for example `~/src/optimus-cost-agent`), never from a Windows-created linked worktree
+under `/mnt/d`. The clone is a normal POSIX checkout, not a linked worktree, so native `/usr/bin/git`
+resolves its `.git` metadata end to end. The standing setup and exception rule are in
+[`docs/runbooks/local-live-dependencies.md`](../../runbooks/local-live-dependencies.md#12-wsl2-linuxci-parity-gates).
+
+**Rejected alternatives:** A repo-local PATH override to Windows `git.exe` can make the tests pass,
+but changes the POSIX implementation being tested and crosses the WSL/Windows boundary for every Git
+call. A WSL-created linked worktree fixes this particular pointer yet remains on slower `drvfs` and
+introduces mixed-path administrative metadata in the shared `.git` that Windows Git cannot reliably
+consume. Neither is the supported gate environment.
+
+**Proof:** On native ext4 clone `/root/optimus-cost-agent-p11-fu-17-proof`, `/usr/bin/git` 2.43.0
+at `origin/main` `2770e0f` ran `pytest tests/unit -q` with **2973 passed, 11 skipped, 1 warning**
+in 72 wall-clock seconds. The two unchanged former FU-17 selectors
+`test_immutable_documents_match_approved_head_blobs` and
+`test_product_checkpoint_log_location_remains_gitignored` then passed explicitly (2 passed).
+The equivalent isolated mounted-worktree run produced **2971 passed, 11 skipped, 2 failed** in 96
+seconds, and its only failures were those two selectors with the documented native-Git `D:/...`
+pointer error. Full command, environment, and virtual-environment isolation evidence are recorded in
+[`reports/p11-fu-17-wsl-native-clone-evidence.md`](../../../reports/p11-fu-17-wsl-native-clone-evidence.md).
+
+**Status:** Closed. Native WSL clone decision accepted and demonstrated; no test assertion or
+production code changed.
 
 ### P11-FU-28: WSL2 `uv sync` shared-Windows-`.venv` destruction hazard
 
 **Raised:** 2026-08-14 during corrected Batch A triage on `origin/main`.
 
-**Classification:** Test-infrastructure operator hazard; not a product-code defect.
+**Classification:** Obsolete under the resolved native-WSL-clone operating decision; not a
+product-code defect.
 
 **Origin:** A WSL2 `uv sync` against a Windows-hosted worktree can select and replace the
 repository's shared Windows `.venv`, corrupting the Windows environment and making the WSL
 evidence non-isolated.
 
-**Required mitigation:** Every WSL2 `uv` command for a Windows-hosted worktree must set
-`UV_PROJECT_ENVIRONMENT=/tmp/<task>-venv`. If the shared Windows environment is clobbered,
-restore it from Windows with `uv sync --frozen --extra dev`.
+**Resolution (2026-08-14):** The accepted `P11-FU-17` native ext4 clone has its own `.venv`.
+With `UV_PROJECT_ENVIRONMENT` unset, `uv sync --frozen --extra dev` created
+`/root/optimus-cost-agent-p11-fu-17-proof/.venv`. A before/after fingerprint of the dedicated
+Windows worktree's `.venv/pyvenv.cfg` was identical (length 184, SHA-256
+`9C503845220632572999AAD4D94004D287277EC4971A5230D8A12FCD3EE91AFB`, unchanged UTC mtime).
+The supported Linux-parity workflow therefore has no shared Windows environment to destroy.
 
-**Status:** Open. Documented operating constraint beside P11-FU-17. WSL evidence reports must name
-the isolated environment used. No source change is required.
+**Exception rule:** A temporary diagnostic run from a mounted Windows worktree remains unsupported
+as Linux-parity evidence and must set `UV_PROJECT_ENVIRONMENT=/tmp/<task>-venv`; if it clobbers a
+Windows `.venv`, restore it with Windows `uv sync --frozen --extra dev`. This is an operating note,
+not a remaining scheduled follow-up.
+
+**Status:** Closed. Obsolete for supported native-clone gates; the exception rule remains in the
+runbook and proof report.
 
 ### P11-FU-18: Workspace-identity `ctime` coalescing fail-open
 
