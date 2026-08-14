@@ -113,7 +113,8 @@ uv run --frozen pytest --cov -q
 
 | Gate | Result |
 |---|---|
-| Full suite | **3069 passed, 12 skipped, 110 deselected, 1 warning** in 62.15s |
+| Full suite (native WSL) | **3069 passed, 12 skipped, 110 deselected, 1 warning** in 62.15s |
+| Full suite (Windows worktree) | **3053 passed, 28 skipped, 110 deselected, 1 warning** in 186.44s, exit 0 |
 | Bare `--cov` | **3069 passed, 12 skipped, 110 deselected, 1 warning** in 84.95s |
 | Aggregate | **80.37%** (`fail_under = 80` reached; TOTAL 18530 / 3080 / 5136 / 879) |
 
@@ -134,7 +135,7 @@ git diff --name-only origin/main...HEAD
 
 | Gate | Result |
 |---|---|
-| Pool hygiene | Native WSL: **45 passed in 0.12s**. Windows worktree reproduced the two known `P11-FU-17` Git-pointer / `WinError 6` failures; those are not this plan's gate. |
+| Pool hygiene | Native WSL: **45 passed in 0.12s**. A Windows worktree run of the same selector hit `WinError 6` (`DuplicateHandle`) in `test_immutable_documents_match_approved_head_blobs` and `test_product_checkpoint_log_location_remains_gitignored`. That is **`P11-FU-5`**, not `P11-FU-17` (`P11-FU-17` is WSL `/usr/bin/git` failing to parse a Windows `gitdir: D:/...` pointer and cannot reproduce on Windows git). |
 | Ruff (`uv run --frozen python -m ruff check .`) | `All checks passed!` (native clone) |
 | `git diff --check` | Exit 0 |
 | Sealed pre-fix relay `git diff --exit-code` | Exit 0 |
@@ -144,14 +145,33 @@ git diff --name-only origin/main...HEAD
 
 Changed paths versus `origin/main` after documentation closure: live relay, relay unit test, pool, and this report.
 
-## Windows pytest-capture observation (not a Linux-parity gate)
+## Windows verification
 
-On win32 with default pytest FD capture, the injected test is not deterministic: about one third
-of runs take `recorder_failure` because a reader-thread `OSError` lands in `errors[0]` instead of
-the injected `BrokenPipeError`. The same test is 20/20 under `--capture=no` and 20/20 plus 200/200
-on native WSL ext4, which is the Plan 11.14 / `P11-FU-17` evidence environment. No production
-widening to generic `OSError` was added; the discriminator remains the plan's `BrokenPipeError`
-branch.
+`capfd.disabled()` around `_run_relay_inprocess` did **not** make the injected test deterministic
+on win32: **10 passed / 10 failed** in 20 default-capture runs. `--capture=no` remains 20/20, but
+that is process-wide and is not a per-test guard. Fallback matches the existing AF_UNIX skip in
+the same file:
+
+```python
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="pytest FD capture makes post-exit stdout reads raise OSError on win32",
+)
+```
+
+POSIX/CI still runs the injected test. Windows keeps the rest of the relay file.
+
+Windows full-suite gate (`uv run --frozen pytest -q` from this worktree, sequential, after
+`uv sync --frozen --extra dev`):
+
+**3053 passed, 28 skipped, 110 deselected, 1 warning** in 186.44s, exit 0.
+
+Skip count vs native WSL (12 skipped) is the POSIX-only markers including this injected test and
+the existing AF_UNIX skip. The pre-existing `optimus.acp.__main__` `RuntimeWarning` is unchanged.
+
+The earlier Windows hygiene `WinError 6` sighting is recorded under `P11-FU-5` above. It did not
+reproduce in this full-suite run. That is a reproduction disposition datapoint for `P11-FU-5`, not
+a Plan 11.14 product defect and not `P11-FU-17`.
 
 ## Contract
 

@@ -248,6 +248,10 @@ def test_eof_either_direction_and_child_first_exit(tmp_path: Path) -> None:
     assert summary["terminal_disposition"] == "child_exited"
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="pytest FD capture makes post-exit stdout reads raise OSError on win32",
+)
 def test_post_exit_broken_pipe_preserves_child_exit_and_summary(tmp_path: Path) -> None:
     class _InjectedBrokenPipeStdin:
         def __init__(self, wrapped: Any) -> None:
