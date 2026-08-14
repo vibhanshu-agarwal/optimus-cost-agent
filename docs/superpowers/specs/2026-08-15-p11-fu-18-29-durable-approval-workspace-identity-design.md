@@ -43,6 +43,20 @@ This design was prepared from `origin/main` commit
   `docs/superpowers/specs/2026-07-19-plan-9-98-fu-1-workspace-identity-ci-design.md`; and
 - the current authoritative HLD v2.17, LLD v2.40, Guardrails v1.2, and Test Strategy v1.6 PDFs.
 
+The authoritative PDF bytes reviewed for this specification are pinned as follows:
+
+| Authoritative document | Version | Pages | SHA-256 |
+|---|---:|---:|---|
+| `docs/Optimus-Cost-Agent-Architecture-v2.17.pdf` | v2.17 | 13 | `A21BDB01BC737FA3D8EBFFBA8B8B7DF96C65101812E17F31C3C7324368D15024` |
+| `docs/Optimus-Cost-Agent-LLD-v2.40.pdf` | v2.40 | 40 | `0329AEF8B5392E05DDBB19AC3F76F3CE7F4FE3C4B728AEF6CBFC4DE84B324D03` |
+| `docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.2.pdf` | v1.2 | 16 | `461A720FA28576523C87C2F2F89EE1FC52C99971E51ACC22EDC85E8C375A7070` |
+| `docs/Optimus-Cost-Agent-Test-Strategy-v1.6.pdf` | v1.6 | 14 | `B435E55687116BD7C4D7E78B48E50D8DA9ED0801575B7B5485F262D35C1B31A4` |
+
+The hashes were recomputed from the repository files at design review and match
+`docs/superpowers/reports/2026-07-25-plan-11-authoritative-doc-section-map.md`. A later source
+revision does not amend this specification implicitly; it requires an explicit conflict/freshness
+review against these pinned bytes.
+
 The authoritative documents require fail-closed trust handling, explicit approval, stable typed
 failure behavior, real platform evidence where behavior differs, and fault-injected security
 proof. They do not define a conflicting durable workspace-identity digest. This design preserves
