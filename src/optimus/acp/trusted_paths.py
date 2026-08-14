@@ -8,14 +8,18 @@ filesystem path and inode, detecting relocation and symlink changes.
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import os
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+import time
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, replace
+from enum import Enum
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 _CONFIG_DIR_NAME = "optimus-cost-agent"
 
@@ -52,6 +56,40 @@ class TrustedOperatorRoots:
     approval_runtime_root: Path
 
 
+class GitContextDisposition(str, Enum):
+    """Confirmed Git topology, confirmed absence, or unavailable evidence."""
+
+    PRESENT = "present"
+    ABSENT = "absent"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True)
+class ProbeDiagnostic:
+    """Sanitized structured evidence for one Git or filesystem probe attempt."""
+
+    phase: str
+    probe: str
+    attempt: int
+    classification: Literal["transient", "permanent"]
+    disposition: str
+    exception_type: str | None
+    errno: int | None
+    winerror: int | None
+    return_code: int | None
+    duration_ms: int
+
+
+@dataclass(frozen=True)
+class GitContextResult:
+    """One coherent Git discovery result. UNAVAILABLE cannot feed a digest."""
+
+    disposition: GitContextDisposition
+    repository_root: str | None
+    git_common_dir: str | None
+    diagnostics: tuple[ProbeDiagnostic, ...]
+
+
 @dataclass(frozen=True)
 class WorkspaceIdentity:
     """Canonical identity of a workspace directory bound to filesystem metadata.
@@ -68,6 +106,24 @@ class WorkspaceIdentity:
     repository_root: str | None
     git_common_dir: str | None
     digest: str
+
+
+_GIT_REDIRECT_KEYS = frozenset(
+    {
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_INDEX_FILE",
+        "GIT_NAMESPACE",
+    }
+)
+_TRANSIENT_WINERRORS = frozenset({6, 50})
+_TRANSIENT_ERRNOS = frozenset({errno.EINTR, errno.EAGAIN, errno.ETIMEDOUT})
+_GIT_PROBE_ATTEMPTS = 3
+_GIT_PROBE_BACKOFFS = (0.025, 0.100)
+_GIT_PROBE_TIMEOUT_SECONDS = 5.0
 
 
 # --- Injectable platform adapters ---
@@ -287,8 +343,13 @@ def resolve_workspace_identity(workspace_root: Path) -> WorkspaceIdentity:
     device = stat.st_dev
     inode = stat.st_ino
 
-    repository_root = _git_repository_root(resolved)
-    git_common_dir = _git_common_dir(resolved) if repository_root else None
+    git_context = resolve_git_context(resolved)
+    if git_context.disposition is GitContextDisposition.PRESENT:
+        repository_root = git_context.repository_root
+        git_common_dir = git_context.git_common_dir
+    else:
+        repository_root = None
+        git_common_dir = None
 
     # Compute identity digest from all binding fields.
     digest = _compute_identity_digest(
@@ -339,50 +400,283 @@ def revalidate_workspace_identity(identity: WorkspaceIdentity) -> None:
 # --- Git helpers ---
 
 
-def _git_repository_root(workspace: Path) -> str | None:
-    """Resolve git repository root using argument-list subprocess (shell=False)."""
+def resolve_git_context(
+    workspace: Path,
+    *,
+    environ: Mapping[str, str] | None = None,
+    run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> GitContextResult:
+    """Discover Git topology as PRESENT, ABSENT, or UNAVAILABLE.
+
+    Marker inspection uses non-following lstat. A missing marker is ABSENT
+    without spawning Git. A present marker issues one argument-list command
+    that returns both repository root and common directory. Unavailable
+    evidence is never converted to absence or hashed.
+    """
+    marker = _git_marker_disposition(workspace)
+    if marker.disposition is GitContextDisposition.ABSENT:
+        return marker
+    if marker.disposition is GitContextDisposition.UNAVAILABLE:
+        return marker
+
     git_executable = shutil.which("git")
     if git_executable is None:
-        return None
-
-    try:
-        result = subprocess.run(
-            [git_executable, "rev-parse", "--show-toplevel"],
-            cwd=str(workspace),
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=5,
+        return GitContextResult(
+            disposition=GitContextDisposition.UNAVAILABLE,
+            repository_root=None,
+            git_common_dir=None,
+            diagnostics=(
+                _probe_diagnostic(
+                    probe="git_executable",
+                    attempt=1,
+                    classification="permanent",
+                    disposition=GitContextDisposition.UNAVAILABLE.value,
+                    exception_type=None,
+                    errno_value=None,
+                    winerror=None,
+                    return_code=None,
+                    duration_ms=0,
+                ),
+            ),
         )
-        if result.returncode == 0 and result.stdout.strip():
-            return str(Path(result.stdout.strip()).resolve())
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    return None
 
+    env = _sanitize_git_environ(os.environ if environ is None else environ)
+    argv = [
+        git_executable,
+        "rev-parse",
+        "--path-format=absolute",
+        "--show-toplevel",
+        "--git-common-dir",
+    ]
+    diagnostics: list[ProbeDiagnostic] = []
+    for attempt in range(1, _GIT_PROBE_ATTEMPTS + 1):
+        started = time.monotonic()
+        try:
+            completed = run(
+                argv,
+                cwd=str(workspace),
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_GIT_PROBE_TIMEOUT_SECONDS,
+                shell=False,
+            )
+        except Exception as exc:
+            duration_ms = _duration_ms(started)
+            transient = _is_transient_git_error(exc)
+            diagnostic = _diagnostic_from_exception(
+                probe="rev-parse",
+                attempt=attempt,
+                exc=exc,
+                transient=transient,
+                duration_ms=duration_ms,
+            )
+            if transient and attempt < _GIT_PROBE_ATTEMPTS:
+                diagnostics.append(diagnostic)
+                sleeper(_GIT_PROBE_BACKOFFS[attempt - 1])
+                continue
+            if transient:
+                diagnostics.append(replace(diagnostic, disposition="retry_exhausted"))
+            else:
+                diagnostics.append(diagnostic)
+            return GitContextResult(
+                disposition=GitContextDisposition.UNAVAILABLE,
+                repository_root=None,
+                git_common_dir=None,
+                diagnostics=tuple(diagnostics),
+            )
 
-def _git_common_dir(workspace: Path) -> str | None:
-    """Resolve git common dir (relevant for worktrees)."""
-    git_executable = shutil.which("git")
-    if git_executable is None:
-        return None
-
-    try:
-        result = subprocess.run(
-            [git_executable, "rev-parse", "--git-common-dir"],
-            cwd=str(workspace),
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=5,
+        duration_ms = _duration_ms(started)
+        parsed = _parse_git_rev_parse_paths(completed, workspace=workspace)
+        if parsed is not None:
+            diagnostics.append(
+                _probe_diagnostic(
+                    probe="rev-parse",
+                    attempt=attempt,
+                    classification="transient" if diagnostics else "permanent",
+                    disposition=GitContextDisposition.PRESENT.value,
+                    exception_type=None,
+                    errno_value=None,
+                    winerror=None,
+                    return_code=completed.returncode,
+                    duration_ms=duration_ms,
+                )
+            )
+            repository_root, git_common_dir = parsed
+            return GitContextResult(
+                disposition=GitContextDisposition.PRESENT,
+                repository_root=repository_root,
+                git_common_dir=git_common_dir,
+                diagnostics=tuple(diagnostics),
+            )
+        diagnostics.append(
+            _probe_diagnostic(
+                probe="rev-parse",
+                attempt=attempt,
+                classification="permanent",
+                disposition=GitContextDisposition.UNAVAILABLE.value,
+                exception_type=None,
+                errno_value=None,
+                winerror=None,
+                return_code=completed.returncode,
+                duration_ms=duration_ms,
+            )
         )
-        if result.returncode == 0 and result.stdout.strip():
-            raw = result.stdout.strip()
-            # --git-common-dir returns a relative path; resolve from workspace.
-            return str((workspace / raw).resolve())
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    return None
+        return GitContextResult(
+            disposition=GitContextDisposition.UNAVAILABLE,
+            repository_root=None,
+            git_common_dir=None,
+            diagnostics=tuple(diagnostics),
+        )
+
+    return GitContextResult(
+        disposition=GitContextDisposition.UNAVAILABLE,
+        repository_root=None,
+        git_common_dir=None,
+        diagnostics=tuple(diagnostics),
+    )
+
+
+def _git_marker_disposition(workspace: Path) -> GitContextResult:
+    """Walk toward the filesystem root looking for a non-followed `.git` marker."""
+    current = Path(workspace)
+    while True:
+        marker = current / ".git"
+        try:
+            os.lstat(marker)
+        except FileNotFoundError:
+            parent = current.parent
+            if parent == current:
+                return GitContextResult(
+                    disposition=GitContextDisposition.ABSENT,
+                    repository_root=None,
+                    git_common_dir=None,
+                    diagnostics=(),
+                )
+            current = parent
+            continue
+        except OSError as exc:
+            return GitContextResult(
+                disposition=GitContextDisposition.UNAVAILABLE,
+                repository_root=None,
+                git_common_dir=None,
+                diagnostics=(
+                    _diagnostic_from_exception(
+                        probe="git_marker",
+                        attempt=1,
+                        exc=exc,
+                        transient=False,
+                        duration_ms=0,
+                    ),
+                ),
+            )
+        return GitContextResult(
+            disposition=GitContextDisposition.PRESENT,
+            repository_root=None,
+            git_common_dir=None,
+            diagnostics=(),
+        )
+
+
+def _sanitize_git_environ(environ: Mapping[str, str]) -> dict[str, str]:
+    if sys.platform == "win32":
+        blocked = {key.casefold() for key in _GIT_REDIRECT_KEYS}
+        return {key: value for key, value in environ.items() if key.casefold() not in blocked}
+    return {key: value for key, value in environ.items() if key not in _GIT_REDIRECT_KEYS}
+
+
+def _is_transient_git_error(exc: BaseException) -> bool:
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return True
+    if isinstance(exc, OSError):
+        winerror = getattr(exc, "winerror", None)
+        if winerror in _TRANSIENT_WINERRORS:
+            return True
+        if getattr(exc, "errno", None) in _TRANSIENT_ERRNOS:
+            return True
+    return False
+
+
+def _parse_git_rev_parse_paths(
+    completed: subprocess.CompletedProcess[str],
+    *,
+    workspace: Path,
+) -> tuple[str, str] | None:
+    if completed.returncode != 0:
+        return None
+    stdout = (completed.stdout or "").replace("\r\n", "\n")
+    fields = stdout.split("\n")
+    while fields and fields[-1] == "":
+        fields.pop()
+    if len(fields) != 2 or any(not field.strip() for field in fields):
+        return None
+    try:
+        repository_root = str(Path(fields[0]).resolve())
+        common = Path(fields[1])
+        git_common_dir = str(
+            common.resolve() if common.is_absolute() else (workspace / common).resolve()
+        )
+    except (OSError, ValueError):
+        return None
+    if not repository_root or not git_common_dir:
+        return None
+    return repository_root, git_common_dir
+
+
+def _diagnostic_from_exception(
+    *,
+    probe: str,
+    attempt: int,
+    exc: BaseException,
+    transient: bool,
+    duration_ms: int,
+) -> ProbeDiagnostic:
+    winerror = getattr(exc, "winerror", None)
+    errno_value = getattr(exc, "errno", None) if isinstance(exc, OSError) else None
+    return_code = getattr(exc, "returncode", None)
+    return _probe_diagnostic(
+        probe=probe,
+        attempt=attempt,
+        classification="transient" if transient else "permanent",
+        disposition=GitContextDisposition.UNAVAILABLE.value,
+        exception_type=type(exc).__name__,
+        errno_value=errno_value if isinstance(errno_value, int) else None,
+        winerror=winerror if isinstance(winerror, int) else None,
+        return_code=return_code if isinstance(return_code, int) else None,
+        duration_ms=duration_ms,
+    )
+
+
+def _probe_diagnostic(
+    *,
+    probe: str,
+    attempt: int,
+    classification: Literal["transient", "permanent"],
+    disposition: str,
+    exception_type: str | None,
+    errno_value: int | None,
+    winerror: int | None,
+    return_code: int | None,
+    duration_ms: int,
+) -> ProbeDiagnostic:
+    return ProbeDiagnostic(
+        phase="git_context",
+        probe=probe,
+        attempt=attempt,
+        classification=classification,
+        disposition=disposition,
+        exception_type=exception_type,
+        errno=errno_value,
+        winerror=winerror,
+        return_code=return_code,
+        duration_ms=duration_ms,
+    )
+
+
+def _duration_ms(started: float) -> int:
+    return max(0, int((time.monotonic() - started) * 1000))
 
 
 # --- Digest computation ---

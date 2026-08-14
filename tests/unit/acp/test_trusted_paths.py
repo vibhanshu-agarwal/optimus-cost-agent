@@ -416,3 +416,412 @@ class TestRealPosixAdapter:
         assert roots.approval_runtime_root.is_absolute()
         assert "optimus-cost-agent" in str(roots.default_config_root)
         assert "optimus-cost-agent" in str(roots.approval_runtime_root)
+
+
+# --- Plan 11.15 Task 1: tri-state Git probe ---
+
+
+def _git_probe_stdout(repository_root: Path, git_common_dir: Path) -> str:
+    return f"{repository_root}\n{git_common_dir}\n"
+
+
+def _oserror(*, winerror: int | None = None, errno_value: int | None = None) -> OSError:
+    code = errno_value if errno_value is not None else (winerror or 0)
+    exc = OSError(code, "injected probe failure")
+    if winerror is not None:
+        exc.winerror = winerror
+    if errno_value is not None:
+        exc.errno = errno_value
+    return exc
+
+
+class TestGitContextDispositions:
+    """Git discovery is PRESENT / ABSENT / UNAVAILABLE from one coherent probe."""
+
+    def test_git_context_present_ordinary_git_directory_uses_one_invocation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / ".git").mkdir()
+        monkeypatch.setattr(trusted_paths.shutil, "which", lambda _name: "C:/fake/git.exe")
+        calls: list[tuple[list[str], dict[str, object]]] = []
+
+        def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            calls.append((list(argv), dict(kwargs)))
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout=_git_probe_stdout(workspace.resolve(), (workspace / ".git").resolve()),
+                stderr="",
+            )
+
+        result = trusted_paths.resolve_git_context(workspace, run=run)
+
+        assert len(calls) == 1
+        argv, kwargs = calls[0]
+        assert kwargs.get("shell") is False
+        assert "--path-format=absolute" in argv
+        assert argv[-2:] == ["--show-toplevel", "--git-common-dir"]
+        assert "-z" not in argv
+        assert result.disposition is trusted_paths.GitContextDisposition.PRESENT
+        assert result.repository_root == str(workspace.resolve())
+        assert result.git_common_dir == str((workspace / ".git").resolve())
+
+    def test_git_context_present_worktree_git_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "worktree"
+        common = tmp_path / "main.git"
+        workspace.mkdir()
+        common.mkdir()
+        (workspace / ".git").write_text("gitdir: ../main.git\n", encoding="utf-8")
+        monkeypatch.setattr(trusted_paths.shutil, "which", lambda _name: "/usr/bin/git")
+
+        def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout=_git_probe_stdout(workspace.resolve(), common.resolve()),
+                stderr="fatal: should never be persisted\n",
+            )
+
+        result = trusted_paths.resolve_git_context(workspace, run=run)
+
+        assert result.disposition is trusted_paths.GitContextDisposition.PRESENT
+        assert result.repository_root == str(workspace.resolve())
+        assert result.git_common_dir == str(common.resolve())
+        serialized = repr(result.diagnostics)
+        assert "fatal:" not in serialized
+
+    def test_git_context_absent_without_subprocess(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "plain"
+        workspace.mkdir()
+        calls: list[object] = []
+        monkeypatch.setattr(trusted_paths.shutil, "which", lambda _name: "git")
+
+        def run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            calls.append("spawned")
+            raise AssertionError("ABSENT must not spawn Git")
+
+        result = trusted_paths.resolve_git_context(workspace, run=run)
+
+        assert result.disposition is trusted_paths.GitContextDisposition.ABSENT
+        assert result.repository_root is None
+        assert result.git_common_dir is None
+        assert calls == []
+
+    def test_git_context_unavailable_when_git_executable_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / ".git").mkdir()
+        monkeypatch.setattr(trusted_paths.shutil, "which", lambda _name: None)
+        calls: list[object] = []
+
+        def run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            calls.append("spawned")
+            raise AssertionError("missing git must not spawn")
+
+        result = trusted_paths.resolve_git_context(workspace, run=run)
+
+        assert result.disposition is trusted_paths.GitContextDisposition.UNAVAILABLE
+        assert result.repository_root is None
+        assert result.git_common_dir is None
+        assert calls == []
+        assert result.diagnostics[0].classification == "permanent"
+        assert len(result.diagnostics) == 1
+
+    @pytest.mark.parametrize(
+        "stdout",
+        ("", "only-one-path\n", "\n\n", "a\nb\nc\n", " \n \n"),
+        ids=("empty", "one-field", "empty-fields", "three-fields", "whitespace"),
+    )
+    def test_git_context_unavailable_for_corrupt_invalid_empty_output(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        stdout: str,
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / ".git").mkdir()
+        monkeypatch.setattr(trusted_paths.shutil, "which", lambda _name: "git")
+
+        def run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr="raw git stderr")
+
+        result = trusted_paths.resolve_git_context(workspace, run=run)
+
+        assert result.disposition is trusted_paths.GitContextDisposition.UNAVAILABLE
+        assert result.diagnostics[0].classification == "permanent"
+        assert "raw git stderr" not in repr(result.diagnostics)
+
+    def test_git_context_unavailable_for_inconsistent_nonzero_status(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / ".git").mkdir()
+        monkeypatch.setattr(trusted_paths.shutil, "which", lambda _name: "git")
+
+        def run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(argv, 128, stdout="", stderr="fatal: not a git repository")
+
+        result = trusted_paths.resolve_git_context(workspace, run=run)
+
+        assert result.disposition is trusted_paths.GitContextDisposition.UNAVAILABLE
+        assert result.diagnostics[0].classification == "permanent"
+        assert result.diagnostics[0].return_code == 128
+        assert "fatal:" not in repr(result.diagnostics)
+
+    def test_git_context_unavailable_on_marker_walk_access_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        monkeypatch.setattr(trusted_paths.shutil, "which", lambda _name: "git")
+
+        def boom(path: str, *args: object, **kwargs: object) -> os.stat_result:
+            if Path(path).name == ".git":
+                raise OSError(13, "Permission denied")
+            return os.lstat(path, *args, **kwargs)
+
+        monkeypatch.setattr(trusted_paths.os, "lstat", boom)
+        calls: list[object] = []
+
+        def run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            calls.append("spawned")
+            raise AssertionError("marker-walk failure must not spawn Git")
+
+        result = trusted_paths.resolve_git_context(workspace, run=run)
+
+        assert result.disposition is trusted_paths.GitContextDisposition.UNAVAILABLE
+        assert result.diagnostics[0].classification == "permanent"
+        assert calls == []
+
+    def test_git_context_old_none_helpers_are_unreachable(self) -> None:
+        from optimus.acp import trusted_paths
+
+        assert not hasattr(trusted_paths, "_git_repository_root")
+        assert not hasattr(trusted_paths, "_git_common_dir")
+
+
+class TestGitRetryContract:
+    """Exactly three total attempts, explicit transient allowlist, injectable backoff."""
+
+    def _present_workspace(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / ".git").mkdir()
+        monkeypatch.setattr(trusted_paths.shutil, "which", lambda _name: "git")
+        return workspace
+
+    def _present_run(
+        self, workspace: Path, failures: list[BaseException]
+    ) -> tuple[object, list[int]]:
+        attempts: list[int] = []
+
+        def run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            attempts.append(len(attempts) + 1)
+            if failures:
+                raise failures.pop(0)
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout=_git_probe_stdout(workspace.resolve(), (workspace / ".git").resolve()),
+                stderr="",
+            )
+
+        return run, attempts
+
+    @pytest.mark.parametrize("success_attempt", (1, 2, 3), ids=("attempt1", "attempt2", "attempt3"))
+    def test_retry_contract_success_yields_identical_present_facts(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        success_attempt: int,
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = self._present_workspace(tmp_path, monkeypatch)
+        sleeps: list[float] = []
+        failures: list[BaseException] = [
+            _oserror(winerror=6) for _ in range(success_attempt - 1)
+        ]
+        run, attempts = self._present_run(workspace, failures)
+        result = trusted_paths.resolve_git_context(
+            workspace, run=run, sleeper=sleeps.append
+        )
+        expected_sleeps = [0.025, 0.100][: success_attempt - 1]
+
+        assert result.disposition is trusted_paths.GitContextDisposition.PRESENT
+        assert result.repository_root == str(workspace.resolve())
+        assert result.git_common_dir == str((workspace / ".git").resolve())
+        assert attempts == list(range(1, success_attempt + 1))
+        assert sleeps == expected_sleeps
+
+    @pytest.mark.parametrize(
+        "factory",
+        (
+            lambda: _oserror(winerror=6),
+            lambda: _oserror(winerror=50),
+            lambda: _oserror(errno_value=__import__("errno").EINTR),
+            lambda: _oserror(errno_value=__import__("errno").EAGAIN),
+            lambda: _oserror(errno_value=__import__("errno").ETIMEDOUT),
+            lambda: subprocess.TimeoutExpired(cmd="git", timeout=5),
+        ),
+        ids=("winerror-6", "winerror-50", "EINTR", "EAGAIN", "ETIMEDOUT", "TimeoutExpired"),
+    )
+    def test_retry_contract_exhaustion_is_unavailable(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        factory: object,
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = self._present_workspace(tmp_path, monkeypatch)
+        sleeps: list[float] = []
+        remaining = [factory() for _ in range(3)]  # type: ignore[operator]
+        run, attempts = self._present_run(workspace, remaining)
+        result = trusted_paths.resolve_git_context(
+            workspace, run=run, sleeper=sleeps.append
+        )
+
+        assert result.disposition is trusted_paths.GitContextDisposition.UNAVAILABLE
+        assert result.repository_root is None
+        assert result.git_common_dir is None
+        assert attempts == [1, 2, 3]
+        assert sleeps == [0.025, 0.100]
+        assert [item.attempt for item in result.diagnostics] == [1, 2, 3]
+        assert all(item.classification == "transient" for item in result.diagnostics)
+        assert result.diagnostics[-1].disposition == "retry_exhausted"
+
+    def test_retry_contract_permanent_error_invokes_once_and_never_sleeps(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = self._present_workspace(tmp_path, monkeypatch)
+        sleeps: list[float] = []
+        run, attempts = self._present_run(workspace, [_oserror(errno_value=999)])
+        result = trusted_paths.resolve_git_context(
+            workspace, run=run, sleeper=sleeps.append
+        )
+
+        assert result.disposition is trusted_paths.GitContextDisposition.UNAVAILABLE
+        assert attempts == [1]
+        assert sleeps == []
+        assert result.diagnostics[0].classification == "permanent"
+        assert result.diagnostics[0].attempt == 1
+
+
+class TestGitRedirectEnvironment:
+    """Repository-redirection variables cannot select a different identity."""
+
+    def test_git_redirect_strips_hostile_keys_and_keeps_path_and_sentinel(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        hostile = tmp_path / "hostile-repo"
+        workspace.mkdir()
+        hostile.mkdir()
+        (workspace / ".git").mkdir()
+        monkeypatch.setattr(trusted_paths.shutil, "which", lambda _name: "git")
+        captured: dict[str, object] = {}
+
+        def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            captured["env"] = kwargs.get("env")
+            captured["cwd"] = kwargs.get("cwd")
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout=_git_probe_stdout(workspace.resolve(), (workspace / ".git").resolve()),
+                stderr="",
+            )
+
+        environ = {
+            "PATH": "/trusted/bin",
+            "OPTIMUS_TEST_SENTINEL": "keep-me",
+            "GIT_DIR": str(hostile / ".git"),
+            "GIT_WORK_TREE": str(hostile),
+            "GIT_COMMON_DIR": str(hostile / ".git"),
+        }
+        result = trusted_paths.resolve_git_context(
+            workspace, environ=environ, run=run
+        )
+        env = captured["env"]
+        assert isinstance(env, dict)
+        for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"):
+            assert key not in env
+            assert key.lower() not in {item.lower() for item in env}
+        assert env["PATH"] == "/trusted/bin"
+        assert env["OPTIMUS_TEST_SENTINEL"] == "keep-me"
+        assert captured["cwd"] == str(workspace)
+        assert result.disposition is trusted_paths.GitContextDisposition.PRESENT
+        assert result.repository_root == str(workspace.resolve())
+        assert result.repository_root != str(hostile.resolve())
+
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason="Windows-only: repository-redirect env keys are stripped case-insensitively",
+    )
+    def test_git_redirect_strips_case_variants_on_windows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from optimus.acp import trusted_paths
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / ".git").mkdir()
+        monkeypatch.setattr(trusted_paths.shutil, "which", lambda _name: "git")
+        captured: dict[str, object] = {}
+
+        def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            captured["env"] = kwargs.get("env")
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout=_git_probe_stdout(workspace.resolve(), (workspace / ".git").resolve()),
+                stderr="",
+            )
+
+        result = trusted_paths.resolve_git_context(
+            workspace,
+            environ={
+                "PATH": "C:\\Windows\\System32",
+                "Git_Dir": "C:\\hostile\\.git",
+                "git_work_tree": "C:\\hostile",
+                "Git_Common_Dir": "C:\\hostile\\.git",
+            },
+            run=run,
+        )
+        env = captured["env"]
+        assert isinstance(env, dict)
+        assert {key.lower() for key in env}.isdisjoint(
+            {"git_dir", "git_work_tree", "git_common_dir"}
+        )
+        assert env["PATH"] == "C:\\Windows\\System32"
+        assert result.disposition is trusted_paths.GitContextDisposition.PRESENT
