@@ -44,6 +44,13 @@ class Finding(StrEnum):
     INDETERMINATE = "INDETERMINATE"
 
 
+class IndeterminateReason(StrEnum):
+    """Why a non-verdict must not be misread as an observation about Zed."""
+
+    PRECONDITION_UNMET = "PRECONDITION_UNMET"
+    OBSERVATION_INCOMPLETE = "OBSERVATION_INCOMPLETE"
+
+
 @dataclass(frozen=True)
 class SessionLoadEvaluation:
     """Classified live exchange while retaining its exact safe protocol payloads."""
@@ -340,6 +347,29 @@ def capture_acpx_evidence(command_result: CommandResult) -> dict[str, Any]:
     }
 
 
+def classify_indeterminate_context(evidence: Mapping[str, Any]) -> dict[str, Any]:
+    """Separate a missing documented dependency from an incomplete ACP observation."""
+    evidence_text = json.dumps(evidence, sort_keys=True).casefold()
+    redis_unreachable = "redis" in evidence_text and (
+        "not reachable" in evidence_text or "timeout connecting" in evidence_text
+    )
+    if redis_unreachable:
+        return {
+            "indeterminate_reason": IndeterminateReason.PRECONDITION_UNMET.value,
+            "precondition": {
+                "name": "redis",
+                "remediation": {
+                    "runbook": "docs/runbooks/local-live-dependencies.md#5-bounded-session-bound-smoke-redis--gateway-optional-phoenix",
+                    "command": "optimus-agent --workspace-root <throwaway-workspace> --check-config --strict",
+                },
+            },
+        }
+    return {
+        "indeterminate_reason": IndeterminateReason.OBSERVATION_INCOMPLETE.value,
+        "precondition": None,
+    }
+
+
 def _revoke_temporary_approval(trust_cli: Path, workspace: Path, *, cwd: Path) -> None:
     """Revoke and verify the temporary durable record, retrying bounded transient failures."""
     last_error: ProbeError | None = None
@@ -401,6 +431,8 @@ def run_probe(parent_workspace: Path) -> dict[str, Any]:
         "recorded_at_utc": recorded_at,
         "commit": _git_head(repo_root),
         "finding": Finding.INDETERMINATE.value,
+        "indeterminate_reason": IndeterminateReason.OBSERVATION_INCOMPLETE.value,
+        "precondition": None,
         "zed_version": None,
         "acpx_version": None,
         "acpx_executable": None,
@@ -478,6 +510,10 @@ def run_probe(parent_workspace: Path) -> dict[str, Any]:
                 "acpx_recovery": recovery_evidence,
             }
         )
+        if evaluated.finding is Finding.INDETERMINATE:
+            result.update(classify_indeterminate_context(recovery_evidence))
+        else:
+            result["indeterminate_reason"] = None
     except ProbeError as exc:
         result["failure"] = {"stage": exc.stage, "message": _safe_payload(str(exc))}
         if exc.command_result is not None:
@@ -485,6 +521,7 @@ def run_probe(parent_workspace: Path) -> dict[str, Any]:
             result["acpx_failure"] = failure_evidence
             result["capability_payload"] = failure_evidence["capability_payload"]
             result["session_load_exchange"] = failure_evidence["session_load_exchange"]
+            result.update(classify_indeterminate_context(failure_evidence))
     finally:
         if temporary_approval_created and run_root is not None and trust_cli is not None:
             workspace = run_root / "workspace"

@@ -12,6 +12,7 @@ from tools.probe_p11_zed_session_load import (
     build_cleanup_remediation,
     build_trust_command,
     capture_acpx_evidence,
+    classify_indeterminate_context,
     evaluate_session_load_exchange,
 )
 
@@ -115,3 +116,28 @@ def test_cleanup_remediation_is_workspace_scoped_and_contains_no_approval_identi
     assert str(remediation[0]).endswith("optimus-trust.exe")
     assert remediation[1:4] == ["--workspace-root", r"C:\probe workspace", "revoke"]
     assert all("approval" not in part.casefold() for part in remediation)
+
+
+def test_redis_startup_failure_is_a_precondition_with_the_runbook_remediation() -> None:
+    """Catches treating a missing Redis dependency as an observation about Zed."""
+    context = classify_indeterminate_context(
+        {
+            "stderr": "optimus-agent: Redis is not reachable. Start Redis or fix OPTIMUS_REDIS_URL."
+        }
+    )
+
+    assert context["indeterminate_reason"] == "PRECONDITION_UNMET"
+    assert context["precondition"] == {
+        "name": "redis",
+        "remediation": {
+            "runbook": "docs/runbooks/local-live-dependencies.md#5-bounded-session-bound-smoke-redis--gateway-optional-phoenix",
+            "command": "optimus-agent --workspace-root <throwaway-workspace> --check-config --strict",
+        },
+    }
+
+
+def test_missing_load_exchange_is_an_incomplete_observation_not_a_precondition() -> None:
+    """Catches collapsing a clean ACP exchange gap into an infrastructure to-do."""
+    context = classify_indeterminate_context({"stderr": "", "stdout_records": []})
+
+    assert context == {"indeterminate_reason": "OBSERVATION_INCOMPLETE", "precondition": None}

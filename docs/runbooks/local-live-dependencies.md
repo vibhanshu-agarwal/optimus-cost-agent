@@ -14,7 +14,7 @@
 |------|-------------------|---------------------|
 | **Persistent Gateway terminal** | Keychain / `.env.gateway` via `optimus-trust` | Foreground `run-gateway --with-local-phoenix` owns Gateway + Phoenix for the session |
 | **Consumer terminal** | Zero Optimus shell vars required | `optimus-agent --no-auto-start` or external `acpx` against the persistent Gateway |
-| **Bounded auto-start smoke** | Zero Optimus shell vars; durable approval required | Session-bound Redis (+ optional Phoenix) + Gateway started by `optimus-agent --check-config --strict` and cleaned up on exit |
+| **Bounded auto-start smoke** | Zero Optimus shell vars; durable approval required | Named Redis (+ optional Phoenix) persists; Gateway is started by `optimus-agent --check-config --strict` and cleaned up on exit |
 
 No local provider keys. No agent-shell OTLP/Phoenix variables. Gateway-only OTLP when Phoenix is opted in.
 
