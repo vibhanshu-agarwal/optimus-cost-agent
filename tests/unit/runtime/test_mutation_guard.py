@@ -16,7 +16,7 @@ def test_plan_mode_mutation_forbidden_with_required_message():
     with pytest.raises(MutationForbidden) as exc_info:
         assert_mutation_allowed(context, MutationKind.WRITE_FILE)
 
-    assert exc_info.value.code == -32002
+    assert not hasattr(exc_info.value, "code")
     assert str(exc_info.value) == "mutation forbidden in Plan/Chat mode"
 
 

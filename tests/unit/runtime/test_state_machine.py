@@ -48,7 +48,7 @@ def test_plan_ready_direct_to_executing_rejected_with_code_32002():
             StateTransition(target=AgentState.EXECUTING, reason="bypass approval"),
         )
 
-    assert exc_info.value.code == -32002
+    assert not hasattr(exc_info.value, "code")
     assert "must pass through AwaitingApproval" in str(exc_info.value)
 
 

@@ -1383,3 +1383,36 @@ def test_plan_1116_deadline_seams_keep_separate_scheduled_custody() -> None:
     assert "Plan 11.16" in p11_fu_19
     assert "P11-FU-19" not in fu7_row["Evidence"]
     assert "P11-FU-7" not in fu19_row["Evidence"]
+
+
+def test_plan_1118_records_forward_only_error_code_custody() -> None:
+    """Living docs must name Plan 11.18 as owner of the unimplemented Plan 11.7 subset."""
+    pool = _read(OPTIMUS_POOL)
+    roadmap = _read(PHASE_1_ROADMAP)
+
+    assert "P11-FU-10" in pool
+    assert "Plan 11.18" in pool
+    assert "forced Plan 11.7 subset" in pool
+    assert "-32002" in pool and "-32910" in pool and "-32911" in pool
+    assert "frozen Plan 11.7" in pool
+    assert "Plan 11.18" in roadmap
+    assert "P11-FU-10" in roadmap
+    assert "frozen Plan 11.7" in roadmap
+
+
+def test_plan_1118_current_docs_close_p11_fu_10() -> None:
+    readme = _read(REPO_ROOT / "README.md")
+    pool = _read(OPTIMUS_POOL)
+    entries = _entry_sections(pool)
+    p11_fu_10_entry = entries["P11-FU-10: Complete ACP Error-Code Registry Audit"]
+    p11_fu_10_status = _status_token(p11_fu_10_entry)
+    frozen_plan_117_text = _read(
+        REPO_ROOT / "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md"
+    )
+
+    assert "ACP callers receive JSON-RPC code `-32910`" in readme
+    assert "ACP callers receive JSON-RPC code `-32002`" not in readme
+    assert "Plan 11.18" in p11_fu_10_entry
+    assert "plan-11-18-p11-fu-10-acpx-error-code-evidence.md" in p11_fu_10_entry
+    assert "Closed" in p11_fu_10_status
+    assert "-32002" in frozen_plan_117_text

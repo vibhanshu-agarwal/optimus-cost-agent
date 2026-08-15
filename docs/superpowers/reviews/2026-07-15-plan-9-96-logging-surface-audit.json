@@ -1897,6 +1897,54 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.run_p11_fu_10_acpx_error_code_evidence:_write_probe_agent:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _write_probe_agent writes a throwaway probe-agent fixture into an OS temporary directory. The fixture never imports project ACP code and is not retained as qualifying evidence.",
+      "sanitizer": "schema-limited functional path; temporary probe fixture, not qualifying evidence",
+      "test_node": "tests/unit/tools/test_run_p11_fu_10_acpx_error_code_evidence.py::test_write_probe_agent_is_temporary_fixture_without_optimus_imports",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_p11_fu_10_acpx_error_code_evidence:main:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main uses str(exc) only to print a typed AcpxNotFoundError/AcpxEvidenceError message to stderr and return a controlled exit code; it does not persist raw diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_p11_fu_10_acpx_error_code_evidence.py::test_main_prints_controlled_stderr_when_acpx_missing",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_p11_fu_10_acpx_error_code_evidence:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main stderr_export prints only controlled operational or typed failure text (acpx-not-found, evidence-check rejection, timeout) and does not retain raw child diagnostics.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_p11_fu_10_acpx_error_code_evidence.py::test_main_prints_controlled_stderr_when_acpx_missing",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_p11_fu_10_acpx_error_code_evidence:run_capture:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: run_capture json.dumps only the schema-limited observation (acpx version, path digest, probed codes, exit codes, classification tokens, unconditional allocation reason) for an in-memory secret scan before writing reports/; raw transcripts are omitted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_p11_fu_10_acpx_error_code_evidence.py::test_run_capture_writes_schema_limited_report",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_p11_fu_10_acpx_error_code_evidence:write_markdown_report:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: write_markdown_report json.dumps only the schema-limited observation object after assert_report_has_no_secrets; raw acpx stdout/stderr and credentials have no field.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_p11_fu_10_acpx_error_code_evidence.py::test_write_markdown_report_omits_transcript_and_secrets",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_p11_fu_10_acpx_error_code_evidence:write_markdown_report:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: write_markdown_report persists only the schema-limited markdown wrapper and JSON object into reports/ after destination and secret checks; credentials and raw transcripts have no write path.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_p11_fu_10_acpx_error_code_evidence.py::test_write_markdown_report_omits_transcript_and_secrets",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.run_p11_fu_9_acpx_evidence:assert_report_has_no_secrets:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: assert_report_has_no_secrets json.dumps the already schema-limited evidence summary solely for an in-memory known-secret substring scan, then discards the rendered text; failure raises before any report write.",

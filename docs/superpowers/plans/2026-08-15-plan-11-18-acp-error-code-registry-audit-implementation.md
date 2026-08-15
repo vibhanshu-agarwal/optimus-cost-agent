@@ -89,7 +89,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 - Consumes: an operator-recorded acceptance of the explicit `P11-FU-10`/Plan 11.18 custody transfer; `origin/main == 7da16b6`; the frozen Plan 11.7 digest already protected by `PROTECTED_BLOB_SHA256`.
 - Produces: one living custody statement in the `P11-FU-10` entry and one in the living Plan 11.7 status reference; no frozen-byte change.
 
-- [ ] **Step 1: Verify the approval and clean, current base.**
+- [x] **Step 1: Verify the approval and clean, current base.**
 
   Record the operator’s custody decision in the task evidence (review URL or approved PR comment), then run:
 
@@ -103,7 +103,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: `HEAD` and `origin/main` identify the authorized base before edits; the worktree is clean; all four frozen files have no diff. If the operator approval is absent, stop here without changing production code, tests, pool status, or the roadmap.
 
-- [ ] **Step 2: Write the RED living-custody documentation test.**
+- [x] **Step 2: Write the RED living-custody documentation test.**
 
   Add a focused test to `tests/unit/docs/test_open_work_pool_hygiene.py` that reads the pool and roadmap and asserts all of the following exact semantic anchors:
 
@@ -120,7 +120,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Keep the existing `PROTECTED_BLOB_SHA256` checks unchanged: the test must prove that living status changed without rewriting frozen bytes.
 
-- [ ] **Step 3: Run the new documentation test and verify its RED state.**
+- [x] **Step 3: Run the new documentation test and verify its RED state.**
 
   Run:
 
@@ -130,13 +130,13 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: FAIL only because the current living documents still say that the correction belongs to Plan 11.7/already landed and do not name Plan 11.18. A frozen-digest failure is a stop condition, not an expected RED.
 
-- [ ] **Step 4: Record the transfer in living documents only.**
+- [x] **Step 4: Record the transfer in living documents only.**
 
   In the `P11-FU-10` entry, replace the stale assertion that the forced correction “belongs to Plan 11.7”/“already landed” with a dated, forward-only statement that Plan 11.18 owns the named forced subset because it is unimplemented on `7da16b6` and Plan 11.7 is blocked. State that the transfer does not alter frozen files or unblock `session/load` work.
 
   In the living `P11-FEAT-ZED-RESUME`/Plan 11.7 reference in the pool and the Plan 11 roadmap status paragraph, add one bounded cross-reference: Plan 11.7 remains blocked, but its unimplemented error-code subset is now owned by `P11-FU-10` / Plan 11.18. Do not describe the correction as landed until Task 6 closes it on its own evidence.
 
-- [ ] **Step 5: Run the GREEN documentation and frozen-history checks.**
+- [x] **Step 5: Run the GREEN documentation and frozen-history checks.**
 
   Run:
 
@@ -148,7 +148,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: documentation hygiene is green, whitespace is clean, and frozen files remain byte-identical to the base.
 
-- [ ] **Step 6: Commit the approved custody record.**
+- [x] **Step 6: Commit the approved custody record.**
 
   After the Task 1 commands pass and with commit authorization, run:
 
@@ -169,7 +169,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 - Consumes: `tests/fixtures/acp/acp-v1-schema.json` and central registry exports.
 - Produces: `JSON_RPC_STANDARD_ERROR_CODES`, `ACP_PROTOCOL_ERROR_CODES`, and `OPTIMUS_APPLICATION_ERROR_CODES` exported by `optimus.acp.errors`.
 
-- [ ] **Step 1: Write failing schema-derived tests.**
+- [x] **Step 1: Write failing schema-derived tests.**
 
   In `tests/unit/acp/test_error_code_registry.py`, load the fixture with `json.loads`, select only integer `const` values from `schema["$defs"]["ErrorCode"]["anyOf"]`, and assert against the exported registry sets. The test must derive the ACP set at runtime; do not add a duplicated literal list of ACP values.
 
@@ -218,7 +218,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
   assert OPTIMUS_APPLICATION_ERROR_CODES == frozenset({MUTATION_FORBIDDEN, DUPLICATE_REQUEST_ID})
   ```
 
-- [ ] **Step 2: Run the schema selector and verify RED.**
+- [x] **Step 2: Run the schema selector and verify RED.**
 
   Run:
 
@@ -228,7 +228,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: FAIL because the current registry lacks the protocol/application sets, `RESOURCE_NOT_FOUND`, and the two outside-band application values.
 
-- [ ] **Step 3: Implement the central registry without behavior changes outside the adapter.**
+- [x] **Step 3: Implement the central registry without behavior changes outside the adapter.**
 
   In `src/optimus/acp/errors.py`, keep the five existing JSON-RPC standard constants and add exactly these central names:
 
@@ -250,7 +250,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   `REQUEST_CANCELLED` and `RESOURCE_NOT_FOUND` reserve schema allocations in the central registry only. Do not add session/resume/load behavior or `SESSION_BUSY` in this plan.
 
-- [ ] **Step 4: Run the schema oracle GREEN.**
+- [x] **Step 4: Run the schema oracle GREEN.**
 
   Run:
 
@@ -260,7 +260,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: PASS. The test output establishes that the complete schema-derived set contains `-32002` but excludes `-32910` and `-32911`, and that Optimus application values are unique, disjoint, and outside the complete reserved band.
 
-- [ ] **Step 5: Commit the registry/oracle slice.**
+- [x] **Step 5: Commit the registry/oracle slice.**
 
   After the selector passes and with commit authorization, run:
 
@@ -280,7 +280,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 - Consumes: all `src/**/*.py` files, the central registry module path, and `OPTIMUS_APPLICATION_ERROR_CODES`.
 - Produces: `find_non_registry_error_code_literals(source_root: Path) -> frozenset[tuple[str, str]]`, returning exact repository-relative `(path, symbol)` sites; `EXPECTED_LEGACY_ERROR_CODE_SITES = frozenset()`.
 
-- [ ] **Step 1: Write the AST-oracle RED test before removing the duplicate constant.**
+- [x] **Step 1: Write the AST-oracle RED test before removing the duplicate constant.**
 
   Parse every tracked `src/**/*.py` file with `ast.parse`. Visit `Assign`, `AnnAssign`, dataclass field defaults, and call keyword/positional values that establish an error `code`. Treat a negative integer as error-code-like if it is in the inclusive JSON-RPC reserved band or is a member of `OPTIMUS_APPLICATION_ERROR_CODES`. Report its repository-relative path and enclosing class/function/module symbol whenever the literal is outside `src/optimus/acp/errors.py`.
 
@@ -309,7 +309,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   `find_non_registry_error_code_literals` must call `signed_int` on each candidate value, skip the one registry path, and return `(relative_path.as_posix(), enclosing_symbol)` pairs. The test must not scan tests, tools, reports, or `docs/`; those include intentional fixtures and frozen historical evidence. It must identify a raw source literal by path and enclosing symbol, never by a broad textual suppression.
 
-- [ ] **Step 2: Run the AST selector and verify its deterministic RED.**
+- [x] **Step 2: Run the AST selector and verify its deterministic RED.**
 
   Run:
 
@@ -320,7 +320,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: the AST assertion fails on the exact current production bypass `src/optimus/runtime/mutation.py:MUTATION_FORBIDDEN_CODE`. Classify every grep result by source, test, tool, or frozen-history status; do not use grep alone as the oracle.
 
-- [ ] **Step 3: Preserve the RED; do not waive it with a baseline entry.**
+- [x] **Step 3: Preserve the RED; do not waive it with a baseline entry.**
 
   Confirm that `EXPECTED_LEGACY_ERROR_CODE_SITES` remains exactly `frozenset()` and leave the AST test RED for Task 4. Do not add `mutation.py` or any other source site to an allowlist: the required final state is zero legacy sites.
 
@@ -343,7 +343,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 - Consumes: `DUPLICATE_REQUEST_ID` and `MUTATION_FORBIDDEN` only from `optimus.acp.errors` at the ACP adapter.
 - Produces: `DuplicateRequestId(request_id: str | int)` and `MutationForbidden(message: str)` without a `code` attribute; `JsonRpcDispatcher.dispatch()` emits the designated central code in its JSON-RPC error response.
 
-- [ ] **Step 1: Write the semantic-exception RED tests.**
+- [x] **Step 1: Write the semantic-exception RED tests.**
 
   Replace runtime numeric assertions with absence/semantic assertions:
 
@@ -368,7 +368,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Keep the current mutation messages, request IDs, blocked file assertions, and audit-event assertions unchanged.
 
-- [ ] **Step 2: Run the focused RED selectors.**
+- [x] **Step 2: Run the focused RED selectors.**
 
   Run:
 
@@ -378,7 +378,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: the semantic tests fail because `DuplicateRequestId` and `MutationForbidden` still expose `code`, the dispatcher still emits old values, and the AST oracle remains RED on the runtime literal.
 
-- [ ] **Step 3: Remove the two runtime code fields and map at the one protocol boundary.**
+- [x] **Step 3: Remove the two runtime code fields and map at the one protocol boundary.**
 
   Make these exact boundary changes:
 
@@ -396,7 +396,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Delete the `optimus.acp.errors` import and `MUTATION_FORBIDDEN_CODE` definition from `mutation.py`; remove the re-export from `runtime/__init__.py`. In `JsonRpcDispatcher.dispatch()`, map `DuplicateRequestId` to `DUPLICATE_REQUEST_ID` and the existing `MutationForbidden` catch to `MUTATION_FORBIDDEN`. Do not use numeric literals in these files.
 
-- [ ] **Step 4: Run both mechanical oracles and semantic tests GREEN.**
+- [x] **Step 4: Run both mechanical oracles and semantic tests GREEN.**
 
   Run:
 
@@ -406,7 +406,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: PASS. Runtime layers expose only semantic exceptions; ACP responses emit `-32910` and `-32911`; the schema-derived and AST-derived oracles both pass with a zero allowlist.
 
-- [ ] **Step 5: Commit the one-authority mapping and AST enforcement change.**
+- [x] **Step 5: Commit the one-authority mapping and AST enforcement change.**
 
   After the focused suite passes and with commit authorization, run:
 
@@ -428,7 +428,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 - Consumes: an independently installed `acpx` executable found by `shutil.which("acpx")`, its exact `--version`, and a throwaway ACP error-probe agent in an ignored temporary directory.
 - Produces: a sanitized report containing the `acpx` version/path digest, the two probed code values, exit/classification observations, and no raw transcript, task prompt, environment, or credentials.
 
-- [ ] **Step 1: Write RED unit tests for the external-client evidence runner.**
+- [x] **Step 1: Write RED unit tests for the external-client evidence runner.**
 
   Model the runner after the repository’s existing `run_plan115_acpx_cost_obs_evidence.py` and `run_p11_fu_9_acpx_evidence.py` patterns. Unit-test that it:
 
@@ -443,7 +443,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   The probe agent may be a minimal fixture server solely to make an external client observe an error envelope. It is not an Optimus ACP client, never imports project protocol code, and does not stand in for an Optimus integration test. `acpx` is the only protocol client and test driver.
 
-- [ ] **Step 2: Run the runner unit tests RED.**
+- [x] **Step 2: Run the runner unit tests RED.**
 
   Run:
 
@@ -453,13 +453,13 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: FAIL because the runner and its sanitization/fail-closed contract do not yet exist.
 
-- [ ] **Step 3: Implement the hermetic observation runner.**
+- [x] **Step 3: Implement the hermetic observation runner.**
 
   The runner must launch the real external `acpx` with `shell=False`, invoke a temporary probe agent twice—once returning `-32001`, once returning `-32911`—and capture only these outcome fields: `code`, `acpx_version`, SHA-256 of the executable path string, process exit code, and a bounded classification token derived from `acpx` stderr/stdout. It must fail closed if `acpx` is unavailable, either probe cannot be driven, the client output contains a detected secret, or the report destination is outside `reports/`.
 
   It must state in the report that the application code changed unconditionally because `-32001` is inside the reserved band; the observation is evidence about one real client, not permission to retain a protocol-invalid number.
 
-- [ ] **Step 4: Run unit GREEN and Windows real-client evidence.**
+- [x] **Step 4: Run unit GREEN and Windows real-client evidence.**
 
   Run:
 
@@ -471,7 +471,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: unit tests pass; the report names an independently authored `acpx`, records outcomes for both values, has no secret material, and explains that `-32911` remains mandatory regardless of the observation. Do not replace this live step with a project-authored client/harness. If `acpx` is unavailable or does not complete, leave `P11-FU-10` open and record the blocked evidence condition; do not claim closure.
 
-- [ ] **Step 5: Commit the evidence runner and its produced report.**
+- [x] **Step 5: Commit the evidence runner and its produced report.**
 
   After both unit and real-client gates pass and with commit authorization, run:
 
@@ -495,7 +495,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 - Consumes: green Task 2 and Task 4 mechanical oracles; successful Task 5 report; the exact frozen-file digest checks.
 - Produces: current documentation that says mutation denial is `-32910`, a closed `P11-FU-10` entry with its own report/PR evidence, and an unchanged frozen Plan 11.7 record.
 
-- [ ] **Step 1: Write RED current-document assertions.**
+- [x] **Step 1: Write RED current-document assertions.**
 
   Add assertions that distinguish current documentation from historical evidence:
 
@@ -508,7 +508,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
   assert "-32002" in frozen_plan_117_text  # expected historical evidence, not a current claim
   ```
 
-- [ ] **Step 2: Run the documentation test RED.**
+- [x] **Step 2: Run the documentation test RED.**
 
   Run:
 
@@ -518,11 +518,11 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: FAIL until current README and the open-work entry describe the actual final state. Historical `-32002` occurrences must not be “fixed.”
 
-- [ ] **Step 3: Make the current-state documentation changes.**
+- [x] **Step 3: Make the current-state documentation changes.**
 
   Change README’s mutation-boundary statement to `-32910`. Mark `P11-FU-10` closed only when Tasks 2–5 have passed, link the Plan 11.18 implementation, its real-`acpx` report, and the merged PR/commit. State both before/after code mappings and that the registry/oracles prove the final allocation. Update the Plan 11.7 living reference to say its frozen implementation remains blocked and that no `session/load` work was transferred; only the now-completed error-code subset moved to Plan 11.18.
 
-- [ ] **Step 4: Run Windows fitness gates.**
+- [x] **Step 4: Run Windows fitness gates.**
 
   Run:
 
@@ -536,7 +536,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: all selected and default non-live tests pass, bare coverage is at least 80%, Ruff is clean, and there is no whitespace error. Any failure—including an unrelated existing flake—must be recorded and resolved or dispositioned before closure.
 
-- [ ] **Step 5: Repeat the non-live gates in a native WSL ext4 clone.**
+- [x] **Step 5: Repeat the non-live gates in a native WSL ext4 clone.**
 
   From WSL Ubuntu, create a throwaway clone under the Linux filesystem, check out the exact candidate commit, and run:
 
@@ -550,7 +550,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: all gates pass from the ext4 clone. Do not run this parity gate from `/mnt/d/...` or reuse a Windows-created linked worktree. If a platform-specific failure occurs, retain its command/output in the PR and resolve it before sign-off.
 
-- [ ] **Step 6: Perform the documentation freshness audit and final frozen-history verification.**
+- [x] **Step 6: Perform the documentation freshness audit and final frozen-history verification.**
 
   Review every living state claim affected by the change: `README.md`, the consolidated pool, the Plan 11 roadmap, the milestone charter if it references Plan 11.7 current state, and current reports linked by the pool. Then run:
 
@@ -562,7 +562,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: live production code has no `-32001`/`-32002` application mapping; README names `-32910`; the only remaining historical old-code references are classified as frozen evidence; all frozen files are unchanged; no untracked secret or scratch output exists.
 
-- [ ] **Step 7: Commit, update from `main`, and open a draft PR.**
+- [x] **Step 7: Commit, update from `main`, and open a draft PR.**
 
   After all Windows and WSL gates pass and with explicit commit/push/PR authorization, run:
 

@@ -1098,7 +1098,7 @@ result; the [custody note](../../../reports/p11-feat-zed-resume-task0-evidence-c
 records that limitation without classifying it as loss. The separate real-Zed temporary-advertisement
 re-probe must commit sanitized evidence; see the [re-probe report](../../../reports/p11-feat-zed-resume-session-load-reprobe.md).
 Frozen Plan 11.7
-Task 0 Steps 5-7 and Tasks 1-11 remain blocked. The standalone
+Task 0 Steps 5-7 and Tasks 1-11 remain blocked. The unimplemented error-code subset of frozen Plan 11.7 is now completed by `P11-FU-10` / Plan 11.18; this transfer does not unblock `session/load`. The standalone
 server-side custody feasibility amendment is approved; the origin-A fixture v2 correction amendment
 is also approved and merged (`5BB327D8…9A4D` / PR #108). Corrected `origin-a-3` executed and sealed
 as Option B process-invalid (`next_corr=4` / `next_prompt=3` unclaimed; DoD success false).

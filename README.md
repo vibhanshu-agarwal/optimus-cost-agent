@@ -27,7 +27,7 @@ The runtime governance foundation implements execution modes, generation-scope
 classification, lifecycle transition validation, AwaitingApproval handling, and
 the `assert_mutation_allowed()` primitive. Mutation wrappers for file writes,
 shell execution, and shadow patch application call the primitive before any
-side effect, and ACP callers receive JSON-RPC code `-32002` when the boundary is
+side effect, and ACP callers receive JSON-RPC code `-32910` when the boundary is
 violated.
 
 ### Phase 1 Gateway Configuration Foundation
