@@ -31,7 +31,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from optimus_security.sanitization import EVIDENCE_REDACTION_POLICY, sanitize_for_persistence
@@ -252,7 +252,12 @@ def build_acpx_command(acpx: Path, *, workspace: Path, agent: Path) -> list[str]
         str(workspace),
         "--agent",
         subprocess.list2cmdline(
-            [agent.as_posix(), "--workspace-root", workspace.as_posix(), "--no-auto-start"]
+            [
+                PureWindowsPath(agent).as_posix(),
+                "--workspace-root",
+                PureWindowsPath(workspace).as_posix(),
+                "--no-auto-start",
+            ]
         ),
     ]
 

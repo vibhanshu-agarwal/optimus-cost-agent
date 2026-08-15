@@ -2449,6 +2449,46 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.probe_p11_zed_session_load:classify_indeterminate_context:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the supplied evidence only in memory to classify bounded Redis-unreachable text; it neither persists nor exports that intermediate string.",
+      "sanitizer": "in-memory functional path; no persistence or export",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_redis_startup_failure_is_a_precondition_with_the_runbook_remediation",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:_file_sha256:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: reads the independently authored acpx launcher only to emit its SHA-256 provenance digest; launcher bytes are neither retained nor exported.",
+      "sanitizer": "schema-limited functional path; SHA-256 digest only",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_raw_acpx_agent_command_uses_slash_normalized_windows_paths",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the probe's schema-limited result after protocol and exception fields have passed the repository evidence sanitizer; it does not materialize raw ACP streams.",
+      "sanitizer": "schema-limited result; protocol and exception fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_acpx_evidence_keeps_protocol_records_but_redacts_secret_aliases_and_free_text",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stdout is the same schema-limited probe result; raw ACP streams and exception text are sanitized before they enter that result.",
+      "sanitizer": "schema-limited result; protocol and exception fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_acpx_evidence_keeps_protocol_records_but_redacts_secret_aliases_and_free_text",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:run_probe:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Inspection: converts ProbeError text only through _safe_payload before placing it in the result; raw command evidence follows the same capture_acpx_evidence sanitization path.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_acpx_evidence_keeps_protocol_records_but_redacts_secret_aliases_and_free_text",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.run_redaction_gate_live_evidence:_pump:file_open",
       "policy": "shared-sanitize",
       "rationale": "Temporary private capture under operator capture root; streamed into redaction gate; never retained as raw transcript in output.",
