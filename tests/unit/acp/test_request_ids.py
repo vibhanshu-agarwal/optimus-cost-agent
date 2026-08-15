@@ -1,6 +1,5 @@
 import pytest
 
-from optimus.acp.errors import DUPLICATE_REQUEST_ID
 from optimus.acp.request_ids import DuplicateRequestId, RequestIdTracker
 
 
@@ -19,5 +18,5 @@ def test_tracker_rejects_duplicate_request_id_with_app_code():
     with pytest.raises(DuplicateRequestId) as exc_info:
         tracker.remember(42)
 
-    assert exc_info.value.code == DUPLICATE_REQUEST_ID
     assert exc_info.value.request_id == 42
+    assert not hasattr(exc_info.value, "code")

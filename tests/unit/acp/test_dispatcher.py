@@ -98,7 +98,7 @@ def test_dispatcher_rejects_duplicate_id():
     response = dispatcher.dispatch({"jsonrpc": "2.0", "id": "x", "method": "optimus.ping"})
 
     assert response["id"] == "x"
-    assert response["error"]["code"] == DUPLICATE_REQUEST_ID
+    assert response["error"]["code"] == DUPLICATE_REQUEST_ID == -32911
 
 
 def test_dispatcher_maps_forbidden_runtime_mutation_to_32002():
@@ -119,7 +119,7 @@ def test_dispatcher_maps_forbidden_runtime_mutation_to_32002():
     )
 
     assert response["id"] == "write-1"
-    assert response["error"]["code"] == MUTATION_FORBIDDEN
+    assert response["error"]["code"] == MUTATION_FORBIDDEN == -32910
     assert response["error"]["message"] == "mutation forbidden in Plan/Chat mode"
 
 
@@ -180,7 +180,7 @@ def test_dispatcher_maps_pre_tool_guard_block_to_mutation_forbidden_and_records_
         }
     )
 
-    assert response["error"]["code"] == MUTATION_FORBIDDEN
+    assert response["error"]["code"] == MUTATION_FORBIDDEN == -32910
     assert not secret_path.exists()
     assert dispatcher.audit_events()[-1].verdict == "BLOCK"
     assert dispatcher.audit_events()[-1].rule_id == "deny.path.secret"

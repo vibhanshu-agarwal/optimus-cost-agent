@@ -2,16 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from optimus.acp.errors import DUPLICATE_REQUEST_ID
-
 
 @dataclass(frozen=True)
 class DuplicateRequestId(Exception):
     request_id: str | int
-    code: int = DUPLICATE_REQUEST_ID
-
-    def __str__(self) -> str:
-        return f"duplicate request id: {self.request_id}"
 
 
 class RequestIdTracker:

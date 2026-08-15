@@ -280,7 +280,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 - Consumes: all `src/**/*.py` files, the central registry module path, and `OPTIMUS_APPLICATION_ERROR_CODES`.
 - Produces: `find_non_registry_error_code_literals(source_root: Path) -> frozenset[tuple[str, str]]`, returning exact repository-relative `(path, symbol)` sites; `EXPECTED_LEGACY_ERROR_CODE_SITES = frozenset()`.
 
-- [ ] **Step 1: Write the AST-oracle RED test before removing the duplicate constant.**
+- [x] **Step 1: Write the AST-oracle RED test before removing the duplicate constant.**
 
   Parse every tracked `src/**/*.py` file with `ast.parse`. Visit `Assign`, `AnnAssign`, dataclass field defaults, and call keyword/positional values that establish an error `code`. Treat a negative integer as error-code-like if it is in the inclusive JSON-RPC reserved band or is a member of `OPTIMUS_APPLICATION_ERROR_CODES`. Report its repository-relative path and enclosing class/function/module symbol whenever the literal is outside `src/optimus/acp/errors.py`.
 
@@ -309,7 +309,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   `find_non_registry_error_code_literals` must call `signed_int` on each candidate value, skip the one registry path, and return `(relative_path.as_posix(), enclosing_symbol)` pairs. The test must not scan tests, tools, reports, or `docs/`; those include intentional fixtures and frozen historical evidence. It must identify a raw source literal by path and enclosing symbol, never by a broad textual suppression.
 
-- [ ] **Step 2: Run the AST selector and verify its deterministic RED.**
+- [x] **Step 2: Run the AST selector and verify its deterministic RED.**
 
   Run:
 
@@ -320,7 +320,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: the AST assertion fails on the exact current production bypass `src/optimus/runtime/mutation.py:MUTATION_FORBIDDEN_CODE`. Classify every grep result by source, test, tool, or frozen-history status; do not use grep alone as the oracle.
 
-- [ ] **Step 3: Preserve the RED; do not waive it with a baseline entry.**
+- [x] **Step 3: Preserve the RED; do not waive it with a baseline entry.**
 
   Confirm that `EXPECTED_LEGACY_ERROR_CODE_SITES` remains exactly `frozenset()` and leave the AST test RED for Task 4. Do not add `mutation.py` or any other source site to an allowlist: the required final state is zero legacy sites.
 
@@ -343,7 +343,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 - Consumes: `DUPLICATE_REQUEST_ID` and `MUTATION_FORBIDDEN` only from `optimus.acp.errors` at the ACP adapter.
 - Produces: `DuplicateRequestId(request_id: str | int)` and `MutationForbidden(message: str)` without a `code` attribute; `JsonRpcDispatcher.dispatch()` emits the designated central code in its JSON-RPC error response.
 
-- [ ] **Step 1: Write the semantic-exception RED tests.**
+- [x] **Step 1: Write the semantic-exception RED tests.**
 
   Replace runtime numeric assertions with absence/semantic assertions:
 
@@ -368,7 +368,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Keep the current mutation messages, request IDs, blocked file assertions, and audit-event assertions unchanged.
 
-- [ ] **Step 2: Run the focused RED selectors.**
+- [x] **Step 2: Run the focused RED selectors.**
 
   Run:
 
@@ -378,7 +378,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: the semantic tests fail because `DuplicateRequestId` and `MutationForbidden` still expose `code`, the dispatcher still emits old values, and the AST oracle remains RED on the runtime literal.
 
-- [ ] **Step 3: Remove the two runtime code fields and map at the one protocol boundary.**
+- [x] **Step 3: Remove the two runtime code fields and map at the one protocol boundary.**
 
   Make these exact boundary changes:
 
@@ -396,7 +396,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Delete the `optimus.acp.errors` import and `MUTATION_FORBIDDEN_CODE` definition from `mutation.py`; remove the re-export from `runtime/__init__.py`. In `JsonRpcDispatcher.dispatch()`, map `DuplicateRequestId` to `DUPLICATE_REQUEST_ID` and the existing `MutationForbidden` catch to `MUTATION_FORBIDDEN`. Do not use numeric literals in these files.
 
-- [ ] **Step 4: Run both mechanical oracles and semantic tests GREEN.**
+- [x] **Step 4: Run both mechanical oracles and semantic tests GREEN.**
 
   Run:
 
@@ -406,7 +406,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: PASS. Runtime layers expose only semantic exceptions; ACP responses emit `-32910` and `-32911`; the schema-derived and AST-derived oracles both pass with a zero allowlist.
 
-- [ ] **Step 5: Commit the one-authority mapping and AST enforcement change.**
+- [x] **Step 5: Commit the one-authority mapping and AST enforcement change.**
 
   After the focused suite passes and with commit authorization, run:
 

@@ -9,8 +9,6 @@ from optimus.runtime.modes import ExecutionMode
 if TYPE_CHECKING:
     from optimus.runtime.state import RuntimeContext
 
-MUTATION_FORBIDDEN_CODE = -32002
-
 
 class MutationKind(StrEnum):
     WRITE_FILE = "write_file"
@@ -23,10 +21,6 @@ class MutationKind(StrEnum):
 @dataclass(frozen=True)
 class MutationForbidden(Exception):
     message: str
-    code: int = MUTATION_FORBIDDEN_CODE
-
-    def __str__(self) -> str:
-        return self.message
 
 
 class MutationGuard:

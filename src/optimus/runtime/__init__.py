@@ -6,7 +6,6 @@ from optimus.runtime.modes import (
     classify_generation_scope,
 )
 from optimus.runtime.mutation import (
-    MUTATION_FORBIDDEN_CODE,
     MutationForbidden,
     MutationGuard,
     MutationKind,
@@ -25,7 +24,6 @@ __all__ = [
     "AwaitingApproval",
     "ExecutionMode",
     "GenerationScope",
-    "MUTATION_FORBIDDEN_CODE",
     "MutationForbidden",
     "MutationGuard",
     "MutationKind",
