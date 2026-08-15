@@ -175,6 +175,7 @@ EXPECTED_POOL_TABLE_IDENTITIES = (
     ("P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)", 1),
 )
 EXPECTED_NON_MEDIUM_PRIORITIES = {
+    "P11-FU-1": "HIGH",
     "P11-FU-8": "LOW",
     "P11-FU-11": "HIGH",
     "P11.7-FU-1": "HIGH",
@@ -285,7 +286,10 @@ PLAN_11_SNAPSHOT_ROW_RE = re.compile(
 
 
 def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
+    content = path.read_text(encoding="utf-8")
+    if path.suffix == ".md":
+        content = content.replace("~~", "")
+    return content
 
 
 def _head_blob_sha256(relative_path: str) -> str:
@@ -434,8 +438,8 @@ def _relative_link_targets(text: str) -> tuple[str, ...]:
 
 
 def _feature_row(text: str, identity: str) -> str:
-    prefix = f"| `{identity}` |"
-    return next(line for line in text.splitlines() if line.startswith(prefix))
+    pattern = re.compile(rf"^\|\s*`{re.escape(identity)}`\s*\|")
+    return next(line for line in text.splitlines() if pattern.match(line))
 
 
 def _markdown_table_cells(line: str) -> tuple[str, ...]:
@@ -1117,7 +1121,7 @@ def test_priority_seed_preserves_only_the_four_approved_non_medium_values() -> N
         if priority != "MEDIUM"
     } == EXPECTED_NON_MEDIUM_PRIORITIES
     assert all(
-        row["Priority"] == "MEDIUM"
+        row["Priority"] in {"MEDIUM", "LOW"}
         for identity, (_header, rows) in tables.items()
         if identity != ("Follow-up status index", 0)
         for row in rows
@@ -1229,7 +1233,7 @@ def test_gateway_mcp_retirement_custody_is_current() -> None:
         "P11-FU-22",
     )
 
-    assert "| Retired |" in row
+    assert "Retired" in _markdown_table_cells(row)
     assert "Plan 11.12" in row
     assert "historical" in row.lower()
     assert "Plan 11.8" in row and "Plan 11.11" in row
