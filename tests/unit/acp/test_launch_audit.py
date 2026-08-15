@@ -221,3 +221,176 @@ class TestAuditFailureIsFatal:
             audit_file = tmp_path / "launch-audit.ndjson"
             raw_text = audit_file.read_text(encoding="utf-8")
             assert "should never be called" not in raw_text
+
+
+class TestMigrationObservability:
+    """Plan 11.15 Task 6: migration and revalidation are first-class audit events."""
+
+    def test_migration_event_exposes_legacy_v2_to_v3_and_inherited_trust(self, tmp_path: Path) -> None:
+        event = _sample_event(
+            event_type="approval_migration",
+            approval_migration_disposition="legacy_v2_to_v3",
+            inherited_trust="pre_migration_assurance_not_upgraded",
+            workspace_identity_disposition="equal",
+        )
+        append_launch_audit_event(event, runtime_root=tmp_path)
+        parsed = json.loads((tmp_path / "launch-audit.ndjson").read_text(encoding="utf-8").strip())
+        assert parsed["event_type"] == "approval_migration"
+        assert parsed["approval_migration_disposition"] == "legacy_v2_to_v3"
+        assert parsed["inherited_trust"] == "pre_migration_assurance_not_upgraded"
+        assert parsed["workspace_identity_disposition"] == "equal"
+
+    def test_authorization_event_defaults_emit_no_migration_identity_disposition(self, tmp_path: Path) -> None:
+        append_launch_audit_event(_sample_event(), runtime_root=tmp_path)
+        parsed = json.loads((tmp_path / "launch-audit.ndjson").read_text(encoding="utf-8").strip())
+        assert parsed["event_type"] == "authorization"
+        assert parsed["approval_migration_disposition"] == "none"
+        assert parsed["workspace_identity_disposition"] == "equal"
+        assert parsed["workspace_identity_attempts"] == []
+        assert parsed.get("inherited_trust") in (None, "none")
+
+    def test_revalidation_failure_event_carries_typed_identity_disposition(self, tmp_path: Path) -> None:
+        event = _sample_event(
+            event_type="workspace_revalidation_failure",
+            workspace_identity_disposition="unavailable_retry_exhausted",
+            workspace_identity_attempts=(
+                {
+                    "phase": "revalidate_identity",
+                    "probe": "rev-parse",
+                    "attempt": 3,
+                    "classification": "transient",
+                    "disposition": "retry_exhausted",
+                    "exception_type": "OSError",
+                    "errno": None,
+                    "winerror": 6,
+                    "return_code": None,
+                    "duration_ms": 1,
+                },
+            ),
+            final_reason_code="WORKSPACE_IDENTITY_UNAVAILABLE",
+        )
+        append_launch_audit_event(event, runtime_root=tmp_path)
+        parsed = json.loads((tmp_path / "launch-audit.ndjson").read_text(encoding="utf-8").strip())
+        assert parsed["event_type"] == "workspace_revalidation_failure"
+        assert parsed["workspace_identity_disposition"] == "unavailable_retry_exhausted"
+        attempts = parsed["workspace_identity_attempts"]
+        assert attempts == [
+            {
+                "phase": "revalidate_identity",
+                "probe": "rev-parse",
+                "attempt": 3,
+                "classification": "transient",
+                "disposition": "retry_exhausted",
+                "exception_type": "OSError",
+                "errno": None,
+                "winerror": 6,
+                "return_code": None,
+                "duration_ms": 1,
+            }
+        ]
+        assert parsed["final_reason_code"] == "WORKSPACE_IDENTITY_UNAVAILABLE"
+
+
+class TestIdentityDispositionValueSafety:
+    def test_identity_disposition_attempts_drop_raw_git_stderr_paths_and_secrets(
+        self, tmp_path: Path
+    ) -> None:
+        event = _sample_event(
+            event_type="workspace_revalidation_failure",
+            workspace_identity_disposition="unavailable_permanent",
+            workspace_identity_attempts=(
+                {
+                    "phase": "revalidate_identity",
+                    "probe": "rev-parse",
+                    "attempt": 1,
+                    "classification": "permanent",
+                    "disposition": "unavailable",
+                    "exception_type": "OSError",
+                    "stderr": "fatal: not a git repository in /secret/path",
+                    "path": r"C:\Users\pc\secret-workspace",
+                    "OPTIMUS_API_KEY": "sk-CANARY-SHOULD-NOT-APPEAR",
+                    "message": "GIT_DIR=/tmp/hostile",
+                },
+            ),
+            final_reason_code="WORKSPACE_IDENTITY_UNAVAILABLE",
+        )
+        append_launch_audit_event(event, runtime_root=tmp_path)
+        raw_text = (tmp_path / "launch-audit.ndjson").read_text(encoding="utf-8")
+        parsed = json.loads(raw_text.strip())
+        assert "fatal:" not in raw_text
+        assert "/secret/path" not in raw_text
+        assert r"C:\Users\pc\secret-workspace" not in raw_text
+        assert "sk-CANARY-SHOULD-NOT-APPEAR" not in raw_text
+        assert "GIT_DIR=" not in raw_text
+        attempt = parsed["workspace_identity_attempts"][0]
+        assert "stderr" not in attempt
+        assert "path" not in attempt
+        assert "OPTIMUS_API_KEY" not in attempt
+        assert "message" not in attempt
+        assert attempt["phase"] == "revalidate_identity"
+        assert attempt["probe"] == "rev-parse"
+
+
+class TestAuditSelfConsistency:
+    def test_audit_append_self_consistency_does_not_change_topology(self, tmp_path: Path) -> None:
+        """Audit writes under the already-bootstrapped .optimus runtime root
+        must not create or replace an included immediate-root entry.
+
+        If this assertion only holds because .optimus was excluded, the frozen
+        exclusion set has been widened and this test must fail.
+        """
+        from optimus.acp.operator_paths import OperatorPaths, bootstrap_workspace_runtime_root
+        from optimus.acp.trusted_paths import (
+            exclusion_policy_v1_exact_names,
+            is_excluded_immediate_basename,
+            resolve_workspace_security_state,
+        )
+
+        assert ".optimus" not in exclusion_policy_v1_exact_names()
+        assert is_excluded_immediate_basename(".optimus") is False
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / "src").mkdir()
+        resolved = workspace.resolve()
+        paths = OperatorPaths(
+            workspace_root=resolved,
+            config_root=tmp_path / "operator-config",
+            runtime_root=resolved / ".optimus",
+            debug_log_path=resolved / ".optimus" / "debug-acp.ndjson",
+            gateway_log_path=resolved / ".optimus" / "local-gateway.log",
+        )
+        bootstrap_workspace_runtime_root(paths)
+        runtime_root = paths.runtime_root
+        assert runtime_root.name == ".optimus"
+        assert runtime_root.parent == resolved
+
+        included_before = sorted(
+            child.name for child in workspace.iterdir() if not is_excluded_immediate_basename(child.name)
+        )
+        assert ".optimus" in included_before
+        optimus_stat_before = runtime_root.stat()
+        initial = resolve_workspace_security_state(workspace)
+
+        append_launch_audit_event(_sample_event(), runtime_root=runtime_root)
+
+        recaptured = resolve_workspace_security_state(workspace)
+        included_after = sorted(
+            child.name for child in workspace.iterdir() if not is_excluded_immediate_basename(child.name)
+        )
+        optimus_stat_after = runtime_root.stat()
+
+        assert recaptured.change_snapshot.immediate_root_digest == initial.change_snapshot.immediate_root_digest
+        assert recaptured.change_snapshot.device == initial.change_snapshot.device
+        assert recaptured.change_snapshot.inode == initial.change_snapshot.inode
+        assert recaptured.identity.digest == initial.identity.digest
+        assert recaptured.identity.device == initial.identity.device
+        assert recaptured.identity.inode == initial.identity.inode
+        assert included_after == included_before
+        assert (optimus_stat_after.st_dev, optimus_stat_after.st_ino) == (
+            optimus_stat_before.st_dev,
+            optimus_stat_before.st_ino,
+        )
+        parsed = json.loads((runtime_root / "launch-audit.ndjson").read_text(encoding="utf-8").strip())
+        assert parsed["event_type"] == "authorization"
+        assert parsed["workspace_identity_disposition"] == "equal"

@@ -282,13 +282,7 @@ def _authorize_or_exit(
     return authorized, store
 
 
-def _append_audit_or_exit(authorized: AuthorizedLaunch, *, runtime_root: Path) -> int | None:
-    """Append the LaunchAuditEvent before any child/network startup.
-
-    Plan 9.96, Task 5 Step 6: audit append failure is fatal — there is no
-    raw fallback. Returns an int exit code on failure (already printed), or
-    None on success.
-    """
+def _audit_event_common_fields(authorized: AuthorizedLaunch) -> dict[str, object]:
     candidate = authorized.candidate
     setting_decisions = tuple(
         {
@@ -302,31 +296,131 @@ def _append_audit_or_exit(authorized: AuthorizedLaunch, *, runtime_root: Path) -
     monotonic_dispositions = tuple(
         {"name": name, "disposition": "recorded"} for name in sorted(candidate.monotonic_grants)
     )
-    event = LaunchAuditEvent(
-        timestamp=datetime.now(timezone.utc),
-        workspace_digest=candidate.workspace_identity.digest,
-        launch_session_id=authorized.launch_session_id,
-        approval_id=authorized.approval_id,
-        approval_mode=authorized.approval_mode,
-        registry_version=LAUNCH_POLICY_COMPATIBILITY,
-        policy_version=LAUNCH_POLICY_COMPATIBILITY,
-        setting_decisions=setting_decisions,
-        monotonic_dispositions=monotonic_dispositions,
-        rejected_names=(),
-        child_propagation_decisions={
+    return {
+        "timestamp": datetime.now(timezone.utc),
+        "workspace_digest": candidate.workspace_identity.digest,
+        "launch_session_id": authorized.launch_session_id,
+        "approval_id": authorized.approval_id,
+        "approval_mode": authorized.approval_mode,
+        "registry_version": LAUNCH_POLICY_COMPATIBILITY,
+        "policy_version": LAUNCH_POLICY_COMPATIBILITY,
+        "setting_decisions": setting_decisions,
+        "monotonic_dispositions": monotonic_dispositions,
+        "rejected_names": (),
+        "child_propagation_decisions": {
             "agent_child": tuple(sorted(candidate.agent_environ)),
             "gateway_child": tuple(sorted(candidate.gateway_environ)),
         },
-        diagnostic_grant_state="none" if authorized.diagnostic_grant is None else "granted",
-        sanitizer_rule_counts={},
-        final_reason_code="AUTHORIZED",
+        "diagnostic_grant_state": "none" if authorized.diagnostic_grant is None else "granted",
+        "sanitizer_rule_counts": {},
+    }
+
+
+def _authorization_audit_events(authorized: AuthorizedLaunch) -> tuple[LaunchAuditEvent, ...]:
+    common = _audit_event_common_fields(authorized)
+    events: list[LaunchAuditEvent] = []
+    if authorized.approval_record_state == "migrated":
+        provenance = authorized.migration_provenance
+        events.append(
+            LaunchAuditEvent(
+                **common,  # type: ignore[arg-type]
+                event_type="approval_migration",
+                approval_migration_disposition=(
+                    provenance.disposition if provenance is not None else "legacy_v2_to_v3"
+                ),
+                inherited_trust=(
+                    provenance.inherited_trust
+                    if provenance is not None
+                    else "pre_migration_assurance_not_upgraded"
+                ),
+                workspace_identity_disposition="equal",
+                final_reason_code="AUTHORIZED",
+            )
+        )
+    events.append(
+        LaunchAuditEvent(
+            **common,  # type: ignore[arg-type]
+            event_type="authorization",
+            approval_migration_disposition="none",
+            inherited_trust=None,
+            workspace_identity_disposition="equal",
+            final_reason_code="AUTHORIZED",
+        )
     )
-    try:
-        append_launch_audit_event(event, runtime_root=runtime_root)
-    except LaunchAuditError as exc:
-        print(f"optimus-agent: {exc.code}: audit could not be recorded; startup stopped.", file=sys.stderr)
-        return 2
+    return tuple(events)
+
+
+def _workspace_identity_disposition_for(exc: TrustedPathError) -> str:
+    if exc.reason == "stable_identity_mismatch":
+        return "stable_identity_mismatch"
+    if exc.reason == "root_topology_mismatch":
+        return "root_topology_mismatch"
+    if any(item.disposition == "retry_exhausted" for item in exc.diagnostics):
+        return "unavailable_retry_exhausted"
+    return "unavailable_permanent"
+
+
+def _probe_attempt_summaries(exc: TrustedPathError) -> tuple[dict[str, object], ...]:
+    return tuple(
+        {
+            "phase": item.phase,
+            "probe": item.probe,
+            "attempt": item.attempt,
+            "classification": item.classification,
+            "disposition": item.disposition,
+            "exception_type": item.exception_type,
+            "errno": item.errno,
+            "winerror": item.winerror,
+            "return_code": item.return_code,
+            "duration_ms": item.duration_ms,
+        }
+        for item in exc.diagnostics
+    )
+
+
+def _append_audit_events_or_exit(events: tuple[LaunchAuditEvent, ...], *, runtime_root: Path) -> int | None:
+    for event in events:
+        try:
+            append_launch_audit_event(event, runtime_root=runtime_root)
+        except LaunchAuditError as exc:
+            print(
+                f"optimus-agent: {exc.code}: audit could not be recorded; startup stopped.",
+                file=sys.stderr,
+            )
+            return 2
     return None
+
+
+def _append_audit_or_exit(authorized: AuthorizedLaunch, *, runtime_root: Path) -> int | None:
+    """Append authorization (and migration) audit events before child/network startup.
+
+    Plan 9.96, Task 5 Step 6 / Plan 11.15 Task 6: audit append failure is
+    fatal — there is no raw fallback. Returns an int exit code on failure
+    (already printed), or None on success.
+    """
+    return _append_audit_events_or_exit(
+        _authorization_audit_events(authorized),
+        runtime_root=runtime_root,
+    )
+
+
+def _append_revalidation_failure_audit_or_report(
+    authorized: AuthorizedLaunch,
+    exc: TrustedPathError,
+    *,
+    runtime_root: Path,
+) -> None:
+    common = _audit_event_common_fields(authorized)
+    failure_event = LaunchAuditEvent(
+        **common,  # type: ignore[arg-type]
+        event_type="workspace_revalidation_failure",
+        workspace_identity_disposition=_workspace_identity_disposition_for(exc),
+        workspace_identity_attempts=_probe_attempt_summaries(exc),
+        approval_migration_disposition="none",
+        inherited_trust=None,
+        final_reason_code=exc.code,
+    )
+    _append_audit_events_or_exit((failure_event,), runtime_root=runtime_root)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -387,6 +481,11 @@ def main(argv: list[str] | None = None) -> int:
                 when="revalidate",
             ),
             file=sys.stderr,
+        )
+        _append_revalidation_failure_audit_or_report(
+            authorized,
+            exc,
+            runtime_root=candidate.operator_paths.runtime_root,
         )
         return 2
 

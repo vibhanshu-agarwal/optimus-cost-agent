@@ -219,17 +219,23 @@ def test_full_launch_trust_flow_connects_every_real_seam(tmp_path: Path) -> None
         sanitizer_rule_counts={},
         final_reason_code="AUTHORIZED",
     )
+    initial_state = resolve_workspace_security_state(workspace_root)
     append_launch_audit_event(event, runtime_root=candidate.operator_paths.runtime_root)
 
     # --- Step 4: audit must not self-invalidate the already bootstrapped
-    # workspace identity. ---
+    # workspace identity or topology. ---
+    recaptured = resolve_workspace_security_state(workspace_root)
+    assert recaptured.change_snapshot.immediate_root_digest == initial_state.change_snapshot.immediate_root_digest
     revalidate_workspace_identity(authorized.candidate.workspace_identity)
+    revalidate_workspace_security_state(authorized.candidate.workspace_state)
 
     audit_path = candidate.operator_paths.runtime_root / "launch-audit.ndjson"
     assert audit_path.is_file()
     lines = audit_path.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1
     persisted = json.loads(lines[0])
+    assert persisted["event_type"] == "authorization"
+    assert persisted["approval_migration_disposition"] == "none"
     assert persisted["workspace_digest"] == candidate.workspace_identity.digest
     assert persisted["approval_id"] == record.approval_id
     assert persisted["launch_session_id"] == "sess_integration_test"
@@ -584,3 +590,182 @@ def test_full_launch_trust_flow_topology_mismatch_fails_revalidation(tmp_path: P
         revalidate_workspace_security_state(launch_candidate.workspace_state)
     assert exc_info.value.code == "WORKSPACE_IDENTITY_CHANGED"
     assert exc_info.value.reason == "root_topology_mismatch"
+
+
+def test_full_launch_trust_flow_audit_self_consistency(tmp_path: Path) -> None:
+    """Real bootstrap -> authorize -> audit must leave topology object identities equal."""
+    from optimus.acp.trusted_paths import (
+        exclusion_policy_v1_exact_names,
+        is_excluded_immediate_basename,
+    )
+
+    assert ".optimus" not in exclusion_policy_v1_exact_names()
+    assert is_excluded_immediate_basename(".optimus") is False
+
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    (workspace_root.parent / "operator-config").mkdir()
+    approval_runtime = tmp_path / "approval-runtime"
+    keyring = FakeKeyring()
+    env = _base_env(workspace_root=workspace_root)
+
+    authoring_candidate, store = _real_launch_pipeline(
+        env=env, workspace_root=workspace_root, keyring=keyring, runtime_root=approval_runtime, authoring=True
+    )
+    store.write_durable(
+        build_approval_record(
+            mode="durable",
+            workspace_identity=authoring_candidate.workspace_identity,
+            security_literals=authoring_candidate.security_literals,
+            secret_fingerprints=authoring_candidate.secret_fingerprints,
+            monotonic_grants=authoring_candidate.monotonic_grants,
+            model_observation=authoring_candidate.model_observation,
+            hmac_key=store.hmac_key,
+        )
+    )
+    launch_candidate, launch_store = _real_launch_pipeline(
+        env=env, workspace_root=workspace_root, keyring=keyring, runtime_root=approval_runtime
+    )
+    authorized = authorize_launch(
+        candidate=launch_candidate,
+        store=launch_store,
+        launch_session_id="sess_self_consistency",
+    )
+
+    included_before = sorted(
+        child.name
+        for child in workspace_root.iterdir()
+        if not is_excluded_immediate_basename(child.name)
+    )
+    assert ".optimus" in included_before
+    initial = resolve_workspace_security_state(workspace_root)
+    runtime = launch_candidate.operator_paths.runtime_root
+    optimus_stat_before = runtime.stat()
+
+    from optimus.acp import __main__ as acp_main
+
+    audit_failure = acp_main._append_audit_or_exit(authorized, runtime_root=runtime)
+    assert audit_failure is None
+
+    recaptured = resolve_workspace_security_state(workspace_root)
+    included_after = sorted(
+        child.name
+        for child in workspace_root.iterdir()
+        if not is_excluded_immediate_basename(child.name)
+    )
+    optimus_stat_after = runtime.stat()
+    revalidate_workspace_security_state(authorized.candidate.workspace_state)
+
+    assert recaptured.change_snapshot.immediate_root_digest == initial.change_snapshot.immediate_root_digest
+    assert recaptured.identity.digest == initial.identity.digest
+    assert recaptured.identity.device == initial.identity.device
+    assert recaptured.identity.inode == initial.identity.inode
+    assert included_after == included_before
+    assert (optimus_stat_after.st_dev, optimus_stat_after.st_ino) == (
+        optimus_stat_before.st_dev,
+        optimus_stat_before.st_ino,
+    )
+    events = [
+        json.loads(line)
+        for line in (runtime / "launch-audit.ndjson").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [event["event_type"] for event in events] == ["authorization"]
+
+
+def test_migrated_authorization_appends_migration_then_equal_revalidation(tmp_path: Path) -> None:
+    from dataclasses import replace
+    from datetime import datetime, timezone
+
+    from optimus.acp import __main__ as acp_main
+    from optimus.acp.launch_approvals import (
+        ApprovalRecord,
+        compute_record_hmac,
+        compute_security_snapshot_digest,
+        serialize_approval_record,
+    )
+    from optimus.acp.trusted_paths import is_excluded_immediate_basename
+
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    (workspace_root.parent / "operator-config").mkdir()
+    approval_runtime = tmp_path / "approval-runtime"
+    keyring = FakeKeyring()
+    env = _base_env(workspace_root=workspace_root)
+
+    authoring_candidate, store = _real_launch_pipeline(
+        env=env, workspace_root=workspace_root, keyring=keyring, runtime_root=approval_runtime, authoring=True
+    )
+    state = authoring_candidate.workspace_state
+    legacy_snapshot = compute_security_snapshot_digest(
+        security_literals=authoring_candidate.security_literals,
+        secret_fingerprints=authoring_candidate.secret_fingerprints,
+        workspace_digest=state.legacy_v2_digest,
+        registry_version=authoring_candidate.registry_version,
+    )
+    unsigned = ApprovalRecord(
+        schema_version=1,
+        policy_compatibility=LAUNCH_POLICY_COMPATIBILITY,
+        approval_id="appr_legacy_integration",
+        mode="durable",
+        identity_format_version=2,
+        workspace_digest=state.legacy_v2_digest,
+        created_at=datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc),
+        expires_at=None,
+        creator_identity="integration@test",
+        ceremony_cli_version="test",
+        security_literals=dict(authoring_candidate.security_literals),
+        secret_fingerprints=dict(authoring_candidate.secret_fingerprints),
+        monotonic_grants=dict(authoring_candidate.monotonic_grants),
+        model_observation=authoring_candidate.model_observation,
+        registry_version=authoring_candidate.registry_version,
+        security_snapshot_digest=legacy_snapshot,
+        consumed=False,
+        record_hmac="",
+    )
+    legacy = replace(unsigned, record_hmac=compute_record_hmac(unsigned, hmac_key=store.hmac_key))
+    keyring.set_password(
+        "optimus-cost-agent-approvals",
+        f"durable:{state.legacy_v2_digest}",
+        serialize_approval_record(legacy),
+    )
+
+    launch_candidate, launch_store = _real_launch_pipeline(
+        env=env, workspace_root=workspace_root, keyring=keyring, runtime_root=approval_runtime
+    )
+    authorized = authorize_launch(
+        candidate=launch_candidate,
+        store=launch_store,
+        launch_session_id="sess_migration_integration",
+    )
+    assert authorized.approval_record_state == "migrated"
+    assert authorized.migration_provenance is not None
+    assert authorized.migration_provenance.inherited_trust == "pre_migration_assurance_not_upgraded"
+
+    initial = resolve_workspace_security_state(workspace_root)
+    included_before = sorted(
+        child.name
+        for child in workspace_root.iterdir()
+        if not is_excluded_immediate_basename(child.name)
+    )
+    audit_failure = acp_main._append_audit_or_exit(
+        authorized, runtime_root=launch_candidate.operator_paths.runtime_root
+    )
+    assert audit_failure is None
+    recaptured = resolve_workspace_security_state(workspace_root)
+    revalidate_workspace_security_state(authorized.candidate.workspace_state)
+    assert recaptured.change_snapshot.immediate_root_digest == initial.change_snapshot.immediate_root_digest
+    assert recaptured.identity.digest == initial.identity.digest
+    included_after = sorted(
+        child.name
+        for child in workspace_root.iterdir()
+        if not is_excluded_immediate_basename(child.name)
+    )
+    assert included_after == included_before
+
+    audit_path = launch_candidate.operator_paths.runtime_root / "launch-audit.ndjson"
+    events = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert [event["event_type"] for event in events] == ["approval_migration", "authorization"]
+    assert events[0]["approval_migration_disposition"] == "legacy_v2_to_v3"
+    assert events[0]["inherited_trust"] == "pre_migration_assurance_not_upgraded"
+    assert events[1]["approval_migration_disposition"] == "none"

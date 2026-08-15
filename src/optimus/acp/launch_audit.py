@@ -18,12 +18,24 @@ import stat
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, Mapping
 
 from optimus.acp.operator_paths import WorkspaceRuntimeRootError, require_workspace_runtime_root
 from optimus_security.sanitization import sanitize_for_persistence
 
 _AUDIT_FILENAME = "launch-audit.ndjson"
+_ATTEMPT_SUMMARY_KEYS = (
+    "phase",
+    "probe",
+    "attempt",
+    "classification",
+    "disposition",
+    "exception_type",
+    "errno",
+    "winerror",
+    "return_code",
+    "duration_ms",
+)
 
 
 class LaunchAuditError(ValueError):
@@ -53,6 +65,13 @@ class LaunchAuditEvent:
     diagnostic_grant_state: str
     sanitizer_rule_counts: dict[str, int] = field(default_factory=dict)
     final_reason_code: str = "AUTHORIZED"
+    event_type: Literal["authorization", "approval_migration", "workspace_revalidation_failure"] = (
+        "authorization"
+    )
+    workspace_identity_disposition: str = "equal"
+    workspace_identity_attempts: tuple[dict[str, object], ...] = ()
+    approval_migration_disposition: str = "none"
+    inherited_trust: str | None = None
 
 
 def _audit_path(runtime_root: Path) -> Path:
@@ -104,6 +123,10 @@ def append_launch_audit_event(event: LaunchAuditEvent, *, runtime_root: Path) ->
         key: value if isinstance(value, int) else sanitize_for_persistence(value, known_secrets=()).value
         for key, value in payload["sanitizer_rule_counts"].items()
     }
+    payload["workspace_identity_attempts"] = [
+        sanitize_for_persistence(attempt, known_secrets=()).value
+        for attempt in payload["workspace_identity_attempts"]
+    ]
 
     try:
         line = json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -124,6 +147,17 @@ def append_launch_audit_event(event: LaunchAuditEvent, *, runtime_root: Path) ->
         raise LaunchAuditError(code="AUDIT_APPEND_FAILED", detail="cannot write audit event") from exc
 
 
+def _bounded_attempt_summary(attempt: Mapping[str, object]) -> dict[str, object]:
+    bounded: dict[str, object] = {}
+    for key in _ATTEMPT_SUMMARY_KEYS:
+        if key not in attempt:
+            continue
+        value = attempt[key]
+        if value is None or isinstance(value, (str, int)):
+            bounded[key] = value
+    return bounded
+
+
 def _serialize_event(event: LaunchAuditEvent) -> dict[str, Any]:
     return {
         "timestamp": event.timestamp.isoformat(),
@@ -140,6 +174,13 @@ def _serialize_event(event: LaunchAuditEvent) -> dict[str, Any]:
         "diagnostic_grant_state": event.diagnostic_grant_state,
         "sanitizer_rule_counts": dict(event.sanitizer_rule_counts),
         "final_reason_code": event.final_reason_code,
+        "event_type": event.event_type,
+        "workspace_identity_disposition": event.workspace_identity_disposition,
+        "workspace_identity_attempts": [
+            _bounded_attempt_summary(attempt) for attempt in event.workspace_identity_attempts
+        ],
+        "approval_migration_disposition": event.approval_migration_disposition,
+        "inherited_trust": event.inherited_trust,
     }
 
 
