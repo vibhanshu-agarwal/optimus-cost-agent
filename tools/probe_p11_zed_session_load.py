@@ -11,9 +11,10 @@ changes Zed settings, or touches an existing Zed profile.
 acpx is the ACP client for all protocol traffic.  The probe makes a session in
 one isolated acpx home, exports it, imports it into a second isolated home, and
 uses a non-prompt configuration operation to force acpx's saved-session
-reconnect.  acpx therefore invokes ``session/resume`` when advertised and
-``session/load`` otherwise.  No prompt, Gateway request, origin-A fixture, or
-correlation launch is performed.
+reconnect.  acpx invokes ``session/resume`` when advertised and ``session/load``
+only when its live capability payload advertises it; otherwise the probe records
+the capability-gated unreachable result.  No prompt, Gateway request, origin-A
+fixture, or correlation launch is performed.
 """
 
 from __future__ import annotations

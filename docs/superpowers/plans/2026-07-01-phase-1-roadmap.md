@@ -1087,10 +1087,13 @@ v1.0 release-version contract and excluded-capability inventory remain in Plan 1
 **Status:** Plan 11.7 (`P11-FEAT-ZED-RESUME`) is partially implemented and blocked after the closed
 Plan 11.1/11.2/11.4/11.5/11.6 slices. Frozen Task 0 Steps 1-4 are sealed with disposition
 `stop_amend_plan_session_load_unreachable` (historical Zed 1.13.1 did not issue `session/load` after
-full restart). A 2026-08-15 re-probe at commit `e624632` observed Zed `1.15.0 e17dc4f…` and
-independent acpx `0.12.0`, but was **INDETERMINATE** before ACP `initialize` because local Redis
-was unreachable; it returned no capability payload or `session/load` response and did not launch
-Zed or origin-A. It does not supersede the historical seal; see the
+full restart). A 2026-08-15 re-probe at commit `2b04a9c` observed Zed `1.15.0 e17dc4f…`,
+independent acpx `0.12.0`, and live Redis. The live `agentCapabilities` omitted `loadSession`
+and `sessionCapabilities.resume`; acpx returned `-32603` / `SESSION_RESUME_REQUIRED` rather than
+forcing an unsupported call. The result is **UNREACHABLE** by the absent-from-advertised-capabilities
+failure mode, with no Zed or origin-A launch. It does not supersede the historical seal; it is true
+only as of the observed version. The reasoned position (not an amendment decision) is that a clean
+`origin-a-4` correlation launch cannot achieve the unavailable `session/load` objective; see the
 [re-probe report](../../../reports/p11-feat-zed-resume-session-load-reprobe.md). Frozen Plan 11.7
 Task 0 Steps 5-7 and Tasks 1-11 remain blocked. The standalone
 server-side custody feasibility amendment is approved; the origin-A fixture v2 correction amendment
