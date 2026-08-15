@@ -1,0 +1,7 @@
+sha=72f3cc8e10fdc2f9f5e5d0e1c99219dfee962a61
+started=2026-08-15T12:05:35.3203706+05:30
+run=1 exit=0 duration_s=149
+run=2 exit=0 duration_s=101
+run=3 exit=0 duration_s=110
+run=4 exit=0 duration_s=101
+run=5 exit=1 duration_s=104
