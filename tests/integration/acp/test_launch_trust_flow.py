@@ -275,9 +275,8 @@ def test_full_launch_trust_flow_connects_every_real_seam(tmp_path: Path) -> None
     assert agent_environ["OPTIMUS_API_KEY"] == env["OPTIMUS_API_KEY"]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only: directory ctime lifecycle proof")
 def test_approval_bootstrap_allows_audit_then_revalidation_but_later_mutation_fails(tmp_path: Path) -> None:
-    """The approved root predates identity capture; unrelated later writes do not."""
+    """The approved root predates identity capture; a later included add is topology, not ctime."""
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
     (workspace_root.parent / "operator-config").mkdir()
@@ -344,10 +343,12 @@ def test_approval_bootstrap_allows_audit_then_revalidation_but_later_mutation_fa
         runtime_root=launch_candidate.operator_paths.runtime_root,
     )
     revalidate_workspace_identity(launch_candidate.workspace_identity)
+    revalidate_workspace_security_state(launch_candidate.workspace_state)
 
     (workspace_root / "unrelated-post-approval-entry").write_text("synthetic", encoding="utf-8")
-    with pytest.raises(TrustedPathError, match="WORKSPACE_IDENTITY_CHANGED"):
-        revalidate_workspace_identity(launch_candidate.workspace_identity)
+    with pytest.raises(TrustedPathError, match="WORKSPACE_IDENTITY_CHANGED") as exc_info:
+        revalidate_workspace_security_state(launch_candidate.workspace_state)
+    assert exc_info.value.reason == "root_topology_mismatch"
 
 
 def test_full_launch_trust_flow_relocated_workspace_fails_revalidation(tmp_path: Path) -> None:
@@ -390,12 +391,16 @@ def test_full_launch_trust_flow_relocated_workspace_fails_revalidation(tmp_path:
     )
 
     # Relocate the real directory strictly AFTER authorization succeeded.
+    # rmdir+mkdir at the same path can reuse the inode (WSL /tmp); the
+    # production TOCTOU guard is security-state, which still sees topology
+    # change when included entries disappear.
     shutil.rmtree(workspace_root)
     workspace_root.mkdir()
 
     with pytest.raises(TrustedPathError) as exc_info:
-        revalidate_workspace_identity(authorized.candidate.workspace_identity)
+        revalidate_workspace_security_state(authorized.candidate.workspace_state)
     assert exc_info.value.code == "WORKSPACE_IDENTITY_CHANGED"
+    assert exc_info.value.reason in {"stable_identity_mismatch", "root_topology_mismatch"}
 
 
 def test_full_launch_trust_flow_snapshot_mismatch_fails_closed(tmp_path: Path) -> None:

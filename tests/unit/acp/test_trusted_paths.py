@@ -316,6 +316,9 @@ class TestWorkspaceIdentityRevalidation:
 
     @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only: directory ctime changes on entry creation")
     def test_revalidation_fails_after_workspace_directory_metadata_change(self, tmp_path: Path) -> None:
+        # Legacy characterization kept under its original POSIX ctime skip.
+        # The unguarded FU-18 proof that runs on Windows is
+        # test_fu18_equal_ctime_non_excluded_add_is_root_topology_mismatch.
         from optimus.acp.trusted_paths import (
             resolve_workspace_security_state,
             revalidate_workspace_security_state,

@@ -229,13 +229,7 @@ def test_legacy_approved_workspace_missing_root_fails_without_recreating_it(monk
 
     assert acp_main.main(["--workspace-root", str(workspace)]) == 2
     stderr = capsys.readouterr().err
-    if sys.platform == "win32":
-        assert "AUDIT_DIR_UNAVAILABLE" in stderr
-    else:
-        assert stderr.startswith(
-            "optimus-agent: no launch approval found for this workspace."
-        )
-        assert "optimus-trust --workspace-root" in stderr
+    assert "AUDIT_DIR_UNAVAILABLE" in stderr
     assert not (workspace / ".optimus").exists()
     redis.assert_not_called()
     gateway.assert_not_called()
@@ -1526,8 +1520,13 @@ def test_remediation_matrix_stable_identity_mismatch_recommends_reapproval(
 
     def relocating_append_audit(*args, **kwargs):
         result = original_append_audit(*args, **kwargs)
+        # rmdir+mkdir at the same path can reuse the inode on some filesystems
+        # (observed on WSL /tmp). Rename a sibling directory so device/inode
+        # in the v3 digest actually change.
+        replacement = workspace.parent / "replacement-inode"
+        replacement.mkdir()
         shutil.rmtree(workspace)
-        workspace.mkdir()
+        replacement.rename(workspace)
         return result
 
     monkeypatch.setattr(acp_main, "append_launch_audit_event", relocating_append_audit)
