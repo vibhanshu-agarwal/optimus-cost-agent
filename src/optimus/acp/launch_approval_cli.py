@@ -30,6 +30,7 @@ from optimus.acp.launch_approvals import (
 from optimus.acp.launch_gate import (
     LaunchCandidate,
     LaunchGateError,
+    authorize_launch,
     resolve_launch_candidate,
     validate_config_file_permissions,
 )
@@ -473,21 +474,40 @@ def _cmd_approve(workspace_root: Path, *, mode: str, target_argv: list[str]) -> 
 
 
 def _cmd_inspect(workspace_root: Path) -> int:
-    """Display approval metadata (no secrets, no handles)."""
-    workspace_identity = resolve_workspace_identity(workspace_root)
+    """Display approval metadata (no secrets, no handles). Does not promote."""
+    workspace_state = resolve_workspace_security_state(workspace_root)
     store, _ = _resolve_store(workspace_root)
 
-    record = store.read_durable(workspace_identity.digest)
-    if record is None:
-        print("optimus-trust: no durable approval found for this workspace.")
-        return 1
+    current = store.read_durable(workspace_state.identity.digest)
+    if current is not None:
+        if current.migration_provenance is not None:
+            print("optimus-trust: approval record state: migrated from v2")
+            print(
+                "  inherited-trust: pre_migration_assurance_not_upgraded "
+                "(compatibility, not a fresh approval ceremony)"
+            )
+        else:
+            print("optimus-trust: approval record state: current")
+        print(f"  Approval ID: {current.approval_id}")
+        print(f"  Mode: {current.mode}")
+        print(f"  Created: {current.created_at.isoformat()}")
+        print(f"  Policy: {current.policy_compatibility}")
+        print(f"  Snapshot digest: {current.security_snapshot_digest[:16]}...")
+        return 0
 
-    print(f"  Approval ID: {record.approval_id}")
-    print(f"  Mode: {record.mode}")
-    print(f"  Created: {record.created_at.isoformat()}")
-    print(f"  Policy: {record.policy_compatibility}")
-    print(f"  Snapshot digest: {record.security_snapshot_digest[:16]}...")
-    return 0
+    legacy = store.read_durable(workspace_state.legacy_v2_digest)
+    if legacy is not None:
+        print("optimus-trust: approval record state: legacy")
+        print("  A reachable v1 durable approval exists; launch promotion is required to use it.")
+        print(f"  Approval ID: {legacy.approval_id}")
+        print(f"  Mode: {legacy.mode}")
+        return 0
+
+    print(
+        "optimus-trust: no reachable current approval exists; "
+        "an explicit approval ceremony is required."
+    )
+    return 1
 
 
 def _confirm_client_mcp_review() -> bool:
@@ -741,17 +761,24 @@ def _cmd_run(workspace_root: Path, *, target_argv: list[str], elevated_debug: bo
     store, _ = _resolve_store(workspace_root)
     candidate = _resolve_candidate(workspace_root, store, snapshot=snapshot, operator_paths=paths)
 
-    # Verify the durable approval exists and matches.
-    ws_digest = candidate.workspace_identity.digest
-    record = store.read_durable(ws_digest)
-    if record is None:
-        print("optimus-trust: no durable approval found for this workspace.", file=sys.stderr)
-        return 2
-    if record.security_snapshot_digest != candidate.security_snapshot_digest:
-        print("optimus-trust: configuration changed since approval. Re-approve.", file=sys.stderr)
+    try:
+        authorized = authorize_launch(
+            candidate=candidate,
+            store=store,
+            launch_session_id=secrets.token_hex(12),
+        )
+    except LaunchGateError as exc:
+        if exc.code == "NO_APPROVAL":
+            print(
+                "optimus-trust: no reachable current approval exists; "
+                "an explicit approval ceremony is required.",
+                file=sys.stderr,
+            )
+        else:
+            print(f"optimus-trust: {exc}", file=sys.stderr)
         return 2
 
-    launch_session_id = f"sess_{secrets.token_hex(12)}"
+    launch_session_id = authorized.launch_session_id
 
     # Elevated debug: create a diagnostic grant (TTY required).
     diagnostic_grant_id = ""
@@ -765,8 +792,8 @@ def _cmd_run(workspace_root: Path, *, target_argv: list[str], elevated_debug: bo
         diagnostic_grant_id = f"diag_{secrets.token_hex(12)}"
         unsigned_grant = DiagnosticGrant(
             grant_id=diagnostic_grant_id,
-            workspace_digest=ws_digest,
-            approval_id=record.approval_id,
+            workspace_digest=candidate.workspace_identity.digest,
+            approval_id=authorized.approval_id,
             launch_session_id=launch_session_id,
             expires_at=datetime.now(timezone.utc) + timedelta(seconds=DIAGNOSTIC_TTL_SECONDS),
             record_hmac="",
@@ -780,7 +807,7 @@ def _cmd_run(workspace_root: Path, *, target_argv: list[str], elevated_debug: bo
 
     # Substitute placeholders — never print identifiers.
     substituted_argv = [
-        arg.replace("{approval_id}", record.approval_id)
+        arg.replace("{approval_id}", authorized.approval_id)
            .replace("{launch_session_id}", launch_session_id)
            .replace("{diagnostic_grant_id}", diagnostic_grant_id)
         for arg in target_argv

@@ -19,12 +19,16 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from optimus.acp.launch_approvals import (
+    LAUNCH_POLICY_COMPATIBILITY,
     ApprovalError,
+    ApprovalMigrationProvenance,
     DiagnosticGrant,
     KeyringApprovalStore,
     compute_secret_fingerprint,
+    compute_security_snapshot_digest,
 )
 from optimus.acp.launch_policy import (
     DEFAULT_LIVE_MAX_COST_USD,
@@ -94,6 +98,7 @@ class LaunchCandidate:
     workspace_state: WorkspaceSecurityState
     operator_paths: OperatorPaths
     security_snapshot_digest: str
+    registry_version: str
     display_rows: tuple[LaunchDisplayRow, ...]
     gateway_environ: Mapping[str, str]
     agent_environ: Mapping[str, str]
@@ -115,6 +120,8 @@ class AuthorizedLaunch:
     approval_mode: str
     launch_session_id: str
     diagnostic_grant: DiagnosticGrant | None = None
+    approval_record_state: Literal["current", "migrated"] | None = None
+    migration_provenance: ApprovalMigrationProvenance | None = None
 
 
 class LaunchGateError(ValueError):
@@ -647,11 +654,6 @@ def resolve_launch_candidate(
     # also used by build_approval_record(). This is required — using two
     # independent hash computations (even with equivalent inputs) produces
     # permanently incompatible digests and breaks authorization entirely.
-    from optimus.acp.launch_approvals import (
-        LAUNCH_POLICY_COMPATIBILITY,
-        compute_security_snapshot_digest,
-    )
-
     snapshot_digest = compute_security_snapshot_digest(
         security_literals=security_literals,
         secret_fingerprints=secret_fingerprints,
@@ -687,6 +689,7 @@ def resolve_launch_candidate(
         workspace_state=workspace_state,
         operator_paths=operator_paths,
         security_snapshot_digest=snapshot_digest,
+        registry_version=LAUNCH_POLICY_COMPATIBILITY,
         display_rows=tuple(sorted(display_rows, key=lambda r: r.name)),
         gateway_environ=gateway_environ,
         agent_environ=agent_environ,
@@ -713,8 +716,6 @@ def authorize_launch(
     For one-shot, consumes the identified record.
     """
 
-    ws_digest = candidate.workspace_identity.digest
-
     if approval_id and approval_id.startswith("p996_"):
         # One-shot consumption.
         try:
@@ -728,19 +729,29 @@ def authorize_launch(
             launch_session_id=launch_session_id,
         )
 
-    # Durable approval.
+    legacy_snapshot_digest = compute_security_snapshot_digest(
+        security_literals=candidate.security_literals,
+        secret_fingerprints=candidate.secret_fingerprints,
+        workspace_digest=candidate.workspace_state.legacy_v2_digest,
+        registry_version=candidate.registry_version,
+    )
     try:
-        record = store.read_durable(ws_digest)
+        lookup = store.lookup_durable(
+            current_identity=candidate.workspace_identity,
+            legacy_workspace_digest=candidate.workspace_state.legacy_v2_digest,
+            expected_legacy_snapshot_digest=legacy_snapshot_digest,
+            current_security_snapshot_digest=candidate.security_snapshot_digest,
+        )
     except ApprovalError as exc:
         raise LaunchGateError(code=exc.code, detail=exc.detail) from exc
 
-    if record is None:
+    if lookup.state == "legacy_reapproval_required" or lookup.record is None:
         raise LaunchGateError(
             code="NO_APPROVAL",
-            detail="no durable approval found for this workspace",
+            detail="no reachable current approval exists; an explicit approval ceremony is required",
         )
 
-    # Verify snapshot digest matches.
+    record = lookup.record
     if record.security_snapshot_digest != candidate.security_snapshot_digest:
         raise LaunchGateError(
             code="SNAPSHOT_MISMATCH",
@@ -754,6 +765,8 @@ def authorize_launch(
         approval_id=record.approval_id,
         approval_mode="durable",
         launch_session_id=launch_session_id,
+        approval_record_state=lookup.state,
+        migration_provenance=record.migration_provenance,
     )
 
 

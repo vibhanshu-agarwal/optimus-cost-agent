@@ -413,7 +413,8 @@ class TestApprovalTimeRuntimeBootstrap:
         else:
             assert result == 2
             assert capsys.readouterr().err == (
-                "optimus-trust: no durable approval found for this workspace.\n"
+                "optimus-trust: no reachable current approval exists; "
+                "an explicit approval ceremony is required.\n"
             )
             assert not child_started
         assert not runtime_root.exists()
