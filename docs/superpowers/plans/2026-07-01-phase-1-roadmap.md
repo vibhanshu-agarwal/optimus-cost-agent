@@ -1086,8 +1086,19 @@ v1.0 release-version contract and excluded-capability inventory remain in Plan 1
 
 **Status:** Plan 11.7 (`P11-FEAT-ZED-RESUME`) is partially implemented and blocked after the closed
 Plan 11.1/11.2/11.4/11.5/11.6 slices. Frozen Task 0 Steps 1-4 are sealed with disposition
-`stop_amend_plan_session_load_unreachable` (current Zed 1.13.1 does not issue `session/load` after
-full restart). Frozen Plan 11.7 Task 0 Steps 5-7 and Tasks 1-11 remain blocked. The standalone
+`stop_amend_plan_session_load_unreachable` (historical Zed 1.13.1 did not issue `session/load` after
+full restart). A 2026-08-15 re-probe at commit `71cb9ed` observed Zed `1.15.0 e17dc4f…`,
+independent acpx `0.12.0`, and live Redis. The live `agentCapabilities` omitted `loadSession`
+and `sessionCapabilities.resume`, which is the Optimus agent's deliberate current gate. The result
+is **INDETERMINATE / INTERNAL_CAPABILITY_UNAVAILABLE**, not a claim about Zed: acpx did not force
+an unsupported call, Zed was not launched, and no origin-A launch occurred. It does not supersede
+the historical seal or give an origin-A/amendment disposition. Three frozen Task 0 artifact paths
+are absent from `origin/main`, so the repository cannot independently compare the historical 1.13.1
+result; the [custody note](../../../reports/p11-feat-zed-resume-task0-evidence-custody-note.md)
+records that limitation without classifying it as loss. The separate real-Zed temporary-advertisement
+re-probe must commit sanitized evidence; see the [re-probe report](../../../reports/p11-feat-zed-resume-session-load-reprobe.md).
+Frozen Plan 11.7
+Task 0 Steps 5-7 and Tasks 1-11 remain blocked. The standalone
 server-side custody feasibility amendment is approved; the origin-A fixture v2 correction amendment
 is also approved and merged (`5BB327D8…9A4D` / PR #108). Corrected `origin-a-3` executed and sealed
 as Option B process-invalid (`next_corr=4` / `next_prompt=3` unclaimed; DoD success false).
