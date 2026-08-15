@@ -179,6 +179,7 @@ EXPECTED_NON_MEDIUM_PRIORITIES = {
     "P11-FU-5": "LOW",
     "P11-FU-6": "LOW",
     "P11-FU-8": "LOW",
+    "P11-FU-10": "HIGH",
     "P11-FU-11": "HIGH",
     "P11.7-FU-1": "HIGH",
     "P11.5-FU-2": "HIGH",

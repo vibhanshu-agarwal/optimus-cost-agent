@@ -146,7 +146,7 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P11.5-FU-1` | Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics | Open | MEDIUM     | `P11-FEAT-GATEWAY-COST-OBS` | Acceptance criteria in entry |
 | `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Open | LOW        | Future Gateway migration design | Acceptance criteria in entry |
 | ~~`P11-FU-9`~~ | ~~Client-Supplied ACP `mcpServers` Disposition~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Dedicated P11-FU-9 lane~~ | ~~PR #119 / `9a93137`; [closure evidence](../../../reports/p11-fu-9-client-mcp-closure-evidence.md)~~ |
-| `P11-FU-10` | Complete ACP Error-Code Registry Audit | Open | MEDIUM     | Future ACP audit | Acceptance criteria in entry |
+| `P11-FU-10` | Complete ACP Error-Code Registry Audit | Open | HIGH       | Future ACP audit | Acceptance criteria in entry |
 | ~~`P11.7-FU-1`~~ | ~~Configurable Gateway request timeout for debug/investigation workflows~~ | ~~Closed~~ | ~~HIGH~~   | ~~Plan 11.9~~ | ~~PR #123 / `d0253be`~~ |
 | ~~`P11.7-FU-2`~~ | ~~Gateway threaded-test flake under full-suite load~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FU-6` Gateway harness custody~~ | ~~Batch B 2026-08-14; misfiled duplicate~~ |
 | `P11.7-FU-3` | Committed `plan117_custody_relay.py` docstring `\ufffd` / em-dash corruption | Open | MEDIUM     | Plan 11.7 deferred follow-up | Acceptance criteria in entry |
@@ -743,11 +743,10 @@ batches; Plan 11.5 Task 8 real Phoenix evidence must prove or disposition this.
 **Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Drafted 2026-07-29 for
 operator review of pool custody wording.
 
-**Operator confirmation pending (2026-08-15):** Proposed level: `MEDIUM`. The gap changes live
+**Operator confirmation (2026-08-15):** Confirmed at the default `MEDIUM`. The gap changes live
 telemetry delivery-state semantics when the real exporter returns `FAILURE`, but the current detail
-also records that it does not crash the agent, report success, or invent cost/accounting. Keep the
-index at the default `MEDIUM` until the operator confirms whether telemetry correctness warrants a
-different bucket; this note is not a settled re-leveling.
+also records that it does not crash the agent, report success, or invent cost/accounting. No priority
+change is made.
 
 ### P11-FU-8: Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming
 
@@ -890,11 +889,10 @@ belongs to Plan 11.7 and does not block on this follow-up.
 **Status:** Open. Tracked, not yet scheduled. It does not gate Plan 11.7 closure; Plan 11.7 owns only the
 forced `-32002`/mutation-refusal correction and a no-new-bypasses baseline gate.
 
-**Operator confirmation pending (2026-08-15):** Proposed level: `HIGH`. Wrong ACP/application
-codes reaching real clients can cause protocol errors to be misclassified, so the remaining audit
+**Operator-confirmed triage justification for HIGH (2026-08-15):** Wrong ACP/application codes
+reaching real clients can cause protocol errors to be misclassified, so the remaining audit
 protects a client-visible conformance contract even though the forced `-32002` correction already
-landed in Plan 11.7. Keep the index at the default `MEDIUM` pending operator confirmation; this
-proposal is intentionally not a settled re-leveling.
+landed in Plan 11.7. The operator confirmed that this functional impact warrants `HIGH`.
 
 ### P11.7-FU-1: Configurable Gateway request timeout for debug/investigation workflows
 
