@@ -14,6 +14,7 @@ from tools.probe_p11_zed_session_load import (
     capture_acpx_evidence,
     classify_indeterminate_context,
     evaluate_session_load_exchange,
+    extract_acpx_archive_capability_payload,
 )
 
 
@@ -54,6 +55,39 @@ def test_incomplete_exchange_is_indeterminate_even_when_advertised() -> None:
 
     assert result.finding is Finding.INDETERMINATE
     assert result.load_exchange is None
+
+
+def test_unadvertised_live_load_capability_is_unreachable_without_a_forced_call() -> None:
+    """Catches treating acpx's capability-gated non-call as an incomplete observation."""
+    capability_payload = {"sessionCapabilities": {"resume": False}}
+
+    result = evaluate_session_load_exchange(capability_payload, None)
+
+    assert result.finding is Finding.UNREACHABLE
+    assert result.capability_payload == capability_payload
+    assert result.load_exchange is None
+
+
+def test_acpx_exported_session_capabilities_are_retained_as_live_evidence(tmp_path: Path) -> None:
+    """Catches losing the initialized capabilities that acpx itself persisted."""
+    archive = tmp_path / "session.json"
+    archive.write_text(
+        json.dumps(
+            {
+                "session": {
+                    "state": {
+                        "agent_capabilities": {"loadSession": False, "sessionCapabilities": {"resume": False}}
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert extract_acpx_archive_capability_payload(archive) == {
+        "loadSession": False,
+        "sessionCapabilities": {"resume": False},
+    }
 
 
 def test_raw_acpx_agent_command_uses_slash_normalized_windows_paths() -> None:

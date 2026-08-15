@@ -86,14 +86,19 @@ def evaluate_session_load_exchange(
     """Classify only a complete, internally consistent live capability/load exchange."""
     capabilities = dict(capability_payload) if isinstance(capability_payload, Mapping) else None
     exchange = dict(load_exchange) if isinstance(load_exchange, Mapping) else None
-    if capabilities is None or exchange is None:
+    if capabilities is None:
+        return SessionLoadEvaluation(Finding.INDETERMINATE, capabilities, exchange)
+
+    advertised = capabilities.get("loadSession") is True
+    if not advertised:
+        return SessionLoadEvaluation(Finding.UNREACHABLE, capabilities, exchange)
+    if exchange is None:
         return SessionLoadEvaluation(Finding.INDETERMINATE, capabilities, exchange)
 
     response = exchange.get("response")
     if not isinstance(response, Mapping):
         return SessionLoadEvaluation(Finding.INDETERMINATE, capabilities, exchange)
 
-    advertised = capabilities.get("loadSession") is True
     has_result = "result" in response
     has_error = isinstance(response.get("error"), Mapping)
     if advertised and has_result:
@@ -347,6 +352,24 @@ def capture_acpx_evidence(command_result: CommandResult) -> dict[str, Any]:
     }
 
 
+def extract_acpx_archive_capability_payload(archive: Path) -> dict[str, Any] | None:
+    """Read the live initialize capabilities persisted by acpx's own session export."""
+    try:
+        archive_payload = json.loads(archive.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ProbeError("acpx_export_archive", f"{type(exc).__name__}: {exc}") from exc
+    if not isinstance(archive_payload, Mapping):
+        return None
+    session = archive_payload.get("session")
+    if not isinstance(session, Mapping):
+        return None
+    state = session.get("state")
+    if not isinstance(state, Mapping):
+        return None
+    capabilities = state.get("agent_capabilities")
+    return dict(capabilities) if isinstance(capabilities, Mapping) else None
+
+
 def classify_indeterminate_context(evidence: Mapping[str, Any]) -> dict[str, Any]:
     """Separate a missing documented dependency from an incomplete ACP observation."""
     evidence_text = json.dumps(evidence, sort_keys=True).casefold()
@@ -488,6 +511,7 @@ def run_probe(parent_workspace: Path) -> dict[str, Any]:
             env=first_environment,
             stage="acpx_export_session",
         )
+        initial_capability_payload = extract_acpx_archive_capability_payload(archive)
         _run_required(
             [*command, "sessions", "import", str(archive)],
             cwd=workspace,
@@ -499,7 +523,7 @@ def run_probe(parent_workspace: Path) -> dict[str, Any]:
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise ProbeError("acpx_recovery", f"{type(exc).__name__}: {exc}") from exc
         recovery_evidence = capture_acpx_evidence(load_attempt)
-        capability_payload = recovery_evidence["capability_payload"]
+        capability_payload = initial_capability_payload
         load_exchange = recovery_evidence["session_load_exchange"]
         evaluated = evaluate_session_load_exchange(capability_payload, load_exchange)
         result.update(
@@ -507,6 +531,10 @@ def run_probe(parent_workspace: Path) -> dict[str, Any]:
                 "finding": evaluated.finding.value,
                 "capability_payload": evaluated.capability_payload,
                 "session_load_exchange": evaluated.load_exchange,
+                "acpx_initialization": {
+                    "evidence_source": "acpx session export",
+                    "capability_payload": _safe_payload(initial_capability_payload),
+                },
                 "acpx_recovery": recovery_evidence,
             }
         )
