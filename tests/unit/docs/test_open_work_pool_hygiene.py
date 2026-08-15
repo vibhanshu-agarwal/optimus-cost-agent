@@ -196,7 +196,14 @@ EXPECTED_FEATURE_SCOPE_TOKENS = {
     "P11-FEAT-GATEWAY-TOOLS": ("Plan 11.2", "PR #88"),
     "P11-FEAT-GATEWAY-COST-OBS": ("Plan 11.5", "PR #95", "P11.5-FU-1", "P11.5-FU-2"),
     "P11-FEAT-GATEWAY-MCP": ("Retired", "Plan 11.12", "Plan 11.8", "Plan 11.11", "Plan 11.13"),
-    "P11-FEAT-ZED-RESUME": ("Partially implemented; blocked", "PR #108", "P11-FU-11", "Path A"),
+    "P11-FEAT-ZED-RESUME": (
+        "Partially implemented; blocked",
+        "PR #108",
+        "P11-FU-11",
+        "Path A",
+        "INDETERMINATE",
+        "session-load-reprobe",
+    ),
     "P11-FEAT-REGISTRY": ("Ratified, unscheduled", "package and ACP versions are both `0.1.0`"),
     "P11-FEAT-IDE": ("Conditional",),
     "Plan 12": ("Post-v1.0",),
@@ -1145,6 +1152,14 @@ def test_feature_status_is_canonical_and_state_prose_lives_in_scope_detail() -> 
     assert scopes.keys() == EXPECTED_FEATURE_SCOPE_TOKENS.keys()
     for identity, expected_tokens in EXPECTED_FEATURE_SCOPE_TOKENS.items():
         assert all(token in scopes[identity] for token in expected_tokens)
+
+
+def test_zed_session_load_seal_remains_historical_throughout_the_living_pool() -> None:
+    """The current re-probe must not silently restate the 1.13.1 observation as current fact."""
+    pool_text = _read(OPTIMUS_POOL)
+
+    assert "historical Zed 1.13.1" in pool_text
+    assert "current Zed does not issue `session/load`" not in pool_text
 
 
 def test_promoted_statuses_remain_exact_and_every_entry_status_has_a_resolution() -> None:
