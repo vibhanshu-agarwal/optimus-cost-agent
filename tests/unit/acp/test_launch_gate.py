@@ -22,20 +22,19 @@ from optimus.acp.launch_gate import (
 )
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
 from optimus.acp.operator_paths import OperatorPaths
-from optimus.acp.trusted_paths import WorkspaceIdentity
+from optimus.acp.trusted_paths import WorkspaceIdentity, present_git_context
 
 _HMAC_KEY = b"test-gate-hmac-key-32-bytes!!!!"
 
 
 def _sample_workspace_identity() -> WorkspaceIdentity:
     return WorkspaceIdentity(
+        format_version=3,
         lexical_path="/tmp/test-workspace",
         canonical_path="/tmp/test-workspace",
         device=1,
         inode=12345,
-        change_time_ns=1,
-        repository_root="/tmp/test-workspace",
-        git_common_dir="/tmp/test-workspace/.git",
+        git_context=present_git_context("/tmp/test-workspace", "/tmp/test-workspace/.git"),
         digest="a" * 64,
     )
 
@@ -563,6 +562,10 @@ class TestEndToEndAuthorization:
         )
         assert authorized.approval_id == record.approval_id
         assert authorized.approval_mode == "durable"
+        assert authorized.approval_record_state == "current"
+        assert authorized.migration_provenance is None
+        assert authorized.approval_record_state == "current"
+        assert authorized.migration_provenance is None
 
     def test_full_authorize_launch_one_shot_succeeds(self, tmp_path: Path) -> None:
         """End-to-end: one-shot approval authorizes successfully."""
@@ -1839,7 +1842,7 @@ class TestMissingKeyNonDisclosureAndGoldenDigest:
     def test_golden_display_digest_unchanged_by_effective_rows(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from optimus.acp import launch_approvals
+        from optimus.acp import launch_approvals, launch_gate
         from optimus.acp.launch_approvals import compute_security_snapshot_digest
 
         captured_args: dict[str, object] = {}
@@ -1850,11 +1853,8 @@ class TestMissingKeyNonDisclosureAndGoldenDigest:
             captured_args.update(copy.deepcopy(kwargs))
             return real_digest(**kwargs)
 
-        monkeypatch.setattr(
-            launch_approvals,
-            "compute_security_snapshot_digest",
-            _capturing_digest,
-        )
+        monkeypatch.setattr(launch_approvals, "compute_security_snapshot_digest", _capturing_digest)
+        monkeypatch.setattr(launch_gate, "compute_security_snapshot_digest", _capturing_digest)
 
         snapshot = LaunchEnvironmentSnapshot.capture(_GOLDEN_ENV)
         paths = _sample_operator_paths(tmp_path)
@@ -1897,3 +1897,109 @@ class TestMissingKeyNonDisclosureAndGoldenDigest:
             row.source_class == "environment"
             for row in _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET")
         )
+
+
+def test_launch_candidate_carries_workspace_security_state(tmp_path: Path) -> None:
+    from optimus.acp.trusted_paths import resolve_workspace_security_state
+
+    env = {
+        "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+        "OPTIMUS_API_KEY": "test-key",
+        "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+    }
+    snapshot = LaunchEnvironmentSnapshot.capture(env)
+    state = resolve_workspace_security_state(tmp_path)
+
+    candidate = resolve_launch_candidate(
+        snapshot=snapshot,
+        workspace_state=state,
+        operator_paths=_sample_operator_paths(tmp_path),
+        hmac_key=_HMAC_KEY,
+    )
+
+    assert candidate.workspace_state is state
+    assert candidate.workspace_identity.digest == state.identity.digest
+    assert candidate.workspace_identity.digest == candidate.workspace_state.identity.digest
+    assert candidate.registry_version
+
+
+def test_authorize_launch_promotes_legacy_v1_and_reports_migrated(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from optimus.acp.launch_approvals import (
+        ApprovalRecord,
+        KeyringApprovalStore,
+        compute_record_hmac,
+        compute_security_snapshot_digest,
+        serialize_approval_record,
+    )
+    from optimus.acp.trusted_paths import resolve_workspace_security_state
+
+    env = {
+        "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+        "OPTIMUS_API_KEY": "test-key",
+        "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+    }
+    snapshot = LaunchEnvironmentSnapshot.capture(env)
+    state = resolve_workspace_security_state(tmp_path)
+    candidate = resolve_launch_candidate(
+        snapshot=snapshot,
+        workspace_state=state,
+        operator_paths=_sample_operator_paths(tmp_path),
+        hmac_key=_HMAC_KEY,
+    )
+    fake_keyring = type("FakeKeyring", (), {})()
+    fake_keyring._store = {}
+
+    def get_password(self, service, key):
+        return self._store.get((service, key))
+
+    def set_password(self, service, key, value):
+        self._store[(service, key)] = value
+
+    def delete_password(self, service, key):
+        self._store.pop((service, key), None)
+
+    fake_keyring.get_password = get_password.__get__(fake_keyring)
+    fake_keyring.set_password = set_password.__get__(fake_keyring)
+    fake_keyring.delete_password = delete_password.__get__(fake_keyring)
+
+    store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path, hmac_key=_HMAC_KEY)
+    legacy_snapshot = compute_security_snapshot_digest(
+        security_literals=candidate.security_literals,
+        secret_fingerprints=candidate.secret_fingerprints,
+        workspace_digest=state.legacy_v2_digest,
+        registry_version=candidate.registry_version,
+    )
+    unsigned = ApprovalRecord(
+        schema_version=1,
+        policy_compatibility="P9.99-v1",
+        approval_id="appr_legacy_gate",
+        mode="durable",
+        identity_format_version=2,
+        workspace_digest=state.legacy_v2_digest,
+        created_at=__import__("datetime").datetime(2026, 1, 15, 12, 0, 0, tzinfo=__import__("datetime").timezone.utc),
+        expires_at=None,
+        creator_identity="gate@test",
+        ceremony_cli_version="test",
+        security_literals=dict(candidate.security_literals),
+        secret_fingerprints=dict(candidate.secret_fingerprints),
+        monotonic_grants=dict(candidate.monotonic_grants),
+        model_observation=candidate.model_observation,
+        registry_version=candidate.registry_version,
+        security_snapshot_digest=legacy_snapshot,
+        consumed=False,
+        record_hmac="",
+    )
+    legacy = replace(unsigned, record_hmac=compute_record_hmac(unsigned, hmac_key=_HMAC_KEY))
+    fake_keyring.set_password(
+        "optimus-cost-agent-approvals",
+        f"durable:{state.legacy_v2_digest}",
+        serialize_approval_record(legacy),
+    )
+
+    authorized = authorize_launch(candidate=candidate, store=store, launch_session_id="sess_migration")
+    assert authorized.approval_record_state == "migrated"
+    assert authorized.approval_id == "appr_legacy_gate"
+    assert authorized.migration_provenance is not None
+    assert store.read_durable(state.identity.digest) is not None

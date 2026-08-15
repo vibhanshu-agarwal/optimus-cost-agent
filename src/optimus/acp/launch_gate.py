@@ -19,12 +19,16 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from optimus.acp.launch_approvals import (
+    LAUNCH_POLICY_COMPATIBILITY,
     ApprovalError,
+    ApprovalMigrationProvenance,
     DiagnosticGrant,
     KeyringApprovalStore,
     compute_secret_fingerprint,
+    compute_security_snapshot_digest,
 )
 from optimus.acp.launch_policy import (
     DEFAULT_LIVE_MAX_COST_USD,
@@ -48,7 +52,12 @@ from optimus.acp.local_gateway_secrets import (
     resolve_shared_secret_with_provenance,
 )
 from optimus.acp.operator_paths import OperatorPaths
-from optimus.acp.trusted_paths import WorkspaceIdentity
+from optimus.acp.trusted_paths import (
+    WORKSPACE_EXCLUSION_POLICY_VERSION,
+    WorkspaceChangeSnapshot,
+    WorkspaceIdentity,
+    WorkspaceSecurityState,
+)
 from optimus_security.sanitization import canonicalize_credential_uri, validate_secret_length
 
 # Plan 9.96, Task 5 Batch 3 Step 5: the reviewed default each monotonic-tier
@@ -86,8 +95,10 @@ class LaunchCandidate:
 
     inherited: LaunchEnvironmentSnapshot
     workspace_identity: WorkspaceIdentity
+    workspace_state: WorkspaceSecurityState
     operator_paths: OperatorPaths
     security_snapshot_digest: str
+    registry_version: str
     display_rows: tuple[LaunchDisplayRow, ...]
     gateway_environ: Mapping[str, str]
     agent_environ: Mapping[str, str]
@@ -109,6 +120,8 @@ class AuthorizedLaunch:
     approval_mode: str
     launch_session_id: str
     diagnostic_grant: DiagnosticGrant | None = None
+    approval_record_state: Literal["current", "migrated"] | None = None
+    migration_provenance: ApprovalMigrationProvenance | None = None
 
 
 class LaunchGateError(ValueError):
@@ -424,10 +437,34 @@ def _current_user_sid_string() -> str:
         kernel32.CloseHandle(token)
 
 
+def _workspace_state_for_candidate(
+    *,
+    workspace_identity: WorkspaceIdentity | None,
+    workspace_state: WorkspaceSecurityState | None,
+) -> tuple[WorkspaceIdentity, WorkspaceSecurityState]:
+    if workspace_state is not None:
+        return workspace_state.identity, workspace_state
+    if workspace_identity is None:
+        raise TypeError("resolve_launch_candidate requires workspace_state or workspace_identity")
+    return workspace_identity, WorkspaceSecurityState(
+        identity=workspace_identity,
+        change_snapshot=WorkspaceChangeSnapshot(
+            canonical_path=workspace_identity.canonical_path,
+            device=workspace_identity.device,
+            inode=workspace_identity.inode,
+            exclusion_policy_version=WORKSPACE_EXCLUSION_POLICY_VERSION,
+            immediate_root_digest="",
+            diagnostics=(),
+        ),
+        legacy_v2_digest="",
+    )
+
+
 def resolve_launch_candidate(
     *,
     snapshot: LaunchEnvironmentSnapshot,
-    workspace_identity: WorkspaceIdentity,
+    workspace_identity: WorkspaceIdentity | None = None,
+    workspace_state: WorkspaceSecurityState | None = None,
     operator_paths: OperatorPaths,
     hmac_key: bytes,
     credential_keyring_backend: object | None = None,
@@ -439,7 +476,13 @@ def resolve_launch_candidate(
     Gateway/agent child environments from the canonical registry.
 
     Does NOT reread os.environ — uses only the immutable snapshot.
+    Candidate security-snapshot hashing continues to consume only the stable
+    workspace identity digest; topology is an ephemeral comparison input.
     """
+    workspace_identity, workspace_state = _workspace_state_for_candidate(
+        workspace_identity=workspace_identity,
+        workspace_state=workspace_state,
+    )
     # 1. Classify and reject unknown/internal-only names.
     display_rows: list[LaunchDisplayRow] = []
     secret_inventory: list[str] = []
@@ -611,11 +654,6 @@ def resolve_launch_candidate(
     # also used by build_approval_record(). This is required — using two
     # independent hash computations (even with equivalent inputs) produces
     # permanently incompatible digests and breaks authorization entirely.
-    from optimus.acp.launch_approvals import (
-        LAUNCH_POLICY_COMPATIBILITY,
-        compute_security_snapshot_digest,
-    )
-
     snapshot_digest = compute_security_snapshot_digest(
         security_literals=security_literals,
         secret_fingerprints=secret_fingerprints,
@@ -648,8 +686,10 @@ def resolve_launch_candidate(
     return LaunchCandidate(
         inherited=snapshot,
         workspace_identity=workspace_identity,
+        workspace_state=workspace_state,
         operator_paths=operator_paths,
         security_snapshot_digest=snapshot_digest,
+        registry_version=LAUNCH_POLICY_COMPATIBILITY,
         display_rows=tuple(sorted(display_rows, key=lambda r: r.name)),
         gateway_environ=gateway_environ,
         agent_environ=agent_environ,
@@ -676,8 +716,6 @@ def authorize_launch(
     For one-shot, consumes the identified record.
     """
 
-    ws_digest = candidate.workspace_identity.digest
-
     if approval_id and approval_id.startswith("p996_"):
         # One-shot consumption.
         try:
@@ -691,19 +729,29 @@ def authorize_launch(
             launch_session_id=launch_session_id,
         )
 
-    # Durable approval.
+    legacy_snapshot_digest = compute_security_snapshot_digest(
+        security_literals=candidate.security_literals,
+        secret_fingerprints=candidate.secret_fingerprints,
+        workspace_digest=candidate.workspace_state.legacy_v2_digest,
+        registry_version=candidate.registry_version,
+    )
     try:
-        record = store.read_durable(ws_digest)
+        lookup = store.lookup_durable(
+            current_identity=candidate.workspace_identity,
+            legacy_workspace_digest=candidate.workspace_state.legacy_v2_digest,
+            expected_legacy_snapshot_digest=legacy_snapshot_digest,
+            current_security_snapshot_digest=candidate.security_snapshot_digest,
+        )
     except ApprovalError as exc:
         raise LaunchGateError(code=exc.code, detail=exc.detail) from exc
 
-    if record is None:
+    if lookup.state == "legacy_reapproval_required" or lookup.record is None:
         raise LaunchGateError(
             code="NO_APPROVAL",
-            detail="no durable approval found for this workspace",
+            detail="no reachable current approval exists; an explicit approval ceremony is required",
         )
 
-    # Verify snapshot digest matches.
+    record = lookup.record
     if record.security_snapshot_digest != candidate.security_snapshot_digest:
         raise LaunchGateError(
             code="SNAPSHOT_MISMATCH",
@@ -717,6 +765,8 @@ def authorize_launch(
         approval_id=record.approval_id,
         approval_mode="durable",
         launch_session_id=launch_session_id,
+        approval_record_state=lookup.state,
+        migration_provenance=record.migration_provenance,
     )
 
 

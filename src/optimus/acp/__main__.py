@@ -35,9 +35,10 @@ from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.acp.server import StdioByteReader, StdioByteWriter, StdioNdjsonLineReader, StdioNdjsonLineWriter
 from optimus.acp.trusted_paths import (
     TrustedPathError,
+    format_trusted_path_operator_message,
     resolve_trusted_operator_roots,
-    resolve_workspace_identity,
-    revalidate_workspace_identity,
+    resolve_workspace_security_state,
+    revalidate_workspace_security_state,
 )
 from optimus.gateway.client import DEFAULT_GATEWAY_TIMEOUT_SECONDS, validate_gateway_timeout_seconds
 
@@ -185,9 +186,17 @@ def _authorize_or_exit(
     on failure (already printed to stderr).
     """
     try:
-        workspace_identity = resolve_workspace_identity(workspace_root)
+        workspace_state = resolve_workspace_security_state(workspace_root)
     except TrustedPathError as exc:
-        print(f"optimus-agent: {exc}", file=sys.stderr)
+        print(
+            format_trusted_path_operator_message(
+                exc,
+                prefix="optimus-agent",
+                workspace_root=workspace_root,
+                when="initial",
+            ),
+            file=sys.stderr,
+        )
         return 2
 
     try:
@@ -203,7 +212,15 @@ def _authorize_or_exit(
     try:
         roots = resolve_trusted_operator_roots(platform_name=sys.platform)
     except TrustedPathError as exc:
-        print(f"optimus-agent: {exc}", file=sys.stderr)
+        print(
+            format_trusted_path_operator_message(
+                exc,
+                prefix="optimus-agent",
+                workspace_root=workspace_root,
+                when="initial",
+            ),
+            file=sys.stderr,
+        )
         return 2
 
     # Module-level `keyring` import (rather than a local import inside this
@@ -214,7 +231,7 @@ def _authorize_or_exit(
     try:
         candidate: LaunchCandidate = resolve_launch_candidate(
             snapshot=snapshot,
-            workspace_identity=workspace_identity,
+            workspace_state=workspace_state,
             operator_paths=operator_paths,
             hmac_key=store.hmac_key,
         )
@@ -265,13 +282,7 @@ def _authorize_or_exit(
     return authorized, store
 
 
-def _append_audit_or_exit(authorized: AuthorizedLaunch, *, runtime_root: Path) -> int | None:
-    """Append the LaunchAuditEvent before any child/network startup.
-
-    Plan 9.96, Task 5 Step 6: audit append failure is fatal — there is no
-    raw fallback. Returns an int exit code on failure (already printed), or
-    None on success.
-    """
+def _audit_event_common_fields(authorized: AuthorizedLaunch) -> dict[str, object]:
     candidate = authorized.candidate
     setting_decisions = tuple(
         {
@@ -285,31 +296,130 @@ def _append_audit_or_exit(authorized: AuthorizedLaunch, *, runtime_root: Path) -
     monotonic_dispositions = tuple(
         {"name": name, "disposition": "recorded"} for name in sorted(candidate.monotonic_grants)
     )
-    event = LaunchAuditEvent(
-        timestamp=datetime.now(timezone.utc),
-        workspace_digest=candidate.workspace_identity.digest,
-        launch_session_id=authorized.launch_session_id,
-        approval_id=authorized.approval_id,
-        approval_mode=authorized.approval_mode,
-        registry_version=LAUNCH_POLICY_COMPATIBILITY,
-        policy_version=LAUNCH_POLICY_COMPATIBILITY,
-        setting_decisions=setting_decisions,
-        monotonic_dispositions=monotonic_dispositions,
-        rejected_names=(),
-        child_propagation_decisions={
+    return {
+        "timestamp": datetime.now(timezone.utc),
+        "workspace_digest": candidate.workspace_identity.digest,
+        "launch_session_id": authorized.launch_session_id,
+        "approval_id": authorized.approval_id,
+        "approval_mode": authorized.approval_mode,
+        "registry_version": LAUNCH_POLICY_COMPATIBILITY,
+        "policy_version": LAUNCH_POLICY_COMPATIBILITY,
+        "setting_decisions": setting_decisions,
+        "monotonic_dispositions": monotonic_dispositions,
+        "rejected_names": (),
+        "child_propagation_decisions": {
             "agent_child": tuple(sorted(candidate.agent_environ)),
             "gateway_child": tuple(sorted(candidate.gateway_environ)),
         },
-        diagnostic_grant_state="none" if authorized.diagnostic_grant is None else "granted",
-        sanitizer_rule_counts={},
-        final_reason_code="AUTHORIZED",
+        "diagnostic_grant_state": "none" if authorized.diagnostic_grant is None else "granted",
+        "sanitizer_rule_counts": {},
+    }
+
+
+def _authorization_audit_events(authorized: AuthorizedLaunch) -> tuple[LaunchAuditEvent, ...]:
+    common = _audit_event_common_fields(authorized)
+    events: list[LaunchAuditEvent] = []
+    if authorized.approval_record_state == "migrated":
+        provenance = authorized.migration_provenance
+        events.append(
+            LaunchAuditEvent(
+                **common,  # type: ignore[arg-type]
+                event_type="approval_migration",
+                approval_migration_disposition=(
+                    provenance.disposition if provenance is not None else "legacy_v2_to_v3"
+                ),
+                inherited_trust=(
+                    provenance.inherited_trust
+                    if provenance is not None
+                    else "pre_migration_assurance_not_upgraded"
+                ),
+                workspace_identity_disposition="equal",
+                final_reason_code="AUTHORIZED",
+            )
+        )
+    events.append(
+        LaunchAuditEvent(
+            **common,  # type: ignore[arg-type]
+            event_type="authorization",
+            approval_migration_disposition="none",
+            inherited_trust=None,
+            workspace_identity_disposition="equal",
+            final_reason_code="AUTHORIZED",
+        )
     )
-    try:
-        append_launch_audit_event(event, runtime_root=runtime_root)
-    except LaunchAuditError as exc:
-        print(f"optimus-agent: {exc.code}: audit could not be recorded; startup stopped.", file=sys.stderr)
-        return 2
+    return tuple(events)
+
+
+def _workspace_identity_disposition_for(exc: TrustedPathError) -> str:
+    if exc.reason == "stable_identity_mismatch":
+        return "stable_identity_mismatch"
+    if exc.reason == "root_topology_mismatch":
+        return "root_topology_mismatch"
+    if any(item.disposition == "retry_exhausted" for item in exc.diagnostics):
+        return "unavailable_retry_exhausted"
+    return "unavailable_permanent"
+
+
+def _probe_attempt_summaries(exc: TrustedPathError) -> tuple[dict[str, object], ...]:
+    return tuple(
+        {
+            "phase": item.phase,
+            "probe": item.probe,
+            "attempt": item.attempt,
+            "classification": item.classification,
+            "disposition": item.disposition,
+            "exception_type": item.exception_type,
+            "errno": item.errno,
+            "winerror": item.winerror,
+            "return_code": item.return_code,
+            "duration_ms": item.duration_ms,
+        }
+        for item in exc.diagnostics
+    )
+
+
+def _append_audit_or_exit(
+    authorized: AuthorizedLaunch,
+    *,
+    runtime_root: Path,
+    events: tuple[LaunchAuditEvent, ...] | None = None,
+) -> int | None:
+    """Append authorization, migration, or revalidation-failure audit events.
+
+    Plan 9.96, Task 5 Step 6 / Plan 11.15 Task 6: audit append failure is
+    fatal — there is no raw fallback. Returns an int exit code on failure
+    (already printed), or None on success.
+    """
+    to_write = events if events is not None else _authorization_audit_events(authorized)
+    for event in to_write:
+        try:
+            append_launch_audit_event(event, runtime_root=runtime_root)
+        except LaunchAuditError as exc:
+            print(
+                f"optimus-agent: {exc.code}: audit could not be recorded; startup stopped.",
+                file=sys.stderr,
+            )
+            return 2
     return None
+
+
+def _append_revalidation_failure_audit_or_report(
+    authorized: AuthorizedLaunch,
+    exc: TrustedPathError,
+    *,
+    runtime_root: Path,
+) -> None:
+    common = _audit_event_common_fields(authorized)
+    failure_event = LaunchAuditEvent(
+        **common,  # type: ignore[arg-type]
+        event_type="workspace_revalidation_failure",
+        workspace_identity_disposition=_workspace_identity_disposition_for(exc),
+        workspace_identity_attempts=_probe_attempt_summaries(exc),
+        approval_migration_disposition="none",
+        inherited_trust=None,
+        final_reason_code=exc.code,
+    )
+    _append_audit_or_exit(authorized, runtime_root=runtime_root, events=(failure_event,))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -360,9 +470,22 @@ def main(argv: list[str] | None = None) -> int:
     # the one TOCTOU vector that needs active re-checking, placed as early
     # as possible after audit and before any Redis/Gateway/agent probe.
     try:
-        revalidate_workspace_identity(candidate.workspace_identity)
+        revalidate_workspace_security_state(candidate.workspace_state)
     except TrustedPathError as exc:
-        print(f"optimus-agent: {exc}", file=sys.stderr)
+        print(
+            format_trusted_path_operator_message(
+                exc,
+                prefix="optimus-agent",
+                workspace_root=workspace_root,
+                when="revalidate",
+            ),
+            file=sys.stderr,
+        )
+        _append_revalidation_failure_audit_or_report(
+            authorized,
+            exc,
+            runtime_root=candidate.operator_paths.runtime_root,
+        )
         return 2
 
     debug_log_path = _apply_debug_trace_args(

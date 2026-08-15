@@ -47,7 +47,6 @@ def _authorized_launch(
 ) -> AuthorizedLaunch:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    (workspace / ".git").mkdir()
     snapshot = LaunchEnvironmentSnapshot.capture(env)
     paths = resolve_authorized_operator_paths(
         workspace_root=workspace,

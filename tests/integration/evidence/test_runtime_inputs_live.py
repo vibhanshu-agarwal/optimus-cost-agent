@@ -36,7 +36,6 @@ def test_runtime_inputs_from_real_resolver_and_os_keyring(
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    (workspace / ".git").mkdir()
 
     # Minimal inherited env; credentials may resolve from real OS keyring/config.
     env = {

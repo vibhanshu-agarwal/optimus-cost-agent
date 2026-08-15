@@ -266,20 +266,20 @@ class TestApprovalTimeRuntimeBootstrap:
         fake_keyring = FakeKeyring()
         store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path / "approval-runtime")
         observations: list[bool] = []
-        original_resolve_identity = cli_module.resolve_workspace_identity
+        original_resolve_state = cli_module.resolve_workspace_security_state
 
-        def observe_identity(path: Path):
+        def observe_state(path: Path):
             observations.append((path.resolve() / ".optimus").is_dir())
-            return original_resolve_identity(path)
+            return original_resolve_state(path)
 
         monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
         monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: (store, tmp_path / "approval-runtime"))
-        monkeypatch.setattr(cli_module, "resolve_workspace_identity", observe_identity)
+        monkeypatch.setattr(cli_module, "resolve_workspace_security_state", observe_state)
         monkeypatch.setattr("builtins.input", lambda _prompt: "y")
 
         assert cli_module._cmd_approve(workspace, mode="durable", target_argv=[]) == 0
         assert observations == [True]
-        assert store.read_durable(original_resolve_identity(workspace).digest) is not None
+        assert store.read_durable(original_resolve_state(workspace).identity.digest) is not None
 
     def test_one_shot_approval_bootstraps_before_workspace_identity_capture(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -294,15 +294,15 @@ class TestApprovalTimeRuntimeBootstrap:
         fake_keyring = FakeKeyring()
         store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path / "approval-runtime")
         observations: list[bool] = []
-        original_resolve_identity = cli_module.resolve_workspace_identity
+        original_resolve_state = cli_module.resolve_workspace_security_state
 
-        def observe_identity(path: Path):
+        def observe_state(path: Path):
             observations.append((path.resolve() / ".optimus").is_dir())
-            return original_resolve_identity(path)
+            return original_resolve_state(path)
 
         monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
         monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: (store, tmp_path / "approval-runtime"))
-        monkeypatch.setattr(cli_module, "resolve_workspace_identity", observe_identity)
+        monkeypatch.setattr(cli_module, "resolve_workspace_security_state", observe_state)
         monkeypatch.setattr("builtins.input", lambda _prompt: "y")
 
         assert cli_module._cmd_approve(workspace, mode="one-shot", target_argv=[]) == 0
@@ -364,7 +364,7 @@ class TestApprovalTimeRuntimeBootstrap:
         assert paths.config_root != attacker_config_root.resolve()
 
     def test_run_does_not_bootstrap_a_missing_runtime_root(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from optimus.acp import launch_approval_cli as cli_module
         from optimus.acp.launch_approvals import KeyringApprovalStore
@@ -392,12 +392,9 @@ class TestApprovalTimeRuntimeBootstrap:
         monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: (store, tmp_path / "approval-runtime"))
         monkeypatch.setattr(cli_module, "bootstrap_workspace_runtime_root", lambda _paths: pytest.fail("run must not bootstrap"))
         real_subprocess_run = cli_module.subprocess.run
-        child_started = False
 
         def selective_subprocess_run(argv: list[str], **kwargs: object) -> object:
-            nonlocal child_started
             if "-c" in argv and "pass" in argv:
-                child_started = True
                 return type("Result", (), {"returncode": 0})()
             return real_subprocess_run(argv, **kwargs)
 
@@ -408,14 +405,7 @@ class TestApprovalTimeRuntimeBootstrap:
             target_argv=[sys.executable, "-c", "pass"],
             elevated_debug=False,
         )
-        if sys.platform == "win32":
-            assert result == 0
-        else:
-            assert result == 2
-            assert capsys.readouterr().err == (
-                "optimus-trust: no durable approval found for this workspace.\n"
-            )
-            assert not child_started
+        assert result == 0
         assert not runtime_root.exists()
 
 

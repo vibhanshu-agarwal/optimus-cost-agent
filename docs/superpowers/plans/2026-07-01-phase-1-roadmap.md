@@ -571,6 +571,8 @@ original absolute lexical input path alongside the resolved canonical path, devi
 `st_ctime_ns` change-time token. Revalidation reconstructs a fresh identity from the stored lexical
 path -- not the previously-resolved target -- and compares the complete digest, so a retargeted
 symlink or a same-path replacement fails closed with `WORKSPACE_IDENTITY_CHANGED` before spawn.
+Plan 11.15 later removed `st_ctime_ns` from v3 stable identity; immediate-root topology is the
+change signal (`reports/plan-11-15-durable-approval-identity-release.md`).
 `optimus-trust inspect` now resolves workspace identity before opening the keyring-backed approval
 store, so a nonexistent workspace fails before any keyring access. Default-suite tests were made
 host-independent (fake keyring at every boundary, permission checks recorded rather than exercised

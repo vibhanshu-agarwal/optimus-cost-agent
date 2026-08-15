@@ -1971,7 +1971,6 @@ def _prepare_run(tmp_path: Path) -> tuple[Path, Path, Path, RunContext, Path]:
     capture = (tmp_path / "capture").resolve()
     workspace = (tmp_path / "workspace").resolve()
     workspace.mkdir()
-    (workspace / ".git").mkdir()
     assert (
         gather.main(
             [
@@ -2327,7 +2326,6 @@ def test_redact_launch_environment_captured_exactly_once(
 
     workspace = (tmp_path / "workspace").resolve()
     workspace.mkdir()
-    (workspace / ".git").mkdir()
     env = _launch_env()
     fake = FakeKeyring()
     _seed_durable_approval(workspace=workspace, env=env, fake=fake)
