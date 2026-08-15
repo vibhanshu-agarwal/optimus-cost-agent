@@ -17,17 +17,19 @@ import hmac
 import json
 import secrets
 from collections.abc import Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Literal
 
-from optimus.acp.trusted_paths import WorkspaceIdentity, absent_git_context
+from optimus.acp.trusted_paths import WorkspaceIdentity
 
 # --- Constants ---
 
-APPROVAL_SCHEMA_VERSION = 1
+APPROVAL_SCHEMA_VERSION = 2
+LEGACY_APPROVAL_SCHEMA_VERSION = 1
 LAUNCH_POLICY_COMPATIBILITY = "P9.99-v1"
 MAX_APPROVAL_RECORD_BYTES = 1800
 ONE_SHOT_TTL_SECONDS = 300
@@ -66,14 +68,25 @@ class ApprovalError(ValueError):
 
 
 @dataclass(frozen=True)
+class ApprovalMigrationProvenance:
+    """Authenticated origin of a promoted durable record. Not fresh assurance."""
+
+    disposition: Literal["legacy_v2_to_v3"]
+    source_identity_format_version: Literal[2]
+    source_workspace_digest: str
+    inherited_trust: Literal["pre_migration_assurance_not_upgraded"]
+
+
+@dataclass(frozen=True)
 class ApprovalRecord:
-    """An HMAC-protected approval record bound to a workspace identity."""
+    """An HMAC-protected approval record bound to a workspace digest."""
 
     schema_version: int
     policy_compatibility: str
     approval_id: str
     mode: Literal["one-shot", "durable"]
-    workspace_identity: WorkspaceIdentity
+    identity_format_version: int
+    workspace_digest: str
     created_at: datetime
     expires_at: datetime | None
     creator_identity: str
@@ -86,6 +99,15 @@ class ApprovalRecord:
     security_snapshot_digest: str
     consumed: bool
     record_hmac: str
+    migration_provenance: ApprovalMigrationProvenance | None = None
+
+
+@dataclass(frozen=True)
+class DurableApprovalLookup:
+    """Result of ordered v3-then-legacy durable lookup."""
+
+    record: ApprovalRecord | None
+    state: Literal["current", "migrated", "legacy_reapproval_required"]
 
 
 @dataclass(frozen=True)
@@ -210,7 +232,7 @@ def compute_record_hmac(record: ApprovalRecord, *, hmac_key: bytes) -> str:
         b"\x00",
         record.mode.encode(),
         b"\x00",
-        record.workspace_identity.digest.encode(),
+        record.workspace_digest.encode(),
         b"\x00",
         record.created_at.isoformat().encode(),
         b"\x00",
@@ -245,6 +267,21 @@ def compute_record_hmac(record: ApprovalRecord, *, hmac_key: bytes) -> str:
         parts.append(b"\x00")
     # Model observation.
     parts.append((record.model_observation or "").encode())
+    if record.schema_version >= 2:
+        parts.append(b"\x00")
+        parts.append(str(record.identity_format_version).encode())
+        parts.append(b"\x00")
+        provenance = record.migration_provenance
+        if provenance is None:
+            parts.append(b"")
+        else:
+            parts.append(provenance.disposition.encode())
+            parts.append(b"\x00")
+            parts.append(str(provenance.source_identity_format_version).encode())
+            parts.append(b"\x00")
+            parts.append(provenance.source_workspace_digest.encode())
+            parts.append(b"\x00")
+            parts.append(provenance.inherited_trust.encode())
 
     msg = b"".join(parts)
     return hmac.new(hmac_key, msg, hashlib.sha256).hexdigest()
@@ -315,7 +352,8 @@ def build_approval_record(
         policy_compatibility=LAUNCH_POLICY_COMPATIBILITY,
         approval_id=f"appr_{secrets.token_hex(12)}",
         mode=mode,
-        workspace_identity=workspace_identity,
+        identity_format_version=workspace_identity.format_version,
+        workspace_digest=workspace_identity.digest,
         created_at=now,
         expires_at=expires_at,
         creator_identity=_creator_identity(),
@@ -328,6 +366,7 @@ def build_approval_record(
         security_snapshot_digest=snapshot_digest,
         consumed=False,
         record_hmac="",  # Placeholder.
+        migration_provenance=None,
     )
     record_hmac = compute_record_hmac(record, hmac_key=hmac_key)
     return replace(record, record_hmac=record_hmac)
@@ -356,9 +395,32 @@ def serialize_approval_record(record: ApprovalRecord) -> str:
         "secret_fingerprints": dict(record.secret_fingerprints),
         "security_literals": dict(record.security_literals),
         "security_snapshot_digest": record.security_snapshot_digest,
-        "workspace_digest": record.workspace_identity.digest,
+        "workspace_digest": record.workspace_digest,
     }
+    if record.schema_version >= 2:
+        data["identity_format_version"] = record.identity_format_version
+        data["migration_provenance"] = None
+        if record.migration_provenance is not None:
+            data["migration_provenance"] = {
+                "disposition": record.migration_provenance.disposition,
+                "inherited_trust": record.migration_provenance.inherited_trust,
+                "source_identity_format_version": record.migration_provenance.source_identity_format_version,
+                "source_workspace_digest": record.migration_provenance.source_workspace_digest,
+            }
     return json.dumps(data, sort_keys=True, separators=(",", ":"))
+
+
+def _parse_migration_provenance(raw: object) -> ApprovalMigrationProvenance | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise TypeError("migration_provenance must be an object or null")
+    return ApprovalMigrationProvenance(
+        disposition=raw["disposition"],
+        source_identity_format_version=raw["source_identity_format_version"],
+        source_workspace_digest=raw["source_workspace_digest"],
+        inherited_trust=raw["inherited_trust"],
+    )
 
 
 def _deserialize_approval_record(raw: str, *, hmac_key: bytes) -> ApprovalRecord:
@@ -369,24 +431,25 @@ def _deserialize_approval_record(raw: str, *, hmac_key: bytes) -> ApprovalRecord
         raise ApprovalError(code="RECORD_CORRUPT", detail="invalid JSON") from exc
 
     try:
-        workspace_identity = WorkspaceIdentity(
-            format_version=2,
-            lexical_path="",
-            canonical_path="",
-            device=0,
-            inode=0,
-            git_context=absent_git_context(),
-            digest=data["workspace_digest"],
-        )
+        schema_version = int(data["schema_version"])
         created_at = datetime.fromisoformat(data["created_at"])
         expires_at = datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None
+        if schema_version == LEGACY_APPROVAL_SCHEMA_VERSION:
+            identity_format_version = 2
+            provenance = None
+        elif schema_version == APPROVAL_SCHEMA_VERSION:
+            identity_format_version = int(data["identity_format_version"])
+            provenance = _parse_migration_provenance(data.get("migration_provenance"))
+        else:
+            raise ValueError("unsupported schema_version")
 
         record = ApprovalRecord(
-            schema_version=data["schema_version"],
+            schema_version=schema_version,
             policy_compatibility=data["policy_compatibility"],
             approval_id=data["approval_id"],
             mode=data["mode"],
-            workspace_identity=workspace_identity,
+            identity_format_version=identity_format_version,
+            workspace_digest=data["workspace_digest"],
             created_at=created_at,
             expires_at=expires_at,
             creator_identity=data["creator_identity"],
@@ -399,11 +462,11 @@ def _deserialize_approval_record(raw: str, *, hmac_key: bytes) -> ApprovalRecord
             security_snapshot_digest=data["security_snapshot_digest"],
             consumed=data.get("consumed", False),
             record_hmac=data["record_hmac"],
+            migration_provenance=provenance,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise ApprovalError(code="RECORD_CORRUPT", detail="missing or invalid fields") from exc
 
-    # Verify HMAC integrity.
     expected_hmac = compute_record_hmac(record, hmac_key=hmac_key)
     if not hmac.compare_digest(record.record_hmac, expected_hmac):
         raise ApprovalError(code="INTEGRITY_FAILURE", detail="record HMAC mismatch")
@@ -477,7 +540,7 @@ class KeyringApprovalStore:
                 code="RECORD_TOO_LARGE",
                 detail=f"{byte_len} bytes exceeds {MAX_APPROVAL_RECORD_BYTES} limit",
             )
-        entry_key = f"durable:{record.workspace_identity.digest}"
+        entry_key = f"durable:{record.workspace_digest}"
         self._keyring.set_password(self._service_name, entry_key, serialized)
 
     def write_one_shot(self, record: ApprovalRecord, nonce: bytes) -> str:
@@ -499,6 +562,143 @@ class KeyringApprovalStore:
         lock_dir = self._runtime_root / "locks"
         lock_dir.mkdir(parents=True, exist_ok=True)
         return lock_dir / f"{workspace_digest}.lock"
+
+    @contextmanager
+    def _exclusive_workspace_lock(self, workspace_digest: str):
+        import sys
+
+        lock_path = self._workspace_lock_path(workspace_digest)
+        lock_fd = open(lock_path, "w")  # noqa: SIM115
+        try:
+            if sys.platform == "win32":
+                import msvcrt
+
+                try:
+                    msvcrt.locking(lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
+                except OSError as exc:
+                    raise ApprovalError(code="LOCK_CONTENTION", detail="another consumer holds the lock") from exc
+            else:
+                import fcntl
+
+                try:
+                    fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError as exc:
+                    raise ApprovalError(code="LOCK_CONTENTION", detail="another consumer holds the lock") from exc
+            yield
+        finally:
+            if sys.platform == "win32":
+                import msvcrt
+
+                try:
+                    msvcrt.locking(lock_fd.fileno(), msvcrt.LK_UNLCK, 1)
+                except OSError:
+                    pass
+            lock_fd.close()
+
+    def lookup_durable(
+        self,
+        *,
+        current_identity: WorkspaceIdentity,
+        legacy_workspace_digest: str,
+        expected_legacy_snapshot_digest: str,
+        current_security_snapshot_digest: str,
+    ) -> DurableApprovalLookup:
+        """Look up v3 first; promote exact legacy only when v3 is absent."""
+        current_key = f"durable:{current_identity.digest}"
+        raw_v3 = self._keyring.get_password(self._service_name, current_key)
+        if raw_v3 is not None:
+            record = _deserialize_approval_record(raw_v3, hmac_key=self._hmac_key)
+            if record.policy_compatibility != LAUNCH_POLICY_COMPATIBILITY:
+                raise ApprovalError(code="POLICY_MISMATCH")
+            state: Literal["current", "migrated"] = (
+                "migrated" if record.migration_provenance is not None else "current"
+            )
+            return DurableApprovalLookup(record=record, state=state)
+        return self.promote_legacy_durable(
+            current_identity=current_identity,
+            legacy_workspace_digest=legacy_workspace_digest,
+            expected_legacy_snapshot_digest=expected_legacy_snapshot_digest,
+            current_security_snapshot_digest=current_security_snapshot_digest,
+        )
+
+    def promote_legacy_durable(
+        self,
+        *,
+        current_identity: WorkspaceIdentity,
+        legacy_workspace_digest: str,
+        expected_legacy_snapshot_digest: str,
+        current_security_snapshot_digest: str,
+    ) -> DurableApprovalLookup:
+        """Promote an exact matching durable v1 record to schema v2 / identity v3."""
+        if legacy_workspace_digest.startswith("oneshot:") or current_identity.digest.startswith("oneshot:"):
+            raise ApprovalError(code="ONE_SHOT_VERSION_MISMATCH", detail="durable migration must not touch oneshot keys")
+
+        with self._exclusive_workspace_lock(current_identity.digest):
+            current_key = f"durable:{current_identity.digest}"
+            raw_v3 = self._keyring.get_password(self._service_name, current_key)
+            if raw_v3 is not None:
+                record = _deserialize_approval_record(raw_v3, hmac_key=self._hmac_key)
+                if record.policy_compatibility != LAUNCH_POLICY_COMPATIBILITY:
+                    raise ApprovalError(code="POLICY_MISMATCH")
+                state: Literal["current", "migrated"] = (
+                    "migrated" if record.migration_provenance is not None else "current"
+                )
+                return DurableApprovalLookup(record=record, state=state)
+
+            if not legacy_workspace_digest:
+                return DurableApprovalLookup(record=None, state="legacy_reapproval_required")
+
+            legacy_key = f"durable:{legacy_workspace_digest}"
+            raw_legacy = self._keyring.get_password(self._service_name, legacy_key)
+            if raw_legacy is None:
+                return DurableApprovalLookup(record=None, state="legacy_reapproval_required")
+
+            legacy = _deserialize_approval_record(raw_legacy, hmac_key=self._hmac_key)
+            if legacy.policy_compatibility != LAUNCH_POLICY_COMPATIBILITY:
+                raise ApprovalError(code="POLICY_MISMATCH")
+            if legacy.mode != "durable":
+                raise ApprovalError(code="POLICY_MISMATCH", detail="non-durable records are not promoted")
+            if legacy.workspace_digest != legacy_workspace_digest:
+                raise ApprovalError(code="INTEGRITY_FAILURE", detail="legacy workspace digest mismatch")
+            if legacy.security_snapshot_digest != expected_legacy_snapshot_digest:
+                raise ApprovalError(code="SNAPSHOT_MISMATCH")
+
+            promoted = ApprovalRecord(
+                schema_version=APPROVAL_SCHEMA_VERSION,
+                policy_compatibility=legacy.policy_compatibility,
+                approval_id=legacy.approval_id,
+                mode="durable",
+                identity_format_version=3,
+                workspace_digest=current_identity.digest,
+                created_at=legacy.created_at,
+                expires_at=None,
+                creator_identity=legacy.creator_identity,
+                ceremony_cli_version=legacy.ceremony_cli_version,
+                security_literals=dict(legacy.security_literals),
+                secret_fingerprints=dict(legacy.secret_fingerprints),
+                monotonic_grants=dict(legacy.monotonic_grants),
+                model_observation=legacy.model_observation,
+                registry_version=legacy.registry_version,
+                security_snapshot_digest=current_security_snapshot_digest,
+                consumed=False,
+                record_hmac="",
+                migration_provenance=ApprovalMigrationProvenance(
+                    disposition="legacy_v2_to_v3",
+                    source_identity_format_version=2,
+                    source_workspace_digest=legacy.workspace_digest,
+                    inherited_trust="pre_migration_assurance_not_upgraded",
+                ),
+            )
+            promoted = replace(promoted, record_hmac=compute_record_hmac(promoted, hmac_key=self._hmac_key))
+            serialized = serialize_approval_record(promoted)
+            if len(serialized.encode("utf-8")) > MAX_APPROVAL_RECORD_BYTES:
+                raise ApprovalError(code="RECORD_TOO_LARGE")
+            self._keyring.set_password(self._service_name, current_key, serialized)
+            read_back = self._keyring.get_password(self._service_name, current_key)
+            if read_back != serialized:
+                raise ApprovalError(code="RECORD_CORRUPT", detail="v3 read-back verification failed")
+            verified = _deserialize_approval_record(read_back, hmac_key=self._hmac_key)
+            return DurableApprovalLookup(record=verified, state="migrated")
 
     def consume_one_shot(self, handle: str, expected_snapshot_digest: str) -> ApprovalRecord:
         """Consume a one-shot record: lock, verify, delete, return.
@@ -553,6 +753,12 @@ class KeyringApprovalStore:
                 raise ApprovalError(code="ONE_SHOT_NOT_FOUND")
 
             record = _deserialize_approval_record(raw, hmac_key=self._hmac_key)
+
+            if record.schema_version != APPROVAL_SCHEMA_VERSION:
+                raise ApprovalError(
+                    code="ONE_SHOT_VERSION_MISMATCH",
+                    detail="outstanding one-shot records must be reissued",
+                )
 
             # Check policy compatibility.
             if record.policy_compatibility != LAUNCH_POLICY_COMPATIBILITY:
@@ -636,9 +842,24 @@ class KeyringApprovalStore:
         return grant
 
     def revoke_workspace(self, workspace_digest: str) -> None:
-        """Revoke a durable approval for a workspace."""
+        """Revoke a durable approval for a workspace.
+
+        A migrated record also deletes the authenticated legacy source key
+        recorded in provenance. Fresh v3 records do not search for legacy keys.
+        """
         entry_key = f"durable:{workspace_digest}"
+        raw = self._keyring.get_password(self._service_name, entry_key)
+        provenance_legacy_key: str | None = None
+        if raw is not None:
+            try:
+                record = _deserialize_approval_record(raw, hmac_key=self._hmac_key)
+            except ApprovalError:
+                record = None
+            if record is not None and record.migration_provenance is not None:
+                provenance_legacy_key = f"durable:{record.migration_provenance.source_workspace_digest}"
         self._keyring.delete_password(self._service_name, entry_key)
+        if provenance_legacy_key is not None:
+            self._keyring.delete_password(self._service_name, provenance_legacy_key)
 
     def rotate_hmac_key(self) -> None:
         """Rotate the HMAC integrity key.

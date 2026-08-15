@@ -116,7 +116,8 @@ class TestApprovalRecordSchema:
         assert record.policy_compatibility == LAUNCH_POLICY_COMPATIBILITY
         assert record.approval_id.startswith("appr_")
         assert record.mode in ("one-shot", "durable")
-        assert record.workspace_identity == _sample_workspace_identity()
+        assert record.workspace_digest == _sample_workspace_identity().digest
+        assert record.identity_format_version == 3
         assert isinstance(record.created_at, datetime)
         assert record.creator_identity != ""
         assert record.ceremony_cli_version != ""
@@ -225,16 +226,7 @@ class TestRecordHmac:
         # Tamper with a field — create a copy with different workspace digest.
         from dataclasses import replace
 
-        tampered_ws = WorkspaceIdentity(
-            format_version=3,
-            lexical_path="/tmp/evil",
-            canonical_path="/tmp/evil",
-            device=1,
-            inode=99999,
-            git_context=absent_git_context(),
-            digest="b" * 64,
-        )
-        tampered = replace(record, workspace_identity=tampered_ws)
+        tampered = replace(record, workspace_digest="b" * 64)
         recomputed = compute_record_hmac(tampered, hmac_key=hmac_key)
         assert tampered.record_hmac != recomputed
 
@@ -295,16 +287,16 @@ class TestKeyringApprovalStore:
 
     def test_write_and_read_durable(self, tmp_path: Path) -> None:
         store, record, _ = self._make_store_and_record(tmp_path)
-        ws_digest = record.workspace_identity.digest
+        ws_digest = record.workspace_digest
 
         store.write_durable(record)
         retrieved = store.read_durable(ws_digest)
 
         assert retrieved is not None
         assert retrieved.approval_id == record.approval_id
-        assert retrieved.workspace_identity.digest == ws_digest
-        assert retrieved.workspace_identity.lexical_path == ""
-        assert retrieved.workspace_identity.format_version == 2
+        assert retrieved.workspace_digest == ws_digest
+        assert retrieved.identity_format_version == 3
+        assert retrieved.schema_version == 2
 
     def test_read_durable_returns_none_when_absent(self, tmp_path: Path) -> None:
         store, _, _ = self._make_store_and_record(tmp_path)
@@ -371,7 +363,7 @@ class TestKeyringApprovalStore:
 
     def test_revoke_workspace_removes_durable(self, tmp_path: Path) -> None:
         store, record, _ = self._make_store_and_record(tmp_path)
-        ws_digest = record.workspace_identity.digest
+        ws_digest = record.workspace_digest
 
         store.write_durable(record)
         assert store.read_durable(ws_digest) is not None
@@ -381,7 +373,7 @@ class TestKeyringApprovalStore:
 
     def test_corrupt_record_fails_with_integrity_error(self, tmp_path: Path) -> None:
         store, record, keyring = self._make_store_and_record(tmp_path)
-        ws_digest = record.workspace_identity.digest
+        ws_digest = record.workspace_digest
 
         store.write_durable(record)
 
@@ -735,7 +727,7 @@ class TestPolicyAndKeyRotation:
             hmac_key=hmac_key,
         )
         record = _sample_approval_record(hmac_key=hmac_key)
-        ws_digest = record.workspace_identity.digest
+        ws_digest = record.workspace_digest
 
         legacy_record = replace(record, policy_compatibility="P9.96-v1", record_hmac="")
         legacy_record = replace(
@@ -759,7 +751,7 @@ class TestPolicyAndKeyRotation:
             hmac_key=hmac_key,
         )
         record = _sample_approval_record(hmac_key=hmac_key)
-        ws_digest = record.workspace_identity.digest
+        ws_digest = record.workspace_digest
 
         # Write normally.
         store.write_durable(record)
@@ -797,7 +789,7 @@ class TestPolicyAndKeyRotation:
             hmac_key=hmac_key,
         )
         record = _sample_approval_record(hmac_key=hmac_key)
-        ws_digest = record.workspace_identity.digest
+        ws_digest = record.workspace_digest
 
         store.write_durable(record)
         # Confirm it reads fine before rotation.
@@ -858,7 +850,7 @@ class TestPolicyAndKeyRotation:
         # The existing store instance is unaffected: it still verifies
         # (and would still sign) with the key it loaded at construction.
         assert store.hmac_key == original_key
-        retrieved = store.read_durable(record.workspace_identity.digest)
+        retrieved = store.read_durable(record.workspace_digest)
         assert retrieved is not None
         assert retrieved.approval_id == record.approval_id
 
@@ -991,3 +983,230 @@ def test_client_mcp_review_display_formats_names_without_values() -> None:
     assert "client_supplied_acp" in lines
     assert secret not in lines
     assert "gateway_brokered_mcp" not in lines
+
+
+_GOLDEN_V1_HMAC_KEY = b"golden-v1-hmac-key-32-bytes!!!!"
+_GOLDEN_V1_WORKSPACE_DIGEST = "c" * 64
+_GOLDEN_V1_SNAPSHOT = "e0e4b70ccd6b9287b5751973be6d47a94b1b22e1c8434a1cd7d23dc496e19714"
+_GOLDEN_V1_JSON = (
+    '{"approval_id":"appr_golden_v1_fixture","ceremony_cli_version":"test","consumed":false,'
+    '"created_at":"2026-01-15T12:00:00+00:00","creator_identity":"golden@host","expires_at":null,'
+    '"mode":"durable","model_observation":null,"monotonic_grants":{"OPTIMUS_LIVE_MAX_COST_USD":"0.25"},'
+    '"policy_compatibility":"P9.99-v1","record_hmac":"88170139f3b974b3b4d798dd63e86b8ee3203f1ac9a0cd44d925ea22aa38252b",'
+    '"registry_version":"P9.99-v1","schema_version":1,"secret_fingerprints":{"OPTIMUS_API_KEY":"fp_golden"},'
+    '"security_literals":{"OPTIMUS_GATEWAY_URL":"http://127.0.0.1:8765"},'
+    f'"security_snapshot_digest":"{_GOLDEN_V1_SNAPSHOT}",'
+    f'"workspace_digest":"{_GOLDEN_V1_WORKSPACE_DIGEST}"}}'
+)
+
+
+def _v3_identity(*, digest: str = "d" * 64) -> WorkspaceIdentity:
+    return WorkspaceIdentity(
+        format_version=3,
+        lexical_path="/tmp/current-workspace",
+        canonical_path="/tmp/current-workspace",
+        device=8,
+        inode=16,
+        git_context=absent_git_context(),
+        digest=digest,
+    )
+
+
+class TestSchemaV2HmacCompatibility:
+    def test_schema_v2_new_records_use_identity_format_3(self) -> None:
+        record = _sample_approval_record()
+        assert record.schema_version == 2
+        assert record.identity_format_version == 3
+        assert record.workspace_digest == "a" * 64
+        assert record.migration_provenance is None
+        parsed = json.loads(serialize_approval_record(record))
+        assert parsed["schema_version"] == 2
+        assert parsed["identity_format_version"] == 3
+        assert "workspace_identity" not in parsed
+
+    def test_legacy_v1_golden_fixture_verifies_only_with_original_fields(self, tmp_path: Path) -> None:
+        from optimus.acp.launch_approvals import _deserialize_approval_record
+
+        record = _deserialize_approval_record(_GOLDEN_V1_JSON, hmac_key=_GOLDEN_V1_HMAC_KEY)
+        assert record.schema_version == 1
+        assert record.identity_format_version == 2
+        assert record.workspace_digest == _GOLDEN_V1_WORKSPACE_DIGEST
+        assert record.migration_provenance is None
+        assert compute_record_hmac(record, hmac_key=_GOLDEN_V1_HMAC_KEY) == record.record_hmac
+
+    def test_schema_v2_hmac_covers_identity_version_and_provenance(self) -> None:
+        from optimus.acp.launch_approvals import ApprovalMigrationProvenance
+
+        record = _sample_approval_record()
+        tampered = replace(record, identity_format_version=2)
+        assert compute_record_hmac(tampered, hmac_key=b"test-hmac-key-32-bytes-long!!!!") != record.record_hmac
+        with_provenance = replace(
+            record,
+            migration_provenance=ApprovalMigrationProvenance(
+                disposition="legacy_v2_to_v3",
+                source_identity_format_version=2,
+                source_workspace_digest=_GOLDEN_V1_WORKSPACE_DIGEST,
+                inherited_trust="pre_migration_assurance_not_upgraded",
+            ),
+        )
+        assert compute_record_hmac(with_provenance, hmac_key=b"test-hmac-key-32-bytes-long!!!!") != record.record_hmac
+
+
+class TestLegacyDurablePromotion:
+    def _store(self, tmp_path: Path, keyring: FakeKeyring | None = None) -> tuple[KeyringApprovalStore, FakeKeyring]:
+        backend = keyring or FakeKeyring()
+        store = KeyringApprovalStore(
+            keyring_backend=backend,
+            runtime_root=tmp_path,
+            hmac_key=_GOLDEN_V1_HMAC_KEY,
+        )
+        return store, backend
+
+    def test_promotion_writes_verified_v3_and_reports_migrated(self, tmp_path: Path) -> None:
+        store, keyring = self._store(tmp_path)
+        keyring.set_password("optimus-cost-agent-approvals", f"durable:{_GOLDEN_V1_WORKSPACE_DIGEST}", _GOLDEN_V1_JSON)
+        current = _v3_identity()
+        current_snapshot = "f" * 64
+
+        result = store.promote_legacy_durable(
+            current_identity=current,
+            legacy_workspace_digest=_GOLDEN_V1_WORKSPACE_DIGEST,
+            expected_legacy_snapshot_digest=_GOLDEN_V1_SNAPSHOT,
+            current_security_snapshot_digest=current_snapshot,
+        )
+
+        assert result.state == "migrated"
+        assert result.record is not None
+        assert result.record.schema_version == 2
+        assert result.record.identity_format_version == 3
+        assert result.record.workspace_digest == current.digest
+        assert result.record.approval_id == "appr_golden_v1_fixture"
+        assert result.record.security_snapshot_digest == current_snapshot
+        assert result.record.migration_provenance is not None
+        assert result.record.migration_provenance.source_workspace_digest == _GOLDEN_V1_WORKSPACE_DIGEST
+        assert result.record.migration_provenance.inherited_trust == "pre_migration_assurance_not_upgraded"
+        v3_raw = keyring.get_password("optimus-cost-agent-approvals", f"durable:{current.digest}")
+        assert v3_raw is not None
+        assert keyring.get_password("optimus-cost-agent-approvals", f"durable:{_GOLDEN_V1_WORKSPACE_DIGEST}") == _GOLDEN_V1_JSON
+        again = store.lookup_durable(
+            current_identity=current,
+            legacy_workspace_digest=_GOLDEN_V1_WORKSPACE_DIGEST,
+            expected_legacy_snapshot_digest=_GOLDEN_V1_SNAPSHOT,
+            current_security_snapshot_digest=current_snapshot,
+        )
+        assert again.state == "migrated"
+        assert again.record is not None
+        assert again.record.workspace_digest == current.digest
+
+    def test_legacy_hmac_failure_refuses_without_deleting_source(self, tmp_path: Path) -> None:
+        store, keyring = self._store(tmp_path)
+        tampered = _GOLDEN_V1_JSON.replace("fp_golden", "fp_tampered")
+        keyring.set_password("optimus-cost-agent-approvals", f"durable:{_GOLDEN_V1_WORKSPACE_DIGEST}", tampered)
+        with pytest.raises(ApprovalError):
+            store.promote_legacy_durable(
+                current_identity=_v3_identity(),
+                legacy_workspace_digest=_GOLDEN_V1_WORKSPACE_DIGEST,
+                expected_legacy_snapshot_digest=_GOLDEN_V1_SNAPSHOT,
+                current_security_snapshot_digest="f" * 64,
+            )
+        assert keyring.get_password("optimus-cost-agent-approvals", f"durable:{_GOLDEN_V1_WORKSPACE_DIGEST}") == tampered
+        assert keyring.get_password("optimus-cost-agent-approvals", f"durable:{'d' * 64}") is None
+
+    def test_legacy_snapshot_mismatch_refuses_promotion(self, tmp_path: Path) -> None:
+        store, keyring = self._store(tmp_path)
+        keyring.set_password("optimus-cost-agent-approvals", f"durable:{_GOLDEN_V1_WORKSPACE_DIGEST}", _GOLDEN_V1_JSON)
+        with pytest.raises(ApprovalError) as exc_info:
+            store.promote_legacy_durable(
+                current_identity=_v3_identity(),
+                legacy_workspace_digest=_GOLDEN_V1_WORKSPACE_DIGEST,
+                expected_legacy_snapshot_digest="0" * 64,
+                current_security_snapshot_digest="f" * 64,
+            )
+        assert exc_info.value.code == "SNAPSHOT_MISMATCH"
+        assert keyring.get_password("optimus-cost-agent-approvals", f"durable:{'d' * 64}") is None
+
+    def test_present_v3_never_falls_back_to_legacy(self, tmp_path: Path) -> None:
+        store, keyring = self._store(tmp_path)
+        keyring.set_password("optimus-cost-agent-approvals", f"durable:{_GOLDEN_V1_WORKSPACE_DIGEST}", _GOLDEN_V1_JSON)
+        current = _v3_identity()
+        v3 = build_approval_record(
+            mode="durable",
+            workspace_identity=current,
+            security_literals={"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765"},
+            secret_fingerprints={},
+            monotonic_grants={},
+            model_observation=None,
+            hmac_key=_GOLDEN_V1_HMAC_KEY,
+        )
+        store.write_durable(v3)
+        result = store.lookup_durable(
+            current_identity=current,
+            legacy_workspace_digest=_GOLDEN_V1_WORKSPACE_DIGEST,
+            expected_legacy_snapshot_digest=_GOLDEN_V1_SNAPSHOT,
+            current_security_snapshot_digest=v3.security_snapshot_digest,
+        )
+        assert result.state == "current"
+        assert result.record is not None
+        assert result.record.approval_id == v3.approval_id
+
+    def test_unreachable_legacy_requires_explicit_reapproval(self, tmp_path: Path) -> None:
+        store, _ = self._store(tmp_path)
+        result = store.lookup_durable(
+            current_identity=_v3_identity(),
+            legacy_workspace_digest=_GOLDEN_V1_WORKSPACE_DIGEST,
+            expected_legacy_snapshot_digest=_GOLDEN_V1_SNAPSHOT,
+            current_security_snapshot_digest="f" * 64,
+        )
+        assert result.state == "legacy_reapproval_required"
+        assert result.record is None
+
+    def test_one_shot_version_mismatch_is_not_migrated(self, tmp_path: Path) -> None:
+        store, keyring = self._store(tmp_path)
+        raw = (
+            '{"approval_id":"appr_golden_v1_oneshot","ceremony_cli_version":"test","consumed":false,'
+            '"created_at":"2026-01-15T12:00:00+00:00","creator_identity":"golden@host",'
+            '"expires_at":"2026-01-15T12:05:00+00:00","mode":"one-shot","model_observation":null,'
+            '"monotonic_grants":{"OPTIMUS_LIVE_MAX_COST_USD":"0.25"},"policy_compatibility":"P9.99-v1",'
+            '"record_hmac":"9a65c269aa0f8ba3090b98b0eded0079aec3cb7ba2ab86db770c84ff6b08d95e",'
+            '"registry_version":"P9.99-v1","schema_version":1,"secret_fingerprints":{"OPTIMUS_API_KEY":"fp_golden"},'
+            '"security_literals":{"OPTIMUS_GATEWAY_URL":"http://127.0.0.1:8765"},'
+            f'"security_snapshot_digest":"{_GOLDEN_V1_SNAPSHOT}",'
+            f'"workspace_digest":"{_GOLDEN_V1_WORKSPACE_DIGEST}"}}'
+        )
+        keyring.set_password("optimus-cost-agent-approvals", "oneshot:p996_old", raw)
+        with pytest.raises(ApprovalError) as exc_info:
+            store.consume_one_shot("p996_old", _GOLDEN_V1_SNAPSHOT)
+        assert exc_info.value.code == "ONE_SHOT_VERSION_MISMATCH"
+        assert keyring.get_password("optimus-cost-agent-approvals", "oneshot:p996_old") == raw
+
+    def test_revoke_migrated_deletes_v3_and_authenticated_legacy_key(self, tmp_path: Path) -> None:
+        store, keyring = self._store(tmp_path)
+        keyring.set_password("optimus-cost-agent-approvals", f"durable:{_GOLDEN_V1_WORKSPACE_DIGEST}", _GOLDEN_V1_JSON)
+        current = _v3_identity()
+        store.promote_legacy_durable(
+            current_identity=current,
+            legacy_workspace_digest=_GOLDEN_V1_WORKSPACE_DIGEST,
+            expected_legacy_snapshot_digest=_GOLDEN_V1_SNAPSHOT,
+            current_security_snapshot_digest="f" * 64,
+        )
+        store.revoke_workspace(current.digest)
+        assert keyring.get_password("optimus-cost-agent-approvals", f"durable:{current.digest}") is None
+        assert keyring.get_password("optimus-cost-agent-approvals", f"durable:{_GOLDEN_V1_WORKSPACE_DIGEST}") is None
+
+    def test_revoke_fresh_v3_does_not_speculatively_delete_legacy(self, tmp_path: Path) -> None:
+        store, keyring = self._store(tmp_path)
+        keyring.set_password("optimus-cost-agent-approvals", f"durable:{_GOLDEN_V1_WORKSPACE_DIGEST}", _GOLDEN_V1_JSON)
+        current = _v3_identity()
+        v3 = build_approval_record(
+            mode="durable",
+            workspace_identity=current,
+            security_literals={"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765"},
+            secret_fingerprints={},
+            monotonic_grants={},
+            model_observation=None,
+            hmac_key=_GOLDEN_V1_HMAC_KEY,
+        )
+        store.write_durable(v3)
+        store.revoke_workspace(current.digest)
+        assert keyring.get_password("optimus-cost-agent-approvals", f"durable:{current.digest}") is None
+        assert keyring.get_password("optimus-cost-agent-approvals", f"durable:{_GOLDEN_V1_WORKSPACE_DIGEST}") == _GOLDEN_V1_JSON

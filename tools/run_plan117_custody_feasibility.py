@@ -851,7 +851,7 @@ def read_durable_approval_projection(
         "approval_id": record.approval_id,
         "mode": record.mode,
         "security_snapshot_digest": record.security_snapshot_digest,
-        "workspace_digest": record.workspace_identity.digest,
+        "workspace_digest": record.workspace_digest,
         "policy_compatibility": record.policy_compatibility,
         "registry_version": record.registry_version,
         "record_hmac_verified": True,
