@@ -23,12 +23,22 @@
 
 | Observed evidence | Classification | Permitted next action | Prohibited inference |
 |---|---|---|---|
-| 20 or more clean Windows `pytest tests/unit -q` processes, with complete per-process logs and no target selector skipped or deselected | `P11-FU-6` bounded no-reproduction | Close only `P11-FU-6` with the exact run bound, environment, and log artifact | That `P11-FU-5` is absent or that the historical 5% rate was a product fix |
+| 59 clean Windows `pytest tests/unit -q` processes, with complete per-process logs and no target selector skipped or deselected | `P11-FU-6` bounded no-reproduction | Close only `P11-FU-6` with the exact run bound, environment, log artifact, and conditional 95% detection-power statement | That absence is proved, that `P11-FU-5` is absent, or that the historical 5% rate was a product fix |
 | `P11-FU-6` recurs and deterministic test-local lifecycle evidence identifies a helper-owned resource not released before the next test | Test-harness defect | Write a deterministic red, then make the smallest test-harness correction | That `serve_gateway()` production teardown is defective |
 | `P11-FU-6` recurs and the same lifecycle failure occurs through an independently driven Gateway lifecycle, outside `_start_server()` / `_stop_server()` | Gateway production defect | Stop for the recorded reviewer gate, then make the scoped production correction with TDD | That a test-only helper change is enough |
 | A `P11-FU-6` recurrence cannot be made deterministic after the bounded investigation | Reproduced, root cause unestablished | Publish the evidence and leave the named entry open with a precise next observation target | That a natural 5% failure is a valid red gate or that a clean rerun resolves it |
 | Additional `P11-FU-5` runs are clean | No additional observation | State the exact bound and stop the FU-5 chase | That any run count proves FU-5 absent; its recurrence rate is unknown |
 | A single controlled causal chain reproduces both the Git-handle failure and the Gateway socket failure | Shared root cause | Merge only the investigation narrative; retain separate acceptance and closure evidence | That coincident Windows failures alone establish a shared root cause |
+
+### FU-6 no-reproduction statistical basis
+
+The observed FU-6 characterization rate is one failure in 20 Windows unit-suite processes (5%). If that rate is representative and independent between processes, the probability of observing no recurrence in `n` processes is `0.95^n`, and the chance of detecting at least one recurrence is `1 - 0.95^n`.
+
+- Twenty clean processes would provide only **64.2% conditional detection power** (`1 - 0.95^20`), leaving a **35.8%** chance of observing no failure even if the historical rate persists. Twenty is therefore not a FU-6 closure threshold.
+- Fifty-nine clean processes provide **95.2% conditional detection power** (`1 - 0.95^59`), leaving 4.8% under that model. At the recorded approximately 186 seconds per full Windows suite, this budgets roughly three hours.
+- Ninety clean processes would provide **99.0% conditional detection power** (`1 - 0.95^90`), but are not required for this bounded-disposition gate.
+
+This is a detection-power statement conditional on the estimated historical rate and independence assumptions, not the probability that the flake is gone. The one-in-twenty estimate itself is uncertain, so even 59 clean runs establish only the explicitly stated bounded no-reproduction disposition, never proof of absence.
 
 ## Global constraints
 
@@ -149,14 +159,14 @@ Expected: pool hygiene and Ruff pass, diff hygiene is clean, and the commit cont
 **Interfaces:**
 
 - Consumes: a clean Windows implementation worktree and Task 0's exact checkout/platform provenance.
-- Produces: twenty separately logged unit-suite processes, isolated comparisons for any occurrence, and an observation matrix that distinguishes FU-5, FU-6, FU-7, and unrelated failures.
+- Produces: fifty-nine separately logged unit-suite processes, isolated comparisons for any occurrence, and an observation matrix that distinguishes FU-5, FU-6, FU-7, and unrelated failures.
 
-- [ ] **Step 1: Run exactly twenty independently launched Windows unit-suite processes.**
+- [ ] **Step 1: Run exactly fifty-nine independently launched Windows unit-suite processes.**
 
 ```powershell
 $logRoot = Join-Path $env:TEMP "plan-11-17-windows-unit-runs"
 New-Item -ItemType Directory -Force -Path $logRoot | Out-Null
-1..20 | ForEach-Object {
+1..59 | ForEach-Object {
   $run = $_
   $log = Join-Path $logRoot ("unit-{0:D2}.log" -f $run)
   uv run --frozen pytest tests/unit -q *>&1 | Tee-Object -FilePath $log
@@ -181,7 +191,7 @@ If a `P11-FU-7` selector fails, log it as out-of-scope confirmation only; do not
 
 - [ ] **Step 3: Apply the branch condition from the observation matrix.**
 
-- If all twenty unit-suite processes are clean for FU-6, mark the **FU-6 bounded no-reproduction branch** eligible and skip to Task 5. The twenty-run evidence closes only FU-6.
+- If all fifty-nine unit-suite processes are clean for FU-6, mark the **FU-6 bounded no-reproduction branch** eligible and skip to Task 5. Record the 95.2% conditional detection power, the 4.8% model residual, and the rate/independence assumptions. The fifty-nine-run evidence closes only FU-6; it does not prove absence.
 - If FU-6 recurs, continue to Task 2; preserve the failing log and the resulting isolated/file comparisons.
 - Whether or not FU-5 appears again, continue its bounded source/lifecycle comparison in Task 2. A clean FU-5 observation adds a datum but cannot select a no-reproduction closure branch.
 
@@ -289,7 +299,7 @@ The evidence report includes the concrete former-red command and result. Expecte
 
 - [ ] **Step 3: Run the FU-6-specific Windows confirmation matrix.**
 
-Run the twenty independently launched `uv run --frozen pytest tests/unit -q` processes from Task 1 again, retaining the same per-process log format and result table. This is FU-6 evidence, not the P11-FU-7 coverage gate. Do not run 25 `--cov` processes or close P11-FU-7 under this plan.
+Run the fifty-nine independently launched `uv run --frozen pytest tests/unit -q` processes from Task 1 again, retaining the same per-process log format and result table. This is FU-6 evidence, not the P11-FU-7 coverage gate. Do not run 25 `--cov` processes or close P11-FU-7 under this plan.
 
 If FU-6 recurs after the correction, do not retry past it. Return to Task 2 with the new lifecycle event and leave FU-6 open unless the evidence changes the classification.
 
@@ -344,7 +354,7 @@ Record the exact pushed SHA, native path/filesystem, `/usr/bin/git` and `uv` ver
 
 - [ ] **Step 1: Apply the correct FU-6 terminal status, and no broader one.**
 
-- **Bounded no-reproduction:** Close FU-6 only after twenty clean Windows unit-suite processes with raw-log hashes, target-selector visibility, exact checkout/tool versions, and no skipped/deselected substitution. State that the conclusion is bounded to this configuration.
+- **Bounded no-reproduction:** Close FU-6 only after fifty-nine clean Windows unit-suite processes with raw-log hashes, target-selector visibility, exact checkout/tool versions, and no skipped/deselected substitution. State the conditional 95.2% detection power / 4.8% residual using the observed 5% rate, that this assumes independent representative processes, and that it is not proof of absence.
 - **Corrected harness or production cause:** Close FU-6 only after the deterministic red/green evidence, the matching Task 4 Windows matrix, and (for production) the checkpoint ruling plus independent lifecycle proof.
 - **Recurrence without deterministic cause:** Leave FU-6 open. Record `reproduced, root cause unestablished`, the exact next observation target, and its existing named pool custody. Do not invent a closure from a clean rerun.
 
@@ -354,7 +364,7 @@ In every branch, mention P11-FU-26 only as transferred signal and retain P11-FU-
 
 The final FU-5 entry/report must always retain: the three Windows reproductions; the two real Git-spawning selectors; `WinError 6` / `DuplicateHandle`; report anchors; and the separate FU-29 injected-fault exclusion. It must state that FU-5's rate is unknown, so clean additional runs are observations only and do not prove absence.
 
-Close FU-5 only if its own reviewed causal/fix or explicitly accepted reproduction disposition meets its acceptance criteria. Otherwise leave it open with the new `reproduced, context known` status and named future Windows-investigation custody. Never borrow FU-6's socket evidence or its twenty-clean-run bound.
+Close FU-5 only if its own reviewed causal/fix or explicitly accepted reproduction disposition meets its acceptance criteria. Otherwise leave it open with the new `reproduced, context known` status and named future Windows-investigation custody. Never borrow FU-6's socket evidence or its fifty-nine-clean-run bound.
 
 - [ ] **Step 3: Determine P11-FU-4's exact custody status without name-based inference.**
 
@@ -391,8 +401,8 @@ Stage the audited current-state documents only if they changed. If `origin/main`
 |---|---:|---|
 | FU-5's three historical Windows reproductions are current-state record, not orphaned report facts | 0 | exact pool text plus Plan 11.14/11.15 report anchors |
 | FU-5 and FU-29 remain distinct | 0, 2, 5 | pool wording and separate mechanism statement |
-| FU-6 has a fair twenty-process Windows observation bound | 1 | raw per-process logs and provenance matrix |
-| Clean twenty-process FU-6 result closes only that entry | 1, 5 | bounded no-reproduction record with exact config |
+| FU-6 has a 59-process Windows observation bound with explicit statistical power | 1 | raw per-process logs, provenance matrix, and 95.2% conditional detection-power calculation |
+| Clean 59-process FU-6 result closes only that entry | 1, 5 | bounded no-reproduction record with exact config, 4.8% model residual, and stated assumptions |
 | Gateway socket and Git-handle causes are not presumed shared | 2 | event timelines and `shared`/`separate`/`insufficient_evidence` decision |
 | P11-FU-26 transfer is evaluated without reopening a retired lane | 2, 5 | comparison to current `test_server` lifecycle |
 | Test harness vs production scope is evidence-bound | 2, 3 | independent driver result and, if needed, checkpoint ruling |
@@ -408,7 +418,7 @@ Stage the audited current-state documents only if they changed. If `origin/main`
 - [ ] P11-FU-6 has exactly one of the evidence-supported states in the decision table; no natural-rate recurrence is represented as a deterministic red.
 - [ ] The investigation says whether FU-5 and FU-6 are shared, separate, or insufficiently evidenced, and names the P11-FU-26 comparison result.
 - [ ] No retry, sleep, skip, deselection, timeout widening, weakened assertion, or unreviewed production mutation was used to make a result green.
-- [ ] Any correction has a three-run deterministic pre-fix red, a focused green, its containing-file green, twenty Windows FU-6 confirmation processes, required coverage/Ruff/diff gates, and no unreported separate-lane failure.
+- [ ] Any correction has a three-run deterministic pre-fix red, a focused green, its containing-file green, fifty-nine Windows FU-6 confirmation processes, required coverage/Ruff/diff gates, and no unreported separate-lane failure.
 - [ ] P11-FU-7's 25-run coverage gate remains explicitly gated on P11-FU-6 and is neither run nor closed by this plan.
 - [ ] P11-FU-4 is explicitly recorded as discharged, partly discharged, or still open from its own acceptance criteria, with named custody for any remaining work.
 - [ ] The release report distinguishes Windows evidence, optional native-ext4 parity evidence, unrun tiers, exact SHAs, and every current-state document audited.
