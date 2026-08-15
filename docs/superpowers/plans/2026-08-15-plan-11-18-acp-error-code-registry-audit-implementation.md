@@ -169,7 +169,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 - Consumes: `tests/fixtures/acp/acp-v1-schema.json` and central registry exports.
 - Produces: `JSON_RPC_STANDARD_ERROR_CODES`, `ACP_PROTOCOL_ERROR_CODES`, and `OPTIMUS_APPLICATION_ERROR_CODES` exported by `optimus.acp.errors`.
 
-- [ ] **Step 1: Write failing schema-derived tests.**
+- [x] **Step 1: Write failing schema-derived tests.**
 
   In `tests/unit/acp/test_error_code_registry.py`, load the fixture with `json.loads`, select only integer `const` values from `schema["$defs"]["ErrorCode"]["anyOf"]`, and assert against the exported registry sets. The test must derive the ACP set at runtime; do not add a duplicated literal list of ACP values.
 
@@ -218,7 +218,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
   assert OPTIMUS_APPLICATION_ERROR_CODES == frozenset({MUTATION_FORBIDDEN, DUPLICATE_REQUEST_ID})
   ```
 
-- [ ] **Step 2: Run the schema selector and verify RED.**
+- [x] **Step 2: Run the schema selector and verify RED.**
 
   Run:
 
@@ -228,7 +228,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: FAIL because the current registry lacks the protocol/application sets, `RESOURCE_NOT_FOUND`, and the two outside-band application values.
 
-- [ ] **Step 3: Implement the central registry without behavior changes outside the adapter.**
+- [x] **Step 3: Implement the central registry without behavior changes outside the adapter.**
 
   In `src/optimus/acp/errors.py`, keep the five existing JSON-RPC standard constants and add exactly these central names:
 
@@ -250,7 +250,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   `REQUEST_CANCELLED` and `RESOURCE_NOT_FOUND` reserve schema allocations in the central registry only. Do not add session/resume/load behavior or `SESSION_BUSY` in this plan.
 
-- [ ] **Step 4: Run the schema oracle GREEN.**
+- [x] **Step 4: Run the schema oracle GREEN.**
 
   Run:
 
@@ -260,7 +260,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: PASS. The test output establishes that the complete schema-derived set contains `-32002` but excludes `-32910` and `-32911`, and that Optimus application values are unique, disjoint, and outside the complete reserved band.
 
-- [ ] **Step 5: Commit the registry/oracle slice.**
+- [x] **Step 5: Commit the registry/oracle slice.**
 
   After the selector passes and with commit authorization, run:
 
