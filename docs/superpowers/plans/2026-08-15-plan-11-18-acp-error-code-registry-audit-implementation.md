@@ -428,7 +428,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 - Consumes: an independently installed `acpx` executable found by `shutil.which("acpx")`, its exact `--version`, and a throwaway ACP error-probe agent in an ignored temporary directory.
 - Produces: a sanitized report containing the `acpx` version/path digest, the two probed code values, exit/classification observations, and no raw transcript, task prompt, environment, or credentials.
 
-- [ ] **Step 1: Write RED unit tests for the external-client evidence runner.**
+- [x] **Step 1: Write RED unit tests for the external-client evidence runner.**
 
   Model the runner after the repository’s existing `run_plan115_acpx_cost_obs_evidence.py` and `run_p11_fu_9_acpx_evidence.py` patterns. Unit-test that it:
 
@@ -443,7 +443,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   The probe agent may be a minimal fixture server solely to make an external client observe an error envelope. It is not an Optimus ACP client, never imports project protocol code, and does not stand in for an Optimus integration test. `acpx` is the only protocol client and test driver.
 
-- [ ] **Step 2: Run the runner unit tests RED.**
+- [x] **Step 2: Run the runner unit tests RED.**
 
   Run:
 
@@ -453,13 +453,13 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: FAIL because the runner and its sanitization/fail-closed contract do not yet exist.
 
-- [ ] **Step 3: Implement the hermetic observation runner.**
+- [x] **Step 3: Implement the hermetic observation runner.**
 
   The runner must launch the real external `acpx` with `shell=False`, invoke a temporary probe agent twice—once returning `-32001`, once returning `-32911`—and capture only these outcome fields: `code`, `acpx_version`, SHA-256 of the executable path string, process exit code, and a bounded classification token derived from `acpx` stderr/stdout. It must fail closed if `acpx` is unavailable, either probe cannot be driven, the client output contains a detected secret, or the report destination is outside `reports/`.
 
   It must state in the report that the application code changed unconditionally because `-32001` is inside the reserved band; the observation is evidence about one real client, not permission to retain a protocol-invalid number.
 
-- [ ] **Step 4: Run unit GREEN and Windows real-client evidence.**
+- [x] **Step 4: Run unit GREEN and Windows real-client evidence.**
 
   Run:
 
@@ -471,7 +471,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: unit tests pass; the report names an independently authored `acpx`, records outcomes for both values, has no secret material, and explains that `-32911` remains mandatory regardless of the observation. Do not replace this live step with a project-authored client/harness. If `acpx` is unavailable or does not complete, leave `P11-FU-10` open and record the blocked evidence condition; do not claim closure.
 
-- [ ] **Step 5: Commit the evidence runner and its produced report.**
+- [x] **Step 5: Commit the evidence runner and its produced report.**
 
   After both unit and real-client gates pass and with commit authorization, run:
 
