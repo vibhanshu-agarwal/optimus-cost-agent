@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import sys
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -1072,14 +1074,14 @@ def test_phoenix_not_started_before_authorization_audit_revalidation(monkeypatch
         call_order.append("append_launch_audit_event")
         return real_append(*a, **k)
 
-    real_revalidate = acp_main.revalidate_workspace_identity
+    real_revalidate = acp_main.revalidate_workspace_security_state
 
     def tracking_revalidate(*a, **k):
-        call_order.append("revalidate_workspace_identity")
+        call_order.append("revalidate_workspace_security_state")
         return real_revalidate(*a, **k)
 
     monkeypatch.setattr(acp_main, "append_launch_audit_event", tracking_append)
-    monkeypatch.setattr(acp_main, "revalidate_workspace_identity", tracking_revalidate)
+    monkeypatch.setattr(acp_main, "revalidate_workspace_security_state", tracking_revalidate)
     monkeypatch.setattr(
         acp_main,
         "ensure_local_redis",
@@ -1101,7 +1103,7 @@ def test_phoenix_not_started_before_authorization_audit_revalidation(monkeypatch
 
     assert exit_code == 0
     assert call_order.index("append_launch_audit_event") < call_order.index("ensure_local_phoenix")
-    assert call_order.index("revalidate_workspace_identity") < call_order.index("ensure_local_phoenix")
+    assert call_order.index("revalidate_workspace_security_state") < call_order.index("ensure_local_phoenix")
     assert call_order.index("ensure_local_redis") < call_order.index("ensure_local_phoenix")
     assert call_order.index("ensure_local_phoenix") < call_order.index("ensure_local_gateway")
 
@@ -1232,3 +1234,421 @@ def test_strict_check_config_starts_and_stops_gateway_without_phoenix(monkeypatc
     assert phoenix_calls == []
     assert call_order == ["ensure_local_redis", "ensure_local_gateway", "run_preflight"]
     assert stop_calls == ["stopped"]
+
+
+_APPROVAL_SERVICE = "optimus-cost-agent-approvals"
+
+
+def _oserror_win6() -> OSError:
+    exc = OSError(6, "injected probe failure")
+    exc.winerror = 6
+    return exc
+
+
+def _git_probe_stdout(workspace: Path) -> str:
+    return f"{workspace.resolve()}\n{(workspace / '.git').resolve()}\n"
+
+
+def _wrap_git_context_run(
+    monkeypatch,
+    workspace: Path,
+    *,
+    failures: list[BaseException],
+) -> list[int]:
+    """Drive the real Git retry loop with an injected subprocess runner."""
+    from optimus.acp import trusted_paths
+
+    (workspace / ".git").mkdir(exist_ok=True)
+    monkeypatch.setattr(trusted_paths.shutil, "which", lambda _name: "git")
+    attempts: list[int] = []
+    pending = list(failures)
+    real_resolve = trusted_paths.resolve_git_context
+
+    def run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        attempts.append(len(attempts) + 1)
+        if pending:
+            raise pending.pop(0)
+        return subprocess.CompletedProcess(argv, 0, stdout=_git_probe_stdout(workspace), stderr="")
+
+    def wrapped(workspace_root, **kwargs):
+        kwargs.setdefault("run", run)
+        kwargs.setdefault("sleeper", lambda _seconds: None)
+        return real_resolve(workspace_root, **kwargs)
+
+    monkeypatch.setattr(trusted_paths, "resolve_git_context", wrapped)
+    return attempts
+
+
+def _side_effect_sinks(monkeypatch) -> dict[str, list[object]]:
+    sinks = {"redis": [], "gateway": [], "server": []}
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: sinks["redis"].append((a, k)))
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: sinks["gateway"].append(k) or None)
+    monkeypatch.setattr(acp_main, "build_configured_server", lambda **k: sinks["server"].append(k) or None)
+    return sinks
+
+
+def test_preserve_approval_when_identity_unavailable_at_final_revalidation(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    """P11-FU-29: uncertainty at final revalidation stops launch but must not
+    invalidate the durable record or surface as NO_APPROVAL."""
+    from optimus.acp import trusted_paths
+    from optimus.acp.trusted_paths import GitContextDisposition, GitContextResult, ProbeDiagnostic
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    env = _base_env()
+    fake_keyring = FakeKeyring()
+    candidate = authorize_workspace_for_test(
+        env=env, workspace_root=workspace, fake_keyring=fake_keyring
+    )
+    monkeypatch.setattr(acp_main, "keyring", fake_keyring)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    durable_key = f"durable:{candidate.workspace_identity.digest}"
+    original_record_bytes = fake_keyring.get_password(_APPROVAL_SERVICE, durable_key)
+    assert original_record_bytes is not None
+
+    original_append_audit = acp_main.append_launch_audit_event
+
+    def unavailable_after_audit(*args, **kwargs):
+        result = original_append_audit(*args, **kwargs)
+
+        def unavailable(_workspace, **_kwargs):
+            return GitContextResult(
+                disposition=GitContextDisposition.UNAVAILABLE,
+                repository_root=None,
+                git_common_dir=None,
+                diagnostics=(
+                    ProbeDiagnostic(
+                        phase="revalidate_identity",
+                        probe="rev-parse",
+                        attempt=3,
+                        classification="transient",
+                        disposition="retry_exhausted",
+                        exception_type="OSError",
+                        errno=None,
+                        winerror=6,
+                        return_code=None,
+                        duration_ms=1,
+                    ),
+                ),
+            )
+
+        monkeypatch.setattr(trusted_paths, "resolve_git_context", unavailable)
+        return result
+
+    monkeypatch.setattr(acp_main, "append_launch_audit_event", unavailable_after_audit)
+    sinks = _side_effect_sinks(monkeypatch)
+
+    exit_code = acp_main.main(["--no-auto-start", "--workspace-root", str(workspace)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert fake_keyring.get_password(_APPROVAL_SERVICE, durable_key) == original_record_bytes
+    assert "WORKSPACE_IDENTITY_UNAVAILABLE" in captured.err
+    assert "NO_APPROVAL" not in captured.err
+    assert "no launch approval found" not in captured.err
+    assert "re-approve" not in captured.err
+    assert "retry" in captured.err.lower()
+    assert sinks["redis"] == []
+    assert sinks["gateway"] == []
+    assert sinks["server"] == []
+
+
+def test_identity_unavailable_at_initial_resolution_never_constructs_store(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    """Initial unavailability must not consult the store or create audit/debug files."""
+    from optimus.acp import trusted_paths
+    from optimus.acp.trusted_paths import GitContextDisposition, GitContextResult
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / ".git").mkdir()
+    env = _base_env()
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    def unavailable(_workspace, **_kwargs):
+        return GitContextResult(
+            disposition=GitContextDisposition.UNAVAILABLE,
+            repository_root=None,
+            git_common_dir=None,
+            diagnostics=(),
+        )
+
+    monkeypatch.setattr(trusted_paths, "resolve_git_context", unavailable)
+    monkeypatch.setattr(trusted_paths.shutil, "which", lambda _name: "git")
+
+    constructed: list[str] = []
+    original_store = acp_main.KeyringApprovalStore
+
+    class TrackingStore(original_store):
+        def __init__(self, *args, **kwargs):
+            constructed.append("constructed")
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(acp_main, "KeyringApprovalStore", TrackingStore)
+    sinks = _side_effect_sinks(monkeypatch)
+
+    exit_code = acp_main.main(["--workspace-root", str(workspace)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert constructed == []
+    assert "WORKSPACE_IDENTITY_UNAVAILABLE" in captured.err
+    assert "NO_APPROVAL" not in captured.err
+    assert "re-approve" not in captured.err
+    assert list(workspace.rglob("launch-audit.ndjson")) == []
+    assert list(workspace.rglob("debug-acp.ndjson")) == []
+    assert not (workspace / ".optimus").exists()
+    assert sinks["redis"] == []
+    assert sinks["gateway"] == []
+    assert sinks["server"] == []
+
+
+def test_fu29_transient_git_fault_preserves_digest_and_authorization(
+    monkeypatch, tmp_path
+) -> None:
+    """One WinError 6 then success must match the no-fault digest and authorize."""
+    from optimus.acp.trusted_paths import resolve_workspace_identity
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    env = _base_env()
+    _wrap_git_context_run(monkeypatch, workspace, failures=[])
+    no_fault_digest = resolve_workspace_identity(workspace).digest
+
+    attempts = _wrap_git_context_run(monkeypatch, workspace, failures=[_oserror_win6()])
+    one_fault_digest = resolve_workspace_identity(workspace).digest
+    assert one_fault_digest == no_fault_digest
+    assert attempts == [1, 2]
+
+    fake_keyring = FakeKeyring()
+    authorize_workspace_for_test(env=env, workspace_root=workspace, fake_keyring=fake_keyring)
+    monkeypatch.setattr(acp_main, "keyring", fake_keyring)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    _wrap_git_context_run(monkeypatch, workspace, failures=[_oserror_win6()])
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: None)
+
+    assert acp_main.main(["--no-auto-start", "--workspace-root", str(workspace)]) == 0
+
+
+def test_fu29_exhausted_git_fault_is_unavailable_without_no_approval(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    """Three WinError 6 failures must not look up a fallback digest or print NO_APPROVAL.
+
+    Rerunning the unrelated P11-FU-5 DuplicateHandle hygiene flake is not
+    evidence for this property.
+    """
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    env = _base_env()
+    _wrap_git_context_run(monkeypatch, workspace, failures=[])
+    fake_keyring = FakeKeyring()
+    candidate = authorize_workspace_for_test(
+        env=env, workspace_root=workspace, fake_keyring=fake_keyring
+    )
+    durable_key = f"durable:{candidate.workspace_identity.digest}"
+    original_record_bytes = fake_keyring.get_password(_APPROVAL_SERVICE, durable_key)
+    assert original_record_bytes is not None
+
+    lookups: list[str] = []
+    original_get = fake_keyring.get_password
+
+    def tracking_get(service: str, key: str) -> str | None:
+        lookups.append(key)
+        return original_get(service, key)
+
+    fake_keyring.get_password = tracking_get  # type: ignore[method-assign]
+    monkeypatch.setattr(acp_main, "keyring", fake_keyring)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    attempts = _wrap_git_context_run(
+        monkeypatch,
+        workspace,
+        failures=[_oserror_win6(), _oserror_win6(), _oserror_win6()],
+    )
+    sinks = _side_effect_sinks(monkeypatch)
+
+    exit_code = acp_main.main(["--workspace-root", str(workspace)])
+    captured = capsys.readouterr()
+    launch_lookups = list(lookups)
+
+    assert exit_code == 2
+    assert attempts == [1, 2, 3]
+    assert fake_keyring.get_password(_APPROVAL_SERVICE, durable_key) == original_record_bytes
+    assert not any(key.startswith("durable:") for key in launch_lookups)
+    assert "WORKSPACE_IDENTITY_UNAVAILABLE" in captured.err
+    assert "NO_APPROVAL" not in captured.err
+    assert "no launch approval found" not in captured.err
+    assert "re-approve" not in captured.err
+    assert "retry" in captured.err.lower()
+    assert sinks["redis"] == []
+    assert sinks["gateway"] == []
+    assert sinks["server"] == []
+
+
+def test_remediation_matrix_workspace_not_found_does_not_recommend_reapproval(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    missing = tmp_path / "missing-workspace"
+    monkeypatch.setattr(acp_main, "keyring", FakeKeyring())
+    for name, value in _base_env().items():
+        monkeypatch.setenv(name, value)
+    sinks = _side_effect_sinks(monkeypatch)
+
+    exit_code = acp_main.main(["--workspace-root", str(missing)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "WORKSPACE_NOT_FOUND" in captured.err
+    assert "re-approve" not in captured.err
+    assert "NO_APPROVAL" not in captured.err
+    assert "raw git stderr" not in captured.err
+    assert sinks["redis"] == []
+
+
+def test_remediation_matrix_stable_identity_mismatch_recommends_reapproval(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    env = _base_env()
+    _authorize(monkeypatch, workspace, env)
+    original_append_audit = acp_main.append_launch_audit_event
+
+    def relocating_append_audit(*args, **kwargs):
+        result = original_append_audit(*args, **kwargs)
+        shutil.rmtree(workspace)
+        workspace.mkdir()
+        return result
+
+    monkeypatch.setattr(acp_main, "append_launch_audit_event", relocating_append_audit)
+    sinks = _side_effect_sinks(monkeypatch)
+
+    exit_code = acp_main.main(["--workspace-root", str(workspace)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "WORKSPACE_IDENTITY_CHANGED" in captured.err
+    assert "stable_identity_mismatch" in captured.err
+    assert "re-approve" in captured.err
+    assert "NO_APPROVAL" not in captured.err
+    assert sinks["redis"] == []
+    assert sinks["gateway"] == []
+    assert sinks["server"] == []
+
+
+def test_remediation_matrix_topology_mismatch_recommends_reapproval(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    env = _base_env()
+    _authorize(monkeypatch, workspace, env)
+    original_append_audit = acp_main.append_launch_audit_event
+
+    def add_included_entry(*args, **kwargs):
+        result = original_append_audit(*args, **kwargs)
+        (workspace / "added-after-authorization").write_text("x", encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(acp_main, "append_launch_audit_event", add_included_entry)
+    sinks = _side_effect_sinks(monkeypatch)
+    _patch_common(monkeypatch)
+
+    exit_code = acp_main.main(["--no-auto-start", "--workspace-root", str(workspace)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "WORKSPACE_IDENTITY_CHANGED" in captured.err
+    assert "root_topology_mismatch" in captured.err
+    assert "re-approve" in captured.err
+    assert "NO_APPROVAL" not in captured.err
+    assert sinks["redis"] == []
+    assert sinks["gateway"] == []
+    assert sinks["server"] == []
+
+
+def test_remediation_matrix_permanent_unavailable_recommends_repair(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    from optimus.acp import trusted_paths
+    from optimus.acp.trusted_paths import GitContextDisposition, GitContextResult, ProbeDiagnostic
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    env = _base_env()
+    fake_keyring = FakeKeyring()
+    candidate = authorize_workspace_for_test(
+        env=env, workspace_root=workspace, fake_keyring=fake_keyring
+    )
+    durable_key = f"durable:{candidate.workspace_identity.digest}"
+    original_record_bytes = fake_keyring.get_password(_APPROVAL_SERVICE, durable_key)
+    monkeypatch.setattr(acp_main, "keyring", fake_keyring)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    def permanent(_workspace, **_kwargs):
+        return GitContextResult(
+            disposition=GitContextDisposition.UNAVAILABLE,
+            repository_root=None,
+            git_common_dir=None,
+            diagnostics=(
+                ProbeDiagnostic(
+                    phase="initial_identity",
+                    probe="rev-parse",
+                    attempt=1,
+                    classification="permanent",
+                    disposition="unavailable",
+                    exception_type="OSError",
+                    errno=13,
+                    winerror=None,
+                    return_code=None,
+                    duration_ms=1,
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(trusted_paths, "resolve_git_context", permanent)
+    sinks = _side_effect_sinks(monkeypatch)
+
+    exit_code = acp_main.main(["--workspace-root", str(workspace)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert fake_keyring.get_password(_APPROVAL_SERVICE, durable_key) == original_record_bytes
+    assert "WORKSPACE_IDENTITY_UNAVAILABLE" in captured.err
+    assert "repair" in captured.err.lower()
+    assert "re-approve" not in captured.err
+    assert "NO_APPROVAL" not in captured.err
+    assert "fatal:" not in captured.err
+    assert sinks["redis"] == []
+
+
+def test_remediation_matrix_genuine_missing_approval_recommends_reapproval(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    env = _base_env()
+    monkeypatch.setattr(acp_main, "keyring", FakeKeyring())
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    sinks = _side_effect_sinks(monkeypatch)
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "NO_APPROVAL" in captured.err or "no launch approval found" in captured.err
+    assert "approve" in captured.err.lower()
+    assert "WORKSPACE_IDENTITY_UNAVAILABLE" not in captured.err
+    assert sinks["redis"] == []
+    assert sinks["gateway"] == []
+    assert sinks["server"] == []

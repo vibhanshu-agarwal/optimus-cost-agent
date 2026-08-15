@@ -156,6 +156,45 @@ _GIT_PROBE_BACKOFFS = (0.025, 0.100)
 _GIT_PROBE_TIMEOUT_SECONDS = 5.0
 
 
+_SNAPSHOT_PROBES = frozenset({"scandir", "lstat"})
+
+
+def format_trusted_path_operator_message(
+    exc: TrustedPathError,
+    *,
+    prefix: str,
+    workspace_root: Path,
+    when: Literal["initial", "revalidate"],
+) -> str:
+    """Operator-facing trusted-path stderr: typed code, phase, and remediation."""
+    snapshot = any(item.probe in _SNAPSHOT_PROBES for item in exc.diagnostics)
+    phase = f"{when}_snapshot" if snapshot else f"{when}_identity"
+    if exc.code == "WORKSPACE_NOT_FOUND":
+        if exc.detail:
+            return f"{prefix}: WORKSPACE_NOT_FOUND: {exc.detail}"
+        return f"{prefix}: WORKSPACE_NOT_FOUND"
+    if exc.code == "WORKSPACE_IDENTITY_UNAVAILABLE":
+        exhausted = any(item.disposition == "retry_exhausted" for item in exc.diagnostics)
+        action = (
+            "Retry the launch after the probe condition clears."
+            if exhausted
+            else "Repair Git or filesystem access, then retry."
+        )
+        return (
+            f"{prefix}: WORKSPACE_IDENTITY_UNAVAILABLE: workspace identity could not be confirmed "
+            f"(phase={phase}). {action}"
+        )
+    if exc.code == "WORKSPACE_IDENTITY_CHANGED":
+        reason = exc.reason or "stable_identity_mismatch"
+        return (
+            f"{prefix}: WORKSPACE_IDENTITY_CHANGED: workspace identity changed "
+            f"(reason={reason}). Review the workspace and re-approve with:\n"
+            f"  optimus-trust --workspace-root {workspace_root} approve --mode durable"
+        )
+    detail = f": {exc.detail}" if exc.detail else ""
+    return f"{prefix}: {exc.code}{detail}"
+
+
 def absent_git_context() -> GitContextResult:
     return GitContextResult(
         disposition=GitContextDisposition.ABSENT,

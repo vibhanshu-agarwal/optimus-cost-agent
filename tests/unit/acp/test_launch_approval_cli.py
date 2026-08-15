@@ -266,20 +266,20 @@ class TestApprovalTimeRuntimeBootstrap:
         fake_keyring = FakeKeyring()
         store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path / "approval-runtime")
         observations: list[bool] = []
-        original_resolve_identity = cli_module.resolve_workspace_identity
+        original_resolve_state = cli_module.resolve_workspace_security_state
 
-        def observe_identity(path: Path):
+        def observe_state(path: Path):
             observations.append((path.resolve() / ".optimus").is_dir())
-            return original_resolve_identity(path)
+            return original_resolve_state(path)
 
         monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
         monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: (store, tmp_path / "approval-runtime"))
-        monkeypatch.setattr(cli_module, "resolve_workspace_identity", observe_identity)
+        monkeypatch.setattr(cli_module, "resolve_workspace_security_state", observe_state)
         monkeypatch.setattr("builtins.input", lambda _prompt: "y")
 
         assert cli_module._cmd_approve(workspace, mode="durable", target_argv=[]) == 0
         assert observations == [True]
-        assert store.read_durable(original_resolve_identity(workspace).digest) is not None
+        assert store.read_durable(original_resolve_state(workspace).identity.digest) is not None
 
     def test_one_shot_approval_bootstraps_before_workspace_identity_capture(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -294,15 +294,15 @@ class TestApprovalTimeRuntimeBootstrap:
         fake_keyring = FakeKeyring()
         store = KeyringApprovalStore(keyring_backend=fake_keyring, runtime_root=tmp_path / "approval-runtime")
         observations: list[bool] = []
-        original_resolve_identity = cli_module.resolve_workspace_identity
+        original_resolve_state = cli_module.resolve_workspace_security_state
 
-        def observe_identity(path: Path):
+        def observe_state(path: Path):
             observations.append((path.resolve() / ".optimus").is_dir())
-            return original_resolve_identity(path)
+            return original_resolve_state(path)
 
         monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
         monkeypatch.setattr(cli_module, "_resolve_store", lambda _workspace: (store, tmp_path / "approval-runtime"))
-        monkeypatch.setattr(cli_module, "resolve_workspace_identity", observe_identity)
+        monkeypatch.setattr(cli_module, "resolve_workspace_security_state", observe_state)
         monkeypatch.setattr("builtins.input", lambda _prompt: "y")
 
         assert cli_module._cmd_approve(workspace, mode="one-shot", target_argv=[]) == 0

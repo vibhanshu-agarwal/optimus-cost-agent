@@ -19,7 +19,7 @@ from optimus.acp.launch_approvals import KeyringApprovalStore, build_approval_re
 from optimus.acp.launch_gate import LaunchCandidate, resolve_launch_candidate
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
 from optimus.acp.operator_paths import bootstrap_workspace_runtime_root, resolve_authorized_operator_paths
-from optimus.acp.trusted_paths import resolve_workspace_identity
+from optimus.acp.trusted_paths import resolve_workspace_security_state
 
 
 class FakeKeyring:
@@ -57,20 +57,20 @@ def authorize_workspace_for_test(
         platform_name=sys.platform,
     )
     bootstrap_workspace_runtime_root(paths)
-    workspace_identity = resolve_workspace_identity(workspace_root)
+    workspace_state = resolve_workspace_security_state(workspace_root)
     store = KeyringApprovalStore(
         keyring_backend=fake_keyring,
         runtime_root=runtime_root or (workspace_root / ".optimus-runtime"),
     )
     candidate = resolve_launch_candidate(
         snapshot=snapshot,
-        workspace_identity=workspace_identity,
+        workspace_state=workspace_state,
         operator_paths=paths,
         hmac_key=store.hmac_key,
     )
     record = build_approval_record(
         mode="durable",
-        workspace_identity=workspace_identity,
+        workspace_identity=workspace_state.identity,
         security_literals=candidate.security_literals,
         secret_fingerprints=candidate.secret_fingerprints,
         monotonic_grants=candidate.monotonic_grants,

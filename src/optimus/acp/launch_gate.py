@@ -48,7 +48,12 @@ from optimus.acp.local_gateway_secrets import (
     resolve_shared_secret_with_provenance,
 )
 from optimus.acp.operator_paths import OperatorPaths
-from optimus.acp.trusted_paths import WorkspaceIdentity
+from optimus.acp.trusted_paths import (
+    WORKSPACE_EXCLUSION_POLICY_VERSION,
+    WorkspaceChangeSnapshot,
+    WorkspaceIdentity,
+    WorkspaceSecurityState,
+)
 from optimus_security.sanitization import canonicalize_credential_uri, validate_secret_length
 
 # Plan 9.96, Task 5 Batch 3 Step 5: the reviewed default each monotonic-tier
@@ -86,6 +91,7 @@ class LaunchCandidate:
 
     inherited: LaunchEnvironmentSnapshot
     workspace_identity: WorkspaceIdentity
+    workspace_state: WorkspaceSecurityState
     operator_paths: OperatorPaths
     security_snapshot_digest: str
     display_rows: tuple[LaunchDisplayRow, ...]
@@ -424,10 +430,34 @@ def _current_user_sid_string() -> str:
         kernel32.CloseHandle(token)
 
 
+def _workspace_state_for_candidate(
+    *,
+    workspace_identity: WorkspaceIdentity | None,
+    workspace_state: WorkspaceSecurityState | None,
+) -> tuple[WorkspaceIdentity, WorkspaceSecurityState]:
+    if workspace_state is not None:
+        return workspace_state.identity, workspace_state
+    if workspace_identity is None:
+        raise TypeError("resolve_launch_candidate requires workspace_state or workspace_identity")
+    return workspace_identity, WorkspaceSecurityState(
+        identity=workspace_identity,
+        change_snapshot=WorkspaceChangeSnapshot(
+            canonical_path=workspace_identity.canonical_path,
+            device=workspace_identity.device,
+            inode=workspace_identity.inode,
+            exclusion_policy_version=WORKSPACE_EXCLUSION_POLICY_VERSION,
+            immediate_root_digest="",
+            diagnostics=(),
+        ),
+        legacy_v2_digest="",
+    )
+
+
 def resolve_launch_candidate(
     *,
     snapshot: LaunchEnvironmentSnapshot,
-    workspace_identity: WorkspaceIdentity,
+    workspace_identity: WorkspaceIdentity | None = None,
+    workspace_state: WorkspaceSecurityState | None = None,
     operator_paths: OperatorPaths,
     hmac_key: bytes,
     credential_keyring_backend: object | None = None,
@@ -439,7 +469,13 @@ def resolve_launch_candidate(
     Gateway/agent child environments from the canonical registry.
 
     Does NOT reread os.environ — uses only the immutable snapshot.
+    Candidate security-snapshot hashing continues to consume only the stable
+    workspace identity digest; topology is an ephemeral comparison input.
     """
+    workspace_identity, workspace_state = _workspace_state_for_candidate(
+        workspace_identity=workspace_identity,
+        workspace_state=workspace_state,
+    )
     # 1. Classify and reject unknown/internal-only names.
     display_rows: list[LaunchDisplayRow] = []
     secret_inventory: list[str] = []
@@ -648,6 +684,7 @@ def resolve_launch_candidate(
     return LaunchCandidate(
         inherited=snapshot,
         workspace_identity=workspace_identity,
+        workspace_state=workspace_state,
         operator_paths=operator_paths,
         security_snapshot_digest=snapshot_digest,
         display_rows=tuple(sorted(display_rows, key=lambda r: r.name)),

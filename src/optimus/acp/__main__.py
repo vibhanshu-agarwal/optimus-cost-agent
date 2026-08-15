@@ -35,9 +35,10 @@ from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.acp.server import StdioByteReader, StdioByteWriter, StdioNdjsonLineReader, StdioNdjsonLineWriter
 from optimus.acp.trusted_paths import (
     TrustedPathError,
+    format_trusted_path_operator_message,
     resolve_trusted_operator_roots,
-    resolve_workspace_identity,
-    revalidate_workspace_identity,
+    resolve_workspace_security_state,
+    revalidate_workspace_security_state,
 )
 from optimus.gateway.client import DEFAULT_GATEWAY_TIMEOUT_SECONDS, validate_gateway_timeout_seconds
 
@@ -185,9 +186,17 @@ def _authorize_or_exit(
     on failure (already printed to stderr).
     """
     try:
-        workspace_identity = resolve_workspace_identity(workspace_root)
+        workspace_state = resolve_workspace_security_state(workspace_root)
     except TrustedPathError as exc:
-        print(f"optimus-agent: {exc}", file=sys.stderr)
+        print(
+            format_trusted_path_operator_message(
+                exc,
+                prefix="optimus-agent",
+                workspace_root=workspace_root,
+                when="initial",
+            ),
+            file=sys.stderr,
+        )
         return 2
 
     try:
@@ -203,7 +212,15 @@ def _authorize_or_exit(
     try:
         roots = resolve_trusted_operator_roots(platform_name=sys.platform)
     except TrustedPathError as exc:
-        print(f"optimus-agent: {exc}", file=sys.stderr)
+        print(
+            format_trusted_path_operator_message(
+                exc,
+                prefix="optimus-agent",
+                workspace_root=workspace_root,
+                when="initial",
+            ),
+            file=sys.stderr,
+        )
         return 2
 
     # Module-level `keyring` import (rather than a local import inside this
@@ -214,7 +231,7 @@ def _authorize_or_exit(
     try:
         candidate: LaunchCandidate = resolve_launch_candidate(
             snapshot=snapshot,
-            workspace_identity=workspace_identity,
+            workspace_state=workspace_state,
             operator_paths=operator_paths,
             hmac_key=store.hmac_key,
         )
@@ -360,9 +377,17 @@ def main(argv: list[str] | None = None) -> int:
     # the one TOCTOU vector that needs active re-checking, placed as early
     # as possible after audit and before any Redis/Gateway/agent probe.
     try:
-        revalidate_workspace_identity(candidate.workspace_identity)
+        revalidate_workspace_security_state(candidate.workspace_state)
     except TrustedPathError as exc:
-        print(f"optimus-agent: {exc}", file=sys.stderr)
+        print(
+            format_trusted_path_operator_message(
+                exc,
+                prefix="optimus-agent",
+                workspace_root=workspace_root,
+                when="revalidate",
+            ),
+            file=sys.stderr,
+        )
         return 2
 
     debug_log_path = _apply_debug_trace_args(

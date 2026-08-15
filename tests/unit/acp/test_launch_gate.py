@@ -1896,3 +1896,26 @@ class TestMissingKeyNonDisclosureAndGoldenDigest:
             row.source_class == "environment"
             for row in _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET")
         )
+
+
+def test_launch_candidate_carries_workspace_security_state(tmp_path: Path) -> None:
+    from optimus.acp.trusted_paths import resolve_workspace_security_state
+
+    env = {
+        "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+        "OPTIMUS_API_KEY": "test-key",
+        "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+    }
+    snapshot = LaunchEnvironmentSnapshot.capture(env)
+    state = resolve_workspace_security_state(tmp_path)
+
+    candidate = resolve_launch_candidate(
+        snapshot=snapshot,
+        workspace_state=state,
+        operator_paths=_sample_operator_paths(tmp_path),
+        hmac_key=_HMAC_KEY,
+    )
+
+    assert candidate.workspace_state is state
+    assert candidate.workspace_identity.digest == state.identity.digest
+    assert candidate.workspace_identity.digest == candidate.workspace_state.identity.digest

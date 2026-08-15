@@ -50,8 +50,10 @@ from optimus.acp.operator_paths import (
 from optimus.acp.trusted_paths import (
     TrustedOperatorRoots,
     TrustedPathError,
+    format_trusted_path_operator_message,
     resolve_trusted_operator_roots,
     resolve_workspace_identity,
+    resolve_workspace_security_state,
 )
 from optimus.mcp.client_config import ClientMcpSafeIdentity
 from optimus.mcp.client_trust import (
@@ -254,7 +256,15 @@ def main(argv: list[str] | None = None) -> int:
         print(exc.message, file=sys.stderr)
         return exc.code
     except TrustedPathError as exc:
-        print(f"optimus-trust: {exc}", file=sys.stderr)
+        print(
+            format_trusted_path_operator_message(
+                exc,
+                prefix="optimus-trust",
+                workspace_root=workspace_root,
+                when="initial",
+            ),
+            file=sys.stderr,
+        )
         return 2
     except ApprovalError as exc:
         print(f"optimus-trust: {exc}", file=sys.stderr)
@@ -344,11 +354,11 @@ def _resolve_candidate(
     resolve_launch_candidate rather than here, so every caller gets it
     structurally rather than by remembering to call it.
     """
-    workspace_identity = resolve_workspace_identity(workspace_root)
+    workspace_state = resolve_workspace_security_state(workspace_root)
 
     candidate = resolve_launch_candidate(
         snapshot=snapshot,
-        workspace_identity=workspace_identity,
+        workspace_state=workspace_state,
         operator_paths=operator_paths,
         hmac_key=store.hmac_key,
     )

@@ -51,7 +51,9 @@ from optimus.acp.operator_paths import bootstrap_workspace_runtime_root, resolve
 from optimus.acp.trusted_paths import (
     TrustedPathError,
     resolve_workspace_identity,
+    resolve_workspace_security_state,
     revalidate_workspace_identity,
+    revalidate_workspace_security_state,
 )
 from tests.support.gateway_settings import LOOPBACK_GATEWAY_URL
 
@@ -112,11 +114,11 @@ def _real_launch_pipeline(
     )
     if authoring:
         bootstrap_workspace_runtime_root(operator_paths)
-    workspace_identity = resolve_workspace_identity(workspace_root)
+    workspace_state = resolve_workspace_security_state(workspace_root)
     store = KeyringApprovalStore(keyring_backend=keyring, runtime_root=runtime_root)
     candidate = resolve_launch_candidate(
         snapshot=snapshot,
-        workspace_identity=workspace_identity,
+        workspace_state=workspace_state,
         operator_paths=operator_paths,
         hmac_key=store.hmac_key,
         # Isolate credential resolution from the host OS keyring (Windows CI vs
@@ -543,3 +545,42 @@ def test_full_launch_trust_flow_uri_userinfo_mutation_fails_closed(tmp_path: Pat
             launch_session_id="sess_integration_uri_mismatch",
         )
     assert exc_info.value.code == "SNAPSHOT_MISMATCH"
+
+
+def test_full_launch_trust_flow_topology_mismatch_fails_revalidation(tmp_path: Path) -> None:
+    """Authorized state must carry topology; an included immediate-root add fails closed."""
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    (workspace_root.parent / "operator-config").mkdir()
+    runtime_root = workspace_root / ".optimus-runtime"
+    keyring = FakeKeyring()
+    env = _base_env(workspace_root=workspace_root)
+
+    authoring_candidate, store = _real_launch_pipeline(
+        env=env, workspace_root=workspace_root, keyring=keyring, runtime_root=runtime_root, authoring=True
+    )
+    record = build_approval_record(
+        mode="durable",
+        workspace_identity=authoring_candidate.workspace_identity,
+        security_literals=authoring_candidate.security_literals,
+        secret_fingerprints=authoring_candidate.secret_fingerprints,
+        monotonic_grants=authoring_candidate.monotonic_grants,
+        model_observation=authoring_candidate.model_observation,
+        hmac_key=store.hmac_key,
+    )
+    store.write_durable(record)
+
+    launch_candidate, launch_store = _real_launch_pipeline(
+        env=env, workspace_root=workspace_root, keyring=keyring, runtime_root=runtime_root
+    )
+    authorize_launch(
+        candidate=launch_candidate,
+        store=launch_store,
+        launch_session_id="sess_integration_topology",
+    )
+
+    (workspace_root / "added-after-authorization").write_text("x", encoding="utf-8")
+    with pytest.raises(TrustedPathError) as exc_info:
+        revalidate_workspace_security_state(launch_candidate.workspace_state)
+    assert exc_info.value.code == "WORKSPACE_IDENTITY_CHANGED"
+    assert exc_info.value.reason == "root_topology_mismatch"
