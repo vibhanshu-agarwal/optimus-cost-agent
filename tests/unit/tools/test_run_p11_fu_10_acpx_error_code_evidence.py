@@ -17,6 +17,7 @@ from tools.run_p11_fu_10_acpx_error_code_evidence import (
     build_report,
     classify_probe_output,
     resolve_acpx,
+    write_markdown_report,
 )
 
 _SCRIPT_PATH = Path(__file__).resolve().parents[3] / "tools" / "run_p11_fu_10_acpx_error_code_evidence.py"
@@ -93,3 +94,74 @@ def test_classify_probe_output_is_bounded() -> None:
     assert classify_probe_output(stdout='{"error":{"code":-32001}}', stderr="") == "error_envelope_observed"
     assert classify_probe_output(stdout="timeout waiting", stderr="") == "client_output_unclassified"
     assert classify_probe_output(stdout="", stderr="acpx: connection refused") == "client_output_unclassified"
+
+
+def test_main_prints_controlled_stderr_when_acpx_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from tools.run_p11_fu_10_acpx_error_code_evidence import AcpxNotFoundError, main
+
+    monkeypatch.setattr(
+        "tools.run_p11_fu_10_acpx_error_code_evidence.run_capture",
+        lambda **_kwargs: (_ for _ in ()).throw(AcpxNotFoundError("acpx not found on PATH")),
+    )
+    code = main(["--report", str(tmp_path / "reports" / "out.md")])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "acpx not found" in err
+    assert "sk-" not in err
+
+
+def test_write_markdown_report_omits_transcript_and_secrets(tmp_path: Path) -> None:
+    report = build_report(
+        acpx_path=r"C:\tools\acpx.exe",
+        acpx_version="0.12.0",
+        probes=(
+            {"code": -32001, "exit_code": 1, "classification": "error_envelope_observed"},
+            {"code": -32911, "exit_code": 1, "classification": "error_envelope_observed"},
+        ),
+    )
+    path = tmp_path / "evidence.md"
+    write_markdown_report(path, report)
+    body = path.read_text(encoding="utf-8")
+    assert "full_transcript" not in body
+    assert "OPTIMUS_API_KEY" not in body
+    assert "-32911" in body
+
+
+def test_write_probe_agent_is_temporary_fixture_without_optimus_imports(tmp_path: Path) -> None:
+    from tools.run_p11_fu_10_acpx_error_code_evidence import _write_probe_agent
+
+    probe_path = _write_probe_agent(tmp_path)
+    source = probe_path.read_text(encoding="utf-8")
+    assert "optimus.acp" not in source
+    assert "P11_FU_10_PROBE_CODE" in source
+
+
+def test_run_capture_writes_schema_limited_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from tools.run_p11_fu_10_acpx_error_code_evidence import run_capture
+
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    destination = reports / "out.md"
+    monkeypatch.setattr(
+        "tools.run_p11_fu_10_acpx_error_code_evidence.resolve_acpx",
+        lambda: r"C:\tools\acpx.exe",
+    )
+    monkeypatch.setattr(
+        "tools.run_p11_fu_10_acpx_error_code_evidence.acpx_version",
+        lambda _acpx: "0.12.0",
+    )
+
+    def fake_run(command, *, cwd, env, timeout):  # type: ignore[no-untyped-def]
+        code = env["P11_FU_10_PROBE_CODE"]
+        return 1, f'{{"error":{{"code":{code}}}}}', ""
+
+    monkeypatch.setattr("tools.run_p11_fu_10_acpx_error_code_evidence._run_acpx", fake_run)
+    report = run_capture(report_path=destination, reports_root=reports)
+    body = destination.read_text(encoding="utf-8")
+    assert report["probed_codes"] == [-32001, -32911]
+    assert "full_transcript" not in body
+    assert "OPTIMUS_API_KEY" not in body

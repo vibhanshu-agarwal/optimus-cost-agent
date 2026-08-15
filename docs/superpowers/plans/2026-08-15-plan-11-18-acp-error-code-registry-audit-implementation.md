@@ -495,7 +495,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 - Consumes: green Task 2 and Task 4 mechanical oracles; successful Task 5 report; the exact frozen-file digest checks.
 - Produces: current documentation that says mutation denial is `-32910`, a closed `P11-FU-10` entry with its own report/PR evidence, and an unchanged frozen Plan 11.7 record.
 
-- [ ] **Step 1: Write RED current-document assertions.**
+- [x] **Step 1: Write RED current-document assertions.**
 
   Add assertions that distinguish current documentation from historical evidence:
 
@@ -508,7 +508,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
   assert "-32002" in frozen_plan_117_text  # expected historical evidence, not a current claim
   ```
 
-- [ ] **Step 2: Run the documentation test RED.**
+- [x] **Step 2: Run the documentation test RED.**
 
   Run:
 
@@ -518,11 +518,11 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: FAIL until current README and the open-work entry describe the actual final state. Historical `-32002` occurrences must not be “fixed.”
 
-- [ ] **Step 3: Make the current-state documentation changes.**
+- [x] **Step 3: Make the current-state documentation changes.**
 
   Change README’s mutation-boundary statement to `-32910`. Mark `P11-FU-10` closed only when Tasks 2–5 have passed, link the Plan 11.18 implementation, its real-`acpx` report, and the merged PR/commit. State both before/after code mappings and that the registry/oracles prove the final allocation. Update the Plan 11.7 living reference to say its frozen implementation remains blocked and that no `session/load` work was transferred; only the now-completed error-code subset moved to Plan 11.18.
 
-- [ ] **Step 4: Run Windows fitness gates.**
+- [x] **Step 4: Run Windows fitness gates.**
 
   Run:
 
