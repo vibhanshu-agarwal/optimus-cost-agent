@@ -70,6 +70,35 @@ The named raw files are retained outside the repository under the system tempora
 `C:\Users\pc\AppData\Local\Temp\plan-11-17-windows-unit-runs`. No FU-6 `test_server` unit-suite
 process has started in Task 0.
 
+## Task 1 Windows unit-process observations
+
+The first four independently launched `pytest tests/unit -q` processes were clean. Process 5
+reproduced FU-6 exactly at
+`tests/unit/optimus_gateway/test_server.py::test_unknown_route_remains_not_found`:
+`ConnectionAbortedError: [WinError 10053]` from `HTTPConnection.getresponse()`. The 59-clean
+no-reproduction branch was therefore inapplicable. The already-started sixth process was interrupted
+after the recurrence was classified; it is unrun and excluded from every count. No additional unit
+processes were launched. This follows Task 1's recurrence branch to Task 2; it does not recast the
+partial sequence as a five-run no-reproduction test.
+
+| Process | Start (UTC) | Duration | Exit | Result and SHA-256 |
+| ---: | --- | ---: | ---: | --- |
+| 1 | 2026-08-15T08:35:47.4479813Z | 103.71s | 0 | Clean; `unit-01.log`, `3EFDBB4CB1D24783C8F4DCD4718EDDF5ECFDF3CDB365E5AB539F88A4E1001E45`. |
+| 2 | 2026-08-15T08:37:31.2009766Z | 84.14s | 0 | Clean; `unit-02.log`, `529D4C690E91D595A42F64495C8E6C2F5AEC05D77D5FBF7DFA9E23E56DC08C71`. |
+| 3 | 2026-08-15T08:38:55.3510307Z | 88.54s | 0 | Clean; `unit-03.log`, `6ACABE303426500FB907C909FF291C86F8CDE13820511FD857E48399F1E67A7E`. |
+| 4 | 2026-08-15T08:40:23.8913191Z | 86.51s | 0 | Clean; `unit-04.log`, `AE284D6EBE78236EE70FF108D095030089B727CC9A83B878CDE106C29A215BBB`. |
+| 5 | 2026-08-15T08:41:50.4117131Z | 86.30s | 1 | FU-6 recurrence; `unit-05.log`, `74C743AEC60DC3495FAE662C8F61E89116CFC888C5EA75516E48B2458B9CA2D9`. |
+| 6 | started after process 5 | — | interrupted | Unrun partial process; `unit-06.log`, `63AA96B43DA925ED91E50FB0948918A91B86A06E721FAF68580AFF606ABA7A39`. |
+
+The retained matrix `unit-process-matrix.tsv` has SHA-256
+`6473ED819984B741F309B52875980527BF3DAE97EF72D5C048D24538D1F7408E` and records only the five
+completed processes. The isolated failure selector then passed (`1 passed in 0.94s`;
+`fu6-unknown-route-selector-after-unit05.log`, SHA-256
+`A998F81FCA05F59418864E13634F26320D4B685104BFF9B253BC7CDADB8AF003`) and its containing file
+passed (`34 passed in 17.97s`; `fu6-test-server-file-after-unit05.log`, SHA-256
+`602628F043EBE8A354B01D1564C6CCB68BA0D4066514C0DDA0EE75748D906801`). Those are comparison
+observations, not retries counted as success.
+
 ## Task 0 outcome
 
 The consolidated follow-up pool now assigns FU-5 and FU-6 to Plan 11.17 with their distinct

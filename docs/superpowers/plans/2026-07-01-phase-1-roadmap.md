@@ -1002,8 +1002,9 @@ separate, independently provable defect that should not be lost.
 **Open-work custody:** The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md)
 entry [`P11-FU-5`](2026-07-23-consolidated-deferred-followups-backlog.md#p11-fu-5-windows-subprocess-handle-duplication-flake-winerror-650)
 owns the live state. This remains excluded from the initial Plan 11 feature scope and v1.0 gate because
-the flake has no reproduction or deterministic fix; the pool records that state and the future
-custody decision. This roadmap section retains the feasibility findings and historical analysis.
+the flake is reproduced, context known but has no deterministic causal edge or fix; the pool records
+that state and the future custody decision. This roadmap section retains the feasibility findings and
+historical analysis.
 
 ## Plan 11 (v1.0 Milestone; Unified Gateway Capabilities Broker and ACP Release)
 

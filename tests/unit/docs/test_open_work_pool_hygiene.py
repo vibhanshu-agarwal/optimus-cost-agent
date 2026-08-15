@@ -203,9 +203,6 @@ EXPECTED_FEATURE_SCOPE_TOKENS = {
 PROMOTED_PLAN_117_STATUS = (
     "Promoted -> [Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md)"
 )
-SCHEDULED_PLAN_1117_STATUS = (
-    "Scheduled -> [Plan 11.17](2026-08-15-plan-11-17-p11-fu-5-6-windows-resource-lifecycle.md)"
-)
 ALLOWED_PRIORITIES = frozenset({"HIGH", "MEDIUM", "LOW"})
 
 PRODUCT_FEATURE_IDS = frozenset(
@@ -268,9 +265,6 @@ FIXED_STATUS_RE = re.compile(
 )
 PROMOTED_STATUS_RE = re.compile(
     r"^(?P<token>Promoted -> \[[^\]]+\]\((?P<target>[^)]+)\))[.:](?:\s|$)"
-)
-SCHEDULED_STATUS_RE = re.compile(
-    r"^(?P<token>Scheduled -> \[[^\]]+\]\((?P<target>[^)]+)\))[.:](?:\s|$)"
 )
 FU_INDEX_ROW_RE = re.compile(
     rf"^\|\s*`(?P<identity>{FU_ID_BODY})`\s*\|\s*(?P<item>[^|]+?)\s*\|"
@@ -392,9 +386,6 @@ def _status_token(section_body: str) -> str:
     promoted = PROMOTED_STATUS_RE.match(value)
     if promoted is not None:
         return promoted.group("token")
-    scheduled = SCHEDULED_STATUS_RE.match(value)
-    if scheduled is not None:
-        return scheduled.group("token")
     fixed = FIXED_STATUS_RE.match(value)
     assert fixed is not None, value
     return fixed.group("token")
@@ -403,9 +394,7 @@ def _status_token(section_body: str) -> str:
 def _resolution(status: str) -> str:
     if status in {"Closed", "Reviewed disposition"}:
         return "resolved"
-    if status in {"Open", "Partially implemented"} or status.startswith(
-        ("Promoted -> ", "Scheduled -> ")
-    ):
+    if status in {"Open", "Partially implemented"} or status.startswith("Promoted -> "):
         return "unresolved"
     raise AssertionError(status)
 
@@ -1154,7 +1143,7 @@ def test_feature_status_is_canonical_and_state_prose_lives_in_scope_detail() -> 
         assert all(token in scopes[identity] for token in expected_tokens)
 
 
-def test_planned_statuses_remain_exact_and_every_entry_status_has_a_resolution() -> None:
+def test_promoted_statuses_remain_exact_and_every_entry_status_has_a_resolution() -> None:
     pool_text = _read(OPTIMUS_POOL)
     entries = _entry_sections(pool_text)
     indexed = _fu_index_rows(pool_text)
@@ -1169,13 +1158,7 @@ def test_planned_statuses_remain_exact_and_every_entry_status_has_a_resolution()
     assert indexed["P9.8-FU-5"][1] == PROMOTED_PLAN_117_STATUS
     assert indexed["P11-FU-1"][1] == PROMOTED_PLAN_117_STATUS
     assert _resolution(PROMOTED_PLAN_117_STATUS) == "unresolved"
-    assert indexed["P11-FU-5"][1] == SCHEDULED_PLAN_1117_STATUS
-    assert indexed["P11-FU-6"][1] == SCHEDULED_PLAN_1117_STATUS
-    assert _resolution(SCHEDULED_PLAN_1117_STATUS) == "unresolved"
-    assert (
-        "`Open`, `Promoted -> ...`, `Scheduled -> ...`, and `Partially implemented` are unresolved"
-        in followup_intro
-    )
+    assert "`Open`, `Promoted -> ...`, and `Partially implemented` are unresolved" in followup_intro
     assert "`Closed` and `Reviewed disposition` are resolved" in followup_intro
     assert projected_statuses == detail_statuses
     assert all(
@@ -1198,18 +1181,17 @@ def test_every_relative_optimus_pool_link_resolves() -> None:
         assert (OPTIMUS_POOL.parent / target).resolve().exists(), target
 
 
-def test_planned_targets_resolve_inside_plan_directory() -> None:
+def test_promoted_targets_resolve_inside_plan_directory() -> None:
     entries = _entry_sections(_read(OPTIMUS_POOL))
-    planned = tuple(
+    promoted = tuple(
         token
         for token in (_status_token(body) for body in entries.values())
-        if token.startswith(("Promoted -> ", "Scheduled -> "))
+        if token.startswith("Promoted -> ")
     )
 
-    assert planned
-    for token in planned:
-        matcher = PROMOTED_STATUS_RE if token.startswith("Promoted -> ") else SCHEDULED_STATUS_RE
-        match = matcher.match(f"{token}.")
+    assert promoted
+    for token in promoted:
+        match = PROMOTED_STATUS_RE.match(f"{token}.")
         assert match is not None
         target = urlsplit(match.group("target"))
         assert not target.scheme and target.path
@@ -1272,8 +1254,8 @@ def test_gateway_mcp_retirement_custody_is_current() -> None:
 
     fu6_item, fu6_status = indexed["P11-FU-6"]
     fu6 = entries[f"P11-FU-6: {fu6_item}"]
-    assert fu6_status == SCHEDULED_PLAN_1117_STATUS
-    assert _status_token(fu6) == SCHEDULED_PLAN_1117_STATUS
+    assert fu6_status == "Open"
+    assert _status_token(fu6) == "Open"
     assert "WinError 10053" in fu6
     assert "Plan 11.12" in fu6
     assert "no production retry" in fu6.casefold()
