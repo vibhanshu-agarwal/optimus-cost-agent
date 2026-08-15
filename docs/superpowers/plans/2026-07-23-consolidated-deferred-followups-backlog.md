@@ -128,9 +128,9 @@ status changes through the normal status workflow; the target plan's status is n
 | `P11-FU-2` | Package Lookup and Security Advisory Gateway Capability | Closed | MEDIUM | `P11-FEAT-GATEWAY-TOOLS` / Plan 11.2 | PR #88 / `4590dbf` |
 | `P11-FU-3` | MCP Route/Typed-Contract Publication Gate | Closed | MEDIUM | `P11-FEAT-GATEWAY-MCP` | PR #112; PR #113 / `edd1f04` |
 | `P11-FU-4` | Re-pin FU-4A/FU-5 Live Evidence | Open | MEDIUM | Coordinated with `P11-FEAT-ZED-RESUME` | Acceptance criteria in entry |
-| `P11-FU-5` | Windows Subprocess Handle-Duplication Flake (WinError 6/50) | Open | MEDIUM | Future Windows investigation | Acceptance criteria in entry |
-| `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | MEDIUM | Future Gateway unit-harness investigation | Acceptance criteria in entry; 2026-08-10 two sibling harness failures same evening; 2026-08-11 DoD coverage pair recurrence; Plan 11.12 transferred WinError 10053 |
-| `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Promoted -> [Plan 11.16](2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md) | MEDIUM | Plan 11.16 | [Windows residual](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md) |
+| `P11-FU-5` | Windows Subprocess Handle-Duplication Flake (WinError 6/50) | Open | MEDIUM | Future Windows subprocess-lifecycle evidence lane | [Plan 11.17 disposition](../../../reports/plan-11-17-p11-fu-5-windows-disposition.md); retains distinct FU-29 custody |
+| `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | MEDIUM | Future Windows Gateway lifecycle-evidence lane | [Plan 11.17 root-cause record](../../../reports/plan-11-17-p11-fu-6-root-cause.md); recurrence retained; 59-clean bound inapplicable |
+| `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Promoted -> [Plan 11.16](2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md) | MEDIUM | Plan 11.16; its own coverage gate remains unrun | [Windows residual](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md); Plan 11.17 recorded FU-6 open disposition |
 | `P11.5-FU-1` | Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics | Open | MEDIUM | `P11-FEAT-GATEWAY-COST-OBS` | Acceptance criteria in entry |
 | `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Open | LOW | Future Gateway migration design | Acceptance criteria in entry |
 | `P11-FU-9` | Client-Supplied ACP `mcpServers` Disposition | Closed | MEDIUM | Dedicated P11-FU-9 lane | PR #119 / `9a93137`; [closure evidence](../../../reports/p11-fu-9-client-mcp-closure-evidence.md) |
@@ -452,16 +452,33 @@ The feasibility findings include both the no-reproduction result and the separat
 durable-approval identity concern. Batch B splits the latter into `P11-FU-29`; this entry retains
 only the rare Windows `DuplicateHandle` flake custody.
 
-**Designated slice:** Future Windows investigation; no plan number is allocated.
+**Designated slice:** Future Windows subprocess-lifecycle evidence lane. [Plan 11.17's disposition](../../../reports/plan-11-17-p11-fu-5-windows-disposition.md) established reproduced, context-known custody but no deterministic causal edge. This remains distinct from the durable-approval `P11-FU-29` mechanism.
 
 **Acceptance criteria:** A future pickup must establish an applicable reproduction or durable
 non-reproduction disposition for the original Windows flake, and receive a reviewed custody
 decision before any fix or exclusion is claimed. It must not fold the independent `P11-FU-29`
 identity concern back into this test-infrastructure entry.
 
-**Status:** Open. Tracked, not yet scheduled; root cause is not established. The feasibility findings
-live in the roadmap entry, and no plan number was allocated. Deliberately not picked up after the
-feasibility pass.
+**Reproduction disposition (2026-08-14/15):** Reproduced, context known. The operator-recorded
+disposition is three Windows `WinError 6` / `DuplicateHandle` occurrences in
+`test_immutable_documents_match_approved_head_blobs` and
+`test_product_checkpoint_log_location_remains_gitignored`, both of which spawn Git subprocesses.
+The [Plan 11.14 evidence](../../../reports/plan-11-14-p11-fu-21-custody-relay-exit-code-evidence.md#ruff-diff-and-sealed-artifact)
+names those two selectors and the `DuplicateHandle` incident. The
+[Plan 11.15 baseline](../../../reports/plan-11-15-durable-approval-identity-baseline.md#baseline-failures--recorded-as-p11-fu-5-not-plan-1115)
+records the same `subprocess.Popen` / `_make_inheritable` mechanism in four other Windows Git/DACL
+subprocess tests; those four failures are corroborating mechanism evidence, not part of the three
+occurrences above. The [Plan 11.15 Windows evidence](../../../reports/plan-11-15-windows-durable-approval-identity-evidence.md#residuals-not-this-plan)
+and [release report](../../../reports/plan-11-15-durable-approval-identity-release.md#unrun--unclaimed-tiers)
+retain FU-5 as open and expressly prevent cross-crediting FU-29's injected Git fault.
+
+The historical ten-run no-reproduction result remains historical context, not contrary evidence;
+FU-5's recurrence rate is unknown, so later clean runs cannot prove absence. No fix or exclusion is
+claimed here.
+
+**Status:** Open. Reproduced, context known; root cause remains unestablished after Plan 11.17.
+Its own evidence and reviewed custody decision determine any closure; it cannot borrow FU-6 socket
+evidence or its no-reproduction bound.
 
 **Batch B split (2026-08-14):** The historical ten-run no-reproduction result remains evidence for
 the rare Windows flake, not a product fix. The roadmap's fault-injectable behavior in
@@ -523,16 +540,20 @@ defect in the failing test.
 check whether this shares that root cause; do a feasibility pass before any scoped plan, not
 before.
 
-**Designated slice:** Future Windows / gateway unit-harness investigation; no plan number is
-allocated (lazy numbering — assign only if/when picked up for scoping).
+**Designated slice:** Future Windows Gateway lifecycle-evidence lane. [Plan 11.17's root-cause
+record](../../../reports/plan-11-17-p11-fu-6-root-cause.md) retained the full-suite recurrence and
+classified its cause as insufficiently evidenced; no deterministic correction is authorized.
 
 **Acceptance criteria:** Reproduce or disposition under full-suite load on Windows; determine
 whether this is the same root cause as `P11-FU-5` or a distinct bind/teardown race; harden
 `_start_server`/`_stop_server` (or equivalent) only after a reviewed feasibility pass; preserve
 the CORE-route unit coverage that already passes in isolation.
 
-**Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Feasibility pass required
-before promotion.
+**Status:** Open. Reproduced, root cause unestablished after Plan 11.17 process 5 failed at the
+current successor. The 59-clean bound is inapplicable after that recurrence. Its historical 95.2%
+conditional detection-power calculation applies only to 59 clean independent processes at the
+observed 5% rate and never proves absence. Any harness or production correction remains conditional
+on deterministic-red and reviewed-scope gates.
 
 **Additional observation (2026-08-10, evidence-handoff Task 6 interop review):** During a full
 suite run on this host, `tests/unit/optimus_gateway/test_server.py::test_unknown_route_remains_not_found`
@@ -614,6 +635,13 @@ in a unit test, with no current evidence of a subprocess-handle or port-teardown
 not widened. The 25 full Windows `--cov` gate stopped at 4/25 after unrelated `P11-FU-6` WinError
 10053. Residual: [Windows evidence](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md).
 Not Closed.
+
+**P11-FU-6 gate (2026-08-15):** The 25-process Windows `pytest --cov -q` closure gate is unrun
+after 4/25 because P11-FU-6 recurred. Plan 11.17 recorded FU-6 as reproduced, root cause
+unestablished; that is not a pass or partial completion.
+
+**Next pickup:** P11-FU-6 now has its separate recorded open disposition. Resume, count, or claim
+this gate only in Plan 11.16's separate evidence lane; Plan 11.17 did not restart or spend it.
 
 **Recurrence:** 2026-08-10 — ACP NDJSON sanitization flake reproduced in the full suite only (passed isolated and in-file); same coverage/`sys.settrace` timing diagnosis; do not widen `P11-FU-6` or merge these entries.
 

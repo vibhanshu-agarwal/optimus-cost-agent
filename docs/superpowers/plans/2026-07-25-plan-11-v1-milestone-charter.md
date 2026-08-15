@@ -291,10 +291,10 @@ The v1.0 Definition of Done is therefore:
   Gateway feature.
 - The **Windows Subprocess Handle-Duplication Flake, WinError 6/50** remains explicitly excluded
   from the initial Plan 11 feature scope and v1.0 gate. The `P11-FU-5` entry in the consolidated open-work
-  pool owns its future Windows investigation state; the no-reproduction result, lack of a
-  deterministic fix, and lack of a v1.0 capability/ACP-evidence dependency are the rationale. The
-  separately identified durable-approval identity concern remains in that entry until a separate
-  reviewed custody decision is made.
+  pool owns its future Windows investigation state; its reproduced, context-known state, historical
+  no-reproduction result, lack of a deterministic fix, and lack of a v1.0 capability/ACP-evidence
+  dependency are the rationale. The separately identified durable-approval identity concern remains
+  in that entry until a separate reviewed custody decision is made.
 - JetBrains Air and JetBrains AI Assistant are conditional/post-v1.0 candidates, not unconditional
   v1.0 gates.
 - ACP registry requirements have a public authoritative source, but their exact live enforcement
