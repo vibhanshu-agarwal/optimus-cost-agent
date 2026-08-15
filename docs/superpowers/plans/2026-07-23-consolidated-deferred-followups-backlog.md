@@ -115,6 +115,18 @@ projection of every stable-ID follow-up heading.
 `Closed` and `Reviewed disposition` are resolved. Promotion remains unresolved until the item's own
 status changes through the normal status workflow; the target plan's status is not copied here.
 
+**Priority and scheduling policy (2026-08-15):** `MEDIUM` is the default resting state and requires
+no justification. Analysis may leave an unresolved entry at `MEDIUM` or move it to `HIGH` or `LOW`.
+Every unresolved `HIGH` and `LOW` row must have written justification in its detail entry. Work
+`HIGH` and `MEDIUM` entries first; defer `LOW` entries to the end of the Plan. For defects, `LOW`
+requires no functional impact and low occurrence rate. Capability gaps, audits, process gates,
+reconciliations, and other non-defect entries have no occurrence-rate criterion; justify them on
+functional impact alone. This pass changes triage only; it does not change any follow-up status.
+
+**Plan 12 custody note (2026-08-15):** `P9.8-FU-2`, `P9.8-FU-3`, `P9.85-FU-1`, and
+`P9.85-FU-2` retain `MEDIUM` only as the default resting state. They do not carry a Plan 11
+priority or scheduling claim; their designated owner remains Plan 12.
+
 | ID | Item | Status | Priority   | Owning slice / designated plan | Evidence |
 |---|---|---|------------|---|---|
 | `P9.8-FU-2` | Intelligent ambiguous-reference ranking | Open | MEDIUM     | Plan 12 | Acceptance criteria in entry |
@@ -128,9 +140,9 @@ status changes through the normal status workflow; the target plan's status is n
 | ~~`P11-FU-2`~~ | ~~Package Lookup and Security Advisory Gateway Capability~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-GATEWAY-TOOLS` / Plan 11.2~~ | ~~PR #88 / `4590dbf`~~ |
 | ~~`P11-FU-3`~~ | ~~MCP Route/Typed-Contract Publication Gate~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-GATEWAY-MCP`~~ | ~~PR #112; PR #113 / `edd1f04`~~ |
 | `P11-FU-4` | Re-pin FU-4A/FU-5 Live Evidence | Open | MEDIUM     | Coordinated with `P11-FEAT-ZED-RESUME` | Acceptance criteria in entry |
-| `P11-FU-5` | Windows Subprocess Handle-Duplication Flake (WinError 6/50) | Open | MEDIUM     | Future Windows subprocess-lifecycle evidence lane | [Plan 11.17 disposition](../../../reports/plan-11-17-p11-fu-5-windows-disposition.md); retains distinct FU-29 custody |
-| `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | MEDIUM     | Future Windows Gateway lifecycle-evidence lane | [Plan 11.17 root-cause record](../../../reports/plan-11-17-p11-fu-6-root-cause.md); recurrence retained; 59-clean bound inapplicable |
-| `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Promoted -> [Plan 11.16](2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md) | MEDIUM     | Plan 11.16; its own coverage gate remains unrun | [Windows residual](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md); Plan 11.17 recorded FU-6 open disposition |
+| `P11-FU-5` | Windows Subprocess Handle-Duplication Flake (WinError 6/50) | Open | LOW        | Future Windows subprocess-lifecycle evidence lane | [Plan 11.17 disposition](../../../reports/plan-11-17-p11-fu-5-windows-disposition.md); retains distinct FU-29 custody |
+| `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | LOW        | Future Windows Gateway lifecycle-evidence lane | [Plan 11.17 root-cause record](../../../reports/plan-11-17-p11-fu-6-root-cause.md); recurrence retained; 59-clean bound inapplicable |
+| `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Promoted -> [Plan 11.16](2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md) | MEDIUM     | Plan 11.16; closure gate deferred with `P11-FU-6` | [Windows residual](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md); Plan 11.17 recorded FU-6 open disposition |
 | `P11.5-FU-1` | Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics | Open | MEDIUM     | `P11-FEAT-GATEWAY-COST-OBS` | Acceptance criteria in entry |
 | `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Open | LOW        | Future Gateway migration design | Acceptance criteria in entry |
 | ~~`P11-FU-9`~~ | ~~Client-Supplied ACP `mcpServers` Disposition~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Dedicated P11-FU-9 lane~~ | ~~PR #119 / `9a93137`; [closure evidence](../../../reports/p11-fu-9-client-mcp-closure-evidence.md)~~ |
@@ -232,6 +244,12 @@ accepted same-session live retry was not obtained, frozen Plan 11.7 remains bloc
 stays open pending an explicit reviewed Zed-defect disposition or a separately authorized future
 budget-expansion/live-evidence path. Evidence:
 [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json).
+
+**Triage justification for HIGH (2026-08-15):** This is an unimplemented ACP protocol capability
+that makes a client start a new session instead of restoring an existing one after a connection or
+process boundary. The impact is directly user-visible session continuity and cross-client
+interoperability, with durable identity, history, and storage-failure semantics still undefined;
+that functional impact warrants work ahead of ordinary capability and documentation gaps.
 
 ### P9.85-FU-1: Intelligent observation compression
 
@@ -435,9 +453,16 @@ capture path overlaps; no Plan 11.x plan number is allocated by this entry.
 
 **Acceptance criteria:** Re-capture fresh real-`acpx` FU-4A and FU-5 evidence against the current
 codebase, select the reviewed sanitized capture path, record the exact evidence and implementation
-SHAs, and close or explicitly disposition the freshness gap before the v1.0 cut.
+SHAs, and close or explicitly disposition the freshness gap before the v1.0 cut. FU-4A may be
+partially closed on its own once its fresh evidence is accepted; that partial closure must not claim
+the separate FU-5 evidence half is complete.
 
 **Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Evidence-freshness class.
+
+**Prioritization disposition (2026-08-15):** Option 2 — allow partial closure on FU-4A alone. This
+keeps the actionable fresh-evidence work at the default `MEDIUM` level without parking it behind
+the separate FU-5 evidence residual. The overall entry remains `Open` until the FU-5 half is also
+accepted or explicitly dispositioned; no status is changed by this pass.
 
 ### P11-FU-5: Windows Subprocess Handle-Duplication Flake (WinError 6/50)
 
@@ -479,6 +504,12 @@ claimed here.
 **Status:** Open. Reproduced, context known; root cause remains unestablished after Plan 11.17.
 Its own evidence and reviewed custody decision determine any closure; it cannot borrow FU-6 socket
 evidence or its no-reproduction bound.
+
+**Triage justification for LOW (2026-08-15):** Plan 11.17 reproduced the `DuplicateHandle` signal
+in the known Git-spawning test context, but the rate remains unknown and no product behavior has
+been shown to fail. This is test-infrastructure-only custody with no functional product effect;
+the sparse reproduced signal and the decided Plan 11.17 disposition place it at the end-of-Plan
+queue while preserving its separate evidence and closure requirements.
 
 **Batch B split (2026-08-14):** The historical ten-run no-reproduction result remains evidence for
 the rare Windows flake, not a product fix. The roadmap's fault-injectable behavior in
@@ -592,6 +623,12 @@ the root cause.
 harness plan. Preserve the route assertions. Do not add retries, widen request timing, or weaken
 production safety behavior. `P11.7-FU-2` is duplicate custody and is merged here.
 
+**Triage justification for LOW (2026-08-15):** Every current reproduction is confined to the
+test harness's `_start_server()` / `_stop_server()` lifecycle, never an independently driven
+`serve_gateway()` path. The observed rate is approximately 5% per full Windows unit run and the
+failure has no product effect, so it is a low-priority test-infrastructure investigation rather
+than a functional Gateway defect.
+
 ### P11-FU-7: Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test
 
 **Raised:** 2026-07-27 during the Plan 11.3 Task 1 independent review (operator Vibhanshu).
@@ -639,6 +676,11 @@ Not Closed.
 **P11-FU-6 gate (2026-08-15):** The 25-process Windows `pytest --cov -q` closure gate is unrun
 after 4/25 because P11-FU-6 recurred. Plan 11.17 recorded FU-6 as reproduced, root cause
 unestablished; that is not a pass or partial completion.
+
+**Triage note (2026-08-15):** Keep this entry at `MEDIUM` because the Plan 11.16 test-only fix
+landed and its remaining closure gate is a bounded evidence task, not unfinished production work.
+The 25-run closure gate is explicitly deferred with `P11-FU-6` and is not actionable during the
+HIGH/MEDIUM phase; do not read the `MEDIUM` row as permission to claim closure before that gate runs.
 
 **Next pickup:** P11-FU-6 now has its separate recorded open disposition. Resume, count, or claim
 this gate only in Plan 11.16's separate evidence lane; Plan 11.17 did not restart or spend it.
@@ -701,6 +743,12 @@ batches; Plan 11.5 Task 8 real Phoenix evidence must prove or disposition this.
 **Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Drafted 2026-07-29 for
 operator review of pool custody wording.
 
+**Operator confirmation pending (2026-08-15):** Proposed level: `MEDIUM`. The gap changes live
+telemetry delivery-state semantics when the real exporter returns `FAILURE`, but the current detail
+also records that it does not crash the agent, report success, or invent cost/accounting. Keep the
+index at the default `MEDIUM` until the operator confirms whether telemetry correctness warrants a
+different bucket; this note is not a settled re-leveling.
+
 ### P11-FU-8: Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming
 
 **Raised:** 2026-07-29 by operator ([Vibhanshu]) during backlog triage.
@@ -761,6 +809,12 @@ as process precedent.
 
 **Status:** Open. Tracked, not yet scheduled; **needs deeper investigation / migration design before
 scoping**. No implementation plan exists. Filed 2026-07-29 for pool custody.
+
+**Triage justification for LOW (2026-08-15):** The existing environment-variable name is
+functionally correct, so there is no current runtime failure or user-facing behavior loss. This is
+a naming/canonicalization design gap whose implementation carries migration risk but no present
+functional impact; it belongs at the end of the Plan until a compatibility and durable-approval
+migration design exists.
 
 ### P11-FU-9: Client-Supplied ACP `mcpServers` Disposition
 
@@ -835,6 +889,12 @@ belongs to Plan 11.7 and does not block on this follow-up.
 
 **Status:** Open. Tracked, not yet scheduled. It does not gate Plan 11.7 closure; Plan 11.7 owns only the
 forced `-32002`/mutation-refusal correction and a no-new-bypasses baseline gate.
+
+**Operator confirmation pending (2026-08-15):** Proposed level: `HIGH`. Wrong ACP/application
+codes reaching real clients can cause protocol errors to be misclassified, so the remaining audit
+protects a client-visible conformance contract even though the forced `-32002` correction already
+landed in Plan 11.7. Keep the index at the default `MEDIUM` pending operator confirmation; this
+proposal is intentionally not a settled re-leveling.
 
 ### P11.7-FU-1: Configurable Gateway request timeout for debug/investigation workflows
 
@@ -953,6 +1013,13 @@ session + exhausted correlation budget). Evidence:
 Public gate signature supersession vs digest-pinned amendment Required interfaces is recorded as a
 non-digest current-state note (Task 6). Remains open only for independent reviewer/operator
 disposition of Path A and any future budget-expansion / live-retry path (separately authorized).
+
+**Triage justification for HIGH (2026-08-15):** This entry governs whether a same-session retry can
+be proven safe before reservation or prompt transmission. Its acceptance criteria bind the exact
+run, process, relay, and ACP session and require fail-closed behavior for stale or substituted proof;
+without the completed gate, the live Zed-resume evidence cannot establish no relaunch, no settings
+mutation, and no duplicate correlation allocation. That safety-critical custody impact warrants
+HIGH even though the current implementation stops safely on the failed Path A attempt.
 
 ### P11-FU-12: MCP OAuth 2.1 Lifecycle
 
