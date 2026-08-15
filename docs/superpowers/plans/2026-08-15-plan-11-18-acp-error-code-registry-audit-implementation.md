@@ -536,7 +536,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: all selected and default non-live tests pass, bare coverage is at least 80%, Ruff is clean, and there is no whitespace error. Any failure—including an unrelated existing flake—must be recorded and resolved or dispositioned before closure.
 
-- [ ] **Step 5: Repeat the non-live gates in a native WSL ext4 clone.**
+- [x] **Step 5: Repeat the non-live gates in a native WSL ext4 clone.**
 
   From WSL Ubuntu, create a throwaway clone under the Linux filesystem, check out the exact candidate commit, and run:
 
@@ -550,7 +550,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: all gates pass from the ext4 clone. Do not run this parity gate from `/mnt/d/...` or reuse a Windows-created linked worktree. If a platform-specific failure occurs, retain its command/output in the PR and resolve it before sign-off.
 
-- [ ] **Step 6: Perform the documentation freshness audit and final frozen-history verification.**
+- [x] **Step 6: Perform the documentation freshness audit and final frozen-history verification.**
 
   Review every living state claim affected by the change: `README.md`, the consolidated pool, the Plan 11 roadmap, the milestone charter if it references Plan 11.7 current state, and current reports linked by the pool. Then run:
 
