@@ -54,7 +54,6 @@ def _prepare_run(tmp_path: Path) -> tuple[Path, Path, Path, RunContext]:
     capture = (tmp_path / "capture").resolve()
     workspace = (tmp_path / "workspace").resolve()
     workspace.mkdir()
-    (workspace / ".git").mkdir()
     assert (
         gather.main(
             [

@@ -689,6 +689,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.launch_approvals:KeyringApprovalStore._exclusive_workspace_lock:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: KeyringApprovalStore._exclusive_workspace_lock:file_open opens only the trusted approval-runtime lock file for exclusive durable lookup/promotion; it does not retain diagnostic payloads.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_approvals.py::test_promotion_writes_verified_v3_and_reports_migrated",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.launch_approvals:KeyringApprovalStore.write_diagnostic_grant:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: write_diagnostic_grant serializes the fixed DiagnosticGrant record\u2014IDs, workspace digest, expiry, and record HMAC\u2014for keyring storage; it contains no credential literal fields.",

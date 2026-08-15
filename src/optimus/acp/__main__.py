@@ -378,8 +378,20 @@ def _probe_attempt_summaries(exc: TrustedPathError) -> tuple[dict[str, object], 
     )
 
 
-def _append_audit_events_or_exit(events: tuple[LaunchAuditEvent, ...], *, runtime_root: Path) -> int | None:
-    for event in events:
+def _append_audit_or_exit(
+    authorized: AuthorizedLaunch,
+    *,
+    runtime_root: Path,
+    events: tuple[LaunchAuditEvent, ...] | None = None,
+) -> int | None:
+    """Append authorization, migration, or revalidation-failure audit events.
+
+    Plan 9.96, Task 5 Step 6 / Plan 11.15 Task 6: audit append failure is
+    fatal — there is no raw fallback. Returns an int exit code on failure
+    (already printed), or None on success.
+    """
+    to_write = events if events is not None else _authorization_audit_events(authorized)
+    for event in to_write:
         try:
             append_launch_audit_event(event, runtime_root=runtime_root)
         except LaunchAuditError as exc:
@@ -389,19 +401,6 @@ def _append_audit_events_or_exit(events: tuple[LaunchAuditEvent, ...], *, runtim
             )
             return 2
     return None
-
-
-def _append_audit_or_exit(authorized: AuthorizedLaunch, *, runtime_root: Path) -> int | None:
-    """Append authorization (and migration) audit events before child/network startup.
-
-    Plan 9.96, Task 5 Step 6 / Plan 11.15 Task 6: audit append failure is
-    fatal — there is no raw fallback. Returns an int exit code on failure
-    (already printed), or None on success.
-    """
-    return _append_audit_events_or_exit(
-        _authorization_audit_events(authorized),
-        runtime_root=runtime_root,
-    )
 
 
 def _append_revalidation_failure_audit_or_report(
@@ -420,7 +419,7 @@ def _append_revalidation_failure_audit_or_report(
         inherited_trust=None,
         final_reason_code=exc.code,
     )
-    _append_audit_events_or_exit((failure_event,), runtime_root=runtime_root)
+    _append_audit_or_exit(authorized, runtime_root=runtime_root, events=(failure_event,))
 
 
 def main(argv: list[str] | None = None) -> int:
