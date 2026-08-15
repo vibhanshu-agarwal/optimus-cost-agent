@@ -130,7 +130,7 @@ status changes through the normal status workflow; the target plan's status is n
 | `P11-FU-4` | Re-pin FU-4A/FU-5 Live Evidence | Open | MEDIUM | Coordinated with `P11-FEAT-ZED-RESUME` | Acceptance criteria in entry |
 | `P11-FU-5` | Windows Subprocess Handle-Duplication Flake (WinError 6/50) | Open | MEDIUM | Future Windows investigation | Acceptance criteria in entry |
 | `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | MEDIUM | Future Gateway unit-harness investigation | Acceptance criteria in entry; 2026-08-10 two sibling harness failures same evening; 2026-08-11 DoD coverage pair recurrence; Plan 11.12 transferred WinError 10053 |
-| `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Promoted -> [Plan 11.16](2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md) | MEDIUM | Plan 11.16 | Acceptance criteria in entry |
+| `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Promoted -> [Plan 11.16](2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md) | MEDIUM | Plan 11.16 | [Windows residual](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md) |
 | `P11.5-FU-1` | Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics | Open | MEDIUM | `P11-FEAT-GATEWAY-COST-OBS` | Acceptance criteria in entry |
 | `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Open | LOW | Future Gateway migration design | Acceptance criteria in entry |
 | `P11-FU-9` | Client-Supplied ACP `mcpServers` Disposition | Closed | MEDIUM | Dedicated P11-FU-9 lane | PR #119 / `9a93137`; [closure evidence](../../../reports/p11-fu-9-client-mcp-closure-evidence.md) |
@@ -154,7 +154,7 @@ status changes through the normal status workflow; the target plan's status is n
 | `P11-FU-29` | Durable-approval identity instability on transient Git probe failure | Closed | MEDIUM | Plan 11.15 | [release report](../../../reports/plan-11-15-durable-approval-identity-release.md); preserve-approval / Git-retry / migration evidence only |
 | `P11-FU-17` | WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer | Closed | MEDIUM | Native WSL clone operating decision | Resolved by verified ext4 native-clone gate; proof report 2026-08-14 |
 | `P11-FU-18` | Workspace-identity `ctime` coalescing fail-open | Closed | MEDIUM | Plan 11.15 | [release report](../../../reports/plan-11-15-durable-approval-identity-release.md); equal-ctime topology evidence only |
-| `P11-FU-19` | WSL client-SDK operation-deadline supervisor race | Promoted -> [Plan 11.16](2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md) | MEDIUM | Plan 11.16 | Batch A 2026-08-14 re-triage; acceptance criteria in entry |
+| `P11-FU-19` | WSL client-SDK operation-deadline supervisor race | Closed | MEDIUM | Plan 11.16 | [Windows](../../../reports/plan-11-16-p11-fu-19-windows-evidence.md); [WSL](../../../reports/plan-11-16-p11-fu-19-wsl-evidence.md) |
 | `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Open | MEDIUM | Future client-MCP runtime follow-up | Acceptance criteria in entry |
 | `P11-FU-21` | Custody Relay Broken-Pipe Exit-Code Propagation Defect | Closed | MEDIUM | Plan 11.14 | Plan 11.14; `reports/plan-11-14-p11-fu-21-custody-relay-exit-code-evidence.md` |
 | `P11.5-FU-2` | Consistent local env / Redis / Phoenix / Gateway startup for live runs | Closed | HIGH | Plan 11.6 | PR #97 / `dc9a080`; [operator runbook](../../runbooks/local-live-dependencies.md) |
@@ -610,8 +610,10 @@ instrumentation / `sys.settrace` scheduling pressure around an `asyncio.wait_for
 in a unit test, with no current evidence of a subprocess-handle or port-teardown defect.
 
 **Status:** Promoted -> [Plan 11.16](2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md). Scheduled
-2026-08-15. Root cause remains coverage/trace instrumentation timing sensitivity; do not reopen ACP
-production debugging. This test-only lane may close if P11-FU-19 fails a production or evidence gate.
+2026-08-15. Test-only `wait_for(..., timeout=1)` wrappers were removed in `72f3cc8`; the clock was
+not widened. The 25 full Windows `--cov` gate stopped at 4/25 after unrelated `P11-FU-6` WinError
+10053. Residual: [Windows evidence](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md).
+Not Closed.
 
 **Recurrence:** 2026-08-10 — ACP NDJSON sanitization flake reproduced in the full suite only (passed isolated and in-file); same coverage/`sys.settrace` timing diagnosis; do not widen `P11-FU-6` or merge these entries.
 
@@ -1314,9 +1316,12 @@ client-MCP deadline unification; Batch A 2/100 standalone WSL correction remains
 **Related prior art:** `P11-FU-7` (NDJSON / coverage timing), `P11-FU-18` (WSL ctime), and the
 Task 2 review note that the NDJSON flake remains backlog-owned and non-blocking.
 
-**Status:** Promoted -> [Plan 11.16](2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md). Scheduled
-2026-08-15. Standalone 2/100 WSL `SUBMIT_TIMEOUT` diagnosis is unchanged. A production or evidence
-gate failure leaves this row the named open owner; P11-FU-7 may still close independently.
+**Status:** Closed. Plan 11.16 production correction: SDK `open`/`discover`/`call`/streamed-byte
+entries use exact `operation_timeout_seconds` and surface `ClientMcpSdkError("OPERATION_TIMEOUT")`.
+Direct generic supervisor expiry remains `MCPSupervisorError("SUBMIT_TIMEOUT")`. Evidence:
+[Windows](../../../reports/plan-11-16-p11-fu-19-windows-evidence.md),
+[WSL](../../../reports/plan-11-16-p11-fu-19-wsl-evidence.md). SHA `6159200`. The 0.2s test budget
+and 30s production default were not widened. No retry/replay.
 
 ### P11-FU-20: Attach per-server catalog/authorizer to session tool service for real one-call issuance
 
