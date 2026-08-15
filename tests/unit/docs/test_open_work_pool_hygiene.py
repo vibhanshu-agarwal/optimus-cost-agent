@@ -1331,3 +1331,33 @@ def test_product_checkpoint_log_location_remains_gitignored() -> None:
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_plan_1116_deadline_seams_keep_separate_scheduled_custody() -> None:
+    """P11-FU-7 and P11-FU-19 must be scheduled separately under Plan 11.16."""
+    pool = _read(OPTIMUS_POOL)
+    indexed = _fu_index_rows(pool)
+    entries = _entry_sections(pool)
+    tables = {identity: rows for identity, _header, rows in _markdown_tables(pool)}
+    followup_rows = tables[("Follow-up status index", 0)]
+
+    fu7_item, fu7_status = indexed["P11-FU-7"]
+    fu19_item, fu19_status = indexed["P11-FU-19"]
+    p11_fu_7 = entries[f"P11-FU-7: {fu7_item}"]
+    p11_fu_19 = entries[f"P11-FU-19: {fu19_item}"]
+    fu7_row = next(row for row in followup_rows if row["ID"] == "`P11-FU-7`")
+    fu19_row = next(row for row in followup_rows if row["ID"] == "`P11-FU-19`")
+
+    def _lane_state(status: str) -> str:
+        if status.startswith("Promoted -> ") and "Plan 11.16" in status:
+            return "scheduled"
+        if status == "Closed":
+            return "closed"
+        raise AssertionError(status)
+
+    assert _lane_state(fu7_status) in {"scheduled", "closed"}
+    assert _lane_state(fu19_status) in {"scheduled", "closed"}
+    assert "Plan 11.16" in p11_fu_7
+    assert "Plan 11.16" in p11_fu_19
+    assert "P11-FU-19" not in fu7_row["Evidence"]
+    assert "P11-FU-7" not in fu19_row["Evidence"]
