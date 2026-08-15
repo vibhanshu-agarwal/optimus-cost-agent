@@ -1,14 +1,14 @@
 # Plan 11 Authoritative-Document Section Map
 
-**Status:** Task 10-approved candidate publication map; source-pin baseline retained for provenance.
+**Status:** Plan 11.13 authoritative-publication map; Task 10 candidate and source-pin baselines retained for provenance.
 
 **Baseline:** `agent/codex/local-gateway-architecture-v3` at `85852b3`.
 
 **Purpose:** Maintain a complete, version-pinned section map of the four authoritative Phase 1
-documents and their Task 10-approved MCP Gateway amendment candidates. This is a shallow map, not
-the requirement-level inventory. The historical v3 source-pin rows below remain for provenance;
-the amendment overlay is authoritative for the candidate versions and supersedes conflicting
-pre-amendment MCP conclusions.
+documents, their Task 10-approved MCP Gateway amendment candidates, and the Plan 11.13
+successors. This is a shallow map, not the requirement-level inventory. The historical v3
+source-pin and amendment rows below remain provenance; the Plan 11.13 overlay is authoritative
+for current MCP conclusions.
 
 The map applies the existing deferred-work custody rule to requirements: every section has an
 owner or is explicitly marked `UNOWNED` or `Cross-cutting`. A normative statement discovered
@@ -31,7 +31,7 @@ documents. The target version is asserted on every page; Guardrails page 16 is t
 exception permitting the superseded version in its historical change log. A future refresh must
 recompute the page count, metadata, cover/header versions, and digest.
 
-## Task 10-approved amendment candidate set
+## Historical Task 10 amendment candidate set
 
 | Candidate document | Version | Pages | SHA-256 | Replacement pages |
 |---|---:|---:|---|---:|
@@ -40,13 +40,24 @@ recompute the page count, metadata, cover/header versions, and digest.
 | `Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.2.pdf` | v1.2 | 16 | `461A720FA28576523C87C2F2F89EE1FC52C99971E51ACC22EDC85E8C375A7070` | 9 |
 | `Optimus-Cost-Agent-Test-Strategy-v1.6.pdf` | v1.6 | 14 | `B435E55687116BD7C4D7E78B48E50D8DA9ED0801575B7B5485F262D35C1B31A4` | 12 |
 
-The four pinned source PDFs and their immutable source hashes remain the baseline inputs recorded
-above. Candidate approval does not itself close `P11-FU-3`; that gate remains conditional on the
-separate final approval and publication gate.
+The four PDFs above are immutable Plan 11.13 inputs and provenance only. The successor PDFs below
+are the current authoritative publication state.
 
-## Diagram and render-survey scope
+## Plan 11.13 current authoritative set
 
-The Task 10-approved v2.40 component-flow candidate is complete and legible; it shows the agent
+| Current document | Version | Pages | SHA-256 | Replacement pages | Reversal package |
+|---|---:|---:|---|---:|---|
+| `Optimus-Cost-Agent-Architecture-v2.18.pdf` | v2.18 | 13 | `0F8725765FECC9A93045FD26630457DFE7112508DF164A3EC5BCC55DBC976807` | 8 | sibling package |
+| `Optimus-Cost-Agent-LLD-v2.41.pdf` | v2.41 | 40 | `69400FD474EB30711FCC9A061243D6A4D2E35D39D7794D4AA69F5FF51B98109B` | 22 | sibling package |
+| `Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.3.pdf` | v1.3 | 16 | `94F8F829D60FB9945237227B16E82CB523659E4D67C8488909035FE9BDB27957` | 9 | sibling package |
+| `Optimus-Cost-Agent-Test-Strategy-v1.7.pdf` | v1.7 | 14 | `31A60C6A198C60CC1203FF5C4A8E6E0300A820EC18CC702E25F246EDC51DC0B0` | 12 | sibling package |
+
+Exact source maps, immutable-input proof, rendered-page inspection, and the bidirectional audit
+are recorded in [Plan 11.13 evidence](2026-08-15-plan-11-13-authoritative-document-reversal-evidence.md).
+
+## Historical Task 10 diagram and render-survey scope
+
+The historical Task 10-approved v2.40 component-flow candidate is complete and legible; it shows the agent
 pre-tool/context-admission gate and Gateway discovery, transport, allowlist, freshness, resource,
 pagination, and budget gates without an agent-to-MCP edge or agent-held upstream credential. The
 Task 10-approved v2.17 system-context candidate keeps the catalog as operator-side reference only
@@ -54,24 +65,14 @@ and shows Gateway-owned remote HTTP and Docker-contained stdio edges. All three 
 text-bound and connector-intersection checks, and the final assembled HLD/LLD PDFs were rerendered
 after the diagram corrections.
 
-## Task 10 amendment ownership overlay
+## Plan 11.13 ownership overlay
 
-The v2.17/v2.40/v1.2/v1.6 candidate set is the current publication state for the amended
-documents. The legacy section tables below retain their v2.16/v2.39/v1.1/v1.5 citations to show
-which pinned source rows the amendment replaces or carries; they are not current conclusions where
-this overlay differs.
-
-| Candidate section | Current contract and evidence | Owner / custody |
-|---|---|---|
-| HLD v2.17 §§5A, 6, 10A, 10C-10E, 11 | Zero upstream credentials in the agent; Gateway-owned dual transport; profile, binding, freshness, descriptor-context, result, accounting, and split-authority controls; reference versus normative OWASP voice | `P11-FEAT-GATEWAY-MCP`; deferred OAuth/elicitation/sampling and related lifecycle work remains in named `P11-FU-12`/`P11-FU-13` custody |
-| LLD v2.40 §§0D-0E, 0A, 6, 9D-10A, 12B-12D | Typed discovery/list/call contract, pagination, profile and manifest binding, complete-only result release, usage attribution, retry taxonomy, and Plan 6.5 seam/evidence mapping | `P11-FEAT-GATEWAY-MCP`; registry catalog remains operator reference only and discover/connect work is `P11-FU-14` |
-| Guardrails v1.2 §§2.4, 5.1-5.3, 8-9, 11, 13 | Agent/Gateway split agency, supply-chain controls, explicit stdio containment tiers and residuals, accounting states, deferred-capability denials, and repaired document-control chain | `P11-FEAT-GATEWAY-MCP`; tool-search/context minimization is `P11-FU-15` and reverse freshness is `P11-FU-16` |
-| Test Strategy v1.6 §§2-3, 6-9, 11, 13-14.10 | Real transport/security/accounting/retry/result/guardrail tiers, Context7 live-probe dependency, and normative claim-to-evidence matrix | `P11-FEAT-GATEWAY-MCP`; named live/runtime evidence remains a future release obligation, not publication proof |
-
-The amended diagrams keep the catalog as operator-side reference only, show Gateway-owned remote
-HTTP and Docker-contained stdio edges, and show no agent-to-MCP edge or agent-held upstream
-credential. All three amended SVGs pass text-bound and connector-intersection checks, and the final
-assembled HLD/LLD PDFs were rerendered after the diagram corrections.
+Gateway-brokered MCP claims are retired; the historical Task 10 amendment material below is
+provenance, not current authority. ACP `mcpServers` remains client supplied, and local
+`MCPTrustRegistry`, `validate_tool_call`, `PreToolGuard.check`, and untrusted-output handling
+remain agent/client controls. The Test Strategy markers require independently authored client-MCP
+servers. Registry publication identity remains separate from both the retired Gateway feature and
+client MCP.
 
 ## Ownership findings requiring follow-up
 
@@ -83,7 +84,7 @@ tables.
 | Package lookup and security advisory routes | LLD v2.39 §0.D and the named endpoint block specify `/v1/tools/package/lookup` and `/v1/tools/security/advisory`. | Implemented by `P11-FEAT-GATEWAY-TOOLS` in Plan 11.2 / PR #88. The remaining migration work is to keep these routes available independently of search configuration. |
 | Two agent-facing model shapes share one upstream transport | LLD v2.39 §§0.D, 6, and 6.1 specify `/v1/responses` with `input` and `/v1/chat/completions` with `messages`, reject mixed shapes, and normalize both onto the OpenAI-compatible aggregator transport. | Route and shape support is implemented by `P11-FEAT-GATEWAY-CORE`; retiring direct-provider adapters and adopting the approved aggregator are follow-up work in the same feature identity. |
 | Authenticated structured trace ingress | LLD v2.39 §0.D and the named endpoint block both specify `/v1/observability/traces`. | Route serving is implemented by `P11-FEAT-GATEWAY-CORE`; real OTel/OTLP export to Phoenix remains owned by `P11-FEAT-GATEWAY-COST-OBS`. |
-| MCP Gateway contract and section ownership | The v2.17/v2.40 amendment candidates add the typed tools-only, static-profile, dual-transport Gateway contract while preserving local trust boundaries, split authority, and explicit deferred capability closures. | `P11-FEAT-GATEWAY-MCP` owns the ratified bounded v1 contract. `P11-FU-3` remains a conditional route/typed-contract gate until the separate final approval and publication gate; no implementation plan is implied by candidate approval. |
+| Gateway-MCP historical contract and current boundary | The v2.17/v2.40 amendment candidates are historical inputs. Plan 11.13 current PDFs retire their Gateway-brokered claims while preserving client-supplied ACP `mcpServers` and local validation/guarding. | `P11-FEAT-GATEWAY-MCP` is retired; Plan 11.13 evidence records the current PDFs and audit. `P11-FU-3` remains historical closure evidence. |
 | Search backend migration must preserve deterministic evidence | LLD v2.39 §§9C.1-9C.4 and Test Strategy v1.5 §7A require a minimal deterministic search call, verified annotations/domain enforcement, bounded extract, and route-specific dependency construction. | `P11-FEAT-GATEWAY-TOOLS`. OpenRouter is the default; Tavily remains only a rollback seam until replacement acceptance and rollback review pass. |
 | Observability is vendor-neutral and has no amortized charge | HLD v2.16 §11A, LLD v2.39 §§10A and 11A, Guardrails v1.1 §9, and Test Strategy v1.5 §8A specify OTel/OTLP with Phoenix as the documented default. | `P11-FEAT-GATEWAY-COST-OBS`. No backend dependency or allocated/amortized observability cost belongs in the ledger. |
 | The LLD component-flow source defect is repaired | Rendered LLD v2.39 page 2 (§0.B) contains the complete tool and trace ingress flow and passes text-bound and connector-intersection checks. | Closed by the v2.39 publication. This does not close the separate MCP decision in `P11-FU-3`. |
@@ -93,7 +94,7 @@ tables.
 ## Owner vocabulary and extraction rule
 
 - `P11-FEAT-GATEWAY-CORE`, `P11-FEAT-GATEWAY-TOOLS`,
-  `P11-FEAT-GATEWAY-COST-OBS`, `P11-FEAT-GATEWAY-MCP`, `P11-FEAT-ZED-RESUME`,
+  `P11-FEAT-GATEWAY-COST-OBS`, historical/retired `P11-FEAT-GATEWAY-MCP`, `P11-FEAT-ZED-RESUME`,
   `P11-FEAT-REGISTRY`, and `P11-FEAT-IDE` are the permanent Plan 11 feature identities. Plan 11.x
   numbers are assigned only when a feature is picked up; frozen Plan 11.1 and 11.2 are not edited.
 - `P11-FU-3` owns the open MCP source-contract decision. `P9.85-FU-3` owns future cumulative

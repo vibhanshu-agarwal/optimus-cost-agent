@@ -1022,11 +1022,11 @@ gateway brokers web search, web extract, observability export, and MCP tools the
 model calls — vendor keys for those capabilities live gateway-side only, never in the agent's own
 environment.
 
-The Gateway capability is ratified as four identities: `P11-FEAT-GATEWAY-CORE` (Plan 11.1,
+The Gateway capability was ratified as four identities: `P11-FEAT-GATEWAY-CORE` (Plan 11.1,
 including `/v1/observability/traces`), `P11-FEAT-GATEWAY-TOOLS` (web and package/advisory tool
 routes), `P11-FEAT-GATEWAY-COST-OBS` (normalization, ledger, and observability-cost concerns), and
-`P11-FEAT-GATEWAY-MCP` (bounded static-profile, dual-transport, tools-only MCP brokering). Plan
-numbers for the latter three identities are assigned at pickup. Plan 11.1 does not include budget
+historical/retired `P11-FEAT-GATEWAY-MCP` (bounded static-profile, dual-transport, tools-only MCP
+brokering). Plan numbers for the latter three identities were assigned at pickup. Plan 11.1 does not include budget
 enforcement; `P9.85-FU-3` remains parked pending the operator decision.
 
 **Charter:** [`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md).
@@ -1051,7 +1051,7 @@ feature and follow-up status.
 | Plan 11.10 | Closed | PR #130 |
 | Plan 11.11 | Historical | Plan 11.12 retirement; precursor PR #134; PR #135 |
 | Plan 11.12 | Retired | Gateway MCP code removal and living-status custody |
-| Plan 11.13 | Required before REGISTRY / v1.0 | Reverse HLD v2.17, LLD v2.40, Guardrails v1.2, Test Strategy v1.6, and the amendment source tree |
+| Plan 11.13 | Complete | Published HLD v2.18, LLD v2.41, Guardrails v1.3, and Test Strategy v1.7; [evidence](../reports/2026-08-15-plan-11-13-authoritative-document-reversal-evidence.md) records output hashes, old-PDF integrity, audit, and rendered-page inspection |
 
 **Milestone charter:** Plan 11 is the v1.0 milestone. `P11-FEAT-GATEWAY-CORE` (Plan 11.1)
 closes the Gateway core and observability-route gate; the ratified TOOLS and COST-OBS identities
@@ -1102,8 +1102,10 @@ checkpoints/seals own current execution status. The existing plan-only Redis sta
 sufficient by assumption. The charter and ratified feature sequencing map remain recorded in
 [`Plan 11 v1.0 milestone charter`](2026-07-25-plan-11-v1-milestone-charter.md).
 `P11-FEAT-GATEWAY-MCP` is retired by Plan 11.12. Plan 11.8 and Plan 11.11 are historical precursor
-work. Plan 11.13 must reverse HLD v2.17, LLD v2.40, Guardrails v1.2, Test Strategy v1.6, and the
-amendment source tree before `P11-FEAT-REGISTRY` or the v1.0 cut. It remains distinct from client-supplied ACP `mcpServers` under
+work. Plan 11.13 published HLD v2.18, LLD v2.41, Guardrails v1.3, and Test Strategy v1.7 through
+the sibling reversal package; the historical amendment source tree remains immutable provenance.
+The [publication evidence](../reports/2026-08-15-plan-11-13-authoritative-document-reversal-evidence.md)
+records exact hashes and gates. This remains distinct from client-supplied ACP `mcpServers` under
 `P11-FU-9` (all nine tasks closed through PR #119 / merge `9a93137`; deferred pinning/HTTP-SSE
 relaxation/authenticated-upstream remain in the consolidated backlog; Plan 11.8 flake custody now
 lives under still-open `P11-FU-6`),
