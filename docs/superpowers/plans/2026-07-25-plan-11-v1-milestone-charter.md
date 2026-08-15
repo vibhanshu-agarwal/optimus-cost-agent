@@ -33,9 +33,9 @@ The Gateway capability partition remains the first primary slice:
   `/v1/observability/traces` route;
 - `P11-FEAT-GATEWAY-TOOLS` owns web search/extract adapters, provenance/domain revalidation, and
   the typed-tool envelope; the package/advisory capability is carried by `P11-FU-2` within this slice;
-- `P11-FEAT-GATEWAY-MCP` owns MCP tool-call brokering through the Gateway, including transport,
-  trust-registry integration with the existing `optimus/mcp/runtime.py` guardrail layer, and the
-  typed request/response contract; and
+- `P11-FEAT-GATEWAY-MCP` **historically** owned MCP tool-call brokering through the Gateway,
+  including transport, trust-registry integration with the existing `optimus/mcp/runtime.py`
+  guardrail layer, and the typed request/response contract. It is retired by Plan 11.12; and
 - `P11-FEAT-GATEWAY-COST-OBS` owns provider-native usage persistence and reconciliation, the
   wire-aware USD field migration, authenticated structured agent-to-Gateway trace ingress, Gateway
   validation/redaction and OTel/OTLP export with Phoenix as the local default, Plan 7 telemetry
@@ -57,7 +57,7 @@ parked `P9.85-FU-3` budget-enforcement question is not pulled into this charter'
 | `P11-FEAT-GATEWAY-CORE` | Gateway core and `/v1/observability/traces` route | Plan 11.1 / Plan 11.4 | Closed through PR #85 and PR #91. |
 | `P11-FEAT-GATEWAY-TOOLS` | Gateway web/evidence tools and real provider adapters | Plan 11.2 / Plan 11.3 | Closed through PR #88. |
 | `P11-FEAT-GATEWAY-COST-OBS` | Gateway normalized cost, observability, and local startup consolidation | Plan 11.5 / Plan 11.6 | Plan 11.5 closed through PR #95; Plan 11.6 merged through PR #97. |
-| `P11-FEAT-GATEWAY-MCP` | Gateway MCP tools-only brokering through static profiles over remote HTTP and Docker-contained stdio, with trust-registry integration and typed request/response contract | Plan 11.8 / Plan 11.11 (historical); Plan 11.12 retirement; Plan 11.13 PDF reversal | Retired by Plan 11.12. Plan 11.13 must reverse the authoritative PDFs/source tree before `P11-FEAT-REGISTRY` or the v1.0 cut. |
+| `P11-FEAT-GATEWAY-MCP` | Historical Gateway MCP tools-only brokering | Plan 11.8 / Plan 11.11 (historical); Plan 11.12 retirement; Plan 11.13 publication reversal | Retired by Plan 11.12. Plan 11.13 published HLD v2.18, LLD v2.41, Guardrails v1.3, and Test Strategy v1.7; [evidence](../reports/2026-08-15-plan-11-13-authoritative-document-reversal-evidence.md). |
 | `P11-FEAT-ZED-RESUME` | Zed integration fixes, ACP session resume, and the configurable Gateway-timeout follow-up | Plan 11.7 / Plan 11.9 | Plan 11.7 is partially implemented and blocked; Plan 11.9 closed `P11.7-FU-1` through PR #123 and PR #124. |
 | `P11-FEAT-REGISTRY` | ACP registry validation, registration, and v1.0 cut | Last primary Plan 11 slice (holding position) | Required release slice; Plan 11.13 must land first. Reassess 11.x-last versus a split outward-publication lane in 13.x after the consolidated open-work pool closes. |
 | `P11-FEAT-IDE` | IDE-specific testing if registry registration does not surface or satisfy multi-IDE expectations | Conditional | Conditional; not an unconditional v1.0 gate. |
@@ -116,8 +116,9 @@ Plan 11.x number is assigned at pickup. Neither identity expands Plan 11.1's imp
 ## P11-FEAT-GATEWAY-MCP - Gateway MCP tool-call brokering
 
 Living status: retired by Plan 11.12. Plan 11.8 and Plan 11.11 are historical precursor work.
-Plan 11.13 must reverse HLD v2.17, LLD v2.40, Guardrails v1.2, Test Strategy v1.6, and the
-amendment source tree before `P11-FEAT-REGISTRY` or the v1.0 cut. The ratification-time design
+Plan 11.13 published HLD v2.18, LLD v2.41, Guardrails v1.3, and Test Strategy v1.7 through its
+sibling reversal package; its [evidence](../reports/2026-08-15-plan-11-13-authoritative-document-reversal-evidence.md)
+records exact output hashes and the old-PDF/audit/render gates. The ratification-time design
 requirements below are retained as historical charter text.
 
 `P11-FEAT-GATEWAY-MCP` is the ratified owner for a bounded v1 MCP tool-call broker through the
@@ -245,9 +246,10 @@ The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-bac
 single source of truth for the carried `P9.8-FU-5` and `P9.87-FU-1` items, `P11-FU-4` evidence-
 freshness work, and follow-ups discovered during Plan 11 feature work. `P11-FU-1` is owned by
 `P11-FEAT-ZED-RESUME`, not parked. `P11-FU-2` is owned by
-`P11-FEAT-GATEWAY-TOOLS` as an unimplemented package/advisory capability. `P11-FU-3` owns the
-conditional route/typed-contract publication gate for `P11-FEAT-GATEWAY-MCP`; it closes only after
-this charter amendment and all four amended PDFs are approved and published. The five distinct MCP
+`P11-FEAT-GATEWAY-TOOLS` as an unimplemented package/advisory capability. `P11-FU-3` is closed
+historical publication evidence for the former route/typed-contract gate for
+`P11-FEAT-GATEWAY-MCP`; it closed after the amendment and four now-historical PDFs were approved
+and published. The five distinct MCP
 deferred-work entries are `P11-FU-12` OAuth lifecycle, `P11-FU-13` deferred capabilities and
 long-lived interaction, `P11-FU-14` registry discover-and-connect, `P11-FU-15` tool-search/context
 minimization, and `P11-FU-16` reverse research-to-documentation freshness. The
@@ -284,9 +286,9 @@ The v1.0 Definition of Done is therefore:
 - `P9.85-FU-3` remains outside the initial Plan 11 scope pending the Gateway budget authority
   decision.
 - MCP Gateway brokering remains outside the CORE and TOOLS scopes. `P11-FEAT-GATEWAY-MCP` is
-  retired by Plan 11.12. Plan 11.13 must reverse the authoritative PDFs/source tree before
-  `P11-FEAT-REGISTRY` or the v1.0 cut; neither catalog automation nor client-supplied ACP
-  `mcpServers` is part of that retired Gateway feature.
+  retired by Plan 11.12 and its four authoritative PDFs were reversed and republished by Plan
+  11.13. Neither catalog automation nor client-supplied ACP `mcpServers` is part of that retired
+  Gateway feature.
 - The **Windows Subprocess Handle-Duplication Flake, WinError 6/50** remains explicitly excluded
   from the initial Plan 11 feature scope and v1.0 gate. The `P11-FU-5` entry in the consolidated open-work
   pool owns its future Windows investigation state; the no-reproduction result, lack of a

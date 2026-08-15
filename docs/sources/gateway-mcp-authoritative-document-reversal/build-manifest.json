@@ -1,0 +1,166 @@
+{
+  "package": "gateway-mcp-authoritative-document-reversal",
+  "status": "reversion-sources-authored",
+  "toolchain": {
+    "platform": "WSL2 Ubuntu-24.04",
+    "pandoc": "3.1.3",
+    "weasyprint": "61.1",
+    "poppler": "24.02.0",
+    "assembly_exception": "Windows Python pypdf/ReportLab page-preserving assembly only"
+  },
+  "immutable_inputs": {
+    "docs/Optimus-Cost-Agent-Architecture-v2.17.pdf": "A21BDB01BC737FA3D8EBFFBA8B8B7DF96C65101812E17F31C3C7324368D15024",
+    "docs/Optimus-Cost-Agent-LLD-v2.40.pdf": "0329AEF8B5392E05DDBB19AC3F76F3CE7F4FE3C4B728AEF6CBFC4DE84B324D03",
+    "docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.2.pdf": "461A720FA28576523C87C2F2F89EE1FC52C99971E51ACC22EDC85E8C375A7070",
+    "docs/Optimus-Cost-Agent-Test-Strategy-v1.6.pdf": "B435E55687116BD7C4D7E78B48E50D8DA9ED0801575B7B5485F262D35C1B31A4"
+  },
+  "reversal_audit": {
+    "forbidden_phrases": [
+      "P11-FEAT-GATEWAY-MCP",
+      "MCPProfileRegistry",
+      "MCPDiscoveryBroker",
+      "MCPInvocationBroker",
+      "MCPConnectionManager",
+      "/v1/tools/mcp/discover",
+      "/v1/tools/mcp/call",
+      "server/discover",
+      "MCPUsageRecord",
+      "Gateway-originated Context7"
+    ],
+    "required_anchors": [
+      "P11-FU-9",
+      "mcpServers",
+      "MCPTrustRegistry",
+      "validate_tool_call",
+      "PreToolGuard.check",
+      "untrusted tool output",
+      "requires_mcp_http",
+      "requires_mcp_stdio",
+      "independently authored client-MCP servers"
+    ]
+  },
+  "documents": [
+    {
+      "name": "HLD",
+      "source_pdf": "docs/Optimus-Cost-Agent-Architecture-v2.17.pdf",
+      "source_sha256": "A21BDB01BC737FA3D8EBFFBA8B8B7DF96C65101812E17F31C3C7324368D15024",
+      "reversion_pdf": "docs/Optimus-Cost-Agent-Architecture-v2.16.pdf",
+      "reversion_sha256": "6C2C98FE2327A6C466CAD3EB1800335EB59F0E1F65B2CB8E1E3401D7CFA05801",
+      "changed_source": "docs/sources/gateway-mcp-authoritative-document-reversal/hld-v2.18-changed-pages.md",
+      "replacement_pages": [
+        1,
+        3,
+        4,
+        7,
+        9,
+        10,
+        11,
+        12
+      ],
+      "output_pdf": "docs/Optimus-Cost-Agent-Architecture-v2.18.pdf",
+      "metadata_title": "Optimus-Cost-Agent - Architecture v2.18",
+      "page_header": "Optimus-Cost-Agent - Architecture v2.18",
+      "expected_pages": 13,
+      "inline_text_replacements": [
+        {
+          "page": 2,
+          "x": 437.79316,
+          "y": 673.7097,
+          "erase_width": 28.5,
+          "erase_height": 12.5,
+          "font_size": 9.6,
+          "text": "v2.18"
+        }
+      ],
+      "sha256": "0F8725765FECC9A93045FD26630457DFE7112508DF164A3EC5BCC55DBC976807"
+    },
+    {
+      "name": "LLD",
+      "source_pdf": "docs/Optimus-Cost-Agent-LLD-v2.40.pdf",
+      "source_sha256": "0329AEF8B5392E05DDBB19AC3F76F3CE7F4FE3C4B728AEF6CBFC4DE84B324D03",
+      "reversion_pdf": "docs/Optimus-Cost-Agent-LLD-v2.39.pdf",
+      "reversion_sha256": "82513729FD1A6E87FAD310DD90A18C996981B68024204E56CCA65377495585DE",
+      "changed_source": "docs/sources/gateway-mcp-authoritative-document-reversal/lld-v2.41-changed-pages.md",
+      "replacement_pages": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        20,
+        21,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40
+      ],
+      "output_pdf": "docs/Optimus-Cost-Agent-LLD-v2.41.pdf",
+      "metadata_title": "Optimus-Cost-Agent - LLD v2.41",
+      "page_header": "Optimus-Cost-Agent - LLD v2.41",
+      "expected_pages": 40,
+      "sha256": "69400FD474EB30711FCC9A061243D6A4D2E35D39D7794D4AA69F5FF51B98109B"
+    },
+    {
+      "name": "Guardrails",
+      "source_pdf": "docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.2.pdf",
+      "source_sha256": "461A720FA28576523C87C2F2F89EE1FC52C99971E51ACC22EDC85E8C375A7070",
+      "reversion_pdf": "docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.1.pdf",
+      "reversion_sha256": "27EF0657CCEC5568D3E3769C7320223D1BFE3CF6F4702564CBD0A8A391F11029",
+      "changed_source": "docs/sources/gateway-mcp-authoritative-document-reversal/guardrails-v1.3-changed-pages.md",
+      "replacement_pages": [
+        1,
+        4,
+        6,
+        8,
+        10,
+        11,
+        12,
+        14,
+        16
+      ],
+      "output_pdf": "docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.3.pdf",
+      "metadata_title": "Optimus-Cost-Agent - Agent Execution Guardrails and Workflow Strategy v1.3",
+      "page_header": "Optimus-Cost-Agent - Guardrails and Workflow v1.3",
+      "expected_pages": 16,
+      "sha256": "94F8F829D60FB9945237227B16E82CB523659E4D67C8488909035FE9BDB27957"
+    },
+    {
+      "name": "Test Strategy",
+      "source_pdf": "docs/Optimus-Cost-Agent-Test-Strategy-v1.6.pdf",
+      "source_sha256": "B435E55687116BD7C4D7E78B48E50D8DA9ED0801575B7B5485F262D35C1B31A4",
+      "reversion_pdf": "docs/Optimus-Cost-Agent-Test-Strategy-v1.5.pdf",
+      "reversion_sha256": "F3D744EC175B1E18E8B1E4E271997A0BB12666CC33CA7154A40BF5298588DA8D",
+      "changed_source": "docs/sources/gateway-mcp-authoritative-document-reversal/test-strategy-v1.7-changed-pages.md",
+      "replacement_pages": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "output_pdf": "docs/Optimus-Cost-Agent-Test-Strategy-v1.7.pdf",
+      "metadata_title": "Optimus-Cost-Agent - Test Strategy v1.7",
+      "page_header": "Optimus-Cost-Agent - Test Strategy v1.7",
+      "expected_pages": 14,
+      "sha256": "31A60C6A198C60CC1203FF5C4A8E6E0300A820EC18CC702E25F246EDC51DC0B0"
+    }
+  ]
+}
