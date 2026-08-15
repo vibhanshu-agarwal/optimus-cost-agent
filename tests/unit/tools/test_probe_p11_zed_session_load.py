@@ -57,15 +57,19 @@ def test_incomplete_exchange_is_indeterminate_even_when_advertised() -> None:
     assert result.load_exchange is None
 
 
-def test_unadvertised_live_load_capability_is_unreachable_without_a_forced_call() -> None:
-    """Catches treating acpx's capability-gated non-call as an incomplete observation."""
+def test_unadvertised_agent_load_capability_is_internal_indeterminate_without_a_forced_call() -> None:
+    """Catches turning the agent's own gate into a claim about Zed."""
     capability_payload = {"sessionCapabilities": {"resume": False}}
 
     result = evaluate_session_load_exchange(capability_payload, None)
 
-    assert result.finding is Finding.UNREACHABLE
+    assert result.finding is Finding.INDETERMINATE
     assert result.capability_payload == capability_payload
     assert result.load_exchange is None
+
+    context = classify_indeterminate_context({"capability_payload": capability_payload})
+
+    assert context == {"indeterminate_reason": "INTERNAL_CAPABILITY_UNAVAILABLE", "precondition": None}
 
 
 def test_acpx_exported_session_capabilities_are_retained_as_live_evidence(tmp_path: Path) -> None:

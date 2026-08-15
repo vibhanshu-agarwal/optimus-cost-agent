@@ -13,8 +13,8 @@ one isolated acpx home, exports it, imports it into a second isolated home, and
 uses a non-prompt configuration operation to force acpx's saved-session
 reconnect.  acpx invokes ``session/resume`` when advertised and ``session/load``
 only when its live capability payload advertises it; otherwise the probe records
-the capability-gated unreachable result.  No prompt, Gateway request, origin-A
-fixture, or correlation launch is performed.
+the agent-side capability gate as indeterminate.  No prompt, Gateway request,
+origin-A fixture, or correlation launch is performed.
 """
 
 from __future__ import annotations
@@ -49,6 +49,7 @@ class IndeterminateReason(StrEnum):
     """Why a non-verdict must not be misread as an observation about Zed."""
 
     PRECONDITION_UNMET = "PRECONDITION_UNMET"
+    INTERNAL_CAPABILITY_UNAVAILABLE = "INTERNAL_CAPABILITY_UNAVAILABLE"
     OBSERVATION_INCOMPLETE = "OBSERVATION_INCOMPLETE"
 
 
@@ -87,19 +88,14 @@ def evaluate_session_load_exchange(
     """Classify only a complete, internally consistent live capability/load exchange."""
     capabilities = dict(capability_payload) if isinstance(capability_payload, Mapping) else None
     exchange = dict(load_exchange) if isinstance(load_exchange, Mapping) else None
-    if capabilities is None:
-        return SessionLoadEvaluation(Finding.INDETERMINATE, capabilities, exchange)
-
-    advertised = capabilities.get("loadSession") is True
-    if not advertised:
-        return SessionLoadEvaluation(Finding.UNREACHABLE, capabilities, exchange)
-    if exchange is None:
+    if capabilities is None or exchange is None:
         return SessionLoadEvaluation(Finding.INDETERMINATE, capabilities, exchange)
 
     response = exchange.get("response")
     if not isinstance(response, Mapping):
         return SessionLoadEvaluation(Finding.INDETERMINATE, capabilities, exchange)
 
+    advertised = capabilities.get("loadSession") is True
     has_result = "result" in response
     has_error = isinstance(response.get("error"), Mapping)
     if advertised and has_result:
@@ -388,6 +384,12 @@ def classify_indeterminate_context(evidence: Mapping[str, Any]) -> dict[str, Any
                 },
             },
         }
+    capability_payload = evidence.get("capability_payload")
+    if isinstance(capability_payload, Mapping) and capability_payload.get("loadSession") is not True:
+        return {
+            "indeterminate_reason": IndeterminateReason.INTERNAL_CAPABILITY_UNAVAILABLE.value,
+            "precondition": None,
+        }
     return {
         "indeterminate_reason": IndeterminateReason.OBSERVATION_INCOMPLETE.value,
         "precondition": None,
@@ -540,7 +542,11 @@ def run_probe(parent_workspace: Path) -> dict[str, Any]:
             }
         )
         if evaluated.finding is Finding.INDETERMINATE:
-            result.update(classify_indeterminate_context(recovery_evidence))
+            result.update(
+                classify_indeterminate_context(
+                    {**recovery_evidence, "capability_payload": capability_payload}
+                )
+            )
         else:
             result["indeterminate_reason"] = None
     except ProbeError as exc:
