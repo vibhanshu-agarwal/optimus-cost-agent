@@ -562,7 +562,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: live production code has no `-32001`/`-32002` application mapping; README names `-32910`; the only remaining historical old-code references are classified as frozen evidence; all frozen files are unchanged; no untracked secret or scratch output exists.
 
-- [ ] **Step 7: Commit, update from `main`, and open a draft PR.**
+- [x] **Step 7: Commit, update from `main`, and open a draft PR.**
 
   After all Windows and WSL gates pass and with explicit commit/push/PR authorization, run:
 
