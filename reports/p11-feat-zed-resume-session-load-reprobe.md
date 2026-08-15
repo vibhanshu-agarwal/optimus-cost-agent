@@ -2,8 +2,8 @@
 
 ## Finding
 
-**UNREACHABLE** as of `2026-08-15T12:34:49.722673+00:00` at commit
-`2b04a9c0cd2d102b89bf2b6dd6ce24c66905cf92`.
+**INDETERMINATE / INTERNAL_CAPABILITY_UNAVAILABLE** as of `2026-08-15T12:59:36.411901+00:00` at commit
+`71cb9edece036350c1027258ef86f88789630742`.
 
 The installed Zed reported:
 
@@ -14,7 +14,7 @@ Zed 1.15.0 e17dc4f9d50db73a458b64dcce50ecd4878b98a  – \\?\C:\Users\pc\AppData\
 The independently authored client was `acpx 0.12.0`. With the documented
 `optimus-redis` container running, acpx created and exported an isolated live
 session. The exact `agentCapabilities` payload that acpx persisted from the
-live ACP initialization was:
+Optimus ACP initialization was:
 
 ```json
 {
@@ -24,9 +24,12 @@ live ACP initialization was:
 }
 ```
 
-It omits `loadSession` (and `sessionCapabilities.resume`). Acpx therefore did
-not force an unsupported `session/load` call; its non-prompt reconnect returned
-the following literal structured error, with its session identifier redacted:
+It omits `loadSession` (and `sessionCapabilities.resume`), which is the current
+Optimus server's deliberate state: `src/optimus/acp/spec.py` explicitly says
+not to advertise `loadSession` while `P11-FEAT-ZED-RESUME` remains unimplemented.
+Acpx therefore did not force an unsupported `session/load` call; its non-prompt
+reconnect returned the following client-side structured error, with its session
+identifier redacted:
 
 ```json
 {
@@ -46,25 +49,22 @@ the following literal structured error, with its session identifier redacted:
 }
 ```
 
-This is the **absent from advertised capabilities** failure mode. No literal
-`session/load` exchange exists because acpx's live capability gate declined to
-call a method that the initialized agent did not advertise. The earlier
-2026-08-15 run was `INDETERMINATE / PRECONDITION_UNMET` because Redis was down;
-this run satisfied that documented prerequisite and supersedes it as the current
-reachability statement.
+This cleanly establishes the internal capability gate, not Zed reachability. No
+literal `session/load` exchange exists because acpx declined to call a method
+that the Optimus agent did not advertise; Zed was queried only for `--version`
+and was never launched. The earlier 2026-08-15 run was `INDETERMINATE /
+PRECONDITION_UNMET` because Redis was down; this run satisfies that documented
+prerequisite but leaves the external question open.
 
 The disposable workspace’s launch approval was created through `optimus-trust`,
 then revoked and verified absent before the workspace was removed. The run made
 zero Zed launches and zero origin-A launches.
 
-### Origin-A scoping position (not a decision)
-
-A clean `origin-a-4` correlation launch would not achieve the `session/load`
-objective while the live capability payload omits `loadSession`: the
-independently authored client cannot enter a supported load/resume path to
-correlate. Such a launch would spend a newly authorized correlation attempt
-without testing a reachable core API. This is a reasoned position for the
-operator's amendment decision, not authorization for an amendment or a launch.
+The frozen Task 0 record names three evidence artifacts that are absent from
+current `origin/main`; the resulting comparison limitation is recorded in the
+[Task 0 evidence custody note](p11-feat-zed-resume-task0-evidence-custody-note.md).
+This report neither re-diagnoses the historical 1.13.1 seal nor supplies an
+origin-A/amendment-scoping conclusion.
 
 ## Re-run
 
@@ -90,7 +90,9 @@ probe never represents that run as safely cleaned up.
 The probe uses acpx to create and export an isolated session, retains the live
 `agentCapabilities` that acpx persisted in that export, imports it into a second
 isolated acpx home, and requests a non-prompt reconnect. If the payload omits
-`loadSession`, the result is **UNREACHABLE** without forcing an unsupported call.
+`loadSession`, the result is **INDETERMINATE /
+INTERNAL_CAPABILITY_UNAVAILABLE** without forcing an unsupported call: that is
+evidence about the Optimus agent gate, not Zed.
 If it advertises `loadSession`, acpx reconnects through `session/load` when
 `session/resume` is not advertised; a real result is **REACHABLE** and a returned
 error is **UNREACHABLE**. A missing documented dependency is **INDETERMINATE /
@@ -100,4 +102,6 @@ OBSERVATION_INCOMPLETE**. The former includes the exact runbook command:
 
 This probe tests the live ACP API precondition only. It does not prove that Zed
 itself emits `session/load` after restart, establish origin-A correlation, or
-authorize a budget-expansion amendment.
+authorize a budget-expansion amendment. The separate current-version Zed probe
+must use the frozen Task 0 temporary-advertisement design and commit its
+sanitized evidence; it is deliberately outside this PR.

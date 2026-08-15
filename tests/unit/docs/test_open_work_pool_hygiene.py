@@ -201,7 +201,7 @@ EXPECTED_FEATURE_SCOPE_TOKENS = {
         "PR #108",
         "P11-FU-11",
         "Path A",
-        "live `agentCapabilities` omitted `loadSession`",
+        "INTERNAL_CAPABILITY_UNAVAILABLE",
         "session-load-reprobe",
     ),
     "P11-FEAT-REGISTRY": ("Ratified, unscheduled", "package and ACP versions are both `0.1.0`"),
