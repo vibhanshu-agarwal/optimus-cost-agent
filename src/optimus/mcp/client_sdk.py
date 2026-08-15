@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeVar
 from urllib.parse import urlparse
 
 from optimus.guardrails.prompt_injection import ConfigTrustScanner, TrustScanSubject, TrustScanVerdict
@@ -18,6 +18,7 @@ from optimus.mcp.client_supervisor import (
 )
 
 _SUPPORTED_PROTOCOL_VERSIONS = frozenset({"2024-11-05", "2025-03-26", "2025-11-25", "2026-07-28"})
+T = TypeVar("T")
 
 
 class ClientMcpSdkError(Exception):
@@ -86,6 +87,14 @@ class ClientMcpSdkAdapter:
         self._connections: dict[tuple[str, str, str], ClientMcpConnection] = {}
         self._open_lock = asyncio.Lock()
 
+    def _submit_operation(self, coro: Coroutine[object, object, T]) -> T:
+        try:
+            return self._supervisor.submit(coro, timeout_seconds=self._operation_timeout_seconds)
+        except MCPSupervisorError as exc:
+            if exc.code == "SUBMIT_TIMEOUT":
+                raise ClientMcpSdkError("OPERATION_TIMEOUT") from exc
+            raise
+
     def open(
         self,
         capability: ClientMcpRuntimeCapability,
@@ -93,29 +102,19 @@ class ClientMcpSdkAdapter:
         session_id: str,
         proposed_protocol_version: str = "2026-07-28",
     ) -> ClientMcpConnection:
-        return self._supervisor.submit(
+        return self._submit_operation(
             self._open_async(
                 capability,
                 session_id=session_id,
                 proposed_protocol_version=proposed_protocol_version,
-            ),
-            timeout_seconds=self._operation_timeout_seconds + 1.0,
+            )
         )
 
     def discover(self, connection: ClientMcpConnection) -> list[dict[str, Any]]:
-        return self._supervisor.submit(
-            self._discover_async(connection),
-            timeout_seconds=self._operation_timeout_seconds + 1.0,
-        )
+        return self._submit_operation(self._discover_async(connection))
 
     def call(self, connection: ClientMcpConnection, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        try:
-            return self._supervisor.submit(
-                self._call_async(connection, tool, arguments),
-                timeout_seconds=self._operation_timeout_seconds + 1.0,
-            )
-        except MCPSupervisorError as exc:
-            raise ClientMcpSdkError(exc.code) from exc
+        return self._submit_operation(self._call_async(connection, tool, arguments))
 
     def close(self, connection: ClientMcpConnection) -> None:
         connection.closed = True
@@ -135,9 +134,8 @@ class ClientMcpSdkAdapter:
         budget_bytes: int,
         url: str = "https://example.invalid/stream",
     ) -> bytes:
-        return self._supervisor.submit(
-            self._read_streamed_bytes(client, budget_bytes=budget_bytes, url=url),
-            timeout_seconds=self._operation_timeout_seconds + 1.0,
+        return self._submit_operation(
+            self._read_streamed_bytes(client, budget_bytes=budget_bytes, url=url)
         )
 
     async def _open_async(

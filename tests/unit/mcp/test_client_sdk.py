@@ -431,16 +431,9 @@ def test_remote_stream_byte_overflow_closes_connection(supervisor: MCPAsyncSuper
 
 
 def test_operation_deadline_is_enforced(supervisor: MCPAsyncSupervisor) -> None:
-    session = FakeSession()
-
-    async def _slow_initialize(*, proposed_protocol_version: str) -> FakeInitializeResult:
-        await asyncio.sleep(2.0)
-        return FakeInitializeResult()
-
-    session.initialize = _slow_initialize  # type: ignore[method-assign]
     adapter = ClientMcpSdkAdapter(
         supervisor=supervisor,
-        session_factory=lambda _capability: session,
+        session_factory=lambda _capability: FakeSession(),
         http_client_factory=lambda: FakeHttpClient(follow_redirects=False, trust_env=False),
         stdio_transport_factory=lambda _capability: FakeStdioTransport(),
         process_control=FakeProcessControl(),
@@ -448,8 +441,91 @@ def test_operation_deadline_is_enforced(supervisor: MCPAsyncSupervisor) -> None:
         scanner=ConfigTrustScanner(),
         operation_timeout_seconds=0.2,
     )
+    loop_blocked = threading.Event()
+    release_loop = threading.Event()
+    outcome: list[BaseException] = []
+
+    def block_loop() -> None:
+        loop_blocked.set()
+        release_loop.wait()
+
+    def run_open() -> None:
+        try:
+            adapter.open(_capability(), session_id="s1")
+        except BaseException as exc:  # noqa: BLE001
+            outcome.append(exc)
+
+    assert supervisor._loop is not None
+    supervisor._loop.call_soon_threadsafe(block_loop)
+    assert loop_blocked.wait(timeout=1)
+    worker = threading.Thread(target=run_open)
+    try:
+        worker.start()
+        worker.join(timeout=0.6)
+        assert not worker.is_alive(), "deadline was not enforced at operation_timeout_seconds"
+        assert outcome, "open() returned without error"
+        raised = outcome[0]
+        assert isinstance(raised, ClientMcpSdkError)
+        assert raised.code == "OPERATION_TIMEOUT"
+    finally:
+        release_loop.set()
+        worker.join(timeout=5.0)
+
+
+def _timeout_adapter(supervisor: MCPAsyncSupervisor, *, session: FakeSession | None = None) -> ClientMcpSdkAdapter:
+    return ClientMcpSdkAdapter(
+        supervisor=supervisor,
+        session_factory=lambda _capability: session or FakeSession(),
+        http_client_factory=lambda: FakeHttpClient(follow_redirects=False, trust_env=False),
+        stdio_transport_factory=lambda _capability: FakeStdioTransport(),
+        process_control=FakeProcessControl(),
+        connection_budget=8,
+        scanner=ConfigTrustScanner(),
+        operation_timeout_seconds=0.2,
+    )
+
+
+def test_discover_over_budget_is_operation_timeout(supervisor: MCPAsyncSupervisor) -> None:
+    session = FakeSession()
+
+    async def _slow_list_tools() -> list[dict[str, Any]]:
+        await asyncio.sleep(2.0)
+        return []
+
+    session.list_tools = _slow_list_tools  # type: ignore[method-assign]
+    adapter = _timeout_adapter(supervisor, session=session)
+    connection = adapter.open(_capability(), session_id="s1")
     with pytest.raises(ClientMcpSdkError) as exc_info:
-        adapter.open(_capability(), session_id="s1")
+        adapter.discover(connection)
+    assert exc_info.value.code == "OPERATION_TIMEOUT"
+
+
+def test_call_over_budget_is_operation_timeout(supervisor: MCPAsyncSupervisor) -> None:
+    session = FakeSession()
+
+    async def _slow_call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        await asyncio.sleep(2.0)
+        return {"content": []}
+
+    session.call_tool = _slow_call  # type: ignore[method-assign]
+    adapter = _timeout_adapter(supervisor, session=session)
+    connection = adapter.open(_capability(), session_id="s1")
+    with pytest.raises(ClientMcpSdkError) as exc_info:
+        adapter.call(connection, "search", {"q": "x"})
+    assert exc_info.value.code == "OPERATION_TIMEOUT"
+
+
+def test_stream_over_budget_is_operation_timeout(supervisor: MCPAsyncSupervisor) -> None:
+    client = FakeHttpClient(follow_redirects=False, trust_env=False)
+
+    async def _slow_bytes() -> Any:
+        await asyncio.sleep(2.0)
+        yield b"x"
+
+    client.aiter_bytes = _slow_bytes  # type: ignore[method-assign]
+    adapter = _timeout_adapter(supervisor)
+    with pytest.raises(ClientMcpSdkError) as exc_info:
+        adapter.read_streamed_bytes_for_tests(client, budget_bytes=1 * 1024 * 1024)
     assert exc_info.value.code == "OPERATION_TIMEOUT"
 
 

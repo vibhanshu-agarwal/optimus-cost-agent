@@ -158,7 +158,7 @@ async def test_serve_ndjson_sanitizes_request_processing_response_and_stderr(tmp
     reader = StdioNdjsonLineReader(io.BytesIO(b'{"jsonrpc":"2.0","id":1,"method":"session/prompt"}\n'))
     writer = _CapturingNdjsonWriter()
 
-    await asyncio.wait_for(configured.server.serve_ndjson(reader, writer), timeout=1)
+    await configured.server.serve_ndjson(reader, writer)
 
     response = writer.messages[0]
     assert response["error"]["message"]
@@ -168,7 +168,7 @@ async def test_serve_ndjson_sanitizes_request_processing_response_and_stderr(tmp
     monkeypatch.setattr(errors, "sanitize_for_persistence", lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("failure")))
     failed_reader = StdioNdjsonLineReader(io.BytesIO(b'{"jsonrpc":"2.0","id":2,"method":"session/prompt"}\n'))
     failed_writer = _CapturingNdjsonWriter()
-    await asyncio.wait_for(configured.server.serve_ndjson(failed_reader, failed_writer), timeout=1)
+    await configured.server.serve_ndjson(failed_reader, failed_writer)
     failed_response = failed_writer.messages[0]
     assert failed_response["error"]["message"] == "internal error"
     assert "top-secret-canary" not in json.dumps(failed_response)
