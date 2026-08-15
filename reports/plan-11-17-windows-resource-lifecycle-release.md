@@ -27,7 +27,8 @@ a transferred historical signal, not reopened and not proof of the current `test
   temporary evidence root.
 
 The implementation worktree began from merged Plan 11.17 SHA
-`702b3ca767e4710a5e2ab5ba8f53c11ab3d53305`; Task 0 custody landed as `8a05970`.
+`702b3ca767e4710a5e2ab5ba8f53c11ab3d53305`; Task 0 custody landed as `8a05970`; the disposition
+evidence commit is `e71c0c2f65281243afdf2f04c794b415b6607b07`.
 
 ## Deterministic-red and correction decision
 
