@@ -151,9 +151,9 @@ status changes through the normal status workflow; the target plan's status is n
 | `P11-FU-26` | Plan 11.8 Windows `WinError 10053` MCP test flake | Closed | MEDIUM | Retired `P11-FEAT-GATEWAY-MCP`; signal under `P11-FU-6` | Plan 11.12; obsolete-by-retirement |
 | `P11-FU-27` | Publication-Plan Historical-State Reconciliation | Open | MEDIUM | Future documentation-history reconciliation | Excluded publication plan; PR #113 / `verification.md` |
 | `P11-FU-28` | WSL2 `uv sync` shared-Windows-`.venv` destruction hazard | Closed | MEDIUM | Native WSL clone operating decision | Obsolete for supported Linux-parity gates; `P11-FU-17` proof 2026-08-14 |
-| `P11-FU-29` | Durable-approval identity instability on transient Git probe failure | Promoted -> [Plan 11.15](2026-08-15-plan-11-15-p11-fu-18-29-durable-approval-identity.md) | MEDIUM | Plan 11.15 | Split from `P11-FU-5` by Batch B 2026-08-14; distinct from `P11-FU-18` ctime coalescing |
+| `P11-FU-29` | Durable-approval identity instability on transient Git probe failure | Closed | MEDIUM | Plan 11.15 | [release report](../../../reports/plan-11-15-durable-approval-identity-release.md); preserve-approval / Git-retry / migration evidence only |
 | `P11-FU-17` | WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer | Closed | MEDIUM | Native WSL clone operating decision | Resolved by verified ext4 native-clone gate; proof report 2026-08-14 |
-| `P11-FU-18` | Workspace-identity `ctime` coalescing fail-open | Promoted -> [Plan 11.15](2026-08-15-plan-11-15-p11-fu-18-29-durable-approval-identity.md) | MEDIUM | Plan 11.15 | Batch A 2026-08-14 refile; acceptance criteria in entry |
+| `P11-FU-18` | Workspace-identity `ctime` coalescing fail-open | Closed | MEDIUM | Plan 11.15 | [release report](../../../reports/plan-11-15-durable-approval-identity-release.md); equal-ctime topology evidence only |
 | `P11-FU-19` | WSL client-SDK operation-deadline supervisor race | Open | MEDIUM | Future WSL2 test reliability plan | Batch A 2026-08-14 re-triage; acceptance criteria in entry |
 | `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Open | MEDIUM | Future client-MCP runtime follow-up | Acceptance criteria in entry |
 | `P11-FU-21` | Custody Relay Broken-Pipe Exit-Code Propagation Defect | Closed | MEDIUM | Plan 11.14 | Plan 11.14; `reports/plan-11-14-p11-fu-21-custody-relay-exit-code-evidence.md` |
@@ -490,9 +490,15 @@ including whether to fail closed without changing identity, how to retain diagno
 how any digest/migration behavior affects already-issued approvals. Prove the selected behavior by
 fault injection. Do not treat a clean rerun of the unrelated Windows handle flake as resolution.
 
-**Status:** Promoted -> [Plan 11.15](2026-08-15-plan-11-15-p11-fu-18-29-durable-approval-identity.md). Tracked as a security-design concern. It is a sibling of `P11-FU-18`, not the
-same issue: `P11-FU-29` is false change / spurious reauthorization; `P11-FU-18` is missed change /
-fail-open revalidation.
+**Status:** Closed. Plan 11.15 SHA `12b881a28b4a736a0d18ccdf1c02c49b94167e41`. Own evidence:
+Git tri-state plus three-attempt transient injection, preserve-approval / no-`NO_APPROVAL` through
+real `main()`, exact exclusion policy v1, and HMAC-verified observable v2→v3 migration with
+inherited-trust limitation. Windows CLI unavailable cases print retry/repair and never
+`NO_APPROVAL`. Reports:
+[Windows](../../../reports/plan-11-15-windows-durable-approval-identity-evidence.md),
+[WSL](../../../reports/plan-11-15-wsl-durable-approval-identity-evidence.md),
+[release](../../../reports/plan-11-15-durable-approval-identity-release.md).
+Not closed by `P11-FU-18` topology evidence and not closed by a `P11-FU-5` handle-flake rerun.
 
 ### P11-FU-6: Gateway `test_server` Full-Suite Port/Teardown Flake
 
@@ -1247,9 +1253,16 @@ It must define a cross-filesystem tamper-detection invariant before any producti
 `tests/unit/acp/test_trusted_paths.py::TestWorkspaceIdentityRevalidation::test_revalidation_fails_after_workspace_directory_metadata_change`;
 `src/optimus/acp/trusted_paths.py` (`resolve_workspace_identity`, `revalidate_workspace_identity`).
 
-**Status:** Promoted -> [Plan 11.15](2026-08-15-plan-11-15-p11-fu-18-29-durable-approval-identity.md). Tracked as a security-design concern. The filesystem behavior is environmental,
-but the current identity contract can fail open because it relies on that behavior; it is therefore
-not closable as a test flake.
+**Status:** Closed. Plan 11.15 SHA `12b881a28b4a736a0d18ccdf1c02c49b94167e41`. Own evidence: `st_ctime_ns`
+removed from v3 identity; non-excluded `added-after-authorization` with equal before/after ctime
+fails closed as `WORKSPACE_IDENTITY_CHANGED`/`root_topology_mismatch`
+(`test_fu18_equal_ctime_non_excluded_add_is_root_topology_mismatch`, unguarded on Windows and native
+WSL). Topology add/remove/rename and symlink-retarget named. Residuals: compiled exclusion drop
+locations and path/topology TOCTOU (not content integrity). Reports:
+[Windows](../../../reports/plan-11-15-windows-durable-approval-identity-evidence.md),
+[WSL](../../../reports/plan-11-15-wsl-durable-approval-identity-evidence.md),
+[release](../../../reports/plan-11-15-durable-approval-identity-release.md).
+Not closed by `P11-FU-29` Git-retry or preserve-approval evidence.
 
 **Recurrence:** 2026-08-07 during P11-FU-9 Task 4 independent review (operator + Cursor WSL full
 `tests/unit` runs). The same node failed intermittently under full-suite WSL/DrvFs load and passed
