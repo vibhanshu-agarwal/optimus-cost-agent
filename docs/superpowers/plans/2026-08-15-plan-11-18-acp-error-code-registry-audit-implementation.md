@@ -89,7 +89,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 - Consumes: an operator-recorded acceptance of the explicit `P11-FU-10`/Plan 11.18 custody transfer; `origin/main == 7da16b6`; the frozen Plan 11.7 digest already protected by `PROTECTED_BLOB_SHA256`.
 - Produces: one living custody statement in the `P11-FU-10` entry and one in the living Plan 11.7 status reference; no frozen-byte change.
 
-- [ ] **Step 1: Verify the approval and clean, current base.**
+- [x] **Step 1: Verify the approval and clean, current base.**
 
   Record the operator’s custody decision in the task evidence (review URL or approved PR comment), then run:
 
@@ -103,7 +103,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: `HEAD` and `origin/main` identify the authorized base before edits; the worktree is clean; all four frozen files have no diff. If the operator approval is absent, stop here without changing production code, tests, pool status, or the roadmap.
 
-- [ ] **Step 2: Write the RED living-custody documentation test.**
+- [x] **Step 2: Write the RED living-custody documentation test.**
 
   Add a focused test to `tests/unit/docs/test_open_work_pool_hygiene.py` that reads the pool and roadmap and asserts all of the following exact semantic anchors:
 
@@ -120,7 +120,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Keep the existing `PROTECTED_BLOB_SHA256` checks unchanged: the test must prove that living status changed without rewriting frozen bytes.
 
-- [ ] **Step 3: Run the new documentation test and verify its RED state.**
+- [x] **Step 3: Run the new documentation test and verify its RED state.**
 
   Run:
 
@@ -130,13 +130,13 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: FAIL only because the current living documents still say that the correction belongs to Plan 11.7/already landed and do not name Plan 11.18. A frozen-digest failure is a stop condition, not an expected RED.
 
-- [ ] **Step 4: Record the transfer in living documents only.**
+- [x] **Step 4: Record the transfer in living documents only.**
 
   In the `P11-FU-10` entry, replace the stale assertion that the forced correction “belongs to Plan 11.7”/“already landed” with a dated, forward-only statement that Plan 11.18 owns the named forced subset because it is unimplemented on `7da16b6` and Plan 11.7 is blocked. State that the transfer does not alter frozen files or unblock `session/load` work.
 
   In the living `P11-FEAT-ZED-RESUME`/Plan 11.7 reference in the pool and the Plan 11 roadmap status paragraph, add one bounded cross-reference: Plan 11.7 remains blocked, but its unimplemented error-code subset is now owned by `P11-FU-10` / Plan 11.18. Do not describe the correction as landed until Task 6 closes it on its own evidence.
 
-- [ ] **Step 5: Run the GREEN documentation and frozen-history checks.**
+- [x] **Step 5: Run the GREEN documentation and frozen-history checks.**
 
   Run:
 
@@ -148,7 +148,7 @@ The only Plan 11.7 work transferred here is the unimplemented forced error-code 
 
   Expected: documentation hygiene is green, whitespace is clean, and frozen files remain byte-identical to the base.
 
-- [ ] **Step 6: Commit the approved custody record.**
+- [x] **Step 6: Commit the approved custody record.**
 
   After the Task 1 commands pass and with commit authorization, run:
 
