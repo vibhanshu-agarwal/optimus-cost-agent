@@ -30,8 +30,10 @@ instead of narration.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -41,7 +43,14 @@ from datetime import UTC, datetime
 import pytest
 
 from optimus_gateway.models import GatewayServiceConfig
-from optimus_gateway.observability import OpenTelemetryTraceExporter, handle_observability_traces_request
+from optimus_gateway.observability import (
+    GatewayTraceBatch,
+    GatewayTraceEvent,
+    GatewayTraceExportResult,
+    OpenTelemetryTraceExporter,
+    TraceDeliveryState,
+    handle_observability_traces_request,
+)
 
 pytestmark = pytest.mark.requires_phoenix
 
@@ -218,6 +227,8 @@ def test_live_phoenix_receives_real_otlp_batch_with_required_fields(
     assert status == 200
     assert body["status"] == "accepted"
     assert body["delivery_state"] == "delivered"
+    assert body["retry_count"] == 0
+    assert body["final_disposition"] == "exported_to_otlp_collector"
     assert "gateway_usage" not in body
     assert "billing_units" not in body
     assert "cost_usd" not in body
@@ -285,6 +296,59 @@ def test_live_phoenix_receives_real_otlp_batch_with_required_fields(
     )
     # The child (parented to root A) shares root A's real trace id.
     assert child_span["context"]["trace_id"] == root_a_real_trace_id
+
+
+def _loopback_non_listening_otlp_endpoint() -> str:
+    """Bind an ephemeral loopback port, then close it so nothing is listening."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    return f"http://127.0.0.1:{port}/v1/traces"
+
+
+def test_live_otlp_returned_failure_against_loopback_non_listening_port() -> None:
+    """Collector-outage probe: production exporter, real OTLPSpanExporter, no fake.
+
+    Hits a loopback port with no listener so this does not require Phoenix, does
+    not kill a collector, and does not use the operator's configured endpoint.
+    After Task 2, a real OTLP returned FAILURE is queued / retry-budget exhausted.
+    This probe does not own the Task 8 independent-root grouping watch.
+    """
+    exporter = OpenTelemetryTraceExporter(otlp_endpoint=_loopback_non_listening_otlp_endpoint())
+    batch = GatewayTraceBatch(
+        schema_version="1",
+        batch_id=f"batch-outage-{uuid.uuid4().hex[:12]}",
+        events=(
+            GatewayTraceEvent(
+                schema_version="1",
+                event_id=f"evt-outage-{uuid.uuid4().hex[:8]}",
+                trace_id=f"trace-outage-{uuid.uuid4().hex[:8]}",
+                kind="model_call",
+                run_id=f"run-outage-{uuid.uuid4().hex[:8]}",
+                request_id="req-outage",
+                occurred_at=datetime.now(UTC).isoformat(),
+                attributes={},
+            ),
+        ),
+    )
+
+    result = exporter.export(batch)
+
+    assert isinstance(result, GatewayTraceExportResult)
+    assert result.delivery_state is TraceDeliveryState.QUEUED
+    assert result.retry_count == 1
+    assert result.final_disposition == "transient_export_failure_retry_budget_exhausted"
+    result_fields = {field.name for field in dataclasses.fields(GatewayTraceExportResult)}
+    assert result_fields == {
+        "trace_batch_id",
+        "trace_ids",
+        "delivery_state",
+        "retry_count",
+        "final_disposition",
+    }
+    assert not hasattr(result, "cost_usd")
+    assert not hasattr(result, "gateway_usage")
+    assert not hasattr(result, "billing_units")
 
 
 def _poll_for_spans(base_url: str, project: str, *, event_ids: tuple[str, ...]) -> list[dict[str, object]]:
