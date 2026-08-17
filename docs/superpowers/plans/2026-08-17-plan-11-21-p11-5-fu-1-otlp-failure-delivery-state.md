@@ -11,7 +11,7 @@
 ## Authority and source anchors
 
 - `P11.5-FU-1` in `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md:697-749` is the owning entry and acceptance boundary.
-- At the drafting baseline, `src/optimus_gateway/observability.py:177-211` sets `exhausted_transient=True` only in the `except TransientTraceExportError` path. `OpenTelemetryTraceExporter.export()` maps that flag to `queued` at lines 259-265.
+- At the drafting baseline, `src/optimus_gateway/observability.py:177-211` sets `exhausted_transient=True` only in the `except TransientTraceExportError` path. `OpenTelemetryTraceExporter.export()` maps that flag to `queued` at lines 279-280.
 - The baseline unit proof in `tests/unit/optimus_gateway/test_observability_export.py` reaches `queued` only through `_AlwaysTransientSpanExporter`, which raises; `_AlwaysPermanentlyFailingSpanExporter` returns `SpanExportResult.FAILURE` and currently proves `failed`.
 - `tests/integration/telemetry/test_phoenix_live.py` is a real `requires_phoenix` Gateway/Phoenix tier. It also owns the existing Task 8 multi-root trace-context watch described below; this plan does not alter `_emit_spans`.
 
