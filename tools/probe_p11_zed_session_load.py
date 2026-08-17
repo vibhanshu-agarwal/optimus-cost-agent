@@ -81,6 +81,296 @@ class ProbeError(RuntimeError):
         super().__init__(message)
 
 
+ALLOWED_PROBE_SEMANTICS = {
+    "initialize.agentCapabilities.loadSession": True,
+    "request.session/load.response.result": {},
+}
+ALLOWED_PROBE_CHANGED_PATHS = ("src/optimus/acp/spec.py",)
+_INITIALIZE_NO_LOAD_SESSION = (
+    '            # session/load remains P11-FEAT-ZED-RESUME; do not advertise loadSession.\n'
+    '            "sessionCapabilities": {},\n'
+)
+_INITIALIZE_TEMPORARY_LOAD_SESSION = '            "loadSession": True,\n            "sessionCapabilities": {},\n'
+_SESSION_PROMPT_BRANCH = (
+    '        if method == "session/prompt":\n'
+    "            return await self._handle_session_prompt(request)\n"
+)
+_SESSION_LOAD_BRANCH = (
+    '        if method == "session/prompt":\n'
+    "            return await self._handle_session_prompt(request)\n"
+    '        if method == "session/load":\n'
+    '            return success_response(request_id=request.get("id"), result={})\n'
+)
+
+
+@dataclass(frozen=True)
+class ProbePatchPlan:
+    """Allowlisted semantic patch applied only to the throwaway isolated source tree."""
+
+    changed_paths: tuple[str, ...]
+    capability_patch: Mapping[str, Any]
+    load_response: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class RelayExchange:
+    """Sanitized post-run classification of one captured ACP request/response pair."""
+
+    request: Mapping[str, Any]
+    response: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class IsolationEvidence:
+    """Four normal-operation isolation predicates plus cleanup dry-run/observed removal."""
+
+    normal_agent_load_session_advertised: bool
+    isolated_probe_load_session_advertised: bool
+    normal_source_sha256_before: str
+    normal_source_sha256_after: str
+    isolated_source_root: str
+    isolated_build_root: str
+    hermetic_zed_root: str
+    cleanup_dry_run_verified: bool
+    cleanup_verified: bool
+
+    @property
+    def prelaunch_predicates_pass(self) -> bool:
+        return (
+            not self.normal_agent_load_session_advertised
+            and self.isolated_probe_load_session_advertised
+            and bool(self.normal_source_sha256_before)
+            and bool(self.normal_source_sha256_after)
+            and self.normal_source_sha256_before == self.normal_source_sha256_after
+            and self.cleanup_dry_run_verified
+        )
+
+    @property
+    def all_four_predicates_pass(self) -> bool:
+        return self.prelaunch_predicates_pass and self.cleanup_verified
+
+
+@dataclass(frozen=True)
+class ProbePreparation:
+    """Throwaway isolated source/build locations plus the pre-launch normal digest."""
+
+    isolated_source_root: str
+    isolated_build_root: str
+    hermetic_zed_root: str
+    normal_root: str
+    normal_commit: str | None
+    normal_source_sha256_before: str
+    patch_plan: ProbePatchPlan
+    cleanup_dry_run_verified: bool
+
+
+DEFAULT_PROBE_PATCH_PLAN = ProbePatchPlan(
+    changed_paths=ALLOWED_PROBE_CHANGED_PATHS,
+    capability_patch={"loadSession": True},
+    load_response={},
+)
+
+
+def validate_probe_patch_plan(plan: ProbePatchPlan) -> None:
+    """Reject any patch surface beyond the temporary initialize capability and empty load result."""
+    if (
+        plan.changed_paths != ALLOWED_PROBE_CHANGED_PATHS
+        or dict(plan.capability_patch) != {"loadSession": True}
+        or dict(plan.load_response) != {}
+    ):
+        raise ProbeError("validate_probe_patch_plan", "unexpected patch surface")
+    if ALLOWED_PROBE_SEMANTICS["initialize.agentCapabilities.loadSession"] is not True:
+        raise ProbeError("validate_probe_patch_plan", "unexpected patch surface")
+    if ALLOWED_PROBE_SEMANTICS["request.session/load.response.result"] != {}:
+        raise ProbeError("validate_probe_patch_plan", "unexpected patch surface")
+
+
+def validate_isolation_evidence(evidence: IsolationEvidence, *, require_cleanup: bool = True) -> None:
+    """Fail closed when any isolation predicate or required digest/cleanup field is missing."""
+    if evidence.normal_agent_load_session_advertised:
+        raise ProbeError("validate_isolation_evidence", "normal capability payload contains loadSession")
+    if not evidence.isolated_probe_load_session_advertised:
+        raise ProbeError("validate_isolation_evidence", "isolated probe must advertise loadSession")
+    if not evidence.normal_source_sha256_before or not evidence.normal_source_sha256_after:
+        raise ProbeError("validate_isolation_evidence", "source digest is missing")
+    if evidence.normal_source_sha256_before != evidence.normal_source_sha256_after:
+        raise ProbeError("validate_isolation_evidence", "source digest drifted")
+    if not evidence.cleanup_dry_run_verified:
+        raise ProbeError("validate_isolation_evidence", "cleanup dry-run not verified")
+    if require_cleanup and not evidence.cleanup_verified:
+        raise ProbeError("validate_isolation_evidence", "unremoved scratch roots remain")
+
+
+def classify_real_zed_result(exchange: RelayExchange | None, isolation: IsolationEvidence) -> Finding:
+    """Classify only after all four isolation predicates pass; otherwise stay indeterminate."""
+    if not isolation.all_four_predicates_pass:
+        return Finding.INDETERMINATE
+    if exchange is None:
+        return Finding.INDETERMINATE
+    request = exchange.request if isinstance(exchange.request, Mapping) else {}
+    response = exchange.response if isinstance(exchange.response, Mapping) else {}
+    if request.get("method") == "session/load" and response.get("result") == {}:
+        return Finding.REACHABLE
+    if isinstance(response.get("error"), Mapping):
+        return Finding.UNREACHABLE
+    return Finding.INDETERMINATE
+
+
+def _is_outside_normal_workspace(candidate: Path, normal_root: Path) -> bool:
+    candidate = candidate.resolve()
+    normal = normal_root.resolve()
+    if candidate == normal:
+        return False
+    if candidate.is_relative_to(normal):
+        return False
+    if normal.is_relative_to(candidate):
+        return False
+    return True
+
+
+def normal_workspace_source_paths(root: Path) -> tuple[str, ...]:
+    """Return tracked plus untracked-non-ignored paths; gitignored secrets stay out."""
+    root = root.resolve()
+    try:
+        completed = subprocess.run(  # noqa: S603
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            shell=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ProbeError("source_digest", f"{type(exc).__name__}: {exc}") from exc
+    if completed.returncode != 0:
+        raise ProbeError("source_digest", f"git ls-files exit={completed.returncode}")
+    return tuple(sorted(item.replace("\\", "/") for item in completed.stdout.split("\0") if item))
+
+
+def normal_workspace_source_digest(root: Path, paths: Sequence[str] | None = None) -> str:
+    """Hash tracked files plus untracked non-ignored files so a stray path cannot hide."""
+    root = root.resolve()
+    hasher = hashlib.sha256()
+    for relative in paths if paths is not None else normal_workspace_source_paths(root):
+        hasher.update(relative.encode("utf-8"))
+        hasher.update(b"\0")
+        file_path = root.joinpath(*relative.split("/"))
+        if file_path.is_file():
+            hasher.update(file_path.read_bytes())
+        hasher.update(b"\0")
+    return hasher.hexdigest()
+
+
+def _copy_normal_workspace_sources(normal: Path, isolated: Path, paths: Sequence[str]) -> None:
+    """Copy exactly the digest file set so gitignored credentials cannot enter the probe tree."""
+    isolated.mkdir(parents=True)
+    for relative in paths:
+        source = normal.joinpath(*relative.split("/"))
+        if not source.is_file():
+            continue
+        destination = isolated.joinpath(*relative.split("/"))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+
+def _advertises_top_level_load_session(source_root: Path) -> bool:
+    spec = source_root / "src" / "optimus" / "acp" / "spec.py"
+    try:
+        text = spec.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ProbeError("isolation_inspect", f"{type(exc).__name__}: {exc}") from exc
+    return '"loadSession": True' in text
+
+
+def _apply_isolated_probe_patch(spec_path: Path) -> None:
+    try:
+        text = spec_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ProbeError("apply_probe_patch", f"{type(exc).__name__}: {exc}") from exc
+    if _INITIALIZE_NO_LOAD_SESSION not in text or _SESSION_PROMPT_BRANCH not in text:
+        raise ProbeError("apply_probe_patch", "unexpected patch surface: initialize/load markers missing")
+    patched = text.replace(_INITIALIZE_NO_LOAD_SESSION, _INITIALIZE_TEMPORARY_LOAD_SESSION, 1)
+    patched = patched.replace(_SESSION_PROMPT_BRANCH, _SESSION_LOAD_BRANCH, 1)
+    if patched == text or '"loadSession": True' not in patched or "session/load" not in patched:
+        raise ProbeError("apply_probe_patch", "unexpected patch surface: isolated patch did not apply")
+    spec_path.write_text(patched, encoding="utf-8")
+
+
+def _verify_cleanup_dry_run(scratch_parent: Path) -> bool:
+    canary = scratch_parent / ".plan1119-cleanup-canary"
+    if canary.exists():
+        shutil.rmtree(canary)
+    canary.mkdir(parents=True)
+    (canary / "marker").write_text("dry-run", encoding="utf-8")
+    shutil.rmtree(canary)
+    return not canary.exists()
+
+
+def prepare_real_zed_probe(
+    isolated_root: Path,
+    *,
+    normal_root: Path,
+    scratch_parent: Path,
+    patch_plan: ProbePatchPlan | None = None,
+) -> ProbePreparation:
+    """Copy the normal tree into throwaway scratch and apply only the allowlisted probe patch."""
+    plan = patch_plan or DEFAULT_PROBE_PATCH_PLAN
+    validate_probe_patch_plan(plan)
+    scratch = scratch_parent.resolve()
+    isolated = isolated_root.resolve()
+    normal = normal_root.resolve()
+    if not scratch.is_dir():
+        raise ProbeError("prepare_real_zed_probe", "scratch parent must be an existing directory")
+    if not isolated.is_relative_to(scratch):
+        raise ProbeError("prepare_real_zed_probe", "isolated source must be outside the normal workspace")
+    if not _is_outside_normal_workspace(isolated, normal):
+        raise ProbeError("prepare_real_zed_probe", "isolated source must be outside the normal workspace")
+    if isolated.exists():
+        raise ProbeError("prepare_real_zed_probe", "isolated source root already exists")
+    source_paths = normal_workspace_source_paths(normal)
+    before = normal_workspace_source_digest(normal, source_paths)
+    _copy_normal_workspace_sources(normal, isolated, source_paths)
+    spec_path = isolated.joinpath(*ALLOWED_PROBE_CHANGED_PATHS[0].split("/"))
+    _apply_isolated_probe_patch(spec_path)
+    build_root = scratch / "probe-build"
+    hermetic_root = scratch / "zed-home"
+    build_root.mkdir(parents=True, exist_ok=True)
+    hermetic_root.mkdir(parents=True, exist_ok=True)
+    cleanup_dry_run_verified = _verify_cleanup_dry_run(scratch)
+    if not cleanup_dry_run_verified:
+        raise ProbeError("prepare_real_zed_probe", "cleanup dry-run not verified")
+    return ProbePreparation(
+        isolated_source_root=str(isolated),
+        isolated_build_root=str(build_root),
+        hermetic_zed_root=str(hermetic_root),
+        normal_root=str(normal),
+        normal_commit=_git_head(normal),
+        normal_source_sha256_before=before,
+        patch_plan=plan,
+        cleanup_dry_run_verified=cleanup_dry_run_verified,
+    )
+
+
+def verify_normal_operation_isolation(preparation: ProbePreparation) -> IsolationEvidence:
+    """Record predicates 1-3 plus cleanup dry-run; observed removal stays false until later."""
+    normal_root = Path(preparation.normal_root)
+    isolated_root = Path(preparation.isolated_source_root)
+    return IsolationEvidence(
+        normal_agent_load_session_advertised=_advertises_top_level_load_session(normal_root),
+        isolated_probe_load_session_advertised=_advertises_top_level_load_session(isolated_root),
+        normal_source_sha256_before=preparation.normal_source_sha256_before,
+        normal_source_sha256_after=normal_workspace_source_digest(normal_root),
+        isolated_source_root=str(isolated_root),
+        isolated_build_root=preparation.isolated_build_root,
+        hermetic_zed_root=preparation.hermetic_zed_root,
+        cleanup_dry_run_verified=preparation.cleanup_dry_run_verified,
+        cleanup_verified=False,
+    )
+
+
 def evaluate_session_load_exchange(
     capability_payload: Mapping[str, Any] | None,
     load_exchange: Mapping[str, Any] | None,
