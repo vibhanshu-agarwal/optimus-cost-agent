@@ -2537,6 +2537,134 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.probe_p11_zed_session_load:_apply_isolated_probe_patch:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the allowlisted temporary-advertisement probe patch into the throwaway isolated tree; no ambient credentials or live ACP streams are persisted.",
+      "sanitizer": "schema-limited functional path; isolated throwaway tree only",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_prepare_probe_patches_only_isolated_spec_and_records_isolation",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:_launch_zed_once:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Inspection: opens the hermetic Zed launch log only to feed a bounded excerpt through sanitize_for_persistence before evidence retention.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_launch_log_excerpt_runs_through_evidence_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:_run_acpx_against_isolated_agent:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Inspection: ProbeError and captured acpx streams enter evidence only through record_probe_command_failure / capture_acpx_evidence with _safe_payload sanitization.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_baseline_empty_load_failure_keeps_stdout_records",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:_verify_cleanup_dry_run:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes a schema-limited dry-run cleanup sidecar under the throwaway scratch root; no live credential or ACP stream retention.",
+      "sanitizer": "schema-limited functional path; throwaway scratch only",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_cleanup_remediation_is_workspace_scoped_and_contains_no_approval_identifier",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:reconstruct_sanitized_relay_bytes:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Inspection: each ACP message is passed through _safe_payload before NDJSON serialization into relay bytes used only for digest/classification.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_classification_consumes_sanitized_relay_extract_not_project_client",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:record_probe_command_failure:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Inspection: stores ProbeError stage/message via _safe_payload and acpx failure streams via capture_acpx_evidence sanitization only.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_preflight_failure_retains_sanitized_command_stderr",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:run_plan1119_preflight:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Inspection: preflight failures retain command stderr only after sanitize_for_persistence / _safe_payload; no raw ambient export.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_preflight_failure_retains_sanitized_command_stderr",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:run_plan1119_preflight:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes schema-limited preflight result fields after sanitization; does not materialize raw ACP or ambient profile streams.",
+      "sanitizer": "schema-limited result; protocol and exception fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_real_zed_cli_mode_does_not_launch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:run_plan1119_preflight:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the schema-limited preflight JSON under the throwaway report scratch; credentials are never written.",
+      "sanitizer": "schema-limited functional path; throwaway report scratch only",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_real_zed_cli_mode_does_not_launch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:run_plan1119_real_zed:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the schema-limited real-Zed result after relay reconstruction and evidence sanitization; raw opaque relay bins are not re-exported as text.",
+      "sanitizer": "schema-limited result; protocol fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_classification_consumes_sanitized_relay_extract_not_project_client",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:run_plan1119_real_zed:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes schema-limited report/manifest sidecars under the evidence directory; opaque relay bytes stay binary and digest-gated.",
+      "sanitizer": "schema-limited functional path; opaque relay not text-exported",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_absent_descriptor_already_running_relay_failure_and_nonempty_cleanup_prevent_verdict",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:seed_hermetic_zed_settings:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes only the hermetic agent_servers settings payload for the throwaway APPDATA bind; no ambient secrets.",
+      "sanitizer": "schema-limited functional path; hermetic settings only",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_seed_hermetic_settings_uses_windows_appdata_zed_layout",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:seed_hermetic_zed_settings:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes hermetic settings.json under the bound throwaway APPDATA/Zed path only.",
+      "sanitizer": "schema-limited functional path; hermetic APPDATA bind only",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_seed_hermetic_settings_uses_windows_appdata_zed_layout",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:write_isolated_agent_launcher:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the throwaway isolated agent launcher script under scratch; no ambient credentials embedded.",
+      "sanitizer": "schema-limited functional path; isolated throwaway launcher only",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_seed_hermetic_settings_and_launcher_stay_under_scratch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan1119_zed_reprobe_evidence:_sha256_file:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens committed evidence artifacts only to compute SHA-256 digests for offline verification; bytes are neither retained nor re-exported.",
+      "sanitizer": "schema-limited functional path; SHA-256 digest only",
+      "test_node": "tests/unit/tools/test_verify_plan1119_zed_reprobe_evidence.py::test_relay_digest_mismatch_fails",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan1119_zed_reprobe_evidence:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stderr carries only schema-limited verifier failure reasons (field names, digests, classification codes); no raw ACP or credential export.",
+      "sanitizer": "schema-limited verifier diagnostics only",
+      "test_node": "tests/unit/tools/test_verify_plan1119_zed_reprobe_evidence.py::test_missing_required_field_fails",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.run_redaction_gate_live_evidence:_pump:file_open",
       "policy": "shared-sanitize",
       "rationale": "Temporary private capture under operator capture root; streamed into redaction gate; never retained as raw transcript in output.",
