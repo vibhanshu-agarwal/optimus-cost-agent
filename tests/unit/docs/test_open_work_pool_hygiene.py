@@ -601,10 +601,10 @@ def test_publication_plan_custody_is_a_real_indexed_pool_entry() -> None:
 
     assert heading in entries
     body = entries[heading]
-    assert _status_token(body) == "Open"
+    assert _status_token(body) == "Closed"
     assert _fu_index_rows(pool)["P11-FU-27"] == (
         "Publication-Plan Historical-State Reconciliation",
-        "Open",
+        "Closed",
     )
     for anchor in (
         "2026-08-05-mcp-gateway-architecture-amendment-publication-plan.md",
@@ -612,6 +612,7 @@ def test_publication_plan_custody_is_a_real_indexed_pool_entry() -> None:
         "Task 11 Step 7",
         "verification.md",
         "PR #113",
+        "Plan 11.22",
     ):
         assert anchor in body
 
