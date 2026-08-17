@@ -2,10 +2,10 @@
 
 ## Status
 
-Tasks 2-9 are complete and signed off. Task 10's machine validation, completeness/provenance audit,
-carried-page preservation, diagram validation, and final render inspection are complete; the four
-candidate PDFs remain pending the Task 10 review checkpoint and operator approval. The four pinned
-source PDFs remain unchanged.
+Tasks 2-10 are complete and signed off. Task 10's machine validation, completeness/provenance
+audit, carried-page preservation, diagram validation, and final render inspection completed; the
+four final PDFs were published by merged PR #113. Their final hashes are recorded below and were
+independently rechecked in Plan 11.22. The four pinned source PDFs remain unchanged.
 
 ## Pinned toolchain
 
@@ -233,14 +233,15 @@ text extracts: `P11-FU-12` through `P11-FU-16` retain the exact five names and b
   metadata test reported elsewhere passed in isolation and is not reproducibly failing here.
 - `git diff --check` passed after the freshness edits; no `src/` or `tests/` path changed.
 
-The Task 10-approved candidate PDFs were not edited by the freshness changes. The final publication
+The Task 10-approved final PDFs were not edited by the freshness changes. The final publication
 validator was rerun afterward with the recorded split runtime: the isolated WSL2 venv for PDF
 parsing and the system WSL2 Pillow environment for SVG geometry.
 
-## Task 12 final review gate
+## Task 12 historical final review gate
 
 Task 11's documentation-freshness audit and repository gates are complete, with the native WSL2
 linked-worktree Git-path mismatch recorded above as a known environment limitation rather than a
-clean POSIX pass. Task 12 Step 4 remains operator-only: the four candidate PDFs and documentation
-changeset require explicit final approval before any staging or commit. No candidate PDF is treated
-as published solely by this verification record.
+clean POSIX pass. Task 12 Step 4 was operator-only and was satisfied before merged PR #113 published
+the four final PDFs and documentation changeset. This verification record remains supporting
+validation evidence; publication is established by the merged PR and the final artifact hashes, not
+by this record alone.

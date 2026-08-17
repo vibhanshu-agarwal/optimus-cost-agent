@@ -161,7 +161,7 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P11-FU-24` | Client-MCP durable HTTP/SSE trust relaxation | Open | MEDIUM     | Future client-MCP trust follow-up | Acceptance criteria in entry |
 | `P11-FU-25` | Authenticated client-owned MCP upstream evidence | Open | MEDIUM     | Future client-MCP evidence follow-up | Acceptance criteria in entry |
 | ~~`P11-FU-26`~~ | ~~Plan 11.8 Windows `WinError 10053` MCP test flake~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Retired `P11-FEAT-GATEWAY-MCP`; signal under `P11-FU-6`~~ | ~~Plan 11.12; obsolete-by-retirement~~ |
-| `P11-FU-27` | Publication-Plan Historical-State Reconciliation | Open | MEDIUM     | Future documentation-history reconciliation | Excluded publication plan; PR #113 / `verification.md` |
+| ~~`P11-FU-27`~~ | ~~Publication-Plan Historical-State Reconciliation~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.22~~ | ~~[Plan 11.22 reconciliation evidence](../../../reports/plan-11-22-p11-fu-27-publication-reconciliation.md); merged PR #113 / `verification.md`~~ |
 | ~~`P11-FU-28`~~ | ~~WSL2 `uv sync` shared-Windows-`.venv` destruction hazard~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Native WSL clone operating decision~~ | ~~Obsolete for supported Linux-parity gates; `P11-FU-17` proof 2026-08-14~~ |
 | ~~`P11-FU-29`~~ | ~~Durable-approval identity instability on transient Git probe failure~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.15~~ | ~~[release report](../../../reports/plan-11-15-durable-approval-identity-release.md); preserve-approval / Git-retry / migration evidence only~~ |
 | ~~`P11-FU-17`~~ | ~~WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Native WSL clone operating decision~~ | ~~Resolved by verified ext4 native-clone gate; proof report 2026-08-14~~ |
@@ -1206,7 +1206,10 @@ against the four published PDF hashes in `verification.md` and PR #113; preserve
 unless independent evidence satisfies it; retain the publication plan's historical evidence; and
 avoid changing unrelated architecture or implementation scope.
 
-**Status:** Open. Tracked, not yet scheduled.
+**Status:** Closed. Plan 11.22 reconciled only the historical Task 10 Steps 1-7 and stale
+pending-publication wording after independently verifying the four published PDF hashes against
+`verification.md` and merged PR #113. Task 11 Step 7 remains unchecked. Evidence:
+[Plan 11.22 reconciliation report](../../../reports/plan-11-22-p11-fu-27-publication-reconciliation.md).
 
 ### P11-FU-17: WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer
 

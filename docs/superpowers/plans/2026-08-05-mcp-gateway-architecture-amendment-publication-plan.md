@@ -763,7 +763,7 @@ Record candidate PDF paths, sizes, page counts, and hashes. Do not call them aut
 - Consumes: four candidate PDFs and the approved redline/checklist.
 - Produces: evidence that every architecture claim landed and unchanged material was preserved.
 
-- [ ] **Step 1: Adapt and run the publication validator**
+- [x] **Step 1: Adapt and run the publication validator**
 
 Use `apply_patch` for target versions, filenames, anchors, page counts, diagram geometry, historical
 exceptions, carried-page regions, protocol-generation exclusions, and OWASP voice/ownership checks.
@@ -777,7 +777,7 @@ wsl -d Ubuntu-24.04 -- bash -lc "cd /mnt/d/Projects/Development/Python/optimus-c
 
 Expected: exit 0 for all four PDFs.
 
-- [ ] **Step 2: Run explicit exclusion-reversal scans**
+- [x] **Step 2: Run explicit exclusion-reversal scans**
 
 Extract all four candidate PDFs with `pdftotext` and scan for:
 
@@ -788,7 +788,7 @@ wsl -d Ubuntu-24.04 -- bash -lc "cd /mnt/d/Projects/Development/Python/optimus-c
 Expected: no current normative instance remains. Historical discussion is allowed only when
 clearly labelled and manifest-allowlisted.
 
-- [ ] **Step 3: Run the full claim, voice, and provenance completeness audit**
+- [x] **Step 3: Run the full claim, voice, and provenance completeness audit**
 
 For each row in design §12, record the exact HLD/LLD/Guardrails/Test citation and extracted phrase.
 Also map every security-reference closing-checklist item and every redline cluster. A missing row
@@ -806,24 +806,24 @@ negotiation, and the deliberate narrowing of Go SDK downgrade behavior; Context7
 probe, and the external-logging non-conflation. A Context7 transport configuration snippet alone is
 insufficient evidence.
 
-- [ ] **Step 4: Validate carried-page preservation**
+- [x] **Step 4: Validate carried-page preservation**
 
 Compare every carried page below the header band against its pinned source at the precedent DPI.
 Require pixel identity except for explicitly manifest-declared, bounded inline replacements.
 
-- [ ] **Step 5: Validate diagrams**
+- [x] **Step 5: Validate diagrams**
 
 Run SVG text-bound and connector-intersection checks. Require all text inside the canvas and
 containing box and zero connector/label intersections. Confirm visually that no agent-to-MCP edge
 or agent-held upstream credential is implied.
 
-- [ ] **Step 6: Render and inspect every final page**
+- [x] **Step 6: Render and inspect every final page**
 
 Render all final pages with Poppler at 100 and 150 dpi. Inspect covers, headers, footers, diagrams,
 tables, code, section transitions, clipping, and historical-version exceptions. Record the survey
 in `verification.md`.
 
-- [ ] **Step 7: Record final metadata and hashes**
+- [x] **Step 7: Record final metadata and hashes**
 
 Record filename, metadata title, cover version, page count, page size, source hash, output hash,
 changed pages, carried pages, and preservation result for each document.
@@ -831,7 +831,8 @@ changed pages, carried pages, and preservation result for each document.
 - [x] **Step 8: Review checkpoint**
 
 Provide the validator output, contact-sheet locations, completeness audit, and hashes to the
-reviewer. Candidate PDFs remain unapproved until this checkpoint passes.
+reviewer. This checkpoint passed and merged PR #113 published the four final PDFs; Plan 11.22
+independently reconciles the recorded output hashes without changing the historical evidence.
 
 ---
 
