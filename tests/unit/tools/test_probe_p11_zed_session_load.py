@@ -10,25 +10,35 @@ import pytest
 
 from tools.probe_p11_zed_session_load import (
     ALLOWED_PROBE_SEMANTICS,
+    AcpxBaselineEvidence,
     CommandResult,
     Finding,
     IsolationEvidence,
     ProbeError,
     ProbePatchPlan,
     RelayExchange,
+    ZedInvocation,
     build_acpx_command,
     build_cleanup_remediation,
+    build_opaque_relay_command,
     build_trust_command,
     capture_acpx_evidence,
     classify_indeterminate_context,
+    classify_live_zed_observation,
     classify_real_zed_result,
+    discover_hermetic_zed_invocation,
     evaluate_session_load_exchange,
+    exchange_from_relay_extract,
     extract_acpx_archive_capability_payload,
+    main,
     normal_workspace_source_digest,
     prepare_real_zed_probe,
+    validate_acpx_baseline,
     validate_isolation_evidence,
     validate_probe_patch_plan,
+    validate_zed_invocation,
     verify_normal_operation_isolation,
+    zed_target_already_running,
 )
 
 
@@ -402,3 +412,190 @@ def test_classify_real_zed_result_requires_session_load_request_for_reachable() 
         classify_real_zed_result(_session_load_exchange(result={}, method="session/new"), isolation)
         is Finding.INDETERMINATE
     )
+
+
+HERMETIC_ROOT = Path(r"C:\scratch\zed-home")
+
+
+def _valid_invocation() -> ZedInvocation:
+    return ZedInvocation(
+        argv=("C:\\Tools\\Zed.exe", "--isolated-user-data", str(HERMETIC_ROOT)),
+        user_data_root=str(HERMETIC_ROOT),
+        discovered_from="zed --help",
+    )
+
+
+def test_real_zed_launch_rejects_ambient_profile_and_missing_discovery() -> None:
+    invocation = ZedInvocation(argv=("Zed.exe",), user_data_root=None, discovered_from="")
+    with pytest.raises(ProbeError, match="current-version hermetic invocation"):
+        validate_zed_invocation(invocation, hermetic_root=Path(r"C:\scratch\zed-home"))
+
+
+def test_user_data_path_outside_hermetic_root_is_rejected() -> None:
+    invocation = ZedInvocation(
+        argv=("Zed.exe", "--isolated-user-data", r"C:\other\profile"),
+        user_data_root=r"C:\other\profile",
+        discovered_from="zed --help",
+    )
+    with pytest.raises(ProbeError, match="hermetic root"):
+        validate_zed_invocation(invocation, hermetic_root=HERMETIC_ROOT)
+
+
+def test_ambient_profile_user_data_is_rejected() -> None:
+    ambient = Path(r"C:\Users\me\AppData\Roaming")
+    invocation = ZedInvocation(
+        argv=("Zed.exe", "--isolated-user-data", str(ambient)),
+        user_data_root=str(ambient),
+        discovered_from="zed --help",
+    )
+    with pytest.raises(ProbeError, match="current-version hermetic invocation"):
+        validate_zed_invocation(
+            invocation,
+            hermetic_root=ambient,
+            ambient_profile_roots=(ambient,),
+        )
+
+
+def test_discovery_uses_help_text_flag_not_historical_default() -> None:
+    invocation = discover_hermetic_zed_invocation(
+        executable=Path(r"C:\Tools\Zed.exe"),
+        version_output="Zed 1.99.0",
+        help_output="  --isolated-user-data <path>  Bind editor user data to this directory\n",
+        executable_sha256="a" * 64,
+        hermetic_root=HERMETIC_ROOT,
+    )
+    assert invocation.discovered_from == "zed --help"
+    assert "--isolated-user-data" in invocation.argv
+    assert "--user-data-dir" not in invocation.argv
+    assert invocation.user_data_root == str(HERMETIC_ROOT.resolve())
+    validate_zed_invocation(invocation, hermetic_root=HERMETIC_ROOT)
+
+
+def test_discovery_fails_closed_when_help_omits_user_data_binding() -> None:
+    with pytest.raises(ProbeError, match="current-version hermetic invocation"):
+        discover_hermetic_zed_invocation(
+            executable=Path(r"C:\Tools\Zed.exe"),
+            version_output="Zed 1.99.0",
+            help_output="  --foreground\n  --version\n",
+            executable_sha256="a" * 64,
+            hermetic_root=HERMETIC_ROOT,
+        )
+
+
+def test_classification_consumes_sanitized_relay_extract_not_project_client() -> None:
+    extract = {
+        "source": "opaque-relay-post-run",
+        "zed_to_agent_sha256": "a" * 64,
+        "agent_to_zed_sha256": "b" * 64,
+        "request": {"jsonrpc": "2.0", "id": 7, "method": "session/load", "params": {"sessionId": "saved-1"}},
+        "response": {"jsonrpc": "2.0", "id": 7, "result": {}},
+    }
+    exchange = exchange_from_relay_extract(extract)
+    assert exchange is not None
+    assert exchange.request["method"] == "session/load"
+    isolation = _isolation_evidence()
+    assert classify_live_zed_observation(
+        exchange,
+        isolation,
+        _valid_invocation(),
+        already_running_zed=False,
+        relay_failed=False,
+        cleanup_roots_empty=True,
+    ) is Finding.REACHABLE
+
+
+def test_classification_rejects_project_authored_client_call() -> None:
+    extract = {
+        "source": "project-acp-client",
+        "request": {"jsonrpc": "2.0", "id": 7, "method": "session/load"},
+        "response": {"jsonrpc": "2.0", "id": 7, "result": {}},
+    }
+    with pytest.raises(ProbeError, match="sanitized post-run relay extract"):
+        exchange_from_relay_extract(extract)
+
+
+def test_absent_descriptor_already_running_relay_failure_and_nonempty_cleanup_prevent_verdict() -> None:
+    isolation = _isolation_evidence()
+    exchange = _session_load_exchange()
+    missing = ZedInvocation(argv=("Zed.exe",), user_data_root=None, discovered_from="")
+    assert (
+        classify_live_zed_observation(
+            exchange, isolation, missing, already_running_zed=False, relay_failed=False, cleanup_roots_empty=True
+        )
+        is Finding.INDETERMINATE
+    )
+    assert (
+        classify_live_zed_observation(
+            exchange,
+            isolation,
+            _valid_invocation(),
+            already_running_zed=True,
+            relay_failed=False,
+            cleanup_roots_empty=True,
+        )
+        is Finding.INDETERMINATE
+    )
+    assert (
+        classify_live_zed_observation(
+            exchange,
+            isolation,
+            _valid_invocation(),
+            already_running_zed=False,
+            relay_failed=True,
+            cleanup_roots_empty=True,
+        )
+        is Finding.INDETERMINATE
+    )
+    assert (
+        classify_live_zed_observation(
+            exchange,
+            isolation,
+            _valid_invocation(),
+            already_running_zed=False,
+            relay_failed=False,
+            cleanup_roots_empty=False,
+        )
+        is Finding.INDETERMINATE
+    )
+    assert zed_target_already_running(("notepad.exe", "Zed.exe")) is True
+    assert zed_target_already_running(("notepad.exe",)) is False
+
+
+def test_opaque_relay_command_uses_custody_relay_not_project_client() -> None:
+    command = build_opaque_relay_command(
+        capture_root=Path(r"C:\scratch\capture"),
+        run_id="run-1",
+        child_executable=Path(r"C:\scratch\optimus-agent.exe"),
+        invocation=_valid_invocation(),
+    )
+    joined = " ".join(command)
+    assert "plan117_custody_relay.py" in joined
+    assert "--child-executable" in command
+    assert "acpx" not in joined.casefold()
+
+
+def test_acpx_baseline_fails_closed_without_isolated_load_session() -> None:
+    evidence = AcpxBaselineEvidence(
+        acpx_version="0.12.0",
+        acpx_executable=r"C:\Tools\acpx.cmd",
+        acpx_sha256="a" * 64,
+        capability_payload={"sessionCapabilities": {}},
+        origin_a_launches=0,
+    )
+    with pytest.raises(ProbeError, match="loadSession"):
+        validate_acpx_baseline(evidence)
+
+
+def test_acpx_baseline_accepts_isolated_advertisement_without_zed_claim() -> None:
+    evidence = AcpxBaselineEvidence(
+        acpx_version="0.12.0",
+        acpx_executable=r"C:\Tools\acpx.cmd",
+        acpx_sha256="a" * 64,
+        capability_payload={"loadSession": True, "sessionCapabilities": {}},
+        origin_a_launches=0,
+    )
+    validate_acpx_baseline(evidence)
+
+
+def test_real_zed_cli_mode_does_not_launch(tmp_path: Path) -> None:
+    assert main(["--mode", "real-zed", str(tmp_path)]) == 1

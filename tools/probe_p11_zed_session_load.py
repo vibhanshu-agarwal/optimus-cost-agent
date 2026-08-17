@@ -23,6 +23,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -214,6 +215,192 @@ def classify_real_zed_result(exchange: RelayExchange | None, isolation: Isolatio
     if isinstance(response.get("error"), Mapping):
         return Finding.UNREACHABLE
     return Finding.INDETERMINATE
+
+
+RELAY_EXTRACT_SOURCE = "opaque-relay-post-run"
+_USER_DATA_HELP_LINE = re.compile(r"user[\s_-]*data", re.I)
+_HELP_FLAG = re.compile(r"(--[A-Za-z0-9][A-Za-z0-9-]*)")
+_RELAY_SCRIPT = Path(__file__).resolve().parent / "plan117_custody_relay.py"
+
+
+@dataclass(frozen=True)
+class ZedInvocation:
+    """Current-version hermetic Zed launch descriptor discovered from this install, not a historical flag."""
+
+    argv: tuple[str, ...]
+    user_data_root: str | None
+    discovered_from: str
+    version: str = ""
+    executable_sha256: str = ""
+    environment_bind: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class ZedInvocationEvidence:
+    """Recorded no-launch discovery of the installed Zed binary and hermetic bind."""
+
+    invocation: ZedInvocation
+    executable: str
+    help_sha256: str
+    hermetic_root: str
+    already_running_zed: bool = False
+    zed_to_agent_sha256: str | None = None
+    agent_to_zed_sha256: str | None = None
+
+
+@dataclass(frozen=True)
+class AcpxBaselineEvidence:
+    """Independent acpx confirmation of the isolated probe advertisement; not a Zed finding."""
+
+    acpx_version: str
+    acpx_executable: str
+    acpx_sha256: str
+    capability_payload: Mapping[str, Any]
+    origin_a_launches: int
+
+
+def _ambient_profile_roots() -> tuple[Path, ...]:
+    roots: list[Path] = []
+    for key in ("APPDATA", "LOCALAPPDATA", "USERPROFILE"):
+        raw = os.environ.get(key, "").strip()
+        if raw:
+            roots.append(Path(raw))
+    return tuple(roots)
+
+
+def validate_zed_invocation(
+    invocation: ZedInvocation,
+    *,
+    hermetic_root: Path,
+    ambient_profile_roots: Sequence[Path] | None = None,
+) -> None:
+    """Reject missing discovery, ambient profiles, and user-data paths outside the hermetic root."""
+    if not invocation.discovered_from.strip() or invocation.user_data_root is None:
+        raise ProbeError("zed_invocation", "current-version hermetic invocation descriptor is missing")
+    user_resolved = Path(invocation.user_data_root).resolve()
+    hermetic = hermetic_root.resolve()
+    ambient = tuple(path.resolve() for path in (ambient_profile_roots or _ambient_profile_roots()))
+    for profile in ambient:
+        if user_resolved == profile or user_resolved.is_relative_to(profile):
+            raise ProbeError(
+                "zed_invocation",
+                "current-version hermetic invocation must not use ambient profile",
+            )
+    if user_resolved != hermetic and not user_resolved.is_relative_to(hermetic):
+        raise ProbeError("zed_invocation", "user-data path is outside the hermetic root")
+
+
+def _discover_user_data_flag(help_output: str) -> str | None:
+    for line in help_output.splitlines():
+        if _USER_DATA_HELP_LINE.search(line):
+            match = _HELP_FLAG.search(line)
+            if match:
+                return match.group(1)
+    return None
+
+
+def discover_hermetic_zed_invocation(
+    *,
+    executable: Path,
+    version_output: str,
+    help_output: str,
+    executable_sha256: str,
+    hermetic_root: Path,
+) -> ZedInvocation:
+    """Bind Zed to a new hermetic root using a flag found in this version's help text."""
+    hermetic = hermetic_root.resolve()
+    flag = _discover_user_data_flag(help_output)
+    if flag is None:
+        raise ProbeError("zed_discovery", "current-version hermetic invocation flag was not discovered")
+    environment_bind = (
+        ("APPDATA", str(hermetic / "AppData" / "Roaming")),
+        ("LOCALAPPDATA", str(hermetic / "AppData" / "Local")),
+        ("USERPROFILE", str(hermetic)),
+        ("HOME", str(hermetic)),
+    )
+    return ZedInvocation(
+        argv=(str(executable), flag, str(hermetic)),
+        user_data_root=str(hermetic),
+        discovered_from="zed --help",
+        version=version_output.strip(),
+        executable_sha256=executable_sha256,
+        environment_bind=environment_bind,
+    )
+
+
+def exchange_from_relay_extract(extract: Mapping[str, Any]) -> RelayExchange | None:
+    """Classify captured traffic only from a sanitized post-run opaque-relay extract."""
+    if extract.get("source") != RELAY_EXTRACT_SOURCE:
+        raise ProbeError("relay_extract", "classification requires a sanitized post-run relay extract")
+    for key in ("zed_to_agent_sha256", "agent_to_zed_sha256"):
+        digest = extract.get(key)
+        if not isinstance(digest, str) or len(digest) != 64:
+            raise ProbeError("relay_extract", "classification requires a sanitized post-run relay extract")
+    request = extract.get("request")
+    response = extract.get("response")
+    if request is None and response is None:
+        return None
+    if not isinstance(request, Mapping) or not isinstance(response, Mapping):
+        raise ProbeError("relay_extract", "classification requires a sanitized post-run relay extract")
+    return RelayExchange(request=dict(request), response=dict(response))
+
+
+def classify_live_zed_observation(
+    exchange: RelayExchange | None,
+    isolation: IsolationEvidence,
+    invocation: ZedInvocation,
+    *,
+    already_running_zed: bool,
+    relay_failed: bool,
+    cleanup_roots_empty: bool,
+) -> Finding:
+    """Fail closed to INDETERMINATE when hermetic/relay/cleanup gates do not pass."""
+    try:
+        validate_zed_invocation(invocation, hermetic_root=Path(isolation.hermetic_zed_root))
+    except ProbeError:
+        return Finding.INDETERMINATE
+    if already_running_zed or relay_failed or not cleanup_roots_empty:
+        return Finding.INDETERMINATE
+    return classify_real_zed_result(exchange, isolation)
+
+
+def zed_target_already_running(process_names: Sequence[str]) -> bool:
+    """True when a Zed process name is already present; callers supply the process list."""
+    names = {name.casefold() for name in process_names}
+    return "zed.exe" in names or "zed" in names
+
+
+def build_opaque_relay_command(
+    *,
+    capture_root: Path,
+    run_id: str,
+    child_executable: Path,
+    invocation: ZedInvocation,
+) -> list[str]:
+    """Build the Plan 11.7 opaque relay argv; byte interpretation stays out of the relay process."""
+    if invocation.user_data_root is None:
+        raise ProbeError("zed_invocation", "current-version hermetic invocation descriptor is missing")
+    validate_zed_invocation(invocation, hermetic_root=Path(invocation.user_data_root))
+    return [
+        sys.executable,
+        str(_RELAY_SCRIPT),
+        "--capture-root",
+        str(capture_root),
+        "--run-id",
+        run_id,
+        "--child-executable",
+        str(child_executable),
+        "--",
+        str(child_executable),
+    ]
+
+
+def validate_acpx_baseline(evidence: AcpxBaselineEvidence) -> None:
+    """Require the isolated initialize payload to advertise loadSession; forbid origin-A."""
+    if evidence.origin_a_launches != 0:
+        raise ProbeError("acpx_baseline", "origin-A launches are forbidden")
+    if dict(evidence.capability_payload).get("loadSession") is not True:
+        raise ProbeError("acpx_baseline", "isolated probe must advertise loadSession")
 
 
 def _is_outside_normal_workspace(candidate: Path, normal_root: Path) -> bool:
@@ -882,12 +1069,48 @@ def run_probe(parent_workspace: Path) -> dict[str, Any]:
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--mode",
+        choices=("acpx", "acpx-baseline", "preflight", "real-zed"),
+        default="acpx",
+        help="acpx is the existing non-Zed baseline; real-zed stays unauthorized until Task 4",
+    )
     parser.add_argument("workspace", type=Path, help="existing throwaway parent directory; never a repository")
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
+    if args.mode == "real-zed":
+        print(
+            json.dumps(
+                {
+                    "finding": Finding.INDETERMINATE.value,
+                    "zed_launches": 0,
+                    "failure": {
+                        "stage": "real_zed",
+                        "message": "live Zed launch requires a separate recorded operator authorization",
+                    },
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 1
+    if args.mode != "acpx":
+        print(
+            json.dumps(
+                {
+                    "mode": args.mode,
+                    "finding": Finding.INDETERMINATE.value,
+                    "zed_launches": 0,
+                    "origin_a_launches": 0,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
     print(json.dumps(run_probe(args.workspace), indent=2, sort_keys=True))
     return 0
 
