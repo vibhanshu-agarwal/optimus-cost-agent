@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,7 @@ from tools.probe_p11_zed_session_load import (
     build_acpx_command,
     build_cleanup_remediation,
     build_opaque_relay_command,
+    build_real_zed_launch_argv,
     build_trust_command,
     capture_acpx_evidence,
     classify_indeterminate_context,
@@ -30,14 +32,22 @@ from tools.probe_p11_zed_session_load import (
     evaluate_session_load_exchange,
     exchange_from_relay_extract,
     extract_acpx_archive_capability_payload,
+    extract_session_load_from_messages,
+    hermetic_appdata_environment_bind,
+    iter_acp_messages,
     main,
     normal_workspace_source_digest,
     prepare_real_zed_probe,
+    reconstruct_sanitized_relay_bytes,
+    record_probe_command_failure,
+    seed_hermetic_zed_settings,
+    throwaway_tree_digest,
     validate_acpx_baseline,
     validate_isolation_evidence,
     validate_probe_patch_plan,
     validate_zed_invocation,
     verify_normal_operation_isolation,
+    write_isolated_agent_launcher,
     zed_target_already_running,
 )
 
@@ -128,7 +138,23 @@ def test_raw_acpx_agent_command_uses_slash_normalized_windows_paths() -> None:
 
     assert command[-2] == "--agent"
     assert command[-1] == '"D:/agent path/optimus-agent.exe" --workspace-root "C:/probe workspace" --no-auto-start'
+    assert command[command.index("--ttl") + 1] == "60"
 
+
+def test_raw_acpx_agent_command_prefixes_python_for_py_launcher(tmp_path: Path) -> None:
+    """Windows acpx cannot spawn a .py agent directly; that fails as spawn EFTYPE."""
+    launcher = tmp_path / "isolated_optimus_agent.py"
+    launcher.write_text("raise SystemExit(0)\n", encoding="utf-8")
+    command = build_acpx_command(
+        Path(r"C:\Tools\acpx.cmd"),
+        workspace=tmp_path / "workspace",
+        agent=launcher,
+    )
+    agent_argv = command[-1]
+    assert agent_argv.startswith('"') or "python" in agent_argv.casefold()
+    assert "isolated_optimus_agent.py" in agent_argv
+    assert "--workspace-root" in agent_argv
+    assert not agent_argv.lstrip('"').startswith(str(launcher).replace("\\", "/"))
 
 def test_temporary_workspace_approval_uses_the_trust_cli_and_has_a_matching_revoke() -> None:
     """Catches a live probe that could create approval state without its paired cleanup command."""
@@ -326,6 +352,17 @@ def test_source_digest_changes_when_untracked_file_appears(tmp_path: Path) -> No
     assert before != after
 
 
+def test_throwaway_tree_digest_does_not_require_git(tmp_path: Path) -> None:
+    """Isolated probe copies have no .git; identity recording must not call git ls-files there."""
+    tree = tmp_path / "probe-source"
+    (tree / "src").mkdir(parents=True)
+    (tree / "src" / "a.py").write_text("print(1)\n", encoding="utf-8")
+    digest = throwaway_tree_digest(tree)
+    assert len(digest) == 64
+    (tree / "src" / "a.py").write_text("print(2)\n", encoding="utf-8")
+    assert throwaway_tree_digest(tree) != digest
+
+
 def test_prepare_probe_excludes_gitignored_secret_like_files(tmp_path: Path) -> None:
     """Catches a blanket copytree that would leak .env/credentials into the isolated probe tree."""
     normal_root = tmp_path / "normal"
@@ -456,6 +493,38 @@ def test_ambient_profile_user_data_is_rejected() -> None:
         )
 
 
+def test_hermetic_root_under_temp_is_not_treated_as_ambient_profile(tmp_path: Path) -> None:
+    hermetic = tmp_path / "zed-home"
+    hermetic.mkdir()
+    invocation = ZedInvocation(
+        argv=("Zed.exe", "--user-data-dir", str(hermetic)),
+        user_data_root=str(hermetic),
+        discovered_from="zed --help",
+    )
+    validate_zed_invocation(
+        invocation,
+        hermetic_root=hermetic,
+        ambient_profile_roots=(tmp_path.parent, tmp_path.parent / "AppData" / "Roaming"),
+    )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="default Zed data directory layout is Windows-specific")
+def test_default_zed_data_directory_is_rejected_even_when_nested() -> None:
+    zed_default = Path(r"C:\Users\me\AppData\Local\Zed")
+    nested = zed_default / "probe-home"
+    invocation = ZedInvocation(
+        argv=("Zed.exe", "--user-data-dir", str(nested)),
+        user_data_root=str(nested),
+        discovered_from="zed --help",
+    )
+    with pytest.raises(ProbeError, match="ambient profile"):
+        validate_zed_invocation(
+            invocation,
+            hermetic_root=nested,
+            ambient_profile_roots=(zed_default,),
+        )
+
+
 def test_discovery_uses_help_text_flag_not_historical_default() -> None:
     invocation = discover_hermetic_zed_invocation(
         executable=Path(r"C:\Tools\Zed.exe"),
@@ -468,7 +537,101 @@ def test_discovery_uses_help_text_flag_not_historical_default() -> None:
     assert "--isolated-user-data" in invocation.argv
     assert "--user-data-dir" not in invocation.argv
     assert invocation.user_data_root == str(HERMETIC_ROOT.resolve())
+    assert invocation.environment_bind == ()
     validate_zed_invocation(invocation, hermetic_root=HERMETIC_ROOT)
+
+
+def test_discovery_prefers_app_binary_from_version_path(tmp_path: Path) -> None:
+    app = tmp_path / "Zed.exe"
+    cli = tmp_path / "bin" / "Zed.exe"
+    cli.parent.mkdir(parents=True)
+    app.write_bytes(b"app")
+    cli.write_bytes(b"cli")
+    invocation = discover_hermetic_zed_invocation(
+        executable=cli,
+        version_output=f"Zed 1.15.0 deadbeef  – \\\\?\\{app}",
+        help_output="  --user-data-dir <path>\n",
+        executable_sha256="b" * 64,
+        hermetic_root=HERMETIC_ROOT,
+    )
+    assert invocation.argv[0] == str(app)
+    assert invocation.environment_bind == ()
+    assert "--user-data-dir" in invocation.argv
+
+
+def test_discovery_selects_sibling_app_when_version_omits_path(tmp_path: Path) -> None:
+    """Force the ``_sibling_zed_app_binary`` tier: no path in version_output."""
+    install = tmp_path / "Programs" / "Zed"
+    app = install / "Zed.exe"
+    cli = install / "bin" / "Zed.exe"
+    cli.parent.mkdir(parents=True)
+    app.write_bytes(b"app")
+    cli.write_bytes(b"cli")
+    invocation = discover_hermetic_zed_invocation(
+        executable=cli,
+        version_output="Zed 1.15.0 e17dc4f9d50db73a458b64dcce50ecd4878b98a3",
+        help_output="  --user-data-dir <path>\n",
+        executable_sha256="c" * 64,
+        hermetic_root=HERMETIC_ROOT,
+    )
+    assert invocation.argv[0] == str(app.resolve())
+    assert invocation.environment_bind == ()
+    assert "--user-data-dir" in invocation.argv
+
+
+def test_launch_argv_omits_cli_only_flags_absent_from_app_help() -> None:
+    """App ``Zed.exe`` help omits ``--new``/``--wait``/``--foreground``; CLI help includes them.
+
+    Shot 2 passed CLI-only flags to the app binary and exited 2 with no window.
+    """
+    invocation = ZedInvocation(
+        argv=(r"C:\Programs\Zed\Zed.exe", "--user-data-dir", str(HERMETIC_ROOT)),
+        user_data_root=str(HERMETIC_ROOT),
+        discovered_from="zed --help",
+    )
+    app_help = (
+        "Usage: Zed.exe [OPTIONS] [PATHS_OR_URLS]...\n"
+        "      --user-data-dir <DIR>\n"
+        "  -h, --help\n"
+    )
+    workspace = Path(r"C:\scratch\zed-workspace")
+    argv = build_real_zed_launch_argv(invocation, workspace=workspace, launch_help=app_help)
+    assert argv == (
+        r"C:\Programs\Zed\Zed.exe",
+        "--user-data-dir",
+        str(HERMETIC_ROOT),
+        str(workspace),
+    )
+    assert "--new" not in argv
+    assert "--wait" not in argv
+    assert "--foreground" not in argv
+
+
+def test_launch_argv_keeps_cli_flags_when_launch_help_lists_them() -> None:
+    invocation = ZedInvocation(
+        argv=(r"C:\Programs\Zed\bin\Zed.exe", "--user-data-dir", str(HERMETIC_ROOT)),
+        user_data_root=str(HERMETIC_ROOT),
+        discovered_from="zed --help",
+    )
+    cli_help = "  --foreground\n  -n, --new\n  -w, --wait\n  --user-data-dir <DIR>\n"
+    workspace = Path(r"C:\scratch\zed-workspace")
+    argv = build_real_zed_launch_argv(invocation, workspace=workspace, launch_help=cli_help)
+    assert "--foreground" in argv
+    assert "--new" in argv
+    assert "--wait" in argv
+    assert argv[-1] == str(workspace)
+
+
+def test_launch_log_excerpt_runs_through_evidence_sanitizer(tmp_path: Path) -> None:
+    from tools.probe_p11_zed_session_load import _launch_log_excerpt
+
+    canary = "sk-" + ("a" * 16)
+    log_path = tmp_path / "zed-launch.log"
+    log_path.write_text(f"startup wire-dump {canary} trailing\n", encoding="utf-8", newline="\n")
+    excerpt = _launch_log_excerpt(log_path)
+    assert canary not in excerpt
+    assert "wire-dump" in excerpt
+    assert "trailing" in excerpt
 
 
 def test_discovery_fails_closed_when_help_omits_user_data_binding() -> None:
@@ -597,5 +760,136 @@ def test_acpx_baseline_accepts_isolated_advertisement_without_zed_claim() -> Non
     validate_acpx_baseline(evidence)
 
 
+def test_acpx_baseline_accepts_advertisement_without_live_set_mode_exchange() -> None:
+    """Optimus has no session/set_mode; baseline must not require that CLI path."""
+    evidence = AcpxBaselineEvidence(
+        acpx_version="0.12.0",
+        acpx_executable=r"C:\Tools\acpx.cmd",
+        acpx_sha256="a" * 64,
+        capability_payload={"loadSession": True, "sessionCapabilities": {}},
+        origin_a_launches=0,
+        session_load_exchange=None,
+    )
+    validate_acpx_baseline(evidence)
+
+
+def test_acpx_baseline_rejects_non_empty_live_load_result() -> None:
+    evidence = AcpxBaselineEvidence(
+        acpx_version="0.12.0",
+        acpx_executable=r"C:\Tools\acpx.cmd",
+        acpx_sha256="a" * 64,
+        capability_payload={"loadSession": True, "sessionCapabilities": {}},
+        origin_a_launches=0,
+        session_load_exchange={
+            "request": {"method": "session/load"},
+            "response": {"result": {"sessionId": "x"}},
+        },
+    )
+    with pytest.raises(ProbeError, match="session/load with"):
+        validate_acpx_baseline(evidence)
+
+
 def test_real_zed_cli_mode_does_not_launch(tmp_path: Path) -> None:
     assert main(["--mode", "real-zed", str(tmp_path)]) == 1
+
+
+def test_preflight_failure_retains_sanitized_command_stderr() -> None:
+    result: dict[str, object] = {}
+    record_probe_command_failure(
+        result,
+        ProbeError(
+            "acpx_new_session",
+            "exit=1: captured command evidence",
+            CommandResult(
+                command=["acpx", "sessions", "new"],
+                returncode=1,
+                stdout="",
+                stderr="agent exited: Redis is not reachable\nOPTIMUS_API_KEY=live-secret\n",
+            ),
+        ),
+    )
+    assert result["failure"]["stage"] == "acpx_new_session"
+    evidence = result["acpx_failure"]
+    assert evidence["exit_code"] == 1
+    assert "Redis is not reachable" in str(evidence["stderr"])
+    assert "live-secret" not in json.dumps(result)
+
+
+def test_baseline_empty_load_failure_keeps_stdout_records() -> None:
+    result: dict[str, object] = {}
+    record_probe_command_failure(
+        result,
+        ProbeError(
+            "acpx_baseline",
+            "isolated probe must answer session/load with {}",
+            CommandResult(
+                command=["acpx", "set-mode", "x"],
+                returncode=1,
+                stdout=(
+                    '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,'
+                    '"message":"Persistent ACP session missing","data":{"detailCode":"SESSION_RESUME_REQUIRED"}}}\n'
+                ),
+                stderr="",
+            ),
+        ),
+    )
+    assert result["acpx_failure"]["stdout_records"]
+    assert "SESSION_RESUME_REQUIRED" in json.dumps(result["acpx_failure"])
+
+
+def test_iter_acp_messages_parses_ndjson_and_pairs_session_load() -> None:
+    request = {"jsonrpc": "2.0", "id": 7, "method": "session/load", "params": {"sessionId": "s1"}}
+    response = {"jsonrpc": "2.0", "id": 7, "result": {}}
+    zed_bytes = (json.dumps(request) + "\n").encode("utf-8")
+    agent_bytes = (json.dumps(response) + "\n").encode("utf-8")
+    exchange = extract_session_load_from_messages(iter_acp_messages(zed_bytes), iter_acp_messages(agent_bytes))
+    assert exchange is not None
+    assert exchange["request"]["method"] == "session/load"
+    assert exchange["response"]["result"] == {}
+    reconstructed = reconstruct_sanitized_relay_bytes(iter_acp_messages(zed_bytes))
+    assert b"session/load" in reconstructed
+
+
+def test_iter_acp_messages_parses_content_length_frames() -> None:
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}).encode("utf-8")
+    framed = b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body
+    messages = iter_acp_messages(framed)
+    assert messages[0]["method"] == "initialize"
+
+
+def test_seed_hermetic_settings_and_launcher_stay_under_scratch(tmp_path: Path) -> None:
+    hermetic = tmp_path / "zed-home"
+    appdata = tmp_path / "zed-appdata"
+    launcher = write_isolated_agent_launcher(tmp_path / "probe-build", tmp_path / "probe-source")
+    settings = seed_hermetic_zed_settings(
+        appdata,
+        relay_command="python",
+        relay_args=["relay.py", "--capture-root", str(tmp_path / "capture")],
+    )
+    assert launcher.is_relative_to(tmp_path)
+    assert settings == (appdata / "Zed" / "settings.json").resolve()
+    assert settings.is_relative_to(appdata)
+    assert not (hermetic / "settings.json").exists()
+    payload = json.loads(settings.read_text(encoding="utf-8"))
+    assert payload["agent_servers"]["optimus"]["command"] == "python"
+    assert "loadSession" not in settings.read_text(encoding="utf-8")
+    assert "probe-source" in launcher.read_text(encoding="utf-8")
+    bind = hermetic_appdata_environment_bind(appdata)
+    assert bind == (("APPDATA", str(appdata.resolve())),)
+    assert not any(key in {"USERPROFILE", "HOME", "LOCALAPPDATA"} for key, _ in bind)
+
+
+def test_seed_hermetic_settings_uses_windows_appdata_zed_layout(tmp_path: Path) -> None:
+    """Windows settings live under %APPDATA%\\Zed\\settings.json, not --user-data-dir."""
+    appdata = tmp_path / "AppData" / "Roaming"
+    settings = seed_hermetic_zed_settings(
+        appdata,
+        relay_command="python",
+        relay_args=["relay.py"],
+    )
+    assert settings.name == "settings.json"
+    assert settings.parent.name == "Zed"
+    assert settings.parent.parent == appdata.resolve()
+    bind = hermetic_appdata_environment_bind(appdata)
+    assert len(bind) == 1
+    assert bind[0][0] == "APPDATA"
