@@ -48,7 +48,7 @@
 | `session/load` advertising, temporary advertisement probes, and Zed behavior | Out of scope; `P11-FEAT-ZED-RESUME` owns it. This plan must not change ACP session capabilities. |
 | New MCP transports, HTTP/SSE capability relaxation, authentication, SDK/dependency changes, retries, or replay | Out of scope; retain their existing P11-FU-9 / client-MCP backlog custody. |
 | Descriptor pinning/allowlists and dynamic descriptor-to-model-tool promotion | Out of scope; retain the named P11-FU-9 deferred entries. |
-| A fresh-empty-`Context()` trace grouping concern | Out of scope; `P11.5-FU-1`/Plan 11.21 Task 8 watch ownership remains unchanged. |
+| A fresh-empty-`Context()` trace grouping concern | Out of scope; the existing Plan 11.5 Task 8 real-Phoenix watch owns it. |
 | Real client-MCP, `acpx`, Docker/HTTP, Gateway, Phoenix, credential-store, or GUI runs | Not run by this plan’s drafting package. The implementer records any selected real tier as executed or unrun and retains its named evidence/disposition. |
 
 ## Tasks
@@ -294,4 +294,3 @@
 - **Evidence review:** The real tier is an independently authored `acpx` driver and live fixtures; it is explicitly unrun if unavailable. Unit fakes cannot discharge it. Evidence is attached to the owning behavior task, not deferred to a generic final claim.
 - **Digest and blast-radius review:** The final frozen artifact check hashes `git show HEAD:<path>`, not the worktree. Tasks 1-3 require a whole-codebase search for all registry/issuance call sites before changing their contract and include affected callers in their focused suite.
 - **Placeholder scan:** No unresolved placeholder or unnamed deferred work remains. The precise production lazy composition file is intentionally discovered by Task 2’s real-materialization RED rather than guessed from a non-existent production `ClientMcpToolService` subclass; this reflects the current repository fact that `client_catalog.py` supplies the registry/authorizer primitives while tests currently provide the concrete dispatch subclass.
-
