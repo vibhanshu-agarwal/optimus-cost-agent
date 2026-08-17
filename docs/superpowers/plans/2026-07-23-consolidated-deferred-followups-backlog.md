@@ -143,7 +143,7 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P11-FU-5` | Windows Subprocess Handle-Duplication Flake (WinError 6/50) | Open | LOW        | Future Windows subprocess-lifecycle evidence lane | [Plan 11.17 disposition](../../../reports/plan-11-17-p11-fu-5-windows-disposition.md); retains distinct FU-29 custody |
 | `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | LOW        | Future Windows Gateway lifecycle-evidence lane | [Plan 11.17 root-cause record](../../../reports/plan-11-17-p11-fu-6-root-cause.md); recurrence retained; 59-clean bound inapplicable |
 | `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Promoted -> [Plan 11.16](2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md) | MEDIUM     | Plan 11.16; closure gate deferred with `P11-FU-6` | [Windows residual](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md); Plan 11.17 recorded FU-6 open disposition |
-| `P11.5-FU-1` | Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics | Open | MEDIUM     | `P11-FEAT-GATEWAY-COST-OBS` | Acceptance criteria in entry |
+| `P11.5-FU-1` | Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics | Promoted -> [Plan 11.21](2026-08-17-plan-11-21-p11-5-fu-1-otlp-failure-delivery-state.md) | MEDIUM     | `P11-FEAT-GATEWAY-COST-OBS` | Acceptance criteria in entry |
 | `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Open | LOW        | Future Gateway migration design | Acceptance criteria in entry |
 | ~~`P11-FU-9`~~ | ~~Client-Supplied ACP `mcpServers` Disposition~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Dedicated P11-FU-9 lane~~ | ~~PR #119 / `9a93137`; [closure evidence](../../../reports/p11-fu-9-client-mcp-closure-evidence.md)~~ |
 | `P11-FU-10` | Complete ACP Error-Code Registry Audit | Closed | HIGH       | [Plan 11.18](2026-08-15-plan-11-18-acp-error-code-registry-audit-implementation.md) | PR #158 (merge 7d4e466); [acpx evidence](../../../reports/plan-11-18-p11-fu-10-acpx-error-code-evidence.md) |
@@ -713,8 +713,9 @@ success, and does not invent cost/accounting. A genuinely transient network hicc
 retry-worthiness signal but remains honest (`failed`). Accepted as non-blocking for Task 4
 sign-off; must retain named pool custody before Plan 11.5 close.
 
-**Designated slice:** `P11-FEAT-GATEWAY-COST-OBS` (follow-up plan number assigned at pickup —
-do not silently fold into an unfinished Task 4/5/8 checkpoint without a reviewed amendment).
+**Designated slice:** [Plan 11.21](2026-08-17-plan-11-21-p11-5-fu-1-otlp-failure-delivery-state.md).
+Parent slice remains `P11-FEAT-GATEWAY-COST-OBS`; do not silently fold this mapping into an
+unfinished Plan 11.5 Task 4/5/8 checkpoint.
 
 **Acceptance criteria:** A future pickup must:
 
@@ -740,8 +741,9 @@ for every event with no `parent_span_id`, so multiple independent root-level eve
 a wire `trace_id` may land as separate real OTel traces. Task 4 tests only exercise single-root
 batches; Plan 11.5 Task 8 real Phoenix evidence must prove or disposition this.
 
-**Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Drafted 2026-07-29 for
-operator review of pool custody wording.
+**Status:** Promoted -> [Plan 11.21](2026-08-17-plan-11-21-p11-5-fu-1-otlp-failure-delivery-state.md).
+Scheduled 2026-08-18. Not Closed. Raising `_AlwaysTransientSpanExporter`, Plan 11.5 Task 4, and
+the Task 8 trace-grouping watch are not this entry's closure evidence.
 
 **Operator confirmation (2026-08-15):** Confirmed at the default `MEDIUM`. The gap changes live
 telemetry delivery-state semantics when the real exporter returns `FAILURE`, but the current detail

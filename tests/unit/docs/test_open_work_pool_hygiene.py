@@ -214,6 +214,9 @@ EXPECTED_FEATURE_SCOPE_TOKENS = {
 PROMOTED_PLAN_117_STATUS = (
     "Promoted -> [Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md)"
 )
+PROMOTED_PLAN_1121_STATUS = (
+    "Promoted -> [Plan 11.21](2026-08-17-plan-11-21-p11-5-fu-1-otlp-failure-delivery-state.md)"
+)
 ALLOWED_PRIORITIES = frozenset({"HIGH", "MEDIUM", "LOW"})
 
 PRODUCT_FEATURE_IDS = frozenset(
@@ -1354,6 +1357,28 @@ def test_product_checkpoint_log_location_remains_gitignored() -> None:
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_plan_1121_keeps_p115_fu1_separate_scheduled_custody() -> None:
+    """P11.5-FU-1 is promoted to Plan 11.21; raising-transient, Task 4, and Task 8 are not closure."""
+    pool = _read(OPTIMUS_POOL)
+    indexed = _fu_index_rows(pool)
+    entries = _entry_sections(pool)
+
+    item, index_status = indexed["P11.5-FU-1"]
+    detail = entries[f"P11.5-FU-1: {item}"]
+    detail_status = _status_token(detail)
+
+    assert index_status == PROMOTED_PLAN_1121_STATUS
+    assert detail_status == PROMOTED_PLAN_1121_STATUS
+    assert (PLANS_ROOT / "2026-08-17-plan-11-21-p11-5-fu-1-otlp-failure-delivery-state.md").is_file()
+
+    assert "_AlwaysTransientSpanExporter" in detail
+    assert "Task 4" in detail
+    assert "Task 8" in detail
+    assert index_status != "Closed"
+    assert detail_status != "Closed"
+    assert _resolution(detail_status) == "unresolved"
 
 
 def test_plan_1116_deadline_seams_keep_separate_scheduled_custody() -> None:
