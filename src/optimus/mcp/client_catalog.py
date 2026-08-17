@@ -558,6 +558,24 @@ class ClientMcpToolService:
         tool = catalog.tool_by_name(tool_name)
         return tool is not None and tool.side_effect_class == "write"
 
+    def _issue_one_call_approval(self, request: PreToolRequest) -> ClientMcpOneCallApproval | None:
+        if request.mcp_authority != "client_session":
+            return None
+        if not request.session_id or not request.mcp_server_id or not request.mcp_tool_name:
+            return None
+        catalog: ClientMcpCatalog = object.__getattribute__(self, "_catalog")
+        if request.mcp_server_id != catalog.identity.server_name:
+            return None
+        authorizer: ClientMcpCallAuthorizer = object.__getattribute__(self, "_authorizer")
+        lease = authorizer._lease
+        if lease is None or request.session_id != lease.session_id:
+            return None
+        return authorizer.issue_one_call_approval(
+            session_id=request.session_id,
+            tool_name=request.mcp_tool_name,
+            arguments=request.mcp_arguments,
+        )
+
     def call_tool(
         self,
         tool_name: str,
@@ -646,6 +664,17 @@ class ClientMcpSessionService:
     def _lookup(self, server: str) -> ClientMcpToolService | None:
         services: dict[str, ClientMcpToolService] = object.__getattribute__(self, "_services")
         return services.get(server)
+
+    def issue_one_call_approval(self, request: PreToolRequest) -> ClientMcpOneCallApproval | None:
+        if request.mcp_authority != "client_session":
+            return None
+        server = request.mcp_server_id
+        if not server:
+            return None
+        service = self._lookup(server)
+        if service is None:
+            return None
+        return service._issue_one_call_approval(request)
 
     def list_tools(self, server: str) -> tuple[AgentMcpToolOutput, AgentToolCall]:
         service = self._lookup(server)
