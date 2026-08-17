@@ -560,11 +560,10 @@ class AcpDuplexAdapter:
             return await self._outbound.request("session/request_permission", params)
 
         def _issue(request: Any) -> ClientMcpOneCallApproval | None:
-            # Fail closed until a per-server ClientMcpCallAuthorizer is attached to the
-            # session tool service (P11-FU-20). Fabricating a token here would look like an
-            # IDE allow succeeded while downstream authorize() rejects with one_call_unknown.
-            del request
-            return None
+            state = session.client_mcp_state
+            if state is None:
+                return None
+            return state.tool_service.issue_one_call_approval(request)
 
         return AcpMcpPermissionBroker(
             session_id=session.session_id,
