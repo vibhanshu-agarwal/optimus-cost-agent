@@ -1,0 +1,120 @@
+{
+  "schema": "plan-11-19-zed-session-load-reprobe-v1",
+  "recorded_at_utc": "2026-08-17T16:37:37.933990+00:00",
+  "commit": "1be938c5e6666c75e0892b6afb54e3afb1783625",
+  "finding": "INDETERMINATE",
+  "indeterminate_reason": "RELAY_FAILURE",
+  "mode": "real-zed",
+  "zed": {
+    "version": "Zed 1.15.0 e17dc4f9d50db73a458b64dcce50ecd4878b98a3  \u2013 \\\\?\\C:\\Users\\pc\\AppData\\Local\\Programs\\Zed\\Zed.exe",
+    "executable": "C:\\Users\\pc\\AppData\\Local\\Programs\\Zed\\bin\\Zed.exe",
+    "executable_sha256": "af563d07ec1557f9e13226291a68466cf350c5c4faeeaa3641bfa4b7fec07903"
+  },
+  "acpx": {
+    "version": "0.12.0",
+    "executable": "C:\\Users\\pc\\AppData\\Roaming\\npm\\acpx.cmd",
+    "executable_sha256": "212da5e557d5d621af89e5bf7f86dbe59e674ba69595c14038bbcdde39c37f79"
+  },
+  "normal_source": {
+    "commit": "1be938c5e6666c75e0892b6afb54e3afb1783625",
+    "sha256_before": "20d63091752ca5a164aabe0bba8b329738b4533d0f58664f8541cb08e94a5a58",
+    "sha256_after": "20d63091752ca5a164aabe0bba8b329738b4533d0f58664f8541cb08e94a5a58"
+  },
+  "isolated_source": {
+    "sha256": "60fbadcc23c6426ed6dd27ecbdcad9755af7ec035b2a46dc4f0c1f3bee7f0006"
+  },
+  "isolated_build": {
+    "sha256": "78509d947a490a3b6ec239c1e7ff9e4b2bd04da3184c778697e525771d70e8de"
+  },
+  "invocation": {
+    "discovered_from": "zed --help",
+    "argv": [
+      "C:\\Users\\pc\\AppData\\Local\\Programs\\Zed\\Zed.exe",
+      "--user-data-dir",
+      "C:\\Users\\pc\\AppData\\Local\\Temp\\p1119-real-zed-gwav5lkx\\zed-home"
+    ],
+    "user_data_root": "C:\\Users\\pc\\AppData\\Local\\Temp\\p1119-real-zed-gwav5lkx\\zed-home",
+    "help_sha256": "23e9b4e904748a19d1cdb95d1c650a545c61fdb9611dbe035082b03c25bdaf4e",
+    "environment_bind": [
+      [
+        "APPDATA",
+        "C:\\Users\\pc\\AppData\\Local\\Temp\\p1119-real-zed-gwav5lkx\\zed-appdata"
+      ]
+    ]
+  },
+  "zed_argv": [
+    "C:\\Users\\pc\\AppData\\Local\\Programs\\Zed\\Zed.exe",
+    "--user-data-dir",
+    "C:\\Users\\pc\\AppData\\Local\\Temp\\p1119-real-zed-gwav5lkx\\zed-home",
+    "C:\\Users\\pc\\AppData\\Local\\Temp\\p1119-real-zed-gwav5lkx\\zed-workspace"
+  ],
+  "zed_launch": {
+    "returncode": 0,
+    "log_captured": true,
+    "log_excerpt": ""
+  },
+  "hermetic_settings": {
+    "appdata_bind": "C:\\Users\\pc\\AppData\\Local\\Temp\\p1119-real-zed-gwav5lkx\\zed-appdata",
+    "path": "C:\\Users\\pc\\AppData\\Local\\Temp\\p1119-real-zed-gwav5lkx\\zed-appdata\\Zed\\settings.json",
+    "present_before_launch": true,
+    "present_after_launch": true,
+    "sha256_before": "242ae3e25731ef9686755217740b3b7f388fd7861b4e9894f0ca41ebff54b5ba",
+    "sha256_after": "242ae3e25731ef9686755217740b3b7f388fd7861b4e9894f0ca41ebff54b5ba"
+  },
+  "isolation": {
+    "normal_agent_load_session_advertised": false,
+    "isolated_probe_load_session_advertised": true,
+    "cleanup_dry_run_verified": true,
+    "cleanup_verified": true,
+    "hermetic_zed_root": "C:\\Users\\pc\\AppData\\Local\\Temp\\p1119-real-zed-gwav5lkx\\zed-home",
+    "isolated_build_root": "C:\\Users\\pc\\AppData\\Local\\Temp\\p1119-real-zed-gwav5lkx\\probe-build",
+    "isolated_source_root": "C:\\Users\\pc\\AppData\\Local\\Temp\\p1119-real-zed-gwav5lkx\\probe-source"
+  },
+  "capability_payload": {
+    "loadSession": true,
+    "mcpCapabilities": {
+      "http": false,
+      "sse": false
+    },
+    "promptCapabilities": {
+      "audio": false,
+      "embeddedContext": false,
+      "image": false
+    },
+    "sessionCapabilities": {}
+  },
+  "load_response_contract": {},
+  "relay": {
+    "source": "opaque-relay-post-run",
+    "zed_to_agent_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "agent_to_zed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "note": "Empty digests: no ACP bytes were captured; bins are zero-length placeholders for verifier layout."
+  },
+  "captured_exchange": null,
+  "bounded_observations": [
+    {
+      "kind": "operator_ui",
+      "name": "zed_restricted_mode_unrecognized_project",
+      "claim_level": "bounded_observation",
+      "text": "Operator observed Zed Unrecognized Project / Restricted Mode for the hermetic zed-workspace. Not a captured ACP protocol error; not UNREACHABLE."
+    }
+  ],
+  "failure": {
+    "stage": "relay",
+    "message": "opaque relay capture files are missing (hermetic_settings verified present)"
+  },
+  "origin_a_launches": 0,
+  "zed_launches": 1,
+  "live_zed_lane": "closed",
+  "shots_pinned": 4,
+  "non_claims": [
+    "Does not re-diagnose Zed 1.13.1.",
+    "Does not establish origin-A correlation or authorize a budget-expansion amendment.",
+    "Does not claim UNREACHABLE; no captured protocol error exists."
+  ],
+  "files": {
+    "report.md": "43123269143fcc86748351ff94a59af0b18d846f27b72c178f971477ea836fde",
+    "relay/zed-to-agent.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "relay/agent-to-zed.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}
