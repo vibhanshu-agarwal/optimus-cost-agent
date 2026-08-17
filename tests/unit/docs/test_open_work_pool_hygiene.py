@@ -214,6 +214,10 @@ EXPECTED_FEATURE_SCOPE_TOKENS = {
 PROMOTED_PLAN_117_STATUS = (
     "Promoted -> [Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md)"
 )
+PROMOTED_PLAN_1120_STATUS = (
+    "Promoted -> [Plan 11.20](2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md)"
+)
+FABRICATED_P11_FU_20_SCHEDULED_TOKEN = "Scheduled — Plan 11.20"
 ALLOWED_PRIORITIES = frozenset({"HIGH", "MEDIUM", "LOW"})
 
 PRODUCT_FEATURE_IDS = frozenset(
@@ -1417,3 +1421,49 @@ def test_plan_1118_current_docs_close_p11_fu_10() -> None:
     assert "plan-11-18-p11-fu-10-acpx-error-code-evidence.md" in p11_fu_10_entry
     assert "Closed" in p11_fu_10_status
     assert "-32002" in frozen_plan_117_text
+
+
+def test_plan_1120_p11_fu_20_scheduled_custody_rejects_p11_fu_9_task_6_closure() -> None:
+    """P11-FU-20 must be Plan 11.20-promoted; P11-FU-9 Task 6 fail-closed is not closure."""
+    pool = _read(OPTIMUS_POOL)
+    indexed = _fu_index_rows(pool)
+    entries = _entry_sections(pool)
+    tables = {identity: rows for identity, _header, rows in _markdown_tables(pool)}
+    followup_rows = tables[("Follow-up status index", 0)]
+
+    item, index_status = indexed["P11-FU-20"]
+    heading = f"P11-FU-20: {item}"
+    body = entries[heading]
+    detail_status = _status_token(body)
+    status_line = next(
+        match.group("value").strip() for match in STATUS_LINE_RE.finditer(body)
+    )
+    index_row = next(row for row in followup_rows if row["ID"] == "`P11-FU-20`")
+
+    assert item == "Attach per-server catalog/authorizer to session tool service for real one-call issuance"
+    assert index_status == PROMOTED_PLAN_1120_STATUS
+    assert detail_status == PROMOTED_PLAN_1120_STATUS
+    assert index_row["Status"] == PROMOTED_PLAN_1120_STATUS
+    assert status_line.startswith(f"{PROMOTED_PLAN_1120_STATUS}.")
+    assert _resolution(index_status) == "unresolved"
+    assert _resolution(detail_status) == "unresolved"
+
+    assert index_status != FABRICATED_P11_FU_20_SCHEDULED_TOKEN
+    assert detail_status != FABRICATED_P11_FU_20_SCHEDULED_TOKEN
+    assert FABRICATED_P11_FU_20_SCHEDULED_TOKEN not in index_status
+    assert not status_line.startswith(FABRICATED_P11_FU_20_SCHEDULED_TOKEN)
+
+    assert index_status != "Closed"
+    assert detail_status != "Closed"
+    assert not status_line.startswith("Closed")
+    task6_only_closure = (
+        (index_status == "Closed" or detail_status == "Closed")
+        and "Task 6" in body
+        and "Plan 11.20" not in index_status
+    )
+    assert not task6_only_closure
+
+    assert "_mcp_permission_broker_for" in body
+    assert "disposition_for_new_session" in body
+    assert "test_spec_mcp_broker_issue_fails_closed_until_catalog_authorizer_attached" in body
+    assert "issue` → `None`" in body or "issue` -> `None`" in body or "fails closed" in body.casefold()

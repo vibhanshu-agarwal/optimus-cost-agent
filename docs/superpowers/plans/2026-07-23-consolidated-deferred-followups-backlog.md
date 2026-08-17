@@ -167,7 +167,7 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | ~~`P11-FU-17`~~ | ~~WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Native WSL clone operating decision~~ | ~~Resolved by verified ext4 native-clone gate; proof report 2026-08-14~~ |
 | ~~`P11-FU-18`~~ | ~~Workspace-identity `ctime` coalescing fail-open~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.15~~ | ~~[release report](../../../reports/plan-11-15-durable-approval-identity-release.md); equal-ctime topology evidence only~~ |
 | ~~`P11-FU-19`~~ | ~~WSL client-SDK operation-deadline supervisor race~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.16~~ | ~~[Windows](../../../reports/plan-11-16-p11-fu-19-windows-evidence.md); [WSL](../../../reports/plan-11-16-p11-fu-19-wsl-evidence.md)~~ |
-| `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Open | MEDIUM     | Future client-MCP runtime follow-up | Acceptance criteria in entry |
+| `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Promoted -> [Plan 11.20](2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md) | MEDIUM     | Future client-MCP runtime follow-up | Acceptance criteria in entry |
 | ~~`P11-FU-21`~~ | ~~Custody Relay Broken-Pipe Exit-Code Propagation Defect~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.14~~ | ~~Plan 11.14; `reports/plan-11-14-p11-fu-21-custody-relay-exit-code-evidence.md`~~ |
 | ~~`P11.5-FU-2`~~ | ~~Consistent local env / Redis / Phoenix / Gateway startup for live runs~~ | ~~Closed~~ | ~~HIGH~~   | ~~Plan 11.6~~ | ~~PR #97 / `dc9a080`; [operator runbook](../../runbooks/local-live-dependencies.md)~~ |
 
@@ -1468,8 +1468,10 @@ before implementation.
 **Related prior art:** Same "mock manufactures agreement" shape as Task 5's FakeClientMcpService
 gap; disposition-never-opens-transport constraint from P11-FU-9 design §3.
 
-**Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Task 6 may close with the
-fail-closed seam + this named custody entry. Not an undisclosed residual.
+**Status:** Promoted -> [Plan 11.20](2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md). Scheduled
+2026-08-18. Original diagnosis retained: Task 6 may close with the fail-closed seam + this named
+custody entry. Frozen P11-FU-9 Task 6 fail-closed evidence is not this item's closure. Not an
+undisclosed residual.
 
 ### P11-FU-21: Custody Relay Broken-Pipe Exit-Code Propagation Defect
 
