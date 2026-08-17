@@ -202,6 +202,8 @@ class _RetryTrackingSpanExporter(SpanExporter):
                 transient = True
             except Exception:  # noqa: BLE001 — any other delegate fault is a permanent export failure
                 result = SpanExportResult.FAILURE
+            if result is SpanExportResult.FAILURE and isinstance(self._delegate, OTLPSpanExporter):
+                transient = True
             if result == SpanExportResult.SUCCESS:
                 self.succeeded = True
                 return SpanExportResult.SUCCESS

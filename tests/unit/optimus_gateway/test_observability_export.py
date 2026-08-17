@@ -3,15 +3,18 @@
 Covers `GatewayTraceBatch` validation, `OpenTelemetryTraceExporter` span
 mapping/redaction/delivery-state behavior with an injected recording
 `SpanExporter`, and `GatewayServiceConfig`'s Gateway-only OTLP endpoint
-plumbing. Never touches a real network/OTLP collector: all exporter tests
-inject a fake `SpanExporter` in place of `OTLPSpanExporter`.
+plumbing. Never touches a real network/OTLP collector: exporter tests inject
+a fake `SpanExporter` or a real `OTLPSpanExporter` subclass whose `export()`
+returns locally without calling `super().export()`.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Any
 
 import pytest
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
 from optimus_gateway.models import GatewayServiceConfig
@@ -177,6 +180,13 @@ class _AlwaysPermanentlyFailingSpanExporter(SpanExporter):
         return SpanExportResult.FAILURE
 
 
+class ReturnedFailureOtlpExporter(OTLPSpanExporter):
+    """Real SDK subclass whose `export()` returns FAILURE without a network call."""
+
+    def export(self, spans: Any) -> SpanExportResult:
+        return SpanExportResult.FAILURE
+
+
 def trace_batch_with_root_and_child_events() -> GatewayTraceBatch:
     root = GatewayTraceEvent(
         schema_version="1.0",
@@ -272,7 +282,7 @@ def test_exporter_reports_delivered_on_first_time_success():
 
     assert result.delivery_state is TraceDeliveryState.DELIVERED
     assert result.retry_count == 0
-    assert result.final_disposition
+    assert result.final_disposition == "exported_to_otlp_collector"
 
 
 def test_exporter_retries_once_on_transient_failure_then_succeeds():
@@ -287,13 +297,15 @@ def test_exporter_retries_once_on_transient_failure_then_succeeds():
 
 
 def test_exporter_reports_failed_after_bounded_retry_on_permanent_failure():
-    exporter = OpenTelemetryTraceExporter(otlp_endpoint=None, span_exporter=_AlwaysPermanentlyFailingSpanExporter())
+    permanent_exporter = _AlwaysPermanentlyFailingSpanExporter()
+    assert not isinstance(permanent_exporter, OTLPSpanExporter)
+    exporter = OpenTelemetryTraceExporter(otlp_endpoint=None, span_exporter=permanent_exporter)
 
     result = exporter.export(_single_event_batch())
 
     assert result.delivery_state is TraceDeliveryState.FAILED
     assert result.retry_count == 1
-    assert result.final_disposition
+    assert result.final_disposition == "permanent_export_failure"
 
 
 def test_exporter_reports_queued_when_transient_failures_exhaust_retry_budget():
@@ -303,7 +315,27 @@ def test_exporter_reports_queued_when_transient_failures_exhaust_retry_budget():
 
     assert result.delivery_state is TraceDeliveryState.QUEUED
     assert result.retry_count == 1
-    assert result.final_disposition
+    assert result.final_disposition == "transient_export_failure_retry_budget_exhausted"
+
+
+def test_exporter_reports_queued_when_real_otlp_exporter_returns_failure():
+    """Returned `SpanExportResult.FAILURE` from a real `OTLPSpanExporter` subclass
+    is retryable exhaustion (`queued`), not a permanent `failed`.
+
+    The double is the concrete SDK type; it returns FAILURE without raising and
+    without calling `super().export()`, so this hits the production type/result
+    boundary without a network call.
+    """
+    otlp_exporter = ReturnedFailureOtlpExporter(endpoint="http://127.0.0.1:9")
+    assert isinstance(otlp_exporter, OTLPSpanExporter)
+    assert type(otlp_exporter) is not OTLPSpanExporter
+    exporter = OpenTelemetryTraceExporter(otlp_endpoint=None, span_exporter=otlp_exporter)
+
+    result = exporter.export(_single_event_batch())
+
+    assert result.delivery_state is TraceDeliveryState.QUEUED
+    assert result.retry_count == 1
+    assert result.final_disposition == "transient_export_failure_retry_budget_exhausted"
 
 
 def test_exporter_reports_not_configured_when_endpoint_missing_and_no_exporter_injected():
@@ -313,7 +345,7 @@ def test_exporter_reports_not_configured_when_endpoint_missing_and_no_exporter_i
 
     assert result.delivery_state is TraceDeliveryState.NOT_CONFIGURED
     assert result.retry_count == 0
-    assert result.final_disposition
+    assert result.final_disposition == "otlp_endpoint_not_configured"
 
 
 def test_exporter_not_configured_is_never_a_silent_successful_no_op():
@@ -402,8 +434,8 @@ def test_exporter_never_fabricates_cost_fields_on_the_result():
         retry_count=0,
         final_disposition="exported_to_otlp_collector",
     )
-    result_fields = {f.name for f in result.__dataclass_fields__.values()}
+    result_fields = {field.name for field in dataclasses.fields(GatewayTraceExportResult)}
     assert result_fields == {"trace_batch_id", "trace_ids", "delivery_state", "retry_count", "final_disposition"}
-    assert "gateway_usage" not in result_fields
-    assert "billing_units" not in result_fields
-    assert "cost_usd" not in result_fields
+    assert not hasattr(result, "cost_usd")
+    assert not hasattr(result, "gateway_usage")
+    assert not hasattr(result, "billing_units")
