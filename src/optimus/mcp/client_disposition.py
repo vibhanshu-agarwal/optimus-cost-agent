@@ -11,12 +11,21 @@ from pathlib import Path
 from typing import Any, Literal
 
 from optimus.acp.shapes import build_client_mcp_permission_params
-from optimus.guardrails.pre_tool import PreToolRequest
-from optimus.mcp.client_catalog import ClientMcpOneCallApproval, ClientMcpSessionService, McpPermissionBroker
+from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest
+from optimus.mcp.client_catalog import (
+    ClientMcpCallAuthorizer,
+    ClientMcpCatalogError,
+    ClientMcpDescriptorExposureAdapter,
+    ClientMcpOneCallApproval,
+    ClientMcpSessionService,
+    ClientMcpToolService,
+    McpPermissionBroker,
+)
 from optimus.mcp.client_config import (
     ClientMcpConfigError,
     ClientMcpConfigNormalizer,
     ClientMcpRuntimeCapability,
+    ClientMcpSafeIdentity,
 )
 from optimus.mcp.client_supervisor import MCPAsyncSupervisor
 from optimus.mcp.client_trust import (
@@ -196,6 +205,54 @@ class ClientMcpDisposition:
                     identity_fingerprint=fingerprint,
                 )
         return state
+
+    def materialize_tool_service(
+        self,
+        state: ClientMcpSessionState,
+        *,
+        identity: ClientMcpSafeIdentity,
+        raw_tools: Sequence[Mapping[str, object]],
+        workspace_root: Path,
+        elapsed_seconds: float = 0.0,
+        service_cls: type[ClientMcpToolService] = ClientMcpToolService,
+    ) -> ClientMcpToolService | None:
+        """Register one identity-bound service after catalog scan/budget admission.
+
+        Does not open transport or discover catalogs. Rejected, unavailable, and
+        no-catalog paths leave the session registry unchanged.
+        """
+        server_name = identity.server_name
+        if not state.is_leased(server_name):
+            return None
+        lease = state.lease_for(server_name)
+        if lease is None:
+            return None
+        fingerprint = compute_identity_fingerprint(identity, hmac_key=self._hmac_key)
+        if fingerprint != lease.identity_fingerprint:
+            return None
+        try:
+            catalog = ClientMcpDescriptorExposureAdapter().build(
+                identity,
+                raw_tools,
+                effect_ceiling=lease.effect_ceiling,
+                identity_fingerprint=lease.identity_fingerprint,
+                elapsed_seconds=elapsed_seconds,
+            )
+        except ClientMcpCatalogError:
+            return None
+        authorizer = ClientMcpCallAuthorizer(
+            catalog=catalog,
+            lease=lease,
+            durable=state.durable_for(server_name),
+        )
+        guard = PreToolGuard.for_workspace(
+            workspace_root=workspace_root,
+            allowed_network_hosts=(),
+            client_mcp_authorizer=authorizer,
+        )
+        service = service_cls(guard=guard, catalog=catalog, authorizer=authorizer)
+        state.tool_service.register(service)
+        return service
 
     async def _await_permission(
         self,
