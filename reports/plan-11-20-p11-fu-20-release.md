@@ -8,7 +8,7 @@
 
 | Lane | Pool status | Reason |
 |---|---|---|
-| `P11-FU-20` | **Promoted / Open** (not Closed) | Unit adapter wiring complete at `d718384`. Live one-call write-approval tier and `requires_acpx` session capture remain **unrun**. |
+| `P11-FU-20` | **Promoted / Open** (not Closed) | Unit adapter wiring complete at `d718384`. Seam built and unit-tested; production composition not yet wired. Live one-call write-approval tier and `requires_acpx` session capture remain **unrun**. |
 
 ## Claim-to-evidence
 
@@ -25,6 +25,7 @@
 
 ## Unrun / residual
 
+- **Production composition:** seam built and unit-tested; production composition not yet wired. `materialize_tool_service` is the only `.register()` site and has no production caller, so `_tool_service` still never receives a service in real operation. A live one-call run could not succeed until that composition exists.
 - **Live one-call write-approval tier:** not present in live files; would require Gateway credentials, trust ceremony, and a write-capable independently authored client-MCP path. **Unrun, not a pass.**
 - **`requires_acpx` live session capture:** `tests/e2e/test_client_mcp_acpx.py::test_empty_mcp_servers_array_is_exact_noop_via_acpx` — skip `acpx_capture_incomplete exit=1 stop=None`. **Unrun.**
 - **`requires_mcp_stdio` catalog pass:** `test_terraform_stdio_catalog_distributions_and_negotiation` passed (catalog/negotiation only; tokenized write=0). This is **not** one-call binding or `PreToolGuard` consumption evidence.
