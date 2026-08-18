@@ -27,6 +27,7 @@ PLAN_11_CHARTER = REPO_ROOT / "docs/superpowers/plans/2026-07-25-plan-11-v1-mile
 AGENTS_FILE = REPO_ROOT / "AGENTS.md"
 OPTIMUS_POOL_LINK_TARGET = "2026-07-23-consolidated-deferred-followups-backlog.md"
 PREREQUISITES_AMENDMENT_DATE = "2026-08-18"
+PREREQUISITES_AMENDMENT_COMMIT = "087560a8b2e6b2893004d768a81f55a4a5ea1c35"
 PREREQUISITE_TABLE_COLUMNS = (
     "Satisfied today?",
     "Owner",
@@ -471,6 +472,69 @@ def _markdown_table_cells(line: str) -> tuple[str, ...]:
     return tuple(cell.strip() for cell in stripped[1:-1].split("|"))
 
 
+def _assert_prerequisites_table(plan: str) -> None:
+    prerequisites = _h2_section(plan, "Prerequisites")
+    lines = prerequisites.splitlines()
+    for index, line in enumerate(lines[:-1]):
+        if not line.strip().startswith("|"):
+            continue
+        header = _markdown_table_cells(line)
+        delimiter = _markdown_table_cells(lines[index + 1])
+        if len(header) != len(delimiter) or not all(
+            MARKDOWN_TABLE_DELIMITER_CELL_RE.fullmatch(cell) for cell in delimiter
+        ):
+            continue
+        assert all(column in header for column in PREREQUISITE_TABLE_COLUMNS)
+        rows: list[dict[str, str]] = []
+        for body_line in lines[index + 2 :]:
+            if not body_line.strip().startswith("|"):
+                break
+            cells = _markdown_table_cells(body_line)
+            assert len(cells) == len(header)
+            rows.append(dict(zip(header, cells, strict=True)))
+        assert rows
+        for row in rows:
+            satisfied = row["Satisfied today?"].casefold()
+            assert satisfied in {"yes", "no", "unknown"}
+            assert row["Owner"].strip()
+            disposition = row["If unsatisfied: genuinely hard, or merely unauthorized?"].casefold()
+            if satisfied != "yes":
+                assert disposition.startswith(("genuinely hard", "merely unauthorized"))
+        return
+    raise AssertionError("Prerequisites section has no valid Markdown table")
+
+
+def _post_amendment_plan_paths(name_status: str) -> tuple[Path, ...]:
+    paths: list[Path] = []
+    for line in name_status.splitlines():
+        status, separator, relative_path = line.partition("\t")
+        if status != "A" or not separator:
+            continue
+        path = Path(relative_path)
+        if path.parent != Path("docs/superpowers/plans") or path.name[:10] < PREREQUISITES_AMENDMENT_DATE:
+            continue
+        paths.append(REPO_ROOT / path)
+    return tuple(paths)
+
+
+def _git_name_status_since_prerequisites_amendment() -> str:
+    result = subprocess.run(
+        [
+            "git",
+            "diff",
+            "--name-status",
+            f"{PREREQUISITES_AMENDMENT_COMMIT}..HEAD",
+            "--",
+            "docs/superpowers/plans",
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout
+
+
 def _markdown_tables(
     text: str,
 ) -> tuple[tuple[tuple[str, int], tuple[str, ...], tuple[dict[str, str], ...]], ...]:
@@ -729,13 +793,38 @@ def test_post_amendment_plans_declare_prerequisites_with_required_columns() -> N
     assert "## Prerequisites" in agents
     assert all(column in agents for column in PREREQUISITE_TABLE_COLUMNS)
 
-    for plan_path in PLANS_ROOT.glob("????-??-??-*.md"):
-        if plan_path.name[:10] < PREREQUISITES_AMENDMENT_DATE:
-            continue
-        plan = _read(plan_path)
-        assert "## Prerequisites" in plan, plan_path.relative_to(REPO_ROOT)
-        prerequisites = _h2_section(plan, "Prerequisites")
-        assert all(column in prerequisites for column in PREREQUISITE_TABLE_COLUMNS), plan_path.relative_to(REPO_ROOT)
+    valid_plan = """\
+## Prerequisites
+
+| Category | Prerequisite | Satisfied today? | Owner | If unsatisfied: genuinely hard, or merely unauthorized? |
+|---|---|---|---|---|
+| services | Redis | unknown | operator | merely unauthorized |
+"""
+    invalid_plan = """\
+## Prerequisites
+
+| Category | Prerequisite | Satisfied today? | Owner | If unsatisfied: genuinely hard, or merely unauthorized? |
+|---|---|---|---|---|
+"""
+    _assert_prerequisites_table(valid_plan)
+    for malformed in (
+        invalid_plan,
+        valid_plan.replace("| unknown |", "| maybe |"),
+        valid_plan.replace("| operator |", "| |"),
+        valid_plan.replace("| merely unauthorized |", "| n/a |"),
+    ):
+        with pytest.raises(AssertionError):
+            _assert_prerequisites_table(malformed)
+
+    changed = _post_amendment_plan_paths(
+        "A\tdocs/superpowers/plans/2026-08-18-plan-11-23-example.md\n"
+        "M\tdocs/superpowers/plans/2026-08-18-existing-frozen-plan.md\n"
+        "A\tdocs/superpowers/plans/2026-08-17-pre-amendment-plan.md\n"
+    )
+    assert changed == (PLANS_ROOT / "2026-08-18-plan-11-23-example.md",)
+
+    for plan_path in _post_amendment_plan_paths(_git_name_status_since_prerequisites_amendment()):
+        _assert_prerequisites_table(_read(plan_path))
 
 
 def test_markdown_tables_keep_sibling_tables_under_one_h2() -> None:
