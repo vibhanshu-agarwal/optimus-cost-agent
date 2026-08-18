@@ -230,6 +230,7 @@ def classify_real_zed_result(exchange: RelayExchange | None, isolation: Isolatio
 
 
 RELAY_EXTRACT_SOURCE = "opaque-relay-post-run"
+REPORTS_ROOT = Path(__file__).resolve().parents[1] / "reports"
 _USER_DATA_HELP_LINE = re.compile(r"user[\s_-]*data", re.I)
 _HELP_FLAG = re.compile(r"(--[A-Za-z0-9][A-Za-z0-9-]*)")
 _RELAY_SCRIPT = Path(__file__).resolve().parent / "plan117_custody_relay.py"
@@ -1508,6 +1509,141 @@ def _cleanup_plan1119_roots(
     return (not leftovers, leftovers)
 
 
+def _sha256_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _assert_allowed_report_dir(report_dir: Path) -> Path:
+    resolved = report_dir.expanduser().resolve()
+    root = REPORTS_ROOT.resolve()
+    if resolved == root or not resolved.is_relative_to(root):
+        raise ProbeError("evidence_bundle", "report directory must be inside reports/")
+    if resolved.exists():
+        raise ProbeError("evidence_bundle", "existing report directory must not be overwritten")
+    return resolved
+
+
+def _assert_cleanup_allows_publish(result: Mapping[str, Any]) -> None:
+    isolation = result.get("isolation")
+    if not isinstance(isolation, Mapping) or isolation.get("cleanup_verified") is not True:
+        raise ProbeError("cleanup", "sanitized evidence is not published after failed cleanup")
+
+
+def _plan1124_report_text(result: Mapping[str, Any]) -> str:
+    finding = str(result.get("finding") or Finding.INDETERMINATE.value)
+    recorded = str(result.get("recorded_at_utc") or "")
+    commit = str(result.get("commit") or "")
+    reason = result.get("indeterminate_reason")
+    lines = [
+        "# Plan 11.24 operator-guided Zed `session/load` probe",
+        "",
+        "## Finding",
+        "",
+    ]
+    if finding == Finding.INDETERMINATE.value and isinstance(reason, str) and reason:
+        lines.append(f"**{finding} / {reason}** as of `{recorded}` at commit `{commit}`.")
+        if reason == IndeterminateReason.INTERNAL_CAPABILITY_UNAVAILABLE.value:
+            lines.extend(["", "This is not a finding about Zed."])
+    else:
+        lines.append(f"**{finding}** as of `{recorded}` at commit `{commit}`.")
+    lines.extend(
+        [
+            "",
+            "The previous Plan 11.19 bundle remains unchanged.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _manifest_from_sanitized_result(
+    result: Mapping[str, Any],
+    *,
+    zed_to_agent: bytes,
+    agent_to_zed: bytes,
+    files: Mapping[str, str],
+) -> dict[str, Any]:
+    manifest = {key: value for key, value in result.items() if not str(key).startswith("_")}
+    relay = dict(manifest["relay"]) if isinstance(manifest.get("relay"), Mapping) else {}
+    relay["source"] = RELAY_EXTRACT_SOURCE
+    relay["zed_to_agent_sha256"] = _sha256_bytes(zed_to_agent)
+    relay["agent_to_zed_sha256"] = _sha256_bytes(agent_to_zed)
+    manifest["relay"] = relay
+    manifest["files"] = dict(files)
+    manifest["origin_a_launches"] = 0
+    sanitized = _safe_payload(manifest)
+    if not isinstance(sanitized, dict):
+        raise ProbeError("evidence_bundle", "sanitized manifest is not an object")
+    encoded = json.dumps(sanitized, default=str)
+    loaded = json.loads(encoded)
+    if not isinstance(loaded, dict):
+        raise ProbeError("evidence_bundle", "sanitized manifest is not an object")
+    return loaded
+
+
+def _verify_existing_evidence_manifest(manifest_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from tools.verify_plan1119_zed_reprobe_evidence import verify_manifest
+
+    verify_manifest(manifest_path)
+
+
+def materialize_sanitized_zed_evidence(
+    *,
+    report_dir: Path,
+    result: Mapping[str, Any],
+    zed_to_agent: bytes,
+    agent_to_zed: bytes,
+) -> Path:
+    """Atomically publish reconstructed sanitized relay bytes plus a verifier-valid bundle."""
+    target = _assert_allowed_report_dir(report_dir)
+    _assert_cleanup_allows_publish(result)
+    zed_bytes = bytes(zed_to_agent)
+    agent_bytes = bytes(agent_to_zed)
+    parent = target.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.", dir=parent))
+    try:
+        relay_dir = staging / "relay"
+        relay_dir.mkdir()
+        zed_path = relay_dir / "zed-to-agent.bin"
+        agent_path = relay_dir / "agent-to-zed.bin"
+        report_path = staging / "report.md"
+        zed_path.write_bytes(zed_bytes)
+        agent_path.write_bytes(agent_bytes)
+        report_path.write_text(_plan1124_report_text(result), encoding="utf-8", newline="\n")
+        files = {
+            "report.md": _sha256_bytes(report_path.read_bytes()),
+            "relay/zed-to-agent.bin": _sha256_bytes(zed_bytes),
+            "relay/agent-to-zed.bin": _sha256_bytes(agent_bytes),
+        }
+        manifest = _manifest_from_sanitized_result(
+            result,
+            zed_to_agent=zed_bytes,
+            agent_to_zed=agent_bytes,
+            files=files,
+        )
+        manifest_path = staging / "manifest.json"
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        try:
+            _verify_existing_evidence_manifest(manifest_path)
+        except Exception as exc:
+            raise ProbeError("evidence_bundle", "existing verifier rejected the sanitized bundle") from exc
+        if target.exists():
+            raise ProbeError("evidence_bundle", "existing report directory must not be overwritten")
+        staging.replace(target)
+        return target / "manifest.json"
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+
+
 def _zed_env_for_invocation(invocation: ZedInvocation) -> dict[str, str]:
     environment = dict(os.environ)
     environment.update(dict(invocation.environment_bind))
@@ -1725,7 +1861,11 @@ def run_plan1119_acpx_baseline(parent_workspace: Path) -> dict[str, Any]:
     return result
 
 
-def run_plan1119_real_zed(parent_workspace: Path) -> dict[str, Any]:
+def run_plan1119_real_zed(
+    parent_workspace: Path,
+    *,
+    report_dir: Path | None = None,
+) -> dict[str, Any]:
     """Launch the installed Zed once through the opaque relay. Caller must have recorded authorization."""
     repo_root = Path(__file__).resolve().parents[1]
     result = _plan1119_base_result(repo_root, mode="real-zed")
@@ -1910,6 +2050,26 @@ def run_plan1119_real_zed(parent_workspace: Path) -> dict[str, Any]:
             if after != isolation.normal_source_sha256_before:
                 result["finding"] = Finding.INDETERMINATE.value
                 result["indeterminate_reason"] = IndeterminateReason.ISOLATION_PREDICATE_FAILED.value
+        if (
+            report_dir is not None
+            and cleaned
+            and isolation is not None
+            and isinstance(result.get("normal_source"), dict)
+            and result["normal_source"].get("sha256_after") == isolation.normal_source_sha256_before
+            and isinstance(result.get("_sanitized_relay_zed"), (bytes, bytearray))
+            and isinstance(result.get("_sanitized_relay_agent"), (bytes, bytearray))
+        ):
+            try:
+                result["evidence_manifest"] = str(
+                    materialize_sanitized_zed_evidence(
+                        report_dir=report_dir,
+                        result=result,
+                        zed_to_agent=bytes(result["_sanitized_relay_zed"]),
+                        agent_to_zed=bytes(result["_sanitized_relay_agent"]),
+                    )
+                )
+            except (ProbeError, OSError, TypeError, ValueError):
+                pass
         try:
             sidecar = parent_workspace / "plan1119-real-zed-result.json"
             sidecar.write_text(

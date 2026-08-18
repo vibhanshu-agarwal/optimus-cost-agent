@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -36,6 +37,7 @@ from tools.probe_p11_zed_session_load import (
     hermetic_appdata_environment_bind,
     iter_acp_messages,
     main,
+    materialize_sanitized_zed_evidence,
     normal_workspace_source_digest,
     prepare_real_zed_probe,
     reconstruct_sanitized_relay_bytes,
@@ -50,6 +52,7 @@ from tools.probe_p11_zed_session_load import (
     write_isolated_agent_launcher,
     zed_target_already_running,
 )
+from tools.verify_plan1119_zed_reprobe_evidence import verify_manifest
 
 
 def test_reachable_requires_advertised_capability_and_real_result() -> None:
@@ -893,3 +896,201 @@ def test_seed_hermetic_settings_uses_windows_appdata_zed_layout(tmp_path: Path) 
     bind = hermetic_appdata_environment_bind(appdata)
     assert len(bind) == 1
     assert bind[0][0] == "APPDATA"
+
+
+COMMIT = "cfaffbebf184cd7e08f15749ce5aaff414991ec1"
+SHA_A = "a" * 64
+SHA_B = "b" * 64
+SHA_C = "c" * 64
+RAW_CAPTURE_CANARY = b"RAW_CAPTURE_CANARY=sk-live-not-for-disk"
+PLAN_1124_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe"
+
+
+def reachable_result() -> dict[str, object]:
+    """Complete sanitizer-safe REACHABLE fixture for verifier-valid materialization."""
+    exchange = {
+        "request": {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "session/load",
+            "params": {"sessionId": "saved-1"},
+        },
+        "response": {"jsonrpc": "2.0", "id": 7, "result": {}},
+    }
+    return {
+        "schema": "plan-11-19-zed-session-load-reprobe-v1",
+        "recorded_at_utc": "2026-08-18T12:00:00+00:00",
+        "commit": COMMIT,
+        "finding": "REACHABLE",
+        "indeterminate_reason": None,
+        "zed": {
+            "version": "Zed 1.15.0",
+            "executable": "C:/Tools/Zed.exe",
+            "executable_sha256": SHA_A,
+        },
+        "acpx": {
+            "version": "0.12.0",
+            "executable": "C:/Tools/acpx.cmd",
+            "executable_sha256": SHA_B,
+        },
+        "normal_source": {
+            "commit": COMMIT,
+            "sha256_before": SHA_C,
+            "sha256_after": SHA_C,
+        },
+        "isolated_source": {"sha256": SHA_A},
+        "isolated_build": {"sha256": SHA_B},
+        "invocation": {
+            "discovered_from": "zed --help",
+            "argv": ["C:/Tools/Zed.exe", "--isolated-user-data", "scratch/zed-home"],
+            "user_data_root": "scratch/zed-home",
+            "help_sha256": SHA_A,
+        },
+        "isolation": {
+            "normal_agent_load_session_advertised": False,
+            "isolated_probe_load_session_advertised": True,
+            "cleanup_dry_run_verified": True,
+            "cleanup_verified": True,
+        },
+        "capability_payload": {"loadSession": True, "sessionCapabilities": {}},
+        "relay": {
+            "source": "opaque-relay-post-run",
+            "zed_to_agent_sha256": SHA_A,
+            "agent_to_zed_sha256": SHA_B,
+        },
+        "captured_exchange": exchange,
+        "origin_a_launches": 0,
+        "zed_launches": 1,
+        "_sanitized_relay_zed": b"should-not-be-serialized",
+        "_secret_sidecar_key": "must-not-reach-disk",
+    }
+
+
+def _guided_report_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    reports_root = tmp_path / "reports"
+    reports_root.mkdir()
+    monkeypatch.setattr("tools.probe_p11_zed_session_load.REPORTS_ROOT", reports_root)
+    return reports_root / PLAN_1124_REPORT_NAME
+
+
+def _paired_sanitized_relay_bytes() -> tuple[bytes, bytes]:
+    request = {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "session/load",
+        "params": {"sessionId": "saved-1"},
+    }
+    response = {"jsonrpc": "2.0", "id": 7, "result": {}}
+    return (
+        reconstruct_sanitized_relay_bytes([request]),
+        reconstruct_sanitized_relay_bytes([response]),
+    )
+
+
+def _scan_tree_for_canary(root: Path) -> list[str]:
+    hits: list[str] = []
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        payload = path.read_bytes()
+        if RAW_CAPTURE_CANARY in payload or b"must-not-reach-disk" in payload:
+            hits.append(path.as_posix())
+    return hits
+
+
+def test_nonempty_sanitized_relay_bundle_passes_existing_verifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    report_dir = _guided_report_dir(tmp_path, monkeypatch)
+    zed_to_agent, agent_to_zed = _paired_sanitized_relay_bytes()
+    raw_zed = zed_to_agent + RAW_CAPTURE_CANARY
+    raw_agent = agent_to_zed + RAW_CAPTURE_CANARY
+    sanitized_zed = reconstruct_sanitized_relay_bytes(iter_acp_messages(raw_zed))
+    sanitized_agent = reconstruct_sanitized_relay_bytes(iter_acp_messages(raw_agent))
+
+    manifest = materialize_sanitized_zed_evidence(
+        report_dir=report_dir,
+        result=reachable_result(),
+        zed_to_agent=sanitized_zed,
+        agent_to_zed=sanitized_agent,
+    )
+
+    verify_manifest(manifest)
+    published_zed = (report_dir / "relay" / "zed-to-agent.bin").read_bytes()
+    published_agent = (report_dir / "relay" / "agent-to-zed.bin").read_bytes()
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    assert published_zed
+    assert published_agent
+    assert published_zed == sanitized_zed
+    assert published_agent == sanitized_agent
+    assert payload["relay"]["zed_to_agent_sha256"] == hashlib.sha256(published_zed).hexdigest()
+    assert payload["relay"]["agent_to_zed_sha256"] == hashlib.sha256(published_agent).hexdigest()
+    report_text = (report_dir / "report.md").read_text(encoding="utf-8")
+    assert "Plan 11.24" in report_text
+    assert "REACHABLE" in report_text
+    assert "Plan 11.19" in report_text
+    assert _scan_tree_for_canary(report_dir) == []
+    assert RAW_CAPTURE_CANARY not in json.dumps(payload).encode("utf-8")
+
+
+def test_materialize_rejects_existing_target_without_publishing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    report_dir = _guided_report_dir(tmp_path, monkeypatch)
+    report_dir.mkdir()
+    sentinel = report_dir / "preexisting.txt"
+    sentinel.write_text("keep-me", encoding="utf-8")
+    zed_to_agent, agent_to_zed = _paired_sanitized_relay_bytes()
+
+    with pytest.raises(ProbeError, match="existing"):
+        materialize_sanitized_zed_evidence(
+            report_dir=report_dir,
+            result=reachable_result(),
+            zed_to_agent=zed_to_agent,
+            agent_to_zed=agent_to_zed,
+        )
+
+    assert sentinel.read_text(encoding="utf-8") == "keep-me"
+    assert not (report_dir / "manifest.json").exists()
+    assert not (report_dir / "relay").exists()
+
+
+def test_materialize_rejects_target_outside_reports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _guided_report_dir(tmp_path, monkeypatch)
+    outside = tmp_path / "not-reports" / PLAN_1124_REPORT_NAME
+    zed_to_agent, agent_to_zed = _paired_sanitized_relay_bytes()
+
+    with pytest.raises(ProbeError, match="reports"):
+        materialize_sanitized_zed_evidence(
+            report_dir=outside,
+            result=reachable_result(),
+            zed_to_agent=zed_to_agent,
+            agent_to_zed=agent_to_zed,
+        )
+
+    assert not outside.exists()
+
+
+def test_materialize_cleanup_failed_result_leaves_no_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    report_dir = _guided_report_dir(tmp_path, monkeypatch)
+    zed_to_agent, agent_to_zed = _paired_sanitized_relay_bytes()
+    result = reachable_result()
+    isolation = dict(result["isolation"])  # type: ignore[arg-type]
+    isolation["cleanup_verified"] = False
+    result["isolation"] = isolation
+    result["finding"] = "INDETERMINATE"
+    result["indeterminate_reason"] = "CLEANUP_UNVERIFIED"
+
+    with pytest.raises(ProbeError, match="cleanup"):
+        materialize_sanitized_zed_evidence(
+            report_dir=report_dir,
+            result=result,
+            zed_to_agent=zed_to_agent,
+            agent_to_zed=agent_to_zed,
+        )
+
+    assert not report_dir.exists()
