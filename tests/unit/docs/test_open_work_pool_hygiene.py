@@ -26,6 +26,12 @@ PHASE_1_ROADMAP = REPO_ROOT / "docs/superpowers/plans/2026-07-01-phase-1-roadmap
 PLAN_11_CHARTER = REPO_ROOT / "docs/superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md"
 AGENTS_FILE = REPO_ROOT / "AGENTS.md"
 OPTIMUS_POOL_LINK_TARGET = "2026-07-23-consolidated-deferred-followups-backlog.md"
+PREREQUISITES_AMENDMENT_DATE = "2026-08-18"
+PREREQUISITE_TABLE_COLUMNS = (
+    "Satisfied today?",
+    "Owner",
+    "If unsatisfied: genuinely hard, or merely unauthorized?",
+)
 
 HISTORICAL_PLAN_117_AMENDMENTS = (
     "docs/superpowers/plans/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md",
@@ -713,6 +719,23 @@ def test_linear_numbering_semantics_reject_interstitial_and_nested_shapes() -> N
     assert "next unused single-decimal" not in charter_lower
     assert "next-unused-single-decimal" not in charter_lower
     assert "two-decimal numbers such as `11.11` are never valid" not in charter_lower
+
+
+def test_post_amendment_plans_declare_prerequisites_with_required_columns() -> None:
+    """New plans must expose evidence prerequisites without retrofitting frozen plans."""
+    agents = _h2_section(_read(AGENTS_FILE), "Plan Fidelity And Anti-Drift Guardrails")
+
+    assert "every new plan" in agents.casefold()
+    assert "## Prerequisites" in agents
+    assert all(column in agents for column in PREREQUISITE_TABLE_COLUMNS)
+
+    for plan_path in PLANS_ROOT.glob("????-??-??-*.md"):
+        if plan_path.name[:10] < PREREQUISITES_AMENDMENT_DATE:
+            continue
+        plan = _read(plan_path)
+        assert "## Prerequisites" in plan, plan_path.relative_to(REPO_ROOT)
+        prerequisites = _h2_section(plan, "Prerequisites")
+        assert all(column in prerequisites for column in PREREQUISITE_TABLE_COLUMNS), plan_path.relative_to(REPO_ROOT)
 
 
 def test_markdown_tables_keep_sibling_tables_under_one_h2() -> None:
