@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import pickle
 from typing import Any
 
 import pytest
@@ -12,6 +13,7 @@ from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolVerdict
 from optimus.guardrails.prompt_injection import ConfigTrustScanner
 from optimus.mcp.client_catalog import (
+    AdapterBackedClientMcpToolService,
     AgentMcpToolOutput,
     ClientMcpCallAuthorizer,
     ClientMcpCatalogError,
@@ -23,6 +25,9 @@ from optimus.mcp.client_catalog import (
     arguments_digest,
 )
 from optimus.mcp.client_config import ClientMcpSafeIdentity
+from optimus.mcp.client_disposition import AcpMcpPermissionBroker
+from optimus.mcp.client_sdk import ClientMcpConnection, ClientMcpSdkAdapter
+from optimus.mcp.client_supervisor import MCPAsyncSupervisor
 from optimus.mcp.client_trust import ClientMcpSessionLease
 from optimus.runtime.modes import ExecutionMode, GenerationScope
 
@@ -153,6 +158,63 @@ def _write_registry_stack(tmp_path, *, session_id: str = "session-1"):
     registry = ClientMcpSessionService()
     registry.register(service)
     return catalog, authorizer, service, registry, dispatch_calls
+
+
+class _AdapterBackedSession:
+    def __init__(self, *, result: dict[str, Any] | None = None, failure: Exception | None = None) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self._result = result if result is not None else {"content": [{"type": "text", "text": "ok"}]}
+        self._failure = failure
+
+    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append((tool_name, dict(arguments)))
+        if self._failure is not None:
+            raise self._failure
+        return self._result
+
+
+class _NoopProcessControl:
+    def terminate_tree(self, *, seam: str) -> None:
+        del seam
+
+
+def _adapter_backed_service(
+    tmp_path,
+    *,
+    catalog,
+    authorizer: ClientMcpCallAuthorizer,
+    session: _AdapterBackedSession,
+) -> tuple[AdapterBackedClientMcpToolService, MCPAsyncSupervisor]:
+    guard = PreToolGuard.for_workspace(
+        workspace_root=tmp_path,
+        allowed_network_hosts=(),
+        client_mcp_authorizer=authorizer,
+    )
+    supervisor = MCPAsyncSupervisor()
+    supervisor.start()
+    adapter = ClientMcpSdkAdapter(
+        supervisor=supervisor,
+        session_factory=lambda _capability: session,
+        http_client_factory=lambda: object(),
+        stdio_transport_factory=lambda _capability: object(),
+        process_control=_NoopProcessControl(),
+    )
+    connection = ClientMcpConnection(
+        session_id="session-1",
+        identity_key=("session-1", catalog.identity.server_name, catalog.identity.canonical_target),
+        session=session,
+        negotiated_protocol_version="2026-07-28",
+    )
+    return (
+        AdapterBackedClientMcpToolService(
+            guard=guard,
+            catalog=catalog,
+            authorizer=authorizer,
+            adapter=adapter,
+            connection=connection,
+        ),
+        supervisor,
+    )
 
 
 def test_budget_exceeded_pages_yields_no_catalog() -> None:
@@ -651,3 +713,113 @@ def test_session_registry_issued_token_is_consumed_once_by_service_guard(tmp_pat
     assert mismatch.authorization_outcome != "ALLOW"
     assert mismatched.token in authorizer._tokens
     assert dispatch_calls == [("delete_resource", args)]
+
+
+def test_adapter_backed_service_dispatches_only_after_guard_and_keeps_raw_values_ephemeral(tmp_path) -> None:
+    """Removing the guard or retaining SDK values would dispatch denied calls or leak raw data."""
+    catalog = _catalog([_tool("list_providers")])
+    authorizer = ClientMcpCallAuthorizer(catalog=catalog, lease=_lease())
+    result_canary = "raw-result-canary"
+    argument_canary = "raw-argument-canary"
+    session = _AdapterBackedSession(result={"content": [{"type": "text", "text": result_canary}]})
+    service, supervisor = _adapter_backed_service(
+        tmp_path,
+        catalog=catalog,
+        authorizer=authorizer,
+        session=session,
+    )
+    try:
+        denied, denied_call = service.call_tool("unknown_tool", {"query": argument_canary})
+        assert denied_call.authorization_outcome != "ALLOW"
+        assert denied.text.startswith("unavailable:")
+        assert session.calls == []
+
+        output, call = service.call_tool("list_providers", {"query": argument_canary})
+
+        assert call.authorization_outcome == "ALLOW"
+        assert output.text == "completed"
+        assert session.calls == [("list_providers", {"query": argument_canary})]
+        assert argument_canary not in call.summary
+        assert result_canary not in call.summary
+        assert argument_canary not in output.text
+        assert result_canary not in output.text
+        with pytest.raises(TypeError):
+            vars(service)
+        with pytest.raises(TypeError):
+            pickle.dumps(service)
+    finally:
+        supervisor.close()
+
+
+def test_adapter_backed_service_write_token_denials_never_dispatch_and_adapter_failure_is_not_retried(tmp_path) -> None:
+    """Removing bound-token checks or adding retry would call the remote SDK in these denied paths."""
+    catalog = _catalog(
+        [
+            _tool("delete_resource", annotations={"destructiveHint": True}),
+            _tool("delete_other", annotations={"destructiveHint": True}),
+        ],
+        effect_ceiling="side_effect_eligible",
+    )
+    lease = ClientMcpSessionLease(
+        session_id="session-1",
+        workspace_digest="a" * 64,
+        server_name="tools",
+        identity_fingerprint="fp-catalog-1",
+        effect_ceiling="side_effect_eligible",
+    )
+    authorizer = ClientMcpCallAuthorizer(catalog=catalog, lease=lease)
+    session = _AdapterBackedSession(failure=RuntimeError("raw-adapter-failure-canary"))
+    service, supervisor = _adapter_backed_service(
+        tmp_path,
+        catalog=catalog,
+        authorizer=authorizer,
+        session=session,
+    )
+    try:
+        arguments = {"id": "raw-argument-canary"}
+        absent, absent_call = service.call_tool("delete_resource", arguments)
+        assert absent_call.authorization_outcome != "ALLOW"
+        assert absent.text.startswith("unavailable:")
+        assert session.calls == []
+
+        async def allow_once(_params: dict[str, Any]) -> dict[str, Any]:
+            return {"outcome": {"outcome": "selected", "optionId": "allow_once"}}
+
+        broker = AcpMcpPermissionBroker(
+            session_id="session-1",
+            request_permission=allow_once,
+            issue_approval=service._issue_one_call_approval,
+        )
+        approval = broker.request_write(_client_request(tool_name="delete_resource", arguments=arguments))
+        assert approval is not None
+        wrong_arguments, wrong_arguments_call = service.call_tool(
+            "delete_resource",
+            {"id": "other"},
+            one_call_approval=approval.token,
+        )
+        assert wrong_arguments_call.authorization_outcome != "ALLOW"
+        assert wrong_arguments.text.startswith("unavailable:")
+        assert session.calls == []
+
+        wrong_tool, wrong_tool_call = service.call_tool(
+            "delete_other",
+            arguments,
+            one_call_approval=approval.token,
+        )
+        assert wrong_tool_call.authorization_outcome != "ALLOW"
+        assert wrong_tool.text.startswith("unavailable:")
+        assert session.calls == []
+
+        output, call = service.call_tool("delete_resource", arguments, one_call_approval=approval.token)
+        assert call.authorization_outcome == "ALLOW"
+        assert output.text == "unavailable:adapter_failure"
+        assert session.calls == [("delete_resource", arguments)]
+        assert "raw-adapter-failure-canary" not in output.text
+        assert "raw-argument-canary" not in call.summary
+
+        replay, replay_call = service.call_tool("delete_resource", arguments, one_call_approval=approval.token)
+        assert replay_call.authorization_outcome != "ALLOW"
+        assert replay.text.startswith("unavailable:")
+        assert session.calls == [("delete_resource", arguments)]
+    finally:
+        supervisor.close()

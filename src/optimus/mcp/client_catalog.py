@@ -20,6 +20,7 @@ from optimus.guardrails.mcp_trust import (
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolResult, PreToolVerdict
 from optimus.guardrails.prompt_injection import ConfigTrustScanner, TrustScanSubject, TrustScanVerdict
 from optimus.mcp.client_config import ClientMcpSafeIdentity
+from optimus.mcp.client_sdk import ClientMcpConnection, ClientMcpSdkAdapter
 from optimus.mcp.client_trust import ClientMcpDurableRecord, ClientMcpSessionLease, EffectCeiling
 from optimus.runtime.modes import ExecutionMode, GenerationScope
 
@@ -630,6 +631,44 @@ class ClientMcpToolService:
                 authorization_outcome="ALLOW",
             ),
         )
+
+
+class AdapterBackedClientMcpToolService(ClientMcpToolService):
+    """Connection-bound production dispatch with no result retention or replay."""
+
+    __slots__ = ("_adapter", "_connection")
+
+    def __init__(
+        self,
+        *,
+        guard: PreToolGuard,
+        catalog: ClientMcpCatalog,
+        authorizer: ClientMcpCallAuthorizer,
+        adapter: ClientMcpSdkAdapter,
+        connection: ClientMcpConnection,
+    ) -> None:
+        super().__init__(guard=guard, catalog=catalog, authorizer=authorizer)
+        object.__setattr__(self, "_adapter", adapter)
+        object.__setattr__(self, "_connection", connection)
+
+    def __getstate__(self) -> None:
+        raise TypeError("client mcp tool service is not serializable")
+
+    def __reduce__(self) -> None:
+        raise TypeError("client mcp tool service is not serializable")
+
+    def __reduce_ex__(self, protocol: int) -> None:
+        del protocol
+        raise TypeError("client mcp tool service is not serializable")
+
+    def _dispatch(self, tool_name: str, arguments: dict[str, Any]) -> str:
+        adapter: ClientMcpSdkAdapter = object.__getattribute__(self, "_adapter")
+        connection: ClientMcpConnection = object.__getattribute__(self, "_connection")
+        try:
+            adapter.call(connection, tool_name, arguments)
+        except Exception:
+            return "unavailable:adapter_failure"
+        return "completed"
 
 
 class ClientMcpSessionService:
