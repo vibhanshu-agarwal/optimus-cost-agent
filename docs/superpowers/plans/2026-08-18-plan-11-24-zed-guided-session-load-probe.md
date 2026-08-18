@@ -114,9 +114,9 @@ The only `unknown` is Redis. Task 3’s non-launch preflight resolves it before 
 
 **Interfaces:** Add `DEFAULT_ZED_LAUNCH_TIMEOUT_SECONDS = 180.0` and `validate_zed_launch_timeout_seconds(value: float) -> float`. Extend `run_plan1119_real_zed(parent_workspace: Path, *, launch_timeout_seconds: float = DEFAULT_ZED_LAUNCH_TIMEOUT_SECONDS, report_dir: Path) -> dict[str, Any]`. Add `--zed-launch-timeout-seconds` (float, default 180) and required-for-`real-zed` `--report-dir`; only the guided command supplies 900. The validator accepts finite values in `[60.0, 900.0]`, and the sanitized `zed_launch` metadata records the selected value.
 
-- [ ] **Step 1: Write RED timeout tests.** Assert no CLI flag parses as `180.0`; `--zed-launch-timeout-seconds 900` parses as `900.0`; `0`, `-1`, `nan`, `inf`, and `901` fail before `Popen`; and a patched `_launch_zed_once` observes exactly the chosen value while a patched preparation path guarantees no GUI launch.
+- [x] **Step 1: Write RED timeout tests.** Assert no CLI flag parses as `180.0`; `--zed-launch-timeout-seconds 900` parses as `900.0`; `0`, `-1`, `nan`, `inf`, and `901` fail before `Popen`; and a patched `_launch_zed_once` observes exactly the chosen value while a patched preparation path guarantees no GUI launch.
 
-- [ ] **Step 2: Run the RED selector.**
+- [x] **Step 2: Run the RED selector.**
 
   ```powershell
   uv run --frozen pytest tests/unit/tools/test_probe_p11_zed_session_load.py -q
@@ -124,9 +124,9 @@ The only `unknown` is Redis. Task 3’s non-launch preflight resolves it before 
 
   Expected: the new timeout assertions fail because no public parser/runner seam exists; no Zed starts.
 
-- [ ] **Step 3: Implement the minimum timeout path.** Keep `_launch_zed_once(..., timeout_s=180.0)` unchanged as the default; validate and thread the selected value only along the real-Zed path. Preflight and acpx-baseline semantics remain unchanged. Do not add UI automation, retries, alternate profile roots, fallback agents, or normal `loadSession` advertisement.
+- [x] **Step 3: Implement the minimum timeout path.** Keep `_launch_zed_once(..., timeout_s=180.0)` unchanged as the default; validate and thread the selected value only along the real-Zed path. Preflight and acpx-baseline semantics remain unchanged. Do not add UI automation, retries, alternate profile roots, fallback agents, or normal `loadSession` advertisement.
 
-- [ ] **Step 4: Run GREEN tests and static fitness.**
+- [x] **Step 4: Run GREEN tests and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/tools/test_probe_p11_zed_session_load.py tests/unit/tools/test_verify_plan1119_zed_reprobe_evidence.py -q
@@ -135,7 +135,7 @@ The only `unknown` is Redis. Task 3’s non-launch preflight resolves it before 
   git diff --exit-code -- src/optimus src/optimus_gateway
   ```
 
-- [ ] **Step 5: Commit the timeout seam.**
+- [x] **Step 5: Commit the timeout seam.**
 
   ```powershell
   git add tools/probe_p11_zed_session_load.py tests/unit/tools/test_probe_p11_zed_session_load.py

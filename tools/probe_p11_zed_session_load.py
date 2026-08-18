@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -231,6 +232,9 @@ def classify_real_zed_result(exchange: RelayExchange | None, isolation: Isolatio
 
 RELAY_EXTRACT_SOURCE = "opaque-relay-post-run"
 REPORTS_ROOT = Path(__file__).resolve().parents[1] / "reports"
+DEFAULT_ZED_LAUNCH_TIMEOUT_SECONDS = 180.0
+MIN_ZED_LAUNCH_TIMEOUT_SECONDS = 60.0
+MAX_ZED_LAUNCH_TIMEOUT_SECONDS = 900.0
 _USER_DATA_HELP_LINE = re.compile(r"user[\s_-]*data", re.I)
 _HELP_FLAG = re.compile(r"(--[A-Za-z0-9][A-Za-z0-9-]*)")
 _RELAY_SCRIPT = Path(__file__).resolve().parent / "plan117_custody_relay.py"
@@ -1513,6 +1517,24 @@ def _sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def validate_zed_launch_timeout_seconds(value: float) -> float:
+    """Accept only a finite launch window in ``[60.0, 900.0]`` seconds."""
+    if not math.isfinite(value) or value < MIN_ZED_LAUNCH_TIMEOUT_SECONDS or value > MAX_ZED_LAUNCH_TIMEOUT_SECONDS:
+        raise ValueError("zed launch timeout must be a finite value in [60.0, 900.0]")
+    return float(value)
+
+
+def _parse_zed_launch_timeout_seconds(raw: str) -> float:
+    try:
+        parsed = float(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("zed launch timeout must be a finite value in [60.0, 900.0]") from exc
+    try:
+        return validate_zed_launch_timeout_seconds(parsed)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def _assert_allowed_report_dir(report_dir: Path) -> Path:
     resolved = report_dir.expanduser().resolve()
     root = REPORTS_ROOT.resolve()
@@ -1864,9 +1886,11 @@ def run_plan1119_acpx_baseline(parent_workspace: Path) -> dict[str, Any]:
 def run_plan1119_real_zed(
     parent_workspace: Path,
     *,
-    report_dir: Path | None = None,
+    launch_timeout_seconds: float = DEFAULT_ZED_LAUNCH_TIMEOUT_SECONDS,
+    report_dir: Path,
 ) -> dict[str, Any]:
     """Launch the installed Zed once through the opaque relay. Caller must have recorded authorization."""
+    timeout_s = validate_zed_launch_timeout_seconds(launch_timeout_seconds)
     repo_root = Path(__file__).resolve().parents[1]
     result = _plan1119_base_result(repo_root, mode="real-zed")
     run_root: Path | None = None
@@ -1948,12 +1972,14 @@ def run_plan1119_real_zed(
             env=_zed_env_for_invocation(invocation),
             cwd=workspace,
             log_path=log_path,
+            timeout_s=timeout_s,
         )
         log_excerpt = _launch_log_excerpt(log_path)
         result["zed_launch"] = {
             "returncode": launch_meta.get("returncode"),
             "log_captured": bool(launch_meta.get("log_path")),
             "log_excerpt": log_excerpt,
+            "timeout_seconds": timeout_s,
         }
         settings_after = settings_path.is_file()
         result["hermetic_settings"]["present_after_launch"] = settings_after
@@ -2091,8 +2117,23 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         default="acpx",
         help="acpx is the existing non-Zed baseline; preflight never launches Zed; real-zed is the authorized live capture",
     )
+    parser.add_argument(
+        "--zed-launch-timeout-seconds",
+        type=_parse_zed_launch_timeout_seconds,
+        default=DEFAULT_ZED_LAUNCH_TIMEOUT_SECONDS,
+        help="real-zed launch wait in seconds; unattended default is 180, guided shot uses 900",
+    )
+    parser.add_argument(
+        "--report-dir",
+        type=Path,
+        default=None,
+        help="sanitized evidence directory under reports/; required for --mode real-zed",
+    )
     parser.add_argument("workspace", type=Path, help="existing throwaway parent directory; never a repository")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.mode == "real-zed" and args.report_dir is None:
+        parser.error("--report-dir is required for --mode real-zed")
+    return args
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -2122,7 +2163,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(result, indent=2, sort_keys=True, default=str))
         return 0 if result.get("preflight_ok") and result.get("zed_launches") == 0 else 1
     if args.mode == "real-zed":
-        result = run_plan1119_real_zed(args.workspace)
+        result = run_plan1119_real_zed(
+            args.workspace,
+            launch_timeout_seconds=args.zed_launch_timeout_seconds,
+            report_dir=args.report_dir,
+        )
         printable = {key: value for key, value in result.items() if not str(key).startswith("_")}
         print(json.dumps(printable, indent=2, sort_keys=True, default=str))
         return 0 if result.get("isolation", {}).get("cleanup_verified") else 1

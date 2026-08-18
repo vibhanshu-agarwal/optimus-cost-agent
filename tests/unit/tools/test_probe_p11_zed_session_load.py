@@ -793,7 +793,8 @@ def test_acpx_baseline_rejects_non_empty_live_load_result() -> None:
 
 
 def test_real_zed_cli_mode_does_not_launch(tmp_path: Path) -> None:
-    assert main(["--mode", "real-zed", str(tmp_path)]) == 1
+    report_dir = tmp_path / "reports" / "plan-11-24-zed-guided-session-load-probe"
+    assert main(["--mode", "real-zed", "--report-dir", str(report_dir), str(tmp_path)]) == 1
 
 
 def test_preflight_failure_retains_sanitized_command_stderr() -> None:
@@ -1094,3 +1095,164 @@ def test_materialize_cleanup_failed_result_leaves_no_bundle(
         )
 
     assert not report_dir.exists()
+
+
+def test_cli_default_timeout_is_unattended_180() -> None:
+    from tools.probe_p11_zed_session_load import _parse_args
+
+    args = _parse_args(
+        [
+            "--mode",
+            "real-zed",
+            "--report-dir",
+            "reports/plan-11-24-zed-guided-session-load-probe",
+            "C:/tmp/ws",
+        ]
+    )
+    assert args.zed_launch_timeout_seconds == 180.0
+
+
+def test_cli_guided_timeout_parses_900() -> None:
+    from tools.probe_p11_zed_session_load import _parse_args
+
+    args = _parse_args(
+        [
+            "--mode",
+            "real-zed",
+            "--zed-launch-timeout-seconds",
+            "900",
+            "--report-dir",
+            "reports/plan-11-24-zed-guided-session-load-probe",
+            "C:/tmp/ws",
+        ]
+    )
+    assert args.zed_launch_timeout_seconds == 900.0
+
+
+def test_invalid_timeouts_fail_before_popen(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    from tools.probe_p11_zed_session_load import _parse_args, validate_zed_launch_timeout_seconds
+
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Popen must not run")
+
+    monkeypatch.setattr(subprocess, "Popen", boom)
+    for raw in ("0", "-1", "nan", "inf", "901"):
+        with pytest.raises(SystemExit):
+            _parse_args(
+                [
+                    "--mode",
+                    "real-zed",
+                    "--zed-launch-timeout-seconds",
+                    raw,
+                    "--report-dir",
+                    "reports/plan-11-24-zed-guided-session-load-probe",
+                    "C:/tmp/ws",
+                ]
+            )
+    for value in (0.0, -1.0, float("nan"), float("inf"), 901.0):
+        with pytest.raises(ValueError):
+            validate_zed_launch_timeout_seconds(value)
+
+
+def test_guided_timeout_is_threaded_to_launch_without_gui(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tools.probe_p11_zed_session_load as probe
+    from tools.probe_p11_zed_session_load import (
+        DEFAULT_PROBE_PATCH_PLAN,
+        ProbePreparation,
+        run_plan1119_real_zed,
+    )
+
+    parent = tmp_path / "throwaway"
+    parent.mkdir()
+    scratch = tmp_path / "scratch"
+    isolated = scratch / "probe-source"
+    build = scratch / "probe-build"
+    hermetic = scratch / "zed-home"
+    appdata = scratch / "zed-appdata"
+    for path in (isolated, build, hermetic, appdata):
+        path.mkdir(parents=True)
+    settings = appdata / "Zed" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text("{}", encoding="utf-8")
+    launcher = build / "isolated_optimus_agent.py"
+    launcher.write_text("# launcher\n", encoding="utf-8")
+    zed_exe = tmp_path / "Zed.exe"
+    zed_exe.write_bytes(b"fake")
+    prep = ProbePreparation(
+        isolated_source_root=str(isolated),
+        isolated_build_root=str(build),
+        hermetic_zed_root=str(hermetic),
+        normal_root=str(tmp_path / "normal"),
+        normal_commit=COMMIT,
+        normal_source_sha256_before=SHA_C,
+        patch_plan=DEFAULT_PROBE_PATCH_PLAN,
+        cleanup_dry_run_verified=True,
+    )
+    isolation = IsolationEvidence(
+        normal_agent_load_session_advertised=False,
+        isolated_probe_load_session_advertised=True,
+        normal_source_sha256_before=SHA_C,
+        normal_source_sha256_after=SHA_C,
+        isolated_source_root=str(isolated),
+        isolated_build_root=str(build),
+        hermetic_zed_root=str(hermetic),
+        cleanup_dry_run_verified=True,
+        cleanup_verified=False,
+    )
+    invocation = ZedInvocation(
+        argv=(str(zed_exe), "--user-data-dir", str(hermetic)),
+        user_data_root=str(hermetic),
+        discovered_from="zed --help",
+        version="Zed 1.15.0",
+        executable_sha256=SHA_A,
+        environment_bind=(("APPDATA", str(appdata.resolve())),),
+    )
+    acpx = AcpxBaselineEvidence(
+        acpx_version="0.12.0",
+        acpx_executable="C:/Tools/acpx.cmd",
+        acpx_sha256=SHA_B,
+        capability_payload={"loadSession": True, "sessionCapabilities": {}},
+        origin_a_launches=0,
+        session_load_exchange=None,
+    )
+    observed: dict[str, float] = {}
+
+    def fake_launch(
+        argv: object,
+        *,
+        env: object,
+        cwd: object,
+        log_path: object = None,
+        timeout_s: float = 180.0,
+    ) -> dict[str, object]:
+        observed["timeout_s"] = timeout_s
+        return {"pid": 1, "returncode": 0, "log_path": str(log_path) if log_path else None}
+
+    monkeypatch.setattr(probe, "zed_target_already_running", lambda _names: False)
+    monkeypatch.setattr(probe, "_list_process_names", lambda: [])
+    monkeypatch.setattr(probe, "prepare_real_zed_probe", lambda *_a, **_k: prep)
+    monkeypatch.setattr(probe, "verify_normal_operation_isolation", lambda _prep: isolation)
+    monkeypatch.setattr(probe, "validate_isolation_evidence", lambda *_a, **_k: None)
+    monkeypatch.setattr(probe, "_discover_live_zed_invocation", lambda _root: (zed_exe, invocation, SHA_A))
+    monkeypatch.setattr(probe, "write_isolated_agent_launcher", lambda *_a, **_k: launcher)
+    monkeypatch.setattr(probe, "_run_acpx_against_isolated_agent", lambda **_k: acpx)
+    monkeypatch.setattr(probe, "seed_hermetic_zed_settings", lambda *_a, **_k: settings)
+    monkeypatch.setattr(probe, "_observe_zed_help", lambda _exe: "--user-data-dir")
+    monkeypatch.setattr(probe, "build_real_zed_launch_argv", lambda *_a, **_k: (str(zed_exe), str(parent)))
+    monkeypatch.setattr(probe, "_launch_zed_once", fake_launch)
+    monkeypatch.setattr(probe, "normal_workspace_source_digest", lambda _root: SHA_C)
+    monkeypatch.setattr(probe, "_cleanup_plan1119_roots", lambda **_k: (True, []))
+
+    reports_root = tmp_path / "reports"
+    reports_root.mkdir()
+    monkeypatch.setattr(probe, "REPORTS_ROOT", reports_root)
+    run_plan1119_real_zed(
+        parent,
+        launch_timeout_seconds=900.0,
+        report_dir=reports_root / PLAN_1124_REPORT_NAME,
+    )
+    assert observed["timeout_s"] == 900.0
