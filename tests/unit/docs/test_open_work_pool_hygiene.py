@@ -25,6 +25,7 @@ PLAN_119 = REPO_ROOT / "docs/superpowers/plans/2026-08-08-plan-11-9-p11-7-fu-1-g
 PHASE_1_ROADMAP = REPO_ROOT / "docs/superpowers/plans/2026-07-01-phase-1-roadmap.md"
 PLAN_11_CHARTER = REPO_ROOT / "docs/superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md"
 AGENTS_FILE = REPO_ROOT / "AGENTS.md"
+GUARDRAILS_WORKFLOW = REPO_ROOT / ".github/workflows/guardrails.yml"
 OPTIMUS_POOL_LINK_TARGET = "2026-07-23-consolidated-deferred-followups-backlog.md"
 PREREQUISITES_AMENDMENT_DATE = "2026-08-18"
 PREREQUISITES_AMENDMENT_COMMIT = "087560a8b2e6b2893004d768a81f55a4a5ea1c35"
@@ -842,6 +843,12 @@ def test_post_amendment_plans_declare_prerequisites_with_required_columns() -> N
 
     for plan_path in _post_amendment_plan_paths(_git_name_status_since_prerequisites_amendment()):
         _assert_prerequisites_table(_read(plan_path))
+
+
+def test_guardrails_checkout_fetches_prerequisite_amendment_history() -> None:
+    workflow = _read(GUARDRAILS_WORKFLOW)
+
+    assert "uses: actions/checkout@v4\n        with:\n          fetch-depth: 0" in workflow
 
 
 def test_markdown_tables_keep_sibling_tables_under_one_h2() -> None:
