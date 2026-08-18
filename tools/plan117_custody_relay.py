@@ -2,10 +2,10 @@
 
 Capture layout (documented): ``{capture-root}/{run-id}/``
 
-  - ``zed-to-agent.bin`` — raw bytes from parent stdin to child stdin
-  - ``agent-to-zed.bin`` — raw bytes from child stdout to parent stdout
-  - ``relay-index.ndjson`` — gap-free per-chunk index (LF)
-  - ``relay-summary.json`` — terminal summary via ``atomic_write_json`` (LF)
+  - ``zed-to-agent.bin`` - raw bytes from parent stdin to child stdin
+  - ``agent-to-zed.bin`` - raw bytes from child stdout to parent stdout
+  - ``relay-index.ndjson`` - gap-free per-chunk index (LF)
+  - ``relay-summary.json`` - terminal summary via ``atomic_write_json`` (LF)
 
 CLI::
 
@@ -161,7 +161,7 @@ _DESCRIPTOR_DIGEST_EXCLUDE = frozenset(
 
 
 def _descriptor_payload_for_digest(payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Locator identity only — mutable terminal flags are never digest-bound."""
+    """Locator identity only - mutable terminal flags are never digest-bound."""
     return {
         key: payload[key]
         for key in sorted(payload)
@@ -840,7 +840,7 @@ def acquire_live_session_proof(
     if not isinstance(proof_payload, Mapping):
         raise _control_error("invalid_probe_retry_proof_unavailable", "proof")
     proof = _proof_from_wire(proof_payload)
-    # Never trust wire digest alone — rebind via builder.
+    # Never trust wire digest alone - rebind via builder.
     if proof.run_attempt_id != run_attempt_id:
         raise _control_error("invalid_probe_retry_proof_unavailable", "run_attempt_id")
     wire_digest = proof_payload.get("proof_sha256")

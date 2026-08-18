@@ -1863,3 +1863,10 @@ def test_control_path_does_not_mutate_acp_bytes_env_argv_or_cwd(tmp_path: Path) 
     assert "Listener((" not in source and 'Listener(("127.' not in source
     assert "TCPServer" not in source
     assert "HTTPServer" not in source
+
+
+def test_custody_relay_source_has_zero_emdash_and_replacement_codepoints() -> None:
+    payload = RELAY.read_bytes()
+    text = payload.decode("utf-8")
+    assert "\u2014" not in text
+    assert "\ufffd" not in text
