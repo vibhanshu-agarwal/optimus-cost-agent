@@ -187,6 +187,13 @@ class ReturnedFailureOtlpExporter(OTLPSpanExporter):
         return SpanExportResult.FAILURE
 
 
+class RaisingOtlpExporter(OTLPSpanExporter):
+    """Real SDK subclass whose `export()` raises rather than returning FAILURE."""
+
+    def export(self, spans: Any) -> SpanExportResult:
+        raise TypeError("simulated OTLP exporter programming fault")
+
+
 def trace_batch_with_root_and_child_events() -> GatewayTraceBatch:
     root = GatewayTraceEvent(
         schema_version="1.0",
@@ -336,6 +343,23 @@ def test_exporter_reports_queued_when_real_otlp_exporter_returns_failure():
     assert result.delivery_state is TraceDeliveryState.QUEUED
     assert result.retry_count == 1
     assert result.final_disposition == "transient_export_failure_retry_budget_exhausted"
+
+
+def test_exporter_reports_failed_when_real_otlp_exporter_raises():
+    """A raising OTLP delegate is a permanent export failure, not queued.
+
+    Returned FAILURE from OTLPSpanExporter is retryable; any other exception
+    from the same type remains failed.
+    """
+    otlp_exporter = RaisingOtlpExporter(endpoint="http://127.0.0.1:9")
+    assert isinstance(otlp_exporter, OTLPSpanExporter)
+    exporter = OpenTelemetryTraceExporter(otlp_endpoint=None, span_exporter=otlp_exporter)
+
+    result = exporter.export(_single_event_batch())
+
+    assert result.delivery_state is TraceDeliveryState.FAILED
+    assert result.retry_count == 1
+    assert result.final_disposition == "permanent_export_failure"
 
 
 def test_exporter_reports_not_configured_when_endpoint_missing_and_no_exporter_injected():
