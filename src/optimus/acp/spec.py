@@ -323,6 +323,7 @@ class AcpDuplexAdapter:
                 JsonRpcError(code=INVALID_REQUEST, message="client MCP runtime not configured"),
             )
 
+        state: ClientMcpSessionState | None = None
         try:
             async def request_permission(permission_params: dict[str, Any]) -> dict[str, Any]:
                 return await self._outbound.request("session/request_permission", permission_params)
@@ -333,13 +334,22 @@ class AcpDuplexAdapter:
                 mcp_servers,
                 request_permission,
             )
+            runtime.disposition.attach_runtime_resolver(
+                state,
+                sdk_adapter=runtime.sdk_adapter,
+            )
         except ClientMcpConfigError:
+            if state is not None:
+                state.close()
             self._sessions.remove(session.session_id)
             return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
         except Exception:
+            if state is not None:
+                state.close()
             self._sessions.remove(session.session_id)
             return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
 
+        assert state is not None
         session.client_mcp_state = state
         return success_response(request_id=request.get("id"), result={"sessionId": session.session_id})
 

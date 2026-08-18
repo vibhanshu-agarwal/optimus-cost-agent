@@ -7,7 +7,7 @@ import json
 import re
 import secrets
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -679,13 +679,20 @@ class ClientMcpSessionService:
     without collapsing multi-server sessions into one catalog.
     """
 
-    __slots__ = ("_services",)
+    __slots__ = ("_services", "_resolver", "_resolution_attempts")
 
-    def __init__(self, services: Mapping[str, ClientMcpToolService] | None = None) -> None:
+    def __init__(
+        self,
+        services: Mapping[str, ClientMcpToolService] | None = None,
+        *,
+        resolver: Callable[[str], ClientMcpToolService | None] | None = None,
+    ) -> None:
         object.__setattr__(self, "_services", dict(services or {}))
+        object.__setattr__(self, "_resolver", resolver)
+        object.__setattr__(self, "_resolution_attempts", set())
 
     def __setattr__(self, name: str, value: object) -> None:
-        raise TypeError("client mcp session service is immutable except via register()")
+        raise TypeError("client mcp session service is immutable except via lifecycle methods")
 
     def __delattr__(self, name: str) -> None:
         raise TypeError("client mcp session service is immutable")
@@ -695,14 +702,63 @@ class ClientMcpSessionService:
             raise TypeError("client mcp session service is not serializable")
         return object.__getattribute__(self, name)
 
+    def __getstate__(self) -> None:
+        raise TypeError("client mcp session service is not serializable")
+
+    def __reduce__(self) -> None:
+        raise TypeError("client mcp session service is not serializable")
+
+    def __reduce_ex__(self, protocol: int) -> None:
+        del protocol
+        raise TypeError("client mcp session service is not serializable")
+
+    def attach_resolver(
+        self,
+        resolver: Callable[[str], ClientMcpToolService | None],
+    ) -> None:
+        current = object.__getattribute__(self, "_resolver")
+        if current is not None:
+            raise RuntimeError("client mcp resolver already attached")
+        object.__setattr__(self, "_resolver", resolver)
+
+    def detach_resolver(self) -> None:
+        object.__setattr__(self, "_resolver", None)
+
     def register(self, service: ClientMcpToolService) -> None:
         catalog: ClientMcpCatalog = object.__getattribute__(service, "_catalog")
         services: dict[str, ClientMcpToolService] = object.__getattribute__(self, "_services")
         services[catalog.identity.server_name] = service
 
+    def unregister(self, service: ClientMcpToolService) -> None:
+        catalog: ClientMcpCatalog = object.__getattribute__(service, "_catalog")
+        services: dict[str, ClientMcpToolService] = object.__getattribute__(self, "_services")
+        server = catalog.identity.server_name
+        if services.get(server) is service:
+            services.pop(server, None)
+
     def _lookup(self, server: str) -> ClientMcpToolService | None:
         services: dict[str, ClientMcpToolService] = object.__getattribute__(self, "_services")
         return services.get(server)
+
+    def ensure_server(self, server: str) -> ClientMcpToolService | None:
+        service = self._lookup(server)
+        if service is not None:
+            return service
+        resolver: Callable[[str], ClientMcpToolService | None] | None = object.__getattribute__(
+            self,
+            "_resolver",
+        )
+        if resolver is None:
+            return None
+        attempts: set[str] = object.__getattribute__(self, "_resolution_attempts")
+        if server in attempts:
+            return None
+        attempts.add(server)
+        try:
+            resolved = resolver(server)
+        except Exception:
+            return None
+        return resolved if resolved is not None else self._lookup(server)
 
     def issue_one_call_approval(self, request: PreToolRequest) -> ClientMcpOneCallApproval | None:
         if request.mcp_authority != "client_session":
@@ -716,7 +772,7 @@ class ClientMcpSessionService:
         return service._issue_one_call_approval(request)
 
     def list_tools(self, server: str) -> tuple[AgentMcpToolOutput, AgentToolCall]:
-        service = self._lookup(server)
+        service = self.ensure_server(server)
         if service is None:
             return (
                 AgentMcpToolOutput(server_name=server, tool_name="mcp_list_tools", text="unavailable:unknown_server"),
@@ -729,7 +785,7 @@ class ClientMcpSessionService:
         return service.list_tools()
 
     def requires_write_approval(self, server: str, tool: str) -> bool:
-        service = self._lookup(server)
+        service = self.ensure_server(server)
         if service is None:
             return False
         return service.requires_write_approval(tool)
@@ -742,7 +798,7 @@ class ClientMcpSessionService:
         *,
         one_call_approval: str | None = None,
     ) -> tuple[AgentMcpToolOutput, AgentToolCall]:
-        service = self._lookup(server)
+        service = self.ensure_server(server)
         if service is None:
             return (
                 AgentMcpToolOutput(server_name=server, tool_name=tool, text="unavailable:unknown_server"),

@@ -3,6 +3,7 @@ import json
 import threading
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -118,7 +119,7 @@ async def _lease_and_materialize_write_thing(session, tmp_path: Path) -> ClientM
         identity=identity,
         raw_tools=_write_thing_pages(),
         workspace_root=tmp_path,
-        service_cls=_SafeDispatchService,
+        service_factory=lambda **kwargs: _SafeDispatchService(**kwargs),
     )
     assert service is not None
     return service
@@ -1272,20 +1273,44 @@ def _client_mcp_runtime_for_tests(tmp_path):
     )
 
 
-def _test_sdk_adapter(supervisor):
+def _test_sdk_adapter(supervisor, *, operations=None, process_control=None):
     from optimus.mcp.client_sdk import ClientMcpSdkAdapter
 
     class _NoopProcessControl:
         def terminate_tree(self, *, seam: str) -> None:
             del seam
 
+    class _ControlledRemoteSession:
+        async def initialize(self):
+            if operations is not None:
+                operations.append("open")
+            return SimpleNamespace(
+                protocol_version="2025-11-25",
+                instructions="",
+                server_info=SimpleNamespace(name="tools", description=""),
+            )
+
+        async def list_tools(self):
+            if operations is not None:
+                operations.append("discover")
+            return [
+                {
+                    "tools": [
+                        {
+                            "name": "list_providers",
+                            "description": "Safe metadata lookup.",
+                            "inputSchema": {"type": "object"},
+                        }
+                    ]
+                }
+            ]
 
     return ClientMcpSdkAdapter(
         supervisor=supervisor,
-        session_factory=lambda _capability: None,
-        http_client_factory=object,
+        session_factory=lambda _capability: _ControlledRemoteSession(),
+        http_client_factory=lambda: SimpleNamespace(follow_redirects=False, trust_env=False),
         stdio_transport_factory=lambda _capability: None,
-        process_control=_NoopProcessControl(),
+        process_control=process_control or _NoopProcessControl(),
     )
 
 
@@ -1396,6 +1421,81 @@ async def test_session_new_awaits_transport_permission_with_opaque_safe_fields(t
     session = sessions.get(response["result"]["sessionId"])
     assert session is not None
     assert session.client_mcp_state.is_leased("tools")
+
+
+async def test_session_new_attaches_lazy_resolver_without_opening_transport(tmp_path):
+    """Moving resolution into session/new would open before a generic MCP operation."""
+    operations = []
+    runtime = _client_mcp_runtime_for_tests(tmp_path)
+    runtime.supervisor.start()
+    runtime.sdk_adapter = _test_sdk_adapter(runtime.supervisor, operations=operations)
+    outbound = RecordingOutboundChannel()
+    sessions = InMemoryAcpSpecSessionStore()
+    duplex = AcpDuplexAdapter(
+        runner=FakeRunner(),
+        workspace_root=tmp_path,
+        sessions=sessions,
+        outbound=outbound,
+        client_mcp_runtime=runtime,
+    )
+
+    try:
+        new_task = asyncio.create_task(
+            duplex.handle_client_request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "session/new",
+                    "params": {
+                        "cwd": str(tmp_path),
+                        "mcpServers": [
+                            {"type": "http", "name": "tools", "url": "https://mcp.example.com/v1"}
+                        ],
+                    },
+                }
+            )
+        )
+        permission = await outbound.wait_for_request("session/request_permission")
+        outbound.respond(
+            permission["id"],
+            {"outcome": {"outcome": "selected", "optionId": "allow_once"}},
+        )
+        response = await new_task
+        session = sessions.get(response["result"]["sessionId"])
+        assert session is not None
+        assert operations == []
+        assert runtime.sdk_adapter._connections == {}
+        assert session.client_mcp_state.tool_service._lookup("tools") is None
+        assert object.__getattribute__(
+            session.client_mcp_state.tool_service,
+            "_resolution_attempts",
+        ) == set()
+
+        request = PreToolRequest(
+            run_id="run-1",
+            session_id=session.session_id,
+            execution_mode=ExecutionMode.AGENT,
+            tool_surface=ToolSurface.MCP,
+            action="tools.write_thing",
+            generation_scope=GenerationScope.INLINE_SNIPPET,
+            approval_granted=False,
+            mcp_authority="client_session",
+            mcp_server_id="tools",
+            mcp_tool_name="write_thing",
+            mcp_arguments={"x": 1},
+        )
+        broker = duplex._mcp_permission_broker_for(session)
+        assert broker is not None
+        assert broker._issue_approval(request) is None
+        assert operations == []
+
+        listed, call = session.client_mcp_state.tool_service.list_tools("tools")
+        assert call.authorization_outcome == "ALLOW"
+        assert {tool["name"] for tool in json.loads(listed.text)["tools"]} == {"list_providers"}
+        assert operations == ["open", "discover"]
+    finally:
+        duplex.close_all()
+        runtime.close()
 
 
 async def test_session_new_timeout_and_reject_keep_usable_session_unavailable(tmp_path):
