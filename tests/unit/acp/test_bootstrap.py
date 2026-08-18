@@ -45,6 +45,16 @@ def test_client_mcp_runtime_requires_an_sdk_adapter() -> None:
         ClientMcpRuntime(disposition=object(), supervisor=object())  # type: ignore[arg-type]
 
 
+def test_client_mcp_runtime_rejects_an_explicitly_missing_sdk_adapter() -> None:
+    """An explicit None must fail at construction, before the later close path."""
+    with pytest.raises(ValueError, match="sdk_adapter"):
+        ClientMcpRuntime(  # type: ignore[arg-type]
+            disposition=object(),
+            supervisor=object(),
+            sdk_adapter=None,
+        )
+
+
 def test_bootstrap_reports_missing_optimus_credentials(tmp_path):
     with pytest.raises(StartupConfigurationError) as exc_info:
         build_configured_server(environ={"OPTIMUS_REDIS_URL": "redis://localhost:6379/0"}, workspace_root=tmp_path)

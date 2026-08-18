@@ -107,6 +107,10 @@ class ClientMcpRuntime:
     mcp_sse_enabled: bool = False
     candidate_endpoint: PendingClientMcpCandidateEndpoint | None = None
 
+    def __post_init__(self) -> None:
+        if self.sdk_adapter is None:
+            raise ValueError("sdk_adapter is required")
+
     def close(self) -> None:
         self.sdk_adapter.close_all()
         if self.candidate_endpoint is not None:
