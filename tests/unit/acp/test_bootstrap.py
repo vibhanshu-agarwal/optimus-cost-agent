@@ -3,9 +3,30 @@ import inspect
 import pytest
 
 from optimus.acp import bootstrap as bootstrap_module
-from optimus.acp.bootstrap import StartupConfigurationError, build_agent_runner_for_harness, build_configured_server
+from optimus.acp.bootstrap import (
+    StartupConfigurationError,
+    build_agent_runner_for_harness,
+    build_client_mcp_runtime,
+    build_configured_server,
+)
 from optimus.acp.preflight import PreflightFailure
 from optimus.agent.runner import AgentRunner
+from optimus.mcp.client_disposition import ClientMcpRuntime
+from optimus.mcp.client_sdk import ClientMcpSdkAdapter
+
+
+def _test_sdk_adapter(supervisor) -> ClientMcpSdkAdapter:
+    class _NoopProcessControl:
+        def terminate_tree(self, *, seam: str) -> None:
+            del seam
+
+    return ClientMcpSdkAdapter(
+        supervisor=supervisor,
+        session_factory=lambda _capability: None,
+        http_client_factory=object,
+        stdio_transport_factory=lambda _capability: None,
+        process_control=_NoopProcessControl(),
+    )
 
 
 def test_bootstrap_has_no_divergent_dead_redis_default_constant():
@@ -16,6 +37,22 @@ def test_bootstrap_has_no_divergent_dead_redis_default_constant():
     source = inspect.getsource(bootstrap_module)
     assert "_DEFAULT_REDIS_URL_HINT" not in source
     assert "redis://localhost:6379/0" not in source
+
+
+def test_client_mcp_runtime_requires_an_sdk_adapter() -> None:
+    """A runtime without an owned adapter would silently skip connection teardown."""
+    with pytest.raises(TypeError, match="sdk_adapter"):
+        ClientMcpRuntime(disposition=object(), supervisor=object())  # type: ignore[arg-type]
+
+
+def test_client_mcp_runtime_rejects_an_explicitly_missing_sdk_adapter() -> None:
+    """An explicit None must fail at construction, before the later close path."""
+    with pytest.raises(ValueError, match="sdk_adapter"):
+        ClientMcpRuntime(  # type: ignore[arg-type]
+            disposition=object(),
+            supervisor=object(),
+            sdk_adapter=None,
+        )
 
 
 def test_bootstrap_reports_missing_optimus_credentials(tmp_path):
@@ -296,6 +333,7 @@ def test_bootstrap_builds_process_lifetime_client_mcp_runtime(tmp_path, monkeypa
             workspace_digest="c" * 64,
         ),
         supervisor=supervisor,
+        sdk_adapter=_test_sdk_adapter(supervisor),
         mcp_http_enabled=False,
         mcp_sse_enabled=False,
     )
@@ -323,3 +361,18 @@ def test_bootstrap_builds_process_lifetime_client_mcp_runtime(tmp_path, monkeypa
     assert runtime.mcp_sse_enabled is False
     assert not hasattr(server._dispatcher, "client_mcp_capability")
     runtime.close()
+
+
+def test_bootstrap_retains_one_real_sdk_adapter_without_opening_a_capability(tmp_path, monkeypatch):
+    """Bootstrap must construct capability wiring without manufacturing a session/new connection."""
+    monkeypatch.setenv("OPTIMUS_CLIENT_MCP_EPHEMERAL_HMAC", "1")
+
+    runtime = build_client_mcp_runtime(workspace_root=tmp_path)
+    try:
+        assert isinstance(runtime.sdk_adapter, ClientMcpSdkAdapter)
+        assert runtime.sdk_adapter._connections == {}
+        assert runtime.supervisor.state.value == "RUNNING"
+        with pytest.raises(TypeError, match="not serializable"):
+            runtime.sdk_adapter.__getstate__()
+    finally:
+        runtime.close()

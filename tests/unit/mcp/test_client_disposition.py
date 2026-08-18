@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import pickle
 import sys
+from dataclasses import dataclass, replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -14,13 +17,20 @@ from optimus.acp.launch_approvals import KeyringApprovalStore
 from optimus.acp.shapes import build_client_mcp_permission_params
 from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolRequest
-from optimus.mcp.client_catalog import ClientMcpToolService
+from optimus.mcp.client_catalog import (
+    MAX_CATALOG_PAGES,
+    AdapterBackedClientMcpToolService,
+    ClientMcpSessionService,
+    ClientMcpToolService,
+)
 from optimus.mcp.client_config import ClientMcpConfigError, ClientMcpConfigNormalizer, ClientMcpSafeIdentity
 from optimus.mcp.client_disposition import (
     AcpMcpPermissionBroker,
     ClientMcpDisposition,
     ClientMcpSessionState,
 )
+from optimus.mcp.client_sdk import ClientMcpSdkAdapter
+from optimus.mcp.client_supervisor import MCPAsyncSupervisor
 from optimus.mcp.client_trust import (
     ClientMcpDurableRecord,
     ClientMcpDurableStore,
@@ -120,9 +130,112 @@ def _catalog_pages(*, write: bool = False) -> list[dict[str, object]]:
     return [{"tools": tools}]
 
 
+def _record_adapter_open_and_discover(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Control only the remote SDK edge while preserving the project adapter type."""
+    operations: list[str] = []
+    connection = object()
+
+    def open(
+        _adapter: ClientMcpSdkAdapter,
+        _capability: object,
+        *,
+        session_id: str,
+        proposed_protocol_version: str = "2026-07-28",
+    ) -> object:
+        assert session_id == "session-1"
+        assert proposed_protocol_version == "2026-07-28"
+        operations.append("open")
+        return connection
+
+    def discover(_adapter: ClientMcpSdkAdapter, actual_connection: object) -> list[dict[str, object]]:
+        assert actual_connection is connection
+        operations.append("discover")
+        return _catalog_pages()
+
+    monkeypatch.setattr(ClientMcpSdkAdapter, "open", open)
+    monkeypatch.setattr(ClientMcpSdkAdapter, "discover", discover)
+    return operations
+
+
 class _RecordingDispatchService(ClientMcpToolService):
     def _dispatch(self, tool_name: str, arguments: dict[str, Any]) -> str:
         return f"dispatched:{tool_name}"
+
+
+def _recording_service_factory(**kwargs: Any) -> ClientMcpToolService:
+    return _RecordingDispatchService(**kwargs)
+
+
+@dataclass
+class _ControlledRemoteSession:
+    server_name: str
+    operations: list[str]
+    pages: list[dict[str, object]]
+    discover_error: bool = False
+
+    async def initialize(self) -> object:
+        self.operations.append(f"open:{self.server_name}")
+        return SimpleNamespace(
+            protocol_version="2025-11-25",
+            instructions="",
+            server_info=SimpleNamespace(name=self.server_name, description=""),
+        )
+
+    async def list_tools(self) -> list[dict[str, object]]:
+        self.operations.append(f"discover:{self.server_name}")
+        if self.discover_error:
+            raise RuntimeError("controlled remote discovery failure")
+        return self.pages
+
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, object]:
+        del arguments
+        self.operations.append(f"call:{self.server_name}:{name}")
+        return {"content": [{"type": "text", "text": "remote result must stay hidden"}]}
+
+
+@dataclass
+class _ControlledProcessControl:
+    closes: int = 0
+
+    def terminate_tree(self, *, seam: str) -> None:
+        del seam
+        self.closes += 1
+
+
+def _actual_sdk_adapter(
+    supervisor: MCPAsyncSupervisor,
+    *,
+    operations: list[str],
+    pages_by_server: dict[str, list[dict[str, object]]] | None = None,
+    discover_error_servers: frozenset[str] = frozenset(),
+    process_control: _ControlledProcessControl | None = None,
+) -> ClientMcpSdkAdapter:
+    pages = pages_by_server or {"tools": _catalog_pages(), "docs": _catalog_pages()}
+
+    def session_factory(capability: object) -> _ControlledRemoteSession:
+        identity = capability.safe_identity
+        return _ControlledRemoteSession(
+            server_name=identity.server_name,
+            operations=operations,
+            pages=pages[identity.server_name],
+            discover_error=identity.server_name in discover_error_servers,
+        )
+
+    return ClientMcpSdkAdapter(
+        supervisor=supervisor,
+        session_factory=session_factory,
+        http_client_factory=lambda: SimpleNamespace(follow_redirects=False, trust_env=False),
+        stdio_transport_factory=lambda _capability: None,
+        process_control=process_control or _ControlledProcessControl(),
+    )
+
+
+@pytest.fixture
+def sdk_supervisor() -> MCPAsyncSupervisor:
+    supervisor = MCPAsyncSupervisor()
+    supervisor.start()
+    yield supervisor
+    supervisor.close()
 
 
 def _write_request(*, session_id: str, server: str = "tools", arguments: dict[str, Any] | None = None) -> PreToolRequest:
@@ -467,7 +580,11 @@ def test_stdio_entry_helper_available_for_acp_tests(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_allow_once_stays_transport_free_until_lazy_materialization_registers(tmp_path: Path) -> None:
+async def test_allow_once_stays_transport_free_until_lazy_materialization_registers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter_operations = _record_adapter_open_and_discover(monkeypatch)
     disp, probe = _seed_side_effect_durable(tmp_path)
     state = await disp.disposition_for_new_session(
         "session-1",
@@ -476,6 +593,9 @@ async def test_allow_once_stays_transport_free_until_lazy_materialization_regist
         _allow,
     )
     assert state.is_leased("tools")
+    assert isinstance(state, ClientMcpSessionState)
+    assert isinstance(state.tool_service, ClientMcpSessionService)
+    assert adapter_operations == []
     lease = state.lease_for("tools")
     assert lease is not None
     assert lease.effect_ceiling == "side_effect_eligible"
@@ -490,6 +610,7 @@ async def test_allow_once_stays_transport_free_until_lazy_materialization_regist
         identity=_http_identity(),
         raw_tools=_catalog_pages(),
         workspace_root=tmp_path,
+        service_factory=_recording_service_factory,
     )
     assert probe.open_calls == 0
 
@@ -501,6 +622,328 @@ async def test_allow_once_stays_transport_free_until_lazy_materialization_regist
     missing, missing_call = state.tool_service.list_tools("docs")
     assert missing.text == "unavailable:unknown_server"
     assert missing_call.authorization_outcome == "BLOCK"
+
+
+@pytest.mark.asyncio
+async def test_leased_server_static_list_lazily_admits_catalog(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    sdk_supervisor: MCPAsyncSupervisor,
+) -> None:
+    """A leased server must be discoverable through the static generic list route.
+
+    The production change that must make this pass is the lazy resolver that opens the
+    leased capability, discovers its catalog, and registers the resulting real service.
+    Until that resolver exists, the registry correctly fails closed as unknown_server.
+    """
+    adapter_operations = _record_adapter_open_and_discover(monkeypatch)
+    disp, probe = _seed_side_effect_durable(tmp_path)
+    state = await disp.disposition_for_new_session(
+        "session-1",
+        tmp_path,
+        [_http_entry()],
+        _allow,
+    )
+
+    assert isinstance(state, ClientMcpSessionState)
+    assert isinstance(state.tool_service, ClientMcpSessionService)
+    assert state.is_leased("tools")
+    assert probe.open_calls == 0
+    adapter = _actual_sdk_adapter(sdk_supervisor, operations=[])
+    disp.attach_runtime_resolver(state, sdk_adapter=adapter)
+
+    listed, call = state.tool_service.list_tools("tools")
+
+    assert call.authorization_outcome == "ALLOW"
+    payload = json.loads(listed.text)
+    assert {tool["name"] for tool in payload["tools"]} == {"list_providers"}
+    assert adapter_operations == ["open", "discover"]
+
+
+@pytest.mark.asyncio
+async def test_lazy_resolver_opens_discovers_registers_and_reuses_exact_connection(
+    tmp_path: Path,
+    sdk_supervisor: MCPAsyncSupervisor,
+) -> None:
+    """Removing resolver reuse would open or discover the leased server twice."""
+    operations: list[str] = []
+    process_control = _ControlledProcessControl()
+    adapter = _actual_sdk_adapter(
+        sdk_supervisor,
+        operations=operations,
+        process_control=process_control,
+    )
+    disp, _probe = _seed_side_effect_durable(tmp_path)
+    state = await disp.disposition_for_new_session(
+        "session-1",
+        tmp_path,
+        [_http_entry()],
+        _allow,
+    )
+
+    assert operations == []
+    disp.attach_runtime_resolver(state, sdk_adapter=adapter)
+    assert operations == []
+    with pytest.raises(TypeError, match="not serializable"):
+        pickle.dumps(state.tool_service)
+
+    listed, listed_call = state.tool_service.list_tools("tools")
+    assert listed_call.authorization_outcome == "ALLOW"
+    assert {tool["name"] for tool in json.loads(listed.text)["tools"]} == {"list_providers"}
+    assert operations == ["open:tools", "discover:tools"]
+
+    service = state.tool_service.ensure_server("tools")
+    assert isinstance(service, AdapterBackedClientMcpToolService)
+    assert object.__getattribute__(service, "_adapter") is adapter
+    connection = object.__getattribute__(service, "_connection")
+    assert connection.session_id == "session-1"
+
+    second, second_call = state.tool_service.list_tools("tools")
+    assert second_call.authorization_outcome == "ALLOW"
+    assert second.text == listed.text
+    assert operations == ["open:tools", "discover:tools"]
+
+    state.close()
+    state.close()
+    assert connection.closed is True
+    assert process_control.closes == 1
+
+
+@pytest.mark.asyncio
+async def test_rejected_lease_never_opens_or_registers(
+    tmp_path: Path,
+    sdk_supervisor: MCPAsyncSupervisor,
+) -> None:
+    operations: list[str] = []
+    adapter = _actual_sdk_adapter(sdk_supervisor, operations=operations)
+    disp = _disposition(tmp_path)
+
+    async def reject(_params: dict[str, Any]) -> str:
+        return "reject"
+
+    state = await disp.disposition_for_new_session(
+        "session-1",
+        tmp_path,
+        [_http_entry()],
+        reject,
+    )
+    disp.attach_runtime_resolver(state, sdk_adapter=adapter)
+
+    listed, call = state.tool_service.list_tools("tools")
+    assert listed.text == "unavailable:unknown_server"
+    assert call.authorization_outcome == "BLOCK"
+    assert operations == []
+    assert state.tool_service.ensure_server("tools") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("pages", "discover_error"),
+    [
+        ([{"notTools": []}], False),
+        ([{"tools": []}] * (MAX_CATALOG_PAGES + 1), False),
+        (_catalog_pages(), True),
+    ],
+    ids=["malformed-catalog", "over-budget-catalog", "sdk-discovery-error"],
+)
+async def test_lazy_failure_closes_opened_connection_and_registers_nothing(
+    tmp_path: Path,
+    sdk_supervisor: MCPAsyncSupervisor,
+    pages: list[dict[str, object]],
+    discover_error: bool,
+) -> None:
+    operations: list[str] = []
+    process_control = _ControlledProcessControl()
+    adapter = _actual_sdk_adapter(
+        sdk_supervisor,
+        operations=operations,
+        pages_by_server={"tools": pages},
+        discover_error_servers=frozenset({"tools"}) if discover_error else frozenset(),
+        process_control=process_control,
+    )
+    disp, _probe = _seed_side_effect_durable(tmp_path)
+    state = await disp.disposition_for_new_session(
+        "session-1",
+        tmp_path,
+        [_http_entry()],
+        _allow,
+    )
+    disp.attach_runtime_resolver(state, sdk_adapter=adapter)
+
+    listed, call = state.tool_service.list_tools("tools")
+    assert listed.text == "unavailable:unknown_server"
+    assert call.authorization_outcome == "BLOCK"
+    assert operations == ["open:tools", "discover:tools"]
+    assert process_control.closes == 1
+    assert adapter._connections == {}
+    assert state.tool_service._lookup("tools") is None
+
+    repeated, repeated_call = state.tool_service.list_tools("tools")
+    assert repeated.text == "unavailable:unknown_server"
+    assert repeated_call.authorization_outcome == "BLOCK"
+    assert operations == ["open:tools", "discover:tools"]
+    assert process_control.closes == 1
+
+
+@pytest.mark.asyncio
+async def test_identity_mismatch_closes_opened_connection_and_registers_nothing(
+    tmp_path: Path,
+    sdk_supervisor: MCPAsyncSupervisor,
+) -> None:
+    operations: list[str] = []
+    process_control = _ControlledProcessControl()
+    adapter = _actual_sdk_adapter(
+        sdk_supervisor,
+        operations=operations,
+        process_control=process_control,
+    )
+    disp, _probe = _seed_side_effect_durable(tmp_path)
+    state = await disp.disposition_for_new_session(
+        "session-1",
+        tmp_path,
+        [_http_entry()],
+        _allow,
+    )
+    lease = state.lease_for("tools")
+    assert lease is not None
+    state._servers["tools"].lease = replace(lease, identity_fingerprint="mismatch")
+    disp.attach_runtime_resolver(state, sdk_adapter=adapter)
+
+    listed, call = state.tool_service.list_tools("tools")
+    assert listed.text == "unavailable:unknown_server"
+    assert call.authorization_outcome == "BLOCK"
+    assert operations == ["open:tools", "discover:tools"]
+    assert process_control.closes == 1
+    assert adapter._connections == {}
+
+
+@pytest.mark.asyncio
+async def test_factory_exception_closes_opened_connection_and_registers_nothing(
+    tmp_path: Path,
+    sdk_supervisor: MCPAsyncSupervisor,
+) -> None:
+    operations: list[str] = []
+    process_control = _ControlledProcessControl()
+    adapter = _actual_sdk_adapter(
+        sdk_supervisor,
+        operations=operations,
+        process_control=process_control,
+    )
+    disp, _probe = _seed_side_effect_durable(tmp_path)
+    state = await disp.disposition_for_new_session(
+        "session-1",
+        tmp_path,
+        [_http_entry()],
+        _allow,
+    )
+
+    def failing_factory_builder(_adapter: object, _connection: object) -> object:
+        def fail(**_kwargs: object) -> ClientMcpToolService:
+            raise RuntimeError("controlled factory failure")
+
+        return fail
+
+    disp.attach_runtime_resolver(
+        state,
+        sdk_adapter=adapter,
+        service_factory_builder=failing_factory_builder,
+    )
+
+    listed, call = state.tool_service.list_tools("tools")
+    assert listed.text == "unavailable:unknown_server"
+    assert call.authorization_outcome == "BLOCK"
+    assert operations == ["open:tools", "discover:tools"]
+    assert process_control.closes == 1
+    assert adapter._connections == {}
+
+
+@pytest.mark.asyncio
+async def test_generic_requires_and_call_routes_resolve_before_dispatch(
+    tmp_path: Path,
+    sdk_supervisor: MCPAsyncSupervisor,
+) -> None:
+    operations: list[str] = []
+    adapter = _actual_sdk_adapter(
+        sdk_supervisor,
+        operations=operations,
+        pages_by_server={"tools": _catalog_pages(write=True)},
+    )
+    disp, _probe = _seed_side_effect_durable(tmp_path)
+    state = await disp.disposition_for_new_session(
+        "session-1",
+        tmp_path,
+        [_http_entry()],
+        _allow,
+    )
+    disp.attach_runtime_resolver(state, sdk_adapter=adapter)
+
+    assert state.tool_service.requires_write_approval("tools", "delete_resource") is True
+    assert operations == ["open:tools", "discover:tools"]
+
+    output, call = state.tool_service.call_tool("tools", "list_providers", {})
+    assert call.authorization_outcome == "ALLOW"
+    assert output.text == "completed"
+    assert operations == ["open:tools", "discover:tools", "call:tools:list_providers"]
+
+
+@pytest.mark.asyncio
+async def test_sessions_and_servers_never_share_lazy_connections_or_services(
+    tmp_path: Path,
+    sdk_supervisor: MCPAsyncSupervisor,
+) -> None:
+    operations: list[str] = []
+    process_control = _ControlledProcessControl()
+    adapter = _actual_sdk_adapter(
+        sdk_supervisor,
+        operations=operations,
+        process_control=process_control,
+    )
+    disp, _probe = _seed_side_effect_durable(tmp_path)
+    state_a = await disp.disposition_for_new_session(
+        "session-a",
+        tmp_path,
+        [_http_entry(name="tools"), _http_entry(name="docs")],
+        _allow,
+    )
+    state_b = await disp.disposition_for_new_session(
+        "session-b",
+        tmp_path,
+        [_http_entry(name="tools")],
+        _allow,
+    )
+    disp.attach_runtime_resolver(state_a, sdk_adapter=adapter)
+    disp.attach_runtime_resolver(state_b, sdk_adapter=adapter)
+
+    state_a.tool_service.list_tools("tools")
+    state_a.tool_service.list_tools("docs")
+    state_b.tool_service.list_tools("tools")
+
+    services = (
+        state_a.tool_service.ensure_server("tools"),
+        state_a.tool_service.ensure_server("docs"),
+        state_b.tool_service.ensure_server("tools"),
+    )
+    assert all(isinstance(service, AdapterBackedClientMcpToolService) for service in services)
+    assert len({id(service) for service in services}) == 3
+    connections = [object.__getattribute__(service, "_connection") for service in services]
+    assert len({id(connection) for connection in connections}) == 3
+    assert {connection.session_id for connection in connections} == {"session-a", "session-b"}
+    assert operations == [
+        "open:tools",
+        "discover:tools",
+        "open:docs",
+        "discover:docs",
+        "open:tools",
+        "discover:tools",
+    ]
+
+    state_a.close()
+    assert connections[0].closed is True
+    assert connections[1].closed is True
+    assert connections[2].closed is False
+    state_b.close()
+    assert connections[2].closed is True
+    assert process_control.closes == 3
 
 
 @pytest.mark.asyncio
@@ -523,6 +966,7 @@ async def test_unavailable_and_budget_failure_register_nothing(tmp_path: Path) -
         identity=_http_identity(),
         raw_tools=_catalog_pages(),
         workspace_root=tmp_path,
+        service_factory=_recording_service_factory,
     )
     listed, call = rejected.tool_service.list_tools("tools")
     assert listed.text == "unavailable:unknown_server"
@@ -543,6 +987,7 @@ async def test_unavailable_and_budget_failure_register_nothing(tmp_path: Path) -
         raw_tools=_catalog_pages(),
         workspace_root=tmp_path,
         elapsed_seconds=30.1,
+        service_factory=_recording_service_factory,
     )
     listed, call = leased.tool_service.list_tools("tools")
     assert listed.text == "unavailable:unknown_server"
@@ -574,21 +1019,21 @@ async def test_two_sessions_and_two_servers_do_not_cross_consume(tmp_path: Path)
         identity=_http_identity(name="tools"),
         raw_tools=_catalog_pages(write=True),
         workspace_root=tmp_path,
-        service_cls=_RecordingDispatchService,
+        service_factory=_recording_service_factory,
     )
     disp.materialize_tool_service(
         state_a,
         identity=_http_identity(name="docs"),
         raw_tools=_catalog_pages(),
         workspace_root=tmp_path,
-        service_cls=_RecordingDispatchService,
+        service_factory=_recording_service_factory,
     )
     disp.materialize_tool_service(
         state_b,
         identity=_http_identity(name="tools"),
         raw_tools=_catalog_pages(write=True),
         workspace_root=tmp_path,
-        service_cls=_RecordingDispatchService,
+        service_factory=_recording_service_factory,
     )
     assert probe.open_calls == 0
 

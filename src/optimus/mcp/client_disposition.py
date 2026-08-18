@@ -6,14 +6,17 @@ import asyncio
 import secrets
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from optimus.acp.shapes import build_client_mcp_permission_params
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest
 from optimus.mcp.client_catalog import (
+    AdapterBackedClientMcpToolService,
     ClientMcpCallAuthorizer,
+    ClientMcpCatalog,
     ClientMcpCatalogError,
     ClientMcpDescriptorExposureAdapter,
     ClientMcpOneCallApproval,
@@ -27,6 +30,7 @@ from optimus.mcp.client_config import (
     ClientMcpRuntimeCapability,
     ClientMcpSafeIdentity,
 )
+from optimus.mcp.client_sdk import ClientMcpConnection, ClientMcpSdkAdapter
 from optimus.mcp.client_supervisor import MCPAsyncSupervisor
 from optimus.mcp.client_trust import (
     ClientMcpDurableRecord,
@@ -40,6 +44,23 @@ PermissionOutcome = Literal["allow", "reject", "timeout", "outbound_failure"]
 RequestPermissionFn = Callable[[dict[str, Any]], Awaitable[PermissionOutcome | str | dict[str, Any]]]
 
 
+class ClientMcpServiceFactory(Protocol):
+    def __call__(
+        self,
+        *,
+        guard: PreToolGuard,
+        catalog: ClientMcpCatalog,
+        authorizer: ClientMcpCallAuthorizer,
+    ) -> ClientMcpToolService:
+        ...
+
+
+ClientMcpServiceFactoryBuilder = Callable[
+    [ClientMcpSdkAdapter, ClientMcpConnection],
+    ClientMcpServiceFactory,
+]
+
+
 @dataclass
 class ClientMcpSessionState:
     """Opaque per-session client-MCP disposition; never serialized onto ACP payloads."""
@@ -50,6 +71,7 @@ class ClientMcpSessionState:
     _closed: bool = False
     _close_hooks: list[Callable[[], None]] = field(default_factory=list)
     _capabilities: list[ClientMcpRuntimeCapability] = field(default_factory=list)
+    _workspace_root: Path | None = None
 
     @property
     def tool_service(self) -> ClientMcpSessionService:
@@ -74,15 +96,32 @@ class ClientMcpSessionState:
         entry = self._servers.get(server_name)
         return None if entry is None else entry.durable
 
-    def register_close_hook(self, hook: Callable[[], None]) -> None:
+    def register_close_hook(self, hook: Callable[[], None]) -> bool:
+        if self._closed:
+            hook()
+            return False
         self._close_hooks.append(hook)
+        return True
+
+    def _capability_for(self, server_name: str) -> ClientMcpRuntimeCapability | None:
+        return next(
+            (
+                capability
+                for capability in self._capabilities
+                if capability.safe_identity.server_name == server_name
+            ),
+            None,
+        )
 
     def close(self) -> None:
         if self._closed:
             return
         self._closed = True
+        self._tool_service.detach_resolver()
         for hook in list(self._close_hooks):
-            hook()
+            with suppress(Exception):
+                hook()
+        self._close_hooks.clear()
         self._capabilities.clear()
 
 
@@ -101,11 +140,17 @@ class ClientMcpRuntime:
 
     disposition: ClientMcpDisposition
     supervisor: MCPAsyncSupervisor
+    sdk_adapter: ClientMcpSdkAdapter
     mcp_http_enabled: bool = False
     mcp_sse_enabled: bool = False
     candidate_endpoint: PendingClientMcpCandidateEndpoint | None = None
 
+    def __post_init__(self) -> None:
+        if self.sdk_adapter is None:
+            raise ValueError("sdk_adapter is required")
+
     def close(self) -> None:
+        self.sdk_adapter.close_all()
         if self.candidate_endpoint is not None:
             self.candidate_endpoint.close()
         self.supervisor.close()
@@ -140,14 +185,14 @@ class ClientMcpDisposition:
         entries: Sequence[Mapping[str, object]] | None,
         request_permission: RequestPermissionFn,
     ) -> ClientMcpSessionState:
-        del cwd  # reserved for future load/cwd binding; workspace_digest is authoritative now
-        state = ClientMcpSessionState(session_id=session_id)
+        workspace_root = cwd.resolve()
+        state = ClientMcpSessionState(session_id=session_id, _workspace_root=workspace_root)
         if entries is None or len(entries) == 0:
             return state
 
         capabilities = self._normalizer.normalize(
             entries,
-            workspace_root=Path("."),
+            workspace_root=workspace_root,
             controlled_path=self._controlled_path,
             hmac_key=self._hmac_key,
         )
@@ -214,7 +259,7 @@ class ClientMcpDisposition:
         raw_tools: Sequence[Mapping[str, object]],
         workspace_root: Path,
         elapsed_seconds: float = 0.0,
-        service_cls: type[ClientMcpToolService] = ClientMcpToolService,
+        service_factory: ClientMcpServiceFactory,
     ) -> ClientMcpToolService | None:
         """Register one identity-bound service after catalog scan/budget admission.
 
@@ -250,9 +295,77 @@ class ClientMcpDisposition:
             allowed_network_hosts=(),
             client_mcp_authorizer=authorizer,
         )
-        service = service_cls(guard=guard, catalog=catalog, authorizer=authorizer)
+        service = service_factory(guard=guard, catalog=catalog, authorizer=authorizer)
+        service_catalog: ClientMcpCatalog = object.__getattribute__(service, "_catalog")
+        if service_catalog is not catalog:
+            raise ClientMcpCatalogError("SERVICE_CATALOG_MISMATCH")
         state.tool_service.register(service)
         return service
+
+    def attach_runtime_resolver(
+        self,
+        state: ClientMcpSessionState,
+        *,
+        sdk_adapter: ClientMcpSdkAdapter,
+        service_factory_builder: ClientMcpServiceFactoryBuilder | None = None,
+    ) -> None:
+        """Attach a transport-opening resolver only after disposition has succeeded."""
+        builder = service_factory_builder or _adapter_backed_service_factory
+
+        def resolve(server: str) -> ClientMcpToolService | None:
+            return self._resolve_server(
+                state,
+                server=server,
+                sdk_adapter=sdk_adapter,
+                service_factory_builder=builder,
+            )
+
+        state.tool_service.attach_resolver(resolve)
+
+    def _resolve_server(
+        self,
+        state: ClientMcpSessionState,
+        *,
+        server: str,
+        sdk_adapter: ClientMcpSdkAdapter,
+        service_factory_builder: ClientMcpServiceFactoryBuilder,
+    ) -> ClientMcpToolService | None:
+        if state._closed or not state.is_leased(server):
+            return None
+        capability = state._capability_for(server)
+        workspace_root = state._workspace_root
+        if capability is None or workspace_root is None:
+            return None
+
+        connection: ClientMcpConnection | None = None
+        service: ClientMcpToolService | None = None
+        try:
+            connection = sdk_adapter.open(capability, session_id=state.session_id)
+            raw_tools = sdk_adapter.discover(connection)
+            service_factory = service_factory_builder(sdk_adapter, connection)
+            service = self.materialize_tool_service(
+                state,
+                identity=capability.safe_identity,
+                raw_tools=raw_tools,
+                workspace_root=workspace_root,
+                service_factory=service_factory,
+            )
+            if service is None:
+                raise ClientMcpCatalogError("SERVICE_UNAVAILABLE")
+            close_registered = state.register_close_hook(
+                lambda adapter=sdk_adapter, opened=connection: adapter.close(opened)
+            )
+            if not close_registered:
+                state.tool_service.unregister(service)
+                return None
+            return service
+        except Exception:
+            if service is not None:
+                state.tool_service.unregister(service)
+            if connection is not None:
+                with suppress(Exception):
+                    sdk_adapter.close(connection)
+            return None
 
     async def _await_permission(
         self,
@@ -269,6 +382,27 @@ class ClientMcpDisposition:
         except Exception:
             return "outbound_failure"
         return _normalize_permission_outcome(raw)
+
+
+def _adapter_backed_service_factory(
+    adapter: ClientMcpSdkAdapter,
+    connection: ClientMcpConnection,
+) -> ClientMcpServiceFactory:
+    def create(
+        *,
+        guard: PreToolGuard,
+        catalog: ClientMcpCatalog,
+        authorizer: ClientMcpCallAuthorizer,
+    ) -> ClientMcpToolService:
+        return AdapterBackedClientMcpToolService(
+            guard=guard,
+            catalog=catalog,
+            authorizer=authorizer,
+            adapter=adapter,
+            connection=connection,
+        )
+
+    return create
 
 
 def _normalize_permission_outcome(raw: PermissionOutcome | str | dict[str, Any]) -> PermissionOutcome:

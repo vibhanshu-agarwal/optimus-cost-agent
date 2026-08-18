@@ -166,15 +166,32 @@ def build_client_mcp_runtime(*, workspace_root: Path) -> Any:
     import secrets
     import sys
 
+    import httpx2
     import keyring
 
     from optimus.acp.launch_approvals import KeyringApprovalStore
     from optimus.acp.trusted_paths import resolve_trusted_operator_roots, resolve_workspace_identity
     from optimus.mcp.client_config import ClientMcpConfigNormalizer
     from optimus.mcp.client_disposition import ClientMcpDisposition, ClientMcpRuntime
+    from optimus.mcp.client_sdk import (
+        ClientMcpSdkAdapter,
+        build_sdk_session_context_factory,
+        build_sdk_transport_context_factory,
+    )
     from optimus.mcp.client_supervisor import MCPAsyncSupervisor
     from optimus.mcp.client_trust import ClientMcpDurableStore, ClientMcpLeaseAuthority, derive_ipc_auth_key
     from optimus.mcp.local_ipc import PendingClientMcpCandidateEndpoint
+
+    class _ProcessControl:
+        def terminate_tree(self, *, seam: str) -> None:
+            del seam
+
+    def _hardened_http_client() -> Any:
+        return httpx2.AsyncClient(
+            follow_redirects=False,
+            trust_env=False,
+            timeout=httpx2.Timeout(30.0, read=60.0),
+        )
 
     roots = resolve_trusted_operator_roots(platform_name=sys.platform)
     approval_store = KeyringApprovalStore(
@@ -187,6 +204,17 @@ def build_client_mcp_runtime(*, workspace_root: Path) -> Any:
     durable = ClientMcpDurableStore(keyring_backend=approval_store._keyring, hmac_key=hmac_key)
     supervisor = MCPAsyncSupervisor()
     supervisor.start()
+    sdk_adapter = ClientMcpSdkAdapter(
+        supervisor=supervisor,
+        session_factory=lambda _capability: None,
+        http_client_factory=_hardened_http_client,
+        stdio_transport_factory=lambda _capability: None,
+        process_control=_ProcessControl(),
+        transport_context_factory=build_sdk_transport_context_factory(
+            http_client_factory=_hardened_http_client,
+        ),
+        session_context_factory=build_sdk_session_context_factory(),
+    )
     candidate_endpoint = PendingClientMcpCandidateEndpoint(authkey=derive_ipc_auth_key(hmac_key))
     disposition = ClientMcpDisposition(
         normalizer=ClientMcpConfigNormalizer(),
@@ -199,6 +227,7 @@ def build_client_mcp_runtime(*, workspace_root: Path) -> Any:
     return ClientMcpRuntime(
         disposition=disposition,
         supervisor=supervisor,
+        sdk_adapter=sdk_adapter,
         mcp_http_enabled=False,
         mcp_sse_enabled=False,
         candidate_endpoint=candidate_endpoint,

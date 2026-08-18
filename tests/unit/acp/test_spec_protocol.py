@@ -3,6 +3,7 @@ import json
 import threading
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -22,7 +23,12 @@ from optimus.agent.models import AgentRunResult, AgentRunStatus, AgentToolCall
 from optimus.agent.planning_loop import PlanningProgressEvent
 from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolRequest
-from optimus.mcp.client_catalog import ClientMcpToolService, arguments_digest
+from optimus.mcp.client_catalog import (
+    AdapterBackedClientMcpToolService,
+    ClientMcpSessionService,
+    ClientMcpToolService,
+    arguments_digest,
+)
 from optimus.mcp.client_config import ClientMcpConfigNormalizer, ClientMcpSafeIdentity
 from optimus.mcp.client_disposition import ClientMcpDisposition, ClientMcpSessionState
 from optimus.mcp.client_trust import (
@@ -118,7 +124,7 @@ async def _lease_and_materialize_write_thing(session, tmp_path: Path) -> ClientM
         identity=identity,
         raw_tools=_write_thing_pages(),
         workspace_root=tmp_path,
-        service_cls=_SafeDispatchService,
+        service_factory=lambda **kwargs: _SafeDispatchService(**kwargs),
     )
     assert service is not None
     return service
@@ -1230,7 +1236,14 @@ async def test_unknown_cost_emits_end_turn_without_permission_request(tmp_path):
 # --- P11-FU-9 Task 6: client mcpServers disposition on session/new ---
 
 
-def _client_mcp_runtime_for_tests(tmp_path):
+def _client_mcp_runtime_for_tests(
+    tmp_path,
+    *,
+    operations=None,
+    process_control=None,
+    catalog_pages=None,
+    side_effect_eligible=False,
+):
     from optimus.acp.launch_approvals import KeyringApprovalStore
     from optimus.mcp.client_config import ClientMcpConfigNormalizer
     from optimus.mcp.client_disposition import ClientMcpDisposition, ClientMcpRuntime
@@ -1254,6 +1267,15 @@ def _client_mcp_runtime_for_tests(tmp_path):
     keyring = _FakeKeyring()
     KeyringApprovalStore(keyring_backend=keyring, runtime_root=tmp_path, hmac_key=hmac_key)
     durable = ClientMcpDurableStore(keyring_backend=keyring, hmac_key=hmac_key)
+    if side_effect_eligible:
+        identity = _http_identity()
+        write_client_mcp_durable_from_fingerprint(
+            store=durable,
+            workspace_digest="a" * 64,
+            identity=identity,
+            rendered_fingerprint=compute_identity_fingerprint(identity, hmac_key=hmac_key),
+            effect_ceiling="side_effect_eligible",
+        )
     # Disposition never opens transport; supervisor is process-lifetime in production
     # but unit tests can omit a live loop to avoid teardown hangs.
     supervisor = MCPAsyncSupervisor()
@@ -1265,7 +1287,62 @@ def _client_mcp_runtime_for_tests(tmp_path):
         workspace_digest="a" * 64,
         permission_timeout_seconds=30.0,
     )
-    return ClientMcpRuntime(disposition=disposition, supervisor=supervisor)
+    return ClientMcpRuntime(
+        disposition=disposition,
+        supervisor=supervisor,
+        sdk_adapter=_test_sdk_adapter(
+            supervisor,
+            operations=operations,
+            process_control=process_control,
+            catalog_pages=catalog_pages,
+        ),
+    )
+
+
+def _test_sdk_adapter(supervisor, *, operations=None, process_control=None, catalog_pages=None):
+    from optimus.mcp.client_sdk import ClientMcpSdkAdapter
+
+    class _NoopProcessControl:
+        def terminate_tree(self, *, seam: str) -> None:
+            del seam
+
+    class _ControlledRemoteSession:
+        async def initialize(self):
+            if operations is not None:
+                operations.append("open")
+            return SimpleNamespace(
+                protocol_version="2025-11-25",
+                instructions="",
+                server_info=SimpleNamespace(name="tools", description=""),
+            )
+
+        async def list_tools(self):
+            if operations is not None:
+                operations.append("discover")
+            return catalog_pages or [
+                {
+                    "tools": [
+                        {
+                            "name": "list_providers",
+                            "description": "Safe metadata lookup.",
+                            "inputSchema": {"type": "object"},
+                        }
+                    ]
+                }
+            ]
+
+        async def call_tool(self, name, arguments):
+            if operations is not None:
+                operations.append(("call", name, arguments))
+            return {"content": [{"type": "text", "text": "controlled remote result"}]}
+
+    return ClientMcpSdkAdapter(
+        supervisor=supervisor,
+        session_factory=lambda _capability: _ControlledRemoteSession(),
+        http_client_factory=lambda: SimpleNamespace(follow_redirects=False, trust_env=False),
+        stdio_transport_factory=lambda _capability: None,
+        process_control=process_control or _NoopProcessControl(),
+    )
 
 
 async def test_session_new_absent_or_empty_mcp_servers_is_exact_noop(tmp_path):
@@ -1377,6 +1454,263 @@ async def test_session_new_awaits_transport_permission_with_opaque_safe_fields(t
     assert session.client_mcp_state.is_leased("tools")
 
 
+async def test_session_new_attaches_lazy_resolver_without_opening_transport(tmp_path):
+    """Moving resolution into session/new would open before a generic MCP operation."""
+    operations = []
+    runtime = _client_mcp_runtime_for_tests(tmp_path)
+    runtime.supervisor.start()
+    runtime.sdk_adapter = _test_sdk_adapter(runtime.supervisor, operations=operations)
+    outbound = RecordingOutboundChannel()
+    sessions = InMemoryAcpSpecSessionStore()
+    duplex = AcpDuplexAdapter(
+        runner=FakeRunner(),
+        workspace_root=tmp_path,
+        sessions=sessions,
+        outbound=outbound,
+        client_mcp_runtime=runtime,
+    )
+
+    try:
+        new_task = asyncio.create_task(
+            duplex.handle_client_request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "session/new",
+                    "params": {
+                        "cwd": str(tmp_path),
+                        "mcpServers": [
+                            {"type": "http", "name": "tools", "url": "https://mcp.example.com/v1"}
+                        ],
+                    },
+                }
+            )
+        )
+        permission = await outbound.wait_for_request("session/request_permission")
+        outbound.respond(
+            permission["id"],
+            {"outcome": {"outcome": "selected", "optionId": "allow_once"}},
+        )
+        response = await new_task
+        session = sessions.get(response["result"]["sessionId"])
+        assert session is not None
+        assert operations == []
+        assert runtime.sdk_adapter._connections == {}
+        assert session.client_mcp_state.tool_service._lookup("tools") is None
+        assert object.__getattribute__(
+            session.client_mcp_state.tool_service,
+            "_resolution_attempts",
+        ) == set()
+
+        request = PreToolRequest(
+            run_id="run-1",
+            session_id=session.session_id,
+            execution_mode=ExecutionMode.AGENT,
+            tool_surface=ToolSurface.MCP,
+            action="tools.write_thing",
+            generation_scope=GenerationScope.INLINE_SNIPPET,
+            approval_granted=False,
+            mcp_authority="client_session",
+            mcp_server_id="tools",
+            mcp_tool_name="write_thing",
+            mcp_arguments={"x": 1},
+        )
+        broker = duplex._mcp_permission_broker_for(session)
+        assert broker is not None
+        assert broker._issue_approval(request) is None
+        assert operations == []
+
+        listed, call = session.client_mcp_state.tool_service.list_tools("tools")
+        assert call.authorization_outcome == "ALLOW"
+        assert {tool["name"] for tool in json.loads(listed.text)["tools"]} == {"list_providers"}
+        assert operations == ["open", "discover"]
+    finally:
+        duplex.close_all()
+        runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_real_client_mcp_runtime_composes_lazily_through_guard_and_tears_down_once(tmp_path):
+    """A premature broker or dispatch-before-guard breaks the real-object composition."""
+
+    class _CountingProcessControl:
+        def __init__(self) -> None:
+            self.closes = 0
+
+        def terminate_tree(self, *, seam: str) -> None:
+            assert seam in {"windows_job_object", "posix_process_group"}
+            self.closes += 1
+
+    operations = []
+    process_control = _CountingProcessControl()
+    runtime = _client_mcp_runtime_for_tests(
+        tmp_path,
+        operations=operations,
+        process_control=process_control,
+        catalog_pages=_write_thing_pages(),
+        side_effect_eligible=True,
+    )
+    runtime.supervisor.start()
+    outbound = RecordingOutboundChannel()
+    sessions = InMemoryAcpSpecSessionStore()
+    duplex = AcpDuplexAdapter(
+        runner=FakeRunner(),
+        workspace_root=tmp_path,
+        sessions=sessions,
+        outbound=outbound,
+        client_mcp_runtime=runtime,
+    )
+
+    try:
+        new_task = asyncio.create_task(
+            duplex.handle_client_request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "session/new",
+                    "params": {
+                        "cwd": str(tmp_path),
+                        "mcpServers": [
+                            {"type": "http", "name": "tools", "url": "https://mcp.example.com/v1"}
+                        ],
+                    },
+                }
+            )
+        )
+        transport_permission = await outbound.wait_for_request("session/request_permission")
+        outbound.respond(
+            transport_permission["id"],
+            {"outcome": {"outcome": "selected", "optionId": "allow_once"}},
+        )
+        response = await new_task
+        session = sessions.get(response["result"]["sessionId"])
+        assert session is not None
+        assert session.client_mcp_state is not None
+        service = session.client_mcp_state.tool_service
+        request = PreToolRequest(
+            run_id="run-1",
+            session_id=session.session_id,
+            execution_mode=ExecutionMode.AGENT,
+            tool_surface=ToolSurface.MCP,
+            action="tools.write_thing",
+            generation_scope=GenerationScope.INLINE_SNIPPET,
+            approval_granted=False,
+            mcp_authority="client_session",
+            mcp_server_id="tools",
+            mcp_tool_name="write_thing",
+            mcp_arguments={"x": 1},
+        )
+        broker = duplex._mcp_permission_broker_for(session)
+
+        assert service._lookup("tools") is None
+        assert broker is not None
+        assert broker._issue_approval(request) is None
+        assert operations == []
+        assert runtime.sdk_adapter._connections == {}
+
+        listed, listed_call = service.list_tools("tools")
+
+        assert listed_call.authorization_outcome == "ALLOW"
+        assert {tool["name"] for tool in json.loads(listed.text)["tools"]} == {"write_thing"}
+        registered = service._lookup("tools")
+        assert isinstance(registered, AdapterBackedClientMcpToolService)
+        connection = object.__getattribute__(registered, "_connection")
+        assert connection.closed is False
+        assert len(object.__getattribute__(service, "_services")) == 1
+        assert operations == ["open", "discover"]
+
+        before_write_permission = len(outbound.requests)
+        approval_task = asyncio.create_task(asyncio.to_thread(broker.request_write, request))
+        while len(outbound.requests) <= before_write_permission:
+            await asyncio.sleep(0.01)
+        write_permission = outbound.requests[-1]
+        assert write_permission["method"] == "session/request_permission"
+        outbound.respond(
+            write_permission["id"],
+            {"outcome": {"outcome": "selected", "optionId": "allow_once"}},
+        )
+        approval = await approval_task
+        lease = session.client_mcp_state.lease_for("tools")
+        assert lease is not None
+        assert approval is not None
+        assert approval.session_id == session.session_id
+        assert approval.identity_fingerprint == lease.identity_fingerprint
+        assert approval.tool_name == "write_thing"
+        assert approval.arguments_digest == arguments_digest({"x": 1})
+
+        mismatched_output, mismatched_call = service.call_tool(
+            "tools",
+            "write_thing",
+            {"x": 2},
+            one_call_approval=approval.token,
+        )
+        assert mismatched_call.authorization_outcome == "BLOCK"
+        assert mismatched_output.text == "unavailable:mcp.client.one_call_arguments_mismatch"
+        assert operations == ["open", "discover"]
+
+        output, call = service.call_tool(
+            "tools",
+            "write_thing",
+            {"x": 1},
+            one_call_approval=approval.token,
+        )
+        assert call.authorization_outcome == "ALLOW"
+        assert output.text == "completed"
+        assert operations == ["open", "discover", ("call", "write_thing", {"x": 1})]
+
+        replay_output, replay_call = service.call_tool(
+            "tools",
+            "write_thing",
+            {"x": 1},
+            one_call_approval=approval.token,
+        )
+        assert replay_call.authorization_outcome == "BLOCK"
+        assert replay_output.text == "unavailable:mcp.client.one_call_replay"
+        assert operations == ["open", "discover", ("call", "write_thing", {"x": 1})]
+
+        duplex.close_all()
+        duplex.close_all()
+        assert connection.closed is True
+        assert process_control.closes == 1
+        assert runtime.sdk_adapter._connections == {}
+    finally:
+        duplex.close_all()
+        runtime.close()
+
+    empty_operations = []
+    empty_process_control = _CountingProcessControl()
+    empty_runtime = _client_mcp_runtime_for_tests(
+        tmp_path,
+        operations=empty_operations,
+        process_control=empty_process_control,
+    )
+    empty_runtime.supervisor.start()
+    empty_duplex = AcpDuplexAdapter(
+        runner=FakeRunner(),
+        workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(),
+        outbound=RecordingOutboundChannel(),
+        client_mcp_runtime=empty_runtime,
+    )
+    try:
+        empty_response = await empty_duplex.handle_client_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {"cwd": str(tmp_path), "mcpServers": []},
+            }
+        )
+        assert "result" in empty_response
+        empty_duplex.close_all()
+        assert empty_operations == []
+        assert empty_process_control.closes == 0
+        assert empty_runtime.sdk_adapter._connections == {}
+    finally:
+        empty_duplex.close_all()
+        empty_runtime.close()
+
+
 async def test_session_new_timeout_and_reject_keep_usable_session_unavailable(tmp_path):
     from optimus.acp.launch_approvals import KeyringApprovalStore
     from optimus.mcp.client_config import ClientMcpConfigNormalizer
@@ -1412,6 +1746,7 @@ async def test_session_new_timeout_and_reject_keep_usable_session_unavailable(tm
             permission_timeout_seconds=0.05,
         ),
         supervisor=supervisor,
+        sdk_adapter=_test_sdk_adapter(supervisor),
     )
     outbound = RecordingOutboundChannel()
     sessions = InMemoryAcpSpecSessionStore()
@@ -1620,6 +1955,7 @@ async def test_spec_mcp_broker_issue_fails_closed_until_catalog_authorizer_attac
     )
     session = adapter._sessions.create(cwd=tmp_path)
     session.client_mcp_state = ClientMcpSessionState(session_id=session.session_id)
+    assert isinstance(session.client_mcp_state.tool_service, ClientMcpSessionService)
     broker = adapter._mcp_permission_broker_for(session)
     assert broker is not None
 
