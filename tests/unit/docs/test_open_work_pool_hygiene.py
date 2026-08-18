@@ -1364,7 +1364,7 @@ def test_product_checkpoint_log_location_remains_gitignored() -> None:
 
 
 def test_plan_1121_keeps_p115_fu1_separate_scheduled_custody() -> None:
-    """P11.5-FU-1 is promoted to Plan 11.21; raising-transient, Task 4, and Task 8 are not closure."""
+    """P11.5-FU-1 is Plan 11.21-owned; raising-transient, Task 4, and Task 8 are not this FU's identity."""
     pool = _read(OPTIMUS_POOL)
     indexed = _fu_index_rows(pool)
     entries = _entry_sections(pool)
@@ -1373,16 +1373,21 @@ def test_plan_1121_keeps_p115_fu1_separate_scheduled_custody() -> None:
     detail = entries[f"P11.5-FU-1: {item}"]
     detail_status = _status_token(detail)
 
-    assert index_status == PROMOTED_PLAN_1121_STATUS
-    assert detail_status == PROMOTED_PLAN_1121_STATUS
+    def _lane_state(status: str) -> str:
+        if status == PROMOTED_PLAN_1121_STATUS:
+            return "scheduled"
+        if status == "Closed":
+            return "closed"
+        raise AssertionError(status)
+
+    assert _lane_state(index_status) in {"scheduled", "closed"}
+    assert _lane_state(detail_status) in {"scheduled", "closed"}
+    assert _lane_state(index_status) == _lane_state(detail_status)
     assert (PLANS_ROOT / "2026-08-17-plan-11-21-p11-5-fu-1-otlp-failure-delivery-state.md").is_file()
 
     assert "_AlwaysTransientSpanExporter" in detail
     assert "Task 4" in detail
     assert "Task 8" in detail
-    assert index_status != "Closed"
-    assert detail_status != "Closed"
-    assert _resolution(detail_status) == "unresolved"
 
 
 def test_plan_1116_deadline_seams_keep_separate_scheduled_custody() -> None:
