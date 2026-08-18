@@ -3,9 +3,15 @@ import inspect
 import pytest
 
 from optimus.acp import bootstrap as bootstrap_module
-from optimus.acp.bootstrap import StartupConfigurationError, build_agent_runner_for_harness, build_configured_server
+from optimus.acp.bootstrap import (
+    StartupConfigurationError,
+    build_agent_runner_for_harness,
+    build_client_mcp_runtime,
+    build_configured_server,
+)
 from optimus.acp.preflight import PreflightFailure
 from optimus.agent.runner import AgentRunner
+from optimus.mcp.client_sdk import ClientMcpSdkAdapter
 
 
 def test_bootstrap_has_no_divergent_dead_redis_default_constant():
@@ -323,3 +329,18 @@ def test_bootstrap_builds_process_lifetime_client_mcp_runtime(tmp_path, monkeypa
     assert runtime.mcp_sse_enabled is False
     assert not hasattr(server._dispatcher, "client_mcp_capability")
     runtime.close()
+
+
+def test_bootstrap_retains_one_real_sdk_adapter_without_opening_a_capability(tmp_path, monkeypatch):
+    """Bootstrap must construct capability wiring without manufacturing a session/new connection."""
+    monkeypatch.setenv("OPTIMUS_CLIENT_MCP_EPHEMERAL_HMAC", "1")
+
+    runtime = build_client_mcp_runtime(workspace_root=tmp_path)
+    try:
+        assert isinstance(runtime.sdk_adapter, ClientMcpSdkAdapter)
+        assert runtime.sdk_adapter._connections == {}
+        assert runtime.supervisor.state.value == "RUNNING"
+        with pytest.raises(TypeError, match="not serializable"):
+            runtime.sdk_adapter.__getstate__()
+    finally:
+        runtime.close()

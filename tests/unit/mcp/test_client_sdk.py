@@ -145,6 +145,35 @@ class FakeProcessControl:
         self.selected_seam = seam
 
 
+@dataclass
+class ControlledRemoteTransportContext:
+    """Remote-SDK edge double; the adapter and lifecycle stay real."""
+
+    entered: int = 0
+    exited: int = 0
+
+    async def __aenter__(self) -> tuple[object, object]:
+        self.entered += 1
+        return object(), object()
+
+    async def __aexit__(self, *_exc: object) -> None:
+        self.exited += 1
+
+
+@dataclass
+class ControlledRemoteSessionContext:
+    session: FakeSession
+    entered: int = 0
+    exited: int = 0
+
+    async def __aenter__(self) -> FakeSession:
+        self.entered += 1
+        return self.session
+
+    async def __aexit__(self, *_exc: object) -> None:
+        self.exited += 1
+
+
 @pytest.fixture
 def supervisor() -> MCPAsyncSupervisor:
     supervisor = MCPAsyncSupervisor()
@@ -175,6 +204,81 @@ def _adapter(
         operation_timeout_seconds=30.0,
         max_message_bytes=1 * 1024 * 1024,
     )
+
+
+def _adapter_with_owned_sdk_contexts(
+    supervisor: MCPAsyncSupervisor,
+    *,
+    transport: ControlledRemoteTransportContext,
+    session: ControlledRemoteSessionContext,
+    process_control: FakeProcessControl | None = None,
+) -> ClientMcpSdkAdapter:
+    return ClientMcpSdkAdapter(
+        supervisor=supervisor,
+        session_factory=lambda _capability: FakeSession(),
+        http_client_factory=lambda: FakeHttpClient(follow_redirects=False, trust_env=False),
+        stdio_transport_factory=lambda _capability: FakeStdioTransport(),
+        process_control=process_control or FakeProcessControl(),
+        transport_context_factory=lambda _capability: transport,
+        session_context_factory=lambda _read_stream, _write_stream: session,
+    )
+
+
+def test_close_exits_the_owned_sdk_session_and_transport_once(
+    supervisor: MCPAsyncSupervisor,
+) -> None:
+    """Removing retained context exits would leak an opened remote connection."""
+    transport = ControlledRemoteTransportContext()
+    session = ControlledRemoteSessionContext(FakeSession())
+    process_control = FakeProcessControl()
+    adapter = _adapter_with_owned_sdk_contexts(
+        supervisor,
+        transport=transport,
+        session=session,
+        process_control=process_control,
+    )
+
+    connection = adapter.open(_capability(), session_id="s1")
+
+    assert transport.entered == 1
+    assert session.entered == 1
+    assert transport.exited == 0
+    assert session.exited == 0
+
+    adapter.close(connection)
+    adapter.close(connection)
+
+    assert connection.closed is True
+    assert session.exited == 1
+    assert transport.exited == 1
+    assert process_control.selected_seam in {"windows_job_object", "posix_process_group"}
+
+
+def test_failed_initialize_exits_all_owned_contexts_and_leaves_no_connection_slot(
+    supervisor: MCPAsyncSupervisor,
+) -> None:
+    """An initialize failure must not retain a live resource or reusable slot."""
+    failing_session = FakeSession()
+
+    async def _fail_initialize(*, proposed_protocol_version: str) -> FakeInitializeResult:
+        del proposed_protocol_version
+        raise RuntimeError("controlled initialize failure")
+
+    failing_session.initialize = _fail_initialize  # type: ignore[method-assign]
+    transport = ControlledRemoteTransportContext()
+    session = ControlledRemoteSessionContext(failing_session)
+    adapter = _adapter_with_owned_sdk_contexts(
+        supervisor,
+        transport=transport,
+        session=session,
+    )
+
+    with pytest.raises(RuntimeError, match="controlled initialize failure"):
+        adapter.open(_capability(), session_id="s1")
+
+    assert session.exited == 1
+    assert transport.exited == 1
+    assert adapter._connections == {}
 
 
 def test_negotiated_protocol_version_uses_only_initialize_result(supervisor: MCPAsyncSupervisor) -> None:

@@ -27,6 +27,7 @@ from optimus.mcp.client_config import (
     ClientMcpRuntimeCapability,
     ClientMcpSafeIdentity,
 )
+from optimus.mcp.client_sdk import ClientMcpSdkAdapter
 from optimus.mcp.client_supervisor import MCPAsyncSupervisor
 from optimus.mcp.client_trust import (
     ClientMcpDurableRecord,
@@ -101,11 +102,14 @@ class ClientMcpRuntime:
 
     disposition: ClientMcpDisposition
     supervisor: MCPAsyncSupervisor
+    sdk_adapter: ClientMcpSdkAdapter | None = None
     mcp_http_enabled: bool = False
     mcp_sse_enabled: bool = False
     candidate_endpoint: PendingClientMcpCandidateEndpoint | None = None
 
     def close(self) -> None:
+        if self.sdk_adapter is not None:
+            self.sdk_adapter.close_all()
         if self.candidate_endpoint is not None:
             self.candidate_endpoint.close()
         self.supervisor.close()
