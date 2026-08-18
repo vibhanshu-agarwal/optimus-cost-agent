@@ -11,7 +11,22 @@ from optimus.acp.bootstrap import (
 )
 from optimus.acp.preflight import PreflightFailure
 from optimus.agent.runner import AgentRunner
+from optimus.mcp.client_disposition import ClientMcpRuntime
 from optimus.mcp.client_sdk import ClientMcpSdkAdapter
+
+
+def _test_sdk_adapter(supervisor) -> ClientMcpSdkAdapter:
+    class _NoopProcessControl:
+        def terminate_tree(self, *, seam: str) -> None:
+            del seam
+
+    return ClientMcpSdkAdapter(
+        supervisor=supervisor,
+        session_factory=lambda _capability: None,
+        http_client_factory=object,
+        stdio_transport_factory=lambda _capability: None,
+        process_control=_NoopProcessControl(),
+    )
 
 
 def test_bootstrap_has_no_divergent_dead_redis_default_constant():
@@ -22,6 +37,12 @@ def test_bootstrap_has_no_divergent_dead_redis_default_constant():
     source = inspect.getsource(bootstrap_module)
     assert "_DEFAULT_REDIS_URL_HINT" not in source
     assert "redis://localhost:6379/0" not in source
+
+
+def test_client_mcp_runtime_requires_an_sdk_adapter() -> None:
+    """A runtime without an owned adapter would silently skip connection teardown."""
+    with pytest.raises(TypeError, match="sdk_adapter"):
+        ClientMcpRuntime(disposition=object(), supervisor=object())  # type: ignore[arg-type]
 
 
 def test_bootstrap_reports_missing_optimus_credentials(tmp_path):
@@ -302,6 +323,7 @@ def test_bootstrap_builds_process_lifetime_client_mcp_runtime(tmp_path, monkeypa
             workspace_digest="c" * 64,
         ),
         supervisor=supervisor,
+        sdk_adapter=_test_sdk_adapter(supervisor),
         mcp_http_enabled=False,
         mcp_sse_enabled=False,
     )

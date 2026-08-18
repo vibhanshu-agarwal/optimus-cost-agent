@@ -1265,7 +1265,28 @@ def _client_mcp_runtime_for_tests(tmp_path):
         workspace_digest="a" * 64,
         permission_timeout_seconds=30.0,
     )
-    return ClientMcpRuntime(disposition=disposition, supervisor=supervisor)
+    return ClientMcpRuntime(
+        disposition=disposition,
+        supervisor=supervisor,
+        sdk_adapter=_test_sdk_adapter(supervisor),
+    )
+
+
+def _test_sdk_adapter(supervisor):
+    from optimus.mcp.client_sdk import ClientMcpSdkAdapter
+
+    class _NoopProcessControl:
+        def terminate_tree(self, *, seam: str) -> None:
+            del seam
+
+
+    return ClientMcpSdkAdapter(
+        supervisor=supervisor,
+        session_factory=lambda _capability: None,
+        http_client_factory=object,
+        stdio_transport_factory=lambda _capability: None,
+        process_control=_NoopProcessControl(),
+    )
 
 
 async def test_session_new_absent_or_empty_mcp_servers_is_exact_noop(tmp_path):
@@ -1412,6 +1433,7 @@ async def test_session_new_timeout_and_reject_keep_usable_session_unavailable(tm
             permission_timeout_seconds=0.05,
         ),
         supervisor=supervisor,
+        sdk_adapter=_test_sdk_adapter(supervisor),
     )
     outbound = RecordingOutboundChannel()
     sessions = InMemoryAcpSpecSessionStore()

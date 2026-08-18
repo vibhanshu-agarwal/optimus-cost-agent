@@ -102,14 +102,13 @@ class ClientMcpRuntime:
 
     disposition: ClientMcpDisposition
     supervisor: MCPAsyncSupervisor
-    sdk_adapter: ClientMcpSdkAdapter | None = None
+    sdk_adapter: ClientMcpSdkAdapter
     mcp_http_enabled: bool = False
     mcp_sse_enabled: bool = False
     candidate_endpoint: PendingClientMcpCandidateEndpoint | None = None
 
     def close(self) -> None:
-        if self.sdk_adapter is not None:
-            self.sdk_adapter.close_all()
+        self.sdk_adapter.close_all()
         if self.candidate_endpoint is not None:
             self.candidate_endpoint.close()
         self.supervisor.close()

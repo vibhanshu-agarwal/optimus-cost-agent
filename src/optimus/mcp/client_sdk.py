@@ -122,13 +122,11 @@ class ClientMcpSdkAdapter:
         capability: ClientMcpRuntimeCapability,
         *,
         session_id: str,
-        proposed_protocol_version: str = "2026-07-28",
     ) -> ClientMcpConnection:
         return self._submit_operation(
             self._open_async(
                 capability,
                 session_id=session_id,
-                proposed_protocol_version=proposed_protocol_version,
             )
         )
 
@@ -161,7 +159,6 @@ class ClientMcpSdkAdapter:
         capability: ClientMcpRuntimeCapability,
         *,
         session_id: str,
-        proposed_protocol_version: str,
     ) -> ClientMcpConnection:
         identity = capability.safe_identity
         identity_key = (session_id, identity.server_name, identity.canonical_target)
@@ -184,7 +181,6 @@ class ClientMcpSdkAdapter:
                     capability,
                     session_id=session_id,
                     identity_key=identity_key,
-                    proposed_protocol_version=proposed_protocol_version,
                 )
 
             if identity.transport == "stdio":
@@ -211,33 +207,7 @@ class ClientMcpSdkAdapter:
                 raise ClientMcpSdkError("HTTP_TRUST_ENV_ENABLED")
 
             session = self._session_factory(capability)
-            try:
-                result = await asyncio.wait_for(
-                    session.initialize(proposed_protocol_version=proposed_protocol_version),
-                    timeout=self._operation_timeout_seconds,
-                )
-            except TimeoutError as exc:
-                raise ClientMcpSdkError("OPERATION_TIMEOUT") from exc
-
-            protocol_version = getattr(result, "protocol_version", None)
-            if not isinstance(protocol_version, str) or protocol_version not in _SUPPORTED_PROTOCOL_VERSIONS:
-                raise ClientMcpSdkError("INVALID_PROTOCOL_VERSION")
-
-            scan_text = "\n".join(
-                [
-                    str(getattr(result, "instructions", "") or ""),
-                    str((getattr(result, "server_info", {}) or {}).get("description", "")),
-                    str((getattr(result, "server_info", {}) or {}).get("name", "")),
-                ]
-            )
-            scan = self._scanner.scan_text(
-                scan_text,
-                subject=TrustScanSubject.MCP_INITIALIZE_RESULT,
-                source_path="mcp:initialize",
-            )
-            if scan.verdict is TrustScanVerdict.BLOCK:
-                code = scan.findings[0].rule_id if scan.findings else "INITIALIZE_BLOCKED"
-                raise ClientMcpSdkError(code)
+            protocol_version = await self._initialize_and_scan(session)
 
             # Advertised prompts/resources are ignored; tools-only client continues.
             connection = ClientMcpConnection(
@@ -255,7 +225,6 @@ class ClientMcpSdkAdapter:
         *,
         session_id: str,
         identity_key: tuple[str, str, str],
-        proposed_protocol_version: str,
     ) -> ClientMcpConnection:
         """Enter and retain the exact SDK contexts that own one connection."""
         assert self._transport_context_factory is not None
@@ -283,10 +252,7 @@ class ClientMcpSdkAdapter:
             session_context = self._session_context_factory(read_stream, write_stream)
             session = await session_context.__aenter__()
             entered_session = True
-            protocol_version = await self._initialize_and_scan(
-                session,
-                proposed_protocol_version=proposed_protocol_version,
-            )
+            protocol_version = await self._initialize_and_scan(session)
         except BaseException:
             with suppress(Exception):
                 await _close_resources()
@@ -302,10 +268,10 @@ class ClientMcpSdkAdapter:
         self._connections[identity_key] = connection
         return connection
 
-    async def _initialize_and_scan(self, session: Any, *, proposed_protocol_version: str) -> str:
+    async def _initialize_and_scan(self, session: Any) -> str:
         try:
             result = await asyncio.wait_for(
-                session.initialize(proposed_protocol_version=proposed_protocol_version),
+                session.initialize(),
                 timeout=self._operation_timeout_seconds,
             )
         except TimeoutError as exc:
@@ -315,11 +281,12 @@ class ClientMcpSdkAdapter:
         if not isinstance(protocol_version, str) or protocol_version not in _SUPPORTED_PROTOCOL_VERSIONS:
             raise ClientMcpSdkError("INVALID_PROTOCOL_VERSION")
 
+        server_info = getattr(result, "server_info", None)
         scan_text = "\n".join(
             [
                 str(getattr(result, "instructions", "") or ""),
-                str((getattr(result, "server_info", {}) or {}).get("description", "")),
-                str((getattr(result, "server_info", {}) or {}).get("name", "")),
+                str(getattr(server_info, "description", "") or ""),
+                str(getattr(server_info, "name", "") or ""),
             ]
         )
         scan = self._scanner.scan_text(
