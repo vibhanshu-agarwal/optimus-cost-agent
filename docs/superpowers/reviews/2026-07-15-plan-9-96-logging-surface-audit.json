@@ -2635,17 +2635,17 @@
     {
       "key": "tools.probe_p11_zed_session_load:seed_hermetic_zed_settings:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: serializes only the hermetic agent_servers settings payload for the throwaway APPDATA bind; no ambient secrets.",
+      "rationale": "Inspection: serializes only the hermetic agent_servers settings payload for the throwaway custom-data config path; no ambient secrets.",
       "sanitizer": "schema-limited functional path; hermetic settings only",
-      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_seed_hermetic_settings_uses_windows_appdata_zed_layout",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_seed_hermetic_settings_targets_custom_data_dir_config",
       "evidence_tier": "unit"
     },
     {
       "key": "tools.probe_p11_zed_session_load:seed_hermetic_zed_settings:text_file_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: writes hermetic settings.json under the bound throwaway APPDATA/Zed path only.",
-      "sanitizer": "schema-limited functional path; hermetic APPDATA bind only",
-      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_seed_hermetic_settings_uses_windows_appdata_zed_layout",
+      "rationale": "Inspection: writes hermetic settings.json under the custom-data config/ path only.",
+      "sanitizer": "schema-limited functional path; hermetic custom-data config path only",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_seed_hermetic_settings_targets_custom_data_dir_config",
       "evidence_tier": "unit"
     },
     {
