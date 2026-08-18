@@ -17,6 +17,7 @@ from optimus.mcp.client_catalog import (
     ClientMcpCatalogError,
     ClientMcpDescriptorExposureAdapter,
     ClientMcpOneCallApproval,
+    ClientMcpSessionService,
     ClientMcpToolService,
     McpPermissionBroker,
     arguments_digest,
@@ -104,21 +105,54 @@ def _client_request(
     arguments: dict[str, Any] | None = None,
     one_call: str | None = None,
     approval_granted: bool = False,
+    mcp_authority: str = "client_session",
+    mcp_server_id: str | None = "tools",
 ) -> PreToolRequest:
     return PreToolRequest(
         run_id="run-1",
         session_id=session_id,
         execution_mode=ExecutionMode.AGENT,
         tool_surface=ToolSurface.MCP,
-        action=f"tools.{tool_name}",
+        action=f"{mcp_server_id or 'tools'}.{tool_name}",
         generation_scope=GenerationScope.INLINE_SNIPPET,
         approval_granted=approval_granted,
-        mcp_authority="client_session",
-        mcp_server_id="tools",
+        mcp_authority=mcp_authority,  # type: ignore[arg-type]
+        mcp_server_id=mcp_server_id,
         mcp_tool_name=tool_name,
         mcp_arguments=arguments,
         mcp_one_call_approval=one_call,
     )
+
+
+def _write_registry_stack(tmp_path, *, session_id: str = "session-1"):
+    catalog = _catalog(
+        [_tool("delete_resource", annotations={"destructiveHint": True})],
+        effect_ceiling="side_effect_eligible",
+    )
+    lease = ClientMcpSessionLease(
+        session_id=session_id,
+        workspace_digest="a" * 64,
+        server_name="tools",
+        identity_fingerprint="fp-catalog-1",
+        effect_ceiling="side_effect_eligible",
+    )
+    authorizer = ClientMcpCallAuthorizer(catalog=catalog, lease=lease)
+    guard = PreToolGuard.for_workspace(
+        workspace_root=tmp_path,
+        allowed_network_hosts=(),
+        client_mcp_authorizer=authorizer,
+    )
+    dispatch_calls: list[tuple[str, dict[str, Any]]] = []
+
+    class RecordingService(ClientMcpToolService):
+        def _dispatch(self, tool_name: str, arguments: dict[str, Any]) -> str:
+            dispatch_calls.append((tool_name, dict(arguments)))
+            return f"dispatched:{tool_name}"
+
+    service = RecordingService(guard=guard, catalog=catalog, authorizer=authorizer)
+    registry = ClientMcpSessionService()
+    registry.register(service)
+    return catalog, authorizer, service, registry, dispatch_calls
 
 
 def test_budget_exceeded_pages_yields_no_catalog() -> None:
@@ -523,3 +557,97 @@ def test_tool_service_returns_output_and_audit_call_after_authorization(tmp_path
     assert call.authorization_outcome == "ALLOW"
     with pytest.raises(TypeError):
         vars(service)  # non-serializable / no __dict__ via slots refusal pattern
+
+
+def test_session_registry_issues_bound_one_call_approval(tmp_path) -> None:
+    catalog, authorizer, _service, registry, dispatch_calls = _write_registry_stack(tmp_path)
+    args = {"id": "abc"}
+    request = _client_request(tool_name="delete_resource", arguments=args)
+
+    approval = registry.issue_one_call_approval(request)
+
+    assert approval is not None
+    assert approval.session_id == "session-1"
+    assert approval.identity_fingerprint == catalog.identity_fingerprint
+    assert approval.tool_name == "delete_resource"
+    assert approval.arguments_digest == arguments_digest(args)
+    assert approval.token
+    assert approval.token in authorizer._tokens
+    assert dispatch_calls == []
+
+
+def test_session_registry_issuance_returns_none_without_creating_token(tmp_path) -> None:
+    _catalog, authorizer, _service, registry, dispatch_calls = _write_registry_stack(tmp_path)
+    args = {"id": "abc"}
+    bound = _client_request(tool_name="delete_resource", arguments=args)
+
+    empty = ClientMcpSessionService()
+    absent = empty.issue_one_call_approval(bound)
+    assert absent is None
+
+    wrong_server = registry.issue_one_call_approval(
+        _client_request(tool_name="delete_resource", arguments=args, mcp_server_id="other")
+    )
+    assert wrong_server is None
+
+    wrong_session = registry.issue_one_call_approval(
+        _client_request(tool_name="delete_resource", session_id="other-session", arguments=args)
+    )
+    assert wrong_session is None
+
+    non_client = registry.issue_one_call_approval(
+        _client_request(
+            tool_name="delete_resource",
+            arguments=args,
+            mcp_authority="legacy_manifest",
+        )
+    )
+    assert non_client is None
+
+    missing_server = registry.issue_one_call_approval(
+        _client_request(tool_name="delete_resource", arguments=args, mcp_server_id=None)
+    )
+    assert missing_server is None
+
+    assert authorizer._tokens == {}
+    assert dispatch_calls == []
+
+
+def test_session_registry_issued_token_is_consumed_once_by_service_guard(tmp_path) -> None:
+    _catalog, authorizer, service, registry, dispatch_calls = _write_registry_stack(tmp_path)
+    args = {"id": "abc"}
+    approval = registry.issue_one_call_approval(
+        _client_request(tool_name="delete_resource", arguments=args)
+    )
+    assert approval is not None
+    assert dispatch_calls == []
+
+    output, call = service.call_tool(
+        "delete_resource",
+        args,
+        one_call_approval=approval.token,
+    )
+    assert call.authorization_outcome == "ALLOW"
+    assert "dispatched:delete_resource" in output.text
+    assert dispatch_calls == [("delete_resource", args)]
+
+    _replay_out, replay = service.call_tool(
+        "delete_resource",
+        args,
+        one_call_approval=approval.token,
+    )
+    assert replay.authorization_outcome != "ALLOW"
+    assert dispatch_calls == [("delete_resource", args)]
+
+    mismatched = registry.issue_one_call_approval(
+        _client_request(tool_name="delete_resource", arguments=args)
+    )
+    assert mismatched is not None
+    _mismatch_out, mismatch = service.call_tool(
+        "delete_resource",
+        {"id": "other"},
+        one_call_approval=mismatched.token,
+    )
+    assert mismatch.authorization_outcome != "ALLOW"
+    assert mismatched.token in authorizer._tokens
+    assert dispatch_calls == [("delete_resource", args)]

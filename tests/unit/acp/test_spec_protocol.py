@@ -1,10 +1,14 @@
 import asyncio
+import json
 import threading
 from decimal import Decimal
+from pathlib import Path
+from typing import Any
 
 import pytest
 
 from optimus.acp.errors import METHOD_NOT_FOUND
+from optimus.acp.launch_approvals import KeyringApprovalStore
 from optimus.acp.shapes import build_plan_session_update
 from optimus.acp.spec import (
     _PLANNING_TERMINAL_STOP_REASONS,
@@ -16,7 +20,108 @@ from optimus.acp.spec import (
 )
 from optimus.agent.models import AgentRunResult, AgentRunStatus, AgentToolCall
 from optimus.agent.planning_loop import PlanningProgressEvent
-from optimus.runtime.modes import ExecutionMode
+from optimus.guardrails.permissions import ToolSurface
+from optimus.guardrails.pre_tool import PreToolRequest
+from optimus.mcp.client_catalog import ClientMcpToolService, arguments_digest
+from optimus.mcp.client_config import ClientMcpConfigNormalizer, ClientMcpSafeIdentity
+from optimus.mcp.client_disposition import ClientMcpDisposition, ClientMcpSessionState
+from optimus.mcp.client_trust import (
+    ClientMcpDurableStore,
+    ClientMcpLeaseAuthority,
+    compute_identity_fingerprint,
+    write_client_mcp_durable_from_fingerprint,
+)
+from optimus.runtime.modes import ExecutionMode, GenerationScope
+
+_HMAC_KEY = b"p11-fu-9-disposition-test-hmac-key!!"
+
+
+class _FakeKeyring:
+    def __init__(self) -> None:
+        self._store: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, key: str) -> str | None:
+        return self._store.get((service, key))
+
+    def set_password(self, service: str, key: str, value: str) -> None:
+        self._store[(service, key)] = value
+
+    def delete_password(self, service: str, key: str) -> None:
+        self._store.pop((service, key), None)
+
+
+class _SafeDispatchService(ClientMcpToolService):
+    def _dispatch(self, tool_name: str, arguments: dict[str, Any]) -> str:
+        del arguments
+        return f"ok:{tool_name}"
+
+
+def _http_identity(*, name: str = "tools") -> ClientMcpSafeIdentity:
+    return ClientMcpSafeIdentity(
+        transport="http",
+        server_name=name,
+        canonical_target="https://mcp.example.com/v1",
+        arguments=(),
+        credential_name_fingerprints=(),
+    )
+
+
+def _write_thing_pages() -> list[dict[str, object]]:
+    return [
+        {
+            "tools": [
+                {
+                    "name": "write_thing",
+                    "description": "Write a thing.",
+                    "inputSchema": {"type": "object"},
+                    "annotations": {"destructiveHint": True},
+                }
+            ]
+        }
+    ]
+
+
+async def _lease_and_materialize_write_thing(session, tmp_path: Path) -> ClientMcpToolService:
+    """Allow-once lease then register a real write service on the adapter session."""
+    keyring = _FakeKeyring()
+    launch = KeyringApprovalStore(keyring_backend=keyring, runtime_root=tmp_path, hmac_key=_HMAC_KEY)
+    store = ClientMcpDurableStore(keyring_backend=keyring, hmac_key=launch.hmac_key)
+    identity = _http_identity()
+    fingerprint = compute_identity_fingerprint(identity, hmac_key=_HMAC_KEY)
+    write_client_mcp_durable_from_fingerprint(
+        store=store,
+        workspace_digest="d" * 64,
+        identity=identity,
+        rendered_fingerprint=fingerprint,
+        effect_ceiling="side_effect_eligible",
+    )
+    disp = ClientMcpDisposition(
+        normalizer=ClientMcpConfigNormalizer(),
+        lease_authority=ClientMcpLeaseAuthority(store=store),
+        hmac_key=_HMAC_KEY,
+        controlled_path=str(tmp_path / "bin"),
+        workspace_digest="d" * 64,
+    )
+
+    async def _allow(_params: dict[str, Any]) -> str:
+        return "allow"
+
+    state = await disp.disposition_for_new_session(
+        session.session_id,
+        tmp_path,
+        [{"type": "http", "name": "tools", "url": "https://mcp.example.com/v1", "headers": []}],
+        _allow,
+    )
+    session.client_mcp_state = state
+    service = disp.materialize_tool_service(
+        session.client_mcp_state,
+        identity=identity,
+        raw_tools=_write_thing_pages(),
+        workspace_root=tmp_path,
+        service_cls=_SafeDispatchService,
+    )
+    assert service is not None
+    return service
 
 
 class FakeRunner:
@@ -1506,11 +1611,6 @@ async def test_spec_mcp_broker_issue_fails_closed_until_catalog_authorizer_attac
     (tracked as P11-FU-20), allow-path issuance returns None (fail closed) rather than a
     token that later surfaces as mcp.client.one_call_unknown.
     """
-    from optimus.guardrails.permissions import ToolSurface
-    from optimus.guardrails.pre_tool import PreToolRequest
-    from optimus.mcp.client_disposition import ClientMcpSessionState
-    from optimus.runtime.modes import GenerationScope
-
     outbound = RecordingOutboundChannel()
     adapter = AcpDuplexAdapter(
         runner=FakeRunner(),
@@ -1537,3 +1637,67 @@ async def test_spec_mcp_broker_issue_fails_closed_until_catalog_authorizer_attac
         mcp_arguments={"x": 1},
     )
     assert broker._issue_approval(request) is None
+
+    service = await _lease_and_materialize_write_thing(session, tmp_path)
+    broker = adapter._mcp_permission_broker_for(session)
+    assert broker is not None
+    lease = session.client_mcp_state.lease_for("tools")
+    assert lease is not None
+
+    mismatched = PreToolRequest(
+        run_id="run-1",
+        session_id=session.session_id,
+        execution_mode=ExecutionMode.AGENT,
+        tool_surface=ToolSurface.MCP,
+        action="other.write_thing",
+        generation_scope=GenerationScope.INLINE_SNIPPET,
+        approval_granted=False,
+        mcp_authority="client_session",
+        mcp_server_id="other",
+        mcp_tool_name="write_thing",
+        mcp_arguments={"x": 1},
+    )
+    assert broker._issue_approval(mismatched) is None
+
+    issued = broker._issue_approval(request)
+    assert issued is not None
+    assert issued.session_id == session.session_id
+    assert issued.identity_fingerprint == lease.identity_fingerprint
+    assert issued.tool_name == "write_thing"
+    assert issued.arguments_digest == arguments_digest({"x": 1})
+    assert issued.token
+
+    write_task = asyncio.create_task(asyncio.to_thread(broker.request_write, request))
+    permission = await outbound.wait_for_request("session/request_permission")
+    outbound.respond(
+        permission["id"],
+        {"outcome": {"outcome": "selected", "optionId": "allow_once"}},
+    )
+    allowed = await write_task
+    assert allowed is not None
+    assert allowed.token
+    assert allowed.tool_name == "write_thing"
+    assert allowed.arguments_digest == arguments_digest({"x": 1})
+
+    output, call = service.call_tool(
+        "write_thing",
+        {"x": 1},
+        one_call_approval=allowed.token,
+    )
+    assert call.authorization_outcome == "ALLOW"
+    assert output.text == "ok:write_thing"
+    assert "x" not in output.text
+    guard = object.__getattribute__(service, "_guard")
+    audit = guard.audit_events()[-1]
+    assert audit.verdict == "ALLOW"
+    assert audit.rule_id == "mcp.client.write_one_call_allowed"
+    dumped = json.dumps(audit.__dict__, default=str)
+    assert '{"x": 1}' not in dumped
+    assert "x" not in audit.sanitized_subject
+
+    _replay_out, replay = service.call_tool(
+        "write_thing",
+        {"x": 1},
+        one_call_approval=allowed.token,
+    )
+    assert replay.authorization_outcome != "ALLOW"
