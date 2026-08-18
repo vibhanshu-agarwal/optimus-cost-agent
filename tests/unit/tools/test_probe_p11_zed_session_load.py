@@ -1098,6 +1098,13 @@ def test_materialize_cleanup_failed_result_leaves_no_bundle(
     assert not report_dir.exists()
 
 
+def test_real_zed_mode_requires_report_dir() -> None:
+    from tools.probe_p11_zed_session_load import _parse_args
+
+    with pytest.raises(SystemExit):
+        _parse_args(["--mode", "real-zed", "C:/tmp/ws"])
+
+
 def test_cli_default_timeout_is_unattended_180() -> None:
     from tools.probe_p11_zed_session_load import _parse_args
 

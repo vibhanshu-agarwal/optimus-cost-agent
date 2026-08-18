@@ -2657,6 +2657,54 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.probe_p11_zed_session_load:_manifest_from_sanitized_result:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Inspection: drops underscore-prefixed result keys, attaches relay digests, then runs _safe_payload before an in-memory json.dumps/json.loads round-trip; the encoded string is not the persistence boundary.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_nonempty_sanitized_relay_bundle_passes_existing_verifier",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:_parse_args:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.probe_p11_zed_session_load:_parse_args:logger_export is an AST heuristic overmatch on argparse.ArgumentParser.error; it emits only the fixed usage text '--report-dir is required for --mode real-zed' to stderr and does not retain secrets.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_real_zed_mode_requires_report_dir",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:_parse_zed_launch_timeout_seconds:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: str(exc) rewraps the helper's own typed ValueError ('zed launch timeout must be a finite value in [60.0, 900.0]') as argparse.ArgumentTypeError; it does not persist or export ambient exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_invalid_timeouts_fail_before_popen",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:materialize_sanitized_zed_evidence:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the already-_safe_payload schema-limited manifest for the staging write; raw ACP streams and underscore-prefixed keys never enter this encoder.",
+      "sanitizer": "schema-limited result; protocol fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_nonempty_sanitized_relay_bundle_passes_existing_verifier",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:materialize_sanitized_zed_evidence:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes reconstructed sanitized relay bins, a schema-limited Plan 11.24 report (finding/reason/commit only), and the already-sanitized manifest under a temporary sibling before atomic publish; raw capture files are never copied.",
+      "sanitizer": "schema-limited functional path; opaque relay not text-exported",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_nonempty_sanitized_relay_bundle_passes_existing_verifier",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:run_plan1119_real_zed:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Inspection: str(exc) is used only to branch on ProbeError stage text and to persist evidence_materialization_error.message after _safe_payload; raw OSError/ProbeError text is not retained.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_materialization_failure_records_sanitized_reason_without_changing_finding",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.verify_plan1119_zed_reprobe_evidence:_sha256_file:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: opens committed evidence artifacts only to compute SHA-256 digests for offline verification; bytes are neither retained nor re-exported.",
