@@ -107,3 +107,9 @@ P11.5-FU-1 stays `Promoted -> Plan 11.21`. Exact residual:
 - Task 1/2 already hold the real-type returned-FAILURE unit proof.
 - The loopback outage probe passed and records `queued` / `transient_export_failure_retry_budget_exhausted`, but it is not a live Phoenix collector.
 - Task 8 multi-root grouping remains a named exclusion, unrun here, and not this FU's closure evidence.
+
+## Later evidence
+
+A later WP-3 run recorded the live Phoenix collector path in
+[phoenix-evidence](plan-11-21-p11-5-fu-1-phoenix-evidence.md). This file remains the 2026-08-18
+**unrun** disposition and is not rewritten.
