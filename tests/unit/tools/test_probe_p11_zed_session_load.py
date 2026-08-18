@@ -12,6 +12,7 @@ import pytest
 
 from tools.probe_p11_zed_session_load import (
     ALLOWED_PROBE_SEMANTICS,
+    PLAN1119_RUN_ID,
     AcpxBaselineEvidence,
     CommandResult,
     Finding,
@@ -1156,15 +1157,15 @@ def test_invalid_timeouts_fail_before_popen(monkeypatch: pytest.MonkeyPatch) -> 
             validate_zed_launch_timeout_seconds(value)
 
 
-def test_guided_timeout_is_threaded_to_launch_without_gui(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def _install_stubbed_real_zed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    write_capture: bool = False,
+) -> tuple[Path, Path, Path, dict[str, float]]:
+    """Patch the live-Zed path so tests never start a GUI. Optionally plant relay capture files."""
     import tools.probe_p11_zed_session_load as probe
-    from tools.probe_p11_zed_session_load import (
-        DEFAULT_PROBE_PATCH_PLAN,
-        ProbePreparation,
-        run_plan1119_real_zed,
-    )
+    from tools.probe_p11_zed_session_load import DEFAULT_PROBE_PATCH_PLAN, ProbePreparation
 
     parent = tmp_path / "throwaway"
     parent.mkdir()
@@ -1230,6 +1231,13 @@ def test_guided_timeout_is_threaded_to_launch_without_gui(
         timeout_s: float = 180.0,
     ) -> dict[str, object]:
         observed["timeout_s"] = timeout_s
+        if write_capture:
+            roots = sorted(parent.glob("p1119-real-zed-*"))
+            cap = roots[-1] / "relay-capture" / PLAN1119_RUN_ID
+            cap.mkdir(parents=True, exist_ok=True)
+            zed_bytes, agent_bytes = _paired_sanitized_relay_bytes()
+            (cap / "zed-to-agent.bin").write_bytes(zed_bytes)
+            (cap / "agent-to-zed.bin").write_bytes(agent_bytes)
         return {"pid": 1, "returncode": 0, "log_path": str(log_path) if log_path else None}
 
     monkeypatch.setattr(probe, "zed_target_already_running", lambda _names: False)
@@ -1246,13 +1254,69 @@ def test_guided_timeout_is_threaded_to_launch_without_gui(
     monkeypatch.setattr(probe, "_launch_zed_once", fake_launch)
     monkeypatch.setattr(probe, "normal_workspace_source_digest", lambda _root: SHA_C)
     monkeypatch.setattr(probe, "_cleanup_plan1119_roots", lambda **_k: (True, []))
-
     reports_root = tmp_path / "reports"
     reports_root.mkdir()
     monkeypatch.setattr(probe, "REPORTS_ROOT", reports_root)
-    run_plan1119_real_zed(
-        parent,
-        launch_timeout_seconds=900.0,
-        report_dir=reports_root / PLAN_1124_REPORT_NAME,
-    )
+    return parent, reports_root / PLAN_1124_REPORT_NAME, hermetic, observed
+
+
+def test_guided_timeout_is_threaded_to_launch_without_gui(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tools.probe_p11_zed_session_load import run_plan1119_real_zed
+
+    parent, report_dir, _hermetic, observed = _install_stubbed_real_zed(tmp_path, monkeypatch)
+    run_plan1119_real_zed(parent, launch_timeout_seconds=900.0, report_dir=report_dir)
     assert observed["timeout_s"] == 900.0
+
+
+def test_materialization_failure_records_sanitized_reason_without_changing_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tools.probe_p11_zed_session_load as probe
+    from tools.probe_p11_zed_session_load import _safe_payload, run_plan1119_real_zed
+
+    parent, report_dir, hermetic, _observed = _install_stubbed_real_zed(
+        tmp_path, monkeypatch, write_capture=True
+    )
+    leaky_path = str((hermetic / "settings.json").resolve())
+    secret = "OPTIMUS_API_KEY=sk-live-not-for-disk"
+    thrown: list[OSError] = []
+
+    def boom(**_kwargs: object) -> Path:
+        exc = OSError(13, f"Permission denied {secret}", leaky_path)
+        thrown.append(exc)
+        raise exc
+
+    monkeypatch.setattr(probe, "materialize_sanitized_zed_evidence", boom)
+    result = run_plan1119_real_zed(parent, launch_timeout_seconds=180.0, report_dir=report_dir)
+    assert len(thrown) == 1
+    recorded = result["evidence_materialization_error"]
+    assert recorded["type"] == type(thrown[0]).__name__
+    assert recorded["stage"] == "evidence_bundle"
+    assert recorded["message"] == _safe_payload(str(thrown[0]))
+    payload = json.dumps(result, default=str)
+    assert "sk-live-not-for-disk" not in payload
+    assert "evidence_manifest" not in result
+    assert not report_dir.exists()
+    assert result["finding"] == Finding.INDETERMINATE.value
+    assert result["indeterminate_reason"] == "OBSERVATION_INCOMPLETE"
+    sidecar_text = Path(str(result["sidecar"])).read_text(encoding="utf-8")
+    assert "evidence_materialization_error" in sidecar_text
+    assert "sk-live-not-for-disk" not in sidecar_text
+
+
+def test_real_zed_path_publishes_nonempty_sanitized_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tools.probe_p11_zed_session_load import run_plan1119_real_zed
+
+    parent, report_dir, _hermetic, _observed = _install_stubbed_real_zed(
+        tmp_path, monkeypatch, write_capture=True
+    )
+    result = run_plan1119_real_zed(parent, launch_timeout_seconds=180.0, report_dir=report_dir)
+    assert "evidence_materialization_error" not in result
+    manifest = Path(str(result["evidence_manifest"]))
+    verify_manifest(manifest)
+    assert (report_dir / "relay" / "zed-to-agent.bin").read_bytes()
+    assert (report_dir / "relay" / "agent-to-zed.bin").read_bytes()

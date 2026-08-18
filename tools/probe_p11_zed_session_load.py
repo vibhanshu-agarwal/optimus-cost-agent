@@ -2094,8 +2094,12 @@ def run_plan1119_real_zed(
                         agent_to_zed=bytes(result["_sanitized_relay_agent"]),
                     )
                 )
-            except (ProbeError, OSError, TypeError, ValueError):
-                pass
+            except (ProbeError, OSError, TypeError, ValueError) as exc:
+                result["evidence_materialization_error"] = {
+                    "type": type(exc).__name__,
+                    "stage": exc.stage if isinstance(exc, ProbeError) else "evidence_bundle",
+                    "message": _safe_payload(str(exc)),
+                }
         try:
             sidecar = parent_workspace / "plan1119-real-zed-result.json"
             sidecar.write_text(
