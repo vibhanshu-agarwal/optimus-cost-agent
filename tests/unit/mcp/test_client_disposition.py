@@ -14,7 +14,7 @@ from optimus.acp.launch_approvals import KeyringApprovalStore
 from optimus.acp.shapes import build_client_mcp_permission_params
 from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolRequest
-from optimus.mcp.client_catalog import ClientMcpToolService
+from optimus.mcp.client_catalog import ClientMcpSessionService, ClientMcpToolService
 from optimus.mcp.client_config import ClientMcpConfigError, ClientMcpConfigNormalizer, ClientMcpSafeIdentity
 from optimus.mcp.client_disposition import (
     AcpMcpPermissionBroker,
@@ -476,6 +476,8 @@ async def test_allow_once_stays_transport_free_until_lazy_materialization_regist
         _allow,
     )
     assert state.is_leased("tools")
+    assert isinstance(state, ClientMcpSessionState)
+    assert isinstance(state.tool_service, ClientMcpSessionService)
     lease = state.lease_for("tools")
     assert lease is not None
     assert lease.effect_ceiling == "side_effect_eligible"
@@ -501,6 +503,34 @@ async def test_allow_once_stays_transport_free_until_lazy_materialization_regist
     missing, missing_call = state.tool_service.list_tools("docs")
     assert missing.text == "unavailable:unknown_server"
     assert missing_call.authorization_outcome == "BLOCK"
+
+
+@pytest.mark.asyncio
+async def test_leased_server_static_list_lazily_admits_catalog(tmp_path: Path) -> None:
+    """A leased server must be discoverable through the static generic list route.
+
+    The production change that must make this pass is the lazy resolver that opens the
+    leased capability, discovers its catalog, and registers the resulting real service.
+    Until that resolver exists, the registry correctly fails closed as unknown_server.
+    """
+    disp, probe = _seed_side_effect_durable(tmp_path)
+    state = await disp.disposition_for_new_session(
+        "session-1",
+        tmp_path,
+        [_http_entry()],
+        _allow,
+    )
+
+    assert isinstance(state, ClientMcpSessionState)
+    assert isinstance(state.tool_service, ClientMcpSessionService)
+    assert state.is_leased("tools")
+    assert probe.open_calls == 0
+
+    listed, call = state.tool_service.list_tools("tools")
+
+    assert call.authorization_outcome == "ALLOW"
+    payload = json.loads(listed.text)
+    assert {tool["name"] for tool in payload["tools"]} == {"list_providers"}
 
 
 @pytest.mark.asyncio

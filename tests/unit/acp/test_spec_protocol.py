@@ -22,7 +22,7 @@ from optimus.agent.models import AgentRunResult, AgentRunStatus, AgentToolCall
 from optimus.agent.planning_loop import PlanningProgressEvent
 from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolRequest
-from optimus.mcp.client_catalog import ClientMcpToolService, arguments_digest
+from optimus.mcp.client_catalog import ClientMcpSessionService, ClientMcpToolService, arguments_digest
 from optimus.mcp.client_config import ClientMcpConfigNormalizer, ClientMcpSafeIdentity
 from optimus.mcp.client_disposition import ClientMcpDisposition, ClientMcpSessionState
 from optimus.mcp.client_trust import (
@@ -1620,6 +1620,7 @@ async def test_spec_mcp_broker_issue_fails_closed_until_catalog_authorizer_attac
     )
     session = adapter._sessions.create(cwd=tmp_path)
     session.client_mcp_state = ClientMcpSessionState(session_id=session.session_id)
+    assert isinstance(session.client_mcp_state.tool_service, ClientMcpSessionService)
     broker = adapter._mcp_permission_broker_for(session)
     assert broker is not None
 
