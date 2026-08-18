@@ -1169,6 +1169,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.mcp.client_disposition:ClientMcpDisposition._resolve_server:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: sdk_adapter.open(...) opens an MCP transport through ClientMcpSdkAdapter; the broad AST heuristic falsely name-flags this method call as file_open, but the path performs no file I/O or diagnostic persistence.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/mcp/test_client_disposition.py::test_lazy_resolver_opens_discovers_registers_and_reuses_exact_connection",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.mcp.client_trust:ClientMcpDurableStore.write:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: ClientMcpDurableStore.write serializes only the fixed client-MCP durable schema (digests, safe identity fields, credential-name fingerprints, policy, ceiling, and record HMAC) for keyring storage; raw header/env values never enter the payload.",
