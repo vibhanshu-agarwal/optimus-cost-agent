@@ -62,7 +62,7 @@ The only `unknown` is Redis. Task 3’s non-launch preflight resolves it before 
 
 **Interfaces:** Add a private `materialize_sanitized_zed_evidence(*, report_dir: Path, result: Mapping[str, Any], zed_to_agent: bytes, agent_to_zed: bytes) -> Path`. It accepts only the outputs of `reconstruct_sanitized_relay_bytes`, creates `relay/zed-to-agent.bin`, `relay/agent-to-zed.bin`, `manifest.json`, and `report.md` in a fresh temporary sibling, validates the result with the existing `verify_manifest()`, then atomically publishes the directory. It rejects an existing/nonempty target and any target outside `REPO_ROOT / "reports"`. On an exception or failed cleanup, remove the temporary bundle and retain only the existing sanitized local sidecar.
 
-- [ ] **Step 1: Write RED nonempty-bundle tests.** Build a complete safe `REACHABLE` result fixture with a paired `session/load`/`{}` exchange and nonempty reconstructed NDJSON bytes. Assert that materialization publishes both nonempty relay files, their SHA-256 values equal the manifest and `relay` values, `verify_manifest()` passes, and no raw canary inserted into the original capture bytes appears in files, manifest, or report. Add failure tests for an existing target, a target outside `reports/`, and a cleanup-failed result; each leaves no published bundle.
+- [x] **Step 1: Write RED nonempty-bundle tests.** Build a complete safe `REACHABLE` result fixture with a paired `session/load`/`{}` exchange and nonempty reconstructed NDJSON bytes. Assert that materialization publishes both nonempty relay files, their SHA-256 values equal the manifest and `relay` values, `verify_manifest()` passes, and no raw canary inserted into the original capture bytes appears in files, manifest, or report. Add failure tests for an existing target, a target outside `reports/`, and a cleanup-failed result; each leaves no published bundle.
 
   ```python
   def test_nonempty_sanitized_relay_bundle_passes_existing_verifier(tmp_path: Path) -> None:
@@ -77,7 +77,7 @@ The only `unknown` is Redis. Task 3’s non-launch preflight resolves it before 
       assert (report_dir / "relay" / "zed-to-agent.bin").read_bytes()
   ```
 
-- [ ] **Step 2: Run the RED selector.**
+- [x] **Step 2: Run the RED selector.**
 
   ```powershell
   uv run --frozen pytest tests/unit/tools/test_probe_p11_zed_session_load.py -q
@@ -85,9 +85,9 @@ The only `unknown` is Redis. Task 3’s non-launch preflight resolves it before 
 
   Expected: new tests fail because the materialization seam does not exist; no Zed, acpx, or external dependency runs.
 
-- [ ] **Step 3: Implement safe materialization and wire it before the run returns.** After relay capture, reconstruct sanitised bytes exactly once. Preserve them only in local memory and the temporary sanitized bundle; never write the capture-root raw `.bin` files to the report directory. In `finally`, publish only after `cleanup_verified` is true and the final normal-source digest still matches; otherwise remove the temporary bundle. Generate the verifier-compatible existing schema and a report whose heading says Plan 11.24, states the classifier result, and names the previous Plan 11.19 bundle as unchanged. Do not alter `tools/verify_plan1119_zed_reprobe_evidence.py` or its accepted rules.
+- [x] **Step 3: Implement safe materialization and wire it before the run returns.** After relay capture, reconstruct sanitised bytes exactly once. Preserve them only in local memory and the temporary sanitized bundle; never write the capture-root raw `.bin` files to the report directory. In `finally`, publish only after `cleanup_verified` is true and the final normal-source digest still matches; otherwise remove the temporary bundle. Generate the verifier-compatible existing schema and a report whose heading says Plan 11.24, states the classifier result, and names the previous Plan 11.19 bundle as unchanged. Do not alter `tools/verify_plan1119_zed_reprobe_evidence.py` or its accepted rules.
 
-- [ ] **Step 4: Run GREEN tests and static fitness.**
+- [x] **Step 4: Run GREEN tests and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/tools/test_probe_p11_zed_session_load.py tests/unit/tools/test_verify_plan1119_zed_reprobe_evidence.py -q
@@ -98,7 +98,7 @@ The only `unknown` is Redis. Task 3’s non-launch preflight resolves it before 
 
   Expected: nonempty and historical-empty verifier tests pass; frozen Plan 11.19 plan/evidence is unchanged.
 
-- [ ] **Step 5: Commit the deterministic evidence seam.**
+- [x] **Step 5: Commit the deterministic evidence seam.**
 
   ```powershell
   git add tools/probe_p11_zed_session_load.py tests/unit/tools/test_probe_p11_zed_session_load.py
@@ -114,9 +114,9 @@ The only `unknown` is Redis. Task 3’s non-launch preflight resolves it before 
 
 **Interfaces:** Add `DEFAULT_ZED_LAUNCH_TIMEOUT_SECONDS = 180.0` and `validate_zed_launch_timeout_seconds(value: float) -> float`. Extend `run_plan1119_real_zed(parent_workspace: Path, *, launch_timeout_seconds: float = DEFAULT_ZED_LAUNCH_TIMEOUT_SECONDS, report_dir: Path) -> dict[str, Any]`. Add `--zed-launch-timeout-seconds` (float, default 180) and required-for-`real-zed` `--report-dir`; only the guided command supplies 900. The validator accepts finite values in `[60.0, 900.0]`, and the sanitized `zed_launch` metadata records the selected value.
 
-- [ ] **Step 1: Write RED timeout tests.** Assert no CLI flag parses as `180.0`; `--zed-launch-timeout-seconds 900` parses as `900.0`; `0`, `-1`, `nan`, `inf`, and `901` fail before `Popen`; and a patched `_launch_zed_once` observes exactly the chosen value while a patched preparation path guarantees no GUI launch.
+- [x] **Step 1: Write RED timeout tests.** Assert no CLI flag parses as `180.0`; `--zed-launch-timeout-seconds 900` parses as `900.0`; `0`, `-1`, `nan`, `inf`, and `901` fail before `Popen`; and a patched `_launch_zed_once` observes exactly the chosen value while a patched preparation path guarantees no GUI launch.
 
-- [ ] **Step 2: Run the RED selector.**
+- [x] **Step 2: Run the RED selector.**
 
   ```powershell
   uv run --frozen pytest tests/unit/tools/test_probe_p11_zed_session_load.py -q
@@ -124,9 +124,9 @@ The only `unknown` is Redis. Task 3’s non-launch preflight resolves it before 
 
   Expected: the new timeout assertions fail because no public parser/runner seam exists; no Zed starts.
 
-- [ ] **Step 3: Implement the minimum timeout path.** Keep `_launch_zed_once(..., timeout_s=180.0)` unchanged as the default; validate and thread the selected value only along the real-Zed path. Preflight and acpx-baseline semantics remain unchanged. Do not add UI automation, retries, alternate profile roots, fallback agents, or normal `loadSession` advertisement.
+- [x] **Step 3: Implement the minimum timeout path.** Keep `_launch_zed_once(..., timeout_s=180.0)` unchanged as the default; validate and thread the selected value only along the real-Zed path. Preflight and acpx-baseline semantics remain unchanged. Do not add UI automation, retries, alternate profile roots, fallback agents, or normal `loadSession` advertisement.
 
-- [ ] **Step 4: Run GREEN tests and static fitness.**
+- [x] **Step 4: Run GREEN tests and static fitness.**
 
   ```powershell
   uv run --frozen pytest tests/unit/tools/test_probe_p11_zed_session_load.py tests/unit/tools/test_verify_plan1119_zed_reprobe_evidence.py -q
@@ -135,7 +135,7 @@ The only `unknown` is Redis. Task 3’s non-launch preflight resolves it before 
   git diff --exit-code -- src/optimus src/optimus_gateway
   ```
 
-- [ ] **Step 5: Commit the timeout seam.**
+- [x] **Step 5: Commit the timeout seam.**
 
   ```powershell
   git add tools/probe_p11_zed_session_load.py tests/unit/tools/test_probe_p11_zed_session_load.py

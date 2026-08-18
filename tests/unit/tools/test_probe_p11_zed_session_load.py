@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -11,6 +12,7 @@ import pytest
 
 from tools.probe_p11_zed_session_load import (
     ALLOWED_PROBE_SEMANTICS,
+    PLAN1119_RUN_ID,
     AcpxBaselineEvidence,
     CommandResult,
     Finding,
@@ -36,6 +38,7 @@ from tools.probe_p11_zed_session_load import (
     hermetic_appdata_environment_bind,
     iter_acp_messages,
     main,
+    materialize_sanitized_zed_evidence,
     normal_workspace_source_digest,
     prepare_real_zed_probe,
     reconstruct_sanitized_relay_bytes,
@@ -50,6 +53,7 @@ from tools.probe_p11_zed_session_load import (
     write_isolated_agent_launcher,
     zed_target_already_running,
 )
+from tools.verify_plan1119_zed_reprobe_evidence import verify_manifest
 
 
 def test_reachable_requires_advertised_capability_and_real_result() -> None:
@@ -790,7 +794,8 @@ def test_acpx_baseline_rejects_non_empty_live_load_result() -> None:
 
 
 def test_real_zed_cli_mode_does_not_launch(tmp_path: Path) -> None:
-    assert main(["--mode", "real-zed", str(tmp_path)]) == 1
+    report_dir = tmp_path / "reports" / "plan-11-24-zed-guided-session-load-probe"
+    assert main(["--mode", "real-zed", "--report-dir", str(report_dir), str(tmp_path)]) == 1
 
 
 def test_preflight_failure_retains_sanitized_command_stderr() -> None:
@@ -893,3 +898,432 @@ def test_seed_hermetic_settings_uses_windows_appdata_zed_layout(tmp_path: Path) 
     bind = hermetic_appdata_environment_bind(appdata)
     assert len(bind) == 1
     assert bind[0][0] == "APPDATA"
+
+
+COMMIT = "cfaffbebf184cd7e08f15749ce5aaff414991ec1"
+SHA_A = "a" * 64
+SHA_B = "b" * 64
+SHA_C = "c" * 64
+RAW_CAPTURE_CANARY = b"RAW_CAPTURE_CANARY=sk-live-not-for-disk"
+PLAN_1124_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe"
+
+
+def reachable_result() -> dict[str, object]:
+    """Complete sanitizer-safe REACHABLE fixture for verifier-valid materialization."""
+    exchange = {
+        "request": {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "session/load",
+            "params": {"sessionId": "saved-1"},
+        },
+        "response": {"jsonrpc": "2.0", "id": 7, "result": {}},
+    }
+    return {
+        "schema": "plan-11-19-zed-session-load-reprobe-v1",
+        "recorded_at_utc": "2026-08-18T12:00:00+00:00",
+        "commit": COMMIT,
+        "finding": "REACHABLE",
+        "indeterminate_reason": None,
+        "zed": {
+            "version": "Zed 1.15.0",
+            "executable": "C:/Tools/Zed.exe",
+            "executable_sha256": SHA_A,
+        },
+        "acpx": {
+            "version": "0.12.0",
+            "executable": "C:/Tools/acpx.cmd",
+            "executable_sha256": SHA_B,
+        },
+        "normal_source": {
+            "commit": COMMIT,
+            "sha256_before": SHA_C,
+            "sha256_after": SHA_C,
+        },
+        "isolated_source": {"sha256": SHA_A},
+        "isolated_build": {"sha256": SHA_B},
+        "invocation": {
+            "discovered_from": "zed --help",
+            "argv": ["C:/Tools/Zed.exe", "--isolated-user-data", "scratch/zed-home"],
+            "user_data_root": "scratch/zed-home",
+            "help_sha256": SHA_A,
+        },
+        "isolation": {
+            "normal_agent_load_session_advertised": False,
+            "isolated_probe_load_session_advertised": True,
+            "cleanup_dry_run_verified": True,
+            "cleanup_verified": True,
+        },
+        "capability_payload": {"loadSession": True, "sessionCapabilities": {}},
+        "relay": {
+            "source": "opaque-relay-post-run",
+            "zed_to_agent_sha256": SHA_A,
+            "agent_to_zed_sha256": SHA_B,
+        },
+        "captured_exchange": exchange,
+        "origin_a_launches": 0,
+        "zed_launches": 1,
+        "_sanitized_relay_zed": b"should-not-be-serialized",
+        "_secret_sidecar_key": "must-not-reach-disk",
+    }
+
+
+def _guided_report_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    reports_root = tmp_path / "reports"
+    reports_root.mkdir()
+    monkeypatch.setattr("tools.probe_p11_zed_session_load.REPORTS_ROOT", reports_root)
+    return reports_root / PLAN_1124_REPORT_NAME
+
+
+def _paired_sanitized_relay_bytes() -> tuple[bytes, bytes]:
+    request = {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "session/load",
+        "params": {"sessionId": "saved-1"},
+    }
+    response = {"jsonrpc": "2.0", "id": 7, "result": {}}
+    return (
+        reconstruct_sanitized_relay_bytes([request]),
+        reconstruct_sanitized_relay_bytes([response]),
+    )
+
+
+def _scan_tree_for_canary(root: Path) -> list[str]:
+    hits: list[str] = []
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        payload = path.read_bytes()
+        if RAW_CAPTURE_CANARY in payload or b"must-not-reach-disk" in payload:
+            hits.append(path.as_posix())
+    return hits
+
+
+def test_nonempty_sanitized_relay_bundle_passes_existing_verifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    report_dir = _guided_report_dir(tmp_path, monkeypatch)
+    zed_to_agent, agent_to_zed = _paired_sanitized_relay_bytes()
+    raw_zed = zed_to_agent + RAW_CAPTURE_CANARY
+    raw_agent = agent_to_zed + RAW_CAPTURE_CANARY
+    sanitized_zed = reconstruct_sanitized_relay_bytes(iter_acp_messages(raw_zed))
+    sanitized_agent = reconstruct_sanitized_relay_bytes(iter_acp_messages(raw_agent))
+
+    manifest = materialize_sanitized_zed_evidence(
+        report_dir=report_dir,
+        result=reachable_result(),
+        zed_to_agent=sanitized_zed,
+        agent_to_zed=sanitized_agent,
+    )
+
+    verify_manifest(manifest)
+    published_zed = (report_dir / "relay" / "zed-to-agent.bin").read_bytes()
+    published_agent = (report_dir / "relay" / "agent-to-zed.bin").read_bytes()
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    assert published_zed
+    assert published_agent
+    assert published_zed == sanitized_zed
+    assert published_agent == sanitized_agent
+    assert payload["relay"]["zed_to_agent_sha256"] == hashlib.sha256(published_zed).hexdigest()
+    assert payload["relay"]["agent_to_zed_sha256"] == hashlib.sha256(published_agent).hexdigest()
+    report_text = (report_dir / "report.md").read_text(encoding="utf-8")
+    assert "Plan 11.24" in report_text
+    assert "REACHABLE" in report_text
+    assert "Plan 11.19" in report_text
+    assert _scan_tree_for_canary(report_dir) == []
+    assert RAW_CAPTURE_CANARY not in json.dumps(payload).encode("utf-8")
+
+
+def test_materialize_rejects_existing_target_without_publishing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    report_dir = _guided_report_dir(tmp_path, monkeypatch)
+    report_dir.mkdir()
+    sentinel = report_dir / "preexisting.txt"
+    sentinel.write_text("keep-me", encoding="utf-8")
+    zed_to_agent, agent_to_zed = _paired_sanitized_relay_bytes()
+
+    with pytest.raises(ProbeError, match="existing"):
+        materialize_sanitized_zed_evidence(
+            report_dir=report_dir,
+            result=reachable_result(),
+            zed_to_agent=zed_to_agent,
+            agent_to_zed=agent_to_zed,
+        )
+
+    assert sentinel.read_text(encoding="utf-8") == "keep-me"
+    assert not (report_dir / "manifest.json").exists()
+    assert not (report_dir / "relay").exists()
+
+
+def test_materialize_rejects_target_outside_reports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _guided_report_dir(tmp_path, monkeypatch)
+    outside = tmp_path / "not-reports" / PLAN_1124_REPORT_NAME
+    zed_to_agent, agent_to_zed = _paired_sanitized_relay_bytes()
+
+    with pytest.raises(ProbeError, match="reports"):
+        materialize_sanitized_zed_evidence(
+            report_dir=outside,
+            result=reachable_result(),
+            zed_to_agent=zed_to_agent,
+            agent_to_zed=agent_to_zed,
+        )
+
+    assert not outside.exists()
+
+
+def test_materialize_cleanup_failed_result_leaves_no_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    report_dir = _guided_report_dir(tmp_path, monkeypatch)
+    zed_to_agent, agent_to_zed = _paired_sanitized_relay_bytes()
+    result = reachable_result()
+    isolation = dict(result["isolation"])  # type: ignore[arg-type]
+    isolation["cleanup_verified"] = False
+    result["isolation"] = isolation
+    result["finding"] = "INDETERMINATE"
+    result["indeterminate_reason"] = "CLEANUP_UNVERIFIED"
+
+    with pytest.raises(ProbeError, match="cleanup"):
+        materialize_sanitized_zed_evidence(
+            report_dir=report_dir,
+            result=result,
+            zed_to_agent=zed_to_agent,
+            agent_to_zed=agent_to_zed,
+        )
+
+    assert not report_dir.exists()
+
+
+def test_real_zed_mode_requires_report_dir() -> None:
+    from tools.probe_p11_zed_session_load import _parse_args
+
+    with pytest.raises(SystemExit):
+        _parse_args(["--mode", "real-zed", "C:/tmp/ws"])
+
+
+def test_cli_default_timeout_is_unattended_180() -> None:
+    from tools.probe_p11_zed_session_load import _parse_args
+
+    args = _parse_args(
+        [
+            "--mode",
+            "real-zed",
+            "--report-dir",
+            "reports/plan-11-24-zed-guided-session-load-probe",
+            "C:/tmp/ws",
+        ]
+    )
+    assert args.zed_launch_timeout_seconds == 180.0
+
+
+def test_cli_guided_timeout_parses_900() -> None:
+    from tools.probe_p11_zed_session_load import _parse_args
+
+    args = _parse_args(
+        [
+            "--mode",
+            "real-zed",
+            "--zed-launch-timeout-seconds",
+            "900",
+            "--report-dir",
+            "reports/plan-11-24-zed-guided-session-load-probe",
+            "C:/tmp/ws",
+        ]
+    )
+    assert args.zed_launch_timeout_seconds == 900.0
+
+
+def test_invalid_timeouts_fail_before_popen(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    from tools.probe_p11_zed_session_load import _parse_args, validate_zed_launch_timeout_seconds
+
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Popen must not run")
+
+    monkeypatch.setattr(subprocess, "Popen", boom)
+    for raw in ("0", "-1", "nan", "inf", "901"):
+        with pytest.raises(SystemExit):
+            _parse_args(
+                [
+                    "--mode",
+                    "real-zed",
+                    "--zed-launch-timeout-seconds",
+                    raw,
+                    "--report-dir",
+                    "reports/plan-11-24-zed-guided-session-load-probe",
+                    "C:/tmp/ws",
+                ]
+            )
+    for value in (0.0, -1.0, float("nan"), float("inf"), 901.0):
+        with pytest.raises(ValueError):
+            validate_zed_launch_timeout_seconds(value)
+
+
+def _install_stubbed_real_zed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    write_capture: bool = False,
+) -> tuple[Path, Path, Path, dict[str, float]]:
+    """Patch the live-Zed path so tests never start a GUI. Optionally plant relay capture files."""
+    import tools.probe_p11_zed_session_load as probe
+    from tools.probe_p11_zed_session_load import DEFAULT_PROBE_PATCH_PLAN, ProbePreparation
+
+    parent = tmp_path / "throwaway"
+    parent.mkdir()
+    scratch = tmp_path / "scratch"
+    isolated = scratch / "probe-source"
+    build = scratch / "probe-build"
+    hermetic = scratch / "zed-home"
+    appdata = scratch / "zed-appdata"
+    for path in (isolated, build, hermetic, appdata):
+        path.mkdir(parents=True)
+    settings = appdata / "Zed" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text("{}", encoding="utf-8")
+    launcher = build / "isolated_optimus_agent.py"
+    launcher.write_text("# launcher\n", encoding="utf-8")
+    zed_exe = tmp_path / "Zed.exe"
+    zed_exe.write_bytes(b"fake")
+    prep = ProbePreparation(
+        isolated_source_root=str(isolated),
+        isolated_build_root=str(build),
+        hermetic_zed_root=str(hermetic),
+        normal_root=str(tmp_path / "normal"),
+        normal_commit=COMMIT,
+        normal_source_sha256_before=SHA_C,
+        patch_plan=DEFAULT_PROBE_PATCH_PLAN,
+        cleanup_dry_run_verified=True,
+    )
+    isolation = IsolationEvidence(
+        normal_agent_load_session_advertised=False,
+        isolated_probe_load_session_advertised=True,
+        normal_source_sha256_before=SHA_C,
+        normal_source_sha256_after=SHA_C,
+        isolated_source_root=str(isolated),
+        isolated_build_root=str(build),
+        hermetic_zed_root=str(hermetic),
+        cleanup_dry_run_verified=True,
+        cleanup_verified=False,
+    )
+    invocation = ZedInvocation(
+        argv=(str(zed_exe), "--user-data-dir", str(hermetic)),
+        user_data_root=str(hermetic),
+        discovered_from="zed --help",
+        version="Zed 1.15.0",
+        executable_sha256=SHA_A,
+        environment_bind=(("APPDATA", str(appdata.resolve())),),
+    )
+    acpx = AcpxBaselineEvidence(
+        acpx_version="0.12.0",
+        acpx_executable="C:/Tools/acpx.cmd",
+        acpx_sha256=SHA_B,
+        capability_payload={"loadSession": True, "sessionCapabilities": {}},
+        origin_a_launches=0,
+        session_load_exchange=None,
+    )
+    observed: dict[str, float] = {}
+
+    def fake_launch(
+        argv: object,
+        *,
+        env: object,
+        cwd: object,
+        log_path: object = None,
+        timeout_s: float = 180.0,
+    ) -> dict[str, object]:
+        observed["timeout_s"] = timeout_s
+        if write_capture:
+            roots = sorted(parent.glob("p1119-real-zed-*"))
+            cap = roots[-1] / "relay-capture" / PLAN1119_RUN_ID
+            cap.mkdir(parents=True, exist_ok=True)
+            zed_bytes, agent_bytes = _paired_sanitized_relay_bytes()
+            (cap / "zed-to-agent.bin").write_bytes(zed_bytes)
+            (cap / "agent-to-zed.bin").write_bytes(agent_bytes)
+        return {"pid": 1, "returncode": 0, "log_path": str(log_path) if log_path else None}
+
+    monkeypatch.setattr(probe, "zed_target_already_running", lambda _names: False)
+    monkeypatch.setattr(probe, "_list_process_names", lambda: [])
+    monkeypatch.setattr(probe, "prepare_real_zed_probe", lambda *_a, **_k: prep)
+    monkeypatch.setattr(probe, "verify_normal_operation_isolation", lambda _prep: isolation)
+    monkeypatch.setattr(probe, "validate_isolation_evidence", lambda *_a, **_k: None)
+    monkeypatch.setattr(probe, "_discover_live_zed_invocation", lambda _root: (zed_exe, invocation, SHA_A))
+    monkeypatch.setattr(probe, "write_isolated_agent_launcher", lambda *_a, **_k: launcher)
+    monkeypatch.setattr(probe, "_run_acpx_against_isolated_agent", lambda **_k: acpx)
+    monkeypatch.setattr(probe, "seed_hermetic_zed_settings", lambda *_a, **_k: settings)
+    monkeypatch.setattr(probe, "_observe_zed_help", lambda _exe: "--user-data-dir")
+    monkeypatch.setattr(probe, "build_real_zed_launch_argv", lambda *_a, **_k: (str(zed_exe), str(parent)))
+    monkeypatch.setattr(probe, "_launch_zed_once", fake_launch)
+    monkeypatch.setattr(probe, "normal_workspace_source_digest", lambda _root: SHA_C)
+    monkeypatch.setattr(probe, "_cleanup_plan1119_roots", lambda **_k: (True, []))
+    reports_root = tmp_path / "reports"
+    reports_root.mkdir()
+    monkeypatch.setattr(probe, "REPORTS_ROOT", reports_root)
+    return parent, reports_root / PLAN_1124_REPORT_NAME, hermetic, observed
+
+
+def test_guided_timeout_is_threaded_to_launch_without_gui(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tools.probe_p11_zed_session_load import run_plan1119_real_zed
+
+    parent, report_dir, _hermetic, observed = _install_stubbed_real_zed(tmp_path, monkeypatch)
+    run_plan1119_real_zed(parent, launch_timeout_seconds=900.0, report_dir=report_dir)
+    assert observed["timeout_s"] == 900.0
+
+
+def test_materialization_failure_records_sanitized_reason_without_changing_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tools.probe_p11_zed_session_load as probe
+    from tools.probe_p11_zed_session_load import _safe_payload, run_plan1119_real_zed
+
+    parent, report_dir, hermetic, _observed = _install_stubbed_real_zed(
+        tmp_path, monkeypatch, write_capture=True
+    )
+    leaky_path = str((hermetic / "settings.json").resolve())
+    secret = "OPTIMUS_API_KEY=sk-live-not-for-disk"
+    thrown: list[OSError] = []
+
+    def boom(**_kwargs: object) -> Path:
+        exc = OSError(13, f"Permission denied {secret}", leaky_path)
+        thrown.append(exc)
+        raise exc
+
+    monkeypatch.setattr(probe, "materialize_sanitized_zed_evidence", boom)
+    result = run_plan1119_real_zed(parent, launch_timeout_seconds=180.0, report_dir=report_dir)
+    assert len(thrown) == 1
+    recorded = result["evidence_materialization_error"]
+    assert recorded["type"] == type(thrown[0]).__name__
+    assert recorded["stage"] == "evidence_bundle"
+    assert recorded["message"] == _safe_payload(str(thrown[0]))
+    payload = json.dumps(result, default=str)
+    assert "sk-live-not-for-disk" not in payload
+    assert "evidence_manifest" not in result
+    assert not report_dir.exists()
+    assert result["finding"] == Finding.INDETERMINATE.value
+    assert result["indeterminate_reason"] == "OBSERVATION_INCOMPLETE"
+    sidecar_text = Path(str(result["sidecar"])).read_text(encoding="utf-8")
+    assert "evidence_materialization_error" in sidecar_text
+    assert "sk-live-not-for-disk" not in sidecar_text
+
+
+def test_real_zed_path_publishes_nonempty_sanitized_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tools.probe_p11_zed_session_load import run_plan1119_real_zed
+
+    parent, report_dir, _hermetic, _observed = _install_stubbed_real_zed(
+        tmp_path, monkeypatch, write_capture=True
+    )
+    result = run_plan1119_real_zed(parent, launch_timeout_seconds=180.0, report_dir=report_dir)
+    assert "evidence_materialization_error" not in result
+    manifest = Path(str(result["evidence_manifest"]))
+    verify_manifest(manifest)
+    assert (report_dir / "relay" / "zed-to-agent.bin").read_bytes()
+    assert (report_dir / "relay" / "agent-to-zed.bin").read_bytes()
