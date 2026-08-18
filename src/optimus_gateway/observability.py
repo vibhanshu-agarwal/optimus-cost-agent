@@ -197,6 +197,8 @@ class _RetryTrackingSpanExporter(SpanExporter):
             transient = False
             try:
                 result = self._delegate.export(spans)
+                if result is SpanExportResult.FAILURE and isinstance(self._delegate, OTLPSpanExporter):
+                    transient = True
             except TransientTraceExportError:
                 result = SpanExportResult.FAILURE
                 transient = True
