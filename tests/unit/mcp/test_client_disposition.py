@@ -21,6 +21,7 @@ from optimus.mcp.client_disposition import (
     ClientMcpDisposition,
     ClientMcpSessionState,
 )
+from optimus.mcp.client_sdk import ClientMcpSdkAdapter
 from optimus.mcp.client_trust import (
     ClientMcpDurableRecord,
     ClientMcpDurableStore,
@@ -118,6 +119,33 @@ def _catalog_pages(*, write: bool = False) -> list[dict[str, object]]:
             }
         )
     return [{"tools": tools}]
+
+
+def _record_adapter_open_and_discover(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Control only the remote SDK edge while preserving the project adapter type."""
+    operations: list[str] = []
+    connection = object()
+
+    def open(
+        _adapter: ClientMcpSdkAdapter,
+        _capability: object,
+        *,
+        session_id: str,
+        proposed_protocol_version: str = "2026-07-28",
+    ) -> object:
+        assert session_id == "session-1"
+        assert proposed_protocol_version == "2026-07-28"
+        operations.append("open")
+        return connection
+
+    def discover(_adapter: ClientMcpSdkAdapter, actual_connection: object) -> list[dict[str, object]]:
+        assert actual_connection is connection
+        operations.append("discover")
+        return _catalog_pages()
+
+    monkeypatch.setattr(ClientMcpSdkAdapter, "open", open)
+    monkeypatch.setattr(ClientMcpSdkAdapter, "discover", discover)
+    return operations
 
 
 class _RecordingDispatchService(ClientMcpToolService):
@@ -467,7 +495,11 @@ def test_stdio_entry_helper_available_for_acp_tests(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_allow_once_stays_transport_free_until_lazy_materialization_registers(tmp_path: Path) -> None:
+async def test_allow_once_stays_transport_free_until_lazy_materialization_registers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter_operations = _record_adapter_open_and_discover(monkeypatch)
     disp, probe = _seed_side_effect_durable(tmp_path)
     state = await disp.disposition_for_new_session(
         "session-1",
@@ -478,6 +510,7 @@ async def test_allow_once_stays_transport_free_until_lazy_materialization_regist
     assert state.is_leased("tools")
     assert isinstance(state, ClientMcpSessionState)
     assert isinstance(state.tool_service, ClientMcpSessionService)
+    assert adapter_operations == []
     lease = state.lease_for("tools")
     assert lease is not None
     assert lease.effect_ceiling == "side_effect_eligible"
@@ -506,13 +539,17 @@ async def test_allow_once_stays_transport_free_until_lazy_materialization_regist
 
 
 @pytest.mark.asyncio
-async def test_leased_server_static_list_lazily_admits_catalog(tmp_path: Path) -> None:
+async def test_leased_server_static_list_lazily_admits_catalog(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A leased server must be discoverable through the static generic list route.
 
     The production change that must make this pass is the lazy resolver that opens the
     leased capability, discovers its catalog, and registers the resulting real service.
     Until that resolver exists, the registry correctly fails closed as unknown_server.
     """
+    adapter_operations = _record_adapter_open_and_discover(monkeypatch)
     disp, probe = _seed_side_effect_durable(tmp_path)
     state = await disp.disposition_for_new_session(
         "session-1",
@@ -531,6 +568,7 @@ async def test_leased_server_static_list_lazily_admits_catalog(tmp_path: Path) -
     assert call.authorization_outcome == "ALLOW"
     payload = json.loads(listed.text)
     assert {tool["name"] for tool in payload["tools"]} == {"list_providers"}
+    assert adapter_operations == ["open", "discover"]
 
 
 @pytest.mark.asyncio
