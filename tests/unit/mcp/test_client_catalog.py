@@ -823,3 +823,122 @@ def test_adapter_backed_service_write_token_denials_never_dispatch_and_adapter_f
         assert session.calls == [("delete_resource", arguments)]
     finally:
         supervisor.close()
+
+
+def test_adapter_backed_service_rejects_unknown_cross_server_and_cross_session_tokens_before_adapter_call(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Removing token isolation must make one of these denied calls reach its adapter."""
+    write_tool = _tool("delete_resource", annotations={"destructiveHint": True})
+    tools_catalog = _catalog([write_tool], effect_ceiling="side_effect_eligible")
+    docs_catalog = _catalog(
+        [write_tool],
+        identity=_identity(name="docs"),
+        effect_ceiling="side_effect_eligible",
+    )
+    tools_authorizer = ClientMcpCallAuthorizer(
+        catalog=tools_catalog,
+        lease=ClientMcpSessionLease(
+            session_id="session-1",
+            workspace_digest="a" * 64,
+            server_name="tools",
+            identity_fingerprint="fp-catalog-1",
+            effect_ceiling="side_effect_eligible",
+        ),
+    )
+    docs_authorizer = ClientMcpCallAuthorizer(
+        catalog=docs_catalog,
+        lease=ClientMcpSessionLease(
+            session_id="session-1",
+            workspace_digest="a" * 64,
+            server_name="docs",
+            identity_fingerprint="fp-catalog-1",
+            effect_ceiling="side_effect_eligible",
+        ),
+    )
+    other_session_authorizer = ClientMcpCallAuthorizer(
+        catalog=tools_catalog,
+        lease=ClientMcpSessionLease(
+            session_id="session-2",
+            workspace_digest="a" * 64,
+            server_name="tools",
+            identity_fingerprint="fp-catalog-1",
+            effect_ceiling="side_effect_eligible",
+        ),
+    )
+    tools_session = _AdapterBackedSession()
+    docs_session = _AdapterBackedSession()
+    other_session = _AdapterBackedSession()
+    tools_service, tools_supervisor = _adapter_backed_service(
+        tmp_path,
+        catalog=tools_catalog,
+        authorizer=tools_authorizer,
+        session=tools_session,
+    )
+    docs_service, docs_supervisor = _adapter_backed_service(
+        tmp_path,
+        catalog=docs_catalog,
+        authorizer=docs_authorizer,
+        session=docs_session,
+    )
+    other_service, other_supervisor = _adapter_backed_service(
+        tmp_path,
+        catalog=tools_catalog,
+        authorizer=other_session_authorizer,
+        session=other_session,
+    )
+    adapter_calls: list[tuple[str, str]] = []
+
+    def _record_adapter_call(connection: ClientMcpConnection, tool_name: str, _arguments: dict[str, Any]) -> dict[str, Any]:
+        adapter_calls.append((connection.session_id, tool_name))
+        return {"content": []}
+
+    try:
+        for service in (tools_service, docs_service, other_service):
+            adapter = object.__getattribute__(service, "_adapter")
+            monkeypatch.setattr(adapter, "call", _record_adapter_call)
+
+        registry = ClientMcpSessionService()
+        registry.register(tools_service)
+        registry.register(docs_service)
+        arguments = {"id": "safe-id"}
+
+        unknown_output, unknown_call = tools_service.call_tool(
+            "delete_resource",
+            arguments,
+            one_call_approval="unknown-token",
+        )
+        assert unknown_call.authorization_outcome != "ALLOW"
+        assert unknown_output.text.startswith("unavailable:")
+
+        approval = tools_authorizer.issue_one_call_approval(
+            session_id="session-1",
+            tool_name="delete_resource",
+            arguments=arguments,
+        )
+        server_output, server_call = registry.call_tool(
+            "docs",
+            "delete_resource",
+            arguments,
+            one_call_approval=approval.token,
+        )
+        assert server_call.authorization_outcome != "ALLOW"
+        assert server_output.text.startswith("unavailable:")
+
+        session_output, session_call = other_service.call_tool(
+            "delete_resource",
+            arguments,
+            one_call_approval=approval.token,
+        )
+        assert session_call.authorization_outcome != "ALLOW"
+        assert session_output.text.startswith("unavailable:")
+
+        assert adapter_calls == []
+        assert tools_session.calls == []
+        assert docs_session.calls == []
+        assert other_session.calls == []
+    finally:
+        tools_supervisor.close()
+        docs_supervisor.close()
+        other_supervisor.close()
