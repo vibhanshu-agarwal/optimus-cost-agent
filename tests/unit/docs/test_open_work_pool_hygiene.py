@@ -499,7 +499,9 @@ def _assert_prerequisites_table(plan: str) -> None:
             assert row["Owner"].strip()
             disposition = row["If unsatisfied: genuinely hard, or merely unauthorized?"].casefold()
             if satisfied != "yes":
-                assert disposition.startswith(("genuinely hard", "merely unauthorized"))
+                assert disposition.startswith(
+                    ("genuinely hard", "genuinely absent", "merely unauthorized")
+                )
         return
     raise AssertionError("Prerequisites section has no valid Markdown table")
 
@@ -807,11 +809,26 @@ def test_post_amendment_plans_declare_prerequisites_with_required_columns() -> N
 |---|---|---|---|---|
 """
     _assert_prerequisites_table(valid_plan)
+    for recognized_disposition in (
+        "genuinely hard external dependency",
+        "genuinely absent but buildable now",
+        "merely unauthorized operator action",
+    ):
+        _assert_prerequisites_table(
+            valid_plan.replace(
+                "| services | Redis | unknown | operator | merely unauthorized |",
+                f"| services | Redis | unknown | operator | {recognized_disposition} |",
+            )
+        )
     for malformed in (
         invalid_plan,
         valid_plan.replace("| unknown |", "| maybe |"),
         valid_plan.replace("| operator |", "| |"),
         valid_plan.replace("| merely unauthorized |", "| n/a |"),
+        valid_plan.replace(
+            "| services | Redis | unknown | operator | merely unauthorized |",
+            "| services | Redis | unknown | operator | unrecognized disposition |",
+        ),
     ):
         with pytest.raises(AssertionError):
             _assert_prerequisites_table(malformed)
