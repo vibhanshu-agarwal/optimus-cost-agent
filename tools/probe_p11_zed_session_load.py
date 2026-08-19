@@ -20,6 +20,7 @@ origin-A fixture, or correlation launch is performed.
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import math
@@ -32,7 +33,7 @@ import tempfile
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path, PureWindowsPath
 from typing import Any
@@ -186,6 +187,609 @@ DEFAULT_PROBE_PATCH_PLAN = ProbePatchPlan(
 )
 
 
+
+
+ESTABLISHING_REPORT_MAX_AGE_SECONDS = 86_400
+ESTABLISHING_REPORT_GIT_PATH = "reports/plan-11-24-agent-protocol-persistence-establishing-drive.md"
+ISOLATED_SOURCE_ROOT = "<ISOLATED_SOURCE_ROOT>"
+APPLICABILITY_MANIFEST_SCHEMA = "optimus-establishing-applicability-v1"
+ESTABLISHING_REPORT_SCHEMA = "plan-11-24-agent-protocol-establishing-v2"
+ESTABLISHING_ROOT_MODULES = (
+    "optimus.acp.__main__",
+    "optimus.acp.launch_approval_cli",
+    "tools.plan117_custody_contract",
+    "tools.plan117_custody_relay",
+    "tools.probe_p11_zed_session_load",
+    "tools.verify_plan1119_zed_reprobe_evidence",
+)
+_LOWERCASE_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_LOWERCASE_HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
+_IN_REPO_MODULE_PREFIXES = ("optimus.", "optimus_security.", "tools.")
+ESTABLISHING_EXECUTION_GIT_PATHS = (
+    "pyproject.toml",
+    "src/optimus/__init__.py",
+    "src/optimus/acp/__init__.py",
+    "src/optimus/acp/__main__.py",
+    "src/optimus/acp/bootstrap.py",
+    "src/optimus/acp/debug_trace.py",
+    "src/optimus/acp/dispatcher.py",
+    "src/optimus/acp/errors.py",
+    "src/optimus/acp/framing.py",
+    "src/optimus/acp/launch_approval_cli.py",
+    "src/optimus/acp/launch_approvals.py",
+    "src/optimus/acp/launch_audit.py",
+    "src/optimus/acp/launch_gate.py",
+    "src/optimus/acp/launch_policy.py",
+    "src/optimus/acp/local_gateway_secrets.py",
+    "src/optimus/acp/local_infra.py",
+    "src/optimus/acp/operator_paths.py",
+    "src/optimus/acp/preflight.py",
+    "src/optimus/acp/request_ids.py",
+    "src/optimus/acp/server.py",
+    "src/optimus/acp/shapes.py",
+    "src/optimus/acp/spec.py",
+    "src/optimus/acp/trusted_paths.py",
+    "src/optimus/agent/__init__.py",
+    "src/optimus/agent/defaults.py",
+    "src/optimus/agent/directives.py",
+    "src/optimus/agent/golden.py",
+    "src/optimus/agent/models.py",
+    "src/optimus/agent/planning_loop.py",
+    "src/optimus/agent/prompts.py",
+    "src/optimus/agent/runner.py",
+    "src/optimus/agent/state_store.py",
+    "src/optimus/agent/tools.py",
+    "src/optimus/agent/workspace_context.py",
+    "src/optimus/config/__init__.py",
+    "src/optimus/config/gateway.py",
+    "src/optimus/evidence/__init__.py",
+    "src/optimus/evidence/acquisition.py",
+    "src/optimus/evidence/domain_policy.py",
+    "src/optimus/evidence/gateway_io.py",
+    "src/optimus/evidence/ledger.py",
+    "src/optimus/evidence/models.py",
+    "src/optimus/evidence/package_advisory.py",
+    "src/optimus/gates/__init__.py",
+    "src/optimus/gates/exceptions.py",
+    "src/optimus/gates/fitness.py",
+    "src/optimus/gates/mutation_flow.py",
+    "src/optimus/gates/shadow_workspace.py",
+    "src/optimus/gateway/__init__.py",
+    "src/optimus/gateway/client.py",
+    "src/optimus/gateway/errors.py",
+    "src/optimus/gateway/models.py",
+    "src/optimus/gateway/tool_models.py",
+    "src/optimus/golden/__init__.py",
+    "src/optimus/golden/json_harness.py",
+    "src/optimus/golden/runner.py",
+    "src/optimus/golden/tasks.py",
+    "src/optimus/guardrails/__init__.py",
+    "src/optimus/guardrails/audit.py",
+    "src/optimus/guardrails/command_safety.py",
+    "src/optimus/guardrails/mcp_trust.py",
+    "src/optimus/guardrails/network_safety.py",
+    "src/optimus/guardrails/path_safety.py",
+    "src/optimus/guardrails/permissions.py",
+    "src/optimus/guardrails/pre_tool.py",
+    "src/optimus/guardrails/prompt_injection.py",
+    "src/optimus/guardrails/unicode_confusables.py",
+    "src/optimus/guardrails/validation.py",
+    "src/optimus/loops/__init__.py",
+    "src/optimus/loops/completion.py",
+    "src/optimus/loops/controller.py",
+    "src/optimus/loops/ledger.py",
+    "src/optimus/loops/models.py",
+    "src/optimus/loops/tools.py",
+    "src/optimus/mcp/__init__.py",
+    "src/optimus/mcp/client_catalog.py",
+    "src/optimus/mcp/client_config.py",
+    "src/optimus/mcp/client_disposition.py",
+    "src/optimus/mcp/client_sdk.py",
+    "src/optimus/mcp/client_supervisor.py",
+    "src/optimus/mcp/client_trust.py",
+    "src/optimus/mcp/local_ipc.py",
+    "src/optimus/mcp/runtime.py",
+    "src/optimus/net/__init__.py",
+    "src/optimus/net/https.py",
+    "src/optimus/redis/__init__.py",
+    "src/optimus/redis/async_bridge.py",
+    "src/optimus/redis/runtime.py",
+    "src/optimus/release/__init__.py",
+    "src/optimus/release/credentials.py",
+    "src/optimus/release/defaults.py",
+    "src/optimus/release/runner.py",
+    "src/optimus/retry/__init__.py",
+    "src/optimus/retry/gated_run.py",
+    "src/optimus/retry/policy.py",
+    "src/optimus/runtime/__init__.py",
+    "src/optimus/runtime/modes.py",
+    "src/optimus/runtime/mutation.py",
+    "src/optimus/runtime/state.py",
+    "src/optimus/skills/__init__.py",
+    "src/optimus/skills/invocation.py",
+    "src/optimus/skills/models.py",
+    "src/optimus/skills/registry.py",
+    "src/optimus/telemetry/__init__.py",
+    "src/optimus/telemetry/events.py",
+    "src/optimus/telemetry/fanout.py",
+    "src/optimus/telemetry/jsonl.py",
+    "src/optimus/telemetry/observability.py",
+    "src/optimus/telemetry/redaction.py",
+    "src/optimus/telemetry/redis_adapter.py",
+    "src/optimus/telemetry/redis_sink.py",
+    "src/optimus/telemetry/serialization.py",
+    "src/optimus/telemetry/subjects.py",
+    "src/optimus/tools/__init__.py",
+    "src/optimus/tools/mutation_tools.py",
+    "src/optimus/tools/policy.py",
+    "src/optimus/tools/registry.py",
+    "src/optimus/usage/__init__.py",
+    "src/optimus/usage/accounting.py",
+    "src/optimus/usage/errors.py",
+    "src/optimus/usage/ledger.py",
+    "src/optimus/usage/models.py",
+    "src/optimus_security/__init__.py",
+    "src/optimus_security/launch_manifest.py",
+    "src/optimus_security/sanitization.py",
+    "tools/plan117_custody_contract.py",
+    "tools/plan117_custody_relay.py",
+    "tools/probe_p11_zed_session_load.py",
+    "tools/verify_plan1119_zed_reprobe_evidence.py",
+    "uv.lock",
+)
+
+def git_cat_file_blob(repo_root: Path, commit: str, path: str) -> bytes:
+    """Read exact Git blob bytes for ``commit:path``."""
+    try:
+        completed = subprocess.run(  # noqa: S603
+            ["git", "cat-file", "blob", f"{commit}:{path}"],
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+            shell=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ProbeError("git_cat_file_blob", f"{type(exc).__name__}: {exc}") from exc
+    if completed.returncode != 0:
+        raise ProbeError("git_cat_file_blob", f"git cat-file failed for {commit}:{path}")
+    return completed.stdout
+
+
+def hash_git_blob_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def build_applicability_manifest(
+    repo_root: Path,
+    commit: str,
+    paths: Sequence[str] = ESTABLISHING_EXECUTION_GIT_PATHS,
+) -> dict[str, Any]:
+    files: list[dict[str, str]] = []
+    for path in sorted(set(paths)):
+        blob = git_cat_file_blob(repo_root, commit, path)
+        files.append({"path": path, "blob_sha256": hash_git_blob_bytes(blob)})
+    canonical_obj = {"schema": APPLICABILITY_MANIFEST_SCHEMA, "files": files}
+    canonical_bytes = json.dumps(
+        canonical_obj,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return {
+        "schema": APPLICABILITY_MANIFEST_SCHEMA,
+        "files": files,
+        "manifest_sha256": hash_git_blob_bytes(canonical_bytes),
+    }
+
+
+def execution_surface_clean(repo_root: Path, paths: Sequence[str]) -> bool:
+    if not paths:
+        return True
+    try:
+        completed = subprocess.run(  # noqa: S603
+            ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", *paths],
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+            shell=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0 and not completed.stdout
+
+
+def is_ancestor(repo_root: Path, ancestor: str, head: str) -> bool:
+    try:
+        completed = subprocess.run(  # noqa: S603
+            ["git", "merge-base", "--is-ancestor", ancestor, head],
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+            shell=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
+
+
+def _path_to_module_name(path: str) -> str:
+    if path.startswith("src/"):
+        return path[len("src/") :].replace("/", ".").removesuffix(".py")
+    return path.replace("/", ".").removesuffix(".py")
+
+
+def _candidate_module_paths(module: str) -> tuple[str, ...]:
+    if module == "optimus":
+        return ("src/optimus/__init__.py",)
+    if module == "optimus_security":
+        return ("src/optimus_security/__init__.py",)
+    if module.startswith(("optimus.", "optimus_security.")):
+        base = "src/" + module.replace(".", "/")
+        return (f"{base}/__init__.py", f"{base}.py")
+    if module.startswith("tools."):
+        base = module.replace(".", "/")
+        return (f"{base}/__init__.py", f"{base}.py")
+    return ()
+
+
+def _module_name_to_git_path(module: str, allowed_paths: frozenset[str]) -> str | None:
+    for path in _candidate_module_paths(module):
+        if path in allowed_paths:
+            return path
+    return None
+
+
+def _parent_module_names(module: str) -> tuple[str, ...]:
+    parts = module.split(".")
+    return tuple(".".join(parts[:index]) for index in range(1, len(parts)))
+
+
+def _resolve_relative_module(current_module: str, level: int, module: str | None) -> str | None:
+    parts = current_module.split(".")
+    if level > len(parts):
+        return None
+    base = parts[: len(parts) - level]
+    if module:
+        base.extend(module.split("."))
+    return ".".join(base) if base else None
+
+
+def _is_in_repo_module(module: str) -> bool:
+    return module in {"optimus", "optimus_security"} or module.startswith(_IN_REPO_MODULE_PREFIXES)
+
+
+def _resolve_imported_module(name: str, allowed_paths: frozenset[str]) -> str | None:
+    if not _is_in_repo_module(name):
+        return None
+    parts = name.split(".")
+    unresolved_path: str | None = None
+    for index in range(len(parts), 0, -1):
+        candidate = ".".join(parts[:index])
+        if not _is_in_repo_module(candidate):
+            break
+        candidate_paths = _candidate_module_paths(candidate)
+        if not candidate_paths:
+            continue
+        for path in candidate_paths:
+            if path in allowed_paths:
+                return candidate
+        unresolved_path = candidate_paths[0]
+    if unresolved_path is not None:
+        raise ProbeError("import_closure", f"unlisted module path: {unresolved_path}")
+    return None
+
+
+def _collect_imports_from_ast(tree: ast.AST, current_module: str) -> set[str]:
+    imports: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imports.add(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level > 0:
+                base = _resolve_relative_module(current_module, node.level, node.module)
+            else:
+                base = node.module
+            if base is None:
+                continue
+            for alias in node.names:
+                if alias.name == "*":
+                    imports.add(base)
+                else:
+                    imports.add(f"{base}.{alias.name}")
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id == "__import__":
+                raise ProbeError("import_closure", "dynamic import forbidden")
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "import_module":
+                if isinstance(node.func.value, ast.Name) and node.func.value.id == "importlib":
+                    raise ProbeError("import_closure", "dynamic import forbidden")
+    return imports
+
+
+def compute_establishing_import_closure(
+    repo_root: Path,
+    commit: str = "HEAD",
+    *,
+    root_modules: Sequence[str] = ESTABLISHING_ROOT_MODULES,
+    allowed_py_paths: frozenset[str] | None = None,
+) -> frozenset[str]:
+    allowed_paths = allowed_py_paths or frozenset(
+        path for path in ESTABLISHING_EXECUTION_GIT_PATHS if path.endswith(".py")
+    )
+    seen_modules: set[str] = set()
+    closure_paths: set[str] = set()
+    pending: list[str] = list(root_modules)
+
+    def visit_module(module: str) -> None:
+        if module in seen_modules or not _is_in_repo_module(module):
+            return
+        for parent in _parent_module_names(module):
+            visit_module(parent)
+        if module in seen_modules:
+            return
+        seen_modules.add(module)
+        path = _module_name_to_git_path(module, allowed_paths)
+        if path is None:
+            raise ProbeError("import_closure", f"cannot map module: {module}")
+        if path not in allowed_paths:
+            raise ProbeError("import_closure", f"unlisted module path: {path}")
+        closure_paths.add(path)
+        blob = git_cat_file_blob(repo_root, commit, path)
+        tree = ast.parse(blob.decode("utf-8"), filename=path)
+        current_module = _path_to_module_name(path)
+        for imported in _collect_imports_from_ast(tree, current_module):
+            resolved = _resolve_imported_module(imported, allowed_paths)
+            if resolved is not None and resolved not in seen_modules:
+                pending.append(resolved)
+
+    while pending:
+        visit_module(pending.pop())
+    return frozenset(closure_paths)
+
+
+def verify_establishing_import_closure(repo_root: Path, commit: str = "HEAD") -> None:
+    closure = compute_establishing_import_closure(repo_root, commit)
+    expected = frozenset(path for path in ESTABLISHING_EXECUTION_GIT_PATHS if path.endswith(".py"))
+    if closure != expected:
+        missing = sorted(expected - closure)
+        extra = sorted(closure - expected)
+        raise ProbeError(
+            "import_closure",
+            f"closure mismatch missing={missing[:3]} extra={extra[:3]}",
+        )
+
+
+def read_committed_establishing_report_blob(repo_root: Path) -> bytes:
+    if not execution_surface_clean(repo_root, (ESTABLISHING_REPORT_GIT_PATH,)):
+        raise ProbeError("establishing_report", "report path is not clean")
+    try:
+        completed = subprocess.run(  # noqa: S603
+            ["git", "cat-file", "-t", f"HEAD:{ESTABLISHING_REPORT_GIT_PATH}"],
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+            shell=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ProbeError("establishing_report", f"{type(exc).__name__}: {exc}") from exc
+    if completed.returncode != 0 or completed.stdout.strip() != b"blob":
+        raise ProbeError("establishing_report", "committed report blob missing at HEAD")
+    return git_cat_file_blob(repo_root, "HEAD", ESTABLISHING_REPORT_GIT_PATH)
+
+
+def _extract_establishing_report_json(text: str) -> dict[str, Any]:
+    if "\r\n" in text:
+        raise ProbeError("establishing_report", "CRLF not allowed in report")
+    marker = "## Typed reconstruction record"
+    if text.count(marker) != 1:
+        raise ProbeError("establishing_report", "duplicate or missing typed record")
+    section = text.split(marker, 1)[1].strip()
+    if section.startswith("```"):
+        lines = section.splitlines()
+        if not lines or not lines[0].startswith("```"):
+            raise ProbeError("establishing_report", "malformed typed record fence")
+        body_lines: list[str] = []
+        for line in lines[1:]:
+            if line.strip() == "```":
+                break
+            body_lines.append(line)
+        json_text = "\n".join(body_lines).strip()
+    else:
+        start = section.find("{")
+        end = section.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise ProbeError("establishing_report", "typed record JSON missing")
+        json_text = section[start : end + 1]
+    try:
+        parsed = json.loads(json_text)
+    except json.JSONDecodeError as exc:
+        raise ProbeError("establishing_report", "typed record JSON malformed") from exc
+    if not isinstance(parsed, dict):
+        raise ProbeError("establishing_report", "typed record must be an object")
+    return parsed
+
+
+def parse_establishing_report_v2(blob: bytes) -> dict[str, Any]:
+    parsed = _extract_establishing_report_json(blob.decode("utf-8"))
+    if parsed.get("schema") != ESTABLISHING_REPORT_SCHEMA:
+        raise ProbeError("establishing_report", "unexpected establishing report schema")
+    if parsed.get("establishing_disposition") != PLAN1124_ESTABLISHING_OK:
+        raise ProbeError("establishing_report", "establishing disposition is not authorizing")
+    authority = parsed.get("authority")
+    if not isinstance(authority, Mapping):
+        raise ProbeError("establishing_report", "authority block missing")
+    source_commit = authority.get("source_commit")
+    if not isinstance(source_commit, str) or not _LOWERCASE_HEX40_RE.fullmatch(source_commit):
+        raise ProbeError("establishing_report", "source_commit invalid")
+    applicability = authority.get("applicability")
+    if not isinstance(applicability, Mapping):
+        raise ProbeError("establishing_report", "applicability block missing")
+    if applicability.get("schema") != APPLICABILITY_MANIFEST_SCHEMA:
+        raise ProbeError("establishing_report", "applicability schema invalid")
+    files = applicability.get("files")
+    if not isinstance(files, list) or len(files) != len(ESTABLISHING_EXECUTION_GIT_PATHS):
+        raise ProbeError("establishing_report", "applicability files invalid")
+    manifest_sha256 = applicability.get("manifest_sha256")
+    if not isinstance(manifest_sha256, str) or not _LOWERCASE_SHA256_RE.fullmatch(manifest_sha256):
+        raise ProbeError("establishing_report", "manifest_sha256 invalid")
+    completed_at_utc = parsed.get("completed_at_utc")
+    if not isinstance(completed_at_utc, str) or not completed_at_utc:
+        raise ProbeError("establishing_report", "completed_at_utc invalid")
+    parse_aware_utc_timestamp(completed_at_utc)
+    counts = parsed.get("counts")
+    if not isinstance(counts, Mapping) or counts.get("zed_launches") != 0:
+        raise ProbeError("establishing_report", "counts.zed_launches must be 0")
+    return parsed
+
+
+def render_isolated_launcher_bytes(source_root: str | Path) -> bytes:
+    if source_root == ISOLATED_SOURCE_ROOT:
+        source_token = ISOLATED_SOURCE_ROOT
+    else:
+        source_token = Path(source_root).resolve().as_posix()
+    content = (
+        "from __future__ import annotations\n\n"
+        "import sys\n"
+        "from pathlib import Path\n\n"
+        f"_SOURCE = Path({source_token!r})\n"
+        'sys.path.insert(0, str(_SOURCE / "src"))\n'
+        "from optimus.acp.__main__ import main\n\n"
+        "if __name__ == '__main__':\n"
+        "    raise SystemExit(main())\n"
+    )
+    return content.encode("utf-8")
+
+
+def compute_isolated_patched_spec_bytes(
+    spec_blob: bytes,
+    patch_plan: ProbePatchPlan | None = None,
+) -> bytes:
+    plan = patch_plan or DEFAULT_PROBE_PATCH_PLAN
+    validate_probe_patch_plan(plan)
+    text = spec_blob.decode("utf-8")
+    if _INITIALIZE_NO_LOAD_SESSION not in text or _SESSION_PROMPT_BRANCH not in text:
+        raise ProbeError("apply_probe_patch", "unexpected patch surface: initialize/load markers missing")
+    patched = text.replace(_INITIALIZE_NO_LOAD_SESSION, _INITIALIZE_TEMPORARY_LOAD_SESSION, 1)
+    patched = patched.replace(_SESSION_PROMPT_BRANCH, _SESSION_LOAD_BRANCH, 1)
+    if patched == text or '"loadSession": True' not in patched or "session/load" not in patched:
+        raise ProbeError("apply_probe_patch", "unexpected patch surface: isolated patch did not apply")
+    return patched.encode("utf-8")
+
+
+def resolve_acpx_cli_js_path(acpx_path: Path) -> Path:
+    resolved = acpx_path.resolve()
+    candidates = [
+        resolved.parent / "node_modules" / "acpx" / "dist" / "cli.js",
+        resolved.parent.parent / "node_modules" / "acpx" / "dist" / "cli.js",
+    ]
+    appdata = os.environ.get("APPDATA", "").strip()
+    if appdata:
+        candidates.append(Path(appdata) / "npm" / "node_modules" / "acpx" / "dist" / "cli.js")
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve()
+    raise ProbeError("resolve_acpx_cli_js", "acpx JavaScript CLI entry not found")
+
+
+def resolve_acpx_identities(acpx_path: Path, *, cwd: Path, env: Mapping[str, str]) -> dict[str, str]:
+    version = _acpx_version(acpx_path, cwd=cwd, env=env)
+    command_sha256 = _file_sha256(acpx_path)
+    cli_js_sha256 = _file_sha256(resolve_acpx_cli_js_path(acpx_path))
+    return {
+        "version": version,
+        "command_sha256": command_sha256,
+        "cli_js_sha256": cli_js_sha256,
+    }
+
+
+def parse_aware_utc_timestamp(value: str) -> datetime:
+    if value.endswith("-00:00"):
+        raise ValueError("unsupported UTC offset")
+    if value.endswith("Z"):
+        normalized = value[:-1] + "+00:00"
+    elif value.endswith("+00:00"):
+        normalized = value
+    else:
+        raise ValueError("timestamp must end with Z or +00:00")
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        raise ValueError("timestamp must be timezone-aware")
+    if parsed.utcoffset() != timedelta(0):
+        raise ValueError("timestamp must be UTC")
+    return parsed.astimezone(UTC)
+
+
+def serialize_aware_utc_timestamp(value: datetime) -> str:
+    aware = value.astimezone(UTC).replace(microsecond=0)
+    return aware.isoformat().replace("+00:00", "Z")
+
+
+def validate_establishing_report_freshness(completed_at_utc: str, now_utc: datetime) -> None:
+    completed = parse_aware_utc_timestamp(completed_at_utc)
+    now = now_utc.astimezone(UTC)
+    age_seconds = (now - completed).total_seconds()
+    if age_seconds < 0:
+        raise ValueError("future timestamp")
+    if age_seconds > ESTABLISHING_REPORT_MAX_AGE_SECONDS:
+        raise ValueError("stale timestamp")
+
+
+def _reject_establishing_prerequisite(result: dict[str, Any], *, detail: str | None = None) -> bool:
+    result["finding"] = Finding.INDETERMINATE.value
+    result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
+    result["zed_launches"] = 0
+    if detail is not None:
+        result["establishing_gate_detail"] = detail
+    return False
+
+
+def _resolve_python_identity() -> dict[str, str]:
+    executable = Path(sys.executable).resolve()
+    return {
+        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "python_executable_sha256": _file_sha256(executable),
+    }
+
+
+def _resolve_trust_executable_identity(repo_root: Path) -> dict[str, str]:
+    trust_cli = _resolve_trust_cli(repo_root)
+    return {"trust_executable_sha256": _file_sha256(trust_cli)}
+
+
+def _resolve_isolated_identity(repo_root: Path, isolated_source_root: str | None) -> dict[str, str]:
+    spec_blob = git_cat_file_blob(repo_root, "HEAD", "src/optimus/acp/spec.py")
+    patched_spec_sha256 = hash_git_blob_bytes(compute_isolated_patched_spec_bytes(spec_blob))
+    canonical_launcher_sha256 = hash_git_blob_bytes(render_isolated_launcher_bytes(ISOLATED_SOURCE_ROOT))
+    identities = {
+        "isolated_launcher_canonical_sha256": canonical_launcher_sha256,
+        "isolated_patched_spec_sha256": patched_spec_sha256,
+    }
+    if isolated_source_root:
+        raw_launcher_sha256 = hash_git_blob_bytes(render_isolated_launcher_bytes(isolated_source_root))
+        identities["isolated_launcher_raw_sha256"] = raw_launcher_sha256
+    return identities
+
+
+def _manifests_equal(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
+    if left.get("schema") != right.get("schema"):
+        return False
+    if left.get("manifest_sha256") != right.get("manifest_sha256"):
+        return False
+    left_files = left.get("files")
+    right_files = right.get("files")
+    return isinstance(left_files, list) and left_files == right_files
+
+
+def verify_establishing_execution_surface(repo_root: Path, commit: str = "HEAD") -> None:
+    if not execution_surface_clean(repo_root, ESTABLISHING_EXECUTION_GIT_PATHS):
+        raise ProbeError("execution_surface", "execution surface is not clean")
+    verify_establishing_import_closure(repo_root, commit)
+
+
 def validate_probe_patch_plan(plan: ProbePatchPlan) -> None:
     """Reject any patch surface beyond the temporary initialize capability and empty load result."""
     if (
@@ -266,6 +870,7 @@ APPROVED_REAL_ZED_PREFIX = [
 DEFAULT_ZED_LAUNCH_TIMEOUT_SECONDS = 180.0
 MIN_ZED_LAUNCH_TIMEOUT_SECONDS = 60.0
 MAX_ZED_LAUNCH_TIMEOUT_SECONDS = 900.0
+
 RELAY_CHILD_STDERR_EXCERPT_LIMIT = 4000
 _USER_DATA_HELP_LINE = re.compile(r"user[\s_-]*data", re.I)
 _HELP_FLAG = re.compile(r"(--[A-Za-z0-9][A-Za-z0-9-]*)")
@@ -605,18 +1210,12 @@ def _advertises_top_level_load_session(source_root: Path) -> bool:
     return '"loadSession": True' in text
 
 
-def _apply_isolated_probe_patch(spec_path: Path) -> None:
-    try:
-        text = spec_path.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise ProbeError("apply_probe_patch", f"{type(exc).__name__}: {exc}") from exc
-    if _INITIALIZE_NO_LOAD_SESSION not in text or _SESSION_PROMPT_BRANCH not in text:
-        raise ProbeError("apply_probe_patch", "unexpected patch surface: initialize/load markers missing")
-    patched = text.replace(_INITIALIZE_NO_LOAD_SESSION, _INITIALIZE_TEMPORARY_LOAD_SESSION, 1)
-    patched = patched.replace(_SESSION_PROMPT_BRANCH, _SESSION_LOAD_BRANCH, 1)
-    if patched == text or '"loadSession": True' not in patched or "session/load" not in patched:
-        raise ProbeError("apply_probe_patch", "unexpected patch surface: isolated patch did not apply")
-    spec_path.write_text(patched, encoding="utf-8")
+def _apply_isolated_probe_patch(spec_path: Path, *, repo_root: Path | None = None) -> None:
+    root = repo_root or Path(__file__).resolve().parents[1]
+    spec_blob = git_cat_file_blob(root, "HEAD", "src/optimus/acp/spec.py")
+    expected = compute_isolated_patched_spec_bytes(spec_blob)
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_bytes(expected)
 
 
 def _verify_cleanup_dry_run(scratch_parent: Path) -> bool:
@@ -1477,19 +2076,7 @@ def write_isolated_agent_launcher(build_root: Path, isolated_source: Path) -> Pa
     """Write a throwaway launcher that prefers the isolated src tree over the normal checkout."""
     build_root.mkdir(parents=True, exist_ok=True)
     launcher = build_root / _ISOLATED_LAUNCHER_NAME
-    source = isolated_source.resolve().as_posix()
-    launcher.write_text(
-        "from __future__ import annotations\n\n"
-        "import sys\n"
-        "from pathlib import Path\n\n"
-        f"_SOURCE = Path({source!r})\n"
-        'sys.path.insert(0, str(_SOURCE / "src"))\n'
-        "from optimus.acp.__main__ import main\n\n"
-        "if __name__ == '__main__':\n"
-        "    raise SystemExit(main())\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    launcher.write_bytes(render_isolated_launcher_bytes(isolated_source))
     return launcher
 
 
@@ -1880,95 +2467,89 @@ def _read_agent_protocol_report_provenance(path: Path) -> dict[str, str | None]:
 
 
 def _require_established_agent_protocol_prerequisite(result: dict[str, Any]) -> bool:
-    marker = _read_establishing_disposition_marker(_agent_protocol_report_path())
-    provenance = _read_agent_protocol_report_provenance(_agent_protocol_report_path())
+    repo_root = Path(__file__).resolve().parents[1]
+    head_commit = result.get("commit") or _git_head(repo_root)
+    isolated_source_root = result.get("isolated_launcher_source_root")
+    if isolated_source_root is None:
+        isolation = result.get("isolation")
+        if isinstance(isolation, Mapping):
+            candidate = isolation.get("isolated_source_root")
+            if isinstance(candidate, str):
+                isolated_source_root = candidate
     result["agent_protocol_prerequisite"] = {
-        "report": str(_agent_protocol_report_path()),
-        "disposition": marker,
-        **provenance,
+        "report": ESTABLISHING_REPORT_GIT_PATH,
+        "head_commit": head_commit,
     }
-    if marker == PLAN1124_ESTABLISHING_OK:
-        recorded_at_utc = provenance.get("recorded_at_utc")
-        commit = provenance.get("commit")
-        acpx_version = provenance.get("acpx_version")
-        acpx_sha256 = provenance.get("acpx_sha256")
-        isolated_launcher_sha256 = provenance.get("isolated_launcher_sha256")
-        expected_commit = result.get("commit")
-        expected_isolated_build = result.get("isolated_build")
-        expected_launcher_sha256 = (
-            expected_isolated_build.get("sha256") if isinstance(expected_isolated_build, Mapping) else None
-        )
-
-        if not (
-            isinstance(recorded_at_utc, str)
-            and recorded_at_utc
-            and isinstance(commit, str)
-            and commit
-            and isinstance(acpx_version, str)
-            and acpx_version
-            and isinstance(acpx_sha256, str)
-            and acpx_sha256
-            and isinstance(isolated_launcher_sha256, str)
-            and isolated_launcher_sha256
-            and isinstance(expected_commit, str)
-            and expected_commit
-            and isinstance(expected_launcher_sha256, str)
-            and expected_launcher_sha256
-        ):
-            result["finding"] = Finding.INDETERMINATE.value
-            result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
-            result["zed_launches"] = 0
-            return False
-
-        # Freshness check: the operator-approved establishing drive must be recent.
-        try:
-            report_dt = datetime.fromisoformat(recorded_at_utc)
-        except ValueError:
-            result["finding"] = Finding.INDETERMINATE.value
-            result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
-            result["zed_launches"] = 0
-            return False
-        age_seconds = (datetime.now(UTC) - report_dt).total_seconds()
-        if age_seconds > MAX_ZED_LAUNCH_TIMEOUT_SECONDS:
-            result["finding"] = Finding.INDETERMINATE.value
-            result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
-            result["zed_launches"] = 0
-            return False
-
-        if commit != expected_commit:
-            result["finding"] = Finding.INDETERMINATE.value
-            result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
-            result["zed_launches"] = 0
-            return False
-
-        # Independently compute the current acpx provenance to avoid stale authorization.
-        # This does not touch Zed, Gateway, or provider credentials.
-        acpx_path = _resolve_acpx()
-        acpx_workspace = Path(tempfile.mkdtemp(prefix="p1124-acpx-provenance-"))
-        try:
-            acpx_home = acpx_workspace / "acpx-home"
-            acpx_env = _isolated_environment(acpx_home)
-            acpx_version_now = _acpx_version(acpx_path, cwd=acpx_workspace, env=acpx_env)
-            acpx_sha_now = _file_sha256(acpx_path)
-        finally:
-            shutil.rmtree(acpx_workspace, ignore_errors=True)
-
-        if acpx_version_now != acpx_version or acpx_sha_now != acpx_sha256:
-            result["finding"] = Finding.INDETERMINATE.value
-            result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
-            result["zed_launches"] = 0
-            return False
-        if expected_launcher_sha256 != isolated_launcher_sha256:
-            result["finding"] = Finding.INDETERMINATE.value
-            result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
-            result["zed_launches"] = 0
-            return False
-
-        return True
-    result["finding"] = Finding.INDETERMINATE.value
-    result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
-    result["zed_launches"] = 0
-    return False
+    try:
+        report_blob = read_committed_establishing_report_blob(repo_root)
+        report = parse_establishing_report_v2(report_blob)
+    except ProbeError as exc:
+        result["agent_protocol_prerequisite"]["gate_error"] = exc.args[0]
+        return _reject_establishing_prerequisite(result, detail=exc.args[0])
+    authority = report["authority"]
+    source_commit = authority["source_commit"]
+    result["agent_protocol_prerequisite"].update(
+        {
+            "disposition": report.get("establishing_disposition"),
+            "source_commit": source_commit,
+            "completed_at_utc": report.get("completed_at_utc"),
+        }
+    )
+    if not isinstance(head_commit, str) or not head_commit:
+        return _reject_establishing_prerequisite(result, detail="head commit missing")
+    if not is_ancestor(repo_root, source_commit, head_commit):
+        return _reject_establishing_prerequisite(result, detail="source commit is not an ancestor")
+    try:
+        verify_establishing_execution_surface(repo_root, head_commit)
+    except ProbeError as exc:
+        return _reject_establishing_prerequisite(result, detail=exc.args[0])
+    current_manifest = build_applicability_manifest(repo_root, head_commit)
+    report_manifest = authority["applicability"]
+    if not _manifests_equal(current_manifest, report_manifest):
+        return _reject_establishing_prerequisite(result, detail="applicability manifest drift")
+    try:
+        validate_establishing_report_freshness(str(report["completed_at_utc"]), datetime.now(UTC))
+    except ValueError as exc:
+        return _reject_establishing_prerequisite(result, detail=str(exc))
+    python_identity = _resolve_python_identity()
+    if (
+        authority.get("python_version") != python_identity["python_version"]
+        or authority.get("python_executable_sha256") != python_identity["python_executable_sha256"]
+    ):
+        return _reject_establishing_prerequisite(result, detail="python identity mismatch")
+    acpx_path = _resolve_acpx()
+    acpx_workspace = Path(tempfile.mkdtemp(prefix="p1124-acpx-provenance-"))
+    try:
+        acpx_env = _isolated_environment(acpx_workspace / "acpx-home")
+        acpx_identity = resolve_acpx_identities(acpx_path, cwd=acpx_workspace, env=acpx_env)
+    finally:
+        shutil.rmtree(acpx_workspace, ignore_errors=True)
+    if authority.get("acpx_version") != acpx_identity["version"]:
+        return _reject_establishing_prerequisite(result, detail="acpx version mismatch")
+    if authority.get("acpx_cli_js_sha256") != acpx_identity["cli_js_sha256"]:
+        return _reject_establishing_prerequisite(result, detail="acpx cli.js identity mismatch")
+    trust_identity = _resolve_trust_executable_identity(repo_root)
+    if authority.get("trust_executable_sha256") != trust_identity["trust_executable_sha256"]:
+        return _reject_establishing_prerequisite(result, detail="trust executable identity mismatch")
+    isolated_identity = _resolve_isolated_identity(repo_root, isolated_source_root)
+    if authority.get("isolated_launcher_canonical_sha256") != isolated_identity["isolated_launcher_canonical_sha256"]:
+        return _reject_establishing_prerequisite(result, detail="canonical launcher identity mismatch")
+    if authority.get("isolated_patched_spec_sha256") != isolated_identity["isolated_patched_spec_sha256"]:
+        return _reject_establishing_prerequisite(result, detail="patched spec identity mismatch")
+    expected_isolated_build = result.get("isolated_build")
+    expected_launcher_sha256 = (
+        expected_isolated_build.get("sha256") if isinstance(expected_isolated_build, Mapping) else None
+    )
+    raw_launcher_sha256 = isolated_identity.get("isolated_launcher_raw_sha256")
+    if not isinstance(expected_launcher_sha256, str) or not expected_launcher_sha256:
+        return _reject_establishing_prerequisite(result, detail="current raw launcher digest missing")
+    if raw_launcher_sha256 != expected_launcher_sha256:
+        return _reject_establishing_prerequisite(result, detail="raw launcher bytes mismatch")
+    result["agent_protocol_prerequisite"]["acpx_command_sha256"] = acpx_identity["command_sha256"]
+    result["agent_protocol_prerequisite"]["isolated_launcher_canonical_sha256"] = isolated_identity[
+        "isolated_launcher_canonical_sha256"
+    ]
+    return True
 
 
 def _plan1124_report_text(result: Mapping[str, Any]) -> str:
@@ -2936,8 +3517,12 @@ def run_plan1124_two_lifecycle_real_zed(
         isolation = verify_normal_operation_isolation(preparation)
         validate_isolation_evidence(isolation, require_cleanup=False)
         executable, invocation, help_sha256 = _discover_live_zed_invocation(Path(preparation.hermetic_zed_root))
+        result["isolated_launcher_source_root"] = preparation.isolated_source_root
         launcher = write_isolated_agent_launcher(Path(preparation.isolated_build_root), Path(preparation.isolated_source_root))
-        result["isolated_build"] = {"sha256": _file_sha256(launcher)}
+        result["isolated_build"] = {
+            "sha256": hash_git_blob_bytes(render_isolated_launcher_bytes(preparation.isolated_source_root)),
+            "canonical_sha256": hash_git_blob_bytes(render_isolated_launcher_bytes(ISOLATED_SOURCE_ROOT)),
+        }
         if not _require_established_agent_protocol_prerequisite(result):
             return result
         workspace = run_root / "zed-workspace"

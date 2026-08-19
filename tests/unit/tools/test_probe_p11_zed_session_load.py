@@ -3149,3 +3149,481 @@ def test_real_zed_revoke_interrupt_retains_workspace_and_records_remediation(
     assert remediation[-1] == "revoke"
     assert _workspace_from_command([str(part) for part in remediation]) == workspace.resolve()
     assert bool(observed["approval"]["live"]) is True  # type: ignore[index]
+
+# --- Task 15: Git-blob authority and freshness gate ---
+
+def _establishing_git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
+
+
+def _init_establishing_repo(repo: Path, *, content: str = "alpha\n", path: str = "tracked.txt") -> str:
+    repo.mkdir(parents=True, exist_ok=True)
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8", newline="\n")
+    _establishing_git(repo, "init")
+    _establishing_git(repo, "config", "user.email", "probe@example.test")
+    _establishing_git(repo, "config", "user.name", "Probe")
+    _establishing_git(repo, "add", "-A")
+    _establishing_git(repo, "commit", "-m", "init")
+    return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+
+
+def _build_v2_establishing_report_text(record: dict[str, object]) -> str:
+    return "\n".join(
+        [
+            "# Plan 11.24 agent protocol persistence establishing drive",
+            "",
+            "## Typed reconstruction record",
+            "",
+            "```json",
+            json.dumps(record, sort_keys=True),
+            "```",
+            "",
+        ]
+    )
+
+
+def _minimal_v2_record(
+    *,
+    source_commit: str,
+    manifest: dict[str, object],
+    completed_at_utc: str,
+    python_version: str = "3.14.0",
+    python_executable_sha256: str = SHA_B,
+    acpx_version: str = "0.0.test",
+    acpx_command_sha256: str = SHA_C,
+    acpx_cli_js_sha256: str = SHA_B,
+    trust_executable_sha256: str = SHA_B,
+    isolated_launcher_canonical_sha256: str = SHA_A,
+    isolated_launcher_raw_sha256: str = SHA_A,
+    isolated_patched_spec_sha256: str = SHA_B,
+) -> dict[str, object]:
+    return {
+        "schema": "plan-11-24-agent-protocol-establishing-v2",
+        "establishing_disposition": "NO_GATEWAY_PATH_ESTABLISHED",
+        "completed_at_utc": completed_at_utc,
+        "authority": {
+            "source_commit": source_commit,
+            "source_commit_execution_surface_clean": True,
+            "applicability": manifest,
+            "python_version": python_version,
+            "python_executable_sha256": python_executable_sha256,
+            "acpx_version": acpx_version,
+            "acpx_command_sha256": acpx_command_sha256,
+            "acpx_cli_js_sha256": acpx_cli_js_sha256,
+            "trust_executable_sha256": trust_executable_sha256,
+            "isolated_launcher_canonical_sha256": isolated_launcher_canonical_sha256,
+            "isolated_launcher_raw_sha256": isolated_launcher_raw_sha256,
+            "isolated_patched_spec_sha256": isolated_patched_spec_sha256,
+        },
+        "counts": {"zed_launches": 0, "origin_a_launches": 0},
+        "sequence": {
+            "session_new": {"request_id": 1, "session_id": "sess-1"},
+            "session_prompt": {
+                "request_id": 2,
+                "session_id": "sess-1",
+                "request_count": 1,
+                "message_sha256": SHA_C,
+                "outcome": "error",
+                "response_id_matches": True,
+                "error_code": -32000,
+            },
+            "session_load": {"request_id": 3, "session_id": "sess-1", "response_id_matches": True, "result": {}},
+        },
+        "traffic": {
+            "gateway_attempted": False,
+            "provider_attempted": False,
+            "model_call_attempted": False,
+        },
+        "custody": {
+            "approval_created": True,
+            "approval_revoked": True,
+            "post_revoke_inspect_exit_code": 1,
+        },
+        "cleanup": {"throwaway_root_removed": True},
+    }
+
+
+def test_establishing_applicability_hashes_git_blobs_not_worktree_bytes(tmp_path: Path) -> None:
+    """genuine RED baseline: blob digest must ignore worktree normalization."""
+    import tools.probe_p11_zed_session_load as probe
+
+    repo = tmp_path / "repo"
+    commit = _init_establishing_repo(repo, content="line\n", path="sample.txt")
+    blob_digest = probe.hash_git_blob_bytes(probe.git_cat_file_blob(repo, commit, "sample.txt"))
+    (repo / "sample.txt").write_text("line\r\n", encoding="utf-8")
+    worktree_digest = probe.hash_git_blob_bytes((repo / "sample.txt").read_bytes())
+    manifest = probe.build_applicability_manifest(repo, commit, ("sample.txt",))
+    assert manifest["files"][0]["blob_sha256"] == blob_digest
+    assert blob_digest != worktree_digest
+
+
+@pytest.mark.parametrize(
+    "mutator",
+    [
+        pytest.param(
+            lambda repo: (
+                (repo / "tracked.txt").write_text("dirty\n", encoding="utf-8"),
+                _establishing_git(repo, "add", "tracked.txt"),
+            ),
+            id="staged",
+        ),
+        pytest.param(lambda repo: (repo / "tracked.txt").write_text("dirty\n", encoding="utf-8"), id="unstaged"),
+        pytest.param(
+            lambda repo: (
+                _establishing_git(repo, "rm", "tracked.txt"),
+                (repo / "tracked.txt").write_text("resurrected\n", encoding="utf-8"),
+            ),
+            id="deleted",
+        ),
+        pytest.param(
+            lambda repo: (
+                _establishing_git(repo, "mv", "tracked.txt", "renamed.txt"),
+                (repo / "renamed.txt").write_text("renamed-body\n", encoding="utf-8"),
+            ),
+            id="renamed",
+        ),
+        pytest.param(
+            lambda repo: (
+                _establishing_git(repo, "rm", "tracked.txt"),
+                _establishing_git(repo, "add", "-A"),
+            ),
+            id="type-changed",
+        ),
+    ],
+)
+def test_establishing_applicability_rejects_dirty_execution_surface(tmp_path: Path, mutator) -> None:
+    """genuine RED baseline: dirty execution paths fail closed."""
+    import tools.probe_p11_zed_session_load as probe
+
+    repo = tmp_path / "repo"
+    _init_establishing_repo(repo)
+    mutator(repo)
+    assert probe.execution_surface_clean(repo, ("tracked.txt",)) is False
+
+
+def test_establishing_import_closure_equals_explicit_module_path_subset() -> None:
+    """baseline-green preservation: live AST closure matches the explicit 128-file subset."""
+    import tools.probe_p11_zed_session_load as probe
+
+    closure = probe.compute_establishing_import_closure(REPO_ROOT)
+    expected = frozenset(path for path in probe.ESTABLISHING_EXECUTION_GIT_PATHS if path.endswith(".py"))
+    assert closure == expected
+    assert len(closure) == 128
+
+
+def test_establishing_import_closure_traverses_package_init_reexports(tmp_path: Path) -> None:
+    """genuine RED baseline: package __init__ re-exports must expand closure."""
+    import tools.probe_p11_zed_session_load as probe
+
+    repo = tmp_path / "repo"
+    (repo / "tools" / "pkg").mkdir(parents=True)
+    (repo / "tools" / "pkg" / "__init__.py").write_text("from tools.pkg.leaf import value\n", encoding="utf-8")
+    (repo / "tools" / "pkg" / "leaf.py").write_text("value = 1\n", encoding="utf-8")
+    (repo / "tools" / "entry.py").write_text("from tools.pkg import value\n", encoding="utf-8")
+    _establishing_git(repo, "init")
+    _establishing_git(repo, "config", "user.email", "probe@example.test")
+    _establishing_git(repo, "config", "user.name", "Probe")
+    _establishing_git(repo, "add", "-A")
+    _establishing_git(repo, "commit", "-m", "init")
+    allowed = frozenset(
+        {
+            "tools/pkg/__init__.py",
+            "tools/pkg/leaf.py",
+            "tools/entry.py",
+        }
+    )
+    closure = probe.compute_establishing_import_closure(
+        repo,
+        root_modules=("tools.entry",),
+        allowed_py_paths=allowed,
+    )
+    assert "tools/pkg/__init__.py" in closure
+    assert "tools/pkg/leaf.py" in closure
+
+
+def test_establishing_import_closure_rejects_unlisted_new_project_module(tmp_path: Path) -> None:
+    """genuine RED baseline: unlisted in-repo imports fail closed."""
+    import tools.probe_p11_zed_session_load as probe
+
+    repo = tmp_path / "repo"
+    (repo / "tools").mkdir(parents=True)
+    (repo / "tools" / "entry.py").write_text("from tools.secret import token\n", encoding="utf-8")
+    (repo / "tools" / "secret.py").write_text("token = 'x'\n", encoding="utf-8")
+    _establishing_git(repo, "init")
+    _establishing_git(repo, "config", "user.email", "probe@example.test")
+    _establishing_git(repo, "config", "user.name", "Probe")
+    _establishing_git(repo, "add", "-A")
+    _establishing_git(repo, "commit", "-m", "init")
+    allowed = frozenset({"tools/entry.py"})
+    with pytest.raises(probe.ProbeError, match="unlisted module path"):
+        probe.compute_establishing_import_closure(repo, root_modules=("tools.entry",), allowed_py_paths=allowed)
+
+
+def test_establishing_authority_allows_report_only_descendant_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """genuine RED baseline: descendant report-only commit remains authorized when manifest matches."""
+    import tools.probe_p11_zed_session_load as probe
+
+    repo = tmp_path / "repo"
+    source_commit = _init_establishing_repo(repo)
+    manifest = probe.build_applicability_manifest(repo, source_commit, ("tracked.txt",))
+    completed_at = probe.serialize_aware_utc_timestamp(probe.datetime.now(probe.UTC))
+    isolated_root = str(tmp_path / "isolated-source")
+    canonical = probe.hash_git_blob_bytes(probe.render_isolated_launcher_bytes(probe.ISOLATED_SOURCE_ROOT))
+    raw = probe.hash_git_blob_bytes(probe.render_isolated_launcher_bytes(isolated_root))
+    record = _minimal_v2_record(
+        source_commit=source_commit,
+        manifest=manifest,
+        completed_at_utc=completed_at,
+        isolated_launcher_canonical_sha256=canonical,
+        isolated_launcher_raw_sha256=raw,
+    )
+    report_text = _build_v2_establishing_report_text(record)
+    report_path = repo / "reports/plan-11-24-agent-protocol-persistence-establishing-drive.md"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(report_text, encoding="utf-8", newline="\n")
+    _establishing_git(repo, "add", "reports/plan-11-24-agent-protocol-persistence-establishing-drive.md")
+    _establishing_git(repo, "commit", "-m", "report only")
+    head_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    monkeypatch.setattr(probe, "read_committed_establishing_report_blob", lambda _r: report_text.encode("utf-8"))
+    monkeypatch.setattr(probe, "parse_establishing_report_v2", lambda _blob: record)
+    monkeypatch.setattr(probe, "is_ancestor", lambda _r, ancestor, head: ancestor == source_commit and head == head_commit)
+    monkeypatch.setattr(probe, "verify_establishing_execution_surface", lambda *_a, **_k: None)
+    monkeypatch.setattr(probe, "build_applicability_manifest", lambda _r, _c, paths=("tracked.txt",): manifest)
+    monkeypatch.setattr(
+        probe,
+        "_resolve_python_identity",
+        lambda: {"python_version": "3.14.0", "python_executable_sha256": SHA_B},
+    )
+    monkeypatch.setattr(probe, "_resolve_trust_executable_identity", lambda _r: {"trust_executable_sha256": SHA_B})
+    monkeypatch.setattr(
+        probe,
+        "resolve_acpx_identities",
+        lambda *_a, **_k: {"version": "0.0.test", "command_sha256": SHA_C, "cli_js_sha256": SHA_B},
+    )
+    monkeypatch.setattr(probe, "_resolve_acpx", lambda: tmp_path / "acpx.cmd")
+    monkeypatch.setattr(
+        probe,
+        "_resolve_isolated_identity",
+        lambda _r, source_root: {
+            "isolated_launcher_canonical_sha256": canonical,
+            "isolated_patched_spec_sha256": SHA_B,
+            "isolated_launcher_raw_sha256": raw,
+        },
+    )
+    result = {
+        "commit": head_commit,
+        "isolated_launcher_source_root": isolated_root,
+        "isolated_build": {"sha256": raw},
+        "zed_launches": 0,
+    }
+    assert probe._require_established_agent_protocol_prerequisite(result) is True
+    assert result["zed_launches"] == 0
+
+
+def test_establishing_authority_rejects_untracked_authorizing_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """genuine RED baseline: untracked worktree report is not authorizing."""
+    import tools.probe_p11_zed_session_load as probe
+
+    repo = tmp_path / "repo"
+    _init_establishing_repo(repo)
+    report_path = repo / "reports/plan-11-24-agent-protocol-persistence-establishing-drive.md"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text("untracked\n", encoding="utf-8")
+    monkeypatch.setattr(
+        probe,
+        "read_committed_establishing_report_blob",
+        lambda _r: (_ for _ in ()).throw(probe.ProbeError("establishing_report", "report path is not clean")),
+    )
+    result = {"commit": "a" * 40, "zed_launches": 0}
+    assert probe._require_established_agent_protocol_prerequisite(result) is False
+    assert result["indeterminate_reason"] == "PRECONDITION_UNMET"
+    assert result["zed_launches"] == 0
+
+
+def test_establishing_authority_rejects_dirty_tracked_authorizing_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """genuine RED baseline: dirty tracked report rejects before launch."""
+    import tools.probe_p11_zed_session_load as probe
+
+    repo = tmp_path / "repo"
+    _init_establishing_repo(repo, path="reports/plan-11-24-agent-protocol-persistence-establishing-drive.md")
+    (repo / "reports/plan-11-24-agent-protocol-persistence-establishing-drive.md").write_text("dirty\n", encoding="utf-8")
+    monkeypatch.setattr(
+        probe,
+        "read_committed_establishing_report_blob",
+        lambda _r: (_ for _ in ()).throw(probe.ProbeError("establishing_report", "report path is not clean")),
+    )
+    result = {"commit": "a" * 40, "zed_launches": 0}
+    assert probe._require_established_agent_protocol_prerequisite(result) is False
+    assert result["zed_launches"] == 0
+
+
+def test_establishing_authority_reads_committed_report_blob_not_worktree_bytes(tmp_path: Path) -> None:
+    """genuine RED baseline: parser reads HEAD blob bytes only."""
+    import tools.probe_p11_zed_session_load as probe
+
+    repo = tmp_path / "repo"
+    report_rel = "reports/plan-11-24-agent-protocol-persistence-establishing-drive.md"
+    _init_establishing_repo(repo, content="committed\n", path=report_rel)
+    _establishing_git(repo, "config", "core.autocrlf", "true")
+    report_path = repo / report_rel
+    blob = probe.git_cat_file_blob(repo, "HEAD", report_rel)
+    worktree_bytes = report_path.read_bytes()
+    committed = probe.read_committed_establishing_report_blob(repo)
+    assert committed == blob
+    if worktree_bytes != blob:
+        assert committed != worktree_bytes
+
+
+def test_establishing_authority_rejects_nonancestor_or_surface_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """genuine RED baseline: non-ancestor source or manifest drift rejects."""
+    import tools.probe_p11_zed_session_load as probe
+
+    repo = tmp_path / "repo"
+    source_commit = _init_establishing_repo(repo)
+    manifest = probe.build_applicability_manifest(repo, source_commit, ("tracked.txt",))
+    completed_at = probe.serialize_aware_utc_timestamp(probe.datetime.now(probe.UTC))
+    record = _minimal_v2_record(source_commit="b" * 40, manifest=manifest, completed_at_utc=completed_at)
+    monkeypatch.setattr(probe, "read_committed_establishing_report_blob", lambda _r: _build_v2_establishing_report_text(record).encode("utf-8"))
+    monkeypatch.setattr(probe, "parse_establishing_report_v2", lambda _blob: record)
+    monkeypatch.setattr(probe, "is_ancestor", lambda *_a, **_k: False)
+    result = {"commit": source_commit, "zed_launches": 0}
+    assert probe._require_established_agent_protocol_prerequisite(result) is False
+    assert result["zed_launches"] == 0
+
+    drift_manifest = dict(manifest)
+    drift_manifest["manifest_sha256"] = "d" * 64
+    record_drift = _minimal_v2_record(source_commit=source_commit, manifest=drift_manifest, completed_at_utc=completed_at)
+    monkeypatch.setattr(probe, "read_committed_establishing_report_blob", lambda _r: _build_v2_establishing_report_text(record_drift).encode("utf-8"))
+    monkeypatch.setattr(probe, "parse_establishing_report_v2", lambda _blob: record_drift)
+    monkeypatch.setattr(probe, "is_ancestor", lambda *_a, **_k: True)
+    monkeypatch.setattr(probe, "verify_establishing_execution_surface", lambda *_a, **_k: None)
+    monkeypatch.setattr(probe, "build_applicability_manifest", lambda *_a, **_k: manifest)
+    result = {"commit": source_commit, "zed_launches": 0}
+    assert probe._require_established_agent_protocol_prerequisite(result) is False
+
+
+def test_canonical_launcher_identity_ignores_only_run_root(tmp_path: Path) -> None:
+    """genuine RED baseline: canonical launcher digest is stable across run roots."""
+    import tools.probe_p11_zed_session_load as probe
+
+    first = tmp_path / "source-a"
+    second = tmp_path / "source-b"
+    canonical = probe.hash_git_blob_bytes(probe.render_isolated_launcher_bytes(probe.ISOLATED_SOURCE_ROOT))
+    raw_a = probe.hash_git_blob_bytes(probe.render_isolated_launcher_bytes(first))
+    raw_b = probe.hash_git_blob_bytes(probe.render_isolated_launcher_bytes(second))
+    assert raw_a != raw_b
+    assert raw_a != canonical
+    assert raw_b != canonical
+
+
+def test_raw_launcher_sha_is_audit_only_not_cross_run_authority(tmp_path: Path) -> None:
+    """baseline-green preservation: raw launcher digests differ while canonical stays fixed."""
+    import tools.probe_p11_zed_session_load as probe
+
+    roots = [tmp_path / "run-a", tmp_path / "run-b"]
+    canonical = probe.hash_git_blob_bytes(probe.render_isolated_launcher_bytes(probe.ISOLATED_SOURCE_ROOT))
+    raw_digests = [probe.hash_git_blob_bytes(probe.render_isolated_launcher_bytes(root)) for root in roots]
+    assert raw_digests[0] != raw_digests[1]
+    assert all(
+        probe.hash_git_blob_bytes(probe.render_isolated_launcher_bytes(probe.ISOLATED_SOURCE_ROOT)) == canonical
+        for _ in roots
+    )
+
+
+def test_isolated_probe_patch_writes_exact_git_blob_bytes_on_windows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """genuine RED baseline: patched spec uses write_bytes from git blob, not CRLF text IO."""
+    import tools.probe_p11_zed_session_load as probe
+
+    repo = tmp_path / "repo"
+    spec_rel = "src/optimus/acp/spec.py"
+    spec_path = repo / spec_rel
+    spec_path.parent.mkdir(parents=True)
+    spec_path.write_text(REAL_SPEC.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
+    _establishing_git(repo, "init")
+    _establishing_git(repo, "config", "user.email", "probe@example.test")
+    _establishing_git(repo, "config", "user.name", "Probe")
+    _establishing_git(repo, "config", "core.autocrlf", "true")
+    _establishing_git(repo, "add", "-A")
+    _establishing_git(repo, "commit", "-m", "spec")
+    blob = probe.git_cat_file_blob(repo, "HEAD", spec_rel)
+    expected = probe.compute_isolated_patched_spec_bytes(blob)
+    isolated_spec = tmp_path / "isolated" / spec_rel
+    monkeypatch.setattr(probe, "git_cat_file_blob", lambda _r, _c, path: blob if path == spec_rel else b"")
+    probe._apply_isolated_probe_patch(isolated_spec, repo_root=repo)
+    assert isolated_spec.read_bytes() == expected
+    assert b"\r\n" not in isolated_spec.read_bytes()
+
+
+def test_acpx_identity_binds_cli_js_not_generic_npm_shim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """genuine RED baseline: authority binds acpx version + cli.js SHA, not shim alone."""
+    import tools.probe_p11_zed_session_load as probe
+
+    acpx_cmd = tmp_path / "acpx.cmd"
+    acpx_cmd.write_text("@echo off\n", encoding="utf-8")
+    cli_js = tmp_path / "node_modules" / "acpx" / "dist" / "cli.js"
+    cli_js.parent.mkdir(parents=True)
+    cli_js.write_bytes(b"console.log('cli-v1')\n")
+    monkeypatch.setattr(probe, "_acpx_version", lambda *_a, **_k: "1.0.0")
+    identity = probe.resolve_acpx_identities(acpx_cmd, cwd=tmp_path, env={})
+    cli_js.write_bytes(b"console.log('cli-v2')\n")
+    changed = probe.resolve_acpx_identities(acpx_cmd, cwd=tmp_path, env={})
+    assert identity["command_sha256"] == changed["command_sha256"]
+    assert identity["cli_js_sha256"] != changed["cli_js_sha256"]
+
+
+def test_establishing_report_freshness_uses_completion_time_and_dedicated_bound() -> None:
+    """genuine RED baseline: freshness uses dedicated 86400-second bound."""
+    import tools.probe_p11_zed_session_load as probe
+
+    now = probe.datetime(2026, 1, 2, tzinfo=probe.UTC)
+    completed = probe.serialize_aware_utc_timestamp(now - probe.timedelta(seconds=probe.ESTABLISHING_REPORT_MAX_AGE_SECONDS))
+    probe.validate_establishing_report_freshness(completed, now)
+    stale = probe.serialize_aware_utc_timestamp(now - probe.timedelta(seconds=probe.ESTABLISHING_REPORT_MAX_AGE_SECONDS + 1))
+    with pytest.raises(ValueError, match="stale"):
+        probe.validate_establishing_report_freshness(stale, now)
+    assert probe.ESTABLISHING_REPORT_MAX_AGE_SECONDS != probe.MAX_ZED_LAUNCH_TIMEOUT_SECONDS
+
+
+def test_establishing_report_freshness_accepts_z_and_plus_zero_and_serializes_z() -> None:
+    """genuine RED baseline: Z and +00:00 accepted; persisted serialization uses Z."""
+    import tools.probe_p11_zed_session_load as probe
+
+    dt = probe.datetime(2026, 1, 1, 12, 0, tzinfo=probe.UTC)
+    z_value = "2026-01-01T12:00:00+00:00"
+    parsed = probe.parse_aware_utc_timestamp(z_value)
+    assert probe.serialize_aware_utc_timestamp(parsed) == "2026-01-01T12:00:00Z"
+    probe.validate_establishing_report_freshness("2026-01-01T12:00:00Z", dt)
+
+
+@pytest.mark.parametrize(
+    "timestamp,matcher",
+    [
+        ("2026-01-01T12:00:00", "timestamp must end"),
+        ("2026-01-01T12:00:00-05:00", "timestamp must end"),
+        ("2026-01-01T12:00:00-00:00", "unsupported UTC offset"),
+        ("2030-01-01T00:00:00Z", "future"),
+    ],
+)
+def test_establishing_report_freshness_rejects_stale_future_naive_minus_zero_and_non_utc(
+    timestamp: str, matcher: str
+) -> None:
+    """genuine RED baseline: malformed/future timestamps reject."""
+    import tools.probe_p11_zed_session_load as probe
+
+    now = probe.datetime(2026, 1, 1, tzinfo=probe.UTC)
+    with pytest.raises(ValueError, match=matcher):
+        if matcher == "future":
+            probe.validate_establishing_report_freshness(timestamp, now)
+        else:
+            probe.parse_aware_utc_timestamp(timestamp)
+
