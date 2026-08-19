@@ -138,6 +138,18 @@ def _verify_resume_lifecycle(manifest: Mapping[str, Any], report_dir: Path) -> N
         return
     require(manifest.get("zed_launches") == 2, "zed_launches", "resume_lifecycle requires exactly two launches")
     require(resume.get("shared_profile") is True, "resume_lifecycle.shared_profile", "shared profile must be true")
+    shared_user_data_root = resume.get("shared_user_data_root")
+    require(
+        isinstance(shared_user_data_root, str) and shared_user_data_root.strip(),
+        "resume_lifecycle.shared_user_data_root",
+        "shared user data root is missing",
+    )
+    shared_workspace = resume.get("shared_workspace")
+    require(
+        isinstance(shared_workspace, str) and shared_workspace.strip(),
+        "resume_lifecycle.shared_workspace",
+        "shared workspace is missing",
+    )
     lifecycle_a = resume.get("lifecycle_a")
     lifecycle_b = resume.get("lifecycle_b")
     require(isinstance(lifecycle_a, Mapping), "resume_lifecycle.lifecycle_a", "lifecycle_a record is missing")
@@ -222,6 +234,26 @@ def _verify_resume_lifecycle(manifest: Mapping[str, Any], report_dir: Path) -> N
         "resume_lifecycle.lifecycle_b.agent_to_zed_sha256",
         "lifecycle-b digest mismatch",
     )
+    _verify_lifecycle_a_message_seam(report_dir, create_id)
+
+
+def _verify_lifecycle_a_message_seam(report_dir: Path, session_id: str) -> None:
+    from tools.probe_p11_zed_session_load import iter_acp_messages, validate_lifecycle_a_prompt_seam
+
+    zed_path = report_dir / "relay" / "lifecycle-a" / "zed-to-agent.bin"
+    agent_path = report_dir / "relay" / "lifecycle-a" / "agent-to-zed.bin"
+    require(zed_path.is_file(), "relay/lifecycle-a/zed-to-agent.bin", "lifecycle-a relay capture is missing")
+    require(agent_path.is_file(), "relay/lifecycle-a/agent-to-zed.bin", "lifecycle-a relay capture is missing")
+    zed_messages = iter_acp_messages(zed_path.read_bytes())
+    agent_messages = iter_acp_messages(agent_path.read_bytes())
+    try:
+        validate_lifecycle_a_prompt_seam(zed_messages, agent_messages, session_id=session_id)
+    except Exception as exc:
+        from tools.probe_p11_zed_session_load import ProbeError
+
+        if isinstance(exc, ProbeError):
+            raise VerifyError("resume_lifecycle.lifecycle_a.message_seam", str(exc)) from exc
+        raise VerifyError("resume_lifecycle.lifecycle_a.message_seam", "lifecycle-a message seam invalid") from exc
 
 
 def _verify_finding_rule(manifest: Mapping[str, Any]) -> None:

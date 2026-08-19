@@ -2553,14 +2553,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.probe_p11_zed_session_load:_apply_isolated_probe_patch:text_file_write",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: writes only the allowlisted temporary-advertisement probe patch into the throwaway isolated tree; no ambient credentials or live ACP streams are persisted.",
-      "sanitizer": "schema-limited functional path; isolated throwaway tree only",
-      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_prepare_probe_patches_only_isolated_spec_and_records_isolation",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "tools.probe_p11_zed_session_load:_launch_zed_once:file_open",
       "policy": "shared-sanitize",
       "rationale": "Inspection: opens the hermetic Zed launch log only to feed a bounded excerpt through sanitize_for_persistence before evidence retention.",
@@ -2657,11 +2649,11 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.probe_p11_zed_session_load:write_isolated_agent_launcher:text_file_write",
+      "key": "tools.probe_p11_zed_session_load:build_applicability_manifest:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: writes the throwaway isolated agent launcher script under scratch; no ambient credentials embedded.",
-      "sanitizer": "schema-limited functional path; isolated throwaway launcher only",
-      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_seed_hermetic_settings_and_launcher_stay_under_scratch",
+      "rationale": "Inspection: canonicalizes only sorted path/blob_sha256 tuples for the explicit establishing execution surface; no worktree bytes, credentials, or acpx streams enter the manifest JSON.",
+      "sanitizer": "schema-limited functional path; git blob digests only",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_applicability_hashes_git_blobs_not_worktree_bytes",
       "evidence_tier": "unit"
     },
     {
@@ -2731,17 +2723,41 @@
     {
       "key": "tools.probe_p11_zed_session_load:run_plan1124_agent_protocol_drive:text_file_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: writes a schema-limited prerequisite report with a fixed Establishing-Disposition token and boolean no-Gateway marker plus sanitized sidecar JSON; it never persists raw acpx stdout/stderr streams.",
+      "rationale": "Inspection: writes only the sanitized agent-protocol sidecar JSON after alias redaction; raw acpx stdout/stderr streams and ambient paths are excluded.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
-      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_agent_protocol_drive_requires_erroring_prompt_and_matching_saved_load",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_agent_protocol_drive_delegates_all_protocol_traffic_to_acpx",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:_require_established_agent_protocol_prerequisite:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Inspection: persists only sanitized gate_error stage tokens while reading the committed v2 establishing report blob; no worktree report bytes or raw exception text are retained.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_authority_rejects_nonancestor_or_surface_drift",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:_records_contain_traffic_marker:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: inspects only sanitized acpx record JSON for fixed gateway/provider/model-call marker terms during in-memory sequence validation; no additional persistence occurs.",
+      "sanitizer": "schema-limited functional path; sanitized acpx records only",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_negative_sequence_cases",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:render_establishing_report_v2_markdown:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: renders only the schema-limited plan-11-24-agent-protocol-establishing-v2 typed record with digests, booleans, and sequence facts; fixed prompt text and raw acpx streams never enter the report JSON.",
+      "sanitizer": "schema-limited functional path; typed v2 record only",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_agent_protocol_report_v2_reconstructs_authority_sequence_traffic_custody_and_cleanup",
       "evidence_tier": "unit"
     },
     {
       "key": "tools.probe_p11_zed_session_load:_write_agent_protocol_report:text_file_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: writes the agent-protocol prerequisite report only after verified revoke and cleanup; report text is schema-limited to disposition tokens and a boolean no-Gateway marker with no raw acpx streams or ambient paths.",
-      "sanitizer": "schema-limited result; optimus_security.sanitization.sanitize_for_persistence",
-      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_agent_protocol_drive_revoke_failure_removes_positive_marker_from_disk",
+      "rationale": "Inspection: atomically publishes only the schema-limited plan-11-24-agent-protocol-establishing-v2 typed record after verified revoke and cleanup; no raw acpx streams, fixed prompt text, or ambient paths are persisted.",
+      "sanitizer": "schema-limited typed v2 record",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_agent_protocol_report_v2_reconstructs_authority_sequence_traffic_custody_and_cleanup",
       "evidence_tier": "unit"
     },
     {
@@ -2798,6 +2814,14 @@
       "rationale": "Inspection: stderr carries only schema-limited verifier failure reasons (field names, digests, classification codes); no raw ACP or credential export.",
       "sanitizer": "schema-limited verifier diagnostics only",
       "test_node": "tests/unit/tools/test_verify_plan1119_zed_reprobe_evidence.py::test_missing_required_field_fails",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan1119_zed_reprobe_evidence:_verify_lifecycle_a_message_seam:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: lifecycle-A message seam validation raises typed verifier failures with fixed reason codes only; no raw relay bytes or credentials are exported.",
+      "sanitizer": "schema-limited verifier diagnostics only",
+      "test_node": "tests/unit/tools/test_verify_plan1119_zed_reprobe_evidence.py::test_v5_negative_matrix_rejects_invalid_resume_manifests",
       "evidence_tier": "unit"
     },
     {

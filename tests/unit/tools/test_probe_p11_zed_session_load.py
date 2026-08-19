@@ -1259,69 +1259,11 @@ def test_agent_protocol_drive_delegates_all_protocol_traffic_to_acpx(
 ) -> None:
     import tools.probe_p11_zed_session_load as probe
 
-    parent = tmp_path / "parent"
-    parent.mkdir()
-    workspace = tmp_path / "run-ws"
-    workspace.mkdir()
-    launcher = tmp_path / "isolated_optimus_agent.py"
-    launcher.write_text("raise SystemExit(0)\n", encoding="utf-8")
-    acpx = tmp_path / "acpx.cmd"
-    acpx.write_text("@echo off\n", encoding="utf-8")
-    trust = tmp_path / "optimus-trust.exe"
-    trust.write_text("binary\n", encoding="utf-8")
     report_root = tmp_path / "reports"
     report_root.mkdir()
-    monkeypatch.setattr(probe, "REPORTS_ROOT", report_root)
-
+    parent = _agent_protocol_drive_common_stubs(probe, tmp_path, monkeypatch, report_root=report_root)
     calls: list[list[str]] = []
     mode = {"value": "ok"}
-
-    def fake_prepare(*_args: object, **_kwargs: object) -> object:
-        return type(
-            "Prep",
-            (),
-            {
-                "isolated_source_root": str(tmp_path / "probe-source"),
-                "isolated_build_root": str(tmp_path),
-                "hermetic_zed_root": str(tmp_path / "zed-home"),
-                "normal_root": str(tmp_path / "repo"),
-                "normal_commit": COMMIT,
-                "normal_source_sha256_before": SHA_A,
-                "cleanup_dry_run_verified": True,
-            },
-        )()
-
-    def fake_verify(_prep: object) -> object:
-        return type(
-            "Iso",
-            (),
-            {
-                "normal_agent_load_session_advertised": False,
-                "isolated_probe_load_session_advertised": True,
-                "normal_source_sha256_before": SHA_A,
-                "normal_source_sha256_after": SHA_A,
-                "isolated_source_root": str(tmp_path / "probe-source"),
-                "isolated_build_root": str(tmp_path),
-                "hermetic_zed_root": str(tmp_path / "zed-home"),
-                "cleanup_dry_run_verified": True,
-                "cleanup_verified": True,
-                "prelaunch_predicates_pass": True,
-            },
-        )()
-
-    monkeypatch.setattr(probe, "_validate_parent_workspace", lambda *a, **k: parent)
-    monkeypatch.setattr(probe, "prepare_real_zed_probe", fake_prepare)
-    monkeypatch.setattr(probe, "verify_normal_operation_isolation", fake_verify)
-    monkeypatch.setattr(probe, "write_isolated_agent_launcher", lambda *_a, **_k: launcher)
-    monkeypatch.setattr(probe, "_resolve_acpx", lambda: acpx)
-    monkeypatch.setattr(probe, "_resolve_trust_cli", lambda _repo: trust)
-    monkeypatch.setattr(probe, "_acpx_version", lambda *_a, **_k: "0.0.test")
-    monkeypatch.setattr(probe, "_file_sha256", lambda _p: SHA_A)
-    monkeypatch.setattr(probe, "_isolated_environment", lambda _home: {"HOME": str(_home)})
-    monkeypatch.setattr(probe, "_run_interactive_required", lambda *_a, **_k: CommandResult([], 0, "", ""))
-    monkeypatch.setattr(probe, "_revoke_temporary_approval", lambda *_a, **_k: None)
-    monkeypatch.setattr(probe.time, "sleep", lambda *_a, **_k: None)
-    monkeypatch.setattr(probe, "_cleanup_plan1119_roots", lambda **_k: (True, []))
 
     def fake_run(command: list[str], *, cwd: Path, env: dict[str, str]) -> CommandResult:
         del cwd, env
@@ -1329,15 +1271,9 @@ def test_agent_protocol_drive_delegates_all_protocol_traffic_to_acpx(
         if command[-1] == "inspect":
             return CommandResult(command, 1, "", "")
         if command[-1] == "new":
-            stdout = '\n'.join(
-                [
-                    '{"jsonrpc":"2.0","id":1,"method":"session/new"}',
-                    '{"jsonrpc":"2.0","id":1,"result":{"sessionId":"session-a"}}',
-                ]
-            )
-            return CommandResult(command, 0, stdout, "")
+            return CommandResult(command, 0, _agent_protocol_new_stdout(), "")
         if len(command) >= 2 and command[-2] == "exec":
-            return CommandResult(command, 2, '{"jsonrpc":"2.0","id":2,"error":{"code":-32000}}', "")
+            return CommandResult(command, 2, _agent_protocol_prompt_stdout(), "")
         if len(command) >= 4 and command[-4:-1] == ["sessions", "export", "--output"]:
             archive = command[-1]
             if not str(archive).endswith("session.json"):
@@ -1350,19 +1286,9 @@ def test_agent_protocol_drive_delegates_all_protocol_traffic_to_acpx(
             return CommandResult(command, 0, "", "")
         if command[-1] == "status":
             if mode["value"] == "ok":
-                stdout = '\n'.join(
-                    [
-                        '{"jsonrpc":"2.0","id":3,"method":"session/load","params":{"sessionId":"session-a"}}',
-                        '{"jsonrpc":"2.0","id":3,"result":{}}',
-                    ]
-                )
+                stdout = _agent_protocol_load_stdout()
             else:
-                stdout = '\n'.join(
-                    [
-                        '{"jsonrpc":"2.0","id":3,"method":"session/load","params":{"sessionId":"session-b"}}',
-                        '{"jsonrpc":"2.0","id":3,"result":{}}',
-                    ]
-                )
+                stdout = _agent_protocol_load_stdout(wrong_session=True)
             return CommandResult(command, 0, stdout, "")
         return CommandResult(command, 0, "", "")
 
@@ -1373,6 +1299,7 @@ def test_agent_protocol_drive_delegates_all_protocol_traffic_to_acpx(
     assert result["origin_a_launches"] == 0
     assert result["no_gateway_path_established"] is True
 
+    acpx = tmp_path / "acpx.cmd"
     expected_prefix = [
         str(acpx),
         "--format",
@@ -1408,18 +1335,120 @@ def test_agent_protocol_drive_delegates_all_protocol_traffic_to_acpx(
     assert "stdout_records" not in json.dumps(sidecar)
     assert str(acpx) not in json.dumps(sidecar)
     report_text = (report_root / "plan-11-24-agent-protocol-persistence-establishing-drive.md").read_text(encoding="utf-8")
-    assert "Establishing-Disposition: NO_GATEWAY_PATH_ESTABLISHED" in report_text
+    assert "## Typed reconstruction record" in report_text
+    parsed = probe.parse_establishing_report_v2(report_text.encode("utf-8"))
+    assert parsed["establishing_disposition"] == probe.PLAN1124_ESTABLISHING_OK
 
 
 def test_agent_protocol_drive_requires_erroring_prompt_and_matching_saved_load(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """baseline-green preservation: successful prompt or mismatched load must reject."""
     import tools.probe_p11_zed_session_load as probe
 
     report_root = tmp_path / "reports"
     report_root.mkdir()
+    parent = _agent_protocol_drive_common_stubs(probe, tmp_path, monkeypatch, report_root=report_root)
+    scenario = {"value": "success-prompt"}
+
+    def fake_run(command: list[str], *, cwd: Path, env: dict[str, str]) -> CommandResult:
+        del cwd, env
+        if command[-1] == "inspect":
+            return CommandResult(command, 1, "", "")
+        if command[-1] == "new":
+            return CommandResult(command, 0, _agent_protocol_new_stdout(), "")
+        if len(command) >= 2 and command[-2] == "exec":
+            if scenario["value"] == "success-prompt":
+                stdout = _agent_protocol_prompt_stdout(include_error=False, result_ok=True)
+            else:
+                stdout = _agent_protocol_prompt_stdout()
+            return CommandResult(command, 0 if scenario["value"] == "success-prompt" else 2, stdout, "")
+        if command[-1] == "export":
+            return CommandResult(command, 0, "", "")
+        if command[-2:] == ["sessions", "import"]:
+            return CommandResult(command, 0, "", "")
+        if command[-1] == "status":
+            if scenario["value"] == "mismatch":
+                stdout = _agent_protocol_load_stdout(wrong_session=True)
+            else:
+                stdout = _agent_protocol_load_stdout()
+            return CommandResult(command, 0, stdout, "")
+        return CommandResult(command, 0, "", "")
+
+    monkeypatch.setattr(probe, "_run", fake_run)
+
+    first = probe.run_plan1124_agent_protocol_drive(parent)
+    assert first["no_gateway_path_established"] is False
+    assert first["indeterminate_reason"] == "PRECONDITION_UNMET"
+
+    scenario["value"] = "mismatch"
+    second = probe.run_plan1124_agent_protocol_drive(parent)
+    assert second["no_gateway_path_established"] is False
+    assert second["indeterminate_reason"] == "PRECONDITION_UNMET"
+
+
+def _agent_protocol_drive_common_stubs(
+    probe: object,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    report_root: Path,
+    isolated_source: str | None = None,
+) -> Path:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    launcher = tmp_path / "isolated_optimus_agent.py"
+    launcher.write_text("raise SystemExit(0)\n", encoding="utf-8")
+    acpx = tmp_path / "acpx.cmd"
+    acpx.write_text("@echo off\n", encoding="utf-8")
+    trust = tmp_path / "optimus-trust.exe"
+    trust.write_text("binary\n", encoding="utf-8")
     monkeypatch.setattr(probe, "REPORTS_ROOT", report_root)
-    monkeypatch.setattr(probe, "_validate_parent_workspace", lambda *a, **k: tmp_path)
+    monkeypatch.setattr(probe, "_validate_parent_workspace", lambda *_a, **_k: parent)
+    monkeypatch.setattr(probe, "verify_establishing_execution_surface", lambda *_a, **_k: None)
+    monkeypatch.setattr(probe, "_git_head", lambda _repo: COMMIT)
+    files = [{"path": path, "blob_sha256": SHA_A} for path in probe.ESTABLISHING_EXECUTION_GIT_PATHS]
+    canonical_obj = {"schema": probe.APPLICABILITY_MANIFEST_SCHEMA, "files": files}
+    canonical_bytes = json.dumps(
+        canonical_obj,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    stub_manifest = {
+        "schema": probe.APPLICABILITY_MANIFEST_SCHEMA,
+        "files": files,
+        "manifest_sha256": hashlib.sha256(canonical_bytes).hexdigest(),
+    }
+    monkeypatch.setattr(probe, "build_applicability_manifest", lambda *_a, **_k: stub_manifest)
+    monkeypatch.setattr(
+        probe,
+        "resolve_acpx_identities",
+        lambda _path, *, cwd, env: {
+            "version": "0.0.test",
+            "command_sha256": SHA_A,
+            "cli_js_sha256": SHA_B,
+        },
+    )
+    monkeypatch.setattr(
+        probe,
+        "_resolve_python_identity",
+        lambda: {"python_version": "3.14.0", "python_executable_sha256": SHA_B},
+    )
+    monkeypatch.setattr(
+        probe,
+        "_resolve_trust_executable_identity",
+        lambda _repo: {"trust_executable_sha256": SHA_C},
+    )
+    monkeypatch.setattr(
+        probe,
+        "_resolve_isolated_identity",
+        lambda _repo, isolated_source_root=None: {
+            "isolated_launcher_canonical_sha256": SHA_A,
+            "isolated_launcher_raw_sha256": SHA_A,
+            "isolated_patched_spec_sha256": SHA_B,
+        },
+    )
     monkeypatch.setattr(
         probe,
         "prepare_real_zed_probe",
@@ -1427,7 +1456,7 @@ def test_agent_protocol_drive_requires_erroring_prompt_and_matching_saved_load(
             "Prep",
             (),
             {
-                "isolated_source_root": str(tmp_path / "probe-source"),
+                "isolated_source_root": isolated_source or str(tmp_path / "probe-source"),
                 "isolated_build_root": str(tmp_path),
                 "hermetic_zed_root": str(tmp_path / "zed-home"),
                 "normal_root": str(tmp_path / "repo"),
@@ -1448,7 +1477,7 @@ def test_agent_protocol_drive_requires_erroring_prompt_and_matching_saved_load(
                 "isolated_probe_load_session_advertised": True,
                 "normal_source_sha256_before": SHA_A,
                 "normal_source_sha256_after": SHA_A,
-                "isolated_source_root": str(tmp_path / "probe-source"),
+                "isolated_source_root": isolated_source or str(tmp_path / "probe-source"),
                 "isolated_build_root": str(tmp_path),
                 "hermetic_zed_root": str(tmp_path / "zed-home"),
                 "cleanup_dry_run_verified": True,
@@ -1457,58 +1486,399 @@ def test_agent_protocol_drive_requires_erroring_prompt_and_matching_saved_load(
             },
         )(),
     )
-    monkeypatch.setattr(probe, "write_isolated_agent_launcher", lambda *_a, **_k: tmp_path / "launcher.py")
-    monkeypatch.setattr(probe, "_resolve_acpx", lambda: tmp_path / "acpx.cmd")
-    monkeypatch.setattr(probe, "_resolve_trust_cli", lambda _repo: tmp_path / "optimus-trust.exe")
-    monkeypatch.setattr(probe, "_acpx_version", lambda *_a, **_k: "0.0.test")
+    monkeypatch.setattr(probe, "write_isolated_agent_launcher", lambda *_a, **_k: launcher)
+    monkeypatch.setattr(probe, "_resolve_acpx", lambda: acpx)
+    monkeypatch.setattr(probe, "_resolve_trust_cli", lambda _repo: trust)
     monkeypatch.setattr(probe, "_file_sha256", lambda _p: SHA_A)
     monkeypatch.setattr(probe, "_isolated_environment", lambda _home: {"HOME": str(_home)})
     monkeypatch.setattr(probe, "_run_interactive_required", lambda *_a, **_k: CommandResult([], 0, "", ""))
     monkeypatch.setattr(probe, "_revoke_temporary_approval", lambda *_a, **_k: None)
     monkeypatch.setattr(probe.time, "sleep", lambda *_a, **_k: None)
     monkeypatch.setattr(probe, "_cleanup_plan1119_roots", lambda **_k: (True, []))
+    return parent
 
-    scenario = {"value": "success-prompt"}
+
+def _agent_protocol_prompt_stdout(*, session_id: str = "session-a", include_request: bool = True, include_error: bool = True, error_code: int = -32000, result_ok: bool = False, result_and_error: bool = False, wrong_message: bool = False, wrong_session: bool = False, second_prompt: bool = False) -> str:
+    import tools.probe_p11_zed_session_load as probe
+
+    lines: list[str] = []
+    sid = "session-b" if wrong_session else session_id
+    text = "wrong message" if wrong_message else probe.PLAN1124_EXEC_MESSAGE
+    if include_request:
+        lines.append(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "session/prompt",
+                    "params": {"sessionId": sid, "prompt": [{"type": "text", "text": text}]},
+                }
+            )
+        )
+        if second_prompt:
+            lines.append(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 4,
+                        "method": "session/prompt",
+                        "params": {"sessionId": sid, "prompt": [{"type": "text", "text": text}]},
+                    }
+                )
+            )
+    if result_and_error:
+        lines.append(json.dumps({"jsonrpc": "2.0", "id": 2, "result": {"ok": True}, "error": {"code": error_code}}))
+    elif result_ok:
+        lines.append(json.dumps({"jsonrpc": "2.0", "id": 2, "result": {"ok": True}}))
+    elif include_error:
+        lines.append(json.dumps({"jsonrpc": "2.0", "id": 2, "error": {"code": error_code, "message": "forced"}}))
+    return "\n".join(lines)
+
+
+def _agent_protocol_new_stdout(*, session_id: str = "session-a", include_response: bool = True) -> str:
+    lines = ['{"jsonrpc":"2.0","id":1,"method":"session/new"}']
+    if include_response:
+        lines.append(json.dumps({"jsonrpc": "2.0", "id": 1, "result": {"sessionId": session_id}}))
+    return "\n".join(lines)
+
+
+def _agent_protocol_load_stdout(*, session_id: str = "session-a", include_exchange: bool = True, wrong_session: bool = False, nonempty_result: bool = False, response_id_mismatch: bool = False) -> str:
+    sid = "session-b" if wrong_session else session_id
+    if not include_exchange:
+        return ""
+    response_id = 9 if response_id_mismatch else 3
+    lines = [
+        json.dumps({"jsonrpc": "2.0", "id": 3, "method": "session/load", "params": {"sessionId": sid}}),
+        json.dumps({"jsonrpc": "2.0", "id": response_id, "result": {"unexpected": True} if nonempty_result else {}}),
+    ]
+    return "\n".join(lines)
+
+
+def _assert_no_authorizing_establishing_report(report_root: Path) -> None:
+    report_path = report_root / "plan-11-24-agent-protocol-persistence-establishing-drive.md"
+    if not report_path.is_file():
+        return
+    import tools.probe_p11_zed_session_load as probe
+
+    try:
+        parsed = probe.parse_establishing_report_v2(report_path.read_bytes())
+    except probe.ProbeError:
+        return
+    raise AssertionError(f"authorizing report must not be published: {parsed.get('establishing_disposition')}")
+
+
+def test_agent_protocol_drive_requires_real_erroring_prompt_on_new_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """genuine RED: nonzero acpx exit alone must not establish the premise."""
+    import tools.probe_p11_zed_session_load as probe
+
+    report_root = tmp_path / "reports"
+    report_root.mkdir()
+    parent = _agent_protocol_drive_common_stubs(probe, tmp_path, monkeypatch, report_root=report_root)
 
     def fake_run(command: list[str], *, cwd: Path, env: dict[str, str]) -> CommandResult:
         del cwd, env
         if command[-1] == "inspect":
             return CommandResult(command, 1, "", "")
-        if command[-1] == "new":
-            return CommandResult(
-                command,
-                0,
-                '{"jsonrpc":"2.0","id":1,"method":"session/new"}\n{"jsonrpc":"2.0","id":1,"result":{"sessionId":"session-a"}}',
-                "",
-            )
+        if command[-2:] == ["sessions", "new"]:
+            return CommandResult(command, 0, _agent_protocol_new_stdout(), "")
         if len(command) >= 2 and command[-2] == "exec":
-            if scenario["value"] == "success-prompt":
-                return CommandResult(command, 0, '{"jsonrpc":"2.0","id":2,"result":{"ok":true}}', "")
             return CommandResult(command, 2, '{"jsonrpc":"2.0","id":2,"error":{"code":-32000}}', "")
-        if command[-1] == "export":
+        if len(command) >= 4 and command[-4:-1] == ["sessions", "export", "--output"]:
             return CommandResult(command, 0, "", "")
         if command[-2:] == ["sessions", "import"]:
             return CommandResult(command, 0, "", "")
         if command[-1] == "status":
-            if scenario["value"] == "mismatch":
-                stdout = '{"jsonrpc":"2.0","id":3,"method":"session/load","params":{"sessionId":"session-b"}}\n{"jsonrpc":"2.0","id":3,"result":{}}'
-                return CommandResult(command, 0, stdout, "")
-            stdout = '{"jsonrpc":"2.0","id":3,"method":"session/load","params":{"sessionId":"session-a"}}\n{"jsonrpc":"2.0","id":3,"result":{}}'
+            return CommandResult(command, 0, _agent_protocol_load_stdout(), "")
+        return CommandResult(command, 0, "", "")
+
+    monkeypatch.setattr(probe, "_run", fake_run)
+    result = probe.run_plan1124_agent_protocol_drive(parent)
+    assert result["zed_launches"] == 0
+    assert result["origin_a_launches"] == 0
+    assert result["no_gateway_path_established"] is False
+    assert result["indeterminate_reason"] == "PRECONDITION_UNMET"
+    _assert_no_authorizing_establishing_report(report_root)
+
+
+def test_agent_protocol_drive_requires_same_session_new_prompt_and_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """genuine RED: all three exchanges must share one session id."""
+    import tools.probe_p11_zed_session_load as probe
+
+    report_root = tmp_path / "reports"
+    report_root.mkdir()
+    parent = _agent_protocol_drive_common_stubs(probe, tmp_path, monkeypatch, report_root=report_root)
+
+    def fake_run(command: list[str], *, cwd: Path, env: dict[str, str]) -> CommandResult:
+        del cwd, env
+        if command[-1] == "inspect":
+            return CommandResult(command, 1, "", "")
+        if command[-2:] == ["sessions", "new"]:
+            return CommandResult(command, 0, _agent_protocol_new_stdout(session_id="session-a"), "")
+        if len(command) >= 2 and command[-2] == "exec":
+            stdout = _agent_protocol_prompt_stdout(session_id="session-a", wrong_session=True)
+            return CommandResult(command, 2, stdout, "")
+        if len(command) >= 4 and command[-4:-1] == ["sessions", "export", "--output"]:
+            return CommandResult(command, 0, "", "")
+        if command[-2:] == ["sessions", "import"]:
+            return CommandResult(command, 0, "", "")
+        if command[-1] == "status":
+            return CommandResult(command, 0, _agent_protocol_load_stdout(session_id="session-a"), "")
+        return CommandResult(command, 0, "", "")
+
+    monkeypatch.setattr(probe, "_run", fake_run)
+    result = probe.run_plan1124_agent_protocol_drive(parent)
+    assert result["zed_launches"] == 0
+    assert result["no_gateway_path_established"] is False
+    assert result["indeterminate_reason"] == "PRECONDITION_UNMET"
+    _assert_no_authorizing_establishing_report(report_root)
+
+
+def test_agent_protocol_report_v2_reconstructs_authority_sequence_traffic_custody_and_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Happy path publishes typed v2 record reconstructable without the sidecar."""
+    import tools.probe_p11_zed_session_load as probe
+
+    report_root = tmp_path / "reports"
+    report_root.mkdir()
+    parent = _agent_protocol_drive_common_stubs(probe, tmp_path, monkeypatch, report_root=report_root)
+
+    def fake_run(command: list[str], *, cwd: Path, env: dict[str, str]) -> CommandResult:
+        del cwd, env
+        if command[-1] == "inspect":
+            return CommandResult(command, 1, "", "")
+        if command[-2:] == ["sessions", "new"]:
+            return CommandResult(command, 0, _agent_protocol_new_stdout(), "")
+        if len(command) >= 2 and command[-2] == "exec":
+            stdout = _agent_protocol_prompt_stdout()
+            return CommandResult(command, 2, stdout, "")
+        if len(command) >= 4 and command[-4:-1] == ["sessions", "export", "--output"]:
+            return CommandResult(command, 0, "", "")
+        if command[-2:] == ["sessions", "import"]:
+            return CommandResult(command, 0, "", "")
+        if command[-1] == "status":
+            return CommandResult(command, 0, _agent_protocol_load_stdout(), "")
+        return CommandResult(command, 0, "", "")
+
+    monkeypatch.setattr(probe, "_run", fake_run)
+    result = probe.run_plan1124_agent_protocol_drive(parent)
+    assert result["no_gateway_path_established"] is True
+    report_path = report_root / "plan-11-24-agent-protocol-persistence-establishing-drive.md"
+    assert report_path.is_file()
+    parsed = probe.parse_establishing_report_v2(report_path.read_bytes())
+    assert parsed["schema"] == probe.ESTABLISHING_REPORT_SCHEMA
+    assert parsed["establishing_disposition"] == probe.PLAN1124_ESTABLISHING_OK
+    probe.parse_aware_utc_timestamp(str(parsed["completed_at_utc"]))
+    assert str(parsed["completed_at_utc"]).endswith("Z")
+    assert parsed["counts"] == {"zed_launches": 0, "origin_a_launches": 0}
+    assert parsed["traffic"] == {
+        "gateway_attempted": False,
+        "provider_attempted": False,
+        "model_call_attempted": False,
+    }
+    assert parsed["custody"] == {
+        "approval_created": True,
+        "approval_revoked": True,
+        "post_revoke_inspect_exit_code": 1,
+    }
+    assert parsed["cleanup"] == {"throwaway_root_removed": True}
+    authority = parsed["authority"]
+    assert authority["source_commit"] == COMMIT
+    assert authority["source_commit_execution_surface_clean"] is True
+    assert authority["python_version"] == "3.14.0"
+    assert authority["python_executable_sha256"] == SHA_B
+    assert authority["acpx_version"] == "0.0.test"
+    assert authority["acpx_command_sha256"] == SHA_A
+    assert authority["acpx_cli_js_sha256"] == SHA_B
+    assert authority["trust_executable_sha256"] == SHA_C
+    assert authority["isolated_launcher_canonical_sha256"] == SHA_A
+    assert authority["isolated_launcher_raw_sha256"] == SHA_A
+    assert authority["isolated_patched_spec_sha256"] == SHA_B
+    assert authority["applicability"]["schema"] == probe.APPLICABILITY_MANIFEST_SCHEMA
+    assert len(authority["applicability"]["files"]) == len(probe.ESTABLISHING_EXECUTION_GIT_PATHS)
+    sequence = parsed["sequence"]
+    assert sequence["session_new"]["session_id"] == "session-a"
+    assert sequence["session_prompt"]["session_id"] == "session-a"
+    assert sequence["session_load"]["session_id"] == "session-a"
+    assert sequence["session_prompt"]["request_count"] == 1
+    assert sequence["session_prompt"]["message_sha256"] == probe.PLAN1124_EXEC_MESSAGE_SHA256
+    assert sequence["session_prompt"]["outcome"] == "error"
+    assert sequence["session_prompt"]["response_id_matches"] is True
+    assert sequence["session_load"]["response_id_matches"] is True
+    assert sequence["session_load"]["result"] == {}
+    sidecar = json.loads(Path(str(result["sidecar"])).read_text(encoding="utf-8"))
+    assert "sequence" not in sidecar
+
+
+@pytest.mark.parametrize(
+    ("case_id", "mutator"),
+    [
+        pytest.param(
+            "missing_session_new_response",
+            lambda: {"new": _agent_protocol_new_stdout(include_response=False)},
+            id="missing_session_new_response",
+        ),
+        pytest.param(
+            "missing_prompt_request",
+            lambda: {"prompt": _agent_protocol_prompt_stdout(include_request=False)},
+            id="missing_prompt_request",
+        ),
+        pytest.param(
+            "two_prompt_requests",
+            lambda: {"prompt": _agent_protocol_prompt_stdout(second_prompt=True)},
+            id="two_prompt_requests",
+        ),
+        pytest.param(
+            "wrong_prompt_message",
+            lambda: {"prompt": _agent_protocol_prompt_stdout(wrong_message=True)},
+            id="wrong_prompt_message",
+        ),
+        pytest.param(
+            "prompt_wrong_session",
+            lambda: {"prompt": _agent_protocol_prompt_stdout(wrong_session=True)},
+            id="prompt_wrong_session",
+        ),
+        pytest.param(
+            "prompt_response_id_mismatch",
+            lambda: {"prompt": '{"jsonrpc":"2.0","id":2,"method":"session/prompt","params":{"sessionId":"session-a","prompt":[{"type":"text","text":"Persist this probe thread only; do not use tools or modify files."}]}}\n{"jsonrpc":"2.0","id":9,"error":{"code":-32000}}'},
+            id="prompt_response_id_mismatch",
+        ),
+        pytest.param(
+            "prompt_succeeds",
+            lambda: {"prompt": _agent_protocol_prompt_stdout(include_error=False, result_ok=True)},
+            id="prompt_succeeds",
+        ),
+        pytest.param(
+            "prompt_result_and_error",
+            lambda: {"prompt": _agent_protocol_prompt_stdout(result_and_error=True)},
+            id="prompt_result_and_error",
+        ),
+        pytest.param(
+            "missing_load_exchange",
+            lambda: {"load": _agent_protocol_load_stdout(include_exchange=False)},
+            id="missing_load_exchange",
+        ),
+        pytest.param(
+            "load_wrong_session",
+            lambda: {"load": _agent_protocol_load_stdout(wrong_session=True)},
+            id="load_wrong_session",
+        ),
+        pytest.param(
+            "load_nonempty_result",
+            lambda: {"load": _agent_protocol_load_stdout(nonempty_result=True)},
+            id="load_nonempty_result",
+        ),
+        pytest.param(
+            "gateway_marker",
+            lambda: {"prompt": _agent_protocol_prompt_stdout() + '\n{"method":"gateway_ping"}'},
+            id="gateway_marker",
+        ),
+        pytest.param(
+            "provider_marker",
+            lambda: {"prompt": _agent_protocol_prompt_stdout() + '\n{"provider":"openrouter"}'},
+            id="provider_marker",
+        ),
+    ],
+)
+def test_establishing_negative_sequence_cases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case_id: str,
+    mutator,
+) -> None:
+    import tools.probe_p11_zed_session_load as probe
+
+    report_root = tmp_path / "reports"
+    report_root.mkdir()
+    parent = _agent_protocol_drive_common_stubs(probe, tmp_path, monkeypatch, report_root=report_root)
+    overrides = mutator()
+
+    def fake_run(command: list[str], *, cwd: Path, env: dict[str, str]) -> CommandResult:
+        del cwd, env
+        if command[-1] == "inspect":
+            return CommandResult(command, 1, "", "")
+        if command[-2:] == ["sessions", "new"]:
+            stdout = overrides.get("new", _agent_protocol_new_stdout())
+            return CommandResult(command, 0, stdout, "")
+        if len(command) >= 2 and command[-2] == "exec":
+            stdout = overrides.get("prompt", _agent_protocol_prompt_stdout())
+            return CommandResult(command, 2, stdout, "")
+        if len(command) >= 4 and command[-4:-1] == ["sessions", "export", "--output"]:
+            return CommandResult(command, 0, "", "")
+        if command[-2:] == ["sessions", "import"]:
+            return CommandResult(command, 0, "", "")
+        if command[-1] == "status":
+            stdout = overrides.get("load", _agent_protocol_load_stdout())
             return CommandResult(command, 0, stdout, "")
         return CommandResult(command, 0, "", "")
 
     monkeypatch.setattr(probe, "_run", fake_run)
+    result = probe.run_plan1124_agent_protocol_drive(parent)
+    assert result["zed_launches"] == 0
+    assert result["origin_a_launches"] == 0
+    assert result["no_gateway_path_established"] is False
+    assert result["indeterminate_reason"] == "PRECONDITION_UNMET"
+    _assert_no_authorizing_establishing_report(report_root)
 
-    parent = tmp_path / "parent"
-    parent.mkdir()
-    first = probe.run_plan1124_agent_protocol_drive(parent)
-    assert first["no_gateway_path_established"] is False
-    assert first["indeterminate_reason"] == "PRECONDITION_UNMET"
 
-    scenario["value"] = "mismatch"
-    second = probe.run_plan1124_agent_protocol_drive(parent)
-    assert second["no_gateway_path_established"] is False
-    assert second["indeterminate_reason"] == "PRECONDITION_UNMET"
+@pytest.mark.parametrize(
+    ("case_id", "setup"),
+    [
+        pytest.param(
+            "revoke_failure",
+            lambda monkeypatch, probe: monkeypatch.setattr(
+                probe,
+                "_revoke_temporary_approval",
+                lambda *_a, **_k: (_ for _ in ()).throw(probe.ProbeError("temporary_approval_revoke", "inspect exit=0")),
+            ),
+            id="approval_not_revoked",
+        ),
+        pytest.param(
+            "cleanup_failure",
+            lambda monkeypatch, probe: monkeypatch.setattr(probe, "_cleanup_plan1119_roots", lambda **_k: (False, ["leftover"])),
+            id="cleanup_false",
+        ),
+    ],
+)
+def test_establishing_negative_custody_and_cleanup_cases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case_id: str,
+    setup,
+) -> None:
+    import tools.probe_p11_zed_session_load as probe
+
+    report_root = tmp_path / "reports"
+    report_root.mkdir()
+    parent = _agent_protocol_drive_common_stubs(probe, tmp_path, monkeypatch, report_root=report_root)
+    setup(monkeypatch, probe)
+
+    def fake_run(command: list[str], *, cwd: Path, env: dict[str, str]) -> CommandResult:
+        del cwd, env
+        if command[-1] == "inspect":
+            return CommandResult(command, 1, "", "")
+        if command[-2:] == ["sessions", "new"]:
+            return CommandResult(command, 0, _agent_protocol_new_stdout(), "")
+        if len(command) >= 2 and command[-2] == "exec":
+            return CommandResult(command, 2, _agent_protocol_prompt_stdout(), "")
+        if len(command) >= 4 and command[-4:-1] == ["sessions", "export", "--output"]:
+            return CommandResult(command, 0, "", "")
+        if command[-2:] == ["sessions", "import"]:
+            return CommandResult(command, 0, "", "")
+        if command[-1] == "status":
+            return CommandResult(command, 0, _agent_protocol_load_stdout(), "")
+        return CommandResult(command, 0, "", "")
+
+    monkeypatch.setattr(probe, "_run", fake_run)
+    result = probe.run_plan1124_agent_protocol_drive(parent)
+    assert result["zed_launches"] == 0
+    assert result["origin_a_launches"] == 0
+    assert result["no_gateway_path_established"] is False
+    _assert_no_authorizing_establishing_report(report_root)
 
 
 def test_real_zed_resume_requires_established_agent_protocol_disposition(
@@ -1704,6 +2074,190 @@ def test_resume_classifier_rejects_response_with_result_and_error_as_indetermina
     assert reason == "OBSERVATION_INCOMPLETE"
 
 
+PLAN1124_EXEC_MESSAGE = "Persist this probe thread only; do not use tools or modify files."
+
+
+def _lifecycle_a_relay_bytes(
+    *,
+    include_prompt: bool = True,
+    extra_prompt: bool = False,
+    prompt_text: str = PLAN1124_EXEC_MESSAGE,
+    prompt_session_id: str = "session-a",
+    prompt_blocks: list[dict[str, str]] | None = None,
+    include_prompt_response: bool = True,
+    prompt_response_id: int = 2,
+    prompt_error: bool = True,
+    prompt_result_ok: bool = False,
+) -> tuple[bytes, bytes]:
+    zed_lines = ['{"jsonrpc":"2.0","id":1,"method":"session/new"}']
+    if include_prompt:
+        if prompt_blocks is not None:
+            prompt_payload = prompt_blocks
+        else:
+            prompt_payload = [{"type": "text", "text": prompt_text}]
+        zed_lines.append(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "session/prompt",
+                    "params": {"sessionId": prompt_session_id, "prompt": prompt_payload},
+                },
+                separators=(",", ":"),
+            )
+        )
+    if extra_prompt:
+        zed_lines.append(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "method": "session/prompt",
+                    "params": {
+                        "sessionId": prompt_session_id,
+                        "prompt": [{"type": "text", "text": PLAN1124_EXEC_MESSAGE}],
+                    },
+                },
+                separators=(",", ":"),
+            )
+        )
+    agent_lines = ['{"jsonrpc":"2.0","id":1,"result":{"sessionId":"session-a"}}']
+    if include_prompt and include_prompt_response:
+        if prompt_error:
+            agent_lines.append(
+                json.dumps(
+                    {"jsonrpc": "2.0", "id": prompt_response_id, "error": {"code": -32000, "message": "prompt rejected"}},
+                    separators=(",", ":"),
+                )
+            )
+        elif prompt_result_ok:
+            agent_lines.append(json.dumps({"jsonrpc": "2.0", "id": prompt_response_id, "result": {"ok": True}}, separators=(",", ":")))
+    return ("\n".join(zed_lines) + "\n").encode("utf-8"), ("\n".join(agent_lines) + "\n").encode("utf-8")
+
+
+def _lifecycle_b_relay_bytes(*, session_id: str = "session-a") -> tuple[bytes, bytes]:
+    zed = json.dumps(
+        {"jsonrpc": "2.0", "id": 9, "method": "session/load", "params": {"sessionId": session_id}},
+        separators=(",", ":"),
+    ).encode("utf-8") + b"\n"
+    agent = b'{"jsonrpc":"2.0","id":9,"result":{}}\n'
+    return zed, agent
+
+
+def _stub_two_lifecycle_harness(
+    probe: object,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    relay_factory: object,
+    materialize_spy: list[object] | None = None,
+) -> tuple[Path, Path]:
+    report_root = tmp_path / "reports"
+    report_root.mkdir()
+    agent_report = report_root / "plan-11-24-agent-protocol-persistence-establishing-drive.md"
+    agent_report.write_text(
+        "Establishing-Disposition: NO_GATEWAY_PATH_ESTABLISHED\nNo-Gateway-Path-Established: true\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(probe, "REPORTS_ROOT", report_root)
+    monkeypatch.setattr(probe, "_require_established_agent_protocol_prerequisite", lambda _r: True)
+
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    run_root = tmp_path / "run-root"
+    run_root.mkdir()
+    (run_root / "probe-source").mkdir(parents=True, exist_ok=True)
+    (run_root / "probe-source" / "marker.py").write_text("# isolated copy\n", encoding="utf-8")
+    (run_root / "probe-build").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "launcher.py").write_text("# launcher\n", encoding="utf-8")
+    workspace = run_root / "zed-workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    zed_home = run_root / "zed-home"
+    zed_home.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(probe, "_validate_parent_workspace", lambda *_a, **_k: parent)
+    monkeypatch.setattr(probe.tempfile, "mkdtemp", lambda **_k: str(run_root))
+    monkeypatch.setattr(probe, "zed_target_already_running", lambda *_a, **_k: False)
+    monkeypatch.setattr(probe, "_list_process_names", lambda: [])
+    monkeypatch.setattr(
+        probe,
+        "prepare_real_zed_probe",
+        lambda *_a, **_k: type(
+            "Prep",
+            (),
+            {
+                "isolated_source_root": str(run_root / "probe-source"),
+                "isolated_build_root": str(run_root / "probe-build"),
+                "hermetic_zed_root": str(zed_home),
+                "normal_root": str(tmp_path / "repo"),
+                "normal_commit": COMMIT,
+                "normal_source_sha256_before": SHA_A,
+                "cleanup_dry_run_verified": True,
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        probe,
+        "verify_normal_operation_isolation",
+        lambda _prep: type(
+            "Iso",
+            (),
+            {
+                "normal_agent_load_session_advertised": False,
+                "isolated_probe_load_session_advertised": True,
+                "normal_source_sha256_before": SHA_A,
+                "normal_source_sha256_after": SHA_A,
+                "isolated_source_root": str(run_root / "probe-source"),
+                "isolated_build_root": str(run_root / "probe-build"),
+                "hermetic_zed_root": str(zed_home),
+                "cleanup_dry_run_verified": True,
+                "cleanup_verified": True,
+                "prelaunch_predicates_pass": True,
+            },
+        )(),
+    )
+    monkeypatch.setattr(probe, "validate_isolation_evidence", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        probe,
+        "_discover_live_zed_invocation",
+        lambda _h: (
+            tmp_path / "Zed.exe",
+            ZedInvocation(argv=("C:/Tools/Zed.exe", "--user-data-dir", str(zed_home)), user_data_root=str(zed_home), discovered_from="zed --help"),
+            SHA_A,
+        ),
+    )
+    monkeypatch.setattr(probe, "write_isolated_agent_launcher", lambda *_a, **_k: tmp_path / "launcher.py")
+    monkeypatch.setattr(probe, "_resolve_trust_cli", lambda _repo: tmp_path / "optimus-trust.exe")
+    monkeypatch.setattr(probe, "_run_interactive_required", lambda *_a, **_k: CommandResult([], 0, "", ""))
+    monkeypatch.setattr(probe, "_revoke_temporary_approval", lambda *_a, **_k: None)
+    monkeypatch.setattr(probe, "_cleanup_plan1119_roots", lambda **_k: (True, []))
+    monkeypatch.setattr(probe, "_observe_zed_help", lambda *_a, **_k: "--foreground")
+    monkeypatch.setattr(probe, "build_real_zed_launch_argv", lambda *_a, **_k: ["C:/Tools/Zed.exe"])
+    monkeypatch.setattr(probe, "_zed_env_for_invocation", lambda *_a, **_k: {})
+    monkeypatch.setattr(probe, "_launch_zed_once", lambda *_a, **_k: {"returncode": 0})
+    monkeypatch.setattr(probe, "verify_relay_capture", lambda *_a, **_k: None)
+    monkeypatch.setattr(probe.time, "monotonic", lambda: 100.0)
+
+    def fake_run(command: list[str], *, cwd: Path, env: dict[str, str]) -> CommandResult:
+        del cwd, env
+        if command[-1] == "inspect":
+            return CommandResult(command, 1, "", "")
+        return CommandResult(command, 0, "", "")
+
+    monkeypatch.setattr(probe, "_run", fake_run)
+
+    if materialize_spy is not None:
+
+        def _spy_materialize(**kwargs: object) -> Path:
+            materialize_spy.append(kwargs)
+            return tmp_path / "manifest.json"
+
+        monkeypatch.setattr(probe, "materialize_sanitized_zed_evidence_v5", _spy_materialize)
+
+    monkeypatch.setattr(probe, "build_opaque_relay_command", relay_factory)
+    return parent, report_root
+
+
 def test_two_lifecycle_run_reuses_one_profile_and_separates_relay_captures(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1834,7 +2388,7 @@ def test_two_lifecycle_run_reuses_one_profile_and_separates_relay_captures(
             )
             agent = (
                 b'{"jsonrpc":"2.0","id":1,"result":{"sessionId":"session-a"}}\n'
-                b'{"jsonrpc":"2.0","id":2,"result":{"ok":true}}\n'
+                b'{"jsonrpc":"2.0","id":2,"error":{"code":-32000,"message":"prompt rejected"}}\n'
             )
         else:
             zed = b'{"jsonrpc":"2.0","id":2,"method":"session/load","params":{"sessionId":"session-a"}}\n'
@@ -1871,10 +2425,132 @@ def test_two_lifecycle_run_reuses_one_profile_and_separates_relay_captures(
     assert kinds.count("final_cleanup_verified") == 1
     assert kinds.index("workspace_revoked") < kinds.index("final_cleanup_verified")
 
-    prompt_event = next(e for e in ledger if e["kind"] == "prompt_message_seam_verified")
+    prompt_event = next(e for e in ledger if e["kind"] == "prompt_message_seam_observed")
     assert prompt_event["prompt_request_count"] == 1
     assert prompt_event["prompt_text_matches"] == 1
-    assert prompt_event["prompt_text_match_expected"] is True
+    assert "prompt_text_match_expected" not in prompt_event
+
+
+@pytest.mark.parametrize(
+    ("case_id", "factory_kwargs"),
+    [
+        pytest.param("zero_prompts", {"include_prompt": False}, id="zero_prompts"),
+        pytest.param("two_prompts", {"extra_prompt": True}, id="two_prompts"),
+    ],
+)
+def test_two_lifecycle_run_requires_exactly_one_fixed_lifecycle_a_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case_id: str,
+    factory_kwargs: dict[str, object],
+) -> None:
+    import tools.probe_p11_zed_session_load as probe
+
+    def relay_factory(**kwargs: object) -> list[str]:
+        run_id = str(kwargs["run_id"])
+        run_dir = tmp_path / "run-root" / "relay-capture" / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        if run_id == "plan1124-create":
+            zed, agent = _lifecycle_a_relay_bytes(**factory_kwargs)
+        else:
+            zed, agent = _lifecycle_b_relay_bytes()
+        (run_dir / "zed-to-agent.bin").write_bytes(zed)
+        (run_dir / "agent-to-zed.bin").write_bytes(agent)
+        return ["python", "relay.py"]
+
+    parent, report_root = _stub_two_lifecycle_harness(probe, tmp_path, monkeypatch, relay_factory=relay_factory)
+    result = probe.run_plan1124_two_lifecycle_real_zed(
+        parent,
+        timeout_s=900,
+        report_dir=report_root / "plan-11-24-zed-guided-session-load-probe-v5",
+    )
+    assert result["finding"] == "INDETERMINATE"
+    assert result["indeterminate_reason"] == "PRECONDITION_UNMET"
+    assert result["zed_launches"] == 1
+    assert "evidence_manifest" not in result
+    assert sum(1 for entry in result["event_ledger"] if entry.get("kind") == "workspace_revoked") == 1
+
+
+@pytest.mark.parametrize(
+    ("case_id", "factory_kwargs"),
+    [
+        pytest.param("wrong_text", {"prompt_text": "wrong message"}, id="wrong_text"),
+        pytest.param("multi_block", {"prompt_blocks": [{"type": "text", "text": PLAN1124_EXEC_MESSAGE}, {"type": "text", "text": "extra"}]}, id="multi_block"),
+        pytest.param("wrong_session", {"prompt_session_id": "session-b"}, id="wrong_session"),
+        pytest.param("missing_response", {"include_prompt_response": False}, id="missing_response"),
+        pytest.param("mismatched_response_id", {"prompt_response_id": 99}, id="mismatched_response_id"),
+        pytest.param("successful_prompt", {"prompt_error": False, "prompt_result_ok": True}, id="successful_prompt"),
+    ],
+)
+def test_two_lifecycle_run_rejects_prompt_with_extra_content_or_wrong_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case_id: str,
+    factory_kwargs: dict[str, object],
+) -> None:
+    import tools.probe_p11_zed_session_load as probe
+
+    def relay_factory(**kwargs: object) -> list[str]:
+        run_id = str(kwargs["run_id"])
+        run_dir = tmp_path / "run-root" / "relay-capture" / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        if run_id == "plan1124-create":
+            zed, agent = _lifecycle_a_relay_bytes(**factory_kwargs)
+        else:
+            zed, agent = _lifecycle_b_relay_bytes()
+        (run_dir / "zed-to-agent.bin").write_bytes(zed)
+        (run_dir / "agent-to-zed.bin").write_bytes(agent)
+        return ["python", "relay.py"]
+
+    parent, report_root = _stub_two_lifecycle_harness(probe, tmp_path, monkeypatch, relay_factory=relay_factory)
+    result = probe.run_plan1124_two_lifecycle_real_zed(
+        parent,
+        timeout_s=900,
+        report_dir=report_root / "plan-11-24-zed-guided-session-load-probe-v5",
+    )
+    assert result["finding"] == "INDETERMINATE"
+    assert result["indeterminate_reason"] == "PRECONDITION_UNMET"
+    assert result["zed_launches"] == 1
+    assert "evidence_manifest" not in result
+    assert sum(1 for entry in result["event_ledger"] if entry.get("kind") == "workspace_revoked") == 1
+
+
+def test_two_lifecycle_failure_cannot_materialize_v5_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tools.probe_p11_zed_session_load as probe
+
+    materialize_calls: list[object] = []
+
+    def relay_factory(**kwargs: object) -> list[str]:
+        run_id = str(kwargs["run_id"])
+        run_dir = tmp_path / "run-root" / "relay-capture" / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        if run_id == "plan1124-create":
+            zed, agent = _lifecycle_a_relay_bytes(include_prompt=False)
+        else:
+            zed, agent = _lifecycle_b_relay_bytes()
+        (run_dir / "zed-to-agent.bin").write_bytes(zed)
+        (run_dir / "agent-to-zed.bin").write_bytes(agent)
+        return ["python", "relay.py"]
+
+    parent, report_root = _stub_two_lifecycle_harness(
+        probe,
+        tmp_path,
+        monkeypatch,
+        relay_factory=relay_factory,
+        materialize_spy=materialize_calls,
+    )
+    result = probe.run_plan1124_two_lifecycle_real_zed(
+        parent,
+        timeout_s=900,
+        report_dir=report_root / "plan-11-24-zed-guided-session-load-probe-v5",
+    )
+    assert result["finding"] == "INDETERMINATE"
+    assert result["indeterminate_reason"] == "PRECONDITION_UNMET"
+    assert materialize_calls == []
+    assert "evidence_manifest" not in result
+    assert not (report_root / "plan-11-24-zed-guided-session-load-probe-v5" / "manifest.json").exists()
 
 
 def test_two_lifecycle_sidecar_canary_aliases_event_ledger_paths_and_redacts_credentials(
@@ -2004,8 +2680,14 @@ def test_two_lifecycle_sidecar_canary_aliases_event_ledger_paths_and_redacts_cre
         run_dir = run_root / "relay-capture" / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
         if run_id == "plan1124-create":
-            zed = b'{"jsonrpc":"2.0","id":1,"method":"session/new"}\n'
-            agent = b'{"jsonrpc":"2.0","id":1,"result":{"sessionId":"session-a"}}\n'
+            zed = (
+                b'{"jsonrpc":"2.0","id":1,"method":"session/new"}\n'
+                b'{"jsonrpc":"2.0","id":2,"method":"session/prompt","params":{"sessionId":"session-a","prompt":[{"type":"text","text":"Persist this probe thread only; do not use tools or modify files."}]}}\n'
+            )
+            agent = (
+                b'{"jsonrpc":"2.0","id":1,"result":{"sessionId":"session-a"}}\n'
+                b'{"jsonrpc":"2.0","id":2,"error":{"code":-32000,"message":"prompt rejected"}}\n'
+            )
         else:
             zed = b'{"jsonrpc":"2.0","id":2,"method":"session/load","params":{"sessionId":"session-a"}}\n'
             agent = b'{"jsonrpc":"2.0","id":2,"result":{}}\n'
@@ -2033,8 +2715,6 @@ def test_agent_protocol_drive_revoke_failure_removes_positive_marker_from_disk(
 ) -> None:
     import tools.probe_p11_zed_session_load as probe
 
-    parent = tmp_path / "parent"
-    parent.mkdir()
     report_root = tmp_path / "reports"
     report_root.mkdir()
     stale_report = report_root / "plan-11-24-agent-protocol-persistence-establishing-drive.md"
@@ -2042,72 +2722,27 @@ def test_agent_protocol_drive_revoke_failure_removes_positive_marker_from_disk(
         "Establishing-Disposition: NO_GATEWAY_PATH_ESTABLISHED\nNo-Gateway-Path-Established: true\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(probe, "REPORTS_ROOT", report_root)
-    monkeypatch.setattr(probe, "_validate_parent_workspace", lambda *a, **k: parent)
+    parent = _agent_protocol_drive_common_stubs(probe, tmp_path, monkeypatch, report_root=report_root)
     monkeypatch.setattr(
         probe,
-        "prepare_real_zed_probe",
-        lambda *_a, **_k: type(
-            "Prep",
-            (),
-            {
-                "isolated_source_root": str(tmp_path / "probe-source"),
-                "isolated_build_root": str(tmp_path),
-                "hermetic_zed_root": str(tmp_path / "zed-home"),
-                "normal_root": str(tmp_path / "repo"),
-                "normal_commit": COMMIT,
-                "normal_source_sha256_before": SHA_A,
-                "cleanup_dry_run_verified": True,
-            },
-        )(),
+        "_revoke_temporary_approval",
+        lambda *_a, **_k: (_ for _ in ()).throw(probe.ProbeError("temporary_approval_revoke", "inspect exit=0")),
     )
-    monkeypatch.setattr(
-        probe,
-        "verify_normal_operation_isolation",
-        lambda _prep: type(
-            "Iso",
-            (),
-            {
-                "normal_agent_load_session_advertised": False,
-                "isolated_probe_load_session_advertised": True,
-                "normal_source_sha256_before": SHA_A,
-                "normal_source_sha256_after": SHA_A,
-                "isolated_source_root": str(tmp_path / "probe-source"),
-                "isolated_build_root": str(tmp_path),
-                "hermetic_zed_root": str(tmp_path / "zed-home"),
-                "cleanup_dry_run_verified": True,
-                "cleanup_verified": True,
-                "prelaunch_predicates_pass": True,
-            },
-        )(),
-    )
-    monkeypatch.setattr(probe, "write_isolated_agent_launcher", lambda *_a, **_k: tmp_path / "launcher.py")
-    monkeypatch.setattr(probe, "_resolve_acpx", lambda: tmp_path / "acpx.cmd")
-    monkeypatch.setattr(probe, "_resolve_trust_cli", lambda _repo: tmp_path / "optimus-trust.exe")
-    monkeypatch.setattr(probe, "_acpx_version", lambda *_a, **_k: "0.0.test")
-    monkeypatch.setattr(probe, "_file_sha256", lambda _p: SHA_A)
-    monkeypatch.setattr(probe, "_isolated_environment", lambda _home: {"HOME": str(_home)})
-    monkeypatch.setattr(probe, "_run_interactive_required", lambda *_a, **_k: CommandResult([], 0, "", ""))
-    monkeypatch.setattr(probe, "_revoke_temporary_approval", lambda *_a, **_k: (_ for _ in ()).throw(probe.ProbeError("temporary_approval_revoke", "inspect exit=0")))
-    monkeypatch.setattr(probe.time, "sleep", lambda *_a, **_k: None)
-    monkeypatch.setattr(probe, "_cleanup_plan1119_roots", lambda **_k: (True, []))
 
     def fake_run(command: list[str], *, cwd: Path, env: dict[str, str]) -> CommandResult:
         del cwd, env
         if command[-1] == "inspect":
             return CommandResult(command, 1, "", "")
         if command[-2:] == ["sessions", "new"]:
-            stdout = '{"jsonrpc":"2.0","id":1,"method":"session/new"}\n{"jsonrpc":"2.0","id":1,"result":{"sessionId":"session-a"}}'
-            return CommandResult(command, 0, stdout, "")
+            return CommandResult(command, 0, _agent_protocol_new_stdout(), "")
         if len(command) >= 2 and command[-2] == "exec":
-            return CommandResult(command, 2, '{"jsonrpc":"2.0","id":2,"error":{"code":-32000}}', "")
+            return CommandResult(command, 2, _agent_protocol_prompt_stdout(), "")
         if len(command) >= 4 and command[-4:-1] == ["sessions", "export", "--output"]:
             return CommandResult(command, 0, "", "")
         if command[-2:] == ["sessions", "import"]:
             return CommandResult(command, 0, "", "")
         if command[-1] == "status":
-            stdout = '{"jsonrpc":"2.0","id":3,"method":"session/load","params":{"sessionId":"session-a"}}\n{"jsonrpc":"2.0","id":3,"result":{}}'
-            return CommandResult(command, 0, stdout, "")
+            return CommandResult(command, 0, _agent_protocol_load_stdout(), "")
         return CommandResult(command, 0, "", "")
 
     monkeypatch.setattr(probe, "_run", fake_run)

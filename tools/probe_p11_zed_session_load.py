@@ -641,9 +641,328 @@ def parse_establishing_report_v2(blob: bytes) -> dict[str, Any]:
         raise ProbeError("establishing_report", "completed_at_utc invalid")
     parse_aware_utc_timestamp(completed_at_utc)
     counts = parsed.get("counts")
-    if not isinstance(counts, Mapping) or counts.get("zed_launches") != 0:
-        raise ProbeError("establishing_report", "counts.zed_launches must be 0")
+    if not isinstance(counts, Mapping):
+        raise ProbeError("establishing_report", "counts block missing")
+    if counts.get("zed_launches") != 0 or counts.get("origin_a_launches") != 0:
+        raise ProbeError("establishing_report", "counts must record zero launches")
+    _validate_establishing_report_v2_sequence(parsed.get("sequence"))
+    _validate_establishing_report_v2_traffic(parsed.get("traffic"))
+    _validate_establishing_report_v2_custody(parsed.get("custody"))
+    _validate_establishing_report_v2_cleanup(parsed.get("cleanup"))
     return parsed
+
+
+def _validate_establishing_report_v2_sequence(sequence: Any) -> None:
+    if not isinstance(sequence, Mapping):
+        raise ProbeError("establishing_report", "sequence block missing")
+    session_new = sequence.get("session_new")
+    session_prompt = sequence.get("session_prompt")
+    session_load = sequence.get("session_load")
+    if not isinstance(session_new, Mapping) or not isinstance(session_prompt, Mapping) or not isinstance(session_load, Mapping):
+        raise ProbeError("establishing_report", "sequence exchanges incomplete")
+    session_id = session_new.get("session_id")
+    if not isinstance(session_id, str) or not session_id:
+        raise ProbeError("establishing_report", "sequence.session_new.session_id invalid")
+    if session_prompt.get("session_id") != session_id or session_load.get("session_id") != session_id:
+        raise ProbeError("establishing_report", "sequence session ids must match")
+    if session_prompt.get("request_count") != 1:
+        raise ProbeError("establishing_report", "sequence.session_prompt.request_count must be 1")
+    if session_prompt.get("message_sha256") != PLAN1124_EXEC_MESSAGE_SHA256:
+        raise ProbeError("establishing_report", "sequence.session_prompt.message_sha256 invalid")
+    if session_prompt.get("outcome") != "error":
+        raise ProbeError("establishing_report", "sequence.session_prompt.outcome must be error")
+    if session_prompt.get("response_id_matches") is not True:
+        raise ProbeError("establishing_report", "sequence.session_prompt.response_id_matches must be true")
+    if session_load.get("response_id_matches") is not True:
+        raise ProbeError("establishing_report", "sequence.session_load.response_id_matches must be true")
+    if session_load.get("result") != {}:
+        raise ProbeError("establishing_report", "sequence.session_load.result must be {}")
+
+
+def _validate_establishing_report_v2_traffic(traffic: Any) -> None:
+    if not isinstance(traffic, Mapping):
+        raise ProbeError("establishing_report", "traffic block missing")
+    for key in ("gateway_attempted", "provider_attempted", "model_call_attempted"):
+        if traffic.get(key) is not False:
+            raise ProbeError("establishing_report", f"traffic.{key} must be false")
+
+
+def _validate_establishing_report_v2_custody(custody: Any) -> None:
+    if not isinstance(custody, Mapping):
+        raise ProbeError("establishing_report", "custody block missing")
+    if custody.get("approval_created") is not True or custody.get("approval_revoked") is not True:
+        raise ProbeError("establishing_report", "custody approval facts invalid")
+    if custody.get("post_revoke_inspect_exit_code") != 1:
+        raise ProbeError("establishing_report", "custody.post_revoke_inspect_exit_code must be 1")
+
+
+def _validate_establishing_report_v2_cleanup(cleanup: Any) -> None:
+    if not isinstance(cleanup, Mapping) or cleanup.get("throwaway_root_removed") is not True:
+        raise ProbeError("establishing_report", "cleanup.throwaway_root_removed must be true")
+
+
+def extract_session_prompt_exchange(messages: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    requests = {
+        message.get("id"): dict(message)
+        for message in messages
+        if message.get("method") == "session/prompt" and "id" in message
+    }
+    for message in messages:
+        request = requests.get(message.get("id"))
+        if request is not None and ("result" in message or "error" in message):
+            return {"request": request, "response": dict(message)}
+    return None
+
+
+def extract_session_prompt_from_messages(
+    zed_to_agent: Sequence[Mapping[str, Any]],
+    agent_to_zed: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    requests = {
+        message.get("id"): dict(message)
+        for message in zed_to_agent
+        if message.get("method") == "session/prompt" and "id" in message
+    }
+    for message in agent_to_zed:
+        request = requests.get(message.get("id"))
+        if request is not None and ("result" in message or "error" in message):
+            return {"request": request, "response": dict(message)}
+    return None
+
+
+def _validate_session_prompt_seam(
+    *,
+    prompt_requests: Sequence[Mapping[str, Any]],
+    prompt_exchange: Mapping[str, Any] | None,
+    session_id: str,
+    stage: str,
+) -> None:
+    if not prompt_requests:
+        raise ProbeError(stage, "session/prompt request missing")
+    if len(prompt_requests) != 1:
+        raise ProbeError(stage, "multiple session/prompt requests")
+    if prompt_exchange is None:
+        raise ProbeError(stage, "session/prompt response missing")
+    prompt_request = prompt_exchange["request"]
+    prompt_response = prompt_exchange["response"]
+    prompt_params = prompt_request.get("params")
+    if not isinstance(prompt_params, Mapping):
+        raise ProbeError(stage, "session/prompt params missing")
+    if prompt_params.get("sessionId") != session_id:
+        raise ProbeError(stage, "session/prompt session id mismatch")
+    message_sha256 = _prompt_message_sha256(prompt_request)
+    if message_sha256 != PLAN1124_EXEC_MESSAGE_SHA256:
+        raise ProbeError(stage, "session/prompt message content invalid")
+    has_result = "result" in prompt_response
+    has_error = isinstance(prompt_response.get("error"), Mapping)
+    if has_result and has_error:
+        raise ProbeError(stage, "session/prompt result and error both present")
+    if has_result and not has_error:
+        raise ProbeError(stage, "session/prompt succeeded")
+    if not has_error:
+        raise ProbeError(stage, "session/prompt error response missing")
+    if prompt_response.get("id") != prompt_request.get("id"):
+        raise ProbeError(stage, "session/prompt response id mismatched")
+
+
+def validate_lifecycle_a_prompt_seam(
+    zed_messages: Sequence[Mapping[str, Any]],
+    agent_messages: Sequence[Mapping[str, Any]],
+    *,
+    session_id: str,
+) -> None:
+    """Validate verified raw Lifecycle-A relay capture before resume classification."""
+    if not isinstance(session_id, str) or not session_id:
+        raise ProbeError("lifecycle_a_prompt", "session/new session id missing")
+    prompt_requests = [message for message in zed_messages if message.get("method") == "session/prompt"]
+    prompt_exchange = extract_session_prompt_from_messages(zed_messages, agent_messages)
+    _validate_session_prompt_seam(
+        prompt_requests=prompt_requests,
+        prompt_exchange=prompt_exchange,
+        session_id=session_id,
+        stage="lifecycle_a_prompt",
+    )
+
+
+def _extract_session_load_exchange_for_session(
+    records: Sequence[Mapping[str, Any]],
+    session_id: str,
+) -> dict[str, Any] | None:
+    requests: dict[Any, dict[str, Any]] = {}
+    exchanges: list[dict[str, Any]] = []
+    for record in records:
+        if record.get("method") == "session/load":
+            requests[record.get("id")] = dict(record)
+            continue
+        request = requests.get(record.get("id"))
+        if request is not None and ("result" in record or "error" in record):
+            exchanges.append({"request": request, "response": dict(record)})
+    for exchange in exchanges:
+        request = exchange.get("request")
+        if not isinstance(request, Mapping):
+            continue
+        params = request.get("params")
+        if isinstance(params, Mapping) and params.get("sessionId") == session_id:
+            return exchange
+    return None
+
+
+def _records_contain_traffic_marker(*record_groups: Sequence[Mapping[str, Any]]) -> bool:
+    serialized = json.dumps([list(group) for group in record_groups], sort_keys=True).casefold()
+    return any(term in serialized for term in _TRAFFIC_MARKER_TERMS)
+
+
+def _prompt_message_sha256(request: Mapping[str, Any]) -> str | None:
+    params = request.get("params")
+    if not isinstance(params, Mapping):
+        return None
+    prompt_list = params.get("prompt")
+    if not isinstance(prompt_list, Sequence) or len(prompt_list) != 1:
+        return None
+    first = prompt_list[0]
+    if not isinstance(first, Mapping) or first.get("type") != "text":
+        return None
+    text = first.get("text")
+    if not isinstance(text, str):
+        return None
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def validate_agent_protocol_establishing_sequence(
+    *,
+    new_records: Sequence[Mapping[str, Any]],
+    prompt_records: Sequence[Mapping[str, Any]],
+    load_records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Validate sanitized acpx records for the Task-12/13 establishing premise."""
+    if _records_contain_traffic_marker(new_records, prompt_records, load_records):
+        raise ProbeError("agent_protocol_sequence", "gateway or provider traffic marker present")
+
+    new_exchange = extract_session_new_from_messages(new_records, new_records)
+    if new_exchange is None:
+        raise ProbeError("agent_protocol_sequence", "session/new exchange missing")
+    new_request = new_exchange.get("request")
+    new_response = new_exchange.get("response")
+    if not isinstance(new_request, Mapping) or not isinstance(new_response, Mapping):
+        raise ProbeError("agent_protocol_sequence", "session/new exchange incomplete")
+    new_request_id = new_request.get("id")
+    new_response_result = new_response.get("result")
+    if not isinstance(new_response_result, Mapping):
+        raise ProbeError("agent_protocol_sequence", "session/new response missing")
+    session_id = new_response_result.get("sessionId")
+    if not isinstance(session_id, str) or not session_id:
+        raise ProbeError("agent_protocol_sequence", "session/new session id missing")
+    if new_response.get("id") != new_request_id:
+        raise ProbeError("agent_protocol_sequence", "session/new response id mismatched")
+
+    prompt_requests = [record for record in prompt_records if record.get("method") == "session/prompt"]
+    prompt_exchange = extract_session_prompt_exchange(prompt_records)
+    _validate_session_prompt_seam(
+        prompt_requests=prompt_requests,
+        prompt_exchange=prompt_exchange,
+        session_id=session_id,
+        stage="agent_protocol_sequence",
+    )
+    prompt_request = prompt_exchange["request"]
+    prompt_response = prompt_exchange["response"]
+    message_sha256 = _prompt_message_sha256(prompt_request)
+    error_obj = prompt_response.get("error")
+    error_code = error_obj.get("code") if isinstance(error_obj, Mapping) else None
+
+    load_exchange = _extract_session_load_exchange_for_session(load_records, session_id)
+    if load_exchange is None:
+        raise ProbeError("agent_protocol_sequence", "session/load exchange missing")
+    load_request = load_exchange["request"]
+    load_response = load_exchange["response"]
+    load_params = load_request.get("params")
+    if not isinstance(load_params, Mapping) or load_params.get("sessionId") != session_id:
+        raise ProbeError("agent_protocol_sequence", "session/load session id mismatch")
+    if load_response.get("result") != {}:
+        raise ProbeError("agent_protocol_sequence", "session/load result is not exactly {}")
+    if isinstance(load_response.get("error"), Mapping):
+        raise ProbeError("agent_protocol_sequence", "session/load returned error")
+    if load_response.get("id") != load_request.get("id"):
+        raise ProbeError("agent_protocol_sequence", "session/load response id mismatched")
+
+    return {
+        "session_new": {"request_id": new_request_id, "session_id": session_id},
+        "session_prompt": {
+            "request_id": prompt_request.get("id"),
+            "session_id": session_id,
+            "request_count": 1,
+            "message_sha256": message_sha256,
+            "outcome": "error",
+            "response_id_matches": True,
+            "error_code": error_code,
+        },
+        "session_load": {
+            "request_id": load_request.get("id"),
+            "session_id": session_id,
+            "response_id_matches": True,
+            "result": {},
+        },
+    }
+
+
+def build_establishing_report_v2_record(
+    *,
+    source_commit: str,
+    applicability_manifest: Mapping[str, Any],
+    python_identity: Mapping[str, str],
+    acpx_identity: Mapping[str, str],
+    trust_identity: Mapping[str, str],
+    isolated_identity: Mapping[str, str],
+    sequence: Mapping[str, Any],
+    custody: Mapping[str, Any],
+    cleanup: Mapping[str, Any],
+    completed_at_utc: str,
+) -> dict[str, Any]:
+    return {
+        "schema": ESTABLISHING_REPORT_SCHEMA,
+        "establishing_disposition": PLAN1124_ESTABLISHING_OK,
+        "completed_at_utc": completed_at_utc,
+        "authority": {
+            "source_commit": source_commit,
+            "source_commit_execution_surface_clean": True,
+            "applicability": dict(applicability_manifest),
+            "python_version": python_identity["python_version"],
+            "python_executable_sha256": python_identity["python_executable_sha256"],
+            "acpx_version": acpx_identity["version"],
+            "acpx_command_sha256": acpx_identity["command_sha256"],
+            "acpx_cli_js_sha256": acpx_identity["cli_js_sha256"],
+            "trust_executable_sha256": trust_identity["trust_executable_sha256"],
+            "isolated_launcher_canonical_sha256": isolated_identity["isolated_launcher_canonical_sha256"],
+            "isolated_launcher_raw_sha256": isolated_identity["isolated_launcher_raw_sha256"],
+            "isolated_patched_spec_sha256": isolated_identity["isolated_patched_spec_sha256"],
+        },
+        "counts": {"zed_launches": 0, "origin_a_launches": 0},
+        "sequence": dict(sequence),
+        "traffic": {
+            "gateway_attempted": False,
+            "provider_attempted": False,
+            "model_call_attempted": False,
+        },
+        "custody": dict(custody),
+        "cleanup": dict(cleanup),
+    }
+
+
+def render_establishing_report_v2_markdown(record: Mapping[str, Any]) -> str:
+    return "\n".join(
+        [
+            "# Plan 11.24 agent protocol persistence establishing drive",
+            "",
+            "This report records prerequisite-only evidence from the independently authored acpx client.",
+            "It is not a finding about Zed.",
+            "",
+            "## Typed reconstruction record",
+            "",
+            "```json",
+            json.dumps(dict(record), indent=2, sort_keys=True, ensure_ascii=False),
+            "```",
+            "",
+        ]
+    )
 
 
 def render_isolated_launcher_bytes(source_root: str | Path) -> bytes:
@@ -846,6 +1165,8 @@ PLAN1124_LIFECYCLE_B_RUN_ID = "plan1124-resume"
 PLAN1124_ESTABLISHING_OK = "NO_GATEWAY_PATH_ESTABLISHED"
 PLAN1124_ESTABLISHING_PRECONDITION_UNMET = "PRECONDITION_UNMET"
 PLAN1124_EXEC_MESSAGE = "Persist this probe thread only; do not use tools or modify files."
+PLAN1124_EXEC_MESSAGE_SHA256 = hashlib.sha256(PLAN1124_EXEC_MESSAGE.encode("utf-8")).hexdigest()
+_TRAFFIC_MARKER_TERMS = ("gateway", "provider", "model_call", "model-call", "openrouter", "openai")
 PLAN1124_OUTCOME_CONSEQUENCES = {
     Finding.REACHABLE.value: (
         "The tested current Zed issued `session/load`; a separately scoped `P11-FU-1` "
@@ -1743,10 +2064,10 @@ def _plan1124_v5_manifest_projection(
     return sanitized
 
 
-def _write_agent_protocol_report(result: Mapping[str, Any]) -> None:
+def _write_agent_protocol_report(record: Mapping[str, Any]) -> None:
     report_path = _agent_protocol_report_path()
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(_plan1124_agent_protocol_report_text(result), encoding="utf-8", newline="\n")
+    report_path.write_text(render_establishing_report_v2_markdown(record), encoding="utf-8", newline="\n")
 
 
 def _remove_agent_protocol_report() -> None:
@@ -2189,6 +2510,8 @@ def reconstruct_sanitized_relay_bytes(messages: Sequence[Mapping[str, Any]]) -> 
 def _reason_from_stage(stage: str) -> IndeterminateReason:
     mapping = {
         "already_running_zed": IndeterminateReason.ALREADY_RUNNING_ZED,
+        "lifecycle_a_prompt": IndeterminateReason.PRECONDITION_UNMET,
+        "agent_protocol_sequence": IndeterminateReason.PRECONDITION_UNMET,
         "zed_discovery": IndeterminateReason.HERMETIC_INVOCATION_UNAVAILABLE,
         "zed_invocation": IndeterminateReason.HERMETIC_INVOCATION_UNAVAILABLE,
         "zed_launch": IndeterminateReason.OBSERVATION_INCOMPLETE,
@@ -2373,37 +2696,6 @@ def _agent_protocol_report_path() -> Path:
     return REPORTS_ROOT / PLAN_1124_AGENT_PROTOCOL_REPORT_NAME
 
 
-def _plan1124_agent_protocol_report_text(result: Mapping[str, Any]) -> str:
-    disposition = str(result.get("establishing_disposition") or PLAN1124_ESTABLISHING_PRECONDITION_UNMET)
-    no_gateway = bool(result.get("no_gateway_path_established"))
-    recorded_at_utc = str(result.get("recorded_at_utc") or "")
-    commit = str(result.get("commit") or "")
-    acpx = result.get("acpx")
-    acpx_version = str(acpx.get("version") or "") if isinstance(acpx, Mapping) else ""
-    acpx_sha256 = str(acpx.get("executable_sha256") or "") if isinstance(acpx, Mapping) else ""
-    isolated_build = result.get("isolated_build")
-    isolated_launcher_sha256 = (
-        str(isolated_build.get("sha256") or "") if isinstance(isolated_build, Mapping) else ""
-    )
-    return "\n".join(
-        [
-            "# Plan 11.24 agent protocol persistence establishing drive",
-            "",
-            "This report records prerequisite-only evidence from the independently authored acpx client.",
-            "It is not a finding about Zed.",
-            "",
-            f"Establishing-Disposition: {disposition}",
-            f"No-Gateway-Path-Established: {'true' if no_gateway else 'false'}",
-            f"Recorded-At-UTC: {recorded_at_utc}",
-            f"Commit: {commit}",
-            f"Acpx-Version: {acpx_version}",
-            f"Acpx-Executable-Sha256: {acpx_sha256}",
-            f"Isolated-Launcher-Sha256: {isolated_launcher_sha256}",
-            "",
-        ]
-    )
-
-
 def _read_establishing_disposition_marker(path: Path) -> str | None:
     if not path.is_file():
         return None
@@ -2411,6 +2703,13 @@ def _read_establishing_disposition_marker(path: Path) -> str | None:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
+    try:
+        parsed = _extract_establishing_report_json(text)
+    except ProbeError:
+        parsed = None
+    if isinstance(parsed, Mapping):
+        disposition = parsed.get("establishing_disposition")
+        return str(disposition) if isinstance(disposition, str) and disposition else None
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith("Establishing-Disposition:"):
@@ -2980,8 +3279,17 @@ def run_plan1124_agent_protocol_drive(parent_workspace: Path) -> dict[str, Any]:
     workspace: Path | None = None
     trust_cli: Path | None = None
     approved = False
+    source_commit: str | None = None
+    applicability_manifest: dict[str, Any] | None = None
+    sequence_block: dict[str, Any] | None = None
+    acpx_identity: dict[str, str] | None = None
     try:
         workspace_parent = _validate_parent_workspace(parent_workspace, repo_root)
+        source_commit = _git_head(repo_root)
+        if not isinstance(source_commit, str) or not source_commit:
+            raise ProbeError("establishing_authority", "source commit missing")
+        verify_establishing_execution_surface(repo_root, source_commit)
+        applicability_manifest = build_applicability_manifest(repo_root, source_commit)
         run_root = Path(tempfile.mkdtemp(prefix="p1124-agent-protocol-", dir=workspace_parent))
         isolated = run_root / "probe-source"
         preparation = prepare_real_zed_probe(isolated, normal_root=repo_root, scratch_parent=run_root)
@@ -2999,10 +3307,11 @@ def run_plan1124_agent_protocol_drive(parent_workspace: Path) -> dict[str, Any]:
         second_env = _isolated_environment(second_home)
         acpx = _resolve_acpx()
         trust_cli = _resolve_trust_cli(repo_root)
+        acpx_identity = resolve_acpx_identities(acpx, cwd=workspace, env=first_env)
         result["acpx"] = {
-            "version": _acpx_version(acpx, cwd=workspace, env=first_env),
+            "version": acpx_identity["version"],
             "executable": str(acpx),
-            "executable_sha256": _file_sha256(acpx),
+            "executable_sha256": acpx_identity["command_sha256"],
         }
         command = build_acpx_command(acpx, workspace=workspace, agent=launcher, ttl_seconds=1)
         inspect = _run(build_trust_command(trust_cli, workspace, "inspect"), cwd=workspace, env=os.environ)
@@ -3014,78 +3323,53 @@ def run_plan1124_agent_protocol_drive(parent_workspace: Path) -> dict[str, Any]:
         new_result = _run_required([*command, "sessions", "new"], cwd=workspace, env=first_env, stage="acpx_new_session")
         new_evidence = capture_acpx_evidence(new_result)
         new_records = new_evidence.get("stdout_records")
-        session_new = None
-        if isinstance(new_records, Sequence):
-            new_exchange = extract_session_new_from_messages(new_records, new_records)
-            session_new = new_exchange
-        result["session_new_response"] = _safe_payload(session_new)
-        new_id = None
-        if isinstance(session_new, Mapping):
-            response = session_new.get("response")
-            if isinstance(response, Mapping):
-                response_result = response.get("result")
-                if isinstance(response_result, Mapping):
-                    new_id = response_result.get("sessionId")
+        if not isinstance(new_records, Sequence):
+            new_records = []
+        new_exchange = extract_session_new_from_messages(new_records, new_records)
+        result["session_new_response"] = _safe_payload(new_exchange)
 
         prompt_result = _run([*command, "exec", PLAN1124_EXEC_MESSAGE], cwd=workspace, env=first_env)
         prompt_evidence = capture_acpx_evidence(prompt_result)
         result["prompt_attempt"] = _safe_payload(prompt_evidence)
-        prompt_failed = prompt_result.returncode != 0
+        prompt_records = prompt_evidence.get("stdout_records")
+        if not isinstance(prompt_records, Sequence):
+            prompt_records = []
 
         archive = run_root / "session.json"
         _run_required([*command, "sessions", "export", "--output", str(archive)], cwd=workspace, env=first_env, stage="acpx_export_session")
         _run_required([*command, "sessions", "import", str(archive)], cwd=workspace, env=second_env, stage="acpx_import_session")
         time.sleep(2)
         status_result = _run([*command, "status"], cwd=workspace, env=second_env)
-        status_evidence = capture_acpx_evidence(status_result)
-        load_id = None
-        load_ok = False
-        # If the client emits multiple session/load exchanges, pick the one
-        # whose params.sessionId matches Lifecycle A's session/new id.
-        records = _parse_ndjson(status_result.stdout)
-        requests: dict[Any, dict[str, Any]] = {}
-        exchanges: list[dict[str, Any]] = []
-        for record in records:
-            if record.get("method") == "session/load":
-                requests[record.get("id")] = dict(record)
-                continue
-            request = requests.get(record.get("id"))
-            if request is not None and ("result" in record or "error" in record):
-                exchanges.append({"request": request, "response": dict(record)})
-        selected_exchange: dict[str, Any] | None = None
-        if isinstance(new_id, str) and new_id:
-            for ex in exchanges:
-                req = ex.get("request")
-                if not isinstance(req, Mapping):
-                    continue
-                params = req.get("params")
-                if isinstance(params, Mapping) and params.get("sessionId") == new_id:
-                    selected_exchange = ex
-                    break
-        if selected_exchange is None and exchanges:
-            selected_exchange = exchanges[0]
-        result["session_load_exchange"] = _safe_payload(selected_exchange)
-        if isinstance(selected_exchange, Mapping):
-            request = selected_exchange.get("request")
-            response = selected_exchange.get("response")
-            if isinstance(request, Mapping):
-                params = request.get("params")
-                if isinstance(params, Mapping):
-                    load_id = params.get("sessionId")
+        load_records = _parse_ndjson(status_result.stdout)
+        new_id: str | None = None
+        if isinstance(new_exchange, Mapping):
+            response = new_exchange.get("response")
             if isinstance(response, Mapping):
-                load_ok = response.get("result") == {}
+                response_result = response.get("result")
+                if isinstance(response_result, Mapping):
+                    candidate = response_result.get("sessionId")
+                    if isinstance(candidate, str) and candidate:
+                        new_id = candidate
+        selected_exchange = _extract_session_load_exchange_for_session(load_records, new_id or "")
+        if selected_exchange is None and load_records:
+            _, fallback_exchange = _extract_session_load_evidence(load_records)
+            selected_exchange = fallback_exchange
+        result["session_load_exchange"] = _safe_payload(selected_exchange)
 
-        gateway_touched = "gateway" in json.dumps(status_evidence, sort_keys=True).casefold() or "gateway" in json.dumps(prompt_evidence, sort_keys=True).casefold()
-        established = bool(prompt_failed and isinstance(new_id, str) and new_id and new_id == load_id and load_ok and not gateway_touched)
-        result["no_gateway_path_established"] = established
-        result["establishing_disposition"] = (
-            PLAN1124_ESTABLISHING_OK if established else PLAN1124_ESTABLISHING_PRECONDITION_UNMET
+        sequence_block = validate_agent_protocol_establishing_sequence(
+            new_records=new_records,
+            prompt_records=prompt_records,
+            load_records=load_records,
         )
-        result["indeterminate_reason"] = None if established else IndeterminateReason.PRECONDITION_UNMET.value
+        result["no_gateway_path_established"] = True
+        result["establishing_disposition"] = PLAN1124_ESTABLISHING_OK
+        result["indeterminate_reason"] = None
     except ProbeError as exc:
         record_probe_command_failure(result, exc)
         result["indeterminate_reason"] = _reason_from_stage(exc.stage).value
         result["establishing_disposition"] = PLAN1124_ESTABLISHING_PRECONDITION_UNMET
+        if exc.stage == "agent_protocol_sequence":
+            result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
     finally:
         retain_run_root = False
         revoke_verified = not approved
@@ -3154,8 +3438,28 @@ def run_plan1124_agent_protocol_drive(parent_workspace: Path) -> dict[str, Any]:
         except OSError:
             pass
 
-        if desired_publish and sidecar_written:
-            _write_agent_protocol_report(result)
+        if desired_publish and sidecar_written and sequence_block is not None and source_commit and applicability_manifest and acpx_identity and preparation:
+            completed_at_utc = serialize_aware_utc_timestamp(datetime.now(UTC))
+            python_identity = _resolve_python_identity()
+            trust_identity = _resolve_trust_executable_identity(repo_root)
+            isolated_identity = _resolve_isolated_identity(repo_root, preparation.isolated_source_root)
+            v2_record = build_establishing_report_v2_record(
+                source_commit=source_commit,
+                applicability_manifest=applicability_manifest,
+                python_identity=python_identity,
+                acpx_identity=acpx_identity,
+                trust_identity=trust_identity,
+                isolated_identity=isolated_identity,
+                sequence=sequence_block,
+                custody={
+                    "approval_created": approved,
+                    "approval_revoked": revoke_verified,
+                    "post_revoke_inspect_exit_code": 1 if revoke_verified else 0,
+                },
+                cleanup={"throwaway_root_removed": cleaned},
+                completed_at_utc=completed_at_utc,
+            )
+            _write_agent_protocol_report(v2_record)
         else:
             _remove_agent_protocol_report()
             result["no_gateway_path_established"] = False
@@ -3621,6 +3925,15 @@ def run_plan1124_two_lifecycle_real_zed(
             zed_messages = iter_acp_messages((run_dir / "zed-to-agent.bin").read_bytes())
             agent_messages = iter_acp_messages((run_dir / "agent-to-zed.bin").read_bytes())
             if lifecycle == "lifecycle_a":
+                new_exchange = extract_session_new_from_messages(zed_messages, agent_messages)
+                if isinstance(new_exchange, Mapping):
+                    response = new_exchange.get("response")
+                    if isinstance(response, Mapping):
+                        payload = response.get("result")
+                        if isinstance(payload, Mapping):
+                            session_id = payload.get("sessionId")
+                            if isinstance(session_id, str):
+                                create_id = session_id
                 prompt_requests = [
                     msg
                     for msg in zed_messages
@@ -3639,10 +3952,14 @@ def run_plan1124_two_lifecycle_real_zed(
                         prompt_text_matches += 1
                 _append_event_ledger(
                     result,
-                    "prompt_message_seam_verified",
+                    "prompt_message_seam_observed",
                     prompt_request_count=len(prompt_requests),
                     prompt_text_matches=prompt_text_matches,
-                    prompt_text_match_expected=prompt_text_matches == 1,
+                )
+                validate_lifecycle_a_prompt_seam(
+                    zed_messages,
+                    agent_messages,
+                    session_id=create_id or "",
                 )
             zed_sanitized = reconstruct_sanitized_relay_bytes(zed_messages)
             agent_sanitized = reconstruct_sanitized_relay_bytes(agent_messages)
@@ -3652,17 +3969,7 @@ def run_plan1124_two_lifecycle_real_zed(
                 "zed_sha256": hashlib.sha256(zed_sanitized).hexdigest(),
                 "agent_sha256": hashlib.sha256(agent_sanitized).hexdigest(),
             }
-            if lifecycle == "lifecycle_a":
-                new_exchange = extract_session_new_from_messages(zed_messages, agent_messages)
-                if isinstance(new_exchange, Mapping):
-                    response = new_exchange.get("response")
-                    if isinstance(response, Mapping):
-                        payload = response.get("result")
-                        if isinstance(payload, Mapping):
-                            session_id = payload.get("sessionId")
-                            if isinstance(session_id, str):
-                                create_id = session_id
-            else:
+            if lifecycle == "lifecycle_b":
                 load_exchange = extract_session_load_from_messages(zed_messages, agent_messages)
 
         finding, reason = _classify_resume_lifecycle(create_id, load_exchange)
@@ -3734,7 +4041,8 @@ def run_plan1124_two_lifecycle_real_zed(
             else:
                 _append_event_ledger(result, "final_cleanup_verified")
                 if (
-                    isinstance(result.get("_lifecycle_a_zed"), (bytes, bytearray))
+                    result.get("finding") in {Finding.REACHABLE.value, Finding.UNREACHABLE.value}
+                    and isinstance(result.get("_lifecycle_a_zed"), (bytes, bytearray))
                     and isinstance(result.get("_lifecycle_a_agent"), (bytes, bytearray))
                     and isinstance(result.get("_lifecycle_b_zed"), (bytes, bytearray))
                     and isinstance(result.get("_lifecycle_b_agent"), (bytes, bytearray))
