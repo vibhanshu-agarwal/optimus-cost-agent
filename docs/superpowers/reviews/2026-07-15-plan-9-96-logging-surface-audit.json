@@ -2691,7 +2691,7 @@
     {
       "key": "tools.probe_p11_zed_session_load:materialize_sanitized_zed_evidence:text_file_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: writes reconstructed sanitized relay bins, a schema-limited Plan 11.24 report (finding/reason/commit only), and the already-sanitized manifest under a temporary sibling before atomic publish; raw capture files are never copied.",
+      "rationale": "Inspection: writes reconstructed sanitized relay bins, a schema-limited Plan 11.24 report (finding/reason/commit plus the fixed outcome-consequence row), and the already-sanitized manifest under a temporary sibling before atomic publish; raw capture files are never copied.",
       "sanitizer": "schema-limited functional path; opaque relay not text-exported",
       "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_nonempty_sanitized_relay_bundle_passes_existing_verifier",
       "evidence_tier": "unit"

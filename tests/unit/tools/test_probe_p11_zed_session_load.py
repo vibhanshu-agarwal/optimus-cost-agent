@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -902,6 +903,28 @@ SHA_B = "b" * 64
 SHA_C = "c" * 64
 RAW_CAPTURE_CANARY = b"RAW_CAPTURE_CANARY=sk-live-not-for-disk"
 PLAN_1124_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe"
+PLAN_1124_V3_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe-v3"
+APPROVED_REAL_ZED_PREFIX = [
+    "uv",
+    "run",
+    "--frozen",
+    "python",
+    "tools/probe_p11_zed_session_load.py",
+]
+PLAN1124_EXPECTED_CONSEQUENCES = {
+    "REACHABLE": (
+        "The tested current Zed issued `session/load`; a separately scoped `P11-FU-1` "
+        "durable ACP session-store/handler design is justified, but this plan does not implement it."
+    ),
+    "UNREACHABLE": (
+        "A captured Zed protocol/method error requires an operator disposition for the "
+        "Zed-resume lane rather than presumed durable-store implementation."
+    ),
+    "INDETERMINATE": (
+        "The named missing precondition/observation remains; no implementation or disposition "
+        "follows automatically."
+    ),
+}
 
 
 def reachable_result() -> dict[str, object]:
@@ -1027,6 +1050,9 @@ def test_nonempty_sanitized_relay_bundle_passes_existing_verifier(
     assert "Plan 11.24" in report_text
     assert "REACHABLE" in report_text
     assert "Plan 11.19" in report_text
+    assert PLAN1124_EXPECTED_CONSEQUENCES[Finding.REACHABLE.value] in report_text
+    assert PLAN1124_EXPECTED_CONSEQUENCES[Finding.UNREACHABLE.value] not in report_text
+    assert PLAN1124_EXPECTED_CONSEQUENCES[Finding.INDETERMINATE.value] not in report_text
     assert _scan_tree_for_canary(report_dir) == []
     assert RAW_CAPTURE_CANARY not in json.dumps(payload).encode("utf-8")
 
@@ -1101,6 +1127,88 @@ def test_real_zed_mode_requires_report_dir() -> None:
         _parse_args(["--mode", "real-zed", "C:/tmp/ws"])
 
 
+def test_approved_real_zed_command_parser_requires_report_dir() -> None:
+    from tools.probe_p11_zed_session_load import _parse_args
+
+    for mode in ("preflight", "real-zed"):
+        with pytest.raises(SystemExit):
+            _parse_args(["--mode", mode, "C:/tmp/ws"])
+
+
+def test_approved_real_zed_command_round_trips_through_same_parser() -> None:
+    from tools.probe_p11_zed_session_load import _parse_args, build_approved_real_zed_command
+
+    workspace = "C:/tmp/p11-24-zed-guided-probe-v3"
+    report_dir = f"reports/{PLAN_1124_V3_REPORT_NAME}"
+    parsed = _parse_args(
+        [
+            "--mode",
+            "preflight",
+            "--zed-launch-timeout-seconds",
+            "900",
+            "--report-dir",
+            report_dir,
+            workspace,
+        ]
+    )
+    command = build_approved_real_zed_command(parsed)
+    assert command[:5] == APPROVED_REAL_ZED_PREFIX
+    remainder = command[5:]
+    assert remainder.count("--mode") == 1
+    assert remainder.count("--zed-launch-timeout-seconds") == 1
+    assert remainder.count("--report-dir") == 1
+    assert "--launch-approval-id" not in command
+    assert all("p996_" not in part for part in command)
+    round_tripped = _parse_args(remainder)
+    assert round_tripped.mode == "real-zed"
+    assert round_tripped.zed_launch_timeout_seconds == 900.0
+    assert Path(round_tripped.report_dir) == Path(report_dir)
+    assert Path(round_tripped.workspace) == Path(workspace)
+
+
+@pytest.mark.parametrize(
+    ("finding", "reason"),
+    [
+        ("REACHABLE", None),
+        ("UNREACHABLE", None),
+        ("INDETERMINATE", "OBSERVATION_INCOMPLETE"),
+    ],
+)
+def test_plan1124_report_text_emits_exact_outcome_consequence(
+    finding: str, reason: str | None
+) -> None:
+    from tools.probe_p11_zed_session_load import _plan1124_report_text
+
+    expected = PLAN1124_EXPECTED_CONSEQUENCES[finding]
+    text = _plan1124_report_text(
+        {
+            "finding": finding,
+            "recorded_at_utc": "2026-08-19T00:00:00+00:00",
+            "commit": COMMIT,
+            "indeterminate_reason": reason,
+        }
+    )
+    assert "## Outcome consequence" in text
+    assert expected in text
+    assert text.count("| Result | Consequence |") == 1
+    for other_finding, other_text in PLAN1124_EXPECTED_CONSEQUENCES.items():
+        if other_finding != finding:
+            assert other_text not in text
+
+
+def test_unknown_finding_outcome_consequence_fails_closed() -> None:
+    from tools.probe_p11_zed_session_load import _plan1124_report_text
+
+    with pytest.raises(ProbeError, match="outcome consequence"):
+        _plan1124_report_text(
+            {
+                "finding": "NOT_A_VERDICT",
+                "recorded_at_utc": "2026-08-19T00:00:00+00:00",
+                "commit": COMMIT,
+            }
+        )
+
+
 def test_cli_default_timeout_is_unattended_180() -> None:
     from tools.probe_p11_zed_session_load import _parse_args
 
@@ -1160,11 +1268,29 @@ def test_invalid_timeouts_fail_before_popen(monkeypatch: pytest.MonkeyPatch) -> 
             validate_zed_launch_timeout_seconds(value)
 
 
+def _event_kinds(events: list[dict[str, object]]) -> list[str]:
+    return [str(event["kind"]) for event in events]
+
+
+def _events_of(events: list[dict[str, object]], kind: str) -> list[dict[str, object]]:
+    return [event for event in events if event["kind"] == kind]
+
+
+def _workspace_from_command(command: list[str]) -> Path:
+    return Path(command[command.index("--workspace-root") + 1]).resolve()
+
+
 def _install_stubbed_real_zed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
     write_capture: bool = False,
+    inspect_returncode: int = 1,
+    approve_error: str | None = None,
+    launch_returncode: int = 0,
+    launch_error: str | None = None,
+    revoke_error: str | None = None,
+    revoke_interrupt: BaseException | None = None,
 ) -> tuple[Path, Path, Path, dict[str, object]]:
     """Patch the live-Zed path so tests never start a GUI. Optionally plant relay capture files."""
     import tools.probe_p11_zed_session_load as probe
@@ -1182,6 +1308,7 @@ def _install_stubbed_real_zed(
     launcher.write_text("# launcher\n", encoding="utf-8")
     zed_exe = tmp_path / "Zed.exe"
     zed_exe.write_bytes(b"fake")
+    trust_cli = tmp_path / "optimus-trust.exe"
     prep = ProbePreparation(
         isolated_source_root=str(isolated),
         isolated_build_root=str(build),
@@ -1219,7 +1346,13 @@ def _install_stubbed_real_zed(
         origin_a_launches=0,
         session_load_exchange=None,
     )
-    observed: dict[str, object] = {}
+    events: list[dict[str, object]] = []
+    approval = {"live": False}
+    observed: dict[str, object] = {
+        "events": events,
+        "approval": approval,
+        "trust_cli": trust_cli,
+    }
 
     def spy_seed_hermetic_zed_settings(
         user_data_dir: Path,
@@ -1228,15 +1361,69 @@ def _install_stubbed_real_zed(
         relay_args: list[str] | tuple[str, ...],
     ) -> Path:
         observed["seed_first_arg"] = user_data_dir
+        events.append({"kind": "settings_prepared"})
         return seed_hermetic_zed_settings(
             user_data_dir,
             relay_command=relay_command,
             relay_args=relay_args,
         )
 
+    real_build_opaque_relay_command = probe.build_opaque_relay_command
+
+    def spy_build_opaque_relay_command(**kwargs: object) -> list[str]:
+        child_args = [str(item) for item in list(kwargs.get("child_args") or ())]
+        observed["child_args"] = child_args
+        events.append({"kind": "relay_prepared", "child_args": child_args})
+        return real_build_opaque_relay_command(**kwargs)
+
     def capture_launch_argv(inv: ZedInvocation, **_kwargs: object) -> tuple[str, ...]:
         observed["launched_environment_bind"] = inv.environment_bind
+        events.append({"kind": "launch_argv_prepared"})
         return (str(zed_exe), str(parent))
+
+    def fake_acpx(**kwargs: object) -> AcpxBaselineEvidence:
+        run_root = Path(str(kwargs["run_root"]))
+        workspace = run_root / "zed-workspace"
+        events.append(
+            {
+                "kind": "acpx",
+                "zed_workspace_exists": workspace.is_dir(),
+                "approval_live": bool(approval["live"]),
+                "zed_workspace": str(workspace.resolve()) if workspace.exists() else None,
+            }
+        )
+        return acpx
+
+    def fake_run(command: object, *, cwd: object, env: object) -> CommandResult:
+        argv = [str(item) for item in list(command)]
+        if "inspect" in argv:
+            events.append({"kind": "inspect", "command": argv, "cwd": str(cwd)})
+            return CommandResult(command=argv, returncode=inspect_returncode, stdout="", stderr="")
+        return CommandResult(command=argv, returncode=0, stdout="", stderr="")
+
+    def fake_interactive(command: object, *, cwd: object, stage: str) -> CommandResult:
+        argv = [str(item) for item in list(command)]
+        events.append({"kind": "approve", "command": argv, "cwd": str(cwd), "stage": stage})
+        if approve_error is not None:
+            raise ProbeError(stage, approve_error)
+        approval["live"] = True
+        return CommandResult(command=argv, returncode=0, stdout="", stderr="")
+
+    def fake_revoke(trust_cli_path: Path, workspace: Path, *, cwd: Path) -> None:
+        command = build_trust_command(trust_cli_path, workspace, "revoke")
+        events.append(
+            {
+                "kind": "revoke",
+                "command": command,
+                "workspace": str(Path(workspace).resolve()),
+                "approval_live_before": bool(approval["live"]),
+            }
+        )
+        if revoke_interrupt is not None:
+            raise revoke_interrupt
+        if revoke_error is not None:
+            raise ProbeError("zed_workspace_revoke", revoke_error)
+        approval["live"] = False
 
     def fake_launch(
         argv: object,
@@ -1251,13 +1438,30 @@ def _install_stubbed_real_zed(
         observed["old_layout_settings_before_launch"] = (hermetic / "Zed" / "settings.json").exists()
         roots = sorted(parent.glob("p1119-real-zed-*"))
         observed["zed_appdata_before_launch"] = bool(roots) and (roots[-1] / "zed-appdata").exists()
+        live = bool(approval["live"])
+        events.append({"kind": "launch_start", "cwd": str(cwd), "approval_live": live, "argv": list(argv)})
+        if launch_error is not None:
+            raise ProbeError("zed_launch", launch_error)
+        events.append({"kind": "child_spawn", "n": 1, "approval_live": live})
+        events.append({"kind": "child_spawn", "n": 2, "approval_live": live})
         if write_capture:
             cap = roots[-1] / "relay-capture" / PLAN1119_RUN_ID
             cap.mkdir(parents=True, exist_ok=True)
             zed_bytes, agent_bytes = _paired_sanitized_relay_bytes()
             (cap / "zed-to-agent.bin").write_bytes(zed_bytes)
             (cap / "agent-to-zed.bin").write_bytes(agent_bytes)
-        return {"pid": 1, "returncode": 0, "log_path": str(log_path) if log_path else None}
+        events.append({"kind": "launch_return", "approval_live": bool(approval["live"])})
+        return {"pid": 1, "returncode": launch_returncode, "log_path": str(log_path) if log_path else None}
+
+    def spy_cleanup(**kwargs: object) -> tuple[bool, list[str]]:
+        run_root = kwargs.get("run_root")
+        observed["cleanup_run_root"] = run_root
+        events.append({"kind": "cleanup", "run_root": None if run_root is None else str(run_root)})
+        if (revoke_error is not None or revoke_interrupt is not None) and run_root is not None:
+            path = Path(str(run_root))
+            if path.exists():
+                shutil.rmtree(path)
+        return (True, [])
 
     monkeypatch.setattr(probe, "zed_target_already_running", lambda _names: False)
     monkeypatch.setattr(probe, "_list_process_names", lambda: [])
@@ -1266,13 +1470,18 @@ def _install_stubbed_real_zed(
     monkeypatch.setattr(probe, "validate_isolation_evidence", lambda *_a, **_k: None)
     monkeypatch.setattr(probe, "_discover_live_zed_invocation", lambda _root: (zed_exe, invocation, SHA_A))
     monkeypatch.setattr(probe, "write_isolated_agent_launcher", lambda *_a, **_k: launcher)
-    monkeypatch.setattr(probe, "_run_acpx_against_isolated_agent", lambda **_k: acpx)
+    monkeypatch.setattr(probe, "_run_acpx_against_isolated_agent", fake_acpx)
+    monkeypatch.setattr(probe, "_resolve_trust_cli", lambda _root: trust_cli)
+    monkeypatch.setattr(probe, "_run", fake_run)
+    monkeypatch.setattr(probe, "_run_interactive_required", fake_interactive)
+    monkeypatch.setattr(probe, "_revoke_temporary_approval", fake_revoke)
+    monkeypatch.setattr(probe, "build_opaque_relay_command", spy_build_opaque_relay_command)
     monkeypatch.setattr(probe, "seed_hermetic_zed_settings", spy_seed_hermetic_zed_settings)
     monkeypatch.setattr(probe, "_observe_zed_help", lambda _exe: "--user-data-dir")
     monkeypatch.setattr(probe, "build_real_zed_launch_argv", capture_launch_argv)
     monkeypatch.setattr(probe, "_launch_zed_once", fake_launch)
     monkeypatch.setattr(probe, "normal_workspace_source_digest", lambda _root: SHA_C)
-    monkeypatch.setattr(probe, "_cleanup_plan1119_roots", lambda **_k: (True, []))
+    monkeypatch.setattr(probe, "_cleanup_plan1119_roots", spy_cleanup)
     reports_root = tmp_path / "reports"
     reports_root.mkdir()
     monkeypatch.setattr(probe, "REPORTS_ROOT", reports_root)
@@ -1363,3 +1572,192 @@ def test_real_zed_path_publishes_nonempty_sanitized_bundle(
     verify_manifest(manifest)
     assert (report_dir / "relay" / "zed-to-agent.bin").read_bytes()
     assert (report_dir / "relay" / "agent-to-zed.bin").read_bytes()
+
+
+def test_real_zed_approves_actual_workspace_only_for_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Option A: create zed-workspace early, approve that exact identity only for launch."""
+    from tools.probe_p11_zed_session_load import run_plan1119_real_zed
+
+    parent, report_dir, _hermetic, observed = _install_stubbed_real_zed(
+        tmp_path, monkeypatch, write_capture=True
+    )
+    result = run_plan1119_real_zed(parent, launch_timeout_seconds=180.0, report_dir=report_dir)
+    events = list(observed["events"])  # type: ignore[arg-type]
+    kinds = _event_kinds(events)
+
+    acpx_events = _events_of(events, "acpx")
+    assert len(acpx_events) == 1
+    assert acpx_events[0]["zed_workspace_exists"] is True
+    assert acpx_events[0]["approval_live"] is False
+
+    inspect_events = _events_of(events, "inspect")
+    approve_events = _events_of(events, "approve")
+    revoke_events = _events_of(events, "revoke")
+    launch_starts = _events_of(events, "launch_start")
+    spawns = _events_of(events, "child_spawn")
+    assert len(inspect_events) == 1
+    assert len(approve_events) == 1
+    assert len(revoke_events) == 1
+    assert len(launch_starts) == 1
+    assert kinds.index("acpx") < kinds.index("inspect")
+    assert kinds.index("settings_prepared") < kinds.index("approve")
+    assert kinds.index("relay_prepared") < kinds.index("approve")
+    assert kinds.index("launch_argv_prepared") < kinds.index("approve")
+    assert kinds.index("approve") < kinds.index("launch_start")
+    assert kinds.index("launch_return") < kinds.index("revoke")
+    assert kinds[kinds.index("approve") + 1] == "launch_start"
+
+    approve_command = list(approve_events[0]["command"])  # type: ignore[arg-type]
+    child_args = list(observed["child_args"])  # type: ignore[arg-type]
+    approved_workspace = _workspace_from_command(approve_command)
+    child_workspace = _workspace_from_command(child_args)
+    launch_cwd = Path(str(launch_starts[0]["cwd"])).resolve()
+    revoked_workspace = Path(str(revoke_events[0]["workspace"])).resolve()
+    assert approved_workspace == child_workspace == launch_cwd == revoked_workspace
+    assert approved_workspace.name == "zed-workspace"
+    assert approve_command[-3:] == ["approve", "--mode", "durable"]
+    assert approve_events[0]["stage"] == "zed_workspace_approval"
+    assert "--launch-approval-id" not in approve_command
+    assert "--launch-approval-id" not in child_args
+    assert all("p996_" not in part for part in approve_command)
+    assert launch_starts[0]["approval_live"] is True
+    assert len(spawns) == 2
+    assert all(spawn["approval_live"] is True for spawn in spawns)
+    assert _events_of(events, "launch_return")[0]["approval_live"] is True
+    serialized = json.dumps(result, default=str)
+    assert "--launch-approval-id" not in serialized
+    assert "p996_" not in serialized
+    lifecycle = result["zed_workspace_approval"]
+    assert lifecycle["mode"] == "durable"
+    assert lifecycle["created"] is True
+    assert lifecycle["child_workspace_match"] is True
+    assert lifecycle["revoked"] is True
+    assert "approval_id" not in lifecycle
+
+
+@pytest.mark.parametrize("failure", ["inspect", "approve"])
+def test_real_zed_approval_failure_prevents_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    from tools.probe_p11_zed_session_load import run_plan1119_real_zed
+
+    kwargs: dict[str, object] = {}
+    if failure == "inspect":
+        kwargs["inspect_returncode"] = 0
+    else:
+        kwargs["approve_error"] = "exit=1"
+    parent, report_dir, _hermetic, observed = _install_stubbed_real_zed(
+        tmp_path, monkeypatch, **kwargs
+    )
+    result = run_plan1119_real_zed(parent, launch_timeout_seconds=180.0, report_dir=report_dir)
+    events = list(observed["events"])  # type: ignore[arg-type]
+    assert _events_of(events, "launch_start") == []
+    assert _events_of(events, "revoke") == []
+    assert result["zed_launches"] == 0
+    assert result["finding"] == Finding.INDETERMINATE.value
+    assert result["indeterminate_reason"] == "LIVE_LAUNCH_UNAUTHORIZED"
+    assert "evidence_manifest" not in result
+    assert not report_dir.exists()
+
+
+@pytest.mark.parametrize("failure", ["exception", "nonzero"])
+def test_real_zed_launch_failure_still_revokes_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    from tools.probe_p11_zed_session_load import run_plan1119_real_zed
+
+    kwargs: dict[str, object] = (
+        {"launch_error": "Zed crashed"} if failure == "exception" else {"launch_returncode": 2}
+    )
+    parent, report_dir, _hermetic, observed = _install_stubbed_real_zed(
+        tmp_path, monkeypatch, **kwargs
+    )
+    result = run_plan1119_real_zed(parent, launch_timeout_seconds=180.0, report_dir=report_dir)
+    events = list(observed["events"])  # type: ignore[arg-type]
+    assert len(_events_of(events, "launch_start")) == 1
+    revoke_events = _events_of(events, "revoke")
+    assert len(revoke_events) == 1
+    assert _event_kinds(events).index("launch_start") < _event_kinds(events).index("revoke")
+    assert result["finding"] == Finding.INDETERMINATE.value
+    assert result["indeterminate_reason"] != "CLEANUP_UNVERIFIED"
+    assert result["zed_workspace_approval"]["revoked"] is True
+
+
+def test_real_zed_revoke_failure_retains_workspace_and_blocks_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tools.probe_p11_zed_session_load import run_plan1119_real_zed
+
+    parent, report_dir, _hermetic, observed = _install_stubbed_real_zed(
+        tmp_path, monkeypatch, write_capture=True, revoke_error="inspect exit=0"
+    )
+    result = run_plan1119_real_zed(parent, launch_timeout_seconds=180.0, report_dir=report_dir)
+    events = list(observed["events"])  # type: ignore[arg-type]
+    assert len(_events_of(events, "launch_start")) == 1
+    assert len(_events_of(events, "revoke")) == 1
+    roots = sorted(parent.glob("p1119-real-zed-*"))
+    assert len(roots) == 1
+    run_root = roots[0]
+    workspace = run_root / "zed-workspace"
+    assert run_root.is_dir()
+    assert workspace.is_dir()
+    assert observed.get("cleanup_run_root") is None
+    assert result["isolation"]["cleanup_verified"] is False
+    assert result["finding"] == Finding.INDETERMINATE.value
+    assert result["indeterminate_reason"] == "CLEANUP_UNVERIFIED"
+    assert "evidence_manifest" not in result
+    assert not report_dir.exists()
+    remediation = result["cleanup_remediation"]
+    assert remediation[-1] == "revoke"
+    assert _workspace_from_command([str(part) for part in remediation]) == workspace.resolve()
+    assert all("approval" not in str(part).casefold() for part in remediation)
+    assert all("p996_" not in str(part) for part in remediation)
+    assert "--launch-approval-id" not in json.dumps(result, default=str)
+
+
+@pytest.mark.parametrize("interrupt", [KeyboardInterrupt, SystemExit, RuntimeError])
+def test_real_zed_revoke_interrupt_retains_workspace_and_records_remediation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, interrupt: type[BaseException]
+) -> None:
+    """Unexpected revoke failures must retain zed-workspace and record remediation before re-raising."""
+    import tools.probe_p11_zed_session_load as probe
+    from tools.probe_p11_zed_session_load import run_plan1119_real_zed
+
+    recorded: list[dict[str, object]] = []
+    real_record = probe._record_zed_workspace_revoke_failure
+
+    def spy_record(*args: object, **kwargs: object) -> None:
+        recorded.append({"args": args, "kwargs": kwargs})
+        real_record(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(probe, "_record_zed_workspace_revoke_failure", spy_record)
+    parent, report_dir, _hermetic, observed = _install_stubbed_real_zed(
+        tmp_path,
+        monkeypatch,
+        write_capture=True,
+        revoke_interrupt=interrupt(),
+    )
+    with pytest.raises(interrupt):
+        run_plan1119_real_zed(parent, launch_timeout_seconds=180.0, report_dir=report_dir)
+    events = list(observed["events"])  # type: ignore[arg-type]
+    assert len(_events_of(events, "launch_start")) == 1
+    assert len(_events_of(events, "revoke")) == 1
+    roots = sorted(parent.glob("p1119-real-zed-*"))
+    assert len(roots) == 1
+    run_root = roots[0]
+    workspace = run_root / "zed-workspace"
+    assert run_root.is_dir()
+    assert workspace.is_dir()
+    assert observed.get("cleanup_run_root") is None
+    assert len(recorded) == 1
+    record_call = recorded[0]
+    result_arg = record_call["args"][0]
+    record_kwargs = record_call["kwargs"]
+    assert record_kwargs["stage"] == "zed_workspace_revoke"
+    assert "interrupted during revoke" in str(record_kwargs["message"])
+    remediation = result_arg["cleanup_remediation"]  # type: ignore[index]
+    assert remediation[-1] == "revoke"
+    assert _workspace_from_command([str(part) for part in remediation]) == workspace.resolve()
+    assert bool(observed["approval"]["live"]) is True  # type: ignore[index]

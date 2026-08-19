@@ -170,7 +170,7 @@ record for `zed-workspace`, and runs
 interactive seam. `_launch_zed_once()` runs while that approval is live. The exact workspace is
 revoked in `finally` before cleanup removes it.
 
-- [ ] **Step 1: Establish the frozen and causal baseline.**
+- [x] **Step 1: Establish the frozen and causal baseline.**
   - Read this plan, the checkpoint Current State, and
     `reports/plan-11-24-agent-launch-approval-root-cause.md`.
   - Confirm `HEAD` was cut from current `origin/main`; confirm the v1/v2 blobs are exactly
@@ -179,7 +179,7 @@ revoked in `finally` before cleanup removes it.
   - Confirm the current ordering is acpx call → create `zed-workspace` → launch, and confirm
     `_run_acpx_against_isolated_agent()` revokes its distinct workspace before returning.
 
-- [ ] **Step 2: Write genuine RED lifecycle tests before production edits.** Extend
+- [x] **Step 2: Write genuine RED lifecycle tests before production edits.** Extend
   `_install_stubbed_real_zed()` with an event ledger and fully stubbed trust seams. Add tests that
   prove all of these boundaries:
   1. `zed-workspace` exists before the fake acpx function runs, but its approval is not yet live;
@@ -202,7 +202,7 @@ revoked in `finally` before cleanup removes it.
   `test_real_zed_revoke_failure_retains_workspace_and_blocks_publish`. Names may vary only if the
   same four contracts remain directly selectable.
 
-- [ ] **Step 3: Run the RED selectors and retain their production-path diagnostics.**
+- [x] **Step 3: Run the RED selectors and retain their production-path diagnostics.**
 
   ```bash
   uv run --frozen pytest tests/unit/tools/test_probe_p11_zed_session_load.py -k "actual_workspace_only_for_launch or approval_failure_prevents_launch or launch_failure_still_revokes_workspace or revoke_failure_retains_workspace" -q
@@ -212,7 +212,7 @@ revoked in `finally` before cleanup removes it.
   Zed-workspace approval/revocation seams. A synthetic assertion failure or an unstubbed TTY error
   is not valid RED evidence.
 
-- [ ] **Step 4: Implement the minimum lifecycle correction.**
+- [x] **Step 4: Implement the minimum lifecycle correction.**
   - Move only `workspace = run_root / "zed-workspace"` and `workspace.mkdir(...)` before the acpx
     call. Keep acpx on `acpx-workspace`; do not share roots.
   - Complete deterministic preparation before approval: relay child args, corrected settings,
@@ -232,7 +232,7 @@ revoked in `finally` before cleanup removes it.
     launch/classifier failure when revocation succeeds; cleanup failure takes precedence only when
     revocation itself fails.
 
-- [ ] **Step 5: Prove GREEN at the lifecycle boundary and against the durable contract.**
+- [x] **Step 5: Prove GREEN at the lifecycle boundary and against the durable contract.**
 
   ```bash
   uv run --frozen pytest tests/unit/tools/test_probe_p11_zed_session_load.py -k "actual_workspace_only_for_launch or approval_failure_prevents_launch or launch_failure_still_revokes_workspace or revoke_failure_retains_workspace" -q
@@ -264,7 +264,7 @@ timeout/report values inside `run_plan1119_preflight()`.
 `## Outcome consequence` section with a one-row Markdown table containing the classified result and
 its exact v1 consequence. Unknown findings fail closed rather than borrowing another consequence.
 
-- [ ] **Step 1: Write RED parser-round-trip tests.** Define the fresh target constant as
+- [x] **Step 1: Write RED parser-round-trip tests.** Define the fresh target constant as
   `plan-11-24-zed-guided-session-load-probe-v3`. Parse this preflight argument list:
 
   ```text
@@ -281,7 +281,7 @@ its exact v1 consequence. Unknown findings fail closed rather than borrowing ano
   `900.0`, the fresh v3 report path, and the same workspace. Add a parser test proving preflight and
   real-zed both reject a missing report directory before any external seam runs.
 
-- [ ] **Step 2: Write RED report tests for all three outcomes.** Parameterize
+- [x] **Step 2: Write RED report tests for all three outcomes.** Parameterize
   `_plan1124_report_text()` over the exact v1 consequence table:
 
   | Result | Required consequence |
@@ -295,7 +295,7 @@ its exact v1 consequence. Unknown findings fail closed rather than borrowing ano
   materialized report includes the matching consequence row, while retaining its canary scan and
   real-verifier pass.
 
-- [ ] **Step 3: Run the RED selectors.**
+- [x] **Step 3: Run the RED selectors.**
 
   ```bash
   uv run --frozen pytest tests/unit/tools/test_probe_p11_zed_session_load.py -k "approved_real_zed_command or outcome_consequence or nonempty_sanitized_relay_bundle" -q
@@ -304,7 +304,7 @@ its exact v1 consequence. Unknown findings fail closed rather than borrowing ano
   Expected: the command test exposes both missing flags/the literal metadata, and report tests expose
   the missing consequence section. No external process starts.
 
-- [ ] **Step 4: Implement the minimum parser-derived command and report mapping.**
+- [x] **Step 4: Implement the minimum parser-derived command and report mapping.**
   - Keep one parser definition. The metadata helper serializes parsed/validated values; it does not
     independently choose 180/900 or an evidence directory.
   - Require `--report-dir` in `preflight` and `real-zed`, but not the unrelated acpx-only modes.
@@ -320,7 +320,7 @@ its exact v1 consequence. Unknown findings fail closed rather than borrowing ano
     that includes the fixed outcome consequence. Preserve its key, `safe-by-construction` policy,
     evidence tier, and resolvable nonempty-bundle test node.
 
-- [ ] **Step 5: Prove GREEN through the parser, report, verifier, and surface audit.**
+- [x] **Step 5: Prove GREEN through the parser, report, verifier, and surface audit.**
 
   ```bash
   uv run --frozen pytest tests/unit/tools/test_probe_p11_zed_session_load.py -k "approved_real_zed_command or outcome_consequence or nonempty_sanitized_relay_bundle" -q
@@ -337,7 +337,7 @@ its exact v1 consequence. Unknown findings fail closed rather than borrowing ano
 
 **Owner:** Cursor publishes; Codex performs one substantive review round; operator alone merges.
 
-- [ ] **Step 1: Run the complete affected test and policy gates.**
+- [x] **Step 1: Run the complete affected test and policy gates.**
 
   ```bash
   uv run --frozen pytest tests/unit/tools/test_probe_p11_zed_session_load.py -q
@@ -349,7 +349,7 @@ its exact v1 consequence. Unknown findings fail closed rather than borrowing ano
   git diff --check
   ```
 
-- [ ] **Step 2: Prove scope, immutability, and non-execution.**
+- [x] **Step 2: Prove scope, immutability, and non-execution.**
   - `git diff --name-only` lists exactly the probe, its unit test, the surface-audit manifest, and
     this v3 plan's checkbox updates.
   - `git diff --exit-code -- src/optimus src/optimus_gateway` is clean.
