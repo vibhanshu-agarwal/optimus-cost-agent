@@ -3978,22 +3978,129 @@ def test_establishing_import_closure_traverses_package_init_reexports(tmp_path: 
     assert "tools/pkg/leaf.py" in closure
 
 
-def test_establishing_import_closure_rejects_unlisted_new_project_module(tmp_path: Path) -> None:
-    """genuine RED baseline: unlisted in-repo imports fail closed."""
+def _commit_establishing_repo(repo: Path) -> None:
+    _establishing_git(repo, "add", "-A")
+    _establishing_git(repo, "commit", "-m", "init")
+
+
+@pytest.mark.parametrize(
+    ("layout", "root_modules", "allowed_paths", "expect_reject"),
+    [
+        pytest.param(
+            {
+                "tools/entry.py": "from tools.secret import token\n",
+                "tools/secret.py": "token = 'x'\n",
+            },
+            ("tools.entry",),
+            frozenset({"tools/entry.py"}),
+            True,
+            id="tools_top_level_unlisted_sibling",
+        ),
+        pytest.param(
+            {
+                "src/optimus/__init__.py": "",
+                "src/optimus/acp/__init__.py": "",
+                "src/optimus/acp/entry.py": "from optimus.acp.sneaky import token\n",
+                "src/optimus/acp/sneaky.py": "token = 'x'\n",
+            },
+            ("optimus.acp.entry",),
+            frozenset(
+                {
+                    "src/optimus/__init__.py",
+                    "src/optimus/acp/__init__.py",
+                    "src/optimus/acp/entry.py",
+                }
+            ),
+            True,
+            id="package_from_import_unlisted_sibling",
+        ),
+        pytest.param(
+            {
+                "src/optimus/__init__.py": "",
+                "src/optimus/acp/__init__.py": "",
+                "src/optimus/acp/entry.py": "import optimus.acp.sneaky\n",
+                "src/optimus/acp/sneaky.py": "token = 'x'\n",
+            },
+            ("optimus.acp.entry",),
+            frozenset(
+                {
+                    "src/optimus/__init__.py",
+                    "src/optimus/acp/__init__.py",
+                    "src/optimus/acp/entry.py",
+                }
+            ),
+            True,
+            id="package_plain_import_unlisted_sibling",
+        ),
+        pytest.param(
+            {
+                "src/optimus/__init__.py": "",
+                "src/optimus/acp/__init__.py": "from .sneaky import token\n",
+                "src/optimus/acp/entry.py": "value = 1\n",
+                "src/optimus/acp/sneaky.py": "token = 'x'\n",
+            },
+            ("optimus.acp.entry",),
+            frozenset(
+                {
+                    "src/optimus/__init__.py",
+                    "src/optimus/acp/__init__.py",
+                    "src/optimus/acp/entry.py",
+                }
+            ),
+            True,
+            id="package_relative_import_unlisted_sibling",
+        ),
+        pytest.param(
+            {
+                "src/optimus/__init__.py": "",
+                "src/optimus/acp/__init__.py": "",
+                "src/optimus/acp/spec.py": "class SomeClass:\n    pass\n",
+                "src/optimus/acp/entry.py": "from optimus.acp.spec import SomeClass\n",
+            },
+            ("optimus.acp.entry",),
+            frozenset(
+                {
+                    "src/optimus/__init__.py",
+                    "src/optimus/acp/__init__.py",
+                    "src/optimus/acp/spec.py",
+                    "src/optimus/acp/entry.py",
+                }
+            ),
+            False,
+            id="package_symbol_import_from_listed_module",
+        ),
+    ],
+)
+def test_establishing_import_closure_rejects_unlisted_new_project_module(
+    tmp_path: Path,
+    layout: dict[str, str],
+    root_modules: tuple[str, ...],
+    allowed_paths: frozenset[str],
+    expect_reject: bool,
+) -> None:
+    """Unlisted in-repo modules must fail closed; symbol imports from listed modules still resolve."""
     import tools.probe_p11_zed_session_load as probe
 
     repo = tmp_path / "repo"
-    (repo / "tools").mkdir(parents=True)
-    (repo / "tools" / "entry.py").write_text("from tools.secret import token\n", encoding="utf-8")
-    (repo / "tools" / "secret.py").write_text("token = 'x'\n", encoding="utf-8")
+    repo.mkdir()
+    for relative, content in layout.items():
+        target = repo / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
     _establishing_git(repo, "init")
     _establishing_git(repo, "config", "user.email", "probe@example.test")
     _establishing_git(repo, "config", "user.name", "Probe")
-    _establishing_git(repo, "add", "-A")
-    _establishing_git(repo, "commit", "-m", "init")
-    allowed = frozenset({"tools/entry.py"})
-    with pytest.raises(probe.ProbeError, match="unlisted module path"):
-        probe.compute_establishing_import_closure(repo, root_modules=("tools.entry",), allowed_py_paths=allowed)
+    _commit_establishing_repo(repo)
+    if expect_reject:
+        with pytest.raises(probe.ProbeError, match="unlisted module path"):
+            probe.compute_establishing_import_closure(
+                repo, root_modules=root_modules, allowed_py_paths=allowed_paths
+            )
+    else:
+        closure = probe.compute_establishing_import_closure(
+            repo, root_modules=root_modules, allowed_py_paths=allowed_paths
+        )
+        assert "src/optimus/acp/spec.py" in closure
 
 
 def test_establishing_authority_allows_report_only_descendant_commit(
@@ -4261,4 +4368,3 @@ def test_establishing_report_freshness_rejects_stale_future_naive_minus_zero_and
             probe.validate_establishing_report_freshness(timestamp, now)
         else:
             probe.parse_aware_utc_timestamp(timestamp)
-

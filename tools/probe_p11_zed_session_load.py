@@ -461,11 +461,14 @@ def _is_in_repo_module(module: str) -> bool:
     return module in {"optimus", "optimus_security"} or module.startswith(_IN_REPO_MODULE_PREFIXES)
 
 
-def _resolve_imported_module(name: str, allowed_paths: frozenset[str]) -> str | None:
+def _resolve_imported_module(
+    name: str,
+    allowed_paths: frozenset[str],
+    tracked_py_paths: frozenset[str] | None = None,
+) -> str | None:
     if not _is_in_repo_module(name):
         return None
     parts = name.split(".")
-    unresolved_path: str | None = None
     for index in range(len(parts), 0, -1):
         candidate = ".".join(parts[:index])
         if not _is_in_repo_module(candidate):
@@ -476,9 +479,12 @@ def _resolve_imported_module(name: str, allowed_paths: frozenset[str]) -> str | 
         for path in candidate_paths:
             if path in allowed_paths:
                 return candidate
-        unresolved_path = candidate_paths[0]
-    if unresolved_path is not None:
-        raise ProbeError("import_closure", f"unlisted module path: {unresolved_path}")
+        # A longer dotted name that is not a real module in the tree is an
+        # imported symbol (``from pkg import Thing``); fall back to its package.
+        # A longer name that IS a real module must never fall back, or an
+        # unlisted sibling hides behind its listed package.
+        if tracked_py_paths is None or any(path in tracked_py_paths for path in candidate_paths):
+            raise ProbeError("import_closure", f"unlisted module path: {candidate_paths[0]}")
     return None
 
 
@@ -509,6 +515,19 @@ def _collect_imports_from_ast(tree: ast.AST, current_module: str) -> set[str]:
     return imports
 
 
+def _tracked_py_paths(repo_root: Path, commit: str) -> frozenset[str]:
+    completed = subprocess.run(  # noqa: S603
+        ["git", "ls-tree", "-r", "--name-only", "-z", commit],
+        cwd=repo_root,
+        capture_output=True,
+        check=True,
+        shell=False,
+        timeout=60,
+    )
+    entries = completed.stdout.decode("utf-8").split("\0")
+    return frozenset(entry for entry in entries if entry.endswith(".py"))
+
+
 def compute_establishing_import_closure(
     repo_root: Path,
     commit: str = "HEAD",
@@ -519,6 +538,7 @@ def compute_establishing_import_closure(
     allowed_paths = allowed_py_paths or frozenset(
         path for path in ESTABLISHING_EXECUTION_GIT_PATHS if path.endswith(".py")
     )
+    tracked_py = _tracked_py_paths(repo_root, commit)
     seen_modules: set[str] = set()
     closure_paths: set[str] = set()
     pending: list[str] = list(root_modules)
@@ -541,7 +561,7 @@ def compute_establishing_import_closure(
         tree = ast.parse(blob.decode("utf-8"), filename=path)
         current_module = _path_to_module_name(path)
         for imported in _collect_imports_from_ast(tree, current_module):
-            resolved = _resolve_imported_module(imported, allowed_paths)
+            resolved = _resolve_imported_module(imported, allowed_paths, tracked_py)
             if resolved is not None and resolved not in seen_modules:
                 pending.append(resolved)
 
