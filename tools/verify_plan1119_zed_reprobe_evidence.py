@@ -132,10 +132,175 @@ def _verify_files(report_dir: Path, files: Mapping[str, Any], relay: Mapping[str
     )
 
 
+def _verify_resume_lifecycle(manifest: Mapping[str, Any], report_dir: Path) -> None:
+    resume = manifest.get("resume_lifecycle")
+    if not isinstance(resume, Mapping):
+        return
+    require(manifest.get("zed_launches") == 2, "zed_launches", "resume_lifecycle requires exactly two launches")
+    require(resume.get("shared_profile") is True, "resume_lifecycle.shared_profile", "shared profile must be true")
+    shared_user_data_root = resume.get("shared_user_data_root")
+    require(
+        isinstance(shared_user_data_root, str) and shared_user_data_root.strip(),
+        "resume_lifecycle.shared_user_data_root",
+        "shared user data root is missing",
+    )
+    shared_workspace = resume.get("shared_workspace")
+    require(
+        isinstance(shared_workspace, str) and shared_workspace.strip(),
+        "resume_lifecycle.shared_workspace",
+        "shared workspace is missing",
+    )
+    lifecycle_a = resume.get("lifecycle_a")
+    lifecycle_b = resume.get("lifecycle_b")
+    require(isinstance(lifecycle_a, Mapping), "resume_lifecycle.lifecycle_a", "lifecycle_a record is missing")
+    require(isinstance(lifecycle_b, Mapping), "resume_lifecycle.lifecycle_b", "lifecycle_b record is missing")
+    require(
+        lifecycle_a.get("label") == "plan1124-create",
+        "resume_lifecycle.lifecycle_a.label",
+        "lifecycle_a label must be plan1124-create",
+    )
+    require(
+        lifecycle_b.get("label") == "plan1124-resume",
+        "resume_lifecycle.lifecycle_b.label",
+        "lifecycle_b label must be plan1124-resume",
+    )
+    create_id = lifecycle_a.get("session_new_id")
+    require(isinstance(create_id, str) and create_id.strip(), "resume_lifecycle.lifecycle_a.session_new_id", "session/new id is missing")
+    exchange = lifecycle_b.get("session_load_exchange")
+    require(isinstance(exchange, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange", "session/load exchange is missing")
+    request = exchange.get("request")
+    response = exchange.get("response")
+    require(isinstance(request, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.request", "session/load request is missing")
+    require(isinstance(response, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.response", "session/load response is missing")
+    require(
+        response.get("result") == {} or isinstance(response.get("error"), Mapping),
+        "resume_lifecycle.lifecycle_b.session_load_exchange.response",
+        "session/load response must contain result {} or an error object",
+    )
+    require(
+        request.get("method") == "session/load",
+        "resume_lifecycle.lifecycle_b.session_load_exchange.request.method",
+        "Lifecycle B exchange must be session/load",
+    )
+    params = request.get("params")
+    require(isinstance(params, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.request.params", "session/load params are missing")
+    require(
+        params.get("sessionId") == create_id,
+        "resume_lifecycle.lifecycle_b.session_load_exchange.request.params.sessionId",
+        "Lifecycle B session/load id must match Lifecycle A session/new id",
+    )
+
+    files = manifest.get("files")
+    require(isinstance(files, Mapping), "files", "files must be an object of relative paths")
+    require("report.md" in files, "files", "report.md is missing from files map")
+    report_path = _require_report_relative(report_dir, "report.md")
+    require(report_path.is_file(), "files", "declared report file is missing")
+    require(files.get("report.md") == _sha256_file(report_path), "report.md", "SHA-256 mismatch")
+    expected = (
+        "relay/lifecycle-a/zed-to-agent.bin",
+        "relay/lifecycle-a/agent-to-zed.bin",
+        "relay/lifecycle-b/zed-to-agent.bin",
+        "relay/lifecycle-b/agent-to-zed.bin",
+    )
+    expected_keys = {"report.md", *expected}
+    require(
+        set(files.keys()) == expected_keys,
+        "files",
+        "v5 resume must declare exactly the expected report.md + lifecycle relay files (no extras)",
+    )
+    for rel in expected:
+        require(rel in files, "files", f"{rel} is missing from files map")
+        path = _require_report_relative(report_dir, rel)
+        require(path.is_file(), "files", "declared report file is missing")
+        require(files.get(rel) == _sha256_file(path), rel, "SHA-256 mismatch")
+
+    require(
+        lifecycle_a.get("zed_to_agent_sha256") == files.get("relay/lifecycle-a/zed-to-agent.bin"),
+        "resume_lifecycle.lifecycle_a.zed_to_agent_sha256",
+        "lifecycle-a digest mismatch",
+    )
+    require(
+        lifecycle_a.get("agent_to_zed_sha256") == files.get("relay/lifecycle-a/agent-to-zed.bin"),
+        "resume_lifecycle.lifecycle_a.agent_to_zed_sha256",
+        "lifecycle-a digest mismatch",
+    )
+    require(
+        lifecycle_b.get("zed_to_agent_sha256") == files.get("relay/lifecycle-b/zed-to-agent.bin"),
+        "resume_lifecycle.lifecycle_b.zed_to_agent_sha256",
+        "lifecycle-b digest mismatch",
+    )
+    require(
+        lifecycle_b.get("agent_to_zed_sha256") == files.get("relay/lifecycle-b/agent-to-zed.bin"),
+        "resume_lifecycle.lifecycle_b.agent_to_zed_sha256",
+        "lifecycle-b digest mismatch",
+    )
+    _verify_lifecycle_a_message_seam(report_dir, create_id)
+
+
+def _verify_lifecycle_a_message_seam(report_dir: Path, session_id: str) -> None:
+    from tools.probe_p11_zed_session_load import iter_acp_messages, validate_lifecycle_a_prompt_seam
+
+    zed_path = report_dir / "relay" / "lifecycle-a" / "zed-to-agent.bin"
+    agent_path = report_dir / "relay" / "lifecycle-a" / "agent-to-zed.bin"
+    require(zed_path.is_file(), "relay/lifecycle-a/zed-to-agent.bin", "lifecycle-a relay capture is missing")
+    require(agent_path.is_file(), "relay/lifecycle-a/agent-to-zed.bin", "lifecycle-a relay capture is missing")
+    zed_messages = iter_acp_messages(zed_path.read_bytes())
+    agent_messages = iter_acp_messages(agent_path.read_bytes())
+    try:
+        validate_lifecycle_a_prompt_seam(zed_messages, agent_messages, session_id=session_id)
+    except Exception as exc:
+        from tools.probe_p11_zed_session_load import ProbeError
+
+        if isinstance(exc, ProbeError):
+            raise VerifyError("resume_lifecycle.lifecycle_a.message_seam", str(exc)) from exc
+        raise VerifyError("resume_lifecycle.lifecycle_a.message_seam", "lifecycle-a message seam invalid") from exc
+
+
 def _verify_finding_rule(manifest: Mapping[str, Any]) -> None:
     finding = manifest["finding"]
     require(finding in ALLOWED_FINDINGS, "finding", "finding must be REACHABLE, UNREACHABLE, or INDETERMINATE")
     exchange = manifest.get("captured_exchange")
+    if isinstance(manifest.get("resume_lifecycle"), Mapping):
+        resume = manifest["resume_lifecycle"]
+        lifecycle_a = resume.get("lifecycle_a")
+        lifecycle_b = resume.get("lifecycle_b")
+        require(isinstance(lifecycle_a, Mapping), "resume_lifecycle.lifecycle_a", "lifecycle_a record is missing")
+        require(isinstance(lifecycle_b, Mapping), "resume_lifecycle.lifecycle_b", "lifecycle_b record is missing")
+
+        create_id = lifecycle_a.get("session_new_id")
+        require(isinstance(create_id, str) and create_id.strip(), "resume_lifecycle.lifecycle_a.session_new_id", "session/new id is missing")
+
+        b_exchange = lifecycle_b.get("session_load_exchange")
+        require(isinstance(b_exchange, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange", "session/load exchange is missing")
+        b_request = b_exchange.get("request")
+        b_response = b_exchange.get("response")
+        require(isinstance(b_request, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.request", "session/load request is missing")
+        require(isinstance(b_response, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.response", "session/load response is missing")
+
+        require(
+            b_request.get("method") == "session/load",
+            "resume_lifecycle.lifecycle_b.session_load_exchange.request.method",
+            "Lifecycle B exchange must be session/load",
+        )
+        params = b_request.get("params")
+        require(isinstance(params, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.request.params", "session/load params are missing")
+        require(
+            params.get("sessionId") == create_id,
+            "resume_lifecycle.lifecycle_b.session_load_exchange.request.params.sessionId",
+            "Lifecycle B session/load id must match Lifecycle A session/new id",
+        )
+
+        if finding == "REACHABLE":
+            # REACHABLE must be certified only when the nested Lifecycle B exchange has an empty `{}` result.
+            require(b_response.get("result") == {}, "resume_lifecycle.lifecycle_b.session_load_exchange.response", "REACHABLE requires empty result")
+            require(not isinstance(b_response.get("error"), Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.response", "REACHABLE must not include an error object")
+        elif finding == "UNREACHABLE":
+            require(isinstance(b_response.get("error"), Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.response", "UNREACHABLE requires an error object")
+            # A malformed both-present response must not be certified as UNREACHABLE success either.
+            require(b_response.get("result") != {}, "resume_lifecycle.lifecycle_b.session_load_exchange.response", "UNREACHABLE must not carry an empty `{}` result")
+        else:
+            require(manifest["indeterminate_reason"] in ALLOWED_INDETERMINATE_REASONS, "indeterminate_reason", "INDETERMINATE without a named reason")
+        return
     if finding == "REACHABLE":
         require(exchange and exchange["request"]["method"] == "session/load", "captured_exchange", "REACHABLE requires session/load")
         require(exchange["response"].get("result") == {}, "captured_exchange", "REACHABLE requires empty result")
@@ -213,7 +378,10 @@ def verify_manifest(manifest_path: Path) -> None:
         require(len(excerpt) <= RELAY_CHILD_STDERR_EXCERPT_LIMIT, "relay_child_stderr_excerpt", "optional field exceeds 4000 characters")
 
     _scan_credential_like(manifest, field="manifest")
-    _verify_files(report_dir, manifest["files"], manifest["relay"])
+    if isinstance(manifest.get("resume_lifecycle"), Mapping):
+        _verify_resume_lifecycle(manifest, report_dir)
+    else:
+        _verify_files(report_dir, manifest["files"], manifest["relay"])
     _verify_isolation(manifest)
     _verify_finding_rule(manifest)
     _verify_report(report_dir, manifest)

@@ -20,6 +20,7 @@ origin-A fixture, or correlation launch is performed.
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import math
@@ -32,13 +33,14 @@ import tempfile
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from optimus.acp.framing import FramingError, parse_content_length
-from optimus_security.sanitization import EVIDENCE_REDACTION_POLICY, sanitize_for_persistence
+from optimus_security.sanitization import EVIDENCE_REDACTION_POLICY, PathAliasRule, sanitize_for_persistence
+from tools.plan117_custody_relay import verify_relay_capture
 
 PLAN1119_SCHEMA = "plan-11-19-zed-session-load-reprobe-v1"
 PLAN1119_RUN_ID = "plan1119-zed-reprobe"
@@ -185,6 +187,948 @@ DEFAULT_PROBE_PATCH_PLAN = ProbePatchPlan(
 )
 
 
+
+
+ESTABLISHING_REPORT_MAX_AGE_SECONDS = 86_400
+ESTABLISHING_REPORT_GIT_PATH = "reports/plan-11-24-agent-protocol-persistence-establishing-drive.md"
+ISOLATED_SOURCE_ROOT = "<ISOLATED_SOURCE_ROOT>"
+APPLICABILITY_MANIFEST_SCHEMA = "optimus-establishing-applicability-v1"
+ESTABLISHING_REPORT_SCHEMA = "plan-11-24-agent-protocol-establishing-v2"
+ESTABLISHING_ROOT_MODULES = (
+    "optimus.acp.__main__",
+    "optimus.acp.launch_approval_cli",
+    "tools.plan117_custody_contract",
+    "tools.plan117_custody_relay",
+    "tools.probe_p11_zed_session_load",
+    "tools.verify_plan1119_zed_reprobe_evidence",
+)
+_LOWERCASE_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_LOWERCASE_HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
+_IN_REPO_MODULE_PREFIXES = ("optimus.", "optimus_security.", "tools.")
+ESTABLISHING_EXECUTION_GIT_PATHS = (
+    "pyproject.toml",
+    "src/optimus/__init__.py",
+    "src/optimus/acp/__init__.py",
+    "src/optimus/acp/__main__.py",
+    "src/optimus/acp/bootstrap.py",
+    "src/optimus/acp/debug_trace.py",
+    "src/optimus/acp/dispatcher.py",
+    "src/optimus/acp/errors.py",
+    "src/optimus/acp/framing.py",
+    "src/optimus/acp/launch_approval_cli.py",
+    "src/optimus/acp/launch_approvals.py",
+    "src/optimus/acp/launch_audit.py",
+    "src/optimus/acp/launch_gate.py",
+    "src/optimus/acp/launch_policy.py",
+    "src/optimus/acp/local_gateway_secrets.py",
+    "src/optimus/acp/local_infra.py",
+    "src/optimus/acp/operator_paths.py",
+    "src/optimus/acp/preflight.py",
+    "src/optimus/acp/request_ids.py",
+    "src/optimus/acp/server.py",
+    "src/optimus/acp/shapes.py",
+    "src/optimus/acp/spec.py",
+    "src/optimus/acp/trusted_paths.py",
+    "src/optimus/agent/__init__.py",
+    "src/optimus/agent/defaults.py",
+    "src/optimus/agent/directives.py",
+    "src/optimus/agent/golden.py",
+    "src/optimus/agent/models.py",
+    "src/optimus/agent/planning_loop.py",
+    "src/optimus/agent/prompts.py",
+    "src/optimus/agent/runner.py",
+    "src/optimus/agent/state_store.py",
+    "src/optimus/agent/tools.py",
+    "src/optimus/agent/workspace_context.py",
+    "src/optimus/config/__init__.py",
+    "src/optimus/config/gateway.py",
+    "src/optimus/evidence/__init__.py",
+    "src/optimus/evidence/acquisition.py",
+    "src/optimus/evidence/domain_policy.py",
+    "src/optimus/evidence/gateway_io.py",
+    "src/optimus/evidence/ledger.py",
+    "src/optimus/evidence/models.py",
+    "src/optimus/evidence/package_advisory.py",
+    "src/optimus/gates/__init__.py",
+    "src/optimus/gates/exceptions.py",
+    "src/optimus/gates/fitness.py",
+    "src/optimus/gates/mutation_flow.py",
+    "src/optimus/gates/shadow_workspace.py",
+    "src/optimus/gateway/__init__.py",
+    "src/optimus/gateway/client.py",
+    "src/optimus/gateway/errors.py",
+    "src/optimus/gateway/models.py",
+    "src/optimus/gateway/tool_models.py",
+    "src/optimus/golden/__init__.py",
+    "src/optimus/golden/json_harness.py",
+    "src/optimus/golden/runner.py",
+    "src/optimus/golden/tasks.py",
+    "src/optimus/guardrails/__init__.py",
+    "src/optimus/guardrails/audit.py",
+    "src/optimus/guardrails/command_safety.py",
+    "src/optimus/guardrails/mcp_trust.py",
+    "src/optimus/guardrails/network_safety.py",
+    "src/optimus/guardrails/path_safety.py",
+    "src/optimus/guardrails/permissions.py",
+    "src/optimus/guardrails/pre_tool.py",
+    "src/optimus/guardrails/prompt_injection.py",
+    "src/optimus/guardrails/unicode_confusables.py",
+    "src/optimus/guardrails/validation.py",
+    "src/optimus/loops/__init__.py",
+    "src/optimus/loops/completion.py",
+    "src/optimus/loops/controller.py",
+    "src/optimus/loops/ledger.py",
+    "src/optimus/loops/models.py",
+    "src/optimus/loops/tools.py",
+    "src/optimus/mcp/__init__.py",
+    "src/optimus/mcp/client_catalog.py",
+    "src/optimus/mcp/client_config.py",
+    "src/optimus/mcp/client_disposition.py",
+    "src/optimus/mcp/client_sdk.py",
+    "src/optimus/mcp/client_supervisor.py",
+    "src/optimus/mcp/client_trust.py",
+    "src/optimus/mcp/local_ipc.py",
+    "src/optimus/mcp/runtime.py",
+    "src/optimus/net/__init__.py",
+    "src/optimus/net/https.py",
+    "src/optimus/redis/__init__.py",
+    "src/optimus/redis/async_bridge.py",
+    "src/optimus/redis/runtime.py",
+    "src/optimus/release/__init__.py",
+    "src/optimus/release/credentials.py",
+    "src/optimus/release/defaults.py",
+    "src/optimus/release/runner.py",
+    "src/optimus/retry/__init__.py",
+    "src/optimus/retry/gated_run.py",
+    "src/optimus/retry/policy.py",
+    "src/optimus/runtime/__init__.py",
+    "src/optimus/runtime/modes.py",
+    "src/optimus/runtime/mutation.py",
+    "src/optimus/runtime/state.py",
+    "src/optimus/skills/__init__.py",
+    "src/optimus/skills/invocation.py",
+    "src/optimus/skills/models.py",
+    "src/optimus/skills/registry.py",
+    "src/optimus/telemetry/__init__.py",
+    "src/optimus/telemetry/events.py",
+    "src/optimus/telemetry/fanout.py",
+    "src/optimus/telemetry/jsonl.py",
+    "src/optimus/telemetry/observability.py",
+    "src/optimus/telemetry/redaction.py",
+    "src/optimus/telemetry/redis_adapter.py",
+    "src/optimus/telemetry/redis_sink.py",
+    "src/optimus/telemetry/serialization.py",
+    "src/optimus/telemetry/subjects.py",
+    "src/optimus/tools/__init__.py",
+    "src/optimus/tools/mutation_tools.py",
+    "src/optimus/tools/policy.py",
+    "src/optimus/tools/registry.py",
+    "src/optimus/usage/__init__.py",
+    "src/optimus/usage/accounting.py",
+    "src/optimus/usage/errors.py",
+    "src/optimus/usage/ledger.py",
+    "src/optimus/usage/models.py",
+    "src/optimus_security/__init__.py",
+    "src/optimus_security/launch_manifest.py",
+    "src/optimus_security/sanitization.py",
+    "tools/plan117_custody_contract.py",
+    "tools/plan117_custody_relay.py",
+    "tools/probe_p11_zed_session_load.py",
+    "tools/verify_plan1119_zed_reprobe_evidence.py",
+    "uv.lock",
+)
+
+def git_cat_file_blob(repo_root: Path, commit: str, path: str) -> bytes:
+    """Read exact Git blob bytes for ``commit:path``."""
+    try:
+        completed = subprocess.run(  # noqa: S603
+            ["git", "cat-file", "blob", f"{commit}:{path}"],
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+            shell=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ProbeError("git_cat_file_blob", f"{type(exc).__name__}: {exc}") from exc
+    if completed.returncode != 0:
+        raise ProbeError("git_cat_file_blob", f"git cat-file failed for {commit}:{path}")
+    return completed.stdout
+
+
+def hash_git_blob_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def build_applicability_manifest(
+    repo_root: Path,
+    commit: str,
+    paths: Sequence[str] = ESTABLISHING_EXECUTION_GIT_PATHS,
+) -> dict[str, Any]:
+    files: list[dict[str, str]] = []
+    for path in sorted(set(paths)):
+        blob = git_cat_file_blob(repo_root, commit, path)
+        files.append({"path": path, "blob_sha256": hash_git_blob_bytes(blob)})
+    canonical_obj = {"schema": APPLICABILITY_MANIFEST_SCHEMA, "files": files}
+    canonical_bytes = json.dumps(
+        canonical_obj,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return {
+        "schema": APPLICABILITY_MANIFEST_SCHEMA,
+        "files": files,
+        "manifest_sha256": hash_git_blob_bytes(canonical_bytes),
+    }
+
+
+def execution_surface_clean(repo_root: Path, paths: Sequence[str]) -> bool:
+    if not paths:
+        return True
+    try:
+        completed = subprocess.run(  # noqa: S603
+            ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", *paths],
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+            shell=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0 and not completed.stdout
+
+
+def is_ancestor(repo_root: Path, ancestor: str, head: str) -> bool:
+    try:
+        completed = subprocess.run(  # noqa: S603
+            ["git", "merge-base", "--is-ancestor", ancestor, head],
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+            shell=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
+
+
+def _path_to_module_name(path: str) -> str:
+    if path.startswith("src/"):
+        return path[len("src/") :].replace("/", ".").removesuffix(".py")
+    return path.replace("/", ".").removesuffix(".py")
+
+
+def _candidate_module_paths(module: str) -> tuple[str, ...]:
+    if module == "optimus":
+        return ("src/optimus/__init__.py",)
+    if module == "optimus_security":
+        return ("src/optimus_security/__init__.py",)
+    if module.startswith(("optimus.", "optimus_security.")):
+        base = "src/" + module.replace(".", "/")
+        return (f"{base}/__init__.py", f"{base}.py")
+    if module.startswith("tools."):
+        base = module.replace(".", "/")
+        return (f"{base}/__init__.py", f"{base}.py")
+    return ()
+
+
+def _module_name_to_git_path(module: str, allowed_paths: frozenset[str]) -> str | None:
+    for path in _candidate_module_paths(module):
+        if path in allowed_paths:
+            return path
+    return None
+
+
+def _parent_module_names(module: str) -> tuple[str, ...]:
+    parts = module.split(".")
+    return tuple(".".join(parts[:index]) for index in range(1, len(parts)))
+
+
+def _resolve_relative_module(current_module: str, level: int, module: str | None) -> str | None:
+    parts = current_module.split(".")
+    if level > len(parts):
+        return None
+    base = parts[: len(parts) - level]
+    if module:
+        base.extend(module.split("."))
+    return ".".join(base) if base else None
+
+
+def _is_in_repo_module(module: str) -> bool:
+    return module in {"optimus", "optimus_security"} or module.startswith(_IN_REPO_MODULE_PREFIXES)
+
+
+def _resolve_imported_module(
+    name: str,
+    allowed_paths: frozenset[str],
+    tracked_py_paths: frozenset[str] | None = None,
+) -> str | None:
+    if not _is_in_repo_module(name):
+        return None
+    parts = name.split(".")
+    for index in range(len(parts), 0, -1):
+        candidate = ".".join(parts[:index])
+        if not _is_in_repo_module(candidate):
+            break
+        candidate_paths = _candidate_module_paths(candidate)
+        if not candidate_paths:
+            continue
+        for path in candidate_paths:
+            if path in allowed_paths:
+                return candidate
+        # A longer dotted name that is not a real module in the tree is an
+        # imported symbol (``from pkg import Thing``); fall back to its package.
+        # A longer name that IS a real module must never fall back, or an
+        # unlisted sibling hides behind its listed package.
+        if tracked_py_paths is None or any(path in tracked_py_paths for path in candidate_paths):
+            raise ProbeError("import_closure", f"unlisted module path: {candidate_paths[0]}")
+    return None
+
+
+def _collect_imports_from_ast(tree: ast.AST, current_module: str) -> set[str]:
+    imports: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imports.add(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level > 0:
+                base = _resolve_relative_module(current_module, node.level, node.module)
+            else:
+                base = node.module
+            if base is None:
+                continue
+            for alias in node.names:
+                if alias.name == "*":
+                    imports.add(base)
+                else:
+                    imports.add(f"{base}.{alias.name}")
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id == "__import__":
+                raise ProbeError("import_closure", "dynamic import forbidden")
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "import_module":
+                if isinstance(node.func.value, ast.Name) and node.func.value.id == "importlib":
+                    raise ProbeError("import_closure", "dynamic import forbidden")
+    return imports
+
+
+def _tracked_py_paths(repo_root: Path, commit: str) -> frozenset[str]:
+    completed = subprocess.run(  # noqa: S603
+        ["git", "ls-tree", "-r", "--name-only", "-z", commit],
+        cwd=repo_root,
+        capture_output=True,
+        check=True,
+        shell=False,
+        timeout=60,
+    )
+    entries = completed.stdout.decode("utf-8").split("\0")
+    return frozenset(entry for entry in entries if entry.endswith(".py"))
+
+
+def compute_establishing_import_closure(
+    repo_root: Path,
+    commit: str = "HEAD",
+    *,
+    root_modules: Sequence[str] = ESTABLISHING_ROOT_MODULES,
+    allowed_py_paths: frozenset[str] | None = None,
+) -> frozenset[str]:
+    allowed_paths = allowed_py_paths or frozenset(
+        path for path in ESTABLISHING_EXECUTION_GIT_PATHS if path.endswith(".py")
+    )
+    tracked_py = _tracked_py_paths(repo_root, commit)
+    seen_modules: set[str] = set()
+    closure_paths: set[str] = set()
+    pending: list[str] = list(root_modules)
+
+    def visit_module(module: str) -> None:
+        if module in seen_modules or not _is_in_repo_module(module):
+            return
+        for parent in _parent_module_names(module):
+            visit_module(parent)
+        if module in seen_modules:
+            return
+        seen_modules.add(module)
+        path = _module_name_to_git_path(module, allowed_paths)
+        if path is None:
+            raise ProbeError("import_closure", f"cannot map module: {module}")
+        if path not in allowed_paths:
+            raise ProbeError("import_closure", f"unlisted module path: {path}")
+        closure_paths.add(path)
+        blob = git_cat_file_blob(repo_root, commit, path)
+        tree = ast.parse(blob.decode("utf-8"), filename=path)
+        current_module = _path_to_module_name(path)
+        for imported in _collect_imports_from_ast(tree, current_module):
+            resolved = _resolve_imported_module(imported, allowed_paths, tracked_py)
+            if resolved is not None and resolved not in seen_modules:
+                pending.append(resolved)
+
+    while pending:
+        visit_module(pending.pop())
+    return frozenset(closure_paths)
+
+
+def verify_establishing_import_closure(repo_root: Path, commit: str = "HEAD") -> None:
+    closure = compute_establishing_import_closure(repo_root, commit)
+    expected = frozenset(path for path in ESTABLISHING_EXECUTION_GIT_PATHS if path.endswith(".py"))
+    if closure != expected:
+        missing = sorted(expected - closure)
+        extra = sorted(closure - expected)
+        raise ProbeError(
+            "import_closure",
+            f"closure mismatch missing={missing[:3]} extra={extra[:3]}",
+        )
+
+
+def read_committed_establishing_report_blob(repo_root: Path) -> bytes:
+    if not execution_surface_clean(repo_root, (ESTABLISHING_REPORT_GIT_PATH,)):
+        raise ProbeError("establishing_report", "report path is not clean")
+    try:
+        completed = subprocess.run(  # noqa: S603
+            ["git", "cat-file", "-t", f"HEAD:{ESTABLISHING_REPORT_GIT_PATH}"],
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+            shell=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ProbeError("establishing_report", f"{type(exc).__name__}: {exc}") from exc
+    if completed.returncode != 0 or completed.stdout.strip() != b"blob":
+        raise ProbeError("establishing_report", "committed report blob missing at HEAD")
+    return git_cat_file_blob(repo_root, "HEAD", ESTABLISHING_REPORT_GIT_PATH)
+
+
+def _extract_establishing_report_json(text: str) -> dict[str, Any]:
+    if "\r\n" in text:
+        raise ProbeError("establishing_report", "CRLF not allowed in report")
+    marker = "## Typed reconstruction record"
+    if text.count(marker) != 1:
+        raise ProbeError("establishing_report", "duplicate or missing typed record")
+    section = text.split(marker, 1)[1].strip()
+    if section.startswith("```"):
+        lines = section.splitlines()
+        if not lines or not lines[0].startswith("```"):
+            raise ProbeError("establishing_report", "malformed typed record fence")
+        body_lines: list[str] = []
+        for line in lines[1:]:
+            if line.strip() == "```":
+                break
+            body_lines.append(line)
+        json_text = "\n".join(body_lines).strip()
+    else:
+        start = section.find("{")
+        end = section.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise ProbeError("establishing_report", "typed record JSON missing")
+        json_text = section[start : end + 1]
+    try:
+        parsed = json.loads(json_text)
+    except json.JSONDecodeError as exc:
+        raise ProbeError("establishing_report", "typed record JSON malformed") from exc
+    if not isinstance(parsed, dict):
+        raise ProbeError("establishing_report", "typed record must be an object")
+    return parsed
+
+
+def parse_establishing_report_v2(blob: bytes) -> dict[str, Any]:
+    parsed = _extract_establishing_report_json(blob.decode("utf-8"))
+    if parsed.get("schema") != ESTABLISHING_REPORT_SCHEMA:
+        raise ProbeError("establishing_report", "unexpected establishing report schema")
+    if parsed.get("establishing_disposition") != PLAN1124_ESTABLISHING_OK:
+        raise ProbeError("establishing_report", "establishing disposition is not authorizing")
+    authority = parsed.get("authority")
+    if not isinstance(authority, Mapping):
+        raise ProbeError("establishing_report", "authority block missing")
+    source_commit = authority.get("source_commit")
+    if not isinstance(source_commit, str) or not _LOWERCASE_HEX40_RE.fullmatch(source_commit):
+        raise ProbeError("establishing_report", "source_commit invalid")
+    applicability = authority.get("applicability")
+    if not isinstance(applicability, Mapping):
+        raise ProbeError("establishing_report", "applicability block missing")
+    if applicability.get("schema") != APPLICABILITY_MANIFEST_SCHEMA:
+        raise ProbeError("establishing_report", "applicability schema invalid")
+    files = applicability.get("files")
+    if not isinstance(files, list) or len(files) != len(ESTABLISHING_EXECUTION_GIT_PATHS):
+        raise ProbeError("establishing_report", "applicability files invalid")
+    manifest_sha256 = applicability.get("manifest_sha256")
+    if not isinstance(manifest_sha256, str) or not _LOWERCASE_SHA256_RE.fullmatch(manifest_sha256):
+        raise ProbeError("establishing_report", "manifest_sha256 invalid")
+    completed_at_utc = parsed.get("completed_at_utc")
+    if not isinstance(completed_at_utc, str) or not completed_at_utc:
+        raise ProbeError("establishing_report", "completed_at_utc invalid")
+    parse_aware_utc_timestamp(completed_at_utc)
+    counts = parsed.get("counts")
+    if not isinstance(counts, Mapping):
+        raise ProbeError("establishing_report", "counts block missing")
+    if counts.get("zed_launches") != 0 or counts.get("origin_a_launches") != 0:
+        raise ProbeError("establishing_report", "counts must record zero launches")
+    _validate_establishing_report_v2_sequence(parsed.get("sequence"))
+    _validate_establishing_report_v2_traffic(parsed.get("traffic"))
+    _validate_establishing_report_v2_custody(parsed.get("custody"))
+    _validate_establishing_report_v2_cleanup(parsed.get("cleanup"))
+    return parsed
+
+
+def _validate_establishing_report_v2_sequence(sequence: Any) -> None:
+    if not isinstance(sequence, Mapping):
+        raise ProbeError("establishing_report", "sequence block missing")
+    session_new = sequence.get("session_new")
+    session_prompt = sequence.get("session_prompt")
+    session_load = sequence.get("session_load")
+    if not isinstance(session_new, Mapping) or not isinstance(session_prompt, Mapping) or not isinstance(session_load, Mapping):
+        raise ProbeError("establishing_report", "sequence exchanges incomplete")
+    session_id = session_new.get("session_id")
+    if not isinstance(session_id, str) or not session_id:
+        raise ProbeError("establishing_report", "sequence.session_new.session_id invalid")
+    if session_prompt.get("session_id") != session_id or session_load.get("session_id") != session_id:
+        raise ProbeError("establishing_report", "sequence session ids must match")
+    if session_prompt.get("request_count") != 1:
+        raise ProbeError("establishing_report", "sequence.session_prompt.request_count must be 1")
+    if session_prompt.get("message_sha256") != PLAN1124_EXEC_MESSAGE_SHA256:
+        raise ProbeError("establishing_report", "sequence.session_prompt.message_sha256 invalid")
+    if session_prompt.get("outcome") != "error":
+        raise ProbeError("establishing_report", "sequence.session_prompt.outcome must be error")
+    if session_prompt.get("response_id_matches") is not True:
+        raise ProbeError("establishing_report", "sequence.session_prompt.response_id_matches must be true")
+    if session_load.get("response_id_matches") is not True:
+        raise ProbeError("establishing_report", "sequence.session_load.response_id_matches must be true")
+    if session_load.get("result") != {}:
+        raise ProbeError("establishing_report", "sequence.session_load.result must be {}")
+
+
+def _validate_establishing_report_v2_traffic(traffic: Any) -> None:
+    if not isinstance(traffic, Mapping):
+        raise ProbeError("establishing_report", "traffic block missing")
+    for key in ("gateway_attempted", "provider_attempted", "model_call_attempted"):
+        if traffic.get(key) is not False:
+            raise ProbeError("establishing_report", f"traffic.{key} must be false")
+
+
+def _validate_establishing_report_v2_custody(custody: Any) -> None:
+    if not isinstance(custody, Mapping):
+        raise ProbeError("establishing_report", "custody block missing")
+    if custody.get("approval_created") is not True or custody.get("approval_revoked") is not True:
+        raise ProbeError("establishing_report", "custody approval facts invalid")
+    if custody.get("post_revoke_inspect_exit_code") != 1:
+        raise ProbeError("establishing_report", "custody.post_revoke_inspect_exit_code must be 1")
+
+
+def _validate_establishing_report_v2_cleanup(cleanup: Any) -> None:
+    if not isinstance(cleanup, Mapping) or cleanup.get("throwaway_root_removed") is not True:
+        raise ProbeError("establishing_report", "cleanup.throwaway_root_removed must be true")
+
+
+def extract_session_prompt_exchange(messages: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    requests = {
+        message.get("id"): dict(message)
+        for message in messages
+        if message.get("method") == "session/prompt" and "id" in message
+    }
+    for message in messages:
+        request = requests.get(message.get("id"))
+        if request is not None and ("result" in message or "error" in message):
+            return {"request": request, "response": dict(message)}
+    return None
+
+
+def extract_session_prompt_from_messages(
+    zed_to_agent: Sequence[Mapping[str, Any]],
+    agent_to_zed: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    requests = {
+        message.get("id"): dict(message)
+        for message in zed_to_agent
+        if message.get("method") == "session/prompt" and "id" in message
+    }
+    for message in agent_to_zed:
+        request = requests.get(message.get("id"))
+        if request is not None and ("result" in message or "error" in message):
+            return {"request": request, "response": dict(message)}
+    return None
+
+
+def _validate_session_prompt_seam(
+    *,
+    prompt_requests: Sequence[Mapping[str, Any]],
+    prompt_exchange: Mapping[str, Any] | None,
+    session_id: str,
+    stage: str,
+) -> None:
+    if not prompt_requests:
+        raise ProbeError(stage, "session/prompt request missing")
+    if len(prompt_requests) != 1:
+        raise ProbeError(stage, "multiple session/prompt requests")
+    if prompt_exchange is None:
+        raise ProbeError(stage, "session/prompt response missing")
+    prompt_request = prompt_exchange["request"]
+    prompt_response = prompt_exchange["response"]
+    prompt_params = prompt_request.get("params")
+    if not isinstance(prompt_params, Mapping):
+        raise ProbeError(stage, "session/prompt params missing")
+    if prompt_params.get("sessionId") != session_id:
+        raise ProbeError(stage, "session/prompt session id mismatch")
+    message_sha256 = _prompt_message_sha256(prompt_request)
+    if message_sha256 != PLAN1124_EXEC_MESSAGE_SHA256:
+        raise ProbeError(stage, "session/prompt message content invalid")
+    has_result = "result" in prompt_response
+    has_error = isinstance(prompt_response.get("error"), Mapping)
+    if has_result and has_error:
+        raise ProbeError(stage, "session/prompt result and error both present")
+    if has_result and not has_error:
+        raise ProbeError(stage, "session/prompt succeeded")
+    if not has_error:
+        raise ProbeError(stage, "session/prompt error response missing")
+    if prompt_response.get("id") != prompt_request.get("id"):
+        raise ProbeError(stage, "session/prompt response id mismatched")
+
+
+def validate_lifecycle_a_prompt_seam(
+    zed_messages: Sequence[Mapping[str, Any]],
+    agent_messages: Sequence[Mapping[str, Any]],
+    *,
+    session_id: str,
+) -> None:
+    """Validate verified raw Lifecycle-A relay capture before resume classification."""
+    if not isinstance(session_id, str) or not session_id:
+        raise ProbeError("lifecycle_a_prompt", "session/new session id missing")
+    prompt_requests = [message for message in zed_messages if message.get("method") == "session/prompt"]
+    prompt_exchange = extract_session_prompt_from_messages(zed_messages, agent_messages)
+    _validate_session_prompt_seam(
+        prompt_requests=prompt_requests,
+        prompt_exchange=prompt_exchange,
+        session_id=session_id,
+        stage="lifecycle_a_prompt",
+    )
+
+
+def _extract_session_load_exchange_for_session(
+    records: Sequence[Mapping[str, Any]],
+    session_id: str,
+) -> dict[str, Any] | None:
+    requests: dict[Any, dict[str, Any]] = {}
+    exchanges: list[dict[str, Any]] = []
+    for record in records:
+        if record.get("method") == "session/load":
+            requests[record.get("id")] = dict(record)
+            continue
+        request = requests.get(record.get("id"))
+        if request is not None and ("result" in record or "error" in record):
+            exchanges.append({"request": request, "response": dict(record)})
+    for exchange in exchanges:
+        request = exchange.get("request")
+        if not isinstance(request, Mapping):
+            continue
+        params = request.get("params")
+        if isinstance(params, Mapping) and params.get("sessionId") == session_id:
+            return exchange
+    return None
+
+
+def _records_contain_traffic_marker(*record_groups: Sequence[Mapping[str, Any]]) -> bool:
+    serialized = json.dumps([list(group) for group in record_groups], sort_keys=True).casefold()
+    return any(term in serialized for term in _TRAFFIC_MARKER_TERMS)
+
+
+def _prompt_message_sha256(request: Mapping[str, Any]) -> str | None:
+    params = request.get("params")
+    if not isinstance(params, Mapping):
+        return None
+    prompt_list = params.get("prompt")
+    if not isinstance(prompt_list, Sequence) or len(prompt_list) != 1:
+        return None
+    first = prompt_list[0]
+    if not isinstance(first, Mapping) or first.get("type") != "text":
+        return None
+    text = first.get("text")
+    if not isinstance(text, str):
+        return None
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def validate_agent_protocol_establishing_sequence(
+    *,
+    new_records: Sequence[Mapping[str, Any]],
+    prompt_records: Sequence[Mapping[str, Any]],
+    load_records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Validate sanitized acpx records for the Task-12/13 establishing premise."""
+    if _records_contain_traffic_marker(new_records, prompt_records, load_records):
+        raise ProbeError("agent_protocol_sequence", "gateway or provider traffic marker present")
+
+    new_exchange = extract_session_new_from_messages(new_records, new_records)
+    if new_exchange is None:
+        raise ProbeError("agent_protocol_sequence", "session/new exchange missing")
+    new_request = new_exchange.get("request")
+    new_response = new_exchange.get("response")
+    if not isinstance(new_request, Mapping) or not isinstance(new_response, Mapping):
+        raise ProbeError("agent_protocol_sequence", "session/new exchange incomplete")
+    new_request_id = new_request.get("id")
+    new_response_result = new_response.get("result")
+    if not isinstance(new_response_result, Mapping):
+        raise ProbeError("agent_protocol_sequence", "session/new response missing")
+    session_id = new_response_result.get("sessionId")
+    if not isinstance(session_id, str) or not session_id:
+        raise ProbeError("agent_protocol_sequence", "session/new session id missing")
+    if new_response.get("id") != new_request_id:
+        raise ProbeError("agent_protocol_sequence", "session/new response id mismatched")
+
+    prompt_requests = [record for record in prompt_records if record.get("method") == "session/prompt"]
+    prompt_exchange = extract_session_prompt_exchange(prompt_records)
+    _validate_session_prompt_seam(
+        prompt_requests=prompt_requests,
+        prompt_exchange=prompt_exchange,
+        session_id=session_id,
+        stage="agent_protocol_sequence",
+    )
+    prompt_request = prompt_exchange["request"]
+    prompt_response = prompt_exchange["response"]
+    message_sha256 = _prompt_message_sha256(prompt_request)
+    error_obj = prompt_response.get("error")
+    error_code = error_obj.get("code") if isinstance(error_obj, Mapping) else None
+
+    load_exchange = _extract_session_load_exchange_for_session(load_records, session_id)
+    if load_exchange is None:
+        raise ProbeError("agent_protocol_sequence", "session/load exchange missing")
+    load_request = load_exchange["request"]
+    load_response = load_exchange["response"]
+    load_params = load_request.get("params")
+    if not isinstance(load_params, Mapping) or load_params.get("sessionId") != session_id:
+        raise ProbeError("agent_protocol_sequence", "session/load session id mismatch")
+    if load_response.get("result") != {}:
+        raise ProbeError("agent_protocol_sequence", "session/load result is not exactly {}")
+    if isinstance(load_response.get("error"), Mapping):
+        raise ProbeError("agent_protocol_sequence", "session/load returned error")
+    if load_response.get("id") != load_request.get("id"):
+        raise ProbeError("agent_protocol_sequence", "session/load response id mismatched")
+
+    return {
+        "session_new": {"request_id": new_request_id, "session_id": session_id},
+        "session_prompt": {
+            "request_id": prompt_request.get("id"),
+            "session_id": session_id,
+            "request_count": 1,
+            "message_sha256": message_sha256,
+            "outcome": "error",
+            "response_id_matches": True,
+            "error_code": error_code,
+        },
+        "session_load": {
+            "request_id": load_request.get("id"),
+            "session_id": session_id,
+            "response_id_matches": True,
+            "result": {},
+        },
+    }
+
+
+def build_establishing_report_v2_record(
+    *,
+    source_commit: str,
+    applicability_manifest: Mapping[str, Any],
+    python_identity: Mapping[str, str],
+    acpx_identity: Mapping[str, str],
+    trust_identity: Mapping[str, str],
+    isolated_identity: Mapping[str, str],
+    sequence: Mapping[str, Any],
+    custody: Mapping[str, Any],
+    cleanup: Mapping[str, Any],
+    completed_at_utc: str,
+) -> dict[str, Any]:
+    return {
+        "schema": ESTABLISHING_REPORT_SCHEMA,
+        "establishing_disposition": PLAN1124_ESTABLISHING_OK,
+        "completed_at_utc": completed_at_utc,
+        "authority": {
+            "source_commit": source_commit,
+            "source_commit_execution_surface_clean": True,
+            "applicability": dict(applicability_manifest),
+            "python_version": python_identity["python_version"],
+            "python_executable_sha256": python_identity["python_executable_sha256"],
+            "acpx_version": acpx_identity["version"],
+            "acpx_command_sha256": acpx_identity["command_sha256"],
+            "acpx_cli_js_sha256": acpx_identity["cli_js_sha256"],
+            "trust_executable_sha256": trust_identity["trust_executable_sha256"],
+            "isolated_launcher_canonical_sha256": isolated_identity["isolated_launcher_canonical_sha256"],
+            "isolated_launcher_raw_sha256": isolated_identity["isolated_launcher_raw_sha256"],
+            "isolated_patched_spec_sha256": isolated_identity["isolated_patched_spec_sha256"],
+        },
+        "counts": {"zed_launches": 0, "origin_a_launches": 0},
+        "sequence": dict(sequence),
+        "traffic": {
+            "gateway_attempted": False,
+            "provider_attempted": False,
+            "model_call_attempted": False,
+        },
+        "custody": dict(custody),
+        "cleanup": dict(cleanup),
+    }
+
+
+def render_establishing_report_v2_markdown(record: Mapping[str, Any]) -> str:
+    return "\n".join(
+        [
+            "# Plan 11.24 agent protocol persistence establishing drive",
+            "",
+            "This report records prerequisite-only evidence from the independently authored acpx client.",
+            "It is not a finding about Zed.",
+            "",
+            "## Typed reconstruction record",
+            "",
+            "```json",
+            json.dumps(dict(record), indent=2, sort_keys=True, ensure_ascii=False),
+            "```",
+            "",
+        ]
+    )
+
+
+def render_isolated_launcher_bytes(source_root: str | Path) -> bytes:
+    if source_root == ISOLATED_SOURCE_ROOT:
+        source_token = ISOLATED_SOURCE_ROOT
+    else:
+        source_token = Path(source_root).resolve().as_posix()
+    content = (
+        "from __future__ import annotations\n\n"
+        "import sys\n"
+        "from pathlib import Path\n\n"
+        f"_SOURCE = Path({source_token!r})\n"
+        'sys.path.insert(0, str(_SOURCE / "src"))\n'
+        "from optimus.acp.__main__ import main\n\n"
+        "if __name__ == '__main__':\n"
+        "    raise SystemExit(main())\n"
+    )
+    return content.encode("utf-8")
+
+
+def compute_isolated_patched_spec_bytes(
+    spec_blob: bytes,
+    patch_plan: ProbePatchPlan | None = None,
+) -> bytes:
+    plan = patch_plan or DEFAULT_PROBE_PATCH_PLAN
+    validate_probe_patch_plan(plan)
+    text = spec_blob.decode("utf-8")
+    if _INITIALIZE_NO_LOAD_SESSION not in text or _SESSION_PROMPT_BRANCH not in text:
+        raise ProbeError("apply_probe_patch", "unexpected patch surface: initialize/load markers missing")
+    patched = text.replace(_INITIALIZE_NO_LOAD_SESSION, _INITIALIZE_TEMPORARY_LOAD_SESSION, 1)
+    patched = patched.replace(_SESSION_PROMPT_BRANCH, _SESSION_LOAD_BRANCH, 1)
+    if patched == text or '"loadSession": True' not in patched or "session/load" not in patched:
+        raise ProbeError("apply_probe_patch", "unexpected patch surface: isolated patch did not apply")
+    return patched.encode("utf-8")
+
+
+def resolve_acpx_cli_js_path(acpx_path: Path) -> Path:
+    resolved = acpx_path.resolve()
+    candidates = [
+        resolved.parent / "node_modules" / "acpx" / "dist" / "cli.js",
+        resolved.parent.parent / "node_modules" / "acpx" / "dist" / "cli.js",
+    ]
+    appdata = os.environ.get("APPDATA", "").strip()
+    if appdata:
+        candidates.append(Path(appdata) / "npm" / "node_modules" / "acpx" / "dist" / "cli.js")
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve()
+    raise ProbeError("resolve_acpx_cli_js", "acpx JavaScript CLI entry not found")
+
+
+def resolve_acpx_identities(acpx_path: Path, *, cwd: Path, env: Mapping[str, str]) -> dict[str, str]:
+    version = _acpx_version(acpx_path, cwd=cwd, env=env)
+    command_sha256 = _file_sha256(acpx_path)
+    cli_js_sha256 = _file_sha256(resolve_acpx_cli_js_path(acpx_path))
+    return {
+        "version": version,
+        "command_sha256": command_sha256,
+        "cli_js_sha256": cli_js_sha256,
+    }
+
+
+def parse_aware_utc_timestamp(value: str) -> datetime:
+    if value.endswith("-00:00"):
+        raise ValueError("unsupported UTC offset")
+    if value.endswith("Z"):
+        normalized = value[:-1] + "+00:00"
+    elif value.endswith("+00:00"):
+        normalized = value
+    else:
+        raise ValueError("timestamp must end with Z or +00:00")
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        raise ValueError("timestamp must be timezone-aware")
+    if parsed.utcoffset() != timedelta(0):
+        raise ValueError("timestamp must be UTC")
+    return parsed.astimezone(UTC)
+
+
+def serialize_aware_utc_timestamp(value: datetime) -> str:
+    aware = value.astimezone(UTC).replace(microsecond=0)
+    return aware.isoformat().replace("+00:00", "Z")
+
+
+def validate_establishing_report_freshness(completed_at_utc: str, now_utc: datetime) -> None:
+    completed = parse_aware_utc_timestamp(completed_at_utc)
+    now = now_utc.astimezone(UTC)
+    age_seconds = (now - completed).total_seconds()
+    if age_seconds < 0:
+        raise ValueError("future timestamp")
+    if age_seconds > ESTABLISHING_REPORT_MAX_AGE_SECONDS:
+        raise ValueError("stale timestamp")
+
+
+def _reject_establishing_prerequisite(result: dict[str, Any], *, detail: str | None = None) -> bool:
+    result["finding"] = Finding.INDETERMINATE.value
+    result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
+    result["zed_launches"] = 0
+    if detail is not None:
+        result["establishing_gate_detail"] = detail
+    return False
+
+
+def _resolve_python_identity() -> dict[str, str]:
+    executable = Path(sys.executable).resolve()
+    return {
+        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "python_executable_sha256": _file_sha256(executable),
+    }
+
+
+def _resolve_trust_executable_identity(repo_root: Path) -> dict[str, str]:
+    trust_cli = _resolve_trust_cli(repo_root)
+    return {"trust_executable_sha256": _file_sha256(trust_cli)}
+
+
+def _resolve_isolated_identity(repo_root: Path, isolated_source_root: str | None) -> dict[str, str]:
+    spec_blob = git_cat_file_blob(repo_root, "HEAD", "src/optimus/acp/spec.py")
+    patched_spec_sha256 = hash_git_blob_bytes(compute_isolated_patched_spec_bytes(spec_blob))
+    canonical_launcher_sha256 = hash_git_blob_bytes(render_isolated_launcher_bytes(ISOLATED_SOURCE_ROOT))
+    identities = {
+        "isolated_launcher_canonical_sha256": canonical_launcher_sha256,
+        "isolated_patched_spec_sha256": patched_spec_sha256,
+    }
+    if isolated_source_root:
+        raw_launcher_sha256 = hash_git_blob_bytes(render_isolated_launcher_bytes(isolated_source_root))
+        identities["isolated_launcher_raw_sha256"] = raw_launcher_sha256
+    return identities
+
+
+def _manifests_equal(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
+    if left.get("schema") != right.get("schema"):
+        return False
+    if left.get("manifest_sha256") != right.get("manifest_sha256"):
+        return False
+    left_files = left.get("files")
+    right_files = right.get("files")
+    return isinstance(left_files, list) and left_files == right_files
+
+
+def verify_establishing_execution_surface(repo_root: Path, commit: str = "HEAD") -> None:
+    if not execution_surface_clean(repo_root, ESTABLISHING_EXECUTION_GIT_PATHS):
+        raise ProbeError("execution_surface", "execution surface is not clean")
+    verify_establishing_import_closure(repo_root, commit)
+
+
 def validate_probe_patch_plan(plan: ProbePatchPlan) -> None:
     """Reject any patch surface beyond the temporary initialize capability and empty load result."""
     if (
@@ -234,6 +1178,15 @@ RELAY_EXTRACT_SOURCE = "opaque-relay-post-run"
 REPORTS_ROOT = Path(__file__).resolve().parents[1] / "reports"
 PLAN_1124_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe"
 PLAN_1124_V3_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe-v3"
+PLAN_1124_V5_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe-v5"
+PLAN_1124_AGENT_PROTOCOL_REPORT_NAME = "plan-11-24-agent-protocol-persistence-establishing-drive.md"
+PLAN1124_LIFECYCLE_A_RUN_ID = "plan1124-create"
+PLAN1124_LIFECYCLE_B_RUN_ID = "plan1124-resume"
+PLAN1124_ESTABLISHING_OK = "NO_GATEWAY_PATH_ESTABLISHED"
+PLAN1124_ESTABLISHING_PRECONDITION_UNMET = "PRECONDITION_UNMET"
+PLAN1124_EXEC_MESSAGE = "Persist this probe thread only; do not use tools or modify files."
+PLAN1124_EXEC_MESSAGE_SHA256 = hashlib.sha256(PLAN1124_EXEC_MESSAGE.encode("utf-8")).hexdigest()
+_TRAFFIC_MARKER_TERMS = ("gateway", "provider", "model_call", "model-call", "openrouter", "openai")
 PLAN1124_OUTCOME_CONSEQUENCES = {
     Finding.REACHABLE.value: (
         "The tested current Zed issued `session/load`; a separately scoped `P11-FU-1` "
@@ -258,6 +1211,7 @@ APPROVED_REAL_ZED_PREFIX = [
 DEFAULT_ZED_LAUNCH_TIMEOUT_SECONDS = 180.0
 MIN_ZED_LAUNCH_TIMEOUT_SECONDS = 60.0
 MAX_ZED_LAUNCH_TIMEOUT_SECONDS = 900.0
+
 RELAY_CHILD_STDERR_EXCERPT_LIMIT = 4000
 _USER_DATA_HELP_LINE = re.compile(r"user[\s_-]*data", re.I)
 _HELP_FLAG = re.compile(r"(--[A-Za-z0-9][A-Za-z0-9-]*)")
@@ -597,18 +1551,12 @@ def _advertises_top_level_load_session(source_root: Path) -> bool:
     return '"loadSession": True' in text
 
 
-def _apply_isolated_probe_patch(spec_path: Path) -> None:
-    try:
-        text = spec_path.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise ProbeError("apply_probe_patch", f"{type(exc).__name__}: {exc}") from exc
-    if _INITIALIZE_NO_LOAD_SESSION not in text or _SESSION_PROMPT_BRANCH not in text:
-        raise ProbeError("apply_probe_patch", "unexpected patch surface: initialize/load markers missing")
-    patched = text.replace(_INITIALIZE_NO_LOAD_SESSION, _INITIALIZE_TEMPORARY_LOAD_SESSION, 1)
-    patched = patched.replace(_SESSION_PROMPT_BRANCH, _SESSION_LOAD_BRANCH, 1)
-    if patched == text or '"loadSession": True' not in patched or "session/load" not in patched:
-        raise ProbeError("apply_probe_patch", "unexpected patch surface: isolated patch did not apply")
-    spec_path.write_text(patched, encoding="utf-8")
+def _apply_isolated_probe_patch(spec_path: Path, *, repo_root: Path | None = None) -> None:
+    root = repo_root or Path(__file__).resolve().parents[1]
+    spec_blob = git_cat_file_blob(root, "HEAD", "src/optimus/acp/spec.py")
+    expected = compute_isolated_patched_spec_bytes(spec_blob)
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_bytes(expected)
 
 
 def _verify_cleanup_dry_run(scratch_parent: Path) -> bool:
@@ -981,6 +1929,173 @@ def _safe_payload(value: Any) -> Any:
     return sanitize_for_persistence(value, policy=EVIDENCE_REDACTION_POLICY).value
 
 
+def _probe_path_alias_rules(*roots: Path | str | None) -> tuple[PathAliasRule, ...]:
+    rules: list[PathAliasRule] = []
+    seen: set[str] = set()
+    for root in roots:
+        if root is None:
+            continue
+        text = str(root).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        rules.append(PathAliasRule(source_root=text, alias="<scratch>"))
+    repo_root = Path(__file__).resolve().parents[1]
+    repo_text = str(repo_root)
+    if repo_text not in seen:
+        rules.append(PathAliasRule(source_root=repo_text, alias="<repo>"))
+    return tuple(rules)
+
+
+def _safe_payload_with_probe_aliases(value: Any, *roots: Path | str | None) -> Any:
+    return sanitize_for_persistence(
+        value,
+        policy=EVIDENCE_REDACTION_POLICY,
+        path_aliases=_probe_path_alias_rules(*roots),
+    ).value
+
+
+def _append_event_ledger(result: dict[str, Any], kind: str, **payload: Any) -> None:
+    ledger = result.setdefault("event_ledger")
+    if not isinstance(ledger, list):
+        ledger = []
+        result["event_ledger"] = ledger
+    entry = {"kind": kind, **payload}
+    ledger.append(_safe_payload(entry))
+
+
+def _plan1124_projected_isolation(isolation: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(isolation, Mapping):
+        return {}
+    return {
+        key: isolation.get(key)
+        for key in (
+            "normal_agent_load_session_advertised",
+            "isolated_probe_load_session_advertised",
+            "cleanup_dry_run_verified",
+            "cleanup_verified",
+        )
+    }
+
+
+def _plan1124_projected_zed_identity(zed: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(zed, Mapping):
+        return {}
+    return {
+        "version": zed.get("version"),
+        "executable_sha256": zed.get("executable_sha256"),
+    }
+
+
+def _plan1124_projected_acpx_identity(acpx: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(acpx, Mapping):
+        return {}
+    return {
+        "version": acpx.get("version"),
+        "executable_sha256": acpx.get("executable_sha256"),
+    }
+
+
+def _plan1124_projected_invocation(invocation: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(invocation, Mapping):
+        return {}
+    return {
+        "discovered_from": invocation.get("discovered_from"),
+        "help_sha256": invocation.get("help_sha256"),
+    }
+
+
+def _plan1124_agent_protocol_sidecar(result: Mapping[str, Any], *, alias_roots: Sequence[Path | str | None]) -> dict[str, Any]:
+    prompt_attempt = result.get("prompt_attempt")
+    projected_prompt: dict[str, Any] | None = None
+    if isinstance(prompt_attempt, Mapping):
+        projected_prompt = {
+            "exit_code": prompt_attempt.get("exit_code"),
+            "prompt_failed": prompt_attempt.get("exit_code") != 0,
+        }
+    payload = {
+        "schema": result.get("schema"),
+        "mode": result.get("mode"),
+        "recorded_at_utc": result.get("recorded_at_utc"),
+        "commit": result.get("commit"),
+        "zed_launches": result.get("zed_launches"),
+        "origin_a_launches": result.get("origin_a_launches"),
+        "isolated_build": result.get("isolated_build"),
+        "no_gateway_path_established": result.get("no_gateway_path_established"),
+        "establishing_disposition": result.get("establishing_disposition"),
+        "indeterminate_reason": result.get("indeterminate_reason"),
+        "workspace_custody_verified": result.get("workspace_custody_verified"),
+        "workspace_revoke_verified": result.get("workspace_revoke_verified"),
+        "workspace_revoke_error": result.get("zed_workspace_revoke_error"),
+        "session_new_response": result.get("session_new_response"),
+        "session_load_exchange": result.get("session_load_exchange"),
+        "prompt_attempt": projected_prompt,
+        "acpx": _plan1124_projected_acpx_identity(
+            result.get("acpx") if isinstance(result.get("acpx"), Mapping) else None
+        ),
+        "isolation": _plan1124_projected_isolation(
+            result.get("isolation") if isinstance(result.get("isolation"), Mapping) else None
+        ),
+        "failure": result.get("failure"),
+    }
+    sanitized = _safe_payload_with_probe_aliases(payload, *alias_roots)
+    return sanitized if isinstance(sanitized, dict) else {}
+
+
+def _plan1124_v5_manifest_projection(
+    result: Mapping[str, Any],
+    *,
+    files: Mapping[str, str],
+    alias_roots: Sequence[Path | str | None],
+) -> dict[str, Any]:
+    resume = result.get("resume_lifecycle")
+    projected_resume = resume if isinstance(resume, Mapping) else None
+    payload: dict[str, Any] = {
+        "schema": result.get("schema"),
+        "recorded_at_utc": result.get("recorded_at_utc"),
+        "commit": result.get("commit"),
+        "finding": result.get("finding"),
+        "indeterminate_reason": result.get("indeterminate_reason"),
+        "zed": _plan1124_projected_zed_identity(result.get("zed") if isinstance(result.get("zed"), Mapping) else None),
+        "acpx": _plan1124_projected_acpx_identity(result.get("acpx") if isinstance(result.get("acpx"), Mapping) else None),
+        "normal_source": result.get("normal_source"),
+        "isolated_source": result.get("isolated_source"),
+        "isolated_build": result.get("isolated_build"),
+        "invocation": _plan1124_projected_invocation(
+            result.get("invocation") if isinstance(result.get("invocation"), Mapping) else None
+        ),
+        "isolation": _plan1124_projected_isolation(
+            result.get("isolation") if isinstance(result.get("isolation"), Mapping) else None
+        ),
+        "capability_payload": result.get("capability_payload"),
+        "relay": result.get("relay"),
+        "captured_exchange": result.get("captured_exchange"),
+        "origin_a_launches": 0,
+        "zed_launches": result.get("zed_launches"),
+        "resume_lifecycle": projected_resume,
+        "files": dict(files),
+    }
+    excerpt = result.get("relay_child_stderr_excerpt")
+    if isinstance(excerpt, str):
+        payload["relay_child_stderr_excerpt"] = excerpt
+    sanitized = _safe_payload_with_probe_aliases(payload, *alias_roots)
+    if not isinstance(sanitized, dict):
+        raise ProbeError("evidence_bundle", "sanitized manifest is not an object")
+    return sanitized
+
+
+def _write_agent_protocol_report(record: Mapping[str, Any]) -> None:
+    report_path = _agent_protocol_report_path()
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(render_establishing_report_v2_markdown(record), encoding="utf-8", newline="\n")
+
+
+def _remove_agent_protocol_report() -> None:
+    report_path = _agent_protocol_report_path()
+    if report_path.is_file():
+        report_path.unlink()
+
+
 def capture_acpx_evidence(command_result: CommandResult) -> dict[str, Any]:
     """Retain safe structured ACP evidence from a successful *or failed* acpx stage."""
     records = _parse_ndjson(command_result.stdout)
@@ -1302,19 +2417,7 @@ def write_isolated_agent_launcher(build_root: Path, isolated_source: Path) -> Pa
     """Write a throwaway launcher that prefers the isolated src tree over the normal checkout."""
     build_root.mkdir(parents=True, exist_ok=True)
     launcher = build_root / _ISOLATED_LAUNCHER_NAME
-    source = isolated_source.resolve().as_posix()
-    launcher.write_text(
-        "from __future__ import annotations\n\n"
-        "import sys\n"
-        "from pathlib import Path\n\n"
-        f"_SOURCE = Path({source!r})\n"
-        'sys.path.insert(0, str(_SOURCE / "src"))\n'
-        "from optimus.acp.__main__ import main\n\n"
-        "if __name__ == '__main__':\n"
-        "    raise SystemExit(main())\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    launcher.write_bytes(render_isolated_launcher_bytes(isolated_source))
     return launcher
 
 
@@ -1397,6 +2500,22 @@ def extract_session_load_from_messages(
     return None
 
 
+def extract_session_new_from_messages(
+    zed_to_agent: Sequence[Mapping[str, Any]],
+    agent_to_zed: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    requests = {
+        message.get("id"): dict(message)
+        for message in zed_to_agent
+        if message.get("method") == "session/new" and "id" in message
+    }
+    for message in agent_to_zed:
+        request = requests.get(message.get("id"))
+        if request is not None and isinstance(message.get("result"), Mapping):
+            return {"request": request, "response": dict(message)}
+    return None
+
+
 def reconstruct_sanitized_relay_bytes(messages: Sequence[Mapping[str, Any]]) -> bytes:
     chunks: list[bytes] = []
     for message in messages:
@@ -1411,6 +2530,8 @@ def reconstruct_sanitized_relay_bytes(messages: Sequence[Mapping[str, Any]]) -> 
 def _reason_from_stage(stage: str) -> IndeterminateReason:
     mapping = {
         "already_running_zed": IndeterminateReason.ALREADY_RUNNING_ZED,
+        "lifecycle_a_prompt": IndeterminateReason.PRECONDITION_UNMET,
+        "agent_protocol_sequence": IndeterminateReason.PRECONDITION_UNMET,
         "zed_discovery": IndeterminateReason.HERMETIC_INVOCATION_UNAVAILABLE,
         "zed_invocation": IndeterminateReason.HERMETIC_INVOCATION_UNAVAILABLE,
         "zed_launch": IndeterminateReason.OBSERVATION_INCOMPLETE,
@@ -1591,6 +2712,165 @@ def _assert_cleanup_allows_publish(result: Mapping[str, Any]) -> None:
         raise ProbeError("cleanup", "sanitized evidence is not published after failed cleanup")
 
 
+def _agent_protocol_report_path() -> Path:
+    return REPORTS_ROOT / PLAN_1124_AGENT_PROTOCOL_REPORT_NAME
+
+
+def _read_establishing_disposition_marker(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    try:
+        parsed = _extract_establishing_report_json(text)
+    except ProbeError:
+        parsed = None
+    if isinstance(parsed, Mapping):
+        disposition = parsed.get("establishing_disposition")
+        return str(disposition) if isinstance(disposition, str) and disposition else None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Establishing-Disposition:"):
+            _, _, value = stripped.partition(":")
+            marker = value.strip()
+            return marker or None
+    return None
+
+
+def _read_agent_protocol_report_provenance(path: Path) -> dict[str, str | None]:
+    if not path.is_file():
+        return {
+            "recorded_at_utc": None,
+            "commit": None,
+            "acpx_version": None,
+            "acpx_sha256": None,
+            "isolated_launcher_sha256": None,
+        }
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {
+            "recorded_at_utc": None,
+            "commit": None,
+            "acpx_version": None,
+            "acpx_sha256": None,
+            "isolated_launcher_sha256": None,
+        }
+    parsed: dict[str, str | None] = {
+        "recorded_at_utc": None,
+        "commit": None,
+        "acpx_version": None,
+        "acpx_sha256": None,
+        "isolated_launcher_sha256": None,
+    }
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Recorded-At-UTC:"):
+            _, _, value = stripped.partition(":")
+            parsed["recorded_at_utc"] = value.strip() or None
+        elif stripped.startswith("Commit:"):
+            _, _, value = stripped.partition(":")
+            parsed["commit"] = value.strip() or None
+        elif stripped.startswith("Acpx-Version:"):
+            _, _, value = stripped.partition(":")
+            parsed["acpx_version"] = value.strip() or None
+        elif stripped.startswith("Acpx-Executable-Sha256:"):
+            _, _, value = stripped.partition(":")
+            parsed["acpx_sha256"] = value.strip() or None
+        elif stripped.startswith("Isolated-Launcher-Sha256:"):
+            _, _, value = stripped.partition(":")
+            parsed["isolated_launcher_sha256"] = value.strip() or None
+    return parsed
+
+
+def _require_established_agent_protocol_prerequisite(result: dict[str, Any]) -> bool:
+    repo_root = Path(__file__).resolve().parents[1]
+    head_commit = result.get("commit") or _git_head(repo_root)
+    isolated_source_root = result.get("isolated_launcher_source_root")
+    if isolated_source_root is None:
+        isolation = result.get("isolation")
+        if isinstance(isolation, Mapping):
+            candidate = isolation.get("isolated_source_root")
+            if isinstance(candidate, str):
+                isolated_source_root = candidate
+    result["agent_protocol_prerequisite"] = {
+        "report": ESTABLISHING_REPORT_GIT_PATH,
+        "head_commit": head_commit,
+    }
+    try:
+        report_blob = read_committed_establishing_report_blob(repo_root)
+        report = parse_establishing_report_v2(report_blob)
+    except ProbeError as exc:
+        result["agent_protocol_prerequisite"]["gate_error"] = exc.args[0]
+        return _reject_establishing_prerequisite(result, detail=exc.args[0])
+    authority = report["authority"]
+    source_commit = authority["source_commit"]
+    result["agent_protocol_prerequisite"].update(
+        {
+            "disposition": report.get("establishing_disposition"),
+            "source_commit": source_commit,
+            "completed_at_utc": report.get("completed_at_utc"),
+        }
+    )
+    if not isinstance(head_commit, str) or not head_commit:
+        return _reject_establishing_prerequisite(result, detail="head commit missing")
+    if not is_ancestor(repo_root, source_commit, head_commit):
+        return _reject_establishing_prerequisite(result, detail="source commit is not an ancestor")
+    try:
+        verify_establishing_execution_surface(repo_root, head_commit)
+    except ProbeError as exc:
+        return _reject_establishing_prerequisite(result, detail=exc.args[0])
+    current_manifest = build_applicability_manifest(repo_root, head_commit)
+    report_manifest = authority["applicability"]
+    if not _manifests_equal(current_manifest, report_manifest):
+        return _reject_establishing_prerequisite(result, detail="applicability manifest drift")
+    try:
+        validate_establishing_report_freshness(str(report["completed_at_utc"]), datetime.now(UTC))
+    except ValueError as exc:
+        return _reject_establishing_prerequisite(result, detail=str(exc))
+    python_identity = _resolve_python_identity()
+    if (
+        authority.get("python_version") != python_identity["python_version"]
+        or authority.get("python_executable_sha256") != python_identity["python_executable_sha256"]
+    ):
+        return _reject_establishing_prerequisite(result, detail="python identity mismatch")
+    acpx_path = _resolve_acpx()
+    acpx_workspace = Path(tempfile.mkdtemp(prefix="p1124-acpx-provenance-"))
+    try:
+        acpx_env = _isolated_environment(acpx_workspace / "acpx-home")
+        acpx_identity = resolve_acpx_identities(acpx_path, cwd=acpx_workspace, env=acpx_env)
+    finally:
+        shutil.rmtree(acpx_workspace, ignore_errors=True)
+    if authority.get("acpx_version") != acpx_identity["version"]:
+        return _reject_establishing_prerequisite(result, detail="acpx version mismatch")
+    if authority.get("acpx_cli_js_sha256") != acpx_identity["cli_js_sha256"]:
+        return _reject_establishing_prerequisite(result, detail="acpx cli.js identity mismatch")
+    trust_identity = _resolve_trust_executable_identity(repo_root)
+    if authority.get("trust_executable_sha256") != trust_identity["trust_executable_sha256"]:
+        return _reject_establishing_prerequisite(result, detail="trust executable identity mismatch")
+    isolated_identity = _resolve_isolated_identity(repo_root, isolated_source_root)
+    if authority.get("isolated_launcher_canonical_sha256") != isolated_identity["isolated_launcher_canonical_sha256"]:
+        return _reject_establishing_prerequisite(result, detail="canonical launcher identity mismatch")
+    if authority.get("isolated_patched_spec_sha256") != isolated_identity["isolated_patched_spec_sha256"]:
+        return _reject_establishing_prerequisite(result, detail="patched spec identity mismatch")
+    expected_isolated_build = result.get("isolated_build")
+    expected_launcher_sha256 = (
+        expected_isolated_build.get("sha256") if isinstance(expected_isolated_build, Mapping) else None
+    )
+    raw_launcher_sha256 = isolated_identity.get("isolated_launcher_raw_sha256")
+    if not isinstance(expected_launcher_sha256, str) or not expected_launcher_sha256:
+        return _reject_establishing_prerequisite(result, detail="current raw launcher digest missing")
+    if raw_launcher_sha256 != expected_launcher_sha256:
+        return _reject_establishing_prerequisite(result, detail="raw launcher bytes mismatch")
+    result["agent_protocol_prerequisite"]["acpx_command_sha256"] = acpx_identity["command_sha256"]
+    result["agent_protocol_prerequisite"]["isolated_launcher_canonical_sha256"] = isolated_identity[
+        "isolated_launcher_canonical_sha256"
+    ]
+    return True
+
+
 def _plan1124_report_text(result: Mapping[str, Any]) -> str:
     finding = str(result.get("finding") or Finding.INDETERMINATE.value)
     recorded = str(result.get("recorded_at_utc") or "")
@@ -1706,6 +2986,66 @@ def materialize_sanitized_zed_evidence(
             _verify_existing_evidence_manifest(manifest_path)
         except Exception as exc:
             raise ProbeError("evidence_bundle", "existing verifier rejected the sanitized bundle") from exc
+        if target.exists():
+            raise ProbeError("evidence_bundle", "existing report directory must not be overwritten")
+        staging.replace(target)
+        return target / "manifest.json"
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+
+
+def materialize_sanitized_zed_evidence_v5(
+    *,
+    report_dir: Path,
+    result: Mapping[str, Any],
+    lifecycle_a_zed: bytes,
+    lifecycle_a_agent: bytes,
+    lifecycle_b_zed: bytes,
+    lifecycle_b_agent: bytes,
+) -> Path:
+    target = _assert_allowed_report_dir(report_dir)
+    _assert_cleanup_allows_publish(result)
+    parent = target.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.", dir=parent))
+    try:
+        relay_a = staging / "relay" / "lifecycle-a"
+        relay_b = staging / "relay" / "lifecycle-b"
+        relay_a.mkdir(parents=True, exist_ok=True)
+        relay_b.mkdir(parents=True, exist_ok=True)
+        report_path = staging / "report.md"
+        a_zed_path = relay_a / "zed-to-agent.bin"
+        a_agent_path = relay_a / "agent-to-zed.bin"
+        b_zed_path = relay_b / "zed-to-agent.bin"
+        b_agent_path = relay_b / "agent-to-zed.bin"
+        a_zed_path.write_bytes(lifecycle_a_zed)
+        a_agent_path.write_bytes(lifecycle_a_agent)
+        b_zed_path.write_bytes(lifecycle_b_zed)
+        b_agent_path.write_bytes(lifecycle_b_agent)
+        report_path.write_text(_plan1124_report_text(result), encoding="utf-8", newline="\n")
+        files = {
+            "report.md": _sha256_bytes(report_path.read_bytes()),
+            "relay/lifecycle-a/zed-to-agent.bin": _sha256_bytes(lifecycle_a_zed),
+            "relay/lifecycle-a/agent-to-zed.bin": _sha256_bytes(lifecycle_a_agent),
+            "relay/lifecycle-b/zed-to-agent.bin": _sha256_bytes(lifecycle_b_zed),
+            "relay/lifecycle-b/agent-to-zed.bin": _sha256_bytes(lifecycle_b_agent),
+        }
+        manifest = _plan1124_v5_manifest_projection(
+            result,
+            files=files,
+            alias_roots=(
+                target,
+                report_dir,
+                result.get("invocation", {}).get("user_data_root") if isinstance(result.get("invocation"), Mapping) else None,
+            ),
+        )
+        sanitized = manifest
+        if not isinstance(sanitized, dict):
+            raise ProbeError("evidence_bundle", "sanitized manifest is not an object")
+        manifest_path = staging / "manifest.json"
+        manifest_path.write_text(json.dumps(sanitized, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+        _verify_existing_evidence_manifest(manifest_path)
         if target.exists():
             raise ProbeError("evidence_bundle", "existing report directory must not be overwritten")
         staging.replace(target)
@@ -1946,6 +3286,234 @@ def run_plan1119_acpx_baseline(parent_workspace: Path) -> dict[str, Any]:
             result["notes"] = "acpx baseline confirmed isolated loadSession advertisement; not a Zed finding."
     return result
 
+
+def run_plan1124_agent_protocol_drive(parent_workspace: Path) -> dict[str, Any]:
+    """Run acpx-only persistence establishing drive with no Zed launches."""
+    repo_root = Path(__file__).resolve().parents[1]
+    result = _plan1119_base_result(repo_root, mode="agent-protocol")
+    result["zed_launches"] = 0
+    result["origin_a_launches"] = 0
+    result["no_gateway_path_established"] = False
+    run_root: Path | None = None
+    preparation: ProbePreparation | None = None
+    workspace: Path | None = None
+    trust_cli: Path | None = None
+    approved = False
+    source_commit: str | None = None
+    applicability_manifest: dict[str, Any] | None = None
+    sequence_block: dict[str, Any] | None = None
+    acpx_identity: dict[str, str] | None = None
+    try:
+        workspace_parent = _validate_parent_workspace(parent_workspace, repo_root)
+        source_commit = _git_head(repo_root)
+        if not isinstance(source_commit, str) or not source_commit:
+            raise ProbeError("establishing_authority", "source commit missing")
+        verify_establishing_execution_surface(repo_root, source_commit)
+        applicability_manifest = build_applicability_manifest(repo_root, source_commit)
+        run_root = Path(tempfile.mkdtemp(prefix="p1124-agent-protocol-", dir=workspace_parent))
+        isolated = run_root / "probe-source"
+        preparation = prepare_real_zed_probe(isolated, normal_root=repo_root, scratch_parent=run_root)
+        isolation = verify_normal_operation_isolation(preparation)
+        if not isolation.prelaunch_predicates_pass:
+            raise ProbeError("isolation", "pre-launch isolation predicates failed")
+        validate_isolation_evidence(isolation, require_cleanup=False)
+        launcher = write_isolated_agent_launcher(Path(preparation.isolated_build_root), Path(preparation.isolated_source_root))
+        result["isolated_build"] = {"sha256": _file_sha256(launcher)}
+        workspace = run_root / "acpx-workspace"
+        workspace.mkdir(parents=True, exist_ok=True)
+        first_home = run_root / "acpx-home-first"
+        second_home = run_root / "acpx-home-second"
+        first_env = _isolated_environment(first_home)
+        second_env = _isolated_environment(second_home)
+        acpx = _resolve_acpx()
+        trust_cli = _resolve_trust_cli(repo_root)
+        acpx_identity = resolve_acpx_identities(acpx, cwd=workspace, env=first_env)
+        result["acpx"] = {
+            "version": acpx_identity["version"],
+            "executable": str(acpx),
+            "executable_sha256": acpx_identity["command_sha256"],
+        }
+        command = build_acpx_command(acpx, workspace=workspace, agent=launcher, ttl_seconds=1)
+        inspect = _run(build_trust_command(trust_cli, workspace, "inspect"), cwd=workspace, env=os.environ)
+        if inspect.returncode != 1:
+            raise ProbeError("temporary_approval_preflight", f"inspect exit={inspect.returncode}", inspect)
+        _run_interactive_required(build_trust_command(trust_cli, workspace, "approve"), cwd=workspace, stage="temporary_approval")
+        approved = True
+
+        new_result = _run_required([*command, "sessions", "new"], cwd=workspace, env=first_env, stage="acpx_new_session")
+        new_evidence = capture_acpx_evidence(new_result)
+        new_records = new_evidence.get("stdout_records")
+        if not isinstance(new_records, Sequence):
+            new_records = []
+        new_exchange = extract_session_new_from_messages(new_records, new_records)
+        result["session_new_response"] = _safe_payload(new_exchange)
+
+        prompt_result = _run([*command, "exec", PLAN1124_EXEC_MESSAGE], cwd=workspace, env=first_env)
+        prompt_evidence = capture_acpx_evidence(prompt_result)
+        result["prompt_attempt"] = _safe_payload(prompt_evidence)
+        prompt_records = prompt_evidence.get("stdout_records")
+        if not isinstance(prompt_records, Sequence):
+            prompt_records = []
+
+        archive = run_root / "session.json"
+        _run_required([*command, "sessions", "export", "--output", str(archive)], cwd=workspace, env=first_env, stage="acpx_export_session")
+        _run_required([*command, "sessions", "import", str(archive)], cwd=workspace, env=second_env, stage="acpx_import_session")
+        time.sleep(2)
+        status_result = _run([*command, "status"], cwd=workspace, env=second_env)
+        load_records = _parse_ndjson(status_result.stdout)
+        new_id: str | None = None
+        if isinstance(new_exchange, Mapping):
+            response = new_exchange.get("response")
+            if isinstance(response, Mapping):
+                response_result = response.get("result")
+                if isinstance(response_result, Mapping):
+                    candidate = response_result.get("sessionId")
+                    if isinstance(candidate, str) and candidate:
+                        new_id = candidate
+        selected_exchange = _extract_session_load_exchange_for_session(load_records, new_id or "")
+        if selected_exchange is None and load_records:
+            _, fallback_exchange = _extract_session_load_evidence(load_records)
+            selected_exchange = fallback_exchange
+        result["session_load_exchange"] = _safe_payload(selected_exchange)
+
+        sequence_block = validate_agent_protocol_establishing_sequence(
+            new_records=new_records,
+            prompt_records=prompt_records,
+            load_records=load_records,
+        )
+        result["no_gateway_path_established"] = True
+        result["establishing_disposition"] = PLAN1124_ESTABLISHING_OK
+        result["indeterminate_reason"] = None
+    except ProbeError as exc:
+        record_probe_command_failure(result, exc)
+        result["indeterminate_reason"] = _reason_from_stage(exc.stage).value
+        result["establishing_disposition"] = PLAN1124_ESTABLISHING_PRECONDITION_UNMET
+        if exc.stage == "agent_protocol_sequence":
+            result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
+    finally:
+        retain_run_root = False
+        revoke_verified = not approved
+        if approved and trust_cli is not None and workspace is not None:
+            try:
+                _revoke_temporary_approval(trust_cli, workspace, cwd=workspace)
+                revoke_verified = True
+            except ProbeError as exc:
+                retain_run_root = True
+                _record_zed_workspace_revoke_failure(
+                    result,
+                    trust_cli=trust_cli,
+                    workspace=workspace,
+                    stage=exc.stage,
+                    message=str(exc),
+                )
+                result["indeterminate_reason"] = IndeterminateReason.CLEANUP_UNVERIFIED.value
+                result["no_gateway_path_established"] = False
+                result["establishing_disposition"] = PLAN1124_ESTABLISHING_PRECONDITION_UNMET
+        cleaned = True
+        leftovers: list[str] = []
+        if not retain_run_root:
+            cleaned, leftovers = _cleanup_plan1119_roots(
+                run_root=run_root,
+                isolated_source=Path(preparation.isolated_source_root) if preparation else None,
+                isolated_build=Path(preparation.isolated_build_root) if preparation else None,
+                hermetic_root=Path(preparation.hermetic_zed_root) if preparation else None,
+            )
+        else:
+            cleaned = False
+        result.setdefault("isolation", {})
+        if isinstance(result["isolation"], dict):
+            result["isolation"]["cleanup_verified"] = cleaned
+        if not cleaned:
+            result["indeterminate_reason"] = IndeterminateReason.CLEANUP_UNVERIFIED.value
+            result["cleanup_remediation"] = leftovers
+            result["no_gateway_path_established"] = False
+            result["establishing_disposition"] = PLAN1124_ESTABLISHING_PRECONDITION_UNMET
+        custody_verified = revoke_verified and cleaned
+        result["workspace_revoke_verified"] = revoke_verified
+        result["workspace_custody_verified"] = custody_verified
+        desired_publish = custody_verified and bool(result.get("no_gateway_path_established"))
+        alias_roots = (
+            run_root,
+            workspace,
+            preparation.isolated_source_root if preparation else None,
+            preparation.isolated_build_root if preparation else None,
+            preparation.hermetic_zed_root if preparation else None,
+            parent_workspace,
+        )
+        sidecar_written = False
+        try:
+            sidecar = parent_workspace / "plan1124-agent-protocol-result.json"
+            sidecar.write_text(
+                json.dumps(
+                    _plan1124_agent_protocol_sidecar(result, alias_roots=alias_roots),
+                    indent=2,
+                    sort_keys=True,
+                    default=str,
+                ),
+                encoding="utf-8",
+                newline="\n",
+            )
+            result["sidecar"] = str(sidecar)
+            sidecar_written = True
+        except OSError:
+            pass
+
+        if desired_publish and sidecar_written and sequence_block is not None and source_commit and applicability_manifest and acpx_identity and preparation:
+            completed_at_utc = serialize_aware_utc_timestamp(datetime.now(UTC))
+            python_identity = _resolve_python_identity()
+            trust_identity = _resolve_trust_executable_identity(repo_root)
+            isolated_identity = _resolve_isolated_identity(repo_root, preparation.isolated_source_root)
+            v2_record = build_establishing_report_v2_record(
+                source_commit=source_commit,
+                applicability_manifest=applicability_manifest,
+                python_identity=python_identity,
+                acpx_identity=acpx_identity,
+                trust_identity=trust_identity,
+                isolated_identity=isolated_identity,
+                sequence=sequence_block,
+                custody={
+                    "approval_created": approved,
+                    "approval_revoked": revoke_verified,
+                    "post_revoke_inspect_exit_code": 1 if revoke_verified else 0,
+                },
+                cleanup={"throwaway_root_removed": cleaned},
+                completed_at_utc=completed_at_utc,
+            )
+            _write_agent_protocol_report(v2_record)
+        else:
+            _remove_agent_protocol_report()
+            result["no_gateway_path_established"] = False
+            result["establishing_disposition"] = PLAN1124_ESTABLISHING_PRECONDITION_UNMET
+            if custody_verified:
+                # Sidecar write failure would otherwise leave a positive disposition
+                # without any associated evidence bundle.
+                result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
+    return result
+
+
+def _classify_resume_lifecycle(create_id: str | None, load_exchange: Mapping[str, Any] | None) -> tuple[Finding, str | None]:
+    if not create_id or not isinstance(load_exchange, Mapping):
+        return (Finding.INDETERMINATE, IndeterminateReason.OBSERVATION_INCOMPLETE.value)
+    request = load_exchange.get("request")
+    response = load_exchange.get("response")
+    if not isinstance(request, Mapping) or not isinstance(response, Mapping):
+        return (Finding.INDETERMINATE, IndeterminateReason.OBSERVATION_INCOMPLETE.value)
+    if request.get("method") != "session/load":
+        return (Finding.INDETERMINATE, IndeterminateReason.OBSERVATION_INCOMPLETE.value)
+    params = request.get("params")
+    if not isinstance(params, Mapping) or params.get("sessionId") != create_id:
+        return (Finding.INDETERMINATE, IndeterminateReason.PRECONDITION_UNMET.value)
+    has_result_empty = response.get("result") == {}
+    has_error_mapping = isinstance(response.get("error"), Mapping)
+    # JSON-RPC requires exactly one of `result`/`error`. Any both-present case
+    # must be treated as malformed and fail closed as indeterminate.
+    if has_result_empty and has_error_mapping:
+        return (Finding.INDETERMINATE, IndeterminateReason.OBSERVATION_INCOMPLETE.value)
+    if has_result_empty:
+        return (Finding.REACHABLE, None)
+    if has_error_mapping:
+        return (Finding.UNREACHABLE, None)
+    return (Finding.INDETERMINATE, IndeterminateReason.OBSERVATION_INCOMPLETE.value)
 
 def run_plan1119_real_zed(
     parent_workspace: Path,
@@ -2236,11 +3804,319 @@ def run_plan1119_real_zed(
     return result
 
 
+def run_plan1124_two_lifecycle_real_zed(
+    parent_workspace: Path,
+    *,
+    timeout_s: float,
+    report_dir: Path,
+) -> dict[str, Any]:
+    repo_root = Path(__file__).resolve().parents[1]
+    result = _plan1119_base_result(repo_root, mode="real-zed-resume")
+    result["zed_launches"] = 0
+    marker = _read_establishing_disposition_marker(_agent_protocol_report_path())
+    result["agent_protocol_prerequisite"] = {
+        "report": str(_agent_protocol_report_path()),
+        "disposition": marker,
+    }
+    if marker != PLAN1124_ESTABLISHING_OK:
+        result["finding"] = Finding.INDETERMINATE.value
+        result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
+        result["zed_launches"] = 0
+        return result
+    total_timeout = validate_zed_launch_timeout_seconds(timeout_s)
+    run_root: Path | None = None
+    preparation: ProbePreparation | None = None
+    isolation: IsolationEvidence | None = None
+    workspace: Path | None = None
+    trust_cli: Path | None = None
+    zed_workspace_approved = False
+    retain_run_root = False
+    try:
+        workspace_parent = _validate_parent_workspace(parent_workspace, repo_root)
+        if zed_target_already_running(_list_process_names()):
+            raise ProbeError("already_running_zed", "an already-running Zed process is in scope")
+        run_root = Path(tempfile.mkdtemp(prefix="p1124-real-zed-resume-", dir=workspace_parent))
+        isolated = run_root / "probe-source"
+        preparation = prepare_real_zed_probe(isolated, normal_root=repo_root, scratch_parent=run_root)
+        isolation = verify_normal_operation_isolation(preparation)
+        validate_isolation_evidence(isolation, require_cleanup=False)
+        executable, invocation, help_sha256 = _discover_live_zed_invocation(Path(preparation.hermetic_zed_root))
+        result["isolated_launcher_source_root"] = preparation.isolated_source_root
+        launcher = write_isolated_agent_launcher(Path(preparation.isolated_build_root), Path(preparation.isolated_source_root))
+        result["isolated_build"] = {
+            "sha256": hash_git_blob_bytes(render_isolated_launcher_bytes(preparation.isolated_source_root)),
+            "canonical_sha256": hash_git_blob_bytes(render_isolated_launcher_bytes(ISOLATED_SOURCE_ROOT)),
+        }
+        if not _require_established_agent_protocol_prerequisite(result):
+            return result
+        workspace = run_root / "zed-workspace"
+        workspace.mkdir(parents=True, exist_ok=True)
+        trust_cli = _resolve_trust_cli(repo_root)
+        inspect = _run(build_trust_command(trust_cli, workspace, "inspect"), cwd=workspace, env=os.environ)
+        if inspect.returncode != 1:
+            raise ProbeError("zed_workspace_inspect", f"inspect exit={inspect.returncode}", inspect)
+        _run_interactive_required(build_trust_command(trust_cli, workspace, "approve"), cwd=workspace, stage="zed_workspace_approval")
+        zed_workspace_approved = True
+        result["zed_workspace_approval"] = {"mode": "durable", "created": True, "revoked": False}
+        _append_event_ledger(
+            result,
+            "workspace_approved_durable",
+            workspace=str(workspace.resolve()),
+        )
+        _record_identities(
+            result,
+            executable=executable,
+            invocation=invocation,
+            help_sha256=help_sha256,
+            preparation=preparation,
+            isolation=isolation,
+            launcher=launcher,
+            acpx=None,
+        )
+
+        deadline = time.monotonic() + total_timeout
+        captures: dict[str, dict[str, Any]] = {}
+        create_id: str | None = None
+        load_exchange: Mapping[str, Any] | None = None
+        shared_user_data_root = Path(invocation.user_data_root).resolve()
+        shared_workspace = workspace.resolve()
+        _append_event_ledger(
+            result,
+            "shared_profile_bound",
+            user_data_root=str(shared_user_data_root),
+            workspace=str(shared_workspace),
+            deadline_monotonic=deadline,
+        )
+        for lifecycle, run_id in (("lifecycle_a", PLAN1124_LIFECYCLE_A_RUN_ID), ("lifecycle_b", PLAN1124_LIFECYCLE_B_RUN_ID)):
+            if lifecycle == "lifecycle_b":
+                _append_event_ledger(
+                    result,
+                    "no_intervening_cleanup_between_lifecycles",
+                    previous_lifecycle_run_id=PLAN1124_LIFECYCLE_A_RUN_ID,
+                )
+            remaining_scheduled = deadline - time.monotonic()
+            _append_event_ledger(
+                result,
+                "lifecycle_launch_scheduled",
+                lifecycle=lifecycle,
+                run_id=run_id,
+                remaining_seconds=remaining_scheduled,
+                zed_launches_before=int(result.get("zed_launches", 0)),
+            )
+            if remaining_scheduled <= 0:
+                raise ProbeError("zed_launch", "shared deadline expired before lifecycle launch")
+            capture_root = run_root / "relay-capture"
+            capture_root.mkdir(exist_ok=True)
+            child_args = [str(launcher), "--workspace-root", str(workspace), "--no-auto-start"]
+            relay_argv = build_opaque_relay_command(
+                capture_root=capture_root,
+                run_id=run_id,
+                child_executable=Path(sys.executable),
+                invocation=invocation,
+                child_args=child_args,
+            )
+            seed_hermetic_zed_settings(Path(invocation.user_data_root), relay_command=relay_argv[0], relay_args=relay_argv[1:])
+            launch_help = _observe_zed_help(Path(invocation.argv[0]))
+            zed_argv = list(build_real_zed_launch_argv(invocation, workspace=workspace, launch_help=launch_help))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProbeError("zed_launch", "shared deadline expired before lifecycle launch execution")
+            result["zed_launches"] = int(result.get("zed_launches", 0)) + 1
+            _append_event_ledger(
+                result,
+                "lifecycle_launch_started",
+                lifecycle=lifecycle,
+                run_id=run_id,
+                user_data_root=str(Path(invocation.user_data_root).resolve()),
+                workspace=str(workspace.resolve()),
+                zed_argv=_safe_payload(zed_argv),
+                remaining_seconds=remaining,
+            )
+            _launch_zed_once(
+                zed_argv,
+                env=_zed_env_for_invocation(invocation),
+                cwd=workspace,
+                log_path=run_root / f"{run_id}.log",
+                timeout_s=remaining,
+            )
+            run_dir = capture_root / run_id
+            verify_relay_capture(run_dir)
+            _append_event_ledger(result, "relay_capture_verified", lifecycle=lifecycle, run_id=run_id)
+            zed_messages = iter_acp_messages((run_dir / "zed-to-agent.bin").read_bytes())
+            agent_messages = iter_acp_messages((run_dir / "agent-to-zed.bin").read_bytes())
+            if lifecycle == "lifecycle_a":
+                new_exchange = extract_session_new_from_messages(zed_messages, agent_messages)
+                if isinstance(new_exchange, Mapping):
+                    response = new_exchange.get("response")
+                    if isinstance(response, Mapping):
+                        payload = response.get("result")
+                        if isinstance(payload, Mapping):
+                            session_id = payload.get("sessionId")
+                            if isinstance(session_id, str):
+                                create_id = session_id
+                prompt_requests = [
+                    msg
+                    for msg in zed_messages
+                    if isinstance(msg.get("method"), str) and msg.get("method") == "session/prompt"
+                ]
+                prompt_text_matches = 0
+                for req in prompt_requests:
+                    params = req.get("params")
+                    if not isinstance(params, Mapping):
+                        continue
+                    prompt_list = params.get("prompt")
+                    if not isinstance(prompt_list, Sequence) or not prompt_list:
+                        continue
+                    first = prompt_list[0]
+                    if isinstance(first, Mapping) and first.get("text") == PLAN1124_EXEC_MESSAGE:
+                        prompt_text_matches += 1
+                _append_event_ledger(
+                    result,
+                    "prompt_message_seam_observed",
+                    prompt_request_count=len(prompt_requests),
+                    prompt_text_matches=prompt_text_matches,
+                )
+                validate_lifecycle_a_prompt_seam(
+                    zed_messages,
+                    agent_messages,
+                    session_id=create_id or "",
+                )
+            zed_sanitized = reconstruct_sanitized_relay_bytes(zed_messages)
+            agent_sanitized = reconstruct_sanitized_relay_bytes(agent_messages)
+            captures[lifecycle] = {
+                "zed": zed_sanitized,
+                "agent": agent_sanitized,
+                "zed_sha256": hashlib.sha256(zed_sanitized).hexdigest(),
+                "agent_sha256": hashlib.sha256(agent_sanitized).hexdigest(),
+            }
+            if lifecycle == "lifecycle_b":
+                load_exchange = extract_session_load_from_messages(zed_messages, agent_messages)
+
+        finding, reason = _classify_resume_lifecycle(create_id, load_exchange)
+        result["finding"] = finding.value
+        result["indeterminate_reason"] = reason
+        result["resume_lifecycle"] = {
+            "shared_profile": True,
+            "shared_user_data_root": str(shared_user_data_root),
+            "shared_workspace": str(shared_workspace),
+            "lifecycle_a": {
+                "label": PLAN1124_LIFECYCLE_A_RUN_ID,
+                "session_new_id": create_id,
+                "zed_to_agent_sha256": captures["lifecycle_a"]["zed_sha256"],
+                "agent_to_zed_sha256": captures["lifecycle_a"]["agent_sha256"],
+            },
+            "lifecycle_b": {
+                "label": PLAN1124_LIFECYCLE_B_RUN_ID,
+                "session_load_exchange": _safe_payload(load_exchange),
+                "zed_to_agent_sha256": captures["lifecycle_b"]["zed_sha256"],
+                "agent_to_zed_sha256": captures["lifecycle_b"]["agent_sha256"],
+            },
+        }
+        result["relay"] = {"source": RELAY_EXTRACT_SOURCE}
+        result["captured_exchange"] = _safe_payload(load_exchange)
+        result["_lifecycle_a_zed"] = captures["lifecycle_a"]["zed"]
+        result["_lifecycle_a_agent"] = captures["lifecycle_a"]["agent"]
+        result["_lifecycle_b_zed"] = captures["lifecycle_b"]["zed"]
+        result["_lifecycle_b_agent"] = captures["lifecycle_b"]["agent"]
+    except ProbeError as exc:
+        record_probe_command_failure(result, exc)
+        result["finding"] = Finding.INDETERMINATE.value
+        result["indeterminate_reason"] = _reason_from_stage(exc.stage).value
+    finally:
+        if zed_workspace_approved and trust_cli is not None and workspace is not None:
+            try:
+                _revoke_temporary_approval(trust_cli, workspace, cwd=workspace)
+                if isinstance(result.get("zed_workspace_approval"), dict):
+                    result["zed_workspace_approval"]["revoked"] = True
+                _append_event_ledger(result, "workspace_revoked", workspace=str(workspace.resolve()))
+            except BaseException as revoke_exc:
+                retain_run_root = True
+                _record_zed_workspace_revoke_failure(
+                    result,
+                    trust_cli=trust_cli,
+                    workspace=workspace,
+                    stage="zed_workspace_revoke",
+                    message=f"{type(revoke_exc).__name__}: interrupted during revoke",
+                )
+        if retain_run_root:
+            result.setdefault("isolation", {})
+            if isinstance(result["isolation"], dict):
+                result["isolation"]["cleanup_verified"] = False
+            result["finding"] = Finding.INDETERMINATE.value
+            result["indeterminate_reason"] = IndeterminateReason.CLEANUP_UNVERIFIED.value
+        else:
+            cleaned, leftovers = _cleanup_plan1119_roots(
+                run_root=run_root,
+                isolated_source=Path(preparation.isolated_source_root) if preparation else None,
+                isolated_build=Path(preparation.isolated_build_root) if preparation else None,
+                hermetic_root=Path(preparation.hermetic_zed_root) if preparation else None,
+            )
+            result.setdefault("isolation", {})
+            if isinstance(result["isolation"], dict):
+                result["isolation"]["cleanup_verified"] = cleaned
+            if not cleaned:
+                result["finding"] = Finding.INDETERMINATE.value
+                result["indeterminate_reason"] = IndeterminateReason.CLEANUP_UNVERIFIED.value
+                result["cleanup_remediation"] = leftovers
+            else:
+                _append_event_ledger(result, "final_cleanup_verified")
+                if (
+                    result.get("finding") in {Finding.REACHABLE.value, Finding.UNREACHABLE.value}
+                    and isinstance(result.get("_lifecycle_a_zed"), (bytes, bytearray))
+                    and isinstance(result.get("_lifecycle_a_agent"), (bytes, bytearray))
+                    and isinstance(result.get("_lifecycle_b_zed"), (bytes, bytearray))
+                    and isinstance(result.get("_lifecycle_b_agent"), (bytes, bytearray))
+                ):
+                    try:
+                        result["evidence_manifest"] = str(
+                            materialize_sanitized_zed_evidence_v5(
+                                report_dir=report_dir,
+                                result=result,
+                                lifecycle_a_zed=bytes(result["_lifecycle_a_zed"]),
+                                lifecycle_a_agent=bytes(result["_lifecycle_a_agent"]),
+                                lifecycle_b_zed=bytes(result["_lifecycle_b_zed"]),
+                                lifecycle_b_agent=bytes(result["_lifecycle_b_agent"]),
+                            )
+                        )
+                    except (ProbeError, OSError, TypeError, ValueError) as exc:
+                        result["evidence_materialization_error"] = {
+                            "type": type(exc).__name__,
+                            "stage": exc.stage if isinstance(exc, ProbeError) else "evidence_bundle",
+                            "message": _safe_payload(str(exc)),
+                        }
+        try:
+            sidecar = parent_workspace / "plan1124-real-zed-resume-result.json"
+            alias_roots = (
+                run_root,
+                workspace,
+                preparation.isolated_source_root if preparation else None,
+                preparation.isolated_build_root if preparation else None,
+                preparation.hermetic_zed_root if preparation else None,
+                parent_workspace,
+                report_dir,
+            )
+            sidecar_payload = _plan1124_v5_manifest_projection(
+                result,
+                files={},
+                alias_roots=alias_roots,
+            )
+            sidecar_payload["event_ledger"] = _safe_payload_with_probe_aliases(result.get("event_ledger"), *alias_roots)
+            sidecar.write_text(
+                json.dumps(sidecar_payload, indent=2, sort_keys=True, default=str),
+                encoding="utf-8",
+                newline="\n",
+            )
+            result["sidecar"] = str(sidecar)
+        except OSError:
+            pass
+    return result
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--mode",
-        choices=("acpx", "acpx-baseline", "preflight", "real-zed"),
+        choices=("acpx", "acpx-baseline", "preflight", "real-zed", "agent-protocol", "real-zed-resume"),
         default="acpx",
         help="acpx is the existing non-Zed baseline; preflight never launches Zed; real-zed is the authorized live capture",
     )
@@ -2254,7 +4130,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--report-dir",
         type=Path,
         default=None,
-        help="sanitized evidence directory under reports/; required for --mode preflight and --mode real-zed",
+        help="sanitized evidence directory under reports/; required for --mode preflight, --mode real-zed, and --mode real-zed-resume",
     )
     parser.add_argument("workspace", type=Path, help="existing throwaway parent directory; never a repository")
     return parser
@@ -2263,8 +4139,8 @@ def _build_parser() -> argparse.ArgumentParser:
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = _build_parser()
     args = parser.parse_args(argv)
-    if args.mode in {"preflight", "real-zed"} and args.report_dir is None:
-        parser.error("--report-dir is required for --mode preflight and --mode real-zed")
+    if args.mode in {"preflight", "real-zed", "real-zed-resume"} and args.report_dir is None:
+        parser.error("--report-dir is required for --mode preflight, --mode real-zed, and --mode real-zed-resume")
     return args
 
 
@@ -2287,7 +4163,7 @@ def build_approved_real_zed_command(parsed: argparse.Namespace) -> list[str]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
-    if args.mode == "real-zed" and os.environ.get("PYTEST_CURRENT_TEST"):
+    if args.mode in {"real-zed", "real-zed-resume"} and os.environ.get("PYTEST_CURRENT_TEST"):
         print(
             json.dumps(
                 {
@@ -2318,6 +4194,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = run_plan1119_real_zed(
             args.workspace,
             launch_timeout_seconds=args.zed_launch_timeout_seconds,
+            report_dir=args.report_dir,
+        )
+        printable = {key: value for key, value in result.items() if not str(key).startswith("_")}
+        print(json.dumps(printable, indent=2, sort_keys=True, default=str))
+        return 0 if result.get("isolation", {}).get("cleanup_verified") else 1
+    if args.mode == "agent-protocol":
+        result = run_plan1124_agent_protocol_drive(args.workspace)
+        print(json.dumps(result, indent=2, sort_keys=True, default=str))
+        return 0 if result.get("no_gateway_path_established") else 1
+    if args.mode == "real-zed-resume":
+        result = run_plan1124_two_lifecycle_real_zed(
+            args.workspace,
+            timeout_s=args.zed_launch_timeout_seconds,
             report_dir=args.report_dir,
         )
         printable = {key: value for key, value in result.items() if not str(key).startswith("_")}
