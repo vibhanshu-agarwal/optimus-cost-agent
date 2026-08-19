@@ -352,3 +352,101 @@ def test_v5_manifest_requires_two_lifecycle_correlation_but_legacy_manifests_sti
 
     _rewrite(manifest_path, break_match)
     assert main(["--manifest", str(manifest_path)]) == 1
+
+
+def test_v5_manifest_rejects_wrong_lifecycle_labels(tmp_path: Path) -> None:
+    report_dir = tmp_path / "reports" / "plan-11-24-zed-guided-session-load-probe-v5"
+    report_dir.mkdir(parents=True)
+    relay_a = report_dir / "relay" / "lifecycle-a"
+    relay_b = report_dir / "relay" / "lifecycle-b"
+    relay_a.mkdir(parents=True)
+    relay_b.mkdir(parents=True)
+    for path, payload in (
+        (relay_a / "zed-to-agent.bin", b"a-zed"),
+        (relay_a / "agent-to-zed.bin", b"a-agent"),
+        (relay_b / "zed-to-agent.bin", b"b-zed"),
+        (relay_b / "agent-to-zed.bin", b"b-agent"),
+    ):
+        path.write_bytes(payload)
+    report = report_dir / "report.md"
+    report.write_text("Finding: REACHABLE.\n", encoding="utf-8")
+    payload = valid_manifest(finding="REACHABLE")
+    payload["zed_launches"] = 2
+    payload["relay"] = {"source": "opaque-relay-post-run"}
+    payload["resume_lifecycle"] = {
+        "shared_profile": True,
+        "lifecycle_a": {
+            "label": "wrong-a",
+            "session_new_id": "session-a",
+            "zed_to_agent_sha256": _sha256_file(relay_a / "zed-to-agent.bin"),
+            "agent_to_zed_sha256": _sha256_file(relay_a / "agent-to-zed.bin"),
+        },
+        "lifecycle_b": {
+            "label": "plan1124-resume",
+            "session_load_exchange": {
+                "request": {"method": "session/load", "params": {"sessionId": "session-a"}},
+                "response": {"result": {}},
+            },
+            "zed_to_agent_sha256": _sha256_file(relay_b / "zed-to-agent.bin"),
+            "agent_to_zed_sha256": _sha256_file(relay_b / "agent-to-zed.bin"),
+        },
+    }
+    payload["files"] = {
+        "report.md": _sha256_file(report),
+        "relay/lifecycle-a/zed-to-agent.bin": _sha256_file(relay_a / "zed-to-agent.bin"),
+        "relay/lifecycle-a/agent-to-zed.bin": _sha256_file(relay_a / "agent-to-zed.bin"),
+        "relay/lifecycle-b/zed-to-agent.bin": _sha256_file(relay_b / "zed-to-agent.bin"),
+        "relay/lifecycle-b/agent-to-zed.bin": _sha256_file(relay_b / "agent-to-zed.bin"),
+    }
+    manifest_path = report_dir / "manifest.json"
+    manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    assert main(["--manifest", str(manifest_path)]) == 1
+
+
+def test_v5_indeterminate_without_b_response_fails(tmp_path: Path) -> None:
+    report_dir = tmp_path / "reports" / "plan-11-24-zed-guided-session-load-probe-v5"
+    report_dir.mkdir(parents=True)
+    relay_a = report_dir / "relay" / "lifecycle-a"
+    relay_b = report_dir / "relay" / "lifecycle-b"
+    relay_a.mkdir(parents=True)
+    relay_b.mkdir(parents=True)
+    for path, payload in (
+        (relay_a / "zed-to-agent.bin", b"a-zed"),
+        (relay_a / "agent-to-zed.bin", b"a-agent"),
+        (relay_b / "zed-to-agent.bin", b"b-zed"),
+        (relay_b / "agent-to-zed.bin", b"b-agent"),
+    ):
+        path.write_bytes(payload)
+    report = report_dir / "report.md"
+    report.write_text("Finding: INDETERMINATE / OBSERVATION_INCOMPLETE.\n", encoding="utf-8")
+    payload = valid_manifest(finding="INDETERMINATE")
+    payload["zed_launches"] = 2
+    payload["relay"] = {"source": "opaque-relay-post-run"}
+    payload["resume_lifecycle"] = {
+        "shared_profile": True,
+        "lifecycle_a": {
+            "label": "plan1124-create",
+            "session_new_id": "session-a",
+            "zed_to_agent_sha256": _sha256_file(relay_a / "zed-to-agent.bin"),
+            "agent_to_zed_sha256": _sha256_file(relay_a / "agent-to-zed.bin"),
+        },
+        "lifecycle_b": {
+            "label": "plan1124-resume",
+            "session_load_exchange": {
+                "request": {"method": "session/load", "params": {"sessionId": "session-a"}},
+                "response": {},
+            },
+            "zed_to_agent_sha256": _sha256_file(relay_b / "zed-to-agent.bin"),
+            "agent_to_zed_sha256": _sha256_file(relay_b / "agent-to-zed.bin"),
+        },
+    }
+    payload["files"] = {
+        "report.md": _sha256_file(report),
+        "relay/lifecycle-a/zed-to-agent.bin": _sha256_file(relay_a / "zed-to-agent.bin"),
+        "relay/lifecycle-a/agent-to-zed.bin": _sha256_file(relay_a / "agent-to-zed.bin"),
+        "relay/lifecycle-b/zed-to-agent.bin": _sha256_file(relay_b / "zed-to-agent.bin"),
+        "relay/lifecycle-b/agent-to-zed.bin": _sha256_file(relay_b / "agent-to-zed.bin"),
+    }
+    manifest_path = report_dir / "manifest.json"
+    manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    assert main(["--manifest", str(manifest_path)]) == 1

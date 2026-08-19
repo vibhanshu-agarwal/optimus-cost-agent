@@ -142,12 +142,34 @@ def _verify_resume_lifecycle(manifest: Mapping[str, Any], report_dir: Path) -> N
     lifecycle_b = resume.get("lifecycle_b")
     require(isinstance(lifecycle_a, Mapping), "resume_lifecycle.lifecycle_a", "lifecycle_a record is missing")
     require(isinstance(lifecycle_b, Mapping), "resume_lifecycle.lifecycle_b", "lifecycle_b record is missing")
+    require(
+        lifecycle_a.get("label") == "plan1124-create",
+        "resume_lifecycle.lifecycle_a.label",
+        "lifecycle_a label must be plan1124-create",
+    )
+    require(
+        lifecycle_b.get("label") == "plan1124-resume",
+        "resume_lifecycle.lifecycle_b.label",
+        "lifecycle_b label must be plan1124-resume",
+    )
     create_id = lifecycle_a.get("session_new_id")
     require(isinstance(create_id, str) and create_id.strip(), "resume_lifecycle.lifecycle_a.session_new_id", "session/new id is missing")
     exchange = lifecycle_b.get("session_load_exchange")
     require(isinstance(exchange, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange", "session/load exchange is missing")
     request = exchange.get("request")
+    response = exchange.get("response")
     require(isinstance(request, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.request", "session/load request is missing")
+    require(isinstance(response, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.response", "session/load response is missing")
+    require(
+        response.get("result") == {} or isinstance(response.get("error"), Mapping),
+        "resume_lifecycle.lifecycle_b.session_load_exchange.response",
+        "session/load response must contain result {} or an error object",
+    )
+    require(
+        request.get("method") == "session/load",
+        "resume_lifecycle.lifecycle_b.session_load_exchange.request.method",
+        "Lifecycle B exchange must be session/load",
+    )
     params = request.get("params")
     require(isinstance(params, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.request.params", "session/load params are missing")
     require(
@@ -158,6 +180,10 @@ def _verify_resume_lifecycle(manifest: Mapping[str, Any], report_dir: Path) -> N
 
     files = manifest.get("files")
     require(isinstance(files, Mapping), "files", "files must be an object of relative paths")
+    require("report.md" in files, "files", "report.md is missing from files map")
+    report_path = _require_report_relative(report_dir, "report.md")
+    require(report_path.is_file(), "files", "declared report file is missing")
+    require(files.get("report.md") == _sha256_file(report_path), "report.md", "SHA-256 mismatch")
     expected = (
         "relay/lifecycle-a/zed-to-agent.bin",
         "relay/lifecycle-a/agent-to-zed.bin",
@@ -196,6 +222,16 @@ def _verify_finding_rule(manifest: Mapping[str, Any]) -> None:
     finding = manifest["finding"]
     require(finding in ALLOWED_FINDINGS, "finding", "finding must be REACHABLE, UNREACHABLE, or INDETERMINATE")
     exchange = manifest.get("captured_exchange")
+    if isinstance(manifest.get("resume_lifecycle"), Mapping):
+        if finding == "REACHABLE":
+            require(exchange and exchange["request"]["method"] == "session/load", "captured_exchange", "REACHABLE requires session/load")
+            require(exchange["response"].get("result") == {}, "captured_exchange", "REACHABLE requires empty result")
+        elif finding == "UNREACHABLE":
+            require(exchange and exchange["request"]["method"] == "session/load", "captured_exchange", "UNREACHABLE requires session/load")
+            require(isinstance(exchange["response"].get("error"), dict), "captured_exchange", "UNREACHABLE requires an error object")
+        else:
+            require(manifest["indeterminate_reason"] in ALLOWED_INDETERMINATE_REASONS, "indeterminate_reason", "INDETERMINATE without a named reason")
+        return
     if finding == "REACHABLE":
         require(exchange and exchange["request"]["method"] == "session/load", "captured_exchange", "REACHABLE requires session/load")
         require(exchange["response"].get("result") == {}, "captured_exchange", "REACHABLE requires empty result")

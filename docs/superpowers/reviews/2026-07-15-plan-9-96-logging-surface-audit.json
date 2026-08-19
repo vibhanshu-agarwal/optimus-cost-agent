@@ -2737,6 +2737,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.probe_p11_zed_session_load:_write_agent_protocol_report:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the agent-protocol prerequisite report only after verified revoke and cleanup; report text is schema-limited to disposition tokens and a boolean no-Gateway marker with no raw acpx streams or ambient paths.",
+      "sanitizer": "schema-limited result; optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_agent_protocol_drive_revoke_failure_removes_positive_marker_from_disk",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.probe_p11_zed_session_load:materialize_sanitized_zed_evidence_v5:text_file_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: writes only reconstructed sanitized lifecycle relay bytes and schema-limited report/manifest under staging before atomic publish; no raw relay capture or child stderr files are promoted.",

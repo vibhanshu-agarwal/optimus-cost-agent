@@ -38,7 +38,7 @@ from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from optimus.acp.framing import FramingError, parse_content_length
-from optimus_security.sanitization import EVIDENCE_REDACTION_POLICY, sanitize_for_persistence
+from optimus_security.sanitization import EVIDENCE_REDACTION_POLICY, PathAliasRule, sanitize_for_persistence
 from tools.plan117_custody_relay import verify_relay_capture
 
 PLAN1119_SCHEMA = "plan-11-19-zed-session-load-reprobe-v1"
@@ -989,6 +989,166 @@ def _safe_payload(value: Any) -> Any:
     return sanitize_for_persistence(value, policy=EVIDENCE_REDACTION_POLICY).value
 
 
+def _probe_path_alias_rules(*roots: Path | str | None) -> tuple[PathAliasRule, ...]:
+    rules: list[PathAliasRule] = []
+    seen: set[str] = set()
+    for root in roots:
+        if root is None:
+            continue
+        text = str(root).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        rules.append(PathAliasRule(source_root=text, alias="<scratch>"))
+    repo_root = Path(__file__).resolve().parents[1]
+    repo_text = str(repo_root)
+    if repo_text not in seen:
+        rules.append(PathAliasRule(source_root=repo_text, alias="<repo>"))
+    return tuple(rules)
+
+
+def _safe_payload_with_probe_aliases(value: Any, *roots: Path | str | None) -> Any:
+    return sanitize_for_persistence(
+        value,
+        policy=EVIDENCE_REDACTION_POLICY,
+        path_aliases=_probe_path_alias_rules(*roots),
+    ).value
+
+
+def _append_event_ledger(result: dict[str, Any], kind: str, **payload: Any) -> None:
+    ledger = result.setdefault("event_ledger")
+    if not isinstance(ledger, list):
+        ledger = []
+        result["event_ledger"] = ledger
+    entry = {"kind": kind, **payload}
+    ledger.append(_safe_payload(entry))
+
+
+def _plan1124_projected_isolation(isolation: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(isolation, Mapping):
+        return {}
+    return {
+        key: isolation.get(key)
+        for key in (
+            "normal_agent_load_session_advertised",
+            "isolated_probe_load_session_advertised",
+            "cleanup_dry_run_verified",
+            "cleanup_verified",
+        )
+    }
+
+
+def _plan1124_projected_zed_identity(zed: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(zed, Mapping):
+        return {}
+    return {
+        "version": zed.get("version"),
+        "executable_sha256": zed.get("executable_sha256"),
+    }
+
+
+def _plan1124_projected_acpx_identity(acpx: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(acpx, Mapping):
+        return {}
+    return {
+        "version": acpx.get("version"),
+        "executable_sha256": acpx.get("executable_sha256"),
+    }
+
+
+def _plan1124_projected_invocation(invocation: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(invocation, Mapping):
+        return {}
+    return {
+        "discovered_from": invocation.get("discovered_from"),
+        "help_sha256": invocation.get("help_sha256"),
+    }
+
+
+def _plan1124_agent_protocol_sidecar(result: Mapping[str, Any], *, alias_roots: Sequence[Path | str | None]) -> dict[str, Any]:
+    prompt_attempt = result.get("prompt_attempt")
+    projected_prompt: dict[str, Any] | None = None
+    if isinstance(prompt_attempt, Mapping):
+        projected_prompt = {
+            "exit_code": prompt_attempt.get("exit_code"),
+            "prompt_failed": prompt_attempt.get("exit_code") != 0,
+        }
+    payload = {
+        "schema": result.get("schema"),
+        "mode": result.get("mode"),
+        "recorded_at_utc": result.get("recorded_at_utc"),
+        "commit": result.get("commit"),
+        "zed_launches": result.get("zed_launches"),
+        "origin_a_launches": result.get("origin_a_launches"),
+        "no_gateway_path_established": result.get("no_gateway_path_established"),
+        "establishing_disposition": result.get("establishing_disposition"),
+        "indeterminate_reason": result.get("indeterminate_reason"),
+        "session_new_response": result.get("session_new_response"),
+        "session_load_exchange": result.get("session_load_exchange"),
+        "prompt_attempt": projected_prompt,
+        "acpx": _plan1124_projected_acpx_identity(
+            result.get("acpx") if isinstance(result.get("acpx"), Mapping) else None
+        ),
+        "failure": result.get("failure"),
+    }
+    sanitized = _safe_payload_with_probe_aliases(payload, *alias_roots)
+    return sanitized if isinstance(sanitized, dict) else {}
+
+
+def _plan1124_v5_manifest_projection(
+    result: Mapping[str, Any],
+    *,
+    files: Mapping[str, str],
+    alias_roots: Sequence[Path | str | None],
+) -> dict[str, Any]:
+    resume = result.get("resume_lifecycle")
+    projected_resume = resume if isinstance(resume, Mapping) else None
+    payload: dict[str, Any] = {
+        "schema": result.get("schema"),
+        "recorded_at_utc": result.get("recorded_at_utc"),
+        "commit": result.get("commit"),
+        "finding": result.get("finding"),
+        "indeterminate_reason": result.get("indeterminate_reason"),
+        "zed": _plan1124_projected_zed_identity(result.get("zed") if isinstance(result.get("zed"), Mapping) else None),
+        "acpx": _plan1124_projected_acpx_identity(result.get("acpx") if isinstance(result.get("acpx"), Mapping) else None),
+        "normal_source": result.get("normal_source"),
+        "isolated_source": result.get("isolated_source"),
+        "isolated_build": result.get("isolated_build"),
+        "invocation": _plan1124_projected_invocation(
+            result.get("invocation") if isinstance(result.get("invocation"), Mapping) else None
+        ),
+        "isolation": _plan1124_projected_isolation(
+            result.get("isolation") if isinstance(result.get("isolation"), Mapping) else None
+        ),
+        "capability_payload": result.get("capability_payload"),
+        "relay": result.get("relay"),
+        "captured_exchange": result.get("captured_exchange"),
+        "origin_a_launches": 0,
+        "zed_launches": result.get("zed_launches"),
+        "resume_lifecycle": projected_resume,
+        "files": dict(files),
+    }
+    excerpt = result.get("relay_child_stderr_excerpt")
+    if isinstance(excerpt, str):
+        payload["relay_child_stderr_excerpt"] = excerpt
+    sanitized = _safe_payload_with_probe_aliases(payload, *alias_roots)
+    if not isinstance(sanitized, dict):
+        raise ProbeError("evidence_bundle", "sanitized manifest is not an object")
+    return sanitized
+
+
+def _write_agent_protocol_report(result: Mapping[str, Any]) -> None:
+    report_path = _agent_protocol_report_path()
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(_plan1124_agent_protocol_report_text(result), encoding="utf-8", newline="\n")
+
+
+def _remove_agent_protocol_report() -> None:
+    report_path = _agent_protocol_report_path()
+    if report_path.is_file():
+        report_path.unlink()
+
+
 def capture_acpx_evidence(command_result: CommandResult) -> dict[str, Any]:
     """Retain safe structured ACP evidence from a successful *or failed* acpx stage."""
     records = _parse_ndjson(command_result.stdout)
@@ -1826,10 +1986,16 @@ def materialize_sanitized_zed_evidence_v5(
             "relay/lifecycle-b/zed-to-agent.bin": _sha256_bytes(lifecycle_b_zed),
             "relay/lifecycle-b/agent-to-zed.bin": _sha256_bytes(lifecycle_b_agent),
         }
-        manifest = {key: value for key, value in result.items() if not str(key).startswith("_")}
-        manifest["files"] = files
-        manifest["origin_a_launches"] = 0
-        sanitized = _safe_payload(manifest)
+        manifest = _plan1124_v5_manifest_projection(
+            result,
+            files=files,
+            alias_roots=(
+                target,
+                report_dir,
+                result.get("invocation", {}).get("user_data_root") if isinstance(result.get("invocation"), Mapping) else None,
+            ),
+        )
+        sanitized = manifest
         if not isinstance(sanitized, dict):
             raise ProbeError("evidence_bundle", "sanitized manifest is not an object")
         manifest_path = staging / "manifest.json"
@@ -2189,18 +2355,19 @@ def run_plan1124_agent_protocol_drive(parent_workspace: Path) -> dict[str, Any]:
             PLAN1124_ESTABLISHING_OK if established else PLAN1124_ESTABLISHING_PRECONDITION_UNMET
         )
         result["indeterminate_reason"] = None if established else IndeterminateReason.PRECONDITION_UNMET.value
-        report_path = _agent_protocol_report_path()
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(_plan1124_agent_protocol_report_text(result), encoding="utf-8", newline="\n")
     except ProbeError as exc:
         record_probe_command_failure(result, exc)
         result["indeterminate_reason"] = _reason_from_stage(exc.stage).value
         result["establishing_disposition"] = PLAN1124_ESTABLISHING_PRECONDITION_UNMET
     finally:
+        retain_run_root = False
+        revoke_verified = not approved
         if approved and trust_cli is not None and workspace is not None:
             try:
                 _revoke_temporary_approval(trust_cli, workspace, cwd=workspace)
+                revoke_verified = True
             except ProbeError as exc:
+                retain_run_root = True
                 _record_zed_workspace_revoke_failure(
                     result,
                     trust_cli=trust_cli,
@@ -2211,12 +2378,17 @@ def run_plan1124_agent_protocol_drive(parent_workspace: Path) -> dict[str, Any]:
                 result["indeterminate_reason"] = IndeterminateReason.CLEANUP_UNVERIFIED.value
                 result["no_gateway_path_established"] = False
                 result["establishing_disposition"] = PLAN1124_ESTABLISHING_PRECONDITION_UNMET
-        cleaned, leftovers = _cleanup_plan1119_roots(
-            run_root=run_root,
-            isolated_source=Path(preparation.isolated_source_root) if preparation else None,
-            isolated_build=Path(preparation.isolated_build_root) if preparation else None,
-            hermetic_root=Path(preparation.hermetic_zed_root) if preparation else None,
-        )
+        cleaned = True
+        leftovers: list[str] = []
+        if not retain_run_root:
+            cleaned, leftovers = _cleanup_plan1119_roots(
+                run_root=run_root,
+                isolated_source=Path(preparation.isolated_source_root) if preparation else None,
+                isolated_build=Path(preparation.isolated_build_root) if preparation else None,
+                hermetic_root=Path(preparation.hermetic_zed_root) if preparation else None,
+            )
+        else:
+            cleaned = False
         result.setdefault("isolation", {})
         if isinstance(result["isolation"], dict):
             result["isolation"]["cleanup_verified"] = cleaned
@@ -2225,10 +2397,30 @@ def run_plan1124_agent_protocol_drive(parent_workspace: Path) -> dict[str, Any]:
             result["cleanup_remediation"] = leftovers
             result["no_gateway_path_established"] = False
             result["establishing_disposition"] = PLAN1124_ESTABLISHING_PRECONDITION_UNMET
+        custody_verified = revoke_verified and cleaned
+        if custody_verified and result.get("no_gateway_path_established"):
+            _write_agent_protocol_report(result)
+        else:
+            _remove_agent_protocol_report()
+            result["no_gateway_path_established"] = False
+            result["establishing_disposition"] = PLAN1124_ESTABLISHING_PRECONDITION_UNMET
+        alias_roots = (
+            run_root,
+            workspace,
+            preparation.isolated_source_root if preparation else None,
+            preparation.isolated_build_root if preparation else None,
+            preparation.hermetic_zed_root if preparation else None,
+            parent_workspace,
+        )
         try:
             sidecar = parent_workspace / "plan1124-agent-protocol-result.json"
             sidecar.write_text(
-                json.dumps({k: v for k, v in result.items() if not str(k).startswith("_")}, indent=2, sort_keys=True, default=str),
+                json.dumps(
+                    _plan1124_agent_protocol_sidecar(result, alias_roots=alias_roots),
+                    indent=2,
+                    sort_keys=True,
+                    default=str,
+                ),
                 encoding="utf-8",
                 newline="\n",
             )
@@ -2244,6 +2436,8 @@ def _classify_resume_lifecycle(create_id: str | None, load_exchange: Mapping[str
     request = load_exchange.get("request")
     response = load_exchange.get("response")
     if not isinstance(request, Mapping) or not isinstance(response, Mapping):
+        return (Finding.INDETERMINATE, IndeterminateReason.OBSERVATION_INCOMPLETE.value)
+    if request.get("method") != "session/load":
         return (Finding.INDETERMINATE, IndeterminateReason.OBSERVATION_INCOMPLETE.value)
     params = request.get("params")
     if not isinstance(params, Mapping) or params.get("sessionId") != create_id:
@@ -2597,7 +2791,28 @@ def run_plan1124_two_lifecycle_real_zed(
         captures: dict[str, dict[str, Any]] = {}
         create_id: str | None = None
         load_exchange: Mapping[str, Any] | None = None
+        shared_user_data_root = Path(invocation.user_data_root).resolve()
+        shared_workspace = workspace.resolve()
+        _append_event_ledger(
+            result,
+            "shared_profile_bound",
+            user_data_root=str(shared_user_data_root),
+            workspace=str(shared_workspace),
+            deadline_monotonic=deadline,
+        )
         for lifecycle, run_id in (("lifecycle_a", PLAN1124_LIFECYCLE_A_RUN_ID), ("lifecycle_b", PLAN1124_LIFECYCLE_B_RUN_ID)):
+            remaining = deadline - time.monotonic()
+            _append_event_ledger(
+                result,
+                "lifecycle_launch_scheduled",
+                lifecycle=lifecycle,
+                run_id=run_id,
+                remaining_seconds=remaining,
+                zed_launches_before=int(result.get("zed_launches", 0)),
+            )
+            if remaining <= 0:
+                raise ProbeError("zed_launch", "shared deadline expired before lifecycle launch")
+            result["zed_launches"] = int(result.get("zed_launches", 0)) + 1
             capture_root = run_root / "relay-capture"
             capture_root.mkdir(exist_ok=True)
             child_args = [str(launcher), "--workspace-root", str(workspace), "--no-auto-start"]
@@ -2609,9 +2824,18 @@ def run_plan1124_two_lifecycle_real_zed(
                 child_args=child_args,
             )
             seed_hermetic_zed_settings(Path(invocation.user_data_root), relay_command=relay_argv[0], relay_args=relay_argv[1:])
-            remaining = max(1.0, deadline - time.monotonic())
             launch_help = _observe_zed_help(Path(invocation.argv[0]))
             zed_argv = list(build_real_zed_launch_argv(invocation, workspace=workspace, launch_help=launch_help))
+            _append_event_ledger(
+                result,
+                "lifecycle_launch_started",
+                lifecycle=lifecycle,
+                run_id=run_id,
+                user_data_root=str(Path(invocation.user_data_root).resolve()),
+                workspace=str(workspace.resolve()),
+                zed_argv=_safe_payload(zed_argv),
+                remaining_seconds=remaining,
+            )
             _launch_zed_once(
                 zed_argv,
                 env=_zed_env_for_invocation(invocation),
@@ -2619,9 +2843,9 @@ def run_plan1124_two_lifecycle_real_zed(
                 log_path=run_root / f"{run_id}.log",
                 timeout_s=remaining,
             )
-            result["zed_launches"] = result.get("zed_launches", 0) + 1
             run_dir = capture_root / run_id
             verify_relay_capture(run_dir)
+            _append_event_ledger(result, "relay_capture_verified", lifecycle=lifecycle, run_id=run_id)
             zed_messages = iter_acp_messages((run_dir / "zed-to-agent.bin").read_bytes())
             agent_messages = iter_acp_messages((run_dir / "agent-to-zed.bin").read_bytes())
             zed_sanitized = reconstruct_sanitized_relay_bytes(zed_messages)
@@ -2650,6 +2874,8 @@ def run_plan1124_two_lifecycle_real_zed(
         result["indeterminate_reason"] = reason
         result["resume_lifecycle"] = {
             "shared_profile": True,
+            "shared_user_data_root": str(shared_user_data_root),
+            "shared_workspace": str(shared_workspace),
             "lifecycle_a": {
                 "label": PLAN1124_LIFECYCLE_A_RUN_ID,
                 "session_new_id": create_id,
@@ -2679,6 +2905,7 @@ def run_plan1124_two_lifecycle_real_zed(
                 _revoke_temporary_approval(trust_cli, workspace, cwd=workspace)
                 if isinstance(result.get("zed_workspace_approval"), dict):
                     result["zed_workspace_approval"]["revoked"] = True
+                _append_event_ledger(result, "workspace_revoked", workspace=str(workspace.resolve()))
             except BaseException as revoke_exc:
                 retain_run_root = True
                 _record_zed_workspace_revoke_failure(
@@ -2708,33 +2935,49 @@ def run_plan1124_two_lifecycle_real_zed(
                 result["finding"] = Finding.INDETERMINATE.value
                 result["indeterminate_reason"] = IndeterminateReason.CLEANUP_UNVERIFIED.value
                 result["cleanup_remediation"] = leftovers
-            elif (
-                isinstance(result.get("_lifecycle_a_zed"), (bytes, bytearray))
-                and isinstance(result.get("_lifecycle_a_agent"), (bytes, bytearray))
-                and isinstance(result.get("_lifecycle_b_zed"), (bytes, bytearray))
-                and isinstance(result.get("_lifecycle_b_agent"), (bytes, bytearray))
-            ):
-                try:
-                    result["evidence_manifest"] = str(
-                        materialize_sanitized_zed_evidence_v5(
-                            report_dir=report_dir,
-                            result=result,
-                            lifecycle_a_zed=bytes(result["_lifecycle_a_zed"]),
-                            lifecycle_a_agent=bytes(result["_lifecycle_a_agent"]),
-                            lifecycle_b_zed=bytes(result["_lifecycle_b_zed"]),
-                            lifecycle_b_agent=bytes(result["_lifecycle_b_agent"]),
+            else:
+                _append_event_ledger(result, "final_cleanup_verified")
+                if (
+                    isinstance(result.get("_lifecycle_a_zed"), (bytes, bytearray))
+                    and isinstance(result.get("_lifecycle_a_agent"), (bytes, bytearray))
+                    and isinstance(result.get("_lifecycle_b_zed"), (bytes, bytearray))
+                    and isinstance(result.get("_lifecycle_b_agent"), (bytes, bytearray))
+                ):
+                    try:
+                        result["evidence_manifest"] = str(
+                            materialize_sanitized_zed_evidence_v5(
+                                report_dir=report_dir,
+                                result=result,
+                                lifecycle_a_zed=bytes(result["_lifecycle_a_zed"]),
+                                lifecycle_a_agent=bytes(result["_lifecycle_a_agent"]),
+                                lifecycle_b_zed=bytes(result["_lifecycle_b_zed"]),
+                                lifecycle_b_agent=bytes(result["_lifecycle_b_agent"]),
+                            )
                         )
-                    )
-                except (ProbeError, OSError, TypeError, ValueError) as exc:
-                    result["evidence_materialization_error"] = {
-                        "type": type(exc).__name__,
-                        "stage": exc.stage if isinstance(exc, ProbeError) else "evidence_bundle",
-                        "message": _safe_payload(str(exc)),
-                    }
+                    except (ProbeError, OSError, TypeError, ValueError) as exc:
+                        result["evidence_materialization_error"] = {
+                            "type": type(exc).__name__,
+                            "stage": exc.stage if isinstance(exc, ProbeError) else "evidence_bundle",
+                            "message": _safe_payload(str(exc)),
+                        }
         try:
             sidecar = parent_workspace / "plan1124-real-zed-resume-result.json"
+            sidecar_payload = _plan1124_v5_manifest_projection(
+                result,
+                files={},
+                alias_roots=(
+                    run_root,
+                    workspace,
+                    preparation.isolated_source_root if preparation else None,
+                    preparation.isolated_build_root if preparation else None,
+                    preparation.hermetic_zed_root if preparation else None,
+                    parent_workspace,
+                    report_dir,
+                ),
+            )
+            sidecar_payload["event_ledger"] = result.get("event_ledger")
             sidecar.write_text(
-                json.dumps({k: v for k, v in result.items() if not str(k).startswith("_")}, indent=2, sort_keys=True, default=str),
+                json.dumps(sidecar_payload, indent=2, sort_keys=True, default=str),
                 encoding="utf-8",
                 newline="\n",
             )
