@@ -390,7 +390,7 @@ def test_popen_receives_env_none_cwd_none_exact_argv_inherited_stderr_no_shell(
         captured["kwargs"] = kwargs
         return _FakeProc()
 
-    exit_code, _forwarded, _err, _run_dir = _run_relay_inprocess(
+    exit_code, _forwarded, _err, run_dir = _run_relay_inprocess(
         capture_root=tmp_path,
         run_id="popen-spy",
         child_argv=[str(tmp_path / "child.exe"), "--optimus", "acp"],
@@ -401,12 +401,54 @@ def test_popen_receives_env_none_cwd_none_exact_argv_inherited_stderr_no_shell(
     assert captured["kwargs"]["env"] is None
     assert captured["kwargs"]["cwd"] is None
     assert captured["kwargs"]["shell"] is False
-    assert captured["kwargs"]["stderr"] is None  # inherit
+    child_stderr = captured["kwargs"]["stderr"]
+    assert child_stderr is not None
+    assert child_stderr is not subprocess.PIPE
+    assert hasattr(child_stderr, "name")
+    assert str(run_dir / plan117_custody_relay.RELAY_CHILD_STDERR_NAME) == str(child_stderr.name)
+    assert child_stderr.closed is True
     argv = captured["args"][0] if captured["args"] else captured["kwargs"].get("args")
     assert argv == [str(tmp_path / "child.exe"), "--optimus", "acp"]
     assert "--capture-root" not in argv
     assert "--run-id" not in argv
     assert "--child-executable" not in argv
+
+
+def test_child_stderr_is_captured_privately_without_touching_protocol_streams(tmp_path: Path) -> None:
+    # Child writes a sentinel to stderr only. Relay must not mix child stderr into stdout
+    # and must persist it privately under the relay run directory.
+    sentinel = b"relay-child-stderr-sentinel\x00\xff"
+    code = (
+        "import sys;"
+        "data=sys.stdin.buffer.read();"
+        f"sys.stderr.buffer.write({sentinel!r});"
+        "sys.stderr.buffer.flush();"
+        "sys.stdout.buffer.write(b'AGENT-'+data);"
+        "sys.stdout.buffer.flush()"
+    )
+    stdin_bytes = b"ZED-TO-AGENT"
+    exit_code, forwarded, err, run_dir = _run_relay_inprocess(
+        capture_root=tmp_path,
+        run_id="child-stderr-priv",
+        child_argv=[sys.executable, "-c", code],
+        stdin_bytes=stdin_bytes,
+    )
+    assert exit_code == 0
+    assert forwarded == b"AGENT-" + stdin_bytes
+
+    # Protocol streams remain clean; parent relay stderr never receives child sentinel.
+    assert sentinel not in err
+
+    # Raw child stderr is private and exact.
+    assert (run_dir / plan117_custody_relay.RELAY_CHILD_STDERR_NAME).read_bytes() == sentinel
+
+    # Directional custody bins remain correct.
+    assert (run_dir / "zed-to-agent.bin").read_bytes() == stdin_bytes
+    assert (run_dir / "agent-to-zed.bin").read_bytes() == forwarded
+
+    from tools.verify_plan117_custody_feasibility import verify_relay_capture
+
+    verify_relay_capture(run_dir)
 
 
 def test_cli_relay_only_args_never_reach_child(tmp_path: Path) -> None:
@@ -725,7 +767,10 @@ def test_recorder_eof_oserror_and_close_errors(tmp_path: Path) -> None:
 
 
 def test_popen_factory_exception_is_fail_closed(tmp_path: Path) -> None:
-    def boom(*_a: Any, **_k: Any) -> Any:
+    captured: dict[str, Any] = {}
+
+    def boom(*_a: Any, **k: Any) -> Any:
+        captured["stderr"] = k.get("stderr")
         raise RuntimeError("spawn_failed")
 
     exit_code, _fwd, err, run_dir = _run_relay_inprocess(
@@ -737,6 +782,11 @@ def test_popen_factory_exception_is_fail_closed(tmp_path: Path) -> None:
     )
     assert exit_code != 0
     assert b"relay_recorder_failure" in err
+    child_stderr = captured["stderr"]
+    assert child_stderr is not None
+    assert hasattr(child_stderr, "closed")
+    assert child_stderr.closed is True
+    assert (run_dir / plan117_custody_relay.RELAY_CHILD_STDERR_NAME).exists()
     assert (run_dir / "relay-summary.json").is_file()
 
 

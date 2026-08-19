@@ -56,6 +56,7 @@ DIR_ZED_TO_AGENT = "zed_to_agent"
 DIR_AGENT_TO_ZED = "agent_to_zed"
 EOF_ZED_TO_AGENT = "zed_to_agent_eof"
 EOF_AGENT_TO_ZED = "agent_to_zed_eof"
+RELAY_CHILD_STDERR_NAME = "relay-child-stderr.txt"
 EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 READ_CHUNK = 1 << 16  # 64 KiB
 REASON_RECORDER_FAILURE = "relay_recorder_failure"
@@ -1123,6 +1124,11 @@ def _emit_stderr(stderr: TextIO | BinaryIO, reason_code: str) -> None:
         pass
 
 
+def _open_private_child_stderr(run_dir: Path) -> BinaryIO:
+    """Open the relay-child private stderr sink under a throwaway run-id directory."""
+    return (Path(run_dir) / RELAY_CHILD_STDERR_NAME).open("wb")
+
+
 def _write_summary(
     run_dir: Path,
     *,
@@ -1180,18 +1186,20 @@ def run_relay(
     stop = threading.Event()
     errors: list[BaseException] = []
     proc: Any | None = None
+    child_stderr: BinaryIO | None = None
     terminal_disposition = "child_exited"
     reason_code: str | None = None
     child_exit: int | None = None
 
     try:
+        child_stderr = _open_private_child_stderr(run_dir)
         proc = factory(
             child_argv,
             env=None,
             cwd=None,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=None,  # inherit
+            stderr=child_stderr,
             shell=False,
             bufsize=0,
         )
@@ -1283,6 +1291,11 @@ def run_relay(
         return_code = 1
         child_exit = proc.poll() if proc is not None else 1
     finally:
+        if child_stderr is not None:
+            try:
+                child_stderr.close()
+            except OSError:
+                pass
         totals = recorder.totals()
         index_path = run_dir / "relay-index.ndjson"
         zed_eof = False

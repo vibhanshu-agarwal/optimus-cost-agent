@@ -54,6 +54,7 @@ REQUIRED_FIELDS = (
     "zed_launches",
     "files",
 )
+RELAY_CHILD_STDERR_EXCERPT_LIMIT = 4000
 _SHA256_KEY = re.compile(r"sha256|commit|hash", re.I)
 _ZED_OVERCLAIM = re.compile(r"zed does not support", re.I)
 
@@ -205,6 +206,12 @@ def verify_manifest(manifest_path: Path) -> None:
     require(isinstance(manifest.get("invocation"), Mapping) and manifest["invocation"].get("discovered_from"), "invocation", "current-version invocation provenance is missing")
     require(isinstance(manifest.get("relay"), Mapping), "relay", "relay digests are missing")
     require(manifest["relay"].get("source") == RELAY_EXTRACT_SOURCE, "relay.source", "classification requires a sanitized post-run relay extract")
+
+    excerpt = manifest.get("relay_child_stderr_excerpt")
+    if "relay_child_stderr_excerpt" in manifest:
+        require(isinstance(excerpt, str), "relay_child_stderr_excerpt", "optional field must be a string")
+        require(len(excerpt) <= RELAY_CHILD_STDERR_EXCERPT_LIMIT, "relay_child_stderr_excerpt", "optional field exceeds 4000 characters")
+
     _scan_credential_like(manifest, field="manifest")
     _verify_files(report_dir, manifest["files"], manifest["relay"])
     _verify_isolation(manifest)

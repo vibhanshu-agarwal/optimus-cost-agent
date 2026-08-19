@@ -258,6 +258,7 @@ APPROVED_REAL_ZED_PREFIX = [
 DEFAULT_ZED_LAUNCH_TIMEOUT_SECONDS = 180.0
 MIN_ZED_LAUNCH_TIMEOUT_SECONDS = 60.0
 MAX_ZED_LAUNCH_TIMEOUT_SECONDS = 900.0
+RELAY_CHILD_STDERR_EXCERPT_LIMIT = 4000
 _USER_DATA_HELP_LINE = re.compile(r"user[\s_-]*data", re.I)
 _HELP_FLAG = re.compile(r"(--[A-Za-z0-9][A-Za-z0-9-]*)")
 _RELAY_SCRIPT = Path(__file__).resolve().parent / "plan117_custody_relay.py"
@@ -1786,6 +1787,25 @@ def _launch_log_excerpt(log_path: Path, *, limit: int = 4000) -> str:
     sanitized = sanitize_for_persistence(collapsed, policy=EVIDENCE_REDACTION_POLICY).value
     return str(sanitized) if sanitized is not None else ""
 
+
+def _relay_child_stderr_excerpt(run_dir: Path, *, limit: int = RELAY_CHILD_STDERR_EXCERPT_LIMIT) -> str:
+    """Return a bounded sanitized excerpt for the custody relay's child stderr."""
+    excerpt_path = Path(run_dir) / "relay-child-stderr.txt"
+    if not excerpt_path.is_file():
+        return ""
+    try:
+        text = excerpt_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    collapsed = " ".join(text.split())
+    # Defense-in-depth: sanitize before truncation so a secret that straddles
+    # the cutoff boundary still gets fully recognized/redacted.
+    sanitized = _safe_payload(collapsed)
+    sanitized_text = str(sanitized) if sanitized is not None else ""
+    if len(sanitized_text) > limit:
+        sanitized_text = sanitized_text[-limit:]
+    return sanitized_text
+
 def _record_identities(
     result: dict[str, Any],
     *,
@@ -1964,7 +1984,9 @@ def run_plan1119_real_zed(
         acpx = _run_acpx_against_isolated_agent(agent_launcher=launcher, run_root=run_root, repo_root=repo_root)
         capture_root = run_root / "relay-capture"
         capture_root.mkdir()
-        child_args = [str(sys.executable), str(launcher), "--workspace-root", str(workspace), "--no-auto-start"]
+        # The relay resolves the final child argv as [child_executable, *child_args].
+        # Keep sys.executable in child_executable only (exactly once at argv index 0).
+        child_args = [str(launcher), "--workspace-root", str(workspace), "--no-auto-start"]
         relay_argv = build_opaque_relay_command(
             capture_root=capture_root,
             run_id=PLAN1119_RUN_ID,
@@ -2057,6 +2079,7 @@ def run_plan1119_real_zed(
                     detail = f"{detail}: {log_excerpt}"
                 raise ProbeError("zed_launch", detail)
             run_dir = capture_root / PLAN1119_RUN_ID
+            result["relay_child_stderr_excerpt"] = _relay_child_stderr_excerpt(run_dir)
             zed_bin = run_dir / "zed-to-agent.bin"
             agent_bin = run_dir / "agent-to-zed.bin"
             if not zed_bin.is_file() or not agent_bin.is_file():
