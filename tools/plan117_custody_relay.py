@@ -64,6 +64,7 @@ REASON_BROKEN_PIPE = "relay_broken_pipe"
 CONTROL_OP_GET_PROOF = "get_live_session_proof"
 CONTROL_OP_SEND_PROMPT = "send_existing_session_prompt"
 CONTROL_DESCRIPTOR_FILENAME = "relay-control-descriptor.json"
+RELAY_CHILD_STDERR_NAME = "relay-child-stderr.txt"
 
 PopenFactory = Callable[..., Any]
 ProcessObserver = Callable[[int], "ObservedProcessIdentity | None"]
@@ -1123,6 +1124,10 @@ def _emit_stderr(stderr: TextIO | BinaryIO, reason_code: str) -> None:
         pass
 
 
+def _open_private_child_stderr(run_dir: Path) -> BinaryIO:
+    return (run_dir / RELAY_CHILD_STDERR_NAME).open("wb")
+
+
 def _write_summary(
     run_dir: Path,
     *,
@@ -1183,15 +1188,17 @@ def run_relay(
     terminal_disposition = "child_exited"
     reason_code: str | None = None
     child_exit: int | None = None
+    child_stderr: BinaryIO | None = None
 
     try:
+        child_stderr = _open_private_child_stderr(run_dir)
         proc = factory(
             child_argv,
             env=None,
             cwd=None,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=None,  # inherit
+            stderr=child_stderr,
             shell=False,
             bufsize=0,
         )
@@ -1283,6 +1290,11 @@ def run_relay(
         return_code = 1
         child_exit = proc.poll() if proc is not None else 1
     finally:
+        if child_stderr is not None:
+            try:
+                child_stderr.close()
+            except OSError:
+                pass
         totals = recorder.totals()
         index_path = run_dir / "relay-index.ndjson"
         zed_eof = False

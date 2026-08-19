@@ -741,6 +741,30 @@ def test_opaque_relay_command_uses_custody_relay_not_project_client() -> None:
     assert "acpx" not in joined.casefold()
 
 
+def test_opaque_relay_command_preserves_explicit_child_args_without_repeating_executable(
+    tmp_path: Path,
+) -> None:
+    launcher = tmp_path / "isolated_optimus_agent.py"
+    workspace = tmp_path / "zed-workspace"
+    child_args = [str(launcher), "--workspace-root", str(workspace), "--no-auto-start"]
+
+    command = build_opaque_relay_command(
+        capture_root=tmp_path / "capture",
+        run_id="run-explicit",
+        child_executable=Path(sys.executable),
+        invocation=_valid_invocation(),
+        child_args=child_args,
+    )
+
+    separator = command.index("--")
+    assert command[separator + 1 :] == child_args
+    child_executable = command[command.index("--child-executable") + 1]
+    resolved_child_argv = [child_executable, *command[separator + 1 :]]
+    resolved_paths = [Path(item).resolve() for item in resolved_child_argv]
+    assert resolved_paths.count(Path(sys.executable).resolve()) == 1
+    assert resolved_paths[:2] == [Path(sys.executable).resolve(), launcher.resolve()]
+
+
 def test_acpx_baseline_fails_closed_without_isolated_load_session() -> None:
     evidence = AcpxBaselineEvidence(
         acpx_version="0.12.0",
@@ -1291,6 +1315,7 @@ def _install_stubbed_real_zed(
     launch_error: str | None = None,
     revoke_error: str | None = None,
     revoke_interrupt: BaseException | None = None,
+    relay_child_stderr_text: str | None = None,
 ) -> tuple[Path, Path, Path, dict[str, object]]:
     """Patch the live-Zed path so tests never start a GUI. Optionally plant relay capture files."""
     import tools.probe_p11_zed_session_load as probe
@@ -1351,6 +1376,7 @@ def _install_stubbed_real_zed(
     observed: dict[str, object] = {
         "events": events,
         "approval": approval,
+        "launcher": launcher,
         "trust_cli": trust_cli,
     }
 
@@ -1372,8 +1398,16 @@ def _install_stubbed_real_zed(
 
     def spy_build_opaque_relay_command(**kwargs: object) -> list[str]:
         child_args = [str(item) for item in list(kwargs.get("child_args") or ())]
+        child_executable = str(kwargs["child_executable"])
         observed["child_args"] = child_args
-        events.append({"kind": "relay_prepared", "child_args": child_args})
+        observed["relay_child_argv"] = [child_executable, *child_args]
+        events.append(
+            {
+                "kind": "relay_prepared",
+                "child_executable": child_executable,
+                "child_args": child_args,
+            }
+        )
         return real_build_opaque_relay_command(**kwargs)
 
     def capture_launch_argv(inv: ZedInvocation, **_kwargs: object) -> tuple[str, ...]:
@@ -1444,12 +1478,17 @@ def _install_stubbed_real_zed(
             raise ProbeError("zed_launch", launch_error)
         events.append({"kind": "child_spawn", "n": 1, "approval_live": live})
         events.append({"kind": "child_spawn", "n": 2, "approval_live": live})
-        if write_capture:
+        if write_capture or relay_child_stderr_text is not None:
             cap = roots[-1] / "relay-capture" / PLAN1119_RUN_ID
             cap.mkdir(parents=True, exist_ok=True)
+        if write_capture:
             zed_bytes, agent_bytes = _paired_sanitized_relay_bytes()
             (cap / "zed-to-agent.bin").write_bytes(zed_bytes)
             (cap / "agent-to-zed.bin").write_bytes(agent_bytes)
+        if relay_child_stderr_text is not None:
+            child_stderr_path = cap / "relay-child-stderr.txt"
+            child_stderr_path.write_text(relay_child_stderr_text, encoding="utf-8", newline="")
+            observed["relay_child_stderr_path"] = child_stderr_path
         events.append({"kind": "launch_return", "approval_live": bool(approval["live"])})
         return {"pid": 1, "returncode": launch_returncode, "log_path": str(log_path) if log_path else None}
 
@@ -1457,7 +1496,7 @@ def _install_stubbed_real_zed(
         run_root = kwargs.get("run_root")
         observed["cleanup_run_root"] = run_root
         events.append({"kind": "cleanup", "run_root": None if run_root is None else str(run_root)})
-        if (revoke_error is not None or revoke_interrupt is not None) and run_root is not None:
+        if run_root is not None:
             path = Path(str(run_root))
             if path.exists():
                 shutil.rmtree(path)
@@ -1574,6 +1613,56 @@ def test_real_zed_path_publishes_nonempty_sanitized_bundle(
     assert (report_dir / "relay" / "agent-to-zed.bin").read_bytes()
 
 
+def test_real_zed_sidecar_and_bundle_include_bounded_sanitized_child_stderr_excerpt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tools.probe_p11_zed_session_load import run_plan1119_real_zed
+
+    canary = "sk-" + ("a" * 24)
+    raw_stderr = ("x" * 4100) + f"\n\tchild failure  {canary}\r\n trailing diagnostic"
+    parent, report_dir, _hermetic, observed = _install_stubbed_real_zed(
+        tmp_path,
+        monkeypatch,
+        write_capture=True,
+        relay_child_stderr_text=raw_stderr,
+    )
+
+    result = run_plan1119_real_zed(parent, launch_timeout_seconds=180.0, report_dir=report_dir)
+
+    assert "relay_child_stderr_excerpt" in result
+    excerpt = result["relay_child_stderr_excerpt"]
+    assert isinstance(excerpt, str)
+    assert len(excerpt) <= 4000
+    assert canary not in excerpt
+    assert "\n" not in excerpt and "\r" not in excerpt and "\t" not in excerpt
+    assert "child failure" in excerpt
+    assert "trailing diagnostic" in excerpt
+
+    sidecar_path = Path(str(result["sidecar"]))
+    manifest_path = Path(str(result["evidence_manifest"]))
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert sidecar["relay_child_stderr_excerpt"] == excerpt
+    assert manifest["relay_child_stderr_excerpt"] == excerpt
+
+    raw_path = Path(str(observed["relay_child_stderr_path"]))
+    persisted = sidecar_path.read_text(encoding="utf-8") + manifest_path.read_text(encoding="utf-8")
+    assert canary not in persisted
+    assert str(raw_path) not in persisted
+    assert not raw_path.exists()
+    assert sorted(
+        path.relative_to(report_dir).as_posix()
+        for path in report_dir.rglob("*")
+        if path.is_file()
+    ) == [
+        "manifest.json",
+        "relay/agent-to-zed.bin",
+        "relay/zed-to-agent.bin",
+        "report.md",
+    ]
+    verify_manifest(manifest_path)
+
+
 def test_real_zed_approves_actual_workspace_only_for_launch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1635,6 +1724,27 @@ def test_real_zed_approves_actual_workspace_only_for_launch(
     assert lifecycle["child_workspace_match"] is True
     assert lifecycle["revoked"] is True
     assert "approval_id" not in lifecycle
+
+
+def test_real_zed_relay_child_argv_contains_interpreter_exactly_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tools.probe_p11_zed_session_load import run_plan1119_real_zed
+
+    parent, report_dir, _hermetic, observed = _install_stubbed_real_zed(
+        tmp_path, monkeypatch, write_capture=True
+    )
+    run_plan1119_real_zed(parent, launch_timeout_seconds=180.0, report_dir=report_dir)
+
+    child_argv = [str(item) for item in list(observed["relay_child_argv"])]
+    resolved_paths = [Path(item).resolve() for item in child_argv]
+    executable = Path(sys.executable).resolve()
+    assert resolved_paths.count(executable) == 1
+    assert resolved_paths[0] == executable
+    assert resolved_paths[1] == Path(str(observed["launcher"])).resolve()
+    workspace_index = child_argv.index("--workspace-root") + 1
+    assert Path(child_argv[workspace_index]).resolve().name == "zed-workspace"
+    assert "--no-auto-start" in child_argv
 
 
 @pytest.mark.parametrize("failure", ["inspect", "approve"])

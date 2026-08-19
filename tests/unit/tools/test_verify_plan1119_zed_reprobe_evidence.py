@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from tools.verify_plan1119_zed_reprobe_evidence import main
+from tools.verify_plan1119_zed_reprobe_evidence import REQUIRED_FIELDS, SCHEMA, main
 
 COMMIT = "cfaffbebf184cd7e08f15749ce5aaff414991ec1"
 SHA_A = "a" * 64
@@ -207,6 +207,43 @@ def test_raw_credential_like_value_fails(tmp_path: Path) -> None:
 
     _rewrite(path, leak)
     assert main(["--manifest", str(path)]) == 1
+
+
+def test_optional_relay_child_stderr_excerpt_is_backward_compatible_and_bounded(
+    tmp_path: Path, capsys: Any
+) -> None:
+    assert SCHEMA == "plan-11-19-zed-session-load-reprobe-v1"
+    assert "relay_child_stderr_excerpt" not in REQUIRED_FIELDS
+
+    legacy = valid_manifest(finding="REACHABLE")
+    assert "relay_child_stderr_excerpt" not in legacy
+    legacy_path = write_manifest(tmp_path / "legacy", legacy)
+    assert main(["--manifest", str(legacy_path)]) == 0
+
+    for label, value in (("empty", ""), ("limit", "x" * 4000)):
+        manifest = valid_manifest(finding="REACHABLE")
+        manifest["relay_child_stderr_excerpt"] = value
+        path = write_manifest(tmp_path / label, manifest)
+        assert main(["--manifest", str(path)]) == 0
+
+    for label, value, diagnostic in (
+        ("wrong-type", 7, "relay_child_stderr_excerpt: must be a string"),
+        ("too-long", "x" * 4001, "relay_child_stderr_excerpt: must be at most 4000 characters"),
+    ):
+        manifest = valid_manifest(finding="REACHABLE")
+        manifest["relay_child_stderr_excerpt"] = value
+        path = write_manifest(tmp_path / label, manifest)
+        assert main(["--manifest", str(path)]) == 1
+        assert capsys.readouterr().err.strip() == diagnostic
+
+    canary = "sk-" + ("a" * 24)
+    unsafe = valid_manifest(finding="REACHABLE")
+    unsafe["relay_child_stderr_excerpt"] = f"child failed with {canary}"
+    unsafe_path = write_manifest(tmp_path / "unsafe", unsafe)
+    assert main(["--manifest", str(unsafe_path)]) == 1
+    diagnostic = capsys.readouterr().err
+    assert "manifest.relay_child_stderr_excerpt: raw credential-like value" in diagnostic
+    assert canary not in diagnostic
 
 
 def test_relay_digest_mismatch_fails(tmp_path: Path) -> None:

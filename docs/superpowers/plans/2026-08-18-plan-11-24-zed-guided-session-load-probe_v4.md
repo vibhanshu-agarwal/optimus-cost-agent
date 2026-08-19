@@ -191,7 +191,7 @@ The relay resolves that to
 `[sys.executable, launcher, "--workspace-root", workspace, "--no-auto-start"]`. The interpreter
 appears exactly once, at index 0; the launcher is index 1.
 
-- [ ] **Step 1: Establish the frozen and causal baseline.**
+- [x] **Step 1: Establish the frozen and causal baseline.**
   - Read this plan, the checkpoint Current State, and
     `reports/plan-11-24-relay-child-argv-root-cause.md`.
   - Confirm `HEAD` was cut from current `origin/main` and v1/v2/v3 resolve to the three pinned blobs
@@ -199,7 +199,7 @@ appears exactly once, at index 0; the launcher is index 1.
   - Confirm the current production call repeats `sys.executable` in `child_executable` and
     `child_args`, while `run_relay()` prepends `child_executable` exactly once.
 
-- [ ] **Step 2: Write the genuine RED call-boundary test.** Add
+- [x] **Step 2: Write the genuine RED call-boundary test.** Add
   `test_real_zed_relay_child_argv_contains_interpreter_exactly_once`. Extend the existing real-Zed
   stub's spy around the real `build_opaque_relay_command()` to record
   `[str(kwargs["child_executable"]), *map(str, kwargs["child_args"])]`. Run the fully stubbed
@@ -214,7 +214,7 @@ appears exactly once, at index 0; the launcher is index 1.
   This test must call through the real builder. A hand-assembled assertion disconnected from
   `run_plan1119_real_zed()` is not valid RED evidence.
 
-- [ ] **Step 3: Cover the explicit helper branch directly.** Extend or add
+- [x] **Step 3: Cover the explicit helper branch directly.** Extend or add
   `test_opaque_relay_command_preserves_explicit_child_args_without_repeating_executable`. Call
   `build_opaque_relay_command(..., child_executable=Path(sys.executable),
   child_args=[str(launcher), "--workspace-root", str(workspace), "--no-auto-start"])` and assert the
@@ -222,7 +222,7 @@ appears exactly once, at index 0; the launcher is index 1.
   and prove the resolved relay child argv has one interpreter followed by the launcher. Retain the
   existing `child_args=None` test.
 
-- [ ] **Step 4: Run RED and retain the production-path diagnostic.**
+- [x] **Step 4: Run RED and retain the production-path diagnostic.**
 
   ```bash
   uv run --frozen pytest tests/unit/tools/test_probe_p11_zed_session_load.py -k "relay_child_argv_contains_interpreter_exactly_once or preserves_explicit_child_args_without_repeating_executable" -q
@@ -231,14 +231,14 @@ appears exactly once, at index 0; the launcher is index 1.
   Expected: the call-boundary test fails because current main records `sys.executable` twice, at
   indices 0 and 1. An unstubbed process/TTY failure or a synthetic assertion is not valid RED.
 
-- [ ] **Step 5: Implement the minimum one-line production correction.** Change only the explicit
+- [x] **Step 5: Implement the minimum one-line production correction.** Change only the explicit
   list at the real-Zed call from
   `[str(sys.executable), str(launcher), "--workspace-root", ...]` to
   `[str(launcher), "--workspace-root", ...]`. Keep
   `child_executable=Path(sys.executable)`, the relay CLI, workspace, approval lifecycle, launcher
   contents, and all flags unchanged.
 
-- [ ] **Step 6: Prove GREEN at both call boundaries.**
+- [x] **Step 6: Prove GREEN at both call boundaries.**
 
   ```bash
   uv run --frozen pytest tests/unit/tools/test_probe_p11_zed_session_load.py -k "relay_child_argv_contains_interpreter_exactly_once or preserves_explicit_child_args_without_repeating_executable or approves_actual_workspace_only_for_launch" -q
@@ -268,7 +268,7 @@ at optional top-level `relay_child_stderr_excerpt` before cleanup. The sidecar a
 `_manifest_from_sanitized_result()` therefore receive the same safe value; the raw file never enters
 the reconstructed bundle.
 
-- [ ] **Step 1: Write RED relay-capture tests.** Add
+- [x] **Step 1: Write RED relay-capture tests.** Add
   `test_child_stderr_is_captured_privately_without_touching_protocol_streams` using a real
   `sys.executable -c` child that writes a fixed sentinel to stderr and protocol bytes to stdout.
   Assert:
@@ -284,12 +284,12 @@ the reconstructed bundle.
   `cwd=None`, `shell=False`, and exact argv remain unchanged. Add a spawn-error/interrupt case that
   proves the file handle is closed.
 
-- [ ] **Step 2: Pin the unchanged relay summary contract.** In the same tests assert
+- [x] **Step 2: Pin the unchanged relay summary contract.** In the same tests assert
   `SCHEMA_SUMMARY == "plan117-custody-relay-summary-v1"`, the existing summary fields and child exit
   semantics are unchanged, and `relay-child-stderr.txt` is not counted as either directional bin.
   The raw diagnostic is additional scratch data, not a third ACP direction.
 
-- [ ] **Step 3: Write RED probe persistence tests.** Extend the stubbed real-Zed capture to create
+- [x] **Step 3: Write RED probe persistence tests.** Extend the stubbed real-Zed capture to create
   `<capture-root>/<run-id>/relay-child-stderr.txt` containing a credential canary, irregular
   whitespace, and more than 4000 characters. Add
   `test_real_zed_sidecar_and_bundle_include_bounded_sanitized_child_stderr_excerpt` and assert:
@@ -303,7 +303,7 @@ the reconstructed bundle.
   Retain `test_launch_log_excerpt_runs_through_evidence_sanitizer`, but do not use
   `zed_launch.log_excerpt` as the relay-child channel.
 
-- [ ] **Step 4: Write RED verifier compatibility tests.** Add
+- [x] **Step 4: Write RED verifier compatibility tests.** Add
   `test_optional_relay_child_stderr_excerpt_is_backward_compatible_and_bounded`:
   - the existing fixture/bundle shape with no optional field passes unchanged;
   - a sanitized string at lengths 0 and 4000 passes;
@@ -313,7 +313,7 @@ the reconstructed bundle.
   Keep `SCHEMA == "plan-11-19-zed-session-load-reprobe-v1"` and do not add the optional field to
   `REQUIRED_FIELDS`. Also run the verifier against both committed historical Plan 11.24 bundles.
 
-- [ ] **Step 5: Run RED selectors and the surface inventory.**
+- [x] **Step 5: Run RED selectors and the surface inventory.**
 
   ```bash
   uv run --frozen pytest tests/unit/tools/test_plan117_custody_relay.py -k "child_stderr or popen_receives" -q
@@ -326,7 +326,7 @@ the reconstructed bundle.
   validation. The surface verifier reports the new `_open_private_child_stderr` persistence sink
   once production code is introduced; record its exact generated key for Step 7.
 
-- [ ] **Step 6: Implement the minimum private-capture and additive evidence path.**
+- [x] **Step 6: Implement the minimum private-capture and additive evidence path.**
   - Open the raw diagnostic in the already-private relay run dir before Popen and pass the file
     object as `stderr`. Close it in the outer relay lifecycle even if Popen or forwarding fails.
   - Keep `err_out` exclusively for fixed relay reason codes. Do not forward or print child bytes.
@@ -338,7 +338,7 @@ the reconstructed bundle.
   - In the evidence verifier, validate the optional field only when present. Do not change the
     schema constant, required-field tuple, existing digests, or old-bundle acceptance.
 
-- [ ] **Step 7: Classify the new Plan 9.96 surface instead of bypassing it.** Add exactly the
+- [x] **Step 7: Classify the new Plan 9.96 surface instead of bypassing it.** Add exactly the
   inventory key emitted for `_open_private_child_stderr` to
   `docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json`. Its rationale must state
   that raw child stderr is confined to the throwaway private run root, never promoted, and only the
@@ -346,7 +346,7 @@ the reconstructed bundle.
   `test_child_stderr_is_captured_privately_without_touching_protocol_streams` or the exact final
   equivalent. Preserve every pre-existing key and classification.
 
-- [ ] **Step 8: Prove GREEN across relay, probe, verifier, backward compatibility, and policy.**
+- [x] **Step 8: Prove GREEN across relay, probe, verifier, backward compatibility, and policy.**
 
   ```bash
   uv run --frozen pytest tests/unit/tools/test_plan117_custody_relay.py -q

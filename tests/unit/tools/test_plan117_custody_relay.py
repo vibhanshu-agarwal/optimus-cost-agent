@@ -357,7 +357,64 @@ def test_backpressure_large_slow_child(tmp_path: Path) -> None:
     assert (run_dir / "agent-to-zed.bin").read_bytes() == payload
 
 
-def test_popen_receives_env_none_cwd_none_exact_argv_inherited_stderr_no_shell(
+def test_child_stderr_is_captured_privately_without_touching_protocol_streams(
+    tmp_path: Path,
+) -> None:
+    sentinel = b"relay-child-private-stderr-sentinel"
+    agent_stdout = b'{"jsonrpc":"2.0","id":1,"result":{}}\n'
+    zed_stdin = b'{"jsonrpc":"2.0","id":1,"method":"initialize"}\n'
+    code = (
+        "import sys;"
+        "sys.stdin.buffer.read();"
+        f"sys.stderr.buffer.write({sentinel!r});"
+        "sys.stderr.buffer.flush();"
+        f"sys.stdout.buffer.write({agent_stdout!r});"
+        "sys.stdout.buffer.flush()"
+    )
+
+    exit_code, forwarded, parent_stderr, run_dir = _run_relay_inprocess(
+        capture_root=tmp_path,
+        run_id="child-stderr-private",
+        child_argv=[sys.executable, "-c", code],
+        stdin_bytes=zed_stdin,
+    )
+
+    assert exit_code == 0
+    assert (run_dir / "relay-child-stderr.txt").read_bytes() == sentinel
+    assert forwarded == agent_stdout
+    assert (run_dir / "agent-to-zed.bin").read_bytes() == agent_stdout
+    assert (run_dir / "zed-to-agent.bin").read_bytes() == zed_stdin
+    assert sentinel not in parent_stderr
+    plan117_custody_relay.verify_relay_capture(run_dir)
+
+    summary = json.loads((run_dir / "relay-summary.json").read_text(encoding="utf-8"))
+    assert plan117_custody_relay.SCHEMA_SUMMARY == "plan117-custody-relay-summary-v1"
+    assert set(summary) == {
+        "schema",
+        "run_id",
+        "child_argv",
+        "child_argv_sha256",
+        "relay_sha256",
+        "child_exit_code",
+        "zed_to_agent_bytes",
+        "agent_to_zed_bytes",
+        "zed_to_agent_eof",
+        "agent_to_zed_eof",
+        "terminal_disposition",
+        "reason_code",
+    }
+    assert summary["child_exit_code"] == 0
+    assert summary["zed_to_agent_bytes"] == len(zed_stdin)
+    assert summary["agent_to_zed_bytes"] == len(agent_stdout)
+    assert {record["direction"] for record in _read_index(run_dir)} == {
+        DIR_ZED_TO_AGENT,
+        DIR_AGENT_TO_ZED,
+        EOF_ZED_TO_AGENT,
+        EOF_AGENT_TO_ZED,
+    }
+
+
+def test_popen_receives_env_none_cwd_none_exact_argv_private_stderr_no_shell(
     tmp_path: Path,
 ) -> None:
     captured: dict[str, Any] = {}
@@ -401,7 +458,11 @@ def test_popen_receives_env_none_cwd_none_exact_argv_inherited_stderr_no_shell(
     assert captured["kwargs"]["env"] is None
     assert captured["kwargs"]["cwd"] is None
     assert captured["kwargs"]["shell"] is False
-    assert captured["kwargs"]["stderr"] is None  # inherit
+    child_stderr = captured["kwargs"]["stderr"]
+    assert child_stderr is not None
+    assert child_stderr is not subprocess.PIPE
+    assert Path(child_stderr.name).resolve() == (tmp_path / "popen-spy" / "relay-child-stderr.txt").resolve()
+    assert child_stderr.closed is True
     argv = captured["args"][0] if captured["args"] else captured["kwargs"].get("args")
     assert argv == [str(tmp_path / "child.exe"), "--optimus", "acp"]
     assert "--capture-root" not in argv
@@ -724,8 +785,11 @@ def test_recorder_eof_oserror_and_close_errors(tmp_path: Path) -> None:
     recorder.close()
 
 
-def test_popen_factory_exception_is_fail_closed(tmp_path: Path) -> None:
-    def boom(*_a: Any, **_k: Any) -> Any:
+def test_child_stderr_handle_closes_when_popen_factory_raises(tmp_path: Path) -> None:
+    captured: dict[str, Any] = {}
+
+    def boom(*_a: Any, **kwargs: Any) -> Any:
+        captured["stderr"] = kwargs["stderr"]
         raise RuntimeError("spawn_failed")
 
     exit_code, _fwd, err, run_dir = _run_relay_inprocess(
@@ -738,6 +802,8 @@ def test_popen_factory_exception_is_fail_closed(tmp_path: Path) -> None:
     assert exit_code != 0
     assert b"relay_recorder_failure" in err
     assert (run_dir / "relay-summary.json").is_file()
+    assert captured["stderr"] is not None
+    assert captured["stderr"].closed is True
 
 
 def test_terminate_kill_fallback_and_text_stderr(tmp_path: Path) -> None:
@@ -1016,7 +1082,10 @@ def test_relay_recorder_error_path_and_outer_keyboard_interrupt(tmp_path: Path) 
     assert exit_code != 0
     assert b"relay_recorder_failure" in err
 
-    def raise_interrupt(*_a: Any, **_k: Any) -> Any:
+    interrupted: dict[str, Any] = {}
+
+    def raise_interrupt(*_a: Any, **kwargs: Any) -> Any:
+        interrupted["stderr"] = kwargs["stderr"]
         raise KeyboardInterrupt
 
     exit_code, _fwd, err, _run = _run_relay_inprocess(
@@ -1028,6 +1097,8 @@ def test_relay_recorder_error_path_and_outer_keyboard_interrupt(tmp_path: Path) 
     )
     assert exit_code != 0
     assert b"relay_interrupted" in err
+    assert interrupted["stderr"] is not None
+    assert interrupted["stderr"].closed is True
 
 
 def test_verify_additional_rejection_paths(tmp_path: Path) -> None:

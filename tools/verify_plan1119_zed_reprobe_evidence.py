@@ -56,6 +56,7 @@ REQUIRED_FIELDS = (
 )
 _SHA256_KEY = re.compile(r"sha256|commit|hash", re.I)
 _ZED_OVERCLAIM = re.compile(r"zed does not support", re.I)
+RELAY_CHILD_STDERR_EXCERPT_LIMIT = 4000
 
 
 class VerifyError(RuntimeError):
@@ -199,6 +200,14 @@ def verify_manifest(manifest_path: Path) -> None:
     manifest = _load_manifest(manifest_path)
     for field in REQUIRED_FIELDS:
         require(field in manifest, field, "required field is missing")
+    if "relay_child_stderr_excerpt" in manifest:
+        excerpt = manifest["relay_child_stderr_excerpt"]
+        require(isinstance(excerpt, str), "relay_child_stderr_excerpt", "must be a string")
+        require(
+            len(excerpt) <= RELAY_CHILD_STDERR_EXCERPT_LIMIT,
+            "relay_child_stderr_excerpt",
+            "must be at most 4000 characters",
+        )
     require(manifest.get("schema") == SCHEMA, "schema", "unexpected evidence schema")
     require(manifest.get("origin_a_launches") == 0, "origin_a_launches", "origin-A launches are forbidden")
     require(isinstance(manifest.get("zed"), Mapping) and isinstance(manifest.get("acpx"), Mapping), "zed", "identities are missing")

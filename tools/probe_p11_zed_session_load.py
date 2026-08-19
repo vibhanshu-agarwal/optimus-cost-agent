@@ -43,6 +43,8 @@ from optimus_security.sanitization import EVIDENCE_REDACTION_POLICY, sanitize_fo
 PLAN1119_SCHEMA = "plan-11-19-zed-session-load-reprobe-v1"
 PLAN1119_RUN_ID = "plan1119-zed-reprobe"
 _ISOLATED_LAUNCHER_NAME = "isolated_optimus_agent.py"
+RELAY_CHILD_STDERR_NAME = "relay-child-stderr.txt"
+RELAY_CHILD_STDERR_EXCERPT_LIMIT = 4000
 
 
 class Finding(StrEnum):
@@ -1783,8 +1785,16 @@ def _launch_log_excerpt(log_path: Path, *, limit: int = 4000) -> str:
     collapsed = " ".join(text.split())
     if len(collapsed) > limit:
         collapsed = collapsed[-limit:]
-    sanitized = sanitize_for_persistence(collapsed, policy=EVIDENCE_REDACTION_POLICY).value
-    return str(sanitized) if sanitized is not None else ""
+    sanitized = _safe_payload(collapsed)
+    excerpt = str(sanitized) if sanitized is not None else ""
+    return excerpt[-limit:] if len(excerpt) > limit else excerpt
+
+
+def _relay_child_stderr_excerpt(run_dir: Path) -> str:
+    return _launch_log_excerpt(
+        run_dir / RELAY_CHILD_STDERR_NAME,
+        limit=RELAY_CHILD_STDERR_EXCERPT_LIMIT,
+    )
 
 def _record_identities(
     result: dict[str, Any],
@@ -1964,7 +1974,7 @@ def run_plan1119_real_zed(
         acpx = _run_acpx_against_isolated_agent(agent_launcher=launcher, run_root=run_root, repo_root=repo_root)
         capture_root = run_root / "relay-capture"
         capture_root.mkdir()
-        child_args = [str(sys.executable), str(launcher), "--workspace-root", str(workspace), "--no-auto-start"]
+        child_args = [str(launcher), "--workspace-root", str(workspace), "--no-auto-start"]
         relay_argv = build_opaque_relay_command(
             capture_root=capture_root,
             run_id=PLAN1119_RUN_ID,
@@ -2040,6 +2050,8 @@ def run_plan1119_real_zed(
                 log_path=log_path,
                 timeout_s=timeout_s,
             )
+            run_dir = capture_root / PLAN1119_RUN_ID
+            result["relay_child_stderr_excerpt"] = _relay_child_stderr_excerpt(run_dir)
             log_excerpt = _launch_log_excerpt(log_path)
             result["zed_launch"] = {
                 "returncode": launch_meta.get("returncode"),
@@ -2056,7 +2068,6 @@ def run_plan1119_real_zed(
                 if log_excerpt:
                     detail = f"{detail}: {log_excerpt}"
                 raise ProbeError("zed_launch", detail)
-            run_dir = capture_root / PLAN1119_RUN_ID
             zed_bin = run_dir / "zed-to-agent.bin"
             agent_bin = run_dir / "agent-to-zed.bin"
             if not zed_bin.is_file() or not agent_bin.is_file():

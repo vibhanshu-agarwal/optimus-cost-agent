@@ -1865,6 +1865,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan117_custody_relay:_open_private_child_stderr:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens relay-child-stderr.txt for binary write only under the explicit throwaway private capture root/run-id; raw child diagnostics never enter ACP streams, relay reason-code stderr, or reconstructed evidence, and only the separately bounded _safe_payload excerpt reaches sidecar/manifest before run-root cleanup.",
+      "sanitizer": "private throwaway raw scratch; downstream retention uses tools.probe_p11_zed_session_load._safe_payload with EVIDENCE_REDACTION_POLICY",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_child_stderr_is_captured_privately_without_touching_protocol_streams",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan117_custody_relay:run_relay:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: AST overmatch on threading.Event.set() inside run_relay; no Redis client or hash write exists in the opaque relay.",
