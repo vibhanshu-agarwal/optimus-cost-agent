@@ -97,6 +97,21 @@ PROTECTED_BLOB_SHA256 = {
     "docs/superpowers/plans/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md": (
         "106FD92B8E43F44A7115D7EDB1F9CF1E3EE643E4B6F594FA656FB4119A969B82"
     ),
+    "docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe.md": (
+        "BA1372E1D638AC2F12A4852E304DCE02196C26C78017F3AE1CA566F4A08DD017"
+    ),
+    "docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v2.md": (
+        "BA67D5021FF767D9574BA452E39ECB2E642999C0CAEFBD6431D82E93D3842E05"
+    ),
+    "docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v3.md": (
+        "C76121F5A35A698183ADEB1B028AEE6E7C0FE26621ED798586F5AF9081CB81F4"
+    ),
+    "docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v4.md": (
+        "1CFBB6E0BEDD8FBB3A111DE5C9AEA11F96F36D742A1469B50EEC03EB3116B13C"
+    ),
+    "docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v5.md": (
+        "26B8A69BE2A3CD4E5A021CB21A507C27D0C880D5322EF22B9A59D4257ECC96A8"
+    ),
     "docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md": (
         "8B67FC187B92F0B66A9932AAAD9A013C476C19C165A1044F57F338245A01786C"
     ),
