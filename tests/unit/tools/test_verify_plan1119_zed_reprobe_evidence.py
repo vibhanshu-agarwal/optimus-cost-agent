@@ -287,3 +287,68 @@ def test_optional_relay_child_stderr_excerpt_is_backward_compatible_and_bounded(
     assert main(["--manifest", str(path)]) == 1
     captured = capsys.readouterr()
     assert secret_like not in captured.err
+
+
+def test_v5_manifest_requires_two_lifecycle_correlation_but_legacy_manifests_still_pass(tmp_path: Path) -> None:
+    legacy = write_manifest(tmp_path / "legacy", valid_manifest(finding="REACHABLE"))
+    assert main(["--manifest", str(legacy)]) == 0
+
+    report_dir = tmp_path / "reports" / "plan-11-24-zed-guided-session-load-probe-v5"
+    report_dir.mkdir(parents=True)
+    relay_a = report_dir / "relay" / "lifecycle-a"
+    relay_b = report_dir / "relay" / "lifecycle-b"
+    relay_a.mkdir(parents=True)
+    relay_b.mkdir(parents=True)
+    zed_a = relay_a / "zed-to-agent.bin"
+    agent_a = relay_a / "agent-to-zed.bin"
+    zed_b = relay_b / "zed-to-agent.bin"
+    agent_b = relay_b / "agent-to-zed.bin"
+    zed_a.write_bytes(b"a-zed")
+    agent_a.write_bytes(b"a-agent")
+    zed_b.write_bytes(b"b-zed")
+    agent_b.write_bytes(b"b-agent")
+    report = report_dir / "report.md"
+    report.write_text("Finding: REACHABLE.\n", encoding="utf-8")
+
+    payload = valid_manifest(finding="REACHABLE")
+    payload["zed_launches"] = 2
+    payload["relay"] = {"source": "opaque-relay-post-run"}
+    payload["resume_lifecycle"] = {
+        "shared_profile": True,
+        "lifecycle_a": {
+            "label": "plan1124-create",
+            "session_new_id": "session-a",
+            "zed_to_agent_sha256": _sha256_file(zed_a),
+            "agent_to_zed_sha256": _sha256_file(agent_a),
+        },
+        "lifecycle_b": {
+            "label": "plan1124-resume",
+            "session_load_exchange": {
+                "request": {
+                    "jsonrpc": "2.0",
+                    "id": 9,
+                    "method": "session/load",
+                    "params": {"sessionId": "session-a"},
+                },
+                "response": {"jsonrpc": "2.0", "id": 9, "result": {}},
+            },
+            "zed_to_agent_sha256": _sha256_file(zed_b),
+            "agent_to_zed_sha256": _sha256_file(agent_b),
+        },
+    }
+    payload["files"] = {
+        "report.md": _sha256_file(report),
+        "relay/lifecycle-a/zed-to-agent.bin": _sha256_file(zed_a),
+        "relay/lifecycle-a/agent-to-zed.bin": _sha256_file(agent_a),
+        "relay/lifecycle-b/zed-to-agent.bin": _sha256_file(zed_b),
+        "relay/lifecycle-b/agent-to-zed.bin": _sha256_file(agent_b),
+    }
+    manifest_path = report_dir / "manifest.json"
+    manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    assert main(["--manifest", str(manifest_path)]) == 0
+
+    def break_match(doc: dict[str, Any]) -> None:
+        doc["resume_lifecycle"]["lifecycle_b"]["session_load_exchange"]["request"]["params"]["sessionId"] = "session-b"
+
+    _rewrite(manifest_path, break_match)
+    assert main(["--manifest", str(manifest_path)]) == 1

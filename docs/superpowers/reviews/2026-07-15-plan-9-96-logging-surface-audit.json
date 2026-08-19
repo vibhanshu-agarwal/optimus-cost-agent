@@ -2713,6 +2713,70 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.probe_p11_zed_session_load:run_plan1124_agent_protocol_drive:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Inspection: str(exc) is used only to branch on ProbeError stage text and to persist sanitized failure fields after _safe_payload; raw OSError/ProbeError text is not retained.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_agent_protocol_drive_requires_erroring_prompt_and_matching_saved_load",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:run_plan1124_agent_protocol_drive:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes schema-limited agent-protocol drive result fields after sanitization; underscore-prefixed keys are dropped and raw acpx streams are not materialized.",
+      "sanitizer": "schema-limited result; protocol and exception fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_agent_protocol_drive_delegates_all_protocol_traffic_to_acpx",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:run_plan1124_agent_protocol_drive:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes a schema-limited prerequisite report with a fixed Establishing-Disposition token and boolean no-Gateway marker plus sanitized sidecar JSON; it never persists raw acpx stdout/stderr streams.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_agent_protocol_drive_requires_erroring_prompt_and_matching_saved_load",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:materialize_sanitized_zed_evidence_v5:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only reconstructed sanitized lifecycle relay bytes and schema-limited report/manifest under staging before atomic publish; no raw relay capture or child stderr files are promoted.",
+      "sanitizer": "schema-limited result; protocol fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_two_lifecycle_run_reuses_one_profile_and_separates_relay_captures",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:materialize_sanitized_zed_evidence_v5:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: JSON encoding happens only on the already-_safe_payload manifest dict (underscore-prefixed keys dropped, protocol fields sanitized) and then written as manifest.json; raw relay bytes are never embedded as plaintext.",
+      "sanitizer": "schema-limited result; optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_two_lifecycle_run_reuses_one_profile_and_separates_relay_captures",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:run_plan1124_two_lifecycle_real_zed:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Inspection: str(exc) is used only to branch on ProbeError stage text and to persist evidence_materialization_error.message after _safe_payload; raw OSError/ProbeError text is not retained.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_two_lifecycle_run_reuses_one_profile_and_separates_relay_captures",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:run_plan1124_two_lifecycle_real_zed:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: publishes schema-limited lifecycle correlation metadata (session ids, digests, reason codes) and sanitized exchange payloads only; raw ACP bytes stay in throwaway roots and reconstructed sanitized bins.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_two_lifecycle_run_reuses_one_profile_and_separates_relay_captures",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.probe_p11_zed_session_load:run_plan1124_two_lifecycle_real_zed:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the schema-limited two-lifecycle JSON sidecar under the throwaway parent workspace; credentials and raw relay bytes are never written.",
+      "sanitizer": "schema-limited functional path; throwaway report scratch only",
+      "test_node": "tests/unit/tools/test_probe_p11_zed_session_load.py::test_two_lifecycle_run_reuses_one_profile_and_separates_relay_captures",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.verify_plan1119_zed_reprobe_evidence:_sha256_file:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: opens committed evidence artifacts only to compute SHA-256 digests for offline verification; bytes are neither retained nor re-exported.",

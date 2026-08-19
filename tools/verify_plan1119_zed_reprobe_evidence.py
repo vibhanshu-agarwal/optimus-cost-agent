@@ -132,6 +132,66 @@ def _verify_files(report_dir: Path, files: Mapping[str, Any], relay: Mapping[str
     )
 
 
+def _verify_resume_lifecycle(manifest: Mapping[str, Any], report_dir: Path) -> None:
+    resume = manifest.get("resume_lifecycle")
+    if not isinstance(resume, Mapping):
+        return
+    require(manifest.get("zed_launches") == 2, "zed_launches", "resume_lifecycle requires exactly two launches")
+    require(resume.get("shared_profile") is True, "resume_lifecycle.shared_profile", "shared profile must be true")
+    lifecycle_a = resume.get("lifecycle_a")
+    lifecycle_b = resume.get("lifecycle_b")
+    require(isinstance(lifecycle_a, Mapping), "resume_lifecycle.lifecycle_a", "lifecycle_a record is missing")
+    require(isinstance(lifecycle_b, Mapping), "resume_lifecycle.lifecycle_b", "lifecycle_b record is missing")
+    create_id = lifecycle_a.get("session_new_id")
+    require(isinstance(create_id, str) and create_id.strip(), "resume_lifecycle.lifecycle_a.session_new_id", "session/new id is missing")
+    exchange = lifecycle_b.get("session_load_exchange")
+    require(isinstance(exchange, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange", "session/load exchange is missing")
+    request = exchange.get("request")
+    require(isinstance(request, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.request", "session/load request is missing")
+    params = request.get("params")
+    require(isinstance(params, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.request.params", "session/load params are missing")
+    require(
+        params.get("sessionId") == create_id,
+        "resume_lifecycle.lifecycle_b.session_load_exchange.request.params.sessionId",
+        "Lifecycle B session/load id must match Lifecycle A session/new id",
+    )
+
+    files = manifest.get("files")
+    require(isinstance(files, Mapping), "files", "files must be an object of relative paths")
+    expected = (
+        "relay/lifecycle-a/zed-to-agent.bin",
+        "relay/lifecycle-a/agent-to-zed.bin",
+        "relay/lifecycle-b/zed-to-agent.bin",
+        "relay/lifecycle-b/agent-to-zed.bin",
+    )
+    for rel in expected:
+        require(rel in files, "files", f"{rel} is missing from files map")
+        path = _require_report_relative(report_dir, rel)
+        require(path.is_file(), "files", "declared report file is missing")
+        require(files.get(rel) == _sha256_file(path), rel, "SHA-256 mismatch")
+
+    require(
+        lifecycle_a.get("zed_to_agent_sha256") == files.get("relay/lifecycle-a/zed-to-agent.bin"),
+        "resume_lifecycle.lifecycle_a.zed_to_agent_sha256",
+        "lifecycle-a digest mismatch",
+    )
+    require(
+        lifecycle_a.get("agent_to_zed_sha256") == files.get("relay/lifecycle-a/agent-to-zed.bin"),
+        "resume_lifecycle.lifecycle_a.agent_to_zed_sha256",
+        "lifecycle-a digest mismatch",
+    )
+    require(
+        lifecycle_b.get("zed_to_agent_sha256") == files.get("relay/lifecycle-b/zed-to-agent.bin"),
+        "resume_lifecycle.lifecycle_b.zed_to_agent_sha256",
+        "lifecycle-b digest mismatch",
+    )
+    require(
+        lifecycle_b.get("agent_to_zed_sha256") == files.get("relay/lifecycle-b/agent-to-zed.bin"),
+        "resume_lifecycle.lifecycle_b.agent_to_zed_sha256",
+        "lifecycle-b digest mismatch",
+    )
+
+
 def _verify_finding_rule(manifest: Mapping[str, Any]) -> None:
     finding = manifest["finding"]
     require(finding in ALLOWED_FINDINGS, "finding", "finding must be REACHABLE, UNREACHABLE, or INDETERMINATE")
@@ -213,7 +273,10 @@ def verify_manifest(manifest_path: Path) -> None:
         require(len(excerpt) <= RELAY_CHILD_STDERR_EXCERPT_LIMIT, "relay_child_stderr_excerpt", "optional field exceeds 4000 characters")
 
     _scan_credential_like(manifest, field="manifest")
-    _verify_files(report_dir, manifest["files"], manifest["relay"])
+    if isinstance(manifest.get("resume_lifecycle"), Mapping):
+        _verify_resume_lifecycle(manifest, report_dir)
+    else:
+        _verify_files(report_dir, manifest["files"], manifest["relay"])
     _verify_isolation(manifest)
     _verify_finding_rule(manifest)
     _verify_report(report_dir, manifest)

@@ -39,6 +39,7 @@ from typing import Any
 
 from optimus.acp.framing import FramingError, parse_content_length
 from optimus_security.sanitization import EVIDENCE_REDACTION_POLICY, sanitize_for_persistence
+from tools.plan117_custody_relay import verify_relay_capture
 
 PLAN1119_SCHEMA = "plan-11-19-zed-session-load-reprobe-v1"
 PLAN1119_RUN_ID = "plan1119-zed-reprobe"
@@ -234,6 +235,13 @@ RELAY_EXTRACT_SOURCE = "opaque-relay-post-run"
 REPORTS_ROOT = Path(__file__).resolve().parents[1] / "reports"
 PLAN_1124_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe"
 PLAN_1124_V3_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe-v3"
+PLAN_1124_V5_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe-v5"
+PLAN_1124_AGENT_PROTOCOL_REPORT_NAME = "plan-11-24-agent-protocol-persistence-establishing-drive.md"
+PLAN1124_LIFECYCLE_A_RUN_ID = "plan1124-create"
+PLAN1124_LIFECYCLE_B_RUN_ID = "plan1124-resume"
+PLAN1124_ESTABLISHING_OK = "NO_GATEWAY_PATH_ESTABLISHED"
+PLAN1124_ESTABLISHING_PRECONDITION_UNMET = "PRECONDITION_UNMET"
+PLAN1124_EXEC_MESSAGE = "Persist this probe thread only; do not use tools or modify files."
 PLAN1124_OUTCOME_CONSEQUENCES = {
     Finding.REACHABLE.value: (
         "The tested current Zed issued `session/load`; a separately scoped `P11-FU-1` "
@@ -1397,6 +1405,22 @@ def extract_session_load_from_messages(
     return None
 
 
+def extract_session_new_from_messages(
+    zed_to_agent: Sequence[Mapping[str, Any]],
+    agent_to_zed: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    requests = {
+        message.get("id"): dict(message)
+        for message in zed_to_agent
+        if message.get("method") == "session/new" and "id" in message
+    }
+    for message in agent_to_zed:
+        request = requests.get(message.get("id"))
+        if request is not None and isinstance(message.get("result"), Mapping):
+            return {"request": request, "response": dict(message)}
+    return None
+
+
 def reconstruct_sanitized_relay_bytes(messages: Sequence[Mapping[str, Any]]) -> bytes:
     chunks: list[bytes] = []
     for message in messages:
@@ -1591,6 +1615,57 @@ def _assert_cleanup_allows_publish(result: Mapping[str, Any]) -> None:
         raise ProbeError("cleanup", "sanitized evidence is not published after failed cleanup")
 
 
+def _agent_protocol_report_path() -> Path:
+    return REPORTS_ROOT / PLAN_1124_AGENT_PROTOCOL_REPORT_NAME
+
+
+def _plan1124_agent_protocol_report_text(result: Mapping[str, Any]) -> str:
+    disposition = str(result.get("establishing_disposition") or PLAN1124_ESTABLISHING_PRECONDITION_UNMET)
+    no_gateway = bool(result.get("no_gateway_path_established"))
+    return "\n".join(
+        [
+            "# Plan 11.24 agent protocol persistence establishing drive",
+            "",
+            "This report records prerequisite-only evidence from the independently authored acpx client.",
+            "It is not a finding about Zed.",
+            "",
+            f"Establishing-Disposition: {disposition}",
+            f"No-Gateway-Path-Established: {'true' if no_gateway else 'false'}",
+            "",
+        ]
+    )
+
+
+def _read_establishing_disposition_marker(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Establishing-Disposition:"):
+            _, _, value = stripped.partition(":")
+            marker = value.strip()
+            return marker or None
+    return None
+
+
+def _require_established_agent_protocol_prerequisite(result: dict[str, Any]) -> bool:
+    marker = _read_establishing_disposition_marker(_agent_protocol_report_path())
+    result["agent_protocol_prerequisite"] = {
+        "report": str(_agent_protocol_report_path()),
+        "disposition": marker,
+    }
+    if marker == PLAN1124_ESTABLISHING_OK:
+        return True
+    result["finding"] = Finding.INDETERMINATE.value
+    result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
+    result["zed_launches"] = 0
+    return False
+
+
 def _plan1124_report_text(result: Mapping[str, Any]) -> str:
     finding = str(result.get("finding") or Finding.INDETERMINATE.value)
     recorded = str(result.get("recorded_at_utc") or "")
@@ -1706,6 +1781,60 @@ def materialize_sanitized_zed_evidence(
             _verify_existing_evidence_manifest(manifest_path)
         except Exception as exc:
             raise ProbeError("evidence_bundle", "existing verifier rejected the sanitized bundle") from exc
+        if target.exists():
+            raise ProbeError("evidence_bundle", "existing report directory must not be overwritten")
+        staging.replace(target)
+        return target / "manifest.json"
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+
+
+def materialize_sanitized_zed_evidence_v5(
+    *,
+    report_dir: Path,
+    result: Mapping[str, Any],
+    lifecycle_a_zed: bytes,
+    lifecycle_a_agent: bytes,
+    lifecycle_b_zed: bytes,
+    lifecycle_b_agent: bytes,
+) -> Path:
+    target = _assert_allowed_report_dir(report_dir)
+    _assert_cleanup_allows_publish(result)
+    parent = target.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.", dir=parent))
+    try:
+        relay_a = staging / "relay" / "lifecycle-a"
+        relay_b = staging / "relay" / "lifecycle-b"
+        relay_a.mkdir(parents=True, exist_ok=True)
+        relay_b.mkdir(parents=True, exist_ok=True)
+        report_path = staging / "report.md"
+        a_zed_path = relay_a / "zed-to-agent.bin"
+        a_agent_path = relay_a / "agent-to-zed.bin"
+        b_zed_path = relay_b / "zed-to-agent.bin"
+        b_agent_path = relay_b / "agent-to-zed.bin"
+        a_zed_path.write_bytes(lifecycle_a_zed)
+        a_agent_path.write_bytes(lifecycle_a_agent)
+        b_zed_path.write_bytes(lifecycle_b_zed)
+        b_agent_path.write_bytes(lifecycle_b_agent)
+        report_path.write_text(_plan1124_report_text(result), encoding="utf-8", newline="\n")
+        files = {
+            "report.md": _sha256_bytes(report_path.read_bytes()),
+            "relay/lifecycle-a/zed-to-agent.bin": _sha256_bytes(lifecycle_a_zed),
+            "relay/lifecycle-a/agent-to-zed.bin": _sha256_bytes(lifecycle_a_agent),
+            "relay/lifecycle-b/zed-to-agent.bin": _sha256_bytes(lifecycle_b_zed),
+            "relay/lifecycle-b/agent-to-zed.bin": _sha256_bytes(lifecycle_b_agent),
+        }
+        manifest = {key: value for key, value in result.items() if not str(key).startswith("_")}
+        manifest["files"] = files
+        manifest["origin_a_launches"] = 0
+        sanitized = _safe_payload(manifest)
+        if not isinstance(sanitized, dict):
+            raise ProbeError("evidence_bundle", "sanitized manifest is not an object")
+        manifest_path = staging / "manifest.json"
+        manifest_path.write_text(json.dumps(sanitized, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+        _verify_existing_evidence_manifest(manifest_path)
         if target.exists():
             raise ProbeError("evidence_bundle", "existing report directory must not be overwritten")
         staging.replace(target)
@@ -1946,6 +2075,184 @@ def run_plan1119_acpx_baseline(parent_workspace: Path) -> dict[str, Any]:
             result["notes"] = "acpx baseline confirmed isolated loadSession advertisement; not a Zed finding."
     return result
 
+
+def run_plan1124_agent_protocol_drive(parent_workspace: Path) -> dict[str, Any]:
+    """Run acpx-only persistence establishing drive with no Zed launches."""
+    repo_root = Path(__file__).resolve().parents[1]
+    result = _plan1119_base_result(repo_root, mode="agent-protocol")
+    result["zed_launches"] = 0
+    result["origin_a_launches"] = 0
+    result["no_gateway_path_established"] = False
+    run_root: Path | None = None
+    preparation: ProbePreparation | None = None
+    workspace: Path | None = None
+    trust_cli: Path | None = None
+    approved = False
+    try:
+        workspace_parent = _validate_parent_workspace(parent_workspace, repo_root)
+        run_root = Path(tempfile.mkdtemp(prefix="p1124-agent-protocol-", dir=workspace_parent))
+        isolated = run_root / "probe-source"
+        preparation = prepare_real_zed_probe(isolated, normal_root=repo_root, scratch_parent=run_root)
+        isolation = verify_normal_operation_isolation(preparation)
+        if not isolation.prelaunch_predicates_pass:
+            raise ProbeError("isolation", "pre-launch isolation predicates failed")
+        validate_isolation_evidence(isolation, require_cleanup=False)
+        launcher = write_isolated_agent_launcher(Path(preparation.isolated_build_root), Path(preparation.isolated_source_root))
+        workspace = run_root / "acpx-workspace"
+        workspace.mkdir(parents=True, exist_ok=True)
+        first_home = run_root / "acpx-home-first"
+        second_home = run_root / "acpx-home-second"
+        first_env = _isolated_environment(first_home)
+        second_env = _isolated_environment(second_home)
+        acpx = _resolve_acpx()
+        trust_cli = _resolve_trust_cli(repo_root)
+        result["acpx"] = {
+            "version": _acpx_version(acpx, cwd=workspace, env=first_env),
+            "executable": str(acpx),
+            "executable_sha256": _file_sha256(acpx),
+        }
+        command = build_acpx_command(acpx, workspace=workspace, agent=launcher, ttl_seconds=1)
+        inspect = _run(build_trust_command(trust_cli, workspace, "inspect"), cwd=workspace, env=os.environ)
+        if inspect.returncode != 1:
+            raise ProbeError("temporary_approval_preflight", f"inspect exit={inspect.returncode}", inspect)
+        _run_interactive_required(build_trust_command(trust_cli, workspace, "approve"), cwd=workspace, stage="temporary_approval")
+        approved = True
+
+        new_result = _run_required([*command, "sessions", "new"], cwd=workspace, env=first_env, stage="acpx_new_session")
+        new_evidence = capture_acpx_evidence(new_result)
+        new_records = new_evidence.get("stdout_records")
+        session_new = None
+        if isinstance(new_records, Sequence):
+            new_exchange = extract_session_new_from_messages(new_records, new_records)
+            session_new = new_exchange
+        result["session_new_response"] = _safe_payload(session_new)
+        new_id = None
+        if isinstance(session_new, Mapping):
+            response = session_new.get("response")
+            if isinstance(response, Mapping):
+                response_result = response.get("result")
+                if isinstance(response_result, Mapping):
+                    new_id = response_result.get("sessionId")
+
+        prompt_result = _run([*command, "exec", PLAN1124_EXEC_MESSAGE], cwd=workspace, env=first_env)
+        prompt_evidence = capture_acpx_evidence(prompt_result)
+        result["prompt_attempt"] = _safe_payload(prompt_evidence)
+        prompt_failed = prompt_result.returncode != 0
+
+        archive = run_root / "session.json"
+        _run_required([*command, "sessions", "export", "--output", str(archive)], cwd=workspace, env=first_env, stage="acpx_export_session")
+        _run_required([*command, "sessions", "import", str(archive)], cwd=workspace, env=second_env, stage="acpx_import_session")
+        time.sleep(2)
+        status_result = _run([*command, "status"], cwd=workspace, env=second_env)
+        status_evidence = capture_acpx_evidence(status_result)
+        load_id = None
+        load_ok = False
+        # If the client emits multiple session/load exchanges, pick the one
+        # whose params.sessionId matches Lifecycle A's session/new id.
+        records = _parse_ndjson(status_result.stdout)
+        requests: dict[Any, dict[str, Any]] = {}
+        exchanges: list[dict[str, Any]] = []
+        for record in records:
+            if record.get("method") == "session/load":
+                requests[record.get("id")] = dict(record)
+                continue
+            request = requests.get(record.get("id"))
+            if request is not None and ("result" in record or "error" in record):
+                exchanges.append({"request": request, "response": dict(record)})
+        selected_exchange: dict[str, Any] | None = None
+        if isinstance(new_id, str) and new_id:
+            for ex in exchanges:
+                req = ex.get("request")
+                if not isinstance(req, Mapping):
+                    continue
+                params = req.get("params")
+                if isinstance(params, Mapping) and params.get("sessionId") == new_id:
+                    selected_exchange = ex
+                    break
+        if selected_exchange is None and exchanges:
+            selected_exchange = exchanges[0]
+        result["session_load_exchange"] = _safe_payload(selected_exchange)
+        if isinstance(selected_exchange, Mapping):
+            request = selected_exchange.get("request")
+            response = selected_exchange.get("response")
+            if isinstance(request, Mapping):
+                params = request.get("params")
+                if isinstance(params, Mapping):
+                    load_id = params.get("sessionId")
+            if isinstance(response, Mapping):
+                load_ok = response.get("result") == {}
+
+        gateway_touched = "gateway" in json.dumps(status_evidence, sort_keys=True).casefold() or "gateway" in json.dumps(prompt_evidence, sort_keys=True).casefold()
+        established = bool(prompt_failed and isinstance(new_id, str) and new_id and new_id == load_id and load_ok and not gateway_touched)
+        result["no_gateway_path_established"] = established
+        result["establishing_disposition"] = (
+            PLAN1124_ESTABLISHING_OK if established else PLAN1124_ESTABLISHING_PRECONDITION_UNMET
+        )
+        result["indeterminate_reason"] = None if established else IndeterminateReason.PRECONDITION_UNMET.value
+        report_path = _agent_protocol_report_path()
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(_plan1124_agent_protocol_report_text(result), encoding="utf-8", newline="\n")
+    except ProbeError as exc:
+        record_probe_command_failure(result, exc)
+        result["indeterminate_reason"] = _reason_from_stage(exc.stage).value
+        result["establishing_disposition"] = PLAN1124_ESTABLISHING_PRECONDITION_UNMET
+    finally:
+        if approved and trust_cli is not None and workspace is not None:
+            try:
+                _revoke_temporary_approval(trust_cli, workspace, cwd=workspace)
+            except ProbeError as exc:
+                _record_zed_workspace_revoke_failure(
+                    result,
+                    trust_cli=trust_cli,
+                    workspace=workspace,
+                    stage=exc.stage,
+                    message=str(exc),
+                )
+                result["indeterminate_reason"] = IndeterminateReason.CLEANUP_UNVERIFIED.value
+                result["no_gateway_path_established"] = False
+                result["establishing_disposition"] = PLAN1124_ESTABLISHING_PRECONDITION_UNMET
+        cleaned, leftovers = _cleanup_plan1119_roots(
+            run_root=run_root,
+            isolated_source=Path(preparation.isolated_source_root) if preparation else None,
+            isolated_build=Path(preparation.isolated_build_root) if preparation else None,
+            hermetic_root=Path(preparation.hermetic_zed_root) if preparation else None,
+        )
+        result.setdefault("isolation", {})
+        if isinstance(result["isolation"], dict):
+            result["isolation"]["cleanup_verified"] = cleaned
+        if not cleaned:
+            result["indeterminate_reason"] = IndeterminateReason.CLEANUP_UNVERIFIED.value
+            result["cleanup_remediation"] = leftovers
+            result["no_gateway_path_established"] = False
+            result["establishing_disposition"] = PLAN1124_ESTABLISHING_PRECONDITION_UNMET
+        try:
+            sidecar = parent_workspace / "plan1124-agent-protocol-result.json"
+            sidecar.write_text(
+                json.dumps({k: v for k, v in result.items() if not str(k).startswith("_")}, indent=2, sort_keys=True, default=str),
+                encoding="utf-8",
+                newline="\n",
+            )
+            result["sidecar"] = str(sidecar)
+        except OSError:
+            pass
+    return result
+
+
+def _classify_resume_lifecycle(create_id: str | None, load_exchange: Mapping[str, Any] | None) -> tuple[Finding, str | None]:
+    if not create_id or not isinstance(load_exchange, Mapping):
+        return (Finding.INDETERMINATE, IndeterminateReason.OBSERVATION_INCOMPLETE.value)
+    request = load_exchange.get("request")
+    response = load_exchange.get("response")
+    if not isinstance(request, Mapping) or not isinstance(response, Mapping):
+        return (Finding.INDETERMINATE, IndeterminateReason.OBSERVATION_INCOMPLETE.value)
+    params = request.get("params")
+    if not isinstance(params, Mapping) or params.get("sessionId") != create_id:
+        return (Finding.INDETERMINATE, IndeterminateReason.PRECONDITION_UNMET.value)
+    if response.get("result") == {}:
+        return (Finding.REACHABLE, None)
+    if isinstance(response.get("error"), Mapping):
+        return (Finding.UNREACHABLE, None)
+    return (Finding.INDETERMINATE, IndeterminateReason.OBSERVATION_INCOMPLETE.value)
 
 def run_plan1119_real_zed(
     parent_workspace: Path,
@@ -2236,11 +2543,212 @@ def run_plan1119_real_zed(
     return result
 
 
+def run_plan1124_two_lifecycle_real_zed(
+    parent_workspace: Path,
+    *,
+    timeout_s: float,
+    report_dir: Path,
+) -> dict[str, Any]:
+    repo_root = Path(__file__).resolve().parents[1]
+    result = _plan1119_base_result(repo_root, mode="real-zed-resume")
+    result["zed_launches"] = 0
+    if not _require_established_agent_protocol_prerequisite(result):
+        return result
+    total_timeout = validate_zed_launch_timeout_seconds(timeout_s)
+    run_root: Path | None = None
+    preparation: ProbePreparation | None = None
+    isolation: IsolationEvidence | None = None
+    workspace: Path | None = None
+    trust_cli: Path | None = None
+    zed_workspace_approved = False
+    retain_run_root = False
+    try:
+        workspace_parent = _validate_parent_workspace(parent_workspace, repo_root)
+        if zed_target_already_running(_list_process_names()):
+            raise ProbeError("already_running_zed", "an already-running Zed process is in scope")
+        run_root = Path(tempfile.mkdtemp(prefix="p1124-real-zed-resume-", dir=workspace_parent))
+        isolated = run_root / "probe-source"
+        preparation = prepare_real_zed_probe(isolated, normal_root=repo_root, scratch_parent=run_root)
+        isolation = verify_normal_operation_isolation(preparation)
+        validate_isolation_evidence(isolation, require_cleanup=False)
+        executable, invocation, help_sha256 = _discover_live_zed_invocation(Path(preparation.hermetic_zed_root))
+        launcher = write_isolated_agent_launcher(Path(preparation.isolated_build_root), Path(preparation.isolated_source_root))
+        workspace = run_root / "zed-workspace"
+        workspace.mkdir(parents=True, exist_ok=True)
+        trust_cli = _resolve_trust_cli(repo_root)
+        inspect = _run(build_trust_command(trust_cli, workspace, "inspect"), cwd=workspace, env=os.environ)
+        if inspect.returncode != 1:
+            raise ProbeError("zed_workspace_inspect", f"inspect exit={inspect.returncode}", inspect)
+        _run_interactive_required(build_trust_command(trust_cli, workspace, "approve"), cwd=workspace, stage="zed_workspace_approval")
+        zed_workspace_approved = True
+        result["zed_workspace_approval"] = {"mode": "durable", "created": True, "revoked": False}
+        _record_identities(
+            result,
+            executable=executable,
+            invocation=invocation,
+            help_sha256=help_sha256,
+            preparation=preparation,
+            isolation=isolation,
+            launcher=launcher,
+            acpx=None,
+        )
+
+        deadline = time.monotonic() + total_timeout
+        captures: dict[str, dict[str, Any]] = {}
+        create_id: str | None = None
+        load_exchange: Mapping[str, Any] | None = None
+        for lifecycle, run_id in (("lifecycle_a", PLAN1124_LIFECYCLE_A_RUN_ID), ("lifecycle_b", PLAN1124_LIFECYCLE_B_RUN_ID)):
+            capture_root = run_root / "relay-capture"
+            capture_root.mkdir(exist_ok=True)
+            child_args = [str(launcher), "--workspace-root", str(workspace), "--no-auto-start"]
+            relay_argv = build_opaque_relay_command(
+                capture_root=capture_root,
+                run_id=run_id,
+                child_executable=Path(sys.executable),
+                invocation=invocation,
+                child_args=child_args,
+            )
+            seed_hermetic_zed_settings(Path(invocation.user_data_root), relay_command=relay_argv[0], relay_args=relay_argv[1:])
+            remaining = max(1.0, deadline - time.monotonic())
+            launch_help = _observe_zed_help(Path(invocation.argv[0]))
+            zed_argv = list(build_real_zed_launch_argv(invocation, workspace=workspace, launch_help=launch_help))
+            _launch_zed_once(
+                zed_argv,
+                env=_zed_env_for_invocation(invocation),
+                cwd=workspace,
+                log_path=run_root / f"{run_id}.log",
+                timeout_s=remaining,
+            )
+            result["zed_launches"] = result.get("zed_launches", 0) + 1
+            run_dir = capture_root / run_id
+            verify_relay_capture(run_dir)
+            zed_messages = iter_acp_messages((run_dir / "zed-to-agent.bin").read_bytes())
+            agent_messages = iter_acp_messages((run_dir / "agent-to-zed.bin").read_bytes())
+            zed_sanitized = reconstruct_sanitized_relay_bytes(zed_messages)
+            agent_sanitized = reconstruct_sanitized_relay_bytes(agent_messages)
+            captures[lifecycle] = {
+                "zed": zed_sanitized,
+                "agent": agent_sanitized,
+                "zed_sha256": hashlib.sha256(zed_sanitized).hexdigest(),
+                "agent_sha256": hashlib.sha256(agent_sanitized).hexdigest(),
+            }
+            if lifecycle == "lifecycle_a":
+                new_exchange = extract_session_new_from_messages(zed_messages, agent_messages)
+                if isinstance(new_exchange, Mapping):
+                    response = new_exchange.get("response")
+                    if isinstance(response, Mapping):
+                        payload = response.get("result")
+                        if isinstance(payload, Mapping):
+                            session_id = payload.get("sessionId")
+                            if isinstance(session_id, str):
+                                create_id = session_id
+            else:
+                load_exchange = extract_session_load_from_messages(zed_messages, agent_messages)
+
+        finding, reason = _classify_resume_lifecycle(create_id, load_exchange)
+        result["finding"] = finding.value
+        result["indeterminate_reason"] = reason
+        result["resume_lifecycle"] = {
+            "shared_profile": True,
+            "lifecycle_a": {
+                "label": PLAN1124_LIFECYCLE_A_RUN_ID,
+                "session_new_id": create_id,
+                "zed_to_agent_sha256": captures["lifecycle_a"]["zed_sha256"],
+                "agent_to_zed_sha256": captures["lifecycle_a"]["agent_sha256"],
+            },
+            "lifecycle_b": {
+                "label": PLAN1124_LIFECYCLE_B_RUN_ID,
+                "session_load_exchange": _safe_payload(load_exchange),
+                "zed_to_agent_sha256": captures["lifecycle_b"]["zed_sha256"],
+                "agent_to_zed_sha256": captures["lifecycle_b"]["agent_sha256"],
+            },
+        }
+        result["relay"] = {"source": RELAY_EXTRACT_SOURCE}
+        result["captured_exchange"] = _safe_payload(load_exchange)
+        result["_lifecycle_a_zed"] = captures["lifecycle_a"]["zed"]
+        result["_lifecycle_a_agent"] = captures["lifecycle_a"]["agent"]
+        result["_lifecycle_b_zed"] = captures["lifecycle_b"]["zed"]
+        result["_lifecycle_b_agent"] = captures["lifecycle_b"]["agent"]
+    except ProbeError as exc:
+        record_probe_command_failure(result, exc)
+        result["finding"] = Finding.INDETERMINATE.value
+        result["indeterminate_reason"] = _reason_from_stage(exc.stage).value
+    finally:
+        if zed_workspace_approved and trust_cli is not None and workspace is not None:
+            try:
+                _revoke_temporary_approval(trust_cli, workspace, cwd=workspace)
+                if isinstance(result.get("zed_workspace_approval"), dict):
+                    result["zed_workspace_approval"]["revoked"] = True
+            except BaseException as revoke_exc:
+                retain_run_root = True
+                _record_zed_workspace_revoke_failure(
+                    result,
+                    trust_cli=trust_cli,
+                    workspace=workspace,
+                    stage="zed_workspace_revoke",
+                    message=f"{type(revoke_exc).__name__}: interrupted during revoke",
+                )
+        if retain_run_root:
+            result.setdefault("isolation", {})
+            if isinstance(result["isolation"], dict):
+                result["isolation"]["cleanup_verified"] = False
+            result["finding"] = Finding.INDETERMINATE.value
+            result["indeterminate_reason"] = IndeterminateReason.CLEANUP_UNVERIFIED.value
+        else:
+            cleaned, leftovers = _cleanup_plan1119_roots(
+                run_root=run_root,
+                isolated_source=Path(preparation.isolated_source_root) if preparation else None,
+                isolated_build=Path(preparation.isolated_build_root) if preparation else None,
+                hermetic_root=Path(preparation.hermetic_zed_root) if preparation else None,
+            )
+            result.setdefault("isolation", {})
+            if isinstance(result["isolation"], dict):
+                result["isolation"]["cleanup_verified"] = cleaned
+            if not cleaned:
+                result["finding"] = Finding.INDETERMINATE.value
+                result["indeterminate_reason"] = IndeterminateReason.CLEANUP_UNVERIFIED.value
+                result["cleanup_remediation"] = leftovers
+            elif (
+                isinstance(result.get("_lifecycle_a_zed"), (bytes, bytearray))
+                and isinstance(result.get("_lifecycle_a_agent"), (bytes, bytearray))
+                and isinstance(result.get("_lifecycle_b_zed"), (bytes, bytearray))
+                and isinstance(result.get("_lifecycle_b_agent"), (bytes, bytearray))
+            ):
+                try:
+                    result["evidence_manifest"] = str(
+                        materialize_sanitized_zed_evidence_v5(
+                            report_dir=report_dir,
+                            result=result,
+                            lifecycle_a_zed=bytes(result["_lifecycle_a_zed"]),
+                            lifecycle_a_agent=bytes(result["_lifecycle_a_agent"]),
+                            lifecycle_b_zed=bytes(result["_lifecycle_b_zed"]),
+                            lifecycle_b_agent=bytes(result["_lifecycle_b_agent"]),
+                        )
+                    )
+                except (ProbeError, OSError, TypeError, ValueError) as exc:
+                    result["evidence_materialization_error"] = {
+                        "type": type(exc).__name__,
+                        "stage": exc.stage if isinstance(exc, ProbeError) else "evidence_bundle",
+                        "message": _safe_payload(str(exc)),
+                    }
+        try:
+            sidecar = parent_workspace / "plan1124-real-zed-resume-result.json"
+            sidecar.write_text(
+                json.dumps({k: v for k, v in result.items() if not str(k).startswith("_")}, indent=2, sort_keys=True, default=str),
+                encoding="utf-8",
+                newline="\n",
+            )
+            result["sidecar"] = str(sidecar)
+        except OSError:
+            pass
+    return result
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--mode",
-        choices=("acpx", "acpx-baseline", "preflight", "real-zed"),
+        choices=("acpx", "acpx-baseline", "preflight", "real-zed", "agent-protocol", "real-zed-resume"),
         default="acpx",
         help="acpx is the existing non-Zed baseline; preflight never launches Zed; real-zed is the authorized live capture",
     )
@@ -2254,7 +2762,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--report-dir",
         type=Path,
         default=None,
-        help="sanitized evidence directory under reports/; required for --mode preflight and --mode real-zed",
+        help="sanitized evidence directory under reports/; required for --mode preflight, --mode real-zed, and --mode real-zed-resume",
     )
     parser.add_argument("workspace", type=Path, help="existing throwaway parent directory; never a repository")
     return parser
@@ -2263,8 +2771,8 @@ def _build_parser() -> argparse.ArgumentParser:
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = _build_parser()
     args = parser.parse_args(argv)
-    if args.mode in {"preflight", "real-zed"} and args.report_dir is None:
-        parser.error("--report-dir is required for --mode preflight and --mode real-zed")
+    if args.mode in {"preflight", "real-zed", "real-zed-resume"} and args.report_dir is None:
+        parser.error("--report-dir is required for --mode preflight, --mode real-zed, and --mode real-zed-resume")
     return args
 
 
@@ -2287,7 +2795,7 @@ def build_approved_real_zed_command(parsed: argparse.Namespace) -> list[str]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
-    if args.mode == "real-zed" and os.environ.get("PYTEST_CURRENT_TEST"):
+    if args.mode in {"real-zed", "real-zed-resume"} and os.environ.get("PYTEST_CURRENT_TEST"):
         print(
             json.dumps(
                 {
@@ -2318,6 +2826,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = run_plan1119_real_zed(
             args.workspace,
             launch_timeout_seconds=args.zed_launch_timeout_seconds,
+            report_dir=args.report_dir,
+        )
+        printable = {key: value for key, value in result.items() if not str(key).startswith("_")}
+        print(json.dumps(printable, indent=2, sort_keys=True, default=str))
+        return 0 if result.get("isolation", {}).get("cleanup_verified") else 1
+    if args.mode == "agent-protocol":
+        result = run_plan1124_agent_protocol_drive(args.workspace)
+        print(json.dumps(result, indent=2, sort_keys=True, default=str))
+        return 0 if result.get("no_gateway_path_established") else 1
+    if args.mode == "real-zed-resume":
+        result = run_plan1124_two_lifecycle_real_zed(
+            args.workspace,
+            timeout_s=args.zed_launch_timeout_seconds,
             report_dir=args.report_dir,
         )
         printable = {key: value for key, value in result.items() if not str(key).startswith("_")}

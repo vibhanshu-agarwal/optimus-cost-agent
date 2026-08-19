@@ -1254,6 +1254,410 @@ def test_unknown_finding_outcome_consequence_fails_closed() -> None:
         )
 
 
+def test_agent_protocol_drive_delegates_all_protocol_traffic_to_acpx(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tools.probe_p11_zed_session_load as probe
+
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    workspace = tmp_path / "run-ws"
+    workspace.mkdir()
+    first_home = tmp_path / "first-home"
+    second_home = tmp_path / "second-home"
+    launcher = tmp_path / "isolated_optimus_agent.py"
+    launcher.write_text("raise SystemExit(0)\n", encoding="utf-8")
+    acpx = tmp_path / "acpx.cmd"
+    acpx.write_text("@echo off\n", encoding="utf-8")
+    trust = tmp_path / "optimus-trust.exe"
+    trust.write_text("binary\n", encoding="utf-8")
+    report_root = tmp_path / "reports"
+    report_root.mkdir()
+    monkeypatch.setattr(probe, "REPORTS_ROOT", report_root)
+
+    calls: list[list[str]] = []
+    mode = {"value": "ok"}
+
+    def fake_prepare(*_args: object, **_kwargs: object) -> object:
+        return type(
+            "Prep",
+            (),
+            {
+                "isolated_source_root": str(tmp_path / "probe-source"),
+                "isolated_build_root": str(tmp_path),
+                "hermetic_zed_root": str(tmp_path / "zed-home"),
+                "normal_root": str(tmp_path / "repo"),
+                "normal_commit": COMMIT,
+                "normal_source_sha256_before": SHA_A,
+                "cleanup_dry_run_verified": True,
+            },
+        )()
+
+    def fake_verify(_prep: object) -> object:
+        return type(
+            "Iso",
+            (),
+            {
+                "normal_agent_load_session_advertised": False,
+                "isolated_probe_load_session_advertised": True,
+                "normal_source_sha256_before": SHA_A,
+                "normal_source_sha256_after": SHA_A,
+                "isolated_source_root": str(tmp_path / "probe-source"),
+                "isolated_build_root": str(tmp_path),
+                "hermetic_zed_root": str(tmp_path / "zed-home"),
+                "cleanup_dry_run_verified": True,
+                "cleanup_verified": True,
+                "prelaunch_predicates_pass": True,
+            },
+        )()
+
+    monkeypatch.setattr(probe, "_validate_parent_workspace", lambda *a, **k: parent)
+    monkeypatch.setattr(probe, "prepare_real_zed_probe", fake_prepare)
+    monkeypatch.setattr(probe, "verify_normal_operation_isolation", fake_verify)
+    monkeypatch.setattr(probe, "write_isolated_agent_launcher", lambda *_a, **_k: launcher)
+    monkeypatch.setattr(probe, "_resolve_acpx", lambda: acpx)
+    monkeypatch.setattr(probe, "_resolve_trust_cli", lambda _repo: trust)
+    monkeypatch.setattr(probe, "_acpx_version", lambda *_a, **_k: "0.0.test")
+    monkeypatch.setattr(probe, "_file_sha256", lambda _p: SHA_A)
+    monkeypatch.setattr(probe, "_isolated_environment", lambda _home: {"HOME": str(_home)})
+    monkeypatch.setattr(probe, "_run_interactive_required", lambda *_a, **_k: CommandResult([], 0, "", ""))
+    monkeypatch.setattr(probe, "_revoke_temporary_approval", lambda *_a, **_k: None)
+    monkeypatch.setattr(probe.time, "sleep", lambda *_a, **_k: None)
+    monkeypatch.setattr(probe, "_cleanup_plan1119_roots", lambda **_k: (True, []))
+
+    def fake_run(command: list[str], *, cwd: Path, env: dict[str, str]) -> CommandResult:
+        del cwd, env
+        calls.append(command)
+        if command[-1] == "inspect":
+            return CommandResult(command, 1, "", "")
+        if command[-1] == "new":
+            stdout = '\n'.join(
+                [
+                    '{"jsonrpc":"2.0","id":1,"method":"session/new"}',
+                    '{"jsonrpc":"2.0","id":1,"result":{"sessionId":"session-a"}}',
+                ]
+            )
+            return CommandResult(command, 0, stdout, "")
+        if len(command) >= 2 and command[-2] == "exec":
+            return CommandResult(command, 2, '{"jsonrpc":"2.0","id":2,"error":{"code":-32000}}', "")
+        if command[-1] == "export":
+            return CommandResult(command, 0, "", "")
+        if command[-2:] == ["sessions", "import"]:
+            return CommandResult(command, 0, "", "")
+        if command[-1] == "status":
+            if mode["value"] == "ok":
+                stdout = '\n'.join(
+                    [
+                        '{"jsonrpc":"2.0","id":3,"method":"session/load","params":{"sessionId":"session-a"}}',
+                        '{"jsonrpc":"2.0","id":3,"result":{}}',
+                    ]
+                )
+            else:
+                stdout = '\n'.join(
+                    [
+                        '{"jsonrpc":"2.0","id":3,"method":"session/load","params":{"sessionId":"session-b"}}',
+                        '{"jsonrpc":"2.0","id":3,"result":{}}',
+                    ]
+                )
+            return CommandResult(command, 0, stdout, "")
+        return CommandResult(command, 0, "", "")
+
+    monkeypatch.setattr(probe, "_run", fake_run)
+
+    result = probe.run_plan1124_agent_protocol_drive(parent)
+    assert result["zed_launches"] == 0
+    assert result["origin_a_launches"] == 0
+    assert result["no_gateway_path_established"] is True
+
+    serialized_calls = json.dumps(calls)
+    assert '"session/new"' not in serialized_calls
+    assert "jsonrpc" not in " ".join(" ".join(call) for call in calls)
+    assert "Content-Length" not in " ".join(" ".join(call) for call in calls)
+    assert "NdjsonSubprocessSession" not in probe.run_plan1124_agent_protocol_drive.__code__.co_names
+    assert any(len(call) >= 2 and call[-2] == "exec" for call in calls)
+    assert any(call[-1] == "new" for call in calls)
+    assert any(call[-1] == "status" for call in calls)
+
+
+def test_agent_protocol_drive_requires_erroring_prompt_and_matching_saved_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tools.probe_p11_zed_session_load as probe
+
+    report_root = tmp_path / "reports"
+    report_root.mkdir()
+    monkeypatch.setattr(probe, "REPORTS_ROOT", report_root)
+    monkeypatch.setattr(probe, "_validate_parent_workspace", lambda *a, **k: tmp_path)
+    monkeypatch.setattr(
+        probe,
+        "prepare_real_zed_probe",
+        lambda *_a, **_k: type(
+            "Prep",
+            (),
+            {
+                "isolated_source_root": str(tmp_path / "probe-source"),
+                "isolated_build_root": str(tmp_path),
+                "hermetic_zed_root": str(tmp_path / "zed-home"),
+                "normal_root": str(tmp_path / "repo"),
+                "normal_commit": COMMIT,
+                "normal_source_sha256_before": SHA_A,
+                "cleanup_dry_run_verified": True,
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        probe,
+        "verify_normal_operation_isolation",
+        lambda _prep: type(
+            "Iso",
+            (),
+            {
+                "normal_agent_load_session_advertised": False,
+                "isolated_probe_load_session_advertised": True,
+                "normal_source_sha256_before": SHA_A,
+                "normal_source_sha256_after": SHA_A,
+                "isolated_source_root": str(tmp_path / "probe-source"),
+                "isolated_build_root": str(tmp_path),
+                "hermetic_zed_root": str(tmp_path / "zed-home"),
+                "cleanup_dry_run_verified": True,
+                "cleanup_verified": True,
+                "prelaunch_predicates_pass": True,
+            },
+        )(),
+    )
+    monkeypatch.setattr(probe, "write_isolated_agent_launcher", lambda *_a, **_k: tmp_path / "launcher.py")
+    monkeypatch.setattr(probe, "_resolve_acpx", lambda: tmp_path / "acpx.cmd")
+    monkeypatch.setattr(probe, "_resolve_trust_cli", lambda _repo: tmp_path / "optimus-trust.exe")
+    monkeypatch.setattr(probe, "_acpx_version", lambda *_a, **_k: "0.0.test")
+    monkeypatch.setattr(probe, "_file_sha256", lambda _p: SHA_A)
+    monkeypatch.setattr(probe, "_isolated_environment", lambda _home: {"HOME": str(_home)})
+    monkeypatch.setattr(probe, "_run_interactive_required", lambda *_a, **_k: CommandResult([], 0, "", ""))
+    monkeypatch.setattr(probe, "_revoke_temporary_approval", lambda *_a, **_k: None)
+    monkeypatch.setattr(probe.time, "sleep", lambda *_a, **_k: None)
+    monkeypatch.setattr(probe, "_cleanup_plan1119_roots", lambda **_k: (True, []))
+
+    scenario = {"value": "success-prompt"}
+
+    def fake_run(command: list[str], *, cwd: Path, env: dict[str, str]) -> CommandResult:
+        del cwd, env
+        if command[-1] == "inspect":
+            return CommandResult(command, 1, "", "")
+        if command[-1] == "new":
+            return CommandResult(
+                command,
+                0,
+                '{"jsonrpc":"2.0","id":1,"method":"session/new"}\n{"jsonrpc":"2.0","id":1,"result":{"sessionId":"session-a"}}',
+                "",
+            )
+        if len(command) >= 2 and command[-2] == "exec":
+            if scenario["value"] == "success-prompt":
+                return CommandResult(command, 0, '{"jsonrpc":"2.0","id":2,"result":{"ok":true}}', "")
+            return CommandResult(command, 2, '{"jsonrpc":"2.0","id":2,"error":{"code":-32000}}', "")
+        if command[-1] == "export":
+            return CommandResult(command, 0, "", "")
+        if command[-2:] == ["sessions", "import"]:
+            return CommandResult(command, 0, "", "")
+        if command[-1] == "status":
+            if scenario["value"] == "mismatch":
+                stdout = '{"jsonrpc":"2.0","id":3,"method":"session/load","params":{"sessionId":"session-b"}}\n{"jsonrpc":"2.0","id":3,"result":{}}'
+                return CommandResult(command, 0, stdout, "")
+            stdout = '{"jsonrpc":"2.0","id":3,"method":"session/load","params":{"sessionId":"session-a"}}\n{"jsonrpc":"2.0","id":3,"result":{}}'
+            return CommandResult(command, 0, stdout, "")
+        return CommandResult(command, 0, "", "")
+
+    monkeypatch.setattr(probe, "_run", fake_run)
+
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    first = probe.run_plan1124_agent_protocol_drive(parent)
+    assert first["no_gateway_path_established"] is False
+    assert first["indeterminate_reason"] == "PRECONDITION_UNMET"
+
+    scenario["value"] = "mismatch"
+    second = probe.run_plan1124_agent_protocol_drive(parent)
+    assert second["no_gateway_path_established"] is False
+    assert second["indeterminate_reason"] == "PRECONDITION_UNMET"
+
+
+def test_real_zed_resume_requires_established_agent_protocol_disposition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tools.probe_p11_zed_session_load as probe
+
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    report_dir = tmp_path / "reports" / "plan-11-24-zed-guided-session-load-probe-v5"
+    report_root = tmp_path / "reports"
+    report_root.mkdir()
+    monkeypatch.setattr(probe, "REPORTS_ROOT", report_root)
+
+    result = probe.run_plan1124_two_lifecycle_real_zed(parent, timeout_s=900, report_dir=report_dir)
+    assert result["zed_launches"] == 0
+    assert result["finding"] == "INDETERMINATE"
+    assert result["indeterminate_reason"] == "PRECONDITION_UNMET"
+
+    establishing = report_root / "plan-11-24-agent-protocol-persistence-establishing-drive.md"
+    establishing.write_text("Establishing-Disposition: PRECONDITION_UNMET\n", encoding="utf-8")
+    blocked = probe.run_plan1124_two_lifecycle_real_zed(parent, timeout_s=900, report_dir=report_dir)
+    assert blocked["zed_launches"] == 0
+    assert blocked["indeterminate_reason"] == "PRECONDITION_UNMET"
+
+
+def test_resume_classifier_requires_load_id_from_lifecycle_a_session_new() -> None:
+    from tools.probe_p11_zed_session_load import _classify_resume_lifecycle
+
+    finding, reason = _classify_resume_lifecycle(
+        "session-a",
+        {
+            "request": {"method": "session/load", "params": {"sessionId": "session-b"}},
+            "response": {"result": {}},
+        },
+    )
+    assert finding.value == "INDETERMINATE"
+    assert reason == "PRECONDITION_UNMET"
+
+    finding_ok, reason_ok = _classify_resume_lifecycle(
+        "session-a",
+        {
+            "request": {"method": "session/load", "params": {"sessionId": "session-a"}},
+            "response": {"result": {}},
+        },
+    )
+    assert finding_ok.value == "REACHABLE"
+    assert reason_ok is None
+
+
+def test_two_lifecycle_run_reuses_one_profile_and_separates_relay_captures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tools.probe_p11_zed_session_load as probe
+
+    report_root = tmp_path / "reports"
+    report_root.mkdir()
+    agent_report = report_root / "plan-11-24-agent-protocol-persistence-establishing-drive.md"
+    agent_report.write_text(
+        "Establishing-Disposition: NO_GATEWAY_PATH_ESTABLISHED\nNo-Gateway-Path-Established: true\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(probe, "REPORTS_ROOT", report_root)
+    # This test focuses on the two-lifecycle harness behavior; the Task-13 disposition
+    # gate is already covered by the separate fail-closed prerequisite test above.
+    monkeypatch.setattr(probe, "_require_established_agent_protocol_prerequisite", lambda _r: True)
+
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    run_root = tmp_path / "run-root"
+    run_root.mkdir()
+    (run_root / "probe-source").mkdir(parents=True, exist_ok=True)
+    (run_root / "probe-source" / "marker.py").write_text("# isolated copy\n", encoding="utf-8")
+    (run_root / "probe-build").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "launcher.py").write_text("# launcher\n", encoding="utf-8")
+    workspace = run_root / "zed-workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    zed_home = run_root / "zed-home"
+    zed_home.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(probe, "_validate_parent_workspace", lambda *_a, **_k: parent)
+    monkeypatch.setattr(probe.tempfile, "mkdtemp", lambda **_k: str(run_root))
+    monkeypatch.setattr(probe, "zed_target_already_running", lambda *_a, **_k: False)
+    monkeypatch.setattr(probe, "_list_process_names", lambda: [])
+    monkeypatch.setattr(
+        probe,
+        "prepare_real_zed_probe",
+        lambda *_a, **_k: type(
+            "Prep",
+            (),
+            {
+                "isolated_source_root": str(run_root / "probe-source"),
+                "isolated_build_root": str(run_root / "probe-build"),
+                "hermetic_zed_root": str(zed_home),
+                "normal_root": str(tmp_path / "repo"),
+                "normal_commit": COMMIT,
+                "normal_source_sha256_before": SHA_A,
+                "cleanup_dry_run_verified": True,
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        probe,
+        "verify_normal_operation_isolation",
+        lambda _prep: type(
+            "Iso",
+            (),
+            {
+                "normal_agent_load_session_advertised": False,
+                "isolated_probe_load_session_advertised": True,
+                "normal_source_sha256_before": SHA_A,
+                "normal_source_sha256_after": SHA_A,
+                "isolated_source_root": str(run_root / "probe-source"),
+                "isolated_build_root": str(run_root / "probe-build"),
+                "hermetic_zed_root": str(zed_home),
+                "cleanup_dry_run_verified": True,
+                "cleanup_verified": True,
+                "prelaunch_predicates_pass": True,
+            },
+        )(),
+    )
+    monkeypatch.setattr(probe, "validate_isolation_evidence", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        probe,
+        "_discover_live_zed_invocation",
+        lambda _h: (
+            tmp_path / "Zed.exe",
+            ZedInvocation(argv=("C:/Tools/Zed.exe", "--user-data-dir", str(zed_home)), user_data_root=str(zed_home), discovered_from="zed --help"),
+            SHA_A,
+        ),
+    )
+    monkeypatch.setattr(probe, "write_isolated_agent_launcher", lambda *_a, **_k: tmp_path / "launcher.py")
+    monkeypatch.setattr(probe, "_resolve_trust_cli", lambda _repo: tmp_path / "optimus-trust.exe")
+    monkeypatch.setattr(probe, "_run_interactive_required", lambda *_a, **_k: CommandResult([], 0, "", ""))
+    monkeypatch.setattr(probe, "_revoke_temporary_approval", lambda *_a, **_k: None)
+    monkeypatch.setattr(probe, "_cleanup_plan1119_roots", lambda **_k: (True, []))
+    monkeypatch.setattr(probe, "_observe_zed_help", lambda *_a, **_k: "--foreground")
+    monkeypatch.setattr(probe, "build_real_zed_launch_argv", lambda *_a, **_k: ["C:/Tools/Zed.exe"])
+    monkeypatch.setattr(probe, "_zed_env_for_invocation", lambda *_a, **_k: {})
+    monkeypatch.setattr(probe, "_launch_zed_once", lambda *_a, **_k: {"returncode": 0})
+    monkeypatch.setattr(probe, "verify_relay_capture", lambda *_a, **_k: None)
+    monkeypatch.setattr(probe.time, "monotonic", lambda: 1.0)
+    monkeypatch.setattr(probe, "materialize_sanitized_zed_evidence_v5", lambda **_k: tmp_path / "manifest.json")
+
+    def fake_run(command: list[str], *, cwd: Path, env: dict[str, str]) -> CommandResult:
+        del cwd, env
+        if command[-1] == "inspect":
+            return CommandResult(command, 1, "", "")
+        return CommandResult(command, 0, "", "")
+
+    monkeypatch.setattr(probe, "_run", fake_run)
+
+    relay_calls: list[str] = []
+
+    def fake_relay(**kwargs: object) -> list[str]:
+        run_id = str(kwargs["run_id"])
+        relay_calls.append(run_id)
+        run_dir = run_root / "relay-capture" / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        if run_id == "plan1124-create":
+            zed = b'{"jsonrpc":"2.0","id":1,"method":"session/new"}\n'
+            agent = b'{"jsonrpc":"2.0","id":1,"result":{"sessionId":"session-a"}}\n'
+        else:
+            zed = b'{"jsonrpc":"2.0","id":2,"method":"session/load","params":{"sessionId":"session-a"}}\n'
+            agent = b'{"jsonrpc":"2.0","id":2,"result":{}}\n'
+        (run_dir / "zed-to-agent.bin").write_bytes(zed)
+        (run_dir / "agent-to-zed.bin").write_bytes(agent)
+        return ["python", "relay.py"]
+
+    monkeypatch.setattr(probe, "build_opaque_relay_command", fake_relay)
+
+    result = probe.run_plan1124_two_lifecycle_real_zed(
+        parent,
+        timeout_s=900,
+        report_dir=report_root / "plan-11-24-zed-guided-session-load-probe-v5",
+    )
+    assert relay_calls == ["plan1124-create", "plan1124-resume"]
+    assert result["zed_launches"] == 2
+    assert result["finding"] == "REACHABLE"
+    assert result["resume_lifecycle"]["shared_profile"] is True
+
 def test_cli_default_timeout_is_unattended_180() -> None:
     from tools.probe_p11_zed_session_load import _parse_args
 
