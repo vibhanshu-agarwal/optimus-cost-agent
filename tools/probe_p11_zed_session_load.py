@@ -232,6 +232,29 @@ def classify_real_zed_result(exchange: RelayExchange | None, isolation: Isolatio
 
 RELAY_EXTRACT_SOURCE = "opaque-relay-post-run"
 REPORTS_ROOT = Path(__file__).resolve().parents[1] / "reports"
+PLAN_1124_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe"
+PLAN_1124_V3_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe-v3"
+PLAN1124_OUTCOME_CONSEQUENCES = {
+    Finding.REACHABLE.value: (
+        "The tested current Zed issued `session/load`; a separately scoped `P11-FU-1` "
+        "durable ACP session-store/handler design is justified, but this plan does not implement it."
+    ),
+    Finding.UNREACHABLE.value: (
+        "A captured Zed protocol/method error requires an operator disposition for the "
+        "Zed-resume lane rather than presumed durable-store implementation."
+    ),
+    Finding.INDETERMINATE.value: (
+        "The named missing precondition/observation remains; no implementation or disposition "
+        "follows automatically."
+    ),
+}
+APPROVED_REAL_ZED_PREFIX = [
+    "uv",
+    "run",
+    "--frozen",
+    "python",
+    "tools/probe_p11_zed_session_load.py",
+]
 DEFAULT_ZED_LAUNCH_TIMEOUT_SECONDS = 180.0
 MIN_ZED_LAUNCH_TIMEOUT_SECONDS = 60.0
 MAX_ZED_LAUNCH_TIMEOUT_SECONDS = 900.0
@@ -880,6 +903,25 @@ def build_cleanup_remediation(trust_cli: Path, workspace: Path) -> list[str]:
     return [str(trust_cli), "--workspace-root", str(workspace), "revoke"]
 
 
+def _record_zed_workspace_revoke_failure(
+    result: dict[str, Any],
+    *,
+    trust_cli: Path,
+    workspace: Path,
+    stage: str,
+    message: str,
+) -> None:
+    """Record remediation when zed-workspace revocation fails or is interrupted."""
+    approval_meta = result.get("zed_workspace_approval")
+    if isinstance(approval_meta, dict):
+        approval_meta["revoked"] = False
+    result["zed_workspace_revoke_error"] = {
+        "stage": stage,
+        "message": _safe_payload(message),
+    }
+    result["cleanup_remediation"] = build_cleanup_remediation(trust_cli, workspace)
+
+
 def _run_interactive_required(command: Sequence[str], *, cwd: Path, stage: str) -> CommandResult:
     """Run a trust ceremony only from an interactive terminal; never synthesize consent."""
     creationflags = 0
@@ -1376,6 +1418,8 @@ def _reason_from_stage(stage: str) -> IndeterminateReason:
         "validate_isolation_evidence": IndeterminateReason.ISOLATION_PREDICATE_FAILED,
         "relay": IndeterminateReason.RELAY_FAILURE,
         "relay_extract": IndeterminateReason.RELAY_FAILURE,
+        "zed_workspace_inspect": IndeterminateReason.LIVE_LAUNCH_UNAUTHORIZED,
+        "zed_workspace_approval": IndeterminateReason.LIVE_LAUNCH_UNAUTHORIZED,
         "cleanup": IndeterminateReason.CLEANUP_UNVERIFIED,
         "throwaway_workspace_remove": IndeterminateReason.CLEANUP_UNVERIFIED,
         "real_zed": IndeterminateReason.LIVE_LAUNCH_UNAUTHORIZED,
@@ -1563,10 +1607,19 @@ def _plan1124_report_text(result: Mapping[str, Any]) -> str:
             lines.extend(["", "This is not a finding about Zed."])
     else:
         lines.append(f"**{finding}** as of `{recorded}` at commit `{commit}`.")
+    consequence = PLAN1124_OUTCOME_CONSEQUENCES.get(finding)
+    if consequence is None:
+        raise ProbeError("evidence_bundle", f"unknown finding has no outcome consequence: {finding}")
     lines.extend(
         [
             "",
             "The previous Plan 11.19 bundle remains unchanged.",
+            "",
+            "## Outcome consequence",
+            "",
+            "| Result | Consequence |",
+            "|---|---|",
+            f"| `{finding}` | {consequence} |",
             "",
         ]
     )
@@ -1786,7 +1839,11 @@ def _record_identities(
         )
 
 
-def run_plan1119_preflight(parent_workspace: Path) -> dict[str, Any]:
+def run_plan1119_preflight(
+    parent_workspace: Path,
+    *,
+    approved_real_zed_command: Sequence[str] | None = None,
+) -> dict[str, Any]:
     """Discover hermetic invocation, prove isolation, and confirm isolated acpx baseline. Never launch Zed."""
     repo_root = Path(__file__).resolve().parents[1]
     result = _plan1119_base_result(repo_root, mode="preflight")
@@ -1816,16 +1873,8 @@ def run_plan1119_preflight(parent_workspace: Path) -> dict[str, Any]:
             launcher=launcher,
             acpx=acpx,
         )
-        result["approved_real_zed_command"] = [
-            "uv",
-            "run",
-            "--frozen",
-            "python",
-            "tools/probe_p11_zed_session_load.py",
-            "--mode",
-            "real-zed",
-            str(workspace_parent),
-        ]
+        if approved_real_zed_command is not None:
+            result["approved_real_zed_command"] = list(approved_real_zed_command)
         result["preflight_ok"] = True
         result["indeterminate_reason"] = None
     except ProbeError as exc:
@@ -1893,6 +1942,10 @@ def run_plan1119_real_zed(
     isolation: IsolationEvidence | None = None
     capture_root: Path | None = None
     zed_launched = False
+    zed_workspace_approved = False
+    retain_run_root = False
+    workspace: Path | None = None
+    trust_cli: Path | None = None
     try:
         workspace_parent = _validate_parent_workspace(parent_workspace, repo_root)
         if zed_target_already_running(_list_process_names()):
@@ -1906,9 +1959,9 @@ def run_plan1119_real_zed(
         validate_isolation_evidence(isolation, require_cleanup=False)
         executable, invocation, help_sha256 = _discover_live_zed_invocation(Path(preparation.hermetic_zed_root))
         launcher = write_isolated_agent_launcher(Path(preparation.isolated_build_root), Path(preparation.isolated_source_root))
-        acpx = _run_acpx_against_isolated_agent(agent_launcher=launcher, run_root=run_root, repo_root=repo_root)
         workspace = run_root / "zed-workspace"
         workspace.mkdir(parents=True, exist_ok=True)
+        acpx = _run_acpx_against_isolated_agent(agent_launcher=launcher, run_root=run_root, repo_root=repo_root)
         capture_root = run_root / "relay-capture"
         capture_root.mkdir()
         child_args = [str(sys.executable), str(launcher), "--workspace-root", str(workspace), "--no-auto-start"]
@@ -1954,90 +2007,139 @@ def run_plan1119_real_zed(
             launcher=launcher,
             acpx=acpx,
         )
-        zed_launched = True
-        result["zed_launches"] = 1
-        log_path = run_root / "zed-launch.log"
-        launch_meta = _launch_zed_once(
-            zed_argv,
-            env=_zed_env_for_invocation(invocation),
+        child_workspace_root = Path(child_args[child_args.index("--workspace-root") + 1]).resolve()
+        if child_workspace_root != workspace.resolve():
+            raise ProbeError("zed_workspace_approval", "relay child workspace does not match zed-workspace")
+        trust_cli = _resolve_trust_cli(repo_root)
+        try:
+            inspect = _run(build_trust_command(trust_cli, workspace, "inspect"), cwd=workspace, env=os.environ)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ProbeError("zed_workspace_inspect", f"{type(exc).__name__}: {exc}") from exc
+        if inspect.returncode != 1:
+            raise ProbeError("zed_workspace_inspect", f"inspect exit={inspect.returncode}", inspect)
+        _run_interactive_required(
+            build_trust_command(trust_cli, workspace, "approve"),
             cwd=workspace,
-            log_path=log_path,
-            timeout_s=timeout_s,
+            stage="zed_workspace_approval",
         )
-        log_excerpt = _launch_log_excerpt(log_path)
-        result["zed_launch"] = {
-            "returncode": launch_meta.get("returncode"),
-            "log_captured": bool(launch_meta.get("log_path")),
-            "log_excerpt": log_excerpt,
-            "timeout_seconds": timeout_s,
+        zed_workspace_approved = True
+        result["zed_workspace_approval"] = {
+            "mode": "durable",
+            "created": True,
+            "child_workspace_match": True,
+            "revoked": False,
         }
-        settings_after = settings_path.is_file()
-        result["hermetic_settings"]["present_after_launch"] = settings_after
-        if settings_after:
-            result["hermetic_settings"]["sha256_after"] = hashlib.sha256(settings_path.read_bytes()).hexdigest()
-        if int(launch_meta.get("returncode") or 0) != 0:
-            detail = f"Zed exited with returncode {launch_meta.get('returncode')}"
-            if log_excerpt:
-                detail = f"{detail}: {log_excerpt}"
-            raise ProbeError("zed_launch", detail)
-        run_dir = capture_root / PLAN1119_RUN_ID
-        zed_bin = run_dir / "zed-to-agent.bin"
-        agent_bin = run_dir / "agent-to-zed.bin"
-        if not zed_bin.is_file() or not agent_bin.is_file():
-            raise ProbeError(
-                "relay",
-                "opaque relay capture files are missing "
-                f"(hermetic_settings_present={settings_after} path={settings_path})",
+        try:
+            zed_launched = True
+            result["zed_launches"] = 1
+            log_path = run_root / "zed-launch.log"
+            launch_meta = _launch_zed_once(
+                zed_argv,
+                env=_zed_env_for_invocation(invocation),
+                cwd=workspace,
+                log_path=log_path,
+                timeout_s=timeout_s,
             )
-        zed_bytes = zed_bin.read_bytes()
-        agent_bytes = agent_bin.read_bytes()
-        zed_messages = iter_acp_messages(zed_bytes)
-        agent_messages = iter_acp_messages(agent_bytes)
-        exchange = extract_session_load_from_messages(zed_messages, agent_messages)
-        sanitized_zed = reconstruct_sanitized_relay_bytes(zed_messages)
-        sanitized_agent = reconstruct_sanitized_relay_bytes(agent_messages)
-        result["relay"] = {
-            "source": RELAY_EXTRACT_SOURCE,
-            "zed_to_agent_sha256": hashlib.sha256(sanitized_zed).hexdigest(),
-            "agent_to_zed_sha256": hashlib.sha256(sanitized_agent).hexdigest(),
-        }
-        result["captured_exchange"] = _safe_payload(exchange)
-        result["_sanitized_relay_zed"] = sanitized_zed
-        result["_sanitized_relay_agent"] = sanitized_agent
-        extract = {
-            "source": RELAY_EXTRACT_SOURCE,
-            "zed_to_agent_sha256": result["relay"]["zed_to_agent_sha256"],
-            "agent_to_zed_sha256": result["relay"]["agent_to_zed_sha256"],
-            "request": exchange["request"] if exchange else None,
-            "response": exchange["response"] if exchange else None,
-        }
-        classified = exchange_from_relay_extract(extract)
-        after_digest = normal_workspace_source_digest(repo_root)
-        result["normal_source"]["sha256_after"] = after_digest
-        isolation_after = IsolationEvidence(
-            normal_agent_load_session_advertised=isolation.normal_agent_load_session_advertised,
-            isolated_probe_load_session_advertised=isolation.isolated_probe_load_session_advertised,
-            normal_source_sha256_before=isolation.normal_source_sha256_before,
-            normal_source_sha256_after=after_digest,
-            isolated_source_root=isolation.isolated_source_root,
-            isolated_build_root=isolation.isolated_build_root,
-            hermetic_zed_root=isolation.hermetic_zed_root,
-            cleanup_dry_run_verified=isolation.cleanup_dry_run_verified,
-            cleanup_verified=False,
-        )
-        finding = classify_live_zed_observation(
-            classified,
-            isolation_after,
-            invocation,
-            already_running_zed=False,
-            relay_failed=False,
-            cleanup_roots_empty=True,
-        )
-        result["finding"] = finding.value
-        if finding is Finding.INDETERMINATE:
-            result["indeterminate_reason"] = IndeterminateReason.OBSERVATION_INCOMPLETE.value
-        else:
-            result["indeterminate_reason"] = None
+            log_excerpt = _launch_log_excerpt(log_path)
+            result["zed_launch"] = {
+                "returncode": launch_meta.get("returncode"),
+                "log_captured": bool(launch_meta.get("log_path")),
+                "log_excerpt": log_excerpt,
+                "timeout_seconds": timeout_s,
+            }
+            settings_after = settings_path.is_file()
+            result["hermetic_settings"]["present_after_launch"] = settings_after
+            if settings_after:
+                result["hermetic_settings"]["sha256_after"] = hashlib.sha256(settings_path.read_bytes()).hexdigest()
+            if int(launch_meta.get("returncode") or 0) != 0:
+                detail = f"Zed exited with returncode {launch_meta.get('returncode')}"
+                if log_excerpt:
+                    detail = f"{detail}: {log_excerpt}"
+                raise ProbeError("zed_launch", detail)
+            run_dir = capture_root / PLAN1119_RUN_ID
+            zed_bin = run_dir / "zed-to-agent.bin"
+            agent_bin = run_dir / "agent-to-zed.bin"
+            if not zed_bin.is_file() or not agent_bin.is_file():
+                raise ProbeError(
+                    "relay",
+                    "opaque relay capture files are missing "
+                    f"(hermetic_settings_present={settings_after} path={settings_path})",
+                )
+            zed_bytes = zed_bin.read_bytes()
+            agent_bytes = agent_bin.read_bytes()
+            zed_messages = iter_acp_messages(zed_bytes)
+            agent_messages = iter_acp_messages(agent_bytes)
+            exchange = extract_session_load_from_messages(zed_messages, agent_messages)
+            sanitized_zed = reconstruct_sanitized_relay_bytes(zed_messages)
+            sanitized_agent = reconstruct_sanitized_relay_bytes(agent_messages)
+            result["relay"] = {
+                "source": RELAY_EXTRACT_SOURCE,
+                "zed_to_agent_sha256": hashlib.sha256(sanitized_zed).hexdigest(),
+                "agent_to_zed_sha256": hashlib.sha256(sanitized_agent).hexdigest(),
+            }
+            result["captured_exchange"] = _safe_payload(exchange)
+            result["_sanitized_relay_zed"] = sanitized_zed
+            result["_sanitized_relay_agent"] = sanitized_agent
+            extract = {
+                "source": RELAY_EXTRACT_SOURCE,
+                "zed_to_agent_sha256": result["relay"]["zed_to_agent_sha256"],
+                "agent_to_zed_sha256": result["relay"]["agent_to_zed_sha256"],
+                "request": exchange["request"] if exchange else None,
+                "response": exchange["response"] if exchange else None,
+            }
+            classified = exchange_from_relay_extract(extract)
+            after_digest = normal_workspace_source_digest(repo_root)
+            result["normal_source"]["sha256_after"] = after_digest
+            isolation_after = IsolationEvidence(
+                normal_agent_load_session_advertised=isolation.normal_agent_load_session_advertised,
+                isolated_probe_load_session_advertised=isolation.isolated_probe_load_session_advertised,
+                normal_source_sha256_before=isolation.normal_source_sha256_before,
+                normal_source_sha256_after=after_digest,
+                isolated_source_root=isolation.isolated_source_root,
+                isolated_build_root=isolation.isolated_build_root,
+                hermetic_zed_root=isolation.hermetic_zed_root,
+                cleanup_dry_run_verified=isolation.cleanup_dry_run_verified,
+                cleanup_verified=False,
+            )
+            finding = classify_live_zed_observation(
+                classified,
+                isolation_after,
+                invocation,
+                already_running_zed=False,
+                relay_failed=False,
+                cleanup_roots_empty=True,
+            )
+            result["finding"] = finding.value
+            if finding is Finding.INDETERMINATE:
+                result["indeterminate_reason"] = IndeterminateReason.OBSERVATION_INCOMPLETE.value
+            else:
+                result["indeterminate_reason"] = None
+        finally:
+            if zed_workspace_approved and trust_cli is not None and workspace is not None:
+                try:
+                    _revoke_temporary_approval(trust_cli, workspace, cwd=workspace)
+                    approval_meta = result.get("zed_workspace_approval")
+                    if isinstance(approval_meta, dict):
+                        approval_meta["revoked"] = True
+                except BaseException as revoke_exc:
+                    retain_run_root = True
+                    if isinstance(revoke_exc, ProbeError):
+                        _record_zed_workspace_revoke_failure(
+                            result,
+                            trust_cli=trust_cli,
+                            workspace=workspace,
+                            stage=revoke_exc.stage,
+                            message=str(revoke_exc),
+                        )
+                    else:
+                        _record_zed_workspace_revoke_failure(
+                            result,
+                            trust_cli=trust_cli,
+                            workspace=workspace,
+                            stage="zed_workspace_revoke",
+                            message=f"{type(revoke_exc).__name__}: interrupted during revoke",
+                        )
+                        raise
     except ProbeError as exc:
         record_probe_command_failure(result, exc)
         result["finding"] = Finding.INDETERMINATE.value
@@ -2045,51 +2147,59 @@ def run_plan1119_real_zed(
         if not zed_launched:
             result["zed_launches"] = 0
     finally:
-        cleaned, leftovers = _cleanup_plan1119_roots(
-            run_root=run_root,
-            isolated_source=Path(preparation.isolated_source_root) if preparation else None,
-            isolated_build=Path(preparation.isolated_build_root) if preparation else None,
-            hermetic_root=Path(preparation.hermetic_zed_root) if preparation else None,
-        )
-        result.setdefault("isolation", {})
-        if isinstance(result["isolation"], dict):
-            result["isolation"]["cleanup_verified"] = cleaned
-        if not cleaned:
+        if retain_run_root:
+            result.setdefault("isolation", {})
+            if isinstance(result["isolation"], dict):
+                result["isolation"]["cleanup_verified"] = False
             result["finding"] = Finding.INDETERMINATE.value
             result["indeterminate_reason"] = IndeterminateReason.CLEANUP_UNVERIFIED.value
-            result["cleanup_remediation"] = leftovers
             result["preflight_ok"] = False
-        elif isolation is not None and preparation is not None:
-            result["isolation"]["cleanup_dry_run_verified"] = isolation.cleanup_dry_run_verified
-            after = normal_workspace_source_digest(repo_root)
-            result["normal_source"]["sha256_after"] = after
-            if after != isolation.normal_source_sha256_before:
+        else:
+            cleaned, leftovers = _cleanup_plan1119_roots(
+                run_root=run_root,
+                isolated_source=Path(preparation.isolated_source_root) if preparation else None,
+                isolated_build=Path(preparation.isolated_build_root) if preparation else None,
+                hermetic_root=Path(preparation.hermetic_zed_root) if preparation else None,
+            )
+            result.setdefault("isolation", {})
+            if isinstance(result["isolation"], dict):
+                result["isolation"]["cleanup_verified"] = cleaned
+            if not cleaned:
                 result["finding"] = Finding.INDETERMINATE.value
-                result["indeterminate_reason"] = IndeterminateReason.ISOLATION_PREDICATE_FAILED.value
-        if (
-            report_dir is not None
-            and cleaned
-            and isolation is not None
-            and isinstance(result.get("normal_source"), dict)
-            and result["normal_source"].get("sha256_after") == isolation.normal_source_sha256_before
-            and isinstance(result.get("_sanitized_relay_zed"), (bytes, bytearray))
-            and isinstance(result.get("_sanitized_relay_agent"), (bytes, bytearray))
-        ):
-            try:
-                result["evidence_manifest"] = str(
-                    materialize_sanitized_zed_evidence(
-                        report_dir=report_dir,
-                        result=result,
-                        zed_to_agent=bytes(result["_sanitized_relay_zed"]),
-                        agent_to_zed=bytes(result["_sanitized_relay_agent"]),
+                result["indeterminate_reason"] = IndeterminateReason.CLEANUP_UNVERIFIED.value
+                result["cleanup_remediation"] = leftovers
+                result["preflight_ok"] = False
+            elif isolation is not None and preparation is not None:
+                result["isolation"]["cleanup_dry_run_verified"] = isolation.cleanup_dry_run_verified
+                after = normal_workspace_source_digest(repo_root)
+                result["normal_source"]["sha256_after"] = after
+                if after != isolation.normal_source_sha256_before:
+                    result["finding"] = Finding.INDETERMINATE.value
+                    result["indeterminate_reason"] = IndeterminateReason.ISOLATION_PREDICATE_FAILED.value
+            if (
+                report_dir is not None
+                and cleaned
+                and isolation is not None
+                and isinstance(result.get("normal_source"), dict)
+                and result["normal_source"].get("sha256_after") == isolation.normal_source_sha256_before
+                and isinstance(result.get("_sanitized_relay_zed"), (bytes, bytearray))
+                and isinstance(result.get("_sanitized_relay_agent"), (bytes, bytearray))
+            ):
+                try:
+                    result["evidence_manifest"] = str(
+                        materialize_sanitized_zed_evidence(
+                            report_dir=report_dir,
+                            result=result,
+                            zed_to_agent=bytes(result["_sanitized_relay_zed"]),
+                            agent_to_zed=bytes(result["_sanitized_relay_agent"]),
+                        )
                     )
-                )
-            except (ProbeError, OSError, TypeError, ValueError) as exc:
-                result["evidence_materialization_error"] = {
-                    "type": type(exc).__name__,
-                    "stage": exc.stage if isinstance(exc, ProbeError) else "evidence_bundle",
-                    "message": _safe_payload(str(exc)),
-                }
+                except (ProbeError, OSError, TypeError, ValueError) as exc:
+                    result["evidence_materialization_error"] = {
+                        "type": type(exc).__name__,
+                        "stage": exc.stage if isinstance(exc, ProbeError) else "evidence_bundle",
+                        "message": _safe_payload(str(exc)),
+                    }
         try:
             sidecar = parent_workspace / "plan1119-real-zed-result.json"
             sidecar.write_text(
@@ -2103,7 +2213,7 @@ def run_plan1119_real_zed(
     return result
 
 
-def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--mode",
@@ -2121,13 +2231,35 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "--report-dir",
         type=Path,
         default=None,
-        help="sanitized evidence directory under reports/; required for --mode real-zed",
+        help="sanitized evidence directory under reports/; required for --mode preflight and --mode real-zed",
     )
     parser.add_argument("workspace", type=Path, help="existing throwaway parent directory; never a repository")
+    return parser
+
+
+def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    parser = _build_parser()
     args = parser.parse_args(argv)
-    if args.mode == "real-zed" and args.report_dir is None:
-        parser.error("--report-dir is required for --mode real-zed")
+    if args.mode in {"preflight", "real-zed"} and args.report_dir is None:
+        parser.error("--report-dir is required for --mode preflight and --mode real-zed")
     return args
+
+
+def build_approved_real_zed_command(parsed: argparse.Namespace) -> list[str]:
+    """Serialize a validated parser namespace into the future real-zed command."""
+    timeout = validate_zed_launch_timeout_seconds(parsed.zed_launch_timeout_seconds)
+    if parsed.report_dir is None:
+        raise ProbeError("preflight", "--report-dir is required to serialize the approved real-zed command")
+    return [
+        *APPROVED_REAL_ZED_PREFIX,
+        "--mode",
+        "real-zed",
+        "--zed-launch-timeout-seconds",
+        str(timeout),
+        "--report-dir",
+        str(parsed.report_dir),
+        str(parsed.workspace),
+    ]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -2149,7 +2281,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 1
     if args.mode == "preflight":
-        result = run_plan1119_preflight(args.workspace)
+        result = run_plan1119_preflight(
+            args.workspace,
+            approved_real_zed_command=build_approved_real_zed_command(args),
+        )
         print(json.dumps(result, indent=2, sort_keys=True, default=str))
         return 0 if result.get("preflight_ok") and result.get("zed_launches") == 0 else 1
     if args.mode == "acpx-baseline":
