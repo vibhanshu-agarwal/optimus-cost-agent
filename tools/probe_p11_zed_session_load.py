@@ -1080,14 +1080,21 @@ def _plan1124_agent_protocol_sidecar(result: Mapping[str, Any], *, alias_roots: 
         "commit": result.get("commit"),
         "zed_launches": result.get("zed_launches"),
         "origin_a_launches": result.get("origin_a_launches"),
+        "isolated_build": result.get("isolated_build"),
         "no_gateway_path_established": result.get("no_gateway_path_established"),
         "establishing_disposition": result.get("establishing_disposition"),
         "indeterminate_reason": result.get("indeterminate_reason"),
+        "workspace_custody_verified": result.get("workspace_custody_verified"),
+        "workspace_revoke_verified": result.get("workspace_revoke_verified"),
+        "workspace_revoke_error": result.get("zed_workspace_revoke_error"),
         "session_new_response": result.get("session_new_response"),
         "session_load_exchange": result.get("session_load_exchange"),
         "prompt_attempt": projected_prompt,
         "acpx": _plan1124_projected_acpx_identity(
             result.get("acpx") if isinstance(result.get("acpx"), Mapping) else None
+        ),
+        "isolation": _plan1124_projected_isolation(
+            result.get("isolation") if isinstance(result.get("isolation"), Mapping) else None
         ),
         "failure": result.get("failure"),
     }
@@ -1782,6 +1789,15 @@ def _agent_protocol_report_path() -> Path:
 def _plan1124_agent_protocol_report_text(result: Mapping[str, Any]) -> str:
     disposition = str(result.get("establishing_disposition") or PLAN1124_ESTABLISHING_PRECONDITION_UNMET)
     no_gateway = bool(result.get("no_gateway_path_established"))
+    recorded_at_utc = str(result.get("recorded_at_utc") or "")
+    commit = str(result.get("commit") or "")
+    acpx = result.get("acpx")
+    acpx_version = str(acpx.get("version") or "") if isinstance(acpx, Mapping) else ""
+    acpx_sha256 = str(acpx.get("executable_sha256") or "") if isinstance(acpx, Mapping) else ""
+    isolated_build = result.get("isolated_build")
+    isolated_launcher_sha256 = (
+        str(isolated_build.get("sha256") or "") if isinstance(isolated_build, Mapping) else ""
+    )
     return "\n".join(
         [
             "# Plan 11.24 agent protocol persistence establishing drive",
@@ -1791,6 +1807,11 @@ def _plan1124_agent_protocol_report_text(result: Mapping[str, Any]) -> str:
             "",
             f"Establishing-Disposition: {disposition}",
             f"No-Gateway-Path-Established: {'true' if no_gateway else 'false'}",
+            f"Recorded-At-UTC: {recorded_at_utc}",
+            f"Commit: {commit}",
+            f"Acpx-Version: {acpx_version}",
+            f"Acpx-Executable-Sha256: {acpx_sha256}",
+            f"Isolated-Launcher-Sha256: {isolated_launcher_sha256}",
             "",
         ]
     )
@@ -1812,13 +1833,137 @@ def _read_establishing_disposition_marker(path: Path) -> str | None:
     return None
 
 
+def _read_agent_protocol_report_provenance(path: Path) -> dict[str, str | None]:
+    if not path.is_file():
+        return {
+            "recorded_at_utc": None,
+            "commit": None,
+            "acpx_version": None,
+            "acpx_sha256": None,
+            "isolated_launcher_sha256": None,
+        }
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {
+            "recorded_at_utc": None,
+            "commit": None,
+            "acpx_version": None,
+            "acpx_sha256": None,
+            "isolated_launcher_sha256": None,
+        }
+    parsed: dict[str, str | None] = {
+        "recorded_at_utc": None,
+        "commit": None,
+        "acpx_version": None,
+        "acpx_sha256": None,
+        "isolated_launcher_sha256": None,
+    }
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Recorded-At-UTC:"):
+            _, _, value = stripped.partition(":")
+            parsed["recorded_at_utc"] = value.strip() or None
+        elif stripped.startswith("Commit:"):
+            _, _, value = stripped.partition(":")
+            parsed["commit"] = value.strip() or None
+        elif stripped.startswith("Acpx-Version:"):
+            _, _, value = stripped.partition(":")
+            parsed["acpx_version"] = value.strip() or None
+        elif stripped.startswith("Acpx-Executable-Sha256:"):
+            _, _, value = stripped.partition(":")
+            parsed["acpx_sha256"] = value.strip() or None
+        elif stripped.startswith("Isolated-Launcher-Sha256:"):
+            _, _, value = stripped.partition(":")
+            parsed["isolated_launcher_sha256"] = value.strip() or None
+    return parsed
+
+
 def _require_established_agent_protocol_prerequisite(result: dict[str, Any]) -> bool:
     marker = _read_establishing_disposition_marker(_agent_protocol_report_path())
+    provenance = _read_agent_protocol_report_provenance(_agent_protocol_report_path())
     result["agent_protocol_prerequisite"] = {
         "report": str(_agent_protocol_report_path()),
         "disposition": marker,
+        **provenance,
     }
     if marker == PLAN1124_ESTABLISHING_OK:
+        recorded_at_utc = provenance.get("recorded_at_utc")
+        commit = provenance.get("commit")
+        acpx_version = provenance.get("acpx_version")
+        acpx_sha256 = provenance.get("acpx_sha256")
+        isolated_launcher_sha256 = provenance.get("isolated_launcher_sha256")
+        expected_commit = result.get("commit")
+        expected_isolated_build = result.get("isolated_build")
+        expected_launcher_sha256 = (
+            expected_isolated_build.get("sha256") if isinstance(expected_isolated_build, Mapping) else None
+        )
+
+        if not (
+            isinstance(recorded_at_utc, str)
+            and recorded_at_utc
+            and isinstance(commit, str)
+            and commit
+            and isinstance(acpx_version, str)
+            and acpx_version
+            and isinstance(acpx_sha256, str)
+            and acpx_sha256
+            and isinstance(isolated_launcher_sha256, str)
+            and isolated_launcher_sha256
+            and isinstance(expected_commit, str)
+            and expected_commit
+            and isinstance(expected_launcher_sha256, str)
+            and expected_launcher_sha256
+        ):
+            result["finding"] = Finding.INDETERMINATE.value
+            result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
+            result["zed_launches"] = 0
+            return False
+
+        # Freshness check: the operator-approved establishing drive must be recent.
+        try:
+            report_dt = datetime.fromisoformat(recorded_at_utc)
+        except ValueError:
+            result["finding"] = Finding.INDETERMINATE.value
+            result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
+            result["zed_launches"] = 0
+            return False
+        age_seconds = (datetime.now(UTC) - report_dt).total_seconds()
+        if age_seconds > MAX_ZED_LAUNCH_TIMEOUT_SECONDS:
+            result["finding"] = Finding.INDETERMINATE.value
+            result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
+            result["zed_launches"] = 0
+            return False
+
+        if commit != expected_commit:
+            result["finding"] = Finding.INDETERMINATE.value
+            result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
+            result["zed_launches"] = 0
+            return False
+
+        # Independently compute the current acpx provenance to avoid stale authorization.
+        # This does not touch Zed, Gateway, or provider credentials.
+        acpx_path = _resolve_acpx()
+        acpx_workspace = Path(tempfile.mkdtemp(prefix="p1124-acpx-provenance-"))
+        try:
+            acpx_home = acpx_workspace / "acpx-home"
+            acpx_env = _isolated_environment(acpx_home)
+            acpx_version_now = _acpx_version(acpx_path, cwd=acpx_workspace, env=acpx_env)
+            acpx_sha_now = _file_sha256(acpx_path)
+        finally:
+            shutil.rmtree(acpx_workspace, ignore_errors=True)
+
+        if acpx_version_now != acpx_version or acpx_sha_now != acpx_sha256:
+            result["finding"] = Finding.INDETERMINATE.value
+            result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
+            result["zed_launches"] = 0
+            return False
+        if expected_launcher_sha256 != isolated_launcher_sha256:
+            result["finding"] = Finding.INDETERMINATE.value
+            result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
+            result["zed_launches"] = 0
+            return False
+
         return True
     result["finding"] = Finding.INDETERMINATE.value
     result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
@@ -2264,6 +2409,7 @@ def run_plan1124_agent_protocol_drive(parent_workspace: Path) -> dict[str, Any]:
             raise ProbeError("isolation", "pre-launch isolation predicates failed")
         validate_isolation_evidence(isolation, require_cleanup=False)
         launcher = write_isolated_agent_launcher(Path(preparation.isolated_build_root), Path(preparation.isolated_source_root))
+        result["isolated_build"] = {"sha256": _file_sha256(launcher)}
         workspace = run_root / "acpx-workspace"
         workspace.mkdir(parents=True, exist_ok=True)
         first_home = run_root / "acpx-home-first"
@@ -2398,12 +2544,9 @@ def run_plan1124_agent_protocol_drive(parent_workspace: Path) -> dict[str, Any]:
             result["no_gateway_path_established"] = False
             result["establishing_disposition"] = PLAN1124_ESTABLISHING_PRECONDITION_UNMET
         custody_verified = revoke_verified and cleaned
-        if custody_verified and result.get("no_gateway_path_established"):
-            _write_agent_protocol_report(result)
-        else:
-            _remove_agent_protocol_report()
-            result["no_gateway_path_established"] = False
-            result["establishing_disposition"] = PLAN1124_ESTABLISHING_PRECONDITION_UNMET
+        result["workspace_revoke_verified"] = revoke_verified
+        result["workspace_custody_verified"] = custody_verified
+        desired_publish = custody_verified and bool(result.get("no_gateway_path_established"))
         alias_roots = (
             run_root,
             workspace,
@@ -2412,6 +2555,7 @@ def run_plan1124_agent_protocol_drive(parent_workspace: Path) -> dict[str, Any]:
             preparation.hermetic_zed_root if preparation else None,
             parent_workspace,
         )
+        sidecar_written = False
         try:
             sidecar = parent_workspace / "plan1124-agent-protocol-result.json"
             sidecar.write_text(
@@ -2425,8 +2569,20 @@ def run_plan1124_agent_protocol_drive(parent_workspace: Path) -> dict[str, Any]:
                 newline="\n",
             )
             result["sidecar"] = str(sidecar)
+            sidecar_written = True
         except OSError:
             pass
+
+        if desired_publish and sidecar_written:
+            _write_agent_protocol_report(result)
+        else:
+            _remove_agent_protocol_report()
+            result["no_gateway_path_established"] = False
+            result["establishing_disposition"] = PLAN1124_ESTABLISHING_PRECONDITION_UNMET
+            if custody_verified:
+                # Sidecar write failure would otherwise leave a positive disposition
+                # without any associated evidence bundle.
+                result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
     return result
 
 
@@ -2442,9 +2598,15 @@ def _classify_resume_lifecycle(create_id: str | None, load_exchange: Mapping[str
     params = request.get("params")
     if not isinstance(params, Mapping) or params.get("sessionId") != create_id:
         return (Finding.INDETERMINATE, IndeterminateReason.PRECONDITION_UNMET.value)
-    if response.get("result") == {}:
+    has_result_empty = response.get("result") == {}
+    has_error_mapping = isinstance(response.get("error"), Mapping)
+    # JSON-RPC requires exactly one of `result`/`error`. Any both-present case
+    # must be treated as malformed and fail closed as indeterminate.
+    if has_result_empty and has_error_mapping:
+        return (Finding.INDETERMINATE, IndeterminateReason.OBSERVATION_INCOMPLETE.value)
+    if has_result_empty:
         return (Finding.REACHABLE, None)
-    if isinstance(response.get("error"), Mapping):
+    if has_error_mapping:
         return (Finding.UNREACHABLE, None)
     return (Finding.INDETERMINATE, IndeterminateReason.OBSERVATION_INCOMPLETE.value)
 
@@ -2746,7 +2908,15 @@ def run_plan1124_two_lifecycle_real_zed(
     repo_root = Path(__file__).resolve().parents[1]
     result = _plan1119_base_result(repo_root, mode="real-zed-resume")
     result["zed_launches"] = 0
-    if not _require_established_agent_protocol_prerequisite(result):
+    marker = _read_establishing_disposition_marker(_agent_protocol_report_path())
+    result["agent_protocol_prerequisite"] = {
+        "report": str(_agent_protocol_report_path()),
+        "disposition": marker,
+    }
+    if marker != PLAN1124_ESTABLISHING_OK:
+        result["finding"] = Finding.INDETERMINATE.value
+        result["indeterminate_reason"] = IndeterminateReason.PRECONDITION_UNMET.value
+        result["zed_launches"] = 0
         return result
     total_timeout = validate_zed_launch_timeout_seconds(timeout_s)
     run_root: Path | None = None
@@ -2767,6 +2937,9 @@ def run_plan1124_two_lifecycle_real_zed(
         validate_isolation_evidence(isolation, require_cleanup=False)
         executable, invocation, help_sha256 = _discover_live_zed_invocation(Path(preparation.hermetic_zed_root))
         launcher = write_isolated_agent_launcher(Path(preparation.isolated_build_root), Path(preparation.isolated_source_root))
+        result["isolated_build"] = {"sha256": _file_sha256(launcher)}
+        if not _require_established_agent_protocol_prerequisite(result):
+            return result
         workspace = run_root / "zed-workspace"
         workspace.mkdir(parents=True, exist_ok=True)
         trust_cli = _resolve_trust_cli(repo_root)
@@ -2776,6 +2949,11 @@ def run_plan1124_two_lifecycle_real_zed(
         _run_interactive_required(build_trust_command(trust_cli, workspace, "approve"), cwd=workspace, stage="zed_workspace_approval")
         zed_workspace_approved = True
         result["zed_workspace_approval"] = {"mode": "durable", "created": True, "revoked": False}
+        _append_event_ledger(
+            result,
+            "workspace_approved_durable",
+            workspace=str(workspace.resolve()),
+        )
         _record_identities(
             result,
             executable=executable,
@@ -2801,18 +2979,23 @@ def run_plan1124_two_lifecycle_real_zed(
             deadline_monotonic=deadline,
         )
         for lifecycle, run_id in (("lifecycle_a", PLAN1124_LIFECYCLE_A_RUN_ID), ("lifecycle_b", PLAN1124_LIFECYCLE_B_RUN_ID)):
-            remaining = deadline - time.monotonic()
+            if lifecycle == "lifecycle_b":
+                _append_event_ledger(
+                    result,
+                    "no_intervening_cleanup_between_lifecycles",
+                    previous_lifecycle_run_id=PLAN1124_LIFECYCLE_A_RUN_ID,
+                )
+            remaining_scheduled = deadline - time.monotonic()
             _append_event_ledger(
                 result,
                 "lifecycle_launch_scheduled",
                 lifecycle=lifecycle,
                 run_id=run_id,
-                remaining_seconds=remaining,
+                remaining_seconds=remaining_scheduled,
                 zed_launches_before=int(result.get("zed_launches", 0)),
             )
-            if remaining <= 0:
+            if remaining_scheduled <= 0:
                 raise ProbeError("zed_launch", "shared deadline expired before lifecycle launch")
-            result["zed_launches"] = int(result.get("zed_launches", 0)) + 1
             capture_root = run_root / "relay-capture"
             capture_root.mkdir(exist_ok=True)
             child_args = [str(launcher), "--workspace-root", str(workspace), "--no-auto-start"]
@@ -2826,6 +3009,10 @@ def run_plan1124_two_lifecycle_real_zed(
             seed_hermetic_zed_settings(Path(invocation.user_data_root), relay_command=relay_argv[0], relay_args=relay_argv[1:])
             launch_help = _observe_zed_help(Path(invocation.argv[0]))
             zed_argv = list(build_real_zed_launch_argv(invocation, workspace=workspace, launch_help=launch_help))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProbeError("zed_launch", "shared deadline expired before lifecycle launch execution")
+            result["zed_launches"] = int(result.get("zed_launches", 0)) + 1
             _append_event_ledger(
                 result,
                 "lifecycle_launch_started",
@@ -2848,6 +3035,30 @@ def run_plan1124_two_lifecycle_real_zed(
             _append_event_ledger(result, "relay_capture_verified", lifecycle=lifecycle, run_id=run_id)
             zed_messages = iter_acp_messages((run_dir / "zed-to-agent.bin").read_bytes())
             agent_messages = iter_acp_messages((run_dir / "agent-to-zed.bin").read_bytes())
+            if lifecycle == "lifecycle_a":
+                prompt_requests = [
+                    msg
+                    for msg in zed_messages
+                    if isinstance(msg.get("method"), str) and msg.get("method") == "session/prompt"
+                ]
+                prompt_text_matches = 0
+                for req in prompt_requests:
+                    params = req.get("params")
+                    if not isinstance(params, Mapping):
+                        continue
+                    prompt_list = params.get("prompt")
+                    if not isinstance(prompt_list, Sequence) or not prompt_list:
+                        continue
+                    first = prompt_list[0]
+                    if isinstance(first, Mapping) and first.get("text") == PLAN1124_EXEC_MESSAGE:
+                        prompt_text_matches += 1
+                _append_event_ledger(
+                    result,
+                    "prompt_message_seam_verified",
+                    prompt_request_count=len(prompt_requests),
+                    prompt_text_matches=prompt_text_matches,
+                    prompt_text_match_expected=prompt_text_matches == 1,
+                )
             zed_sanitized = reconstruct_sanitized_relay_bytes(zed_messages)
             agent_sanitized = reconstruct_sanitized_relay_bytes(agent_messages)
             captures[lifecycle] = {
@@ -2962,20 +3173,21 @@ def run_plan1124_two_lifecycle_real_zed(
                         }
         try:
             sidecar = parent_workspace / "plan1124-real-zed-resume-result.json"
+            alias_roots = (
+                run_root,
+                workspace,
+                preparation.isolated_source_root if preparation else None,
+                preparation.isolated_build_root if preparation else None,
+                preparation.hermetic_zed_root if preparation else None,
+                parent_workspace,
+                report_dir,
+            )
             sidecar_payload = _plan1124_v5_manifest_projection(
                 result,
                 files={},
-                alias_roots=(
-                    run_root,
-                    workspace,
-                    preparation.isolated_source_root if preparation else None,
-                    preparation.isolated_build_root if preparation else None,
-                    preparation.hermetic_zed_root if preparation else None,
-                    parent_workspace,
-                    report_dir,
-                ),
+                alias_roots=alias_roots,
             )
-            sidecar_payload["event_ledger"] = result.get("event_ledger")
+            sidecar_payload["event_ledger"] = _safe_payload_with_probe_aliases(result.get("event_ledger"), *alias_roots)
             sidecar.write_text(
                 json.dumps(sidecar_payload, indent=2, sort_keys=True, default=str),
                 encoding="utf-8",

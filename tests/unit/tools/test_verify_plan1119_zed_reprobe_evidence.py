@@ -403,6 +403,86 @@ def test_v5_manifest_rejects_wrong_lifecycle_labels(tmp_path: Path) -> None:
     assert main(["--manifest", str(manifest_path)]) == 1
 
 
+def _build_valid_v5_manifest(tmp_path: Path) -> Path:
+    report_dir = tmp_path / "reports" / "plan-11-24-zed-guided-session-load-probe-v5"
+    (report_dir / "relay" / "lifecycle-a").mkdir(parents=True)
+    (report_dir / "relay" / "lifecycle-b").mkdir(parents=True)
+
+    za = report_dir / "relay/lifecycle-a/zed-to-agent.bin"
+    aa = report_dir / "relay/lifecycle-a/agent-to-zed.bin"
+    zb = report_dir / "relay/lifecycle-b/zed-to-agent.bin"
+    ab = report_dir / "relay/lifecycle-b/agent-to-zed.bin"
+    za.write_bytes(b"a-zed")
+    aa.write_bytes(b"a-agent")
+    zb.write_bytes(b"b-zed")
+    ab.write_bytes(b"b-agent")
+
+    rep = report_dir / "report.md"
+    rep.write_text("Finding: REACHABLE.\n", encoding="utf-8")
+
+    payload = valid_manifest(finding="REACHABLE")
+    payload["zed_launches"] = 2
+    payload["relay"] = {"source": "opaque-relay-post-run"}
+    payload["resume_lifecycle"] = {
+        "shared_profile": True,
+        "lifecycle_a": {
+            "label": "plan1124-create",
+            "session_new_id": "session-a",
+            "zed_to_agent_sha256": _sha256_file(za),
+            "agent_to_zed_sha256": _sha256_file(aa),
+        },
+        "lifecycle_b": {
+            "label": "plan1124-resume",
+            "session_load_exchange": {
+                "request": {
+                    "jsonrpc": "2.0",
+                    "id": 9,
+                    "method": "session/load",
+                    "params": {"sessionId": "session-a"},
+                },
+                "response": {"jsonrpc": "2.0", "id": 9, "result": {}},
+            },
+            "zed_to_agent_sha256": _sha256_file(zb),
+            "agent_to_zed_sha256": _sha256_file(ab),
+        },
+    }
+    payload["files"] = {
+        "report.md": _sha256_file(rep),
+        "relay/lifecycle-a/zed-to-agent.bin": _sha256_file(za),
+        "relay/lifecycle-a/agent-to-zed.bin": _sha256_file(aa),
+        "relay/lifecycle-b/zed-to-agent.bin": _sha256_file(zb),
+        "relay/lifecycle-b/agent-to-zed.bin": _sha256_file(ab),
+    }
+
+    manifest_path = report_dir / "manifest.json"
+    manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return manifest_path
+
+
+def test_v5_rejects_extra_declared_files(tmp_path: Path) -> None:
+    manifest_path = _build_valid_v5_manifest(tmp_path)
+    assert main(["--manifest", str(manifest_path)]) == 0
+
+    doc = json.loads(manifest_path.read_text(encoding="utf-8"))
+    doc["files"]["missing-extra.bin"] = "0" * 64
+    manifest_path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+    assert main(["--manifest", str(manifest_path)]) == 1
+
+
+def test_v5_rejects_lifecycle_b_error_certifying_reachable(tmp_path: Path) -> None:
+    manifest_path = _build_valid_v5_manifest(tmp_path)
+    assert main(["--manifest", str(manifest_path)]) == 0
+
+    doc = json.loads(manifest_path.read_text(encoding="utf-8"))
+    doc["resume_lifecycle"]["lifecycle_b"]["session_load_exchange"]["response"] = {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "error": {"code": -32601, "message": "method not found"},
+    }
+    manifest_path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+    assert main(["--manifest", str(manifest_path)]) == 1
+
+
 def test_v5_indeterminate_without_b_response_fails(tmp_path: Path) -> None:
     report_dir = tmp_path / "reports" / "plan-11-24-zed-guided-session-load-probe-v5"
     report_dir.mkdir(parents=True)

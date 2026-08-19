@@ -190,6 +190,12 @@ def _verify_resume_lifecycle(manifest: Mapping[str, Any], report_dir: Path) -> N
         "relay/lifecycle-b/zed-to-agent.bin",
         "relay/lifecycle-b/agent-to-zed.bin",
     )
+    expected_keys = {"report.md", *expected}
+    require(
+        set(files.keys()) == expected_keys,
+        "files",
+        "v5 resume must declare exactly the expected report.md + lifecycle relay files (no extras)",
+    )
     for rel in expected:
         require(rel in files, "files", f"{rel} is missing from files map")
         path = _require_report_relative(report_dir, rel)
@@ -223,12 +229,43 @@ def _verify_finding_rule(manifest: Mapping[str, Any]) -> None:
     require(finding in ALLOWED_FINDINGS, "finding", "finding must be REACHABLE, UNREACHABLE, or INDETERMINATE")
     exchange = manifest.get("captured_exchange")
     if isinstance(manifest.get("resume_lifecycle"), Mapping):
+        resume = manifest["resume_lifecycle"]
+        lifecycle_a = resume.get("lifecycle_a")
+        lifecycle_b = resume.get("lifecycle_b")
+        require(isinstance(lifecycle_a, Mapping), "resume_lifecycle.lifecycle_a", "lifecycle_a record is missing")
+        require(isinstance(lifecycle_b, Mapping), "resume_lifecycle.lifecycle_b", "lifecycle_b record is missing")
+
+        create_id = lifecycle_a.get("session_new_id")
+        require(isinstance(create_id, str) and create_id.strip(), "resume_lifecycle.lifecycle_a.session_new_id", "session/new id is missing")
+
+        b_exchange = lifecycle_b.get("session_load_exchange")
+        require(isinstance(b_exchange, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange", "session/load exchange is missing")
+        b_request = b_exchange.get("request")
+        b_response = b_exchange.get("response")
+        require(isinstance(b_request, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.request", "session/load request is missing")
+        require(isinstance(b_response, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.response", "session/load response is missing")
+
+        require(
+            b_request.get("method") == "session/load",
+            "resume_lifecycle.lifecycle_b.session_load_exchange.request.method",
+            "Lifecycle B exchange must be session/load",
+        )
+        params = b_request.get("params")
+        require(isinstance(params, Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.request.params", "session/load params are missing")
+        require(
+            params.get("sessionId") == create_id,
+            "resume_lifecycle.lifecycle_b.session_load_exchange.request.params.sessionId",
+            "Lifecycle B session/load id must match Lifecycle A session/new id",
+        )
+
         if finding == "REACHABLE":
-            require(exchange and exchange["request"]["method"] == "session/load", "captured_exchange", "REACHABLE requires session/load")
-            require(exchange["response"].get("result") == {}, "captured_exchange", "REACHABLE requires empty result")
+            # REACHABLE must be certified only when the nested Lifecycle B exchange has an empty `{}` result.
+            require(b_response.get("result") == {}, "resume_lifecycle.lifecycle_b.session_load_exchange.response", "REACHABLE requires empty result")
+            require(not isinstance(b_response.get("error"), Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.response", "REACHABLE must not include an error object")
         elif finding == "UNREACHABLE":
-            require(exchange and exchange["request"]["method"] == "session/load", "captured_exchange", "UNREACHABLE requires session/load")
-            require(isinstance(exchange["response"].get("error"), dict), "captured_exchange", "UNREACHABLE requires an error object")
+            require(isinstance(b_response.get("error"), Mapping), "resume_lifecycle.lifecycle_b.session_load_exchange.response", "UNREACHABLE requires an error object")
+            # A malformed both-present response must not be certified as UNREACHABLE success either.
+            require(b_response.get("result") != {}, "resume_lifecycle.lifecycle_b.session_load_exchange.response", "UNREACHABLE must not carry an empty `{}` result")
         else:
             require(manifest["indeterminate_reason"] in ALLOWED_INDETERMINATE_REASONS, "indeterminate_reason", "INDETERMINATE without a named reason")
         return
