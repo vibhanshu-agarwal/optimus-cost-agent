@@ -1793,6 +1793,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan117_custody_relay:_open_private_child_stderr:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens the relay-child private stderr sink under the throwaway run-id directory only; raw child stderr is confined and never promoted into ACP streams, and only a separately bounded/sanitized _safe_payload excerpt persists in evidence.",
+      "sanitizer": "private diagnostic sink confined to throwaway run root; bounded sanitized excerpt crosses into sidecar/manifest only",
+      "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_child_stderr_is_captured_privately_without_touching_protocol_streams",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan117_custody_relay:_LockedRecorder.record_chunk:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: serializes only schema-limited index fields (sequence, direction, offsets, size, sha256) \u2014 never ACP message bodies \u2014 into NDJSON index lines.",

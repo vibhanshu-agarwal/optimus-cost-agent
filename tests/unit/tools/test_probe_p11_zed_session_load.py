@@ -741,6 +741,49 @@ def test_opaque_relay_command_uses_custody_relay_not_project_client() -> None:
     assert "acpx" not in joined.casefold()
 
 
+def test_opaque_relay_command_preserves_explicit_child_args_without_repeating_executable(
+    tmp_path: Path,
+) -> None:
+    capture_root = tmp_path / "cap"
+    capture_root.mkdir(parents=True)
+    run_id = "run-1"
+    launcher = tmp_path / "isolated_launcher.py"
+    launcher.write_text("# launcher\n", encoding="utf-8")
+    workspace = tmp_path / "zed-workspace"
+    workspace.mkdir()
+
+    explicit_child_args = [
+        str(launcher),
+        "--workspace-root",
+        str(workspace),
+        "--no-auto-start",
+    ]
+    command = build_opaque_relay_command(
+        capture_root=capture_root,
+        run_id=run_id,
+        child_executable=Path(sys.executable),
+        invocation=_valid_invocation(),
+        child_args=explicit_child_args,
+    )
+
+    marker = command.index("--")
+    after = command[marker + 1 :]
+    assert after == explicit_child_args
+
+    exe_marker = command.index("--child-executable")
+    child_executable_at_cli = Path(command[exe_marker + 1])
+
+    expected_exe = Path(sys.executable).resolve()
+    assert child_executable_at_cli.resolve() == expected_exe
+
+    # The relay contract resolves to [sys.executable, *child_args] exactly.
+    resolved_child_argv = [str(child_executable_at_cli), *after]
+    non_flag_items = [item for item in resolved_child_argv if not str(item).startswith("--")]
+    non_flag_paths = [Path(item).resolve() for item in non_flag_items]
+    assert non_flag_paths.count(expected_exe) == 1
+    assert Path(resolved_child_argv[1]).resolve() == launcher.resolve()
+
+
 def test_acpx_baseline_fails_closed_without_isolated_load_session() -> None:
     evidence = AcpxBaselineEvidence(
         acpx_version="0.12.0",
@@ -902,6 +945,8 @@ SHA_A = "a" * 64
 SHA_B = "b" * 64
 SHA_C = "c" * 64
 RAW_CAPTURE_CANARY = b"RAW_CAPTURE_CANARY=sk-live-not-for-disk"
+RELAY_CHILD_STDERR_CANARY = "OPTIMUS_API_KEY=sk-child-stderr-canary-not-for-disk"
+RELAY_CHILD_STDERR_RAW_SCRATCH_PATH = "C:/raw-scratch/relay-child-stderr.txt"
 PLAN_1124_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe"
 PLAN_1124_V3_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe-v3"
 APPROVED_REAL_ZED_PREFIX = [
@@ -1372,6 +1417,7 @@ def _install_stubbed_real_zed(
 
     def spy_build_opaque_relay_command(**kwargs: object) -> list[str]:
         child_args = [str(item) for item in list(kwargs.get("child_args") or ())]
+        observed["child_executable"] = str(kwargs.get("child_executable") or "")
         observed["child_args"] = child_args
         events.append({"kind": "relay_prepared", "child_args": child_args})
         return real_build_opaque_relay_command(**kwargs)
@@ -1450,6 +1496,15 @@ def _install_stubbed_real_zed(
             zed_bytes, agent_bytes = _paired_sanitized_relay_bytes()
             (cap / "zed-to-agent.bin").write_bytes(zed_bytes)
             (cap / "agent-to-zed.bin").write_bytes(agent_bytes)
+            # Plant private relay-child stderr scratch diagnostics.
+            # The probe must extract a bounded sanitized excerpt and never persist the raw file.
+            prefix = (
+                f"child-stderr-prefix {RELAY_CHILD_STDERR_CANARY} scratch_path={RELAY_CHILD_STDERR_RAW_SCRATCH_PATH}\n\n\t"
+            )
+            # Ensure the prefix/canary and scratch path fall outside the tail-cropped excerpt.
+            filler = "X  \n\t" * 5000
+            raw = prefix + filler
+            (cap / "relay-child-stderr.txt").write_bytes(raw.encode("utf-8"))
         events.append({"kind": "launch_return", "approval_live": bool(approval["live"])})
         return {"pid": 1, "returncode": launch_returncode, "log_path": str(log_path) if log_path else None}
 
@@ -1512,6 +1567,32 @@ def test_run_plan1119_real_zed_seeds_discovered_user_data_root(
     run_plan1119_real_zed(parent, launch_timeout_seconds=180.0, report_dir=report_dir)
 
 
+def test_real_zed_relay_child_argv_contains_interpreter_exactly_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tools.probe_p11_zed_session_load import run_plan1119_real_zed
+
+    parent, report_dir, _hermetic, observed = _install_stubbed_real_zed(tmp_path, monkeypatch)
+    run_plan1119_real_zed(parent, launch_timeout_seconds=180.0, report_dir=report_dir)
+
+    child_executable = str(observed["child_executable"])
+    child_args = list(observed["child_args"])  # type: ignore[arg-type]
+    resolved_child_argv = [child_executable, *child_args]
+
+    expected_exe = Path(sys.executable).resolve()
+    non_flag_items = [item for item in resolved_child_argv if not str(item).startswith("--")]
+    non_flag_paths = [Path(item).resolve() for item in non_flag_items]
+    assert non_flag_paths.count(expected_exe) == 1
+
+    assert Path(resolved_child_argv[0]).resolve() == expected_exe
+    expected_launcher = (tmp_path / "scratch" / "probe-build" / "isolated_optimus_agent.py").resolve()
+    assert Path(resolved_child_argv[1]).resolve() == expected_launcher
+
+    workspace_root = Path(resolved_child_argv[resolved_child_argv.index("--workspace-root") + 1]).resolve()
+    assert workspace_root.name == "zed-workspace"
+    assert "--no-auto-start" in resolved_child_argv
+
+
 def test_guided_timeout_is_threaded_to_launch_without_gui(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1572,6 +1653,72 @@ def test_real_zed_path_publishes_nonempty_sanitized_bundle(
     verify_manifest(manifest)
     assert (report_dir / "relay" / "zed-to-agent.bin").read_bytes()
     assert (report_dir / "relay" / "agent-to-zed.bin").read_bytes()
+
+
+def test_real_zed_sidecar_and_bundle_include_bounded_sanitized_child_stderr_excerpt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tools.probe_p11_zed_session_load import run_plan1119_real_zed
+
+    parent, report_dir, _hermetic, _observed = _install_stubbed_real_zed(
+        tmp_path, monkeypatch, write_capture=True
+    )
+    result = run_plan1119_real_zed(parent, launch_timeout_seconds=180.0, report_dir=report_dir)
+
+    excerpt = result.get("relay_child_stderr_excerpt")
+    assert isinstance(excerpt, str)
+    assert len(excerpt) <= 4000
+    assert RELAY_CHILD_STDERR_CANARY not in excerpt
+    assert RELAY_CHILD_STDERR_RAW_SCRATCH_PATH not in excerpt
+
+    sidecar = Path(str(result["sidecar"])).read_text(encoding="utf-8")
+    sidecar_payload = json.loads(sidecar)
+    assert sidecar_payload["relay_child_stderr_excerpt"] == excerpt
+
+    manifest_path = Path(str(result["evidence_manifest"]))
+    verify_manifest(manifest_path)
+    manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest_payload["relay_child_stderr_excerpt"] == excerpt
+
+    # Raw diagnostic must not be persisted into the reconstructed bundle.
+    assert not (report_dir / "relay-child-stderr.txt").exists()
+    assert not (report_dir / "relay" / "relay-child-stderr.txt").exists()
+
+    expected_files = {
+        report_dir / "manifest.json",
+        report_dir / "report.md",
+        report_dir / "relay" / "zed-to-agent.bin",
+        report_dir / "relay" / "agent-to-zed.bin",
+    }
+    actual_files = {p for p in report_dir.rglob("*") if p.is_file()}
+    assert actual_files == expected_files
+
+
+def test_relay_child_stderr_excerpt_sanitizes_before_truncating_to_prevent_secret_fragment_leak(
+    tmp_path: Path,
+) -> None:
+    """Tail-first truncation can cut a secret prefix so regex-based redaction misses it."""
+    from tools.probe_p11_zed_session_load import _relay_child_stderr_excerpt
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True)
+
+    limit = 4000
+    secret_full = "OPTIMUS_API_KEY=sk-live-not-for-disk"
+    leaked_fragment = "live-not-for-disk"
+    secret_prefix = "OPTIMUS_API_KEY=sk-"
+    offset_in_secret = len(secret_prefix)
+    filler_after_len = limit + offset_in_secret - len(secret_full)
+    assert filler_after_len >= 0
+
+    # Make the excerpt boundary start inside the secret value (after `sk-`), so
+    # tail-first truncation would drop the redaction-matching key/prefix.
+    raw = "A" + secret_full + ("B" * filler_after_len)
+    (run_dir / "relay-child-stderr.txt").write_text(raw, encoding="utf-8")
+
+    excerpt = _relay_child_stderr_excerpt(run_dir, limit=limit)
+    assert len(excerpt) <= limit
+    assert leaked_fragment not in excerpt
 
 
 def test_real_zed_approves_actual_workspace_only_for_launch(

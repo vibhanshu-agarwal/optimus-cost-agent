@@ -255,3 +255,35 @@ def test_report_must_not_describe_normal_non_advertisement_as_zed_finding(tmp_pa
         report_text="Zed does not support session/load after restart.\n",
     )
     assert main(["--manifest", str(path)]) == 1
+
+
+def test_optional_relay_child_stderr_excerpt_is_backward_compatible_and_bounded(
+    tmp_path: Path, capsys: object
+) -> None:
+    # No optional field remains accepted byte-for-byte.
+    path = write_manifest(tmp_path / "no-field", valid_manifest(finding="REACHABLE"))
+    assert main(["--manifest", str(path)]) == 0
+
+    for excerpt in ("", "a" * 4000):
+        manifest = valid_manifest(finding="REACHABLE")
+        manifest["relay_child_stderr_excerpt"] = excerpt
+        path = write_manifest(tmp_path / f"ok-{len(excerpt)}", manifest)
+        assert main(["--manifest", str(path)]) == 0
+
+    manifest = valid_manifest(finding="REACHABLE")
+    manifest["relay_child_stderr_excerpt"] = 123
+    path = write_manifest(tmp_path / "bad-type", manifest)
+    assert main(["--manifest", str(path)]) == 1
+
+    manifest = valid_manifest(finding="REACHABLE")
+    manifest["relay_child_stderr_excerpt"] = "a" * 4001
+    path = write_manifest(tmp_path / "bad-len", manifest)
+    assert main(["--manifest", str(path)]) == 1
+
+    secret_like = "OPTIMUS_API_KEY=live-secret"
+    manifest = valid_manifest(finding="REACHABLE")
+    manifest["relay_child_stderr_excerpt"] = secret_like
+    path = write_manifest(tmp_path / "bad-secret-like", manifest)
+    assert main(["--manifest", str(path)]) == 1
+    captured = capsys.readouterr()
+    assert secret_like not in captured.err
