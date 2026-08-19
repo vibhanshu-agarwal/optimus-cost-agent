@@ -31,7 +31,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path, PureWindowsPath
@@ -1276,20 +1276,20 @@ def write_isolated_agent_launcher(build_root: Path, isolated_source: Path) -> Pa
 
 
 def seed_hermetic_zed_settings(
-    appdata_root: Path,
+    user_data_dir: Path,
     *,
     relay_command: str,
     relay_args: Sequence[str],
 ) -> Path:
-    """Write hermetic ``%APPDATA%\\Zed\\settings.json`` for opaque-relay agent_servers.
+    """Write hermetic ``<user-data-dir>/config/settings.json`` for opaque-relay agent_servers.
 
-    On Windows, ``--user-data-dir`` redirects ``%LOCALAPPDATA%\\Zed`` (DB/logs/extensions) only.
-    Settings remain under ``%APPDATA%\\Zed\\settings.json``. Bind ``APPDATA`` to ``appdata_root``
-    via ``hermetic_appdata_environment_bind`` — never rewrite ``USERPROFILE``/``HOME``.
+    Zed 1.15.0 (pinned source ``e17dc4f9d50db73a458b64dcce50ecd4878b98a3``) honors
+    ``--user-data-dir`` by setting ``CUSTOM_DATA_DIR``; ``config_dir()`` then resolves to
+    ``<custom-data-dir>/config`` and ``settings_file()`` appends ``settings.json``.
     """
-    appdata = appdata_root.resolve()
-    settings_path = appdata / "Zed" / "settings.json"
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    config_dir = Path(user_data_dir).resolve() / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    settings_path = config_dir / "settings.json"
     payload = {
         "agent_servers": {
             "optimus": {
@@ -1300,11 +1300,6 @@ def seed_hermetic_zed_settings(
     }
     settings_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")
     return settings_path
-
-
-def hermetic_appdata_environment_bind(appdata_root: Path) -> tuple[tuple[str, str], ...]:
-    """Bind only APPDATA for hermetic settings; leave USERPROFILE/HOME/LOCALAPPDATA alone."""
-    return (("APPDATA", str(appdata_root.resolve())),)
 
 
 def iter_acp_messages(payload: bytes) -> list[dict[str, Any]]:
@@ -1924,24 +1919,19 @@ def run_plan1119_real_zed(
             invocation=invocation,
             child_args=child_args,
         )
-        appdata_root = run_root / "zed-appdata"
         settings_path = seed_hermetic_zed_settings(
-            appdata_root,
+            Path(invocation.user_data_root),
             relay_command=relay_argv[0],
             relay_args=relay_argv[1:],
         )
         if not settings_path.is_file():
             raise ProbeError("zed_settings", f"hermetic settings missing before launch: {settings_path}")
         settings_sha_before = hashlib.sha256(settings_path.read_bytes()).hexdigest()
-        invocation = replace(
-            invocation,
-            environment_bind=hermetic_appdata_environment_bind(appdata_root),
-        )
         result["hermetic_settings"] = {
             "path": str(settings_path),
             "present_before_launch": True,
             "sha256_before": settings_sha_before,
-            "appdata_bind": str(appdata_root.resolve()),
+            "config_dir": str(Path(invocation.user_data_root).resolve() / "config"),
         }
         launch_binary = Path(invocation.argv[0])
         launch_help = _observe_zed_help(launch_binary)

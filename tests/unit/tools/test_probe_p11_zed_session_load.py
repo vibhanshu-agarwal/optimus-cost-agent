@@ -35,7 +35,6 @@ from tools.probe_p11_zed_session_load import (
     exchange_from_relay_extract,
     extract_acpx_archive_capability_payload,
     extract_session_load_from_messages,
-    hermetic_appdata_environment_bind,
     iter_acp_messages,
     main,
     materialize_sanitized_zed_evidence,
@@ -864,40 +863,37 @@ def test_iter_acp_messages_parses_content_length_frames() -> None:
 
 def test_seed_hermetic_settings_and_launcher_stay_under_scratch(tmp_path: Path) -> None:
     hermetic = tmp_path / "zed-home"
-    appdata = tmp_path / "zed-appdata"
+    user_data_dir = tmp_path / "user-data"
     launcher = write_isolated_agent_launcher(tmp_path / "probe-build", tmp_path / "probe-source")
     settings = seed_hermetic_zed_settings(
-        appdata,
+        user_data_dir,
         relay_command="python",
         relay_args=["relay.py", "--capture-root", str(tmp_path / "capture")],
     )
     assert launcher.is_relative_to(tmp_path)
-    assert settings == (appdata / "Zed" / "settings.json").resolve()
-    assert settings.is_relative_to(appdata)
+    assert settings == (user_data_dir / "config" / "settings.json").resolve()
+    assert settings.is_relative_to(user_data_dir)
     assert not (hermetic / "settings.json").exists()
+    assert not (user_data_dir / "Zed" / "settings.json").exists()
     payload = json.loads(settings.read_text(encoding="utf-8"))
     assert payload["agent_servers"]["optimus"]["command"] == "python"
     assert "loadSession" not in settings.read_text(encoding="utf-8")
     assert "probe-source" in launcher.read_text(encoding="utf-8")
-    bind = hermetic_appdata_environment_bind(appdata)
-    assert bind == (("APPDATA", str(appdata.resolve())),)
-    assert not any(key in {"USERPROFILE", "HOME", "LOCALAPPDATA"} for key, _ in bind)
 
 
-def test_seed_hermetic_settings_uses_windows_appdata_zed_layout(tmp_path: Path) -> None:
-    """Windows settings live under %APPDATA%\\Zed\\settings.json, not --user-data-dir."""
-    appdata = tmp_path / "AppData" / "Roaming"
+def test_seed_hermetic_settings_targets_custom_data_dir_config(tmp_path: Path) -> None:
+    """Pinned Zed 1.15.0 reads <user-data-dir>/config/settings.json under --user-data-dir."""
+    user_data_dir = tmp_path / "user-data"
     settings = seed_hermetic_zed_settings(
-        appdata,
+        user_data_dir,
         relay_command="python",
         relay_args=["relay.py"],
     )
     assert settings.name == "settings.json"
-    assert settings.parent.name == "Zed"
-    assert settings.parent.parent == appdata.resolve()
-    bind = hermetic_appdata_environment_bind(appdata)
-    assert len(bind) == 1
-    assert bind[0][0] == "APPDATA"
+    assert settings.parent.name == "config"
+    assert settings.parent.parent == user_data_dir.resolve()
+    assert not (user_data_dir / "Zed" / "settings.json").exists()
+    assert not (tmp_path / "AppData").exists()
 
 
 COMMIT = "cfaffbebf184cd7e08f15749ce5aaff414991ec1"
@@ -1169,7 +1165,7 @@ def _install_stubbed_real_zed(
     monkeypatch: pytest.MonkeyPatch,
     *,
     write_capture: bool = False,
-) -> tuple[Path, Path, Path, dict[str, float]]:
+) -> tuple[Path, Path, Path, dict[str, object]]:
     """Patch the live-Zed path so tests never start a GUI. Optionally plant relay capture files."""
     import tools.probe_p11_zed_session_load as probe
     from tools.probe_p11_zed_session_load import DEFAULT_PROBE_PATCH_PLAN, ProbePreparation
@@ -1180,12 +1176,8 @@ def _install_stubbed_real_zed(
     isolated = scratch / "probe-source"
     build = scratch / "probe-build"
     hermetic = scratch / "zed-home"
-    appdata = scratch / "zed-appdata"
-    for path in (isolated, build, hermetic, appdata):
+    for path in (isolated, build, hermetic):
         path.mkdir(parents=True)
-    settings = appdata / "Zed" / "settings.json"
-    settings.parent.mkdir(parents=True)
-    settings.write_text("{}", encoding="utf-8")
     launcher = build / "isolated_optimus_agent.py"
     launcher.write_text("# launcher\n", encoding="utf-8")
     zed_exe = tmp_path / "Zed.exe"
@@ -1217,7 +1209,7 @@ def _install_stubbed_real_zed(
         discovered_from="zed --help",
         version="Zed 1.15.0",
         executable_sha256=SHA_A,
-        environment_bind=(("APPDATA", str(appdata.resolve())),),
+        environment_bind=(),
     )
     acpx = AcpxBaselineEvidence(
         acpx_version="0.12.0",
@@ -1227,7 +1219,24 @@ def _install_stubbed_real_zed(
         origin_a_launches=0,
         session_load_exchange=None,
     )
-    observed: dict[str, float] = {}
+    observed: dict[str, object] = {}
+
+    def spy_seed_hermetic_zed_settings(
+        user_data_dir: Path,
+        *,
+        relay_command: str,
+        relay_args: list[str] | tuple[str, ...],
+    ) -> Path:
+        observed["seed_first_arg"] = user_data_dir
+        return seed_hermetic_zed_settings(
+            user_data_dir,
+            relay_command=relay_command,
+            relay_args=relay_args,
+        )
+
+    def capture_launch_argv(inv: ZedInvocation, **_kwargs: object) -> tuple[str, ...]:
+        observed["launched_environment_bind"] = inv.environment_bind
+        return (str(zed_exe), str(parent))
 
     def fake_launch(
         argv: object,
@@ -1238,8 +1247,11 @@ def _install_stubbed_real_zed(
         timeout_s: float = 180.0,
     ) -> dict[str, object]:
         observed["timeout_s"] = timeout_s
+        observed["config_settings_before_launch"] = (hermetic / "config" / "settings.json").is_file()
+        observed["old_layout_settings_before_launch"] = (hermetic / "Zed" / "settings.json").exists()
+        roots = sorted(parent.glob("p1119-real-zed-*"))
+        observed["zed_appdata_before_launch"] = bool(roots) and (roots[-1] / "zed-appdata").exists()
         if write_capture:
-            roots = sorted(parent.glob("p1119-real-zed-*"))
             cap = roots[-1] / "relay-capture" / PLAN1119_RUN_ID
             cap.mkdir(parents=True, exist_ok=True)
             zed_bytes, agent_bytes = _paired_sanitized_relay_bytes()
@@ -1255,9 +1267,9 @@ def _install_stubbed_real_zed(
     monkeypatch.setattr(probe, "_discover_live_zed_invocation", lambda _root: (zed_exe, invocation, SHA_A))
     monkeypatch.setattr(probe, "write_isolated_agent_launcher", lambda *_a, **_k: launcher)
     monkeypatch.setattr(probe, "_run_acpx_against_isolated_agent", lambda **_k: acpx)
-    monkeypatch.setattr(probe, "seed_hermetic_zed_settings", lambda *_a, **_k: settings)
+    monkeypatch.setattr(probe, "seed_hermetic_zed_settings", spy_seed_hermetic_zed_settings)
     monkeypatch.setattr(probe, "_observe_zed_help", lambda _exe: "--user-data-dir")
-    monkeypatch.setattr(probe, "build_real_zed_launch_argv", lambda *_a, **_k: (str(zed_exe), str(parent)))
+    monkeypatch.setattr(probe, "build_real_zed_launch_argv", capture_launch_argv)
     monkeypatch.setattr(probe, "_launch_zed_once", fake_launch)
     monkeypatch.setattr(probe, "normal_workspace_source_digest", lambda _root: SHA_C)
     monkeypatch.setattr(probe, "_cleanup_plan1119_roots", lambda **_k: (True, []))
@@ -1265,6 +1277,30 @@ def _install_stubbed_real_zed(
     reports_root.mkdir()
     monkeypatch.setattr(probe, "REPORTS_ROOT", reports_root)
     return parent, reports_root / PLAN_1124_REPORT_NAME, hermetic, observed
+
+
+def test_run_plan1119_real_zed_seeds_discovered_user_data_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Caller must seed <user-data-dir>/config/settings.json before launch, not zed-appdata."""
+    import tools.probe_p11_zed_session_load as probe
+    from tools.probe_p11_zed_session_load import run_plan1119_real_zed
+
+    parent, report_dir, hermetic, observed = _install_stubbed_real_zed(tmp_path, monkeypatch)
+    stub_launch = probe._launch_zed_once
+
+    def fake_launch_with_boundary_asserts(*args: object, **kwargs: object) -> dict[str, object]:
+        assert observed["seed_first_arg"] == Path(hermetic)
+        assert (hermetic / "config" / "settings.json").is_file()
+        assert not (hermetic / "Zed" / "settings.json").exists()
+        roots = sorted(parent.glob("p1119-real-zed-*"))
+        assert roots
+        assert not (roots[-1] / "zed-appdata").exists()
+        assert observed["launched_environment_bind"] == ()
+        return stub_launch(*args, **kwargs)
+
+    monkeypatch.setattr(probe, "_launch_zed_once", fake_launch_with_boundary_asserts)
+    run_plan1119_real_zed(parent, launch_timeout_seconds=180.0, report_dir=report_dir)
 
 
 def test_guided_timeout_is_threaded_to_launch_without_gui(
