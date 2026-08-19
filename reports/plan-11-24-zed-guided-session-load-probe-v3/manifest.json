@@ -1,0 +1,108 @@
+{
+  "acpx": {
+    "executable": "C:\\Users\\pc\\AppData\\Roaming\\npm\\acpx.cmd",
+    "executable_sha256": "212da5e557d5d621af89e5bf7f86dbe59e674ba69595c14038bbcdde39c37f79",
+    "version": "0.12.0"
+  },
+  "capability_payload": {
+    "loadSession": true,
+    "mcpCapabilities": {
+      "http": false,
+      "sse": false
+    },
+    "promptCapabilities": {
+      "audio": false,
+      "embeddedContext": false,
+      "image": false
+    },
+    "sessionCapabilities": {}
+  },
+  "captured_exchange": null,
+  "commit": "728a29d0312b0298c3352f5af8a92dda9da954c4",
+  "files": {
+    "relay/agent-to-zed.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "relay/zed-to-agent.bin": "2b0f9ac7e9c3cdb861fb4c8c957bf9324596cbe7f85865c0682630694923a107",
+    "report.md": "b8c986326ef573c6e70c43a30b3d4c6f91e70c1f67b9e14d9ea9e7d88fa6181a"
+  },
+  "finding": "INDETERMINATE",
+  "hermetic_settings": {
+    "config_dir": "D:\\p1124\\p1119-real-zed-2vqtbaw1\\zed-home\\config",
+    "path": "D:\\p1124\\p1119-real-zed-2vqtbaw1\\zed-home\\config\\settings.json",
+    "present_after_launch": true,
+    "present_before_launch": true,
+    "sha256_after": "95679b834464d92ae3bea00d79746629d06a75912c1c0f33404f15a49dd998b4",
+    "sha256_before": "95679b834464d92ae3bea00d79746629d06a75912c1c0f33404f15a49dd998b4"
+  },
+  "indeterminate_reason": "OBSERVATION_INCOMPLETE",
+  "invocation": {
+    "argv": [
+      "C:\\Users\\pc\\AppData\\Local\\Programs\\Zed\\Zed.exe",
+      "--user-data-dir",
+      "D:\\p1124\\p1119-real-zed-2vqtbaw1\\zed-home"
+    ],
+    "discovered_from": "zed --help",
+    "environment_bind": [],
+    "help_sha256": "23e9b4e904748a19d1cdb95d1c650a545c61fdb9611dbe035082b03c25bdaf4e",
+    "user_data_root": "D:\\p1124\\p1119-real-zed-2vqtbaw1\\zed-home"
+  },
+  "isolated_build": {
+    "sha256": "3d817b429594506a768bf4de414df0792ec9fe51b24568daecd06b497355bfda"
+  },
+  "isolated_source": {
+    "sha256": "9c14492f934e3e8cc4305db694b7c1aa7953371591f92c6af40cac64ac6a97df"
+  },
+  "isolation": {
+    "cleanup_dry_run_verified": true,
+    "cleanup_verified": true,
+    "hermetic_zed_root": "D:\\p1124\\p1119-real-zed-2vqtbaw1\\zed-home",
+    "isolated_build_root": "D:\\p1124\\p1119-real-zed-2vqtbaw1\\probe-build",
+    "isolated_probe_load_session_advertised": true,
+    "isolated_source_root": "D:\\p1124\\p1119-real-zed-2vqtbaw1\\probe-source",
+    "normal_agent_load_session_advertised": false
+  },
+  "launch_help_sha256": "a172693ed434b35a7e6ddf2d0a27b26ded5005c729ddae4875548756d71ec68d",
+  "load_response_contract": {},
+  "mode": "real-zed",
+  "non_claims": [
+    "Does not re-diagnose Zed 1.13.1.",
+    "Does not establish origin-A correlation or authorize a budget-expansion amendment."
+  ],
+  "normal_source": {
+    "commit": "728a29d0312b0298c3352f5af8a92dda9da954c4",
+    "sha256_after": "6be59f95f66ff9c852ef3f5271b9781d9c8dc92d6179203650d968c028565fdf",
+    "sha256_before": "6be59f95f66ff9c852ef3f5271b9781d9c8dc92d6179203650d968c028565fdf"
+  },
+  "origin_a_launches": 0,
+  "preflight_ok": false,
+  "recorded_at_utc": "2026-08-19T06:51:45.685891+00:00",
+  "relay": {
+    "agent_to_zed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "source": "opaque-relay-post-run",
+    "zed_to_agent_sha256": "2b0f9ac7e9c3cdb861fb4c8c957bf9324596cbe7f85865c0682630694923a107"
+  },
+  "schema": "plan-11-19-zed-session-load-reprobe-v1",
+  "zed": {
+    "executable": "C:\\Users\\pc\\AppData\\Local\\Programs\\Zed\\bin\\Zed.exe",
+    "executable_sha256": "613114cdc3d96a2c4b73c3213fbaad8c4d08a949740ade857e288ba042971cda",
+    "version": "Zed 1.15.1 b962c0ab00b3d368503d8cd4000a6de2895b535c  \u2013 \\\\?\\C:\\Users\\pc\\AppData\\Local\\Programs\\Zed\\Zed.exe"
+  },
+  "zed_argv": [
+    "C:\\Users\\pc\\AppData\\Local\\Programs\\Zed\\Zed.exe",
+    "--user-data-dir",
+    "D:\\p1124\\p1119-real-zed-2vqtbaw1\\zed-home",
+    "D:\\p1124\\p1119-real-zed-2vqtbaw1\\zed-workspace"
+  ],
+  "zed_launch": {
+    "log_captured": true,
+    "log_excerpt": "",
+    "returncode": 0,
+    "timeout_seconds": 900.0
+  },
+  "zed_launches": 1,
+  "zed_workspace_approval": {
+    "child_workspace_match": true,
+    "created": true,
+    "mode": "durable",
+    "revoked": true
+  }
+}
