@@ -1,11 +1,11 @@
 # Plan 11.24 v5 — Two-Lifecycle Zed Resume-Observation Amendment
 
-> **Status:** Proposed forward-only successor. `_v4`'s corrected offline contract is PR #180 head
-> `d868b55` at authoring and has not yet merged. `_v5` must not merge ahead of that correction. Once
-> `_v4` lands and this file subsequently lands, `_v5` is the sole live Plan 11.24 contract: it
-> authorizes only the offline implementation tasks below and defines, but does not grant, the later
-> two-lifecycle Zed observation. It authorizes no Zed launch, GUI action, TTY ceremony, keyring
-> mutation, Gateway/provider call, or paid turn.
+> **Status (post-merge):** Sole live forward-only Plan 11.24 contract. Corrected `_v4` landed in
+> `main` through PR #180 at `77bd38b7ae5a84bbe9a75a314b1a8c762399c226`; this branch is rebased on
+> that commit. When this file subsequently lands, it authorizes only the offline implementation
+> tasks below and defines, but does not grant, the later two-lifecycle Zed observation. It
+> authorizes no Zed launch, GUI action, TTY ceremony, keyring mutation, Gateway/provider call, or
+> paid turn.
 >
 > **Frozen predecessors:**
 > `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe.md`, git blob
@@ -17,16 +17,13 @@
 > `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v4.md`, corrected
 > PR #180 blob `260ad5dc692e03601d48c6f1713238de4fa5c164`. Leave all four byte-identical.
 >
-> **Live-version pointer:** After the required sequential merges, this `_v5` file supersedes `_v4`
-> for all Plan 11.24 authority. `_v4` remains the live offline relay-child argv/diagnostic package;
-> its Tasks 9–11 and historical evidence are not redesigned or reopened here. At the time a `_v5` PR
-> is opened after the required rebase, record the actual main commit that contains the corrected
-> `_v4` blob above; until then, do not state that `_v4` has landed.
+> **Live-version pointer:** On this rebased file's merge, `_v5` supersedes `_v4` for all Plan 11.24
+> authority. `_v4` remains the live offline relay-child argv/diagnostic package; its Tasks 9–11 and
+> historical evidence are not redesigned or reopened here. The rebase baseline is the actual main
+> commit `77bd38b7ae5a84bbe9a75a314b1a8c762399c226`, which contains the corrected `_v4` blob above.
 >
-> **Authoring baseline:** `origin/main` at
-> `728a29d0312b0298c3352f5af8a92dda9da954c4` (PR #179 merged). Rebase this plan branch onto the
-> then-current `origin/main` only after that mainline contains corrected `_v4`; record that exact
-> successor commit in the implementation PR.
+> **Historical authoring baseline:** `origin/main` at
+> `728a29d0312b0298c3352f5af8a92dda9da954c4` (PR #179 merged), before `_v4`'s required landing.
 
 ## Purpose and settled run-shape ruling
 
@@ -445,5 +442,5 @@ Stop and return to the reviewer if any of these occurs:
   900-second deadline; Lifecycle B opens history rather than a new thread.
 - The classifier requires the cross-lifecycle session-id equality that the observation actually asks
   about, while preserving old evidence acceptance and v4's additive diagnostic contract.
-- `_v4` remains intact as the offline relay/argv/evidence amendment. `_v5` cannot claim it has landed
-  until the required sequential merge records the real main commit.
+- `_v4` remains intact as the offline relay/argv/evidence amendment and landed at
+  `77bd38b7ae5a84bbe9a75a314b1a8c762399c226`; `_v5` is rebased on that recorded main commit.
