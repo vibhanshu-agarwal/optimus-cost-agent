@@ -1,9 +1,11 @@
 # Plan 11.24 v4 — Relay Child-Argv and Diagnostic-Capture Amendment
 
-> **Status:** Live version of Plan 11.24. This file supersedes v3's execution authority only where
-> stated below, authorizes only offline Tasks 9–11, records Tasks 9–10 as not started, and records
-> Task 11 as completed in the amendment PR. It does not authorize a Zed launch, a preflight that
-> starts external processes, an approval ceremony, a keyring mutation, or any paid/network call.
+> **Status:** Live offline-only version of Plan 11.24. This file supersedes v3's execution authority
+> only where stated below, authorizes only offline Tasks 9–11, records Tasks 9–10 as not started, and
+> records Task 11 as completed in the amendment PR. The evidence-based live observation belongs only
+> to the separately scoped `_v5` two-lifecycle successor. This file does not authorize a Zed launch,
+> a preflight that starts external processes, an approval ceremony, a keyring mutation, or any
+> paid/network call.
 >
 > **Frozen predecessors:**
 > `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe.md`, git blob
@@ -13,9 +15,13 @@
 > `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v3.md`, git blob
 > `220000b208059030488c920fef3f15e9f8834e89`. Leave all three byte-identical.
 >
-> **Live-version pointer:** This `_v4` file is the sole live Plan 11.24 contract. No committed pool,
-> roadmap, README, or other index points at a predecessor filename, so this header is the required
-> forward-only pointer; do not manufacture another tracking row.
+> **Live-version pointer:** This `_v4` file is the sole live Plan 11.24 contract for the offline
+> relay/argv/diagnostic package. A source audit established that the former single-launch future
+> ceremony cannot observe `session/load`; the separately authored
+> `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v5.md` owns the
+> corrected two-lifecycle observation after it becomes live. No committed pool, roadmap, README, or
+> other index points at a predecessor filename, so these headers are the required forward-only
+> pointers; do not manufacture another tracking row.
 >
 > **Authoring baseline:** `origin/main` at
 > `728a29d0312b0298c3352f5af8a92dda9da954c4` (PR #179 merged).
@@ -89,20 +95,20 @@ rewritten as the sole cause of all seven shots.
 
 The following v3 provisions are superseded:
 
-- v3's `-v3` future report target is now immutable historical evidence committed by Task 11. Any
-  future run uses `reports/plan-11-24-zed-guided-session-load-probe-v4/`.
-- v3's Future Gates 1–5 are replaced by the corrected v4 gate definitions below. They remain
-  definition only until a future package and explicit grant exist.
-- v3's falsifiable prediction is sharpened by the offline relay observation:
-  `agent-to-zed.bin` must be nonempty and begin with the `initialize` result; only then can the
-  capture answer whether Zed proceeds to `session/load`.
+- v3's `-v3` future report target is now immutable historical evidence committed by Task 11. This
+  offline amendment defines no future report target; the `_v5` two-lifecycle successor owns a fresh
+  report directory and all live observation evidence.
+- v3's Future Gates 1–5 are not carried forward. The source audit establishes that their
+  one-fresh-profile/single-launch shape always creates `session/new`, never a resumed
+  `session/load`; `_v5` owns the corrected resume shape and its separately granted live gates.
 - v3's statement that only Tasks 6–8 are authorized is replaced by this amendment's authorization
   of offline Tasks 9–11. Tasks 6–8 remain accepted merged history.
 
-All other v1–v3 constraints remain in force: hermeticity, sanitized reconstructed evidence only,
-unchanged normal Optimus capability behavior, no origin-A launch, no prompt or Gateway call, one Zed
-launch per separately granted shot, no retry, no inference from an absent observation, Option A's
-workspace-specific approval lifecycle, and exact outcome-consequence reporting.
+For Tasks 9–11, all applicable v1–v3 constraints remain in force: hermeticity, sanitized
+reconstructed evidence only, unchanged normal Optimus capability behavior, no origin-A launch, no
+inference from an absent observation, Option A's workspace-specific approval lifecycle, and exact
+outcome-consequence reporting. `_v4` neither restates nor grants a live-launch, prompt, Gateway, or
+retry boundary; `_v5` defines those observation-specific constraints from the audited run shape.
 
 ## Prerequisites
 
@@ -117,14 +123,11 @@ workspace-specific approval lifecycle, and exact outcome-consequence reporting.
 | credentials/authority | Tasks 9–11 require no Optimus credentials, provider key, OS-keyring mutation, trust approval, live-process authority, or launch budget. | yes | implementing agent | n/a; tests stub every external/interactive boundary. |
 | human interaction | Tasks 9–11 require no TTY, `y` confirmation, GUI trust action, Agent-panel action, or manual click. | yes | implementing agent | n/a; an interactive request is a stop condition. |
 | cost | Tasks 9–11 make no Gateway/provider call and incur no paid cost. | yes | implementing agent | n/a; any paid call is forbidden. |
-| future code/state | Tasks 9–10 and their CI have merged before the corrected run package is dispatched. | no | Cursor + operator | genuinely absent until the offline repair is complete; no live Definition-of-Done claim depends on it. |
-| future services/tooling | Fresh Redis, acpx, Zed, invocation, and cleanup readiness for the next observation are established by the corrected non-launch preflight. | unknown | future run-package operator | merely unauthorized to inspect or start in this amendment; Future Gate 1 establishes each fact before any launch grant. |
-| future human interaction | The operator can complete the acpx and `zed-workspace` durable-approval ceremonies, trust the hermetic project, start Optimus once, and close the window once. | no | operator | merely unauthorized; Future Gates 1 and 4 name the exact ceremonies and GUI actions. |
-| future cost/authority | A separately reviewed package grants exactly one real-Zed launch after a successful fresh preflight. | no | operator | merely unauthorized; this amendment deliberately cannot satisfy or imply that grant. |
 
-The only `unknown` is future machine/tool readiness. Future Gate 1 resolves it before the dependent
-launch and has `zed_launches: 0`. Tasks 9–11 have no external unsatisfied prerequisite after `_v4`
-merges.
+Tasks 9–11 have no external unsatisfied prerequisite after `_v4` merges. All prerequisites for a
+future observation—including the open persistence fact, a two-launch shared-profile grant, the one
+send/cost boundary, machine readiness, and TTY/GUI ceremony—are owned and sequenced in `_v5`, not
+silently inherited here.
 
 ## Global constraints for Tasks 9–11
 
@@ -154,8 +157,9 @@ merges.
   forbidden.
 - The new raw diagnostic persistence boundary must appear in the Plan 9.96 surface inventory and be
   classified under the exact key emitted by the verifier. Never suppress, exclude, or bypass it.
-- Preserve Option A, settings seeding, the parser-derived command, 900-second maximum, approval
-  revocation, evidence cleanup, and all current result consequences.
+- Do not alter Option A, settings seeding, the parser-derived command, approval revocation, evidence
+  cleanup, or the settled historical consequences. The `_v5` successor separately defines the
+  two-lifecycle observation controls and its launch/time/cost limits.
 - Task 11's `-v3` bundle has exactly four files. Its zero-byte `agent-to-zed.bin` is evidence; never
   replace it with the offline 345-byte reply or add the offline scratch artifacts.
 
@@ -172,7 +176,7 @@ merges.
 | `docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json` | Classify the exact new relay child-stderr persistence sink with a resolvable test node; preserve existing keys/classifications. |
 | `reports/plan-11-24-zed-guided-session-load-probe-v3/` | Task 11 byte-exact four-file historical bundle; no generated or offline-replay substitutions. |
 | `reports/plan-11-24-relay-child-argv-root-cause.md` | Task 11 causal report, bisection, origin, blind spot, exonerations, secondary defects, and exact consequence. |
-| `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v4.md` | Live contract; Task 9–11 checkboxes only after their named gates pass. |
+| `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v4.md` | Live offline-only contract; Task 9–11 checkboxes only after their named gates pass. The `_v5` successor owns every future live-observation gate. |
 
 ## Task 9: Correct the relay child argv at the real-Zed call boundary
 
@@ -439,98 +443,24 @@ Cursor branch, and open one draft PR. The PR description carries genuine RED out
 the exact file list, surface-audit result, both old-bundle verifier passes, frozen blob checks, and
 the explicit no-live-action fact. Do not merge.
 
-## Corrected future run package — definition only, not authorization
+## Live-observation custody
 
-Nothing in this section may be executed under `_v4` alone. After Tasks 9–10 and CI merge, a future
-work package must name its operator, current commit, current Zed/acpx identities, stop conditions,
-and exactly one Zed-launch budget. The operator records the actual grant only after Future Gate 1 is
-green.
+Nothing in `_v4` may execute a future Zed observation. The former single-launch Future Gates are
+removed rather than retained as a dormant ceremony: Zed source establishes that a fresh hermetic
+profile has no persisted `ThreadMetadata.session_id`, so its first **Start** creates `session/new` and
+cannot emit `session/load`. Repeating that path would spend a shot on an observation that is
+unreachable by construction.
 
-### Future Gate 1: Fresh non-launch readiness and canonical command
+The corrected observation requires the two-lifecycle resume run shape in
+`docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v5.md`: Lifecycle A
+creates and persists a thread after exactly one send; Lifecycle B relaunches on the same hermetic
+`--user-data-dir` and opens that persisted thread to observe `session/load`. `_v5` owns the explicit
+early proof of the no-Gateway prompt path, its shared-profile/two-launch/one-send boundary, any
+future report target, all live prerequisites, and every separately recorded operator grant.
 
-This gate starts real prerequisite processes and performs the existing acpx durable-approval
-ceremony, so it requires its own future dispatch even though `zed_launches` remains zero.
-
-```powershell
-$probeParent = Join-Path $env:LOCALAPPDATA 'Optimus\p11-24-zed-guided-probe-v4'
-$reportDir = 'reports/plan-11-24-zed-guided-session-load-probe-v4'
-New-Item -ItemType Directory -Force -Path $probeParent | Out-Null
-if (Test-Path -LiteralPath $reportDir) { throw "Fresh v4 report directory already exists" }
-uv run --frozen python tools/probe_p11_zed_session_load.py --mode preflight --zed-launch-timeout-seconds 900 --report-dir $reportDir $probeParent
-Get-Content -Raw (Join-Path $probeParent 'plan1119-preflight-result.json')
-```
-
-Expected before any launch grant: `preflight_ok: true`, `zed_launches: 0`,
-`origin_a_launches: 0`, fresh Zed/acpx identities, Redis/acpx baseline success, normal
-`loadSession: false`, isolated `loadSession: true`, verified cleanup, and an
-`approved_real_zed_command` that round-trips to the same workspace, timeout 900, and fresh v4 report
-directory. Any failed predicate ends the package `INDETERMINATE / PRECONDITION_UNMET`; do not repair,
-retry, or launch ad hoc.
-
-### Future Gate 2: Record the separate one-shot launch grant
-
-After a reviewer verifies Gate 1, the operator may grant exactly one execution of the canonical
-`approved_real_zed_command`, with one hermetic Zed window, no origin-A launch, no prompt, no Gateway
-call, and no retry. The reviewer checkpoint must record the exact commit, canonical command digest,
-900-second bound, and timestamped grant. Without that entry, stop.
-
-### Future Gate 3: Recheck the boundary without launching
-
-```powershell
-git status --short --branch
-git rev-parse HEAD
-uv run --frozen pytest tests/unit/tools/test_plan117_custody_relay.py tests/unit/tools/test_probe_p11_zed_session_load.py tests/unit/tools/test_verify_plan1119_zed_reprobe_evidence.py -q
-if (Test-Path -LiteralPath $reportDir) { throw "Fresh v4 report directory already exists" }
-```
-
-Expected: the approved commit is checked out, deterministic gates pass, no target Zed is already
-running, and the v4 report directory is absent. Otherwise the grant remains unspent and the run
-stops.
-
-### Future Gate 4: Execute the canonical command once and perform the guided actions
-
-Load the sidecar and execute its parser-derived command rather than retyping flags:
-
-```powershell
-$preflight = Get-Content -Raw (Join-Path $probeParent 'plan1119-preflight-result.json') | ConvertFrom-Json
-$approved = @($preflight.approved_real_zed_command)
-if ($approved.Count -lt 2) { throw "Approved command metadata is missing" }
-$approvedExecutable = $approved[0]
-$approvedArgs = @($approved[1..($approved.Count - 1)])
-& $approvedExecutable @approvedArgs
-```
-
-The command runs the acpx ceremony and then the `zed-workspace` ceremony. The operator expects one
-additional `y` confirmation before Zed launches, then:
-
-1. Trust only the generated hermetic workspace if Zed presents the Unrecognized Project / Restricted
-   Mode action.
-2. Open the Agent panel, select **Optimus**, and invoke **Start** exactly once.
-3. Wait within the 900-second window, then close the hermetic Zed window exactly once.
-
-Do not click Start twice, restart Zed manually, switch agents, re-run the command, or spend a second
-shot.
-
-The falsifiable prediction is grounded in the offline relay observation:
-`relay/agent-to-zed.bin` is nonempty and begins with the `initialize` result. The accepted replay
-produced a correct 345-byte reply through the same relay. Once that handshake is visible, the
-capture—not inference—shows whether Zed proceeds to `session/load`.
-
-### Future Gate 5: Verify the fresh bundle and state only its consequence
-
-```powershell
-uv run --frozen python tools/verify_plan1119_zed_reprobe_evidence.py --manifest reports/plan-11-24-zed-guided-session-load-probe-v4/manifest.json
-uv run --frozen pytest tests/unit/tools/test_plan117_custody_relay.py tests/unit/tools/test_probe_p11_zed_session_load.py tests/unit/tools/test_verify_plan1119_zed_reprobe_evidence.py tests/unit/docs/test_open_work_pool_hygiene.py -q
-uv run --frozen python tools/verify_plan996_logging_surfaces.py --manifest docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json
-uv run --frozen python -m ruff check .
-git diff --check
-```
-
-Require the optional `relay_child_stderr_excerpt` to satisfy its bounded sanitized contract whether
-empty or nonempty. The generated report must contain exactly the applicable consequence:
-`REACHABLE` justifies separately scoped durable-session work; `UNREACHABLE` requires an operator
-disposition; `INDETERMINATE` leaves the named precondition/observation open. None edits the pool,
-closes `P11-FEAT-ZED-RESUME`, or grants another shot automatically.
+The hermetic-profile, sanitized-evidence, isolation, origin-A exclusion, normal-advertisement, and
+no-inference constraints carry forward to `_v5`. This `_v4` amendment retains only the offline
+relay-child argv, diagnostic-capture, and historical-evidence package in Tasks 9–11.
 
 ## Stop conditions
 
@@ -570,13 +500,14 @@ preserve genuine TDD evidence, and continue within the settled design.
 | The package stayed offline and forward-only. | Authorized file diff, clean tests/Ruff/hygiene/CI, frozen v1/v2/v3 blobs, unchanged historical artifacts, and explicit no-live-action PR record. |
 
 Tasks 9–11 do not establish `REACHABLE` or `UNREACHABLE`, do not answer whether Zed sends
-`session/load` after the now-proven handshake, and do not authorize Future Gates 1–5.
+`session/load` after the now-proven handshake, and do not define or authorize a live ceremony. The
+two-lifecycle observation is exclusively `_v5` custody.
 
 ## Explicit exclusions and custody
 
 | Excluded item | Custody |
 |---|---|
-| Any corrected preflight, TTY ceremony, GUI action, Zed launch, or launch-budget grant | Future separately dispatched run package; operator owns machine state and is sole budget authority. |
+| Any corrected preflight, TTY ceremony, GUI action, Zed launch, prompt/cost decision, or launch-budget grant | `_v5` two-lifecycle run shape; operator owns machine state and is sole budget authority. |
 | Changes to Option A or use of `--launch-approval-id` | Frozen v3 authorization design / Plan 9.96 production security contract; unavailable without a separately approved architecture change. |
 | Shared acpx and Zed workspace | Rejected v3 Option C; no scheduled implementation. |
 | Raw relay-child stderr publication or a committed fifth bundle file | Forbidden diagnostic path; raw bytes remain private throwaway scratch only. |
@@ -604,7 +535,8 @@ Tasks 9–11 do not establish `REACHABLE` or `UNREACHABLE`, do not answer whethe
   bisection without recreating revoked scratch state.
 - The seven-shot table keeps launch/argv, settings, approval, and relay-child argv as distinct
   necessary layers.
-- The future prediction is falsifiable and grounded: first a nonempty `initialize` reply, then the
-  still-open observation of whether Zed sends `session/load`.
-- The prerequisites distinguish fully offline work from future machine state, TTY/GUI actions, and
-  launch budget. The one unknown has an explicit early establishing gate.
+- `_v4` carries no known-wrong future ceremony: Zed source proves a fresh single-launch profile cannot
+  answer the resume question. `_v5` owns the distinct, falsifiable two-lifecycle observation.
+- The prerequisites cover only Tasks 9–11. `_v5` supplies the separate live machine state, TTY/GUI,
+  shared-profile, one-send/cost, and launch-grant prerequisites, with the remaining inference as an
+  early establishing task.
