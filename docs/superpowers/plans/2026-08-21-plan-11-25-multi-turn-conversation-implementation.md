@@ -15,9 +15,15 @@
 - Source baseline: `e5a796fd79425509d02e3cf17d562f62c5182228` in `D:\Projects\Development\Python\optimus-cost-agent-wt-codex-11-24-v6`.
 - Audit binding: `self-audit-run-32.json`, 17/17 PASS, exit 0; audit-script SHA-256 `1F681651E8C70E19692DB887453FA625E0CD537F9840FE0E21E4F0D853AB76EB`. The audit is a binding/premise sentinel, not a semantic implementation test.
 - Contract disposition: Review 33 post-repair contract-level GO. Codex authored and accepted the repair; the checkpoint discloses that this is post-repair acceptance, not a second independent external review.
-- Workflow gate: `MT-FU-1` and `MT-FU-2` must be restored to the actual main backlog before implementation execution is authorized. Writing this plan does not itself authorize Cursor to start implementation.
+- Workflow gate: `MT-FU-1` and `MT-FU-2` must be restored to the actual main backlog before overall contract approval and design-document ungating. Their absence does not block implementation kickoff under the operator's stated authority.
 - Slice boundary: in-session conversation only. No persistence, `session/resume`, `session/load`, compression, summarization, pruning, eviction, fixed teardown deadline, worker-process isolation, or non-AGENT-mode conversation carriage.
 - Current-source anchors: `spec.py:356-506` owns the prompt turn; `server.py:245-385` owns NDJSON concurrency and teardown; `runner.py:129-646` owns planning and approved execution; `planning_loop.py:756-1385` owns the existing halt mechanism; `state_store.py:50-257` owns multi-write plan persistence; `fanout.py:58-79` is a raising synchronous telemetry path today.
+
+## Prerequisites
+
+| Category | Prerequisite | Satisfied today? | Owner | If unsatisfied: genuinely hard, or merely unauthorized? |
+|---|---|---|---|---|
+| workflow/backlog | `MT-FU-1` and `MT-FU-2` are restored to the actual main backlog before overall contract approval and design-document ungating. | no | operator | merely unauthorized operator action; this remains an approval/design-document gate, not a blocker to implementation kickoff. |
 
 ## Global Constraints
 
