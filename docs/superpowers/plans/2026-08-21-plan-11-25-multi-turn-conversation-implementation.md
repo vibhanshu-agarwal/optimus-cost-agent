@@ -348,13 +348,13 @@ Tasks 2-4 deliberately precede `spec.py` changes. Cursor must not create a tempo
 
 - [ ] **Step 1: Write RED routing tests.** Table-drive initialize, session/new success/error, invalid/method-not-found, unknown session, concurrent prompt, empty prompt, terminal refusal, begun-turn success, begun-turn typed error, and generic exceptions before/after admission. Assert empty slot routes to a new response handle; bound slot routes to the same `TurnControl`; mismatched owner/envelope is an invariant failure settled through the bound control.
 - [ ] **Step 2: Write RED response-exit tests.** For both envelope kinds cover flushed, conclusive failure, ambiguous, direct suppressed/not-attempted, and server-task cancellation. Assert one queue item, no second physical write, exact `rpc_response_delivery`, one finalizer, and no premature `_active_turns` removal.
-- [ ] **Step 3: Write RED transport-loss ordering tests.** Prove `NoticeControl.mark_transport_abandoned()` completes before any request-task cancellation, then each bound turn runs idempotent teardown; later notice/warning starts are suppressed. Prove end-of-stream/unroutable no-response input allocates no owner.
-- [ ] **Step 4: Run RED.** Run lifecycle and stdio selectors; expected failures are missing slot/envelope flow and current direct/generic second-write paths.
-- [ ] **Step 5: Implement slot-only routing.** Generic handlers must inspect only the slot, never method names or intended envelope type. If post-admission envelope construction/submission fails, freeze/finalize the bound control directly; never borrow `NoticeControl`.
-- [ ] **Step 6: Remove the second-write exception path.** Pattern-match `SendCompletion.outcome`; future source exceptions are forbidden by writer contract. Server-task cancellation uses immediate frozen state and does not wait for the shielded writer source future.
-- [ ] **Step 7: Wire process lifetime.** Construct one `NoticeControl` and one `DedicatedOutboundWriter` for the process-owned NDJSON runtime. At connection loss mark notices abandoned before cancelling request tasks. At top-level process shutdown, after `asyncio.run` returns, push one writer sentinel and join without timeout.
-- [ ] **Step 8: Run GREEN plus bypass search.** Run all stdio/main-wiring tests and the AST/direct-write oracle; confirm no NDJSON send bypasses the dedicated writer.
-- [ ] **Step 9: Commit.** Commit with `feat: bind ACP response ownership end to end`.
+- [x] **Step 3: Write RED transport-loss ordering tests.** Prove `NoticeControl.mark_transport_abandoned()` completes before any request-task cancellation, then each bound turn runs idempotent teardown; later notice/warning starts are suppressed. Prove end-of-stream/unroutable no-response input allocates no owner.
+- [x] **Step 4: Run RED.** Run lifecycle and stdio selectors; expected failures are missing slot/envelope flow and current direct/generic second-write paths.
+- [x] **Step 5: Implement slot-only routing.** Generic handlers must inspect only the slot, never method names or intended envelope type. If post-admission envelope construction/submission fails, freeze/finalize the bound control directly; never borrow `NoticeControl`.
+- [x] **Step 6: Remove the second-write exception path.** Pattern-match `SendCompletion.outcome`; future source exceptions are forbidden by writer contract. Server-task cancellation uses immediate frozen state and does not wait for the shielded writer source future.
+- [x] **Step 7: Wire process lifetime.** Construct one `NoticeControl` and one `DedicatedOutboundWriter` for the process-owned NDJSON runtime. At connection loss mark notices abandoned before cancelling request tasks. At top-level process shutdown, after `asyncio.run` returns, push one writer sentinel and join without timeout.
+- [x] **Step 8: Run GREEN plus bypass search.** Run all stdio/main-wiring tests and the AST/direct-write oracle; confirm no NDJSON send bypasses the dedicated writer.
+- [x] **Step 9: Commit.** Commit with `feat: bind ACP response ownership end to end`.
 
 ### Task 9: Add contained production settlement evidence and post-teardown policy
 

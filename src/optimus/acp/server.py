@@ -18,9 +18,17 @@ from optimus.acp.errors import (
     sanitize_protocol_error_message,
 )
 from optimus.acp.framing import FramingError, encode_message, read_message
-from optimus.acp.lifecycle import NoticeControl, ResponseKind
+from optimus.acp.lifecycle import (
+    NonTurnResponseEnvelope,
+    NoticeControl,
+    ResponseKind,
+    ResponseOwnershipSlot,
+    SendCompletion,
+    TurnControl,
+    TurnResponseEnvelope,
+)
 from optimus.acp.outbound_writer import DedicatedOutboundWriter, OutboundQueueItem
-from optimus.acp.settlement import SendOutcome
+from optimus.acp.settlement import SendOutcome, SettlementInvariantError
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore
 
 
@@ -311,18 +319,28 @@ class AcpStreamServer:
             writer.write(encode_message(response))
             await writer.drain()
 
-    async def serve_ndjson(self, reader: NdjsonLineReader, writer: NdjsonLineWriter) -> None:
+    async def serve_ndjson(
+        self,
+        reader: NdjsonLineReader,
+        writer: NdjsonLineWriter,
+        *,
+        dedicated_writer: DedicatedOutboundWriter | None = None,
+        notice_control: NoticeControl | None = None,
+        join_dedicated_writer: bool = True,
+    ) -> None:
         log_provenance_once()
         agent_runner = self._dispatcher.agent_runner
         if agent_runner is None:
             raise RuntimeError("agent runner not configured for ndjson ACP serving")
         workspace_root = self._dispatcher.workspace_root or Path.cwd()
-        notice_control = NoticeControl()
+        notice = notice_control or NoticeControl()
         physical = writer if hasattr(writer, "write_bytes") and hasattr(writer, "flush") else None
-        dedicated: DedicatedOutboundWriter | None = None
-        if physical is not None:
+        owned_dedicated = dedicated_writer is None
+        dedicated = dedicated_writer
+        if dedicated is None and physical is not None:
             dedicated = DedicatedOutboundWriter(physical)  # type: ignore[arg-type]
             dedicated.start()
+            owned_dedicated = True
         outbound = NdjsonOutboundChannel(writer, dedicated_writer=dedicated)
         sessions = InMemoryAcpSpecSessionStore()
         adapter = AcpDuplexAdapter(
@@ -332,34 +350,81 @@ class AcpStreamServer:
             outbound=outbound,
             max_planning_turns=self._max_planning_turns,
             client_mcp_runtime=self._client_mcp_runtime,
+            sanitizer_inputs=self._conversation_sanitizer_inputs,
+            notice_control=notice,
         )
         message_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         request_tasks: set[asyncio.Task[Any]] = set()
 
-        async def emit_response(response: Mapping[str, Any]) -> None:
+        async def submit_via_notice(payload: Mapping[str, Any], *, handle: Any | None = None) -> None:
             if dedicated is None:
-                await writer.write_line(response)
+                await writer.write_line(payload)
                 return
-            handle = notice_control.allocate_response_handle(ResponseKind.ORDINARY)
-            ticket = handle.start_non_turn_response_send()
+            response_handle = handle or notice.allocate_response_handle(ResponseKind.ORDINARY)
+            ticket = response_handle.start_non_turn_response_send()
             if ticket.immediate_completion is not None:
-                handle.finalize_once(ticket.immediate_completion)
+                response_handle.finalize_once(ticket.immediate_completion)
                 return
             assert ticket.source_future is not None
             item = OutboundQueueItem(
-                payload=response,
+                payload=payload,
                 send_key=ticket.send_key,
-                owner=handle,
+                owner=response_handle,
                 source_future=ticket.source_future,
                 writer_token=ticket.writer_token,
-                handle=handle,
+                handle=response_handle,
             )
             dedicated.submit(item)
-            loop = asyncio.get_running_loop()
-            completion = await asyncio.shield(
-                asyncio.wrap_future(ticket.source_future, loop=loop)
+            try:
+                loop = asyncio.get_running_loop()
+                completion = await asyncio.shield(
+                    asyncio.wrap_future(ticket.source_future, loop=loop)
+                )
+            except asyncio.CancelledError:
+                # Server-task cancellation: do not wait for the writer future.
+                response_handle.freeze_abandoned()
+                response_handle.finalize_once(
+                    SendCompletion(send_key=ticket.send_key, outcome=SendOutcome.SUPPRESSED)
+                )
+                raise
+            response_handle.finalize_once(completion)
+
+        async def submit_via_turn(payload: Mapping[str, Any], turn_control: TurnControl) -> None:
+            lease = turn_control.start_response_send()
+            if not lease.granted or lease.send_key is None:
+                return
+            if dedicated is None:
+                await writer.write_line(payload)
+                turn_control.publish_authoritative(lease.send_key, SendOutcome.FLUSHED)
+                return
+            source_future: concurrent.futures.Future[Any] = concurrent.futures.Future()
+            item = OutboundQueueItem(
+                payload=payload,
+                send_key=lease.send_key,
+                owner=turn_control,
+                source_future=source_future,
+                writer_token=None,
+                handle=None,
             )
-            handle.finalize_once(completion)
+            dedicated.submit(item)
+            try:
+                loop = asyncio.get_running_loop()
+                await asyncio.shield(asyncio.wrap_future(source_future, loop=loop))
+            except asyncio.CancelledError:
+                return
+
+        async def deliver_envelope(envelope: Any, ownership_slot: ResponseOwnershipSlot) -> None:
+            wire = envelope.response
+            if isinstance(envelope, TurnResponseEnvelope):
+                if ownership_slot.is_bound and ownership_slot.turn_control is not envelope.turn_control:
+                    raise SettlementInvariantError("envelope turn control does not match ownership slot")
+                await submit_via_turn(wire, envelope.turn_control)
+                return
+            if not isinstance(envelope, NonTurnResponseEnvelope):
+                raise SettlementInvariantError("unknown response envelope kind")
+            if ownership_slot.is_bound:
+                raise SettlementInvariantError("non-turn envelope returned for bound ownership slot")
+            await submit_via_notice(wire, handle=envelope.response_handle)
 
         async def read_lines() -> None:
             try:
@@ -385,6 +450,7 @@ class AcpStreamServer:
             request_id = message.get("id")
             method = message.get("method")
             pending_permission_id = outbound.last_outbound_request_id
+            ownership_slot = ResponseOwnershipSlot()
             try:
                 # region agent log
                 acp_debug_log(
@@ -394,7 +460,8 @@ class AcpStreamServer:
                     hypothesis_id="H4",
                 )
                 # endregion
-                response = await adapter.handle_client_request(message)
+                envelope = await adapter.handle_client_request(message, ownership_slot=ownership_slot)
+                wire = envelope.response
                 # region agent log
                 acp_debug_log(
                     location="server.py:process_request:exit",
@@ -402,22 +469,28 @@ class AcpStreamServer:
                     data={
                         "request_id": request_id,
                         "method": method,
-                        "has_error": "error" in response,
-                        "stop_reason": response.get("result", {}).get("stopReason")
-                        if isinstance(response.get("result"), dict)
+                        "has_error": "error" in wire,
+                        "stop_reason": wire.get("result", {}).get("stopReason")
+                        if isinstance(wire.get("result"), dict)
                         else None,
                     },
                     hypothesis_id="H4",
                 )
                 # endregion
-                await emit_response(response)
+                await deliver_envelope(envelope, ownership_slot)
+            except asyncio.CancelledError:
+                if ownership_slot.turn_control is not None:
+                    ownership_slot.turn_control.request_transport_teardown()
+                raise
             except AcpOutboundError as exc:
-                await emit_response(
-                    error_response(
-                        request_id=request_id,
-                        error=JsonRpcError(code=exc.code, message=exc.message, data=exc.data),
-                    )
+                error_payload = error_response(
+                    request_id=request_id,
+                    error=JsonRpcError(code=exc.code, message=exc.message, data=exc.data),
                 )
+                if ownership_slot.turn_control is not None:
+                    await submit_via_turn(error_payload, ownership_slot.turn_control)
+                else:
+                    await submit_via_notice(error_payload)
             except Exception as exc:
                 # region agent log
                 acp_debug_log(
@@ -437,12 +510,14 @@ class AcpStreamServer:
                     f"pending_permission_id={pending_permission_id!r}: {sanitize_protocol_error_message(str(exc))}",
                     file=sys.stderr,
                 )
-                await emit_response(
-                    error_response(
-                        request_id=request_id,
-                        error=JsonRpcError(code=INTERNAL_ERROR, message=str(exc)),
-                    )
+                error_payload = error_response(
+                    request_id=request_id,
+                    error=JsonRpcError(code=INTERNAL_ERROR, message=sanitize_protocol_error_message(str(exc))),
                 )
+                if ownership_slot.turn_control is not None:
+                    await submit_via_turn(error_payload, ownership_slot.turn_control)
+                else:
+                    await submit_via_notice(error_payload)
 
         reader_task = asyncio.create_task(read_lines())
         try:
@@ -475,7 +550,10 @@ class AcpStreamServer:
                     request_tasks.add(task)
                     task.add_done_callback(request_tasks.discard)
         finally:
-            notice_control.mark_transport_abandoned()
+            # Transport-loss ordering: abandon notices before cancelling request tasks.
+            notice.mark_transport_abandoned()
+            for turn in list(adapter._active_turns.values()):  # noqa: SLF001
+                turn.turn_control.request_transport_teardown()
             for task in list(request_tasks):
                 task.cancel()
             if request_tasks:
@@ -483,6 +561,6 @@ class AcpStreamServer:
             adapter.close_all()
             if self._client_mcp_runtime is not None:
                 self._client_mcp_runtime.close()
-            if dedicated is not None:
+            if dedicated is not None and owned_dedicated and join_dedicated_writer:
                 dedicated.close_and_join()
             await reader_task
