@@ -389,12 +389,12 @@ Tasks 2-4 deliberately precede `spec.py` changes. Cursor must not create a tempo
 
 **Interfaces:** Consumes the integrated runtime. Produces a predicate-indexed evidence report; no new production interface is introduced in this task.
 
-- [ ] **Step 1: Build the hermetic dependent-follow-up fixture.** Drive the real ACP NDJSON server and a controlled deterministic runner/model so turn 2 must use a sanitized fact committed by turn 1. Assert neither warning nor refusal fires and the answer cannot be produced from turn 2 alone.
-- [ ] **Step 2: Run identity/cap/surface scenarios.** Cover request-ID reuse, exact cap admission/commitment, first warning crossing/retry, unknown session versus terminal refusal, same-session concurrent prompt, approximate gauge, no-history refusal/warning, and failed-refusal state preservation.
-- [ ] **Step 3: Run cancellation/teardown scenarios.** Cover every planning outcome row, permission lifecycle, approved execution, fallback table, final-delivery/teardown table, response exits, stale callback, late worker report, plan persistence, Gateway unknown cost, writer shutdown, and no second write on broken transport.
-- [ ] **Step 4: Run sanitization/cost/effect scenarios.** Cover both conversation text rows, raw/decoded URI passwords, path aliases, canonical adversarial framing, planning-cost idempotence, unknown-cost permanence, forced partial write, empty-effect plan, failed-no-effect, suppressed directive, and all-success effectful plan.
-- [ ] **Step 5: Map every settled DoD predicate.** The report must give a test node ID and passing command for predicates `1`, `2`, `2b`, `3`, `4`, `4b`, `5.1` through `5.30` (including the separately named `5.12a` and `5.21a`, excluding retired `5.24`), `5c`, `5d`, `5e`, `5f`, `5h`, `5k`, `5l`, `5m`, `5n`, `5p`, `5q`, `5r`, `5s`, `5u`, `6`, `7`, and `8`. A predicate with no test node is an implementation gap, not a documentation omission.
-- [ ] **Step 6: Run the complete hermetic suite.** Run:
+- [x] **Step 1: Build the hermetic dependent-follow-up fixture.** Drive the real ACP NDJSON server and a controlled deterministic runner/model so turn 2 must use a sanitized fact committed by turn 1. Assert neither warning nor refusal fires and the answer cannot be produced from turn 2 alone.
+- [x] **Step 2: Run identity/cap/surface scenarios.** Cover request-ID reuse, exact cap admission/commitment, first warning crossing/retry, unknown session versus terminal refusal, same-session concurrent prompt, approximate gauge, no-history refusal/warning, and failed-refusal state preservation.
+- [x] **Step 3: Run cancellation/teardown scenarios.** Cover every planning outcome row, permission lifecycle, approved execution, fallback table, final-delivery/teardown table, response exits, stale callback, late worker report, plan persistence, Gateway unknown cost, writer shutdown, and no second write on broken transport.
+- [x] **Step 4: Run sanitization/cost/effect scenarios.** Cover both conversation text rows, raw/decoded URI passwords, path aliases, canonical adversarial framing, planning-cost idempotence, unknown-cost permanence, forced partial write, empty-effect plan, failed-no-effect, suppressed directive, and all-success effectful plan.
+- [x] **Step 5: Map every settled DoD predicate.** The report must give a test node ID and passing command for predicates `1`, `2`, `2b`, `3`, `4`, `4b`, `5.1` through `5.30` (including the separately named `5.12a` and `5.21a`, excluding retired `5.24`), `5c`, `5d`, `5e`, `5f`, `5h`, `5k`, `5l`, `5m`, `5n`, `5p`, `5q`, `5r`, `5s`, `5u`, `6`, `7`, and `8`. A predicate with no test node is an implementation gap, not a documentation omission.
+- [x] **Step 6: Run the complete hermetic suite.** Run:
 
   ```powershell
   uv run --frozen pytest tests/unit/acp tests/unit/agent tests/unit/telemetry tests/e2e/acp/test_multi_turn_conversation.py -q
@@ -404,7 +404,7 @@ Tasks 2-4 deliberately precede `spec.py` changes. Cursor must not create a tempo
   git diff --check
   ```
 
-- [ ] **Step 7: Commit.** Commit the scenario suite and evidence report with `test: prove multi-turn conversation contract`.
+- [x] **Step 7: Commit.** Commit the scenario suite and evidence report with `test: prove multi-turn conversation contract`.
 
 ### Task 11: Perform the final implementation review and truthful handoff
 

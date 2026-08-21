@@ -109,13 +109,16 @@ _INITIALIZE_NO_LOAD_SESSION = (
 _INITIALIZE_TEMPORARY_LOAD_SESSION = '            "loadSession": True,\n            "sessionCapabilities": {},\n'
 _SESSION_PROMPT_BRANCH = (
     '        if method == "session/prompt":\n'
-    "            return await self._handle_session_prompt(request)\n"
+    "            return await self._handle_session_prompt(request, ownership_slot=ownership_slot)\n"
 )
 _SESSION_LOAD_BRANCH = (
     '        if method == "session/prompt":\n'
-    "            return await self._handle_session_prompt(request)\n"
+    "            return await self._handle_session_prompt(request, ownership_slot=ownership_slot)\n"
     '        if method == "session/load":\n'
-    '            return success_response(request_id=request.get("id"), result={})\n'
+    "            return self._non_turn(\n"
+    '                success_response(request_id=request.get("id"), result={}),\n'
+    "                ownership_slot,\n"
+    "            )\n"
 )
 
 
@@ -211,6 +214,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/acp/__init__.py",
     "src/optimus/acp/__main__.py",
     "src/optimus/acp/bootstrap.py",
+    "src/optimus/acp/conversation.py",
     "src/optimus/acp/debug_trace.py",
     "src/optimus/acp/dispatcher.py",
     "src/optimus/acp/errors.py",
@@ -220,12 +224,15 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/acp/launch_audit.py",
     "src/optimus/acp/launch_gate.py",
     "src/optimus/acp/launch_policy.py",
+    "src/optimus/acp/lifecycle.py",
     "src/optimus/acp/local_gateway_secrets.py",
     "src/optimus/acp/local_infra.py",
     "src/optimus/acp/operator_paths.py",
+    "src/optimus/acp/outbound_writer.py",
     "src/optimus/acp/preflight.py",
     "src/optimus/acp/request_ids.py",
     "src/optimus/acp/server.py",
+    "src/optimus/acp/settlement.py",
     "src/optimus/acp/shapes.py",
     "src/optimus/acp/spec.py",
     "src/optimus/acp/trusted_paths.py",
@@ -234,6 +241,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/agent/directives.py",
     "src/optimus/agent/golden.py",
     "src/optimus/agent/models.py",
+    "src/optimus/agent/operation_control.py",
     "src/optimus/agent/planning_loop.py",
     "src/optimus/agent/prompts.py",
     "src/optimus/agent/runner.py",
