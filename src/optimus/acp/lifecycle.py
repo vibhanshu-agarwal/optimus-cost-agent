@@ -1048,3 +1048,43 @@ class PermissionRequestHandle:
         future = self._channel._futures.pop(self.request_id, None)
         if future is not None and not future.done():
             future.set_result(result)
+
+
+# ---------------------------------------------------------------------------
+# Task 7/8: request-local ownership and response envelopes
+# ---------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class ResponseOwnershipSlot:
+    """One request-local slot: empty until bound to TurnControl or left for NoticeControl."""
+
+    turn_control: TurnControl | None = None
+    claimed: bool = False
+
+    def bind_turn(self, turn_control: TurnControl) -> None:
+        if self.claimed:
+            raise SettlementInvariantError("ownership slot already claimed")
+        self.turn_control = turn_control
+        self.claimed = True
+
+    @property
+    def is_bound(self) -> bool:
+        return self.turn_control is not None
+
+
+@dataclass(frozen=True, slots=True)
+class TurnResponseEnvelope:
+    response: dict[str, Any]
+    turn_control: TurnControl
+    ownership_slot: ResponseOwnershipSlot | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class NonTurnResponseEnvelope:
+    response: dict[str, Any]
+    response_handle: ResponseHandle | None = None
+    ownership_slot: ResponseOwnershipSlot | None = None
+
+
+ResponseEnvelope = TurnResponseEnvelope | NonTurnResponseEnvelope
