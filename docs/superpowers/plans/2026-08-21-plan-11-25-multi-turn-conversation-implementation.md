@@ -416,9 +416,9 @@ Tasks 2-4 deliberately precede `spec.py` changes. Cursor must not create a tempo
 
 **Interfaces:** Produces the reviewer-ready implementation handoff. It does not declare external Zed/live-provider evidence that was not run.
 
-- [ ] **Step 1: Run structural conformance searches.** Confirm one work registry, one physical NDJSON writer, no bare-ID finalization authority, no legacy `turn.cancelled`, no unconditional `_active_turns.pop`, no raw wire ID in internal run identity, no settlement telemetry in the send registry, and no result-promotion lifecycle.
-- [ ] **Step 2: Re-run the contract-bound audit.** Recompute the settled contract and audit-script digests, run `self_audit_multi_turn.py` against the implementation revision, and retain valid JSON separately from stderr. This remains a premise sentinel; cite Task 10 for semantic proof.
-- [ ] **Step 3: Run the full repository gates.** Run:
+- [x] **Step 1: Run structural conformance searches.** Confirm one work registry, one physical NDJSON writer, no bare-ID finalization authority, no legacy `turn.cancelled`, no unconditional `_active_turns.pop`, no raw wire ID in internal run identity, no settlement telemetry in the send registry, and no result-promotion lifecycle.
+- [x] **Step 2: Re-run the contract-bound audit.** Recompute the settled contract and audit-script digests, run `self_audit_multi_turn.py` against the implementation revision, and retain valid JSON separately from stderr. This remains a premise sentinel; cite Task 10 for semantic proof.
+- [x] **Step 3: Run the full repository gates.** Run:
 
   ```powershell
   uv run --frozen pytest -q
@@ -430,10 +430,10 @@ Tasks 2-4 deliberately precede `spec.py` changes. Cursor must not create a tempo
   git status --short
   ```
 
-- [ ] **Step 4: Review the diff by ownership boundary.** Review settlement vocabulary, locks/retirement, writer/futures, conversation/cap, runner instrumentation, adapter settlement, server routing, telemetry privacy, and tests as separate lenses. Reject the implementation if any requirement is satisfied only by a test double replacing a real project boundary object.
-- [ ] **Step 5: Record named limitations honestly.** Preserve the settled limitations: process-local history only, possible provider overflow, approximate gauge, no fixed worker-exit deadline, terminal plan status always `completed`, unbounded writer queue/no backpressure, and unrecovered writer `BaseException` death.
-- [ ] **Step 6: Update custody only with authorization.** Mark Plan 11.25 implemented only after the implementation review is accepted. Keep Slice 2/3, Plan 12, `MT-FU-1`, and `MT-FU-2` ownership unchanged. Do not edit frozen plans to erase historical statements.
-- [ ] **Step 7: Commit the review handoff.** Commit with `docs: record Plan 11.25 implementation evidence`.
+- [x] **Step 4: Review the diff by ownership boundary.** Review settlement vocabulary, locks/retirement, writer/futures, conversation/cap, runner instrumentation, adapter settlement, server routing, telemetry privacy, and tests as separate lenses. Reject the implementation if any requirement is satisfied only by a test double replacing a real project boundary object.
+- [x] **Step 5: Record named limitations honestly.** Preserve the settled limitations: process-local history only, possible provider overflow, approximate gauge, no fixed worker-exit deadline, terminal plan status always `completed`, unbounded writer queue/no backpressure, and unrecovered writer `BaseException` death.
+- [x] **Step 6: Update custody only with authorization.** Mark Plan 11.25 implemented only after the implementation review is accepted. Keep Slice 2/3, Plan 12, `MT-FU-1`, and `MT-FU-2` ownership unchanged. Do not edit frozen plans to erase historical statements.
+- [x] **Step 7: Commit the review handoff.** Commit with `docs: record Plan 11.25 implementation evidence`.
 
 ## Definition of Done and Evidence Map
 
