@@ -166,10 +166,10 @@ Tasks 2-4 deliberately precede `spec.py` changes. Cursor must not create a tempo
 
 **Interfaces:** Produces `TurnControl`, `TerminalDecision`, turn-owned `SendSlot`, and the turn half of `SendOwner`. Required public operations are `register_operations`, `try_start`, `complete_directive`, `request_session_cancel`, `halt_requested`, `seal_final_delivery`, `start_terminal_message`, `start_response_send`, `request_transport_teardown`, `publish_authoritative`, `publish_diagnostic`, and `finalize_once`.
 
-- [ ] **Step 1: Write RED gate and terminal-lane tests.** Use barriers to exercise both lock orders for execution start versus cancel/teardown, cancel versus terminal-lane sealing, terminal-message start versus teardown, and response start versus already-abandoned transport. Assert direct-denial starts create terminal `suppressed` slots atomically.
-- [ ] **Step 2: Write RED freeze/idempotence tests.** Cover queued suppression, write-started freeze to `ambiguous`, all message-class consequences, frozen snapshot immutability, repeated teardown as a pure read, late directive reports as diagnostic only, and repeated `finalize_once` returning the first outcome.
-- [ ] **Step 3: Run RED.** Run `uv run --frozen pytest tests/unit/acp/test_lifecycle.py -q`; expected failure is missing `TurnControl` and related types.
-- [ ] **Step 4: Implement the single-lock state.** One `threading.Lock` owns the execution gate, terminal lane, cancellation flag, transport flag, registered directive states, turn-owned send slots, frozen terminal decision, teardown snapshot/classification, permission handle reference, and finalization claim/outcome. No method performs I/O or awaits.
+- [x] **Step 1: Write RED gate and terminal-lane tests.** Use barriers to exercise both lock orders for execution start versus cancel/teardown, cancel versus terminal-lane sealing, terminal-message start versus teardown, and response start versus already-abandoned transport. Assert direct-denial starts create terminal `suppressed` slots atomically.
+- [x] **Step 2: Write RED freeze/idempotence tests.** Cover queued suppression, write-started freeze to `ambiguous`, all message-class consequences, frozen snapshot immutability, repeated teardown as a pure read, late directive reports as diagnostic only, and repeated `finalize_once` returning the first outcome.
+- [x] **Step 3: Run RED.** Run `uv run --frozen pytest tests/unit/acp/test_lifecycle.py -q`; expected failure is missing `TurnControl` and related types.
+- [x] **Step 4: Implement the single-lock state.** One `threading.Lock` owns the execution gate, terminal lane, cancellation flag, transport flag, registered directive states, turn-owned send slots, frozen terminal decision, teardown snapshot/classification, permission handle reference, and finalization claim/outcome. No method performs I/O or awaits.
 
   ```python
   def seal_final_delivery(self) -> TerminalDecision:
@@ -188,10 +188,10 @@ Tasks 2-4 deliberately precede `spec.py` changes. Cursor must not create a tempo
           return self._terminal_decision
   ```
 
-- [ ] **Step 5: Implement exact directive vocabularies.** Planning READ, Gateway, READ, WRITE, TEST, and plan persistence receive their declared states. Teardown freezes started Gateway as `cost_unknown`, started WRITE/TEST as `failed_effect_unknown`, started READ as `abandoned_no_effect`, and started plan persistence as `persistence_partial`.
-- [ ] **Step 6: Implement identity-conditional finalization.** `finalize_once` invokes an injected active-map remover only when `(session_id, turn_seq, object identity)` still matches. It claims and records under the lock, releases the lock, then invokes an injected non-raising settlement callback at most once.
-- [ ] **Step 7: Run GREEN, stress repeat, and static checks.** Run the selector 20 times using pytest's normal deterministic barriers rather than sleeps, then Ruff and `git diff --check`.
-- [ ] **Step 8: Commit.** Commit with `feat: add atomic ACP turn control`.
+- [x] **Step 5: Implement exact directive vocabularies.** Planning READ, Gateway, READ, WRITE, TEST, and plan persistence receive their declared states. Teardown freezes started Gateway as `cost_unknown`, started WRITE/TEST as `failed_effect_unknown`, started READ as `abandoned_no_effect`, and started plan persistence as `persistence_partial`.
+- [x] **Step 6: Implement identity-conditional finalization.** `finalize_once` invokes an injected active-map remover only when `(session_id, turn_seq, object identity)` still matches. It claims and records under the lock, releases the lock, then invokes an injected non-raising settlement callback at most once.
+- [x] **Step 7: Run GREEN, stress repeat, and static checks.** Run the selector 20 times using pytest's normal deterministic barriers rather than sleeps, then Ruff and `git diff --check`.
+- [x] **Step 8: Commit.** Commit with `feat: add atomic ACP turn control`.
 
 ### Task 3: Implement `NoticeControl`, response/warning capabilities, and the permission handle
 
