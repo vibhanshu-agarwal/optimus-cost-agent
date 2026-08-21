@@ -357,3 +357,96 @@ def test_agent_run_event_serializes_status_and_tool_trajectory():
     assert encoded["kind"] == "agent_run"
     assert encoded["tool_names"] == ["file_reader", "write_file"]
     assert encoded["total_cost_usd"] == "0.012"
+
+
+_ACP_SETTLEMENT_ALLOWED = frozenset(
+    {
+        "turn_seq",
+        "interruption_phase",
+        "settlement",
+        "final_delivery",
+        "rpc_response_delivery",
+        "conversation_commit",
+        "effect_state",
+        "provider_attempt_started",
+        "cost_complete",
+        "prior_history_flush",
+        "post_teardown",
+    }
+)
+
+
+def test_acp_turn_settlement_event_is_content_free_and_exact_fields():
+    event = TelemetryEvent.acp_turn_settlement(
+        run_id="session-1:3",
+        session_id="session-1",
+        request_id="session-1:3:settlement",
+        occurred_at=datetime(2026, 8, 22, tzinfo=UTC),
+        turn_seq=3,
+        interruption_phase="transport_abandoned",
+        settlement="transport_abandoned",
+        final_delivery="partial",
+        rpc_response_delivery="not_attempted",
+        conversation_commit="not_committed",
+        effect_state="none",
+        provider_attempt_started=True,
+        cost_complete=False,
+        prior_history_flush=True,
+        post_teardown=True,
+    )
+    assert event.kind is TelemetryEventKind.ACP_TURN_SETTLEMENT
+    encoded = event.to_json_dict()
+    assert encoded["kind"] == "acp_turn_settlement"
+    assert encoded["session_id"] == "session-1"
+    assert encoded["turn_seq"] == 3
+    assert encoded["post_teardown"] is True
+    payload_keys = set(event.payload)
+    assert payload_keys == _ACP_SETTLEMENT_ALLOWED
+    forbidden = (
+        "prompt",
+        "plan",
+        "plan_text",
+        "completion_text",
+        "output_text",
+        "tool_arguments",
+        "tool_result",
+        "credentials",
+        "exception",
+        "message",
+        "stack",
+        "OPTIMUS_API_KEY",
+        "metadata",
+    )
+    blob = event.to_json_line()
+    for name in forbidden:
+        assert name not in event.payload
+    assert "secret user text" not in blob
+    assert "prompt" not in event.payload
+
+
+def test_acp_turn_settlement_rejects_forbidden_payload_keys():
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises((ValidationError, ValueError)):
+        TelemetryEvent(
+            kind=TelemetryEventKind.ACP_TURN_SETTLEMENT,
+            run_id="r",
+            session_id="s",
+            request_id="req",
+            occurred_at=datetime(2026, 8, 22, tzinfo=UTC),
+            payload={
+                "turn_seq": 1,
+                "interruption_phase": "completed",
+                "settlement": "completed",
+                "final_delivery": "flushed",
+                "rpc_response_delivery": "flushed",
+                "conversation_commit": "committed",
+                "effect_state": "none",
+                "provider_attempt_started": False,
+                "cost_complete": True,
+                "prior_history_flush": False,
+                "post_teardown": False,
+                "prompt": "secret user text",
+            },
+        )

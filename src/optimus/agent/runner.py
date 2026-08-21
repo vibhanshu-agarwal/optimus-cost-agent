@@ -130,6 +130,11 @@ class AgentRunner:
         self._usage_accounting = usage_accounting
         self._planning_progress_observer = planning_progress_observer
         self._transition_validator = TransitionValidator()
+        self._active_operation_control: TurnOperationControl | None = None
+
+    @property
+    def event_sink(self) -> Callable[[TelemetryEvent], None] | None:
+        return self._event_sink
 
     def run(
         self,
@@ -147,6 +152,7 @@ class AgentRunner:
             else self._planning_progress_observer
         )
         matched_skills = self._match_skills(request)
+        self._active_operation_control = operation_control
         try:
             if request.completion_condition:
                 result = self._run_bounded_loop(request, matched_skills=matched_skills)
@@ -159,9 +165,15 @@ class AgentRunner:
                     halt_requested=halt_requested,
                     operation_control=operation_control,
                 )
-            self._emit_agent_run(request, result, matched_skills=matched_skills)
+            self._emit_agent_run(
+                request,
+                result,
+                matched_skills=matched_skills,
+                operation_control=operation_control,
+            )
             return result
         finally:
+            self._active_operation_control = None
             # Narrow flush() protocol: flush a batching event sink (e.g. TelemetryFanout)
             # after the final agent_run event, and also on a controlled failure that
             # raises out of this method, so buffered telemetry is not silently dropped.
@@ -624,6 +636,14 @@ class AgentRunner:
     ) -> None:
         if self._usage_accounting is None:
             return
+        control = self._active_operation_control
+        post_teardown = bool(control is not None and control.transport_abandoned())
+        turn_seq: int | None = None
+        if post_teardown:
+            try:
+                turn_seq = int(str(request.run_id).rsplit(":", 1)[-1])
+            except ValueError:
+                turn_seq = None
         self._usage_accounting.record_gateway_usage(
             gateway_usage,
             run_id=request.run_id,
@@ -633,6 +653,8 @@ class AgentRunner:
             service="agent.model",
             native_unit="tokens",
             price_snapshot_id=gateway_usage.price_snapshot_id,
+            turn_seq=turn_seq,
+            post_teardown=post_teardown,
         )
 
     def _run_approved_from_store(
@@ -729,8 +751,12 @@ class AgentRunner:
         result: AgentRunResult,
         *,
         matched_skills: tuple[str, ...],
+        operation_control: TurnOperationControl | None = None,
     ) -> None:
         if self._event_sink is None:
+            return
+        # Post-teardown policy: ordinary agent_run telemetry is denied after transport abandonment.
+        if operation_control is not None and operation_control.transport_abandoned():
             return
         self._event_sink(
             TelemetryEvent.agent_run(

@@ -655,3 +655,35 @@ async def test_permission_ambiguous_and_failure_are_not_approved() -> None:
         turn.publish_authoritative(lease.send_key, outcome)
         handle.apply_send_completion(SendCompletion(send_key=lease.send_key, outcome=outcome))
         assert handle.response_future.result()["outcome"]["outcome"] == "rejected"
+
+
+def test_finalize_once_settlement_callback_contains_sink_exceptions() -> None:
+    control = _control()
+    attempts = {"n": 0}
+
+    def raising_sink(_snapshot: TurnSettlementSnapshot) -> None:
+        attempts["n"] += 1
+        raise RuntimeError("jsonl failed")
+
+    control.set_finalization_hooks(settlement_callback=raising_sink)
+    snap = TurnSettlementSnapshot(
+        settlement=Settlement.COMPLETED,
+        final_delivery=FinalDelivery.FLUSHED,
+        rpc_response_delivery=RpcResponseDelivery.FLUSHED,
+        conversation_commit=ConversationCommit.COMMITTED,
+        effect_state=EffectState.NONE,
+        cost_complete=True,
+    )
+    out = control.finalize_once(snap)
+    assert out is snap
+    assert attempts["n"] == 1
+    assert control.finalize_once(snap) is snap
+    assert attempts["n"] == 1
+
+
+def test_post_teardown_fields_expose_transport_abandoned() -> None:
+    control = _control()
+    control.request_transport_teardown()
+    assert control.transport_abandoned() is True
+    fields = control.current_settlement_fields()
+    assert fields["post_teardown"] is True

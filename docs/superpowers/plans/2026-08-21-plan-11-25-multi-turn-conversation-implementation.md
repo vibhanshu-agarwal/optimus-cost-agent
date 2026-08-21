@@ -371,13 +371,13 @@ Tasks 2-4 deliberately precede `spec.py` changes. Cursor must not create a tempo
 
 **Interfaces:** `TelemetryEventKind.ACP_TURN_SETTLEMENT` carries only `session_id`, `turn_seq`, interruption phase, settlement, final/rpc delivery, conversation commit, effect state, provider-attempt flag, cost completeness, prior-history-flush flag, and `post_teardown`. `TurnControl.finalize_once` invokes a synchronous non-raising sink adapter after releasing its lock.
 
-- [ ] **Step 1: Write RED schema/privacy tests.** Assert the exact allowed settlement fields and reject prompt, plan, completion text, tool arguments/results, credentials, exception text, and arbitrary metadata.
-- [ ] **Step 2: Write RED failure-containment tests.** Inject JSONL, Redis, and Gateway exporter failures separately while finalizing ordinary response, generic exception, and `CancelledError`. Assert the original return/exception survives, no second response is submitted, finalization stays claimed, and telemetry is attempted once.
-- [ ] **Step 3: Write RED post-teardown tests.** Assert ordinary `agent_run` is denied after teardown; actual usage from an already-started provider attempt may append with `turn_seq`/`post_teardown=true` but never revises session cost; settlement evidence is still attempted.
-- [ ] **Step 4: Run RED.** Run telemetry and lifecycle/spec selectors.
-- [ ] **Step 5: Implement the event and containment boundary.** Reuse the production fanout built in bootstrap. Catch/log sink `Exception` only around this evidence attempt, after the finalization lock is released; do not catch or replace the surrounding `CancelledError`.
-- [ ] **Step 6: Run GREEN and privacy searches.** Run focused tests, serialize sample events, grep for forbidden content fields, Ruff, and `git diff --check`.
-- [ ] **Step 7: Commit.** Commit with `feat: emit ACP turn settlement evidence`.
+- [x] **Step 1: Write RED schema/privacy tests.** Assert the exact allowed settlement fields and reject prompt, plan, completion text, tool arguments/results, credentials, exception text, and arbitrary metadata.
+- [x] **Step 2: Write RED failure-containment tests.** Inject JSONL, Redis, and Gateway exporter failures separately while finalizing ordinary response, generic exception, and `CancelledError`. Assert the original return/exception survives, no second response is submitted, finalization stays claimed, and telemetry is attempted once.
+- [x] **Step 3: Write RED post-teardown tests.** Assert ordinary `agent_run` is denied after teardown; actual usage from an already-started provider attempt may append with `turn_seq`/`post_teardown=true` but never revises session cost; settlement evidence is still attempted.
+- [x] **Step 4: Run RED.** Run telemetry and lifecycle/spec selectors.
+- [x] **Step 5: Implement the event and containment boundary.** Reuse the production fanout built in bootstrap. Catch/log sink `Exception` only around this evidence attempt, after the finalization lock is released; do not catch or replace the surrounding `CancelledError`.
+- [x] **Step 6: Run GREEN and privacy searches.** Run focused tests, serialize sample events, grep for forbidden content fields, Ruff, and `git diff --check`.
+- [x] **Step 7: Commit.** Commit with `feat: emit ACP turn settlement evidence`.
 
 ### Task 10: Execute the complete contract scenario matrix
 

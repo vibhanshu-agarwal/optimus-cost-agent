@@ -311,3 +311,82 @@ def test_fanout_rejects_non_positive_batch_size(tmp_path):
             gateway_exporter=RecordingExporter(),
             batch_size=0,
         )
+
+
+def test_emit_acp_turn_settlement_contains_jsonl_redis_and_gateway_failures(tmp_path):
+    from optimus.telemetry.events import TelemetryEventKind
+    from optimus.telemetry.fanout import emit_acp_turn_settlement_contained
+
+    class RaisingJsonl:
+        def append(self, event):
+            raise OSError("jsonl disk full")
+
+    class RaisingRedis:
+        def __call__(self, event):
+            raise RuntimeError("redis down")
+
+    calls = {"n": 0}
+
+    class CountingFanout(TelemetryFanout):
+        def __call__(self, event):
+            calls["n"] += 1
+            super().__call__(event)
+
+    fanout = CountingFanout(
+        jsonl_writer=RaisingJsonl(),
+        redis_sink=RaisingRedis(),
+        gateway_exporter=RaisingExporter(TimeoutError("gw")),
+        batch_size=1,
+    )
+    event = TelemetryEvent.acp_turn_settlement(
+        run_id="s:1",
+        session_id="s",
+        request_id="s:1:settlement",
+        occurred_at=datetime(2026, 8, 22, tzinfo=UTC),
+        turn_seq=1,
+        interruption_phase="completed",
+        settlement="completed",
+        final_delivery="flushed",
+        rpc_response_delivery="flushed",
+        conversation_commit="committed",
+        effect_state="none",
+        provider_attempt_started=False,
+        cost_complete=True,
+        prior_history_flush=False,
+        post_teardown=False,
+    )
+    # Must not raise even when every sink fails.
+    emit_acp_turn_settlement_contained(fanout, event)
+    assert calls["n"] == 1
+    assert event.kind is TelemetryEventKind.ACP_TURN_SETTLEMENT
+
+
+def test_emit_acp_turn_settlement_does_not_swallow_baseexception_subclass():
+    """CancelledError must escape the containment wrapper (inherits BaseException)."""
+    import asyncio
+
+    from optimus.telemetry.fanout import emit_acp_turn_settlement_contained
+
+    class CancelSink:
+        def __call__(self, event):
+            raise asyncio.CancelledError()
+
+    event = TelemetryEvent.acp_turn_settlement(
+        run_id="s:1",
+        session_id="s",
+        request_id="s:1:settlement",
+        occurred_at=datetime(2026, 8, 22, tzinfo=UTC),
+        turn_seq=1,
+        interruption_phase="transport_abandoned",
+        settlement="transport_abandoned",
+        final_delivery="not_attempted",
+        rpc_response_delivery="not_attempted",
+        conversation_commit="not_committed",
+        effect_state="none",
+        provider_attempt_started=False,
+        cost_complete=True,
+        prior_history_flush=False,
+        post_teardown=True,
+    )
+    with pytest.raises(asyncio.CancelledError):
+        emit_acp_turn_settlement_contained(CancelSink(), event)

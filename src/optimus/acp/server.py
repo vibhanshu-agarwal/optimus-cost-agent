@@ -352,6 +352,7 @@ class AcpStreamServer:
             client_mcp_runtime=self._client_mcp_runtime,
             sanitizer_inputs=self._conversation_sanitizer_inputs,
             notice_control=notice,
+            settlement_sink=getattr(agent_runner, "event_sink", None),
         )
         message_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         request_tasks: set[asyncio.Task[Any]] = set()

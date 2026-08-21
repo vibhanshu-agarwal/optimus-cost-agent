@@ -72,6 +72,8 @@ class UsageAccountingService:
         service: str,
         native_unit: str,
         price_snapshot_id: str | None = None,
+        turn_seq: int | None = None,
+        post_teardown: bool = False,
     ) -> ProviderUsageLedger:
         """Record settled provider usage under caller-supplied persistence context.
 
@@ -110,6 +112,8 @@ class UsageAccountingService:
                     model=gateway_usage.model,
                     model_version=gateway_usage.model_version,
                     price_snapshot_id=price_snapshot_id,
+                    turn_seq=turn_seq,
+                    post_teardown=post_teardown,
                 )
             )
         return self.provider_ledger

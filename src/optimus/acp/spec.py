@@ -239,6 +239,7 @@ class AcpDuplexAdapter:
         client_mcp_runtime: ClientMcpRuntime | None = None,
         sanitizer_inputs: ConversationSanitizerInputs | None = None,
         notice_control: NoticeControl | None = None,
+        settlement_sink: Any | None = None,
     ) -> None:
         self._runner = runner
         self._workspace_root = Path(workspace_root).resolve()
@@ -256,6 +257,7 @@ class AcpDuplexAdapter:
             known_pii=(),
         )
         self._notice_control = notice_control
+        self._settlement_sink = settlement_sink
         self._closed = False
 
     def _remove_active_turn(self, session_id: str, turn_seq: int, control: TurnControl) -> bool:
@@ -295,15 +297,54 @@ class AcpDuplexAdapter:
         return f"{conversation.planner_envelope()}\n{sanitized_prompt}"
 
     def _placeholder_settlement(self, turn: AcpPromptTurn) -> TurnSettlementSnapshot:
-        del turn
-        return TurnSettlementSnapshot(
-            settlement=Settlement.COMPLETED,
-            final_delivery=FinalDelivery.FLUSHED,
-            rpc_response_delivery=RpcResponseDelivery.NOT_ATTEMPTED,
-            conversation_commit=ConversationCommit.NOT_COMMITTED,
-            effect_state=EffectState.NONE,
-            cost_complete=True,
+        fields = turn.turn_control.current_settlement_fields()
+        settlement = (
+            Settlement.TRANSPORT_ABANDONED
+            if fields["post_teardown"]
+            else Settlement.COMPLETED
         )
+        return TurnSettlementSnapshot(
+            settlement=settlement,
+            final_delivery=FinalDelivery(fields["final_delivery"]),
+            rpc_response_delivery=RpcResponseDelivery(fields["rpc_response_delivery"]),
+            conversation_commit=ConversationCommit.NOT_COMMITTED,
+            effect_state=EffectState(fields["effect_state"]),
+            cost_complete=bool(fields["cost_complete"]),
+        )
+
+    def _settlement_evidence_callback(self, turn: AcpPromptTurn):
+        def _callback(outcome: TurnSettlementSnapshot) -> None:
+            from datetime import UTC, datetime
+
+            from optimus.telemetry.events import TelemetryEvent
+            from optimus.telemetry.fanout import emit_acp_turn_settlement_contained
+
+            fields = turn.turn_control.current_settlement_fields()
+            phase = (
+                "transport_abandoned"
+                if fields["post_teardown"]
+                else "completed"
+            )
+            event = TelemetryEvent.acp_turn_settlement(
+                run_id=turn.run_id,
+                session_id=turn.session_id,
+                request_id=f"{turn.run_id}:settlement",
+                occurred_at=datetime.now(tz=UTC),
+                turn_seq=turn.turn_seq,
+                interruption_phase=phase,
+                settlement=outcome.settlement.value,
+                final_delivery=outcome.final_delivery.value,
+                rpc_response_delivery=outcome.rpc_response_delivery.value,
+                conversation_commit=outcome.conversation_commit.value,
+                effect_state=outcome.effect_state.value,
+                provider_attempt_started=bool(fields["provider_attempt_started"]),
+                cost_complete=outcome.cost_complete,
+                prior_history_flush=bool(fields["prior_history_flush"]),
+                post_teardown=bool(fields["post_teardown"]),
+            )
+            emit_acp_turn_settlement_contained(self._settlement_sink, event)
+
+        return _callback
 
     async def handle_client_request(
         self,
@@ -530,10 +571,13 @@ class AcpDuplexAdapter:
             conversation._next_turn_seq = turn_seq + 1  # noqa: SLF001
 
         turn_control = TurnControl(session_id=session_id, turn_seq=turn_seq)
-        turn_control.set_finalization_hooks(active_map_remover=self._remove_active_turn)
+        turn = AcpPromptTurn(session_id=session_id, turn_seq=turn_seq, turn_control=turn_control)
+        turn_control.set_finalization_hooks(
+            active_map_remover=self._remove_active_turn,
+            settlement_callback=self._settlement_evidence_callback(turn),
+        )
         if ownership_slot is not None:
             ownership_slot.bind_turn(turn_control)
-        turn = AcpPromptTurn(session_id=session_id, turn_seq=turn_seq, turn_control=turn_control)
         self._active_turns[session_id] = turn
         run_id = turn.run_id
         # region agent log

@@ -31,6 +31,24 @@ class TelemetryEventKind(StrEnum):
     SKILL_SELECTION = "skill_selection"
     SKILL_INVOCATION = "skill_invocation"
     AGENT_RUN = "agent_run"
+    ACP_TURN_SETTLEMENT = "acp_turn_settlement"
+
+
+ACP_TURN_SETTLEMENT_PAYLOAD_KEYS = frozenset(
+    {
+        "turn_seq",
+        "interruption_phase",
+        "settlement",
+        "final_delivery",
+        "rpc_response_delivery",
+        "conversation_commit",
+        "effect_state",
+        "provider_attempt_started",
+        "cost_complete",
+        "prior_history_flush",
+        "post_teardown",
+    }
+)
 
 
 class TelemetryEvent(BaseModel):
@@ -95,6 +113,20 @@ class TelemetryEvent(BaseModel):
                 data = {**data, "trace_id": run_id}
         return data
 
+    @model_validator(mode="after")
+    def _enforce_acp_turn_settlement_payload(self) -> TelemetryEvent:
+        if self.kind is not TelemetryEventKind.ACP_TURN_SETTLEMENT:
+            return self
+        keys = frozenset(self.payload)
+        if keys != ACP_TURN_SETTLEMENT_PAYLOAD_KEYS:
+            extra = keys - ACP_TURN_SETTLEMENT_PAYLOAD_KEYS
+            missing = ACP_TURN_SETTLEMENT_PAYLOAD_KEYS - keys
+            raise ValueError(
+                "ACP_TURN_SETTLEMENT payload must be exactly the content-free field set; "
+                f"extra={sorted(extra)!r} missing={sorted(missing)!r}"
+            )
+        return self
+
     @classmethod
     def model_call(
         cls,
@@ -155,32 +187,42 @@ class TelemetryEvent(BaseModel):
         model: str | None,
         model_version: str | None,
         price_snapshot_id: str | None = None,
+        turn_seq: int | None = None,
+        post_teardown: bool = False,
     ) -> TelemetryEvent:
         """Settled Gateway usage for one accounting attempt.
 
         Carries only provider-reported fields plus caller-supplied attribution
         (``service``/``native_unit``); there is no additional balance estimate
         here -- ``cost_usd`` and ``billing_units`` are the sole settled amounts.
+        After transport teardown, callers may tag ``turn_seq`` / ``post_teardown``
+        for append-only late usage (Plan 11.25); those flags never revise
+        conversation session cost.
         """
+        payload: dict[str, Any] = {
+            "gateway_request_id": gateway_request_id,
+            "provider": provider,
+            "provider_request_id": provider_request_id,
+            "cache_hit": cache_hit,
+            "billing_units": billing_units,
+            "cost_usd": cost_usd,
+            "service": service,
+            "native_unit": native_unit,
+            "model": model,
+            "model_version": model_version,
+            "price_snapshot_id": price_snapshot_id,
+        }
+        if turn_seq is not None:
+            payload["turn_seq"] = turn_seq
+        if post_teardown:
+            payload["post_teardown"] = True
         return cls(
             kind=TelemetryEventKind.GATEWAY_USAGE,
             run_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
-            payload={
-                "gateway_request_id": gateway_request_id,
-                "provider": provider,
-                "provider_request_id": provider_request_id,
-                "cache_hit": cache_hit,
-                "billing_units": billing_units,
-                "cost_usd": cost_usd,
-                "service": service,
-                "native_unit": native_unit,
-                "model": model,
-                "model_version": model_version,
-                "price_snapshot_id": price_snapshot_id,
-            },
+            payload=payload,
         )
 
     @classmethod
@@ -575,6 +617,52 @@ class TelemetryEvent(BaseModel):
                 "skill_name": skill_name,
                 "manifest_hash": manifest_hash,
                 "matched_reasons": matched_reasons,
+            },
+        )
+
+    @classmethod
+    def acp_turn_settlement(
+        cls,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        occurred_at: datetime,
+        turn_seq: int,
+        interruption_phase: str,
+        settlement: str,
+        final_delivery: str,
+        rpc_response_delivery: str,
+        conversation_commit: str,
+        effect_state: str,
+        provider_attempt_started: bool,
+        cost_complete: bool,
+        prior_history_flush: bool,
+        post_teardown: bool,
+    ) -> TelemetryEvent:
+        """Content-free ACP turn settlement evidence (Plan 11.25 Task 9).
+
+        Carries only settlement vocabulary fields — never prompt, plan, completion,
+        tool I/O, credentials, or exception text.
+        """
+        return cls(
+            kind=TelemetryEventKind.ACP_TURN_SETTLEMENT,
+            run_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=occurred_at,
+            payload={
+                "turn_seq": turn_seq,
+                "interruption_phase": interruption_phase,
+                "settlement": settlement,
+                "final_delivery": final_delivery,
+                "rpc_response_delivery": rpc_response_delivery,
+                "conversation_commit": conversation_commit,
+                "effect_state": effect_state,
+                "provider_attempt_started": provider_attempt_started,
+                "cost_complete": cost_complete,
+                "prior_history_flush": prior_history_flush,
+                "post_teardown": post_teardown,
             },
         )
 

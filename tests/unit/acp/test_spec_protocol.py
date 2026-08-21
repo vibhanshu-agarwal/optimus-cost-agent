@@ -2221,3 +2221,110 @@ async def test_cap_closed_refusal_is_explanatory_not_jsonrpc_error(tmp_path):
     assert any(
         n["params"]["update"]["sessionUpdate"] == "agent_message_chunk" for n in outbound.notifications
     )
+
+
+@pytest.mark.asyncio
+async def test_turn_finalization_emits_content_free_settlement_once(tmp_path):
+    from optimus.telemetry.events import TelemetryEvent, TelemetryEventKind
+
+    events: list[TelemetryEvent] = []
+
+    def sink(event: TelemetryEvent) -> None:
+        events.append(event)
+
+    class CompletedRunner:
+        def run(self, request, **kwargs):
+            del kwargs
+            return AgentRunResult(
+                run_id=request.run_id,
+                session_id=request.session_id,
+                execution_mode=request.execution_mode,
+                status=AgentRunStatus.COMPLETED,
+                final_state="COMPLETED",
+                output_text="ok",
+                plan_hash=None,
+            )
+
+    outbound = RecordingOutboundChannel()
+    sessions = InMemoryAcpSpecSessionStore()
+    adapter = AcpDuplexAdapter(
+        runner=CompletedRunner(),
+        workspace_root=tmp_path,
+        sessions=sessions,
+        outbound=outbound,
+        settlement_sink=sink,
+    )
+    new_response = await _rpc(
+        adapter,
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "session/new",
+            "params": {"cwd": str(tmp_path)},
+        },
+    )
+    session_id = new_response["result"]["sessionId"]
+    await _rpc(
+        adapter,
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/prompt",
+            "params": {
+                "sessionId": session_id,
+                "prompt": [{"type": "text", "text": "hello"}],
+            },
+        },
+    )
+    settlements = [e for e in events if e.kind is TelemetryEventKind.ACP_TURN_SETTLEMENT]
+    assert len(settlements) == 1
+    event = settlements[0]
+    assert event.session_id == session_id
+    assert event.payload["turn_seq"] == 1
+    assert "prompt" not in event.payload
+    assert "hello" not in event.to_json_line()
+
+
+def test_agent_run_denied_after_transport_teardown(tmp_path):
+    from optimus.acp.lifecycle import TurnControl
+    from optimus.agent.models import AgentRunRequest
+    from optimus.agent.runner import AgentRunner
+    from optimus.runtime.modes import ExecutionMode
+    from optimus.telemetry.events import TelemetryEventKind
+
+    events: list = []
+
+    class RecordingSink:
+        def __call__(self, event):
+            events.append(event)
+
+    control = TurnControl(session_id="s", turn_seq=7)
+    control.request_transport_teardown()
+    assert control.transport_abandoned() is True
+
+    runner = AgentRunner.__new__(AgentRunner)
+    runner._event_sink = RecordingSink()
+
+    request = AgentRunRequest(
+        run_id="s:7",
+        session_id="s",
+        task="x",
+        execution_mode=ExecutionMode.AGENT,
+        workspace_root=tmp_path,
+    )
+    result = AgentRunResult(
+        run_id=request.run_id,
+        session_id=request.session_id,
+        execution_mode=request.execution_mode,
+        status=AgentRunStatus.COMPLETED,
+        final_state="COMPLETED",
+        output_text="done",
+    )
+    runner._emit_agent_run(request, result, matched_skills=(), operation_control=control)
+    assert events == []
+
+    # Without teardown, ordinary agent_run is allowed.
+    open_control = TurnControl(session_id="s", turn_seq=8)
+    runner._emit_agent_run(request, result, matched_skills=(), operation_control=open_control)
+    assert len(events) == 1
+    assert events[0].kind is TelemetryEventKind.AGENT_RUN

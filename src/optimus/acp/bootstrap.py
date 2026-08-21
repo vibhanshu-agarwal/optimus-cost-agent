@@ -84,6 +84,8 @@ def build_agent_runner_for_harness(
     # batches redacted events to the Gateway trace-ingress exporter. No
     # Phoenix/OTLP endpoint or LangSmith credential is read or forwarded here --
     # `GatewayObservabilityExporter` only ever talks to the one-key Gateway.
+    # Plan 11.25 Task 9: the same fanout is the non-debug ACP_TURN_SETTLEMENT sink
+    # (threaded via AgentRunner.event_sink → AcpDuplexAdapter.settlement_sink).
     telemetry_sink = TelemetryFanout(
         jsonl_writer=JsonlTelemetryWriter.for_workspace(resolved_workspace),
         redis_sink=RedisTelemetryEventSink(redis_runtime.telemetry_adapter()),

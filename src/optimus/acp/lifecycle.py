@@ -185,6 +185,28 @@ class TurnControl:
         with self._lock:
             return self._transport_abandoned
 
+    def provider_attempt_started(self) -> bool:
+        with self._lock:
+            for (kind, _op_id), state in self._directives.items():
+                if kind is DirectiveKind.GATEWAY and state not in {"not_started", "suppressed"}:
+                    return True
+            return False
+
+    def current_settlement_fields(self) -> dict[str, object]:
+        with self._lock:
+            return {
+                "final_delivery": self._final_delivery.value,
+                "rpc_response_delivery": self._rpc_response_delivery.value,
+                "effect_state": self._effect_state.value,
+                "cost_complete": self._cost_complete,
+                "prior_history_flush": self._prior_history_flush,
+                "post_teardown": self._transport_abandoned,
+                "provider_attempt_started": any(
+                    kind is DirectiveKind.GATEWAY and state not in {"not_started", "suppressed"}
+                    for (kind, _op_id), state in self._directives.items()
+                ),
+            }
+
     def halt_requested(self) -> bool:
         with self._lock:
             return self._cancellation_accepted or self._transport_abandoned
