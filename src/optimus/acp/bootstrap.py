@@ -149,10 +149,17 @@ def build_configured_server(
     # than read from os.environ per-request deep inside AcpDuplexAdapter.
     max_planning_turns = resolve_max_planning_turns(environ)
     client_mcp_runtime = build_client_mcp_runtime(workspace_root=resolved_workspace)
+    from optimus.acp.conversation import build_conversation_sanitizer_inputs
+
+    conversation_sanitizer_inputs = build_conversation_sanitizer_inputs(
+        environ,
+        workspace_root=resolved_workspace,
+    )
     return AcpStreamServer(
         dispatcher=dispatcher,
         max_planning_turns=max_planning_turns,
         client_mcp_runtime=client_mcp_runtime,
+        conversation_sanitizer_inputs=conversation_sanitizer_inputs,
     )
 
 

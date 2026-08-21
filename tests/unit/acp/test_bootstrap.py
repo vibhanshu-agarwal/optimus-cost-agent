@@ -120,6 +120,9 @@ def test_bootstrap_builds_agent_configured_server(tmp_path, monkeypatch):
     assert server is not None
     assert server._dispatcher._gateway_client._timeout_seconds == 90.0
     assert server._dispatcher._agent_runner._gateway_client._timeout_seconds == 90.0
+    assert server.conversation_sanitizer_inputs is not None
+    assert "opt-test" in server.conversation_sanitizer_inputs.known_secrets
+    assert server.conversation_sanitizer_inputs.known_pii == ()
 
 
 def test_bootstrap_gateway_timeout_defaults_to_thirty_seconds(tmp_path, monkeypatch):

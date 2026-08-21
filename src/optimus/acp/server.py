@@ -261,6 +261,7 @@ class AcpStreamServer:
         *,
         max_planning_turns: int | None = None,
         client_mcp_runtime: Any | None = None,
+        conversation_sanitizer_inputs: Any | None = None,
     ) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
         # Plan 9.96, Task 5 Step 2: resolved once by build_configured_server()
@@ -268,11 +269,16 @@ class AcpStreamServer:
         # AcpDuplexAdapter via serve_ndjson — never read from os.environ here.
         self._max_planning_turns = max_planning_turns
         self._client_mcp_runtime = client_mcp_runtime
+        self._conversation_sanitizer_inputs = conversation_sanitizer_inputs
         self._request_tasks: set[asyncio.Task[Any]] = set()
 
     @property
     def client_mcp_runtime(self) -> Any | None:
         return self._client_mcp_runtime
+
+    @property
+    def conversation_sanitizer_inputs(self) -> Any | None:
+        return self._conversation_sanitizer_inputs
 
     async def handle_one(self, reader: AsyncByteReader, writer: AsyncByteWriter) -> None:
         # reader/writer are typed by Protocol: no shared base class required.

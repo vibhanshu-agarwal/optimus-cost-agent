@@ -77,6 +77,18 @@ def test_build_tool_call_notification_flattens_fields_at_update_level():
     assert "toolCall" not in update
 
 
+def test_build_usage_update_matches_acp_shape():
+    from decimal import Decimal
+
+    from optimus.acp.shapes import build_usage_update
+
+    payload = build_usage_update(session_id="sess-1", used=3, size=131_072, cost=Decimal("0.01"))
+    assert payload["update"]["sessionUpdate"] == "usage_update"
+    assert payload["update"]["used"] == 3
+    assert payload["update"]["size"] == 131_072
+    assert payload["update"]["cost"]["currency"] == "USD"
+
+
 def test_build_tool_call_update_flattens_fields_at_update_level():
     payload = build_tool_call_update_notification(
         session_id="sess-1",
