@@ -313,6 +313,13 @@ class TurnControl:
             slot.authoritative = SendState.WRITE_STARTED
             return True
 
+    def claim_write_started(self, send_key: TurnSendKey) -> SendState:
+        with self._lock:
+            slot = self._send_slots[send_key]
+            if slot.authoritative is SendState.QUEUED:
+                slot.authoritative = SendState.WRITE_STARTED
+            return slot.authoritative
+
     def publish_authoritative(self, send_key: TurnSendKey, outcome: SendOutcome) -> None:
         with self._lock:
             slot = self._send_slots[send_key]
@@ -664,6 +671,13 @@ class ResponseHandle:
                 return False
             slot.authoritative = SendState.WRITE_STARTED
             return True
+
+    def claim_write_started(self, send_key: ResponseSendKey) -> SendState:
+        with self._lock:
+            slot = self._slots[send_key]
+            if slot.authoritative is SendState.QUEUED:
+                slot.authoritative = SendState.WRITE_STARTED
+            return slot.authoritative
 
     def publish_authoritative(self, send_key: ResponseSendKey, outcome: SendOutcome) -> None:
         with self._lock:

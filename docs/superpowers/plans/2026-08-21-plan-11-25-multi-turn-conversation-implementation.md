@@ -242,20 +242,20 @@ Tasks 2-4 deliberately precede `spec.py` changes. Cursor must not create a tempo
 
 **Interfaces:** Produces process-lifetime `DedicatedOutboundWriter.start()`, `submit(item: OutboundQueueItem) -> concurrent.futures.Future[SendCompletion]`, and `close_and_join()`. Queue items contain payload, exact `SendKey`, `SendOwner`, optional strong capability handle, exactly one writer token, and the source future.
 
-- [ ] **Step 1: Write RED FIFO/serialization tests.** Submit notification, outbound request, and protocol response items from concurrent threads/tasks. Pause the first physical write and prove the second cannot call write or flush until the first completes; prove unrelated `asyncio.to_thread` work still starts while the writer is blocked.
-- [ ] **Step 2: Write RED phase tests.** Cover preparation failure before `write`, failure during/after `write`, flush failure, normal flush, queued teardown suppression, write-started teardown freeze plus late diagnostic, pre-dequeue source-future cancellation, and an exception from per-item bookkeeping. Assert every branch publishes authority first, resolves `SendCompletion` second, releases its token last, and continues to the next item.
-- [ ] **Step 3: Write RED shutdown tests.** Push the sentinel after accepted submissions, prove all pre-sentinel suppressed/normal/frozen items resolve and release tokens, prove the thread is non-daemon, and prove join occurs exactly once with no timeout.
-- [ ] **Step 4: Run RED.** Run:
+- [x] **Step 1: Write RED FIFO/serialization tests.** Submit notification, outbound request, and protocol response items from concurrent threads/tasks. Pause the first physical write and prove the second cannot call write or flush until the first completes; prove unrelated `asyncio.to_thread` work still starts while the writer is blocked.
+- [x] **Step 2: Write RED phase tests.** Cover preparation failure before `write`, failure during/after `write`, flush failure, normal flush, queued teardown suppression, write-started teardown freeze plus late diagnostic, pre-dequeue source-future cancellation, and an exception from per-item bookkeeping. Assert every branch publishes authority first, resolves `SendCompletion` second, releases its token last, and continues to the next item.
+- [x] **Step 3: Write RED shutdown tests.** Push the sentinel after accepted submissions, prove all pre-sentinel suppressed/normal/frozen items resolve and release tokens, prove the thread is non-daemon, and prove join occurs exactly once with no timeout.
+- [x] **Step 4: Run RED.** Run:
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_outbound_writer.py tests/unit/acp/test_stdio_ndjson.py tests/unit/acp/test_outbound_errors.py -q
   ```
 
-- [ ] **Step 5: Implement a synchronous physical transport seam.** The dedicated thread must own JSON encoding plus the physical `write` and `flush` calls. `StdioNdjsonLineWriter` exposes/injects those synchronous primitives; asyncio request tasks never call them directly.
-- [ ] **Step 6: Implement the queue algorithm exactly.** Prepare payload before the item lock; call `set_running_or_notify_cancel`; under the exact item lock transition queued to write-started or observe suppressed; perform I/O lock-free; under the same item lock publish authority/diagnostic; resolve the exact keyed completion; release the token. Awaiters use `asyncio.shield(asyncio.wrap_future(source_future, loop=loop))`.
-- [ ] **Step 7: Remove NDJSON bypasses.** `NdjsonOutboundChannel` and `process_request` may submit only through the dedicated writer. Retain legacy framed `handle_one`/`serve` byte-writer behavior because it is outside the NDJSON ACP path. Add an AST or exact grep test that fails on a new direct NDJSON physical write outside `outbound_writer.py`/the physical adapter.
-- [ ] **Step 8: Run GREEN and full ACP writer checks.** Run focused tests, all `tests/unit/acp/test_stdio_ndjson.py`, Ruff, and `git diff --check`.
-- [ ] **Step 9: Commit.** Commit with `feat: serialize ACP NDJSON delivery`.
+- [x] **Step 5: Implement a synchronous physical transport seam.** The dedicated thread must own JSON encoding plus the physical `write` and `flush` calls. `StdioNdjsonLineWriter` exposes/injects those synchronous primitives; asyncio request tasks never call them directly.
+- [x] **Step 6: Implement the queue algorithm exactly.** Prepare payload before the item lock; call `set_running_or_notify_cancel`; under the exact item lock transition queued to write-started or observe suppressed; perform I/O lock-free; under the same item lock publish authority/diagnostic; resolve the exact keyed completion; release the token. Awaiters use `asyncio.shield(asyncio.wrap_future(source_future, loop=loop))`.
+- [x] **Step 7: Remove NDJSON bypasses.** `NdjsonOutboundChannel` and `process_request` may submit only through the dedicated writer. Retain legacy framed `handle_one`/`serve` byte-writer behavior because it is outside the NDJSON ACP path. Add an AST or exact grep test that fails on a new direct NDJSON physical write outside `outbound_writer.py`/the physical adapter.
+- [x] **Step 8: Run GREEN and full ACP writer checks.** Run focused tests, all `tests/unit/acp/test_stdio_ndjson.py`, Ruff, and `git diff --check`.
+- [x] **Step 9: Commit.** Commit with `feat: serialize ACP NDJSON delivery`.
 
 ### Task 5: Implement canonical in-memory conversation, sanitization, budget, gauge, and cost
 
