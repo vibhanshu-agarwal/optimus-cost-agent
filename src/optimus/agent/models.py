@@ -133,3 +133,4 @@ class AgentRunResult(BaseModel):
     provider_keys_resolvable: tuple[str, ...] = ()
     plan_hash: str | None = None
     stop_reason: str | None = None
+    candidate_plan_text: str | None = None

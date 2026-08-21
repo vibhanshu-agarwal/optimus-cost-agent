@@ -164,3 +164,28 @@ def test_in_memory_store_treats_expired_plan_as_missing():
 
     with pytest.raises(KeyError, match="stored plan not found"):
         store.load_plan(run_id="run-1", plan_hash="hash-1")
+
+
+def test_persist_plan_reports_persisted_for_in_memory():
+    from optimus.agent.state_store import PlanPersistenceOutcome
+
+    store = InMemoryAgentStateStore(clock_ms=lambda: 1_000)
+    result = store.persist_plan(plan_record())
+    assert result.outcome is PlanPersistenceOutcome.PERSISTED
+    assert result.authorizing is True
+
+
+def test_persist_plan_partial_when_pointer_write_fails():
+    from optimus.agent.state_store import PlanPersistenceOutcome
+
+    class FlakyRedis(FakeRedis):
+        def hset(self, key: str, mapping: dict[str, str]):
+            if "latest" in key:
+                raise RuntimeError("pointer failed")
+            return super().hset(key, mapping)
+
+    store = RedisAgentStateStore(client=FlakyRedis(), ttl_seconds=60)
+    result = store.persist_plan(plan_record())
+    assert result.outcome is PlanPersistenceOutcome.PERSISTENCE_PARTIAL
+    assert "primary" in result.completed_substeps
+    assert result.authorizing is False
