@@ -102,10 +102,10 @@ Tasks 2-4 deliberately precede `spec.py` changes. Cursor must not create a tempo
 
 **Interfaces:** Consumes the exact contract/source binding above. Produces a committed baseline report and no production behavior change.
 
-- [ ] **Step 1: Create an isolated implementation worktree.** Use `superpowers:using-git-worktrees`; fetch `origin`, create the implementation branch from `origin/main`, and record `git rev-parse HEAD`, `git rev-parse origin/main`, and `git status --porcelain`.
-- [ ] **Step 2: Verify authority bytes.** Run `Get-FileHash -Algorithm SHA256` on the settled contract and record the full digest, logical line count, audit-script digest, source baseline, and Review 33 disposition in the report. Expected contract digest: `9630C0CC67D033DB647587602E2797F4ACE9E937F3F0AB748FF6DE14EDC67F38`.
-- [ ] **Step 3: Record prerequisite custody without blocking implementation.** Search the actual main backlog for `MT-FU-1` and `MT-FU-2`. If either row is absent, record the result in the baseline report as a blocker to overall contract approval and design-document ungating only; it does **not** block this implementation plan, so continue to Task 1. Do not edit the backlog or silently treat the absence as resolved.
-- [ ] **Step 4: Run the unchanged hermetic baseline.** Run:
+- [x] **Step 1: Create an isolated implementation worktree.** Use `superpowers:using-git-worktrees`; fetch `origin`, create the implementation branch from `origin/main`, and record `git rev-parse HEAD`, `git rev-parse origin/main`, and `git status --porcelain`.
+- [x] **Step 2: Verify authority bytes.** Run `Get-FileHash -Algorithm SHA256` on the settled contract and record the full digest, logical line count, audit-script digest, source baseline, and Review 33 disposition in the report. Expected contract digest: `9630C0CC67D033DB647587602E2797F4ACE9E937F3F0AB748FF6DE14EDC67F38`.
+- [x] **Step 3: Record prerequisite custody without blocking implementation.** Search the actual main backlog for `MT-FU-1` and `MT-FU-2`. If either row is absent, record the result in the baseline report as a blocker to overall contract approval and design-document ungating only; it does **not** block this implementation plan, so continue to Task 1. Do not edit the backlog or silently treat the absence as resolved.
+- [x] **Step 4: Run the unchanged hermetic baseline.** Run:
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_spec_protocol.py tests/unit/acp/test_stdio_ndjson.py tests/unit/agent/test_runner.py tests/unit/agent/test_planning_loop.py tests/unit/agent/test_state_store.py tests/unit/telemetry/test_events.py tests/unit/telemetry/test_fanout.py -q
@@ -114,8 +114,8 @@ Tasks 2-4 deliberately precede `spec.py` changes. Cursor must not create a tempo
   ```
 
   Expected: all selected baseline tests pass. Any pre-existing failure is recorded and resolved as a separate custody decision before this plan continues.
-- [ ] **Step 5: Record negative-existence anchors.** Record exact searches proving the baseline has no `TurnControl`, `NoticeControl`, `ResponseOwnershipSlot`, `candidate_plan_text`, `ACP_TURN_SETTLEMENT`, conversation accumulation, concurrent-prompt guard, or shared writer serialization.
-- [ ] **Step 6: Commit the baseline report.** Commit with `docs: record Plan 11.25 implementation baseline`.
+- [x] **Step 5: Record negative-existence anchors.** Record exact searches proving the baseline has no `TurnControl`, `NoticeControl`, `ResponseOwnershipSlot`, `candidate_plan_text`, `ACP_TURN_SETTLEMENT`, conversation accumulation, concurrent-prompt guard, or shared writer serialization.
+- [x] **Step 6: Commit the baseline report.** Commit with `docs: record Plan 11.25 implementation baseline`.
 
 ### Task 1: Implement the pure settlement model and exact work-class registry
 
