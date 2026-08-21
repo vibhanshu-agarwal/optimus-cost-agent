@@ -107,6 +107,24 @@ class NdjsonOutboundChannel:
         self._futures: dict[str | int, asyncio.Future[dict[str, Any]]] = {}
         self.last_outbound_request_id: str | int | None = None
 
+    def allocate_permission_request(
+        self, method: str, params: dict[str, Any]
+    ) -> Any:
+        """Synchronously allocate request_id, future, and correlation (no await)."""
+        from optimus.acp.lifecycle import PermissionRequestHandle
+
+        request_id = next(self._agent_request_ids)
+        self.last_outbound_request_id = request_id
+        future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+        self._futures[request_id] = future
+        return PermissionRequestHandle(
+            channel=self,
+            request_id=request_id,
+            response_future=future,
+            method=method,
+            params=params,
+        )
+
     async def notify(self, method: str, params: dict[str, Any]) -> None:
         # region agent log
         acp_debug_log(

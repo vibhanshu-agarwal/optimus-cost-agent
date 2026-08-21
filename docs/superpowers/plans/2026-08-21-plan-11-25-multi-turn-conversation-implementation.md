@@ -204,11 +204,11 @@ Tasks 2-4 deliberately precede `spec.py` changes. Cursor must not create a tempo
 
 **Interfaces:** Produces `ResponseSendKey`, `WarningAttemptSendKey`, `SendTicket`, `SendCompletion`, `ResponseHandle`, `WarningSequenceHandle`, `NoticeControl`, and `PermissionRequestHandle`. Every queued notice item holds a strong handle reference and one writer token; no API finalizes from a bare retired ID.
 
-- [ ] **Step 1: Write RED response-capability tests.** Cover ordinary `{response}` and refusal `{response, terminal_refusal_notice}` role sets, exactly-once role start, explicit close-as-not-attempted, direct suppressed completion after abandonment, writer-token acquisition before visibility, finalization-before-writer and writer-before-finalization retirement orders, retained-handle late duplicate finalization, and bare retired ID rejection.
-- [ ] **Step 2: Write RED warning tests.** Cover process-wide monotonic warning/attempt IDs, typed-key non-collision against response keys, one in-flight attempt, coordinator token handoff/abort, incremental child retirement during a long retry sequence, flush closure, teardown closure, queued-suppressed final attempt, and write-started-frozen final attempt.
-- [ ] **Step 3: Write RED permission tests.** Assert `allocate_request()` allocates and registers synchronously, two sessions cannot cross-correlate, every send outcome settles/cleans the response future correctly, a flushed-but-unanswered request is cancelled by teardown, a genuine response wins safely, and late replies to removed correlations are no-ops.
-- [ ] **Step 4: Run RED.** Run the lifecycle and outbound-error selectors; expected failures are missing capability and handle methods.
-- [ ] **Step 5: Implement typed identities and completions.** Use frozen tagged dataclasses; variant type participates in equality. `SendCompletion` always carries the exact key.
+- [x] **Step 1: Write RED response-capability tests.** Cover ordinary `{response}` and refusal `{response, terminal_refusal_notice}` role sets, exactly-once role start, explicit close-as-not-attempted, direct suppressed completion after abandonment, writer-token acquisition before visibility, finalization-before-writer and writer-before-finalization retirement orders, retained-handle late duplicate finalization, and bare retired ID rejection.
+- [x] **Step 2: Write RED warning tests.** Cover process-wide monotonic warning/attempt IDs, typed-key non-collision against response keys, one in-flight attempt, coordinator token handoff/abort, incremental child retirement during a long retry sequence, flush closure, teardown closure, queued-suppressed final attempt, and write-started-frozen final attempt.
+- [x] **Step 3: Write RED permission tests.** Assert `allocate_request()` allocates and registers synchronously, two sessions cannot cross-correlate, every send outcome settles/cleans the response future correctly, a flushed-but-unanswered request is cancelled by teardown, a genuine response wins safely, and late replies to removed correlations are no-ops.
+- [x] **Step 4: Run RED.** Run the lifecycle and outbound-error selectors; expected failures are missing capability and handle methods.
+- [x] **Step 5: Implement typed identities and completions.** Use frozen tagged dataclasses; variant type participates in equality. `SendCompletion` always carries the exact key.
 
   ```python
   @dataclass(frozen=True, slots=True)
@@ -224,10 +224,10 @@ Tasks 2-4 deliberately precede `spec.py` changes. Cursor must not create a tempo
   SendKey = str | ResponseSendKey | WarningAttemptSendKey
   ```
 
-- [ ] **Step 6: Implement handle-local lifetime authority.** `NoticeControl` uses a registry lock only to allocate/snapshot/compare-remove handles. Each handle owns its own state lock, slots, role closure, tokens, and finalization tombstone. Follow registry-then-handle only as a two-phase snapshot; never nest locks in opposite order.
-- [ ] **Step 7: Implement permission correlation as one object.** The channel allocates `request_id`, future, payload, and correlation in one non-awaiting call. `handle.send()` obtains the turn's Permission send lease and later pattern-matches `SendCompletion`; `handle.cancel()` removes and resolves the correlation without revising send delivery state.
-- [ ] **Step 8: Run GREEN and static checks.** Run focused selectors, Ruff, and `git diff --check`.
-- [ ] **Step 9: Commit.** Commit with `feat: add notice and permission capabilities`.
+- [x] **Step 6: Implement handle-local lifetime authority.** `NoticeControl` uses a registry lock only to allocate/snapshot/compare-remove handles. Each handle owns its own state lock, slots, role closure, tokens, and finalization tombstone. Follow registry-then-handle only as a two-phase snapshot; never nest locks in opposite order.
+- [x] **Step 7: Implement permission correlation as one object.** The channel allocates `request_id`, future, payload, and correlation in one non-awaiting call. `handle.send()` obtains the turn's Permission send lease and later pattern-matches `SendCompletion`; `handle.cancel()` removes and resolves the correlation without revising send delivery state.
+- [x] **Step 8: Run GREEN and static checks.** Run focused selectors, Ruff, and `git diff --check`.
+- [x] **Step 9: Commit.** Commit with `feat: add notice and permission capabilities`.
 
 ### Task 4: Replace direct NDJSON writes with the dedicated FIFO writer
 

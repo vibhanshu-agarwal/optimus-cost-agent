@@ -10,11 +10,18 @@ import pytest
 from optimus.acp.lifecycle import (
     CancelResult,
     DirectiveKind,
+    NoticeControl,
+    PermissionRequestHandle,
+    ResponseKind,
+    ResponsePart,
+    ResponseSendKey,
+    SendCompletion,
     SendKind,
     TerminalDecision,
     TerminalLane,
     TurnControl,
     TurnSendKey,
+    WarningAttemptSendKey,
 )
 from optimus.acp.settlement import (
     ConversationCommit,
@@ -24,6 +31,7 @@ from optimus.acp.settlement import (
     SendOutcome,
     SendState,
     Settlement,
+    SettlementInvariantError,
     TurnSettlementSnapshot,
 )
 
@@ -386,3 +394,264 @@ def test_terminal_decision_type() -> None:
     assert decision.lane is TerminalLane.GRANTED
     key = TurnSendKey(kind="terminal_set", message_id="m1")
     assert key.kind == "terminal_set"
+
+
+# --- Task 3: NoticeControl / permission ---
+
+
+def test_typed_send_keys_do_not_collide_on_equal_scalars() -> None:
+    response_key = ResponseSendKey(response_id=1, part=ResponsePart.RESPONSE)
+    notice_key = ResponseSendKey(response_id=1, part=ResponsePart.TERMINAL_REFUSAL_NOTICE)
+    warning_key = WarningAttemptSendKey(warning_id=1, attempt_id=1)
+    assert response_key != notice_key
+    assert response_key != warning_key
+    assert hash(response_key) != hash(notice_key)
+
+
+def test_ordinary_response_capability_and_retirement_orders() -> None:
+    notices = NoticeControl()
+    handle = notices.allocate_response_handle(ResponseKind.ORDINARY)
+    ticket = handle.start_non_turn_response_send()
+    assert ticket.writer_token is not None
+    assert ticket.source_future is not None
+    assert notices.live_response_count() == 1
+
+    # Writer-before-finalization: publish, resolve, release, then finalize.
+    assert handle.mark_write_started(ticket.send_key)  # type: ignore[arg-type]
+    handle.publish_authoritative(ticket.send_key, SendOutcome.FLUSHED)  # type: ignore[arg-type]
+    ticket.source_future.set_result(
+        SendCompletion(send_key=ticket.send_key, outcome=SendOutcome.FLUSHED)
+    )
+    ticket.writer_token.release()
+    assert notices.live_response_count() == 1
+    handle.finalize_once({"ok": True})
+    assert notices.live_response_count() == 0
+
+    # Late duplicate finalize on retained handle.
+    assert handle.finalize_once({"other": True}) == {"ok": True}
+    assert notices.lookup_response(handle.response_id) == "unknown_or_retired"
+
+
+def test_refusal_roles_and_finalization_before_writer() -> None:
+    notices = NoticeControl()
+    handle = notices.allocate_response_handle(ResponseKind.TERMINAL_REFUSAL)
+    assert handle.expected_roles == frozenset(
+        {ResponsePart.RESPONSE, ResponsePart.TERMINAL_REFUSAL_NOTICE}
+    )
+    response_ticket = handle.start_non_turn_response_send()
+    notice_ticket = handle.start_notice_send()
+    assert response_ticket.writer_token is not None
+    assert notice_ticket.writer_token is not None
+
+    handle.finalize_once("settled")
+    assert notices.live_response_count() == 1
+
+    for ticket, outcome in (
+        (response_ticket, SendOutcome.FLUSHED),
+        (notice_ticket, SendOutcome.CONCLUSIVE_FAILURE),
+    ):
+        handle.mark_write_started(ticket.send_key)  # type: ignore[arg-type]
+        handle.publish_authoritative(ticket.send_key, outcome)  # type: ignore[arg-type]
+        assert ticket.source_future is not None
+        ticket.source_future.set_result(SendCompletion(send_key=ticket.send_key, outcome=outcome))
+        assert ticket.writer_token is not None
+        ticket.writer_token.release()
+
+    assert notices.live_response_count() == 0
+
+
+def test_direct_suppressed_after_abandonment_and_double_start_invariant() -> None:
+    notices = NoticeControl()
+    notices.mark_transport_abandoned()
+    handle = notices.allocate_response_handle(ResponseKind.ORDINARY)
+    ticket = handle.start_non_turn_response_send()
+    assert ticket.immediate_completion is not None
+    assert ticket.immediate_completion.outcome is SendOutcome.SUPPRESSED
+    assert ticket.writer_token is None
+    handle.finalize_once("done")
+    assert notices.live_response_count() == 0
+
+    handle2 = notices.allocate_response_handle(ResponseKind.ORDINARY)
+    handle2.start_non_turn_response_send()
+    with pytest.raises(SettlementInvariantError):
+        handle2.start_non_turn_response_send()
+
+
+def test_close_role_as_not_attempted_for_missing_refusal_notice() -> None:
+    notices = NoticeControl()
+    handle = notices.allocate_response_handle(ResponseKind.TERMINAL_REFUSAL)
+    response_ticket = handle.start_non_turn_response_send()
+    handle.close_role_as_not_attempted(ResponsePart.TERMINAL_REFUSAL_NOTICE)
+    handle.mark_write_started(response_ticket.send_key)  # type: ignore[arg-type]
+    handle.publish_authoritative(response_ticket.send_key, SendOutcome.FLUSHED)  # type: ignore[arg-type]
+    assert response_ticket.source_future is not None
+    response_ticket.source_future.set_result(
+        SendCompletion(send_key=response_ticket.send_key, outcome=SendOutcome.FLUSHED)
+    )
+    assert response_ticket.writer_token is not None
+    response_ticket.writer_token.release()
+    handle.finalize_once("ok")
+    assert notices.live_response_count() == 0
+
+
+def test_warning_sequence_monotonic_ids_retry_and_incremental_retirement() -> None:
+    notices = NoticeControl()
+    seq = notices.allocate_warning_sequence()
+    first = seq.begin_warning_attempt()
+    assert isinstance(first.send_key, WarningAttemptSendKey)
+    with pytest.raises(SettlementInvariantError):
+        seq.begin_warning_attempt()
+
+    seq.mark_write_started(first.send_key)
+    seq.publish_authoritative(first.send_key, SendOutcome.CONCLUSIVE_FAILURE)
+    assert first.source_future is not None
+    first.source_future.set_result(
+        SendCompletion(send_key=first.send_key, outcome=SendOutcome.CONCLUSIVE_FAILURE)
+    )
+    assert first.writer_token is not None
+    first.writer_token.release()
+    seq.acknowledge_attempt(
+        SendCompletion(send_key=first.send_key, outcome=SendOutcome.CONCLUSIVE_FAILURE)
+    )
+    assert seq.live_attempt_count() == 0
+
+    second = seq.begin_warning_attempt()
+    assert isinstance(second.send_key, WarningAttemptSendKey)
+    assert second.send_key.attempt_id != first.send_key.attempt_id
+    assert second.send_key.warning_id == first.send_key.warning_id
+
+    # Long retry sequence keeps only live attempts.
+    for _ in range(5):
+        seq.mark_write_started(second.send_key)
+        seq.publish_authoritative(second.send_key, SendOutcome.AMBIGUOUS)
+        assert second.source_future is not None
+        second.source_future.set_result(
+            SendCompletion(send_key=second.send_key, outcome=SendOutcome.AMBIGUOUS)
+        )
+        assert second.writer_token is not None
+        second.writer_token.release()
+        seq.acknowledge_attempt(
+            SendCompletion(send_key=second.send_key, outcome=SendOutcome.AMBIGUOUS)
+        )
+        second = seq.begin_warning_attempt()
+
+    seq.mark_write_started(second.send_key)
+    seq.publish_authoritative(second.send_key, SendOutcome.FLUSHED)
+    assert second.source_future is not None
+    second.source_future.set_result(
+        SendCompletion(send_key=second.send_key, outcome=SendOutcome.FLUSHED)
+    )
+    assert second.writer_token is not None
+    second.writer_token.release()
+    seq.acknowledge_attempt(SendCompletion(send_key=second.send_key, outcome=SendOutcome.FLUSHED))
+    seq.release_coordinator_token()
+    assert notices.live_warning_count() == 0
+
+
+def test_warning_abandonment_queued_and_write_started() -> None:
+    notices = NoticeControl()
+    queued_seq = notices.allocate_warning_sequence()
+    queued = queued_seq.begin_warning_attempt()
+    notices.mark_transport_abandoned()
+    assert queued_seq._attempts[queued.send_key].authoritative is SendState.SUPPRESSED  # noqa: SLF001
+    queued_seq.release_coordinator_token()
+
+    notices2 = NoticeControl()
+    frozen_seq = notices2.allocate_warning_sequence()
+    frozen = frozen_seq.begin_warning_attempt()
+    frozen_seq.mark_write_started(frozen.send_key)  # type: ignore[arg-type]
+    notices2.mark_transport_abandoned()
+    assert frozen_seq._attempts[frozen.send_key].authoritative is SendState.AMBIGUOUS  # noqa: SLF001
+    assert frozen.writer_token is not None
+    frozen_seq.publish_diagnostic(frozen.send_key, SendOutcome.FLUSHED)  # type: ignore[arg-type]
+    frozen.writer_token.release()
+    frozen_seq.release_coordinator_token()
+    assert notices2.live_warning_count() == 0
+
+
+@pytest.mark.asyncio
+async def test_permission_allocate_send_outcomes_and_teardown_cancel() -> None:
+    from optimus.acp.server import NdjsonOutboundChannel
+
+    class RecordingWriter:
+        def __init__(self) -> None:
+            self.lines: list[dict] = []
+
+        async def write_line(self, message: dict) -> None:
+            self.lines.append(message)
+
+    channel = NdjsonOutboundChannel(RecordingWriter())
+    turn_a = _control()
+    turn_b = TurnControl(session_id="sess-2", turn_seq=1)
+
+    handle_a = channel.allocate_permission_request(
+        "session/request_permission", {"sessionId": "sess-1"}
+    )
+    handle_b = channel.allocate_permission_request(
+        "session/request_permission", {"sessionId": "sess-2"}
+    )
+    assert handle_a.request_id != handle_b.request_id
+    assert isinstance(handle_a, PermissionRequestHandle)
+
+    # Suppressed path.
+    turn_a.request_session_cancel()
+    lease = handle_a.begin_send(turn_a)
+    assert lease.granted is False
+    assert handle_a.response_future.done()
+    assert handle_a.response_future.result()["outcome"]["outcome"] == "cancelled"
+
+    # Flushed then unanswered → teardown cancel.
+    lease_b = handle_b.begin_send(turn_b)
+    assert lease_b.granted is True
+    assert lease_b.send_key is not None
+    turn_b.mark_write_started(lease_b.send_key)
+    turn_b.publish_authoritative(lease_b.send_key, SendOutcome.FLUSHED)
+    handle_b.apply_send_completion(
+        SendCompletion(send_key=lease_b.send_key, outcome=SendOutcome.FLUSHED)
+    )
+    assert not handle_b.response_future.done()
+    turn_b.set_permission_handle(handle_b)
+    turn_b.request_transport_teardown()
+    assert handle_b.response_future.done()
+    assert handle_b.response_future.result()["outcome"]["outcome"] == "cancelled"
+
+    # Genuine response wins; late reply after cancel is no-op.
+    handle_c = channel.allocate_permission_request(
+        "session/request_permission", {"sessionId": "sess-3"}
+    )
+    turn_c = TurnControl(session_id="sess-3", turn_seq=1)
+    lease_c = handle_c.begin_send(turn_c)
+    assert lease_c.send_key is not None
+    turn_c.mark_write_started(lease_c.send_key)
+    turn_c.publish_authoritative(lease_c.send_key, SendOutcome.FLUSHED)
+    handle_c.apply_send_completion(
+        SendCompletion(send_key=lease_c.send_key, outcome=SendOutcome.FLUSHED)
+    )
+    channel.deliver_client_response(
+        {"jsonrpc": "2.0", "id": handle_c.request_id, "result": {"outcome": {"outcome": "selected"}}}
+    )
+    assert handle_c.response_future.result()["outcome"]["outcome"] == "selected"
+    channel.deliver_client_response(
+        {"jsonrpc": "2.0", "id": handle_c.request_id, "result": {"outcome": {"outcome": "cancelled"}}}
+    )
+    assert handle_c.response_future.result()["outcome"]["outcome"] == "selected"
+
+
+@pytest.mark.asyncio
+async def test_permission_ambiguous_and_failure_are_not_approved() -> None:
+    from optimus.acp.server import NdjsonOutboundChannel
+
+    class RecordingWriter:
+        async def write_line(self, message: dict) -> None:
+            return None
+
+    channel = NdjsonOutboundChannel(RecordingWriter())
+    for outcome in (SendOutcome.AMBIGUOUS, SendOutcome.CONCLUSIVE_FAILURE):
+        turn = TurnControl(session_id="s", turn_seq=1)
+        handle = channel.allocate_permission_request("session/request_permission", {})
+        lease = handle.begin_send(turn)
+        assert lease.send_key is not None
+        turn.mark_write_started(lease.send_key)
+        turn.publish_authoritative(lease.send_key, outcome)
+        handle.apply_send_completion(SendCompletion(send_key=lease.send_key, outcome=outcome))
+        assert handle.response_future.result()["outcome"]["outcome"] == "rejected"
