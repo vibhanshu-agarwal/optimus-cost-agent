@@ -126,16 +126,16 @@ Tasks 2-4 deliberately precede `spec.py` changes. Cursor must not create a tempo
 
 **Interfaces:** Produces immutable `WorkClassSpec`, `WORK_CLASS_REGISTRY`, `SendState`, `SendOutcome`, directive terminal enums, `Settlement`, `FinalDelivery`, `RpcResponseDelivery`, `ConversationCommit`, `EffectState`, and `TurnSettlementSnapshot`. Tasks 2-10 import these exact types; no later task defines a competing vocabulary.
 
-- [ ] **Step 1: Write RED exact-set registry tests.** Pin all 15 §2.4.0 rows and all eight fields: class, kind, owner, gate/lane, start operation, lifecycle vocabulary, terminal vocabulary, and consequence. Assert nine and only nine rows have `kind == send`; settlement telemetry has no owner/start/lifecycle/terminal; protocol response mutates only `rpc_response_delivery`; plan persistence uses `persisted/persistence_failed/persistence_partial/suppressed`; Planning READ and Gateway include their full terminal sets.
-- [ ] **Step 2: Write RED algebra tests.** Cover `E == 0 -> none`, all effectful directives succeeded -> `complete`, any `failed_effect_unknown` -> `indeterminate`, otherwise at least one succeeded -> `partial`, and `failed_no_effect`/`suppressed`-only -> `none`. Assert READ, Gateway, and plan persistence never enter `E`.
-- [ ] **Step 3: Run RED.** Run:
+- [x] **Step 1: Write RED exact-set registry tests.** Pin all 15 §2.4.0 rows and all eight fields: class, kind, owner, gate/lane, start operation, lifecycle vocabulary, terminal vocabulary, and consequence. Assert nine and only nine rows have `kind == send`; settlement telemetry has no owner/start/lifecycle/terminal; protocol response mutates only `rpc_response_delivery`; plan persistence uses `persisted/persistence_failed/persistence_partial/suppressed`; Planning READ and Gateway include their full terminal sets.
+- [x] **Step 2: Write RED algebra tests.** Cover `E == 0 -> none`, all effectful directives succeeded -> `complete`, any `failed_effect_unknown` -> `indeterminate`, otherwise at least one succeeded -> `partial`, and `failed_no_effect`/`suppressed`-only -> `none`. Assert READ, Gateway, and plan persistence never enter `E`.
+- [x] **Step 3: Run RED.** Run:
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_settlement.py -q
   ```
 
   Expected: collection fails because `optimus.acp.settlement` does not exist.
-- [ ] **Step 4: Implement the immutable values.** Use `StrEnum` and frozen dataclasses. The registry object is one module-level immutable tuple imported by production and tests. Its field values must match the settled table exactly; do not abbreviate terminal vocabularies.
+- [x] **Step 4: Implement the immutable values.** Use `StrEnum` and frozen dataclasses. The registry object is one module-level immutable tuple imported by production and tests. Its field values must match the settled table exactly; do not abbreviate terminal vocabularies.
 
   ```python
   @dataclass(frozen=True, slots=True)
@@ -152,9 +152,9 @@ Tasks 2-4 deliberately precede `spec.py` changes. Cursor must not create a tempo
 
   Immediately below this type, define `WORK_CLASS_REGISTRY: tuple[WorkClassSpec, ...]` as the 15-record literal pinned by the RED exact-set test. A generated/default record is forbidden: every field must be visibly supplied for every row.
 
-- [ ] **Step 5: Implement pure consequence functions.** Add total functions that map authoritative send outcomes to `final_delivery`, `rpc_response_delivery`, provisional-history state, permission approval eligibility, and notice behavior. Unknown class/outcome combinations raise an invariant error; they never default to best effort.
-- [ ] **Step 6: Run GREEN and static checks.** Run the Task 1 selector, Ruff on both files, and `git diff --check`.
-- [ ] **Step 7: Commit.** Commit with `feat: define multi-turn settlement model`.
+- [x] **Step 5: Implement pure consequence functions.** Add total functions that map authoritative send outcomes to `final_delivery`, `rpc_response_delivery`, provisional-history state, permission approval eligibility, and notice behavior. Unknown class/outcome combinations raise an invariant error; they never default to best effort.
+- [x] **Step 6: Run GREEN and static checks.** Run the Task 1 selector, Ruff on both files, and `git diff --check`.
+- [x] **Step 7: Commit.** Commit with `feat: define multi-turn settlement model`.
 
 ### Task 2: Implement `TurnControl` and deterministic turn-owned lifecycle transitions
 
