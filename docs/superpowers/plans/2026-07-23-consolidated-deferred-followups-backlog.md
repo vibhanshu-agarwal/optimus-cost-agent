@@ -372,6 +372,26 @@ and a clean relaunch requires a separately authorized budget-expansion amendment
 unimplemented protocol capability, not a flaky regression or parked architecture blocker. Evidence:
 [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json).
 
+**Current-version evidence (2026-08-22) — the technical premise above is obsolete; the entry is NOT
+unblocked.** A matched A/B control against **Zed 1.16.1** (`eb8e1c8b5502b7007465fbbc465f4a736fa39210`)
+in a hermetic profile established that Zed **does** issue `session/load` when Optimus advertises
+top-level `loadSession`: arm A (unadvertised) recorded `initialize` only; arm B (advertised) recorded
+exactly one `session/load` for the seeded session, with no `session/new` fallback. Zed's capability
+gate is byte-identical between 1.13.1 and 1.16.1, so this is a change in what Optimus advertised, not
+in Zed. The historical `stop_amend_plan_session_load_unreachable` disposition remains **immutable
+evidence for Zed 1.13.1** and is neither retracted nor re-executed.
+
+**This does not unblock Tasks 1-11.** The approved server-side custody feasibility amendment blocks
+frozen Task 0 Steps 5-7 and Tasks 1-11 *regardless of the correlation outcome*; that authority must be
+**superseded by an approved forward-only Plan 11.7 v2**, not treated as lapsed. Status therefore stays
+blocked pending v2 approval. Independent review (Codex, 2026-08-22) records: **GO for drafting v2,
+NO-GO for starting Tasks 1-11 directly.**
+
+**Evidence-custody gap, open:** the 2026-08-22 artifacts (A/B metadata + traces under
+`reports/plan-11-7-task0-artifacts/2026-08-22-current-zed-reprobe/`) are **untracked and not yet
+promoted through the redaction gate**, which the roadmap's own re-probe requirement calls for. They
+are not yet citable as sealed evidence.
+
 ### P11-FU-2: Package Lookup and Security Advisory Gateway Capability
 
 **Raised:** 2026-07-25 during the Plan 11 Gateway requirement review. At intake, the pinned LLD named
@@ -1033,6 +1053,16 @@ session + exhausted correlation budget). Evidence:
 Public gate signature supersession vs digest-pinned amendment Required interfaces is recorded as a
 non-digest current-state note (Task 6). Remains open only for independent reviewer/operator
 disposition of Path A and any future budget-expansion / live-retry path (separately authorized).
+
+**Current-state note (2026-08-22): this entry's governing premise is superseded; disposition pending.**
+This entry exists to prove a same-session prompt retry safe *as a correlation fallback for the case
+where Zed will not issue `session/load`*. Current-version evidence (see `P11-FU-1`) shows Zed 1.16.1
+does issue `session/load` when Optimus advertises the capability, so the fallback this entry gates is
+no longer on the critical path. Independent review (Codex, 2026-08-22) recommends dispositioning this
+as **"Retired — superseded premise", explicitly NOT "Closed"** — its acceptance criteria were never
+met and no accepted live same-session retry was ever obtained. **That retirement is deliberately not
+applied here:** it is an authority change that belongs to the approval of Plan 11.7 v2, not to a
+status edit. No budget-expansion / live-retry path should be pursued in the meantime.
 
 **Triage justification for HIGH (2026-08-15):** This entry governs whether a same-session retry can
 be proven safe before reservation or prompt transmission. Its acceptance criteria bind the exact

@@ -1099,7 +1099,25 @@ result; the [custody note](../../../reports/p11-feat-zed-resume-task0-evidence-c
 records that limitation without classifying it as loss. The separate real-Zed temporary-advertisement
 re-probe must commit sanitized evidence; see the [re-probe report](../../../reports/p11-feat-zed-resume-session-load-reprobe.md).
 Frozen Plan 11.7
-Task 0 Steps 5-7 and Tasks 1-11 remain blocked. The unimplemented error-code subset of frozen Plan 11.7 is now completed by `P11-FU-10` / Plan 11.18; this transfer does not unblock `session/load`. The standalone
+Task 0 Steps 5-7 and Tasks 1-11 remain blocked.
+
+**Current-version evidence (2026-08-22) — supersedes the 1.13.1 technical premise, does not unblock.**
+The real-Zed temporary-advertisement re-probe called for above was executed against **Zed 1.16.1**
+(`eb8e1c8b5502b7007465fbbc465f4a736fa39210`) as a matched A/B control in a hermetic
+`--user-data-dir` profile: arm A (Optimus not advertising) recorded `initialize` only; arm B
+(advertising top-level `loadSession`) recorded exactly one `session/load` for the seeded session, with
+no `session/new` fallback. Zed's capability gate is byte-identical between 1.13.1 and 1.16.1, so the
+change is in what Optimus advertised, not in Zed. The historical
+`stop_amend_plan_session_load_unreachable` seal stands as immutable Zed 1.13.1 evidence and is neither
+retracted nor re-executed. **Tasks 1-11 stay blocked:** the approved custody amendment blocks them
+regardless of correlation outcome, and that authority must be superseded by an approved forward-only
+**Plan 11.7 v2** — independent review (Codex, 2026-08-22) records **GO for drafting v2, NO-GO for
+starting Tasks 1-11 directly**, and additionally requires v2 to reconcile the pre-Plan-11.25 task
+decomposition against the now-merged `ConversationState` / `TurnControl` / `NoticeControl` / settlement
+/ dedicated-writer architecture. **The 2026-08-22 artifacts remain untracked and unpromoted through the
+redaction gate**, so the "must commit sanitized evidence" requirement above is not yet satisfied.
+
+The unimplemented error-code subset of frozen Plan 11.7 is now completed by `P11-FU-10` / Plan 11.18; this transfer does not unblock `session/load`. The standalone
 server-side custody feasibility amendment is approved; the origin-A fixture v2 correction amendment
 is also approved and merged (`5BB327D8…9A4D` / PR #108). Corrected `origin-a-3` executed and sealed
 as Option B process-invalid (`next_corr=4` / `next_prompt=3` unclaimed; DoD success false).
