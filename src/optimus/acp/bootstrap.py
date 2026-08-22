@@ -84,6 +84,8 @@ def build_agent_runner_for_harness(
     # batches redacted events to the Gateway trace-ingress exporter. No
     # Phoenix/OTLP endpoint or LangSmith credential is read or forwarded here --
     # `GatewayObservabilityExporter` only ever talks to the one-key Gateway.
+    # Plan 11.25 Task 9: the same fanout is the non-debug ACP_TURN_SETTLEMENT sink
+    # (threaded via AgentRunner.event_sink → AcpDuplexAdapter.settlement_sink).
     telemetry_sink = TelemetryFanout(
         jsonl_writer=JsonlTelemetryWriter.for_workspace(resolved_workspace),
         redis_sink=RedisTelemetryEventSink(redis_runtime.telemetry_adapter()),
@@ -149,10 +151,17 @@ def build_configured_server(
     # than read from os.environ per-request deep inside AcpDuplexAdapter.
     max_planning_turns = resolve_max_planning_turns(environ)
     client_mcp_runtime = build_client_mcp_runtime(workspace_root=resolved_workspace)
+    from optimus.acp.conversation import build_conversation_sanitizer_inputs
+
+    conversation_sanitizer_inputs = build_conversation_sanitizer_inputs(
+        environ,
+        workspace_root=resolved_workspace,
+    )
     return AcpStreamServer(
         dispatcher=dispatcher,
         max_planning_turns=max_planning_turns,
         client_mcp_runtime=client_mcp_runtime,
+        conversation_sanitizer_inputs=conversation_sanitizer_inputs,
     )
 
 

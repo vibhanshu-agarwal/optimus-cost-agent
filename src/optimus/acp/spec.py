@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import itertools
 import uuid
@@ -9,8 +10,39 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from optimus.acp.conversation import (
+    ConversationOutcome,
+    ConversationSanitizer,
+    ConversationSanitizerInputs,
+    ConversationState,
+)
 from optimus.acp.debug_trace import acp_debug_log
-from optimus.acp.errors import INVALID_REQUEST, METHOD_NOT_FOUND, AcpOutboundError, JsonRpcError, error_response, success_response
+from optimus.acp.errors import (
+    INVALID_REQUEST,
+    METHOD_NOT_FOUND,
+    REQUEST_CANCELLED,
+    AcpOutboundError,
+    JsonRpcError,
+    error_response,
+    success_response,
+)
+from optimus.acp.lifecycle import (
+    NonTurnResponseEnvelope,
+    NoticeControl,
+    ResponseEnvelope,
+    ResponseOwnershipSlot,
+    SendKind,
+    TurnControl,
+    TurnResponseEnvelope,
+)
+from optimus.acp.settlement import (
+    ConversationCommit,
+    EffectState,
+    FinalDelivery,
+    RpcResponseDelivery,
+    Settlement,
+    TurnSettlementSnapshot,
+)
 from optimus.acp.shapes import (
     build_agent_message_chunk_notification,
     build_plan_session_update,
@@ -74,16 +106,21 @@ class AcpSpecSession:
     cwd: Path
     execution_mode: ExecutionMode = ExecutionMode.AGENT
     client_mcp_state: ClientMcpSessionState | None = None
+    conversation: ConversationState | None = None
 
 
 @dataclass
 class AcpPromptTurn:
     session_id: str
-    request_id: str | int | None
-    run_id: str
-    cancelled: bool = False
+    turn_seq: int
+    turn_control: TurnControl
     pending_permission_request_id: str | int | None = None
     permission_tool_call_id: str | None = None
+    permission_handle: Any | None = None
+
+    @property
+    def run_id(self) -> str:
+        return f"{self.session_id}:{self.turn_seq}"
 
 
 class InMemoryAcpSpecSessionStore:
@@ -91,8 +128,12 @@ class InMemoryAcpSpecSessionStore:
         self._sessions: dict[str, AcpSpecSession] = {}
         self._closed_state_ids: set[str] = set()
 
-    def create(self, *, cwd: Path) -> AcpSpecSession:
-        session = AcpSpecSession(session_id=f"session-{uuid.uuid4().hex}", cwd=cwd.resolve())
+    def create(self, *, cwd: Path, conversation: ConversationState | None = None) -> AcpSpecSession:
+        session = AcpSpecSession(
+            session_id=f"session-{uuid.uuid4().hex}",
+            cwd=cwd.resolve(),
+            conversation=conversation,
+        )
         self._sessions[session.session_id] = session
         return session
 
@@ -197,6 +238,9 @@ class AcpDuplexAdapter:
         outbound: AcpOutboundChannel,
         max_planning_turns: int | None = None,
         client_mcp_runtime: ClientMcpRuntime | None = None,
+        sanitizer_inputs: ConversationSanitizerInputs | None = None,
+        notice_control: NoticeControl | None = None,
+        settlement_sink: Any | None = None,
     ) -> None:
         self._runner = runner
         self._workspace_root = Path(workspace_root).resolve()
@@ -208,23 +252,129 @@ class AcpDuplexAdapter:
         # and threaded in here, rather than read from os.environ per prompt.
         self._max_planning_turns = max_planning_turns
         self._client_mcp_runtime = client_mcp_runtime
+        self._sanitizer_inputs = sanitizer_inputs or ConversationSanitizerInputs(
+            known_secrets=(),
+            path_aliases=(),
+            known_pii=(),
+        )
+        self._notice_control = notice_control
+        self._settlement_sink = settlement_sink
         self._closed = False
 
-    async def handle_client_request(self, request: dict[str, Any]) -> dict[str, Any]:
+    def _remove_active_turn(self, session_id: str, turn_seq: int, control: TurnControl) -> bool:
+        current = self._active_turns.get(session_id)
+        if current is None:
+            return False
+        if current.turn_seq != turn_seq or current.turn_control is not control:
+            return False
+        del self._active_turns[session_id]
+        return True
+
+    def _non_turn(
+        self,
+        response: dict[str, Any],
+        ownership_slot: ResponseOwnershipSlot | None = None,
+    ) -> NonTurnResponseEnvelope:
+        return NonTurnResponseEnvelope(response=response, ownership_slot=ownership_slot)
+
+    def _turn(
+        self,
+        response: dict[str, Any],
+        turn_control: TurnControl,
+        ownership_slot: ResponseOwnershipSlot | None = None,
+    ) -> TurnResponseEnvelope:
+        return TurnResponseEnvelope(
+            response=response,
+            turn_control=turn_control,
+            ownership_slot=ownership_slot,
+        )
+
+    def _new_conversation(self) -> ConversationState:
+        return ConversationState(ConversationSanitizer(self._sanitizer_inputs))
+
+    def _planner_task(self, conversation: ConversationState, sanitized_prompt: str) -> str:
+        if not conversation.records:
+            return sanitized_prompt
+        return f"{conversation.planner_envelope()}\n{sanitized_prompt}"
+
+    def _placeholder_settlement(self, turn: AcpPromptTurn) -> TurnSettlementSnapshot:
+        fields = turn.turn_control.current_settlement_fields()
+        settlement = (
+            Settlement.TRANSPORT_ABANDONED
+            if fields["post_teardown"]
+            else Settlement.COMPLETED
+        )
+        return TurnSettlementSnapshot(
+            settlement=settlement,
+            final_delivery=FinalDelivery(fields["final_delivery"]),
+            rpc_response_delivery=RpcResponseDelivery(fields["rpc_response_delivery"]),
+            conversation_commit=ConversationCommit.NOT_COMMITTED,
+            effect_state=EffectState(fields["effect_state"]),
+            cost_complete=bool(fields["cost_complete"]),
+        )
+
+    def _settlement_evidence_callback(self, turn: AcpPromptTurn):
+        def _callback(outcome: TurnSettlementSnapshot) -> None:
+            from datetime import UTC, datetime
+
+            from optimus.telemetry.events import TelemetryEvent
+            from optimus.telemetry.fanout import emit_acp_turn_settlement_contained
+
+            fields = turn.turn_control.current_settlement_fields()
+            phase = (
+                "transport_abandoned"
+                if fields["post_teardown"]
+                else "completed"
+            )
+            event = TelemetryEvent.acp_turn_settlement(
+                run_id=turn.run_id,
+                session_id=turn.session_id,
+                request_id=f"{turn.run_id}:settlement",
+                occurred_at=datetime.now(tz=UTC),
+                turn_seq=turn.turn_seq,
+                interruption_phase=phase,
+                settlement=outcome.settlement.value,
+                final_delivery=outcome.final_delivery.value,
+                rpc_response_delivery=outcome.rpc_response_delivery.value,
+                conversation_commit=outcome.conversation_commit.value,
+                effect_state=outcome.effect_state.value,
+                provider_attempt_started=bool(fields["provider_attempt_started"]),
+                cost_complete=outcome.cost_complete,
+                prior_history_flush=bool(fields["prior_history_flush"]),
+                post_teardown=bool(fields["post_teardown"]),
+            )
+            emit_acp_turn_settlement_contained(self._settlement_sink, event)
+
+        return _callback
+
+    async def handle_client_request(
+        self,
+        request: dict[str, Any],
+        ownership_slot: ResponseOwnershipSlot | None = None,
+    ) -> ResponseEnvelope:
         request_id = request.get("id")
         if request.get("jsonrpc") != "2.0" or "method" not in request:
-            return error_response(request_id, JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
+            return self._non_turn(
+                error_response(request_id, JsonRpcError(code=INVALID_REQUEST, message="invalid request")),
+                ownership_slot,
+            )
 
         method = request["method"]
         if method == "initialize":
-            return self._handle_initialize(request)
+            return self._non_turn(self._handle_initialize(request), ownership_slot)
         if method == "session/new":
-            return await self._handle_session_new(request)
+            return self._non_turn(await self._handle_session_new(request), ownership_slot)
         if method == "session/prompt":
-            return await self._handle_session_prompt(request)
+            return await self._handle_session_prompt(request, ownership_slot=ownership_slot)
         if method in {"session/update", "session/request_permission"}:
-            return error_response(request_id, JsonRpcError(code=METHOD_NOT_FOUND, message=f"method not found: {method}"))
-        return error_response(request_id, JsonRpcError(code=METHOD_NOT_FOUND, message=f"method not found: {method}"))
+            return self._non_turn(
+                error_response(request_id, JsonRpcError(code=METHOD_NOT_FOUND, message=f"method not found: {method}")),
+                ownership_slot,
+            )
+        return self._non_turn(
+            error_response(request_id, JsonRpcError(code=METHOD_NOT_FOUND, message=f"method not found: {method}")),
+            ownership_slot,
+        )
 
     def close_all(self) -> None:
         """Cancel outstanding ACP permission work, then close session states exactly once."""
@@ -232,7 +382,10 @@ class AcpDuplexAdapter:
             return
         self._closed = True
         for turn in list(self._active_turns.values()):
-            if turn.pending_permission_request_id is not None:
+            turn.turn_control.request_session_cancel()
+            if turn.permission_handle is not None:
+                turn.permission_handle.cancel()
+            elif turn.pending_permission_request_id is not None:
                 self._outbound.cancel_request(
                     turn.pending_permission_request_id,
                     {"outcome": {"outcome": "cancelled"}},
@@ -260,8 +413,10 @@ class AcpDuplexAdapter:
         turn = self._active_turns.get(session_id)
         if turn is None:
             return
-        turn.cancelled = True
-        if turn.pending_permission_request_id is not None:
+        turn.turn_control.request_session_cancel()
+        if turn.permission_handle is not None:
+            turn.permission_handle.cancel()
+        elif turn.pending_permission_request_id is not None:
             self._outbound.cancel_request(turn.pending_permission_request_id, {"outcome": {"outcome": "cancelled"}})
 
     def _handle_initialize(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -308,7 +463,7 @@ class AcpDuplexAdapter:
             return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
 
         # Provisional in-memory session after input-shape validation.
-        session = self._sessions.create(cwd=cwd)
+        session = self._sessions.create(cwd=cwd, conversation=self._new_conversation())
         empty_state = ClientMcpSessionState(session_id=session.session_id)
         session.client_mcp_state = empty_state
 
@@ -353,37 +508,97 @@ class AcpDuplexAdapter:
         session.client_mcp_state = state
         return success_response(request_id=request.get("id"), result={"sessionId": session.session_id})
 
-    async def _handle_session_prompt(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_session_prompt(
+        self,
+        request: dict[str, Any],
+        *,
+        ownership_slot: ResponseOwnershipSlot | None = None,
+    ) -> ResponseEnvelope:
         params = request.get("params")
         if not isinstance(params, dict):
-            return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
+            return self._non_turn(
+                error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request")),
+                ownership_slot,
+            )
         session_id = params.get("sessionId")
         prompt = params.get("prompt")
         if not isinstance(session_id, str) or not isinstance(prompt, list):
-            return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
+            return self._non_turn(
+                error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request")),
+                ownership_slot,
+            )
         session = self._sessions.get(session_id)
         if session is None:
-            return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="unknown session"))
+            return self._non_turn(
+                error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="unknown session")),
+                ownership_slot,
+            )
         task = _text_from_content_blocks(prompt)
         if not task:
-            return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="empty prompt"))
+            return self._non_turn(
+                error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="empty prompt")),
+                ownership_slot,
+            )
 
-        run_id = f"{session_id}:{request.get('id')}"
-        turn = AcpPromptTurn(session_id=session_id, request_id=request.get("id"), run_id=run_id)
+        if session_id in self._active_turns:
+            return self._non_turn(
+                error_response(
+                    request.get("id"),
+                    JsonRpcError(code=REQUEST_CANCELLED, message="a turn is already in progress"),
+                ),
+                ownership_slot,
+            )
+
+        conversation = session.conversation
+        if conversation is None:
+            conversation = self._new_conversation()
+            session.conversation = conversation
+
+        admission = conversation.prepare_admission(task)
+        if not admission.admitted:
+            return await self._refuse_prompt(
+                request_id=request.get("id"),
+                session_id=session_id,
+                conversation=conversation,
+                reason=admission.refuse_reason or "refused",
+                ownership_slot=ownership_slot,
+            )
+
+        assert admission.turn_seq is not None
+        turn_seq = conversation.allocate_turn_seq()
+        if turn_seq != admission.turn_seq:
+            # allocate must match the admission probe; invariant otherwise.
+            turn_seq = admission.turn_seq
+            conversation._next_turn_seq = turn_seq + 1  # noqa: SLF001
+
+        turn_control = TurnControl(session_id=session_id, turn_seq=turn_seq)
+        turn = AcpPromptTurn(session_id=session_id, turn_seq=turn_seq, turn_control=turn_control)
+        turn_control.set_finalization_hooks(
+            active_map_remover=self._remove_active_turn,
+            settlement_callback=self._settlement_evidence_callback(turn),
+        )
+        if ownership_slot is not None:
+            ownership_slot.bind_turn(turn_control)
         self._active_turns[session_id] = turn
+        run_id = turn.run_id
         # region agent log
         acp_debug_log(
             location="spec.py:_handle_session_prompt:entry",
             message="session/prompt started",
-            data={"session_id": session_id, "request_id": request.get("id"), "run_id": run_id},
+            data={"session_id": session_id, "request_id": request.get("id"), "run_id": run_id, "turn_seq": turn_seq},
             hypothesis_id="H1",
         )
         # endregion
         try:
+            if admission.crosses_warning and self._notice_control is not None:
+                if conversation.note_warning_threshold_for_attempt(admission.projected_bytes):
+                    self._notice_control.allocate_warning_sequence()
+
+            planner_task = self._planner_task(conversation, admission.sanitized_user_prompt)
             planning_fields: dict[str, object] = {
                 "run_id": run_id,
                 "session_id": session_id,
-                "task": task,
+                "task": planner_task,
                 "execution_mode": session.execution_mode,
                 "workspace_root": session.cwd,
             }
@@ -401,7 +616,7 @@ class AcpDuplexAdapter:
                 if default_observer is not None:
                     default_observer(event)
                 asyncio.run_coroutine_threadsafe(
-                    self._emit_planning_progress(session_id=session_id, event=event),
+                    self._emit_planning_progress(session_id=session_id, event=event, turn=turn),
                     loop,
                 )
 
@@ -411,7 +626,14 @@ class AcpDuplexAdapter:
                 **self._runner_runtime_kwargs(
                     planning_progress_observer=_session_progress_observer,
                     session=session,
+                    halt_requested=turn.turn_control.halt_requested,
+                    operation_control=turn.turn_control,
                 ),
+            )
+            conversation.apply_planning_cost_once(
+                turn_seq,
+                cost_usd=planning_result.total_cost_usd,
+                cost_complete=planning_result.cost_complete,
             )
             # region agent log
             acp_debug_log(
@@ -426,16 +648,49 @@ class AcpDuplexAdapter:
                 hypothesis_id="H3",
             )
             # endregion
-            await self._emit_result_updates(session_id=session_id, result=planning_result, planning=True)
-            if turn.cancelled:
-                return success_response(request_id=request.get("id"), result={"stopReason": "cancelled"})
+            await self._emit_result_updates(session_id=session_id, result=planning_result, planning=True, turn=turn)
+            if turn.turn_control.halt_requested():
+                await self._commit_turn(
+                    conversation=conversation,
+                    turn=turn,
+                    sanitized_user_prompt=admission.sanitized_user_prompt,
+                    result=planning_result,
+                    outcome=ConversationOutcome.CANCELLED,
+                )
+                return self._turn(
+                    success_response(request_id=request.get("id"), result={"stopReason": "cancelled"}),
+                    turn_control,
+                    ownership_slot,
+                )
             if planning_result.status is not AgentRunStatus.AWAITING_APPROVAL:
-                await self._emit_completion_message(session_id=session_id, result=planning_result)
-                return success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(planning_result)})
+                await self._emit_completion_message(session_id=session_id, result=planning_result, turn=turn)
+                await self._commit_turn(
+                    conversation=conversation,
+                    turn=turn,
+                    sanitized_user_prompt=admission.sanitized_user_prompt,
+                    result=planning_result,
+                    outcome=_conversation_outcome(planning_result),
+                )
+                return self._turn(
+                    success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(planning_result)}),
+                    turn_control,
+                    ownership_slot,
+                )
 
             if not planning_result.plan_hash:
-                await self._emit_completion_message(session_id=session_id, result=planning_result)
-                return success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(planning_result)})
+                await self._emit_completion_message(session_id=session_id, result=planning_result, turn=turn)
+                await self._commit_turn(
+                    conversation=conversation,
+                    turn=turn,
+                    sanitized_user_prompt=admission.sanitized_user_prompt,
+                    result=planning_result,
+                    outcome=_conversation_outcome(planning_result),
+                )
+                return self._turn(
+                    success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(planning_result)}),
+                    turn_control,
+                    ownership_slot,
+                )
 
             permission_result = await self._request_permission(turn=turn, result=planning_result)
             # region agent log
@@ -454,8 +709,21 @@ class AcpDuplexAdapter:
                 hypothesis_id="GAP1",
             )
             # endregion
-            if turn.cancelled or not _permission_approved(permission_result):
-                return success_response(request_id=request.get("id"), result={"stopReason": "cancelled"})
+            if turn.turn_control.halt_requested() or not _permission_approved(permission_result):
+                await self._commit_turn(
+                    conversation=conversation,
+                    turn=turn,
+                    sanitized_user_prompt=admission.sanitized_user_prompt,
+                    result=planning_result,
+                    outcome=ConversationOutcome.CANCELLED
+                    if turn.turn_control.halt_requested()
+                    else ConversationOutcome.REJECTED,
+                )
+                return self._turn(
+                    success_response(request_id=request.get("id"), result={"stopReason": "cancelled"}),
+                    turn_control,
+                    ownership_slot,
+                )
 
             approved_request = planning_request.model_copy(
                 update={
@@ -469,7 +737,10 @@ class AcpDuplexAdapter:
             approved_result = await asyncio.to_thread(
                 self._runner.run,
                 approved_request,
-                **self._runner_runtime_kwargs(session=session),
+                **self._runner_runtime_kwargs(
+                    session=session,
+                    operation_control=turn.turn_control,
+                ),
             )
             # region agent log
             acp_debug_log(
@@ -486,9 +757,20 @@ class AcpDuplexAdapter:
                 run_id="post-fix",
             )
             # endregion
-            await self._emit_result_updates(session_id=session_id, result=approved_result, planning=False)
-            await self._emit_completion_message(session_id=session_id, result=approved_result)
-            return success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(approved_result)})
+            await self._emit_result_updates(session_id=session_id, result=approved_result, planning=False, turn=turn)
+            await self._emit_completion_message(session_id=session_id, result=approved_result, turn=turn)
+            await self._commit_turn(
+                conversation=conversation,
+                turn=turn,
+                sanitized_user_prompt=admission.sanitized_user_prompt,
+                result=approved_result,
+                outcome=_conversation_outcome(approved_result),
+            )
+            return self._turn(
+                success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(approved_result)}),
+                turn_control,
+                ownership_slot,
+            )
         except AcpOutboundError as exc:
             # region agent log
             acp_debug_log(
@@ -498,12 +780,66 @@ class AcpDuplexAdapter:
                 hypothesis_id="H1",
             )
             # endregion
-            return error_response(
-                request_id=request.get("id"),
-                error=JsonRpcError(code=exc.code, message=exc.message, data=exc.data),
+            return self._turn(
+                error_response(
+                    request_id=request.get("id"),
+                    error=JsonRpcError(code=exc.code, message=exc.message, data=exc.data),
+                ),
+                turn_control,
+                ownership_slot,
             )
         finally:
-            self._active_turns.pop(session_id, None)
+            turn.turn_control.finalize_once(self._placeholder_settlement(turn))
+
+    async def _refuse_prompt(
+        self,
+        *,
+        request_id: str | int | None,
+        session_id: str,
+        conversation: ConversationState,
+        reason: str,
+        ownership_slot: ResponseOwnershipSlot | None,
+    ) -> NonTurnResponseEnvelope:
+        del conversation
+        message = (
+            "Conversation capacity is exhausted; this prompt was refused."
+            if reason in {"cap", "cap_closed"}
+            else "Conversation delivery is indeterminate; this prompt was refused."
+            if reason == "delivery_indeterminate"
+            else "This prompt was refused."
+        )
+        # Best-effort explanatory notice; refusal RPC response still returns on notify failure.
+        with contextlib.suppress(Exception):
+            await self._outbound.notify(
+                "session/update",
+                build_agent_message_chunk_notification(session_id=session_id, text=message),
+            )
+        return self._non_turn(
+            success_response(request_id=request_id, result={"stopReason": "refusal"}),
+            ownership_slot,
+        )
+
+    async def _commit_turn(
+        self,
+        *,
+        conversation: ConversationState,
+        turn: AcpPromptTurn,
+        sanitized_user_prompt: str,
+        result: AgentRunResult,
+        outcome: ConversationOutcome,
+    ) -> None:
+        raw_plan = result.candidate_plan_text or ""
+        plan_text = conversation.sanitize_text(raw_plan) if raw_plan else ""
+        completion = conversation.sanitize_text(_completion_message(result))
+        decision = conversation.prepare_commit(
+            turn.turn_seq,
+            sanitized_user_prompt=sanitized_user_prompt,
+            sanitized_plan_text=plan_text,
+            sanitized_completion_text=completion,
+            outcome=outcome,
+            effect_state=EffectState.NONE,
+        )
+        conversation.commit_after_final_flush(decision)
 
     async def _request_permission(self, *, turn: AcpPromptTurn, result: AgentRunResult) -> dict[str, Any]:
         tool_call_id = new_tool_call_id()
@@ -542,6 +878,8 @@ class AcpDuplexAdapter:
         *,
         session: AcpSpecSession,
         planning_progress_observer: Any | None = None,
+        halt_requested: Any | None = None,
+        operation_control: Any | None = None,
     ) -> dict[str, Any]:
         """Pass client-MCP runtime kwargs only when the runner accepts them."""
         kwargs: dict[str, Any] = {}
@@ -557,6 +895,10 @@ class AcpDuplexAdapter:
 
         if planning_progress_observer is not None:
             _maybe("planning_progress_observer", planning_progress_observer)
+        if halt_requested is not None:
+            _maybe("halt_requested", halt_requested)
+        if operation_control is not None:
+            _maybe("operation_control", operation_control)
         _maybe("client_mcp_service", _client_mcp_service(session))
         _maybe("mcp_permission_broker", self._mcp_permission_broker_for(session))
         return kwargs
@@ -583,8 +925,19 @@ class AcpDuplexAdapter:
             loop=loop,
         )
 
-    async def _emit_result_updates(self, *, session_id: str, result: AgentRunResult, planning: bool) -> None:
+    async def _emit_result_updates(
+        self,
+        *,
+        session_id: str,
+        result: AgentRunResult,
+        planning: bool,
+        turn: AcpPromptTurn | None = None,
+    ) -> None:
         if planning:
+            if turn is not None:
+                lease = turn.turn_control.try_start(SendKind.PROVISIONAL_PLAN, "plan")
+                if not lease.granted:
+                    return
             update_payload = build_plan_session_update(session_id=session_id, plan_text=result.output_text)
             # region agent log
             acp_debug_log(
@@ -626,13 +979,28 @@ class AcpDuplexAdapter:
             # endregion
             await self._outbound.notify("session/update", payload)
 
-    async def _emit_completion_message(self, *, session_id: str, result: AgentRunResult) -> None:
+    async def _emit_completion_message(
+        self,
+        *,
+        session_id: str,
+        result: AgentRunResult,
+        turn: AcpPromptTurn | None = None,
+    ) -> None:
+        if turn is not None:
+            turn.turn_control.seal_final_delivery()
+            lease = turn.turn_control.start_terminal_message("completed_plan")
+            if not lease.granted:
+                return
         completed_plan = build_plan_session_update(
             session_id=session_id,
             plan_text=result.output_text,
             entry_status="completed",
         )
         await self._outbound.notify("session/update", completed_plan)
+        if turn is not None:
+            lease = turn.turn_control.start_terminal_message("final_text")
+            if not lease.granted:
+                return
         message = _completion_message(result)
         message_payload = build_agent_message_chunk_notification(session_id=session_id, text=message)
         # region agent log
@@ -651,7 +1019,20 @@ class AcpDuplexAdapter:
         # endregion
         await self._outbound.notify("session/update", message_payload)
 
-    async def _emit_planning_progress(self, *, session_id: str, event: PlanningProgressEvent) -> None:
+    async def _emit_planning_progress(
+        self,
+        *,
+        session_id: str,
+        event: PlanningProgressEvent,
+        turn: AcpPromptTurn | None = None,
+    ) -> None:
+        if turn is not None:
+            lease = turn.turn_control.try_start(
+                SendKind.PROGRESS,
+                f"progress-{event.settled_turn}",
+            )
+            if not lease.granted:
+                return
         payload = build_planning_progress_notification(
             session_id=session_id,
             settled_turn=event.settled_turn,
@@ -729,6 +1110,16 @@ def _text_from_content_blocks(blocks: list[Any]) -> str:
         if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str):
             texts.append(block["text"])
     return "\n".join(texts).strip()
+
+
+def _conversation_outcome(result: AgentRunResult) -> ConversationOutcome:
+    if result.status is AgentRunStatus.COMPLETED:
+        return ConversationOutcome.COMPLETED
+    if result.status is AgentRunStatus.TERMINATED and result.stop_reason == "cancelled":
+        return ConversationOutcome.CANCELLED
+    if result.status is AgentRunStatus.AWAITING_APPROVAL:
+        return ConversationOutcome.REJECTED
+    return ConversationOutcome.FAILED
 
 
 def _stop_reason(result: AgentRunResult) -> str:

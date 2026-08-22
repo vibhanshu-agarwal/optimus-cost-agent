@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from typing import Any
 
 
@@ -218,6 +219,26 @@ def build_tool_call_update_notification(
             "content": [tool_call_text_content(summary)],
         },
     }
+
+
+def build_usage_update(
+    *,
+    session_id: str,
+    used: int,
+    size: int,
+    cost: Decimal | None = None,
+) -> dict[str, Any]:
+    """ACP UsageUpdate: used/size are uint64 token gauges (floor(bytes/4))."""
+    if used < 0 or size < 0:
+        raise ValueError("used and size must be non-negative integers")
+    update: dict[str, Any] = {
+        "sessionUpdate": "usage_update",
+        "used": int(used),
+        "size": int(size),
+    }
+    if cost is not None:
+        update["cost"] = {"amount": format(cost, "f"), "currency": "USD"}
+    return {"sessionId": session_id, "update": update}
 
 
 def new_tool_call_id() -> str:

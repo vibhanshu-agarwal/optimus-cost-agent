@@ -569,6 +569,38 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.conversation:render_conversation_envelope:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.conversation:render_conversation_envelope:json_serialization serializes already-sanitized five-field conversation records into a deterministic planner/admission envelope; it is not a diagnostic export and must preserve exact rendered UTF-8 bytes for the cap.",
+      "sanitizer": "conversation sanitizer applied before render; schema-limited five-field records only",
+      "test_node": "tests/unit/acp/test_conversation.py::test_canonical_render_is_deterministic_and_keys_by_turn_seq",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.outbound_writer:DedicatedOutboundWriter._process_item:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization at optimus.acp.outbound_writer:DedicatedOutboundWriter._process_item:json_serialization encodes already-formed ACP NDJSON payloads for the dedicated writer transport; sanitizing would corrupt the protocol contract.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/acp/test_outbound_writer.py::test_fifo_serialization_blocks_second_write_until_first_completes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:StdioNdjsonLineWriter.write_bytes:text_write",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol write at optimus.acp.server:StdioNdjsonLineWriter.write_bytes:text_write emits already-encoded ACP NDJSON bytes to the peer transport; it is not diagnostic retention.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/acp/test_stdio_ndjson.py::test_stdio_ndjson_line_writer_writes_bytes_to_bytesio",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.state_store:RedisAgentStateStore.persist_plan:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "optimus.agent.state_store:RedisAgentStateStore.persist_plan:redis_hash_write performs short-TTL functional plan replay with clean/partial failure reporting; task, plan_text, and workspace_root require exact round-trip fidelity, so diagnostic sanitization would break replay.",
+      "sanitizer": "functional replay schema and TTL; no diagnostic sanitization",
+      "test_node": "tests/unit/agent/test_state_store.py::test_persist_plan_reports_persisted_for_in_memory",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.launch_approval_cli:_cmd_approve:stderr_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.acp.launch_approval_cli:_cmd_approve:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",

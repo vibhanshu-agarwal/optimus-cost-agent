@@ -1,0 +1,164 @@
+{
+  "scope": "BINDING + PARTIAL premise sentinels. NOT a completeness gate. NOT a correctness gate.",
+  "sentinel_facts_checked": [
+    "1b",
+    "5",
+    "13",
+    "15",
+    "16",
+    "17"
+  ],
+  "not_checked": "\u00a71A facts outside the sentinel list; operator-ruling inventory; declared-state coverage; adjective sweep; all semantic correctness",
+  "contract": "D:\\Projects\\Development\\Python\\optimus-agent-handoff\\BRAINSTORM-multi-turn-conversation-SETTLED.md",
+  "contract_sha256": "9630C0CC67D033DB647587602E2797F4ACE9E937F3F0AB748FF6DE14EDC67F38",
+  "audit_script_sha256": "1F681651E8C70E19692DB887453FA625E0CD537F9840FE0E21E4F0D853AB76EB",
+  "revision": "7b82d3f1c8890297904d75708ee8dbb45e742e67",
+  "results": [
+    {
+      "predicate": "bind: contract SHA-256",
+      "command": "sha256(BRAINSTORM-multi-turn-conversation-SETTLED.md)",
+      "observed": {
+        "expected": "9630C0CC67D033DB647587602E2797F4ACE9E937F3F0AB748FF6DE14EDC67F38",
+        "actual": "9630C0CC67D033DB647587602E2797F4ACE9E937F3F0AB748FF6DE14EDC67F38"
+      },
+      "command_exit_code": null,
+      "verdict": "PASS"
+    },
+    {
+      "predicate": "bind: audit-script SHA-256 asserted (detects drift, not tampering)",
+      "command": "sha256(self_audit_multi_turn.py)",
+      "observed": {
+        "expected": "1F681651E8C70E19692DB887453FA625E0CD537F9840FE0E21E4F0D853AB76EB",
+        "actual": "1F681651E8C70E19692DB887453FA625E0CD537F9840FE0E21E4F0D853AB76EB"
+      },
+      "command_exit_code": null,
+      "verdict": "PASS"
+    },
+    {
+      "predicate": "bind: source revision",
+      "command": "git rev-parse HEAD",
+      "observed": {
+        "expected": "7b82d3f1c8890297904d75708ee8dbb45e742e67",
+        "actual": "7b82d3f1c8890297904d75708ee8dbb45e742e67"
+      },
+      "command_exit_code": 0,
+      "verdict": "PASS"
+    },
+    {
+      "predicate": "bind: tracked tree clean (src, tests)",
+      "command": "git status --porcelain -- src tests",
+      "observed": "(clean)",
+      "command_exit_code": 0,
+      "verdict": "PASS"
+    },
+    {
+      "predicate": "sentinel fact-1b: run_id from wire request id",
+      "command": "read src/optimus/acp/spec.py:371",
+      "observed": "ownership_slot,",
+      "command_exit_code": null,
+      "verdict": "FAIL"
+    },
+    {
+      "predicate": "sentinel fact-15a: completed_plan notify",
+      "command": "read src/optimus/acp/spec.py:635",
+      "observed": "cost_complete=planning_result.cost_complete,",
+      "command_exit_code": null,
+      "verdict": "FAIL"
+    },
+    {
+      "predicate": "sentinel fact-15b: message_payload notify",
+      "command": "read src/optimus/acp/spec.py:652",
+      "observed": "await self._commit_turn(",
+      "command_exit_code": null,
+      "verdict": "FAIL"
+    },
+    {
+      "predicate": "sentinel fact-16: write_text non-atomic",
+      "command": "read src/optimus/tools/mutation_tools.py:72",
+      "observed": "Path(path).write_text(content, encoding=\"utf-8\")",
+      "command_exit_code": null,
+      "verdict": "PASS"
+    },
+    {
+      "predicate": "sentinel fact-17: server generic except",
+      "command": "read src/optimus/acp/server.py:321",
+      "observed": "",
+      "command_exit_code": null,
+      "verdict": "FAIL"
+    },
+    {
+      "predicate": "sentinel fact-15c (final-delivery only): 635/652 are inside _emit_completion_message",
+      "command": "git grep 'async def _emit_completion_message' -- src/optimus/acp/spec.py",
+      "observed": {
+        "def_at": 982
+      },
+      "command_exit_code": 0,
+      "verdict": "FAIL"
+    },
+    {
+      "predicate": "sentinel fact-15d: spec.py:601 is the PENDING PLAN update (history-bearing), not tool status",
+      "command": "read src/optimus/acp/spec.py:601",
+      "observed": "\"execution_mode\": session.execution_mode,",
+      "command_exit_code": null,
+      "verdict": "FAIL"
+    },
+    {
+      "predicate": "sentinel fact-15e: the value notified at :601 is produced by build_plan_session_update(plan_text=result.output_text)",
+      "command": "walk back from src/optimus/acp/spec.py:601 to its producing assignment",
+      "observed": "",
+      "command_exit_code": null,
+      "verdict": "FAIL"
+    },
+    {
+      "predicate": "sentinel fact-15f: :627's payload is produced by build_tool_call_notification(...), inside the per-tool_call loop (tool status, not plan text)",
+      "command": "walk back from src/optimus/acp/spec.py:627 within the tool_call loop to its producing assignment",
+      "observed": {
+        "has_tool_loop": false,
+        "producer": "",
+        "line627": "session=session,"
+      },
+      "command_exit_code": null,
+      "verdict": "FAIL"
+    },
+    {
+      "predicate": "sentinel fact-5: ACP never sets completion_condition",
+      "command": "git grep completion_condition -- src/optimus/acp/spec.py",
+      "observed": {
+        "matches": "(none)"
+      },
+      "command_exit_code": 1,
+      "verdict": "PASS"
+    },
+    {
+      "predicate": "sentinel fact-13: AgentToolCall fields exactly match the contract list (no lifecycle state)",
+      "command": "python -c 'sorted(AgentToolCall.model_fields)'",
+      "observed": {
+        "expected": "['authorization_outcome', 'cost_usd', 'summary', 'tool_name']",
+        "actual": "['authorization_outcome', 'cost_usd', 'summary', 'tool_name']"
+      },
+      "command_exit_code": 0,
+      "verdict": "PASS"
+    },
+    {
+      "predicate": "sentinel premise: OPTIMUS_API_KEY is the only SECRET-TIER variable propagated to AGENT_CHILD. NOTE (review 12 F2): this proves the SECRET tier ONLY \u2014 it is NOT the whole credential boundary; see the userinfo sentinel below.",
+      "command": "python -c 'SECRET-tier AGENT_CHILD names from LAUNCH_VARIABLE_POLICIES'",
+      "observed": {
+        "expected": "['OPTIMUS_API_KEY']",
+        "actual": "['OPTIMUS_API_KEY']"
+      },
+      "command_exit_code": 0,
+      "verdict": "PASS"
+    },
+    {
+      "predicate": "sentinel premise: exactly these AGENT_CHILD variables carry uri_userinfo (their extracted PASSWORD component, raw and percent-decoded, must enter known_secrets -- NOT the username; this checks only WHICH variables carry userinfo, not which components are extracted from them; corrected review 15 F4)",
+      "command": "python -c 'uri_userinfo AGENT_CHILD names'",
+      "observed": {
+        "expected": "['OPTIMUS_GATEWAY_URL', 'OPTIMUS_REDIS_URL']",
+        "actual": "['OPTIMUS_GATEWAY_URL', 'OPTIMUS_REDIS_URL']"
+      },
+      "command_exit_code": 0,
+      "verdict": "PASS"
+    }
+  ],
+  "all_pass": false
+}

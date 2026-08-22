@@ -46,3 +46,16 @@ async def test_deliver_client_response_user_cancel_still_returns_cancelled_outco
     channel.cancel_request(request_id, {"outcome": {"outcome": "cancelled"}})
     result = await request_task
     assert result == {"outcome": {"outcome": "cancelled"}}
+
+
+async def test_allocate_permission_request_is_synchronous_correlation():
+    writer = FakeWriter()
+    channel = NdjsonOutboundChannel(writer)
+    handle = channel.allocate_permission_request(
+        "session/request_permission", {"sessionId": "s1"}
+    )
+    assert handle.request_id in channel._futures
+    assert not handle.response_future.done()
+    handle.cancel()
+    assert handle.request_id not in channel._futures
+    assert handle.response_future.result() == {"outcome": {"outcome": "cancelled"}}

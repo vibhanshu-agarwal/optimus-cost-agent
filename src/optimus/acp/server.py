@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import sys
 from collections.abc import Mapping
@@ -17,6 +18,17 @@ from optimus.acp.errors import (
     sanitize_protocol_error_message,
 )
 from optimus.acp.framing import FramingError, encode_message, read_message
+from optimus.acp.lifecycle import (
+    NonTurnResponseEnvelope,
+    NoticeControl,
+    ResponseKind,
+    ResponseOwnershipSlot,
+    SendCompletion,
+    TurnControl,
+    TurnResponseEnvelope,
+)
+from optimus.acp.outbound_writer import DedicatedOutboundWriter, OutboundQueueItem
+from optimus.acp.settlement import SendOutcome, SettlementInvariantError
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore
 
 
@@ -71,10 +83,16 @@ class StdioNdjsonLineWriter:
     def __init__(self, stream: object) -> None:
         self._stream = stream
 
+    def write_bytes(self, data: bytes) -> None:
+        self._stream.write(data)
+
+    def flush(self) -> None:
+        self._stream.flush()
+
     async def write_line(self, message: Mapping[str, Any]) -> None:
         payload = (json.dumps(message, separators=(",", ":")) + "\n").encode("utf-8")
-        await asyncio.to_thread(self._stream.write, payload)
-        await asyncio.to_thread(self._stream.flush)
+        await asyncio.to_thread(self.write_bytes, payload)
+        await asyncio.to_thread(self.flush)
 
 
 class NdjsonLineReader(Protocol):
@@ -93,19 +111,66 @@ class NdjsonOutboundChannel:
 
     This class is responsible for sending notifications and requests in the
     NDJSON-RPC format, managing request IDs, handling responses from the client,
-    and providing means to cancel pending requests. It uses an `NdjsonLineWriter`
-    for writing data in the NDJSON format and integrates debugging logs at specific
-    execution points.
-
-    :ivar last_outbound_request_id: The ID of the most recent outbound request,
-        or None if no request has been sent yet.
-    :type last_outbound_request_id: str | int | None
+    and providing means to cancel pending requests. Physical writes go through
+    the dedicated FIFO writer when configured.
     """
-    def __init__(self, writer: NdjsonLineWriter) -> None:
+
+    def __init__(
+        self,
+        writer: NdjsonLineWriter,
+        *,
+        dedicated_writer: Any | None = None,
+    ) -> None:
         self._writer = writer
+        self._dedicated_writer = dedicated_writer
         self._agent_request_ids = iter(range(10_000, 100_000))
         self._futures: dict[str | int, asyncio.Future[dict[str, Any]]] = {}
         self.last_outbound_request_id: str | int | None = None
+        self._ephemeral_owners: list[Any] = []
+
+    def allocate_permission_request(
+        self, method: str, params: dict[str, Any]
+    ) -> Any:
+        """Synchronously allocate request_id, future, and correlation (no await)."""
+        from optimus.acp.lifecycle import PermissionRequestHandle
+
+        request_id = next(self._agent_request_ids)
+        self.last_outbound_request_id = request_id
+        future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+        self._futures[request_id] = future
+        return PermissionRequestHandle(
+            channel=self,
+            request_id=request_id,
+            response_future=future,
+            method=method,
+            params=params,
+        )
+
+    async def _submit_payload(self, message: Mapping[str, Any], *, kind: str) -> None:
+        if self._dedicated_writer is None:
+            await self._writer.write_line(message)
+            return
+        from optimus.acp.outbound_writer import (
+            EphemeralSendOwner,
+            OutboundQueueItem,
+            next_ephemeral_send_key,
+        )
+
+        owner = EphemeralSendOwner()
+        send_key = next_ephemeral_send_key(kind)
+        owner.create_queued(send_key)
+        source = concurrent.futures.Future()
+        item = OutboundQueueItem(
+            payload=message,
+            send_key=send_key,
+            owner=owner,
+            source_future=source,
+        )
+        self._dedicated_writer.submit(item)
+        loop = asyncio.get_running_loop()
+        completion = await asyncio.shield(asyncio.wrap_future(source, loop=loop))
+        if completion.outcome is SendOutcome.CONCLUSIVE_FAILURE:
+            raise AcpOutboundError(code=INTERNAL_ERROR, message="outbound delivery failed")
 
     async def notify(self, method: str, params: dict[str, Any]) -> None:
         # region agent log
@@ -116,7 +181,10 @@ class NdjsonOutboundChannel:
             hypothesis_id="H2",
         )
         # endregion
-        await self._writer.write_line({"jsonrpc": "2.0", "method": method, "params": params})
+        await self._submit_payload(
+            {"jsonrpc": "2.0", "method": method, "params": params},
+            kind="notify",
+        )
 
     async def request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         request_id = next(self._agent_request_ids)
@@ -136,7 +204,10 @@ class NdjsonOutboundChannel:
             hypothesis_id="H2",
         )
         # endregion
-        await self._writer.write_line({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
+        await self._submit_payload(
+            {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params},
+            kind="request",
+        )
         return await future
 
     def cancel_request(self, request_id: str | int, result: dict[str, Any]) -> None:
@@ -198,6 +269,7 @@ class AcpStreamServer:
         *,
         max_planning_turns: int | None = None,
         client_mcp_runtime: Any | None = None,
+        conversation_sanitizer_inputs: Any | None = None,
     ) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
         # Plan 9.96, Task 5 Step 2: resolved once by build_configured_server()
@@ -205,11 +277,16 @@ class AcpStreamServer:
         # AcpDuplexAdapter via serve_ndjson — never read from os.environ here.
         self._max_planning_turns = max_planning_turns
         self._client_mcp_runtime = client_mcp_runtime
+        self._conversation_sanitizer_inputs = conversation_sanitizer_inputs
         self._request_tasks: set[asyncio.Task[Any]] = set()
 
     @property
     def client_mcp_runtime(self) -> Any | None:
         return self._client_mcp_runtime
+
+    @property
+    def conversation_sanitizer_inputs(self) -> Any | None:
+        return self._conversation_sanitizer_inputs
 
     async def handle_one(self, reader: AsyncByteReader, writer: AsyncByteWriter) -> None:
         # reader/writer are typed by Protocol: no shared base class required.
@@ -242,13 +319,29 @@ class AcpStreamServer:
             writer.write(encode_message(response))
             await writer.drain()
 
-    async def serve_ndjson(self, reader: NdjsonLineReader, writer: NdjsonLineWriter) -> None:
+    async def serve_ndjson(
+        self,
+        reader: NdjsonLineReader,
+        writer: NdjsonLineWriter,
+        *,
+        dedicated_writer: DedicatedOutboundWriter | None = None,
+        notice_control: NoticeControl | None = None,
+        join_dedicated_writer: bool = True,
+    ) -> None:
         log_provenance_once()
         agent_runner = self._dispatcher.agent_runner
         if agent_runner is None:
             raise RuntimeError("agent runner not configured for ndjson ACP serving")
         workspace_root = self._dispatcher.workspace_root or Path.cwd()
-        outbound = NdjsonOutboundChannel(writer)
+        notice = notice_control or NoticeControl()
+        physical = writer if hasattr(writer, "write_bytes") and hasattr(writer, "flush") else None
+        owned_dedicated = dedicated_writer is None
+        dedicated = dedicated_writer
+        if dedicated is None and physical is not None:
+            dedicated = DedicatedOutboundWriter(physical)  # type: ignore[arg-type]
+            dedicated.start()
+            owned_dedicated = True
+        outbound = NdjsonOutboundChannel(writer, dedicated_writer=dedicated)
         sessions = InMemoryAcpSpecSessionStore()
         adapter = AcpDuplexAdapter(
             runner=agent_runner,
@@ -257,9 +350,82 @@ class AcpStreamServer:
             outbound=outbound,
             max_planning_turns=self._max_planning_turns,
             client_mcp_runtime=self._client_mcp_runtime,
+            sanitizer_inputs=self._conversation_sanitizer_inputs,
+            notice_control=notice,
+            settlement_sink=getattr(agent_runner, "event_sink", None),
         )
         message_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         request_tasks: set[asyncio.Task[Any]] = set()
+
+        async def submit_via_notice(payload: Mapping[str, Any], *, handle: Any | None = None) -> None:
+            if dedicated is None:
+                await writer.write_line(payload)
+                return
+            response_handle = handle or notice.allocate_response_handle(ResponseKind.ORDINARY)
+            ticket = response_handle.start_non_turn_response_send()
+            if ticket.immediate_completion is not None:
+                response_handle.finalize_once(ticket.immediate_completion)
+                return
+            assert ticket.source_future is not None
+            item = OutboundQueueItem(
+                payload=payload,
+                send_key=ticket.send_key,
+                owner=response_handle,
+                source_future=ticket.source_future,
+                writer_token=ticket.writer_token,
+                handle=response_handle,
+            )
+            dedicated.submit(item)
+            try:
+                loop = asyncio.get_running_loop()
+                completion = await asyncio.shield(
+                    asyncio.wrap_future(ticket.source_future, loop=loop)
+                )
+            except asyncio.CancelledError:
+                # Server-task cancellation: do not wait for the writer future.
+                response_handle.freeze_abandoned()
+                response_handle.finalize_once(
+                    SendCompletion(send_key=ticket.send_key, outcome=SendOutcome.SUPPRESSED)
+                )
+                raise
+            response_handle.finalize_once(completion)
+
+        async def submit_via_turn(payload: Mapping[str, Any], turn_control: TurnControl) -> None:
+            lease = turn_control.start_response_send()
+            if not lease.granted or lease.send_key is None:
+                return
+            if dedicated is None:
+                await writer.write_line(payload)
+                turn_control.publish_authoritative(lease.send_key, SendOutcome.FLUSHED)
+                return
+            source_future: concurrent.futures.Future[Any] = concurrent.futures.Future()
+            item = OutboundQueueItem(
+                payload=payload,
+                send_key=lease.send_key,
+                owner=turn_control,
+                source_future=source_future,
+                writer_token=None,
+                handle=None,
+            )
+            dedicated.submit(item)
+            try:
+                loop = asyncio.get_running_loop()
+                await asyncio.shield(asyncio.wrap_future(source_future, loop=loop))
+            except asyncio.CancelledError:
+                return
+
+        async def deliver_envelope(envelope: Any, ownership_slot: ResponseOwnershipSlot) -> None:
+            wire = envelope.response
+            if isinstance(envelope, TurnResponseEnvelope):
+                if ownership_slot.is_bound and ownership_slot.turn_control is not envelope.turn_control:
+                    raise SettlementInvariantError("envelope turn control does not match ownership slot")
+                await submit_via_turn(wire, envelope.turn_control)
+                return
+            if not isinstance(envelope, NonTurnResponseEnvelope):
+                raise SettlementInvariantError("unknown response envelope kind")
+            if ownership_slot.is_bound:
+                raise SettlementInvariantError("non-turn envelope returned for bound ownership slot")
+            await submit_via_notice(wire, handle=envelope.response_handle)
 
         async def read_lines() -> None:
             try:
@@ -285,6 +451,7 @@ class AcpStreamServer:
             request_id = message.get("id")
             method = message.get("method")
             pending_permission_id = outbound.last_outbound_request_id
+            ownership_slot = ResponseOwnershipSlot()
             try:
                 # region agent log
                 acp_debug_log(
@@ -294,7 +461,8 @@ class AcpStreamServer:
                     hypothesis_id="H4",
                 )
                 # endregion
-                response = await adapter.handle_client_request(message)
+                envelope = await adapter.handle_client_request(message, ownership_slot=ownership_slot)
+                wire = envelope.response
                 # region agent log
                 acp_debug_log(
                     location="server.py:process_request:exit",
@@ -302,22 +470,28 @@ class AcpStreamServer:
                     data={
                         "request_id": request_id,
                         "method": method,
-                        "has_error": "error" in response,
-                        "stop_reason": response.get("result", {}).get("stopReason")
-                        if isinstance(response.get("result"), dict)
+                        "has_error": "error" in wire,
+                        "stop_reason": wire.get("result", {}).get("stopReason")
+                        if isinstance(wire.get("result"), dict)
                         else None,
                     },
                     hypothesis_id="H4",
                 )
                 # endregion
-                await writer.write_line(response)
+                await deliver_envelope(envelope, ownership_slot)
+            except asyncio.CancelledError:
+                if ownership_slot.turn_control is not None:
+                    ownership_slot.turn_control.request_transport_teardown()
+                raise
             except AcpOutboundError as exc:
-                await writer.write_line(
-                    error_response(
-                        request_id=request_id,
-                        error=JsonRpcError(code=exc.code, message=exc.message, data=exc.data),
-                    )
+                error_payload = error_response(
+                    request_id=request_id,
+                    error=JsonRpcError(code=exc.code, message=exc.message, data=exc.data),
                 )
+                if ownership_slot.turn_control is not None:
+                    await submit_via_turn(error_payload, ownership_slot.turn_control)
+                else:
+                    await submit_via_notice(error_payload)
             except Exception as exc:
                 # region agent log
                 acp_debug_log(
@@ -337,12 +511,14 @@ class AcpStreamServer:
                     f"pending_permission_id={pending_permission_id!r}: {sanitize_protocol_error_message(str(exc))}",
                     file=sys.stderr,
                 )
-                await writer.write_line(
-                    error_response(
-                        request_id=request_id,
-                        error=JsonRpcError(code=INTERNAL_ERROR, message=str(exc)),
-                    )
+                error_payload = error_response(
+                    request_id=request_id,
+                    error=JsonRpcError(code=INTERNAL_ERROR, message=sanitize_protocol_error_message(str(exc))),
                 )
+                if ownership_slot.turn_control is not None:
+                    await submit_via_turn(error_payload, ownership_slot.turn_control)
+                else:
+                    await submit_via_notice(error_payload)
 
         reader_task = asyncio.create_task(read_lines())
         try:
@@ -375,6 +551,10 @@ class AcpStreamServer:
                     request_tasks.add(task)
                     task.add_done_callback(request_tasks.discard)
         finally:
+            # Transport-loss ordering: abandon notices before cancelling request tasks.
+            notice.mark_transport_abandoned()
+            for turn in list(adapter._active_turns.values()):  # noqa: SLF001
+                turn.turn_control.request_transport_teardown()
             for task in list(request_tasks):
                 task.cancel()
             if request_tasks:
@@ -382,4 +562,6 @@ class AcpStreamServer:
             adapter.close_all()
             if self._client_mcp_runtime is not None:
                 self._client_mcp_runtime.close()
+            if dedicated is not None and owned_dedicated and join_dedicated_writer:
+                dedicated.close_and_join()
             await reader_task

@@ -10,8 +10,13 @@ from typing import TYPE_CHECKING
 
 from optimus.agent.directives import AgentDirectiveParseError, parse_agent_plan
 from optimus.agent.models import AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
+from optimus.agent.operation_control import TurnOperationControl
 from optimus.agent.prompts import build_agent_planner_input
-from optimus.agent.state_store import AgentPlanRecord, AgentStateStore, InMemoryAgentStateStore
+from optimus.agent.state_store import (
+    AgentPlanRecord,
+    AgentStateStore,
+    InMemoryAgentStateStore,
+)
 from optimus.agent.tools import AgentToolbox
 from optimus.agent.workspace_context import WorkspaceContextResult, assemble_workspace_context_for_prompt
 from optimus.gateway.client import GatewayClient
@@ -125,6 +130,11 @@ class AgentRunner:
         self._usage_accounting = usage_accounting
         self._planning_progress_observer = planning_progress_observer
         self._transition_validator = TransitionValidator()
+        self._active_operation_control: TurnOperationControl | None = None
+
+    @property
+    def event_sink(self) -> Callable[[TelemetryEvent], None] | None:
+        return self._event_sink
 
     def run(
         self,
@@ -133,6 +143,8 @@ class AgentRunner:
         planning_progress_observer: PlanningProgressObserver | None = None,
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
+        halt_requested: Callable[[], bool] | None = None,
+        operation_control: TurnOperationControl | None = None,
     ) -> AgentRunResult:
         observer = (
             planning_progress_observer
@@ -140,6 +152,7 @@ class AgentRunner:
             else self._planning_progress_observer
         )
         matched_skills = self._match_skills(request)
+        self._active_operation_control = operation_control
         try:
             if request.completion_condition:
                 result = self._run_bounded_loop(request, matched_skills=matched_skills)
@@ -149,10 +162,18 @@ class AgentRunner:
                     planning_progress_observer=observer,
                     client_mcp_service=client_mcp_service,
                     mcp_permission_broker=mcp_permission_broker,
+                    halt_requested=halt_requested,
+                    operation_control=operation_control,
                 )
-            self._emit_agent_run(request, result, matched_skills=matched_skills)
+            self._emit_agent_run(
+                request,
+                result,
+                matched_skills=matched_skills,
+                operation_control=operation_control,
+            )
             return result
         finally:
+            self._active_operation_control = None
             # Narrow flush() protocol: flush a batching event sink (e.g. TelemetryFanout)
             # after the final agent_run event, and also on a controlled failure that
             # raises out of this method, so buffered telemetry is not silently dropped.
@@ -229,6 +250,8 @@ class AgentRunner:
         planning_progress_observer: PlanningProgressObserver | None = None,
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
+        halt_requested: Callable[[], bool] | None = None,
+        operation_control: TurnOperationControl | None = None,
     ) -> AgentRunResult:
         context = RuntimeContext(execution_mode=request.execution_mode)
         toolbox = AgentToolbox.for_workspace(
@@ -244,7 +267,12 @@ class AgentRunner:
         tool_calls: list[AgentToolCall] = []
 
         if request.execution_mode is ExecutionMode.AGENT and request.approval.approved:
-            return self._run_approved_from_store(request=request, context=context, toolbox=toolbox)
+            return self._run_approved_from_store(
+                request=request,
+                context=context,
+                toolbox=toolbox,
+                operation_control=operation_control,
+            )
 
         context = self._transition(context, AgentState.PLANNING)
         workspace_context = assemble_workspace_context_for_prompt(
@@ -267,6 +295,8 @@ class AgentRunner:
                     progress_observer=planning_progress_observer,
                     client_mcp_service=client_mcp_service,
                     mcp_permission_broker=mcp_permission_broker,
+                    halt_requested=halt_requested,
+                    operation_control=operation_control,
                 )
             return self._build_result(
                 request=request,
@@ -290,6 +320,8 @@ class AgentRunner:
                 progress_observer=planning_progress_observer,
                 client_mcp_service=client_mcp_service,
                 mcp_permission_broker=mcp_permission_broker,
+                halt_requested=halt_requested,
+                operation_control=operation_control,
             )
         planner_input = build_agent_planner_input(request.task, workspace_context=workspace_context.text)
         response = self._gateway_client.create_response(
@@ -334,6 +366,8 @@ class AgentRunner:
         progress_observer: PlanningProgressObserver | None = None,
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
+        halt_requested: Callable[[], bool] | None = None,
+        operation_control: TurnOperationControl | None = None,
     ) -> AgentRunResult:
         from optimus.agent.planning_loop import PlanningLoopPolicy, PlanningLoopRunner
 
@@ -366,6 +400,8 @@ class AgentRunner:
             progress_observer=progress_observer,
             client_mcp_service=client_mcp_service,
             mcp_permission_broker=mcp_permission_broker,
+            halt_requested=halt_requested,
+            operation_control=operation_control,
         )
         planning_result = planner.run(
             run_id=request.run_id,
@@ -410,6 +446,8 @@ class AgentRunner:
             provider=planning_result.provider or "glm",
             cost_complete=planning_result.cost_complete,
             unknown_cost_attempt_count=planning_result.unknown_cost_attempt_count,
+            candidate_plan_text=planning_result.plan_text,
+            operation_control=operation_control,
         )
 
     def _finish_agent_planning(
@@ -427,6 +465,8 @@ class AgentRunner:
         provider: str,
         cost_complete: bool = True,
         unknown_cost_attempt_count: int = 0,
+        candidate_plan_text: str | None = None,
+        operation_control: TurnOperationControl | None = None,
     ) -> AgentRunResult:
         if request.execution_mode is ExecutionMode.AGENT:
             try:
@@ -442,12 +482,23 @@ class AgentRunner:
                     stop_reason="UNPARSEABLE_PLAN",
                     cost_complete=cost_complete,
                     unknown_cost_attempt_count=unknown_cost_attempt_count,
+                    candidate_plan_text=None,
                 )
         plan_hash = hashlib.sha256(output_text.encode("utf-8")).hexdigest()
         created_at_ms = self._clock_ms()
+        if candidate_plan_text is None and request.execution_mode is ExecutionMode.AGENT:
+            candidate_plan_text = output_text
 
         context = self._transition(context, AgentState.PLAN_READY)
-        tool_calls.extend(self._execute_read_directives(output_text, workspace_root=request.workspace_root, toolbox=toolbox))
+        tool_calls.extend(
+            self._execute_read_directives(
+                output_text,
+                workspace_root=request.workspace_root,
+                toolbox=toolbox,
+                operation_control=operation_control,
+                phase="planning_read",
+            )
+        )
 
         if total_cost_usd > request.max_cost_usd:
             return self._build_result(
@@ -478,25 +529,38 @@ class AgentRunner:
 
         if not request.approval.approved or request.approval.plan_hash != plan_hash:
             if request.execution_mode is ExecutionMode.AGENT:
-                self._state_store.save_plan(
-                    AgentPlanRecord(
-                        run_id=request.run_id,
-                        session_id=request.session_id,
-                        task=request.task,
-                        execution_mode=request.execution_mode,
-                        workspace_root=str(request.workspace_root),
-                        plan_hash=plan_hash,
-                        plan_text=output_text,
-                        gateway_request_id=gateway_request_id,
-                        gateway_request_ids=gateway_request_ids,
-                        planning_turns=planning_turns,
-                        model=self._model,
-                        provider=provider,
-                        cost_usd=total_cost_usd,
-                        created_at_ms=created_at_ms,
-                        expires_at_ms=created_at_ms + 3_600_000,
-                    )
+                from optimus.acp.lifecycle import DirectiveKind
+
+                record = AgentPlanRecord(
+                    run_id=request.run_id,
+                    session_id=request.session_id,
+                    task=request.task,
+                    execution_mode=request.execution_mode,
+                    workspace_root=str(request.workspace_root),
+                    plan_hash=plan_hash,
+                    plan_text=output_text,
+                    gateway_request_id=gateway_request_id,
+                    gateway_request_ids=gateway_request_ids,
+                    planning_turns=planning_turns,
+                    model=self._model,
+                    provider=provider,
+                    cost_usd=total_cost_usd,
+                    created_at_ms=created_at_ms,
+                    expires_at_ms=created_at_ms + 3_600_000,
                 )
+                op_id = f"persist:{plan_hash}"
+                if operation_control is not None:
+                    operation_control.register_operations([(DirectiveKind.PLAN_PERSISTENCE, op_id)])
+                    lease = operation_control.try_start(DirectiveKind.PLAN_PERSISTENCE, op_id)
+                    if lease.granted:
+                        persist = self._state_store.persist_plan(record)
+                        operation_control.complete_directive(
+                            DirectiveKind.PLAN_PERSISTENCE,
+                            op_id,
+                            persist.outcome.value,
+                        )
+                else:
+                    self._state_store.persist_plan(record)
             self._transition(context, AgentState.AWAITING_APPROVAL)
             return self._build_result(
                 request=request,
@@ -508,6 +572,7 @@ class AgentRunner:
                 plan_hash=plan_hash,
                 cost_complete=cost_complete,
                 unknown_cost_attempt_count=unknown_cost_attempt_count,
+                candidate_plan_text=candidate_plan_text,
             )
 
         context = self._transition(context, AgentState.AWAITING_APPROVAL)
@@ -558,6 +623,7 @@ class AgentRunner:
             plan_hash=plan_hash,
             cost_complete=cost_complete,
             unknown_cost_attempt_count=unknown_cost_attempt_count,
+            candidate_plan_text=candidate_plan_text,
         )
 
     def _record_gateway_usage(
@@ -570,6 +636,14 @@ class AgentRunner:
     ) -> None:
         if self._usage_accounting is None:
             return
+        control = self._active_operation_control
+        post_teardown = bool(control is not None and control.transport_abandoned())
+        turn_seq: int | None = None
+        if post_teardown:
+            try:
+                turn_seq = int(str(request.run_id).rsplit(":", 1)[-1])
+            except ValueError:
+                turn_seq = None
         self._usage_accounting.record_gateway_usage(
             gateway_usage,
             run_id=request.run_id,
@@ -579,6 +653,8 @@ class AgentRunner:
             service="agent.model",
             native_unit="tokens",
             price_snapshot_id=gateway_usage.price_snapshot_id,
+            turn_seq=turn_seq,
+            post_teardown=post_teardown,
         )
 
     def _run_approved_from_store(
@@ -587,6 +663,7 @@ class AgentRunner:
         request: AgentRunRequest,
         context: RuntimeContext,
         toolbox: AgentToolbox,
+        operation_control: TurnOperationControl | None = None,
     ) -> AgentRunResult:
         try:
             record = self._state_store.load_plan(run_id=request.run_id, plan_hash=request.approval.plan_hash or "")
@@ -643,6 +720,7 @@ class AgentRunner:
             total_cost_usd=record.cost_usd,
             mutation_count=mutation_count,
             plan_hash=record.plan_hash,
+            candidate_plan_text=record.plan_text,
         )
 
     def _missing_plan_result(self, request: AgentRunRequest) -> AgentRunResult:
@@ -673,8 +751,12 @@ class AgentRunner:
         result: AgentRunResult,
         *,
         matched_skills: tuple[str, ...],
+        operation_control: TurnOperationControl | None = None,
     ) -> None:
         if self._event_sink is None:
+            return
+        # Post-teardown policy: ordinary agent_run telemetry is denied after transport abandonment.
+        if operation_control is not None and operation_control.transport_abandoned():
             return
         self._event_sink(
             TelemetryEvent.agent_run(
@@ -706,7 +788,10 @@ class AgentRunner:
         *,
         workspace_root: Path,
         toolbox: AgentToolbox,
+        operation_control: TurnOperationControl | None = None,
+        phase: str = "read",
     ) -> list[AgentToolCall]:
+        del operation_control, phase
         try:
             directives = parse_agent_plan(plan_text)
         except AgentDirectiveParseError:
@@ -731,7 +816,9 @@ class AgentRunner:
         *,
         workspace_root: Path,
         toolbox: AgentToolbox,
+        operation_control: TurnOperationControl | None = None,
     ) -> list[AgentToolCall]:
+        del operation_control
         try:
             directives = parse_agent_plan(plan_text)
         except AgentDirectiveParseError:
@@ -750,7 +837,14 @@ class AgentRunner:
         calls.append(toolbox.write_file(target, content))
         return calls
 
-    def _execute_test_directives(self, plan_text: str, *, toolbox: AgentToolbox) -> list[AgentToolCall]:
+    def _execute_test_directives(
+        self,
+        plan_text: str,
+        *,
+        toolbox: AgentToolbox,
+        operation_control: TurnOperationControl | None = None,
+    ) -> list[AgentToolCall]:
+        del operation_control
         directives = parse_agent_plan(plan_text)
         return [toolbox.run_tests(command) for command in directives.tests]
 
@@ -820,6 +914,7 @@ class AgentRunner:
         stop_reason: str | None = None,
         cost_complete: bool = True,
         unknown_cost_attempt_count: int = 0,
+        candidate_plan_text: str | None = None,
     ) -> AgentRunResult:
         return AgentRunResult(
             run_id=request.run_id,
@@ -836,6 +931,7 @@ class AgentRunner:
             provider_keys_resolvable=(),
             plan_hash=plan_hash,
             stop_reason=stop_reason,
+            candidate_plan_text=candidate_plan_text,
         )
 
 

@@ -106,3 +106,21 @@ def test_agent_run_result_records_tool_trajectory_and_final_state():
 
     assert tuple(call.tool_name for call in result.tool_calls) == ("file_reader", "write_file")
     assert result.mutation_count == 1
+    assert result.candidate_plan_text is None
+
+
+def test_agent_run_result_accepts_candidate_plan_text():
+    result = AgentRunResult(
+        run_id="run-1",
+        session_id="s1",
+        execution_mode=ExecutionMode.AGENT,
+        status=AgentRunStatus.AWAITING_APPROVAL,
+        final_state="AWAITING_APPROVAL",
+        output_text="READ a.py\nWRITE b.py\nhello",
+        total_cost_usd=Decimal("0.01"),
+        plan_hash="abc",
+        candidate_plan_text="READ a.py\nWRITE b.py\nhello",
+    )
+    assert result.candidate_plan_text == result.output_text
+    dumped = result.model_dump()
+    assert dumped["candidate_plan_text"] == result.output_text

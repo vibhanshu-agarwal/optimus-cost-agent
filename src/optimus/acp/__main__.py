@@ -597,12 +597,26 @@ def main(argv: list[str] | None = None) -> int:
         if args.framed:
             asyncio.run(server.serve(StdioByteReader(sys.stdin.buffer), StdioByteWriter(sys.stdout.buffer)))
         else:
-            asyncio.run(
-                server.serve_ndjson(
-                    StdioNdjsonLineReader(sys.stdin.buffer),
-                    StdioNdjsonLineWriter(sys.stdout.buffer),
+            from optimus.acp.lifecycle import NoticeControl
+            from optimus.acp.outbound_writer import DedicatedOutboundWriter
+
+            ndjson_writer = StdioNdjsonLineWriter(sys.stdout.buffer)
+            dedicated = DedicatedOutboundWriter(ndjson_writer)
+            dedicated.start()
+            notice_control = NoticeControl()
+            try:
+                asyncio.run(
+                    server.serve_ndjson(
+                        StdioNdjsonLineReader(sys.stdin.buffer),
+                        ndjson_writer,
+                        dedicated_writer=dedicated,
+                        notice_control=notice_control,
+                        join_dedicated_writer=False,
+                    )
                 )
-            )
+            finally:
+                # Process-lifetime writer: one sentinel and join without timeout after asyncio.run.
+                dedicated.close_and_join()
     finally:
         if gateway_process is not None:
             gateway_process.stop()

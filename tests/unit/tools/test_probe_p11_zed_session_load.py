@@ -3939,13 +3939,13 @@ def test_establishing_applicability_rejects_dirty_execution_surface(tmp_path: Pa
 
 
 def test_establishing_import_closure_equals_explicit_module_path_subset() -> None:
-    """baseline-green preservation: live AST closure matches the explicit 128-file subset."""
+    """baseline-green preservation: live AST closure matches the explicit module-path subset."""
     import tools.probe_p11_zed_session_load as probe
 
     closure = probe.compute_establishing_import_closure(REPO_ROOT)
     expected = frozenset(path for path in probe.ESTABLISHING_EXECUTION_GIT_PATHS if path.endswith(".py"))
     assert closure == expected
-    assert len(closure) == 128
+    assert len(closure) == 133
 
 
 def test_establishing_import_closure_traverses_package_init_reexports(tmp_path: Path) -> None:

@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Protocol
 from uuid import uuid4
 
-from optimus.telemetry.events import TelemetryEvent
+from optimus.telemetry.events import TelemetryEvent, TelemetryEventKind
 from optimus.telemetry.observability import TraceDeliveryState, TraceExportResult
 
 
@@ -76,6 +76,26 @@ class TelemetryFanout:
             self.delivery_results.append(_failed_delivery_result(reason=f"gateway_export_raised:{type(exc).__name__}"))
             return
         self.delivery_results.append(_parse_delivery_result(response))
+
+
+def emit_acp_turn_settlement_contained(
+    sink: Callable[[TelemetryEvent], None] | None,
+    event: TelemetryEvent,
+) -> None:
+    """Best-effort settlement evidence: catch ``Exception`` only, never ``BaseException``.
+
+    Ordinary ``TelemetryFanout.__call__`` semantics are unchanged. This narrow helper
+    wraps the settlement evidence attempt so JSONL/Redis/Gateway failures cannot
+    replace or swallow a surrounding ``CancelledError``.
+    """
+    if sink is None:
+        return
+    if event.kind is not TelemetryEventKind.ACP_TURN_SETTLEMENT:
+        raise ValueError("emit_acp_turn_settlement_contained accepts only ACP_TURN_SETTLEMENT")
+    try:
+        sink(event)
+    except Exception:
+        return
 
 
 def _failed_delivery_result(*, reason: str) -> TraceExportResult:

@@ -42,6 +42,14 @@ from optimus.runtime.modes import ExecutionMode, GenerationScope
 _HMAC_KEY = b"p11-fu-9-disposition-test-hmac-key!!"
 
 
+async def _rpc(adapter, request, ownership_slot=None):
+    """Unwrap ResponseEnvelope to the wire dict for legacy assertions."""
+    envelope = await adapter.handle_client_request(request, ownership_slot=ownership_slot)
+    return envelope.response
+
+
+
+
 class _FakeKeyring:
     def __init__(self) -> None:
         self._store: dict[tuple[str, str], str] = {}
@@ -221,12 +229,12 @@ async def test_session_prompt_applies_max_planning_turns_override(tmp_path):
         max_planning_turns=resolve_max_planning_turns({"OPTIMUS_MAX_PLANNING_TURNS": "1"}),
     )
     session_id = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
 
-    await adapter.handle_client_request(
+    await _rpc(adapter,
         {
             "jsonrpc": "2.0",
             "id": 2,
@@ -248,12 +256,12 @@ async def test_session_prompt_uses_default_max_planning_turns_when_unset(tmp_pat
         max_planning_turns=resolve_max_planning_turns({}),
     )
     session_id = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
 
-    await adapter.handle_client_request(
+    await _rpc(adapter,
         {
             "jsonrpc": "2.0",
             "id": 2,
@@ -293,7 +301,7 @@ async def test_session_prompt_never_lets_optimus_live_max_cost_usd_override_agen
         outbound=RecordingOutboundChannel(),
     )
     session_id = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
@@ -305,7 +313,7 @@ async def test_session_prompt_never_lets_optimus_live_max_cost_usd_override_agen
     previous = os.environ.get("OPTIMUS_LIVE_MAX_COST_USD")
     os.environ["OPTIMUS_LIVE_MAX_COST_USD"] = "999.00"
     try:
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {
                 "jsonrpc": "2.0",
                 "id": 2,
@@ -331,7 +339,7 @@ async def test_initialize_returns_spec_capabilities(tmp_path):
         outbound=outbound,
     )
 
-    response = await adapter.handle_client_request(
+    response = await _rpc(adapter,
         {
             "jsonrpc": "2.0",
             "id": 1,
@@ -364,13 +372,13 @@ async def test_session_prompt_sends_permission_request_and_keeps_prompt_pending(
     runner = FakeRunner()
     outbound = RecordingOutboundChannel()
     adapter = AcpDuplexAdapter(runner=runner, workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound)
-    new_response = await adapter.handle_client_request(
+    new_response = await _rpc(adapter,
         {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
     )
     session_id = new_response["result"]["sessionId"]
 
     prompt_task = asyncio.create_task(
-        adapter.handle_client_request(
+        _rpc(adapter,
             {
                 "jsonrpc": "2.0",
                 "id": 2,
@@ -411,13 +419,13 @@ async def test_permission_response_replays_approved_plan_before_prompt_response(
     outbound = RecordingOutboundChannel()
     adapter = AcpDuplexAdapter(runner=runner, workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound)
     session_id = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
 
     prompt_task = asyncio.create_task(
-        adapter.handle_client_request(
+        _rpc(adapter,
             {
                 "jsonrpc": "2.0",
                 "id": 2,
@@ -475,13 +483,13 @@ async def test_permission_cancel_option_does_not_execute_plan(tmp_path):
     outbound = RecordingOutboundChannel()
     adapter = AcpDuplexAdapter(runner=runner, workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound)
     session_id = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
 
     prompt_task = asyncio.create_task(
-        adapter.handle_client_request(
+        _rpc(adapter,
             {
                 "jsonrpc": "2.0",
                 "id": 2,
@@ -511,12 +519,12 @@ async def test_session_cancel_resolves_prompt_and_pending_permission(tmp_path):
     outbound = RecordingOutboundChannel()
     adapter = AcpDuplexAdapter(runner=FakeRunner(), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound)
     session_id = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
     prompt_task = asyncio.create_task(
-        adapter.handle_client_request(
+        _rpc(adapter,
             {
                 "jsonrpc": "2.0",
                 "id": 2,
@@ -551,10 +559,10 @@ async def test_client_calling_session_update_or_request_permission_is_method_not
         outbound=RecordingOutboundChannel(),
     )
 
-    update_response = await adapter.handle_client_request(
+    update_response = await _rpc(adapter,
         {"jsonrpc": "2.0", "id": 1, "method": "session/update", "params": {"sessionId": "session-1"}}
     )
-    permission_response = await adapter.handle_client_request(
+    permission_response = await _rpc(adapter,
         {
             "jsonrpc": "2.0",
             "id": 2,
@@ -598,12 +606,12 @@ async def test_workspace_context_failure_surfaces_corrective_refusal_message(tmp
         outbound=outbound,
     )
     session_id = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
 
-    response = await adapter.handle_client_request(
+    response = await _rpc(adapter,
         {
             "jsonrpc": "2.0",
             "id": 2,
@@ -657,12 +665,12 @@ async def test_unparseable_plan_completion_does_not_echo_raw_model_output(tmp_pa
         outbound=outbound,
     )
     session_id = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
 
-    response = await adapter.handle_client_request(
+    response = await _rpc(adapter,
         {
             "jsonrpc": "2.0",
             "id": 2,
@@ -745,13 +753,13 @@ async def test_multi_turn_planning_emits_progress_before_final_permission(tmp_pa
         outbound=outbound,
     )
     session_id = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
 
     prompt_task = asyncio.create_task(
-        adapter.handle_client_request(
+        _rpc(adapter,
             {
                 "jsonrpc": "2.0",
                 "id": 2,
@@ -811,12 +819,12 @@ async def test_planning_failure_emits_end_turn_without_permission(tmp_path):
         outbound=outbound,
     )
     session_id = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
 
-    response = await adapter.handle_client_request(
+    response = await _rpc(adapter,
         {
             "jsonrpc": "2.0",
             "id": 2,
@@ -869,12 +877,12 @@ async def test_planning_model_refused_emits_sanitized_text_without_permission(tm
         outbound=outbound,
     )
     session_id = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
 
-    response = await adapter.handle_client_request(
+    response = await _rpc(adapter,
         {
             "jsonrpc": "2.0",
             "id": 2,
@@ -943,13 +951,13 @@ async def test_superseded_approval_hash_does_not_execute_plan(tmp_path):
         outbound=outbound,
     )
     session_id = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
 
     prompt_task = asyncio.create_task(
-        adapter.handle_client_request(
+        _rpc(adapter,
             {
                 "jsonrpc": "2.0",
                 "id": 2,
@@ -1050,18 +1058,18 @@ async def test_concurrent_sessions_route_planning_progress_to_own_session_only(t
         outbound=outbound,
     )
     session_a = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
     session_b = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 2, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
 
     prompt_a = asyncio.create_task(
-        adapter.handle_client_request(
+        _rpc(adapter,
             {
                 "jsonrpc": "2.0",
                 "id": 3,
@@ -1071,7 +1079,7 @@ async def test_concurrent_sessions_route_planning_progress_to_own_session_only(t
         )
     )
     prompt_b = asyncio.create_task(
-        adapter.handle_client_request(
+        _rpc(adapter,
             {
                 "jsonrpc": "2.0",
                 "id": 4,
@@ -1134,12 +1142,12 @@ async def test_planning_observation_overflow_emits_end_turn_not_internal_error(t
         outbound=outbound,
     )
     session_id = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
 
-    response = await adapter.handle_client_request(
+    response = await _rpc(adapter,
         {
             "jsonrpc": "2.0",
             "id": 2,
@@ -1204,12 +1212,12 @@ async def test_unknown_cost_emits_end_turn_without_permission_request(tmp_path):
         outbound=outbound,
     )
     session_id = (
-        await adapter.handle_client_request(
+        await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
         )
     )["result"]["sessionId"]
 
-    response = await adapter.handle_client_request(
+    response = await _rpc(adapter,
         {
             "jsonrpc": "2.0",
             "id": 2,
@@ -1359,7 +1367,7 @@ async def test_session_new_absent_or_empty_mcp_servers_is_exact_noop(tmp_path):
         {"cwd": str(tmp_path)},
         {"cwd": str(tmp_path), "mcpServers": []},
     ):
-        response = await adapter.handle_client_request(
+        response = await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": params}
         )
         assert "result" in response
@@ -1380,7 +1388,7 @@ async def test_session_new_malformed_mcp_servers_removes_provisional_session(tmp
         outbound=outbound,
         client_mcp_runtime=_client_mcp_runtime_for_tests(tmp_path),
     )
-    response = await adapter.handle_client_request(
+    response = await _rpc(adapter,
         {
             "jsonrpc": "2.0",
             "id": 1,
@@ -1413,7 +1421,7 @@ async def test_session_new_awaits_transport_permission_with_opaque_safe_fields(t
 
     async def _drive():
         task = asyncio.create_task(
-            adapter.handle_client_request(
+            _rpc(adapter,
                 {
                     "jsonrpc": "2.0",
                     "id": 1,
@@ -1472,7 +1480,7 @@ async def test_session_new_attaches_lazy_resolver_without_opening_transport(tmp_
 
     try:
         new_task = asyncio.create_task(
-            duplex.handle_client_request(
+            _rpc(duplex,
                 {
                     "jsonrpc": "2.0",
                     "id": 1,
@@ -1563,7 +1571,7 @@ async def test_real_client_mcp_runtime_composes_lazily_through_guard_and_tears_d
 
     try:
         new_task = asyncio.create_task(
-            duplex.handle_client_request(
+            _rpc(duplex,
                 {
                     "jsonrpc": "2.0",
                     "id": 1,
@@ -1693,13 +1701,14 @@ async def test_real_client_mcp_runtime_composes_lazily_through_guard_and_tears_d
         client_mcp_runtime=empty_runtime,
     )
     try:
-        empty_response = await empty_duplex.handle_client_request(
+        empty_response = await _rpc(
+            empty_duplex,
             {
                 "jsonrpc": "2.0",
                 "id": 2,
                 "method": "session/new",
                 "params": {"cwd": str(tmp_path), "mcpServers": []},
-            }
+            },
         )
         assert "result" in empty_response
         empty_duplex.close_all()
@@ -1760,7 +1769,7 @@ async def test_session_new_timeout_and_reject_keep_usable_session_unavailable(tm
 
     async def _drive_timeout():
         task = asyncio.create_task(
-            adapter.handle_client_request(
+            _rpc(adapter,
                 {
                     "jsonrpc": "2.0",
                     "id": 1,
@@ -1797,7 +1806,7 @@ async def test_session_new_timeout_and_reject_keep_usable_session_unavailable(tm
 
     async def _drive_reject():
         task = asyncio.create_task(
-            adapter2.handle_client_request(
+            _rpc(adapter2,
                 {
                     "jsonrpc": "2.0",
                     "id": 2,
@@ -1831,7 +1840,7 @@ async def test_session_load_still_method_not_found(tmp_path):
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=RecordingOutboundChannel(),
     )
-    response = await adapter.handle_client_request(
+    response = await _rpc(adapter,
         {"jsonrpc": "2.0", "id": 9, "method": "session/load", "params": {"sessionId": "x"}}
     )
     assert response["error"]["code"] == METHOD_NOT_FOUND
@@ -1848,7 +1857,7 @@ async def test_close_all_closes_session_states_exactly_once(tmp_path):
         outbound=outbound,
         client_mcp_runtime=runtime,
     )
-    response = await adapter.handle_client_request(
+    response = await _rpc(adapter,
         {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
     )
     session = sessions.get(response["result"]["sessionId"])
@@ -1888,7 +1897,7 @@ async def test_session_prompt_threads_client_mcp_service_without_serializing(tmp
 
     async def _drive():
         task = asyncio.create_task(
-            adapter.handle_client_request(
+            _rpc(adapter,
                 {
                     "jsonrpc": "2.0",
                     "id": 1,
@@ -1914,7 +1923,7 @@ async def test_session_prompt_threads_client_mcp_service_without_serializing(tmp
     before = len(outbound.requests)
 
     prompt_task = asyncio.create_task(
-        adapter.handle_client_request(
+        _rpc(adapter,
             {
                 "jsonrpc": "2.0",
                 "id": 2,
@@ -2037,3 +2046,285 @@ async def test_spec_mcp_broker_issue_fails_closed_until_catalog_authorizer_attac
         one_call_approval=allowed.token,
     )
     assert replay.authorization_outcome != "ALLOW"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_same_session_prompt_is_request_cancelled(tmp_path):
+    from optimus.acp.errors import REQUEST_CANCELLED
+
+    loop = asyncio.get_running_loop()
+    started = asyncio.Event()
+    release = threading.Event()
+
+    class SlowRunner:
+        def run(self, request, **kwargs):
+            del kwargs
+            loop.call_soon_threadsafe(started.set)
+            release.wait(timeout=5)
+            return AgentRunResult(
+                run_id=request.run_id,
+                session_id=request.session_id,
+                execution_mode=request.execution_mode,
+                status=AgentRunStatus.COMPLETED,
+                final_state="COMPLETED",
+                output_text="done",
+                plan_hash=None,
+            )
+
+    outbound = RecordingOutboundChannel()
+    sessions = InMemoryAcpSpecSessionStore()
+    adapter = AcpDuplexAdapter(
+        runner=SlowRunner(),
+        workspace_root=tmp_path,
+        sessions=sessions,
+        outbound=outbound,
+    )
+    new_response = await _rpc(
+        adapter,
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "session/new",
+            "params": {"cwd": str(tmp_path)},
+        },
+    )
+    session_id = new_response["result"]["sessionId"]
+    first = asyncio.create_task(
+        _rpc(
+            adapter,
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/prompt",
+                "params": {
+                    "sessionId": session_id,
+                    "prompt": [{"type": "text", "text": "first"}],
+                },
+            },
+        )
+    )
+    await asyncio.wait_for(started.wait(), timeout=5)
+    second = await _rpc(
+        adapter,
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "session/prompt",
+            "params": {
+                "sessionId": session_id,
+                "prompt": [{"type": "text", "text": "second"}],
+            },
+        },
+    )
+    assert second["error"]["code"] == REQUEST_CANCELLED
+    assert second["error"]["message"] == "a turn is already in progress"
+    assert len(sessions.get(session_id).conversation.records) == 0
+    release.set()
+    await first
+
+
+@pytest.mark.asyncio
+async def test_sequential_prompts_reuse_wire_id_with_distinct_turn_seq(tmp_path):
+    seen_run_ids: list[str] = []
+
+    class TrackingRunner:
+        def run(self, request, **kwargs):
+            del kwargs
+            seen_run_ids.append(request.run_id)
+            return AgentRunResult(
+                run_id=request.run_id,
+                session_id=request.session_id,
+                execution_mode=request.execution_mode,
+                status=AgentRunStatus.COMPLETED,
+                final_state="COMPLETED",
+                output_text="ok",
+                plan_hash=None,
+            )
+
+    outbound = RecordingOutboundChannel()
+    sessions = InMemoryAcpSpecSessionStore()
+    adapter = AcpDuplexAdapter(
+        runner=TrackingRunner(),
+        workspace_root=tmp_path,
+        sessions=sessions,
+        outbound=outbound,
+    )
+    new_response = await _rpc(
+        adapter,
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "session/new",
+            "params": {"cwd": str(tmp_path)},
+        },
+    )
+    session_id = new_response["result"]["sessionId"]
+    for _ in range(2):
+        response = await _rpc(
+            adapter,
+            {
+                "jsonrpc": "2.0",
+                "id": 99,
+                "method": "session/prompt",
+                "params": {
+                    "sessionId": session_id,
+                    "prompt": [{"type": "text", "text": "hello"}],
+                },
+            },
+        )
+        assert "result" in response
+    assert seen_run_ids == [f"{session_id}:1", f"{session_id}:2"]
+    conversation = sessions.get(session_id).conversation
+    assert set(conversation.records) == {1, 2}
+
+
+@pytest.mark.asyncio
+async def test_cap_closed_refusal_is_explanatory_not_jsonrpc_error(tmp_path):
+    from optimus.acp.conversation import ConversationDisposition
+
+    outbound = RecordingOutboundChannel()
+    sessions = InMemoryAcpSpecSessionStore()
+    adapter = AcpDuplexAdapter(
+        runner=FakeRunner(),
+        workspace_root=tmp_path,
+        sessions=sessions,
+        outbound=outbound,
+    )
+    new_response = await _rpc(
+        adapter,
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "session/new",
+            "params": {"cwd": str(tmp_path)},
+        },
+    )
+    session_id = new_response["result"]["sessionId"]
+    session = sessions.get(session_id)
+    session.conversation._disposition = ConversationDisposition.CAP_CLOSED  # noqa: SLF001
+    before = dict(session.conversation.records)
+    response = await _rpc(
+        adapter,
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/prompt",
+            "params": {
+                "sessionId": session_id,
+                "prompt": [{"type": "text", "text": "more"}],
+            },
+        },
+    )
+    assert "error" not in response
+    assert response["result"]["stopReason"] == "refusal"
+    assert session.conversation.records == before
+    assert any(
+        n["params"]["update"]["sessionUpdate"] == "agent_message_chunk" for n in outbound.notifications
+    )
+
+
+@pytest.mark.asyncio
+async def test_turn_finalization_emits_content_free_settlement_once(tmp_path):
+    from optimus.telemetry.events import TelemetryEvent, TelemetryEventKind
+
+    events: list[TelemetryEvent] = []
+
+    def sink(event: TelemetryEvent) -> None:
+        events.append(event)
+
+    class CompletedRunner:
+        def run(self, request, **kwargs):
+            del kwargs
+            return AgentRunResult(
+                run_id=request.run_id,
+                session_id=request.session_id,
+                execution_mode=request.execution_mode,
+                status=AgentRunStatus.COMPLETED,
+                final_state="COMPLETED",
+                output_text="ok",
+                plan_hash=None,
+            )
+
+    outbound = RecordingOutboundChannel()
+    sessions = InMemoryAcpSpecSessionStore()
+    adapter = AcpDuplexAdapter(
+        runner=CompletedRunner(),
+        workspace_root=tmp_path,
+        sessions=sessions,
+        outbound=outbound,
+        settlement_sink=sink,
+    )
+    new_response = await _rpc(
+        adapter,
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "session/new",
+            "params": {"cwd": str(tmp_path)},
+        },
+    )
+    session_id = new_response["result"]["sessionId"]
+    await _rpc(
+        adapter,
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/prompt",
+            "params": {
+                "sessionId": session_id,
+                "prompt": [{"type": "text", "text": "hello"}],
+            },
+        },
+    )
+    settlements = [e for e in events if e.kind is TelemetryEventKind.ACP_TURN_SETTLEMENT]
+    assert len(settlements) == 1
+    event = settlements[0]
+    assert event.session_id == session_id
+    assert event.payload["turn_seq"] == 1
+    assert "prompt" not in event.payload
+    assert "hello" not in event.to_json_line()
+
+
+def test_agent_run_denied_after_transport_teardown(tmp_path):
+    from optimus.acp.lifecycle import TurnControl
+    from optimus.agent.models import AgentRunRequest
+    from optimus.agent.runner import AgentRunner
+    from optimus.runtime.modes import ExecutionMode
+    from optimus.telemetry.events import TelemetryEventKind
+
+    events: list = []
+
+    class RecordingSink:
+        def __call__(self, event):
+            events.append(event)
+
+    control = TurnControl(session_id="s", turn_seq=7)
+    control.request_transport_teardown()
+    assert control.transport_abandoned() is True
+
+    runner = AgentRunner.__new__(AgentRunner)
+    runner._event_sink = RecordingSink()
+
+    request = AgentRunRequest(
+        run_id="s:7",
+        session_id="s",
+        task="x",
+        execution_mode=ExecutionMode.AGENT,
+        workspace_root=tmp_path,
+    )
+    result = AgentRunResult(
+        run_id=request.run_id,
+        session_id=request.session_id,
+        execution_mode=request.execution_mode,
+        status=AgentRunStatus.COMPLETED,
+        final_state="COMPLETED",
+        output_text="done",
+    )
+    runner._emit_agent_run(request, result, matched_skills=(), operation_control=control)
+    assert events == []
+
+    # Without teardown, ordinary agent_run is allowed.
+    open_control = TurnControl(session_id="s", turn_seq=8)
+    runner._emit_agent_run(request, result, matched_skills=(), operation_control=open_control)
+    assert len(events) == 1
+    assert events[0].kind is TelemetryEventKind.AGENT_RUN

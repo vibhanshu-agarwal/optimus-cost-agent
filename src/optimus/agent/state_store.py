@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from decimal import Decimal
+from enum import StrEnum
 from typing import Protocol
 from urllib.parse import urlparse
 
@@ -12,6 +14,22 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from optimus.runtime.modes import ExecutionMode
 
 DEFAULT_PLAN_TTL_SECONDS = 3600
+
+
+class PlanPersistenceOutcome(StrEnum):
+    PERSISTED = "persisted"
+    PERSISTENCE_FAILED = "persistence_failed"
+    PERSISTENCE_PARTIAL = "persistence_partial"
+
+
+@dataclass(frozen=True, slots=True)
+class PlanPersistenceResult:
+    outcome: PlanPersistenceOutcome
+    completed_substeps: tuple[str, ...] = ()
+
+    @property
+    def authorizing(self) -> bool:
+        return self.outcome is PlanPersistenceOutcome.PERSISTED
 
 
 class AgentPlanRecord(BaseModel):
@@ -68,6 +86,13 @@ class InMemoryAgentStateStore:
 
     def save_plan(self, record: AgentPlanRecord) -> None:
         self._plans[(record.run_id, record.plan_hash)] = record
+
+    def persist_plan(self, record: AgentPlanRecord) -> PlanPersistenceResult:
+        self.save_plan(record)
+        return PlanPersistenceResult(
+            outcome=PlanPersistenceOutcome.PERSISTED,
+            completed_substeps=("primary", "expiry", "pointer"),
+        )
 
     def load_plan(self, *, run_id: str, plan_hash: str) -> AgentPlanRecord:
         record = self._plans.get((run_id, plan_hash))
@@ -150,6 +175,46 @@ class RedisAgentStateStore:
         except TypeError:
             self._client.hset(latest_key, {"plan_hash": record.plan_hash})
         self._client.expire(latest_key, self._ttl_seconds)
+
+    def persist_plan(self, record: AgentPlanRecord) -> PlanPersistenceResult:
+        if self._async_store is not None:
+            try:
+                self.save_plan(record)
+            except Exception:
+                return PlanPersistenceResult(outcome=PlanPersistenceOutcome.PERSISTENCE_FAILED)
+            return PlanPersistenceResult(
+                outcome=PlanPersistenceOutcome.PERSISTED,
+                completed_substeps=("primary", "expiry", "pointer"),
+            )
+        completed: list[str] = []
+        key = _plan_key(run_id=record.run_id, plan_hash=record.plan_hash)
+        mapping = _record_to_mapping(record)
+        try:
+            try:
+                self._client.hset(key, mapping=mapping)
+            except TypeError:
+                self._client.hset(key, mapping)
+            completed.append("primary")
+            self._client.expire(key, self._ttl_seconds)
+            completed.append("expiry")
+            latest_key = _latest_plan_key(run_id=record.run_id)
+            try:
+                self._client.hset(latest_key, mapping={"plan_hash": record.plan_hash})
+            except TypeError:
+                self._client.hset(latest_key, {"plan_hash": record.plan_hash})
+            completed.append("pointer")
+            self._client.expire(latest_key, self._ttl_seconds)
+        except Exception:
+            if completed:
+                return PlanPersistenceResult(
+                    outcome=PlanPersistenceOutcome.PERSISTENCE_PARTIAL,
+                    completed_substeps=tuple(completed),
+                )
+            return PlanPersistenceResult(outcome=PlanPersistenceOutcome.PERSISTENCE_FAILED)
+        return PlanPersistenceResult(
+            outcome=PlanPersistenceOutcome.PERSISTED,
+            completed_substeps=tuple(completed),
+        )
 
     def load_plan(self, *, run_id: str, plan_hash: str) -> AgentPlanRecord:
         if self._async_store is not None:

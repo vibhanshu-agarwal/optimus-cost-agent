@@ -151,7 +151,8 @@ def test_protocol_error_message_redacts_canary_and_fails_safe(monkeypatch) -> No
 async def test_serve_ndjson_sanitizes_request_processing_response_and_stderr(tmp_path, monkeypatch, capsys):
     configured = configured_test_agent_server(tmp_path, output_text="READ example.py\n")
 
-    async def failing_handle_client_request(_self, _message):
+    async def failing_handle_client_request(_self, _message, ownership_slot=None):
+        del ownership_slot
         raise RuntimeError("OPTIMUS_API_KEY=top-secret-canary")
 
     monkeypatch.setattr(server.AcpDuplexAdapter, "handle_client_request", failing_handle_client_request)

@@ -771,6 +771,7 @@ class PlanningLoopRunner:
         progress_observer: PlanningProgressObserver | None = None,
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
+        operation_control: object | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -792,6 +793,7 @@ class PlanningLoopRunner:
         self._progress_observer = progress_observer
         self._client_mcp_service = client_mcp_service
         self._mcp_permission_broker = mcp_permission_broker
+        self._operation_control = operation_control
 
     def run(
         self,
@@ -833,6 +835,7 @@ class PlanningLoopRunner:
             guard=self._guard,
             client_mcp_service=service,
             mcp_permission_broker=broker,
+            operation_control=self._operation_control,
         )
         controller = GoalLoopController(
             policy=iteration_runner.loop_budget_policy,
@@ -884,6 +887,7 @@ class _PlanningIterationRunner:
         guard: PreToolGuard | None = None,
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
+        operation_control: object | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -901,6 +905,7 @@ class _PlanningIterationRunner:
         self._usage_callback = usage_callback
         self._retry_controller = retry_controller
         self._progress_observer = progress_observer
+        self._operation_control = operation_control
         self._observations: list[PlanningObservation] = []
         self._current_reads: tuple[PlanningReadEvidence, ...] = ()
         self._mcp_evidence_envelope: str = ""
@@ -976,6 +981,17 @@ class _PlanningIterationRunner:
         def operation() -> GatewayResponse:
             nonlocal wire_attempt
             wire_attempt += 1
+            control = self._operation_control
+            op_id = f"gateway:{planning_turn}:{wire_attempt}"
+            if control is not None:
+                from optimus.acp.lifecycle import DirectiveKind
+
+                control.register_operations([(DirectiveKind.GATEWAY, op_id)])
+                lease = control.try_start(DirectiveKind.GATEWAY, op_id)
+                if not lease.granted:
+                    from optimus.retry.policy import PermanentGatewayError as _PermanentStop
+
+                    raise _PermanentStop("gateway attempt suppressed by turn control")
             try:
                 response = self._gateway_client.create_response(
                     model=self._model,
@@ -991,6 +1007,10 @@ class _PlanningIterationRunner:
                 # Typed gateway error — check for reported usage.
                 usage = getattr(exc, "gateway_usage", None)
                 if usage is not None:
+                    if control is not None:
+                        from optimus.acp.lifecycle import DirectiveKind
+
+                        control.complete_directive(DirectiveKind.GATEWAY, op_id, "failed")
                     self._record_reported_gateway_usage(usage, planning_turn, wire_attempt)
                     # Budget gate: if aggregate is at/above cap, stop immediately.
                     if self._total_cost_usd >= self._max_cost_usd:
@@ -999,6 +1019,10 @@ class _PlanningIterationRunner:
                         raise _PermanentStop("budget exhausted after reported failed attempt") from exc
                     # Re-raise for normal RetryController classification.
                     raise
+                if control is not None:
+                    from optimus.acp.lifecycle import DirectiveKind
+
+                    control.complete_directive(DirectiveKind.GATEWAY, op_id, "cost_unknown")
                 # No valid usage — unknown cost. Terminal regardless of retryability.
                 self._cost_complete = False
                 self._unknown_cost_attempt_count += 1
@@ -1006,6 +1030,10 @@ class _PlanningIterationRunner:
 
                 raise _PermanentStop("unknown transport cost") from exc
             except Exception as exc:
+                if control is not None:
+                    from optimus.acp.lifecycle import DirectiveKind
+
+                    control.complete_directive(DirectiveKind.GATEWAY, op_id, "cost_unknown")
                 # Unexpected non-Gateway exception — treat as unknown cost.
                 self._cost_complete = False
                 self._unknown_cost_attempt_count += 1
@@ -1028,6 +1056,10 @@ class _PlanningIterationRunner:
 
                 raise _PermanentStop("unknown transport cost") from exc
 
+            if control is not None:
+                from optimus.acp.lifecycle import DirectiveKind
+
+                control.complete_directive(DirectiveKind.GATEWAY, op_id, "succeeded")
             # Success path — record usage exactly once.
             self._record_reported_gateway_usage(
                 response.gateway_usage, planning_turn, wire_attempt
@@ -1306,14 +1338,15 @@ class _PlanningIterationRunner:
 
     def to_planning_result(self, loop_result) -> PlanningLoopResult:
         settled_turns = loop_result.state.iteration
+        # Unconditional halt recheck before any stop-reason conversion (Plan 11.25 Task 6).
+        if loop_result.state.human_halt_requested or self._halt_requested():
+            return self._planning_failure_result(
+                stop_reason="PLANNING_HALTED",
+                settled_turns=settled_turns,
+            )
+
         if loop_result.stop_reason is LoopStopReason.COMPLETED:
             decision = self._last_decision
-
-            if loop_result.state.human_halt_requested or self._halt_requested():
-                return self._planning_failure_result(
-                    stop_reason="PLANNING_HALTED",
-                    settled_turns=settled_turns,
-                )
 
             if self._typed_planning_stop_reason is not None:
                 return self._planning_failure_result(

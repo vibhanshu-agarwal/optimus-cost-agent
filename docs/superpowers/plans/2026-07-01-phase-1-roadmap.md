@@ -1053,6 +1053,7 @@ feature and follow-up status.
 | Plan 11.11 | Historical | Plan 11.12 retirement; precursor PR #134; PR #135 |
 | Plan 11.12 | Retired | Gateway MCP code removal and living-status custody |
 | Plan 11.13 | Complete | Published HLD v2.18, LLD v2.41, Guardrails v1.3, and Test Strategy v1.7; [evidence](../reports/2026-08-15-plan-11-13-authoritative-document-reversal-evidence.md) records output hashes, old-PDF integrity, audit, and rendered-page inspection |
+| Plan 11.25 | Implemented (Slice 1 on branch; awaiting merge) | Multi-turn conversation Slice 1 hermetic evidence: [baseline](../../../reports/plan-11-25-multi-turn-baseline.md), [contract evidence](../../../reports/plan-11-25-multi-turn-contract-evidence.md), [release review](../../../reports/plan-11-25-multi-turn-release-review.md); branch `agent/cursor/plan-11-25-multi-turn-conversation` |
 
 **Milestone charter:** Plan 11 is the v1.0 milestone. `P11-FEAT-GATEWAY-CORE` (Plan 11.1)
 closes the Gateway core and observability-route gate; the ratified TOOLS and COST-OBS identities
