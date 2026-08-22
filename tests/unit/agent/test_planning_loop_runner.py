@@ -7,15 +7,21 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from optimus.acp.debug_trace import configure_debug_trace, resolve_debug_log_path
 from optimus.agent.planning_loop import (
     PlanningLoopPolicy,
     PlanningLoopRunner,
     PlanningProgressEvent,
+    _PlanningIterationRunner,
 )
 from optimus.gateway.errors import GatewayHttpError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
+from optimus.loops.controller import GoalLoopResult
+from optimus.loops.models import IterationState, LoopStopReason
+from optimus.retry.policy import RetryController, RetryPolicy
 from optimus.runtime.modes import ExecutionMode
 
 
@@ -317,6 +323,95 @@ def test_human_halt_wins_refusal_race(tmp_path):
 
     assert result.stop_reason == "PLANNING_HALTED"
     assert result.plan_hash is None
+
+
+def _preselected_non_completed_loop_result(stop_reason: LoopStopReason, *, iteration: int = 2) -> GoalLoopResult:
+    """Fabricate a controller result after stop selection and before conversion."""
+    return GoalLoopResult(
+        state=IterationState(
+            run_id="run-1",
+            session_id=None,
+            goal="Update src/a.py",
+            completion_condition="final plan",
+            started_at=datetime(2026, 7, 6, tzinfo=UTC),
+            iteration=iteration,
+            cost_usd_spent=Decimal("0.004"),
+        ),
+        stop_reason=stop_reason,
+        summary="controller stopped",
+    )
+
+
+def _iteration_runner_for_conversion(
+    tmp_path: Path,
+    *,
+    halt_requested,
+) -> _PlanningIterationRunner:
+    policy = PlanningLoopPolicy()
+    max_cost_usd = Decimal("0.05")
+    return _PlanningIterationRunner(
+        gateway_client=ScriptingGateway([]),
+        model="glm-5.2",
+        task="Update src/a.py",
+        initial_workspace_context="",
+        initial_workspace_file_sizes={},
+        workspace_root=tmp_path,
+        run_id="run-1",
+        session_id=None,
+        execution_mode=ExecutionMode.AGENT,
+        policy=policy,
+        loop_budget_policy=policy.to_loop_budget_policy(max_cost_usd=max_cost_usd),
+        max_cost_usd=max_cost_usd,
+        now=lambda: datetime(2026, 7, 6, tzinfo=UTC),
+        usage_callback=None,
+        retry_controller=RetryController(
+            policy=RetryPolicy(base_delay_ms=0, jitter_ms=(0,)),
+            sleep_ms=lambda _delay_ms: None,
+        ),
+        progress_observer=None,
+        halt_requested=halt_requested,
+        guard=PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=()),
+    )
+
+
+@pytest.mark.parametrize(
+    ("stop_reason", "mapped_without_halt"),
+    [
+        (LoopStopReason.REPEATED_FAILURE, "PLANNING_REPEATED_READ_REQUEST"),
+        (LoopStopReason.BUDGET_EXHAUSTED, "PLANNING_BUDGET_EXHAUSTED"),
+        (LoopStopReason.WALL_CLOCK, "PLANNING_WALL_CLOCK_EXHAUSTED"),
+        (LoopStopReason.MAX_ITERATIONS, "PLANNING_TURN_LIMIT_EXHAUSTED"),
+    ],
+)
+def test_halt_wins_over_preselected_non_completed_stop(
+    tmp_path: Path,
+    stop_reason: LoopStopReason,
+    mapped_without_halt: str,
+) -> None:
+    """DoD 5.21 sixth family: late halt after non-COMPLETED stop selection.
+
+    Halt becomes true after the controller already selected REPEATED_FAILURE /
+    BUDGET_EXHAUSTED / WALL_CLOCK / MAX_ITERATIONS, before to_planning_result()
+    dispatches that stop. The preselected mapped stop must not be reported.
+    """
+    loop_result = _preselected_non_completed_loop_result(stop_reason)
+
+    without_halt = _iteration_runner_for_conversion(tmp_path, halt_requested=lambda: False)
+    assert without_halt.to_planning_result(loop_result).stop_reason == mapped_without_halt
+
+    halt_armed = {"active": False}
+
+    def halt_after_stop_selection() -> bool:
+        return halt_armed["active"]
+
+    with_halt = _iteration_runner_for_conversion(tmp_path, halt_requested=halt_after_stop_selection)
+    # Simulate the race window: stop already selected; halt flips before conversion.
+    halt_armed["active"] = True
+    halted = with_halt.to_planning_result(loop_result)
+    assert halted.stop_reason == "PLANNING_HALTED"
+    assert halted.settled_turns == loop_result.state.iteration
+    assert halted.plan_hash is None
+    assert halted.plan_text is None
 
 
 def test_final_plan_at_budget_equality_has_no_hash(tmp_path):
