@@ -176,6 +176,8 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Promoted -> [Plan 11.20](2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md) | MEDIUM     | Future client-MCP runtime follow-up | [release](../../../reports/plan-11-20-p11-fu-20-release.md); [evidence](../../../reports/plan-11-20-p11-fu-20-evidence.md); seam built and unit-tested; production composition not yet wired; live one-call tier unrun |
 | ~~`P11-FU-21`~~ | ~~Custody Relay Broken-Pipe Exit-Code Propagation Defect~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.14~~ | ~~Plan 11.14; `reports/plan-11-14-p11-fu-21-custody-relay-exit-code-evidence.md`~~ |
 | ~~`P11.5-FU-2`~~ | ~~Consistent local env / Redis / Phoenix / Gateway startup for live runs~~ | ~~Closed~~ | ~~HIGH~~   | ~~Plan 11.6~~ | ~~PR #97 / `dc9a080`; [operator runbook](../../runbooks/local-live-dependencies.md)~~ |
+| `P11.25-FU-1` | Non-AGENT-mode conversation carriage (contract term: MT-FU-1) | Open | MEDIUM     | Future post-11.x follow-up | Acceptance criteria in entry |
+| `P11.25-FU-2` | Structured ACP stop-reason metadata (contract term: MT-FU-2) | Open | MEDIUM     | Future post-11.x follow-up | Acceptance criteria in entry |
 
 ## Settled risks and historical entries
 
@@ -1641,6 +1643,49 @@ and WSL residual
 Operator runbook:
 [`docs/runbooks/local-live-dependencies.md`](../../runbooks/local-live-dependencies.md).
 Retain this entry for history; do not reopen without a new deferred-follow-up ID.
+
+### P11.25-FU-1: Non-AGENT-mode conversation carriage (contract term: MT-FU-1)
+
+**Raised:** 2026-08-21, in Plan 11.25's settled contract (`BRAINSTORM-multi-turn-conversation-SETTLED.md`
+§3, "Out of scope, with owners") as `MT-FU-1`, an explicit, ruled exclusion from Slice 1, not a slice-1
+defect. Slice 1 merged to `main` 2026-08-22
+([implementation plan](2026-08-21-plan-11-25-multi-turn-conversation-implementation.md), PR #188).
+
+**Designated future plan:** None yet named — post-11.x follow-up, plan number assigned at pickup.
+
+**Root cause:** Slice 1 carries conversation only on the `ExecutionMode.AGENT` path — the ACP session
+default (`spec.py:107`) and the only path Zed exercises. The non-AGENT path uses a separate prompt
+builder, `build_agent_planner_input` (`runner.py:326`), which Slice 1 leaves untouched: the two paths
+never shared a planner-input builder, so extending one does not extend the other.
+
+**Acceptance criteria:** `build_agent_planner_input` accepts and renders the same conversation envelope
+Slice 1's `ConversationState` already produces, with its call site updated to supply it. Sized as one
+parameter/section addition plus the call-site change plus tests, provided Slice 1's conversation record
+continues to exist (it does). Not blocked on anything external.
+
+**Status:** Open. Not yet scheduled.
+
+### P11.25-FU-2: Structured ACP stop-reason metadata (contract term: MT-FU-2)
+
+**Raised:** 2026-08-21, in Plan 11.25's settled contract (`BRAINSTORM-multi-turn-conversation-SETTLED.md`
+§3, "Out of scope, with owners") as `MT-FU-2`, an explicit, ruled exclusion from Slice 1, not a slice-1
+defect. Slice 1 merged to `main` 2026-08-22
+([implementation plan](2026-08-21-plan-11-25-multi-turn-conversation-implementation.md), PR #188).
+
+**Designated future plan:** None yet named — post-11.x follow-up, plan number assigned at pickup.
+
+**Root cause:** The ACP wire carries no field distinguishing "no model work happened" from "work
+completed": `_stop_reason` (`spec.py:1125-1134`) maps every member of `_PLANNING_TERMINAL_STOP_REASONS`
+(`spec.py:1053-1073`) — including `PLANNING_GATEWAY_COST_UNKNOWN` — to the literal `"end_turn"`, and the
+completion message remains free-text `agent_message_chunk` (`spec.py:1004-1005`, via
+`_emit_completion_message`).
+
+**Acceptance criteria:** Add a structured `_meta` stop reason to the prompt response, populated from
+`planning_result.stop_reason`, so a future safety or observability check can distinguish a no-work turn
+from a completed one without parsing prose. This is a production change to `spec.py` inside Plan 11.25's
+own applicability surface, which is why Slice 1 routes around it rather than absorbing it.
+
+**Status:** Open. Not yet scheduled.
 
 ## Accepted risks and warnings
 
