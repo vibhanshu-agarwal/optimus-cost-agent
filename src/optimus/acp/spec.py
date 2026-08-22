@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import itertools
 import uuid
@@ -807,13 +808,12 @@ class AcpDuplexAdapter:
             if reason == "delivery_indeterminate"
             else "This prompt was refused."
         )
-        try:
+        # Best-effort explanatory notice; refusal RPC response still returns on notify failure.
+        with contextlib.suppress(Exception):
             await self._outbound.notify(
                 "session/update",
                 build_agent_message_chunk_notification(session_id=session_id, text=message),
             )
-        except Exception:
-            pass
         return self._non_turn(
             success_response(request_id=request_id, result={"stopReason": "refusal"}),
             ownership_slot,

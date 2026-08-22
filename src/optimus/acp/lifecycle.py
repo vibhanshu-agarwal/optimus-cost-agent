@@ -6,6 +6,7 @@ No asyncio I/O here. Permission correlation futures are channel-owned.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -427,10 +428,9 @@ class TurnControl:
         if claimed and remover is not None:
             remover(self.session_id, self.turn_seq, self)
         if claimed and callback is not None:
-            try:
+            # Settlement telemetry is best-effort evidence; never replace finalize outcome.
+            with contextlib.suppress(Exception):
                 callback(outcome)
-            except Exception:
-                pass
         return outcome
 
     def _suppress_not_started_directives_locked(self) -> None:
