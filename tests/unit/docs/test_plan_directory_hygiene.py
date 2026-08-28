@@ -23,6 +23,32 @@ LIVE_REGISTRY_ROW = re.compile(
     r"\| `(?P<state>Active|Blocked)` \| `(?P<owner>[^`]+)` \| (?P<next_gate>.+) \|$"
 )
 MARKDOWN_LINK = re.compile(r"\[[^]]+\]\((?P<target>[^)]+)\)")
+# Exact (document, raw link text) pairs allowed to stay broken. Every entry
+# here must be an already-broken, pre-existing defect unrelated to the
+# archive move -- never a directory- or document-wide bypass. Verified
+# against `main` before PR #193's archive move: these 4 links already
+# 404'd at their pre-move location (a plain authoring mistake in a frozen
+# 2026-07-10 plan, e.g. a missing `../../../` before `reports/...`), so the
+# move did not create them and PR #193's document-repair lane does not
+# claim to fix them.
+STALE_LINK_EXEMPTIONS: set[tuple[str, str]] = {
+    (
+        "docs/superpowers/plans/archive/2026-07-10-plan-9-6-live-signoff-execution.md",
+        "reports/plan-9-6-phase-a-evidence.md",
+    ),
+    (
+        "docs/superpowers/plans/archive/2026-07-10-plan-9-6-live-signoff-execution.md",
+        "reports/plan-9-6-phase-b-evidence.md",
+    ),
+    (
+        "docs/superpowers/plans/archive/2026-07-10-plan-9-6-live-signoff-execution.md",
+        "reports/plan-9-6-phase-d-evidence.md",
+    ),
+    (
+        "docs/superpowers/plans/archive/2026-07-10-plan-9-6-live-signoff-execution.md",
+        "2026-07-10-plan-9-6-phase-c-operator-runbook.md",
+    ),
+}
 REPOSITORY_PLAN_PATH = re.compile(
     r"docs/superpowers/plans/(?P<target>[A-Za-z0-9_./-]+\.md)"
 )
@@ -162,22 +188,48 @@ def test_separately_named_amendments_cannot_be_live_root_plans() -> None:
     assert not {name for name in root_plan_names if "amendment" in name.lower()}
 
 
-def test_rewritten_archive_links_outside_the_archive_resolve() -> None:
+def test_relative_markdown_links_resolve_except_registered_stale_links() -> None:
+    used_exemptions: set[tuple[str, str]] = set()
     for document in REPO_ROOT.rglob("*.md"):
-        if ARCHIVE_ROOT in document.parents or ".venv" in document.parts:
+        if ".venv" in document.parts:
             continue
         text = document.read_text(encoding="utf-8")
         text = re.sub(r"```.*?```|~~~.*?~~~", "", text, flags=re.DOTALL)
         text = re.sub(r"`[^`\n]*`", "", text)
+        relative_document = document.relative_to(REPO_ROOT).as_posix()
         for match in MARKDOWN_LINK.finditer(text):
-            target = urlsplit(match.group("target"))
-            if target.scheme or "archive/" not in target.path:
+            raw_target = match.group("target")
+            target = urlsplit(raw_target)
+            if target.scheme or not target.path:
                 continue
             resolved = (document.parent / target.path).resolve()
-            assert resolved.exists(), f"broken archive link in {document}: {target.path}"
+            if resolved.exists():
+                continue
+            exemption = (relative_document, raw_target)
+            assert exemption in STALE_LINK_EXEMPTIONS, (
+                f"broken relative link in {relative_document}: {raw_target}"
+            )
+            used_exemptions.add(exemption)
+
+    assert used_exemptions == STALE_LINK_EXEMPTIONS, (
+        "stale-link exemptions must be exact; remove exemptions for links that now resolve"
+    )
 
 
 def test_repository_relative_plan_paths_are_repaired_except_in_frozen_provenance() -> None:
+    # NOTE: the ARCHIVE_ROOT skip below is deliberate, not an oversight carried
+    # over from before the archive move. This function's REPOSITORY_PLAN_PATH
+    # regex matches the literal substring anywhere in raw text (not just inside
+    # markdown link syntax), so removing the skip surfaces every archived
+    # document's own un-prefixed self-reference and sibling cross-reference
+    # (e.g. a "Plan file: docs/superpowers/plans/X.md" header) -- 159 such
+    # hits across 62 distinct archived documents as of PR #193, none of them
+    # navigable dead links (that class is covered, including archive/, by
+    # test_relative_markdown_links_resolve_except_registered_stale_links
+    # above). Repairing or exempting that class at the necessary per-instance
+    # granularity is a separate, much larger effort than the 4-document /
+    # 12-link repair this PR's document-repair lane is scoped to, and is
+    # intentionally left out of scope here pending an explicit ruling.
     used_exemptions: set[tuple[str, str]] = set()
     for document in REPO_ROOT.rglob("*"):
         if (

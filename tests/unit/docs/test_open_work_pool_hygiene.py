@@ -359,8 +359,40 @@ def _read(path: Path) -> str:
     return content
 
 
-def _file_sha256(relative_path: str) -> str:
-    return hashlib.sha256((REPO_ROOT / relative_path).read_bytes()).hexdigest().upper()
+def _init_git_fixture(repo_root: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=repo_root, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=repo_root, check=True)
+    subprocess.run(["git", "config", "user.name", "Hygiene Test"], cwd=repo_root, check=True)
+
+
+def test_head_blob_sha256_hashes_the_committed_blob_not_working_tree_bytes(tmp_path: Path) -> None:
+    """A digest gate over frozen approval bytes must bind to what was actually
+    committed, not to whatever happens to sit in the working tree -- Windows
+    checkout/line-ending drift (or an uncommitted local edit) must not move
+    the result. This is the exact failure class commit f266f0a's .gitattributes
+    LF pin was written to prevent for raw-bytes SHA-256 checks on this repo."""
+    _init_git_fixture(tmp_path)
+    frozen = tmp_path / "frozen.md"
+    frozen.write_bytes(b"Approved frozen content.\n")
+    subprocess.run(["git", "add", "frozen.md"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "seed approved bytes"], cwd=tmp_path, check=True)
+    committed_digest = hashlib.sha256(b"Approved frozen content.\n").hexdigest().upper()
+
+    # Simulate working-tree drift after the commit (a checkout-time CRLF
+    # rewrite, or an uncommitted local edit) without touching history.
+    frozen.write_bytes(b"Approved frozen content.\r\n")
+
+    assert _head_blob_sha256("frozen.md", repo_root=tmp_path) == committed_digest
+
+
+def _head_blob_sha256(relative_path: str, *, repo_root: Path = REPO_ROOT, revision: str = "HEAD") -> str:
+    result = subprocess.run(
+        ["git", "show", f"{revision}:{relative_path}"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+    )
+    return hashlib.sha256(result.stdout).hexdigest().upper()
 
 
 def _status_lines_by_owner(text: str) -> tuple[tuple[tuple[str, ...], str], ...]:
@@ -687,7 +719,7 @@ def _plan_11_snapshot_rows(text: str) -> dict[str, tuple[str, str]]:
 
 
 def test_immutable_documents_match_approved_digests_after_archival() -> None:
-    actual = {path: _file_sha256(path) for path in PROTECTED_BLOB_SHA256}
+    actual = {path: _head_blob_sha256(path) for path in PROTECTED_BLOB_SHA256}
 
     assert actual == PROTECTED_BLOB_SHA256
 
