@@ -1034,9 +1034,9 @@ enforcement; `P9.85-FU-3` remains parked pending the operator decision.
 
 ### Execution snapshot
 
-This milestone-level snapshot records the Plan 11 lanes without duplicating item-level state. The
-[`consolidated open-work pool`](2026-07-23-consolidated-deferred-followups-backlog.md) owns live
-feature and follow-up status.
+This milestone-level snapshot retains terminal and historical Plan 11 lane outcomes. It does not
+publish a live lane's state or next gate: the
+[`consolidated open-work pool`](2026-07-23-consolidated-deferred-followups-backlog.md) owns those.
 
 | Plan | Summary state | Evidence |
 |---|---|---|
@@ -1046,7 +1046,7 @@ feature and follow-up status.
 | Plan 11.4 | Closed | PR #91 |
 | Plan 11.5 | Closed | PR #95 |
 | Plan 11.6 | Merged | PR #97 |
-| Plan 11.7 | Partially implemented | blocked |
+| Plan 11.7 | Status owned by backlog | [Live plan registry](2026-07-23-consolidated-deferred-followups-backlog.md#live-implementation-plan-registry) |
 | Plan 11.8 | Historical | Plan 11.12 retirement; precursor PR #116; PR #118 |
 | Plan 11.9 | Closed | PR #123; PR #124 |
 | Plan 11.10 | Closed | PR #130 |
@@ -1085,7 +1085,8 @@ is held as the last primary Plan 11 slice. Once the consolidated pool closes, th
 reviewer must record whether outward publication stays in 11.x-last or splits into a 13.x train; the
 v1.0 release-version contract and excluded-capability inventory remain in Plan 11 either way.
 
-**Status:** Plan 11.7 (`P11-FEAT-ZED-RESUME`) is partially implemented and blocked after the closed
+**Historical Plan 11.7 context (non-authoritative; live status and next gate are in the consolidated
+backlog):** Plan 11.7 (`P11-FEAT-ZED-RESUME`) was partially implemented and blocked after the closed
 Plan 11.1/11.2/11.4/11.5/11.6 slices. Frozen Task 0 Steps 1-4 are sealed with disposition
 `stop_amend_plan_session_load_unreachable` (historical Zed 1.13.1 did not issue `session/load` after
 full restart). A 2026-08-15 re-probe at commit `71cb9ed` observed Zed `1.15.0 e17dc4f…`,

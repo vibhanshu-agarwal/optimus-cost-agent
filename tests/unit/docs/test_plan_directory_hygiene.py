@@ -26,6 +26,22 @@ MARKDOWN_LINK = re.compile(r"\[[^]]+\]\((?P<target>[^)]+)\)")
 REPOSITORY_PLAN_PATH = re.compile(
     r"docs/superpowers/plans/(?P<target>[A-Za-z0-9_./-]+\.md)"
 )
+FROZEN_REFERENCE_EXEMPTIONS = {
+    "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md",
+    "docs/superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md",
+    "docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md",
+    "docs/superpowers/plans/evidence-handoff-evidence-collector-implementation.md",
+    "docs/superpowers/specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md",
+    "docs/superpowers/specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md",
+    "reports/plan-11-20-p11-fu-20-release.md",
+    "reports/plan-11-21-p11-5-fu-1-release.md",
+    "reports/plan-11-7-server-custody-artifact-manifest.json",
+    "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/document-freshness-audit.json",
+    "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/trigger-chain.json",
+    "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/assert-prompt-retry-preflight-signature-supersession-note.md",
+    "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task0-checkpoint.json",
+    "reports/plan-11-7-server-custody-artifacts/trigger-chain.json",
+}
 
 
 def _live_registry_rows() -> list[re.Match[str]]:
@@ -88,7 +104,8 @@ def test_rewritten_archive_links_outside_the_archive_resolve() -> None:
             assert resolved.exists(), f"broken archive link in {document}: {target.path}"
 
 
-def test_repository_relative_plan_paths_resolve_or_have_an_archived_successor() -> None:
+def test_repository_relative_plan_paths_are_repaired_except_in_frozen_provenance() -> None:
+    used_exemptions: set[str] = set()
     for document in REPO_ROOT.rglob("*"):
         if (
             not document.is_file()
@@ -107,6 +124,16 @@ def test_repository_relative_plan_paths_resolve_or_have_an_archived_successor() 
                 continue
             target = PLANS_ROOT / match.group("target")
             archived_target = ARCHIVE_ROOT / Path(match.group("target")).name
-            assert target.is_file() or archived_target.is_file(), (
-                f"unknown plan path in {document}: {match.group(0)}"
+            if target.is_file():
+                continue
+            relative_document = document.relative_to(REPO_ROOT).as_posix()
+            assert relative_document in FROZEN_REFERENCE_EXEMPTIONS, (
+                f"stale plan path in mutable document {document}: {match.group(0)}"
             )
+            used_exemptions.add(relative_document)
+            assert archived_target.is_file(), f"missing archived target for {match.group(0)}"
+
+    assert used_exemptions == FROZEN_REFERENCE_EXEMPTIONS, (
+        "frozen-reference exemptions must be exact; remove exemptions that no longer preserve "
+        "a historical plan path"
+    )

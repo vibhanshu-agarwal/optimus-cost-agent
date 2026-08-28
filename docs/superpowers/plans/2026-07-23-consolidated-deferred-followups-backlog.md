@@ -57,7 +57,24 @@ in this table.
 |---|---|---|---|
 | [Plan 11.7 v3 — Zed Resume](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | `Blocked` | `P11-FEAT-ZED-RESUME` | Task 0 evidence authority remains unaccepted; resume only after a reviewed forward-only v4 and explicit operator authorization. |
 | [Plan 11.24 v6 — guided session-load probe](2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md) | `Blocked` | `P11-FEAT-ZED-RESUME` | Offline repair is merged; the separately authorized Task-13 prerequisite drive and later two-Zed gate remain dormant. |
+| [Plan 11.23 — client-MCP runtime composition](2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | `Blocked` | `P11-FU-20` | Tasks 1–4 satisfy production composition; Task 6 still requires independently authored ACP/write-server evidence, live Redis/TimeSeries, Gateway authority, TTY ceremony, and paid-call authorization. |
 | [Evidence collector](evidence-handoff-evidence-collector-implementation.md) | `Blocked` | `EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR` | Determinate rendered outcomes require the unscheduled Zed render-observation producer; no merge is authorized. |
+
+**Current Zed Resume position (accepted runtime lane, 2026-08-28):** runtime commit
+`fac32284888850bacde93815265cbabe3afd4663` and its independent R9/V2 reviews are accepted. Real
+Zed 1.16.3 resumed a non-empty session with ordered replay before success, no replacement
+`session/new`, and continuation on the same durable ledger. Raw Optimus stdio emitted every replay
+frame; acpx does not display load-time replay. Zero-entry load fails closed with `INVALID_REQUEST`.
+Current Zed UI close abruptly terminates the wrapper and child without orderly stdin EOF, so the
+normal close path does not reach `aclose()` / `store.release()`; immediate reopen can therefore
+return `SESSION_BUSY` until the exact 300-second lease expires, after which recovery succeeds.
+The ruling is **`DEMO_READY_UNSEALED — CURRENT ZED CLOSE RECOVERS AFTER BOUNDED LEASE EXPIRY`**.
+It always carries these limitations: acpx replay visibility is not demonstrated; current Zed does
+not provide graceful agent shutdown; immediate reopen can remain busy for up to 300 seconds; and
+Task 0, formal evidence, release, push, merge, backlog closure, and Plan 11.7 closure remain open.
+The docs-only runtime-branch record at `d18fd93` is not imported by this directory-cleanup change.
+Any publication of those facts as the Plan 11.7 execution contract must be one complete reviewed
+`_v4` successor, never another separately named amendment plan.
 
 ## Frozen approval bytes and live-status authority
 
@@ -152,18 +169,18 @@ priority or scheduling claim; their designated owner remains Plan 12.
 |---|---|---|------------|---|---|
 | `P9.8-FU-2` | Intelligent ambiguous-reference ranking | Open | MEDIUM     | Plan 12 | Acceptance criteria in entry |
 | `P9.8-FU-3` | Dynamic context budgets and required-file summarization | Open | MEDIUM     | Plan 12 | Acceptance criteria in entry |
-| `P9.8-FU-5` | Zed Refusal-Rendering Stability | Promoted -> [Plan 11.7](archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md) | MEDIUM     | `P11-FEAT-ZED-RESUME` | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
+| `P9.8-FU-5` | Zed Refusal-Rendering Stability | Promoted -> [Plan 11.7 v3](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | MEDIUM     | `P11-FEAT-ZED-RESUME` | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
 | `P9.85-FU-1` | Intelligent observation compression | Open | MEDIUM     | Plan 12 | Acceptance criteria in entry |
 | `P9.85-FU-2` | Dynamic planning-evidence partition | Open | MEDIUM     | Plan 12 | Acceptance criteria in entry |
 | `P9.85-FU-3` | Cross-Run/Session Spend Policy | Open | MEDIUM     | Future budget-governance plan | Acceptance criteria in entry |
 | `P9.87-FU-1` | Mechanical Current-Raw-Evidence Grounding Guard | Open | MEDIUM     | Future Plan 11 feature work | Acceptance criteria in entry |
-| `P11-FU-1` | ACP Session Resume Capability | Promoted -> [Plan 11.7](archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md) | HIGH       | `P11-FEAT-ZED-RESUME` | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
+| `P11-FU-1` | ACP Session Resume Capability | Promoted -> [Plan 11.7 v3](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | HIGH       | `P11-FEAT-ZED-RESUME` | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
 | ~~`P11-FU-2`~~ | ~~Package Lookup and Security Advisory Gateway Capability~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-GATEWAY-TOOLS` / Plan 11.2~~ | ~~PR #88 / `4590dbf`~~ |
 | ~~`P11-FU-3`~~ | ~~MCP Route/Typed-Contract Publication Gate~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-GATEWAY-MCP`~~ | ~~PR #112; PR #113 / `edd1f04`~~ |
 | `P11-FU-4` | Re-pin FU-4A/FU-5 Live Evidence | Open | MEDIUM     | Coordinated with `P11-FEAT-ZED-RESUME` | Acceptance criteria in entry |
 | `P11-FU-5` | Windows Subprocess Handle-Duplication Flake (WinError 6/50) | Open | LOW        | Future Windows subprocess-lifecycle evidence lane | [Plan 11.17 disposition](../../../reports/plan-11-17-p11-fu-5-windows-disposition.md); retains distinct FU-29 custody |
 | `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | LOW        | Future Windows Gateway lifecycle-evidence lane | [Plan 11.17 root-cause record](../../../reports/plan-11-17-p11-fu-6-root-cause.md); recurrence retained; 59-clean bound inapplicable |
-| `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Promoted -> [Plan 11.16](archive/2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md) | MEDIUM     | Plan 11.16; closure gate deferred with `P11-FU-6` | [Windows residual](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md); Plan 11.17 recorded FU-6 open disposition |
+| `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Partially implemented | MEDIUM     | Future Windows coverage-flake closure lane; Plan 11.16 is a terminal partial outcome | [Windows residual](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md); Plan 11.17 recorded FU-6 open disposition |
 | `P11.5-FU-1` | Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics | Closed | MEDIUM     | `P11-FEAT-GATEWAY-COST-OBS` | [phoenix evidence](../../../reports/plan-11-21-p11-5-fu-1-phoenix-evidence.md); [release](../../../reports/plan-11-21-p11-5-fu-1-release.md); Task 8 watch remains Plan 11.5 Task 8 |
 | `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Open | LOW        | Future Gateway migration design | Acceptance criteria in entry |
 | ~~`P11-FU-9`~~ | ~~Client-Supplied ACP `mcpServers` Disposition~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Dedicated P11-FU-9 lane~~ | ~~PR #119 / `9a93137`; [closure evidence](../../../reports/p11-fu-9-client-mcp-closure-evidence.md)~~ |
@@ -188,7 +205,7 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | ~~`P11-FU-17`~~ | ~~WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Native WSL clone operating decision~~ | ~~Resolved by verified ext4 native-clone gate; proof report 2026-08-14~~ |
 | ~~`P11-FU-18`~~ | ~~Workspace-identity `ctime` coalescing fail-open~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.15~~ | ~~[release report](../../../reports/plan-11-15-durable-approval-identity-release.md); equal-ctime topology evidence only~~ |
 | ~~`P11-FU-19`~~ | ~~WSL client-SDK operation-deadline supervisor race~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.16~~ | ~~[Windows](../../../reports/plan-11-16-p11-fu-19-windows-evidence.md); [WSL](../../../reports/plan-11-16-p11-fu-19-wsl-evidence.md)~~ |
-| `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Promoted -> [Plan 11.20](archive/2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md) | MEDIUM     | Future client-MCP runtime follow-up | [release](../../../reports/plan-11-20-p11-fu-20-release.md); [evidence](../../../reports/plan-11-20-p11-fu-20-evidence.md); seam built and unit-tested; production composition not yet wired; live one-call tier unrun |
+| `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Partially implemented | MEDIUM     | Live blocked Plan 11.23 Task 6 | [interim release](../../../reports/plan-11-23-p11-fu-20-runtime-release.md); production composition is wired; independently authored live one-call tier unrun |
 | ~~`P11-FU-21`~~ | ~~Custody Relay Broken-Pipe Exit-Code Propagation Defect~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.14~~ | ~~Plan 11.14; `reports/plan-11-14-p11-fu-21-custody-relay-exit-code-evidence.md`~~ |
 | ~~`P11.5-FU-2`~~ | ~~Consistent local env / Redis / Phoenix / Gateway startup for live runs~~ | ~~Closed~~ | ~~HIGH~~   | ~~Plan 11.6~~ | ~~PR #97 / `dc9a080`; [operator runbook](../../runbooks/local-live-dependencies.md)~~ |
 | `P11.25-FU-1` | Non-AGENT-mode conversation carriage (contract term: MT-FU-1) | Open | MEDIUM     | Future post-11.x follow-up | Acceptance criteria in entry |
@@ -310,7 +327,7 @@ conformance.
 **Evidence anchors:** `reports/plan-9-8-task-aware-context-evidence.md`,
 `reports/plan-9-75-zed-hitl-runtime-evidence.md`, and the Plan 9.8 `P9.8-FU-5` acceptance criteria.
 
-**Status:** Promoted -> [Plan 11.7](archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md).
+**Status:** Promoted -> [Plan 11.7 v3](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md).
 Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`). Frozen Task 0 Steps 1-4 sealed the
 current-Zed Case 1/2 refusal-rendering evidence (Case 1 wire `end_turn` / stable; Case 2 wire
 `refusal` / Zed panic). The bounded origin-A/retry-preflight correction cycle reached Task 5
@@ -429,7 +446,7 @@ owned by `P11-FEAT-ZED-RESUME`, not parked or deferred to a later milestone.
 (`AgentPlanRecord`), not ACP session or conversation state, and cannot be treated as an existing
 resume store without an explicit design and migration decision.
 
-**Status:** Promoted -> [Plan 11.7](archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md).
+**Status:** Promoted -> [Plan 11.7 v3](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md).
 Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`). Frozen Task 0 Steps 1-4 are sealed with
 disposition `stop_amend_plan_session_load_unreachable` (historical Zed 1.13.1 did not issue `session/load`
 after full restart). The bounded origin-A/retry-preflight correction cycle reached Task 5
@@ -762,11 +779,12 @@ port/teardown race). This item is distinct: its established mechanism is coverag
 instrumentation / `sys.settrace` scheduling pressure around an `asyncio.wait_for` deadline
 in a unit test, with no current evidence of a subprocess-handle or port-teardown defect.
 
-**Status:** Promoted -> [Plan 11.16](archive/2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md). Scheduled
-2026-08-15. Test-only `wait_for(..., timeout=1)` wrappers were removed in `72f3cc8`; the clock was
-not widened. The 25 full Windows `--cov` gate stopped at 4/25 after unrelated `P11-FU-6` WinError
-10053. Residual: [Windows evidence](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md).
-Not Closed.
+**Status:** Partially implemented. Plan 11.16 is a terminal partial outcome: test-only
+`wait_for(..., timeout=1)` wrappers were removed in `72f3cc8` without widening the clock, and its
+independent P11-FU-19 lane closed. The 25 full Windows `--cov` gate stopped at 4/25 after unrelated
+`P11-FU-6` WinError 10053, so this entry remains unresolved and is reassigned to a future Windows
+coverage-flake closure lane rather than keeping the completed Plan 11.16 execution record live.
+Residual: [Windows evidence](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md).
 
 **P11-FU-6 gate (2026-08-15):** The 25-process Windows `pytest --cov -q` closure gate is unrun
 after 4/25 because P11-FU-6 recurred. Plan 11.17 recorded FU-6 as reproduced, root cause
@@ -1580,13 +1598,14 @@ before implementation.
 **Related prior art:** Same "mock manufactures agreement" shape as Task 5's FakeClientMcpService
 gap; disposition-never-opens-transport constraint from P11-FU-9 design §3.
 
-**Status:** Promoted -> [Plan 11.20](archive/2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md). Scheduled
-2026-08-18. Unit adapter wiring landed at `d718384` (real registry, authorizer, `PreToolGuard`, fail-closed
-broker closure). Residual: seam built and unit-tested; production composition not yet wired. Live
-one-call write-approval tier **unrun** (`requires_acpx` session capture incomplete;
-`requires_mcp_stdio` catalog pass is not one-call evidence). Evidence:
-[release](../../../reports/plan-11-20-p11-fu-20-release.md),
-[Task 4 disposition](../../../reports/plan-11-20-p11-fu-20-evidence.md). Not Closed. Frozen P11-FU-9 Task 6
+**Status:** Partially implemented. Plan 11.20 is a terminal intermediate slice: unit adapter wiring
+landed at `d718384` (real registry, authorizer, `PreToolGuard`, fail-closed broker closure). Live
+Plan 11.23 supersedes its production-composition residual; Tasks 1–4 now provide the real lazy
+composition path, while Task 6 remains blocked on independently authored ACP/write-server evidence,
+live Redis/TimeSeries, Gateway authority, TTY ceremony, and paid-call authorization. Evidence:
+[Plan 11.20 release](../../../reports/plan-11-20-p11-fu-20-release.md),
+[Task 4 disposition](../../../reports/plan-11-20-p11-fu-20-evidence.md), and
+[Plan 11.23 interim release](../../../reports/plan-11-23-p11-fu-20-runtime-release.md). Not Closed. Frozen P11-FU-9 Task 6
 fail-closed evidence is not this item's closure.
 
 ### P11-FU-21: Custody Relay Broken-Pipe Exit-Code Propagation Defect

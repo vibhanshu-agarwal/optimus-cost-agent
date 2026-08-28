@@ -34,6 +34,12 @@ PREREQUISITE_TABLE_COLUMNS = (
     "Owner",
     "If unsatisfied: genuinely hard, or merely unauthorized?",
 )
+PLAN_DIRECTORY_GOVERNANCE_FILES = {
+    "README.md",
+    "2026-07-01-phase-1-roadmap.md",
+    "2026-07-23-consolidated-deferred-followups-backlog.md",
+    "2026-07-25-plan-11-v1-milestone-charter.md",
+}
 
 HISTORICAL_PLAN_117_AMENDMENTS = (
     "docs/superpowers/plans/archive/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md",
@@ -177,7 +183,7 @@ PLAN_11_SUMMARY_EVIDENCE = {
     "Plan 11.4": ("Closed", "PR #91"),
     "Plan 11.5": ("Closed", "PR #95"),
     "Plan 11.6": ("Merged", "PR #97"),
-    "Plan 11.7": ("Partially implemented", "blocked"),
+    "Plan 11.7": ("Status owned by backlog", "Live plan registry"),
     "Plan 11.8": ("Historical", "Plan 11.12"),
     "Plan 11.9": ("Closed", "PR #123", "PR #124"),
 }
@@ -247,11 +253,9 @@ EXPECTED_FEATURE_SCOPE_TOKENS = {
     "Plan 12": ("Post-v1.0",),
 }
 PROMOTED_PLAN_117_STATUS = (
-    "Promoted -> [Plan 11.7](archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md)"
+    "Promoted -> [Plan 11.7 v3](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md)"
 )
-PROMOTED_PLAN_1120_STATUS = (
-    "Promoted -> [Plan 11.20](archive/2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md)"
-)
+PARTIAL_PLAN_1120_STATUS = "Partially implemented"
 FABRICATED_P11_FU_20_SCHEDULED_TOKEN = "Scheduled — Plan 11.20"
 PROMOTED_PLAN_1121_STATUS = (
     "Promoted -> [Plan 11.21](archive/2026-08-17-plan-11-21-p11-5-fu-1-otlp-failure-delivery-state.md)"
@@ -535,7 +539,11 @@ def _post_amendment_plan_paths(name_status: str) -> tuple[Path, ...]:
         if status != "A" or not separator:
             continue
         path = Path(relative_path)
-        if path.parent != Path("docs/superpowers/plans") or path.name[:10] < PREREQUISITES_AMENDMENT_DATE:
+        if (
+            path.parent != Path("docs/superpowers/plans")
+            or path.name in PLAN_DIRECTORY_GOVERNANCE_FILES
+            or path.name[:10] < PREREQUISITES_AMENDMENT_DATE
+        ):
             continue
         paths.append(REPO_ROOT / path)
     return tuple(paths)
@@ -778,8 +786,13 @@ def test_plan_versioning_uses_forward_only_semantic_anchor_groups() -> None:
 
     assert _has_semantic_anchor_group(agents, "XYZ.md", "XYZ_v2.md", "XYZ_v3.md")
     assert _has_semantic_anchor_group(agents, "_v1", "_v2", "immutable")
-    assert _has_semantic_anchor_group(agents, "consolidated pool", "live version")
-    assert _has_semantic_anchor_group(agents, "going forward", "dated amendment", "retroactively")
+    assert _has_semantic_anchor_group(agents, "consolidated backlog", "live version")
+    assert _has_semantic_anchor_group(
+        agents, "going forward", "do not create", "amendment documents"
+    )
+    assert _has_semantic_anchor_group(
+        agents, "historical amendment documents", "not retroactively renamed", "archive"
+    )
     assert _has_semantic_anchor_group(
         agents,
         "archive/evidence-handoff-risk-bearing-slice-implementation.md",
@@ -1552,8 +1565,8 @@ def test_plan_1121_keeps_p115_fu1_separate_scheduled_custody() -> None:
     assert "Task 8" in detail
 
 
-def test_plan_1116_deadline_seams_keep_separate_scheduled_custody() -> None:
-    """P11-FU-7 and P11-FU-19 must be scheduled separately under Plan 11.16."""
+def test_plan_1116_terminal_partial_outcome_keeps_distinct_followup_custody() -> None:
+    """The archived Plan 11.16 result must not falsely close P11-FU-7."""
     pool = _read(OPTIMUS_POOL)
     indexed = _fu_index_rows(pool)
     entries = _entry_sections(pool)
@@ -1570,13 +1583,19 @@ def test_plan_1116_deadline_seams_keep_separate_scheduled_custody() -> None:
     def _lane_state(status: str) -> str:
         if status.startswith("Promoted -> ") and "Plan 11.16" in status:
             return "scheduled"
+        if status == "Partially implemented":
+            return "partial"
         if status == "Closed":
             return "closed"
         raise AssertionError(status)
 
-    assert _lane_state(fu7_status) in {"scheduled", "closed"}
+    assert _lane_state(fu7_status) == "partial"
     assert _lane_state(fu19_status) in {"scheduled", "closed"}
     assert "Plan 11.16" in p11_fu_7
+    assert "terminal partial outcome" in p11_fu_7
+    assert _has_semantic_anchor_group(
+        p11_fu_7, "future Windows", "coverage-flake closure lane"
+    )
     assert "Plan 11.16" in p11_fu_19
     assert "P11-FU-19" not in fu7_row["Evidence"]
     assert "P11-FU-7" not in fu19_row["Evidence"]
@@ -1615,8 +1634,8 @@ def test_plan_1118_current_docs_close_p11_fu_10() -> None:
     assert "-32002" in frozen_plan_117_text
 
 
-def test_plan_1120_p11_fu_20_scheduled_custody_rejects_p11_fu_9_task_6_closure() -> None:
-    """P11-FU-20 must be Plan 11.20-promoted; P11-FU-9 Task 6 fail-closed is not closure."""
+def test_p11_fu_20_is_partial_and_owned_by_live_blocked_plan_1123() -> None:
+    """Terminal Plan 11.20 cannot hide Plan 11.23's unrun external gate."""
     pool = _read(OPTIMUS_POOL)
     indexed = _fu_index_rows(pool)
     entries = _entry_sections(pool)
@@ -1633,10 +1652,10 @@ def test_plan_1120_p11_fu_20_scheduled_custody_rejects_p11_fu_9_task_6_closure()
     index_row = next(row for row in followup_rows if row["ID"] == "`P11-FU-20`")
 
     assert item == "Attach per-server catalog/authorizer to session tool service for real one-call issuance"
-    assert index_status == PROMOTED_PLAN_1120_STATUS
-    assert detail_status == PROMOTED_PLAN_1120_STATUS
-    assert index_row["Status"] == PROMOTED_PLAN_1120_STATUS
-    assert status_line.startswith(f"{PROMOTED_PLAN_1120_STATUS}.")
+    assert index_status == PARTIAL_PLAN_1120_STATUS
+    assert detail_status == PARTIAL_PLAN_1120_STATUS
+    assert index_row["Status"] == PARTIAL_PLAN_1120_STATUS
+    assert status_line.startswith(f"{PARTIAL_PLAN_1120_STATUS}.")
     assert _resolution(index_status) == "unresolved"
     assert _resolution(detail_status) == "unresolved"
 
@@ -1654,6 +1673,10 @@ def test_plan_1120_p11_fu_20_scheduled_custody_rejects_p11_fu_9_task_6_closure()
         and "Plan 11.20" not in index_status
     )
     assert not task6_only_closure
+    assert "Plan 11.20 is a terminal intermediate slice" in body
+    assert _has_semantic_anchor_group(body, "Live", "Plan 11.23", "supersedes")
+    assert "Task 6 remains blocked" in body
+    assert (PLANS_ROOT / "2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md").is_file()
 
     assert "_mcp_permission_broker_for" in body
     assert "disposition_for_new_session" in body

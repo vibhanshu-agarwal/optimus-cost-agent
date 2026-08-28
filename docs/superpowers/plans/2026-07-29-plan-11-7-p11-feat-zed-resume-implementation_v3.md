@@ -21,7 +21,7 @@ Git, HMAC-SHA-256, and the repository `evidence_gather.py` collection/redaction 
 
 **Spec:** This v3 file is the current Plan 11.7 execution authority once approved. It incorporates
 Tasks 1-11 and the production contracts from
-`docs/superpowers/plans/archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v2.md` unchanged by
+`docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v2.md` unchanged by
 reference and replaces v2 Task 0, its current-client manifest schemas, its report paths, and its
 Task-0 verifier commands. The accepted architectural rulings and review history are recorded in
 `D:\Projects\Development\Python\optimus-agent-handoff\CURRENT.md`.

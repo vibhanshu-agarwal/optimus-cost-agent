@@ -10,7 +10,9 @@ Do not infer current status from a plan's checkboxes or prose.
 - Active and blocked plans stay at this directory root. A blocked plan is still live and is never
   moved merely because it is waiting for authority, a dependency, or a design ruling.
 - Completed, superseded, retired, abandoned, and reviewed-disposition plans move once to the flat
-  [`archive/`](archive/) directory. The move preserves file bytes; only references change.
+  [`archive/`](archive/) directory. The move preserves file bytes. Repair references in mutable
+  documents, but do not edit frozen plans, approval records, release reports, or evidence artifacts
+  merely to update a historical path; their pinned bytes take precedence.
 - The backlog's `Live implementation plan registry` must name every live root plan exactly once as
   either `Active` or `Blocked`. Files in `archive/` must never appear in that registry.
 - The roadmap and milestone charter may summarize historical sequencing, but they do not own live
