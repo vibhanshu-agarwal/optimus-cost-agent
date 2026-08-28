@@ -1,6 +1,6 @@
 # Plan 11.6 Implementation-Plan Approval
 
-**Plan:** `docs/superpowers/plans/2026-07-29-plan-11-6-p11-5-fu-2-local-startup-consolidation.md`
+**Plan:** `docs/superpowers/plans/archive/2026-07-29-plan-11-6-p11-5-fu-2-local-startup-consolidation.md`
 
 **Approved plan SHA-256:**
 `74CBE070C2CAA90C0D1D562F5DFE8CBA8C8F2839CD2CF1E9369E9A3D613B85C1`

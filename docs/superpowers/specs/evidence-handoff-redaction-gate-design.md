@@ -14,7 +14,7 @@ pending a separately reviewed implementation plan.
 - The feature identity is the reviewed product identifier and remains a unique, greppable token.
   Any future identity change requires another reviewed mechanical rename.
 - Live feature state belongs only in the
-  [evidence and handoff open-work pool](../plans/evidence-handoff-open-work-pool.md).
+  [evidence and handoff open-work pool](../plans/archive/evidence-handoff-open-work-pool.md).
   This design owns architecture, scope, and verification requirements, not status.
 - Eventual package, module, configuration, and CLI names are descriptive of their behavior
   (`evidence`, `redaction`, `handoff`). They never contain a feature identity or scheduling number.

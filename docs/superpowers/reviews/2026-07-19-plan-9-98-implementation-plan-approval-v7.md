@@ -3,7 +3,7 @@
 **Status:** Approved and frozen on 2026-07-19; final plan closure remains blocked until this record
 and the exact revised plan bytes are committed together in Task 8A.
 
-**Implementation plan:** `docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md`
+**Implementation plan:** `docs/superpowers/plans/archive/2026-07-18-plan-9-98-real-acpx-session-evidence.md`
 
 **V6 immutable baseline:** commit `2ab3bcb8b4e870e9896174e342cf485a20080068`, with the v6
 approval record and SHA-256 `D6D3E563655D8BDDB1FA852995DD9465DB8169273E82916C7AE4158C0AEF605B`.
@@ -57,7 +57,7 @@ test files, or any excluded Plan 9.96 follow-up file.
 Run from the repository root in a terminal where `uv` is genuinely on `PATH`:
 
 ```powershell
-uv run python -c "from pathlib import Path; import hashlib; p=Path('docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md'); print(hashlib.sha256(p.read_bytes()).hexdigest().upper())"
+uv run python -c "from pathlib import Path; import hashlib; p=Path('docs/superpowers/plans/archive/2026-07-18-plan-9-98-real-acpx-session-evidence.md'); print(hashlib.sha256(p.read_bytes()).hexdigest().upper())"
 ```
 
 Expected exact output, before any Task 8A checkbox is ticked:

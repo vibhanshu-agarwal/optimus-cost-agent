@@ -308,15 +308,15 @@ canonicalization and was a prerequisite for Plan 9.96 closure.
 **Plan 10.1** is implemented and closes six of the seven Plan 9.96 disclosures
 (`P9.96-FU-1..FU-4` by implementation commit, `FU-5` by evidence, `FU-6` by a
 no-code disposition) plus the confirmation-gate half of `FU-7` — see the
-[Plan 10.1 implementation plan](docs/superpowers/plans/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md).
+[Plan 10.1 implementation plan](docs/superpowers/plans/archive/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md).
 **Plan 10.2** closes the remaining `P9.96-FU-7` effective-row display provenance
 gap at `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef` without changing the approval
 digest contract — see the
-[Plan 10.2 implementation plan](docs/superpowers/plans/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md)
+[Plan 10.2 implementation plan](docs/superpowers/plans/archive/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md)
 and the [consolidated open-work pool](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md).
 **Plan 10.3** closes the frozen dependency lock drift and the traceback-safe tools
 `SurfaceAuditError` exception — see the
-[Plan 10.3 implementation plan](docs/superpowers/plans/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).
+[Plan 10.3 implementation plan](docs/superpowers/plans/archive/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).
 
 ## Prerequisites
 
@@ -771,7 +771,7 @@ Approve/Completed Plan flows in real Zed. If a current session appears stuck, th
 be waiting on **plan approval** (`session/request_permission`) or planning against the gateway;
 check the approval UI, workspace root, preflight, and current debug trace rather than treating the
 old ACP-shape defect as open. The completed fix and evidence are in
-`docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md` and
+`docs/superpowers/plans/archive/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md` and
 `reports/plan-9-75-zed-hitl-runtime-evidence.md`. Historical symptom analysis and operational
 checks (`always_allow_external_agent_tools`, workspace-root `"."`, preflight, and
 `verify_live_agent.py`) remain in the Plan 9.6 Zed section.

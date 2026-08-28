@@ -1,6 +1,6 @@
 # Senior Architect Review — Plan 5: Permission Engine, Pre-Tool Guard, and Shell Safety
 
-**Plan reviewed:** `docs/superpowers/plans/2026-07-03-permission-engine-pre-tool-guard-shell-safety.md`
+**Plan reviewed:** `docs/superpowers/plans/archive/2026-07-03-permission-engine-pre-tool-guard-shell-safety.md`
 **Reviewer role:** Senior Architect / Reviewer
 **Date:** 2026-07-03
 

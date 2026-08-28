@@ -24,7 +24,7 @@ validate the hook and contract, but its receipt alone cannot satisfy `rendered_t
 ## Authority and custody
 
 This is a new, unscheduled product-owned follow-up. Its live state is owned only by
-`docs/superpowers/plans/evidence-handoff-open-work-pool.md`. It does not reopen, edit, or silently
+`docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md`. It does not reopen, edit, or silently
 reinterpret the merged collector design or implementation plan.
 
 The operator-approved design direction creates one explicit exception to the merged collector

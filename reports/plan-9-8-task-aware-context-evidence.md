@@ -10,7 +10,7 @@
 **Source checkout:** `D:\Projects\Development\Python\optimus-cost-agent-wt-cursor`
 **PROVENANCE (operator):** `git_sha=6643cf8`, `optimus_acp_file=...\wt-cursor\src\optimus\acp\debug_trace.py`, keychain credentials (no `OPTIMUS_*` / provider keys in shell)
 
-**Plan:** [`docs/superpowers/plans/2026-07-10-plan-9-8-task-aware-workspace-context.md`](../docs/superpowers/plans/2026-07-10-plan-9-8-task-aware-workspace-context.md)
+**Plan:** [`docs/superpowers/plans/archive/2026-07-10-plan-9-8-task-aware-workspace-context.md`](../docs/superpowers/plans/archive/2026-07-10-plan-9-8-task-aware-workspace-context.md)
 
 ---
 

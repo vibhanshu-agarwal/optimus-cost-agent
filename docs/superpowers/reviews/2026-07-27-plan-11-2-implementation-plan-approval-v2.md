@@ -18,14 +18,14 @@ plan checkbox ticks at freeze time.
 
 **Sibling lane (does not mutate this freeze set’s design/inventory/charter):**
 Plan 11.3 real provider adapters —
-`docs/superpowers/plans/2026-07-27-plan-11-3-real-provider-adapters.md` with its own approval
+`docs/superpowers/plans/archive/2026-07-27-plan-11-3-real-provider-adapters.md` with its own approval
 record and closing digest note.
 
 **Design spec:**
 `docs/superpowers/specs/2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md`
 
 **Implementation plan:**
-`docs/superpowers/plans/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md`
+`docs/superpowers/plans/archive/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md`
 
 **Requirement inventory:**
 `docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md`
@@ -96,7 +96,7 @@ file in place to change approved digests or scope.
 ```bash
 git status --short --branch
 sha256sum docs/superpowers/specs/2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md | cut -d' ' -f1
-sha256sum docs/superpowers/plans/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md | cut -d' ' -f1
+sha256sum docs/superpowers/plans/archive/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md | cut -d' ' -f1
 sha256sum docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md | cut -d' ' -f1
 sha256sum docs/superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md | cut -d' ' -f1
 sha256sum docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md | cut -d' ' -f1

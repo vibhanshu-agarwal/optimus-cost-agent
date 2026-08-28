@@ -1,4 +1,4 @@
-﻿# Consolidated Open Work Pool
+# Consolidated Open Work Pool
 
 ## Purpose
 
@@ -32,8 +32,9 @@ not duplicate this content.
   under docs/superpowers/plans/>`, `Partially implemented`, `Closed`, or `Reviewed disposition`.
   Free prose may follow the terminating punctuation. `Partially implemented` means merged work
   advances this entry's own acceptance criteria, not merely that work exists in the owning lane.
-- **Promoting an item:** When an item is scheduled into an implementation plan or amendment, mark
-  its Status as `Promoted -> <linked plan or amendment>` with the date, and leave the entry in place
+- **Promoting an item:** When an item is scheduled into an implementation plan or a complete
+  versioned successor (`_v2`, `_v3`, and so on), mark its Status as `Promoted -> <linked plan>` with
+  the date, and leave the entry in place
   (do not delete history) rather than removing the row.
 - **Closing an item:** When an item is fully implemented, mark Status as `Closed` with the
   implementation commit/PR and evidence citation, the same way other closed follow-ups are recorded
@@ -44,25 +45,39 @@ not duplicate this content.
   is historical. The protected-artifact list below identifies the live pool row that owns current
   state; never reconcile that state by editing the approved bytes.
 
+## Live implementation plan registry
+
+This table is the sole list of implementation plans that remain live at
+`docs/superpowers/plans/`. `Active` means execution may proceed under the plan's own authority;
+`Blocked` means the obligation remains live but its next gate is unsatisfied. A blocked plan stays
+at the root. Terminal and superseded plans live in the flat `archive/` directory and never appear
+in this table.
+
+| Plan | State | Backlog owner | Next gate |
+|---|---|---|---|
+| [Plan 11.7 v3 — Zed Resume](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | `Blocked` | `P11-FEAT-ZED-RESUME` | Task 0 evidence authority remains unaccepted; resume only after a reviewed forward-only v4 and explicit operator authorization. |
+| [Plan 11.24 v6 — guided session-load probe](2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md) | `Blocked` | `P11-FEAT-ZED-RESUME` | Offline repair is merged; the separately authorized Task-13 prerequisite drive and later two-Zed gate remain dormant. |
+| [Evidence collector](evidence-handoff-evidence-collector-implementation.md) | `Blocked` | `EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR` | Determinate rendered outcomes require the unscheduled Zed render-observation producer; no merge is authorized. |
+
 ## Frozen approval bytes and live-status authority
 
 These 19 artifacts retain their approved committed bytes. Each live owner named below, rather than
 the artifact's approval-time status prose, answers the current-state question.
 
-- `docs/superpowers/plans/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md` — SHA-256 `4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P9.96-FU-7` disposition](#p996-task-9-disclosed-follow-ups-closed-historical-plan-10-custody).
-- `docs/superpowers/plans/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md` — SHA-256 `E66ECA48C588E7DB618D4850FDF0CEE901B4966BC0AB405E21C857AE6BE24F32` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [Plan 10.3 historical correction](#plan-103-frozen-plan-status-correction-historical).
-- `docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md` — SHA-256 `254A6ACC56511BBCCEB8FC101B190F213FD65450327145C88979077D845D6D3E` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-GATEWAY-CORE`](#feature-slices).
-- `docs/superpowers/plans/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md` — SHA-256 `8C96C9BFA67FB87F4A90FAE37169D27B437C5FD0CEE3AB2E6AB399E67B2874E5` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-GATEWAY-TOOLS`](#feature-slices).
-- `docs/superpowers/plans/2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md` — SHA-256 `0BAC146974984EA663B7A59802A1B5ED74F90EB682F855C0E05AAAB5B9A2C396` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-GATEWAY-COST-OBS`](#feature-slices).
-- `docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md` — SHA-256 `F52AD9A5A85DC50B0DFD3206B6BD09FD8FF0AE79B1A6049DF1017F978B1C462D` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
-- `docs/superpowers/plans/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md` — SHA-256 `79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
-- `docs/superpowers/plans/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md` — SHA-256 `5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
-- `docs/superpowers/plans/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md` — SHA-256 `106FD92B8E43F44A7115D7EDB1F9CF1E3EE643E4B6F594FA656FB4119A969B82` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FU-11`](#p11-fu-11-plan-117-retry-preflight-and-live-session-proof).
-- `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe.md` — SHA-256 `BA1372E1D638AC2F12A4852E304DCE02196C26C78017F3AE1CA566F4A08DD017` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
-- `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v2.md` — SHA-256 `BA67D5021FF767D9574BA452E39ECB2E642999C0CAEFBD6431D82E93D3842E05` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
-- `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v3.md` — SHA-256 `C76121F5A35A698183ADEB1B028AEE6E7C0FE26621ED798586F5AF9081CB81F4` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
-- `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v4.md` — SHA-256 `1CFBB6E0BEDD8FBB3A111DE5C9AEA11F96F36D742A1469B50EEC03EB3116B13C` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
-- `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v5.md` — SHA-256 `26B8A69BE2A3CD4E5A021CB21A507C27D0C880D5322EF22B9A59D4257ECC96A8` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
+- `docs/superpowers/plans/archive/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md` — SHA-256 `4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P9.96-FU-7` disposition](#p996-task-9-disclosed-follow-ups-closed-historical-plan-10-custody).
+- `docs/superpowers/plans/archive/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md` — SHA-256 `E66ECA48C588E7DB618D4850FDF0CEE901B4966BC0AB405E21C857AE6BE24F32` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [Plan 10.3 historical correction](#plan-103-frozen-plan-status-correction-historical).
+- `docs/superpowers/plans/archive/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md` — SHA-256 `254A6ACC56511BBCCEB8FC101B190F213FD65450327145C88979077D845D6D3E` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-GATEWAY-CORE`](#feature-slices).
+- `docs/superpowers/plans/archive/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md` — SHA-256 `8C96C9BFA67FB87F4A90FAE37169D27B437C5FD0CEE3AB2E6AB399E67B2874E5` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-GATEWAY-TOOLS`](#feature-slices).
+- `docs/superpowers/plans/archive/2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md` — SHA-256 `0BAC146974984EA663B7A59802A1B5ED74F90EB682F855C0E05AAAB5B9A2C396` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-GATEWAY-COST-OBS`](#feature-slices).
+- `docs/superpowers/plans/archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md` — SHA-256 `F52AD9A5A85DC50B0DFD3206B6BD09FD8FF0AE79B1A6049DF1017F978B1C462D` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
+- `docs/superpowers/plans/archive/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md` — SHA-256 `79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
+- `docs/superpowers/plans/archive/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md` — SHA-256 `5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
+- `docs/superpowers/plans/archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md` — SHA-256 `106FD92B8E43F44A7115D7EDB1F9CF1E3EE643E4B6F594FA656FB4119A969B82` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FU-11`](#p11-fu-11-plan-117-retry-preflight-and-live-session-proof).
+- `docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe.md` — SHA-256 `BA1372E1D638AC2F12A4852E304DCE02196C26C78017F3AE1CA566F4A08DD017` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
+- `docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v2.md` — SHA-256 `BA67D5021FF767D9574BA452E39ECB2E642999C0CAEFBD6431D82E93D3842E05` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
+- `docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v3.md` — SHA-256 `C76121F5A35A698183ADEB1B028AEE6E7C0FE26621ED798586F5AF9081CB81F4` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
+- `docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v4.md` — SHA-256 `1CFBB6E0BEDD8FBB3A111DE5C9AEA11F96F36D742A1469B50EEC03EB3116B13C` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
+- `docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v5.md` — SHA-256 `26B8A69BE2A3CD4E5A021CB21A507C27D0C880D5322EF22B9A59D4257ECC96A8` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
 - `docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md` — SHA-256 `8B67FC187B92F0B66A9932AAAD9A013C476C19C165A1044F57F338245A01786C` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [P9.96 historical summary and disposition](#p996-task-9-disclosed-follow-ups-closed-historical-plan-10-custody).
 - `docs/superpowers/specs/2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md` — SHA-256 `2E679F105A250C7DF9F3757F72C43810B92810DD080EC6A4A985B778D163BFEC` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-GATEWAY-TOOLS`](#feature-slices).
 - `docs/superpowers/specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md` — SHA-256 `EB34FA10148CE813A03E60E0770116ABA4AC9857E4DFBEE87E00C39BFDB0D392` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FU-11`](#p11-fu-11-plan-117-retry-preflight-and-live-session-proof).
@@ -75,7 +90,7 @@ The following four documents retain statements about the numbering rule used whe
 scheduled. Those statements are historical provenance, not live governance; the current rule lives
 in `AGENTS.md` and the Plan 11 charter. Preserve each document according to its pin status:
 
-- `docs/superpowers/plans/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md` — SHA-256 `FA35912C3E5AC343A1092E7B5A88CA93C0E1293061CB53D5810BB1BA3C1002F8` — Historical closed-plan task instruction. Pin status: not digest-pinned. It is in-scope and editable for Plan 11.10, but deliberately unchanged because its sentence records the rule used at the time.
+- `docs/superpowers/plans/archive/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md` — SHA-256 `FA35912C3E5AC343A1092E7B5A88CA93C0E1293061CB53D5810BB1BA3C1002F8` — Historical closed-plan task instruction. Pin status: not digest-pinned. It is in-scope and editable for Plan 11.10, but deliberately unchanged because its sentence records the rule used at the time.
 - `docs/superpowers/specs/2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-design.md` — SHA-256 `5608AD5520B8960E070A4A4F32C992D152A2CA19F21C177B44AC9805F371F3AA` — Historical assignment provenance. Pin status: pinned elsewhere by the Plan 11.5 implementation plan and outside the covered set. Never edit to modernize its numbering wording.
 - `docs/superpowers/specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md` — SHA-256 `AC48C0AEF1778D6EBE93005BC3993AE204F81A1C59CDC8DB17CFB7EDB6A040F8` — Historical assignment provenance. Pin status: one of the 13 immutable artifacts above. Never edit; `P11-FEAT-GATEWAY-MCP` owns live state.
 - `docs/superpowers/specs/2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-design.md` — SHA-256 `BBB033051B8238A50E72D20F6C59A79BF94A0EBE19A43428CCB440EAF8B37F73` — Historical assignment provenance. Pin status: not digest-pinned and outside the covered set. It is deliberately unchanged; any future edit requires its own reviewed scope.
@@ -88,20 +103,20 @@ open-work inventory.
 
 | Identity                        | Status                | Priority   | Scope detail                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 |---------------------------------|-----------------------|------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| ~~`P11-FEAT-GATEWAY-CORE`~~     | ~~Closed~~            | ~~MEDIUM~~ | ~~Plan 11.1 — closed; merged to `main` as PR #85 (`6ae6997`, tip `6c39599`). Migration closed by **Plan 11.4**, merged to `main` as PR #91 (`d80e112`), 2026-07-28. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route); migration custody: strict-loopback completion, OpenRouter-default OpenAI-compatible aggregator transport, provider-reported accounting, and direct-adapter retirement — all implemented and independently re-verified task-by-task. The bounded Vercel Python transport check is complete as a design decision: Vercel is backlogged under this identity (its public OpenAI-compatible transport doesn't document the mandatory per-response provider-cost fields the settled `GatewayUsage` contract requires; no comparison matrix, no second endpoint added). Closure evidence: [design spec](../specs/2026-07-28-plan-11-4-p11-feat-gateway-core-migration-design.md), [implementation plan](2026-07-28-plan-11-4-gateway-core-migration.md) (all 36 checkboxes checked against their named verification commands)~~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ~~`P11-FEAT-GATEWAY-CORE`~~     | ~~Closed~~            | ~~MEDIUM~~ | ~~Plan 11.1 — closed; merged to `main` as PR #85 (`6ae6997`, tip `6c39599`). Migration closed by **Plan 11.4**, merged to `main` as PR #91 (`d80e112`), 2026-07-28. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-core---gateway-core-and-observability-route); migration custody: strict-loopback completion, OpenRouter-default OpenAI-compatible aggregator transport, provider-reported accounting, and direct-adapter retirement — all implemented and independently re-verified task-by-task. The bounded Vercel Python transport check is complete as a design decision: Vercel is backlogged under this identity (its public OpenAI-compatible transport doesn't document the mandatory per-response provider-cost fields the settled `GatewayUsage` contract requires; no comparison matrix, no second endpoint added). Closure evidence: [design spec](../specs/2026-07-28-plan-11-4-p11-feat-gateway-core-migration-design.md), [implementation plan](archive/2026-07-28-plan-11-4-gateway-core-migration.md) (all 36 checkboxes checked against their named verification commands)~~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ~~`P11-FEAT-GATEWAY-TOOLS`~~    | ~~Closed~~            | ~~MEDIUM~~ | ~~Plan 11.2 — closed by PR #88 (merge `4590dbf`); migration follow-ups remain assigned here and receive a new Plan 11.x number only at pickup. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); migration custody: deterministic search/direct extract, route-specific dependency availability, replacement acceptance, and Tavily rollback-reviewed retirement; closure evidence: [Plan 11.2 approval](../reviews/2026-07-27-plan-11-2-implementation-plan-approval-v2.md), [local-process evidence](../../../reports/plan-11-2-gateway-tools-local-process-evidence.md), [staging evidence](../../../reports/plan-11-2-gateway-tools-staging-evidence.md), and [fitness report](../../../reports/plan-11-2-gateway-tools-task7-fitness.md)~~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| ~~`P11-FEAT-GATEWAY-COST-OBS`~~ | ~~Closed~~            | ~~MEDIUM~~ | ~~Plan 11.5 — closed by PR #95 (merge `e388258`), 2026-07-29; migration follow-ups remain assigned here (`P11.5-FU-1` Closed via Plan 11.21; `P11.5-FU-2` closed via Plan 11.6) and receive a new Plan 11.x number only at pickup. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); [implementation plan](2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration~~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| ~~`P11-FEAT-GATEWAY-MCP`~~      | ~~Retired~~           | ~~MEDIUM~~ | ~~Retired by Plan 11.12. [Plan 11.8](2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md) and [Plan 11.11](2026-08-13-plan-11-11-p11-feat-gateway-mcp-2026-07-28-http-compatibility.md) are historical precursor work; their frozen design and merged implementation records are not rewritten. Plan 11.13 published HLD v2.18, LLD v2.41, Guardrails v1.3, and Test Strategy v1.7 through the sibling reversal package; immutable amendment inputs remain historical. Client-owned MCP remains live and separate. This completed publication remains a pre-`P11-FEAT-REGISTRY` / v1.0 dependency. [Evidence](../reports/2026-08-15-plan-11-13-authoritative-document-reversal-evidence.md). [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering)~~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `P11-FEAT-ZED-RESUME`           | Partially implemented | MEDIUM     | Partially implemented; blocked. Frozen Task 0 Steps 1-4 sealed (`session/load` unreachable on historical Zed 1.13.1); frozen Plan 11.7 Tasks 0 Steps 5-7 and Tasks 1-11 remain blocked. Standalone feasibility amendment approved (`79F3C92A…C06E6`, 2026-08-02); origin-A fixture v2 amendment approved and merged (`5BB327D8…9A4D` / PR #108, 2026-08-02). Corrected `origin-a-3` executed and sealed as Option B process-invalid (`next_corr=4` / `next_prompt=3` unclaimed; DoD success false). Retry-preflight amendment (`P11-FU-11`, PR #110) implemented through Task 5 **Path A** fail-closed terminal stop (2026-08-05): real CLI fail-closed at acquire; offline `unavailable_proof`; no corr-4 / no settings mutation / no Zed launch; accepted live retry not obtained. Parent Task 5 remains blocked; clean relaunch needs a budget-expansion amendment. Re-probe on 2026-08-15 at `71cb9ed` observed Zed `1.15.0 e17dc4f…`, independent acpx `0.12.0`, and live Redis. Its live `agentCapabilities` omitted `loadSession` and `sessionCapabilities.resume`; the resulting **INDETERMINATE / INTERNAL_CAPABILITY_UNAVAILABLE** establishes the Optimus agent gate only, not Zed support. Acpx made no forced `session/load` call, Zed was not launched, and no origin-A launch occurred. The current repository cannot independently compare the historical 1.13.1 run because its three named Task 0 artifacts are absent from `origin/main`; the [custody note](../../../reports/p11-feat-zed-resume-task0-evidence-custody-note.md) does not classify that absence as loss or invalidate the seal. The real-Zed temporary-advertisement re-probe is separately scoped and must commit its sanitized evidence. See [the re-probe](../../../reports/p11-feat-zed-resume-session-load-reprobe.md). Does not claim server-side custody feasible or an origin-A/amendment disposition. Its unimplemented error-code subset is now completed by `P11-FU-10` / Plan 11.18; frozen Plan 11.7 remains blocked and this transfer does not unblock `session/load`. Carries owned `P11-FU-1`, `P9.8-FU-5`, and `P11-FU-11`; coordinates, but does not own, `P11-FU-4`. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume); [feasibility amendment](2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md); [origin-A fixture v2 amendment](2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md); [retry-preflight amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md). Dependency: the [evidence and handoff product pool](evidence-handoff-open-work-pool.md) entry `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` supplies its sanitized-evidence gate. |
-| `P11-FEAT-MULTI-TURN-CONVERSATION` | Implemented (Slice 1 on branch; awaiting merge) | MEDIUM | Plan 11.25 Slice 1 — same-process in-memory multi-turn conversation on ACP `session/prompt` (canonical history, byte-budget admission/commitment, settlement, dedicated NDJSON writer). Hermetic evidence on branch `agent/cursor/plan-11-25-multi-turn-conversation`. Does **not** include persistence, `session/resume`/`session/load`, compression/summarization/pruning/eviction (Plan 12), or non-AGENT-mode carriage. `MT-FU-1` / `MT-FU-2` remain absent from this backlog and continue to block overall contract approval / design-document ungating only. Evidence: [baseline](../../../reports/plan-11-25-multi-turn-baseline.md), [contract evidence](../../../reports/plan-11-25-multi-turn-contract-evidence.md), [release review](../../../reports/plan-11-25-multi-turn-release-review.md); [implementation plan](2026-08-21-plan-11-25-multi-turn-conversation-implementation.md). |
+| ~~`P11-FEAT-GATEWAY-COST-OBS`~~ | ~~Closed~~            | ~~MEDIUM~~ | ~~Plan 11.5 — closed by PR #95 (merge `e388258`), 2026-07-29; migration follow-ups remain assigned here (`P11.5-FU-1` Closed via Plan 11.21; `P11.5-FU-2` closed via Plan 11.6) and receive a new Plan 11.x number only at pickup. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); [implementation plan](archive/2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration~~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ~~`P11-FEAT-GATEWAY-MCP`~~      | ~~Retired~~           | ~~MEDIUM~~ | ~~Retired by Plan 11.12. [Plan 11.8](archive/2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md) and [Plan 11.11](archive/2026-08-13-plan-11-11-p11-feat-gateway-mcp-2026-07-28-http-compatibility.md) are historical precursor work; their frozen design and merged implementation records are not rewritten. Plan 11.13 published HLD v2.18, LLD v2.41, Guardrails v1.3, and Test Strategy v1.7 through the sibling reversal package; immutable amendment inputs remain historical. Client-owned MCP remains live and separate. This completed publication remains a pre-`P11-FEAT-REGISTRY` / v1.0 dependency. [Evidence](../reports/2026-08-15-plan-11-13-authoritative-document-reversal-evidence.md). [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering)~~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `P11-FEAT-ZED-RESUME`           | Partially implemented | MEDIUM     | Partially implemented; blocked. Frozen Task 0 Steps 1-4 sealed (`session/load` unreachable on historical Zed 1.13.1); frozen Plan 11.7 Tasks 0 Steps 5-7 and Tasks 1-11 remain blocked. Standalone feasibility amendment approved (`79F3C92A…C06E6`, 2026-08-02); origin-A fixture v2 amendment approved and merged (`5BB327D8…9A4D` / PR #108, 2026-08-02). Corrected `origin-a-3` executed and sealed as Option B process-invalid (`next_corr=4` / `next_prompt=3` unclaimed; DoD success false). Retry-preflight amendment (`P11-FU-11`, PR #110) implemented through Task 5 **Path A** fail-closed terminal stop (2026-08-05): real CLI fail-closed at acquire; offline `unavailable_proof`; no corr-4 / no settings mutation / no Zed launch; accepted live retry not obtained. Parent Task 5 remains blocked; clean relaunch needs a budget-expansion amendment. Re-probe on 2026-08-15 at `71cb9ed` observed Zed `1.15.0 e17dc4f…`, independent acpx `0.12.0`, and live Redis. Its live `agentCapabilities` omitted `loadSession` and `sessionCapabilities.resume`; the resulting **INDETERMINATE / INTERNAL_CAPABILITY_UNAVAILABLE** establishes the Optimus agent gate only, not Zed support. Acpx made no forced `session/load` call, Zed was not launched, and no origin-A launch occurred. The current repository cannot independently compare the historical 1.13.1 run because its three named Task 0 artifacts are absent from `origin/main`; the [custody note](../../../reports/p11-feat-zed-resume-task0-evidence-custody-note.md) does not classify that absence as loss or invalidate the seal. The real-Zed temporary-advertisement re-probe is separately scoped and must commit its sanitized evidence. See [the re-probe](../../../reports/p11-feat-zed-resume-session-load-reprobe.md). Does not claim server-side custody feasible or an origin-A/amendment disposition. Its unimplemented error-code subset is now completed by `P11-FU-10` / Plan 11.18; frozen Plan 11.7 remains blocked and this transfer does not unblock `session/load`. Carries owned `P11-FU-1`, `P9.8-FU-5`, and `P11-FU-11`; coordinates, but does not own, `P11-FU-4`. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume); [feasibility amendment](archive/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md); [origin-A fixture v2 amendment](archive/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md); [retry-preflight amendment](archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md). Dependency: `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` in this backlog supplies its sanitized-evidence gate. |
+| `P11-FEAT-MULTI-TURN-CONVERSATION` | Closed | MEDIUM | Plan 11.25 Slice 1 — same-process in-memory multi-turn conversation on ACP `session/prompt` (canonical history, byte-budget admission/commitment, settlement, dedicated NDJSON writer), merged through PR #188 and follow-up PR #189. Does **not** include persistence, `session/resume`/`session/load`, compression/summarization/pruning/eviction (Plan 12), or non-AGENT-mode carriage; `MT-FU-1` and `MT-FU-2` remain separately open below. Evidence: [baseline](../../../reports/plan-11-25-multi-turn-baseline.md), [contract evidence](../../../reports/plan-11-25-multi-turn-contract-evidence.md), [release review](../../../reports/plan-11-25-multi-turn-release-review.md); [archived implementation plan](archive/2026-08-21-plan-11-25-multi-turn-conversation-implementation.md). |
 | `P11-FEAT-REGISTRY`             | Open                  | LOW        | Ratified, unscheduled, and held as the last primary Plan 11 slice. The ACP registry has a public authoritative repository, schema, submission guide, and stabilized live process; pickup begins by pinning and executing against the then-current validator/CI behavior, not by searching for an unknown source. Reassess 11.x-last versus a 13.x split for outward publication once this consolidated pool closes. The v1.0 release-version contract and excluded-capability inventory remain in Plan 11. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut). Verified local finding carried to pickup: package and ACP versions are both `0.1.0`, and ACP currently returns `authMethods: []`. The registry guide's Agent/Terminal Auth admission rule is an external claim to verify by live execution before implementation scope is frozen.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `P11-FEAT-IDE`                  | Open                  | LOW        | Conditional — opens only by explicit amendment if REGISTRY surfaces an unmet multi-IDE expectation. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `P11-FEAT-IDE`                  | Open                  | LOW        | Conditional — opens only through an explicitly approved complete versioned charter successor if REGISTRY surfaces an unmet multi-IDE expectation. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `Plan 12`                       | Open                  | LOW        | Post-v1.0 context-window and intelligent-selection lane; outside the v1.0 cut. [Charter boundary](2026-07-25-plan-11-v1-milestone-charter.md#explicit-exclusions-and-unresolved-inputs)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 **Plan 11.7 digest-pinned amendment status convention:** the
-[server-side custody feasibility amendment](2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md),
-[origin-A fixture-v2 amendment](2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md), and
-[retry-preflight amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md) intentionally
+[server-side custody feasibility amendment](archive/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md),
+[origin-A fixture-v2 amendment](archive/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md), and
+[retry-preflight amendment](archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md) intentionally
 retain their approval-time `Draft` status text and unchecked checkboxes. That is a load-bearing
 choice to preserve their approval digests, not incomplete progress tracking. Current execution state
 is owned by this living pool and the committed evidence chain: the
@@ -137,26 +152,26 @@ priority or scheduling claim; their designated owner remains Plan 12.
 |---|---|---|------------|---|---|
 | `P9.8-FU-2` | Intelligent ambiguous-reference ranking | Open | MEDIUM     | Plan 12 | Acceptance criteria in entry |
 | `P9.8-FU-3` | Dynamic context budgets and required-file summarization | Open | MEDIUM     | Plan 12 | Acceptance criteria in entry |
-| `P9.8-FU-5` | Zed Refusal-Rendering Stability | Promoted -> [Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md) | MEDIUM     | `P11-FEAT-ZED-RESUME` | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
+| `P9.8-FU-5` | Zed Refusal-Rendering Stability | Promoted -> [Plan 11.7](archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md) | MEDIUM     | `P11-FEAT-ZED-RESUME` | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
 | `P9.85-FU-1` | Intelligent observation compression | Open | MEDIUM     | Plan 12 | Acceptance criteria in entry |
 | `P9.85-FU-2` | Dynamic planning-evidence partition | Open | MEDIUM     | Plan 12 | Acceptance criteria in entry |
 | `P9.85-FU-3` | Cross-Run/Session Spend Policy | Open | MEDIUM     | Future budget-governance plan | Acceptance criteria in entry |
 | `P9.87-FU-1` | Mechanical Current-Raw-Evidence Grounding Guard | Open | MEDIUM     | Future Plan 11 feature work | Acceptance criteria in entry |
-| `P11-FU-1` | ACP Session Resume Capability | Promoted -> [Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md) | HIGH       | `P11-FEAT-ZED-RESUME` | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
+| `P11-FU-1` | ACP Session Resume Capability | Promoted -> [Plan 11.7](archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md) | HIGH       | `P11-FEAT-ZED-RESUME` | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
 | ~~`P11-FU-2`~~ | ~~Package Lookup and Security Advisory Gateway Capability~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-GATEWAY-TOOLS` / Plan 11.2~~ | ~~PR #88 / `4590dbf`~~ |
 | ~~`P11-FU-3`~~ | ~~MCP Route/Typed-Contract Publication Gate~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-GATEWAY-MCP`~~ | ~~PR #112; PR #113 / `edd1f04`~~ |
 | `P11-FU-4` | Re-pin FU-4A/FU-5 Live Evidence | Open | MEDIUM     | Coordinated with `P11-FEAT-ZED-RESUME` | Acceptance criteria in entry |
 | `P11-FU-5` | Windows Subprocess Handle-Duplication Flake (WinError 6/50) | Open | LOW        | Future Windows subprocess-lifecycle evidence lane | [Plan 11.17 disposition](../../../reports/plan-11-17-p11-fu-5-windows-disposition.md); retains distinct FU-29 custody |
 | `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | LOW        | Future Windows Gateway lifecycle-evidence lane | [Plan 11.17 root-cause record](../../../reports/plan-11-17-p11-fu-6-root-cause.md); recurrence retained; 59-clean bound inapplicable |
-| `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Promoted -> [Plan 11.16](2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md) | MEDIUM     | Plan 11.16; closure gate deferred with `P11-FU-6` | [Windows residual](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md); Plan 11.17 recorded FU-6 open disposition |
+| `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Promoted -> [Plan 11.16](archive/2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md) | MEDIUM     | Plan 11.16; closure gate deferred with `P11-FU-6` | [Windows residual](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md); Plan 11.17 recorded FU-6 open disposition |
 | `P11.5-FU-1` | Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics | Closed | MEDIUM     | `P11-FEAT-GATEWAY-COST-OBS` | [phoenix evidence](../../../reports/plan-11-21-p11-5-fu-1-phoenix-evidence.md); [release](../../../reports/plan-11-21-p11-5-fu-1-release.md); Task 8 watch remains Plan 11.5 Task 8 |
 | `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Open | LOW        | Future Gateway migration design | Acceptance criteria in entry |
 | ~~`P11-FU-9`~~ | ~~Client-Supplied ACP `mcpServers` Disposition~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Dedicated P11-FU-9 lane~~ | ~~PR #119 / `9a93137`; [closure evidence](../../../reports/p11-fu-9-client-mcp-closure-evidence.md)~~ |
-| `P11-FU-10` | Complete ACP Error-Code Registry Audit | Closed | HIGH       | [Plan 11.18](2026-08-15-plan-11-18-acp-error-code-registry-audit-implementation.md) | PR #158 (merge 7d4e466); [acpx evidence](../../../reports/plan-11-18-p11-fu-10-acpx-error-code-evidence.md) |
+| `P11-FU-10` | Complete ACP Error-Code Registry Audit | Closed | HIGH       | [Plan 11.18](archive/2026-08-15-plan-11-18-acp-error-code-registry-audit-implementation.md) | PR #158 (merge 7d4e466); [acpx evidence](../../../reports/plan-11-18-p11-fu-10-acpx-error-code-evidence.md) |
 | ~~`P11.7-FU-1`~~ | ~~Configurable Gateway request timeout for debug/investigation workflows~~ | ~~Closed~~ | ~~HIGH~~   | ~~Plan 11.9~~ | ~~PR #123 / `d0253be`~~ |
 | ~~`P11.7-FU-2`~~ | ~~Gateway threaded-test flake under full-suite load~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FU-6` Gateway harness custody~~ | ~~Batch B 2026-08-14; misfiled duplicate~~ |
 | `P11.7-FU-3` | Committed `plan117_custody_relay.py` docstring `\ufffd` / em-dash corruption | Open | MEDIUM     | Plan 11.7 deferred follow-up | Acceptance criteria in entry |
-| `P11-FU-11` | Plan 11.7 Retry Preflight and Live Session Proof | Partially implemented | HIGH       | [Plan 11.7 retry-preflight amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md) | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
+| `P11-FU-11` | Plan 11.7 Retry Preflight and Live Session Proof | Partially implemented | HIGH       | [Plan 11.7 retry-preflight amendment](archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md) | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
 | ~~`P11-FU-12`~~ | ~~MCP OAuth 2.1 Lifecycle~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Retired `P11-FEAT-GATEWAY-MCP`~~ | ~~Plan 11.12; won't-do~~ |
 | ~~`P11-FU-13`~~ | ~~Deferred MCP Capabilities and Long-Lived Interaction~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Retired `P11-FEAT-GATEWAY-MCP`~~ | ~~Plan 11.12; won't-do~~ |
 | ~~`P11-FU-14`~~ | ~~MCP Registry Discover-and-Connect~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Retired `P11-FEAT-GATEWAY-MCP`~~ | ~~Plan 11.12; won't-do~~ |
@@ -173,11 +188,63 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | ~~`P11-FU-17`~~ | ~~WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Native WSL clone operating decision~~ | ~~Resolved by verified ext4 native-clone gate; proof report 2026-08-14~~ |
 | ~~`P11-FU-18`~~ | ~~Workspace-identity `ctime` coalescing fail-open~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.15~~ | ~~[release report](../../../reports/plan-11-15-durable-approval-identity-release.md); equal-ctime topology evidence only~~ |
 | ~~`P11-FU-19`~~ | ~~WSL client-SDK operation-deadline supervisor race~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.16~~ | ~~[Windows](../../../reports/plan-11-16-p11-fu-19-windows-evidence.md); [WSL](../../../reports/plan-11-16-p11-fu-19-wsl-evidence.md)~~ |
-| `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Promoted -> [Plan 11.20](2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md) | MEDIUM     | Future client-MCP runtime follow-up | [release](../../../reports/plan-11-20-p11-fu-20-release.md); [evidence](../../../reports/plan-11-20-p11-fu-20-evidence.md); seam built and unit-tested; production composition not yet wired; live one-call tier unrun |
+| `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Promoted -> [Plan 11.20](archive/2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md) | MEDIUM     | Future client-MCP runtime follow-up | [release](../../../reports/plan-11-20-p11-fu-20-release.md); [evidence](../../../reports/plan-11-20-p11-fu-20-evidence.md); seam built and unit-tested; production composition not yet wired; live one-call tier unrun |
 | ~~`P11-FU-21`~~ | ~~Custody Relay Broken-Pipe Exit-Code Propagation Defect~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.14~~ | ~~Plan 11.14; `reports/plan-11-14-p11-fu-21-custody-relay-exit-code-evidence.md`~~ |
 | ~~`P11.5-FU-2`~~ | ~~Consistent local env / Redis / Phoenix / Gateway startup for live runs~~ | ~~Closed~~ | ~~HIGH~~   | ~~Plan 11.6~~ | ~~PR #97 / `dc9a080`; [operator runbook](../../runbooks/local-live-dependencies.md)~~ |
 | `P11.25-FU-1` | Non-AGENT-mode conversation carriage (contract term: MT-FU-1) | Open | MEDIUM     | Future post-11.x follow-up | Acceptance criteria in entry |
 | `P11.25-FU-2` | Structured ACP stop-reason metadata (contract term: MT-FU-2) | Open | MEDIUM     | Future post-11.x follow-up | Acceptance criteria in entry |
+
+## Evidence and handoff feature registry
+
+This section replaces the former second status pool, now preserved only as
+[`archive/evidence-handoff-open-work-pool.md`](archive/evidence-handoff-open-work-pool.md).
+Designs and archived plans continue to own detailed scope; this consolidated backlog alone owns
+current state, priority, and the next schedulable gate.
+
+| Identity | Status | Priority | Scope / next gate |
+|---|---|---|---|
+| `EVIDENCE-HANDOFF-FEAT-ZED-RENDER-OBSERVATION` | Open | MEDIUM | Design ratified but unscheduled; blocked on same-session Zed custody under `P11-FEAT-ZED-RESUME` and a production-equivalent cooperative-receipt feasibility result. [Design](../specs/evidence-handoff-zed-render-observation-design.md). |
+| `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` | Closed | MEDIUM | Closed 2026-07-31 through commits `2f5e4b8`…`eb5f5d8`. [Archived plan](archive/evidence-handoff-redaction-gate-implementation.md). |
+| `EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR` | Partially implemented | MEDIUM | Tasks 0–12 were independently reviewed at `c6c9b46`; determinate render outcomes remain blocked on the render-observation producer and the branch is unmerged. [Live plan](evidence-handoff-evidence-collector-implementation.md). |
+| `EVIDENCE-HANDOFF-FEAT-A2A-LEDGER` | Reviewed disposition | MEDIUM | Not shipped, not supported, and not trusted after the independent audit returned `NOT SOUND`; merged opt-in code must not be used for trusted workflows. [Archived closure plan](archive/evidence-handoff-a2a-not-shipped-closure_v3.md). |
+| `EVIDENCE-HANDOFF-FEAT-A2A-LEDGER-DESIGN-REFRESH` | Open | MEDIUM | Unscheduled design correction; publish a versioned design successor before implementation. |
+| `EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION` | Open | MEDIUM | Owns audit findings C1, C3, H7, H9, and M15. |
+| `EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY` | Open | MEDIUM | Owns audit findings C2, H13, and M16c. |
+| `EVIDENCE-HANDOFF-FEAT-LEDGER-DATAPATH` | Open | MEDIUM | Owns audit findings H4, H5, and H6. |
+| `EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY` | Open | MEDIUM | Owns audit findings H8, M14, and M16b. |
+| `EVIDENCE-HANDOFF-FEAT-LEDGER-AUDIT-WIRING` | Open | MEDIUM | Owns audit finding M16a. |
+| `EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD` | Open | MEDIUM | Owns audit findings H10, H11, and H12b. |
+| `EVIDENCE-HANDOFF-FEAT-APPROVAL-RECORD` | Open | MEDIUM | Design-needed, unscheduled convenience audit record; explicitly not a security or authorization mechanism. |
+| `EVIDENCE-HANDOFF-FEAT-PEER-LIVENESS-SIGNAL` | Open | MEDIUM | Design-needed, unscheduled; requires an explicit heartbeat/session-health mechanism rather than inference from cursor activity. |
+| `EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE` | Open | HIGH | Design-needed OAuth/rotation/`kid`/JWKS/dynamic-registration work, including discovery and Bearer-challenge interoperability. |
+| `EVIDENCE-HANDOFF-FEAT-AT-REST-INTEGRITY` | Open | MEDIUM | Design-needed full-chain detector covering historical sequences behind confirmed cursors. |
+
+## A2A ledger audit obligations
+
+This table projects the feature owners above; it is not a second status owner.
+
+| Obligation | Severity | Owning slice | Status | Priority |
+|---|---|---|---|---|
+| C1 | CRITICAL | `EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION` | Open | MEDIUM |
+| C2 | CRITICAL | `EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY` | Open | MEDIUM |
+| C3 | CRITICAL | `EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION` | Open | MEDIUM |
+| H4 | HIGH | `EVIDENCE-HANDOFF-FEAT-LEDGER-DATAPATH` | Open | MEDIUM |
+| H5 | HIGH | `EVIDENCE-HANDOFF-FEAT-LEDGER-DATAPATH` | Open | MEDIUM |
+| H6 | HIGH | `EVIDENCE-HANDOFF-FEAT-LEDGER-DATAPATH` | Open | MEDIUM |
+| H7 | HIGH | `EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION` | Open | MEDIUM |
+| H8 | HIGH | `EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY` | Open | MEDIUM |
+| H9 | HIGH | `EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION` | Open | MEDIUM |
+| H10 | HIGH | `EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD` | Open | MEDIUM |
+| H11 | HIGH | `EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD` | Open | MEDIUM |
+| H12a | HIGH | program gate contract (pre-work, unscheduled) | Open | MEDIUM |
+| H12b | HIGH | `EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD` | Open | MEDIUM |
+| H13 | HIGH | `EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY` | Open | MEDIUM |
+| M14 | MEDIUM | `EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY` | Open | MEDIUM |
+| M15 | MEDIUM | `EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION` | Open | MEDIUM |
+| M16a | MEDIUM | `EVIDENCE-HANDOFF-FEAT-LEDGER-AUDIT-WIRING` | Open | MEDIUM |
+| M16b | MEDIUM | `EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY` | Open | MEDIUM |
+| M16c | MEDIUM | `EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY` | Open | MEDIUM |
+| M17 | MEDIUM | archived closure plan | Closed | MEDIUM |
 
 ## Settled risks and historical entries
 
@@ -197,7 +264,7 @@ bijection.
 ### P9.8-FU-2: Intelligent ambiguous-reference ranking
 
 **Raised:** 2026-07-10, in Plan 9.8's own Deferred Follow-Ups
-(`docs/superpowers/plans/2026-07-10-plan-9-8-task-aware-workspace-context.md`).
+(`docs/superpowers/plans/archive/2026-07-10-plan-9-8-task-aware-workspace-context.md`).
 
 **Designated future plan:** Plan 12 (Context Window Optimization and Intelligent Selection).
 
@@ -214,7 +281,7 @@ pending in that cycle. This did not implement intelligent ambiguous-reference ra
 ### P9.8-FU-3: Dynamic context budgets and required-file summarization
 
 **Raised:** 2026-07-10, in Plan 9.8's own Deferred Follow-Ups
-(`docs/superpowers/plans/2026-07-10-plan-9-8-task-aware-workspace-context.md`).
+(`docs/superpowers/plans/archive/2026-07-10-plan-9-8-task-aware-workspace-context.md`).
 
 **Designated future plan:** Plan 12 (Context Window Optimization and Intelligent Selection).
 
@@ -243,7 +310,7 @@ conformance.
 **Evidence anchors:** `reports/plan-9-8-task-aware-context-evidence.md`,
 `reports/plan-9-75-zed-hitl-runtime-evidence.md`, and the Plan 9.8 `P9.8-FU-5` acceptance criteria.
 
-**Status:** Promoted -> [Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md).
+**Status:** Promoted -> [Plan 11.7](archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md).
 Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`). Frozen Task 0 Steps 1-4 sealed the
 current-Zed Case 1/2 refusal-rendering evidence (Case 1 wire `end_turn` / stable; Case 2 wire
 `refusal` / Zed panic). The bounded origin-A/retry-preflight correction cycle reached Task 5
@@ -262,7 +329,7 @@ that functional impact warrants work ahead of ordinary capability and documentat
 ### P9.85-FU-1: Intelligent observation compression
 
 **Raised:** 2026-07-11, in Plan 9.85's own Deferred Follow-Ups
-(`docs/superpowers/plans/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`).
+(`docs/superpowers/plans/archive/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`).
 
 **Designated future plan:** Plan 12 (Context Window Optimization and Intelligent Selection).
 
@@ -275,7 +342,7 @@ remains terminal (Plan 9.85's current behavior).
 ### P9.85-FU-2: Dynamic planning-evidence partition
 
 **Raised:** 2026-07-11, in Plan 9.85's own Deferred Follow-Ups
-(`docs/superpowers/plans/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`).
+(`docs/superpowers/plans/archive/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`).
 
 **Designated future plan:** Plan 12 (Context Window Optimization and Intelligent Selection).
 
@@ -287,7 +354,7 @@ observation/current-read split without weakening Plan 9.8's completeness and amb
 ### P9.85-FU-3: Cross-Run/Session Spend Policy
 
 **Raised:** 2026-07-11, in Plan 9.85's own Deferred Follow-Ups
-(`docs/superpowers/plans/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`), disclosed as
+(`docs/superpowers/plans/archive/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`), disclosed as
 owned by an unnamed future budget-governance plan rather than silently dropped.
 
 **Designated future plan:** None yet named — a future budget-governance plan.
@@ -315,7 +382,7 @@ design is included in Plan 11. Revisit only under the future budget-governance p
 ### P9.87-FU-1: Mechanical Current-Raw-Evidence Grounding Guard
 
 **Raised:** 2026-07-12, in Plan 9.87's own Deferred Follow-Ups
-(`docs/superpowers/plans/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md`). Carried
+(`docs/superpowers/plans/archive/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md`). Carried
 forward, unresolved, through Plan 9.88's closure ceremony and Plan 9.95's custody-transfer record.
 
 **Designated future plan:** Plan 11 feature work; no feature slice or plan number is assigned yet.
@@ -362,13 +429,13 @@ owned by `P11-FEAT-ZED-RESUME`, not parked or deferred to a later milestone.
 (`AgentPlanRecord`), not ACP session or conversation state, and cannot be treated as an existing
 resume store without an explicit design and migration decision.
 
-**Status:** Promoted -> [Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md).
+**Status:** Promoted -> [Plan 11.7](archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md).
 Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`). Frozen Task 0 Steps 1-4 are sealed with
 disposition `stop_amend_plan_session_load_unreachable` (historical Zed 1.13.1 did not issue `session/load`
 after full restart). The bounded origin-A/retry-preflight correction cycle reached Task 5
 **Path A** fail-closed terminal stop on 2026-08-05; no approved correction remains pending. The
 accepted same-session live retry was not obtained, parent Task 5 and frozen Plan 11.7 remain blocked,
-and a clean relaunch requires a separately authorized budget-expansion amendment. This is still an
+and a clean relaunch requires a separately authorized complete versioned successor. This is still an
 unimplemented protocol capability, not a flaky regression or parked architecture blocker. Evidence:
 [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json).
 
@@ -410,7 +477,7 @@ LLD specified. Picking up FU-2 changed existing, tested policy behavior, not mer
 implemented and closed in PR #88 / merge `4590dbf`; future search-independence and migration work
 remains owned by the same feature identity. It is not part of the `P9.85-FU-3` cumulative
 cross-run policy. The reviewed artifacts are the [design specification](../specs/2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md)
-and [implementation plan](2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md).
+and [implementation plan](archive/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md).
 
 **Acceptance criteria:** The reviewed `P11-FEAT-GATEWAY-TOOLS` design and implementation must:
 
@@ -463,7 +530,7 @@ rationale: non-negotiable for any agent, especially a coding agent.
 
 **Status:** Closed. On 2026-08-06, both acceptance criteria were met. Later pickup produced the
 [Plan 11.8 design](../specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md) and living
-[Plan 11.8 implementation plan](2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md).
+[Plan 11.8 implementation plan](archive/2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md).
 Its partial checkpoint is 27 of 46 checks complete (Tasks 0-7 and Task 8 Step 1 complete; Task 8
 Steps 2-4 and Task 9 incomplete), with implementation in PR #116 and CI custody repair in PR #118.
 `P11-FEAT-ZED-RESUME` remains a separate, independently blocked lane.
@@ -671,7 +738,7 @@ timing flake, not an identified defect in ACP stdio or NDJSON production behavio
 failure concerns the test's scheduling deadline under instrumentation and must not be
 re-diagnosed as an ACP protocol or sanitization regression at each plan pickup.
 
-**Designated slice:** [Plan 11.16](2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md). Test-only
+**Designated slice:** [Plan 11.16](archive/2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md). Test-only
 ACP NDJSON wall-clock removal; do not re-diagnose as ACP production behavior.
 
 **Acceptance criteria:** A future pickup must:
@@ -695,7 +762,7 @@ port/teardown race). This item is distinct: its established mechanism is coverag
 instrumentation / `sys.settrace` scheduling pressure around an `asyncio.wait_for` deadline
 in a unit test, with no current evidence of a subprocess-handle or port-teardown defect.
 
-**Status:** Promoted -> [Plan 11.16](2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md). Scheduled
+**Status:** Promoted -> [Plan 11.16](archive/2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md). Scheduled
 2026-08-15. Test-only `wait_for(..., timeout=1)` wrappers were removed in `72f3cc8`; the clock was
 not widened. The 25 full Windows `--cov` gate stopped at 4/25 after unrelated `P11-FU-6` WinError
 10053. Residual: [Windows evidence](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md).
@@ -741,7 +808,7 @@ success, and does not invent cost/accounting. A genuinely transient network hicc
 retry-worthiness signal but remains honest (`failed`). Accepted as non-blocking for Task 4
 sign-off; must retain named pool custody before Plan 11.5 close.
 
-**Designated slice:** [Plan 11.21](2026-08-17-plan-11-21-p11-5-fu-1-otlp-failure-delivery-state.md).
+**Designated slice:** [Plan 11.21](archive/2026-08-17-plan-11-21-p11-5-fu-1-otlp-failure-delivery-state.md).
 Parent slice remains `P11-FEAT-GATEWAY-COST-OBS`; do not silently fold this mapping into an
 unfinished Plan 11.5 Task 4/5/8 checkpoint.
 
@@ -809,7 +876,7 @@ env naming (`OPTIMUS_GATEWAY_TAVILY_BASE_URL`, `OPTIMUS_GATEWAY_OSV_BASE_URL`, a
 - At least one referencing design
   (`docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md`)
   is frozen/digest-pinned; its header requires a matching frozen digest for approval, so any
-  edit needs a full reviewed amendment rather than an in-place tweak.
+  edit needs a full reviewed versioned successor rather than an in-place tweak.
 - Historical doc surface: nine plan/spec references across six plan/spec identities (the original pre-9.x local-Gateway-service plan, 9.7, 9.96, 9.99, 10.2, 11.4). Frozen/historical docs must be allowlisted by exact path if touched only for census, or
   amended under their own review rules.
 
@@ -838,7 +905,7 @@ names, operator docs, and frozen-spec amendment path). Only then commit to the r
 **Evidence anchors:** operator investigation notes (2026-07-29); `src/optimus_security` launch-gate
 fingerprint path; sibling env names `OPTIMUS_GATEWAY_TAVILY_BASE_URL` /
 `OPTIMUS_GATEWAY_OSV_BASE_URL`; Plan 9.99
-(`docs/superpowers/plans/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md`)
+(`docs/superpowers/plans/archive/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md`)
 as process precedent.
 
 **Status:** Open. Tracked, not yet scheduled; **needs deeper investigation / migration design before
@@ -924,7 +991,7 @@ Plan 11.7 files and amendments are unchanged and `session/load` work is not unbl
 - Current user-facing documentation is updated when codes move, while frozen historical plans
   remain byte-for-byte historical records with explicit audit disposition.
 
-**Status:** Closed. Implemented through [Plan 11.18](2026-08-15-plan-11-18-acp-error-code-registry-audit-implementation.md)
+**Status:** Closed. Implemented through [Plan 11.18](archive/2026-08-15-plan-11-18-acp-error-code-registry-audit-implementation.md)
 and draft PR #158. Mutation refusal moved from ACP `-32002` (`RESOURCE_NOT_FOUND`) to Optimus `MUTATION_FORBIDDEN = -32910`;
 duplicate-ID refusal moved from reserved-band `-32001` to `DUPLICATE_REQUEST_ID = -32911`. The
 schema-derived registry oracle and the AST oracle (`EXPECTED_LEGACY_ERROR_CODE_SITES == frozenset()`)
@@ -957,7 +1024,7 @@ env var and/or CLI flag consumed where `bootstrap.py` constructs `GatewayClient`
 production behavior (30s, fail-closed on unknown cost) unchanged when unset.
 
 **Designated future plan:** None yet named — tracked in this pool until scheduled. Do not silently
-fold into Plan 11.7 Task 0 / implementation without a reviewed plan amendment; Plan 11.7 must keep
+fold into Plan 11.7 Task 0 / implementation without a reviewed versioned successor; Plan 11.7 must keep
 the fail-closed unknown-cost path unchanged.
 
 **Acceptance criteria (draft — refine at pickup):**
@@ -1022,7 +1089,7 @@ source-level line references are recorded in the linked amendment and must be re
 the exact execution commit at pickup.
 
 **Designated slice / plan shape:** `P11-FEAT-ZED-RESUME`, through the standalone
-[retry-preflight gate amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md) and its
+[retry-preflight gate amendment](archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md) and its
 paired [design spec](../specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md). The amendment
 must preserve the frozen Plan 11.7 plan and the two existing origin-A amendments; it does not create
 a new Plan 11.x number or authorize a fourth correlation launch.
@@ -1236,7 +1303,7 @@ found only in a gitignored task report and an untracked implementation-plan arti
 the pool.
 
 **Origin:** The excluded
-[`2026-08-05-mcp-gateway-architecture-amendment-publication-plan.md`](2026-08-05-mcp-gateway-architecture-amendment-publication-plan.md)
+[`archive/2026-08-05-mcp-gateway-architecture-amendment-publication-plan.md`](archive/2026-08-05-mcp-gateway-architecture-amendment-publication-plan.md)
 retains historical Task 10 Steps 1-7 as unchecked and still says the four architecture PDFs await
 approval, although their final hashes match
 [`verification.md`](../../sources/mcp-gateway-architecture-amendment/verification.md) and PR #113
@@ -1444,7 +1511,7 @@ reaches its inner 0.2s timeout. This makes host scheduling the test oracle and e
 supervisor-start/readiness race or an inadequately controlled deadline seam. It is not evidence
 that the production 30s default deadline should change.
 
-**Designated slice:** [Plan 11.16](2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md). Production
+**Designated slice:** [Plan 11.16](archive/2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md). Production
 client-MCP deadline unification; Batch A 2/100 standalone WSL correction remains the diagnosis.
 
 **Acceptance criteria (draft — refine at pickup):**
@@ -1488,7 +1555,7 @@ misleading ceremony. Task 6 now fails closed (`issue` → `None`) until this att
 Neither Task 7 nor Task 8 in the frozen P11-FU-9 plan covers attaching a real per-server
 catalog/authorizer to the session tool service.
 
-**Designated slice:** P11-FU-9 follow-up (plan amendment or Task 8 scope expansion — assign at
+**Designated slice:** P11-FU-9 follow-up (complete versioned successor or Task 8 scope expansion — assign at
 pickup; do not silently fold into Task 6 close). Plan ownership decision (Codex/operator) required
 before implementation.
 
@@ -1513,7 +1580,7 @@ before implementation.
 **Related prior art:** Same "mock manufactures agreement" shape as Task 5's FakeClientMcpService
 gap; disposition-never-opens-transport constraint from P11-FU-9 design §3.
 
-**Status:** Promoted -> [Plan 11.20](2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md). Scheduled
+**Status:** Promoted -> [Plan 11.20](archive/2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md). Scheduled
 2026-08-18. Unit adapter wiring landed at `d718384` (real registry, authorizer, `PreToolGuard`, fail-closed
 broker closure). Residual: seam built and unit-tested; production composition not yet wired. Live
 one-call write-approval tier **unrun** (`requires_acpx` session capture incomplete;
@@ -1553,7 +1620,7 @@ handle duplication) and from `P11.7-FU-3` (docstring `\ufffd` / em-dash corrupti
 file). Neither entry covers this relay behavior defect.
 
 **Designated slice:** Plan 11.14
-([`2026-08-14-plan-11-14-p11-fu-21-custody-relay-exit-code.md`](2026-08-14-plan-11-14-p11-fu-21-custody-relay-exit-code.md)).
+([`archive/2026-08-14-plan-11-14-p11-fu-21-custody-relay-exit-code.md`](archive/2026-08-14-plan-11-14-p11-fu-21-custody-relay-exit-code.md)).
 
 **Acceptance criteria:** Define the contract for expected child-first exit and the error precedence
 between benign post-exit pipe closure and true relay failure; preserve real relay errors; implement
@@ -1679,7 +1746,7 @@ Retain this entry for history; do not reopen without a new deferred-follow-up ID
 **Raised:** 2026-08-21, in Plan 11.25's settled contract (`BRAINSTORM-multi-turn-conversation-SETTLED.md`
 §3, "Out of scope, with owners") as `MT-FU-1`, an explicit, ruled exclusion from Slice 1, not a slice-1
 defect. Slice 1 merged to `main` 2026-08-22
-([implementation plan](2026-08-21-plan-11-25-multi-turn-conversation-implementation.md), PR #188).
+([implementation plan](archive/2026-08-21-plan-11-25-multi-turn-conversation-implementation.md), PR #188).
 
 **Designated future plan:** None yet named — post-11.x follow-up, plan number assigned at pickup.
 
@@ -1700,7 +1767,7 @@ continues to exist (it does). Not blocked on anything external.
 **Raised:** 2026-08-21, in Plan 11.25's settled contract (`BRAINSTORM-multi-turn-conversation-SETTLED.md`
 §3, "Out of scope, with owners") as `MT-FU-2`, an explicit, ruled exclusion from Slice 1, not a slice-1
 defect. Slice 1 merged to `main` 2026-08-22
-([implementation plan](2026-08-21-plan-11-25-multi-turn-conversation-implementation.md), PR #188).
+([implementation plan](archive/2026-08-21-plan-11-25-multi-turn-conversation-implementation.md), PR #188).
 
 **Designated future plan:** None yet named — post-11.x follow-up, plan number assigned at pickup.
 
@@ -1725,7 +1792,7 @@ reserve a future plan number.
 ### Plan 11.7 accepted risk: `optimus-redis` ACP-session durability boundary
 
 **RISK (accepted by operator 2026-07-30):** `optimus-redis` provides no real durability for
-[Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md)'s "durable Redis ACP
+[Plan 11.7](archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md)'s "durable Redis ACP
 sessions." Live-inspected container state has no volume mounts, `appendonly no` (periodic RDB
 snapshots only), and a default user configured as `nopass ~* &* +@all`; strict loopback binding
 mitigates the unauthenticated default-user exposure.
@@ -1778,7 +1845,7 @@ defect, and closed through the explicit reviewed disposition below.
 | `P9.96-FU-4` | **Closed** by Plan 10.1, commit `cc66d660cd8580eb3b821d0eb25ed04b27605dc0` ("fix(agent): use routable shared default"). Named tests: `tests/unit/agent/test_defaults.py::test_resolve_agent_model_falls_back_to_routable_shared_default`, `tests/unit/optimus_gateway/test_models.py::test_resolve_model_id_accepts_shared_agent_default_for_every_provider`. | MEDIUM |
 | `P9.96-FU-5` | **Closed** by Plan 10.1 evidence; no source or test change. Static inventory found zero `@contextmanager`/`FrozenInstanceError` occurrences in `src`/`tests`; the two candidate frozen exceptions (`StartupConfigurationError`, `AcpOutboundError`) only ever construct once via `raise ... from` / `future.set_exception(...)` and never reassign a field post-construction on any real call path. Behavior selector (`tests/unit/acp/test_bootstrap.py`, `test_outbound_errors.py`, `test_trusted_paths.py`, `test_preflight.py`) passed 36 passed, 5 skipped (environment-legitimate skips). Full record: `docs/superpowers/reviews/plan-10-1-review-checkpoints.md`, 2026-07-23T13:20:00Z entry. | MEDIUM |
 | `P9.96-FU-6` | **Closed** by reviewed Plan 10.1 disposition; execution correction only, no code change — see the disposition paragraph below. | MEDIUM |
-| `P9.96-FU-7` | **Closed** by Plan 10.2 for the remaining effective-row display provenance gap, while Plan 10.1's confirmation-gate half remains part of the same stable finding (commit `278d95bec4e9a62c55c5de1237a61af1ca661309`). Plan 10.2 implementation commit `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef` ("feat(acp): display effective credential provenance in optimus-trust approve"). Named tests: `tests/unit/acp/test_local_gateway_secrets.py` (shared-secret provenance / wrapper / base-URL keyring ignore), `tests/unit/acp/test_launch_gate.py::TestEffectiveCredentialDisplayRows`, `TestMissingKeyNonDisclosureAndGoldenDigest`, `tests/unit/acp/test_launch_approval_cli.py::test_display_candidate_prints_source_class`. Frozen plan: `docs/superpowers/plans/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md` (SHA-256 `4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771`). Approval: `docs/superpowers/reviews/2026-07-23-plan-10-2-implementation-plan-approval.md`. Evidence: gitignored `docs/superpowers/reviews/plan-10-2-review-checkpoints.md`. Plan 10.2 does **not** change the approval digest contract; golden digest `f7af89af0acce664b27825e5af9823c25b11579490bccc73e8f82d4ec316f248` remains byte-identical. | MEDIUM |
+| `P9.96-FU-7` | **Closed** by Plan 10.2 for the remaining effective-row display provenance gap, while Plan 10.1's confirmation-gate half remains part of the same stable finding (commit `278d95bec4e9a62c55c5de1237a61af1ca661309`). Plan 10.2 implementation commit `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef` ("feat(acp): display effective credential provenance in optimus-trust approve"). Named tests: `tests/unit/acp/test_local_gateway_secrets.py` (shared-secret provenance / wrapper / base-URL keyring ignore), `tests/unit/acp/test_launch_gate.py::TestEffectiveCredentialDisplayRows`, `TestMissingKeyNonDisclosureAndGoldenDigest`, `tests/unit/acp/test_launch_approval_cli.py::test_display_candidate_prints_source_class`. Frozen plan: `docs/superpowers/plans/archive/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md` (SHA-256 `4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771`). Approval: `docs/superpowers/reviews/2026-07-23-plan-10-2-implementation-plan-approval.md`. Evidence: gitignored `docs/superpowers/reviews/plan-10-2-review-checkpoints.md`. Plan 10.2 does **not** change the approval digest contract; golden digest `f7af89af0acce664b27825e5af9823c25b11579490bccc73e8f82d4ec316f248` remains byte-identical. | MEDIUM |
 
 **`P9.96-FU-6` disposition paragraph:** `P9.96-FU-6` named the frozen Plan 9.96 Task 9 plan's own CLI
 arg-order assumption against `optimus-trust`'s `argparse` contract. `--workspace-root`
@@ -1845,7 +1912,7 @@ text rather than regenerate the lock mid-plan, since that would have been its ow
 scheduled.
 
 **Promoted -> Plan 10.3** (2026-07-24): Closed by
-[`2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md`](2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).
+[`archive/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md`](archive/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).
 Lock commit `1b152a8` ("chore: refresh uv lock for declared gateway dependencies") adds exactly the
 reviewed 13-package chain (`cffi`, `cryptography`, `jaraco-classes`, `jaraco-context`,
 `jaraco-functools`, `jeepney`, `keyring`, `more-itertools`, `pycparser`, `python-dotenv`,
@@ -1868,7 +1935,7 @@ pytest-harness wart, not a production or `src`/`tests` FU-5 recurrence. Trivial 
 Plan 10.1 blocker; not scheduled.
 
 **Promoted -> Plan 10.3** (2026-07-24): Closed by
-[`2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md`](2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).
+[`archive/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md`](archive/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).
 Tools commit `4d1f086` ("fix(tools): allow surface audit errors to carry tracebacks") drops only
 `frozen=True` from `SurfaceAuditError`. Named regression:
 `tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_surface_audit_error_allows_pytest_traceback_attachment`

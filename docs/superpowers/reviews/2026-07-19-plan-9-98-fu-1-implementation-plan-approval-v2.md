@@ -1,6 +1,6 @@
 # Plan 9.98-FU-1 v2 Amendment Approval
 
-- Plan: docs/superpowers/plans/2026-07-19-plan-9-98-fu-1-workspace-identity-linux-ci.md
+- Plan: docs/superpowers/plans/archive/2026-07-19-plan-9-98-fu-1-workspace-identity-linux-ci.md
 - Baseline planning commit: d2500034a33197638aade77586d186e61df47ba7
 - Plan SHA-256: 655D6E0AC7B4036B20A6C0D19EBF0D6A2D4C16AC96F5EA864174C804B24DB02F
 - Supersedes plan digest: 91B3CFD62EF1D9D237DB39F2158A675D45D3BAF5DBB56BC915B2827F0BE8A64A

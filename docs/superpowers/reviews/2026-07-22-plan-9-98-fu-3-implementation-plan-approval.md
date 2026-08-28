@@ -2,7 +2,7 @@
 
 ## Approval snapshot
 
-- Plan: `docs/superpowers/plans/2026-07-22-plan-9-98-fu-3-posix-runtime-root-tests.md`
+- Plan: `docs/superpowers/plans/archive/2026-07-22-plan-9-98-fu-3-posix-runtime-root-tests.md`
 - Design: `docs/superpowers/specs/2026-07-22-plan-9-98-fu-3-posix-runtime-root-tests-design.md`
 - Baseline: `origin/main` at `41634cd2dcc8fae31315f9dfacdd1b95c679d82f`
 - Plan SHA-256: `CA96915E5E992B5BF4AF4CABF22765272B986EFAD8B5A2D3C4C4B29FB2DFB27E`

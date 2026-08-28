@@ -12,7 +12,7 @@ Give FU-4B one separately authorized, capped, auditable real-model remediation l
 
 - `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`, Plans 9.87 and 9.88.
 - `docs/superpowers/specs/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal-design.md`.
-- `docs/superpowers/plans/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md`, especially Task 7B, Task 8, and the Definition of Done.
+- `docs/superpowers/plans/archive/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md`, especially Task 7B, Task 8, and the Definition of Done.
 - `reports/plan-9-87-model-replanning-refusal-acpx-evidence.md`.
 - `tools/run_plan987_acpx_live_evidence.py` and `tools/verify_plan987_acpx_evidence.py`.
 - `tests/unit/tools/test_run_plan987_acpx_live_evidence.py` and `tests/unit/tools/test_verify_plan987_acpx_evidence.py`.
@@ -62,7 +62,7 @@ The HLD, LLD, and Test Strategy remain authoritative. If they conflict with this
 - `tests/unit/tools/test_run_plan988_fu4b_live_evidence.py`: deterministic tests for the new helper, manifest, ledger transitions, classification, and safe reuse boundary.
 - `tests/unit/tools/test_verify_plan987_acpx_evidence.py`: FU-4B verifier tests plus the three hygiene rejection pins.
 - `reports/plan-9-87-model-replanning-refusal-acpx-evidence.md`: existing durable report, extended with Plan 9.88 history, ledger, dispositions, and ceremony record.
-- `docs/superpowers/plans/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md`: amended only at the closure branch selected after live evidence and any required contemporaneous sign-off.
+- `docs/superpowers/plans/archive/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md`: amended only at the closure branch selected after live evidence and any required contemporaneous sign-off.
 - `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md` and `README.md`: updated only after the closure gate passes.
 
 The new helper first attempts clean read-only imports from the frozen helper. If module side effects or Plan 9.87-specific coupling make a seam unsafe, implementation copies the minimum machinery into the new helper and records source provenance in comments and tests. Copying is the fallback; editing the frozen helper is never a fallback.

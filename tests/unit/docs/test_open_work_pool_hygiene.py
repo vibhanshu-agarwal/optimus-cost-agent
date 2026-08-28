@@ -13,15 +13,15 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 OPTIMUS_POOL = REPO_ROOT / "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md"
-PRODUCT_POOL = REPO_ROOT / "docs/superpowers/plans/evidence-handoff-open-work-pool.md"
+PRODUCT_POOL = REPO_ROOT / "docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md"
 A2A_LEDGER_DESIGN = REPO_ROOT / "docs/superpowers/specs/evidence-handoff-a2a-ledger-design.md"
-A2A_LEDGER_IMPLEMENTATION_PLAN = REPO_ROOT / "docs/superpowers/plans/evidence-handoff-risk-bearing-slice-implementation.md"
+A2A_LEDGER_IMPLEMENTATION_PLAN = REPO_ROOT / "docs/superpowers/plans/archive/evidence-handoff-risk-bearing-slice-implementation.md"
 PLANS_ROOT = REPO_ROOT / "docs/superpowers/plans"
-PLAN_985 = REPO_ROOT / "docs/superpowers/plans/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md"
-PLAN_987 = REPO_ROOT / "docs/superpowers/plans/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md"
-PLAN_999 = REPO_ROOT / "docs/superpowers/plans/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md"
-PLAN_114 = REPO_ROOT / "docs/superpowers/plans/2026-07-28-plan-11-4-gateway-core-migration.md"
-PLAN_119 = REPO_ROOT / "docs/superpowers/plans/2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-implementation.md"
+PLAN_985 = REPO_ROOT / "docs/superpowers/plans/archive/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md"
+PLAN_987 = REPO_ROOT / "docs/superpowers/plans/archive/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md"
+PLAN_999 = REPO_ROOT / "docs/superpowers/plans/archive/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md"
+PLAN_114 = REPO_ROOT / "docs/superpowers/plans/archive/2026-07-28-plan-11-4-gateway-core-migration.md"
+PLAN_119 = REPO_ROOT / "docs/superpowers/plans/archive/2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-implementation.md"
 PHASE_1_ROADMAP = REPO_ROOT / "docs/superpowers/plans/2026-07-01-phase-1-roadmap.md"
 PLAN_11_CHARTER = REPO_ROOT / "docs/superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md"
 AGENTS_FILE = REPO_ROOT / "AGENTS.md"
@@ -36,13 +36,13 @@ PREREQUISITE_TABLE_COLUMNS = (
 )
 
 HISTORICAL_PLAN_117_AMENDMENTS = (
-    "docs/superpowers/plans/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md",
-    "docs/superpowers/plans/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md",
-    "docs/superpowers/plans/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md",
+    "docs/superpowers/plans/archive/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md",
+    "docs/superpowers/plans/archive/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md",
+    "docs/superpowers/plans/archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md",
 )
 
 HISTORICAL_NUMBERING_PROVENANCE = {
-    "docs/superpowers/plans/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md": (
+    "docs/superpowers/plans/archive/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md": (
         "FA35912C3E5AC343A1092E7B5A88CA93C0E1293061CB53D5810BB1BA3C1002F8",
         "in-scope",
         "editable",
@@ -70,46 +70,46 @@ HISTORICAL_NUMBERING_PROVENANCE = {
 
 FROZEN_AUTHORITY_MARKER = "Frozen approval bytes — live status is owned by the consolidated open-work pool."
 PROTECTED_BLOB_SHA256 = {
-    "docs/superpowers/plans/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md": (
+    "docs/superpowers/plans/archive/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md": (
         "4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771"
     ),
-    "docs/superpowers/plans/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md": (
+    "docs/superpowers/plans/archive/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md": (
         "E66ECA48C588E7DB618D4850FDF0CEE901B4966BC0AB405E21C857AE6BE24F32"
     ),
-    "docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md": (
+    "docs/superpowers/plans/archive/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md": (
         "254A6ACC56511BBCCEB8FC101B190F213FD65450327145C88979077D845D6D3E"
     ),
-    "docs/superpowers/plans/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md": (
+    "docs/superpowers/plans/archive/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md": (
         "8C96C9BFA67FB87F4A90FAE37169D27B437C5FD0CEE3AB2E6AB399E67B2874E5"
     ),
-    "docs/superpowers/plans/2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md": (
+    "docs/superpowers/plans/archive/2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md": (
         "0BAC146974984EA663B7A59802A1B5ED74F90EB682F855C0E05AAAB5B9A2C396"
     ),
-    "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md": (
+    "docs/superpowers/plans/archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md": (
         "F52AD9A5A85DC50B0DFD3206B6BD09FD8FF0AE79B1A6049DF1017F978B1C462D"
     ),
-    "docs/superpowers/plans/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md": (
+    "docs/superpowers/plans/archive/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md": (
         "79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6"
     ),
-    "docs/superpowers/plans/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md": (
+    "docs/superpowers/plans/archive/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md": (
         "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D"
     ),
-    "docs/superpowers/plans/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md": (
+    "docs/superpowers/plans/archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md": (
         "106FD92B8E43F44A7115D7EDB1F9CF1E3EE643E4B6F594FA656FB4119A969B82"
     ),
-    "docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe.md": (
+    "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe.md": (
         "BA1372E1D638AC2F12A4852E304DCE02196C26C78017F3AE1CA566F4A08DD017"
     ),
-    "docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v2.md": (
+    "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v2.md": (
         "BA67D5021FF767D9574BA452E39ECB2E642999C0CAEFBD6431D82E93D3842E05"
     ),
-    "docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v3.md": (
+    "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v3.md": (
         "C76121F5A35A698183ADEB1B028AEE6E7C0FE26621ED798586F5AF9081CB81F4"
     ),
-    "docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v4.md": (
+    "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v4.md": (
         "1CFBB6E0BEDD8FBB3A111DE5C9AEA11F96F36D742A1469B50EEC03EB3116B13C"
     ),
-    "docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v5.md": (
+    "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v5.md": (
         "26B8A69BE2A3CD4E5A021CB21A507C27D0C880D5322EF22B9A59D4257ECC96A8"
     ),
     "docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md": (
@@ -191,8 +191,11 @@ EXPECTED_SETTLED_STATUSES = {
     "(disclosed 2026-07-23 during Plan 10.1 Task 7)": "Closed",
 }
 EXPECTED_POOL_TABLE_IDENTITIES = (
+    ("Live implementation plan registry", 0),
     ("Feature slices", 0),
     ("Follow-up status index", 0),
+    ("Evidence and handoff feature registry", 0),
+    ("A2A ledger audit obligations", 0),
     ("Settled risks and historical entries", 0),
     ("P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)", 0),
     ("P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)", 1),
@@ -213,7 +216,7 @@ EXPECTED_FEATURE_STATUS = {
     "P11-FEAT-GATEWAY-COST-OBS": "Closed",
     "P11-FEAT-GATEWAY-MCP": "Retired",
     "P11-FEAT-ZED-RESUME": "Partially implemented",
-    "P11-FEAT-MULTI-TURN-CONVERSATION": "Implemented (Slice 1 on branch; awaiting merge)",
+    "P11-FEAT-MULTI-TURN-CONVERSATION": "Closed",
     "P11-FEAT-REGISTRY": "Open",
     "P11-FEAT-IDE": "Open",
     "Plan 12": "Open",
@@ -233,6 +236,8 @@ EXPECTED_FEATURE_SCOPE_TOKENS = {
     ),
     "P11-FEAT-MULTI-TURN-CONVERSATION": (
         "Plan 11.25",
+        "PR #188",
+        "PR #189",
         "MT-FU-1",
         "MT-FU-2",
         "plan-11-25-multi-turn-release-review.md",
@@ -242,14 +247,14 @@ EXPECTED_FEATURE_SCOPE_TOKENS = {
     "Plan 12": ("Post-v1.0",),
 }
 PROMOTED_PLAN_117_STATUS = (
-    "Promoted -> [Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md)"
+    "Promoted -> [Plan 11.7](archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md)"
 )
 PROMOTED_PLAN_1120_STATUS = (
-    "Promoted -> [Plan 11.20](2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md)"
+    "Promoted -> [Plan 11.20](archive/2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md)"
 )
 FABRICATED_P11_FU_20_SCHEDULED_TOKEN = "Scheduled — Plan 11.20"
 PROMOTED_PLAN_1121_STATUS = (
-    "Promoted -> [Plan 11.21](2026-08-17-plan-11-21-p11-5-fu-1-otlp-failure-delivery-state.md)"
+    "Promoted -> [Plan 11.21](archive/2026-08-17-plan-11-21-p11-5-fu-1-otlp-failure-delivery-state.md)"
 )
 ALLOWED_PRIORITIES = frozenset({"HIGH", "MEDIUM", "LOW"})
 
@@ -280,12 +285,12 @@ PRODUCT_OWNED_DOCS = frozenset(
         "docs/superpowers/specs/evidence-handoff-zed-render-observation-design.md",
         "docs/superpowers/specs/evidence-handoff-a2a-ledger-remediation-scoping.md",
         "docs/superpowers/plans/evidence-handoff-evidence-collector-implementation.md",
-        "docs/superpowers/plans/evidence-handoff-redaction-gate-implementation.md",
-        "docs/superpowers/plans/evidence-handoff-risk-bearing-slice-implementation.md",
-        "docs/superpowers/plans/evidence-handoff-risk-bearing-slice-implementation_v2.md",
-        "docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure.md",
-        "docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure_v2.md",
-        "docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure_v3.md",
+        "docs/superpowers/plans/archive/evidence-handoff-redaction-gate-implementation.md",
+        "docs/superpowers/plans/archive/evidence-handoff-risk-bearing-slice-implementation.md",
+        "docs/superpowers/plans/archive/evidence-handoff-risk-bearing-slice-implementation_v2.md",
+        "docs/superpowers/plans/archive/evidence-handoff-a2a-not-shipped-closure.md",
+        "docs/superpowers/plans/archive/evidence-handoff-a2a-not-shipped-closure_v2.md",
+        "docs/superpowers/plans/archive/evidence-handoff-a2a-not-shipped-closure_v3.md",
     }
 )
 
@@ -339,14 +344,8 @@ def _read(path: Path) -> str:
     return content
 
 
-def _head_blob_sha256(relative_path: str) -> str:
-    result = subprocess.run(
-        ["git", "show", f"HEAD:{relative_path}"],
-        cwd=REPO_ROOT,
-        check=True,
-        capture_output=True,
-    )
-    return hashlib.sha256(result.stdout).hexdigest().upper()
+def _file_sha256(relative_path: str) -> str:
+    return hashlib.sha256((REPO_ROOT / relative_path).read_bytes()).hexdigest().upper()
 
 
 def _status_lines_by_owner(text: str) -> tuple[tuple[tuple[str, ...], str], ...]:
@@ -621,7 +620,6 @@ def _markdown_tables(
         tables.append((identity, header, tuple(rows)))
 
     assert fence_marker is None
-    assert len(tables) == 5
     return tuple(tables)
 
 
@@ -669,8 +667,8 @@ def _plan_11_snapshot_rows(text: str) -> dict[str, tuple[str, str]]:
     return rows
 
 
-def test_immutable_documents_match_approved_head_blobs() -> None:
-    actual = {path: _head_blob_sha256(path) for path in PROTECTED_BLOB_SHA256}
+def test_immutable_documents_match_approved_digests_after_archival() -> None:
+    actual = {path: _file_sha256(path) for path in PROTECTED_BLOB_SHA256}
 
     assert actual == PROTECTED_BLOB_SHA256
 
@@ -709,7 +707,7 @@ def test_publication_plan_custody_is_a_real_indexed_pool_entry() -> None:
         "Closed",
     )
     for anchor in (
-        "2026-08-05-mcp-gateway-architecture-amendment-publication-plan.md",
+        "archive/2026-08-05-mcp-gateway-architecture-amendment-publication-plan.md",
         "Task 10 Steps 1-7",
         "Task 11 Step 7",
         "verification.md",
@@ -784,8 +782,8 @@ def test_plan_versioning_uses_forward_only_semantic_anchor_groups() -> None:
     assert _has_semantic_anchor_group(agents, "going forward", "dated amendment", "retroactively")
     assert _has_semantic_anchor_group(
         agents,
-        "evidence-handoff-risk-bearing-slice-implementation.md",
-        "evidence-handoff-risk-bearing-slice-implementation_v2.md",
+        "archive/evidence-handoff-risk-bearing-slice-implementation.md",
+        "archive/evidence-handoff-risk-bearing-slice-implementation_v2.md",
     )
     for relative_path in HISTORICAL_PLAN_117_AMENDMENTS:
         assert (REPO_ROOT / relative_path).is_file()
@@ -864,6 +862,8 @@ def test_post_amendment_plans_declare_prerequisites_with_required_columns() -> N
     assert changed == (PLANS_ROOT / "2026-08-18-plan-11-23-example.md",)
 
     for plan_path in _post_amendment_plan_paths(_git_name_status_since_prerequisites_amendment()):
+        if not plan_path.is_file():
+            plan_path = PLANS_ROOT / "archive" / plan_path.name
         _assert_prerequisites_table(_read(plan_path))
 
 
@@ -943,11 +943,9 @@ def test_plan_987_document_level_closure_preserves_historical_unchecked_boxes() 
 
 def test_product_features_have_exactly_one_pool_owner() -> None:
     optimus_rows = _feature_rows(_read(OPTIMUS_POOL))
-    product_rows = _feature_rows(_read(PRODUCT_POOL))
 
-    assert not (optimus_rows.keys() & product_rows.keys())
-    assert all(optimus_rows[feature_id] + product_rows[feature_id] == 1 for feature_id in PRODUCT_FEATURE_IDS)
-    assert PRODUCT_FEATURE_IDS <= product_rows.keys()
+    assert all(optimus_rows[feature_id] == 1 for feature_id in PRODUCT_FEATURE_IDS)
+    assert PRODUCT_FEATURE_IDS <= optimus_rows.keys()
 
 
 A2A_NOT_SHIPPED_VERBATIM = (
@@ -1050,12 +1048,12 @@ EXPECTED_OBLIGATIONS: dict[str, tuple[str, str]] = {
     "M16a": ("MEDIUM", "EVIDENCE-HANDOFF-FEAT-LEDGER-AUDIT-WIRING"),
     "M16b": ("MEDIUM", "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY"),
     "M16c": ("MEDIUM", "EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY"),
-    "M17": ("MEDIUM", "this closure plan"),
+    "M17": ("MEDIUM", "archived closure plan"),
 }
 
 
-def test_a2a_ledger_obligations_table_matches_expected() -> None:
-    pool_text = _read(PRODUCT_POOL)
+def test_canonical_a2a_ledger_obligations_table_matches_expected() -> None:
+    pool_text = _read(OPTIMUS_POOL)
     section = _h2_section(pool_text, "A2A ledger audit obligations")
     table_lines = [line for line in section.splitlines() if line.strip().startswith("|")]
 
@@ -1078,15 +1076,15 @@ def test_a2a_ledger_obligations_table_matches_expected() -> None:
         assert priority == "MEDIUM"
 
     assert actual_obligations == EXPECTED_OBLIGATIONS
-    assert set(statuses.values()) <= {"Open", "**Closed**"}
-    assert {obligation for obligation, status in statuses.items() if status == "**Closed**"} == {"M17"}
+    assert set(statuses.values()) <= {"Open", "Closed"}
+    assert {obligation for obligation, status in statuses.items() if status == "Closed"} == {"M17"}
 
     a2a_row = _feature_row(pool_text, "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER")
-    assert "**Closed**" not in a2a_row
+    assert "Reviewed disposition" in a2a_row
 
     for slice_id in A2A_REMEDIATION_SLICE_IDS:
         slice_row = _feature_row(pool_text, slice_id)
-        assert "Tracked, Not Yet Scheduled" in slice_row
+        assert "Open" in slice_row
 
 
 def test_adjacent_custody_rows_reflect_restored_dual_ownership() -> None:
@@ -1270,9 +1268,10 @@ def test_pool_tables_have_collision_safe_identities_and_valid_priority_cells() -
 
     assert tuple(identity for identity, _header, _rows in tables) == EXPECTED_POOL_TABLE_IDENTITIES
     for _identity, header, rows in tables:
-        assert header.count("Priority") == 1
         assert rows
-        assert all(row["Priority"] in ALLOWED_PRIORITIES for row in rows)
+        if "Priority" in header:
+            assert header.count("Priority") == 1
+            assert all(row["Priority"] in ALLOWED_PRIORITIES for row in rows)
 
 
 def test_priority_seed_preserves_only_the_four_approved_non_medium_values() -> None:
@@ -1298,10 +1297,21 @@ def test_priority_seed_preserves_only_the_four_approved_non_medium_values() -> N
     } == EXPECTED_NON_MEDIUM_PRIORITIES
     assert all(
         row["Priority"] in {"MEDIUM", "LOW"}
-        for identity, (_header, rows) in tables.items()
-        if identity != ("Follow-up status index", 0)
+        for identity, (header, rows) in tables.items()
+        if identity
+        not in {
+            ("Follow-up status index", 0),
+            ("Evidence and handoff feature registry", 0),
+        }
+        and "Priority" in header
         for row in rows
     )
+    evidence_rows = tables[("Evidence and handoff feature registry", 0)][1]
+    assert {
+        row["Identity"].strip("`"): row["Priority"]
+        for row in evidence_rows
+        if row["Priority"] != "MEDIUM"
+    } == {"EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE": "HIGH"}
 
 
 def test_priority_is_authored_only_in_table_cells() -> None:
@@ -1455,7 +1465,7 @@ def test_gateway_mcp_retirement_custody_is_current() -> None:
 
 
 def test_plan_118_status_matches_its_checked_task_boundary() -> None:
-    plan = _read(REPO_ROOT / "docs/superpowers/plans/2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md")
+    plan = _read(REPO_ROOT / "docs/superpowers/plans/archive/2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md")
     normalized = re.sub(r"\s+", " ", plan)
     checked = len(re.findall(r"^- \[x\]", plan, re.MULTILINE))
     unchecked = len(re.findall(r"^- \[ \]", plan, re.MULTILINE))
@@ -1468,44 +1478,38 @@ def test_plan_118_status_matches_its_checked_task_boundary() -> None:
     assert f"{checked} of {checked + unchecked}" in normalized
 
 
-def test_new_pool_has_no_scheduling_plan_numbers() -> None:
+def test_archived_product_pool_has_no_scheduling_plan_numbers() -> None:
     assert PLAN_NUMBER_RE.search(_read(PRODUCT_POOL)) is None
 
 
-def test_new_pool_links_only_to_explicitly_product_owned_documents() -> None:
+def test_archived_product_pool_retains_its_historical_document_inventory() -> None:
     pool_text = _read(PRODUCT_POOL)
     ownership_section = pool_text.split("## Product-owned documents temporarily hosted in Optimus", 1)[1].split("\n## ", 1)[0]
     listed_docs = frozenset(re.findall(r"`(docs/superpowers/(?:plans|specs)/[^`]+\.md)`", ownership_section))
-    linked_docs: set[str] = set()
+    expected_historical_docs = {
+        path.replace("docs/superpowers/plans/archive/", "docs/superpowers/plans/")
+        for path in PRODUCT_OWNED_DOCS
+    }
 
-    for match in MARKDOWN_LINK_RE.finditer(pool_text):
-        target = match.group("target").split("#", 1)[0]
-        if not target or "://" in target:
-            continue
-        resolved = (PRODUCT_POOL.parent / target).resolve()
-        linked_docs.add(resolved.relative_to(REPO_ROOT).as_posix())
-
-    assert listed_docs == PRODUCT_OWNED_DOCS
-    assert linked_docs <= PRODUCT_OWNED_DOCS
+    assert listed_docs == expected_historical_docs
     assert all((REPO_ROOT / path).is_file() for path in PRODUCT_OWNED_DOCS)
 
 
-def test_optimus_dependency_references_resolve_to_product_pool_without_status_custody() -> None:
+def test_optimus_dependencies_resolve_inside_the_canonical_backlog() -> None:
     optimus_text = _read(OPTIMUS_POOL)
-    product_rows = _feature_rows(_read(PRODUCT_POOL))
+    canonical_rows = _feature_rows(optimus_text)
     dependency_clauses = tuple(line.split("Dependency:", 1)[1] for line in optimus_text.splitlines() if "Dependency:" in line)
     dependency_ids: set[str] = set()
 
     for clause in dependency_clauses:
         referenced_ids = set(FEATURE_ID_RE.findall(clause))
-        if not (referenced_ids & product_rows.keys()):
+        if not (referenced_ids & PRODUCT_FEATURE_IDS):
             continue
-        assert "(evidence-handoff-open-work-pool.md)" in clause
-        assert re.search(r"\b(?:state|status|ratified|unscheduled|blocked|closed)\b", clause, re.IGNORECASE) is None
+        assert "evidence-handoff-open-work-pool.md" not in clause
         dependency_ids.update(referenced_ids)
 
     assert dependency_ids == {"EVIDENCE-HANDOFF-FEAT-REDACTION-GATE"}
-    assert dependency_ids <= product_rows.keys()
+    assert dependency_ids <= canonical_rows.keys()
 
 
 def test_product_checkpoint_log_location_remains_gitignored() -> None:
@@ -1541,7 +1545,7 @@ def test_plan_1121_keeps_p115_fu1_separate_scheduled_custody() -> None:
     assert _lane_state(index_status) in {"scheduled", "closed"}
     assert _lane_state(detail_status) in {"scheduled", "closed"}
     assert _lane_state(index_status) == _lane_state(detail_status)
-    assert (PLANS_ROOT / "2026-08-17-plan-11-21-p11-5-fu-1-otlp-failure-delivery-state.md").is_file()
+    assert (PLANS_ROOT / "archive/2026-08-17-plan-11-21-p11-5-fu-1-otlp-failure-delivery-state.md").is_file()
 
     assert "_AlwaysTransientSpanExporter" in detail
     assert "Task 4" in detail
@@ -1600,7 +1604,7 @@ def test_plan_1118_current_docs_close_p11_fu_10() -> None:
     p11_fu_10_entry = entries["P11-FU-10: Complete ACP Error-Code Registry Audit"]
     p11_fu_10_status = _status_token(p11_fu_10_entry)
     frozen_plan_117_text = _read(
-        REPO_ROOT / "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md"
+        REPO_ROOT / "docs/superpowers/plans/archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md"
     )
 
     assert "ACP callers receive JSON-RPC code `-32910`" in readme

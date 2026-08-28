@@ -536,7 +536,7 @@ never raw strings.
   cases.
 - `tests/unit/evidence/test_naming_boundaries.py`: include collector package, entry
   point, support package, scenarios, schemas, and artifacts.
-- `docs/superpowers/plans/evidence-handoff-open-work-pool.md`: update the one live
+- `docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md`: update the one live
   product row only when execution is actually picked up and again when evidence
   justifies closure.
 - Current-state repository documents identified by Task 13's freshness audit: change
@@ -630,7 +630,7 @@ checkpoint. Modify only the product pool after all pickup gates pass.
 - [ ] **Step 4: Record actual pickup only after reviewer and operator approval**
 
   In the collector row of
-  `docs/superpowers/plans/evidence-handoff-open-work-pool.md`, change only the live
+  `docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md`, change only the live
   state cell to `Promoted`, add the actual pickup date, and retain the implementation
   plan link. This is the pool's already-defined custody term from its **How to use**
   section, not a redaction-gate disposition. Do not add a scheduling number or edit
@@ -642,7 +642,7 @@ checkpoint. Modify only the product pool after all pickup gates pass.
   uv run --frozen pytest tests/unit/docs/test_open_work_pool_hygiene.py -q
   uv run --frozen ruff check .
   git diff --check
-  git diff -- docs/superpowers/plans/evidence-handoff-open-work-pool.md
+  git diff -- docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md
   ```
 
   Expected: only the product pool live-state cell changes. Relay the blob digest,

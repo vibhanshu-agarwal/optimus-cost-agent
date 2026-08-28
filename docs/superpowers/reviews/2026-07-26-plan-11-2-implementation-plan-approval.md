@@ -19,7 +19,7 @@ and observability handlers, bounded retry helper, and canonical usage parser.
 `docs/superpowers/specs/2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md`
 
 **Implementation plan:**
-`docs/superpowers/plans/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md`
+`docs/superpowers/plans/archive/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md`
 
 **Requirement inventory:**
 `docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md`
@@ -84,8 +84,8 @@ Run from Git Bash at the repository root after the documentation batch is commit
 git status --short --branch
 sha256sum docs/superpowers/specs/2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md | cut -d' ' -f1
 git show HEAD:docs/superpowers/specs/2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md | sha256sum | cut -d' ' -f1
-sha256sum docs/superpowers/plans/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md | cut -d' ' -f1
-git show HEAD:docs/superpowers/plans/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md | sha256sum | cut -d' ' -f1
+sha256sum docs/superpowers/plans/archive/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md | cut -d' ' -f1
+git show HEAD:docs/superpowers/plans/archive/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md | sha256sum | cut -d' ' -f1
 sha256sum docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md | cut -d' ' -f1
 git show HEAD:docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md | sha256sum | cut -d' ' -f1
 sha256sum docs/superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md | cut -d' ' -f1

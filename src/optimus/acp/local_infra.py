@@ -29,7 +29,7 @@ from optimus_security.launch_manifest import build_gateway_child_manifest, seria
 # OPENAI_API_KEY, etc.), but OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY — the var GatewayServiceConfig
 # reads for the openai/openrouter path — was deliberately NOT put in that set (it exists precisely
 # to avoid the ANTHROPIC_API_KEY-style collision; see
-# docs/superpowers/plans/2026-07-07-local-optimus-gateway-service.md, Scope item 5), so it would
+# docs/superpowers/plans/archive/2026-07-07-local-optimus-gateway-service.md, Scope item 5), so it would
 # otherwise leak through untouched even though it is still a real provider API key. Also strip
 # OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET: once apply_local_defaults() has copied its value into
 # OPTIMUS_API_KEY, the agent view should keep only that public contract name, not the

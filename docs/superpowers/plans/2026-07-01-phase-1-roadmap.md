@@ -36,7 +36,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 ## Plan 1: Core Runtime, ACP Transport, and Test Harness
 
-**Plan file:** `docs/superpowers/plans/2026-07-01-core-runtime-acp-transport.md`
+**Plan file:** `docs/superpowers/plans/archive/2026-07-01-core-runtime-acp-transport.md`
 
 **User story:** As a local ACP client, I can send framed JSON-RPC requests and receive deterministic responses.
 
@@ -115,7 +115,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 ## Plan 6.5: Guardrail Hardening and MCP Runtime Trust Wiring
 
-**Plan file:** `docs/superpowers/plans/2026-07-04-plan-6-5-guardrail-hardening-mcp-runtime-trust.md`
+**Plan file:** `docs/superpowers/plans/archive/2026-07-04-plan-6-5-guardrail-hardening-mcp-runtime-trust.md`
 
 **User story:** As a maintainer, I can close Plan 6 review/CI gaps before usage accounting depends on stable guardrail and MCP trust events.
 
@@ -131,7 +131,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 ## Plan 7: Usage Accounting, Evidence Ledger, and Observability
 
-**Plan file:** `docs/superpowers/plans/2026-07-04-usage-accounting-evidence-ledger-observability.md`
+**Plan file:** `docs/superpowers/plans/archive/2026-07-04-usage-accounting-evidence-ledger-observability.md`
 
 **User story:** As a FinOps reviewer, I can reconcile every billable call from gateway response to persisted usage and evidence records.
 
@@ -146,7 +146,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 ## Plan 8: Retry, Fitness Gates, Golden Tasks, and Release Gate
 
-**Plan file:** `docs/superpowers/plans/2026-07-05-retry-fitness-gates-golden-tasks-release-gate.md`
+**Plan file:** `docs/superpowers/plans/archive/2026-07-05-retry-fitness-gates-golden-tasks-release-gate.md`
 
 **User story:** As a release owner, I can prove the system fails closed, retries boundedly, passes coverage, and completes Gateway-only credential release gates.
 
@@ -161,7 +161,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 ## Plan 8.5: Release-Gate Hardening and Golden-Harness Wiring
 
-**Plan file:** `docs/superpowers/plans/2026-07-06-plan-8-5-release-gate-hardening.md`
+**Plan file:** `docs/superpowers/plans/archive/2026-07-06-plan-8-5-release-gate-hardening.md`
 
 **User story:** As a release owner, I can trust that shadow-workspace promotion matches exactly what the fitness gates evaluated, that the zero-upstream-credential scanner covers every local artifact that could leak a provider key, and that the Phase 1 release-gate CLI can actually reach a real PASS end-to-end.
 
@@ -206,7 +206,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 ## Plan 9.5: Agent Orchestration and End-to-End Coding Workflow
 
-**Plan file:** `docs/superpowers/plans/2026-07-07-agent-orchestration-end-to-end-coding-workflow.md`
+**Plan file:** `docs/superpowers/plans/archive/2026-07-07-agent-orchestration-end-to-end-coding-workflow.md`
 
 **User story:** As an operator, I can give the local Optimus Agent a normal coding task and receive a planned, approved, guarded, validated, and cost-attributed outcome.
 
@@ -214,7 +214,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 - `AgentRunner`, `AgentRunRequest`, `AgentRunResult`, guarded tool adapters, `optimus.agent.run`, and `AgentGoldenTaskHarness`.
 - Tests proving Plan/Chat advisory-only behavior, Agent-mode approval before mutation, guarded tool use, bounded-loop stop integration, skill selection, real golden harness execution, and zero-upstream-credential release evidence.
 
-**Completion plan:** `docs/superpowers/plans/2026-07-07-plan-9-5-working-acp-agent-completion.md`
+**Completion plan:** `docs/superpowers/plans/archive/2026-07-07-plan-9-5-working-acp-agent-completion.md`
 
 **Mandatory completion deliverables:**
 - Spawnable Agent Client Protocol stdio process for IDE integration through `python -m optimus.acp` and `optimus-agent`.
@@ -230,7 +230,7 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 
 ## Plan 9.6: Live Verification and LLD Alignment
 
-**Plan file:** `docs/superpowers/plans/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md`
+**Plan file:** `docs/superpowers/plans/archive/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md`
 
 **User story:** As the operator, I can verify on my own machine — against a real TimeSeries-capable Redis, real Optimus Gateway credentials, and a real spawned ACP stdio process — that the agent Plan 9.5 built actually works, before anything is signed off.
 
@@ -251,12 +251,12 @@ Plan 12 prerequisite is no longer open.
 The real-IDE HITL row closed through Plan 9.75's conformant ACP approval/completion flow and
 `reports/plan-9-75-zed-hitl-runtime-evidence.md`. Subprocess, live Redis/Gateway, operator-only,
 manual PATH/keychain, and post-merge Zed evidence are recorded in
-`docs/superpowers/plans/2026-07-10-plan-9-6-live-signoff-execution.md` and its linked reports. The
+`docs/superpowers/plans/archive/2026-07-10-plan-9-6-live-signoff-execution.md` and its linked reports. The
 operator/IDE launch path remains standardized on `uv tool install --editable .`.
 
 ## Plan 9.7: Local Dev Infra Auto-Start and Keychain-Based Setup
 
-**Plan file:** `docs/superpowers/plans/2026-07-08-plan-9-7-local-dev-infra-autostart-and-setup.md`
+**Plan file:** `docs/superpowers/plans/archive/2026-07-08-plan-9-7-local-dev-infra-autostart-and-setup.md`
 
 **User story:** As an operator, I run `optimus-agent` and it ensures its own local dependencies
 (Redis via Docker, the local Optimus Gateway process) are up, instead of me hand-editing two
@@ -282,7 +282,7 @@ is deferred. This lane stays orthogonal to Plan 9.6 live-verification scope.
 visible completion.
 
 **Plan file:**
-`docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`.
+`docs/superpowers/plans/archive/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`.
 Its **Verified defects** section is the authoritative protocol-shape record.
 
 **Status:** Complete (2026-07-10). PR #36 merged at
@@ -299,7 +299,7 @@ and must not be folded into Plan 12.
 
 ## Plan 9.8: Task-Aware Workspace Context for Planning
 
-**Plan file:** `docs/superpowers/plans/2026-07-10-plan-9-8-task-aware-workspace-context.md`
+**Plan file:** `docs/superpowers/plans/archive/2026-07-10-plan-9-8-task-aware-workspace-context.md`
 
 **User story:** As an operator, when I ask the agent to change an explicitly referenced file, the
 planner receives that file's content even when task-blind workspace filler would otherwise exhaust
@@ -456,7 +456,7 @@ resources correctly from both editable and non-editable tool installations.
 
 **Status:** Implemented and live-verified. Implementation plan approved by the reviewer agent and
 operator on 2026-07-14
-(`docs/superpowers/plans/2026-07-14-plan-9-9-operator-packaging-and-credential-diagnostics.md`);
+(`docs/superpowers/plans/archive/2026-07-14-plan-9-9-operator-packaging-and-credential-diagnostics.md`);
 implementation SHA `f120a5afde39e3b3a8a405211ae71653b6e75665`, evidence report SHA
 `cde9cb9d22c32d0d0fe05b019543d6b1b5ba78a5`. Real `acpx` packaging evidence:
 `reports/plan-9-9-operator-packaging-evidence.md`.
@@ -472,7 +472,7 @@ implemented here. Its sole current custody line is under Plan 9.96 below.
 
 **Raised:** 2026-07-14 as the custody entry for open deferred follow-ups. The operator approved
 the three-lane split on 2026-07-14; the detailed Plan 9.95 implementation plan is
-`docs/superpowers/plans/2026-07-14-plan-9-95-usage-telemetry-evidence-tooling-correctness.md`
+`docs/superpowers/plans/archive/2026-07-14-plan-9-95-usage-telemetry-evidence-tooling-correctness.md`
 was approved by the reviewer-agent and operator on 2026-07-14. Implemented 2026-07-15 on branch
 `agent/kiro/plan-9-95-usage-telemetry-evidence`; implementation SHA
 `41a9cddddbacad766d8a432b7129a18d8976b54a`; evidence in
@@ -581,7 +581,7 @@ ACPX, or keyring dependency to CI.
 
 **Design and plan:**
 `docs/superpowers/specs/2026-07-19-plan-9-98-fu-1-workspace-identity-ci-design.md`; implementation
-plan `docs/superpowers/plans/2026-07-19-plan-9-98-fu-1-workspace-identity-linux-ci.md`, approved and
+plan `docs/superpowers/plans/archive/2026-07-19-plan-9-98-fu-1-workspace-identity-linux-ci.md`, approved and
 amended twice (v2 widened Task 1's identity-test scope, v3 corrected the verifier invocation) via
 `docs/superpowers/reviews/2026-07-19-plan-9-98-fu-1-implementation-plan-approval.md` and its
 `-v2`/`-v3` amendment records.
@@ -624,7 +624,7 @@ creation boundary the design set.
 
 **Design and plan:** `docs/superpowers/specs/2026-07-19-workspace-runtime-bootstrap-ci-design.md`;
 implementation plan
-`docs/superpowers/plans/2026-07-19-plan-9-98-fu-2-approval-time-runtime-bootstrap.md`, approved via
+`docs/superpowers/plans/archive/2026-07-19-plan-9-98-fu-2-approval-time-runtime-bootstrap.md`, approved via
 `docs/superpowers/reviews/2026-07-19-plan-9-98-fu-2-implementation-plan-approval.md`.
 
 **Implementation:** Commits `16cc68c7b3233945cbb17654b4d91a9b42dc9c01` ("fix: require initialized
@@ -672,7 +672,7 @@ this entry; the next plan must re-establish that conclusion from current source 
 
 **Status:** Complete.  Resolved by a fresh, separately reviewed design spec and implementation plan
 (`docs/superpowers/specs/2026-07-22-plan-9-98-fu-3-posix-runtime-root-tests-design.md`,
-`docs/superpowers/plans/2026-07-22-plan-9-98-fu-3-posix-runtime-root-tests.md`), implemented and
+`docs/superpowers/plans/archive/2026-07-22-plan-9-98-fu-3-posix-runtime-root-tests.md`), implemented and
 merged via [PR #61](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/61)
 (`06937d334b6fbc614ca3054d5da793c7290d6f32`) on 2026-07-22.  All five named failures from run
 29690328862 are resolved: the two full-entrypoint tests now assert POSIX `NO_APPROVAL` at durable
@@ -742,7 +742,7 @@ original row for the effective-row display gap). Implementation commits:
 `daccb0d7469814930922eae67a86552435258cf6` (FU-1/FU-2), `d83953880a15419097e91da262678f736905cccd`
 (FU-3), `cc66d660cd8580eb3b821d0eb25ed04b27605dc0` (FU-4), `278d95bec4e9a62c55c5de1237a61af1ca661309`
 (FU-7 confirmation gate). See the
-[`Plan 10.1 implementation plan`](2026-07-23-plan-10-1-p9-96-follow-up-remediation.md) and the
+[`Plan 10.1 implementation plan`](archive/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md) and the
 [consolidated backlog](2026-07-23-consolidated-deferred-followups-backlog.md) for the full
 FU-by-FU disposition table and named tests. [PR #72](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/72)
 was the documentation-only freeze merge; implementation landed on
@@ -761,7 +761,7 @@ new catalog ID or second Plan 10 backlog document. Implementation commit:
 `4350ae6f455c83f6d8a79c2a0bbdfe149755a4ef` on branch `agent/cursor/plan-10-2-effective-row-display`
 (plan/approval text named `agent/codex/plan-10-2-effective-row-display`, which was already checked
 out in another worktree). See the
-[`Plan 10.2 implementation plan`](2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md)
+[`Plan 10.2 implementation plan`](archive/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md)
 and its [design spec](../specs/2026-07-23-plan-10-2-fu7-display-provenance-design.md). Evidence:
 gitignored `docs/superpowers/reviews/plan-10-2-review-checkpoints.md`. The Plan 10.2 lane is closed;
 its historical catalog work remains recorded here and open custody is now governed by Plan 11.
@@ -775,7 +775,7 @@ follow-up custody is carried by Plan 11. Implementation commits:
 `1b152a8` ("chore: refresh uv lock for declared gateway dependencies") and
 `4d1f086` ("fix(tools): allow surface audit errors to carry tracebacks") on branch
 `agent/cursor/plan-10-3-uv-lock-surface-audit`. See the
-[`Plan 10.3 implementation plan`](2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).
+[`Plan 10.3 implementation plan`](archive/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).
 Evidence: gitignored `docs/superpowers/reviews/plan-10-3-review-checkpoints.md`. The Plan 10.3 lane
 is closed; open follow-ups are now governed by the consolidated open-work pool. The frozen Plan 10.3 plan
 header retains its pre-approval draft wording because its approval record pins the plan bytes; this
@@ -1053,7 +1053,7 @@ feature and follow-up status.
 | Plan 11.11 | Historical | Plan 11.12 retirement; precursor PR #134; PR #135 |
 | Plan 11.12 | Retired | Gateway MCP code removal and living-status custody |
 | Plan 11.13 | Complete | Published HLD v2.18, LLD v2.41, Guardrails v1.3, and Test Strategy v1.7; [evidence](../reports/2026-08-15-plan-11-13-authoritative-document-reversal-evidence.md) records output hashes, old-PDF integrity, audit, and rendered-page inspection |
-| Plan 11.25 | Implemented (Slice 1 on branch; awaiting merge) | Multi-turn conversation Slice 1 hermetic evidence: [baseline](../../../reports/plan-11-25-multi-turn-baseline.md), [contract evidence](../../../reports/plan-11-25-multi-turn-contract-evidence.md), [release review](../../../reports/plan-11-25-multi-turn-release-review.md); branch `agent/cursor/plan-11-25-multi-turn-conversation` |
+| Plan 11.25 | Closed | Multi-turn conversation Slice 1 merged through PR #188 and follow-up PR #189; evidence: [baseline](../../../reports/plan-11-25-multi-turn-baseline.md), [contract evidence](../../../reports/plan-11-25-multi-turn-contract-evidence.md), [release review](../../../reports/plan-11-25-multi-turn-release-review.md) |
 
 **Milestone charter:** Plan 11 is the v1.0 milestone. `P11-FEAT-GATEWAY-CORE` (Plan 11.1)
 closes the Gateway core and observability-route gate; the ratified TOOLS and COST-OBS identities

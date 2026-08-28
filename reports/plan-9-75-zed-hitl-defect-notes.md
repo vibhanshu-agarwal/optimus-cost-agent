@@ -1,7 +1,7 @@
 # Plan 9.75 defect notes — Zed `session/prompt` hang
 
 Reference material for
-`docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`.
+`docs/superpowers/plans/archive/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md`.
 Use **Plan 9.75** in cross-plan references — not PR or issue numbers.
 
 ## Summary
@@ -14,12 +14,12 @@ answer, or error.
 
 **Related plans:**
 
-- [Plan 9.75](../docs/superpowers/plans/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md)
+- [Plan 9.75](../docs/superpowers/plans/archive/2026-07-09-plan-9-75-zed-hitl-acp-toolcall-permission.md)
   — implementation plan (primary tracking)
 - Plan 9.6 — Known Open Defects → Zed HITL
-  (`docs/superpowers/plans/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md`)
+  (`docs/superpowers/plans/archive/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md`)
 - Plan 9.7 — manual DoD planning bar deferred pending Plan 9.75
-  (`docs/superpowers/plans/2026-07-08-plan-9-7-local-dev-infra-autostart-and-setup.md`)
+  (`docs/superpowers/plans/archive/2026-07-08-plan-9-7-local-dev-infra-autostart-and-setup.md`)
 - Phase 1 Roadmap item 13 (`docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`)
 
 **Out of scope (working per Plan 9.7 manual smoke):** PATH install, `--setup`,

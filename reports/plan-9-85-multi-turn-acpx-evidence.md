@@ -10,7 +10,7 @@
 **Source checkout:** `D:\Projects\Development\Python\optimus-cost-agent-wt-cursor`
 **PROVENANCE (operator):** `git_sha=6aba8fb`, keychain / local-default credentials (`shell_has_gateway_url=false`, `shell_has_optimus_api_key=false`); no local provider keys in shell.
 
-**Plan:** [`docs/superpowers/plans/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`](../docs/superpowers/plans/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md)
+**Plan:** [`docs/superpowers/plans/archive/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`](../docs/superpowers/plans/archive/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md)
 
 ---
 

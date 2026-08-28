@@ -9,7 +9,7 @@ current approval authority.
 
 **Design spec:** `docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md`
 
-**Implementation plan:** `docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md`
+**Implementation plan:** `docs/superpowers/plans/archive/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md`
 
 **Requirement inventory:**
 `docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md`
@@ -69,10 +69,10 @@ Run this block in Git Bash from the repository root:
 ```bash
 git status --short --branch
 git show HEAD:docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md | sha256sum | cut -d' ' -f1
-git show HEAD:docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md | sha256sum | cut -d' ' -f1
+git show HEAD:docs/superpowers/plans/archive/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md | sha256sum | cut -d' ' -f1
 git show HEAD:docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md | sha256sum | cut -d' ' -f1
 [ "$(sha256sum docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md | cut -d' ' -f1)" = "$(git show HEAD:docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md | sha256sum | cut -d' ' -f1)" ] || echo MISMATCH
-[ "$(sha256sum docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md | cut -d' ' -f1)" = "$(git show HEAD:docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md | sha256sum | cut -d' ' -f1)" ] || echo MISMATCH
+[ "$(sha256sum docs/superpowers/plans/archive/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md | cut -d' ' -f1)" = "$(git show HEAD:docs/superpowers/plans/archive/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md | sha256sum | cut -d' ' -f1)" ] || echo MISMATCH
 [ "$(sha256sum docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md | cut -d' ' -f1)" = "$(git show HEAD:docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md | sha256sum | cut -d' ' -f1)" ] || echo MISMATCH
 git diff --check
 ```

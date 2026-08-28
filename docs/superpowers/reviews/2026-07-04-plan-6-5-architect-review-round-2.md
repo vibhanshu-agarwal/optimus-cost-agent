@@ -1,7 +1,7 @@
 # Plan 6.5 Architecture Review — Round 2 (post-revision)
 
 **Reviewer role:** Senior Architect
-**Plan:** `docs/superpowers/plans/2026-07-04-plan-6-5-guardrail-hardening-mcp-runtime-trust.md`
+**Plan:** `docs/superpowers/plans/archive/2026-07-04-plan-6-5-guardrail-hardening-mcp-runtime-trust.md`
 **Prior review:** `docs/superpowers/reviews/2026-07-04-plan-6-5-architect-review.md`
 **Verdict:** All findings from round 1 are resolved and independently verified — the blocker by re-executing the exact revised function against the same `confusable-homoglyphs==3.3.1` package used in round 1, the two High findings and three Medium findings by tracing the revised code against `PermissionPolicy`, `MCPAutoloadGuard`, and the new test fixtures. Plan 6.5 is ready for execution.
 

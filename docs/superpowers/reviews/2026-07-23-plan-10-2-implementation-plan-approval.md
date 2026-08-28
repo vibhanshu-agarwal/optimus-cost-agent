@@ -3,7 +3,7 @@
 **Status:** Reviewer-agent and operator approved on 2026-07-23; implementation is authorized but
 has not started.
 
-**Implementation plan:** `docs/superpowers/plans/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md`
+**Implementation plan:** `docs/superpowers/plans/archive/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md`
 
 **Design spec:** `docs/superpowers/specs/2026-07-23-plan-10-2-fu7-display-provenance-design.md`
 
@@ -29,7 +29,7 @@ remains subject to the plan's evidence protocol.
 Run from the repository root:
 
 ```powershell
-(Get-FileHash -Algorithm SHA256 docs/superpowers/plans/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md).Hash
+(Get-FileHash -Algorithm SHA256 docs/superpowers/plans/archive/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md).Hash
 ```
 
 Expected exact output:

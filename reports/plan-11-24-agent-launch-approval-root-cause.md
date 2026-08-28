@@ -74,7 +74,7 @@ the agent while `acpx-workspace` had a live approval; Zed's later agent process 
 ## Required outcome consequence
 
 Plan 11.24 requires the report to state the consequence associated with its result
-(`docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe.md:216-223,229-237`).
+(`docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe.md:216-223,229-237`).
 For this result:
 
 > **`INDETERMINATE`:** The named missing precondition/observation remains; no implementation or
@@ -90,7 +90,7 @@ The generated bundle report records only the finding, reason, timestamp, and com
 (`plan-11-24-zed-guided-session-load-probe/report.md:1-7`). Its generator builds those fields but has
 no outcome-consequence mapping (`tools/probe_p11_zed_session_load.py:1549-1565`), although the frozen
 plan requires the exact consequence row
-(`docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe.md:216-223,237`). The
+(`docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe.md:216-223,237`). The
 generator was never given the consequence table.
 
 Because `manifest.json` pins `report.md`'s digest (`manifest.json:22-25`), changing the generated

@@ -2,7 +2,7 @@
 
 **Status:** Approved by the user and Lead Architect/reviewer on 2026-07-12.
 
-**Raised from:** `P9.85-FU-4` and `P9.85-FU-5` in `docs/superpowers/plans/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`.
+**Raised from:** `P9.85-FU-4` and `P9.85-FU-5` in `docs/superpowers/plans/archive/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`.
 
 ## Goal
 
@@ -11,8 +11,8 @@ Allow an AGENT-mode model whose initial Plan 9.8 workspace context fits to opt i
 ## Source Anchors
 
 - `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`, Plan 9.87.
-- `docs/superpowers/plans/2026-07-10-plan-9-8-task-aware-workspace-context.md`.
-- `docs/superpowers/plans/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`.
+- `docs/superpowers/plans/archive/2026-07-10-plan-9-8-task-aware-workspace-context.md`.
+- `docs/superpowers/plans/archive/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`.
 - `reports/plan-9-85-multi-turn-acpx-evidence.md`.
 - `docs/Optimus-Cost-Agent-Architecture-v2.15.pdf`.
 - `docs/Optimus-Cost-Agent-LLD-v2.38.pdf`, especially section 12C bounded loops.

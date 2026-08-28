@@ -1,7 +1,7 @@
 # Plan 6 Security Review — Round 2 (post-revision)
 
 **Reviewer role:** Senior Architect / Network Security
-**Plan:** `docs/superpowers/plans/2026-07-04-prompt-injection-mcp-trust-ci-guardrail-parity.md`
+**Plan:** `docs/superpowers/plans/archive/2026-07-04-prompt-injection-mcp-trust-ci-guardrail-parity.md`
 **Prior review:** `docs/superpowers/reviews/2026-07-04-plan-6-security-review.md`
 **Verdict:** The blocker is fixed and 9 of 12 substantive findings are properly resolved. Three fixes, however, introduced new gaps — two of which recreate the exact "control present but not protecting" problem the revision set out to remove. None is a hard blocker; all are cheap to close.
 

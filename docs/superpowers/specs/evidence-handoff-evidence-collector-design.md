@@ -10,7 +10,7 @@
 - This document owns the collector's architecture, scope, contracts, failure semantics, and
   verification requirements.
 - Live feature state belongs only in the
-  [evidence and handoff open-work pool](../plans/evidence-handoff-open-work-pool.md). This design
+  [evidence and handoff open-work pool](../plans/archive/evidence-handoff-open-work-pool.md). This design
   does not duplicate status, scheduling, or progress.
 - The product is on an independent implementation train. This design creates no roadmap entry and
   reserves no scheduling identifier.

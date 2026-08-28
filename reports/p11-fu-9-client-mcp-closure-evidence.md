@@ -2,7 +2,7 @@
 
 **Commit baseline:** `5026b62` (Task 8 tip at kickoff; update on close if HEAD advances).
 **Platforms:** verified on native Windows (authoritative platform) + reproduced on WSL2 (CI-parity check).
-**Authority:** implementation plan `docs/superpowers/plans/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-implementation.md`; design
+**Authority:** implementation plan `docs/superpowers/plans/archive/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-implementation.md`; design
 `docs/superpowers/specs/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md`.
 
 ## Design digest

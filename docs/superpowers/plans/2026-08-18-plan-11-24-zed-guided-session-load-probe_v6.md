@@ -8,15 +8,15 @@
 >
 > **Frozen predecessors:** Leave all five predecessor files byte-identical:
 >
-> - `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe.md`, git blob
+> - `docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe.md`, git blob
 >   `421f9a9595dda1d55b9895b148839de8163e6556`;
-> - `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v2.md`, git blob
+> - `docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v2.md`, git blob
 >   `85cea53cbec6ca9faf1cee85f5c81e15999321b8`;
-> - `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v3.md`, git blob
+> - `docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v3.md`, git blob
 >   `220000b208059030488c920fef3f15e9f8834e89`;
-> - `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v4.md`, corrected
+> - `docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v4.md`, corrected
 >   PR #180 blob `260ad5dc692e03601d48c6f1713238de4fa5c164`; and
-> - `docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v5.md`, git blob
+> - `docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v5.md`, git blob
 >   `f8f239a21dfbbc09591bcaae22eeefa8a3f7eee1`.
 >
 > **Authoring baseline:** `origin/main` at

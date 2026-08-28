@@ -9,7 +9,7 @@ append-only and keeps growing past this point; this record intentionally does no
 Later review rounds live only in the ignored chronology and in the append-only Review Chronology
 narrative itself, never in this pinned body.
 
-**Latest disposition: see live `_v3`** (`docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure_v3.md`)
+**Latest disposition: see live `_v3`** (`docs/superpowers/plans/archive/evidence-handoff-a2a-not-shipped-closure_v3.md`)
 for current authorization status and execution state. This file is the append-only chronology of
 every review ruling that produced it, superseding no earlier round; earlier rounds open with
 CHANGES REQUIRED and are historical, not the current ruling.
@@ -424,11 +424,11 @@ disposition is incomplete, and M17 is not durably closed.
 authorization for a second, final closure commit. On authorization, that commit must contain exactly
 the intended post-custody files:
 
-- `docs/superpowers/plans/evidence-handoff-open-work-pool.md`;
+- `docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md`;
 - `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md`;
 - `tests/unit/docs/test_open_work_pool_hygiene.py`;
 - `docs/superpowers/reviews/evidence-handoff-a2a-not-shipped-closure-review.md`; and
-- `docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure.md`, whose checkboxes are the
+- `docs/superpowers/plans/archive/evidence-handoff-a2a-not-shipped-closure.md`, whose checkboxes are the
   required on-disk progress record.
 
 Re-run `git status --short` immediately before that commit and reject any extra path. Nothing in this
@@ -545,7 +545,7 @@ sequence without commands, expected results, gates, commit allowlists, or review
 the exact `AGENTS.md:76` defect the amendment exists to cure.
 
 **Required correction:** make `_v2` the consolidated executable successor, following the existing
-`evidence-handoff-risk-bearing-slice-implementation_v2.md` precedent. It must contain:
+`archive/evidence-handoff-risk-bearing-slice-implementation_v2.md` precedent. It must contain:
 
 - an authoritative checkbox ledger for the historical Task 1 Steps 1-3. A historical box may be
   `[x]` only if its text records the limited evidence actually obtained (working-tree body equality
@@ -1229,9 +1229,9 @@ checkboxes and current-state prose) — that difference is expected, not a misma
 | 3 | `docs/superpowers/reviews/evidence-handoff-a2a-remediation-scoping-review.md` | `aa89bf21c583f40ecfb0b44c822b1a2d2aa80f2d019e30c103da6f5961559cf9` | 26218 | 468 |
 | 4 | `docs/superpowers/reviews/evidence-handoff-a2a-not-shipped-closure-review.md` | `06bafea8f91d86646656a997da34688e12fd6b729c978d72efa9a8f74dc90d8a` | 72592 | 1213 |
 | 5 | `docs/superpowers/specs/evidence-handoff-a2a-ledger-remediation-scoping.md` | `c6e62f06a658956b986ca77b697177458da848e0d33984f8ba4d60de8ed4fad9` | 18379 | 313 |
-| 6 | `docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure.md` | `c9724c618338a331121e84b16e59b81e672079b882e236308dab6eea192d8e06` | 20309 | 310 |
-| 7 | `docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure_v2.md` | `6d6c0e6a82dba0317260ba077ccb0874f2dcea5994dfaa220a3f764c77fc3aa2` | 33501 | 609 |
-| 8 | `docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure_v3.md` | `c93c178bf00da99d002e2273bb004f8535f2f1d219375d24f4b2e6bac39f8063` | 105574 | 1657 |
+| 6 | `docs/superpowers/plans/archive/evidence-handoff-a2a-not-shipped-closure.md` | `c9724c618338a331121e84b16e59b81e672079b882e236308dab6eea192d8e06` | 20309 | 310 |
+| 7 | `docs/superpowers/plans/archive/evidence-handoff-a2a-not-shipped-closure_v2.md` | `6d6c0e6a82dba0317260ba077ccb0874f2dcea5994dfaa220a3f764c77fc3aa2` | 33501 | 609 |
+| 8 | `docs/superpowers/plans/archive/evidence-handoff-a2a-not-shipped-closure_v3.md` | `c93c178bf00da99d002e2273bb004f8535f2f1d219375d24f4b2e6bac39f8063` | 105574 | 1657 |
 
 Row 4 is this record's own custody-commit digest (`docs/superpowers/reviews/evidence-handoff-a2a-not-shipped-closure-review.md`
 at commit `ec73ba48628c051d07db06f10fa816fac681616c`) — it does not and cannot include this

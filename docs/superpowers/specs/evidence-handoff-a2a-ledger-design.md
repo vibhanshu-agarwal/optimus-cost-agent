@@ -6,7 +6,7 @@ when an implementation chunk is picked up.
 **Baseline:** `origin/main` at `f7f78391f07554e675bb6ab36fdde0b5af7ac5d5`.
 
 **Status authority:** Live state belongs only in the
-[evidence and handoff open-work pool](../plans/evidence-handoff-open-work-pool.md). This document
+[evidence and handoff open-work pool](../plans/archive/evidence-handoff-open-work-pool.md). This document
 owns architecture, scope, contracts, and verification requirements.
 
 ## Product intent

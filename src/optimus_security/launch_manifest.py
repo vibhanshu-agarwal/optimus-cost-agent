@@ -8,7 +8,7 @@ the manifest against its exact provider/base/credential inputs before
 constructing GatewayServiceConfig. Direct unmanifested startup fails closed.
 
 optimus_gateway is a distinct process/deployable that does not import
-optimus.acp (see docs/superpowers/plans/2026-07-07-local-optimus-gateway-service.md).
+optimus.acp (see docs/superpowers/plans/archive/2026-07-07-local-optimus-gateway-service.md).
 This module lives in the neutral optimus_security package so both the ACP
 parent and the Gateway child can build/verify manifests without either side
 importing the other's package.
