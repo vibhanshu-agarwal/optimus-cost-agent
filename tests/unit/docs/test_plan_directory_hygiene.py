@@ -22,16 +22,19 @@ LIVE_REGISTRY_ROW = re.compile(
     r"^\| \[[^]]+\]\((?P<path>[^)]+\.md)\) "
     r"\| `(?P<state>Active|Blocked)` \| `(?P<owner>[^`]+)` \| (?P<next_gate>.+) \|$"
 )
-MARKDOWN_LINK = re.compile(r"\[[^]]+\]\((?P<target>[^)]+)\)")
+MARKDOWN_LINK = re.compile(r"\[[^]]*\]\((?P<target>[^)]+)\)")
 # Exact (document, raw link text) pairs allowed to stay broken. Every entry
-# here must be an already-broken, pre-existing defect unrelated to the
-# archive move -- never a directory- or document-wide bypass. Verified
-# against `main` before PR #193's archive move: these 4 links already
-# 404'd at their pre-move location (a plain authoring mistake in a frozen
-# 2026-07-10 plan, e.g. a missing `../../../` before `reports/...`), so the
-# move did not create them and PR #193's document-repair lane does not
-# claim to fix them.
-STALE_LINK_EXEMPTIONS: set[tuple[str, str]] = {
+# here must be a real, individually justified case -- never a directory- or
+# document-wide bypass. Split into two groups below by why the link stays
+# broken; both feed the same STALE_LINK_EXEMPTIONS set the test checks
+# against.
+
+# Pre-existing, unrelated to PR #193's archive move. Verified against `main`
+# before the move: these 4 links already 404'd at their pre-move location (a
+# plain authoring mistake in a frozen 2026-07-10 plan, e.g. a missing
+# `../../../` before `reports/...`), so the move did not create them and
+# PR #193's document-repair lane does not claim to fix them.
+PRE_EXISTING_STALE_LINK_EXEMPTIONS: set[tuple[str, str]] = {
     (
         "docs/superpowers/plans/archive/2026-07-10-plan-9-6-live-signoff-execution.md",
         "reports/plan-9-6-phase-a-evidence.md",
@@ -49,6 +52,83 @@ STALE_LINK_EXEMPTIONS: set[tuple[str, str]] = {
         "2026-07-10-plan-9-6-phase-c-operator-runbook.md",
     ),
 }
+
+# Deliberately deferred. PR #193's archive move broke these by shifting 80
+# frozen documents one directory level deeper without rewriting their
+# relative links (their bytes are pinned/preserved by policy and may not be
+# edited in place). Operator ruling 2026-08-28: fix these together with the
+# larger 62-document self/cross-reference cleanup in one later batch, via
+# versioned-successor (`_v2`) forks, rather than fixing links now and the
+# frozen-byte mechanics separately -- tracked by a dedicated backlog entry
+# and an ARCHIVE.md reader-facing caveat (both added alongside this change).
+# Remove an entry here only when its link is actually repaired --
+# test_relative_markdown_links_resolve_except_registered_stale_links fails
+# loudly on an unused exemption, so a stale removal is self-detecting.
+DEFERRED_ARCHIVE_MOVE_LINK_EXEMPTIONS: set[tuple[str, str]] = {
+    (
+        "docs/superpowers/plans/archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md",
+        "../specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md",
+    ),
+    (
+        "docs/superpowers/plans/archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md",
+        "2026-07-23-consolidated-deferred-followups-backlog.md"
+        "#p11-fu-11-plan-117-retry-preflight-and-live-session-proof",
+    ),
+    (
+        "docs/superpowers/plans/archive/2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md",
+        "2026-07-23-consolidated-deferred-followups-backlog.md"
+        "#durable-effect-aware-mcp-indeterminate-call-custody",
+    ),
+    (
+        "docs/superpowers/plans/archive/2026-08-07-open-work-pool-status-normalization-implementation.md",
+        "../../../reports/p11-fu-9-client-mcp-closure-evidence.md",
+    ),
+    (
+        "docs/superpowers/plans/archive/2026-08-07-open-work-pool-status-normalization-implementation.md",
+        "../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/"
+        "path-a-run/path-a-terminal-seal.json",
+    ),
+    (
+        "docs/superpowers/plans/archive/2026-08-07-open-work-pool-status-normalization-implementation.md",
+        "../../runbooks/local-live-dependencies.md",
+    ),
+    (
+        "docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md",
+        "../specs/evidence-handoff-a2a-ledger-design.md",
+    ),
+    (
+        "docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md",
+        "../specs/evidence-handoff-a2a-ledger-design.md#per-agent-delivery-observability",
+    ),
+    (
+        "docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md",
+        "../specs/evidence-handoff-a2a-ledger-remediation-scoping.md",
+    ),
+    (
+        "docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md",
+        "../specs/evidence-handoff-evidence-collector-design.md",
+    ),
+    (
+        "docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md",
+        "../specs/evidence-handoff-redaction-gate-design.md",
+    ),
+    (
+        "docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md",
+        "../specs/evidence-handoff-zed-render-observation-design.md",
+    ),
+    (
+        "docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md",
+        "evidence-handoff-evidence-collector-implementation.md",
+    ),
+    (
+        "docs/superpowers/specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md",
+        "../plans/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md",
+    ),
+}
+
+STALE_LINK_EXEMPTIONS: set[tuple[str, str]] = (
+    PRE_EXISTING_STALE_LINK_EXEMPTIONS | DEFERRED_ARCHIVE_MOVE_LINK_EXEMPTIONS
+)
 REPOSITORY_PLAN_PATH = re.compile(
     r"docs/superpowers/plans/(?P<target>[A-Za-z0-9_./-]+\.md)"
 )
@@ -186,6 +266,18 @@ def test_separately_named_amendments_cannot_be_live_root_plans() -> None:
         if path.name not in ROOT_GOVERNANCE_DOCUMENTS
     }
     assert not {name for name in root_plan_names if "amendment" in name.lower()}
+
+
+def test_markdown_link_regex_still_matches_after_backtick_stripping_empties_the_label() -> None:
+    """`[`P11-FU-11`](broken.md)` is a real, common style in this repo's docs.
+    Inline-code stripping (used to avoid false positives from code examples)
+    removes the backticked label, leaving `[](broken.md)` -- a link with an
+    empty label is still a real, clickable link, and must still be matched."""
+    text = re.sub(r"`[^`\n]*`", "", "See [`P11-FU-11`](broken.md) for detail.")
+    assert text == "See [](broken.md) for detail."
+
+    matches = list(MARKDOWN_LINK.finditer(text))
+    assert [m.group("target") for m in matches] == ["broken.md"]
 
 
 def test_relative_markdown_links_resolve_except_registered_stale_links() -> None:
