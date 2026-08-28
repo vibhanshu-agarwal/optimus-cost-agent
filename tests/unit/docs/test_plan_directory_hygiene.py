@@ -27,20 +27,93 @@ REPOSITORY_PLAN_PATH = re.compile(
     r"docs/superpowers/plans/(?P<target>[A-Za-z0-9_./-]+\.md)"
 )
 FROZEN_REFERENCE_EXEMPTIONS = {
-    "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md",
-    "docs/superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md",
-    "docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md",
-    "docs/superpowers/plans/evidence-handoff-evidence-collector-implementation.md",
-    "docs/superpowers/specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md",
-    "docs/superpowers/specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md",
-    "reports/plan-11-20-p11-fu-20-release.md",
-    "reports/plan-11-21-p11-5-fu-1-release.md",
-    "reports/plan-11-7-server-custody-artifact-manifest.json",
-    "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/document-freshness-audit.json",
-    "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/trigger-chain.json",
-    "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/assert-prompt-retry-preflight-signature-supersession-note.md",
-    "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task0-checkpoint.json",
-    "reports/plan-11-7-server-custody-artifacts/trigger-chain.json",
+    (
+        "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md",
+        "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v2.md",
+    ),
+    (
+        "docs/superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md",
+        "docs/superpowers/plans/2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md",
+    ),
+    *{
+        (
+            "docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md",
+            f"docs/superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe{suffix}.md",
+        )
+        for suffix in ("", "_v2", "_v3", "_v4", "_v5")
+    },
+    (
+        "docs/superpowers/plans/evidence-handoff-evidence-collector-implementation.md",
+        "docs/superpowers/plans/evidence-handoff-open-work-pool.md",
+    ),
+    (
+        "docs/superpowers/specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md",
+        "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md",
+    ),
+    (
+        "docs/superpowers/specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md",
+        "docs/superpowers/plans/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md",
+    ),
+    (
+        "reports/plan-11-20-p11-fu-20-release.md",
+        "docs/superpowers/plans/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-implementation.md",
+    ),
+    (
+        "reports/plan-11-21-p11-5-fu-1-release.md",
+        "docs/superpowers/plans/2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md",
+    ),
+    *{
+        ("reports/plan-11-7-server-custody-artifact-manifest.json", target)
+        for target in (
+            "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md",
+            "docs/superpowers/plans/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md",
+            "docs/superpowers/plans/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md",
+        )
+    },
+    *{
+        (
+            "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/document-freshness-audit.json",
+            target,
+        )
+        for target in (
+            "docs/superpowers/plans/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md",
+            "docs/superpowers/plans/evidence-handoff-open-work-pool.md",
+        )
+    },
+    *{
+        (
+            "reports/plan-11-7-server-custody-artifacts/amendments/origin-a-fixture-v2/trigger-chain.json",
+            target,
+        )
+        for target in (
+            "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md",
+            "docs/superpowers/plans/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md",
+            "docs/superpowers/plans/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md",
+        )
+    },
+    (
+        "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/assert-prompt-retry-preflight-signature-supersession-note.md",
+        "docs/superpowers/plans/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md",
+    ),
+    *{
+        (
+            "reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task0-checkpoint.json",
+            target,
+        )
+        for target in (
+            "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md",
+            "docs/superpowers/plans/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md",
+            "docs/superpowers/plans/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md",
+            "docs/superpowers/plans/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md",
+        )
+    },
+    *{
+        ("reports/plan-11-7-server-custody-artifacts/trigger-chain.json", target)
+        for target in (
+            "docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md",
+            "docs/superpowers/plans/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md",
+        )
+    },
 }
 
 
@@ -105,7 +178,7 @@ def test_rewritten_archive_links_outside_the_archive_resolve() -> None:
 
 
 def test_repository_relative_plan_paths_are_repaired_except_in_frozen_provenance() -> None:
-    used_exemptions: set[str] = set()
+    used_exemptions: set[tuple[str, str]] = set()
     for document in REPO_ROOT.rglob("*"):
         if (
             not document.is_file()
@@ -127,10 +200,11 @@ def test_repository_relative_plan_paths_are_repaired_except_in_frozen_provenance
             if target.is_file():
                 continue
             relative_document = document.relative_to(REPO_ROOT).as_posix()
-            assert relative_document in FROZEN_REFERENCE_EXEMPTIONS, (
+            exemption = (relative_document, match.group(0))
+            assert exemption in FROZEN_REFERENCE_EXEMPTIONS, (
                 f"stale plan path in mutable document {document}: {match.group(0)}"
             )
-            used_exemptions.add(relative_document)
+            used_exemptions.add(exemption)
             assert archived_target.is_file(), f"missing archived target for {match.group(0)}"
 
     assert used_exemptions == FROZEN_REFERENCE_EXEMPTIONS, (
