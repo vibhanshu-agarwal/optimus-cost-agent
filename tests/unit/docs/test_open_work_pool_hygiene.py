@@ -223,6 +223,7 @@ EXPECTED_FEATURE_STATUS = {
     "P11-FEAT-GATEWAY-MCP": "Retired",
     "P11-FEAT-ZED-RESUME": "Partially implemented",
     "P11-FEAT-MULTI-TURN-CONVERSATION": "Closed",
+    "P11-FEAT-ACP-RUNTIME-HARDENING": "Open",
     "P11-FEAT-REGISTRY": "Open",
     "P11-FEAT-IDE": "Open",
     "Plan 12": "Open",
@@ -247,6 +248,16 @@ EXPECTED_FEATURE_SCOPE_TOKENS = {
         "MT-FU-1",
         "MT-FU-2",
         "plan-11-25-multi-turn-release-review.md",
+    ),
+    "P11-FEAT-ACP-RUNTIME-HARDENING": (
+        "Next priority; backlog custody only",
+        "concurrency",
+        "abrupt client termination",
+        "exception taxonomy",
+        "structured telemetry and logging",
+        "independently authored ACP client",
+        "does not authorize implementation",
+        "HIGH justification",
     ),
     "P11-FEAT-REGISTRY": ("Ratified, unscheduled", "package and ACP versions are both `0.1.0`"),
     "P11-FEAT-IDE": ("Conditional",),
@@ -1287,7 +1298,7 @@ def test_pool_tables_have_collision_safe_identities_and_valid_priority_cells() -
             assert all(row["Priority"] in ALLOWED_PRIORITIES for row in rows)
 
 
-def test_priority_seed_preserves_only_the_four_approved_non_medium_values() -> None:
+def test_priority_seed_preserves_only_approved_non_medium_values() -> None:
     tables = {
         identity: (header, rows)
         for identity, header, rows in _markdown_tables(_read(OPTIMUS_POOL))
@@ -1308,6 +1319,12 @@ def test_priority_seed_preserves_only_the_four_approved_non_medium_values() -> N
         for identity, priority in followup_priorities.items()
         if priority != "MEDIUM"
     } == EXPECTED_NON_MEDIUM_PRIORITIES
+    feature_rows = tables[("Feature slices", 0)][1]
+    assert {
+        row["Identity"].strip("`"): row["Priority"]
+        for row in feature_rows
+        if row["Priority"] == "HIGH"
+    } == {"P11-FEAT-ACP-RUNTIME-HARDENING": "HIGH"}
     assert all(
         row["Priority"] in {"MEDIUM", "LOW"}
         for identity, (header, rows) in tables.items()
@@ -1315,6 +1332,7 @@ def test_priority_seed_preserves_only_the_four_approved_non_medium_values() -> N
         not in {
             ("Follow-up status index", 0),
             ("Evidence and handoff feature registry", 0),
+            ("Feature slices", 0),
         }
         and "Priority" in header
         for row in rows
