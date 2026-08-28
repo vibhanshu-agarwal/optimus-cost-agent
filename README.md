@@ -863,8 +863,14 @@ optimus-cost-agent/
 | [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.1.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.1.pdf) | Execution guardrails |
 | [AGENTS.md](AGENTS.md) | Agent behavior, logging, safety, and testing gates |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Human and agent contribution workflow |
+| [plan backlog](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md) | Sole live registry; the flat `plans/archive/` holds terminal history |
 
 If HLD, LLD, and Test Strategy conflict, pause and resolve before implementing.
+
+Archived Markdown normally preserves its committed bytes. A relative-link repair is permitted
+only when the executable relocation-equivalence test proves that the approved source Git blob,
+after exact registered substitutions, equals the new committed blob. Evidence artifacts, seals,
+and custody records remain byte-immutable even when their historical paths are stale.
 
 ## Contributing
 

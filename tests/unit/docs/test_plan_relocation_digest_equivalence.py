@@ -47,11 +47,121 @@ class RelocationEquivalence:
     expected_new_sha256: str
 
 
-# Populated by the document-repair lane as each frozen archived document's
-# stale relative links are mechanically repaired. Every entry here is
-# mechanically checked, not merely asserted, by
-# test_registered_relocations_are_pure_path_repairs below.
-RELOCATION_EQUIVALENCES: tuple[RelocationEquivalence, ...] = ()
+# Each entry records the originally approved blob at the archive-move base,
+# exact path-only substitutions, and the resulting re-pinned blob. Evidence
+# artifacts remain immutable; these are only frozen Markdown path repairs.
+RELOCATION_EQUIVALENCES: tuple[RelocationEquivalence, ...] = (
+    RelocationEquivalence(
+        source_commit="63b5d8f7853c57030426a01776905b0c521f1036",
+        original_path="docs/superpowers/plans/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md",
+        destination_path="docs/superpowers/plans/archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md",
+        approved_original_sha256="106FD92B8E43F44A7115D7EDB1F9CF1E3EE643E4B6F594FA656FB4119A969B82",
+        replacements=(
+            Replacement(
+                "2026-07-23-consolidated-deferred-followups-backlog.md#p11-fu-11-plan-117-retry-preflight-and-live-session-proof",
+                "../2026-07-23-consolidated-deferred-followups-backlog.md#p11-fu-11-plan-117-retry-preflight-and-live-session-proof",
+                1,
+            ),
+            Replacement(
+                "../specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md",
+                "../../specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md",
+                1,
+            ),
+        ),
+        expected_new_sha256="0AA1007309C26B072A37310F01B65B38E874A88625B9DF1215C0C61EA7620B2B",
+    ),
+    RelocationEquivalence(
+        source_commit="63b5d8f7853c57030426a01776905b0c521f1036",
+        original_path="docs/superpowers/plans/2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md",
+        destination_path="docs/superpowers/plans/archive/2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md",
+        approved_original_sha256="B5E2ACB08A35CF42D2D8AC83762D4EB1021461786B30EDB1C7615CBCD159728D",
+        replacements=(
+            Replacement(
+                "2026-07-23-consolidated-deferred-followups-backlog.md#durable-effect-aware-mcp-indeterminate-call-custody",
+                "../2026-07-23-consolidated-deferred-followups-backlog.md#durable-effect-aware-mcp-indeterminate-call-custody",
+                1,
+            ),
+        ),
+        expected_new_sha256="213744ECB6580B4A47BC61ED8D4B331724D4A05F50A23DFF6FAC9D137C99ACBA",
+    ),
+    RelocationEquivalence(
+        source_commit="63b5d8f7853c57030426a01776905b0c521f1036",
+        original_path="docs/superpowers/plans/2026-08-07-open-work-pool-status-normalization-implementation.md",
+        destination_path="docs/superpowers/plans/archive/2026-08-07-open-work-pool-status-normalization-implementation.md",
+        approved_original_sha256="7B719F23E7C716F744AC52BA21FE7114C329089B28218704BD0D351DC7E5C7F8",
+        replacements=(
+            Replacement(
+                "../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json",
+                "../../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json",
+                3,
+            ),
+            Replacement(
+                "../../../reports/p11-fu-9-client-mcp-closure-evidence.md",
+                "../../../../reports/p11-fu-9-client-mcp-closure-evidence.md",
+                1,
+            ),
+            Replacement(
+                "../../runbooks/local-live-dependencies.md",
+                "../../../runbooks/local-live-dependencies.md",
+                1,
+            ),
+        ),
+        expected_new_sha256="CC82FEA8DD6421FE33BE95853F2372F34AABB140082F86844D757802EC9C1051",
+    ),
+    RelocationEquivalence(
+        source_commit="63b5d8f7853c57030426a01776905b0c521f1036",
+        original_path="docs/superpowers/plans/evidence-handoff-open-work-pool.md",
+        destination_path="docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md",
+        approved_original_sha256="D1973E5B6CDC1FB9629BDAEA572C6550F4FC3C5238AE71D10D23AD364EF808F5",
+        replacements=(
+            Replacement(
+                "../specs/evidence-handoff-zed-render-observation-design.md",
+                "../../specs/evidence-handoff-zed-render-observation-design.md",
+                1,
+            ),
+            Replacement(
+                "../specs/evidence-handoff-redaction-gate-design.md",
+                "../../specs/evidence-handoff-redaction-gate-design.md",
+                1,
+            ),
+            Replacement(
+                "](evidence-handoff-evidence-collector-implementation.md)",
+                "](../evidence-handoff-evidence-collector-implementation.md)",
+                2,
+            ),
+            Replacement(
+                "../specs/evidence-handoff-evidence-collector-design.md",
+                "../../specs/evidence-handoff-evidence-collector-design.md",
+                1,
+            ),
+            Replacement(
+                "../specs/evidence-handoff-a2a-ledger-design.md",
+                "../../specs/evidence-handoff-a2a-ledger-design.md",
+                2,
+            ),
+            Replacement(
+                "../specs/evidence-handoff-a2a-ledger-remediation-scoping.md",
+                "../../specs/evidence-handoff-a2a-ledger-remediation-scoping.md",
+                1,
+            ),
+        ),
+        expected_new_sha256="7157F28D215D86C201028F3A3D72B645E8D69DBA5AF99D1A60C42CCB587EF182",
+    ),
+    RelocationEquivalence(
+        source_commit="63b5d8f7853c57030426a01776905b0c521f1036",
+        original_path="docs/superpowers/specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md",
+        destination_path="docs/superpowers/specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md",
+        approved_original_sha256="EB34FA10148CE813A03E60E0770116ABA4AC9857E4DFBEE87E00C39BFDB0D392",
+        replacements=(
+            Replacement(
+                "../plans/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md",
+                "../plans/archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md",
+                1,
+            ),
+        ),
+        expected_new_sha256="3D4FBA5BE86399F4FD7CABB319847A847A06394BE2CEEB5D795952C2901EB90E",
+    ),
+)
 
 
 def test_registered_relocations_are_pure_path_repairs() -> None:

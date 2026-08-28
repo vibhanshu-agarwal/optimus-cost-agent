@@ -89,7 +89,7 @@ the artifact's approval-time status prose, answers the current-state question.
 - `docs/superpowers/plans/archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md` — SHA-256 `F52AD9A5A85DC50B0DFD3206B6BD09FD8FF0AE79B1A6049DF1017F978B1C462D` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
 - `docs/superpowers/plans/archive/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md` — SHA-256 `79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
 - `docs/superpowers/plans/archive/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md` — SHA-256 `5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
-- `docs/superpowers/plans/archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md` — SHA-256 `106FD92B8E43F44A7115D7EDB1F9CF1E3EE643E4B6F594FA656FB4119A969B82` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FU-11`](#p11-fu-11-plan-117-retry-preflight-and-live-session-proof).
+- `docs/superpowers/plans/archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md` — SHA-256 `0AA1007309C26B072A37310F01B65B38E874A88625B9DF1215C0C61EA7620B2B` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FU-11`](#p11-fu-11-plan-117-retry-preflight-and-live-session-proof).
 - `docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe.md` — SHA-256 `BA1372E1D638AC2F12A4852E304DCE02196C26C78017F3AE1CA566F4A08DD017` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
 - `docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v2.md` — SHA-256 `BA67D5021FF767D9574BA452E39ECB2E642999C0CAEFBD6431D82E93D3842E05` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
 - `docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v3.md` — SHA-256 `C76121F5A35A698183ADEB1B028AEE6E7C0FE26621ED798586F5AF9081CB81F4` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
@@ -97,9 +97,22 @@ the artifact's approval-time status prose, answers the current-state question.
 - `docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v5.md` — SHA-256 `26B8A69BE2A3CD4E5A021CB21A507C27D0C880D5322EF22B9A59D4257ECC96A8` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-ZED-RESUME`](#feature-slices).
 - `docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md` — SHA-256 `8B67FC187B92F0B66A9932AAAD9A013C476C19C165A1044F57F338245A01786C` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [P9.96 historical summary and disposition](#p996-task-9-disclosed-follow-ups-closed-historical-plan-10-custody).
 - `docs/superpowers/specs/2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md` — SHA-256 `2E679F105A250C7DF9F3757F72C43810B92810DD080EC6A4A985B778D163BFEC` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-GATEWAY-TOOLS`](#feature-slices).
-- `docs/superpowers/specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md` — SHA-256 `EB34FA10148CE813A03E60E0770116ABA4AC9857E4DFBEE87E00C39BFDB0D392` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FU-11`](#p11-fu-11-plan-117-retry-preflight-and-live-session-proof).
+- `docs/superpowers/specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md` — SHA-256 `3D4FBA5BE86399F4FD7CABB319847A847A06394BE2CEEB5D795952C2901EB90E` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FU-11`](#p11-fu-11-plan-117-retry-preflight-and-live-session-proof).
 - `docs/superpowers/specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md` — SHA-256 `AC48C0AEF1778D6EBE93005BC3993AE204F81A1C59CDC8DB17CFB7EDB6A040F8` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FEAT-GATEWAY-MCP`](#feature-slices).
 - `docs/superpowers/specs/2026-08-15-p11-fu-18-29-durable-approval-workspace-identity-design.md` — SHA-256 `B445693AFB9B110E61D860F1B63D8836FF0EA651E0AC327BABA1CC906C84543B` — Frozen approval bytes — live status is owned by the consolidated open-work pool. Live owner: [`P11-FU-18`](#p11-fu-18-workspace-identity-ctime-coalescing-fail-open) and [`P11-FU-29`](#p11-fu-29-durable-approval-identity-instability-on-transient-git-probe-failure).
+
+**Archive-relocation re-pins (2026-08-28).** The archive move exposed relative Markdown
+paths that became invalid one directory deeper. The retry-preflight plan was re-pinned
+`106FD92B8E43F44A7115D7EDB1F9CF1E3EE643E4B6F594FA656FB4119A969B82` ->
+`0AA1007309C26B072A37310F01B65B38E874A88625B9DF1215C0C61EA7620B2B`; its design
+was re-pinned `EB34FA10148CE813A03E60E0770116ABA4AC9857E4DFBEE87E00C39BFDB0D392` ->
+`3D4FBA5BE86399F4FD7CABB319847A847A06394BE2CEEB5D795952C2901EB90E`. The
+executable relocation registry in
+`tests/unit/docs/test_plan_relocation_digest_equivalence.py` proves each re-pin from
+source commit `63b5d8f7853c57030426a01776905b0c521f1036`: it applies the exact
+registered path substitutions and requires byte-for-byte equality with the committed
+destination. This exception is limited to frozen Markdown path repair; evidence
+artifacts and custody records remain byte-immutable.
 
 #### Historical numbering-rule provenance
 

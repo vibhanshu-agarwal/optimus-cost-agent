@@ -348,12 +348,12 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   |---|---|---|---|---|
   | `P9.8-FU-2` | Intelligent ambiguous-reference ranking | Open | Plan 12 | Acceptance criteria in entry |
   | `P9.8-FU-3` | Dynamic context budgets and required-file summarization | Open | Plan 12 | Acceptance criteria in entry |
-  | `P9.8-FU-5` | Zed Refusal-Rendering Stability | Promoted -> [Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md) | `P11-FEAT-ZED-RESUME` | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
+  | `P9.8-FU-5` | Zed Refusal-Rendering Stability | Promoted -> [Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md) | `P11-FEAT-ZED-RESUME` | [Path A terminal seal](../../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
   | `P9.85-FU-1` | Intelligent observation compression | Open | Plan 12 | Acceptance criteria in entry |
   | `P9.85-FU-2` | Dynamic planning-evidence partition | Open | Plan 12 | Acceptance criteria in entry |
   | `P9.85-FU-3` | Cross-Run/Session Spend Policy | Open | Future budget-governance plan | Acceptance criteria in entry |
   | `P9.87-FU-1` | Mechanical Current-Raw-Evidence Grounding Guard | Open | Future Plan 11 feature work | Acceptance criteria in entry |
-  | `P11-FU-1` | ACP Session Resume Capability | Promoted -> [Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md) | `P11-FEAT-ZED-RESUME` | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
+  | `P11-FU-1` | ACP Session Resume Capability | Promoted -> [Plan 11.7](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md) | `P11-FEAT-ZED-RESUME` | [Path A terminal seal](../../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
   | `P11-FU-2` | Package Lookup and Security Advisory Gateway Capability | Closed | `P11-FEAT-GATEWAY-TOOLS` / Plan 11.2 | PR #88 / `4590dbf` |
   | `P11-FU-3` | MCP Route/Typed-Contract Publication Gate | Closed | `P11-FEAT-GATEWAY-MCP` | PR #112; PR #113 / `edd1f04` |
   | `P11-FU-4` | Re-pin FU-4A/FU-5 Live Evidence | Open | Coordinated with `P11-FEAT-ZED-RESUME` | Acceptance criteria in entry |
@@ -362,12 +362,12 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   | `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Open | Future Windows test-infrastructure work | Acceptance criteria in entry |
   | `P11.5-FU-1` | Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics | Open | `P11-FEAT-GATEWAY-COST-OBS` | Acceptance criteria in entry |
   | `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Open | Future Gateway migration design | Acceptance criteria in entry |
-  | `P11-FU-9` | Client-Supplied ACP `mcpServers` Disposition | Closed | Dedicated P11-FU-9 lane | PR #119 / `9a93137`; [closure evidence](../../../reports/p11-fu-9-client-mcp-closure-evidence.md) |
+  | `P11-FU-9` | Client-Supplied ACP `mcpServers` Disposition | Closed | Dedicated P11-FU-9 lane | PR #119 / `9a93137`; [closure evidence](../../../../reports/p11-fu-9-client-mcp-closure-evidence.md) |
   | `P11-FU-10` | Complete ACP Error-Code Registry Audit | Open | Future ACP audit | Acceptance criteria in entry |
   | `P11.7-FU-1` | Configurable Gateway request timeout for debug/investigation workflows | Open | Plan 11.7 deferred follow-up | Acceptance criteria in entry |
   | `P11.7-FU-2` | Gateway threaded-test flake under full-suite load | Open | Plan 11.7 deferred follow-up | Acceptance criteria in entry |
   | `P11.7-FU-3` | Committed `plan117_custody_relay.py` docstring `\ufffd` / em-dash corruption | Open | Plan 11.7 deferred follow-up | Acceptance criteria in entry |
-  | `P11-FU-11` | Plan 11.7 Retry Preflight and Live Session Proof | Partially implemented | [Plan 11.7 retry-preflight amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md) | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
+  | `P11-FU-11` | Plan 11.7 Retry Preflight and Live Session Proof | Partially implemented | [Plan 11.7 retry-preflight amendment](2026-08-04-plan-11-7-retry-preflight-gate-amendment.md) | [Path A terminal seal](../../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
   | `P11-FU-12` | MCP OAuth 2.1 Lifecycle | Open | Future `P11-FEAT-GATEWAY-MCP` follow-up | Acceptance criteria in entry |
   | `P11-FU-13` | Deferred MCP Capabilities and Long-Lived Interaction | Open | Future `P11-FEAT-GATEWAY-MCP` follow-up | Acceptance criteria in entry |
   | `P11-FU-14` | MCP Registry Discover-and-Connect | Open | Future `P11-FEAT-GATEWAY-MCP` follow-up | Acceptance criteria in entry |
@@ -377,7 +377,7 @@ Task 0 re-derives every value from committed bytes before test or pool mutation.
   | `P11-FU-18` | WSL2 directory `ctime` timestamp-coalescing test flake | Open | Future WSL2 test infrastructure | Acceptance criteria in entry |
   | `P11-FU-19` | WSL full-suite load flake in client SDK operation-deadline unit test | Open | Future WSL2 test infrastructure | Acceptance criteria in entry |
   | `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Open | Future client-MCP runtime follow-up | Acceptance criteria in entry |
-  | `P11.5-FU-2` | Consistent local env / Redis / Phoenix / Gateway startup for live runs | Closed | Plan 11.6 | PR #97 / `dc9a080`; [operator runbook](../../runbooks/local-live-dependencies.md) |
+  | `P11.5-FU-2` | Consistent local env / Redis / Phoenix / Gateway startup for live runs | Closed | Plan 11.6 | PR #97 / `dc9a080`; [operator runbook](../../../runbooks/local-live-dependencies.md) |
 
   Precede the table with one sentence stating that entries own explanatory prose and tests enforce
   ID/title/status projection. Do not add the nine unnumbered/historical headings to this table.

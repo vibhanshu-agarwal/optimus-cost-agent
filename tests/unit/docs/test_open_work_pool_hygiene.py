@@ -101,7 +101,7 @@ PROTECTED_BLOB_SHA256 = {
         "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D"
     ),
     "docs/superpowers/plans/archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md": (
-        "106FD92B8E43F44A7115D7EDB1F9CF1E3EE643E4B6F594FA656FB4119A969B82"
+        "0AA1007309C26B072A37310F01B65B38E874A88625B9DF1215C0C61EA7620B2B"
     ),
     "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe.md": (
         "BA1372E1D638AC2F12A4852E304DCE02196C26C78017F3AE1CA566F4A08DD017"
@@ -125,7 +125,7 @@ PROTECTED_BLOB_SHA256 = {
         "2E679F105A250C7DF9F3757F72C43810B92810DD080EC6A4A985B778D163BFEC"
     ),
     "docs/superpowers/specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md": (
-        "EB34FA10148CE813A03E60E0770116ABA4AC9857E4DFBEE87E00C39BFDB0D392"
+        "3D4FBA5BE86399F4FD7CABB319847A847A06394BE2CEEB5D795952C2901EB90E"
     ),
     "docs/superpowers/specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md": (
         "AC48C0AEF1778D6EBE93005BC3993AE204F81A1C59CDC8DB17CFB7EDB6A040F8"
@@ -1049,7 +1049,7 @@ def test_a2a_ledger_row_records_not_shipped_state() -> None:
     assert A2A_NOT_SHIPPED_VERBATIM in row
     assert "[closure plan `_v3`](evidence-handoff-a2a-not-shipped-closure_v3.md)" in row
     assert (
-        "[remediation-scoping contract](../specs/evidence-handoff-a2a-ledger-remediation-scoping.md)"
+        "[remediation-scoping contract](../../specs/evidence-handoff-a2a-ledger-remediation-scoping.md)"
     ) in row
     for doc in A2A_BACKTICK_ONLY_REVIEW_DOCS:
         assert f"`{doc}`" in row
