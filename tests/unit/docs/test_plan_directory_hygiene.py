@@ -143,6 +143,136 @@ FROZEN_REFERENCE_EXEMPTIONS = {
             "docs/superpowers/plans/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md",
         )
     },
+    # Historical review/approval records under docs/superpowers/reviews/, restored to their
+    # pre-archival-move committed bytes (PR #193 review ruling 2026-08-28): these records stay
+    # historical evidence and are not edited to repair a path string, even when the plan they
+    # cite has since moved into archive/. This differs from a "frozen provenance" plan/spec
+    # reference above only in scope of the rule -- the mechanism is identical.
+    (
+        "docs/superpowers/reviews/2026-07-03-plan-5-architect-review.md",
+        "docs/superpowers/plans/2026-07-03-permission-engine-pre-tool-guard-shell-safety.md",
+    ),
+    (
+        "docs/superpowers/reviews/2026-07-03-plan-5-security-review.md",
+        "docs/superpowers/plans/2026-07-03-permission-engine-pre-tool-guard-shell-safety.md",
+    ),
+    (
+        "docs/superpowers/reviews/2026-07-04-pr-13-permission-engine-review.md",
+        "docs/superpowers/plans/2026-07-03-permission-engine-pre-tool-guard-shell-safety.md",
+    ),
+    *{
+        (
+            f"docs/superpowers/reviews/2026-07-04-plan-6-5-architect-review{suffix}.md",
+            "docs/superpowers/plans/2026-07-04-plan-6-5-guardrail-hardening-mcp-runtime-trust.md",
+        )
+        for suffix in ("", "-round-2")
+    },
+    *{
+        (
+            f"docs/superpowers/reviews/2026-07-04-plan-6-security-review{suffix}.md",
+            "docs/superpowers/plans/2026-07-04-prompt-injection-mcp-trust-ci-guardrail-parity.md",
+        )
+        for suffix in ("", "-round-2")
+    },
+    *{
+        (
+            f"docs/superpowers/reviews/2026-07-04-plan-7-architect-review{suffix}.md",
+            "docs/superpowers/plans/2026-07-04-usage-accounting-evidence-ledger-observability.md",
+        )
+        for suffix in ("", "-round-2")
+    },
+    (
+        "docs/superpowers/reviews/2026-07-15-plan-9-96-implementation-plan-approval.md",
+        "docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md",
+    ),
+    *{
+        (
+            f"docs/superpowers/reviews/2026-07-18-plan-9-98-implementation-plan-approval{suffix}.md",
+            "docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md",
+        )
+        for suffix in ("", "-v2", "-v3", "-v4", "-v5", "-v6")
+    },
+    (
+        "docs/superpowers/reviews/2026-07-19-plan-9-98-implementation-plan-approval-v7.md",
+        "docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md",
+    ),
+    *{
+        (
+            f"docs/superpowers/reviews/2026-07-19-plan-9-98-fu-1-implementation-plan-approval{suffix}.md",
+            "docs/superpowers/plans/2026-07-19-plan-9-98-fu-1-workspace-identity-linux-ci.md",
+        )
+        for suffix in ("", "-v2", "-v3")
+    },
+    (
+        "docs/superpowers/reviews/2026-07-19-plan-9-98-fu-2-implementation-plan-approval.md",
+        "docs/superpowers/plans/2026-07-19-plan-9-98-fu-2-approval-time-runtime-bootstrap.md",
+    ),
+    (
+        "docs/superpowers/reviews/2026-07-22-plan-9-98-fu-3-implementation-plan-approval.md",
+        "docs/superpowers/plans/2026-07-22-plan-9-98-fu-3-posix-runtime-root-tests.md",
+    ),
+    (
+        "docs/superpowers/reviews/2026-07-22-plan-9-99-implementation-plan-approval.md",
+        "docs/superpowers/plans/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md",
+    ),
+    (
+        "docs/superpowers/reviews/2026-07-23-plan-10-1-implementation-plan-approval.md",
+        "docs/superpowers/plans/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md",
+    ),
+    (
+        "docs/superpowers/reviews/2026-07-23-plan-10-2-implementation-plan-approval.md",
+        "docs/superpowers/plans/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md",
+    ),
+    (
+        "docs/superpowers/reviews/2026-07-24-plan-10-3-implementation-plan-approval.md",
+        "docs/superpowers/plans/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md",
+    ),
+    *{
+        (
+            f"docs/superpowers/reviews/2026-07-25-plan-11-1-implementation-plan-approval{suffix}.md",
+            "docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md",
+        )
+        for suffix in ("", "-v2")
+    },
+    (
+        "docs/superpowers/reviews/2026-07-26-plan-11-2-implementation-plan-approval.md",
+        "docs/superpowers/plans/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md",
+    ),
+    *{
+        (
+            "docs/superpowers/reviews/2026-07-27-plan-11-2-implementation-plan-approval-v2.md",
+            target,
+        )
+        for target in (
+            "docs/superpowers/plans/2026-07-27-plan-11-3-real-provider-adapters.md",
+            "docs/superpowers/plans/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md",
+        )
+    },
+    *{
+        (
+            "docs/superpowers/reviews/2026-07-27-plan-11-3-implementation-plan-approval.md",
+            target,
+        )
+        for target in (
+            "docs/superpowers/plans/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md",
+            "docs/superpowers/plans/2026-07-27-plan-11-3-real-provider-adapters.md",
+        )
+    },
+    (
+        "docs/superpowers/reviews/2026-07-29-plan-11-6-implementation-plan-approval.md",
+        "docs/superpowers/plans/2026-07-29-plan-11-6-p11-5-fu-2-local-startup-consolidation.md",
+    ),
+    *{
+        (
+            "docs/superpowers/reviews/evidence-handoff-a2a-not-shipped-closure-review.md",
+            f"docs/superpowers/plans/evidence-handoff-a2a-not-shipped-closure{suffix}.md",
+        )
+        for suffix in ("", "_v2", "_v3")
+    },
+    (
+        "docs/superpowers/reviews/evidence-handoff-a2a-not-shipped-closure-review.md",
+        "docs/superpowers/plans/evidence-handoff-open-work-pool.md",
+    ),
 }
 
 
