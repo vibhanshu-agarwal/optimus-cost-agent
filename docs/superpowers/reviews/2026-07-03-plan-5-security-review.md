@@ -1,6 +1,6 @@
 # Security Architecture Review — Plan 5: Permission Engine, Pre-Tool Guard, and Shell Safety
 
-**Plan reviewed:** `docs/superpowers/plans/archive/2026-07-03-permission-engine-pre-tool-guard-shell-safety.md`
+**Plan reviewed:** `docs/superpowers/plans/2026-07-03-permission-engine-pre-tool-guard-shell-safety.md`
 **Reviewer role:** Senior Architect Lead / Network Security
 **Date:** 2026-07-03
 **Prior review:** `docs/superpowers/reviews/2026-07-03-plan-5-architect-review.md` (Opus 4.8) — approved on correctness grounds after 3 rounds (B1–B7, R1, R2 resolved).

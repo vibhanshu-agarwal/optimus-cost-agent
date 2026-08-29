@@ -20,14 +20,14 @@ is this commit (or a later commit that still contains Plan 11.2 Tasks 0–5 unch
 **Parent / dependency:**
 
 - Frozen Plan 11.2 implementation plan:
-  `docs/superpowers/plans/archive/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md`
+  `docs/superpowers/plans/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md`
 - Plan 11.2 approval record (still valid for Tasks 0–5):
   `docs/superpowers/reviews/2026-07-26-plan-11-2-implementation-plan-approval.md`
 - Design spec (unchanged; still authoritative for TOOLS contracts):
   `docs/superpowers/specs/2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md`
 
 **Implementation plan (this plan):**
-`docs/superpowers/plans/archive/2026-07-27-plan-11-3-real-provider-adapters.md`
+`docs/superpowers/plans/2026-07-27-plan-11-3-real-provider-adapters.md`
 
 ## Frozen digests
 
@@ -90,10 +90,10 @@ committed:
 ```bash
 git status --short --branch
 git rev-parse HEAD
-sha256sum docs/superpowers/plans/archive/2026-07-27-plan-11-3-real-provider-adapters.md | cut -d' ' -f1
-git show HEAD:docs/superpowers/plans/archive/2026-07-27-plan-11-3-real-provider-adapters.md | sha256sum | cut -d' ' -f1
+sha256sum docs/superpowers/plans/2026-07-27-plan-11-3-real-provider-adapters.md | cut -d' ' -f1
+git show HEAD:docs/superpowers/plans/2026-07-27-plan-11-3-real-provider-adapters.md | sha256sum | cut -d' ' -f1
 git diff --check
-git diff HEAD -- docs/superpowers/plans/archive/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md
+git diff HEAD -- docs/superpowers/plans/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md
 ```
 
 Expected: Plan 11.3 worktree and HEAD-blob digests both equal
@@ -103,7 +103,7 @@ be staged.
 
 ## Closing digest reconciliation (Task 5 closure)
 
-Current `docs/superpowers/plans/archive/2026-07-27-plan-11-3-real-provider-adapters.md` SHA-256 over LF-normalized bytes is:
+Current `docs/superpowers/plans/2026-07-27-plan-11-3-real-provider-adapters.md` SHA-256 over LF-normalized bytes is:
 `46CB9A791098A9D0E3A81202910949D85AD9E8AF9948A1BF008108EE51DC7D7B`.
 
 This differs from the originally frozen digests recorded above because, per the Task 3 review,

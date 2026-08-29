@@ -1,7 +1,7 @@
 # Plan 6.5 Architecture Review — Guardrail Hardening and MCP Runtime Trust Wiring
 
 **Reviewer role:** Senior Architect
-**Plan under review:** `docs/superpowers/plans/archive/2026-07-04-plan-6-5-guardrail-hardening-mcp-runtime-trust.md`
+**Plan under review:** `docs/superpowers/plans/2026-07-04-plan-6-5-guardrail-hardening-mcp-runtime-trust.md`
 **Verified against:** current `src/optimus/guardrails/*` (mcp_trust.py, pre_tool.py, prompt_injection.py, command_safety.py, permissions.py), the Plan 6 plan text and both of its review rounds, `pyproject.toml`, the roadmap doc, and the actual `confusable-homoglyphs==3.3.1` package (downloaded and executed locally against the plan's own code to check its claims). Plan 7 (plan file and draft notes) was explicitly out of scope for this pass and was not evaluated.
 **Verdict:** Do not execute as written. Task 3 contains a confirmed, reproducible defect that would make the shared confusable detector flag almost all text as dangerous — including the plan's own "benign" test case — which cascades into failing most of the existing Plan 5/6 guardrail suite. Task 4 separately, silently defeats the per-call human-approval gate for every real MCP invocation. Both are cheap to fix. Tasks 1 and 2 are sound and correctly targeted at real gaps in the current code. The roadmap edit is consistent and needs no changes.
 

@@ -212,7 +212,7 @@ Section 4 is directionally correct, with four required clarifications.
 
 There is also one external dependency the draft must state: the pool records that stock Cursor tool
 discovery currently fails because OAuth discovery is gated and 401 lacks `WWW-Authenticate`
-(`archive/evidence-handoff-open-work-pool.md:112`). If E intends to re-certify a normal native Cursor path,
+(`evidence-handoff-open-work-pool.md:112`). If E intends to re-certify a normal native Cursor path,
 it depends on the relevant interoperability subset of
 `EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE`; otherwise E must narrow its claim and must not use a
 probe/workaround as proof that stock Cursor integration works.

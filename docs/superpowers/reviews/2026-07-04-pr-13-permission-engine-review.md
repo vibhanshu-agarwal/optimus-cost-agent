@@ -1,7 +1,7 @@
 # Review: PR #13 "Add Phase 1 permission engine and pre-tool guardrails"
 
 **Reviewer lens:** senior architect + network security
-**Against:** `docs/superpowers/plans/archive/2026-07-03-permission-engine-pre-tool-guard-shell-safety.md` (Plan 5) and `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`
+**Against:** `docs/superpowers/plans/2026-07-03-permission-engine-pre-tool-guard-shell-safety.md` (Plan 5) and `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`
 **Method:** read both plan docs in full, pulled the actual PR diff (21 files, +1678/-58, 11 commits) from GitHub, and independently re-ran the test suite and coverage in a fresh clone (Python 3.14 wasn't available in the sandbox, so I ran it on 3.10 with two narrow stdlib shims — `enum.StrEnum` and `datetime.UTC`, both added in 3.11 — purely to execute the existing code; no test or source logic was touched).
 
 ## Bottom line

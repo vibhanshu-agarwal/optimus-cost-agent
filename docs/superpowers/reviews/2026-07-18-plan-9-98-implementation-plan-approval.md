@@ -2,7 +2,7 @@
 
 **Status:** Approved and frozen on 2026-07-18; implementation has not started.
 
-**Implementation plan:** `docs/superpowers/plans/archive/2026-07-18-plan-9-98-real-acpx-session-evidence.md`
+**Implementation plan:** `docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md`
 
 **Frozen SHA-256:** `3C2C2F0D4521C251748886BB3810BEF1191F6CF75A759FDDA7C55FBA16F7AA0A`
 
@@ -34,7 +34,7 @@ authorize changes to Plan 9.96's frozen files or the Plan 9.96 follow-up files e
 Run from the repository root in a terminal where `uv` is on `PATH`:
 
 ```powershell
-uv run python -c "from pathlib import Path; import hashlib; p=Path('docs/superpowers/plans/archive/2026-07-18-plan-9-98-real-acpx-session-evidence.md'); print(hashlib.sha256(p.read_bytes()).hexdigest().upper())"
+uv run python -c "from pathlib import Path; import hashlib; p=Path('docs/superpowers/plans/2026-07-18-plan-9-98-real-acpx-session-evidence.md'); print(hashlib.sha256(p.read_bytes()).hexdigest().upper())"
 ```
 
 Expected exact output:

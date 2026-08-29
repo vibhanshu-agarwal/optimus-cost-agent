@@ -3,7 +3,7 @@
 **Status:** Reviewer-agent and operator approved on 2026-07-23; implementation is authorized but has
 not started.
 
-**Implementation plan:** `docs/superpowers/plans/archive/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md`
+**Implementation plan:** `docs/superpowers/plans/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md`
 
 **Frozen SHA-256:** `44041F0423584530BEE101C7917E5569757DD9E639069AD2BCF1F62646EE74B4`
 
@@ -27,7 +27,7 @@ may begin. Checkbox-only progress remains subject to the plan's evidence protoco
 Run from the repository root:
 
 ```powershell
-(Get-FileHash -Algorithm SHA256 docs/superpowers/plans/archive/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md).Hash
+(Get-FileHash -Algorithm SHA256 docs/superpowers/plans/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md).Hash
 ```
 
 Expected exact output:

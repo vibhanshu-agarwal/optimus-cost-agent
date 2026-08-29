@@ -2,7 +2,7 @@
 
 **Status:** Reviewer-agent and operator approved on 2026-07-22; implementation has not started.
 
-**Implementation plan:** `docs/superpowers/plans/archive/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md`
+**Implementation plan:** `docs/superpowers/plans/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md`
 
 **Frozen SHA-256:** `BEDF2340F8473F2FDCB2E582255E4A09C42B0B9017AFAC5847FD962C2FD6AFA1`
 
@@ -31,7 +31,7 @@ Run from the repository root:
 
 ```powershell
 (Get-FileHash -Algorithm SHA256 `
-  docs/superpowers/plans/archive/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md).Hash
+  docs/superpowers/plans/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md).Hash
 ```
 
 Expected exact output:

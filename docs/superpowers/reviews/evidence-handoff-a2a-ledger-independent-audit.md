@@ -85,7 +85,7 @@ reviewer findings were opened.
   the service (`tests/integration/evidence_handoff/test_authenticated_service.py:80-155`).
 - Neither `README.md` nor `docs/runbooks/` contains an A2A ledger operator procedure. The plan says
   the operator provisions three credentials/configures clients, but supplies no commands or data
-  schema (`archive/evidence-handoff-risk-bearing-slice-implementation.md:752-755`).
+  schema (`evidence-handoff-risk-bearing-slice-implementation.md:752-755`).
 
 **Root cause:** tested components were never joined by a production composition root or operational
 contract.

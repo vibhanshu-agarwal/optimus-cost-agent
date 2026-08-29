@@ -1,7 +1,7 @@
 # Plan 7 Architecture Review — Round 2 (post-revision)
 
 **Reviewer role:** Senior Architect
-**Plan:** `docs/superpowers/plans/archive/2026-07-04-usage-accounting-evidence-ledger-observability.md`
+**Plan:** `docs/superpowers/plans/2026-07-04-usage-accounting-evidence-ledger-observability.md`
 **Prior review:** `docs/superpowers/reviews/2026-07-04-plan-7-architect-review.md`
 **Verdict:** M1–M4 and both Low items are correctly resolved in substance. The M1 fix, however, was copy-pasted into three places and only wired correctly in one of them — this introduces two small but real, demonstrable bugs (a `NameError` in a new test and an unused import in production code that fails this repo's own configured ruff gate). Both are one-line fixes; neither is architectural.
 

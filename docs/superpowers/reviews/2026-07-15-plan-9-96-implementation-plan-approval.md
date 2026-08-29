@@ -2,7 +2,7 @@
 
 **Status:** Approved and frozen on 2026-07-15; implementation has not started.
 
-**Implementation plan:** `docs/superpowers/plans/archive/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md`
+**Implementation plan:** `docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md`
 
 **Frozen SHA-256:** `E47701358596D0D31E6CD7FDF21438D529C65F0190889058C936FB9A0B00E721`
 
@@ -39,7 +39,7 @@ Run from the repository root:
 
 ```powershell
 (Get-FileHash -Algorithm SHA256 `
-  docs/superpowers/plans/archive/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md).Hash
+  docs/superpowers/plans/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust.md).Hash
 ```
 
 Expected exact output:

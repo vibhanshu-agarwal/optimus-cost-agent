@@ -5,7 +5,7 @@ implementation is authorized after Task 0 begins from a fresh branch/worktree ba
 `origin/main`. No source, test, lockfile, backlog, roadmap, or README implementation change has
 started.
 
-**Implementation plan:** `docs/superpowers/plans/archive/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md`
+**Implementation plan:** `docs/superpowers/plans/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md`
 
 **Baseline:** `origin/main` at `ba6168cf28750bbde0f3c8e4f18c30c47d54c61e`
 
@@ -39,7 +39,7 @@ remains subject to the plan's evidence protocol.
 Run from the repository root:
 
 ```powershell
-(Get-FileHash -Algorithm SHA256 docs/superpowers/plans/archive/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).Hash
+(Get-FileHash -Algorithm SHA256 docs/superpowers/plans/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md).Hash
 ```
 
 Expected exact output:

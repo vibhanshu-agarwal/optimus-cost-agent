@@ -1,7 +1,7 @@
 # Plan 7 Architecture Review — Usage Accounting, Evidence Ledger, and Observability
 
 **Reviewer role:** Senior Architect
-**Plan under review:** `docs/superpowers/plans/archive/2026-07-04-usage-accounting-evidence-ledger-observability.md`
+**Plan under review:** `docs/superpowers/plans/2026-07-04-usage-accounting-evidence-ledger-observability.md`
 **Verified against:** current `src/optimus/gateway/*` (models.py, client.py, errors.py), `src/optimus/config/gateway.py`, `src/optimus/evidence/*` (ledger.py, models.py), `src/optimus/tools/policy.py`, the actual test suite under `tests/unit/gateway/test_models.py`, and the Plan 6.5 architect reviews for cross-plan consistency. I traced the redaction logic by hand and then re-executed the exact function against the plan's own test fixtures to confirm it, the same way the Plan 6.5 confusable-detector claim was verified.
 **Verdict:** No blockers. This is a solid, well-grounded plan — every source-anchor claim about the current codebase checks out, the redaction fix is real (verified by execution), and the pricing-fallback safety property holds structurally. Four Medium findings are worth fixing before or during execution; none of them require re-architecting anything.
 

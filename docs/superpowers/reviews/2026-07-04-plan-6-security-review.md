@@ -1,7 +1,7 @@
 # Plan 6 Security & Architecture Review — Prompt-Injection, MCP Trust, CI Guardrail Parity
 
 **Reviewer role:** Senior Architect / Network Security
-**Plan under review:** `docs/superpowers/plans/archive/2026-07-04-prompt-injection-mcp-trust-ci-guardrail-parity.md`
+**Plan under review:** `docs/superpowers/plans/2026-07-04-prompt-injection-mcp-trust-ci-guardrail-parity.md`
 **Verified against:** current `src/optimus/guardrails/*` (Plan 5), roadmap Plan 6 deliverables.
 **Verdict:** Solid deterministic foundation and correct fail-closed defaults, but there is **one blocking internal contradiction** (the parity tests cannot pass with the artifacts the plan ships) and **several security gaps** where a control is recorded/tested but not actually enforced in any runtime path.
 

@@ -8,7 +8,7 @@ This record makes no replacement approval claim.
 
 **Design spec:** `docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md`
 
-**Implementation plan:** `docs/superpowers/plans/archive/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md`
+**Implementation plan:** `docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md`
 
 **Requirement inventory:**
 `docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md`
@@ -62,7 +62,7 @@ Run from the repository root:
 
 ```powershell
 (Get-FileHash -Algorithm SHA256 docs/superpowers/specs/2026-07-25-plan-11-1-p11-feat-gateway-core-design.md).Hash
-(Get-FileHash -Algorithm SHA256 docs/superpowers/plans/archive/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md).Hash
+(Get-FileHash -Algorithm SHA256 docs/superpowers/plans/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md).Hash
 (Get-FileHash -Algorithm SHA256 docs/superpowers/reports/2026-07-25-plan-11-p11-feat-gateway-deep-requirement-inventory.md).Hash
 ```
 
