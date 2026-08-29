@@ -1,0 +1,4 @@
+{
+  "schema_version": "plan-11-26-frozen-regression-seeds-v1",
+  "seeds": [0, 1, 42, 18446744073709551615]
+}

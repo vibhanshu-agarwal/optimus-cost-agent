@@ -248,6 +248,7 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
 **Files:**
 
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
 - Create: `tools/plan1126_runtime_audit/{__init__,model,source,inventory,provenance,checkpoints,corpus,cost,repeatability,render}.py`
 - Create: `tools/run_plan1126_runtime_audit.py`
 - Create: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
@@ -256,10 +257,10 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
 **Interfaces:**
 
-- Produces: `BaselineScope`, `Classification`, `LiveStatus`, `GateStatus`, `InventoryKind`, `DiscoveredSite`, `Finding`, `AuditArtifact`, `SourceTree`, `GitCommitSource`, `discover_sites`, `verify_running_artifact`, `CheckpointStore`, `literal_seeds`, `derived_seed`, `compute_cost`, and `classify_repeatability`.
+- Produces: `BaselineScope`, `Classification`, `LiveStatus`, `GateStatus`, `PrerequisiteStatus`, `InventoryKind`, `DiscoveredSite`, `Finding`, `AuditArtifact`, `SourceTree`, `GitCommitSource`, `discover_sites`, `verify_running_artifact`, `CheckpointStore`, `literal_seeds`, `derived_seed`, `compute_cost`, and `classify_repeatability`.
 - Consumes: immutable Git blobs, Python source, the external JSON schema, literal corpus, and Task 0/1 reports. It does not import or modify runtime behavior.
 
-- [ ] **Step 1: Write RED closed-vocabulary and artifact-schema tests.**
+- [x] **Step 1: Write RED closed-vocabulary and artifact-schema tests.**
 
   Define the required public shapes in tests before implementation:
 
@@ -280,19 +281,19 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
   Require all ten approved classifications, exact top-level artifact fields, per-record baseline scope, no unknown keys, `UNCLASSIFIED == 0` at G1, and machine-checkable live status. Run the first two exact predicate commands from the predicate map and expect missing-module failures.
 
-- [ ] **Step 2: Implement the model and independent JSON-schema agreement.**
+- [x] **Step 2: Implement the model and independent JSON-schema agreement.**
 
   `model.py` owns Python types and deterministic `to_dict`; the fixture schema independently constrains the same fields/enums. Tests must reject rendered prose in place of status, a workspace-only `git_sha`, a binding finding on overlay scope, missing owner/evidence, and count mismatches.
 
-- [ ] **Step 3: Write RED source-view and inventory tests.**
+- [x] **Step 3: Write RED source-view and inventory tests.**
 
   Require `GitCommitSource(commit).read_text(path)` to use immutable blob reads and reject dirty-worktree substitution. Require `discover_sites` to emit sorted unique sites for task creation/cancellation, queues, resource construction/transfer/close, broad catches, semantic wire selections, Redis clients/pools, telemetry/debug/stderr/redaction/sinks, and delivery start/publication/settlement.
 
-- [ ] **Step 4: Implement the shared AST inventory framework.**
+- [x] **Step 4: Implement the shared AST inventory framework.**
 
   Each concern is a small `InventoryRule` using the same `DiscoveredSite(path, symbol, line, kind, baseline_scope, evidence_digest)` record. Use `tokenize` as well as AST to associate invariant comments/docstrings with ownership, ordering, intentional-exception, and state-transition sites. The framework must retain discovered-but-unclassified sites, compare merged/overlay symbol sets, and never treat a copied expected-site list as discovery.
 
-- [ ] **Step 5: Write RED provenance, checkpoint, corpus, and cost tests.**
+- [x] **Step 5: Write RED provenance, checkpoint, corpus, and cost tests.**
 
   Require executable SHA-256, package/version, build-manifest digest, embedded commit/equivalent immutable provenance, launcher digest, client provenance, and environment fingerprint. Require atomic checkpoint resume/conflict rejection. Require literal seeds to survive binding-commit changes while fresh seeds equal `first_64_bits(SHA256(binding_commit + scenario_id + n))`. Require:
 
@@ -305,15 +306,15 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
   idempotent_close_invocations = N_close_paths * 3 * 5
   ```
 
-- [ ] **Step 6: Implement provenance, checkpoints, corpus, cost, and repeatability without runtime mutation.**
+- [x] **Step 6: Implement provenance, checkpoints, corpus, cost, and repeatability without runtime mutation.**
 
   `verify_running_artifact` returns a typed valid/invalid result with reasons; it never infers provenance from the checkout. `CheckpointStore` writes a temporary sibling, fsyncs, and atomically replaces the target. `compute_cost` includes measured per-scenario p50/p95 and every discovered multiplier. Level `1` is the cancellation control family and is counted only by `cancellation_control_schedules`; levels `2`, `4`, and `8` are the race family counted by `cancellation_schedules`. At the 256-seed group tier this yields 768 race schedules plus 256 control schedules, exactly 1,024 per discovered cancellation point. `classify_repeatability` fingerprints normalized outcomes across repeated identical schedules and reports `FLAKY` for inconsistent runtime outcomes and `HARNESS_INVALID` for inconsistent harness/provenance inputs.
 
-- [ ] **Step 7: Implement deterministic rendering and the thin CLI.**
+- [x] **Step 7: Implement deterministic rendering and the thin CLI.**
 
-  JSON is canonical; Markdown is regenerated and content-free. CLI subcommands are `inventory`, `offline`, `live-redis`, `acpx`, `sdk`, `zed record`, `render`, and `verify`. `zed record` never launches Zed: it verifies current Zed/Optimus file identities, prompts the operator for one closed-vocabulary scenario outcome and attestation, and appends an atomic content-free record. Live subcommands require an explicit authority-record path and provenance manifest; missing authority returns `UNRUN`, bad provenance returns `INVALID`, and neither starts a dependency.
+  JSON is canonical; Markdown is regenerated and content-free. CLI subcommands are `inventory`, `offline`, `live-redis`, `acpx`, `sdk`, `zed record`, `render`, and `verify`. `zed record` never launches Zed: it verifies current Zed/Optimus file identities, prompts the operator for one closed-vocabulary scenario outcome and attestation, and appends an atomic content-free record. Live subcommands require an explicit authority-record path and provenance manifest; missing authority returns `UNRUN`, bad provenance returns `INVALID`, and neither starts a dependency. The authority report is itself accepted only when its canonical digest appears in the closed, code-owned reviewed allowlist. A future live grant therefore requires both a separately reviewed successor report and a reviewed audit-tool change admitting that digest; caller input cannot extend or replace the allowlist.
 
-- [ ] **Step 8: Run G1 foundation verification and seek review.**
+- [x] **Step 8: Run G1 foundation verification and seek review.**
 
   ```powershell
   uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit -q
@@ -704,6 +705,9 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 - Create: `reports/plan-11-26-zed-manual-observations.json`
 - Create: `reports/plan-11-26-terminal-characterization.md`
 - Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify only after a fresh live grant: `reports/plan-11-26-prerequisite-intake.json`
+- Modify only after a fresh live grant: `tools/run_plan1126_runtime_audit.py`
+- Modify only after a fresh live grant: `tests/unit/tools/plan1126_runtime_audit/test_render.py`
 
 **Interfaces:**
 
@@ -721,6 +725,8 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 - [ ] **Step 3: Recompute terminal cost and obtain cost/authority approval.**
 
   Update discovered `N_cancellation_points`, `N_queues`, `N_sinks`, and `N_close_paths`; include measured p50/p95. Present the exact offline and live run counts before starting the terminal batch.
+
+  Before any live row can be approved, the reviewer must accept a successor authority report and the same separately authorized pre-live gate commit must update the closed `_ACCEPTED_AUTHORITY_DIGESTS` allowlist plus its tests with that report's canonical digest. Until both artifacts are reviewed and committed together, every newly granted live command must fail `INVALID`; caller input cannot admit the new digest.
 
 - [ ] **Step 4: Run the full offline terminal characterization once.**
 
