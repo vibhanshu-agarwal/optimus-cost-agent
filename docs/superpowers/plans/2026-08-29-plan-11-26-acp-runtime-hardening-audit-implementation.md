@@ -211,6 +211,7 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
 **Files:**
 
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
 - Create: `reports/plan-11-26-prerequisite-intake.json`
 - Modify: `reports/plan-11-26-baseline-intake.json`
 
@@ -219,27 +220,27 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 - Consumes: Task 0 accepted baseline; operator answers for authority/cost/human availability.
 - Produces: one sanitized row per prerequisite with `observed_status`, `method`, `owner`, `authorized`, `dependent_rows`, and `scope_out`; no secret value, service mutation, client launch, or paid call.
 
-- [ ] **Step 1: Record read-only platform and binary observations.**
+- [x] **Step 1: Record read-only platform and binary observations.**
 
   Run version/status commands only: `uv --version`, `node --version`, `npm --version`, `java --version`, `mvn --version`, `acpx --version`, `wsl --status`, and Zed file `VersionInfo`. Record stdout-derived versions and command exit codes; do not launch any ACP client or Zed.
 
-- [ ] **Step 2: Establish Redis/TimeSeries availability without mutation.**
+- [x] **Step 2: Establish Redis/TimeSeries availability without mutation.**
 
   Identify Windows port ownership and WSL distro availability. If a service is already running, use only a health/capability read approved by the operator; otherwise record `UNAVAILABLE` or `UNAUTHORIZED`. Do not start a container, daemon, or Redis process and do not write a key.
 
-- [ ] **Step 3: Establish authority and credential capability without disclosure.**
+- [x] **Step 3: Establish authority and credential capability without disclosure.**
 
   Record only booleans for `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` presence. Record separate operator decisions for Gateway/model calls, paid calls, Redis mutation, acpx, SDK/conformance-harness comparison, Zed, and the wall-clock lease window. Never serialize values, prefixes, lengths, hashes, or environment dumps.
 
-- [ ] **Step 4: Establish trusted-workspace and operator availability.**
+- [x] **Step 4: Establish trusted-workspace and operator availability.**
 
   Record whether the named workspace is trusted and whether an operator can perform five Zed GUI runs. Do not open Zed or change settings.
 
-- [ ] **Step 5: Publish prerequisite decisions and scope-outs.**
+- [x] **Step 5: Publish prerequisite decisions and scope-outs.**
 
   Each unresolved/negative row must list every dependent matrix row and its named owner. WSL-dependent evidence is Plan 11.26/operator-owned; binding/lease/resume evidence remains Plan 11.7-owned; unauthorized live rows remain dormant under the operator.
 
-- [ ] **Step 6: Validate sanitization and obtain reviewer acceptance.**
+- [x] **Step 6: Validate sanitization and obtain reviewer acceptance.**
 
   Run a content scan for forbidden credential names followed by `=` and for values supplied through the current environment. The reviewer accepts each status or rejects the report. Commit only after `uv run --frozen ruff check .`, `git diff --check`, and explicit authorization.
 
@@ -754,7 +755,7 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
   `session-load-resume` records a Plan 11.7-owned `NOT_APPLICABLE` scope-out without launching Zed when no binding durable path exists. Classify current normal close as abrupt termination if observed. Any provenance drift, duplicate/missing scenario, unordered timestamp, unregistered outcome, or secret/content field makes the bundle `INVALID`. Preserve the known acpx replay-visibility limitation and never claim graceful shutdown or immediate reopen.
 
-- [ ] **Step 7: Verify all 18 predicates and render terminal evidence.**
+- [ ] **Step 7: Verify all 19 predicates (18 approved plus the supplemental Zed-bundle gate) and render terminal evidence.**
 
   Run each exact command in the predicate map, then:
 

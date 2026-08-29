@@ -1,0 +1,399 @@
+{
+  "schema_version": "plan-11-26-prerequisite-intake-v1",
+  "plan_id": "11.26",
+  "recorded_at_utc": "2026-08-29T08:49:54Z",
+  "source_task_0_commit": "55fcd1fe4fd2d10c17776946d8f19d8d5f420a67",
+  "execution_boundary": {
+    "mode": "READ_ONLY_INTAKE",
+    "service_started": false,
+    "client_launched": false,
+    "zed_launched": false,
+    "redis_key_written": false,
+    "gateway_or_model_call_made": false,
+    "paid_call_made": false,
+    "credential_value_recorded": false
+  },
+  "observations": {
+    "platform": {
+      "product_name": "Windows 10 Pro",
+      "display_version": "25H2",
+      "build": "26200",
+      "method": "read-only Windows CurrentVersion registry query"
+    },
+    "binaries": [
+      {
+        "command": "uv --version",
+        "exit_code": 0,
+        "version": "0.11.29"
+      },
+      {
+        "command": "node --version",
+        "exit_code": 0,
+        "version": "v26.5.0"
+      },
+      {
+        "command": "npm --version",
+        "exit_code": 0,
+        "version": "11.17.0"
+      },
+      {
+        "command": "java --version",
+        "exit_code": 0,
+        "version": "25.0.3 LTS"
+      },
+      {
+        "command": "mvn --version",
+        "exit_code": 0,
+        "version": "3.9.6"
+      },
+      {
+        "command": "C:\\Users\\pc\\AppData\\Roaming\\npm\\acpx.cmd --version",
+        "exit_code": 0,
+        "version": "0.12.0"
+      }
+    ],
+    "zed": {
+      "path": "C:\\Users\\pc\\AppData\\Local\\Programs\\Zed\\Zed.exe",
+      "present": true,
+      "file_version": "1.17.2",
+      "product_version": "1.17.2+stable.349.c8e44cfa7bda9b2e22c8d6934d78969352e7f61a",
+      "method": "file VersionInfo only; executable not launched"
+    },
+    "wsl": {
+      "status_exit_code": 0,
+      "list_exit_code": 0,
+      "default_distribution": "Ubuntu-24.04",
+      "default_version": 2,
+      "distributions": [
+        {
+          "name": "Ubuntu-24.04",
+          "state": "Stopped",
+          "version": 2
+        },
+        {
+          "name": "docker-desktop",
+          "state": "Running",
+          "version": 2
+        }
+      ],
+      "distro_native_redis_timeseries": "UNAVAILABLE",
+      "method": "wsl --status and wsl --list --verbose only; no distro command or service start"
+    },
+    "windows_redis_timeseries": {
+      "port": 6379,
+      "listener_count": 0,
+      "availability": "UNAVAILABLE",
+      "method": "elevated read-only Get-NetTCPConnection query; no matching LocalPort object"
+    },
+    "credential_presence": {
+      "optimus_gateway_url_present": false,
+      "optimus_api_key_present": false,
+      "method": "current-process environment presence booleans only"
+    }
+  },
+  "authority_decisions": {
+    "gateway_model_calls": "UNAUTHORIZED",
+    "paid_calls": "UNAUTHORIZED",
+    "redis_mutation": "UNAUTHORIZED",
+    "acpx_live": "UNAUTHORIZED",
+    "sdk_or_conformance_harness_live": "UNAUTHORIZED",
+    "zed_live": "UNAUTHORIZED",
+    "wall_clock_lease_window": "UNAUTHORIZED",
+    "trusted_workspace_attestation": "UNRESOLVED",
+    "operator_five_zed_runs": "UNRESOLVED",
+    "source": "review checkpoint Current State after G0"
+  },
+  "sanitization_validation": {
+    "forbidden_credential_assignment_matches": 0,
+    "present_credential_values_available_to_scan": 0,
+    "environment_dump_recorded": false,
+    "status": "PASS"
+  },
+  "review_acceptance": {
+    "status": "ACCEPTED",
+    "reviewed_at_utc": "2026-08-29T08:56:00Z",
+    "non_blocking_follow_up": "C9: pin observed_status as a closed enum in Task 2 and disambiguate near-synonyms"
+  },
+  "prerequisites": [
+    {
+      "id": "P01_MERGED_BASELINE",
+      "prerequisite": "Merged audit baseline is main@5ea8f8f71548eb05a8562a10e98667e3d2061c4d.",
+      "observed_status": "SATISFIED",
+      "method": "Task 0 ancestry verification and accepted baseline intake",
+      "owner": "reviewing architect",
+      "authorized": true,
+      "dependent_rows": [],
+      "scope_out": null
+    },
+    {
+      "id": "P02_BINDING_CANDIDATE",
+      "prerequisite": "Plan 11.7 nominates a binding integration candidate and reconciles or formally supersedes competing runtime deltas.",
+      "observed_status": "UNRESOLVED",
+      "method": "Task 0 found eight distinct Plan 11.7 tips across twelve refs; binding_commit remains null",
+      "owner": "Plan 11.7 / P11-FEAT-ZED-RESUME",
+      "authorized": false,
+      "dependent_rows": [
+        "Error-code canon (binding view)",
+        "Semantic error selection (binding view)",
+        "Live Redis owner/revision",
+        "Lease boundary",
+        "Real lease recovery",
+        "Telemetry schema (binding view)",
+        "Redaction (binding view)",
+        "Correlation (binding view)",
+        "Multi-client",
+        "acpx",
+        "Additional SDK client",
+        "Real Zed"
+      ],
+      "scope_out": {
+        "status": "NOT_APPLICABLE_UNTIL_BINDING_NOMINATION",
+        "owner": "Plan 11.7 / P11-FEAT-ZED-RESUME",
+        "reason": "Plan 11.26 cannot nominate or reconcile the binding tree"
+      }
+    },
+    {
+      "id": "P03_ISOLATED_WORKTREE",
+      "prerequisite": "Plan 11.26 branch/worktree is isolated from latest main and was unclaimed at pickup.",
+      "observed_status": "SATISFIED_AT_PICKUP",
+      "method": "Task 0 verified the isolated branch and then claimed the single canonical registry row",
+      "owner": "operator",
+      "authorized": true,
+      "dependent_rows": [],
+      "scope_out": null
+    },
+    {
+      "id": "P04_UV",
+      "prerequisite": "uv 0.11.29 is present.",
+      "observed_status": "SATISFIED",
+      "method": "uv --version; exit 0",
+      "owner": "operator",
+      "authorized": true,
+      "dependent_rows": [],
+      "scope_out": null
+    },
+    {
+      "id": "P05_NODE_NPM",
+      "prerequisite": "Node v26.5.0 and npm 11.17.0 are present for the TypeScript candidate.",
+      "observed_status": "SATISFIED",
+      "method": "node --version and npm --version; both exit 0",
+      "owner": "operator",
+      "authorized": true,
+      "dependent_rows": [],
+      "scope_out": null
+    },
+    {
+      "id": "P06_JAVA_MAVEN",
+      "prerequisite": "Java 25.0.3 LTS and Maven 3.9.6 are present for the Java fallback.",
+      "observed_status": "SATISFIED",
+      "method": "java --version and mvn --version; both exit 0",
+      "owner": "operator",
+      "authorized": true,
+      "dependent_rows": [],
+      "scope_out": null
+    },
+    {
+      "id": "P07_TYPESCRIPT_CLIENT_QUALIFICATION",
+      "prerequisite": "TypeScript SDK package version/commit is pinned, installed, compiled, and fixture-executed.",
+      "observed_status": "DEFERRED_TASK_3",
+      "method": "Task 1 records tool availability only; no package install, compile, or client execution was authorized",
+      "owner": "operator / Plan 11.26 Task 3",
+      "authorized": false,
+      "dependent_rows": [
+        "Additional SDK client",
+        "Multi-client"
+      ],
+      "scope_out": {
+        "status": "DORMANT_PENDING_TASK_3_QUALIFICATION_AND_AUTHORITY",
+        "owner": "operator / Plan 11.26 Task 3",
+        "reason": "qualification is a mandatory early Task 3 gate"
+      }
+    },
+    {
+      "id": "P08_JAVA_CLIENT_FALLBACK",
+      "prerequisite": "Java SDK fallback version/commit is pinned and fixture-executed if the primary fails qualification.",
+      "observed_status": "DEFERRED_TASK_3",
+      "method": "fallback is conditional on the Task 3 TypeScript decision; no package or client execution occurred",
+      "owner": "operator / Plan 11.26 Task 3",
+      "authorized": false,
+      "dependent_rows": [
+        "Additional SDK client",
+        "Multi-client"
+      ],
+      "scope_out": {
+        "status": "DORMANT_PENDING_TASK_3_FALLBACK_DECISION_AND_AUTHORITY",
+        "owner": "operator / Plan 11.26 Task 3",
+        "reason": "Java is the same-task fallback, not an independently runnable Task 1 row"
+      }
+    },
+    {
+      "id": "P09_ACPX_BINARY",
+      "prerequisite": "acpx 0.12.0 launcher and version are re-recorded by the execution environment.",
+      "observed_status": "SATISFIED",
+      "method": "resolved npm launcher path and ran --version; exit 0",
+      "owner": "operator",
+      "authorized": true,
+      "dependent_rows": [],
+      "scope_out": null
+    },
+    {
+      "id": "P10_ZED_BINARY",
+      "prerequisite": "Zed 1.17.2 with product commit c8e44cfa7bda9b2e22c8d6934d78969352e7f61a is installed at the named path.",
+      "observed_status": "SATISFIED",
+      "method": "read executable VersionInfo; Zed was not launched",
+      "owner": "operator",
+      "authorized": true,
+      "dependent_rows": [],
+      "scope_out": null
+    },
+    {
+      "id": "P11_WINDOWS_PLATFORM",
+      "prerequisite": "Windows execution environment is present.",
+      "observed_status": "SATISFIED",
+      "method": "read-only Windows CurrentVersion registry query",
+      "owner": "operator",
+      "authorized": true,
+      "dependent_rows": [],
+      "scope_out": null
+    },
+    {
+      "id": "P12_WSL2_REDIS_TIMESERIES",
+      "prerequisite": "WSL2 environment and distro-native Redis/TimeSeries availability are established.",
+      "observed_status": "UNAVAILABLE",
+      "method": "WSL2 status/list succeeded; Ubuntu-24.04 is stopped; no distro command, service start, or capability read was authorized",
+      "owner": "operator / Plan 11.26",
+      "authorized": false,
+      "dependent_rows": [
+        "Repeated lifecycle (WSL2/Linux tier)",
+        "Shutdown timing (WSL2/Linux tier)",
+        "Idempotent close (WSL2/Linux tier)",
+        "Live Redis owner/revision (WSL2/Linux tier)",
+        "Resource growth (WSL2/Linux tier)",
+        "Sink failure (WSL2/Linux tier)"
+      ],
+      "scope_out": {
+        "status": "UNRUN_WSL2",
+        "owner": "operator / Plan 11.26",
+        "reason": "distro-native Redis/TimeSeries was not already available and Task 1 cannot start it"
+      }
+    },
+    {
+      "id": "P13_WINDOWS_REDIS_TIMESERIES",
+      "prerequisite": "Windows live Redis/TimeSeries availability, port ownership, and isolation are established.",
+      "observed_status": "UNAVAILABLE",
+      "method": "read-only host query found no TCP listener on port 6379; no health or capability command was authorized",
+      "owner": "operator / Plan 11.26",
+      "authorized": false,
+      "dependent_rows": [
+        "Live Redis owner/revision (Windows live tier)",
+        "Real lease recovery",
+        "Multi-client",
+        "acpx",
+        "Additional SDK client",
+        "Real Zed"
+      ],
+      "scope_out": {
+        "status": "UNRUN_WINDOWS_REDIS",
+        "owner": "operator / Plan 11.26",
+        "reason": "no already-running Windows Redis/TimeSeries listener was observed"
+      }
+    },
+    {
+      "id": "P14_GATEWAY_CREDENTIALS_AND_PAID_AUTHORITY",
+      "prerequisite": "Optimus Gateway credentials and paid-call authority are available for any live prompt scenario.",
+      "observed_status": "UNAVAILABLE_AND_UNAUTHORIZED",
+      "method": "current-process presence booleans are false for both named variables; paid calls remain unauthorized",
+      "owner": "operator",
+      "authorized": false,
+      "dependent_rows": [
+        "Multi-client",
+        "acpx",
+        "Additional SDK client",
+        "Real Zed"
+      ],
+      "scope_out": {
+        "status": "UNRUN_GATEWAY",
+        "owner": "operator",
+        "reason": "credential capability is absent in the current process and Gateway/model/paid calls lack authority"
+      }
+    },
+    {
+      "id": "P15_FRESH_LIVE_AUTHORITY",
+      "prerequisite": "Fresh authorization exists for Zed, acpx, additional client, Redis mutation, Gateway/model calls, and paid calls.",
+      "observed_status": "UNAUTHORIZED",
+      "method": "review checkpoint Current State explicitly excludes every live row",
+      "owner": "operator",
+      "authorized": false,
+      "dependent_rows": [
+        "Live Redis owner/revision",
+        "Real lease recovery",
+        "Multi-client",
+        "acpx",
+        "Additional SDK client",
+        "Real Zed"
+      ],
+      "scope_out": {
+        "status": "UNRUN_LIVE_ROWS",
+        "owner": "operator",
+        "reason": "each live row requires a fresh separate grant"
+      }
+    },
+    {
+      "id": "P16_TRUSTED_WORKSPACE_AND_OPERATOR",
+      "prerequisite": "Trusted Zed workspace and operator availability for five GUI runs are established.",
+      "observed_status": "UNRESOLVED",
+      "method": "no named trusted-workspace attestation or five-run availability decision exists; Zed was not opened",
+      "owner": "operator",
+      "authorized": false,
+      "dependent_rows": [
+        "Real Zed"
+      ],
+      "scope_out": {
+        "status": "UNRUN_ZED",
+        "owner": "operator",
+        "reason": "trusted workspace identity and human availability are not established"
+      }
+    },
+    {
+      "id": "P17_COST_AND_LEASE_WINDOW",
+      "prerequisite": "Paid-call budget and the authorized wall-clock lease-expiry window are accepted.",
+      "observed_status": "UNAUTHORIZED",
+      "method": "review checkpoint excludes paid calls and the operator has not granted the wall-clock lease window",
+      "owner": "operator / Plan 11.7 for binding lease duration",
+      "authorized": false,
+      "dependent_rows": [
+        "Real lease recovery",
+        "Multi-client",
+        "acpx",
+        "Additional SDK client",
+        "Real Zed"
+      ],
+      "scope_out": {
+        "status": "UNRUN_COST_OR_WALL_CLOCK_ROWS",
+        "owner": "operator / Plan 11.7",
+        "reason": "cost and time grants are absent and the binding lease duration is unresolved"
+      }
+    },
+    {
+      "id": "P18_RUNNING_ARTIFACT_PROVENANCE",
+      "prerequisite": "Installed running-artifact provenance can be proved independently of workspace git_sha.",
+      "observed_status": "NOT_YET_IMPLEMENTED",
+      "method": "Task 2 has not yet built the external manifest/verifier",
+      "owner": "Plan 11.26 Task 2",
+      "authorized": false,
+      "dependent_rows": [
+        "Live Redis owner/revision",
+        "Real lease recovery",
+        "Multi-client",
+        "acpx",
+        "Additional SDK client",
+        "Real Zed"
+      ],
+      "scope_out": {
+        "status": "INVALID_UNTIL_PROVENANCE_VERIFIER_EXISTS",
+        "owner": "Plan 11.26 Task 2",
+        "reason": "workspace-only git state is not running-artifact provenance"
+      }
+    }
+  ]
+}

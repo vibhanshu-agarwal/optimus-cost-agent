@@ -113,5 +113,13 @@
       "lease_evidence",
       "live_resume_evidence"
     ]
+  },
+  "task_1_prerequisite_intake": {
+    "status": "ACCEPTED",
+    "report": "reports/plan-11-26-prerequisite-intake.json",
+    "source_task_0_commit": "55fcd1fe4fd2d10c17776946d8f19d8d5f420a67",
+    "reviewed_at_utc": "2026-08-29T08:56:00Z",
+    "live_actions_performed": false,
+    "credential_values_recorded": false
   }
 }
