@@ -54,7 +54,7 @@ def _artifact(**overrides: object) -> AuditArtifact:
         "binding_commit": None,
         "baseline_reconciliation_status": "UNRESOLVED",
         "running_artifact_provenance": None,
-        "static_audit_status": LiveStatus.COMPLETE,
+        "static_audit_status": LiveStatus.UNRUN,
         "runtime_characterization_status": LiveStatus.UNRUN,
         "live_redis_status": LiveStatus.UNRUN,
         "acpx_status": LiveStatus.UNRUN,
@@ -170,7 +170,7 @@ def test_g1_pass_rejects_unclassified_foundation_findings() -> None:
     incomplete = _artifact(
         findings=(_finding(classification=Classification.UNCLASSIFIED),),
         gate_status=GateStatus.INCOMPLETE,
-        static_audit_status=LiveStatus.PARTIAL,
+        static_audit_status=LiveStatus.UNRUN,
     )
     assert incomplete.unclassified_finding_count == 1
 
@@ -398,8 +398,8 @@ def test_live_evidence_invariant_keeps_null_evidence_controls_representable(stat
         additional_client_status=status,
         zed_status=status,
         live_interoperability_status=status,
-        static_audit_status=LiveStatus.COMPLETE,
-        runtime_characterization_status=LiveStatus.COMPLETE,
+        static_audit_status=LiveStatus.UNRUN,
+        runtime_characterization_status=LiveStatus.UNRUN,
     )
     payload = artifact.to_dict()
     schema = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))

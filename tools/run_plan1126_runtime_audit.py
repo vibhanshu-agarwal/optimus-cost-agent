@@ -210,7 +210,51 @@ def _verify_artifact(path: str) -> AuditArtifact:
     errors = sorted(Draft202012Validator(schema).iter_errors(payload), key=lambda error: list(error.path))
     if errors:
         raise ValueError("; ".join(error.message for error in errors))
-    return AuditArtifact.from_dict(payload)
+    artifact = AuditArtifact.from_dict(payload)
+    h4_records = tuple(record for record in artifact.evidence_records if record.hypothesis_id == "H4")
+    if h4_records:
+        from tools.plan1126_runtime_audit.delivery_characterization import (
+            H4_SOURCE_PATHS,
+            build_h4_audit_artifact,
+        )
+
+        merged_source = GitCommitSource(artifact.merged_commit, repository=ROOT)
+        overlay_source = GitCommitSource(artifact.overlay_commit, repository=ROOT)
+        merged = SourceTree({path: merged_source.read_text(path) for path in H4_SOURCE_PATHS})
+        overlay = SourceTree({path: overlay_source.read_text(path) for path in H4_SOURCE_PATHS})
+        rebuilt = build_h4_audit_artifact(
+            merged=merged,
+            overlay=overlay,
+            merged_commit=artifact.merged_commit,
+            overlay_commit=artifact.overlay_commit,
+        )
+        mechanical_record_fields = {
+            "record_id", "hypothesis_id", "subject", "baseline_scope", "baseline_anchor_commit",
+            "overlay_commit", "binding_commit", "vocabulary_names", "symbol_citations",
+            "discovered_sites", "contradiction_search", "schedule_observations",
+            "commands", "content_free_evidence",
+        }
+        actual_record = h4_records[0].to_dict()
+        expected_record = rebuilt.evidence_records[0].to_dict()
+        if {
+            field: actual_record[field] for field in mechanical_record_fields
+        } != {
+            field: expected_record[field] for field in mechanical_record_fields
+        }:
+            raise ValueError("H4 evidence record does not match immutable-source rebuild")
+        mechanical_finding_fields = {
+            "finding_id", "subject", "classification", "baseline_scope", "symbols", "evidence",
+            "owner",
+        }
+        actual_findings = tuple({
+            field: finding.to_dict()[field] for field in mechanical_finding_fields
+        } for finding in artifact.findings if finding.finding_id.startswith("H4-"))
+        expected_findings = tuple({
+            field: finding.to_dict()[field] for field in mechanical_finding_fields
+        } for finding in rebuilt.findings)
+        if actual_findings != expected_findings:
+            raise ValueError("H4 findings do not match immutable-source rebuild")
+    return artifact
 
 
 def _record_zed(

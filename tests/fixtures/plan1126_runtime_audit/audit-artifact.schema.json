@@ -8,7 +8,7 @@
     "running_artifact_provenance", "static_audit_status", "runtime_characterization_status", "live_redis_status",
     "acpx_status", "additional_client_status", "zed_status", "live_interoperability_status",
     "unclassified_finding_count", "finding_counts_by_classification", "findings", "discovered_multipliers",
-    "computed_run_cost", "gate_status"
+    "computed_run_cost", "gate_status", "evidence_records"
   ],
   "allOf": [{
     "if": {
@@ -27,6 +27,14 @@
         "running_artifact_provenance": {"$ref": "#/$defs/provenance"}
       }
     }
+  }, {
+    "if": {
+      "anyOf": [
+        {"properties": {"static_audit_status": {"enum": ["PARTIAL", "COMPLETE"]}}, "required": ["static_audit_status"]},
+        {"properties": {"runtime_characterization_status": {"enum": ["PARTIAL", "COMPLETE"]}}, "required": ["runtime_characterization_status"]}
+      ]
+    },
+    "then": {"properties": {"evidence_records": {"minItems": 1}}}
   }],
   "properties": {
     "schema_version": {"const": "plan-11-26-runtime-audit-v1"},
@@ -78,10 +86,12 @@
       }
     },
     "gate_status": {"enum": ["PASS", "PASS_WITH_FINDINGS", "INCOMPLETE"]}
+    ,"evidence_records": {"type": "array", "items": {"$ref": "#/$defs/evidenceRecord"}}
   },
   "$defs": {
     "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "contentFreeText": {"type": "string", "minLength": 1, "pattern": "^(?!.*(?:api[_-]?key|password|passwd|access[_-]?token|refresh[_-]?token|authorization|cookie|secret|response body|prompt body|request body|payload body)\\s*[:=])[^\\u0000-\\u001f\\u007f]+$"},
     "liveStatus": {"enum": ["UNRUN", "PARTIAL", "INVALID", "COMPLETE"]},
     "durations": {"type": "object", "additionalProperties": {"type": "number", "minimum": 0}},
     "finding": {
@@ -92,12 +102,12 @@
       }],
       "required": ["finding_id", "subject", "classification", "baseline_scope", "symbols", "evidence", "owner", "ruling"],
       "properties": {
-        "finding_id": {"type": "string", "minLength": 1}, "subject": {"type": "string", "minLength": 1},
+        "finding_id": {"$ref": "#/$defs/contentFreeText"}, "subject": {"$ref": "#/$defs/contentFreeText"},
         "classification": {"enum": ["CANONICAL", "CANONICAL_BYPASSED", "DUPLICATED", "CONTRADICTORY", "MISSING", "INTENTIONALLY_EXCEPTIONAL", "PROVISIONAL_OVERLAY", "NOT_PRESENT", "SUPERSEDED", "UNCLASSIFIED"]},
         "baseline_scope": {"enum": ["merged", "overlay", "both-aligned", "both-divergent", "binding"]},
-        "symbols": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "symbols": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/contentFreeText"}},
         "evidence": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evidence"}},
-        "owner": {"type": "string", "minLength": 1}, "ruling": {"type": "string", "minLength": 1}
+        "owner": {"$ref": "#/$defs/contentFreeText"}, "ruling": {"$ref": "#/$defs/contentFreeText"}
       }
     },
     "evidence": {
@@ -107,6 +117,280 @@
         "evidence_id": {"type": "string", "minLength": 1},
         "baseline_scope": {"enum": ["merged", "overlay", "both-aligned", "both-divergent", "binding"]},
         "digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "discoveredSite": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "symbol", "line", "kind", "baseline_scope", "evidence_digest", "classification", "invariant", "reference", "delivery_phase"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1}, "symbol": {"type": "string", "minLength": 1},
+        "line": {"type": "integer", "minimum": 1},
+        "kind": {"enum": ["DELIVERY_START", "DELIVERY_PUBLICATION", "DELIVERY_SETTLEMENT"]},
+        "baseline_scope": {"enum": ["merged", "overlay", "both-aligned", "both-divergent", "binding"]},
+        "evidence_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "classification": {"enum": ["CANONICAL", "CANONICAL_BYPASSED", "DUPLICATED", "CONTRADICTORY", "MISSING", "INTENTIONALLY_EXCEPTIONAL", "PROVISIONAL_OVERLAY", "NOT_PRESENT", "SUPERSEDED", "UNCLASSIFIED"]},
+        "invariant": {"oneOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
+        "reference": {"type": "string", "minLength": 1},
+        "delivery_phase": {"enum": ["QUEUE_ADMISSION", "PUBLICATION", "PHYSICAL_WRITE", "FLUSH", "CANCELLATION", "FINAL_RESPONSE", "CONVERSATION_COMMIT", "EFFECT_SETTLEMENT"]}
+      }
+    },
+    "contradictionSearch": {
+      "type": "object", "additionalProperties": false,
+      "required": ["searched_reference_count", "contradictory_site_count", "contradictory_citations", "conclusion"],
+      "properties": {
+        "searched_reference_count": {"type": "integer", "minimum": 0},
+        "contradictory_site_count": {"type": "integer", "minimum": 0},
+        "contradictory_citations": {"type": "array", "items": {"$ref": "#/$defs/contentFreeText"}},
+        "conclusion": {"$ref": "#/$defs/contentFreeText"}
+      }
+    },
+    "scheduleOperation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["phase", "operation", "citation"],
+      "properties": {
+        "phase": {"enum": ["QUEUE_ADMISSION", "PUBLICATION", "PHYSICAL_WRITE", "FLUSH", "CANCELLATION", "FINAL_RESPONSE", "CONVERSATION_COMMIT", "EFFECT_SETTLEMENT"]},
+        "operation": {"$ref": "#/$defs/contentFreeText"},
+        "citation": {"$ref": "#/$defs/contentFreeText"}
+      }
+    },
+    "deliveryObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["seed", "seed_source", "anchor_commit", "schedule", "operations", "site_citations", "vocabulary_names", "scenario", "write_attempted", "flush_attempted", "cancellation_timing", "cancellation_result", "primary_conversation_record_count", "send_state", "send_outcome", "settlement", "final_delivery", "rpc_response_delivery", "conversation_commit", "effect_state", "classification", "contradiction", "complete"],
+      "properties": {
+        "seed": {"type": "integer", "minimum": 0},
+        "seed_source": {"enum": ["frozen-literal", "commit-derived"]},
+        "anchor_commit": {"$ref": "#/$defs/commit"},
+        "schedule": {"type": "array", "minItems": 8, "maxItems": 8, "uniqueItems": true, "items": {"enum": ["QUEUE_ADMISSION", "PUBLICATION", "PHYSICAL_WRITE", "FLUSH", "CANCELLATION", "FINAL_RESPONSE", "CONVERSATION_COMMIT", "EFFECT_SETTLEMENT"]}},
+        "operations": {"type": "array", "minItems": 8, "maxItems": 8, "items": {"$ref": "#/$defs/scheduleOperation"}},
+        "site_citations": {"type": "array", "minItems": 8, "maxItems": 8, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "vocabulary_names": {"type": "array", "const": ["ConversationCommit", "EffectState", "FinalDelivery", "RpcResponseDelivery", "SendOutcome", "SendState", "Settlement"]},
+        "scenario": {"enum": ["success-known-effect", "success-unknown-effect", "preparation-failure", "write-failure", "flush-failure", "session-cancel-before-protocol-write", "cancel-after-publication", "transport-teardown"]},
+        "write_attempted": {"type": "boolean"}, "flush_attempted": {"type": "boolean"},
+        "cancellation_timing": {"enum": ["before-write", "during-write", "during-flush", "after-publication"]},
+        "cancellation_result": {"enum": ["accepted", "ignored_after_cutoff", "not_attempted"]},
+        "primary_conversation_record_count": {"type": "integer", "minimum": 0, "maximum": 1},
+        "send_state": {"type": "string", "minLength": 1}, "send_outcome": {"type": "string", "minLength": 1},
+        "settlement": {"type": "string", "minLength": 1}, "final_delivery": {"type": "string", "minLength": 1},
+        "rpc_response_delivery": {"type": "string", "minLength": 1}, "conversation_commit": {"type": "string", "minLength": 1},
+        "effect_state": {"type": "string", "minLength": 1},
+        "classification": {"enum": ["CANONICAL", "CANONICAL_BYPASSED", "DUPLICATED", "CONTRADICTORY", "MISSING", "INTENTIONALLY_EXCEPTIONAL", "PROVISIONAL_OVERLAY", "NOT_PRESENT", "SUPERSEDED"]},
+        "contradiction": {"oneOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
+        "complete": {"const": true}
+      }
+    },
+    "scheduleObservations": {
+      "type": "object", "additionalProperties": false,
+      "required": ["literal_seeds", "derived_seed_count", "derived_seed_anchor_commit", "total_observation_count", "complete_observation_count", "observation_closure_status", "vocabulary_coverage_status", "classification_counts", "digest", "vocabulary", "coverage_assessments", "constant_metadata_notes", "observations"],
+      "properties": {
+        "literal_seeds": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+        "derived_seed_count": {"type": "integer", "minimum": 0},
+        "derived_seed_anchor_commit": {"$ref": "#/$defs/commit"},
+        "total_observation_count": {"type": "integer", "minimum": 0},
+        "complete_observation_count": {"type": "integer", "minimum": 0},
+        "observation_closure_status": {"enum": ["FULLY_STRUCTURALLY_CLOSED"]},
+        "vocabulary_coverage_status": {"enum": ["FULLY_OBSERVED", "PARTIAL_WITH_SCOPE_OUTS"]},
+        "classification_counts": {
+          "type": "object", "additionalProperties": false,
+          "required": ["CANONICAL", "CANONICAL_BYPASSED", "DUPLICATED", "CONTRADICTORY", "MISSING", "INTENTIONALLY_EXCEPTIONAL", "PROVISIONAL_OVERLAY", "NOT_PRESENT", "SUPERSEDED", "UNCLASSIFIED"],
+          "properties": {
+            "CANONICAL": {"type": "integer", "minimum": 0}, "CANONICAL_BYPASSED": {"type": "integer", "minimum": 0},
+            "DUPLICATED": {"type": "integer", "minimum": 0}, "CONTRADICTORY": {"type": "integer", "minimum": 0},
+            "MISSING": {"type": "integer", "minimum": 0}, "INTENTIONALLY_EXCEPTIONAL": {"type": "integer", "minimum": 0},
+            "PROVISIONAL_OVERLAY": {"type": "integer", "minimum": 0}, "NOT_PRESENT": {"type": "integer", "minimum": 0},
+            "SUPERSEDED": {"type": "integer", "minimum": 0}, "UNCLASSIFIED": {"type": "integer", "const": 0}
+          }
+        },
+        "digest": {"$ref": "#/$defs/digest"},
+        "vocabulary": {
+          "type": "object", "additionalProperties": false,
+          "required": ["ConversationCommit", "EffectState", "FinalDelivery", "RpcResponseDelivery", "SendOutcome", "SendState", "Settlement"],
+          "properties": {
+            "ConversationCommit": {"$ref": "#/$defs/enumMembers"}, "EffectState": {"$ref": "#/$defs/enumMembers"},
+            "FinalDelivery": {"$ref": "#/$defs/enumMembers"}, "RpcResponseDelivery": {"$ref": "#/$defs/enumMembers"},
+            "SendOutcome": {"$ref": "#/$defs/enumMembers"}, "SendState": {"$ref": "#/$defs/enumMembers"},
+            "Settlement": {"$ref": "#/$defs/enumMembers"}
+          }
+        },
+        "coverage_assessments": {
+          "type": "array", "minItems": 7, "maxItems": 7, "uniqueItems": true,
+          "items": {"$ref": "#/$defs/vocabularyCoverageAssessment"}
+        },
+        "constant_metadata_notes": {
+          "type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true,
+          "items": {"$ref": "#/$defs/constantMetadataNote"}
+        },
+        "observations": {"type": "array", "items": {"$ref": "#/$defs/deliveryObservation"}}
+      }
+    },
+    "vocabularyCoverageAssessment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["field_name", "type_name", "vocabulary_values", "observed_values", "missing_values", "status", "reason", "owner", "next_gate"],
+      "properties": {
+        "field_name": {"enum": ["conversation_commit", "effect_state", "final_delivery", "rpc_response_delivery", "send_outcome", "send_state", "settlement"]},
+        "type_name": {"enum": ["ConversationCommit", "EffectState", "FinalDelivery", "RpcResponseDelivery", "SendOutcome", "SendState", "Settlement"]},
+        "vocabulary_values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "observed_values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "missing_values": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "status": {"enum": ["FULLY_OBSERVED", "SCOPED_OUT"]},
+        "reason": {"oneOf": [{"$ref": "#/$defs/contentFreeText"}, {"type": "null"}]},
+        "owner": {"oneOf": [{"const": "P11-FEAT-ACP-RUNTIME-HARDENING"}, {"type": "null"}]},
+        "next_gate": {"oneOf": [{"$ref": "#/$defs/contentFreeText"}, {"type": "null"}]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "FULLY_OBSERVED"}}, "required": ["status"]},
+          "then": {
+            "properties": {
+              "missing_values": {"maxItems": 0},
+              "reason": {"type": "null"}, "owner": {"type": "null"}, "next_gate": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "SCOPED_OUT"}}, "required": ["status"]},
+          "then": {
+            "properties": {
+              "missing_values": {"minItems": 1},
+              "reason": {"$ref": "#/$defs/contentFreeText"},
+              "owner": {"const": "P11-FEAT-ACP-RUNTIME-HARDENING"},
+              "next_gate": {"$ref": "#/$defs/contentFreeText"}
+            }
+          }
+        }
+      ]
+    },
+    "constantMetadataNote": {
+      "type": "object", "additionalProperties": false,
+      "required": ["field_name", "constant_value", "claim_status", "reason"],
+      "properties": {
+        "field_name": {"enum": ["classification", "complete", "contradiction"]},
+        "constant_value": {"oneOf": [{"type": "string"}, {"type": "boolean"}, {"type": "null"}]},
+        "claim_status": {"const": "NOT_A_VOCABULARY_CLAIM"},
+        "reason": {"$ref": "#/$defs/contentFreeText"}
+      }
+    },
+    "enumMembers": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string", "minLength": 1}},
+    "evidenceRecord": {
+      "type": "object", "additionalProperties": false,
+      "allOf": [{
+        "if": {"properties": {"hypothesis_id": {"const": "H4"}}, "required": ["hypothesis_id"]},
+        "then": {
+          "properties": {
+            "baseline_scope": {"const": "both-aligned"},
+            "binding_commit": {"type": "null"},
+            "vocabulary_names": {"const": ["ConversationCommit", "EffectState", "FinalDelivery", "RpcResponseDelivery", "SendOutcome", "SendState", "Settlement"]},
+            "schedule_observations": {
+              "properties": {
+                "literal_seeds": {"const": [0, 1, 42, 18446744073709551615]},
+                "derived_seed_count": {"const": 1000},
+                "total_observation_count": {"const": 1004},
+                "complete_observation_count": {"const": 1004},
+                "observation_closure_status": {"const": "FULLY_STRUCTURALLY_CLOSED"},
+                "vocabulary_coverage_status": {"const": "PARTIAL_WITH_SCOPE_OUTS"},
+                "coverage_assessments": {"const": [
+                  {
+                    "field_name": "conversation_commit", "type_name": "ConversationCommit",
+                    "vocabulary_values": ["committed", "not_committed"],
+                    "observed_values": ["committed", "not_committed"], "missing_values": [],
+                    "status": "FULLY_OBSERVED", "reason": null, "owner": null, "next_gate": null
+                  },
+                  {
+                    "field_name": "effect_state", "type_name": "EffectState",
+                    "vocabulary_values": ["complete", "indeterminate", "none", "partial"],
+                    "observed_values": ["complete", "indeterminate", "none", "partial"], "missing_values": [],
+                    "status": "FULLY_OBSERVED", "reason": null, "owner": null, "next_gate": null
+                  },
+                  {
+                    "field_name": "final_delivery", "type_name": "FinalDelivery",
+                    "vocabulary_values": ["ambiguous", "conclusive_failure", "flushed", "not_attempted", "partial"],
+                    "observed_values": ["not_attempted"],
+                    "missing_values": ["ambiguous", "conclusive_failure", "flushed", "partial"],
+                    "status": "SCOPED_OUT",
+                    "reason": "These H4 scenarios execute start_response_send and never start_terminal_message, so terminal-message states are unreachable.",
+                    "owner": "P11-FEAT-ACP-RUNTIME-HARDENING", "next_gate": "G5 terminal-message characterization"
+                  },
+                  {
+                    "field_name": "rpc_response_delivery", "type_name": "RpcResponseDelivery",
+                    "vocabulary_values": ["ambiguous", "conclusive_failure", "flushed", "not_attempted"],
+                    "observed_values": ["ambiguous", "conclusive_failure", "flushed", "not_attempted"], "missing_values": [],
+                    "status": "FULLY_OBSERVED", "reason": null, "owner": null, "next_gate": null
+                  },
+                  {
+                    "field_name": "send_outcome", "type_name": "SendOutcome",
+                    "vocabulary_values": ["ambiguous", "conclusive_failure", "flushed", "suppressed"],
+                    "observed_values": ["ambiguous", "conclusive_failure", "flushed", "suppressed"], "missing_values": [],
+                    "status": "FULLY_OBSERVED", "reason": null, "owner": null, "next_gate": null
+                  },
+                  {
+                    "field_name": "send_state", "type_name": "SendState",
+                    "vocabulary_values": ["ambiguous", "conclusive_failure", "flushed", "queued", "suppressed", "write_started"],
+                    "observed_values": ["ambiguous", "conclusive_failure", "flushed", "suppressed"],
+                    "missing_values": ["queued", "write_started"], "status": "SCOPED_OUT",
+                    "reason": "Queued and write_started are transient states absent from terminal observation snapshots.",
+                    "owner": "P11-FEAT-ACP-RUNTIME-HARDENING", "next_gate": "G4 per-group transient-state observation review"
+                  },
+                  {
+                    "field_name": "settlement", "type_name": "Settlement",
+                    "vocabulary_values": ["cancelled", "completed", "failed", "rejected", "transport_abandoned"],
+                    "observed_values": ["completed", "transport_abandoned"],
+                    "missing_values": ["cancelled", "failed", "rejected"], "status": "SCOPED_OUT",
+                    "reason": "The reviewed _placeholder_settlement two-branch producer does not emit cancelled, failed, or rejected.",
+                    "owner": "P11-FEAT-ACP-RUNTIME-HARDENING", "next_gate": "G4 per-group settlement-producer review"
+                  }
+                ]},
+                "constant_metadata_notes": {"const": [
+                  {
+                    "field_name": "classification", "constant_value": "CANONICAL",
+                    "claim_status": "NOT_A_VOCABULARY_CLAIM",
+                    "reason": "Classification is static-site lineage represented by discovered sites and findings; schedule rows do not claim classification-vocabulary coverage."
+                  },
+                  {
+                    "field_name": "complete", "constant_value": true,
+                    "claim_status": "NOT_A_VOCABULARY_CLAIM",
+                    "reason": "Complete means closed observation-record shape only; it is not a settled-vocabulary coverage claim."
+                  },
+                  {
+                    "field_name": "contradiction", "constant_value": null,
+                    "claim_status": "NOT_A_VOCABULARY_CLAIM",
+                    "reason": "Contradiction belongs to the static contradiction search; no schedule row executes a contradictory site."
+                  }
+                ]},
+                "observations": {
+                  "minItems": 1004, "maxItems": 1004,
+                  "items": {
+                    "properties": {
+                      "conversation_commit": {"enum": ["committed", "not_committed"]},
+                      "effect_state": {"enum": ["complete", "indeterminate", "none", "partial"]},
+                      "final_delivery": {"const": "not_attempted"},
+                      "rpc_response_delivery": {"enum": ["ambiguous", "conclusive_failure", "flushed", "not_attempted"]},
+                      "send_outcome": {"enum": ["ambiguous", "conclusive_failure", "flushed", "suppressed"]},
+                      "send_state": {"enum": ["ambiguous", "conclusive_failure", "flushed", "suppressed"]},
+                      "settlement": {"enum": ["completed", "transport_abandoned"]}
+                    }
+                  }
+                }
+              },
+              "required": ["literal_seeds", "derived_seed_count", "total_observation_count", "complete_observation_count", "observation_closure_status", "vocabulary_coverage_status", "coverage_assessments", "constant_metadata_notes", "observations"]
+            }
+          }
+        }
+      }],
+      "required": ["record_id", "hypothesis_id", "subject", "baseline_scope", "baseline_anchor_commit", "overlay_commit", "binding_commit", "vocabulary_names", "symbol_citations", "discovered_sites", "contradiction_search", "schedule_observations", "commands", "ruling", "reviewer_status", "content_free_evidence"],
+      "properties": {
+        "record_id": {"$ref": "#/$defs/contentFreeText"}, "hypothesis_id": {"$ref": "#/$defs/contentFreeText"},
+        "subject": {"$ref": "#/$defs/contentFreeText"},
+        "baseline_scope": {"enum": ["merged", "overlay", "both-aligned", "both-divergent", "binding"]},
+        "baseline_anchor_commit": {"$ref": "#/$defs/commit"}, "overlay_commit": {"$ref": "#/$defs/commit"},
+        "binding_commit": {"oneOf": [{"$ref": "#/$defs/commit"}, {"type": "null"}]},
+        "vocabulary_names": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "symbol_citations": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "discovered_sites": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/discoveredSite"}},
+        "contradiction_search": {"$ref": "#/$defs/contradictionSearch"},
+        "schedule_observations": {"$ref": "#/$defs/scheduleObservations"},
+        "commands": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "ruling": {"$ref": "#/$defs/contentFreeText"},
+        "reviewer_status": {"enum": ["PENDING_G2", "ACCEPTED", "REJECTED", "SCOPED_OUT"]},
+        "content_free_evidence": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evidence"}}
       }
     },
     "provenance": {

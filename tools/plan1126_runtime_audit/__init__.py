@@ -4,18 +4,30 @@ from .checkpoints import CheckpointStore
 from .clients import ClientQualification, qualify_client
 from .corpus import derived_seed, literal_seeds
 from .cost import compute_cost
-from .inventory import discover_sites
+from .delivery import DeliveryScheduleObservation, build_h4_audit_artifact, delivery_schedule_observations
+from .inventory import discover_delivery_sites, discover_sites
 from .model import (
     AuditArtifact,
     BaselineScope,
     Classification,
+    ConstantMetadataNote,
+    ContradictionSearchRecord,
+    CoverageAssessmentStatus,
+    DeliveryPhase,
     DiscoveredSite,
+    EvidenceRecord,
     EvidenceReference,
     Finding,
     GateStatus,
     InventoryKind,
     LiveStatus,
+    MetadataClaimStatus,
+    ObservationClosureStatus,
     PrerequisiteStatus,
+    ReviewerStatus,
+    ScheduleObservationSummary,
+    VocabularyCoverageAssessment,
+    VocabularyCoverageStatus,
 )
 from .provenance import ExpectedArtifactIdentity, verify_running_artifact
 from .repeatability import classify_repeatability
@@ -27,7 +39,13 @@ __all__ = [
     "CheckpointStore",
     "ClientQualification",
     "Classification",
+    "ConstantMetadataNote",
+    "ContradictionSearchRecord",
+    "CoverageAssessmentStatus",
+    "DeliveryPhase",
+    "DeliveryScheduleObservation",
     "DiscoveredSite",
+    "EvidenceRecord",
     "EvidenceReference",
     "ExpectedArtifactIdentity",
     "Finding",
@@ -35,11 +53,20 @@ __all__ = [
     "GitCommitSource",
     "InventoryKind",
     "LiveStatus",
+    "MetadataClaimStatus",
+    "ObservationClosureStatus",
     "PrerequisiteStatus",
+    "ReviewerStatus",
+    "ScheduleObservationSummary",
     "SourceTree",
+    "VocabularyCoverageAssessment",
+    "VocabularyCoverageStatus",
     "classify_repeatability",
+    "build_h4_audit_artifact",
     "compute_cost",
     "derived_seed",
+    "delivery_schedule_observations",
+    "discover_delivery_sites",
     "discover_sites",
     "literal_seeds",
     "qualify_client",

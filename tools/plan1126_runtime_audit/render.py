@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import html
+import re
+from collections import Counter
 from typing import Any, Mapping
 
 from .model import AuditArtifact, Classification
@@ -15,6 +18,15 @@ _STATUS_FIELDS = (
     "zed_status",
     "live_interoperability_status",
 )
+_SECRET_SHAPE = re.compile(
+    r"(?i)(?:sk-[a-z0-9_-]{8,}|(?:api[_-]?key|token|password|secret)\s*[:=]\s*\S+)"
+)
+
+
+def _safe_markdown(value: object) -> str:
+    text = " ".join(str(value).splitlines())
+    text = _SECRET_SHAPE.sub("[REDACTED]", text)
+    return html.escape(text, quote=True).replace("|", "&#124;").replace("`", "&#96;")
 
 
 def render_markdown(payload: Mapping[str, Any]) -> str:
@@ -65,9 +77,131 @@ def render_markdown(payload: Mapping[str, Any]) -> str:
         f"| {name.replace('_', ' ').title()} | {value} |"
         for name, value in sorted(canonical["discovered_multipliers"].items())
     )
+    lines.extend(["", "## Evidence records"])
+    for record in canonical["evidence_records"]:
+        observations = record["schedule_observations"]
+        observation_rows = observations["observations"]
+        contradiction = record["contradiction_search"]
+        phase_counts = Counter(site["delivery_phase"] for site in record["discovered_sites"])
+        site_classifications = Counter(site["classification"] for site in record["discovered_sites"])
+        scenario_counts = Counter(item["scenario"] for item in observation_rows)
+        cancellation_timings = Counter(item["cancellation_timing"] for item in observation_rows)
+        conversation_states = Counter(
+            (item["conversation_commit"], item["primary_conversation_record_count"])
+            for item in observation_rows
+        )
+        lines.extend([
+            "",
+            f"### `{record['hypothesis_id']}` — {_safe_markdown(record['subject'])}",
+            "",
+            "| Field | Value |",
+            "|---|---|",
+            f"| Record | `{record['record_id']}` |",
+            f"| Baseline scope | `{record['baseline_scope']}` |",
+            f"| Seed anchor (merged, not binding) | `{record['baseline_anchor_commit']}` |",
+            f"| Overlay identity | `{record['overlay_commit']}` |",
+            f"| Binding commit | `{record['binding_commit'] or 'not nominated'}` |",
+            f"| Reviewer status | `{record['reviewer_status']}` |",
+            f"| Discovered sites | {len(record['discovered_sites'])} |",
+            "",
+            "Settled vocabulary: " + ", ".join(f"`{name}`" for name in record["vocabulary_names"]),
+            "",
+            "Delivery-phase counts: " + ", ".join(
+                f"`{name}`={count}" for name, count in sorted(phase_counts.items())
+            ),
+            "",
+            "Site-classification counts: " + ", ".join(
+                f"`{name}`={count}" for name, count in sorted(site_classifications.items())
+            ),
+            "",
+            f"Contradiction search: {contradiction['contradictory_site_count']} contradictory site(s) "
+            f"across {contradiction['searched_reference_count']} mechanically discovered references. "
+            f"{_safe_markdown(contradiction['conclusion'])}",
+            "",
+            "The canonical JSON `evidence_records[].discovered_sites` array contains every phase, "
+            "classification, line, symbol, reference, invariant, and content-free AST digest; "
+            "`contradiction_search.contradictory_citations` is the exact contradictory subset.",
+            "",
+            f"Schedule observations replayed {len(observations['literal_seeds'])} frozen literal seeds first, then "
+            f"{observations['derived_seed_count']:,} commit-derived seeds anchored to "
+            f"`{observations['derived_seed_anchor_commit']}`.",
+            "",
+            f"Observation closure: {observations['complete_observation_count']:,}/"
+            f"{observations['total_observation_count']:,} structurally closed records "
+            f"(`{observations['observation_closure_status']}`). This is record-shape closure, not "
+            "settled-vocabulary completeness.",
+            "",
+            f"Settled-vocabulary coverage: `{observations['vocabulary_coverage_status']}`.",
+            "",
+            "| Observation field | Settled type | Coverage | Observed | Missing | Owner | Next gate | Reason |",
+            "|---|---|---|---|---|---|---|---|",
+        ])
+        for assessment in observations["coverage_assessments"]:
+            observed = ", ".join(f"`{_safe_markdown(value)}`" for value in assessment["observed_values"])
+            missing = (
+                ", ".join(f"`{_safe_markdown(value)}`" for value in assessment["missing_values"])
+                or "none"
+            )
+            owner = _safe_markdown(assessment["owner"] or "not applicable")
+            next_gate = _safe_markdown(assessment["next_gate"] or "not applicable")
+            reason = _safe_markdown(assessment["reason"] or "All declared values were observed.")
+            lines.append(
+                f"| `{assessment['field_name']}` | `{assessment['type_name']}` | "
+                f"`{assessment['status']}` | {observed} | {missing} | {owner} | {next_gate} | {reason} |"
+            )
+        lines.extend([
+            "",
+            "Constant metadata dimensions are not vocabulary-coverage claims:",
+            "",
+        ])
+        lines.extend(
+            f"- `{note['field_name']}` = `{_safe_markdown(note['constant_value'])}` "
+            f"(`{note['claim_status']}`): {_safe_markdown(note['reason'])}"
+            for note in observations["constant_metadata_notes"]
+        )
+        lines.extend([
+            "",
+            "Primary scenario counts: " + ", ".join(
+                f"`{_safe_markdown(name)}`={count}"
+                for name, count in sorted(scenario_counts.items())
+            ),
+            "",
+            "Primary attempts: "
+            f"write attempted={sum(item['write_attempted'] for item in observation_rows)}, "
+            f"write not attempted={sum(not item['write_attempted'] for item in observation_rows)}, "
+            f"flush attempted={sum(item['flush_attempted'] for item in observation_rows)}, "
+            f"flush not attempted={sum(not item['flush_attempted'] for item in observation_rows)}.",
+            "",
+            "Cancellation timing counts: " + ", ".join(
+                f"`{_safe_markdown(name)}`={count}"
+                for name, count in sorted(cancellation_timings.items())
+            ),
+            "",
+            "Primary conversation states: " + ", ".join(
+                f"`{_safe_markdown(state)}`/records={record_count}: {count}"
+                for (state, record_count), count in sorted(conversation_states.items())
+            ),
+            "",
+            f"Schedule observation digest: `{observations['digest']}`",
+            "",
+            "Commands:",
+            "",
+        ])
+        lines.extend(f"- `{_safe_markdown(command)}`" for command in record["commands"])
+        lines.extend([
+            "",
+            f"Ruling: {_safe_markdown(record['ruling'])}",
+            "",
+            "Content-free evidence:",
+            "",
+        ])
+        lines.extend(
+            f"- `{item['evidence_id']}` (`{item['baseline_scope']}`): `{item['digest']}`"
+            for item in record["content_free_evidence"]
+        )
     lines.extend(["", "## Finding index", "", "| ID | Classification | Baseline | Owner |", "|---|---|---|---|"])
     lines.extend(
-        f"| `{finding['finding_id']}` | `{finding['classification']}` | `{finding['baseline_scope']}` | {finding['owner']} |"
+        f"| `{finding['finding_id']}` | `{finding['classification']}` | `{finding['baseline_scope']}` | {_safe_markdown(finding['owner'])} |"
         for finding in sorted(canonical["findings"], key=lambda item: item["finding_id"])
     )
     lines.append("")

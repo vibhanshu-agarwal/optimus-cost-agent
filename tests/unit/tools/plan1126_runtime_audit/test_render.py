@@ -28,7 +28,7 @@ def _artifact(**overrides: object) -> AuditArtifact:
         binding_commit=None,
         baseline_reconciliation_status="UNRESOLVED",
         running_artifact_provenance=None,
-        static_audit_status=LiveStatus.COMPLETE,
+        static_audit_status=LiveStatus.UNRUN,
         runtime_characterization_status=LiveStatus.UNRUN,
         live_redis_status=LiveStatus.UNRUN,
         acpx_status=LiveStatus.UNRUN,

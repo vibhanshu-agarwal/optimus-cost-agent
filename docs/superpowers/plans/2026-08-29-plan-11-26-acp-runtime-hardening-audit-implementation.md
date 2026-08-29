@@ -402,8 +402,15 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 **Files:**
 
 - Create: `tests/unit/acp/test_plan1126_delivery_contract.py`
+- Create: `tools/plan1126_runtime_audit/delivery.py`
+- Create: `tools/plan1126_runtime_audit/delivery_characterization.py`
+- Modify: `tools/plan1126_runtime_audit/{__init__,inventory,model,render}.py`
+- Modify: `tools/run_plan1126_runtime_audit.py`
+- Modify: `tests/unit/tools/plan1126_runtime_audit/{test_artifact,test_render}.py`
+- Modify: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
 - Modify: `reports/plan-11-26-acp-runtime-audit.json`
 - Generate: `reports/plan-11-26-acp-runtime-audit.md`
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
 - Read only: `src/optimus/acp/{outbound_writer,lifecycle,settlement,conversation,spec,server}.py`
 
 **Interfaces:**
@@ -411,11 +418,11 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 - Consumes: Task 2 inventories/corpus/checkpoints and the settled delivery vocabulary.
 - Produces: H4 record with every delivery start/publication/settlement consumer, symbol citation, baseline scope, contradiction search, 1,000-seed observations, reviewer ruling, and the evidence-record template used by Tasks 5-10.
 
-- [ ] **Step 1: Write the RED delivery-site coverage predicate.**
+- [x] **Step 1: Write the RED delivery-site coverage predicate.**
 
   Derive every send/write/enqueue, publication, flush, final-response, conversation-commit, and effect-settlement site from AST/call references. Assert that each discovered site has exactly one `DiscoveredSite` record and a delivery phase; do not seed expected file/line lists into the scanner.
 
-- [ ] **Step 2: Run the exact AST predicate and verify RED.**
+- [x] **Step 2: Run the exact AST predicate and verify RED.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_contract_ast_covers_all_send_sites -q
@@ -423,19 +430,19 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
   Expected: FAIL because H4 classifications and the delivery-specific inventory rule do not exist.
 
-- [ ] **Step 3: Classify delivery sites against both available baselines.**
+- [x] **Step 3: Classify delivery sites against both available baselines.**
 
   Preserve the seven settled types exactly. Classify each site as canonical, bypassed, duplicated, contradictory, intentionally exceptional, provisional, not present, superseded, or unclassified. A new vocabulary is a finding, not an automatic replacement.
 
-- [ ] **Step 4: Write and run the 1,000-seed schedule predicate.**
+- [x] **Step 4: Write and run the 1,000-seed schedule predicate.**
 
-  Generate schedules for queue admission, publication, write success/failure, flush ambiguity, cancellation, final-response delivery, conversation commit, and effect certainty. Replay literal frozen seeds first, then exactly 1,000 binding-derived seeds. The test passes when every schedule yields a complete classified record, including observed contradictions.
+  Generate schedules for queue admission, publication, write success/failure, flush ambiguity, cancellation, final-response delivery, conversation commit, and effect certainty. Replay literal frozen seeds first, then exactly 1,000 commit-derived seeds anchored to the immutable merged baseline. Record the overlay identity and `both-aligned` scope separately; never label the merged anchor as binding. The test passes when every schedule yields a complete classified record, including observed contradictions.
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_contract_model_1000_seed_schedule -q
   ```
 
-- [ ] **Step 5: Publish H4 and render the report.**
+- [x] **Step 5: Publish H4 and render the report.**
 
   Update the canonical JSON and run:
 
@@ -444,7 +451,7 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
   uv run --frozen python tools/run_plan1126_runtime_audit.py verify --artifact reports/plan-11-26-acp-runtime-audit.json
   ```
 
-- [ ] **Step 6: Obtain G2 worked-example acceptance.**
+- [x] **Step 6: Obtain G2 worked-example acceptance.**
 
   The reviewer confirms symbol citations, contradiction search, test commands, baseline scope, and ruling. Tasks 5-10 may use the record structure only after acceptance.
 
