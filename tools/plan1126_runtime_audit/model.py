@@ -1207,6 +1207,22 @@ class AuditArtifact:
                 raise ValueError("H4 is both-aligned with no binding commit")
             if record.hypothesis_id == "H4" and record.schedule_observations.derived_seed_anchor_commit != self.merged_commit:
                 raise ValueError("H4 derived seed anchor must match artifact merged_commit")
+            if record.hypothesis_id == "H3":
+                if (
+                    record.baseline_scope is not BaselineScope.BOTH_ALIGNED
+                    or record.binding_commit is not None
+                    or record.schedule_observations.derived_seed_anchor_commit != self.merged_commit
+                ):
+                    raise ValueError("H3 is both-aligned, unbound, and anchored to merged_commit")
+                if self.discovered_multipliers["cancellation_points"] != record.cancellation_point_count:
+                    raise ValueError("global N_cancellation_points disagrees with H3 inventory")
+                if (
+                    self.computed_run_cost["cancellation_schedules"]
+                    != record.schedule_observations.derived_race_schedule_count
+                    or self.computed_run_cost["cancellation_control_schedules"]
+                    != record.schedule_observations.derived_control_schedule_count
+                ):
+                    raise ValueError("global cancellation cost disagrees with H3 derived schedules")
             if record.reviewer_status is ReviewerStatus.PENDING_G2 and self.gate_status is not GateStatus.INCOMPLETE:
                 raise ValueError("pending external review requires an incomplete global gate")
         if self.gate_status is not GateStatus.INCOMPLETE and self.unclassified_finding_count:
@@ -1273,6 +1289,14 @@ class AuditArtifact:
         _json_object(payload["computed_run_cost"], "computed_run_cost")
         if payload["running_artifact_provenance"] is not None:
             _json_object(payload["running_artifact_provenance"], "running_artifact_provenance")
+        parsed_records: list[Any] = []
+        for item in evidence_records:
+            if isinstance(item, dict) and item.get("hypothesis_id") == "H3":
+                from .cancellation import CancellationEvidenceRecord
+
+                parsed_records.append(CancellationEvidenceRecord.from_dict(item))
+            else:
+                parsed_records.append(EvidenceRecord.from_dict(item))
         artifact = cls(
             schema_version=payload["schema_version"], merged_commit=payload["merged_commit"], overlay_commit=payload["overlay_commit"],
             binding_commit=payload["binding_commit"], baseline_reconciliation_status=payload["baseline_reconciliation_status"],
@@ -1281,7 +1305,7 @@ class AuditArtifact:
             acpx_status=payload["acpx_status"], additional_client_status=payload["additional_client_status"], zed_status=payload["zed_status"],
             live_interoperability_status=payload["live_interoperability_status"], findings=tuple(Finding.from_dict(item) for item in findings),
             discovered_multipliers=payload["discovered_multipliers"], computed_run_cost=payload["computed_run_cost"], gate_status=payload["gate_status"],
-            evidence_records=tuple(EvidenceRecord.from_dict(item) for item in evidence_records),
+            evidence_records=tuple(parsed_records),
         )
         if payload["unclassified_finding_count"] != artifact.unclassified_finding_count:
             raise ValueError("unclassified_finding_count mismatch")

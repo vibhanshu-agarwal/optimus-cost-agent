@@ -86,7 +86,10 @@
       }
     },
     "gate_status": {"enum": ["PASS", "PASS_WITH_FINDINGS", "INCOMPLETE"]}
-    ,"evidence_records": {"type": "array", "items": {"$ref": "#/$defs/evidenceRecord"}}
+    ,"evidence_records": {"type": "array", "items": {"oneOf": [
+      {"$ref": "#/$defs/evidenceRecord"},
+      {"$ref": "#/$defs/cancellationEvidenceRecord"}
+    ]}}
   },
   "$defs": {
     "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
@@ -226,8 +229,8 @@
       "type": "object", "additionalProperties": false,
       "required": ["field_name", "type_name", "vocabulary_values", "observed_values", "missing_values", "status", "reason", "owner", "next_gate"],
       "properties": {
-        "field_name": {"enum": ["conversation_commit", "effect_state", "final_delivery", "rpc_response_delivery", "send_outcome", "send_state", "settlement"]},
-        "type_name": {"enum": ["ConversationCommit", "EffectState", "FinalDelivery", "RpcResponseDelivery", "SendOutcome", "SendState", "Settlement"]},
+        "field_name": {"enum": ["conversation_commit", "effect_state", "final_delivery", "rpc_response_delivery", "send_outcome", "send_state", "settlement", "request_task_state", "child_work_state", "invocation_outcomes"]},
+        "type_name": {"enum": ["ConversationCommit", "EffectState", "FinalDelivery", "RpcResponseDelivery", "SendOutcome", "SendState", "Settlement", "RequestTaskState", "ChildWorkState", "CancellationInvocationOutcome"]},
         "vocabulary_values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "observed_values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "missing_values": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
@@ -270,6 +273,141 @@
       }
     },
     "enumMembers": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string", "minLength": 1}},
+    "taskSupervisionSite": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "line", "symbol", "kind", "reference", "source_baseline", "conceptual_id"],
+      "properties": {
+        "path": {"$ref": "#/$defs/contentFreeText"},
+        "line": {"type": "integer", "minimum": 1},
+        "symbol": {"$ref": "#/$defs/contentFreeText"},
+        "kind": {"enum": ["TASK_CREATE", "CANCELLATION_POINT"]},
+        "reference": {"$ref": "#/$defs/contentFreeText"},
+        "source_baseline": {"enum": ["merged", "overlay"]},
+        "conceptual_id": {"type": "string", "pattern": "^h3-[0-9a-f]{16}$"}
+      }
+    },
+    "taskUnitRecord": {
+      "type": "object", "additionalProperties": false,
+      "required": ["conceptual_id", "creator", "owner", "registration_point", "cancellation_source", "join_or_settlement", "escape_path", "classification"],
+      "properties": {
+        "conceptual_id": {"type": "string", "pattern": "^h3-[0-9a-f]{16}$"},
+        "creator": {"$ref": "#/$defs/contentFreeText"},
+        "owner": {"$ref": "#/$defs/contentFreeText"},
+        "registration_point": {"$ref": "#/$defs/contentFreeText"},
+        "cancellation_source": {"$ref": "#/$defs/contentFreeText"},
+        "join_or_settlement": {"$ref": "#/$defs/contentFreeText"},
+        "escape_path": {"$ref": "#/$defs/contentFreeText"},
+        "classification": {"enum": ["OWNED", "ESCAPED_CHILD", "INCOMPLETE"]}
+      }
+    },
+    "ownershipSite": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "line", "symbol", "role", "reference", "source_baseline", "conceptual_id"],
+      "properties": {
+        "path": {"$ref": "#/$defs/contentFreeText"},
+        "line": {"type": "integer", "minimum": 1},
+        "symbol": {"$ref": "#/$defs/contentFreeText"},
+        "role": {"enum": ["REGISTRATION", "TASK_GROUP", "CALLBACK", "TIMEOUT", "CANCELLATION_CATCH", "JOIN", "TASK_SET_MUTATION"]},
+        "reference": {"$ref": "#/$defs/contentFreeText"},
+        "source_baseline": {"enum": ["merged", "overlay"]},
+        "conceptual_id": {"type": "string", "pattern": "^h3-[0-9a-f]{16}$"}
+      }
+    },
+    "cancellationObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cancellation_point_id", "source_citations", "executed_definition_citations", "seed", "seed_source", "anchor_commit", "concurrency_level", "phase", "cancellation_invocation_count", "invocation_outcomes", "request_task_state", "child_work_state", "final_delivery", "conversation_commit", "effect_state", "cancelled_error_preserved", "complete"],
+      "properties": {
+        "cancellation_point_id": {"type": "string", "pattern": "^h3-[0-9a-f]{16}$"},
+        "source_citations": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "executed_definition_citations": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "seed": {"type": "integer", "minimum": 0},
+        "seed_source": {"enum": ["frozen-literal", "commit-derived"]},
+        "anchor_commit": {"$ref": "#/$defs/commit"},
+        "concurrency_level": {"enum": [1, 2, 4, 8]},
+        "phase": {"enum": ["pre-start", "running", "delivery", "settlement", "teardown"]},
+        "cancellation_invocation_count": {"type": "integer", "minimum": 1, "maximum": 8},
+        "invocation_outcomes": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string", "minLength": 1}},
+        "request_task_state": {"enum": ["cancelled", "completed"]},
+        "child_work_state": {"type": "string", "minLength": 1},
+        "final_delivery": {"type": "string", "minLength": 1},
+        "conversation_commit": {"type": "string", "minLength": 1},
+        "effect_state": {"type": "string", "minLength": 1},
+        "cancelled_error_preserved": {"type": "boolean"},
+        "complete": {"const": true}
+      }
+    },
+    "cancellationScheduleObservations": {
+      "type": "object", "additionalProperties": false,
+      "required": ["literal_seeds", "derived_seed_count_per_family", "derived_seed_anchor_commit", "concurrency_levels", "cancellation_point_count", "derived_control_schedule_count", "derived_race_schedule_count", "total_observation_count", "complete_observation_count", "observation_closure_status", "vocabulary_coverage_status", "digest", "vocabulary", "coverage_assessments", "observations"],
+      "properties": {
+        "literal_seeds": {"const": [0, 1, 42, 18446744073709551615]},
+        "derived_seed_count_per_family": {"const": 256},
+        "derived_seed_anchor_commit": {"$ref": "#/$defs/commit"},
+        "concurrency_levels": {"const": [1, 2, 4, 8]},
+        "cancellation_point_count": {"type": "integer", "minimum": 1},
+        "derived_control_schedule_count": {"type": "integer", "minimum": 1},
+        "derived_race_schedule_count": {"type": "integer", "minimum": 1},
+        "total_observation_count": {"type": "integer", "minimum": 1},
+        "complete_observation_count": {"type": "integer", "minimum": 1},
+        "observation_closure_status": {"const": "FULLY_STRUCTURALLY_CLOSED"},
+        "vocabulary_coverage_status": {"enum": ["FULLY_OBSERVED", "PARTIAL_WITH_SCOPE_OUTS"]},
+        "digest": {"$ref": "#/$defs/digest"},
+        "vocabulary": {
+          "type": "object", "additionalProperties": false,
+          "required": ["RequestTaskState", "ChildWorkState", "FinalDelivery", "ConversationCommit", "EffectState", "CancellationInvocationOutcome"],
+          "properties": {
+            "RequestTaskState": {"$ref": "#/$defs/enumMembers"},
+            "ChildWorkState": {"$ref": "#/$defs/enumMembers"},
+            "FinalDelivery": {"$ref": "#/$defs/enumMembers"},
+            "ConversationCommit": {"$ref": "#/$defs/enumMembers"},
+            "EffectState": {"$ref": "#/$defs/enumMembers"},
+            "CancellationInvocationOutcome": {"$ref": "#/$defs/enumMembers"}
+          }
+        },
+        "coverage_assessments": {"type": "array", "minItems": 6, "maxItems": 6, "uniqueItems": true, "items": {"$ref": "#/$defs/vocabularyCoverageAssessment"}},
+        "observations": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/cancellationObservation"}}
+      }
+    },
+    "cancellationEvidenceRecord": {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_id", "hypothesis_id", "subject", "baseline_scope", "baseline_anchor_commit", "overlay_commit", "binding_commit", "vocabulary_names", "symbol_citations", "discovered_sites", "ownership_sites", "ownership_role_counts", "task_units", "cancellation_point_count", "contradiction_search", "schedule_observations", "turn_control_ruling", "commands", "ruling", "reviewer_status", "content_free_evidence"],
+      "properties": {
+        "record_id": {"const": "ER-H3-TASK-SUPERVISION"},
+        "hypothesis_id": {"const": "H3"},
+        "subject": {"$ref": "#/$defs/contentFreeText"},
+        "baseline_scope": {"const": "both-aligned"},
+        "baseline_anchor_commit": {"$ref": "#/$defs/commit"},
+        "overlay_commit": {"$ref": "#/$defs/commit"},
+        "binding_commit": {"type": "null"},
+        "vocabulary_names": {"const": ["CancellationInvocationOutcome", "ChildWorkState", "ConversationCommit", "EffectState", "FinalDelivery", "RequestTaskState"]},
+        "symbol_citations": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "discovered_sites": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/taskSupervisionSite"}},
+        "ownership_sites": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ownershipSite"}},
+        "ownership_role_counts": {
+          "type": "object", "additionalProperties": false,
+          "required": ["REGISTRATION", "TASK_GROUP", "CALLBACK", "TIMEOUT", "CANCELLATION_CATCH", "JOIN", "TASK_SET_MUTATION"],
+          "properties": {
+            "REGISTRATION": {"type": "integer", "minimum": 0}, "TASK_GROUP": {"type": "integer", "minimum": 0},
+            "CALLBACK": {"type": "integer", "minimum": 0}, "TIMEOUT": {"type": "integer", "minimum": 0},
+            "CANCELLATION_CATCH": {"type": "integer", "minimum": 0}, "JOIN": {"type": "integer", "minimum": 0},
+            "TASK_SET_MUTATION": {"type": "integer", "minimum": 0}
+          }
+        },
+        "task_units": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/taskUnitRecord"}},
+        "cancellation_point_count": {"type": "integer", "minimum": 1},
+        "contradiction_search": {"$ref": "#/$defs/contradictionSearch"},
+        "schedule_observations": {"$ref": "#/$defs/cancellationScheduleObservations"},
+        "turn_control_ruling": {
+          "type": "object", "additionalProperties": false,
+          "required": ["merged", "overlay"],
+          "properties": {"merged": {"enum": ["CANONICAL", "CANONICAL_BYPASSED", "INCOMPLETE"]}, "overlay": {"enum": ["CANONICAL", "CANONICAL_BYPASSED", "INCOMPLETE"]}}
+        },
+        "commands": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "ruling": {"$ref": "#/$defs/contentFreeText"},
+        "reviewer_status": {"enum": ["PENDING_G2", "ACCEPTED", "REJECTED", "SCOPED_OUT"]},
+        "content_free_evidence": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/evidence"}}
+      }
+    },
     "evidenceRecord": {
       "type": "object", "additionalProperties": false,
       "allOf": [{

@@ -460,7 +460,12 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 **Files:**
 
 - Create: `tests/unit/acp/test_plan1126_cancellation.py`
+- Create: `tools/plan1126_runtime_audit/cancellation.py`
+- Modify: `tools/plan1126_runtime_audit/{__init__,model,render}.py`
+- Modify: `tools/run_plan1126_runtime_audit.py`
+- Modify: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
 - Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.md`
 - Read only: `src/optimus/acp/{server,spec,lifecycle,outbound_writer}.py`
 
 **Interfaces:**
@@ -468,15 +473,15 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 - Consumes: derived `TASK_CREATE` and `CANCELLATION_POINT` sites plus H3/Task 4 record format.
 - Produces: `N_cancellation_points`, owned/escaped-child classifications, and per-point schedules across pre-start, running, delivery, settlement, and teardown phases.
 
-- [ ] **Step 1: Derive task and cancellation ownership.**
+- [x] **Step 1: Derive task and cancellation ownership.**
 
   Inventory `asyncio.create_task`, task groups, callbacks, thread/future submissions, timeout contexts, cancellation catches, joins, and task-set mutations. Each created unit records creator, owner, registration point, cancellation source, join/settlement point, and escape path.
 
-- [ ] **Step 2: Write the 256-seed race predicate.**
+- [x] **Step 2: Write the 256-seed race predicate.**
 
   For each discovered cancellation point, run level `1` as a separate control and concurrency levels `2`, `4`, and `8` as the race family. Replay the frozen corpus plus 256 derived schedules in each family. Require one terminal observation for request task, child work, delivery, conversation, and effect state. Preserve `asyncio.CancelledError` as cancellation rather than a generic internal failure. Record 768 concurrent plus 256 control schedules per point at this tier.
 
-- [ ] **Step 3: Run the exact predicate.**
+- [x] **Step 3: Run the exact predicate.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_plan1126_cancellation.py::test_turn_cancellation_races_256_seed_matrix -q
@@ -484,11 +489,11 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
   Expected: PASS only when every discovered point is scheduled and classified; runtime races may produce findings.
 
-- [ ] **Step 4: Publish H3 and supervision findings.**
+- [x] **Step 4: Publish H3 and supervision findings.**
 
   State whether `TurnControl` is canonical, bypassed, or incomplete on each baseline. Do not prescribe a new supervisor implementation. Add every newly failing schedule to the literal corpus without removing the commit-derived seed record.
 
-- [ ] **Step 5: Run the task-group tier and checkpoint it.**
+- [x] **Step 5: Run the task-group tier and checkpoint it.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_plan1126_cancellation.py tests/unit/acp/test_lifecycle.py tests/unit/acp/test_stdio_ndjson.py -q

@@ -77,11 +77,140 @@ def render_markdown(payload: Mapping[str, Any]) -> str:
         f"| {name.replace('_', ' ').title()} | {value} |"
         for name, value in sorted(canonical["discovered_multipliers"].items())
     )
+    cost = canonical["computed_run_cost"]
+    lines.extend([
+        "",
+        "## Computed run cost",
+        "",
+        "| Family | Count |",
+        "|---|---:|",
+        f"| Cancellation controls | {cost['cancellation_control_schedules']:,} |",
+        f"| Cancellation races (levels 2/4/8) | {cost['cancellation_schedules']:,} |",
+        f"| Queue admissions | {cost['queue_admissions']:,} |",
+        f"| Sink failure runs | {cost['sink_failure_runs']:,} |",
+        f"| Idempotent close invocations | {cost['idempotent_close_invocations']:,} |",
+        "",
+        "Measured scenario durations:",
+        "",
+        "| Scenario | p50 ms | p95 ms |",
+        "|---|---:|---:|",
+    ])
+    duration_names = sorted(set(cost["scenario_p50_ms"]) | set(cost["scenario_p95_ms"]))
+    if duration_names:
+        lines.extend(
+            f"| `{_safe_markdown(name)}` | {cost['scenario_p50_ms'][name]:.3f} | "
+            f"{cost['scenario_p95_ms'][name]:.3f} |"
+            for name in duration_names
+        )
+    else:
+        lines.append("| not yet measured | 0.000 | 0.000 |")
     lines.extend(["", "## Evidence records"])
     for record in canonical["evidence_records"]:
         observations = record["schedule_observations"]
         observation_rows = observations["observations"]
         contradiction = record["contradiction_search"]
+        if record["hypothesis_id"] == "H3":
+            inventory_counts = Counter(site["kind"] for site in record["discovered_sites"])
+            ownership_counts = Counter(item["classification"] for item in record["task_units"])
+            phase_counts = Counter(item["phase"] for item in observation_rows)
+            request_states = Counter(item["request_task_state"] for item in observation_rows)
+            child_states = Counter(item["child_work_state"] for item in observation_rows)
+            lines.extend([
+                "",
+                f"### `H3` — {_safe_markdown(record['subject'])}",
+                "",
+                "| Field | Value |",
+                "|---|---|",
+                f"| Record | `{record['record_id']}` |",
+                f"| Baseline scope | `{record['baseline_scope']}` |",
+                f"| Seed anchor (merged, not binding) | `{record['baseline_anchor_commit']}` |",
+                f"| Overlay identity | `{record['overlay_commit']}` |",
+                f"| Binding commit | `{record['binding_commit'] or 'not nominated'}` |",
+                f"| Reviewer status | `{record['reviewer_status']}` |",
+                f"| Derived cancellation points | {record['cancellation_point_count']} |",
+                f"| Created task/thread/future units | {len(record['task_units'])} |",
+                "",
+                "Inventory counts: " + ", ".join(
+                    f"`{name}`={count}" for name, count in sorted(inventory_counts.items())
+                ),
+                "",
+                "Ownership-role counts: " + ", ".join(
+                    f"`{name}`={count}" for name, count in sorted(record["ownership_role_counts"].items())
+                ),
+                "",
+                "Ownership classifications: " + ", ".join(
+                    f"`{name}`={count}" for name, count in sorted(ownership_counts.items())
+                ),
+                "",
+                "TurnControl ruling: " + ", ".join(
+                    f"`{name}`=`{value}`" for name, value in sorted(record["turn_control_ruling"].items())
+                ),
+                "",
+                f"Contradiction search: {contradiction['contradictory_site_count']} contradictory site(s) "
+                f"across {contradiction['searched_reference_count']} mechanically discovered references. "
+                f"{_safe_markdown(contradiction['conclusion'])}",
+                "",
+                f"Schedule observations replayed {len(observations['literal_seeds'])} frozen literal seeds and "
+                f"{observations['derived_seed_count_per_family']} commit-derived seeds in each point/level family.",
+                "",
+                f"Derived terminal cost: {observations['derived_control_schedule_count']:,} control schedules plus "
+                f"{observations['derived_race_schedule_count']:,} race schedules.",
+                "",
+                f"Observation closure: {observations['complete_observation_count']:,}/"
+                f"{observations['total_observation_count']:,} structurally closed records "
+                f"(`{observations['observation_closure_status']}`). This is record-shape closure, not "
+                "settled-vocabulary completeness.",
+                "",
+                f"Settled-vocabulary coverage: `{observations['vocabulary_coverage_status']}`.",
+                "",
+                "| Observation field | Settled type | Coverage | Observed | Missing | Owner | Next gate | Reason |",
+                "|---|---|---|---|---|---|---|---|",
+            ])
+            for assessment in observations["coverage_assessments"]:
+                observed = ", ".join(f"`{_safe_markdown(value)}`" for value in assessment["observed_values"])
+                missing = (
+                    ", ".join(f"`{_safe_markdown(value)}`" for value in assessment["missing_values"])
+                    or "none"
+                )
+                lines.append(
+                    f"| `{assessment['field_name']}` | `{assessment['type_name']}` | "
+                    f"`{assessment['status']}` | {observed} | {missing} | "
+                    f"{_safe_markdown(assessment['owner'] or 'not applicable')} | "
+                    f"{_safe_markdown(assessment['next_gate'] or 'not applicable')} | "
+                    f"{_safe_markdown(assessment['reason'] or 'All declared values were observed.')} |"
+                )
+            lines.extend([
+                "",
+                "Cancellation phase counts: " + ", ".join(
+                    f"`{name}`={count}" for name, count in sorted(phase_counts.items())
+                ),
+                "",
+                "Request task terminal states: " + ", ".join(
+                    f"`{name}`={count}" for name, count in sorted(request_states.items())
+                ),
+                "",
+                "Child work terminal states: " + ", ".join(
+                    f"`{name}`={count}" for name, count in sorted(child_states.items())
+                ),
+                "",
+                f"Schedule observation digest: `{observations['digest']}`",
+                "",
+                "Commands:",
+                "",
+            ])
+            lines.extend(f"- `{_safe_markdown(command)}`" for command in record["commands"])
+            lines.extend([
+                "",
+                f"Ruling: {_safe_markdown(record['ruling'])}",
+                "",
+                "Content-free evidence:",
+                "",
+            ])
+            lines.extend(
+                f"- `{item['evidence_id']}` (`{item['baseline_scope']}`): `{item['digest']}`"
+                for item in record["content_free_evidence"]
+            )
+            continue
         phase_counts = Counter(site["delivery_phase"] for site in record["discovered_sites"])
         site_classifications = Counter(site["classification"] for site in record["discovered_sites"])
         scenario_counts = Counter(item["scenario"] for item in observation_rows)

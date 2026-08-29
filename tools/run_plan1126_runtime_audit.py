@@ -6,8 +6,12 @@ import argparse
 import hashlib
 import json
 import os
+import platform
+import statistics
+import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -17,11 +21,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from tools.plan1126_runtime_audit.checkpoints import CheckpointStore  # noqa: E402
 from tools.plan1126_runtime_audit.corpus import literal_seeds  # noqa: E402
 from tools.plan1126_runtime_audit.inventory import discover_sites  # noqa: E402
 from tools.plan1126_runtime_audit.model import AuditArtifact, PrerequisiteStatus  # noqa: E402
 from tools.plan1126_runtime_audit.provenance import ExpectedArtifactIdentity, verify_running_artifact  # noqa: E402
 from tools.plan1126_runtime_audit.render import render_markdown  # noqa: E402
+from tools.plan1126_runtime_audit.repeatability import RepeatabilityStatus, classify_repeatability  # noqa: E402
 from tools.plan1126_runtime_audit.source import GitCommitSource, SourceTree  # noqa: E402
 
 _SCHEMA_PATH = ROOT / "tests" / "fixtures" / "plan1126_runtime_audit" / "audit-artifact.schema.json"
@@ -186,6 +192,9 @@ def build_parser() -> argparse.ArgumentParser:
     offline = subparsers.add_parser("offline")
     offline.add_argument("--baseline-report")
     offline.add_argument("--prerequisite-report")
+    offline.add_argument("--artifact")
+    offline.add_argument("--checkpoint")
+    offline.add_argument("--task5-group-repeats", type=int, default=0)
     offline.add_argument("--output")
     for command in ("live-redis", "acpx", "sdk"):
         _add_live_options(subparsers.add_parser(command))
@@ -254,6 +263,51 @@ def _verify_artifact(path: str) -> AuditArtifact:
         } for finding in rebuilt.findings)
         if actual_findings != expected_findings:
             raise ValueError("H4 findings do not match immutable-source rebuild")
+    h3_records = tuple(record for record in artifact.evidence_records if record.hypothesis_id == "H3")
+    if h3_records:
+        from tools.plan1126_runtime_audit.cancellation import (
+            H3_SOURCE_PATHS,
+            build_h3_audit_artifact,
+        )
+        from tools.plan1126_runtime_audit.delivery_characterization import H4_SOURCE_PATHS
+
+        merged_source = GitCommitSource(artifact.merged_commit, repository=ROOT)
+        overlay_source = GitCommitSource(artifact.overlay_commit, repository=ROOT)
+        paths = tuple(sorted(set(H3_SOURCE_PATHS) | set(H4_SOURCE_PATHS)))
+        merged = SourceTree({path: merged_source.read_text(path) for path in paths})
+        overlay = SourceTree({path: overlay_source.read_text(path) for path in paths})
+        rebuilt = build_h3_audit_artifact(
+            merged=merged,
+            overlay=overlay,
+            merged_commit=artifact.merged_commit,
+            overlay_commit=artifact.overlay_commit,
+        )
+        expected_h3 = next(record for record in rebuilt.evidence_records if record.hypothesis_id == "H3")
+        actual_record = h3_records[0].to_dict()
+        expected_record = expected_h3.to_dict()
+        mechanical_record_fields = set(expected_record) - {"ruling", "reviewer_status"}
+        if {
+            field: actual_record[field] for field in mechanical_record_fields
+        } != {
+            field: expected_record[field] for field in mechanical_record_fields
+        }:
+            raise ValueError("H3 evidence record does not match immutable-source rebuild")
+        actual_h3_findings = tuple(
+            finding.to_dict()
+            for finding in sorted(
+                (item for item in artifact.findings if item.finding_id.startswith("H3-")),
+                key=lambda item: item.finding_id,
+            )
+        )
+        expected_h3_findings = tuple(
+            finding.to_dict()
+            for finding in sorted(
+                (item for item in rebuilt.findings if item.finding_id.startswith("H3-")),
+                key=lambda item: item.finding_id,
+            )
+        )
+        if actual_h3_findings != expected_h3_findings:
+            raise ValueError("H3 findings do not match immutable-source rebuild")
     return artifact
 
 
@@ -431,7 +485,154 @@ def _validate_offline_intakes(
     return typed_rows, statuses, seeds
 
 
+_TASK5_GROUP_COMMAND = (
+    "uv", "run", "--frozen", "pytest",
+    "tests/unit/acp/test_plan1126_cancellation.py",
+    "tests/unit/acp/test_lifecycle.py",
+    "tests/unit/acp/test_stdio_ndjson.py",
+    "-q",
+)
+_TASK5_HARNESS_PATHS = (
+    "tests/unit/acp/test_plan1126_cancellation.py",
+    "tests/unit/acp/test_lifecycle.py",
+    "tests/unit/acp/test_stdio_ndjson.py",
+    "tools/plan1126_runtime_audit/cancellation.py",
+    "tools/plan1126_runtime_audit/model.py",
+    "tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json",
+    "tools/run_plan1126_runtime_audit.py",
+    "uv.lock",
+)
+
+
+def _task5_harness_fingerprint() -> str:
+    digest = hashlib.sha256()
+    for relative in _TASK5_HARNESS_PATHS:
+        path = ROOT / relative
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _task5_provenance_fingerprint() -> str:
+    payload = {
+        "executable": sys.executable,
+        "platform": platform.platform(),
+        "python": platform.python_version(),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()
+
+
+def _run_task5_group_repeats(args: argparse.Namespace) -> int:
+    if args.task5_group_repeats != 25:
+        _emit("INVALID", ("task5_group_repeats_must_equal_25",))
+        return 1
+    if not args.artifact or not args.checkpoint:
+        _emit("UNRUN", ("artifact_and_checkpoint_required",))
+        return 0
+    try:
+        artifact = _verify_artifact(args.artifact)
+    except (OSError, ValueError, json.JSONDecodeError):
+        _emit("INVALID", ("artifact_invalid",))
+        return 1
+    if not any(record.hypothesis_id == "H3" for record in artifact.evidence_records):
+        _emit("INVALID", ("h3_evidence_required",))
+        return 1
+
+    store = CheckpointStore(args.checkpoint)
+    checkpoint = store.read()
+    artifact_digest = hashlib.sha256(
+        json.dumps(artifact.to_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()
+    harness_fingerprint = _task5_harness_fingerprint()
+    provenance_fingerprint = _task5_provenance_fingerprint()
+    command_text = " ".join(_TASK5_GROUP_COMMAND)
+    completed_entries = {
+        key: value
+        for key, value in checkpoint.entries.items()
+        if key.startswith("task5-group-repeat-")
+        and isinstance(value, Mapping)
+        and value.get("artifact_digest") == artifact_digest
+        and value.get("command") == command_text
+        and value.get("harness_fingerprint") == harness_fingerprint
+        and value.get("provenance_fingerprint") == provenance_fingerprint
+        and value.get("status") == "PASS"
+    }
+    for repeat_index in range(25):
+        record_id = f"task5-group-repeat-{repeat_index + 1:02d}"
+        if record_id in completed_entries:
+            continue
+        started = time.perf_counter()
+        completed = subprocess.run(
+            list(_TASK5_GROUP_COMMAND),
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+        duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
+        result = {
+            "artifact_digest": artifact_digest,
+            "command": command_text,
+            "duration_ms": duration_ms,
+            "harness_fingerprint": harness_fingerprint,
+            "platform": platform.platform(),
+            "provenance_fingerprint": provenance_fingerprint,
+            "python": platform.python_version(),
+            "returncode": completed.returncode,
+            "status": "PASS" if completed.returncode == 0 else "FAIL",
+        }
+        checkpoint = store.append(record_id, result, expected_revision=checkpoint.revision)
+        if completed.returncode != 0:
+            _emit("INVALID", (f"{record_id}_failed",))
+            return 1
+
+    final_checkpoint = store.read()
+    entries = [
+        value
+        for key, value in sorted(final_checkpoint.entries.items())
+        if key.startswith("task5-group-repeat-")
+        and isinstance(value, Mapping)
+        and value.get("artifact_digest") == artifact_digest
+        and value.get("command") == command_text
+        and value.get("harness_fingerprint") == harness_fingerprint
+        and value.get("provenance_fingerprint") == provenance_fingerprint
+        and value.get("status") == "PASS"
+    ]
+    if len(entries) != 25:
+        _emit("INVALID", ("task5_group_checkpoint_incomplete",))
+        return 1
+    durations = sorted(float(item["duration_ms"]) for item in entries)
+    repeatability = classify_repeatability(
+        outcomes=[{"returncode": item["returncode"], "status": item["status"]} for item in entries],
+        harness_fingerprints=[str(item["harness_fingerprint"]) for item in entries],
+        provenance_fingerprints=[str(item["provenance_fingerprint"]) for item in entries],
+    )
+    if repeatability.status is not RepeatabilityStatus.STABLE:
+        _emit("INVALID", (f"task5_repeatability={repeatability.status.value}",))
+        return 1
+    p95_index = max(0, __import__("math").ceil(len(durations) * 0.95) - 1)
+    _emit(
+        "COMPLETE",
+        (
+            f"repeat_count={len(entries)}",
+            f"p50_ms={statistics.median(durations):.3f}",
+            f"p95_ms={durations[p95_index]:.3f}",
+            f"repeatability={repeatability.status.value}",
+            f"harness_fingerprint={harness_fingerprint}",
+            f"provenance_fingerprint={provenance_fingerprint}",
+        ),
+    )
+    return 0
+
+
 def _run_offline(args: argparse.Namespace) -> int:
+    if args.task5_group_repeats:
+        return _run_task5_group_repeats(args)
     if not args.baseline_report or not args.prerequisite_report:
         _emit("UNRUN", ("intake_reports_required",))
         return 0

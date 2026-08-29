@@ -28,8 +28,8 @@ This report is deterministically regenerated from the canonical JSON artifact.
 
 | Classification | Count |
 |---|---:|
-| `CANONICAL` | 2 |
-| `CANONICAL_BYPASSED` | 1 |
+| `CANONICAL` | 4 |
+| `CANONICAL_BYPASSED` | 2 |
 | `DUPLICATED` | 0 |
 | `CONTRADICTORY` | 1 |
 | `MISSING` | 0 |
@@ -43,12 +43,88 @@ This report is deterministically regenerated from the canonical JSON artifact.
 
 | Multiplier | Count |
 |---|---:|
-| Cancellation Points | 0 |
+| Cancellation Points | 8 |
 | Close Paths | 0 |
 | Queues | 0 |
 | Sinks | 0 |
 
+## Computed run cost
+
+| Family | Count |
+|---|---:|
+| Cancellation controls | 2,048 |
+| Cancellation races (levels 2/4/8) | 6,144 |
+| Queue admissions | 0 |
+| Sink failure runs | 0 |
+| Idempotent close invocations | 0 |
+
+Measured scenario durations:
+
+| Scenario | p50 ms | p95 ms |
+|---|---:|---:|
+| `task5-group` | 26929.449 | 27187.825 |
+
 ## Evidence records
+
+### `H3` — Task supervision ownership and cancellation settlement
+
+| Field | Value |
+|---|---|
+| Record | `ER-H3-TASK-SUPERVISION` |
+| Baseline scope | `both-aligned` |
+| Seed anchor (merged, not binding) | `5ea8f8f71548eb05a8562a10e98667e3d2061c4d` |
+| Overlay identity | `fac32284888850bacde93815265cbabe3afd4663` |
+| Binding commit | `not nominated` |
+| Reviewer status | `PENDING_G2` |
+| Derived cancellation points | 8 |
+| Created task/thread/future units | 12 |
+
+Inventory counts: `CANCELLATION_POINT`=16, `TASK_CREATE`=24
+
+Ownership-role counts: `CALLBACK`=2, `CANCELLATION_CATCH`=12, `JOIN`=22, `REGISTRATION`=8, `TASK_GROUP`=0, `TASK_SET_MUTATION`=4, `TIMEOUT`=0
+
+Ownership classifications: `ESCAPED_CHILD`=1, `OWNED`=11
+
+TurnControl ruling: `merged`=`CANONICAL`, `overlay`=`CANONICAL`
+
+Contradiction search: 0 contradictory site(s) across 40 mechanically discovered references. Independent syntax-family comparison found no cross-baseline ta[REDACTED] contradiction.
+
+Schedule observations replayed 4 frozen literal seeds and 256 commit-derived seeds in each point/level family.
+
+Derived terminal cost: 2,048 control schedules plus 6,144 race schedules.
+
+Observation closure: 8,320/8,320 structurally closed records (`FULLY_STRUCTURALLY_CLOSED`). This is record-shape closure, not settled-vocabulary completeness.
+
+Settled-vocabulary coverage: `PARTIAL_WITH_SCOPE_OUTS`.
+
+| Observation field | Settled type | Coverage | Observed | Missing | Owner | Next gate | Reason |
+|---|---|---|---|---|---|---|---|
+| `child_work_state` | `ChildWorkState` | `SCOPED_OUT` | `failed_effect_unknown`, `succeeded`, `suppressed` | `failed_no_effect` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 per-group child-failure characterization | Task 5 executes success, suppression, and cancellation-freeze paths; it does not inject an operational failed_no_effect child result. |
+| `conversation_commit` | `ConversationCommit` | `SCOPED_OUT` | `not_committed` | `committed` | P11-FEAT-ACP-RUNTIME-HARDENING | G5 cancellation-to-conversation persistence characterization | Task 5 terminates the request through cancellation and transport teardown and never executes conversation persistence. |
+| `effect_state` | `EffectState` | `SCOPED_OUT` | `complete`, `indeterminate`, `none` | `partial` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 multi-work cancellation characterization | Each Task 5 schedule owns one effectful directive; the partial value requires a mixed multi-directive effect set. |
+| `final_delivery` | `FinalDelivery` | `SCOPED_OUT` | `ambiguous`, `flushed`, `not_attempted` | `conclusive_failure`, `partial` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 per-group delivery-failure characterization | Task 5 cancellation schedules do not inject conclusive writer failure or a mixed multi-message terminal set, so those delivery values are unreachable here. |
+| `invocation_outcomes` | `CancellationInvocationOutcome` | `SCOPED_OUT` | `accepted`, `ignored_after_cutoff`, `permission_already_resolved`, `permission_resolved`, `task_cancel_requested`, `teardown_ambiguous`, `teardown_flushed`, `teardown_not_attempted` | `task_already_terminal`, `teardown_conclusive_failure`, `teardown_partial` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 per-group pre-terminal and delivery-failure characterization | Task 5 starts an active request before cancellation and does not inject conclusive writer failure or mixed terminal sends, leaving pre-terminal task and those teardown outcomes unreachable. |
+| `request_task_state` | `RequestTaskState` | `FULLY_OBSERVED` | `cancelled`, `completed` | none | not applicable | not applicable | All declared values were observed. |
+
+Cancellation phase counts: `delivery`=1610, `pre-start`=1722, `running`=1679, `settlement`=1692, `teardown`=1617
+
+Request task terminal states: `cancelled`=4975, `completed`=3345
+
+Child work terminal states: `failed_effect_unknown`=2861, `succeeded`=3737, `suppressed`=1722
+
+Schedule observation digest: `709e9ca0b836bae349ea37eb6b866625a13a60c004442ac8a4f2c0b57bf8909f`
+
+Commands:
+
+- `uv run --frozen pytest tests/unit/acp/test_plan1126_cancellation.py::test_task_supervision_inventory_is_independent_complete_and_receiver_safe -q`
+- `uv run --frozen pytest tests/unit/acp/test_plan1126_cancellation.py::test_turn_cancellation_races_256_seed_matrix -q`
+
+Ruling: TurnControl is canonical on merged and overlay baselines. Owned subordinate paths and any escaped child submissions are classified separately in the supervision inventory.
+
+Content-free evidence:
+
+- `H3-TASK-INVENTORY` (`both-aligned`): `dcf7b80ebb6d681da0da4dd4c576d513f07b7b32169da7a5690020e57c0e57e2`
+- `H3-CANCELLATION-OBSERVATIONS` (`both-aligned`): `709e9ca0b836bae349ea37eb6b866625a13a60c004442ac8a4f2c0b57bf8909f`
 
 ### `H4` — Delivery settlement from queue admission through effect and conversation commit
 
@@ -120,6 +196,9 @@ Content-free evidence:
 
 | ID | Classification | Baseline | Owner |
 |---|---|---|---|
+| `H3-TASK-ESCAPED_CHILD-both-aligned` | `CANONICAL_BYPASSED` | `both-aligned` | P11-FEAT-ACP-RUNTIME-HARDENING |
+| `H3-TASK-OWNED-both-aligned` | `CANONICAL` | `both-aligned` | P11-FEAT-ACP-RUNTIME-HARDENING |
+| `H3-TURN-CONTROL-both-aligned` | `CANONICAL` | `both-aligned` | P11-FEAT-ACP-RUNTIME-HARDENING |
 | `H4-CANONICAL-both-aligned` | `CANONICAL` | `both-aligned` | Plan 11.26 / P11-FEAT-ZED-RESUME for baseline reconciliation |
 | `H4-CANONICAL-both-divergent` | `CANONICAL` | `both-divergent` | Plan 11.26 / P11-FEAT-ZED-RESUME for baseline reconciliation |
 | `H4-CANONICAL_BYPASSED-both-aligned` | `CANONICAL_BYPASSED` | `both-aligned` | Plan 11.26 / P11-FEAT-ZED-RESUME for baseline reconciliation |
