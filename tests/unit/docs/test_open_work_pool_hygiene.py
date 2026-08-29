@@ -250,7 +250,7 @@ EXPECTED_FEATURE_SCOPE_TOKENS = {
         "plan-11-25-multi-turn-release-review.md",
     ),
     "P11-FEAT-ACP-RUNTIME-HARDENING": (
-        "Plan 11.26 assigned; planning complete, execution blocked",
+        "Plan 11.26 audit execution active; Task 0 / G0 in progress",
         "plan-11-26-acp-runtime-hardening-audit-design.md",
         "plan-11-26-acp-runtime-hardening-audit-implementation.md",
         "concurrency",
@@ -1396,6 +1396,30 @@ def test_feature_status_is_canonical_and_state_prose_lives_in_scope_detail() -> 
     assert scopes.keys() == EXPECTED_FEATURE_SCOPE_TOKENS.keys()
     for identity, expected_tokens in EXPECTED_FEATURE_SCOPE_TOKENS.items():
         assert all(token in scopes[identity] for token in expected_tokens)
+
+
+def test_plan_11_26_runtime_audit_has_single_live_custody() -> None:
+    pool = _read(OPTIMUS_POOL)
+    tables = {identity: rows for identity, _header, rows in _markdown_tables(pool)}
+    registry_rows = tables[("Live implementation plan registry", 0)]
+    plan_rows = [
+        row
+        for row in registry_rows
+        if "2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md"
+        in row["Plan"]
+    ]
+
+    assert len(plan_rows) == 1
+    plan_row = plan_rows[0]
+    assert plan_row["State"] == "`Active`"
+    assert plan_row["Backlog owner"] == "`P11-FEAT-ACP-RUNTIME-HARDENING`"
+    assert "Task 0" in plan_row["Next gate"]
+    assert "G0" in plan_row["Next gate"]
+
+    feature_row = _feature_row(pool, "P11-FEAT-ACP-RUNTIME-HARDENING")
+    assert "Plan 11.26" in feature_row
+    assert "audit-and-contract only" in feature_row
+    assert "does not authorize production fixes" in feature_row
 
 
 def test_zed_session_load_seal_remains_historical_throughout_the_living_pool() -> None:

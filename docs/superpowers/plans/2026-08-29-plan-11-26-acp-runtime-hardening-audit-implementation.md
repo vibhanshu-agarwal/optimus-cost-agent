@@ -136,8 +136,9 @@ Every `unknown` prerequisite is resolved by Task 1 or Task 3 before a dependent 
 | `test_telemetry_sink_failures_are_contained` | `tests/unit/telemetry/test_plan1126_runtime_contract.py` | `uv run --frozen pytest tests/unit/telemetry/test_plan1126_runtime_contract.py::test_telemetry_sink_failures_are_contained -q` |
 | `test_regression_corpus_replays_frozen_literal_seeds` | `tests/unit/tools/plan1126_runtime_audit/test_corpus.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_corpus.py::test_regression_corpus_replays_frozen_literal_seeds -q` |
 | `test_computed_cost_includes_cancellation_queue_sink_and_close_multipliers` | `tests/unit/tools/plan1126_runtime_audit/test_cost.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_cost.py::test_computed_cost_includes_cancellation_queue_sink_and_close_multipliers -q` |
+| `test_zed_manual_observation_bundle_is_complete` | `tests/e2e/acp/test_plan1126_clients_live.py` | `uv run --frozen pytest tests/e2e/acp/test_plan1126_clients_live.py::test_zed_manual_observation_bundle_is_complete -m "e2e and requires_zed" -v` |
 
-All 18 names are acceptance predicates for the audit mechanism. A predicate passes when the scheduled behavior is exhaustively observed and truthfully classified; it does not force the current runtime to exhibit a desired future behavior.
+The first 18 rows are the approved design predicates for the audit mechanism. The 19th supplemental row gates the Task 11 manual Zed observation bundle. A predicate passes when the scheduled behavior is exhaustively observed and truthfully classified; it does not force the current runtime to exhibit a desired future behavior.
 
 ---
 
@@ -146,6 +147,7 @@ All 18 names are acceptance predicates for the audit mechanism. A predicate pass
 **Files:**
 
 - Modify: `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md`
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
 - Modify: `tests/unit/docs/test_open_work_pool_hygiene.py`
 - Create: `reports/plan-11-26-baseline-intake.json`
 - Read only: `docs/superpowers/reviews/plan-11-26-review-checkpoints.md`
@@ -155,7 +157,7 @@ All 18 names are acceptance predicates for the audit mechanism. A predicate pass
 - Consumes: explicit execution authorization; clean branch `agent/codex/plan-11-26-acp-runtime-hardening-audit`; approved spec commit `d4ac57887df3bcf078cdceebea68143120679cda`; checkpoint rulings C1-C3.
 - Produces: canonical `Active` Plan 11.26 registry custody and a sanitized baseline record containing `merged_commit`, `overlay_commit`, `binding_commit`, `baseline_reconciliation_status`, and per-hypothesis scope.
 
-- [ ] **Step 1: Verify approval, checkpoint, branch, and immutable baseline facts.**
+- [x] **Step 1: Verify approval, checkpoint, branch, and immutable baseline facts.**
 
   Read the checkpoint Current State first. Then run:
 
@@ -170,11 +172,11 @@ All 18 names are acceptance predicates for the audit mechanism. A predicate pass
 
   Expected: clean Plan 11.26 branch; `d4ac5788` is an ancestor of the current plan-line HEAD; merged base is an ancestor; `fac32284` is not on `main` and is present only on the recorded runtime-overlay line. Stop if Git facts, backlog, or checkpoint disagree.
 
-- [ ] **Step 2: Write the RED custody assertions.**
+- [x] **Step 2: Write the RED custody assertions.**
 
   Add `test_plan_11_26_runtime_audit_has_single_live_custody` to `tests/unit/docs/test_open_work_pool_hygiene.py`. It must require one live-registry row linking this plan, state `Active`, owner `P11-FEAT-ACP-RUNTIME-HARDENING`, and a next gate naming Task 0/G0. It must also require the feature row to name Plan 11.26, audit-only scope, and the prohibition on production fixes.
 
-- [ ] **Step 3: Prove the custody test is RED for the pre-execution `Blocked` state.**
+- [x] **Step 3: Prove the custody test is RED for the pre-execution `Blocked` state.**
 
   Run:
 
@@ -184,24 +186,24 @@ All 18 names are acceptance predicates for the audit mechanism. A predicate pass
 
   Expected: FAIL because plan authoring registered the plan as `Blocked` pending review/execution authority, not because the plan is missing or duplicated.
 
-- [ ] **Step 4: Claim the lane and record the baseline intake.**
+- [x] **Step 4: Claim the lane and record the baseline intake.**
 
   Change the one registry row to `Active`; set its next gate to G0 baseline/review intake. Update the feature row to state that Plan 11.26 owns audit execution but not production remediation. Create `reports/plan-11-26-baseline-intake.json` with exact Git refs, `binding_commit: null`, reconciliation status `UNRESOLVED`, and H1-H8 baseline scopes copied from the approved spec.
 
-- [ ] **Step 5: Run the complete plan-hygiene gate.**
+- [x] **Step 5: Run the complete plan-hygiene gate.**
 
   ```powershell
-  uv run --frozen pytest tests/unit/docs/test_open_work_pool_hygiene.py tests/unit/docs/test_plan_directory_hygiene.py -q
+  uv run --frozen pytest tests/unit/docs -q
   ```
 
   Expected: PASS, including this plan's prerequisites table and single live-registry custody.
 
-- [ ] **Step 6: Obtain G0 reviewer acceptance and commit only with authorization.**
+- [x] **Step 6: Obtain G0 reviewer acceptance and commit only with authorization.**
 
   The reviewer verifies checkpoint alignment, all scope-outs, and the baseline JSON. Then run `uv run --frozen ruff check .` and `git diff --check`. With explicit commit approval only:
 
   ```powershell
-  git add docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md tests/unit/docs/test_open_work_pool_hygiene.py reports/plan-11-26-baseline-intake.json
+  git add docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md tests/unit/docs/test_open_work_pool_hygiene.py reports/plan-11-26-baseline-intake.json
   git commit -m "docs(plan-11.26): claim runtime audit custody"
   ```
 
@@ -851,7 +853,7 @@ Plan 11.26 may complete as `PASS_WITH_FINDINGS`. It does not claim Plan 11.7 clo
 - **Spec coverage:** Tasks 0-12 map one-for-one to the approved sequence. The file map covers shared schema/inventory/provenance/checkpoint/corpus/cost infrastructure, all vertical runtime segments, all horizontal contracts, independent comparison qualification, tiered evidence, and canonical disposition.
 - **Cross-cutting centralization:** Common vocabularies and mechanics live in one audit package; concern-specific rules/tests plug into it without creating competing artifact, baseline, classification, seed, provenance, or checkpoint approaches.
 - **Code-quality coverage:** Shared AST/token inventory covers duplicate logic and reviewer-facing invariant comments/docstrings; repeated tiers classify flaky outcomes with one common fingerprinting model.
-- **Predicate coverage:** The Planned Predicate Map lists all 18 approved names exactly once with one concrete file and one exact command each.
+- **Predicate coverage:** The Planned Predicate Map lists all 18 approved names exactly once plus the supplemental Zed-bundle gate, each with one concrete file and one exact command.
 - **Prerequisite coverage:** All `unknown` rows resolve in Task 1 or Task 3 before dependents. Binding/lease/resume evidence is Plan 11.7-owned; unauthorized live rows remain operator-owned and dormant.
 - **Production boundary:** No task modifies `src/`. Characterization can pass with findings, and remediation is deferred to later independently numbered plans.
 - **Custody:** The canonical backlog is the only live registry. Task 0 claims execution; Task 12 records disposition and candidate next gates while keeping the feature open.

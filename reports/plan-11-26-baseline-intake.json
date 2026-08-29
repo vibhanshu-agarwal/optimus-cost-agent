@@ -1,0 +1,117 @@
+{
+  "schema_version": "plan-11-26-baseline-intake-v1",
+  "plan_id": "11.26",
+  "recorded_at_utc": "2026-08-29T08:33:27Z",
+  "execution_authority": {
+    "status": "AUTHORIZED",
+    "authorized_by": "Vibhanshu",
+    "authorized_at_utc": "2026-08-29T08:29:00Z",
+    "scope": "Plan 11.26 audit execution",
+    "excluded": [
+      "push",
+      "pull_request",
+      "merge",
+      "evidence_promotion",
+      "zed_live",
+      "acpx_live",
+      "sdk_or_harness_live",
+      "redis_mutation",
+      "gateway_or_model_calls",
+      "paid_calls"
+    ]
+  },
+  "plan_line": {
+    "branch": "agent/codex/plan-11-26-acp-runtime-hardening-audit",
+    "head_commit": "775e3e7e87d99ab0b108fa2952a9d2d4eae27b94",
+    "design_commit": "d4ac57887df3bcf078cdceebea68143120679cda",
+    "fork_commit": "5ea8f8f71548eb05a8562a10e98667e3d2061c4d",
+    "worktree_clean_at_intake": true
+  },
+  "merged_baseline": {
+    "ref": "main",
+    "commit": "5ea8f8f71548eb05a8562a10e98667e3d2061c4d",
+    "is_ancestor_of_plan_head": true,
+    "authority": "binding for merged and both-aligned findings available at intake"
+  },
+  "runtime_overlay": {
+    "accepted_runtime_commit": "fac32284888850bacde93815265cbabe3afd4663",
+    "containing_refs": [
+      "agent/claude/plan-11-7-zed-resume-runtime"
+    ],
+    "containing_ref_tip": "f8e7e06c9c59f3adf50527f757f2c58b9b83795f",
+    "is_ancestor_of_main": false,
+    "authority": "provisional overlay only"
+  },
+  "observed_plan_11_7_refs": [
+    {
+      "ref": "agent/claude/plan-11-7-v2-task0",
+      "tip": "fc80403060f578986c287686c27d935a8043dc5a"
+    },
+    {
+      "ref": "agent/claude/plan-11-7-v3-task0",
+      "tip": "6208177b55237132c4087652de87c78f21159fb2"
+    },
+    {
+      "ref": "agent/claude/plan-11-7-zed-resume-runtime",
+      "tip": "f8e7e06c9c59f3adf50527f757f2c58b9b83795f"
+    },
+    {
+      "ref": "agent/cursor/p11-feat-zed-resume",
+      "tip": "128af65c851bd9f6eeffe54b01484a7a5650163f"
+    },
+    {
+      "ref": "agent/cursor/plan-11-7-zed-resume",
+      "tip": "79cd37cf37b2740f7580b2ed3859c0401a47f6a4"
+    },
+    {
+      "ref": "codex/plan-11-7-v2",
+      "tip": "c26928673cf03759c509c982e1e7a355ee6e9f46"
+    },
+    {
+      "ref": "codex/plan-11-7-v3",
+      "tip": "f6bd17069b906c74e7d6ba28ecd319354b5123b6"
+    },
+    {
+      "ref": "docs/plan-11-7-status-refresh",
+      "tip": "9467df26603a88a4adce1057dea7725f925441f6"
+    },
+    {
+      "ref": "origin/agent/cursor/p11-feat-zed-resume",
+      "tip": "128af65c851bd9f6eeffe54b01484a7a5650163f"
+    },
+    {
+      "ref": "origin/codex/plan-11-7-v2",
+      "tip": "c26928673cf03759c509c982e1e7a355ee6e9f46"
+    },
+    {
+      "ref": "origin/codex/plan-11-7-v3",
+      "tip": "f6bd17069b906c74e7d6ba28ecd319354b5123b6"
+    },
+    {
+      "ref": "origin/docs/plan-11-7-status-refresh",
+      "tip": "9467df26603a88a4adce1057dea7725f925441f6"
+    }
+  ],
+  "binding_commit": null,
+  "baseline_reconciliation_status": "UNRESOLVED",
+  "hypotheses": {
+    "H1": "both-divergent",
+    "H2": "overlay",
+    "H3": "both-aligned",
+    "H4": "both-aligned",
+    "H5": "both-divergent",
+    "H6": "merged",
+    "H7": "merged",
+    "H8": "merged"
+  },
+  "binding_scope_out": {
+    "owner": "P11-FEAT-ZED-RESUME",
+    "reason": "Plan 11.7 has not nominated a binding integration candidate",
+    "applies_to": [
+      "binding_baseline_findings",
+      "overlay_dependent_findings",
+      "lease_evidence",
+      "live_resume_evidence"
+    ]
+  }
+}
