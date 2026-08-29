@@ -35,11 +35,21 @@ from .model import (
     PrerequisiteStatus,
     ReviewerStatus,
     ScheduleObservationSummary,
+    ScopeOutRegisterEntry,
     VocabularyCoverageAssessment,
     VocabularyCoverageStatus,
 )
 from .provenance import ExpectedArtifactIdentity, verify_running_artifact
 from .repeatability import classify_repeatability
+from .shutdown import (
+    ShutdownEvidenceRecord,
+    ShutdownInventory,
+    ShutdownObservationSummary,
+    ShutdownScheduleObservation,
+    build_h5_audit_artifact,
+    discover_shutdown_inventory,
+    shutdown_schedule_observations,
+)
 from .source import GitCommitSource, SourceTree
 
 __all__ = [
@@ -70,6 +80,11 @@ __all__ = [
     "PrerequisiteStatus",
     "ReviewerStatus",
     "ScheduleObservationSummary",
+    "ScopeOutRegisterEntry",
+    "ShutdownEvidenceRecord",
+    "ShutdownInventory",
+    "ShutdownObservationSummary",
+    "ShutdownScheduleObservation",
     "SourceTree",
     "TaskSupervisionInventory",
     "VocabularyCoverageAssessment",
@@ -77,6 +92,7 @@ __all__ = [
     "classify_repeatability",
     "build_h4_audit_artifact",
     "build_h3_audit_artifact",
+    "build_h5_audit_artifact",
     "cancellation_schedule_observations",
     "compute_cost",
     "derived_seed",
@@ -84,7 +100,9 @@ __all__ = [
     "discover_delivery_sites",
     "discover_sites",
     "discover_task_supervision",
+    "discover_shutdown_inventory",
     "literal_seeds",
     "qualify_client",
+    "shutdown_schedule_observations",
     "verify_running_artifact",
 ]

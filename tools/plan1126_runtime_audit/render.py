@@ -211,6 +211,81 @@ def render_markdown(payload: Mapping[str, Any]) -> str:
                 for item in record["content_free_evidence"]
             )
             continue
+        if record["hypothesis_id"] == "H5":
+            cause_counts = Counter(item["terminal_cause"] for item in observation_rows)
+            outcome_counts = Counter(item["close_outcome"] for item in observation_rows)
+            lines.extend([
+                "",
+                f"### `H5` — {_safe_markdown(record['subject'])}",
+                "",
+                "| Field | Value |",
+                "|---|---|",
+                f"| Record | `{record['record_id']}` |",
+                f"| Baseline scope | `{record['baseline_scope']}` |",
+                f"| Reviewer status | `{record['reviewer_status']}` |",
+                f"| Derived close paths | {record['close_path_count']} |",
+                f"| Scheduled merged close paths | {observations['close_path_count']} |",
+                f"| Raw observations | {observations['total_observation_count']:,} |",
+                "",
+                "S1 serving RedisRuntime: " + ", ".join(
+                    f"`{name}`=`{value}`"
+                    for name, value in sorted(record["s1_redis_runtime_ruling"].items())
+                ),
+                "",
+                "Shutdown order: " + "; ".join(
+                    f"`{name}`: " + " → ".join(f"`{_safe_markdown(value)}`" for value in order)
+                    for name, order in sorted(record["shutdown_order"].items())
+                ),
+                "",
+                "Overlay-only close-path scope-outs:",
+                "",
+            ])
+            lines.extend(
+                f"- `{item['resource_type']}.{item['close_method']}` (`{item['close_path_id']}`): "
+                f"{_safe_markdown(item['reason'])} Owner: {_safe_markdown(item['owner'])}. "
+                f"Next gate: {_safe_markdown(item['next_gate'])}."
+                for item in record["close_path_scope_outs"]
+            )
+            lines.extend([
+                "",
+                f"Observation closure: {observations['complete_observation_count']:,}/"
+                f"{observations['total_observation_count']:,} structurally closed records "
+                f"(`{observations['observation_closure_status']}`). This is record-shape closure, not "
+                "settled-vocabulary completeness.",
+                "",
+                f"Settled-vocabulary coverage: `{observations['vocabulary_coverage_status']}`.",
+                "",
+                "| Observation field | Settled type | Coverage | Observed | Missing | Owner | Next gate | Reason |",
+                "|---|---|---|---|---|---|---|---|",
+            ])
+            for assessment in observations["coverage_assessments"]:
+                observed = ", ".join(f"`{_safe_markdown(value)}`" for value in assessment["observed_values"])
+                missing = ", ".join(f"`{_safe_markdown(value)}`" for value in assessment["missing_values"]) or "none"
+                lines.append(
+                    f"| `{assessment['field_name']}` | `{assessment['type_name']}` | "
+                    f"`{assessment['status']}` | {observed} | {missing} | "
+                    f"{_safe_markdown(assessment['owner'] or 'not applicable')} | "
+                    f"{_safe_markdown(assessment['next_gate'] or 'not applicable')} | "
+                    f"{_safe_markdown(assessment['reason'] or 'All declared values were observed.')} |"
+                )
+            lines.extend([
+                "",
+                "Terminal-cause counts: " + ", ".join(
+                    f"`{name}`={count}" for name, count in sorted(cause_counts.items())
+                ),
+                "",
+                "Close-outcome counts: " + ", ".join(
+                    f"`{name}`={count}" for name, count in sorted(outcome_counts.items())
+                ),
+                "",
+                f"Schedule observation digest: `{observations['digest']}`",
+                "",
+                "Commands:",
+                "",
+            ])
+            lines.extend(f"- `{_safe_markdown(command)}`" for command in record["commands"])
+            lines.extend(["", f"Ruling: {_safe_markdown(record['ruling'])}"])
+            continue
         phase_counts = Counter(site["delivery_phase"] for site in record["discovered_sites"])
         site_classifications = Counter(site["classification"] for site in record["discovered_sites"])
         scenario_counts = Counter(item["scenario"] for item in observation_rows)
@@ -328,6 +403,28 @@ def render_markdown(payload: Mapping[str, Any]) -> str:
             f"- `{item['evidence_id']}` (`{item['baseline_scope']}`): `{item['digest']}`"
             for item in record["content_free_evidence"]
         )
+    lines.extend([
+        "",
+        "## Running scope-out register",
+        "",
+        "| Hypothesis | Field | Missing values | Owning gate | Planned reachability | Owner | Reason |",
+        "|---|---|---|---|---|---|---|",
+    ])
+    if canonical["scope_out_register"]:
+        for entry in canonical["scope_out_register"]:
+            missing = ", ".join(f"`{_safe_markdown(value)}`" for value in entry["missing_values"])
+            reachability = (
+                "unassessed"
+                if entry["planned_scenarios_can_reach_missing"] is None
+                else str(entry["planned_scenarios_can_reach_missing"]).lower()
+            )
+            lines.append(
+                f"| `{entry['hypothesis_id']}` | `{entry['field_name']}` | {missing} | "
+                f"{_safe_markdown(entry['owning_gate'])} | `{reachability}` | "
+                f"{_safe_markdown(entry['owner'])} | {_safe_markdown(entry['reachability_reason'])} |"
+            )
+    else:
+        lines.append("| none | none | none | none | none | none | No open vocabulary scope-outs. |")
     lines.extend(["", "## Finding index", "", "| ID | Classification | Baseline | Owner |", "|---|---|---|---|"])
     lines.extend(
         f"| `{finding['finding_id']}` | `{finding['classification']}` | `{finding['baseline_scope']}` | {_safe_markdown(finding['owner'])} |"

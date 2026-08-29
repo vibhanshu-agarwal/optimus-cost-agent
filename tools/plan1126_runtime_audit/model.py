@@ -666,6 +666,63 @@ class VocabularyCoverageAssessment:
 
 
 @dataclass(frozen=True, slots=True)
+class ScopeOutRegisterEntry:
+    hypothesis_id: str
+    field_name: str
+    owning_gate: str
+    missing_values: tuple[str, ...]
+    owner: str
+    planned_scenarios_can_reach_missing: bool | None
+    reachability_reason: str
+
+    def __post_init__(self) -> None:
+        for field in (
+            "hypothesis_id", "field_name", "owning_gate", "owner", "reachability_reason",
+        ):
+            _content_free_string(getattr(self, field), f"scope-out {field}")
+        object.__setattr__(self, "missing_values", tuple(self.missing_values))
+        if self.missing_values != tuple(sorted(set(self.missing_values))) or not self.missing_values:
+            raise ValueError("scope-out missing_values must be non-empty canonical strings")
+        for value in self.missing_values:
+            _content_free_string(value, "scope-out missing value")
+        if (
+            self.planned_scenarios_can_reach_missing is not None
+            and type(self.planned_scenarios_can_reach_missing) is not bool
+        ):
+            raise ValueError("scope-out planned reachability must be true, false, or null")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "hypothesis_id": self.hypothesis_id,
+            "field_name": self.field_name,
+            "owning_gate": self.owning_gate,
+            "missing_values": list(self.missing_values),
+            "owner": self.owner,
+            "planned_scenarios_can_reach_missing": self.planned_scenarios_can_reach_missing,
+            "reachability_reason": self.reachability_reason,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> ScopeOutRegisterEntry:
+        payload = _json_object(payload, "scope-out register entry")
+        expected = {
+            "hypothesis_id", "field_name", "owning_gate", "missing_values", "owner",
+            "planned_scenarios_can_reach_missing", "reachability_reason",
+        }
+        if set(payload) != expected:
+            raise ValueError("scope-out register fields do not match the canonical schema")
+        return cls(
+            hypothesis_id=payload["hypothesis_id"],
+            field_name=payload["field_name"],
+            owning_gate=payload["owning_gate"],
+            missing_values=tuple(_json_array(payload["missing_values"], "scope-out missing values")),
+            owner=payload["owner"],
+            planned_scenarios_can_reach_missing=payload["planned_scenarios_can_reach_missing"],
+            reachability_reason=payload["reachability_reason"],
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class ConstantMetadataNote:
     field_name: str
     constant_value: str | bool | None
@@ -1075,6 +1132,33 @@ _COST_FIELDS = {
 }
 
 
+def _default_scope_out_register(records: tuple[object, ...]) -> tuple[ScopeOutRegisterEntry, ...]:
+    entries: list[ScopeOutRegisterEntry] = []
+    for record in records:
+        hypothesis_id = record.hypothesis_id
+        summary = record.schedule_observations
+        for assessment in summary.coverage_assessments:
+            if assessment.status is not CoverageAssessmentStatus.SCOPED_OUT:
+                continue
+            assert assessment.next_gate is not None
+            assert assessment.owner is not None
+            entries.append(
+                ScopeOutRegisterEntry(
+                    hypothesis_id=hypothesis_id,
+                    field_name=assessment.field_name,
+                    owning_gate=assessment.next_gate,
+                    missing_values=assessment.missing_values,
+                    owner=assessment.owner,
+                    planned_scenarios_can_reach_missing=None,
+                    reachability_reason=(
+                        f"Reachability against {assessment.next_gate} remains an explicit open obligation; "
+                        "the owning gate must prove it from raw observations."
+                    ),
+                )
+            )
+    return tuple(entries)
+
+
 @dataclass(frozen=True, slots=True)
 class AuditArtifact:
     schema_version: str
@@ -1095,6 +1179,7 @@ class AuditArtifact:
     computed_run_cost: Mapping[str, Any]
     gate_status: GateStatus
     evidence_records: tuple[EvidenceRecord, ...] = ()
+    scope_out_register: tuple[ScopeOutRegisterEntry, ...] | None = None
 
     def __post_init__(self) -> None:
         if self.schema_version != "plan-11-26-runtime-audit-v1":
@@ -1124,6 +1209,10 @@ class AuditArtifact:
         object.__setattr__(self, "gate_status", _closed_enum(GateStatus, self.gate_status, "gate_status"))
         object.__setattr__(self, "findings", tuple(self.findings))
         object.__setattr__(self, "evidence_records", tuple(self.evidence_records))
+        if self.scope_out_register is None:
+            object.__setattr__(self, "scope_out_register", _default_scope_out_register(self.evidence_records))
+        else:
+            object.__setattr__(self, "scope_out_register", tuple(self.scope_out_register))
         if (
             self.static_audit_status in {LiveStatus.PARTIAL, LiveStatus.COMPLETE}
             or self.runtime_characterization_status in {LiveStatus.PARTIAL, LiveStatus.COMPLETE}
@@ -1223,8 +1312,40 @@ class AuditArtifact:
                     != record.schedule_observations.derived_control_schedule_count
                 ):
                     raise ValueError("global cancellation cost disagrees with H3 derived schedules")
+            if record.hypothesis_id == "H5":
+                if record.baseline_scope is not BaselineScope.BOTH_DIVERGENT or record.binding_commit is not None:
+                    raise ValueError("H5 is both-divergent and unbound")
+                if self.discovered_multipliers["close_paths"] != record.close_path_count:
+                    raise ValueError("global N_close_paths disagrees with H5 inventory")
+                if self.computed_run_cost["idempotent_close_invocations"] != record.close_path_count * 3 * 5:
+                    raise ValueError("global close cost disagrees with H5 derived schedules")
             if record.reviewer_status is ReviewerStatus.PENDING_G2 and self.gate_status is not GateStatus.INCOMPLETE:
                 raise ValueError("pending external review requires an incomplete global gate")
+        expected_scope_outs = {
+            (
+                record.hypothesis_id,
+                assessment.field_name,
+                assessment.next_gate,
+                assessment.missing_values,
+                assessment.owner,
+            )
+            for record in self.evidence_records
+            for assessment in record.schedule_observations.coverage_assessments
+            if assessment.status is CoverageAssessmentStatus.SCOPED_OUT
+        }
+        assert self.scope_out_register is not None
+        actual_scope_outs = {
+            (
+                entry.hypothesis_id,
+                entry.field_name,
+                entry.owning_gate,
+                entry.missing_values,
+                entry.owner,
+            )
+            for entry in self.scope_out_register
+        }
+        if len(actual_scope_outs) != len(self.scope_out_register) or actual_scope_outs != expected_scope_outs:
+            raise ValueError("scope-out register must contain exactly one entry per scoped-out assessment")
         if self.gate_status is not GateStatus.INCOMPLETE and self.unclassified_finding_count:
             raise ValueError("UNCLASSIFIED findings must be zero at a passing gate")
 
@@ -1261,6 +1382,13 @@ class AuditArtifact:
             "evidence_records": [
                 record.to_dict() for record in sorted(self.evidence_records, key=lambda item: item.hypothesis_id)
             ],
+            "scope_out_register": [
+                entry.to_dict()
+                for entry in sorted(
+                    self.scope_out_register or (),
+                    key=lambda item: (item.hypothesis_id, item.field_name),
+                )
+            ],
         }
 
     @classmethod
@@ -1271,7 +1399,7 @@ class AuditArtifact:
             "running_artifact_provenance", "static_audit_status", "runtime_characterization_status", "live_redis_status",
             "acpx_status", "additional_client_status", "zed_status", "live_interoperability_status",
             "unclassified_finding_count", "finding_counts_by_classification", "findings", "discovered_multipliers",
-            "computed_run_cost", "gate_status", "evidence_records",
+            "computed_run_cost", "gate_status", "evidence_records", "scope_out_register",
         }
         if set(payload) != expected:
             raise ValueError("artifact fields do not match the canonical schema")
@@ -1285,6 +1413,7 @@ class AuditArtifact:
             raise ValueError("finding counts must be closed nonnegative integer records")
         findings = _json_array(payload["findings"], "findings")
         evidence_records = _json_array(payload["evidence_records"], "evidence records")
+        scope_out_register = _json_array(payload["scope_out_register"], "scope-out register")
         _json_object(payload["discovered_multipliers"], "discovered_multipliers")
         _json_object(payload["computed_run_cost"], "computed_run_cost")
         if payload["running_artifact_provenance"] is not None:
@@ -1295,6 +1424,10 @@ class AuditArtifact:
                 from .cancellation import CancellationEvidenceRecord
 
                 parsed_records.append(CancellationEvidenceRecord.from_dict(item))
+            elif isinstance(item, dict) and item.get("hypothesis_id") == "H5":
+                from .shutdown import ShutdownEvidenceRecord
+
+                parsed_records.append(ShutdownEvidenceRecord.from_dict(item))
             else:
                 parsed_records.append(EvidenceRecord.from_dict(item))
         artifact = cls(
@@ -1306,6 +1439,7 @@ class AuditArtifact:
             live_interoperability_status=payload["live_interoperability_status"], findings=tuple(Finding.from_dict(item) for item in findings),
             discovered_multipliers=payload["discovered_multipliers"], computed_run_cost=payload["computed_run_cost"], gate_status=payload["gate_status"],
             evidence_records=tuple(parsed_records),
+            scope_out_register=tuple(ScopeOutRegisterEntry.from_dict(item) for item in scope_out_register),
         )
         if payload["unclassified_finding_count"] != artifact.unclassified_finding_count:
             raise ValueError("unclassified_finding_count mismatch")

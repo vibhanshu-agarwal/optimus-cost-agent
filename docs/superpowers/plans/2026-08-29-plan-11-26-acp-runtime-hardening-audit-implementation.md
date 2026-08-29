@@ -506,41 +506,46 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 **Files:**
 
 - Create: `tests/unit/acp/test_plan1126_shutdown.py`
+- Create: `tools/plan1126_runtime_audit/shutdown.py`
+- Modify: `tools/plan1126_runtime_audit/{__init__,model,render}.py`
+- Modify: `tools/run_plan1126_runtime_audit.py`
+- Modify: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
 - Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.md`
 - Read only: `src/optimus/acp/{__main__,bootstrap,server,spec,preflight,outbound_writer,launch_approvals,launch_gate,launch_policy,launch_audit,trusted_paths,local_infra,local_gateway_secrets,operator_paths,operator_verify}.py`
 - Read only: `src/optimus/redis/{runtime,async_bridge}.py`
 - Read only: `src/optimus/telemetry/{redis_adapter,redis_sink}.py`
-- Read only: `src/optimus/mcp/runtime.py`
+- Read only: `src/optimus/mcp/{runtime,client_disposition,client_sdk,client_supervisor,local_ipc}.py`
 
 **Interfaces:**
 
 - Consumes: resource constructor/transfer/close inventories and carried seed S1.
 - Produces: `N_close_paths`, construction-to-owner graph, dependency close ordering, five-cause repeat matrix, idempotence counts, and a ruling on merged serving `RedisRuntime` custody.
 
-- [ ] **Step 1: Derive the resource ownership graph.**
+- [x] **Step 1: Derive the resource ownership graph.**
 
   Cover Redis clients/pools, outbound writer, adapter/session resources, client-MCP resources, executor/thread ownership, and partial-construction paths. Boundary-audit launch, trust, approval, local-infrastructure, credential-resolution, and operator modules only for construction, transfer, background work, timeout/cancellation, failure propagation, and close/release. A resource is classified only when constructor, owner transfer, normal close, cancellation close, partial-failure close, and repeated-close behavior are accounted for or explicitly absent.
 
-- [ ] **Step 2: Write the five-cause/100-repeat predicate.**
+- [x] **Step 2: Write the five-cause/100-repeat predicate.**
 
   Causes are orderly EOF, request cancellation, transport failure, server cancellation, and partial startup failure. For each applicable cause, run 100 schedules. Build the persistent thread/task allowlist from a no-server control and report only growth beyond that control.
 
-- [ ] **Step 3: Write the discovered-path idempotence predicate.**
+- [x] **Step 3: Write the discovered-path idempotence predicate.**
 
   For every close path, invoke close three times under each cause, measure underlying close/release count, and classify repeat latency above 100 ms. Do not hide double-close or timeout outcomes by weakening the assertion; record them as findings while requiring complete evidence.
 
-- [ ] **Step 4: Run both exact predicates.**
+- [x] **Step 4: Run both exact predicates.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist -q
   uv run --frozen pytest tests/unit/acp/test_plan1126_shutdown.py::test_close_is_idempotent_across_discovered_paths -q
   ```
 
-- [ ] **Step 5: Rule on S1 without preclassifying a leak.**
+- [x] **Step 5: Rule on S1 without preclassifying a leak.**
 
   Compare merged serving construction at `bootstrap.py`, preflight close paths, process-lifetime shape, and overlay shutdown changes. Decide ownership/orderly-shutdown status and baseline scope; process exit reclamation is evidence, not proof of orderly close.
 
-- [ ] **Step 6: Run and checkpoint the resource group.**
+- [x] **Step 6: Run and checkpoint the resource group.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -q

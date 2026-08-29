@@ -29,12 +29,12 @@ This report is deterministically regenerated from the canonical JSON artifact.
 | Classification | Count |
 |---|---:|
 | `CANONICAL` | 4 |
-| `CANONICAL_BYPASSED` | 2 |
+| `CANONICAL_BYPASSED` | 3 |
 | `DUPLICATED` | 0 |
 | `CONTRADICTORY` | 1 |
-| `MISSING` | 0 |
+| `MISSING` | 2 |
 | `INTENTIONALLY_EXCEPTIONAL` | 0 |
-| `PROVISIONAL_OVERLAY` | 1 |
+| `PROVISIONAL_OVERLAY` | 2 |
 | `NOT_PRESENT` | 1 |
 | `SUPERSEDED` | 0 |
 | `UNCLASSIFIED` | 0 |
@@ -44,7 +44,7 @@ This report is deterministically regenerated from the canonical JSON artifact.
 | Multiplier | Count |
 |---|---:|
 | Cancellation Points | 8 |
-| Close Paths | 0 |
+| Close Paths | 15 |
 | Queues | 0 |
 | Sinks | 0 |
 
@@ -56,13 +56,13 @@ This report is deterministically regenerated from the canonical JSON artifact.
 | Cancellation races (levels 2/4/8) | 6,144 |
 | Queue admissions | 0 |
 | Sink failure runs | 0 |
-| Idempotent close invocations | 0 |
+| Idempotent close invocations | 225 |
 
 Measured scenario durations:
 
 | Scenario | p50 ms | p95 ms |
 |---|---:|---:|
-| `task5-group` | 26929.449 | 27187.825 |
+| not yet measured | 0.000 | 0.000 |
 
 ## Evidence records
 
@@ -192,6 +192,63 @@ Content-free evidence:
 - `H4-AST-INVENTORY` (`both-aligned`): `6ab2c07940dcf47c456adc43a30f9beb9e4074ed5dea3b97ecf213fbbf7489ca`
 - `H4-SCHEDULE-OBSERVATIONS` (`both-aligned`): `224ca11abf53aa6b498e4baf14068fe909a0c21ef5471780c68bf442ec6a5e14`
 
+### `H5` — Resource ownership, shutdown ordering, and repeated close settlement
+
+| Field | Value |
+|---|---|
+| Record | `ER-H5-RESOURCE-SHUTDOWN` |
+| Baseline scope | `both-divergent` |
+| Reviewer status | `PENDING_G2` |
+| Derived close paths | 15 |
+| Scheduled merged close paths | 13 |
+| Raw observations | 6,500 |
+
+S1 serving RedisRuntime: `merged`=`MISSING`, `overlay`=`PROVISIONAL_OVERLAY`
+
+Shutdown order: `merged`: `adapter` → `client_mcp_runtime` → `dedicated_writer` → `reader_task`; `overlay`: `adapter` → `client_mcp_runtime` → `dedicated_writer` → `reader_task` → `redis_runtime`
+
+Overlay-only close-path scope-outs:
+
+- `RedisLoopOwner.close` (`h5-0135c920fce9819c`): This close contract exists only on the non-binding overlay and cannot be executed as merged runtime evidence. Owner: P11-FEAT-ZED-RESUME. Next gate: G3 binding baseline reconciliation and overlay runtime characterization.
+- `AcpDuplexAdapter.aclose` (`h5-74ea3e4d816e69cb`): This close contract exists only on the non-binding overlay and cannot be executed as merged runtime evidence. Owner: P11-FEAT-ZED-RESUME. Next gate: G3 binding baseline reconciliation and overlay runtime characterization.
+
+Observation closure: 6,500/6,500 structurally closed records (`FULLY_STRUCTURALLY_CLOSED`). This is record-shape closure, not settled-vocabulary completeness.
+
+Settled-vocabulary coverage: `PARTIAL_WITH_SCOPE_OUTS`.
+
+| Observation field | Settled type | Coverage | Observed | Missing | Owner | Next gate | Reason |
+|---|---|---|---|---|---|---|---|
+| `close_outcome` | `CloseOutcome` | `SCOPED_OUT` | `CLOSED_ONCE`, `DOUBLE_CLOSE_OBSERVED`, `IDEMPOTENT_NOOP` | `ERROR` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 per-group shutdown fault-injection characterization | Task 6 invokes valid offline close owners and does not manufacture a close exception; ERROR remains a named fault-injection obligation. |
+| `repeat_latency_class` | `RepeatLatencyClass` | `FULLY_OBSERVED` | `ABOVE_100MS`, `WITHIN_100MS` | none | not applicable | not applicable | All declared values were observed. |
+| `terminal_cause` | `TerminalCause` | `FULLY_OBSERVED` | `orderly_eof`, `partial_startup_failure`, `request_cancellation`, `server_cancellation`, `transport_failure` | none | not applicable | not applicable | All declared values were observed. |
+
+Terminal-cause counts: `orderly_eof`=1300, `partial_startup_failure`=1300, `request_cancellation`=1300, `server_cancellation`=1300, `transport_failure`=1300
+
+Close-outcome counts: `CLOSED_ONCE`=5400, `DOUBLE_CLOSE_OBSERVED`=1000, `IDEMPOTENT_NOOP`=100
+
+Schedule observation digest: `60e49fbb61d41b8cb86babc80348e9b2af39f96b7e4d2ebadba8eedc1c1a7fe4`
+
+Commands:
+
+- `uv run --frozen pytest tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_inventory_is_independent_complete_and_receiver_safe -q`
+- `uv run --frozen pytest tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist -q`
+
+Ruling: S1 is MISSING on merged because the serving graph does not own RedisRuntime shutdown; the overlay fix remains PROVISIONAL_OVERLAY until baseline reconciliation.
+
+## Running scope-out register
+
+| Hypothesis | Field | Missing values | Owning gate | Planned reachability | Owner | Reason |
+|---|---|---|---|---|---|---|
+| `H3` | `child_work_state` | `failed_no_effect` | G4 per-group child-failure characterization | `true` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 per-group child-failure characterization names the required failure, persistence, multi-work, or slow-close scenario; that gate must still demonstrate the values in raw observations before discharge. |
+| `H3` | `conversation_commit` | `committed` | G5 cancellation-to-conversation persistence characterization | `true` | P11-FEAT-ACP-RUNTIME-HARDENING | G5 cancellation-to-conversation persistence characterization names the required failure, persistence, multi-work, or slow-close scenario; that gate must still demonstrate the values in raw observations before discharge. |
+| `H3` | `effect_state` | `partial` | G4 multi-work cancellation characterization | `true` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 multi-work cancellation characterization names the required failure, persistence, multi-work, or slow-close scenario; that gate must still demonstrate the values in raw observations before discharge. |
+| `H3` | `final_delivery` | `conclusive_failure`, `partial` | G4 per-group delivery-failure characterization | `true` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 per-group delivery-failure characterization names the required failure, persistence, multi-work, or slow-close scenario; that gate must still demonstrate the values in raw observations before discharge. |
+| `H3` | `invocation_outcomes` | `task_already_terminal`, `teardown_conclusive_failure`, `teardown_partial` | G4 per-group pre-terminal and delivery-failure characterization | `true` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 per-group pre-terminal and delivery-failure characterization names the required failure, persistence, multi-work, or slow-close scenario; that gate must still demonstrate the values in raw observations before discharge. |
+| `H4` | `final_delivery` | `ambiguous`, `conclusive_failure`, `flushed`, `partial` | G5 terminal-message characterization | `true` | P11-FEAT-ACP-RUNTIME-HARDENING | G5 terminal-message characterization names the required failure, persistence, multi-work, or slow-close scenario; that gate must still demonstrate the values in raw observations before discharge. |
+| `H4` | `send_state` | `queued`, `write_started` | G4 per-group transient-state observation review | `true` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 per-group transient-state observation review names the required failure, persistence, multi-work, or slow-close scenario; that gate must still demonstrate the values in raw observations before discharge. |
+| `H4` | `settlement` | `cancelled`, `failed`, `rejected` | G4 per-group settlement-producer review | `true` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 per-group settlement-producer review names the required failure, persistence, multi-work, or slow-close scenario; that gate must still demonstrate the values in raw observations before discharge. |
+| `H5` | `close_outcome` | `ERROR` | G4 per-group shutdown fault-injection characterization | `true` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 per-group shutdown fault-injection characterization names the required failure, persistence, multi-work, or slow-close scenario; that gate must still demonstrate the values in raw observations before discharge. |
+
 ## Finding index
 
 | ID | Classification | Baseline | Owner |
@@ -205,3 +262,7 @@ Content-free evidence:
 | `H4-CONTRADICTORY-both-aligned` | `CONTRADICTORY` | `both-aligned` | Plan 11.26 / P11-FEAT-ZED-RESUME for baseline reconciliation |
 | `H4-NOT_PRESENT-merged` | `NOT_PRESENT` | `merged` | Plan 11.26 / P11-FEAT-ZED-RESUME for baseline reconciliation |
 | `H4-PROVISIONAL_OVERLAY-overlay` | `PROVISIONAL_OVERLAY` | `overlay` | Plan 11.26 / P11-FEAT-ZED-RESUME for baseline reconciliation |
+| `H5-REPEAT-LATENCY-ABOVE-100MS-merged` | `CANONICAL_BYPASSED` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |
+| `H5-REPEATED-CLOSE-UNDERLYING-merged` | `MISSING` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |
+| `H5-S1-REDIS-RUNTIME-merged` | `MISSING` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |
+| `H5-S1-REDIS-RUNTIME-overlay` | `PROVISIONAL_OVERLAY` | `overlay` | P11-FEAT-ZED-RESUME |

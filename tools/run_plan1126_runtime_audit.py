@@ -308,6 +308,77 @@ def _verify_artifact(path: str) -> AuditArtifact:
         )
         if actual_h3_findings != expected_h3_findings:
             raise ValueError("H3 findings do not match immutable-source rebuild")
+    h5_records = tuple(record for record in artifact.evidence_records if record.hypothesis_id == "H5")
+    if h5_records:
+        from tools.plan1126_runtime_audit.cancellation import H3_SOURCE_PATHS
+        from tools.plan1126_runtime_audit.delivery_characterization import H4_SOURCE_PATHS
+        from tools.plan1126_runtime_audit.shutdown import (
+            H5_SOURCE_PATHS,
+            _canonical_digest,
+            _derived_shutdown_order,
+            characterize_shutdown_inventory,
+            discover_shutdown_inventory,
+        )
+
+        merged_source = GitCommitSource(artifact.merged_commit, repository=ROOT)
+        overlay_source = GitCommitSource(artifact.overlay_commit, repository=ROOT)
+        paths = tuple(sorted(set(H3_SOURCE_PATHS) | set(H4_SOURCE_PATHS) | set(H5_SOURCE_PATHS)))
+        merged = SourceTree({path: merged_source.read_text(path) for path in paths})
+        overlay = SourceTree({path: overlay_source.read_text(path) for path in paths})
+        actual_record = h5_records[0].to_dict()
+        shutdown_merged = SourceTree({path: merged.read_text(path) for path in H5_SOURCE_PATHS})
+        shutdown_overlay = SourceTree({path: overlay.read_text(path) for path in H5_SOURCE_PATHS})
+        inventory = discover_shutdown_inventory(shutdown_merged, overlay=shutdown_overlay)
+        inventory = characterize_shutdown_inventory(
+            inventory,
+            h5_records[0].schedule_observations.observations,
+        )
+        expected_inventory = [item.to_dict() for item in inventory.close_sites]
+        expected_resources = [item.to_dict() for item in inventory.resources]
+        expected_order = {
+            "merged": list(_derived_shutdown_order(shutdown_merged)),
+            "overlay": list(_derived_shutdown_order(shutdown_overlay)),
+        }
+        if (
+            actual_record["discovered_sites"] != expected_inventory
+            or actual_record["resource_ownership"] != expected_resources
+            or actual_record["close_path_count"] != inventory.close_path_count
+            or actual_record["shutdown_order"] != expected_order
+        ):
+            raise ValueError("H5 evidence record does not match immutable-source rebuild")
+        s1_digest = _canonical_digest({
+            "ruling": actual_record["s1_redis_runtime_ruling"],
+            "shutdown_order": actual_record["shutdown_order"],
+        })
+        h5_findings = {
+            finding.finding_id: finding for finding in artifact.findings if finding.finding_id.startswith("H5-")
+        }
+        required_h5 = {"H5-S1-REDIS-RUNTIME-merged", "H5-S1-REDIS-RUNTIME-overlay"}
+        observations = actual_record["schedule_observations"]["observations"]
+        expected_dynamic: dict[str, tuple[str, str]] = {}
+        double_close = [item for item in observations if item["close_outcome"] == "DOUBLE_CLOSE_OBSERVED"]
+        if double_close:
+            expected_dynamic["H5-REPEATED-CLOSE-UNDERLYING-merged"] = (
+                "H5-DOUBLE-CLOSE-OBSERVATIONS", _canonical_digest(double_close),
+            )
+        slow_close = [item for item in observations if item["repeat_latency_class"] == "ABOVE_100MS"]
+        if slow_close:
+            expected_dynamic["H5-REPEAT-LATENCY-ABOVE-100MS-merged"] = (
+                "H5-SLOW-CLOSE-OBSERVATIONS", _canonical_digest(slow_close),
+            )
+        error_close = [item for item in observations if item["close_outcome"] == "ERROR"]
+        if error_close:
+            expected_dynamic["H5-CLOSE-ERROR-merged"] = (
+                "H5-CLOSE-ERROR-OBSERVATIONS", _canonical_digest(error_close),
+            )
+        if set(h5_findings) != required_h5 | set(expected_dynamic):
+            raise ValueError("H5 S1 findings are incomplete")
+        if any(h5_findings[finding_id].evidence[0].digest != s1_digest for finding_id in required_h5):
+            raise ValueError("H5 S1 finding evidence does not match the source-derived ruling")
+        for finding_id, (evidence_id, digest) in expected_dynamic.items():
+            evidence = h5_findings[finding_id].evidence[0]
+            if evidence.evidence_id != evidence_id or evidence.digest != digest:
+                raise ValueError("H5 runtime finding evidence does not match stored observations")
     return artifact
 
 
