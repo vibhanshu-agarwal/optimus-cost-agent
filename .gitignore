@@ -88,6 +88,7 @@ Thumbs.db
 Desktop.ini
 
 # --- Build / packaging ---
+node_modules/
 *.manifest
 *.spec
 pip-log.txt

@@ -1,6 +1,7 @@
 """Shared offline audit foundation for Plan 11.26."""
 
 from .checkpoints import CheckpointStore
+from .clients import ClientQualification, qualify_client
 from .corpus import derived_seed, literal_seeds
 from .cost import compute_cost
 from .inventory import discover_sites
@@ -24,6 +25,7 @@ __all__ = [
     "AuditArtifact",
     "BaselineScope",
     "CheckpointStore",
+    "ClientQualification",
     "Classification",
     "DiscoveredSite",
     "EvidenceReference",
@@ -40,5 +42,6 @@ __all__ = [
     "derived_seed",
     "discover_sites",
     "literal_seeds",
+    "qualify_client",
     "verify_running_artifact",
 ]

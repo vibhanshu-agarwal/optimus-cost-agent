@@ -22,6 +22,7 @@
 - Preserve the settled delivery vocabulary: `SendState`, `SendOutcome`, `Settlement`, `FinalDelivery`, `RpcResponseDelivery`, `ConversationCommit`, and `EffectState`.
 - Preserve `ACP_TURN_SETTLEMENT` as the worked telemetry standard: exact content-free payload keys, enum-backed vocabulary, strict missing/extra-field rejection, redaction, and contained sink delivery.
 - `acpx` remains the independently authored ACP integration/live driver required by `AGENTS.md`; the official TypeScript SDK, same-task Java fallback, or independently authored conformance-harness fallback is additional comparison evidence and never a substitute.
+- Client behavior is never the oracle: record divergence rather than investigate it during this audit, name each finding's subject as Optimus, client/harness, observer/tooling, environment, or inconclusive, and retain mandatory acpx authority regardless of SDK agreement or disagreement.
 - A project-authored ACP client or conformance harness cannot satisfy an ACP protocol integration or live-evidence row. The project-authored fixture agent in Task 3 exists only to qualify the independently authored comparison mechanism.
 - Workspace `git_sha` is not installed running-artifact provenance. Every live row must independently bind executable/package bytes to the binding commit or be marked `INVALID`.
 - Derive inventories and matrix multipliers mechanically. A hand-maintained complete-site list cannot satisfy an inventory gate.
@@ -211,6 +212,7 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
 **Files:**
 
+- Modify: `.gitignore`
 - Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
 - Create: `reports/plan-11-26-prerequisite-intake.json`
 - Modify: `reports/plan-11-26-baseline-intake.json`
@@ -329,6 +331,7 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
 **Files:**
 
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
 - Create: `tools/plan1126_runtime_audit/clients.py`
 - Create: `tests/unit/tools/plan1126_runtime_audit/test_clients.py`
 - Create: `tests/fixtures/plan1126_runtime_audit/fixture_agent.py`
@@ -341,11 +344,11 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 - Consumes: official stable-v1 TypeScript `client({name}).connectWith(stream, workflow)` API; official Java `com.agentclientprotocol:acp-core:0.14.0` `AcpClient`/`StdioAcpClientTransport` fallback; Task 1 authority record.
 - Produces: `ClientQualification` with package/harness name, exact version or immutable commit, registry/repository identity, lock/source digest, build command, fixture command, observed method sequence, result, and fallback reason.
 
-- [ ] **Step 1: Write RED qualification/provenance tests.**
+- [x] **Step 1: Write RED qualification/provenance tests.**
 
   Tests reject version ranges, absent lockfiles, experimental-v2 imports, a project ACP client import, shell-string execution, missing package-repository identity, missing `initialize -> session/new -> session/prompt` observation, or claiming that the SDK replaces acpx.
 
-- [ ] **Step 2: Resolve and review the exact TypeScript package identity.**
+- [x] **Step 2: Resolve and review the exact TypeScript package identity.**
 
   With package-registry access authorized, run:
 
@@ -355,11 +358,11 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
   Record the returned exact stable release and integrity, then set that exact version without `^` or `~`. The reviewer compares repository identity to `https://github.com/agentclientprotocol/typescript-sdk` before installation.
 
-- [ ] **Step 3: Build the fixture-only official TypeScript client.**
+- [x] **Step 3: Build the fixture-only official TypeScript client.**
 
   `src/client.ts` imports only `@agentclientprotocol/sdk` plus Node standard libraries, spawns `fixture_agent.py`, records ordered method/result categories without prompt bodies, and exits nonzero unless initialize/new/prompt/close complete. Generate and commit the exact lock with scripts disabled during install.
 
-- [ ] **Step 4: Compile and execute the primary qualifier.**
+- [x] **Step 4: Compile and execute the primary qualifier.**
 
   ```powershell
   npm ci --ignore-scripts --prefix tests/fixtures/plan1126_runtime_audit/typescript-client
@@ -369,7 +372,7 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
   Expected: stable-v1 client API drives the fixture and produces the reviewed ordered summary. This is fixture qualification, not Optimus protocol evidence.
 
-- [ ] **Step 5: Exercise ordered fallbacks in the same task only after the preceding candidate fails.**
+- [x] **Step 5: Exercise ordered fallbacks in the same task only after the preceding candidate fails.**
 
   Record the primary failure first. Pin `com.agentclientprotocol:acp-core:0.14.0`, use `StdioAcpClientTransport` and `AcpClient.sync`, and run:
 
@@ -379,11 +382,11 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
   Do not create or run the Java fallback merely to accumulate evidence after a passing primary. If Java also fails, a reviewer may approve an independently authored ACP conformance harness in this same task only after its external repository, immutable release/commit, ACP-v1 coverage, license, install/build digest, and exact non-project-authored invocation are recorded in the qualification report. Run that recorded invocation against `fixture_agent.py`; reject a project-authored harness or a harness that cannot expose ordered initialize/new/prompt results. If no harness qualifies, retain `BLOCKED` with the failed candidates and next selection gate.
 
-- [ ] **Step 6: Publish the client qualification and preserve acpx authority.**
+- [x] **Step 6: Publish the client qualification and preserve acpx authority.**
 
   Record one of `TYPESCRIPT_QUALIFIED`, `JAVA_FALLBACK_QUALIFIED`, `CONFORMANCE_HARNESS_QUALIFIED`, or `BLOCKED`, with exact command output digests and no transcript bodies. Re-record `acpx --version` as command-derived evidence and state that acpx remains mandatory.
 
-- [ ] **Step 7: Run G3 checks and obtain reviewer acceptance.**
+- [x] **Step 7: Run G3 checks and obtain reviewer acceptance.**
 
   ```powershell
   uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_clients.py -q
@@ -744,7 +747,7 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
   uv run --frozen pytest tests/e2e/acp/test_plan1126_clients_live.py -m "e2e and requires_acpx and requires_redis and requires_gateway" -v
   ```
 
-  Run 25 valid supported-matrix acpx rounds and 25 valid rounds with the qualified SDK or conformance harness. Then run the multi-client matrix: 50 same-session rounds at each concurrency level `2`, `4`, and `8`, plus 50 distinct-session rounds. Skipped, deselected, wrong-artifact, fake-dependency, or missing-provenance rows are `UNRUN`/`INVALID`, never passing evidence.
+  Run 25 valid supported-matrix acpx rounds and 25 valid rounds with the qualified SDK or conformance harness. Then run the multi-client matrix: 50 same-session rounds at each concurrency level `2`, `4`, and `8`, plus 50 distinct-session rounds. Apply the Global Constraints client-attribution rule to every acpx/SDK divergence; neither client is authoritative. Skipped, deselected, wrong-artifact, fake-dependency, or missing-provenance rows are `UNRUN`/`INVALID`, never passing evidence.
 
 - [ ] **Step 6: Run five real Zed GUI rows only under a separate Zed grant.**
 
