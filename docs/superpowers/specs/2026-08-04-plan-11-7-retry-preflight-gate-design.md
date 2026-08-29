@@ -18,7 +18,7 @@ no settings mutation, and no production implementation under `src/optimus` or
 The new open-work item is recorded first in the consolidated pool as
 [`P11-FU-11`](../plans/2026-07-23-consolidated-deferred-followups-backlog.md#p11-fu-11-plan-117-retry-preflight-and-live-session-proof).
 The executable amendment is
-[`2026-08-04-plan-11-7-retry-preflight-gate-amendment.md`](../plans/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md).
+[`2026-08-04-plan-11-7-retry-preflight-gate-amendment.md`](../plans/archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md).
 
 The following documents remain immutable inputs and must be hash-pinned by the amendment before
 execution:

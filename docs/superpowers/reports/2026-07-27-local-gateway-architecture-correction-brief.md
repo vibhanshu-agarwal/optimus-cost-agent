@@ -17,7 +17,7 @@ hosted, multi-tenant SaaS Gateway (OAuth sign-in, org/tenant/project budget wall
 credentials at `gateway.optimus.ai`). That was a misunderstanding at drafting time. This is an
 open-source project; the operator will not host or maintain a separate Gateway service. **The
 Gateway is, and remains, a local process the developer runs alongside the agent on their own
-machine** — exactly as `docs/superpowers/plans/2026-07-07-local-optimus-gateway-service.md` and the
+machine** — exactly as `docs/superpowers/plans/archive/2026-07-07-local-optimus-gateway-service.md` and the
 current `.env.gateway` / `.env` split already implement it.
 
 This brief also resolves the blocker on two backlog items:

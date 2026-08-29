@@ -19,7 +19,7 @@ terminal result. No result from this probe authorizes Plan 11.7 Task 0 Steps 5-7
 
 The frozen implementation plan remains:
 
-`docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md`
+`docs/superpowers/plans/archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md`
 
 Its authoritative Git-blob SHA-256 is:
 
@@ -59,7 +59,7 @@ The derived amendment has the fixed identity:
 
 - title: `Plan 11.7 Standalone Zed Server-Side Custody Feasibility Amendment`;
 - path:
-  `docs/superpowers/plans/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md`;
+  `docs/superpowers/plans/archive/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md`;
 - owning roadmap entry: `P11-FEAT-ZED-RESUME`; and
 - governance log: `docs/superpowers/reviews/plan-11-7-review-checkpoints.md`.
 
@@ -500,7 +500,7 @@ makes a current-state claim affected by this work. At minimum this includes:
 
 - `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md`;
 - `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`;
-- `docs/superpowers/plans/evidence-handoff-open-work-pool.md`; and
+- `docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md`; and
 - `README.md`.
 
 The Plan 11.7 and render-observation rows must state the actual gate: frozen implementation blocked

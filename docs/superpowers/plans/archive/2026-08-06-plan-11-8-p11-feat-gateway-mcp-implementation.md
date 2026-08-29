@@ -622,7 +622,7 @@ fail-closed invocation behavior: calls are never automatically redispatched or r
 indeterminate outcomes surface as explicit errors. Durable effect-aware custody and re-invocation
 (read-only explicit re-invocation plus side-effecting operator-acknowledgment hold across agent
 restart) is deferred to the named backlog entry
-[`Durable effect-aware MCP indeterminate-call custody`](2026-07-23-consolidated-deferred-followups-backlog.md#durable-effect-aware-mcp-indeterminate-call-custody),
+[`Durable effect-aware MCP indeterminate-call custody`](../2026-07-23-consolidated-deferred-followups-backlog.md#durable-effect-aware-mcp-indeterminate-call-custody),
 which requires a `PreToolGuard` approval-store extension.
 
 - [x] **Step 1: Write RED accounting tests.** Cover all three attribution states, strict-dollar

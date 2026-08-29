@@ -58,13 +58,13 @@ parked `P9.85-FU-3` budget-enforcement question is not pulled into this charter'
 | `P11-FEAT-GATEWAY-TOOLS` | Gateway web/evidence tools and real provider adapters | Plan 11.2 / Plan 11.3 | Closed through PR #88. |
 | `P11-FEAT-GATEWAY-COST-OBS` | Gateway normalized cost, observability, and local startup consolidation | Plan 11.5 / Plan 11.6 | Plan 11.5 closed through PR #95; Plan 11.6 merged through PR #97. |
 | `P11-FEAT-GATEWAY-MCP` | Historical Gateway MCP tools-only brokering | Plan 11.8 / Plan 11.11 (historical); Plan 11.12 retirement; Plan 11.13 publication reversal | Retired by Plan 11.12. Plan 11.13 published HLD v2.18, LLD v2.41, Guardrails v1.3, and Test Strategy v1.7; [evidence](../reports/2026-08-15-plan-11-13-authoritative-document-reversal-evidence.md). |
-| `P11-FEAT-ZED-RESUME` | Zed integration fixes, ACP session resume, and the configurable Gateway-timeout follow-up | Plan 11.7 / Plan 11.9 | Plan 11.7 is partially implemented and blocked; Plan 11.9 closed `P11.7-FU-1` through PR #123 and PR #124. |
+| `P11-FEAT-ZED-RESUME` | Zed integration fixes, ACP session resume, and the configurable Gateway-timeout follow-up | Plan 11.7 / Plan 11.9 | Live Plan 11.7 status and next gate are owned by the [consolidated backlog](2026-07-23-consolidated-deferred-followups-backlog.md#live-implementation-plan-registry); Plan 11.9 closed `P11.7-FU-1` through PR #123 and PR #124. |
 | `P11-FEAT-REGISTRY` | ACP registry validation, registration, and v1.0 cut | Last primary Plan 11 slice (holding position) | Required release slice; Plan 11.13 must land first. Reassess 11.x-last versus a split outward-publication lane in 13.x after the consolidated open-work pool closes. |
 | `P11-FEAT-IDE` | IDE-specific testing if registry registration does not surface or satisfy multi-IDE expectations | Conditional | Conditional; not an unconditional v1.0 gate. |
 
-This map is the charter's current execution snapshot. The detailed feature sections below retain
-ratification-time design requirements; where they describe pre-pickup authorization or numbering,
-the map records the landed lane and the consolidated pool owns live work status.
+This map records charter scope, sequencing, and terminal lane history; it is not a live-status
+snapshot. The detailed feature sections below retain ratification-time design requirements; where
+they describe pre-pickup authorization or numbering, the consolidated pool owns live work status.
 
 The feature IDs are permanent, greppable slice identities. They use the `P11-FEAT-*` prefix;
 `FEAT` identifies milestone features and is distinct from `FU`, which identifies follow-ups. Slugs

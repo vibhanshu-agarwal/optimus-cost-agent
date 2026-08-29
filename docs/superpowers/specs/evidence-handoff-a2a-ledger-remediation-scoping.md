@@ -72,7 +72,7 @@ Every slice therefore carries **two evidence levels**:
 
 Evidence/handoff product work carries **no plan numbers** (enforced by
 `test_new_pool_has_no_scheduling_plan_numbers`). Slices take product feature IDs, tracked in
-`docs/superpowers/plans/evidence-handoff-open-work-pool.md`.
+`docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md`.
 
 Revision 2 dropped this table by mistake; restored here with the sixth ID minted per R2-2. All six
 verified unused repo-wide.

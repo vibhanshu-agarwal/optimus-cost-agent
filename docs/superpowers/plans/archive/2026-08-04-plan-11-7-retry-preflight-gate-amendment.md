@@ -24,9 +24,9 @@ commit from the approved parent amendment.
 
 **Identity:** This is a standalone execution amendment owned by `P11-FEAT-ZED-RESUME`. It allocates
 no new Plan 11.x number and is tracked first as
-[`P11-FU-11`](2026-07-23-consolidated-deferred-followups-backlog.md#p11-fu-11-plan-117-retry-preflight-and-live-session-proof).
+[`P11-FU-11`](../2026-07-23-consolidated-deferred-followups-backlog.md#p11-fu-11-plan-117-retry-preflight-and-live-session-proof).
 Its paired design is
-[`2026-08-04-plan-11-7-retry-preflight-gate-design.md`](../specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md).
+[`2026-08-04-plan-11-7-retry-preflight-gate-design.md`](../../specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md).
 
 **Status:** Draft for independent reviewer and operator approval. Approval authorizes the bounded
 tooling and evidence work below. It does not authorize changes under `src/optimus` or

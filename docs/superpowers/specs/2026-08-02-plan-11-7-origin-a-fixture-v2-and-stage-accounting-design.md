@@ -19,7 +19,7 @@ approval before execution, and live settings mutation remains a separate approva
 The following inputs are immutable:
 
 - frozen Plan 11.7:
-  `docs/superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md`,
+  `docs/superpowers/plans/archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md`,
   authoritative Git-blob SHA-256
   `F52AD9A5A85DC50B0DFD3206B6BD09FD8FF0AE79B1A6049DF1017F978B1C462D`;
 - approved server-side custody design:
@@ -27,7 +27,7 @@ The following inputs are immutable:
   LF-byte SHA-256
   `8808E5212DCDB3B44198096D1A0AFE7E20A53E4A9B28438DA5AA23245D339F0E`;
 - approved parent amendment:
-  `docs/superpowers/plans/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md`,
+  `docs/superpowers/plans/archive/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md`,
   LF-byte SHA-256
   `79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6`;
 - triggering Step 4 discovery disposition:

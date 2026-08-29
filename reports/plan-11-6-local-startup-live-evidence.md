@@ -1,6 +1,6 @@
 # Plan 11.6 — Local startup live evidence
 
-**Plan:** `docs/superpowers/plans/2026-07-29-plan-11-6-p11-5-fu-2-local-startup-consolidation.md`
+**Plan:** `docs/superpowers/plans/archive/2026-07-29-plan-11-6-p11-5-fu-2-local-startup-consolidation.md`
 **Operator runbook:** `docs/runbooks/local-live-dependencies.md`
 **Branch:** `agent/cursor/plan-11-6-local-startup-consolidation`
 **Worktree:** `D:\Projects\Development\Python\optimus-cost-agent-wt-cursor`

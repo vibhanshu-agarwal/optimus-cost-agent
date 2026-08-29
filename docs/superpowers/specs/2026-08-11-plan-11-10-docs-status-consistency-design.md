@@ -379,11 +379,11 @@ remain free of status language.
 | `tests/unit/docs/test_open_work_pool_hygiene.py` | Exact entry-index bijection, all-table Priority validation, Feature status vocabulary, promoted unresolved partition, protected digest/marker checks, roadmap/charter and `AGENTS.md` regressions. |
 | `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md` | Current Plan 11.1-11.9 summary and pool pointer. |
 | `docs/superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md` | Ratified charter status and non-competing live-status pointer. |
-| `docs/superpowers/plans/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md` | Accurate plan-level partial state. |
-| `docs/superpowers/plans/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md` | Reviewed closed disposition. |
-| `docs/superpowers/plans/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md` | Missing partial-implementation status. |
-| `docs/superpowers/plans/2026-07-28-plan-11-4-gateway-core-migration.md` | Missing closed status. |
-| `docs/superpowers/plans/2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-implementation.md` | Closed PR #123/#124 status. |
+| `docs/superpowers/plans/archive/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md` | Accurate plan-level partial state. |
+| `docs/superpowers/plans/archive/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md` | Reviewed closed disposition. |
+| `docs/superpowers/plans/archive/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md` | Missing partial-implementation status. |
+| `docs/superpowers/plans/archive/2026-07-28-plan-11-4-gateway-core-migration.md` | Missing closed status. |
+| `docs/superpowers/plans/archive/2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-implementation.md` | Closed PR #123/#124 status. |
 | `AGENTS.md` | Forward-only same-plan `_vN` file versioning and linear plan numbering. |
 
 The design specification itself and the later implementation plan are additional Plan 11.10

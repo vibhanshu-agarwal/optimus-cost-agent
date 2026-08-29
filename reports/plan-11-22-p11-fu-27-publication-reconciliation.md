@@ -4,7 +4,7 @@
 
 P11-FU-27 permits only the historical-state reconciliation of Task 10 Steps 1-7 and stale
 pending-publication prose in
-`docs/superpowers/plans/2026-08-05-mcp-gateway-architecture-amendment-publication-plan.md`.
+`docs/superpowers/plans/archive/2026-08-05-mcp-gateway-architecture-amendment-publication-plan.md`.
 No architecture, runtime, PDF, source-package, or Task 11 Step 7 content was changed.
 
 The publication plan is a living execution record, not a frozen plan/spec. The four artifact hashes

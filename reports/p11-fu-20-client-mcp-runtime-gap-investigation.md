@@ -52,14 +52,14 @@ operations in scope, not out of scope. The design's in-scope table says
 its connection section specifies complete-or-absent descriptor discovery
 ([`...design.md:196-211`](../docs/superpowers/specs/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md)).
 The implementation plan likewise describes the intended lazy, identity-bound catalog path in its
-architecture ([`docs/superpowers/plans/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-implementation.md:10-18`](../docs/superpowers/plans/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-implementation.md))
+architecture ([`docs/superpowers/plans/archive/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-implementation.md:10-18`](../docs/superpowers/plans/archive/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-implementation.md))
 and gives Task 5 the model-facing generic operations
-([`...implementation.md:365-434`](../docs/superpowers/plans/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-implementation.md)).
+([`...implementation.md:365-434`](../docs/superpowers/plans/archive/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-implementation.md)).
 
 The documents do deliberately exclude, with named custody: `session/load` (`P11-FEAT-ZED-RESUME`),
 descriptor pinning/allowlists (`P11-FU-23`), durable HTTP/SSE-trust relaxation (`P11-FU-24`), and
 authenticated upstream evidence (`P11-FU-25`)
-([`...implementation.md:655-706`](../docs/superpowers/plans/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-implementation.md);
+([`...implementation.md:655-706`](../docs/superpowers/plans/archive/2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-implementation.md);
 [`docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md:1134-1174`](../docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md)).
 The living pool instead leaves P11-FU-20 itself promoted and explicitly states its residual as
 "production composition not yet wired"
@@ -190,7 +190,7 @@ open/discovery driver, concrete dispatch service, or materialization caller. Siz
 five-area change in §6, followed by the separately authorized real proof dependencies in §5. The
 frozen Plan 11.20 closure rule says to retain the item
 when the required real tier lacks passing evidence
-([`docs/superpowers/plans/2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md:246-249`](../docs/superpowers/plans/2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md)).
+([`docs/superpowers/plans/archive/2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md:246-249`](../docs/superpowers/plans/archive/2026-08-17-plan-11-20-p11-fu-20-client-mcp-one-call-approval.md)).
 The current P11-FU-20 pool row is the owner of the production-composition residual. Before a live
 attempt, its next forward-only scope should own the whole production lazy path: capability lookup;
 SDK-adapter construction with hardened real factories; per-session connection lifecycle; `open` →

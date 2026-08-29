@@ -5,7 +5,7 @@
 > [`reports/plan-9-7-manual-e2e-evidence.md`](../../reports/plan-9-7-manual-e2e-evidence.md)
 > replaced with real command output (secrets redacted).
 
-**Parent:** [Execution checklist](../superpowers/plans/2026-07-10-plan-9-6-live-signoff-execution.md) · [Plan 9.6](../superpowers/plans/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md)
+**Parent:** [Execution checklist](../superpowers/plans/archive/2026-07-10-plan-9-6-live-signoff-execution.md) · [Plan 9.6](../superpowers/plans/archive/2026-07-07-plan-9-6-live-verification-and-lld-alignment.md)
 
 **Status:** Completed. Evidence captured in
 [`reports/plan-9-7-manual-e2e-evidence.md`](../../reports/plan-9-7-manual-e2e-evidence.md) —
