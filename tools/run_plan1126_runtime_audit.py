@@ -213,6 +213,9 @@ def build_parser() -> argparse.ArgumentParser:
     semantic = subparsers.add_parser("semantic")
     semantic.add_argument("--artifact", required=True)
     semantic.add_argument("--report", required=True)
+    telemetry = subparsers.add_parser("telemetry")
+    telemetry.add_argument("--artifact", required=True)
+    telemetry.add_argument("--report", required=True)
     return parser
 
 
@@ -415,6 +418,39 @@ def _verify_artifact(path: str) -> AuditArtifact:
         expected_findings = tuple(item.to_dict() for item in _h7_findings(expected_h7))
         if actual_findings != expected_findings:
             raise ValueError("H7 findings do not match immutable-source rebuild")
+    h8_records = tuple(record for record in artifact.evidence_records if record.hypothesis_id == "H8")
+    if h8_records:
+        from tools.plan1126_runtime_audit.telemetry import (
+            H8_SOURCE_PATHS,
+            _h8_findings,
+            _telemetry_record,
+        )
+
+        if len(h8_records) != 1:
+            raise ValueError("H8 must be present exactly once")
+        merged_source = GitCommitSource(artifact.merged_commit, repository=ROOT)
+        telemetry_source = SourceTree({path: merged_source.read_text(path) for path in H8_SOURCE_PATHS})
+        with tempfile.TemporaryDirectory(prefix="plan1126-h8-verify-") as workspace:
+            expected_h8 = _telemetry_record(
+                telemetry_source, artifact.merged_commit, artifact.overlay_commit, workspace,
+            )
+        actual = h8_records[0].to_dict()
+        expected = expected_h8.to_dict()
+        fields = set(expected) - {"ruling", "reviewer_status"}
+        if {field: actual[field] for field in fields} != {field: expected[field] for field in fields}:
+            raise ValueError("H8 evidence record does not match immutable-source rebuild")
+        actual_findings = tuple(
+            finding.to_dict()
+            for finding in sorted(
+                (item for item in artifact.findings if item.finding_id.startswith("H8-")),
+                key=lambda item: item.finding_id,
+            )
+        )
+        expected_findings = tuple(
+            item.to_dict() for item in sorted(_h8_findings(expected_h8), key=lambda item: item.finding_id)
+        )
+        if actual_findings != expected_findings:
+            raise ValueError("H8 findings do not match immutable-source rebuild")
     return artifact
 
 
@@ -438,6 +474,38 @@ def _run_semantic(args: argparse.Namespace) -> int:
     errors = list(Draft202012Validator(schema).iter_errors(payload))
     if errors:
         raise ValueError("generated Task 7 artifact does not satisfy the canonical schema")
+    _atomic_json(Path(args.artifact), payload)
+    _write_text(Path(args.report), render_markdown(payload))
+    _emit("COMPLETE")
+    return 0
+
+
+def _run_telemetry(args: argparse.Namespace) -> int:
+    from tools.plan1126_runtime_audit.cancellation import H3_SOURCE_PATHS
+    from tools.plan1126_runtime_audit.delivery_characterization import H4_SOURCE_PATHS
+    from tools.plan1126_runtime_audit.semantic_errors import H7_SOURCE_PATHS
+    from tools.plan1126_runtime_audit.shutdown import H5_SOURCE_PATHS
+    from tools.plan1126_runtime_audit.telemetry import H8_SOURCE_PATHS, build_h8_audit_artifact
+
+    merged_source = GitCommitSource(_ACCEPTED_MERGED_COMMIT, repository=ROOT)
+    overlay_source = GitCommitSource(_ACCEPTED_OVERLAY_COMMIT, repository=ROOT)
+    paths = tuple(sorted(
+        set(H3_SOURCE_PATHS) | set(H4_SOURCE_PATHS) | set(H5_SOURCE_PATHS)
+        | set(H7_SOURCE_PATHS) | set(H8_SOURCE_PATHS)
+    ))
+    merged = SourceTree({path: merged_source.read_text(path) for path in paths})
+    overlay = SourceTree({path: overlay_source.read_text(path) for path in paths})
+    with tempfile.TemporaryDirectory(prefix="plan1126-h8-build-") as workspace:
+        artifact = build_h8_audit_artifact(
+            merged=merged, overlay=overlay,
+            merged_commit=merged_source.commit, overlay_commit=overlay_source.commit,
+            workspace=workspace,
+        )
+    payload = artifact.to_dict()
+    schema = _read_json(_SCHEMA_PATH)
+    errors = list(Draft202012Validator(schema).iter_errors(payload))
+    if errors:
+        raise ValueError("generated Task 8 artifact does not satisfy the canonical schema")
     _atomic_json(Path(args.artifact), payload)
     _write_text(Path(args.report), render_markdown(payload))
     _emit("COMPLETE")
@@ -799,6 +867,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_inventory(args)
     if args.command == "semantic":
         return _run_semantic(args)
+    if args.command == "telemetry":
+        return _run_telemetry(args)
     if args.command == "offline":
         return _run_offline(args)
     if args.command in {"live-redis", "acpx", "sdk"}:

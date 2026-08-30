@@ -65,6 +65,16 @@ from .shutdown import (
     shutdown_schedule_observations,
 )
 from .source import GitCommitSource, SourceTree
+from .telemetry import (
+    TelemetryEvidenceRecord,
+    TelemetryInventory,
+    build_h8_audit_artifact,
+    discover_telemetry_inventory,
+    runtime_correlation_observations,
+    runtime_event_schema_observations,
+    runtime_redaction_observations,
+    telemetry_sink_failure_observations,
+)
 
 __all__ = [
     "AuditArtifact",
@@ -109,6 +119,8 @@ __all__ = [
     "ShutdownScheduleObservation",
     "SourceTree",
     "TaskSupervisionInventory",
+    "TelemetryEvidenceRecord",
+    "TelemetryInventory",
     "VocabularyCoverageAssessment",
     "VocabularyCoverageStatus",
     "assert_scope_out_register_ready_for_g4",
@@ -117,6 +129,7 @@ __all__ = [
     "build_h3_audit_artifact",
     "build_h5_audit_artifact",
     "build_h7_audit_artifact",
+    "build_h8_audit_artifact",
     "cancellation_schedule_observations",
     "compute_cost",
     "derived_seed",
@@ -124,11 +137,16 @@ __all__ = [
     "discover_delivery_sites",
     "discover_sites",
     "discover_task_supervision",
+    "discover_telemetry_inventory",
     "discover_shutdown_inventory",
     "discover_semantic_inventory",
     "literal_seeds",
     "qualify_client",
     "shutdown_schedule_observations",
     "semantic_selection_observations",
+    "runtime_correlation_observations",
+    "runtime_event_schema_observations",
+    "runtime_redaction_observations",
+    "telemetry_sink_failure_observations",
     "verify_running_artifact",
 ]

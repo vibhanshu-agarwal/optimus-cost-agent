@@ -602,9 +602,15 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 **Files:**
 
 - Create: `tests/unit/telemetry/test_plan1126_runtime_contract.py`
+- Create: `tools/plan1126_runtime_audit/telemetry.py`
 - Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.md`
+- Modify: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
+- Modify: `tools/plan1126_runtime_audit/{__init__,model,render}.py`
+- Modify: `tools/run_plan1126_runtime_audit.py`
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
 - Read only: `src/optimus/telemetry/{events,fanout,redaction,serialization,jsonl,observability,redis_adapter,redis_sink}.py`
-- Read only: `src/optimus/acp/{bootstrap,debug_trace,spec,server,settlement}.py`
+- Read only: `src/optimus/acp/{bootstrap,debug_trace,dispatcher,spec,server,settlement}.py`
 - Read only: `src/optimus/agent/planning_loop.py`
 
 **Interfaces:**
@@ -612,23 +618,23 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 - Consumes: derived event/trace/stderr/redaction/sink sites, `ACP_TURN_SETTLEMENT`, and carried seed S2.
 - Produces: `N_sinks`, reviewed runtime-event vocabulary, required correlation fields, redaction observations, sink containment results, and scalar/plural Gateway-ID ruling.
 
-- [ ] **Step 1: Derive event and sink inventories.**
+- [x] **Step 1: Derive event and sink inventories.**
 
   Discover event construction, direct stderr/debug trace, fanout, serialization, redaction, Redis/JSONL/export sinks, and fallback diagnostics. Each call site records semantic event, correlation fields, content class, redaction path, and sink-failure behavior.
 
-- [ ] **Step 2: Write the 10,000-case event-schema predicate.**
+- [x] **Step 2: Write the 10,000-case event-schema predicate.**
 
   Generate valid and missing/extra/invalid-field cases across the derived vocabulary. Compare every proposed runtime event to `ACP_TURN_SETTLEMENT`; do not assume connection/turn/operation/client fields are required until the inventory and reviewer establish them.
 
-- [ ] **Step 3: Write the 1,000-case redaction predicate.**
+- [x] **Step 3: Write the 1,000-case redaction predicate.**
 
   Generate nested mappings/sequences/exceptions containing credential, prompt, response, path, and request-body canaries. Require prohibited values to be absent from every authorized sink and fallback diagnostic while preserving safe field names/reasons.
 
-- [ ] **Step 4: Write correlation and sink-failure predicates.**
+- [x] **Step 4: Write correlation and sink-failure predicates.**
 
   Correlation requires 100% presence only for fields the reviewed schema marks required and deterministic joins among wire error, lifecycle event, and settlement. For each discovered sink, inject 100 failures and compare runtime/wire outcome with the no-failure control.
 
-- [ ] **Step 5: Run all four exact predicates.**
+- [x] **Step 5: Run all four exact predicates.**
 
   ```powershell
   uv run --frozen pytest tests/unit/telemetry/test_plan1126_runtime_contract.py::test_runtime_event_schema_generated_10000_cases -q
@@ -637,7 +643,7 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
   uv run --frozen pytest tests/unit/telemetry/test_plan1126_runtime_contract.py::test_telemetry_sink_failures_are_contained -q
   ```
 
-- [ ] **Step 6: Rule on S2 and publish H8.**
+- [x] **Step 6: Rule on S2 and publish H8.**
 
   Decide whether scalar `gateway_request_id` and plural `gateway_request_ids` encode a documented one-to-many relationship or contradictory correlation. Publish symbol citations and baseline scope; do not rename fields in this plan.
 

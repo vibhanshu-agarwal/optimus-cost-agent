@@ -92,7 +92,8 @@
       {"$ref": "#/$defs/cancellationEvidenceRecord"},
       {"$ref": "#/$defs/shutdownEvidenceRecord"},
       {"$ref": "#/$defs/authorityEvidenceRecord"},
-      {"$ref": "#/$defs/semanticEvidenceRecord"}
+      {"$ref": "#/$defs/semanticEvidenceRecord"},
+      {"$ref": "#/$defs/telemetryEvidenceRecord"}
     ]}}
   },
   "$defs": {
@@ -233,8 +234,8 @@
       "type": "object", "additionalProperties": false,
       "required": ["field_name", "type_name", "vocabulary_values", "observed_values", "missing_values", "status", "reason", "owner", "next_gate"],
       "properties": {
-        "field_name": {"enum": ["conversation_commit", "effect_state", "final_delivery", "rpc_response_delivery", "send_outcome", "send_state", "settlement", "request_task_state", "child_work_state", "invocation_outcomes", "terminal_cause", "close_outcome", "repeat_latency_class", "category", "error_code_name", "retryability", "effect_certainty", "public_output", "telemetry_disposition", "cleanup_obligation", "leakage_result", "divergence_result"]},
-        "type_name": {"enum": ["ConversationCommit", "EffectState", "FinalDelivery", "RpcResponseDelivery", "SendOutcome", "SendState", "Settlement", "RequestTaskState", "ChildWorkState", "CancellationInvocationOutcome", "TerminalCause", "CloseOutcome", "RepeatLatencyClass", "SemanticCategory", "NamedErrorCode", "Retryability", "EffectCertainty", "PublicOutput", "TelemetryDisposition", "CleanupObligation", "LeakageResult", "DivergenceResult"]},
+        "field_name": {"enum": ["conversation_commit", "effect_state", "final_delivery", "rpc_response_delivery", "send_outcome", "send_state", "settlement", "request_task_state", "child_work_state", "invocation_outcomes", "terminal_cause", "close_outcome", "repeat_latency_class", "category", "error_code_name", "retryability", "effect_certainty", "public_output", "telemetry_disposition", "cleanup_obligation", "leakage_result", "divergence_result", "event_kind", "case_kind", "expected_outcome", "actual_outcome", "conformance", "content_class", "overall_result", "result", "sink_id", "failure_result"]},
+        "type_name": {"enum": ["ConversationCommit", "EffectState", "FinalDelivery", "RpcResponseDelivery", "SendOutcome", "SendState", "Settlement", "RequestTaskState", "ChildWorkState", "CancellationInvocationOutcome", "TerminalCause", "CloseOutcome", "RepeatLatencyClass", "SemanticCategory", "NamedErrorCode", "Retryability", "EffectCertainty", "PublicOutput", "TelemetryDisposition", "CleanupObligation", "LeakageResult", "DivergenceResult", "TelemetryEventKind", "SchemaCaseKind", "ValidationOutcome", "ConformanceResult", "RedactionCanaryClass", "RedactionResult", "CorrelationResult", "DerivedSinkId", "SinkFailureResult"]},
         "vocabulary_values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "observed_values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "missing_values": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
@@ -634,6 +635,133 @@
         "commands": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/contentFreeText"}},
         "ruling": {"$ref": "#/$defs/contentFreeText"}, "reviewer_status": {"const": "PENDING_G2"},
         "content_free_evidence": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/evidence"}}
+      }
+    },
+    "runtimeEventSchema": {
+      "type": "object", "additionalProperties": false,
+      "required": ["event_kind", "factory_name", "required_payload_fields", "optional_payload_fields"],
+      "properties": {
+        "event_kind": {"$ref": "#/$defs/contentFreeText"},
+        "factory_name": {"$ref": "#/$defs/contentFreeText"},
+        "required_payload_fields": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "optional_payload_fields": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/contentFreeText"}}
+      }
+    },
+    "telemetrySite": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "line", "symbol", "site_kind", "semantic_event", "correlation_fields", "content_class", "redaction_path", "sink_id", "sink_failure_behavior", "baseline_scope", "classification", "evidence_digest", "ruling"],
+      "properties": {
+        "path": {"$ref": "#/$defs/contentFreeText"}, "line": {"type": "integer", "minimum": 1},
+        "symbol": {"$ref": "#/$defs/contentFreeText"},
+        "site_kind": {"enum": ["EVENT_KIND", "EVENT_EMISSION", "DEBUG_TRACE", "STDERR", "REDACTION", "SINK"]},
+        "semantic_event": {"oneOf": [{"$ref": "#/$defs/contentFreeText"}, {"type": "null"}]},
+        "correlation_fields": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "content_class": {"enum": ["CONTENT_FREE", "CREDENTIAL", "PROMPT", "RESPONSE", "PATH", "REQUEST_BODY", "MIXED"]},
+        "redaction_path": {"enum": ["SHARED_SANITIZER", "PROTOCOL_SANITIZER", "CONTENT_FREE_BY_CONSTRUCTION", "NONE"]},
+        "sink_id": {"oneOf": [{"$ref": "#/$defs/contentFreeText"}, {"type": "null"}]},
+        "sink_failure_behavior": {"enum": ["CONTAINED", "PROPAGATED", "NOT_APPLICABLE"]},
+        "baseline_scope": {"const": "merged"},
+        "classification": {"enum": ["CANONICAL", "CANONICAL_BYPASSED", "DUPLICATED", "CONTRADICTORY", "MISSING", "INTENTIONALLY_EXCEPTIONAL", "PROVISIONAL_OVERLAY", "NOT_PRESENT", "SUPERSEDED"]},
+        "evidence_digest": {"$ref": "#/$defs/digest"}, "ruling": {"$ref": "#/$defs/contentFreeText"}
+      }
+    },
+    "telemetryInventory": {
+      "type": "object", "additionalProperties": false,
+      "required": ["expected_site_count", "site_count", "sink_count", "sink_ids", "event_kind_count", "required_correlation_fields", "event_schemas", "sites"],
+      "properties": {
+        "expected_site_count": {"type": "null"}, "site_count": {"type": "integer", "minimum": 1},
+        "sink_count": {"type": "integer", "minimum": 1},
+        "sink_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "event_kind_count": {"type": "integer", "minimum": 1},
+        "required_correlation_fields": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "event_schemas": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/runtimeEventSchema"}},
+        "sites": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/telemetrySite"}}
+      }
+    },
+    "runtimeEventSchemaObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["case_index", "event_kind", "case_kind", "mutated_field", "expected_outcome", "actual_outcome", "conformance", "input_digest", "output_digest", "complete"],
+      "properties": {
+        "case_index": {"type": "integer", "minimum": 0, "maximum": 9999},
+        "event_kind": {"$ref": "#/$defs/contentFreeText"},
+        "case_kind": {"enum": ["VALID", "MISSING_REQUIRED", "EXTRA_FIELD", "INVALID_FIELD"]},
+        "mutated_field": {"oneOf": [{"$ref": "#/$defs/contentFreeText"}, {"type": "null"}]},
+        "expected_outcome": {"enum": ["ACCEPTED", "REJECTED"]}, "actual_outcome": {"enum": ["ACCEPTED", "REJECTED"]},
+        "conformance": {"enum": ["MATCH", "DIVERGED"]}, "input_digest": {"$ref": "#/$defs/digest"},
+        "output_digest": {"$ref": "#/$defs/digest"}, "complete": {"const": true}
+      }
+    },
+    "runtimeRedactionObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["case_index", "content_class", "sink_results", "overall_result", "input_digest", "output_digest", "complete"],
+      "properties": {
+        "case_index": {"type": "integer", "minimum": 0, "maximum": 999},
+        "content_class": {"enum": ["CREDENTIAL", "PROMPT", "RESPONSE", "PATH", "REQUEST_BODY"]},
+        "sink_results": {"type": "object", "minProperties": 1, "additionalProperties": {"enum": ["CLEAN", "LEAKED"]}},
+        "overall_result": {"enum": ["CLEAN", "LEAKED"]}, "input_digest": {"$ref": "#/$defs/digest"},
+        "output_digest": {"$ref": "#/$defs/digest"}, "complete": {"const": true}
+      }
+    },
+    "runtimeCorrelationObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["channel", "event_kind", "present_fields", "missing_fields", "result", "evidence_digest", "complete"],
+      "properties": {
+        "channel": {"$ref": "#/$defs/contentFreeText"},
+        "event_kind": {"oneOf": [{"$ref": "#/$defs/contentFreeText"}, {"type": "null"}]},
+        "present_fields": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "missing_fields": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "result": {"enum": ["COMPLETE", "INCOMPLETE"]}, "evidence_digest": {"$ref": "#/$defs/digest"}, "complete": {"const": true}
+      }
+    },
+    "runtimeSinkFailureObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sink_id", "repeat_index", "event_kind", "failure_result", "control_digest", "failure_digest", "complete"],
+      "properties": {
+        "sink_id": {"$ref": "#/$defs/contentFreeText"}, "repeat_index": {"type": "integer", "minimum": 0, "maximum": 99},
+        "event_kind": {"$ref": "#/$defs/contentFreeText"}, "failure_result": {"enum": ["CONTAINED", "PROPAGATED"]},
+        "control_digest": {"$ref": "#/$defs/digest"}, "failure_digest": {"$ref": "#/$defs/digest"}, "complete": {"const": true}
+      }
+    },
+    "h8ObservationSummary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["total_observation_count", "complete_observation_count", "observation_closure_status", "vocabulary_coverage_status", "digest", "coverage_assessments", "rows"],
+      "properties": {
+        "total_observation_count": {"type": "integer", "minimum": 1}, "complete_observation_count": {"type": "integer", "minimum": 1},
+        "observation_closure_status": {"const": "FULLY_STRUCTURALLY_CLOSED"},
+        "vocabulary_coverage_status": {"enum": ["FULLY_OBSERVED", "PARTIAL_WITH_SCOPE_OUTS"]},
+        "digest": {"$ref": "#/$defs/digest"},
+        "coverage_assessments": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/vocabularyCoverageAssessment"}},
+        "rows": {"type": "array", "minItems": 1, "items": {"oneOf": [
+          {"$ref": "#/$defs/runtimeEventSchemaObservation"}, {"$ref": "#/$defs/runtimeRedactionObservation"},
+          {"$ref": "#/$defs/runtimeCorrelationObservation"}, {"$ref": "#/$defs/runtimeSinkFailureObservation"}
+        ]}}
+      }
+    },
+    "s2Ruling": {
+      "type": "object", "additionalProperties": false,
+      "required": ["scalar_field", "plural_field", "relationship", "classification", "symbol_citations", "evidence_digest", "ruling"],
+      "properties": {
+        "scalar_field": {"const": "gateway_request_id"}, "plural_field": {"const": "gateway_request_ids"},
+        "relationship": {"const": "ONE_ATTEMPT_TO_MANY_ATTEMPTS_PER_PLANNING_RUN"}, "classification": {"const": "CANONICAL"},
+        "symbol_citations": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "evidence_digest": {"$ref": "#/$defs/digest"}, "ruling": {"$ref": "#/$defs/contentFreeText"}
+      }
+    },
+    "telemetryEvidenceRecord": {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_id", "hypothesis_id", "subject", "baseline_scope", "baseline_anchor_commit", "overlay_commit", "binding_commit", "inventory", "schema_observations", "redaction_observations", "correlation_observations", "sink_failure_observations", "s2_ruling", "commands", "ruling", "reviewer_status", "content_free_evidence"],
+      "properties": {
+        "record_id": {"const": "ER-H8-TELEMETRY-CONTAINMENT"}, "hypothesis_id": {"const": "H8"},
+        "subject": {"$ref": "#/$defs/contentFreeText"}, "baseline_scope": {"const": "merged"},
+        "baseline_anchor_commit": {"$ref": "#/$defs/commit"}, "overlay_commit": {"$ref": "#/$defs/commit"}, "binding_commit": {"type": "null"},
+        "inventory": {"$ref": "#/$defs/telemetryInventory"},
+        "schema_observations": {"allOf": [{"$ref": "#/$defs/h8ObservationSummary"}, {"properties": {"total_observation_count": {"const": 10000}, "complete_observation_count": {"const": 10000}}}]},
+        "redaction_observations": {"allOf": [{"$ref": "#/$defs/h8ObservationSummary"}, {"properties": {"total_observation_count": {"const": 1000}, "complete_observation_count": {"const": 1000}}}]},
+        "correlation_observations": {"$ref": "#/$defs/h8ObservationSummary"},
+        "sink_failure_observations": {"$ref": "#/$defs/h8ObservationSummary"}, "s2_ruling": {"$ref": "#/$defs/s2Ruling"},
+        "commands": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "ruling": {"$ref": "#/$defs/contentFreeText"}, "reviewer_status": {"const": "PENDING_G2"},
+        "content_free_evidence": {"type": "array", "minItems": 6, "maxItems": 6, "items": {"$ref": "#/$defs/evidence"}}
       }
     },
     "evidenceRecord": {

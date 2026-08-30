@@ -29,10 +29,10 @@ This report is deterministically regenerated from the canonical JSON artifact.
 | Classification | Count |
 |---|---:|
 | `CANONICAL` | 4 |
-| `CANONICAL_BYPASSED` | 3 |
+| `CANONICAL_BYPASSED` | 4 |
 | `DUPLICATED` | 0 |
 | `CONTRADICTORY` | 4 |
-| `MISSING` | 3 |
+| `MISSING` | 6 |
 | `INTENTIONALLY_EXCEPTIONAL` | 1 |
 | `PROVISIONAL_OVERLAY` | 2 |
 | `NOT_PRESENT` | 1 |
@@ -46,7 +46,7 @@ This report is deterministically regenerated from the canonical JSON artifact.
 | Cancellation Points | 8 |
 | Close Paths | 15 |
 | Queues | 0 |
-| Sinks | 0 |
+| Sinks | 5 |
 
 ## Computed run cost
 
@@ -55,7 +55,7 @@ This report is deterministically regenerated from the canonical JSON artifact.
 | Cancellation controls | 2,048 |
 | Cancellation races (levels 2/4/8) | 6,144 |
 | Queue admissions | 0 |
-| Sink failure runs | 0 |
+| Sink failure runs | 500 |
 | Idempotent close invocations | 225 |
 
 Measured scenario durations:
@@ -285,6 +285,84 @@ Observation digest: `d4472f12b731e6e3cf958cc87cdb93caeae9cb5d72ff81cc66121582d3c
 
 Ruling: H7 records every mechanically discovered selection, preserves cancellation as distinct, and retains semantic gaps and S3 exceptions without production repair.
 
+### `H8` — Telemetry schema, redaction, correlation, and sink containment
+
+| Field | Value |
+|---|---|
+| Record | `ER-H8-TELEMETRY-CONTAINMENT` |
+| Baseline scope | `merged` |
+| Derived telemetry sites | 50 |
+| Seeded expected site count | `null` |
+| Reviewed event kinds | 16 |
+| Derived terminal sinks (`N_sinks`) | 5 |
+| Sink identities | `debug_trace`, `gateway_export`, `jsonl`, `redis`, `stderr` |
+| Required trace correlation fields | `event_id`, `kind`, `occurred_at`, `request_id`, `run_id`, `schema_version`, `trace_id` |
+| Reviewer status | `PENDING_G2` |
+
+S2 scalar/plural Gateway-ID ruling:
+
+| Scalar | Plural | Relationship | Classification |
+|---|---|---|---|
+| `gateway_request_id` | `gateway_request_ids` | `ONE_ATTEMPT_TO_MANY_ATTEMPTS_PER_PLANNING_RUN` | `CANONICAL` |
+
+S2 is a documented cardinality distinction: gateway_request_id identifies one reported usage attempt, while gateway_request_ids is the ordered aggregate appended across planning attempts.
+
+#### Event-schema matrix
+
+Observation closure: 10,000/10,000 structurally closed records (`FULLY_STRUCTURALLY_CLOSED`). This is record-shape closure, not settled-vocabulary completeness.
+
+Settled-vocabulary coverage: `FULLY_OBSERVED`.
+
+| Observation field | Settled type | Coverage | Observed | Missing | Owner | Next gate | Reason |
+|---|---|---|---|---|---|---|---|
+| `event_kind` | `TelemetryEventKind` | `FULLY_OBSERVED` | `acp_turn_settlement`, `agent_run`, `error`, `fitness_gate`, `gateway_usage`, `goal_loop`, `golden_task`, `guardrail_audit`, `model_call`, `pricing_fallback`, `reconciliation`, `release_gate`, `retry_decision`, `skill_invocation`, `skill_selection`, `tool_call` | none | not applicable | not applicable | All declared values were observed. |
+| `case_kind` | `SchemaCaseKind` | `FULLY_OBSERVED` | `EXTRA_FIELD`, `INVALID_FIELD`, `MISSING_REQUIRED`, `VALID` | none | not applicable | not applicable | All declared values were observed. |
+| `expected_outcome` | `ValidationOutcome` | `FULLY_OBSERVED` | `ACCEPTED`, `REJECTED` | none | not applicable | not applicable | All declared values were observed. |
+| `actual_outcome` | `ValidationOutcome` | `FULLY_OBSERVED` | `ACCEPTED`, `REJECTED` | none | not applicable | not applicable | All declared values were observed. |
+| `conformance` | `ConformanceResult` | `FULLY_OBSERVED` | `DIVERGED`, `MATCH` | none | not applicable | not applicable | All declared values were observed. |
+
+Observation digest: `378a8fa97b7be2107eb9aa41503cf338ce0be5eed26bf7d2dd32cc85abbd3234`
+
+#### Redaction matrix
+
+Observation closure: 1,000/1,000 structurally closed records (`FULLY_STRUCTURALLY_CLOSED`). This is record-shape closure, not settled-vocabulary completeness.
+
+Settled-vocabulary coverage: `FULLY_OBSERVED`.
+
+| Observation field | Settled type | Coverage | Observed | Missing | Owner | Next gate | Reason |
+|---|---|---|---|---|---|---|---|
+| `content_class` | `RedactionCanaryClass` | `FULLY_OBSERVED` | `CREDENTIAL`, `PATH`, `PROMPT`, `REQUEST_BODY`, `RESPONSE` | none | not applicable | not applicable | All declared values were observed. |
+| `overall_result` | `RedactionResult` | `FULLY_OBSERVED` | `CLEAN`, `LEAKED` | none | not applicable | not applicable | All declared values were observed. |
+
+Observation digest: `ecd677f84a1915b985164a991431dbe5f7c76098a09a360d252d30365b9a5a1e`
+
+#### Correlation chain
+
+Observation closure: 19/19 structurally closed records (`FULLY_STRUCTURALLY_CLOSED`). This is record-shape closure, not settled-vocabulary completeness.
+
+Settled-vocabulary coverage: `FULLY_OBSERVED`.
+
+| Observation field | Settled type | Coverage | Observed | Missing | Owner | Next gate | Reason |
+|---|---|---|---|---|---|---|---|
+| `result` | `CorrelationResult` | `FULLY_OBSERVED` | `COMPLETE`, `INCOMPLETE` | none | not applicable | not applicable | All declared values were observed. |
+
+Observation digest: `e758d4d5df09e6bd6e1dc56bc62f97c9aff4276bf2f5058d84fc40c84aba5ce1`
+
+#### Sink-failure matrix
+
+Observation closure: 500/500 structurally closed records (`FULLY_STRUCTURALLY_CLOSED`). This is record-shape closure, not settled-vocabulary completeness.
+
+Settled-vocabulary coverage: `FULLY_OBSERVED`.
+
+| Observation field | Settled type | Coverage | Observed | Missing | Owner | Next gate | Reason |
+|---|---|---|---|---|---|---|---|
+| `sink_id` | `DerivedSinkId` | `FULLY_OBSERVED` | `debug_trace`, `gateway_export`, `jsonl`, `redis`, `stderr` | none | not applicable | not applicable | All declared values were observed. |
+| `failure_result` | `SinkFailureResult` | `FULLY_OBSERVED` | `CONTAINED`, `PROPAGATED` | none | not applicable | not applicable | All declared values were observed. |
+
+Observation digest: `e9edd8b692d63667880c6f98c171c65e2165581341c2c5bb7db3650eaa70aeb2`
+
+Ruling: H8 derives every reviewed event and sink site, separates structural closure from vocabulary coverage, retains schema/redaction/correlation/containment gaps, and rules S2 as canonical one-to-many cardinality without renaming production fields.
+
 ## Running scope-out register
 
 | Hypothesis | Field | Missing values | Owning gate | Reachability | Owner | Reason |
@@ -324,3 +402,7 @@ Ruling: H7 records every mechanically discovered selection, preserves cancellati
 | `H7-CONTRADICTORY-04` | `CONTRADICTORY` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |
 | `H7-INTENTIONALLY_EXCEPTIONAL-05` | `INTENTIONALLY_EXCEPTIONAL` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |
 | `H7-MISSING-06` | `MISSING` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |
+| `H8-CANONICAL-BYPASSED-CONTENT-MINIMIZATION-merged` | `CANONICAL_BYPASSED` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |
+| `H8-MISSING-EVENT-PAYLOAD-SCHEMAS-merged` | `MISSING` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |
+| `H8-MISSING-FALLBACK-CORRELATION-merged` | `MISSING` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |
+| `H8-MISSING-SINK-CONTAINMENT-merged` | `MISSING` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |

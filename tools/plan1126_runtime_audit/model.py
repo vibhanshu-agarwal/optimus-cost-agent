@@ -1339,6 +1339,13 @@ class AuditArtifact:
                     raise ValueError("global N_close_paths disagrees with H5 inventory")
                 if self.computed_run_cost["idempotent_close_invocations"] != record.close_path_count * 3 * 5:
                     raise ValueError("global close cost disagrees with H5 derived schedules")
+            if record.hypothesis_id == "H8":
+                if record.baseline_scope is not BaselineScope.MERGED or record.binding_commit is not None:
+                    raise ValueError("H8 is merged and unbound")
+                if self.discovered_multipliers["sinks"] != record.inventory.sink_count:
+                    raise ValueError("global N_sinks disagrees with H8 inventory")
+                if self.computed_run_cost["sink_failure_runs"] != record.inventory.sink_count * 100:
+                    raise ValueError("global sink cost disagrees with H8 derived schedules")
             if record.reviewer_status is ReviewerStatus.PENDING_G2 and self.gate_status is not GateStatus.INCOMPLETE:
                 raise ValueError("pending external review requires an incomplete global gate")
         expected_scope_outs: set[tuple[object, ...]] = set()
@@ -1456,6 +1463,10 @@ class AuditArtifact:
                 from .semantic_errors import SemanticEvidenceRecord
 
                 parsed_records.append(SemanticEvidenceRecord.from_dict(item))
+            elif isinstance(item, dict) and item.get("hypothesis_id") == "H8":
+                from .telemetry import TelemetryEvidenceRecord
+
+                parsed_records.append(TelemetryEvidenceRecord.from_dict(item))
             else:
                 parsed_records.append(EvidenceRecord.from_dict(item))
         artifact = cls(

@@ -160,6 +160,57 @@ def render_markdown(payload: Mapping[str, Any]) -> str:
                 )
             lines.extend(["", f"Observation digest: `{semantic['digest']}`", "", f"Ruling: {_safe_markdown(record['ruling'])}"])
             continue
+        if record["hypothesis_id"] == "H8":
+            inventory = record["inventory"]
+            s2 = record["s2_ruling"]
+            lines.extend([
+                "", f"### `H8` — {_safe_markdown(record['subject'])}", "",
+                "| Field | Value |", "|---|---|",
+                f"| Record | `{record['record_id']}` |",
+                f"| Baseline scope | `{record['baseline_scope']}` |",
+                f"| Derived telemetry sites | {inventory['site_count']} |",
+                "| Seeded expected site count | `null` |",
+                f"| Reviewed event kinds | {inventory['event_kind_count']} |",
+                f"| Derived terminal sinks (`N_sinks`) | {inventory['sink_count']} |",
+                f"| Sink identities | {', '.join(f'`{_safe_markdown(value)}`' for value in inventory['sink_ids'])} |",
+                f"| Required trace correlation fields | {', '.join(f'`{_safe_markdown(value)}`' for value in inventory['required_correlation_fields'])} |",
+                f"| Reviewer status | `{record['reviewer_status']}` |", "",
+                "S2 scalar/plural Gateway-ID ruling:", "",
+                "| Scalar | Plural | Relationship | Classification |",
+                "|---|---|---|---|",
+                f"| `{s2['scalar_field']}` | `{s2['plural_field']}` | `{s2['relationship']}` | `{s2['classification']}` |",
+                "", _safe_markdown(s2["ruling"]),
+            ])
+            for heading, summary_key in (
+                ("Event-schema matrix", "schema_observations"),
+                ("Redaction matrix", "redaction_observations"),
+                ("Correlation chain", "correlation_observations"),
+                ("Sink-failure matrix", "sink_failure_observations"),
+            ):
+                summary = record[summary_key]
+                lines.extend([
+                    "", f"#### {heading}", "",
+                    f"Observation closure: {summary['complete_observation_count']:,}/"
+                    f"{summary['total_observation_count']:,} structurally closed records "
+                    f"(`{summary['observation_closure_status']}`). This is record-shape closure, not "
+                    "settled-vocabulary completeness.", "",
+                    f"Settled-vocabulary coverage: `{summary['vocabulary_coverage_status']}`.", "",
+                    "| Observation field | Settled type | Coverage | Observed | Missing | Owner | Next gate | Reason |",
+                    "|---|---|---|---|---|---|---|---|",
+                ])
+                for assessment in summary["coverage_assessments"]:
+                    observed = ", ".join(f"`{_safe_markdown(value)}`" for value in assessment["observed_values"])
+                    missing = ", ".join(f"`{_safe_markdown(value)}`" for value in assessment["missing_values"]) or "none"
+                    lines.append(
+                        f"| `{assessment['field_name']}` | `{assessment['type_name']}` | "
+                        f"`{assessment['status']}` | {observed} | {missing} | "
+                        f"{_safe_markdown(assessment['owner'] or 'not applicable')} | "
+                        f"{_safe_markdown(assessment['next_gate'] or 'not applicable')} | "
+                        f"{_safe_markdown(assessment['reason'] or 'All declared values were observed.')} |"
+                    )
+                lines.extend(["", f"Observation digest: `{summary['digest']}`"])
+            lines.extend(["", f"Ruling: {_safe_markdown(record['ruling'])}"])
+            continue
         observations = record["schedule_observations"]
         observation_rows = observations["observations"]
         contradiction = record["contradiction_search"]
