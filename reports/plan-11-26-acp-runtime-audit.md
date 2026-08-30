@@ -34,7 +34,7 @@ This report is deterministically regenerated from the canonical JSON artifact.
 | `CONTRADICTORY` | 4 |
 | `MISSING` | 8 |
 | `INTENTIONALLY_EXCEPTIONAL` | 1 |
-| `PROVISIONAL_OVERLAY` | 2 |
+| `PROVISIONAL_OVERLAY` | 3 |
 | `NOT_PRESENT` | 1 |
 | `SUPERSEDED` | 0 |
 | `UNCLASSIFIED` | 0 |
@@ -424,6 +424,46 @@ Observation digest: `b5e6d2827865fe423591252af4c6716d663f0e5f6a57454144150f65b5b
 
 Ruling: H9 derives three constructor-declared unbounded queues, records 10,000 stopped-consumer admissions per queue without inferring unboundedness from the probe alone, and separates connect timeout from a missing full health-operation deadline.
 
+### `H10` — Durable session lease, retention, owner/revision, and recovery binding gate
+
+| Field | Value |
+|---|---|
+| Record | `ER-H10-SESSION-LEASE-GATE` |
+| Baseline scope | `overlay` |
+| Binding commit | `not nominated` |
+| Gate outcome | `PROVISIONAL_OVERLAY` |
+| Classification | `PROVISIONAL_OVERLAY` |
+| Distinct Plan 11.7 heads | 8 |
+| Runtime predicates executed | `False` |
+| Live Redis predicates executed | `False` |
+| Executed predicate count | 0 |
+| Reviewer status | `PENDING_G2` |
+
+The binding-presence gate stopped Task 10 before Steps 2–6. No overlay constant value is promoted as binding evidence, and no structural-closure or vocabulary-coverage claim is made for unexecuted predicates.
+
+Overlay-only durable-path symbols:
+
+| Path | Line | Symbol |
+|---|---:|---|
+| `src/optimus/acp/launch_policy.py` | 89 | `DEFAULT_ACP_SESSION_TTL_SECONDS` |
+| `src/optimus/acp/spec.py` | 84 | `SESSION_LOAD_LEASE_SECONDS` |
+
+Deferred work that becomes reachable after binding nomination:
+
+| Obligation | Planned executions | Executed | Status | Owner | Next gate | Reachability |
+|---|---:|---:|---|---|---|---|
+| `derive_session_lease_and_retention_constants` | 0 | 0 | `DEFERRED_UNTIL_BINDING` | P11-FEAT-ZED-RESUME | Plan 11.7 binding integration candidate nomination | Reachable only after Plan 11.7 nominates a binding integration candidate containing or superseding the durable session path. |
+| `lease_boundary_1000_seed_schedule` | 1,000 | 0 | `DEFERRED_UNTIL_BINDING` | P11-FEAT-ZED-RESUME | Plan 11.7 binding integration candidate nomination | Reachable only after Plan 11.7 nominates a binding integration candidate containing or superseding the durable session path. |
+| `create_acquire_mutate_release_cycles` | 50 | 0 | `DEFERRED_UNTIL_BINDING` | P11-FEAT-ZED-RESUME | Plan 11.7 binding integration candidate nomination | Reachable only after Plan 11.7 nominates a binding integration candidate containing or superseding the durable session path. |
+| `owner_revision_races` | 100 | 0 | `DEFERRED_UNTIL_BINDING` | P11-FEAT-ZED-RESUME | Plan 11.7 binding integration candidate nomination | Reachable only after Plan 11.7 nominates a binding integration candidate containing or superseding the durable session path. |
+| `wall_clock_recovery` | 1 | 0 | `DEFERRED_UNTIL_BINDING` | P11-FEAT-ZED-RESUME | Plan 11.7 binding integration candidate nomination | Reachable only after Plan 11.7 nominates a binding integration candidate containing or superseding the durable session path. |
+
+Observed Plan 11.7 head identities: `128af65c851bd9f6eeffe54b01484a7a5650163f`, `6208177b55237132c4087652de87c78f21159fb2`, `79cd37cf37b2740f7580b2ed3859c0401a47f6a4`, `9467df26603a88a4adce1057dea7725f925441f6`, `c26928673cf03759c509c982e1e7a355ee6e9f46`, `f6bd17069b906c74e7d6ba28ecd319354b5123b6`, `f8e7e06c9c59f3adf50527f757f2c58b9b83795f`, `fc80403060f578986c287686c27d935a8043dc5a`
+
+Task 0 intake digest: `3117b2cdbf2f88ec27cb40b2aa5d2464438f8510f804da566cb4a82cf3feba24`
+
+Ruling: Plan 11.7 has not nominated a binding integration candidate. The durable path is visible only in the accepted overlay, so H10 is PROVISIONAL_OVERLAY and stops before constant derivation, boundary schedules, Redis mutation, owner/revision races, and wall-clock recovery.
+
 ## Running scope-out register
 
 | Hypothesis | Field | Missing values | Owning gate | Reachability | Owner | Reason |
@@ -451,6 +491,7 @@ Ruling: H9 derives three constructor-declared unbounded queues, records 10,000 s
 
 | ID | Classification | Baseline | Owner |
 |---|---|---|---|
+| `H10-PROVISIONAL-DURABLE-SESSION-overlay` | `PROVISIONAL_OVERLAY` | `overlay` | P11-FEAT-ZED-RESUME |
 | `H3-TASK-ESCAPED_CHILD-both-aligned` | `CANONICAL_BYPASSED` | `both-aligned` | P11-FEAT-ACP-RUNTIME-HARDENING |
 | `H3-TASK-OWNED-both-aligned` | `CANONICAL` | `both-aligned` | P11-FEAT-ACP-RUNTIME-HARDENING |
 | `H3-TURN-CONTROL-both-aligned` | `CANONICAL` | `both-aligned` | P11-FEAT-ACP-RUNTIME-HARDENING |

@@ -1353,6 +1353,21 @@ class AuditArtifact:
                     raise ValueError("global N_queues disagrees with H9 inventory")
                 if self.computed_run_cost["queue_admissions"] != record.inventory.queue_count * 10_000:
                     raise ValueError("global queue cost disagrees with H9 derived admissions")
+            if record.hypothesis_id == "H10":
+                expected_scope = (
+                    BaselineScope.OVERLAY
+                    if record.classification is Classification.PROVISIONAL_OVERLAY
+                    else BaselineScope.MERGED
+                )
+                if record.baseline_scope is not expected_scope or record.binding_commit is not None:
+                    raise ValueError("H10 scoped-out gate has invalid baseline lineage")
+                if (
+                    record.executed_predicate_count != 0
+                    or record.runtime_predicates_executed
+                    or record.live_redis_predicates_executed
+                    or self.live_redis_status is not LiveStatus.UNRUN
+                ):
+                    raise ValueError("H10 absent-binding gate cannot claim runtime or live evidence")
             if record.reviewer_status is ReviewerStatus.PENDING_G2 and self.gate_status is not GateStatus.INCOMPLETE:
                 raise ValueError("pending external review requires an incomplete global gate")
         expected_scope_outs: set[tuple[object, ...]] = set()
@@ -1414,7 +1429,11 @@ class AuditArtifact:
             "computed_run_cost": _canonical(self.computed_run_cost),
             "gate_status": self.gate_status.value,
             "evidence_records": [
-                record.to_dict() for record in sorted(self.evidence_records, key=lambda item: item.hypothesis_id)
+                record.to_dict()
+                for record in sorted(
+                    self.evidence_records,
+                    key=lambda item: int(item.hypothesis_id.removeprefix("H")),
+                )
             ],
             "scope_out_register": [
                 entry.to_dict()
@@ -1478,6 +1497,10 @@ class AuditArtifact:
                 from .queue_policy import QueueEvidenceRecord
 
                 parsed_records.append(QueueEvidenceRecord.from_dict(item))
+            elif isinstance(item, dict) and item.get("hypothesis_id") == "H10":
+                from .session_lease import SessionLeaseEvidenceRecord
+
+                parsed_records.append(SessionLeaseEvidenceRecord.from_dict(item))
             else:
                 parsed_records.append(EvidenceRecord.from_dict(item))
         artifact = cls(

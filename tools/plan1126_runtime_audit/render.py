@@ -287,6 +287,54 @@ def render_markdown(payload: Mapping[str, Any]) -> str:
                 lines.extend(["", f"Observation digest: `{summary['digest']}`"])
             lines.extend(["", f"Ruling: {_safe_markdown(record['ruling'])}"])
             continue
+        if record["hypothesis_id"] == "H10":
+            gate = record["binding_presence"]
+            lines.extend([
+                "", f"### `H10` — {_safe_markdown(record['subject'])}", "",
+                "| Field | Value |", "|---|---|",
+                f"| Record | `{record['record_id']}` |",
+                f"| Baseline scope | `{record['baseline_scope']}` |",
+                f"| Binding commit | `{record['binding_commit'] or 'not nominated'}` |",
+                f"| Gate outcome | `{record['gate_outcome']}` |",
+                f"| Classification | `{record['classification']}` |",
+                f"| Distinct Plan 11.7 heads | {len(gate['observed_plan_11_7_heads'])} |",
+                f"| Runtime predicates executed | `{record['runtime_predicates_executed']}` |",
+                f"| Live Redis predicates executed | `{record['live_redis_predicates_executed']}` |",
+                f"| Executed predicate count | {record['executed_predicate_count']} |",
+                f"| Reviewer status | `{record['reviewer_status']}` |", "",
+                "The binding-presence gate stopped Task 10 before Steps 2–6. No overlay constant value "
+                "is promoted as binding evidence, and no structural-closure or vocabulary-coverage claim "
+                "is made for unexecuted predicates.", "",
+                "Overlay-only durable-path symbols:", "",
+                "| Path | Line | Symbol |",
+                "|---|---:|---|",
+            ])
+            for symbol in gate["overlay_symbols"]:
+                lines.append(
+                    f"| `{_safe_markdown(symbol['path'])}` | {symbol['line']} | "
+                    f"`{symbol['symbol']}` |"
+                )
+            lines.extend([
+                "", "Deferred work that becomes reachable after binding nomination:", "",
+                "| Obligation | Planned executions | Executed | Status | Owner | Next gate | Reachability |",
+                "|---|---:|---:|---|---|---|---|",
+            ])
+            for obligation in record["deferred_obligations"]:
+                lines.append(
+                    f"| `{obligation['obligation_id']}` | {obligation['planned_execution_count']:,} | "
+                    f"{obligation['executed_count']} | `{obligation['status']}` | "
+                    f"{_safe_markdown(obligation['owner'])} | "
+                    f"{_safe_markdown(obligation['next_gate'])} | "
+                    f"{_safe_markdown(obligation['reachable_after'])} |"
+                )
+            lines.extend([
+                "", "Observed Plan 11.7 head identities: " + ", ".join(
+                    f"`{commit}`" for commit in gate["observed_plan_11_7_heads"]
+                ), "",
+                f"Task 0 intake digest: `{gate['intake_digest']}`", "",
+                f"Ruling: {_safe_markdown(record['ruling'])}",
+            ])
+            continue
         observations = record["schedule_observations"]
         observation_rows = observations["observations"]
         contradiction = record["contradiction_search"]

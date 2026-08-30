@@ -694,8 +694,14 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 **Files:**
 
 - Create: `tests/unit/acp/test_plan1126_session_lease.py`
-- Create: `tests/integration/acp/test_plan1126_runtime_live_redis.py`
+- Create: `tools/plan1126_runtime_audit/session_lease.py`
+- Conditionally create after a binding nomination: `tests/integration/acp/test_plan1126_runtime_live_redis.py` (not created under the Step 1 stop)
 - Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.md`
+- Modify: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
+- Modify: `tools/plan1126_runtime_audit/{__init__,model,render}.py`
+- Modify: `tools/run_plan1126_runtime_audit.py`
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
 - Read only: binding-candidate session/store/model files nominated by Plan 11.7
 
 **Interfaces:**
@@ -703,9 +709,11 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 - Consumes: Task 0 reconciliation status, binding code when available, Task 1 Redis authority, Task 2 provenance, and checkpoint/corpus support.
 - Produces: either `NOT_PRESENT`/`PROVISIONAL_OVERLAY` with Plan 11.7 scope-out, or binding lease/retention constants plus boundary and real-Redis owner/revision characterization.
 
-- [ ] **Step 1: Apply the binding-presence gate.**
+- [x] **Step 1: Apply the binding-presence gate.**
 
   If Plan 11.7 has not nominated a binding integration candidate containing or superseding the durable path, emit `PROVISIONAL_OVERLAY` or `NOT_PRESENT`, name `P11-FEAT-ZED-RESUME`, and stop this task before runtime/live predicates. Never copy the overlay into the audit branch.
+
+  Gate result: `PROVISIONAL_OVERLAY`. Plan 11.7 has no nominated binding commit; Steps 2–6 remain unexecuted by design, with their exact deferred obligations recorded in H10.
 
 - [ ] **Step 2: Derive lease and retention constants independently when binding exists.**
 

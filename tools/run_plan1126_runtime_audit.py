@@ -219,6 +219,9 @@ def build_parser() -> argparse.ArgumentParser:
     queue_policy = subparsers.add_parser("queue-policy")
     queue_policy.add_argument("--artifact", required=True)
     queue_policy.add_argument("--report", required=True)
+    session_lease = subparsers.add_parser("session-lease")
+    session_lease.add_argument("--artifact", required=True)
+    session_lease.add_argument("--report", required=True)
     return parser
 
 
@@ -488,6 +491,36 @@ def _verify_artifact(path: str) -> AuditArtifact:
         )
         if actual_findings != expected_findings:
             raise ValueError("H9 findings do not match immutable-source rebuild")
+    h10_records = tuple(record for record in artifact.evidence_records if record.hypothesis_id == "H10")
+    if h10_records:
+        from tools.plan1126_runtime_audit.session_lease import H10_SOURCE_PATHS, session_lease_gate_record
+        from tools.plan1126_runtime_audit.session_lease import _finding as _h10_finding
+
+        if len(h10_records) != 1:
+            raise ValueError("H10 must be present exactly once")
+        merged_source = GitCommitSource(artifact.merged_commit, repository=ROOT)
+        overlay_source = GitCommitSource(artifact.overlay_commit, repository=ROOT)
+        merged = SourceTree({path: merged_source.read_text(path) for path in H10_SOURCE_PATHS})
+        overlay = SourceTree({path: overlay_source.read_text(path) for path in H10_SOURCE_PATHS})
+        expected_h10 = session_lease_gate_record(
+            intake=_read_json(ROOT / "reports" / "plan-11-26-baseline-intake.json"),
+            merged=merged,
+            overlay=overlay,
+            merged_commit=artifact.merged_commit,
+            overlay_commit=artifact.overlay_commit,
+        )
+        actual = h10_records[0].to_dict()
+        expected = expected_h10.to_dict()
+        fields = set(expected) - {"ruling", "reviewer_status"}
+        if {field: actual[field] for field in fields} != {field: expected[field] for field in fields}:
+            raise ValueError("H10 evidence record does not match binding-gate rebuild")
+        actual_findings = tuple(
+            finding.to_dict()
+            for finding in artifact.findings
+            if finding.finding_id.startswith("H10-")
+        )
+        if actual_findings != (_h10_finding(expected_h10).to_dict(),):
+            raise ValueError("H10 finding does not match binding-gate rebuild")
     return artifact
 
 
@@ -574,6 +607,42 @@ def _run_queue_policy(args: argparse.Namespace) -> int:
     errors = list(Draft202012Validator(schema).iter_errors(payload))
     if errors:
         raise ValueError("generated Task 9 artifact does not satisfy the canonical schema")
+    _atomic_json(Path(args.artifact), payload)
+    _write_text(Path(args.report), render_markdown(payload))
+    _emit("COMPLETE")
+    return 0
+
+
+def _run_session_lease(args: argparse.Namespace) -> int:
+    from tools.plan1126_runtime_audit.cancellation import H3_SOURCE_PATHS
+    from tools.plan1126_runtime_audit.delivery_characterization import H4_SOURCE_PATHS
+    from tools.plan1126_runtime_audit.queue_policy import H9_SOURCE_PATHS
+    from tools.plan1126_runtime_audit.semantic_errors import H7_SOURCE_PATHS
+    from tools.plan1126_runtime_audit.session_lease import H10_SOURCE_PATHS, build_h10_audit_artifact
+    from tools.plan1126_runtime_audit.shutdown import H5_SOURCE_PATHS
+    from tools.plan1126_runtime_audit.telemetry import H8_SOURCE_PATHS
+
+    merged_source = GitCommitSource(_ACCEPTED_MERGED_COMMIT, repository=ROOT)
+    overlay_source = GitCommitSource(_ACCEPTED_OVERLAY_COMMIT, repository=ROOT)
+    paths = tuple(sorted(
+        set(H3_SOURCE_PATHS) | set(H4_SOURCE_PATHS) | set(H5_SOURCE_PATHS)
+        | set(H7_SOURCE_PATHS) | set(H8_SOURCE_PATHS) | set(H9_SOURCE_PATHS)
+        | set(H10_SOURCE_PATHS)
+    ))
+    merged = SourceTree({path: merged_source.read_text(path) for path in paths})
+    overlay = SourceTree({path: overlay_source.read_text(path) for path in paths})
+    artifact = build_h10_audit_artifact(
+        merged=merged,
+        overlay=overlay,
+        intake=_read_json(ROOT / "reports" / "plan-11-26-baseline-intake.json"),
+        merged_commit=merged_source.commit,
+        overlay_commit=overlay_source.commit,
+    )
+    payload = artifact.to_dict()
+    schema = _read_json(_SCHEMA_PATH)
+    errors = list(Draft202012Validator(schema).iter_errors(payload))
+    if errors:
+        raise ValueError("generated Task 10 artifact does not satisfy the canonical schema")
     _atomic_json(Path(args.artifact), payload)
     _write_text(Path(args.report), render_markdown(payload))
     _emit("COMPLETE")
@@ -939,6 +1008,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_telemetry(args)
     if args.command == "queue-policy":
         return _run_queue_policy(args)
+    if args.command == "session-lease":
+        return _run_session_lease(args)
     if args.command == "offline":
         return _run_offline(args)
     if args.command in {"live-redis", "acpx", "sdk"}:
