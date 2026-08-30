@@ -556,7 +556,13 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 **Files:**
 
 - Create: `tests/unit/acp/test_plan1126_semantic_errors.py`
+- Create: `tools/plan1126_runtime_audit/semantic_errors.py`
 - Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.md`
+- Modify: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
+- Modify: `tests/unit/acp/test_plan1126_shutdown.py`
+- Modify: `tools/plan1126_runtime_audit/{__init__,model,render,shutdown}.py`
+- Modify: `tools/run_plan1126_runtime_audit.py`
 - Read only: `src/optimus/acp/{errors,dispatcher,spec,server,lifecycle,request_ids}.py`
 - Read only: `tests/unit/acp/test_error_code_registry.py`
 
@@ -565,7 +571,7 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 - Consumes: Plan 11.18 schema/AST oracles and semantic outcome/exception-to-wire selection sites.
 - Produces: exhaustive selection rows for protocol/input, cancellation/deadline, ownership/concurrency, dependency availability, integrity, delivery, resource lifecycle, and invariant/programming categories.
 
-- [ ] **Step 1: Prove Plan 11.18 remains green before extending the audit.**
+- [x] **Step 1: Prove Plan 11.18 remains green before extending the audit.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_error_code_registry.py tests/unit/acp/test_errors.py -q
@@ -573,21 +579,21 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
   Any failure is a stop condition outside Plan 11.26; do not repair production authority here.
 
-- [ ] **Step 2: Derive every semantic selection site.**
+- [x] **Step 2: Derive every semantic selection site.**
 
   Inventory named error constants, `JsonRpcError` construction, exception/result catches, retry decisions, safe message/data selection, effect certainty, telemetry disposition, and cleanup obligation. Raw code ownership is not reopened.
 
-- [ ] **Step 3: Write exhaustive selection characterization.**
+- [x] **Step 3: Write exhaustive selection characterization.**
 
   Require every discovered selection to name one of the eight categories, retryability, certainty, public output, telemetry, cleanup, and baseline scope. Require `asyncio.CancelledError` to remain distinct. Seed S3's two sanitizer broad catches as `INTENTIONALLY_EXCEPTIONAL` unless contrary evidence is cited.
 
-- [ ] **Step 4: Run the semantic group.**
+- [x] **Step 4: Run the semantic group.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_plan1126_semantic_errors.py tests/unit/acp/test_error_code_registry.py tests/unit/acp/test_dispatcher.py tests/unit/acp/test_errors.py -q
   ```
 
-- [ ] **Step 5: Publish the H6/H7 rulings.**
+- [x] **Step 5: Publish the H6/H7 rulings.**
 
   H6 must remain accepted canon if the two existing mechanical oracles pass. H7 records selection gaps and intentional exceptions; no code-number or runtime mapping change occurs in this plan.
 

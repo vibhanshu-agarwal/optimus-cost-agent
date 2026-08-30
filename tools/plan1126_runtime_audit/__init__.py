@@ -35,12 +35,26 @@ from .model import (
     PrerequisiteStatus,
     ReviewerStatus,
     ScheduleObservationSummary,
+    ScopeOutReachability,
     ScopeOutRegisterEntry,
     VocabularyCoverageAssessment,
     VocabularyCoverageStatus,
+    assert_scope_out_register_ready_for_g4,
 )
 from .provenance import ExpectedArtifactIdentity, verify_running_artifact
 from .repeatability import classify_repeatability
+from .semantic_errors import (
+    AuthorityEvidenceRecord,
+    SemanticCategory,
+    SemanticEvidenceRecord,
+    SemanticInventory,
+    SemanticObservation,
+    SemanticObservationSummary,
+    SemanticSelectionSite,
+    build_h7_audit_artifact,
+    discover_semantic_inventory,
+    semantic_selection_observations,
+)
 from .shutdown import (
     ShutdownEvidenceRecord,
     ShutdownInventory,
@@ -54,6 +68,7 @@ from .source import GitCommitSource, SourceTree
 
 __all__ = [
     "AuditArtifact",
+    "AuthorityEvidenceRecord",
     "BaselineScope",
     "CheckpointStore",
     "CancellationEvidenceRecord",
@@ -80,6 +95,13 @@ __all__ = [
     "PrerequisiteStatus",
     "ReviewerStatus",
     "ScheduleObservationSummary",
+    "SemanticCategory",
+    "SemanticEvidenceRecord",
+    "SemanticInventory",
+    "SemanticObservation",
+    "SemanticObservationSummary",
+    "SemanticSelectionSite",
+    "ScopeOutReachability",
     "ScopeOutRegisterEntry",
     "ShutdownEvidenceRecord",
     "ShutdownInventory",
@@ -89,10 +111,12 @@ __all__ = [
     "TaskSupervisionInventory",
     "VocabularyCoverageAssessment",
     "VocabularyCoverageStatus",
+    "assert_scope_out_register_ready_for_g4",
     "classify_repeatability",
     "build_h4_audit_artifact",
     "build_h3_audit_artifact",
     "build_h5_audit_artifact",
+    "build_h7_audit_artifact",
     "cancellation_schedule_observations",
     "compute_cost",
     "derived_seed",
@@ -101,8 +125,10 @@ __all__ = [
     "discover_sites",
     "discover_task_supervision",
     "discover_shutdown_inventory",
+    "discover_semantic_inventory",
     "literal_seeds",
     "qualify_client",
     "shutdown_schedule_observations",
+    "semantic_selection_observations",
     "verify_running_artifact",
 ]

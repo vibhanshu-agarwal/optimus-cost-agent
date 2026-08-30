@@ -1442,10 +1442,10 @@ def build_h5_audit_artifact(
             owning_gate=entry.owning_gate,
             missing_values=entry.missing_values,
             owner=entry.owner,
-            planned_scenarios_can_reach_missing=True,
+            reachable_in_gate="NOT_YET_ASSESSED",
             reachability_reason=(
-                f"{entry.owning_gate} names the required failure, persistence, multi-work, or slow-close scenario; "
-                "that gate must still demonstrate the values in raw observations before discharge."
+                f"{entry.owning_gate} names a candidate scenario, but its reachability has not yet been "
+                "demonstrated from that gate's raw observations."
             ),
         )
         for entry in provisional.scope_out_register or ()

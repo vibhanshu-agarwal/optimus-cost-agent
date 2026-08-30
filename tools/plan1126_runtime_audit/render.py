@@ -106,6 +106,60 @@ def render_markdown(payload: Mapping[str, Any]) -> str:
         lines.append("| not yet measured | 0.000 | 0.000 |")
     lines.extend(["", "## Evidence records"])
     for record in canonical["evidence_records"]:
+        if record["hypothesis_id"] == "H6":
+            lines.extend([
+                "", f"### `H6` — {_safe_markdown(record['subject'])}", "",
+                "| Field | Value |", "|---|---|",
+                f"| Record | `{record['record_id']}` |",
+                f"| Baseline scope | `{record['baseline_scope']}` |",
+                f"| Schema oracle | `{record['schema_oracle_status']}` |",
+                f"| AST oracle | `{record['ast_oracle_status']}` |",
+                f"| Legacy allowlist entries | {record['legacy_allowlist_count']} |",
+                f"| Reviewer status | `{record['reviewer_status']}` |", "",
+                f"Ruling: {_safe_markdown(record['ruling'])}",
+            ])
+            continue
+        if record["hypothesis_id"] == "H7":
+            semantic = record["observations"]
+            inventory = record["inventory"]
+            category_counts = Counter(item["category"] for item in inventory["sites"])
+            classification_counts = Counter(item["classification"] for item in inventory["sites"])
+            lines.extend([
+                "", f"### `H7` — {_safe_markdown(record['subject'])}", "",
+                "| Field | Value |", "|---|---|",
+                f"| Record | `{record['record_id']}` |",
+                f"| Baseline scope | `{record['baseline_scope']}` |",
+                f"| Derived semantic sites | {inventory['site_count']} |",
+                "| Seeded expected site count | `null` |",
+                f"| Sanitizer observations | {semantic['total_observation_count']:,} |",
+                f"| Reviewer status | `{record['reviewer_status']}` |", "",
+                "Site categories: " + ", ".join(
+                    f"`{name}`={count}" for name, count in sorted(category_counts.items())
+                ), "",
+                "Site classifications: " + ", ".join(
+                    f"`{name}`={count}" for name, count in sorted(classification_counts.items())
+                ), "",
+                f"Observation closure: {semantic['complete_observation_count']:,}/"
+                f"{semantic['total_observation_count']:,} structurally closed records "
+                f"(`{semantic['observation_closure_status']}`). This is record-shape closure, not "
+                "settled-vocabulary completeness.", "",
+                f"Settled-vocabulary coverage: `{semantic['vocabulary_coverage_status']}`.", "",
+                "Semantic category coverage and all other settled observation vocabularies:", "",
+                "| Observation field | Settled type | Coverage | Observed | Missing | Owner | Next gate | Reason |",
+                "|---|---|---|---|---|---|---|---|",
+            ])
+            for assessment in semantic["coverage_assessments"]:
+                observed = ", ".join(f"`{_safe_markdown(value)}`" for value in assessment["observed_values"])
+                missing = ", ".join(f"`{_safe_markdown(value)}`" for value in assessment["missing_values"]) or "none"
+                lines.append(
+                    f"| `{assessment['field_name']}` | `{assessment['type_name']}` | "
+                    f"`{assessment['status']}` | {observed} | {missing} | "
+                    f"{_safe_markdown(assessment['owner'] or 'not applicable')} | "
+                    f"{_safe_markdown(assessment['next_gate'] or 'not applicable')} | "
+                    f"{_safe_markdown(assessment['reason'] or 'All declared values were observed.')} |"
+                )
+            lines.extend(["", f"Observation digest: `{semantic['digest']}`", "", f"Ruling: {_safe_markdown(record['ruling'])}"])
+            continue
         observations = record["schedule_observations"]
         observation_rows = observations["observations"]
         contradiction = record["contradiction_search"]
@@ -407,17 +461,13 @@ def render_markdown(payload: Mapping[str, Any]) -> str:
         "",
         "## Running scope-out register",
         "",
-        "| Hypothesis | Field | Missing values | Owning gate | Planned reachability | Owner | Reason |",
+        "| Hypothesis | Field | Missing values | Owning gate | Reachability | Owner | Reason |",
         "|---|---|---|---|---|---|---|",
     ])
     if canonical["scope_out_register"]:
         for entry in canonical["scope_out_register"]:
             missing = ", ".join(f"`{_safe_markdown(value)}`" for value in entry["missing_values"])
-            reachability = (
-                "unassessed"
-                if entry["planned_scenarios_can_reach_missing"] is None
-                else str(entry["planned_scenarios_can_reach_missing"]).lower()
-            )
+            reachability = entry["reachable_in_gate"]
             lines.append(
                 f"| `{entry['hypothesis_id']}` | `{entry['field_name']}` | {missing} | "
                 f"{_safe_markdown(entry['owning_gate'])} | `{reachability}` | "

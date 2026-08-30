@@ -210,6 +210,9 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument("--report", required=True)
     verify = subparsers.add_parser("verify")
     verify.add_argument("--artifact", required=True)
+    semantic = subparsers.add_parser("semantic")
+    semantic.add_argument("--artifact", required=True)
+    semantic.add_argument("--report", required=True)
     return parser
 
 
@@ -379,7 +382,66 @@ def _verify_artifact(path: str) -> AuditArtifact:
             evidence = h5_findings[finding_id].evidence[0]
             if evidence.evidence_id != evidence_id or evidence.digest != digest:
                 raise ValueError("H5 runtime finding evidence does not match stored observations")
+    h7_records = tuple(record for record in artifact.evidence_records if record.hypothesis_id == "H7")
+    h6_records = tuple(record for record in artifact.evidence_records if record.hypothesis_id == "H6")
+    if h6_records or h7_records:
+        from tools.plan1126_runtime_audit.semantic_errors import (
+            H7_SOURCE_PATHS,
+            _authority_record,
+            _h7_findings,
+            _semantic_record,
+        )
+
+        if len(h6_records) != 1 or len(h7_records) != 1:
+            raise ValueError("H6 and H7 must be present exactly once")
+        merged_source = GitCommitSource(artifact.merged_commit, repository=ROOT)
+        semantic_source = SourceTree({path: merged_source.read_text(path) for path in H7_SOURCE_PATHS})
+        expected_h6 = _authority_record(semantic_source, artifact.merged_commit, artifact.overlay_commit)
+        expected_h7 = _semantic_record(semantic_source, artifact.merged_commit, artifact.overlay_commit)
+        for actual, expected, label in (
+            (h6_records[0].to_dict(), expected_h6.to_dict(), "H6"),
+            (h7_records[0].to_dict(), expected_h7.to_dict(), "H7"),
+        ):
+            fields = set(expected) - {"ruling", "reviewer_status"}
+            if {field: actual[field] for field in fields} != {field: expected[field] for field in fields}:
+                raise ValueError(f"{label} evidence record does not match immutable-source rebuild")
+        actual_findings = tuple(
+            finding.to_dict()
+            for finding in sorted(
+                (item for item in artifact.findings if item.finding_id.startswith("H7-")),
+                key=lambda item: item.finding_id,
+            )
+        )
+        expected_findings = tuple(item.to_dict() for item in _h7_findings(expected_h7))
+        if actual_findings != expected_findings:
+            raise ValueError("H7 findings do not match immutable-source rebuild")
     return artifact
+
+
+def _run_semantic(args: argparse.Namespace) -> int:
+    from tools.plan1126_runtime_audit.cancellation import H3_SOURCE_PATHS
+    from tools.plan1126_runtime_audit.delivery_characterization import H4_SOURCE_PATHS
+    from tools.plan1126_runtime_audit.semantic_errors import H7_SOURCE_PATHS, build_h7_audit_artifact
+    from tools.plan1126_runtime_audit.shutdown import H5_SOURCE_PATHS
+
+    merged_source = GitCommitSource(_ACCEPTED_MERGED_COMMIT, repository=ROOT)
+    overlay_source = GitCommitSource(_ACCEPTED_OVERLAY_COMMIT, repository=ROOT)
+    paths = tuple(sorted(set(H3_SOURCE_PATHS) | set(H4_SOURCE_PATHS) | set(H5_SOURCE_PATHS) | set(H7_SOURCE_PATHS)))
+    merged = SourceTree({path: merged_source.read_text(path) for path in paths})
+    overlay = SourceTree({path: overlay_source.read_text(path) for path in paths})
+    artifact = build_h7_audit_artifact(
+        merged=merged, overlay=overlay,
+        merged_commit=merged_source.commit, overlay_commit=overlay_source.commit,
+    )
+    payload = artifact.to_dict()
+    schema = _read_json(_SCHEMA_PATH)
+    errors = list(Draft202012Validator(schema).iter_errors(payload))
+    if errors:
+        raise ValueError("generated Task 7 artifact does not satisfy the canonical schema")
+    _atomic_json(Path(args.artifact), payload)
+    _write_text(Path(args.report), render_markdown(payload))
+    _emit("COMPLETE")
+    return 0
 
 
 def _record_zed(
@@ -735,6 +797,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "inventory":
         return _run_inventory(args)
+    if args.command == "semantic":
+        return _run_semantic(args)
     if args.command == "offline":
         return _run_offline(args)
     if args.command in {"live-redis", "acpx", "sdk"}:

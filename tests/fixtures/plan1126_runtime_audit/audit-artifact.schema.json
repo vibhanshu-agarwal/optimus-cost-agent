@@ -90,7 +90,9 @@
     ,"evidence_records": {"type": "array", "items": {"oneOf": [
       {"$ref": "#/$defs/evidenceRecord"},
       {"$ref": "#/$defs/cancellationEvidenceRecord"},
-      {"$ref": "#/$defs/shutdownEvidenceRecord"}
+      {"$ref": "#/$defs/shutdownEvidenceRecord"},
+      {"$ref": "#/$defs/authorityEvidenceRecord"},
+      {"$ref": "#/$defs/semanticEvidenceRecord"}
     ]}}
   },
   "$defs": {
@@ -231,8 +233,8 @@
       "type": "object", "additionalProperties": false,
       "required": ["field_name", "type_name", "vocabulary_values", "observed_values", "missing_values", "status", "reason", "owner", "next_gate"],
       "properties": {
-        "field_name": {"enum": ["conversation_commit", "effect_state", "final_delivery", "rpc_response_delivery", "send_outcome", "send_state", "settlement", "request_task_state", "child_work_state", "invocation_outcomes", "terminal_cause", "close_outcome", "repeat_latency_class"]},
-        "type_name": {"enum": ["ConversationCommit", "EffectState", "FinalDelivery", "RpcResponseDelivery", "SendOutcome", "SendState", "Settlement", "RequestTaskState", "ChildWorkState", "CancellationInvocationOutcome", "TerminalCause", "CloseOutcome", "RepeatLatencyClass"]},
+        "field_name": {"enum": ["conversation_commit", "effect_state", "final_delivery", "rpc_response_delivery", "send_outcome", "send_state", "settlement", "request_task_state", "child_work_state", "invocation_outcomes", "terminal_cause", "close_outcome", "repeat_latency_class", "category", "error_code_name", "retryability", "effect_certainty", "public_output", "telemetry_disposition", "cleanup_obligation", "leakage_result", "divergence_result"]},
+        "type_name": {"enum": ["ConversationCommit", "EffectState", "FinalDelivery", "RpcResponseDelivery", "SendOutcome", "SendState", "Settlement", "RequestTaskState", "ChildWorkState", "CancellationInvocationOutcome", "TerminalCause", "CloseOutcome", "RepeatLatencyClass", "SemanticCategory", "NamedErrorCode", "Retryability", "EffectCertainty", "PublicOutput", "TelemetryDisposition", "CleanupObligation", "LeakageResult", "DivergenceResult"]},
         "vocabulary_values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "observed_values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "missing_values": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
@@ -412,14 +414,14 @@
     },
     "scopeOutRegisterEntry": {
       "type": "object", "additionalProperties": false,
-      "required": ["hypothesis_id", "field_name", "owning_gate", "missing_values", "owner", "planned_scenarios_can_reach_missing", "reachability_reason"],
+      "required": ["hypothesis_id", "field_name", "owning_gate", "missing_values", "owner", "reachable_in_gate", "reachability_reason"],
       "properties": {
-        "hypothesis_id": {"enum": ["H3", "H4", "H5"]},
+        "hypothesis_id": {"enum": ["H3", "H4", "H5", "H7"]},
         "field_name": {"$ref": "#/$defs/contentFreeText"},
         "owning_gate": {"$ref": "#/$defs/contentFreeText"},
         "missing_values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/contentFreeText"}},
         "owner": {"const": "P11-FEAT-ACP-RUNTIME-HARDENING"},
-        "planned_scenarios_can_reach_missing": {"type": ["boolean", "null"]},
+        "reachable_in_gate": {"enum": ["REACHABLE", "NOT_REACHABLE", "NOT_YET_ASSESSED"]},
         "reachability_reason": {"$ref": "#/$defs/contentFreeText"}
       }
     },
@@ -545,6 +547,92 @@
         "commands": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/contentFreeText"}},
         "ruling": {"$ref": "#/$defs/contentFreeText"},
         "reviewer_status": {"const": "PENDING_G2"},
+        "content_free_evidence": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/evidence"}}
+      }
+    },
+    "authorityEvidenceRecord": {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_id", "hypothesis_id", "subject", "baseline_scope", "baseline_anchor_commit", "overlay_commit", "binding_commit", "schema_oracle_status", "ast_oracle_status", "legacy_allowlist_count", "commands", "ruling", "reviewer_status", "content_free_evidence"],
+      "properties": {
+        "record_id": {"const": "ER-H6-ERROR-CODE-AUTHORITY"}, "hypothesis_id": {"const": "H6"},
+        "subject": {"$ref": "#/$defs/contentFreeText"}, "baseline_scope": {"const": "merged"},
+        "baseline_anchor_commit": {"$ref": "#/$defs/commit"}, "overlay_commit": {"$ref": "#/$defs/commit"},
+        "binding_commit": {"type": "null"}, "schema_oracle_status": {"const": "PASS"},
+        "ast_oracle_status": {"const": "PASS"}, "legacy_allowlist_count": {"const": 0},
+        "commands": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "ruling": {"$ref": "#/$defs/contentFreeText"}, "reviewer_status": {"const": "PENDING_G2"},
+        "content_free_evidence": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/evidence"}}
+      }
+    },
+    "semanticSelectionSite": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "line", "symbol", "site_kind", "code_name", "exception_names", "category", "retryability", "effect_certainty", "public_output", "telemetry_disposition", "cleanup_obligation", "baseline_scope", "classification", "evidence_digest", "ruling", "seed_id"],
+      "properties": {
+        "path": {"$ref": "#/$defs/contentFreeText"}, "line": {"type": "integer", "minimum": 1},
+        "symbol": {"$ref": "#/$defs/contentFreeText"},
+        "site_kind": {"enum": ["NAMED_ERROR_CONSTANT", "WIRE_ERROR_SELECTION", "EXCEPTION_SELECTION", "PUBLIC_OUTPUT_BUILDER"]},
+        "code_name": {"type": "string", "minLength": 1},
+        "exception_names": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "category": {"enum": ["PROTOCOL_INPUT", "CANCELLATION_DEADLINE", "OWNERSHIP_CONCURRENCY", "DEPENDENCY_AVAILABILITY", "INTEGRITY", "DELIVERY", "RESOURCE_LIFECYCLE", "INVARIANT_PROGRAMMING"]},
+        "retryability": {"enum": ["NEVER", "SAFE_RETRY", "STATE_CHECK_REQUIRED", "BACKOFF_REQUIRED", "NOT_APPLICABLE"]},
+        "effect_certainty": {"enum": ["NO_EFFECT", "KNOWN_LOCAL_EFFECT", "UNKNOWN_POST_WRITE", "NOT_APPLICABLE"]},
+        "public_output": {"enum": ["SANITIZED_NAMED_ERROR", "SANITIZED_DYNAMIC_ERROR", "FAIL_CLOSED_SANITIZED", "NO_WIRE_OUTPUT"]},
+        "telemetry_disposition": {"enum": ["NO_ADDITIONAL_EVENT", "SEMANTIC_EVENT_REQUIRED", "CONTAINED_DIAGNOSTIC"]},
+        "cleanup_obligation": {"enum": ["NONE", "REQUEST_LOCAL", "CANCEL_AND_JOIN", "PRESERVE_STATE", "SETTLE_DELIVERY", "CLOSE_OWNER"]},
+        "baseline_scope": {"const": "merged"},
+        "classification": {"enum": ["CANONICAL", "CANONICAL_BYPASSED", "DUPLICATED", "CONTRADICTORY", "MISSING", "INTENTIONALLY_EXCEPTIONAL", "PROVISIONAL_OVERLAY", "NOT_PRESENT", "SUPERSEDED"]},
+        "evidence_digest": {"$ref": "#/$defs/digest"}, "ruling": {"$ref": "#/$defs/contentFreeText"},
+        "seed_id": {"oneOf": [{"const": "S3"}, {"type": "null"}]}
+      }
+    },
+    "semanticInventory": {
+      "type": "object", "additionalProperties": false,
+      "required": ["expected_site_count", "site_count", "sites"],
+      "properties": {
+        "expected_site_count": {"type": "null"}, "site_count": {"type": "integer", "minimum": 1},
+        "sites": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/semanticSelectionSite"}}
+      }
+    },
+    "semanticObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["case_index", "category", "error_code_name", "retryability", "effect_certainty", "public_output", "telemetry_disposition", "cleanup_obligation", "leakage_result", "divergence_result", "input_digest", "output_digest", "complete"],
+      "properties": {
+        "case_index": {"type": "integer", "minimum": 0, "maximum": 99},
+        "category": {"enum": ["PROTOCOL_INPUT", "CANCELLATION_DEADLINE", "OWNERSHIP_CONCURRENCY", "DEPENDENCY_AVAILABILITY", "INTEGRITY", "DELIVERY", "RESOURCE_LIFECYCLE", "INVARIANT_PROGRAMMING"]},
+        "error_code_name": {"enum": ["PARSE_ERROR", "INVALID_REQUEST", "METHOD_NOT_FOUND", "INVALID_PARAMS", "INTERNAL_ERROR", "AUTHENTICATION_REQUIRED", "REQUEST_CANCELLED", "RESOURCE_NOT_FOUND", "MUTATION_FORBIDDEN", "DUPLICATE_REQUEST_ID"]},
+        "retryability": {"enum": ["NEVER", "SAFE_RETRY", "STATE_CHECK_REQUIRED", "BACKOFF_REQUIRED", "NOT_APPLICABLE"]},
+        "effect_certainty": {"enum": ["NO_EFFECT", "KNOWN_LOCAL_EFFECT", "UNKNOWN_POST_WRITE", "NOT_APPLICABLE"]},
+        "public_output": {"enum": ["SANITIZED_NAMED_ERROR", "SANITIZED_DYNAMIC_ERROR", "FAIL_CLOSED_SANITIZED", "NO_WIRE_OUTPUT"]},
+        "telemetry_disposition": {"enum": ["NO_ADDITIONAL_EVENT", "SEMANTIC_EVENT_REQUIRED", "CONTAINED_DIAGNOSTIC"]},
+        "cleanup_obligation": {"enum": ["NONE", "REQUEST_LOCAL", "CANCEL_AND_JOIN", "PRESERVE_STATE", "SETTLE_DELIVERY", "CLOSE_OWNER"]},
+        "leakage_result": {"enum": ["CLEAN", "LEAKED"]}, "divergence_result": {"enum": ["MATCH", "DIVERGED"]},
+        "input_digest": {"$ref": "#/$defs/digest"}, "output_digest": {"$ref": "#/$defs/digest"}, "complete": {"const": true}
+      }
+    },
+    "semanticObservationSummary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cases_per_category", "total_observation_count", "complete_observation_count", "observation_closure_status", "vocabulary_coverage_status", "digest", "vocabulary", "coverage_assessments", "rows"],
+      "properties": {
+        "cases_per_category": {"const": 100}, "total_observation_count": {"const": 800},
+        "complete_observation_count": {"const": 800}, "observation_closure_status": {"const": "FULLY_STRUCTURALLY_CLOSED"},
+        "vocabulary_coverage_status": {"enum": ["FULLY_OBSERVED", "PARTIAL_WITH_SCOPE_OUTS"]},
+        "digest": {"$ref": "#/$defs/digest"},
+        "vocabulary": {"type": "object", "minProperties": 9, "additionalProperties": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}},
+        "coverage_assessments": {"type": "array", "minItems": 9, "maxItems": 9, "uniqueItems": true, "items": {"$ref": "#/$defs/vocabularyCoverageAssessment"}},
+        "rows": {"type": "array", "minItems": 800, "maxItems": 800, "items": {"$ref": "#/$defs/semanticObservation"}}
+      }
+    },
+    "semanticEvidenceRecord": {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_id", "hypothesis_id", "subject", "baseline_scope", "baseline_anchor_commit", "overlay_commit", "binding_commit", "inventory", "observations", "commands", "ruling", "reviewer_status", "content_free_evidence"],
+      "properties": {
+        "record_id": {"const": "ER-H7-SEMANTIC-SELECTION"}, "hypothesis_id": {"const": "H7"},
+        "subject": {"$ref": "#/$defs/contentFreeText"}, "baseline_scope": {"const": "merged"},
+        "baseline_anchor_commit": {"$ref": "#/$defs/commit"}, "overlay_commit": {"$ref": "#/$defs/commit"},
+        "binding_commit": {"type": "null"}, "inventory": {"$ref": "#/$defs/semanticInventory"},
+        "observations": {"$ref": "#/$defs/semanticObservationSummary"},
+        "commands": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "ruling": {"$ref": "#/$defs/contentFreeText"}, "reviewer_status": {"const": "PENDING_G2"},
         "content_free_evidence": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/evidence"}}
       }
     },

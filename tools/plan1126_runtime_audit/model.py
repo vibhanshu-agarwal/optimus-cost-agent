@@ -118,6 +118,12 @@ class MetadataClaimStatus(StrEnum):
     NOT_A_VOCABULARY_CLAIM = "NOT_A_VOCABULARY_CLAIM"
 
 
+class ScopeOutReachability(StrEnum):
+    REACHABLE = "REACHABLE"
+    NOT_REACHABLE = "NOT_REACHABLE"
+    NOT_YET_ASSESSED = "NOT_YET_ASSESSED"
+
+
 def _closed_enum(enum_type: type[StrEnum], value: object, field: str) -> StrEnum:
     try:
         return enum_type(value)
@@ -672,7 +678,7 @@ class ScopeOutRegisterEntry:
     owning_gate: str
     missing_values: tuple[str, ...]
     owner: str
-    planned_scenarios_can_reach_missing: bool | None
+    reachable_in_gate: ScopeOutReachability
     reachability_reason: str
 
     def __post_init__(self) -> None:
@@ -681,15 +687,15 @@ class ScopeOutRegisterEntry:
         ):
             _content_free_string(getattr(self, field), f"scope-out {field}")
         object.__setattr__(self, "missing_values", tuple(self.missing_values))
+        object.__setattr__(
+            self,
+            "reachable_in_gate",
+            _closed_enum(ScopeOutReachability, self.reachable_in_gate, "scope-out reachable_in_gate"),
+        )
         if self.missing_values != tuple(sorted(set(self.missing_values))) or not self.missing_values:
             raise ValueError("scope-out missing_values must be non-empty canonical strings")
         for value in self.missing_values:
             _content_free_string(value, "scope-out missing value")
-        if (
-            self.planned_scenarios_can_reach_missing is not None
-            and type(self.planned_scenarios_can_reach_missing) is not bool
-        ):
-            raise ValueError("scope-out planned reachability must be true, false, or null")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -698,7 +704,7 @@ class ScopeOutRegisterEntry:
             "owning_gate": self.owning_gate,
             "missing_values": list(self.missing_values),
             "owner": self.owner,
-            "planned_scenarios_can_reach_missing": self.planned_scenarios_can_reach_missing,
+            "reachable_in_gate": self.reachable_in_gate.value,
             "reachability_reason": self.reachability_reason,
         }
 
@@ -707,7 +713,7 @@ class ScopeOutRegisterEntry:
         payload = _json_object(payload, "scope-out register entry")
         expected = {
             "hypothesis_id", "field_name", "owning_gate", "missing_values", "owner",
-            "planned_scenarios_can_reach_missing", "reachability_reason",
+            "reachable_in_gate", "reachability_reason",
         }
         if set(payload) != expected:
             raise ValueError("scope-out register fields do not match the canonical schema")
@@ -717,7 +723,7 @@ class ScopeOutRegisterEntry:
             owning_gate=payload["owning_gate"],
             missing_values=tuple(_json_array(payload["missing_values"], "scope-out missing values")),
             owner=payload["owner"],
-            planned_scenarios_can_reach_missing=payload["planned_scenarios_can_reach_missing"],
+            reachable_in_gate=payload["reachable_in_gate"],
             reachability_reason=payload["reachability_reason"],
         )
 
@@ -1136,8 +1142,8 @@ def _default_scope_out_register(records: tuple[object, ...]) -> tuple[ScopeOutRe
     entries: list[ScopeOutRegisterEntry] = []
     for record in records:
         hypothesis_id = record.hypothesis_id
-        summary = record.schedule_observations
-        for assessment in summary.coverage_assessments:
+        summary = getattr(record, "schedule_observations", None)
+        for assessment in getattr(summary, "coverage_assessments", ()):
             if assessment.status is not CoverageAssessmentStatus.SCOPED_OUT:
                 continue
             assert assessment.next_gate is not None
@@ -1149,7 +1155,7 @@ def _default_scope_out_register(records: tuple[object, ...]) -> tuple[ScopeOutRe
                     owning_gate=assessment.next_gate,
                     missing_values=assessment.missing_values,
                     owner=assessment.owner,
-                    planned_scenarios_can_reach_missing=None,
+                    reachable_in_gate=ScopeOutReachability.NOT_YET_ASSESSED,
                     reachability_reason=(
                         f"Reachability against {assessment.next_gate} remains an explicit open obligation; "
                         "the owning gate must prove it from raw observations."
@@ -1157,6 +1163,20 @@ def _default_scope_out_register(records: tuple[object, ...]) -> tuple[ScopeOutRe
                 )
             )
     return tuple(entries)
+
+
+def assert_scope_out_register_ready_for_g4(entries: tuple[ScopeOutRegisterEntry, ...]) -> None:
+    """Reject a G4 close while vocabulary debt lacks a reachability ruling."""
+
+    unresolved = tuple(
+        sorted(
+            f"{entry.hypothesis_id}:{entry.field_name}"
+            for entry in entries
+            if entry.reachable_in_gate is ScopeOutReachability.NOT_YET_ASSESSED
+        )
+    )
+    if unresolved:
+        raise ValueError(f"G4 scope-out register contains NOT_YET_ASSESSED entries: {', '.join(unresolved)}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1321,18 +1341,18 @@ class AuditArtifact:
                     raise ValueError("global close cost disagrees with H5 derived schedules")
             if record.reviewer_status is ReviewerStatus.PENDING_G2 and self.gate_status is not GateStatus.INCOMPLETE:
                 raise ValueError("pending external review requires an incomplete global gate")
-        expected_scope_outs = {
-            (
-                record.hypothesis_id,
-                assessment.field_name,
-                assessment.next_gate,
-                assessment.missing_values,
-                assessment.owner,
-            )
-            for record in self.evidence_records
-            for assessment in record.schedule_observations.coverage_assessments
-            if assessment.status is CoverageAssessmentStatus.SCOPED_OUT
-        }
+        expected_scope_outs: set[tuple[object, ...]] = set()
+        for record in self.evidence_records:
+            summary = getattr(record, "schedule_observations", None)
+            for assessment in getattr(summary, "coverage_assessments", ()):
+                if assessment.status is CoverageAssessmentStatus.SCOPED_OUT:
+                    expected_scope_outs.add((
+                        record.hypothesis_id,
+                        assessment.field_name,
+                        assessment.next_gate,
+                        assessment.missing_values,
+                        assessment.owner,
+                    ))
         assert self.scope_out_register is not None
         actual_scope_outs = {
             (
@@ -1428,6 +1448,14 @@ class AuditArtifact:
                 from .shutdown import ShutdownEvidenceRecord
 
                 parsed_records.append(ShutdownEvidenceRecord.from_dict(item))
+            elif isinstance(item, dict) and item.get("hypothesis_id") == "H6":
+                from .semantic_errors import AuthorityEvidenceRecord
+
+                parsed_records.append(AuthorityEvidenceRecord.from_dict(item))
+            elif isinstance(item, dict) and item.get("hypothesis_id") == "H7":
+                from .semantic_errors import SemanticEvidenceRecord
+
+                parsed_records.append(SemanticEvidenceRecord.from_dict(item))
             else:
                 parsed_records.append(EvidenceRecord.from_dict(item))
         artifact = cls(

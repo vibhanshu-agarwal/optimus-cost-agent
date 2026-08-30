@@ -248,7 +248,7 @@ def test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register(tmp_path: P
     assert all(entry["field_name"] and entry["owning_gate"] for entry in register)
     assert all(entry["missing_values"] for entry in register)
     assert all(entry["owner"] for entry in register)
-    assert all(entry["planned_scenarios_can_reach_missing"] in {True, False, None} for entry in register)
+    assert all(entry["reachable_in_gate"] == "NOT_YET_ASSESSED" for entry in register)
     assert all(entry["reachability_reason"] for entry in register)
 
     report = render_markdown(payload)
@@ -273,6 +273,6 @@ def test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register(tmp_path: P
         AuditArtifact.from_dict(changed)
 
     changed = copy.deepcopy(payload)
-    changed["scope_out_register"][0]["planned_scenarios_can_reach_missing"] = "yes"
+    changed["scope_out_register"][0]["reachable_in_gate"] = "yes"
     with pytest.raises(ValueError):
         AuditArtifact.from_dict(changed)
