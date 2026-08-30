@@ -652,7 +652,13 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 **Files:**
 
 - Create: `tests/unit/acp/test_plan1126_queue_policy.py`
+- Create: `tools/plan1126_runtime_audit/queue_policy.py`
 - Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.md`
+- Modify: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
+- Modify: `tools/plan1126_runtime_audit/{__init__,model,render}.py`
+- Modify: `tools/run_plan1126_runtime_audit.py`
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
 - Read only: `src/optimus/acp/{outbound_writer,server,spec,ndjson_subprocess_session}.py`
 - Read only: `src/optimus/redis/{runtime,async_bridge}.py`
 
@@ -661,21 +667,21 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 - Consumes: derived queue/producer/consumer/constructor-bound and health-probe inventories.
 - Produces: `N_queues`, declared/effective bounds, overload disposition, blocking observations, and connection-health/pool ownership classifications.
 
-- [ ] **Step 1: Derive every queue and connection-health site.**
+- [x] **Step 1: Derive every queue and connection-health site.**
 
   Record constructor bound, producer, consumer, admission API, stop behavior, overflow result, timeout, connection health probe, pool constructor, and pool close path. Missing policy remains a classified finding.
 
-- [ ] **Step 2: Write the 10,000-admission predicate.**
+- [x] **Step 2: Write the 10,000-admission predicate.**
 
   Stop the consumer and attempt 10,000 admissions per discovered queue. Cross-check behavior with the construction-site bound. Label acceptance of all attempts only as `NO_OBSERVED_BOUND_BELOW_10000` unless the constructor independently declares unbounded behavior. Waiting beyond 100 ms without an explicit outcome is `BLOCKING_WITHOUT_POLICY`.
 
-- [ ] **Step 3: Run the exact predicate.**
+- [x] **Step 3: Run the exact predicate.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_plan1126_queue_policy.py::test_queue_policy_cross_checks_constructor_and_10000_admissions -q
   ```
 
-- [ ] **Step 4: Publish queue/backpressure/health findings and checkpoint the group.**
+- [x] **Step 4: Publish queue/backpressure/health findings and checkpoint the group.**
 
   ```powershell
   uv run --frozen pytest tests/unit/acp/test_plan1126_queue_policy.py tests/unit/acp/test_outbound_writer.py tests/unit/acp/test_ndjson_subprocess_session.py tests/unit/redis/test_runtime.py -q

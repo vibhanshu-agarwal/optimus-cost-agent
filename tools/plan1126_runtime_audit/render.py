@@ -211,6 +211,82 @@ def render_markdown(payload: Mapping[str, Any]) -> str:
                 lines.extend(["", f"Observation digest: `{summary['digest']}`"])
             lines.extend(["", f"Ruling: {_safe_markdown(record['ruling'])}"])
             continue
+        if record["hypothesis_id"] == "H9":
+            inventory = record["inventory"]
+            admissions = record["admission_observations"]
+            health = record["health_observations"]
+            admission_outcomes = Counter(item["observed_outcome"] for item in admissions["rows"])
+            inference_counts = Counter(item["inference"] for item in admissions["rows"])
+            health_outcomes = Counter(item["outcome"] for item in health["rows"])
+            lines.extend([
+                "", f"### `H9` — {_safe_markdown(record['subject'])}", "",
+                "| Field | Value |", "|---|---|",
+                f"| Record | `{record['record_id']}` |",
+                f"| Baseline scope | `{record['baseline_scope']}` |",
+                f"| Derived queues (`N_queues`) | {inventory['queue_count']} |",
+                "| Seeded expected queue count | `null` |",
+                f"| Queue/health source sites | {len(inventory['sites'])} |",
+                f"| Stopped-consumer admissions | {admissions['total_observation_count']:,} |",
+                f"| Health scenarios | {health['total_observation_count']:,} |",
+                f"| Reviewer status | `{record['reviewer_status']}` |", "",
+                "Derived queue policy inventory:", "",
+                "| Queue | Constructor | Declared bound | Constructor policy | Admission API | Stop behavior | Overflow result |",
+                "|---|---|---:|---|---|---|---|",
+            ])
+            for queue in inventory["queues"]:
+                lines.append(
+                    f"| `{_safe_markdown(queue['queue_id'])}` | "
+                    f"`{_safe_markdown(queue['path'])}:{queue['line']}` | "
+                    f"{queue['declared_bound']} | `{queue['constructor_policy']}` | "
+                    f"`{queue['admission_api']}` | `{queue['stop_behavior']}` | "
+                    f"`{queue['overflow_result']}` |"
+                )
+            lines.extend([
+                "", "The 10,000-admission probe is behavioural evidence only. `DECLARED_UNBOUNDED` "
+                "is assigned only where the independently scanned constructor declares the standard-library "
+                "unbounded value; otherwise the strongest accepted-only conclusion is "
+                "`NO_OBSERVED_BOUND_BELOW_10000`.", "",
+                "Admission outcomes: " + ", ".join(
+                    f"`{name}`={count:,}" for name, count in sorted(admission_outcomes.items())
+                ), "",
+                "Queue inferences: " + ", ".join(
+                    f"`{name}`={count:,}" for name, count in sorted(inference_counts.items())
+                ), "",
+                "Health outcomes: " + ", ".join(
+                    f"`{name}`={count:,}" for name, count in sorted(health_outcomes.items())
+                ),
+            ])
+            for heading, summary in (
+                ("Queue-admission coverage", admissions),
+                ("Connection-health coverage", health),
+            ):
+                lines.extend([
+                    "", f"#### {heading}", "",
+                    f"Observation closure: {summary['complete_observation_count']:,}/"
+                    f"{summary['total_observation_count']:,} structurally closed records "
+                    f"(`{summary['observation_closure_status']}`). This is record-shape closure, not "
+                    "settled-vocabulary completeness.", "",
+                    f"Settled-vocabulary coverage: `{summary['vocabulary_coverage_status']}`.", "",
+                    "| Observation field | Settled type | Coverage | Observed | Missing | Owner | Next gate | Reason |",
+                    "|---|---|---|---|---|---|---|---|",
+                ])
+                for assessment in summary["coverage_assessments"]:
+                    observed = ", ".join(
+                        f"`{_safe_markdown(value)}`" for value in assessment["observed_values"]
+                    )
+                    missing = ", ".join(
+                        f"`{_safe_markdown(value)}`" for value in assessment["missing_values"]
+                    ) or "none"
+                    lines.append(
+                        f"| `{assessment['field_name']}` | `{assessment['type_name']}` | "
+                        f"`{assessment['status']}` | {observed} | {missing} | "
+                        f"{_safe_markdown(assessment['owner'] or 'not applicable')} | "
+                        f"{_safe_markdown(assessment['next_gate'] or 'not applicable')} | "
+                        f"{_safe_markdown(assessment['reason'] or 'All declared values were observed.')} |"
+                    )
+                lines.extend(["", f"Observation digest: `{summary['digest']}`"])
+            lines.extend(["", f"Ruling: {_safe_markdown(record['ruling'])}"])
+            continue
         observations = record["schedule_observations"]
         observation_rows = observations["observations"]
         contradiction = record["contradiction_search"]

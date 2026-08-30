@@ -1346,6 +1346,13 @@ class AuditArtifact:
                     raise ValueError("global N_sinks disagrees with H8 inventory")
                 if self.computed_run_cost["sink_failure_runs"] != record.inventory.sink_count * 100:
                     raise ValueError("global sink cost disagrees with H8 derived schedules")
+            if record.hypothesis_id == "H9":
+                if record.baseline_scope is not BaselineScope.MERGED or record.binding_commit is not None:
+                    raise ValueError("H9 is merged and unbound")
+                if self.discovered_multipliers["queues"] != record.inventory.queue_count:
+                    raise ValueError("global N_queues disagrees with H9 inventory")
+                if self.computed_run_cost["queue_admissions"] != record.inventory.queue_count * 10_000:
+                    raise ValueError("global queue cost disagrees with H9 derived admissions")
             if record.reviewer_status is ReviewerStatus.PENDING_G2 and self.gate_status is not GateStatus.INCOMPLETE:
                 raise ValueError("pending external review requires an incomplete global gate")
         expected_scope_outs: set[tuple[object, ...]] = set()
@@ -1467,6 +1474,10 @@ class AuditArtifact:
                 from .telemetry import TelemetryEvidenceRecord
 
                 parsed_records.append(TelemetryEvidenceRecord.from_dict(item))
+            elif isinstance(item, dict) and item.get("hypothesis_id") == "H9":
+                from .queue_policy import QueueEvidenceRecord
+
+                parsed_records.append(QueueEvidenceRecord.from_dict(item))
             else:
                 parsed_records.append(EvidenceRecord.from_dict(item))
         artifact = cls(

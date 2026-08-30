@@ -32,7 +32,7 @@ This report is deterministically regenerated from the canonical JSON artifact.
 | `CANONICAL_BYPASSED` | 4 |
 | `DUPLICATED` | 0 |
 | `CONTRADICTORY` | 4 |
-| `MISSING` | 6 |
+| `MISSING` | 8 |
 | `INTENTIONALLY_EXCEPTIONAL` | 1 |
 | `PROVISIONAL_OVERLAY` | 2 |
 | `NOT_PRESENT` | 1 |
@@ -45,7 +45,7 @@ This report is deterministically regenerated from the canonical JSON artifact.
 |---|---:|
 | Cancellation Points | 8 |
 | Close Paths | 15 |
-| Queues | 0 |
+| Queues | 3 |
 | Sinks | 5 |
 
 ## Computed run cost
@@ -54,7 +54,7 @@ This report is deterministically regenerated from the canonical JSON artifact.
 |---|---:|
 | Cancellation controls | 2,048 |
 | Cancellation races (levels 2/4/8) | 6,144 |
-| Queue admissions | 0 |
+| Queue admissions | 30,000 |
 | Sink failure runs | 500 |
 | Idempotent close invocations | 225 |
 
@@ -363,6 +363,67 @@ Observation digest: `e9edd8b692d63667880c6f98c171c65e2165581341c2c5bb7db3650eaa7
 
 Ruling: H8 derives every reviewed event and sink site, separates structural closure from vocabulary coverage, retains schema/redaction/correlation/containment gaps, and rules S2 as canonical one-to-many cardinality without renaming production fields.
 
+### `H9` — Queue backpressure, connection health, and pool ownership
+
+| Field | Value |
+|---|---|
+| Record | `ER-H9-QUEUE-HEALTH` |
+| Baseline scope | `merged` |
+| Derived queues (`N_queues`) | 3 |
+| Seeded expected queue count | `null` |
+| Queue/health source sites | 21 |
+| Stopped-consumer admissions | 30,000 |
+| Health scenarios | 4 |
+| Reviewer status | `PENDING_G2` |
+
+Derived queue policy inventory:
+
+| Queue | Constructor | Declared bound | Constructor policy | Admission API | Stop behavior | Overflow result |
+|---|---|---:|---|---|---|---|
+| `src/optimus/acp/ndjson_subprocess_session.py:src.optimus.acp.ndjson_subprocess_session.__init__:self._inbound` | `src/optimus/acp/ndjson_subprocess_session.py:67` | 0 | `DECLARED_UNBOUNDED` | `put` | `SENTINEL_ADMISSION` | `NO_EXPLICIT_OVERFLOW_RESULT` |
+| `src/optimus/acp/outbound_writer.py:src.optimus.acp.outbound_writer.__init__:self._queue` | `src/optimus/acp/outbound_writer.py:111` | 0 | `DECLARED_UNBOUNDED` | `put` | `SENTINEL_ADMISSION` | `NO_EXPLICIT_OVERFLOW_RESULT` |
+| `src/optimus/acp/server.py:src.optimus.acp.server.serve_ndjson:message_queue` | `src/optimus/acp/server.py:357` | 0 | `DECLARED_UNBOUNDED` | `put` | `SENTINEL_ADMISSION` | `NO_EXPLICIT_OVERFLOW_RESULT` |
+
+The 10,000-admission probe is behavioural evidence only. `DECLARED_UNBOUNDED` is assigned only where the independently scanned constructor declares the standard-library unbounded value; otherwise the strongest accepted-only conclusion is `NO_OBSERVED_BOUND_BELOW_10000`.
+
+Admission outcomes: `ACCEPTED`=30,000
+
+Queue inferences: `DECLARED_UNBOUNDED`=30,000
+
+Health outcomes: `CONNECTION_FAILURE`=2, `HEALTHY`=1, `UNEXPECTED_PROPAGATED`=1
+
+#### Queue-admission coverage
+
+Observation closure: 30,000/30,000 structurally closed records (`FULLY_STRUCTURALLY_CLOSED`). This is record-shape closure, not settled-vocabulary completeness.
+
+Settled-vocabulary coverage: `PARTIAL_WITH_SCOPE_OUTS`.
+
+| Observation field | Settled type | Coverage | Observed | Missing | Owner | Next gate | Reason |
+|---|---|---|---|---|---|---|---|
+| `constructor_policy` | `ConstructorPolicy` | `SCOPED_OUT` | `DECLARED_UNBOUNDED` | `DECLARED_BOUNDED`, `UNKNOWN` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 queue negative-path reachability assessment | All merged queues are constructor-declared unbounded, so the stopped-consumer matrix cannot reach bounded or blocking outcomes. |
+| `observed_outcome` | `AdmissionOutcome` | `SCOPED_OUT` | `ACCEPTED` | `BLOCKED`, `FULL_REJECTED`, `TIMED_OUT` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 queue negative-path reachability assessment | All merged queues are constructor-declared unbounded, so the stopped-consumer matrix cannot reach bounded or blocking outcomes. |
+| `inference` | `QueueInference` | `SCOPED_OUT` | `DECLARED_UNBOUNDED` | `BLOCKING_WITHOUT_POLICY`, `BLOCKING_WITH_POLICY`, `BOUND_ENFORCED`, `NO_OBSERVED_BOUND_BELOW_10000` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 queue negative-path reachability assessment | All merged queues are constructor-declared unbounded, so the stopped-consumer matrix cannot reach bounded or blocking outcomes. |
+| `elapsed_class` | `ElapsedClass` | `SCOPED_OUT` | `WITHIN_100MS` | `ABOVE_100MS` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 queue negative-path reachability assessment | All merged queues are constructor-declared unbounded, so the stopped-consumer matrix cannot reach bounded or blocking outcomes. |
+
+Observation digest: `4df2c59f07cc4ab9c7d6ce204d9aff04a5c3e453bf3332afcc000999278da390`
+
+#### Connection-health coverage
+
+Observation closure: 4/4 structurally closed records (`FULLY_STRUCTURALLY_CLOSED`). This is record-shape closure, not settled-vocabulary completeness.
+
+Settled-vocabulary coverage: `PARTIAL_WITH_SCOPE_OUTS`.
+
+| Observation field | Settled type | Coverage | Observed | Missing | Owner | Next gate | Reason |
+|---|---|---|---|---|---|---|---|
+| `scenario` | `HealthScenario` | `FULLY_OBSERVED` | `HEALTHY`, `OS_ERROR`, `REDIS_TIMEOUT`, `UNEXPECTED_ERROR` | none | not applicable | not applicable | All declared values were observed. |
+| `outcome` | `HealthOutcome` | `FULLY_OBSERVED` | `CONNECTION_FAILURE`, `HEALTHY`, `UNEXPECTED_PROPAGATED` | none | not applicable | not applicable | All declared values were observed. |
+| `deadline_policy` | `HealthDeadlinePolicy` | `SCOPED_OUT` | `CONNECT_ONLY` | `FULL_OPERATION`, `NONE` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 health-deadline reachability assessment | Merged Redis health has a connect-only timeout; the immutable implementation contains no full-operation deadline variant, and live hanging-I/O injection is outside Task 9 authority. |
+| `pool_ownership` | `PoolOwnership` | `SCOPED_OUT` | `RUNTIME_OWNED_CLIENT_THEN_POOL` | `CLIENT_ONLY`, `EXTERNAL_POOL`, `RUNTIME_OWNED_POOL_THEN_CLIENT`, `UNKNOWN` | P11-FEAT-ACP-RUNTIME-HARDENING | G4 pool-ownership reachability assessment | Merged RedisRuntime constructs and retains both client and pool, then closes client before pool; the immutable source contains no alternative ownership topology. |
+
+Observation digest: `b5e6d2827865fe423591252af4c6716d663f0e5f6a57454144150f65b5b819c0`
+
+Ruling: H9 derives three constructor-declared unbounded queues, records 10,000 stopped-consumer admissions per queue without inferring unboundedness from the probe alone, and separates connect timeout from a missing full health-operation deadline.
+
 ## Running scope-out register
 
 | Hypothesis | Field | Missing values | Owning gate | Reachability | Owner | Reason |
@@ -379,6 +440,12 @@ Ruling: H8 derives every reviewed event and sink site, separates structural clos
 | `H5` | `repeat_latency_class` | `ABOVE_100MS` | G4 per-group bounded slow-close characterization | `NOT_YET_ASSESSED` | P11-FEAT-ACP-RUNTIME-HARDENING | Reachability against G4 per-group bounded slow-close characterization remains an explicit open obligation; the owning gate must prove it from raw observations. |
 | `H7` | `divergence_result` | `DIVERGED` | G4 semantic negative-outcome fault-injection characterization | `NOT_YET_ASSESSED` | P11-FEAT-ACP-RUNTIME-HARDENING | Reachability against G4 semantic negative-outcome fault-injection characterization remains an explicit open obligation; the owning gate must prove it from raw observations. |
 | `H7` | `leakage_result` | `LEAKED` | G4 semantic negative-outcome fault-injection characterization | `NOT_YET_ASSESSED` | P11-FEAT-ACP-RUNTIME-HARDENING | Reachability against G4 semantic negative-outcome fault-injection characterization remains an explicit open obligation; the owning gate must prove it from raw observations. |
+| `H9` | `constructor_policy` | `DECLARED_BOUNDED`, `UNKNOWN` | G4 queue negative-path reachability assessment | `NOT_YET_ASSESSED` | P11-FEAT-ACP-RUNTIME-HARDENING | Reachability against G4 queue negative-path reachability assessment remains an explicit open obligation; the owning gate must prove it from raw observations. |
+| `H9` | `deadline_policy` | `FULL_OPERATION`, `NONE` | G4 health-deadline reachability assessment | `NOT_YET_ASSESSED` | P11-FEAT-ACP-RUNTIME-HARDENING | Reachability against G4 health-deadline reachability assessment remains an explicit open obligation; the owning gate must prove it from raw observations. |
+| `H9` | `elapsed_class` | `ABOVE_100MS` | G4 queue negative-path reachability assessment | `NOT_YET_ASSESSED` | P11-FEAT-ACP-RUNTIME-HARDENING | Reachability against G4 queue negative-path reachability assessment remains an explicit open obligation; the owning gate must prove it from raw observations. |
+| `H9` | `inference` | `BLOCKING_WITHOUT_POLICY`, `BLOCKING_WITH_POLICY`, `BOUND_ENFORCED`, `NO_OBSERVED_BOUND_BELOW_10000` | G4 queue negative-path reachability assessment | `NOT_YET_ASSESSED` | P11-FEAT-ACP-RUNTIME-HARDENING | Reachability against G4 queue negative-path reachability assessment remains an explicit open obligation; the owning gate must prove it from raw observations. |
+| `H9` | `observed_outcome` | `BLOCKED`, `FULL_REJECTED`, `TIMED_OUT` | G4 queue negative-path reachability assessment | `NOT_YET_ASSESSED` | P11-FEAT-ACP-RUNTIME-HARDENING | Reachability against G4 queue negative-path reachability assessment remains an explicit open obligation; the owning gate must prove it from raw observations. |
+| `H9` | `pool_ownership` | `CLIENT_ONLY`, `EXTERNAL_POOL`, `RUNTIME_OWNED_POOL_THEN_CLIENT`, `UNKNOWN` | G4 pool-ownership reachability assessment | `NOT_YET_ASSESSED` | P11-FEAT-ACP-RUNTIME-HARDENING | Reachability against G4 pool-ownership reachability assessment remains an explicit open obligation; the owning gate must prove it from raw observations. |
 
 ## Finding index
 
@@ -406,3 +473,5 @@ Ruling: H8 derives every reviewed event and sink site, separates structural clos
 | `H8-MISSING-EVENT-PAYLOAD-SCHEMAS-merged` | `MISSING` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |
 | `H8-MISSING-FALLBACK-CORRELATION-merged` | `MISSING` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |
 | `H8-MISSING-SINK-CONTAINMENT-merged` | `MISSING` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |
+| `H9-MISSING-HEALTH-DEADLINE-merged` | `MISSING` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |
+| `H9-MISSING-QUEUE-BACKPRESSURE-merged` | `MISSING` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |

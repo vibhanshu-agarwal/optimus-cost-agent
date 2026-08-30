@@ -93,7 +93,8 @@
       {"$ref": "#/$defs/shutdownEvidenceRecord"},
       {"$ref": "#/$defs/authorityEvidenceRecord"},
       {"$ref": "#/$defs/semanticEvidenceRecord"},
-      {"$ref": "#/$defs/telemetryEvidenceRecord"}
+      {"$ref": "#/$defs/telemetryEvidenceRecord"},
+      {"$ref": "#/$defs/queueEvidenceRecord"}
     ]}}
   },
   "$defs": {
@@ -234,8 +235,8 @@
       "type": "object", "additionalProperties": false,
       "required": ["field_name", "type_name", "vocabulary_values", "observed_values", "missing_values", "status", "reason", "owner", "next_gate"],
       "properties": {
-        "field_name": {"enum": ["conversation_commit", "effect_state", "final_delivery", "rpc_response_delivery", "send_outcome", "send_state", "settlement", "request_task_state", "child_work_state", "invocation_outcomes", "terminal_cause", "close_outcome", "repeat_latency_class", "category", "error_code_name", "retryability", "effect_certainty", "public_output", "telemetry_disposition", "cleanup_obligation", "leakage_result", "divergence_result", "event_kind", "case_kind", "expected_outcome", "actual_outcome", "conformance", "content_class", "overall_result", "result", "sink_id", "failure_result"]},
-        "type_name": {"enum": ["ConversationCommit", "EffectState", "FinalDelivery", "RpcResponseDelivery", "SendOutcome", "SendState", "Settlement", "RequestTaskState", "ChildWorkState", "CancellationInvocationOutcome", "TerminalCause", "CloseOutcome", "RepeatLatencyClass", "SemanticCategory", "NamedErrorCode", "Retryability", "EffectCertainty", "PublicOutput", "TelemetryDisposition", "CleanupObligation", "LeakageResult", "DivergenceResult", "TelemetryEventKind", "SchemaCaseKind", "ValidationOutcome", "ConformanceResult", "RedactionCanaryClass", "RedactionResult", "CorrelationResult", "DerivedSinkId", "SinkFailureResult"]},
+        "field_name": {"enum": ["conversation_commit", "effect_state", "final_delivery", "rpc_response_delivery", "send_outcome", "send_state", "settlement", "request_task_state", "child_work_state", "invocation_outcomes", "terminal_cause", "close_outcome", "repeat_latency_class", "category", "error_code_name", "retryability", "effect_certainty", "public_output", "telemetry_disposition", "cleanup_obligation", "leakage_result", "divergence_result", "event_kind", "case_kind", "expected_outcome", "actual_outcome", "conformance", "content_class", "overall_result", "result", "sink_id", "failure_result", "constructor_policy", "observed_outcome", "inference", "elapsed_class", "scenario", "outcome", "deadline_policy", "pool_ownership"]},
+        "type_name": {"enum": ["ConversationCommit", "EffectState", "FinalDelivery", "RpcResponseDelivery", "SendOutcome", "SendState", "Settlement", "RequestTaskState", "ChildWorkState", "CancellationInvocationOutcome", "TerminalCause", "CloseOutcome", "RepeatLatencyClass", "SemanticCategory", "NamedErrorCode", "Retryability", "EffectCertainty", "PublicOutput", "TelemetryDisposition", "CleanupObligation", "LeakageResult", "DivergenceResult", "TelemetryEventKind", "SchemaCaseKind", "ValidationOutcome", "ConformanceResult", "RedactionCanaryClass", "RedactionResult", "CorrelationResult", "DerivedSinkId", "SinkFailureResult", "ConstructorPolicy", "AdmissionOutcome", "QueueInference", "ElapsedClass", "HealthScenario", "HealthOutcome", "HealthDeadlinePolicy", "PoolOwnership"]},
         "vocabulary_values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "observed_values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "missing_values": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
@@ -417,7 +418,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["hypothesis_id", "field_name", "owning_gate", "missing_values", "owner", "reachable_in_gate", "reachability_reason"],
       "properties": {
-        "hypothesis_id": {"enum": ["H3", "H4", "H5", "H7"]},
+        "hypothesis_id": {"enum": ["H3", "H4", "H5", "H7", "H9"]},
         "field_name": {"$ref": "#/$defs/contentFreeText"},
         "owning_gate": {"$ref": "#/$defs/contentFreeText"},
         "missing_values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/contentFreeText"}},
@@ -762,6 +763,94 @@
         "commands": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "#/$defs/contentFreeText"}},
         "ruling": {"$ref": "#/$defs/contentFreeText"}, "reviewer_status": {"const": "PENDING_G2"},
         "content_free_evidence": {"type": "array", "minItems": 6, "maxItems": 6, "items": {"$ref": "#/$defs/evidence"}}
+      }
+    },
+    "queueSite": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "line", "symbol", "site_kind", "queue_ref", "classification", "evidence_digest", "ruling"],
+      "properties": {
+        "path": {"$ref": "#/$defs/contentFreeText"}, "line": {"type": "integer", "minimum": 1},
+        "symbol": {"$ref": "#/$defs/contentFreeText"},
+        "site_kind": {"enum": ["QUEUE_CONSTRUCTOR", "QUEUE_ADMISSION", "QUEUE_CONSUMER", "POOL_CONSTRUCTOR", "CLIENT_CONSTRUCTOR", "HEALTH_PROBE", "CLIENT_CLOSE", "POOL_CLOSE", "BRIDGE_WAIT"]},
+        "queue_ref": {"oneOf": [{"$ref": "#/$defs/contentFreeText"}, {"type": "null"}]},
+        "classification": {"enum": ["CANONICAL", "MISSING"]},
+        "evidence_digest": {"$ref": "#/$defs/digest"}, "ruling": {"$ref": "#/$defs/contentFreeText"}
+      }
+    },
+    "queueDefinition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["queue_id", "path", "line", "symbol", "queue_ref", "queue_type", "declared_bound", "constructor_policy", "constructor_declares_unbounded", "admission_api", "producer_lines", "consumer_lines", "stop_behavior", "overflow_result", "explicit_admission_timeout_seconds", "classification"],
+      "properties": {
+        "queue_id": {"$ref": "#/$defs/contentFreeText"}, "path": {"$ref": "#/$defs/contentFreeText"},
+        "line": {"type": "integer", "minimum": 1}, "symbol": {"$ref": "#/$defs/contentFreeText"},
+        "queue_ref": {"$ref": "#/$defs/contentFreeText"}, "queue_type": {"enum": ["queue.Queue", "asyncio.Queue"]},
+        "declared_bound": {"oneOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        "constructor_policy": {"enum": ["DECLARED_UNBOUNDED", "DECLARED_BOUNDED", "UNKNOWN"]},
+        "constructor_declares_unbounded": {"type": "boolean"}, "admission_api": {"const": "put"},
+        "producer_lines": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "integer", "minimum": 1}},
+        "consumer_lines": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "integer", "minimum": 1}},
+        "stop_behavior": {"$ref": "#/$defs/contentFreeText"}, "overflow_result": {"$ref": "#/$defs/contentFreeText"},
+        "explicit_admission_timeout_seconds": {"oneOf": [{"type": "number", "minimum": 0}, {"type": "null"}]},
+        "classification": {"const": "MISSING"}
+      }
+    },
+    "queueInventory": {
+      "type": "object", "additionalProperties": false,
+      "required": ["expected_queue_count", "queue_count", "sites", "queues"],
+      "properties": {
+        "expected_queue_count": {"type": "null"}, "queue_count": {"type": "integer", "minimum": 1},
+        "sites": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/queueSite"}},
+        "queues": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/queueDefinition"}}
+      }
+    },
+    "queueAdmissionObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["queue_id", "admission_index", "constructor_policy", "observed_outcome", "inference", "elapsed_class", "elapsed_threshold_ms", "evidence_digest", "complete"],
+      "properties": {
+        "queue_id": {"$ref": "#/$defs/contentFreeText"}, "admission_index": {"type": "integer", "minimum": 0, "maximum": 9999},
+        "constructor_policy": {"enum": ["DECLARED_UNBOUNDED", "DECLARED_BOUNDED", "UNKNOWN"]},
+        "observed_outcome": {"enum": ["ACCEPTED", "FULL_REJECTED", "TIMED_OUT", "BLOCKED"]},
+        "inference": {"enum": ["DECLARED_UNBOUNDED", "NO_OBSERVED_BOUND_BELOW_10000", "BOUND_ENFORCED", "BLOCKING_WITH_POLICY", "BLOCKING_WITHOUT_POLICY"]},
+        "elapsed_class": {"enum": ["WITHIN_100MS", "ABOVE_100MS"]}, "elapsed_threshold_ms": {"const": 100.0},
+        "evidence_digest": {"$ref": "#/$defs/digest"}, "complete": {"const": true}
+      }
+    },
+    "healthObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["scenario", "outcome", "deadline_policy", "pool_ownership", "evidence_digest", "complete"],
+      "properties": {
+        "scenario": {"enum": ["HEALTHY", "OS_ERROR", "REDIS_TIMEOUT", "UNEXPECTED_ERROR"]},
+        "outcome": {"enum": ["HEALTHY", "CONNECTION_FAILURE", "UNEXPECTED_PROPAGATED"]},
+        "deadline_policy": {"enum": ["CONNECT_ONLY", "FULL_OPERATION", "NONE"]},
+        "pool_ownership": {"enum": ["RUNTIME_OWNED_CLIENT_THEN_POOL", "RUNTIME_OWNED_POOL_THEN_CLIENT", "CLIENT_ONLY", "EXTERNAL_POOL", "UNKNOWN"]},
+        "evidence_digest": {"$ref": "#/$defs/digest"}, "complete": {"const": true}
+      }
+    },
+    "h9ObservationSummary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["total_observation_count", "complete_observation_count", "observation_closure_status", "vocabulary_coverage_status", "digest", "coverage_assessments", "rows"],
+      "properties": {
+        "total_observation_count": {"type": "integer", "minimum": 1}, "complete_observation_count": {"type": "integer", "minimum": 1},
+        "observation_closure_status": {"const": "FULLY_STRUCTURALLY_CLOSED"},
+        "vocabulary_coverage_status": {"enum": ["FULLY_OBSERVED", "PARTIAL_WITH_SCOPE_OUTS"]},
+        "digest": {"$ref": "#/$defs/digest"},
+        "coverage_assessments": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/vocabularyCoverageAssessment"}},
+        "rows": {"type": "array", "minItems": 1, "items": {"oneOf": [{"$ref": "#/$defs/queueAdmissionObservation"}, {"$ref": "#/$defs/healthObservation"}]}}
+      }
+    },
+    "queueEvidenceRecord": {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_id", "hypothesis_id", "subject", "baseline_scope", "baseline_anchor_commit", "overlay_commit", "binding_commit", "inventory", "admission_observations", "health_observations", "commands", "ruling", "reviewer_status", "content_free_evidence"],
+      "properties": {
+        "record_id": {"const": "ER-H9-QUEUE-HEALTH"}, "hypothesis_id": {"const": "H9"},
+        "subject": {"$ref": "#/$defs/contentFreeText"}, "baseline_scope": {"const": "merged"},
+        "baseline_anchor_commit": {"$ref": "#/$defs/commit"}, "overlay_commit": {"$ref": "#/$defs/commit"}, "binding_commit": {"type": "null"},
+        "inventory": {"$ref": "#/$defs/queueInventory"},
+        "admission_observations": {"allOf": [{"$ref": "#/$defs/h9ObservationSummary"}, {"properties": {"total_observation_count": {"minimum": 10000}, "complete_observation_count": {"minimum": 10000}}}]},
+        "health_observations": {"$ref": "#/$defs/h9ObservationSummary"},
+        "commands": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/contentFreeText"}},
+        "ruling": {"$ref": "#/$defs/contentFreeText"}, "reviewer_status": {"const": "PENDING_G2"},
+        "content_free_evidence": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/evidence"}}
       }
     },
     "evidenceRecord": {
