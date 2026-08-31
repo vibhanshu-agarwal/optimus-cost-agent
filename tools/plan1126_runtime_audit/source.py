@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import io
+import os
 import subprocess
+import tarfile
 from pathlib import Path, PurePosixPath
 from typing import Mapping
 
@@ -29,10 +32,13 @@ class SourceTree:
 
 
 class GitCommitSource:
-    """A source tree whose only read primitive is ``git show <commit>:<path>``."""
+    """A source tree read from immutable Git objects by bounded subprocesses."""
+
+    _GIT_TIMEOUT_SECONDS = 10.0
 
     def __init__(self, commit: str, repository: Path | str = ".") -> None:
         self.repository = Path(repository).resolve()
+        self._archive: dict[str, bytes] | None = None
         resolved = self._run("rev-parse", "--verify", f"{commit}^{{commit}} ".strip()).strip()
         if len(resolved) != 40 or any(ch not in "0123456789abcdef" for ch in resolved):
             raise ValueError("commit must resolve to an immutable commit object")
@@ -46,8 +52,31 @@ class GitCommitSource:
             capture_output=True,
             text=True,
             encoding="utf-8",
+            timeout=self._GIT_TIMEOUT_SECONDS,
+            env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
         )
         return completed.stdout
+
+    def _load_archive(self) -> Mapping[str, bytes]:
+        if self._archive is None:
+            completed = subprocess.run(
+                ["git", "archive", "--format=tar", self.commit],
+                cwd=self.repository,
+                check=True,
+                capture_output=True,
+                timeout=self._GIT_TIMEOUT_SECONDS,
+                env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+            )
+            archive: dict[str, bytes] = {}
+            with tarfile.open(fileobj=io.BytesIO(completed.stdout), mode="r:") as bundle:
+                for member in bundle.getmembers():
+                    if not member.isfile():
+                        continue
+                    handle = bundle.extractfile(member)
+                    if handle is not None:
+                        archive[_validate_relative_path(member.name)] = handle.read()
+            self._archive = archive
+        return self._archive
 
     def paths(self) -> tuple[str, ...]:
         output = self._run("ls-tree", "-r", "--name-only", self.commit)
@@ -55,4 +84,5 @@ class GitCommitSource:
 
     def read_text(self, path: str) -> str:
         relative = _validate_relative_path(path)
-        return self._run("show", f"{self.commit}:{relative}")
+        text = self._load_archive()[relative].decode("utf-8")
+        return text.replace("\r\n", "\n").replace("\r", "\n")

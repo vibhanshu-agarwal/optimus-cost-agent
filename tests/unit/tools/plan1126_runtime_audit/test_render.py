@@ -6,11 +6,13 @@ import hashlib
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+import tools.run_plan1126_runtime_audit as cli
 from tools.plan1126_runtime_audit.model import AuditArtifact, GateStatus, LiveStatus
 from tools.plan1126_runtime_audit.render import render_markdown
 from tools.run_plan1126_runtime_audit import _live_gate, _record_zed, main
@@ -336,6 +338,326 @@ def test_inventory_and_offline_subcommands_perform_offline_work(tmp_path: Path, 
     offline = json.loads(offline_output.read_text(encoding="utf-8"))
     assert offline["prerequisite_count"] == 18
     assert offline["binding_commit"] is None
+
+
+def _offline_spec(
+    scenario_id: str, code: str, *, harness_paths: tuple[str, ...] = (),
+) -> dict[str, object]:
+    return {
+        "scenario_id": scenario_id,
+        "command": (sys.executable, "-c", code),
+        "harness_paths": harness_paths,
+    }
+
+
+def _write_offline_artifact(path: Path) -> None:
+    path.write_text(json.dumps(_artifact(
+        static_audit_status=LiveStatus.UNRUN,
+        runtime_characterization_status=LiveStatus.UNRUN,
+        discovered_multipliers={"cancellation_points": 8, "queues": 3, "sinks": 5, "close_paths": 15},
+        computed_run_cost={
+            "cancellation_concurrency_levels": [2, 4, 8],
+            "cancellation_schedules": 6_144,
+            "cancellation_control_schedules": 2_048,
+            "queue_admissions": 30_000,
+            "sink_failure_runs": 500,
+            "idempotent_close_invocations": 225,
+            "scenario_p50_ms": {},
+            "scenario_p95_ms": {},
+        },
+        gate_status=GateStatus.INCOMPLETE,
+    ).to_dict()), encoding="utf-8")
+
+
+def test_offline_tier_runner_checkpoints_real_repeats_and_resumes(
+    tmp_path: Path, capsys, monkeypatch,
+) -> None:
+    artifact = tmp_path / "artifact.json"
+    checkpoint = tmp_path / "checkpoint.json"
+    output = tmp_path / "narrow.json"
+    _write_offline_artifact(artifact)
+    monkeypatch.setattr(cli, "_OFFLINE_TIER_COMMANDS", {
+        "narrow": (_offline_spec("sample", "print('1 passed in 0.01s')"),),
+        "group": (),
+    })
+    monkeypatch.setattr(cli, "_OFFLINE_REPEAT_COUNTS", {"narrow": 2, "group": 2, "terminal": 1})
+
+    command = [
+        "offline", "--artifact", str(artifact), "--checkpoint", str(checkpoint),
+        "--tier", "narrow", "--repeats", "2", "--output", str(output),
+    ]
+    assert main(command) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "COMPLETE"
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["tier"] == "narrow"
+    assert len(payload["scenarios"]) == 1
+    scenario = payload["scenarios"][0]
+    assert scenario["scenario_id"] == "sample"
+    assert scenario["command"] == f"{sys.executable} -c print('1 passed in 0.01s')"
+    assert scenario["repeat_count"] == 2
+    assert scenario["repeatability"] == "STABLE"
+    assert scenario["status"] == "PASS"
+    assert len(scenario["outcome_fingerprints"]) == 1
+    assert len(scenario["outcome_fingerprints"][0]) == 64
+    assert scenario["p50_ms"] >= 0
+    assert scenario["p95_ms"] >= scenario["p50_ms"]
+    assert json.loads(checkpoint.read_text(encoding="utf-8"))["revision"] == 2
+
+    assert main(command) == 0
+    capsys.readouterr()
+    assert json.loads(checkpoint.read_text(encoding="utf-8"))["revision"] == 2
+
+
+def test_offline_tier_distinguishes_flaky_from_harness_invalid(
+    tmp_path: Path, capsys, monkeypatch,
+) -> None:
+    artifact = tmp_path / "artifact.json"
+    _write_offline_artifact(artifact)
+    monkeypatch.setattr(cli, "_OFFLINE_REPEAT_COUNTS", {"narrow": 2, "group": 2, "terminal": 1})
+    counter = tmp_path / "counter.txt"
+    flaky_code = (
+        "from pathlib import Path; "
+        f"p=Path({str(counter)!r}); n=int(p.read_text())+1 if p.exists() else 1; p.write_text(str(n)); "
+        "print('1 passed in 0.01s' if n == 1 else '1 failed in 0.01s'); raise SystemExit(0 if n == 1 else 1)"
+    )
+    monkeypatch.setattr(cli, "_OFFLINE_TIER_COMMANDS", {
+        "narrow": (_offline_spec("flaky", flaky_code),), "group": (),
+    })
+    flaky_output = tmp_path / "flaky.json"
+    assert main([
+        "offline", "--artifact", str(artifact), "--checkpoint", str(tmp_path / "flaky-checkpoint.json"),
+        "--tier", "narrow", "--repeats", "2", "--output", str(flaky_output),
+    ]) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "reasons": ["flaky_scenarios=flaky"], "status": "COMPLETE",
+    }
+    assert json.loads(flaky_output.read_text(encoding="utf-8"))["scenarios"][0]["repeatability"] == "FLAKY"
+
+    harness = tmp_path / "harness.txt"
+    harness.write_text("stable", encoding="utf-8")
+    invalid_code = f"from pathlib import Path; p=Path({str(harness)!r}); p.write_text(p.read_text()+'x'); print('1 passed')"
+    monkeypatch.setattr(cli, "_OFFLINE_TIER_COMMANDS", {
+        "narrow": (_offline_spec("invalid", invalid_code, harness_paths=(str(harness),)),), "group": (),
+    })
+    invalid_output = tmp_path / "invalid.json"
+    assert main([
+        "offline", "--artifact", str(artifact), "--checkpoint", str(tmp_path / "invalid-checkpoint.json"),
+        "--tier", "narrow", "--repeats", "2", "--output", str(invalid_output),
+    ]) == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "reasons": ["harness_invalid_scenarios=invalid"], "status": "INVALID",
+    }
+    assert json.loads(invalid_output.read_text(encoding="utf-8"))["scenarios"][0]["repeatability"] == "HARNESS_INVALID"
+
+
+def test_offline_tier_captures_timeout_diagnostics_and_attributes_harness_instability(
+    tmp_path: Path, capsys, monkeypatch,
+) -> None:
+    artifact = tmp_path / "artifact.json"
+    checkpoint = tmp_path / "checkpoint.json"
+    output = tmp_path / "timeout.json"
+    _write_offline_artifact(artifact)
+    nodeid = "tests/unit/tools/plan1126_runtime_audit/test_probe.py::test_blocks"
+    spec = _offline_spec("bounded", f"import time; print({nodeid!r}, flush=True); time.sleep(1)")
+    spec["timeout_seconds"] = 0.5
+    spec["harness_nodeids"] = (nodeid,)
+    monkeypatch.setattr(cli, "_OFFLINE_TIER_COMMANDS", {"narrow": (spec,), "group": ()})
+
+    assert main([
+        "offline", "--artifact", str(artifact), "--checkpoint", str(checkpoint),
+        "--tier", "narrow", "--repeats", "1", "--output", str(output),
+    ]) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "reasons": ["harness_unstable_scenarios=bounded"], "status": "COMPLETE",
+    }
+    scenario = json.loads(output.read_text(encoding="utf-8"))["scenarios"][0]
+    assert scenario["status"] == "TIMEOUT"
+    assert scenario["repeatability"] == "HARNESS_UNSTABLE"
+    entry = json.loads(checkpoint.read_text(encoding="utf-8"))["entries"]
+    outcome = entry["task11-narrow-bounded-repeat-01"]["outcome"]
+    assert outcome["status"] == "TIMEOUT"
+    assert outcome["last_test_nodeid"] == nodeid
+    assert outcome["timeout_subject"] == "HARNESS"
+    assert nodeid in outcome["stdout_tail"]
+    assert len(outcome["stdout_sha256"]) == 64
+    assert outcome["stderr_tail"] == ""
+
+
+def test_offline_timeout_terminates_descendants_that_inherit_capture_pipes(
+    tmp_path: Path, capsys, monkeypatch,
+) -> None:
+    artifact = tmp_path / "artifact.json"
+    checkpoint = tmp_path / "checkpoint.json"
+    _write_offline_artifact(artifact)
+    nodeid = "tests/unit/tools/plan1126_runtime_audit/test_probe.py::test_descendant"
+    child_code = "import time; time.sleep(2)"
+    code = (
+        "import subprocess,sys,time; "
+        f"subprocess.Popen([sys.executable, '-c', {child_code!r}]); "
+        f"print({nodeid!r}, flush=True); time.sleep(2)"
+    )
+    spec = _offline_spec("descendant", code)
+    spec["timeout_seconds"] = 0.1
+    spec["harness_nodeids"] = (nodeid,)
+    monkeypatch.setattr(cli, "_OFFLINE_TIER_COMMANDS", {"narrow": (spec,), "group": ()})
+
+    started = time.perf_counter()
+    assert main([
+        "offline", "--artifact", str(artifact), "--checkpoint", str(checkpoint),
+        "--tier", "narrow", "--repeats", "1",
+    ]) == 0
+    elapsed = time.perf_counter() - started
+    capsys.readouterr()
+
+    assert elapsed < 1.0
+
+
+def test_offline_scenario_rerun_uses_new_generation_without_overwriting_history(
+    tmp_path: Path, capsys, monkeypatch,
+) -> None:
+    artifact = tmp_path / "artifact.json"
+    checkpoint = tmp_path / "checkpoint.json"
+    _write_offline_artifact(artifact)
+    spec = _offline_spec("sample", "print('1 passed in 0.01s')")
+    monkeypatch.setattr(cli, "_OFFLINE_TIER_COMMANDS", {"narrow": (spec,), "group": ()})
+
+    base = [
+        "offline", "--artifact", str(artifact), "--checkpoint", str(checkpoint),
+        "--tier", "narrow", "--repeats", "1", "--scenario", "sample",
+    ]
+    assert main(base) == 0
+    capsys.readouterr()
+    assert main([*base, "--measurement-generation", "c18-bounded-git-v1"]) == 0
+    capsys.readouterr()
+
+    payload = json.loads(checkpoint.read_text(encoding="utf-8"))
+    assert payload["revision"] == 2
+    assert "task11-narrow-sample-repeat-01" in payload["entries"]
+    assert "task11-narrow-sample-c18-bounded-git-v1-repeat-01" in payload["entries"]
+    assert payload["entries"]["task11-narrow-sample-c18-bounded-git-v1-repeat-01"][
+        "measurement_generation"
+    ] == "c18-bounded-git-v1"
+
+
+def test_cost_proposal_selects_latest_complete_measurement_generation(
+    tmp_path: Path, capsys, monkeypatch,
+) -> None:
+    root = Path(__file__).parents[4]
+    artifact = tmp_path / "artifact.json"
+    checkpoint = tmp_path / "checkpoint.json"
+    terminal_report = tmp_path / "terminal.md"
+    _write_offline_artifact(artifact)
+    spec = _offline_spec("measured_group", "print('1 passed in 0.01s')")
+    monkeypatch.setattr(cli, "_OFFLINE_TIER_COMMANDS", {"narrow": (), "group": (spec,)})
+    monkeypatch.setattr(cli, "_OFFLINE_REPEAT_COUNTS", {"narrow": 2, "group": 2, "terminal": 1})
+
+    base = [
+        "offline", "--artifact", str(artifact), "--checkpoint", str(checkpoint),
+        "--tier", "group", "--repeats", "2", "--scenario", "measured_group",
+    ]
+    assert main(base) == 0
+    capsys.readouterr()
+    assert main([*base, "--measurement-generation", "c18-bounded-git-v1"]) == 0
+    capsys.readouterr()
+    document = json.loads(checkpoint.read_text(encoding="utf-8"))
+    for repeat in (1, 2):
+        document["entries"][f"task11-group-measured_group-repeat-{repeat:02d}"][
+            "duration_ms"
+        ] = 999.0
+        complete_key = (
+            f"task11-group-measured_group-c18-bounded-git-v1-repeat-{repeat:02d}"
+        )
+        document["entries"][complete_key]["duration_ms"] = 5.0
+    partial = dict(
+        document["entries"][
+            "task11-group-measured_group-c18-bounded-git-v1-repeat-01"
+        ]
+    )
+    partial["duration_ms"] = 1.0
+    partial["measurement_generation"] = "newer-incomplete-v1"
+    partial["checkpoint_revision"] = int(document["revision"]) + 1
+    document["revision"] = int(document["revision"]) + 1
+    document["entries"][
+        "task11-group-measured_group-newer-incomplete-v1-repeat-01"
+    ] = partial
+    checkpoint.write_text(json.dumps(document), encoding="utf-8")
+
+    assert main([
+        "offline", "--artifact", str(artifact), "--checkpoint", str(checkpoint),
+        "--baseline-report", str(root / "reports" / "plan-11-26-baseline-intake.json"),
+        "--prerequisite-report", str(root / "reports" / "plan-11-26-prerequisite-intake.json"),
+        "--cost-proposal", "--terminal-report", str(terminal_report),
+    ]) == 0
+    capsys.readouterr()
+
+    cost = json.loads(artifact.read_text(encoding="utf-8"))["computed_run_cost"]
+    assert cost["scenario_p50_ms"]["measured_group"] == 5.0
+    assert "c18-bounded-git-v1" in terminal_report.read_text(encoding="utf-8")
+
+
+def test_offline_cost_proposal_updates_measurements_and_keeps_live_rows_unrun(
+    tmp_path: Path, capsys, monkeypatch,
+) -> None:
+    root = Path(__file__).parents[4]
+    artifact = tmp_path / "artifact.json"
+    checkpoint = tmp_path / "checkpoint.json"
+    terminal_report = tmp_path / "terminal.md"
+    _write_offline_artifact(artifact)
+    spec = _offline_spec("measured_group", "print('1 passed in 0.01s')")
+    monkeypatch.setattr(cli, "_OFFLINE_TIER_COMMANDS", {"narrow": (spec,), "group": (spec,)})
+    monkeypatch.setattr(cli, "_OFFLINE_REPEAT_COUNTS", {"narrow": 2, "group": 2, "terminal": 1})
+    for tier in ("narrow", "group"):
+        assert main([
+            "offline", "--artifact", str(artifact), "--checkpoint", str(checkpoint),
+            "--tier", tier, "--repeats", "2",
+        ]) == 0
+        capsys.readouterr()
+
+    assert main([
+        "offline", "--artifact", str(artifact), "--checkpoint", str(checkpoint),
+        "--baseline-report", str(root / "reports" / "plan-11-26-baseline-intake.json"),
+        "--prerequisite-report", str(root / "reports" / "plan-11-26-prerequisite-intake.json"),
+        "--cost-proposal", "--terminal-report", str(terminal_report),
+    ]) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "reasons": ["operator_cost_approval_required"], "status": "UNRUN",
+    }
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    assert set(payload["computed_run_cost"]["scenario_p50_ms"]) == {"measured_group"}
+    assert set(payload["computed_run_cost"]["scenario_p95_ms"]) == {"measured_group"}
+    assert payload["live_redis_status"] == "UNRUN"
+    assert payload["acpx_status"] == "UNRUN"
+    assert payload["additional_client_status"] == "UNRUN"
+    assert payload["zed_status"] == "UNRUN"
+    report = terminal_report.read_text(encoding="utf-8")
+    for token in ("6,144", "2,048", "30,000", "500", "225", "UNRUN_WSL2", "operator / Plan 11.26"):
+        assert token in report
+    assert "Live run count | 0" in report
+    assert "p95 excluding timeouts" in report
+    assert "Harness-timeout p95 contribution" in report
+    assert "## Repeatability disposition" in report
+    assert "| narrow | measured_group | legacy | 2 | 0 | 0 | STABLE |" in report
+
+
+def test_offline_terminal_command_runs_once_only_after_tier_evidence_exists(
+    tmp_path: Path, capsys, monkeypatch,
+) -> None:
+    artifact = tmp_path / "artifact.json"
+    checkpoint = tmp_path / "checkpoint.json"
+    _write_offline_artifact(artifact)
+    spec = _offline_spec("terminal_group", "print('1 passed in 0.01s')")
+    monkeypatch.setattr(cli, "_OFFLINE_TIER_COMMANDS", {"narrow": (spec,), "group": (spec,)})
+    monkeypatch.setattr(cli, "_OFFLINE_REPEAT_COUNTS", {"narrow": 1, "group": 1, "terminal": 1})
+    for tier in ("narrow", "group"):
+        assert main([
+            "offline", "--artifact", str(artifact), "--checkpoint", str(checkpoint),
+            "--tier", tier, "--repeats", "1",
+        ]) == 0
+        capsys.readouterr()
+    assert main(["offline", "--artifact", str(artifact), "--checkpoint", str(checkpoint)]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "COMPLETE"
+    entries = json.loads(checkpoint.read_text(encoding="utf-8"))["entries"]
+    assert "task11-terminal-terminal_group-repeat-01" in entries
 
 
 @pytest.mark.parametrize(

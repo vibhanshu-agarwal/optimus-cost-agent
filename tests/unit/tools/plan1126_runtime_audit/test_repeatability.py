@@ -21,6 +21,17 @@ def test_repeatability_distinguishes_runtime_flake_from_harness_invalidity() -> 
     assert invalid.status is RepeatabilityStatus.HARNESS_INVALID
 
 
+def test_repeatability_distinguishes_behaviorally_unstable_harness_from_product_flake() -> None:
+    result = classify_repeatability(
+        outcomes=({"status": "PASS"}, {"status": "TIMEOUT"}),
+        harness_fingerprints=("h1", "h1"),
+        provenance_fingerprints=("p1", "p1"),
+        harness_behavior_unstable=(False, True),
+    )
+
+    assert result.status is RepeatabilityStatus.HARNESS_UNSTABLE
+
+
 def test_repeatability_normalizes_mapping_order_for_stable_outcomes() -> None:
     result = classify_repeatability(
         outcomes=({"state": "sent", "nested": {"a": 1, "b": 2}}, {"nested": {"b": 2, "a": 1}, "state": "sent"}),

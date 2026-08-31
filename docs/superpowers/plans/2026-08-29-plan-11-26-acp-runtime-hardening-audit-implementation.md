@@ -48,7 +48,7 @@
 | `tools/plan1126_runtime_audit/checkpoints.py` | Atomic iteration records, resume cursor, and duplicate/conflict rejection. |
 | `tools/plan1126_runtime_audit/corpus.py` | Literal frozen-seed loading plus commit-derived seed calculation. |
 | `tools/plan1126_runtime_audit/cost.py` | Discovered multipliers, exact run-count formulas, and measured p50/p95 wall-time estimates. |
-| `tools/plan1126_runtime_audit/repeatability.py` | Stable outcome fingerprints and `STABLE`/`FLAKY`/`HARNESS_INVALID` classification across repeated runs. |
+| `tools/plan1126_runtime_audit/repeatability.py` | Stable outcome fingerprints and `STABLE`/`FLAKY`/`HARNESS_UNSTABLE`/`HARNESS_INVALID` classification across repeated runs. |
 | `tools/plan1126_runtime_audit/clients.py` | Qualification and provenance checks for acpx, official TypeScript/Java clients, and an independently authored conformance-harness fallback; never implements ACP framing. |
 | `tools/plan1126_runtime_audit/render.py` | Deterministic content-free Markdown rendering from the canonical JSON artifact. |
 | `tools/run_plan1126_runtime_audit.py` | Thin CLI for static inventory, offline characterization, live gated rows, checkpoint resume, and final rendering. |
@@ -121,7 +121,7 @@ Every `unknown` prerequisite is resolved by Task 1 or Task 3 before a dependent 
 |---|---|---|
 | `test_audit_artifact_requires_baseline_scope_and_classification` | `tests/unit/tools/plan1126_runtime_audit/test_artifact.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_artifact.py::test_audit_artifact_requires_baseline_scope_and_classification -q` |
 | `test_audit_artifact_live_status_is_machine_checkable` | `tests/unit/tools/plan1126_runtime_audit/test_artifact.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_artifact.py::test_audit_artifact_live_status_is_machine_checkable -q` |
-| `test_running_artifact_provenance_matches_binding_commit` | `tests/unit/tools/plan1126_runtime_audit/test_provenance.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_provenance.py::test_running_artifact_provenance_matches_binding_commit -q` |
+| `test_running_artifact_provenance_matches_binding_commit_and_expected_identity` | `tests/unit/tools/plan1126_runtime_audit/test_provenance.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_provenance.py::test_running_artifact_provenance_matches_binding_commit_and_expected_identity -q` |
 | `test_derived_inventory_has_no_unclassified_sites` | `tests/unit/tools/plan1126_runtime_audit/test_inventory.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_inventory.py::test_derived_inventory_has_no_unclassified_sites -q` |
 | `test_delivery_contract_ast_covers_all_send_sites` | `tests/unit/acp/test_plan1126_delivery_contract.py` | `uv run --frozen pytest tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_contract_ast_covers_all_send_sites -q` |
 | `test_delivery_contract_model_1000_seed_schedule` | `tests/unit/acp/test_plan1126_delivery_contract.py` | `uv run --frozen pytest tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_contract_model_1000_seed_schedule -q` |
@@ -140,6 +140,31 @@ Every `unknown` prerequisite is resolved by Task 1 or Task 3 before a dependent 
 | `test_zed_manual_observation_bundle_is_complete` | `tests/e2e/acp/test_plan1126_clients_live.py` | `uv run --frozen pytest tests/e2e/acp/test_plan1126_clients_live.py::test_zed_manual_observation_bundle_is_complete -m "e2e and requires_zed" -v` |
 
 The first 18 rows are the approved design predicates for the audit mechanism. The 19th supplemental row gates the Task 11 manual Zed observation bundle. A predicate passes when the scheduled behavior is exhaustively observed and truthfully classified; it does not force the current runtime to exhibit a desired future behavior.
+
+### Post-Step-4 predicate execution reconciliation (C21)
+
+All 19 predicate identities remain in custody; none is deleted or represented as passing when its
+dependency is absent. Sixteen rows have implemented offline node IDs and are runnable under the
+standing audit grant. The provenance row above corrects a naming drift to the implemented superset
+test; it is runnable with fixture-local identities and does not require a nominated binding commit.
+
+Three rows are planned obligations rather than executable node IDs in the current tree:
+
+| Predicate | Current disposition | Owner | Unblock path |
+|---|---|---|---|
+| `test_session_lease_boundary_uses_binding_runtime_constant` | `UNRUN_BINDING`; Task 10 correctly stopped before implementing the node because `binding_commit` is null. | Plan 11.7 / `P11-FEAT-ZED-RESUME` | Reconcile the runtime branches, nominate the binding commit, then implement and run the binding predicate. |
+| `test_live_redis_owner_revision_races` | `UNRUN`; the integration file is absent and no live Redis grant exists. | operator | Grant the real Redis row after its binding/provenance prerequisites are satisfied. |
+| `test_zed_manual_observation_bundle_is_complete` | `UNRUN`; the E2E file and manual observation bundle are absent and no Zed grant exists. | operator | Grant the five manual Zed rows after trusted-workspace and installed-artifact provenance prerequisites are satisfied. |
+
+Task 10's implemented five-test suite is the offline corroboration for the first scope-out:
+
+```powershell
+uv run --frozen pytest tests/unit/acp/test_plan1126_session_lease.py -q
+```
+
+It must prove `PROVISIONAL_OVERLAY`, binding-identity validation, complete deferred-obligation
+custody, and the absence of runtime/live evidence. It is evidence that the stop was applied
+correctly; it is not a substitute pass for the missing binding predicate.
 
 ---
 
@@ -310,7 +335,7 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
 - [x] **Step 6: Implement provenance, checkpoints, corpus, cost, and repeatability without runtime mutation.**
 
-  `verify_running_artifact` returns a typed valid/invalid result with reasons; it never infers provenance from the checkout. `CheckpointStore` writes a temporary sibling, fsyncs, and atomically replaces the target. `compute_cost` includes measured per-scenario p50/p95 and every discovered multiplier. Level `1` is the cancellation control family and is counted only by `cancellation_control_schedules`; levels `2`, `4`, and `8` are the race family counted by `cancellation_schedules`. At the 256-seed group tier this yields 768 race schedules plus 256 control schedules, exactly 1,024 per discovered cancellation point. `classify_repeatability` fingerprints normalized outcomes across repeated identical schedules and reports `FLAKY` for inconsistent runtime outcomes and `HARNESS_INVALID` for inconsistent harness/provenance inputs.
+  `verify_running_artifact` returns a typed valid/invalid result with reasons; it never infers provenance from the checkout. `CheckpointStore` writes a temporary sibling, fsyncs, and atomically replaces the target. `compute_cost` includes measured per-scenario p50/p95 and every discovered multiplier. Level `1` is the cancellation control family and is counted only by `cancellation_control_schedules`; levels `2`, `4`, and `8` are the race family counted by `cancellation_schedules`. At the 256-seed group tier this yields 768 race schedules plus 256 control schedules, exactly 1,024 per discovered cancellation point. `classify_repeatability` fingerprints normalized outcomes across repeated identical schedules. Classification precedence is `HARNESS_INVALID` for changing harness/provenance fingerprints, then `HARNESS_UNSTABLE` when captured behavioral evidence attributes instability to the audit harness, then `FLAKY` for remaining inconsistent product outcomes under stable fingerprints/provenance with no harness attribution, otherwise `STABLE`.
 
 - [x] **Step 7: Implement deterministic rendering and the thin CLI.**
 
@@ -751,36 +776,45 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 - Create: `reports/plan-11-26-zed-manual-observations.json`
 - Create: `reports/plan-11-26-terminal-characterization.md`
 - Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify under the standing audit-execution grant for offline orchestration only: `tools/run_plan1126_runtime_audit.py`
+- Modify under the standing audit-execution grant for offline test coverage only: `tests/unit/tools/plan1126_runtime_audit/test_render.py`
 - Modify only after a fresh live grant: `reports/plan-11-26-prerequisite-intake.json`
-- Modify only after a fresh live grant: `tools/run_plan1126_runtime_audit.py`
-- Modify only after a fresh live grant: `tests/unit/tools/plan1126_runtime_audit/test_render.py`
+
+The offline permission above is capability-scoped, not file-scoped. It does not authorize changes to
+`_ACCEPTED_AUTHORITY_DIGESTS` or to the `live-redis`, `acpx`, `sdk`, or `zed record` paths. Those live
+capabilities and their authority-report allowlist remain gated behind a fresh live grant. The
+prerequisite intake remains immutable under the audit-only grant because its canonical digest is an
+accepted authority input; offline orchestration reads it but never rewrites it.
 
 **Interfaces:**
 
 - Consumes: accepted Tasks 2-10 groups, client qualification, authority record, running-artifact provenance, computed cost, and checkpoints.
 - Produces: per-task, per-group, and terminal statuses; authorized acpx/comparison/Zed observations; invalid/unrun reasons; terminal `PASS`, `PASS_WITH_FINDINGS`, or `INCOMPLETE` disposition.
 
-- [ ] **Step 1: Run every per-task narrow command and literal regression corpus.**
+- [x] **Step 1: Run every per-task narrow command and literal regression corpus.**
 
   Each task runs its named predicate(s), affected existing tests, frozen corpus, 32 fresh seeds per affected scenario, and 10 repeats. Failed behavior becomes a finding only if the evidence record remains complete and schema-valid.
 
-- [ ] **Step 2: Run every per-task-group tier.**
+- [x] **Step 2: Run every per-task-group tier.**
 
-  Use 256 seeds per affected scenario and 25 repeats per applicable authorized platform. Feed normalized outcomes into `classify_repeatability`; inconsistent runtime outcomes are `FLAKY` findings, while changing harness/provenance inputs invalidate the batch. WSL2 uses distro-native Redis from a native ext4 clone; do not use a host-forwarded Windows Redis as Linux evidence.
+  Use 256 seeds per affected scenario and 25 repeats per applicable authorized platform. Feed normalized outcomes into `classify_repeatability` with this precedence: changing harness/provenance fingerprints make the batch `HARNESS_INVALID`; stable fingerprints plus captured evidence that the active node is audit-harness-owned make it `HARNESS_UNSTABLE`; only remaining inconsistent product outcomes with no harness attribution are `FLAKY`; otherwise the batch is `STABLE`. WSL2 uses distro-native Redis from a native ext4 clone; do not use a host-forwarded Windows Redis as Linux evidence.
 
-- [ ] **Step 3: Recompute terminal cost and obtain cost/authority approval.**
+- [x] **Step 3: Recompute terminal cost and obtain cost/authority approval.**
 
   Update discovered `N_cancellation_points`, `N_queues`, `N_sinks`, and `N_close_paths`; include measured p50/p95. Present the exact offline and live run counts before starting the terminal batch.
 
   Before any live row can be approved, the reviewer must accept a successor authority report and the same separately authorized pre-live gate commit must update the closed `_ACCEPTED_AUTHORITY_DIGESTS` allowlist plus its tests with that report's canonical digest. Until both artifacts are reviewed and committed together, every newly granted live command must fail `INVALID`; caller input cannot admit the new digest.
 
-- [ ] **Step 4: Run the full offline terminal characterization once.**
+- [x] **Step 4: Run the full offline terminal characterization once.**
 
   ```powershell
-  uv run --frozen python tools/run_plan1126_runtime_audit.py offline --artifact reports/plan-11-26-acp-runtime-audit.json --checkpoint reports/.plan-11-26-offline-checkpoint.json
+  uv run --frozen python tools/run_plan1126_runtime_audit.py offline --artifact reports/plan-11-26-acp-runtime-audit.json --checkpoint .superpowers/sdd/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation/task-11-checkpoint-direct.json
   ```
 
-  The checkpoint file is working evidence until the batch completes; the final content-free summary enters the terminal report.
+  `task-11-checkpoint-direct.json` is the canonical Task 11 checkpoint. The plain and `-resumed`
+  checkpoints retain abandoned harness diagnostics only and are never inputs to cost or terminal
+  characterization. The canonical checkpoint remains working evidence until the batch completes;
+  the final content-free summary enters the terminal report.
 
 - [ ] **Step 5: Run real acpx and qualified SDK rows only under fresh client/Gateway authority.**
 
@@ -807,20 +841,29 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
   `session-load-resume` records a Plan 11.7-owned `NOT_APPLICABLE` scope-out without launching Zed when no binding durable path exists. Classify current normal close as abrupt termination if observed. Any provenance drift, duplicate/missing scenario, unordered timestamp, unregistered outcome, or secret/content field makes the bundle `INVALID`. Preserve the known acpx replay-visibility limitation and never claim graceful shutdown or immediate reopen.
 
-- [ ] **Step 7: Verify all 19 predicates (18 approved plus the supplemental Zed-bundle gate) and render terminal evidence.**
+- [x] **Step 7: Verify the 16 runnable offline predicates, corroborate the binding scope-out, and render terminal evidence.**
 
-  Run each exact command in the predicate map, then:
+  Run the 16 implemented offline predicate node IDs. Do not invoke, deselect, or represent as
+  passing the three C21-blocked rows. Run the five Task 10 scope-out tests separately, then validate
+  that `binding_commit` remains null, all five live statuses remain `UNRUN`, and the artifact remains
+  terminal `INCOMPLETE`. Finally run:
 
   ```powershell
   uv run --frozen python tools/run_plan1126_runtime_audit.py verify --artifact reports/plan-11-26-acp-runtime-audit.json
   uv run --frozen python tools/run_plan1126_runtime_audit.py render --artifact reports/plan-11-26-acp-runtime-audit.json --report reports/plan-11-26-acp-runtime-audit.md
   uv run --frozen ruff check .
+  uv run --frozen pytest tests/unit/docs -q
   git diff --check
   ```
 
-- [ ] **Step 8: Obtain G4/G5 reviewer acceptance.**
+- [x] **Step 8: Obtain G4/G5 reviewer acceptance.**
 
-  The reviewer checks checkpoint continuity, computed cost, installed-artifact provenance, real dependency identity, valid/unrun distinctions, and all scope-outs. Do not promote evidence or claim production acceptance.
+  The reviewer may accept Task 11 as offline-complete with terminal `INCOMPLETE` only after checking
+  checkpoint continuity, computed cost, the 16 runnable predicates, Task 10 scope-out corroboration,
+  and the three C21 rows with their distinct owners. This acceptance explicitly withholds binding,
+  Redis, acpx/SDK/Gateway, and Zed evidence; Steps 5-6 remain unchecked, their rows remain `UNRUN`,
+  and no installed-artifact or live-dependency acceptance is implied. Do not promote evidence or
+  claim production acceptance.
 
 ### Task 12: Synthesize contracts, findings, and canonical remediation custody
 
@@ -837,6 +880,15 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 
 - Consumes: G0-G5 accepted artifacts and reviewer rulings.
 - Produces: accepted cross-cutting canon, bypasses, contradictions, missing contracts, intentional exceptions, provisional/scope-out rows, rejected hypotheses, and named backlog custody for each independently schedulable remediation candidate.
+
+**Reviewer-carried obligations:** Task 12 must resolve or preserve explicit custody for C15
+(telemetry sink-class and redacted-versus-not-stored precision), C16 (H1/H2 dispositions plus a
+mechanical cross-check), C19 (the 10 harness-attributed / 4 unresolved shutdown-timeout split and
+scenario-wide precedence masking), and C20 (the 25-repeat `HARNESS_UNSTABLE` group result is the
+authoritative shutdown characterization; the single green terminal row is execution evidence, not
+a health signal). It also preserves the operator-directed duplication audit as the additional task
+sequenced after Task 12, including the evidence-collector/A2A product-separation exclusion; Task 12
+does not start that audit early.
 
 - [ ] **Step 1: Freeze the reviewed finding set.**
 
@@ -891,7 +943,7 @@ The first 18 rows are the approved design predicates for the audit mechanism. Th
 | Plan 11.18 and delivery authority remain protected. | Green `tests/unit/acp/test_error_code_registry.py`, delivery predicates, and unchanged production files. |
 | Unknown prerequisites are resolved early or dependent evidence is truthfully scoped out. | Task 1 prerequisite report plus Task 3 qualification report and named owners. |
 | The audit uses an additional independent client or conformance harness without displacing acpx. | G3 report, exact package/source/build provenance, fixture result, and G5 real-comparison rows only when separately authorized. |
-| Evidence cannot confuse workspace state with running code. | `test_running_artifact_provenance_matches_binding_commit` and per-live-row external manifests. |
+| Evidence cannot confuse workspace state with running code. | `test_running_artifact_provenance_matches_binding_commit_and_expected_identity` and per-live-row external manifests. |
 | Randomized evidence is reproducible without losing prior failures. | Literal corpus predicate, commit-derived seed records, atomic checkpoints, and rerun logs. |
 | Repeated-run instability and duplicated/non-obvious logic are audited consistently. | Repeatability fingerprints, duplicate-site inventory, and invariant comment/docstring coverage recorded per baseline. |
 | Matrix cost is computed rather than guessed. | Cost predicate, discovered multipliers, p50/p95 measurements, and terminal cost approval. |
@@ -906,7 +958,7 @@ Plan 11.26 may complete as `PASS_WITH_FINDINGS`. It does not claim Plan 11.7 clo
 - **Spec coverage:** Tasks 0-12 map one-for-one to the approved sequence. The file map covers shared schema/inventory/provenance/checkpoint/corpus/cost infrastructure, all vertical runtime segments, all horizontal contracts, independent comparison qualification, tiered evidence, and canonical disposition.
 - **Cross-cutting centralization:** Common vocabularies and mechanics live in one audit package; concern-specific rules/tests plug into it without creating competing artifact, baseline, classification, seed, provenance, or checkpoint approaches.
 - **Code-quality coverage:** Shared AST/token inventory covers duplicate logic and reviewer-facing invariant comments/docstrings; repeated tiers classify flaky outcomes with one common fingerprinting model.
-- **Predicate coverage:** The Planned Predicate Map lists all 18 approved names exactly once plus the supplemental Zed-bundle gate, each with one concrete file and one exact command.
+- **Predicate coverage:** The Planned Predicate Map preserves all 18 approved identities exactly once plus the supplemental Zed-bundle gate. Sixteen resolve to implemented offline node IDs; the three blocked rows remain explicit planned obligations with distinct owners and unblock paths, and none is shown as passing.
 - **Prerequisite coverage:** All `unknown` rows resolve in Task 1 or Task 3 before dependents. Binding/lease/resume evidence is Plan 11.7-owned; unauthorized live rows remain operator-owned and dormant.
 - **Production boundary:** No task modifies `src/`. Characterization can pass with findings, and remediation is deferred to later independently numbered plans.
 - **Custody:** The canonical backlog is the only live registry. Task 0 claims execution; Task 12 records disposition and candidate next gates while keeping the feature open.

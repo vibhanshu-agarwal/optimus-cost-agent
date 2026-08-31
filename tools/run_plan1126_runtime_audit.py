@@ -5,8 +5,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import platform
+import re
+import signal
 import statistics
 import subprocess
 import sys
@@ -23,6 +26,7 @@ if str(ROOT) not in sys.path:
 
 from tools.plan1126_runtime_audit.checkpoints import CheckpointStore  # noqa: E402
 from tools.plan1126_runtime_audit.corpus import literal_seeds  # noqa: E402
+from tools.plan1126_runtime_audit.cost import compute_cost  # noqa: E402
 from tools.plan1126_runtime_audit.inventory import discover_sites  # noqa: E402
 from tools.plan1126_runtime_audit.model import AuditArtifact, PrerequisiteStatus  # noqa: E402
 from tools.plan1126_runtime_audit.provenance import ExpectedArtifactIdentity, verify_running_artifact  # noqa: E402
@@ -195,6 +199,12 @@ def build_parser() -> argparse.ArgumentParser:
     offline.add_argument("--artifact")
     offline.add_argument("--checkpoint")
     offline.add_argument("--task5-group-repeats", type=int, default=0)
+    offline.add_argument("--tier", choices=("narrow", "group"))
+    offline.add_argument("--repeats", type=int)
+    offline.add_argument("--scenario", action="append")
+    offline.add_argument("--measurement-generation")
+    offline.add_argument("--cost-proposal", action="store_true")
+    offline.add_argument("--terminal-report")
     offline.add_argument("--output")
     for command in ("live-redis", "acpx", "sdk"):
         _add_live_options(subparsers.add_parser(command))
@@ -841,6 +851,91 @@ _TASK5_HARNESS_PATHS = (
     "uv.lock",
 )
 
+_OFFLINE_COMMON_HARNESS_PATHS = (
+    "tools/plan1126_runtime_audit",
+    "tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json",
+    "tools/run_plan1126_runtime_audit.py",
+    "uv.lock",
+)
+
+
+def _pytest_command(*paths: str) -> tuple[str, ...]:
+    return (sys.executable, "-m", "pytest", *paths, "-q")
+
+
+def _pytest_verbose_command(*paths: str) -> tuple[str, ...]:
+    return (sys.executable, "-m", "pytest", *paths, "-vv")
+
+
+_OFFLINE_TIER_COMMANDS: Mapping[str, tuple[Mapping[str, object], ...]] = {
+    "narrow": (
+        {"scenario_id": "task2_audit_tooling", "command": _pytest_command(
+            "tests/unit/tools/plan1126_runtime_audit",
+        )},
+        {"scenario_id": "task3_clients", "command": _pytest_command(
+            "tests/unit/tools/plan1126_runtime_audit/test_clients.py",
+        )},
+        {"scenario_id": "task4_delivery", "command": _pytest_command(
+            "tests/unit/acp/test_plan1126_delivery_contract.py",
+        )},
+        {"scenario_id": "task5_cancellation", "command": _pytest_command(
+            "tests/unit/acp/test_plan1126_cancellation.py",
+        )},
+        {"scenario_id": "task6_shutdown", "command": _pytest_verbose_command(
+            "tests/unit/acp/test_plan1126_shutdown.py",
+        ), "timeout_seconds": 120.0, "harness_nodeids": (
+            "tests/unit/acp/test_plan1126_shutdown.py::test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register",
+        )},
+        {"scenario_id": "task7_semantic_errors", "command": _pytest_command(
+            "tests/unit/acp/test_plan1126_semantic_errors.py",
+        )},
+        {"scenario_id": "task8_telemetry", "command": _pytest_command(
+            "tests/unit/telemetry/test_plan1126_runtime_contract.py",
+        )},
+        {"scenario_id": "task9_queue_policy", "command": _pytest_command(
+            "tests/unit/acp/test_plan1126_queue_policy.py",
+        )},
+        {"scenario_id": "task10_session_lease_gate", "command": _pytest_command(
+            "tests/unit/acp/test_plan1126_session_lease.py",
+        )},
+    ),
+    "group": (
+        {"scenario_id": "task4_delivery_group", "command": _pytest_command(
+            "tests/unit/acp/test_plan1126_delivery_contract.py", "tests/unit/acp/test_outbound_writer.py",
+            "tests/unit/acp/test_lifecycle.py", "tests/unit/acp/test_settlement.py",
+            "tests/unit/acp/test_conversation.py", "tests/unit/acp/test_spec_protocol.py",
+            "tests/unit/acp/test_outbound_errors.py",
+        )},
+        {"scenario_id": "task5_cancellation_group", "command": _pytest_command(
+            "tests/unit/acp/test_plan1126_cancellation.py",
+            "tests/unit/acp/test_lifecycle.py",
+            "tests/unit/acp/test_stdio_ndjson.py",
+        )},
+        {"scenario_id": "task6_shutdown_group", "command": _pytest_verbose_command(
+            "tests/unit/acp/test_plan1126_shutdown.py",
+            "tests/unit/acp/test_bootstrap.py", "tests/unit/acp/test_preflight.py",
+            "tests/unit/redis/test_runtime.py", "tests/unit/telemetry/test_redis_adapter.py",
+            "tests/unit/telemetry/test_redis_sink.py",
+        ), "timeout_seconds": 120.0, "harness_nodeids": (
+            "tests/unit/acp/test_plan1126_shutdown.py::test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register",
+        )},
+        {"scenario_id": "task7_semantic_errors_group", "command": _pytest_command(
+            "tests/unit/acp/test_plan1126_semantic_errors.py",
+            "tests/unit/acp/test_error_code_registry.py", "tests/unit/acp/test_dispatcher.py",
+            "tests/unit/acp/test_errors.py",
+        )},
+        {"scenario_id": "task8_telemetry_group", "command": _pytest_command(
+            "tests/unit/telemetry",
+        )},
+        {"scenario_id": "task9_queue_policy_group", "command": _pytest_command(
+            "tests/unit/acp/test_plan1126_queue_policy.py",
+            "tests/unit/acp/test_outbound_writer.py", "tests/unit/acp/test_ndjson_subprocess_session.py",
+            "tests/unit/redis/test_runtime.py",
+        )},
+    ),
+}
+_OFFLINE_REPEAT_COUNTS = {"narrow": 10, "group": 25, "terminal": 1}
+
 
 def _task5_harness_fingerprint() -> str:
     digest = hashlib.sha256()
@@ -862,6 +957,495 @@ def _task5_provenance_fingerprint() -> str:
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
     ).hexdigest()
+
+
+def _offline_artifact_digest(artifact: AuditArtifact) -> str:
+    payload = artifact.to_dict()
+    cost = dict(payload["computed_run_cost"])
+    cost["scenario_p50_ms"] = {}
+    cost["scenario_p95_ms"] = {}
+    payload["computed_run_cost"] = cost
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _path_fingerprint(paths: Sequence[str]) -> str:
+    digest = hashlib.sha256()
+    expanded: list[Path] = []
+    for item in paths:
+        path = Path(item)
+        if not path.is_absolute():
+            path = ROOT / path
+        if path.is_dir():
+            expanded.extend(sorted(candidate for candidate in path.rglob("*") if candidate.is_file()))
+        else:
+            expanded.append(path)
+    for path in expanded:
+        label = path.as_posix() if path.is_absolute() else str(path)
+        digest.update(label.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _offline_harness_paths(spec: Mapping[str, object]) -> tuple[str, ...]:
+    explicit = tuple(str(item) for item in spec.get("harness_paths", ()))
+    if explicit:
+        return explicit
+    command = tuple(str(item) for item in spec["command"])
+    test_paths = tuple(item for item in command if item.startswith("tests/") or item.startswith("tests\\"))
+    return tuple(dict.fromkeys((*test_paths, *_OFFLINE_COMMON_HARNESS_PATHS)))
+
+
+def _normalized_test_outcome(completed: subprocess.CompletedProcess[str]) -> Mapping[str, object]:
+    combined = "\n".join((completed.stdout, completed.stderr))
+    counts = {
+        name: sum(int(value) for value in re.findall(rf"(\d+) {name}", combined))
+        for name in ("passed", "failed", "skipped", "error", "errors", "deselected")
+    }
+    return {
+        "returncode": completed.returncode,
+        "status": "PASS" if completed.returncode == 0 else "FAIL",
+        "counts": counts,
+    }
+
+
+_PYTEST_NODEID = re.compile(r"(?:tests[/\\])[^\s]+?\.py(?:::[^\s]+)+")
+_TIMEOUT_OUTPUT_LIMIT = 32_768
+
+
+def _timeout_text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
+
+def _normalized_timeout_outcome(
+    expired: subprocess.TimeoutExpired, *, harness_nodeids: Sequence[str],
+) -> Mapping[str, object]:
+    stdout = _timeout_text(expired.stdout)
+    stderr = _timeout_text(expired.stderr)
+    nodeids = _PYTEST_NODEID.findall("\n".join((stdout, stderr)))
+    last_nodeid = nodeids[-1].rstrip(".:") if nodeids else None
+    timeout_subject = (
+        "HARNESS"
+        if last_nodeid is not None and any(last_nodeid.startswith(prefix) for prefix in harness_nodeids)
+        else "UNRESOLVED"
+    )
+    return {
+        "counts": {},
+        "last_test_nodeid": last_nodeid,
+        "returncode": None,
+        "status": "TIMEOUT",
+        "stderr_sha256": hashlib.sha256(stderr.encode("utf-8")).hexdigest(),
+        "stderr_tail": stderr[-_TIMEOUT_OUTPUT_LIMIT:],
+        "stdout_sha256": hashlib.sha256(stdout.encode("utf-8")).hexdigest(),
+        "stdout_tail": stdout[-_TIMEOUT_OUTPUT_LIMIT:],
+        "timeout_output_truncated": (
+            len(stdout) > _TIMEOUT_OUTPUT_LIMIT or len(stderr) > _TIMEOUT_OUTPUT_LIMIT
+        ),
+        "timeout_subject": timeout_subject,
+    }
+
+
+def _run_captured_command(
+    command: Sequence[str], *, timeout_seconds: float,
+) -> subprocess.CompletedProcess[str]:
+    is_windows = os.name == "nt"
+    process = subprocess.Popen(
+        list(command),
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        start_new_session=not is_windows,
+        creationflags=(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if is_windows else 0),
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired as exc:
+        if is_windows:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5.0,
+            )
+        else:
+            os.killpg(process.pid, signal.SIGKILL)
+        try:
+            stdout, stderr = process.communicate(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+        raise subprocess.TimeoutExpired(
+            list(command),
+            timeout_seconds,
+            output=stdout or _timeout_text(exc.stdout),
+            stderr=stderr or _timeout_text(exc.stderr),
+        ) from None
+    return subprocess.CompletedProcess(list(command), process.returncode, stdout, stderr)
+
+
+def _scenario_entries(
+    checkpoint: Mapping[str, Any], *, prefix: str, artifact_digest: str, command: str,
+) -> list[Mapping[str, Any]]:
+    return [
+        value for key, value in sorted(checkpoint.items())
+        if key.startswith(prefix)
+        and isinstance(value, Mapping)
+        and value.get("artifact_digest") == artifact_digest
+        and value.get("command") == command
+    ]
+
+
+def _latest_scenario_entries(
+    checkpoint: Mapping[str, Any], *, base_prefix: str, artifact_digest: str, command: str,
+    expected_count: int,
+) -> tuple[list[Mapping[str, Any]], str]:
+    generations: dict[str, list[tuple[str, Mapping[str, Any]]]] = {}
+    for key, value in sorted(checkpoint.items()):
+        if (
+            key.startswith(base_prefix)
+            and isinstance(value, Mapping)
+            and value.get("artifact_digest") == artifact_digest
+            and value.get("command") == command
+        ):
+            generation = str(value.get("measurement_generation", "legacy"))
+            generations.setdefault(generation, []).append((key, value))
+    expected_repeats = set(range(1, expected_count + 1))
+    complete_generations = {
+        generation: keyed_entries
+        for generation, keyed_entries in generations.items()
+        if len(keyed_entries) == expected_count
+        and {
+            int(match.group(1))
+            for key, _entry in keyed_entries
+            if (match := re.search(r"-repeat-(\d+)$", key)) is not None
+        } == expected_repeats
+    }
+    if not complete_generations:
+        return [], "missing"
+    generation, keyed_entries = max(
+        complete_generations.items(),
+        key=lambda item: max(
+            int(entry.get("checkpoint_revision", 0)) for _key, entry in item[1]
+        ),
+    )
+    return [entry for _key, entry in keyed_entries], generation
+
+
+def _run_offline_tier(args: argparse.Namespace, *, tier: str, repeat_count: int) -> int:
+    if repeat_count <= 0:
+        _emit("INVALID", ("repeats_must_be_positive",))
+        return 1
+    if not args.artifact or not args.checkpoint:
+        _emit("UNRUN", ("artifact_and_checkpoint_required",))
+        return 0
+    try:
+        artifact = _verify_artifact(args.artifact)
+    except (OSError, ValueError, json.JSONDecodeError):
+        _emit("INVALID", ("artifact_invalid",))
+        return 1
+    artifact_digest = _offline_artifact_digest(artifact)
+    provenance = _task5_provenance_fingerprint()
+    store = CheckpointStore(args.checkpoint)
+    checkpoint = store.read()
+    summaries: list[Mapping[str, object]] = []
+    command_tier = "group" if tier == "terminal" else tier
+    requested_scenarios = set(args.scenario or ())
+    available_scenarios = {str(spec["scenario_id"]) for spec in _OFFLINE_TIER_COMMANDS[command_tier]}
+    unknown_scenarios = sorted(requested_scenarios - available_scenarios)
+    if unknown_scenarios:
+        _emit("INVALID", (f"unknown_scenarios={','.join(unknown_scenarios)}",))
+        return 1
+    generation = args.measurement_generation
+    if generation is not None and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", generation) is None:
+        _emit("INVALID", ("measurement_generation_invalid",))
+        return 1
+    specs = tuple(
+        spec for spec in _OFFLINE_TIER_COMMANDS[command_tier]
+        if not requested_scenarios or str(spec["scenario_id"]) in requested_scenarios
+    )
+    for spec in specs:
+        scenario_id = str(spec["scenario_id"])
+        command = tuple(str(item) for item in spec["command"])
+        command_text = " ".join(command)
+        harness_paths = _offline_harness_paths(spec)
+        prefix = f"task11-{tier}-{scenario_id}-"
+        if generation is not None:
+            prefix += f"{generation}-"
+        prefix += "repeat-"
+        for repeat_index in range(repeat_count):
+            record_id = f"{prefix}{repeat_index + 1:02d}"
+            current_harness = _path_fingerprint(harness_paths)
+            existing = checkpoint.entries.get(record_id)
+            if (
+                isinstance(existing, Mapping)
+                and existing.get("artifact_digest") == artifact_digest
+                and existing.get("command") == command_text
+                and existing.get("harness_fingerprint_before") == current_harness
+                and existing.get("harness_fingerprint_after") == current_harness
+                and existing.get("provenance_fingerprint") == provenance
+            ):
+                continue
+            started = time.perf_counter()
+            timeout_seconds = float(spec.get("timeout_seconds", 300.0))
+            try:
+                completed = _run_captured_command(command, timeout_seconds=timeout_seconds)
+                outcome = _normalized_test_outcome(completed)
+            except subprocess.TimeoutExpired as exc:
+                outcome = _normalized_timeout_outcome(
+                    exc, harness_nodeids=tuple(str(item) for item in spec.get("harness_nodeids", ())),
+                )
+            duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
+            result = {
+                "artifact_digest": artifact_digest,
+                "command": command_text,
+                "duration_ms": duration_ms,
+                "harness_fingerprint_before": current_harness,
+                "harness_fingerprint_after": _path_fingerprint(harness_paths),
+                "measurement_generation": generation or "legacy",
+                "outcome": outcome,
+                "platform": platform.platform(),
+                "provenance_fingerprint": provenance,
+                "python": platform.python_version(),
+                "checkpoint_revision": checkpoint.revision + 1,
+            }
+            checkpoint = store.append(record_id, result, expected_revision=checkpoint.revision)
+        entries = _scenario_entries(
+            checkpoint.entries, prefix=prefix, artifact_digest=artifact_digest, command=command_text,
+        )
+        if len(entries) != repeat_count:
+            _emit("INVALID", (f"checkpoint_incomplete={scenario_id}",))
+            return 1
+        repeatability = classify_repeatability(
+            outcomes=[item["outcome"] for item in entries],
+            harness_fingerprints=[
+                f"{item['harness_fingerprint_before']}:{item['harness_fingerprint_after']}" for item in entries
+            ],
+            provenance_fingerprints=[str(item["provenance_fingerprint"]) for item in entries],
+            harness_behavior_unstable=[
+                isinstance(item["outcome"], Mapping)
+                and item["outcome"].get("timeout_subject") == "HARNESS"
+                for item in entries
+            ],
+        )
+        durations = sorted(float(item["duration_ms"]) for item in entries)
+        outcomes = [item["outcome"] for item in entries]
+        statuses = {str(item["status"]) for item in outcomes}
+        scenario_status = next(iter(statuses)) if len(statuses) == 1 else "FAIL"
+        summaries.append({
+            "command": command_text,
+            "outcome_fingerprints": list(repeatability.outcome_fingerprints),
+            "p50_ms": round(float(statistics.median(durations)), 3),
+            "p95_ms": round(durations[max(0, math.ceil(len(durations) * 0.95) - 1)], 3),
+            "repeat_count": repeat_count,
+            "repeatability": repeatability.status.value,
+            "scenario_id": scenario_id,
+            "status": scenario_status,
+        })
+    payload = {"schema_version": "plan-11-26-offline-tier-v1", "tier": tier, "scenarios": summaries}
+    if args.output:
+        _atomic_json(Path(args.output), payload)
+    invalid = [str(item["scenario_id"]) for item in summaries if item["repeatability"] == "HARNESS_INVALID"]
+    unstable = [str(item["scenario_id"]) for item in summaries if item["repeatability"] == "HARNESS_UNSTABLE"]
+    flaky = [str(item["scenario_id"]) for item in summaries if item["repeatability"] == "FLAKY"]
+    failed = [str(item["scenario_id"]) for item in summaries if item["status"] != "PASS"]
+    if invalid:
+        _emit("INVALID", (f"harness_invalid_scenarios={','.join(invalid)}",))
+        return 1
+    reasons = tuple(filter(None, (
+        f"harness_unstable_scenarios={','.join(unstable)}" if unstable else "",
+        f"flaky_scenarios={','.join(flaky)}" if flaky else "",
+        f"failed_scenarios={','.join(failed)}" if failed and not flaky and not unstable else "",
+    )))
+    _emit("COMPLETE", reasons)
+    return 0
+
+
+def _run_cost_proposal(args: argparse.Namespace) -> int:
+    if not all((args.artifact, args.checkpoint, args.baseline_report, args.prerequisite_report, args.terminal_report)):
+        _emit("UNRUN", ("artifact_checkpoint_intakes_and_terminal_report_required",))
+        return 0
+    try:
+        artifact = _verify_artifact(args.artifact)
+        baseline = _read_json(args.baseline_report)
+        prerequisites = _read_json(args.prerequisite_report)
+        rows, _, _ = _validate_offline_intakes(baseline, prerequisites)
+        checkpoint = CheckpointStore(args.checkpoint).read()
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        _emit("INVALID", ("cost_inputs_invalid",))
+        return 1
+    artifact_digest = _offline_artifact_digest(artifact)
+    repeatability_rows: list[Mapping[str, object]] = []
+    for tier_name in ("narrow", "group"):
+        expected_count = _OFFLINE_REPEAT_COUNTS[tier_name]
+        for spec in _OFFLINE_TIER_COMMANDS[tier_name]:
+            scenario_id = str(spec["scenario_id"])
+            command_text = " ".join(str(item) for item in spec["command"])
+            entries, generation = _latest_scenario_entries(
+                checkpoint.entries,
+                base_prefix=f"task11-{tier_name}-{scenario_id}-",
+                artifact_digest=artifact_digest,
+                command=command_text,
+                expected_count=expected_count,
+            )
+            if len(entries) != expected_count:
+                _emit("INVALID", (f"{tier_name}_measurements_incomplete={scenario_id}",))
+                return 1
+            result = classify_repeatability(
+                outcomes=[item["outcome"] for item in entries],
+                harness_fingerprints=[
+                    f"{item['harness_fingerprint_before']}:{item['harness_fingerprint_after']}"
+                    for item in entries
+                ],
+                provenance_fingerprints=[str(item["provenance_fingerprint"]) for item in entries],
+                harness_behavior_unstable=[
+                    isinstance(item["outcome"], Mapping)
+                    and item["outcome"].get("timeout_subject") == "HARNESS"
+                    for item in entries
+                ],
+            )
+            statuses = [str(item["outcome"]["status"]) for item in entries]
+            repeatability_rows.append({
+                "fail": statuses.count("FAIL"),
+                "generation": generation,
+                "pass": statuses.count("PASS"),
+                "repeatability": result.status.value,
+                "scenario_id": scenario_id,
+                "tier": tier_name,
+                "timeout": statuses.count("TIMEOUT"),
+            })
+    durations: dict[str, list[float]] = {}
+    non_timeout_durations: dict[str, list[float]] = {}
+    measurement_generations: dict[str, str] = {}
+    timeout_counts: dict[str, int] = {}
+    for spec in _OFFLINE_TIER_COMMANDS["group"]:
+        scenario_id = str(spec["scenario_id"])
+        command_text = " ".join(str(item) for item in spec["command"])
+        entries, generation = _latest_scenario_entries(
+            checkpoint.entries,
+            base_prefix=f"task11-group-{scenario_id}-",
+            artifact_digest=artifact_digest,
+            command=command_text,
+            expected_count=_OFFLINE_REPEAT_COUNTS["group"],
+        )
+        if len(entries) != _OFFLINE_REPEAT_COUNTS["group"]:
+            _emit("INVALID", (f"group_measurements_incomplete={scenario_id}",))
+            return 1
+        durations[scenario_id] = [float(item["duration_ms"]) for item in entries]
+        non_timeout_durations[scenario_id] = [
+            float(item["duration_ms"])
+            for item in entries
+            if isinstance(item.get("outcome"), Mapping) and item["outcome"].get("status") != "TIMEOUT"
+        ]
+        if not non_timeout_durations[scenario_id]:
+            _emit("INVALID", (f"group_measurements_all_timeout={scenario_id}",))
+            return 1
+        measurement_generations[scenario_id] = generation
+        timeout_counts[scenario_id] = len(entries) - len(non_timeout_durations[scenario_id])
+    multipliers = artifact.discovered_multipliers
+    cost = compute_cost(
+        cancellation_points=int(multipliers["cancellation_points"]),
+        queues=int(multipliers["queues"]), sinks=int(multipliers["sinks"]),
+        close_paths=int(multipliers["close_paths"]), seed_count=256,
+        admission_probe_count=10_000, sink_failure_count=100,
+        scenario_durations_ms=durations,
+    )
+    non_timeout_cost = compute_cost(
+        cancellation_points=int(multipliers["cancellation_points"]),
+        queues=int(multipliers["queues"]), sinks=int(multipliers["sinks"]),
+        close_paths=int(multipliers["close_paths"]), seed_count=256,
+        admission_probe_count=10_000, sink_failure_count=100,
+        scenario_durations_ms=non_timeout_durations,
+    )
+    payload = artifact.to_dict()
+    payload["computed_run_cost"] = cost.to_dict()
+    schema = _read_json(_SCHEMA_PATH)
+    if list(Draft202012Validator(schema).iter_errors(payload)):
+        _emit("INVALID", ("updated_artifact_schema_invalid",))
+        return 1
+    AuditArtifact.from_dict(payload)
+    p12 = next(row for row in rows if str(row["id"]).startswith("P12_"))
+    scope_out = p12["scope_out"]
+    assert isinstance(scope_out, Mapping)
+    total_p50_ms = sum(cost.scenario_p50_ms.values())
+    total_p95_ms = sum(cost.scenario_p95_ms.values())
+    total_p95_without_timeouts_ms = sum(non_timeout_cost.scenario_p95_ms.values())
+    timeout_p95_contribution_ms = total_p95_ms - total_p95_without_timeouts_ms
+    timeout_p95_share = (timeout_p95_contribution_ms / total_p95_ms * 100.0) if total_p95_ms else 0.0
+    report_lines = [
+        "# Plan 11.26 Terminal Characterization Cost Proposal",
+        "",
+        "## Authorization boundary",
+        "",
+        "| Item | Status |",
+        "| --- | --- |",
+        "| Windows offline narrow tier | COMPLETE |",
+        "| Windows offline task-group tier | COMPLETE |",
+        f"| WSL2/Linux task-group tier | {scope_out['status']} |",
+        f"| WSL2/Linux owner | {scope_out['owner']} |",
+        "| Live run count | 0 |",
+        "| Live rows | UNRUN |",
+        "",
+        "## Exact terminal workload",
+        "",
+        "| Workload | Count |",
+        "| --- | ---: |",
+        f"| Cancellation race schedules | {cost.cancellation_schedules:,} |",
+        f"| Cancellation control schedules | {cost.cancellation_control_schedules:,} |",
+        f"| Queue admissions | {cost.queue_admissions:,} |",
+        f"| Sink-failure runs | {cost.sink_failure_runs:,} |",
+        f"| Idempotent-close invocations | {cost.idempotent_close_invocations:,} |",
+        "",
+        "## Repeatability disposition",
+        "",
+        "| Tier | Scenario | Generation | Pass | Fail | Timeout | Disposition |",
+        "| --- | --- | --- | ---: | ---: | ---: | --- |",
+    ]
+    for row in repeatability_rows:
+        report_lines.append(
+            f"| {row['tier']} | {row['scenario_id']} | {row['generation']} | "
+            f"{row['pass']} | {row['fail']} | {row['timeout']} | {row['repeatability']} |"
+        )
+    report_lines.extend([
+        "",
+        "## Measured Windows task-group durations",
+        "",
+        "| Scenario | Generation | Repeats | Timeouts | p50 ms | p95 ms including timeouts | p95 excluding timeouts |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
+    ])
+    for scenario_id in sorted(cost.scenario_p50_ms):
+        report_lines.append(
+            f"| {scenario_id} | {measurement_generations[scenario_id]} | {_OFFLINE_REPEAT_COUNTS['group']} | "
+            f"{timeout_counts[scenario_id]} | {cost.scenario_p50_ms[scenario_id]:.3f} | "
+            f"{cost.scenario_p95_ms[scenario_id]:.3f} | "
+            f"{non_timeout_cost.scenario_p95_ms[scenario_id]:.3f} |"
+        )
+    report_lines.extend((
+        "",
+        f"One terminal pass across measured groups: p50 sum {total_p50_ms:.3f} ms; "
+        f"p95 including timeouts {total_p95_ms:.3f} ms; p95 excluding timeouts "
+        f"{total_p95_without_timeouts_ms:.3f} ms.",
+        f"Harness-timeout p95 contribution: {timeout_p95_contribution_ms:.3f} ms "
+        f"({timeout_p95_share:.1f}% of the including-timeouts p95 sum).",
+        "",
+        "The Linux half remains scoped out because distro-native Redis/TimeSeries is not installed; "
+        "installation is an operator authorization decision. No host-forwarded Windows Redis is treated as Linux evidence.",
+        "",
+        "Terminal execution is not authorized by this report. Operator cost approval is required before Step 4.",
+        "",
+    ))
+    _atomic_json(Path(args.artifact), payload)
+    _write_text(Path(args.terminal_report), "\n".join(report_lines))
+    _emit("UNRUN", ("operator_cost_approval_required",))
+    return 0
 
 
 def _run_task5_group_repeats(args: argparse.Namespace) -> int:
@@ -971,6 +1555,15 @@ def _run_task5_group_repeats(args: argparse.Namespace) -> int:
 def _run_offline(args: argparse.Namespace) -> int:
     if args.task5_group_repeats:
         return _run_task5_group_repeats(args)
+    if args.cost_proposal:
+        return _run_cost_proposal(args)
+    if args.tier:
+        repeat_count = args.repeats if args.repeats is not None else _OFFLINE_REPEAT_COUNTS[args.tier]
+        return _run_offline_tier(args, tier=args.tier, repeat_count=repeat_count)
+    if args.artifact or args.checkpoint:
+        return _run_offline_tier(
+            args, tier="terminal", repeat_count=_OFFLINE_REPEAT_COUNTS["terminal"],
+        )
     if not args.baseline_report or not args.prerequisite_report:
         _emit("UNRUN", ("intake_reports_required",))
         return 0

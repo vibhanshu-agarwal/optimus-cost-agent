@@ -62,7 +62,12 @@ Measured scenario durations:
 
 | Scenario | p50 ms | p95 ms |
 |---|---:|---:|
-| not yet measured | 0.000 | 0.000 |
+| `task4_delivery_group` | 118986.444 | 124741.255 |
+| `task5_cancellation_group` | 28161.255 | 28765.604 |
+| `task6_shutdown_group` | 59274.574 | 120330.834 |
+| `task7_semantic_errors_group` | 63794.051 | 68962.552 |
+| `task8_telemetry_group` | 174348.250 | 184751.957 |
+| `task9_queue_policy_group` | 145286.297 | 146468.847 |
 
 ## Evidence records
 
