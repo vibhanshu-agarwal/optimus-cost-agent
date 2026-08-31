@@ -161,6 +161,14 @@ RELOCATION_EQUIVALENCES: tuple[RelocationEquivalence, ...] = (
         ),
         expected_new_sha256="3D4FBA5BE86399F4FD7CABB319847A847A06394BE2CEEB5D795952C2901EB90E",
     ),
+    RelocationEquivalence(
+        source_commit="547d88741ed54617251f83059ea100f0292d8fcd",
+        original_path="docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md",
+        destination_path="docs/superpowers/plans/archive/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md",
+        approved_original_sha256="5D24670EE0516C089283065B2E52E8F719004CF951A3C5351BB06400C738F33D",
+        replacements=(),
+        expected_new_sha256="5D24670EE0516C089283065B2E52E8F719004CF951A3C5351BB06400C738F33D",
+    ),
 )
 
 

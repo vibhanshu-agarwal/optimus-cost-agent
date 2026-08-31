@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -375,8 +376,18 @@ def test_repository_relative_plan_paths_are_repaired_except_in_frozen_provenance
     # granularity is a separate, much larger effort than the 4-document /
     # 12-link repair this PR's document-repair lane is scoped to, and is
     # intentionally left out of scope here pending an explicit ruling.
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split("\0")
     used_exemptions: set[tuple[str, str]] = set()
-    for document in REPO_ROOT.rglob("*"):
+    for relative_path in tracked:
+        if not relative_path:
+            continue
+        document = REPO_ROOT / relative_path
         if (
             not document.is_file()
             or ARCHIVE_ROOT in document.parents

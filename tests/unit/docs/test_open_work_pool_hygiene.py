@@ -29,6 +29,9 @@ PLAN_1126_TERMINAL = REPO_ROOT / "reports/plan-11-26-terminal-characterization.m
 PLAN_1126_DUPLICATION_CANDIDATES = REPO_ROOT / "reports/plan-11-26-duplication-candidates.json"
 PLAN_1126_DUPLICATION_AUDIT = REPO_ROOT / "reports/plan-11-26-duplication-audit.json"
 PLAN_1126_DUPLICATION_REPORT = REPO_ROOT / "reports/plan-11-26-duplication-audit.md"
+PLAN_1126_IMPLEMENTATION_LINK = (
+    "archive/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md"
+)
 PHASE_1_ROADMAP = REPO_ROOT / "docs/superpowers/plans/2026-07-01-phase-1-roadmap.md"
 PLAN_11_CHARTER = REPO_ROOT / "docs/superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md"
 AGENTS_FILE = REPO_ROOT / "AGENTS.md"
@@ -1408,25 +1411,21 @@ def test_feature_status_is_canonical_and_state_prose_lives_in_scope_detail() -> 
         assert all(token in scopes[identity] for token in expected_tokens)
 
 
-def test_plan_11_26_runtime_audit_has_single_live_custody() -> None:
+def test_plan_11_26_runtime_audit_is_archived_while_remediation_custody_stays_open() -> None:
     pool = _read(OPTIMUS_POOL)
     tables = {identity: rows for identity, _header, rows in _markdown_tables(pool)}
     registry_rows = tables[("Live implementation plan registry", 0)]
     plan_rows = [
         row
         for row in registry_rows
-        if "2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md"
-        in row["Plan"]
+        if Path(PLAN_1126_IMPLEMENTATION_LINK).name in row["Plan"]
     ]
 
-    assert len(plan_rows) == 1
-    plan_row = plan_rows[0]
-    assert plan_row["State"] == "`Active`"
-    assert plan_row["Backlog owner"] == "`P11-FEAT-ACP-RUNTIME-HARDENING`"
-    assert "G7 accepted" in plan_row["Next gate"]
-    assert "archive movement" in plan_row["Next gate"]
+    assert plan_rows == []
 
     feature_row = _feature_row(pool, "P11-FEAT-ACP-RUNTIME-HARDENING")
+    assert PLAN_1126_IMPLEMENTATION_LINK in feature_row
+    assert "Open" in feature_row
     assert "Plan 11.26" in feature_row
     assert "audit-and-contract only" in feature_row
     assert "does not authorize production fixes" in feature_row
