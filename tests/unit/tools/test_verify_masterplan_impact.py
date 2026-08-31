@@ -126,6 +126,19 @@ def test_event_body_is_read_as_data_without_shell_interpolation(tmp_path: Path) 
             ("docs/superpowers/plans/hardening-static-type-checking-implementation.md",),
             "child plan changed",
         ),
+        (
+            "Master-plan impact: none: status text did not change\n",
+            ("docs/superpowers/plans/hardening-runtime-quality-masterplan.md",),
+            "none conflicts",
+        ),
+        (
+            "Master-plan impact: none: feature state did not change\n",
+            (
+                "docs/superpowers/plans/"
+                "2026-07-23-consolidated-deferred-followups-backlog.md",
+            ),
+            "none conflicts",
+        ),
     ],
 )
 def test_invalid_declarations_fail_closed(

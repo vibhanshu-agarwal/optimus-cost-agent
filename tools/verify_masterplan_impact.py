@@ -66,6 +66,9 @@ def verify(*, body: str, changed_files: set[str], masterplan: Path) -> None:
     known_tracks, child_plans = _board(masterplan)
     declaration = _declaration(body)
     masterplan_path = "docs/superpowers/plans/hardening-runtime-quality-masterplan.md"
+    owning_backlog_path = (
+        "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md"
+    )
 
     if declaration.startswith(UPDATED_PREFIX):
         raw_tracks = declaration.removeprefix(UPDATED_PREFIX)
@@ -83,6 +86,12 @@ def verify(*, body: str, changed_files: set[str], masterplan: Path) -> None:
         rationale = declaration.removeprefix(NONE_PREFIX).strip()
         if not rationale:
             raise ValueError("malformed none declaration: concrete rationale is required")
+        owning_changes = changed_files & {masterplan_path, owning_backlog_path}
+        if owning_changes:
+            raise ValueError(
+                "none conflicts with changes to status authority: "
+                f"{', '.join(sorted(owning_changes))}"
+            )
         for changed_file in changed_files:
             normalized = changed_file.replace("\\", "/")
             if not normalized.startswith("docs/superpowers/plans/"):
