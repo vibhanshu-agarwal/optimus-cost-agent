@@ -11,12 +11,14 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 PLANS_ROOT = REPO_ROOT / "docs/superpowers/plans"
 ARCHIVE_ROOT = PLANS_ROOT / "archive"
 BACKLOG = PLANS_ROOT / "2026-07-23-consolidated-deferred-followups-backlog.md"
+HARDENING_MASTERPLAN = PLANS_ROOT / "hardening-runtime-quality-masterplan.md"
 
 ROOT_GOVERNANCE_DOCUMENTS = {
     "README.md",
     "2026-07-01-phase-1-roadmap.md",
     "2026-07-23-consolidated-deferred-followups-backlog.md",
     "2026-07-25-plan-11-v1-milestone-charter.md",
+    "hardening-runtime-quality-masterplan.md",
 }
 
 LIVE_REGISTRY_ROW = re.compile(
@@ -305,13 +307,87 @@ def _live_registry_rows() -> list[re.Match[str]]:
     return rows
 
 
+def _hardening_child_plan_rows() -> list[dict[str, str | None]]:
+    text = HARDENING_MASTERPLAN.read_text(encoding="utf-8")
+    section = re.search(
+        r"^## Child-plan status board\n(?P<body>.*?)(?=^## )",
+        text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    assert section is not None, "the hardening masterplan must own a child-plan status board"
+
+    rows: list[dict[str, str | None]] = []
+    allowed_statuses = {"Not drafted", "In review", "Ready", "Active", "Blocked", "Complete"}
+    plain_plan = re.compile(r"^`(?P<filename>hardening-[a-z0-9-]+(?:_v[0-9]+)?\.md)`$")
+    linked_plan = re.compile(
+        r"^\[[^]]+\]\((?P<target>(?:archive/)?hardening-[a-z0-9-]+(?:_v[0-9]+)?\.md)\)$"
+    )
+    for line in section.group("body").splitlines():
+        if not line.startswith("| `HARDENING-TRACK-"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        assert len(cells) == 5, f"malformed hardening child-plan row: {line}"
+        track = cells[0].strip("`")
+        status = cells[2].strip("`")
+        assert status in allowed_statuses, f"unknown hardening child-plan status: {status}"
+
+        plain_match = plain_plan.fullmatch(cells[1])
+        link_match = linked_plan.fullmatch(cells[1])
+        assert (plain_match is None) != (link_match is None), f"invalid hardening plan cell: {cells[1]}"
+        filename = plain_match.group("filename") if plain_match else Path(link_match.group("target")).name
+        link_target = link_match.group("target") if link_match else None
+        if status == "Not drafted":
+            assert link_target is None, "untracked hardening child plans must not be links"
+        elif status == "Complete":
+            assert link_target is not None and link_target.startswith("archive/")
+        else:
+            assert link_target == filename, "live hardening child plans must link to the plan root"
+        rows.append(
+            {
+                "track": track,
+                "filename": filename,
+                "status": status,
+                "link_target": link_target,
+            }
+        )
+    return rows
+
+
 def test_plan_root_contains_only_governance_and_registered_live_plans() -> None:
     registry_paths = [match.group("path") for match in _live_registry_rows()]
     assert len(registry_paths) == len(set(registry_paths)), "live plans must be registered exactly once"
     assert all("/" not in path and "\\" not in path for path in registry_paths)
 
+    hardening_rows = _hardening_child_plan_rows()
+    hardening_root_paths = {
+        str(row["filename"])
+        for row in hardening_rows
+        if row["status"] in {"In review", "Ready", "Active", "Blocked"}
+    }
+    assert hardening_root_paths.isdisjoint(registry_paths), (
+        "hardening child-plan status belongs to the masterplan, not the backlog registry"
+    )
+
     actual_root_files = {path.name for path in PLANS_ROOT.glob("*.md")}
-    assert actual_root_files == ROOT_GOVERNANCE_DOCUMENTS | set(registry_paths)
+    expected_root_files = ROOT_GOVERNANCE_DOCUMENTS | set(registry_paths) | hardening_root_paths
+    assert actual_root_files == expected_root_files, (
+        "unowned root plan file(s): "
+        f"extra={sorted(actual_root_files - expected_root_files)!r} "
+        f"missing={sorted(expected_root_files - actual_root_files)!r}"
+    )
+
+
+def test_hardening_masterplan_owns_exactly_fifteen_child_plan_statuses() -> None:
+    rows = _hardening_child_plan_rows()
+
+    assert len(rows) == 15
+    assert len({row["track"] for row in rows}) == 15
+    assert len({row["filename"] for row in rows}) == 15
+    assert {row["status"] for row in rows} == {"Not drafted"}
+    assert all(row["link_target"] is None for row in rows)
+
+    text = HARDENING_MASTERPLAN.read_text(encoding="utf-8")
+    assert re.search(r"(?mi)^\*\*Status:\*\*|^Status:", text) is None
 
 
 def test_plan_archive_is_flat_and_contains_no_registered_live_plan() -> None:
@@ -322,6 +398,12 @@ def test_plan_archive_is_flat_and_contains_no_registered_live_plan() -> None:
     archived_names = {path.name for path in ARCHIVE_ROOT.glob("*.md")}
     assert archived_names
     assert archived_names.isdisjoint(registry_paths)
+    completed_hardening = {
+        str(row["filename"])
+        for row in _hardening_child_plan_rows()
+        if row["status"] == "Complete"
+    }
+    assert completed_hardening <= archived_names
 
 
 def test_separately_named_amendments_cannot_be_live_root_plans() -> None:

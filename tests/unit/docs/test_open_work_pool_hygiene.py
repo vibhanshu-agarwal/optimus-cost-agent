@@ -29,6 +29,7 @@ PLAN_1126_TERMINAL = REPO_ROOT / "reports/plan-11-26-terminal-characterization.m
 PLAN_1126_DUPLICATION_CANDIDATES = REPO_ROOT / "reports/plan-11-26-duplication-candidates.json"
 PLAN_1126_DUPLICATION_AUDIT = REPO_ROOT / "reports/plan-11-26-duplication-audit.json"
 PLAN_1126_DUPLICATION_REPORT = REPO_ROOT / "reports/plan-11-26-duplication-audit.md"
+HARDENING_MASTERPLAN = PLANS_ROOT / "hardening-runtime-quality-masterplan.md"
 PLAN_1126_IMPLEMENTATION_LINK = (
     "archive/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md"
 )
@@ -49,6 +50,7 @@ PLAN_DIRECTORY_GOVERNANCE_FILES = {
     "2026-07-01-phase-1-roadmap.md",
     "2026-07-23-consolidated-deferred-followups-backlog.md",
     "2026-07-25-plan-11-v1-milestone-charter.md",
+    "hardening-runtime-quality-masterplan.md",
 }
 
 HISTORICAL_PLAN_117_AMENDMENTS = (
@@ -237,6 +239,7 @@ EXPECTED_FEATURE_STATUS = {
     "P11-FEAT-ZED-RESUME": "Partially implemented",
     "P11-FEAT-MULTI-TURN-CONVERSATION": "Closed",
     "P11-FEAT-ACP-RUNTIME-HARDENING": "Open",
+    "HARDENING-FEAT-RUNTIME-QUALITY": "Open",
     "P11-FEAT-REGISTRY": "Open",
     "P11-FEAT-IDE": "Open",
     "Plan 12": "Open",
@@ -273,6 +276,16 @@ EXPECTED_FEATURE_SCOPE_TOKENS = {
         "independently authored ACP client or conformance harness",
         "does not authorize production fixes",
         "HIGH justification",
+    ),
+    "HARDENING-FEAT-RUNTIME-QUALITY": (
+        "hardening-runtime-quality-masterplan.md",
+        "backlog row owns this masterplan's status",
+        "masterplan owns its 15 child-plan statuses",
+        "16 new items",
+        "17 existing candidates",
+        "3 existing obligations",
+        "G6/G7 custody tables are historical acceptance records",
+        "no implementation authority",
     ),
     "P11-FEAT-REGISTRY": ("Ratified, unscheduled", "package and ACP versions are both `0.1.0`"),
     "P11-FEAT-IDE": ("Conditional",),
@@ -1371,7 +1384,10 @@ def test_priority_seed_preserves_only_approved_non_medium_values() -> None:
         row["Identity"].strip("`"): row["Priority"]
         for row in feature_rows
         if row["Priority"] == "HIGH"
-    } == {"P11-FEAT-ACP-RUNTIME-HARDENING": "HIGH"}
+    } == {
+        "P11-FEAT-ACP-RUNTIME-HARDENING": "HIGH",
+        "HARDENING-FEAT-RUNTIME-QUALITY": "HIGH",
+    }
     assert all(
         row["Priority"] in {"MEDIUM", "LOW"}
         for identity, (header, rows) in tables.items()
@@ -1429,6 +1445,33 @@ def test_plan_11_26_runtime_audit_is_archived_while_remediation_custody_stays_op
     assert "Plan 11.26" in feature_row
     assert "audit-and-contract only" in feature_row
     assert "does not authorize production fixes" in feature_row
+
+
+def test_hardening_masterplan_status_is_parent_owned_and_candidate_tables_are_historical() -> None:
+    pool = _read(OPTIMUS_POOL)
+    tables = {identity: rows for identity, _header, rows in _markdown_tables(pool)}
+    feature_rows = [
+        row
+        for row in tables[("Feature slices", 0)]
+        if row["Identity"].strip("`") == "HARDENING-FEAT-RUNTIME-QUALITY"
+    ]
+
+    assert len(feature_rows) == 1
+    assert feature_rows[0]["Status"] == "Open"
+    assert feature_rows[0]["Priority"] == "HIGH"
+    assert "hardening-runtime-quality-masterplan.md" in feature_rows[0]["Scope detail"]
+    assert "backlog row owns this masterplan's status" in feature_rows[0]["Scope detail"]
+
+    registry_rows = tables[("Live implementation plan registry", 0)]
+    assert not [row for row in registry_rows if "hardening-" in row["Plan"]]
+
+    historical_note = "historical acceptance record, not live remediation-plan status"
+    assert pool.count(historical_note) == 2
+
+    masterplan = _read(HARDENING_MASTERPLAN)
+    assert "`ACCEPTED_OPEN`" not in masterplan
+    assert "Owner-to-be" not in masterplan
+    assert re.search(r"(?mi)^\*\*Status:\*\*|^Status:", masterplan) is None
 
 
 def test_plan_11_26_hypothesis_scope_authority_and_dispositions_cover_h1_through_h10() -> None:
