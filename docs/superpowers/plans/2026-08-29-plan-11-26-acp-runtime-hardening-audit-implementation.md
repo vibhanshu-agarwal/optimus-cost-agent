@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Draft awaiting independent review and explicit execution authorization.
+**Status:** Complete. Tasks 0-12 are accepted through G6; Task 13 is accepted at G7 as `ACCEPTED_OPEN`. Plan 11.26 is terminal, while its named remediation candidates and three blocked obligations remain open under their separate owners.
 
 **Goal:** Produce a baseline-scoped, machine-checkable audit of ACP runtime cross-cutting contracts and evidence-backed remediation candidates without changing production runtime behavior.
 
-**Architecture:** A non-production `tools.plan1126_runtime_audit` package supplies one shared artifact schema, baseline vocabulary, AST inventory framework, running-artifact provenance verifier, seed corpus, checkpoint protocol, and computed-cost model. Concern-specific tests and probes use that common approach to characterize delivery, task ownership, cancellation, resource lifetime, semantic error selection, telemetry, queues, and optional durable-session behavior; findings are recorded rather than repaired. Live rows use real named dependencies only after fresh authorization, while overlay-dependent claims remain Plan 11.7-owned scope-outs until a binding integration candidate exists.
+**Architecture:** A non-production `tools.plan1126_runtime_audit` package supplies one shared artifact schema, baseline vocabulary, AST inventory framework, running-artifact provenance verifier, seed corpus, checkpoint protocol, and computed-cost model. Concern-specific tests and probes use that common approach to characterize delivery, task ownership, cancellation, resource lifetime, semantic error selection, telemetry, queues, and optional durable-session behavior; findings are recorded rather than repaired. Task 13 adds a separate immutable-snapshot duplication inventory and reviewed classification artifact so the G6-accepted Task 12 evidence remains frozen. Live rows use real named dependencies only after fresh authorization, while overlay-dependent claims remain Plan 11.7-owned scope-outs until a binding integration candidate exists.
 
 **Tech Stack:** Python 3.14, uv 0.11.29, pytest/pytest-asyncio, Ruff, Python AST, JSON/NDJSON, Git blob reads, live TimeSeries-capable Redis when authorized, independently authored acpx 0.12.0, official `@agentclientprotocol/sdk` stable-v1 API with Node v26.5.0/npm 11.17.0, official Java ACP SDK fallback with Java 25.0.3 LTS/Maven 3.9.6, and real Zed 1.17.2 only under a separate live grant.
 
@@ -15,6 +15,7 @@
 ## Global Constraints
 
 - Plan 11.26 is audit-and-contract work only. Do not change any file under `src/`; production remediation receives a later linear Plan 11 number after separate review.
+- Task 12's G6 disposition and its baseline, audit, render, and terminal artifacts are frozen at `b62462f11abe858f58af12fa2d2f159eae09d832`. Task 13 adds separate artifacts and custody; it does not reopen or regenerate Task 12.
 - Begin execution only after an independent reviewer approves this complete plan and the operator explicitly authorizes execution. Plan authoring approval is not execution approval.
 - The merged audit baseline is `main@5ea8f8f71548eb05a8562a10e98667e3d2061c4d`; the provisional runtime overlay contains `fac32284888850bacde93815265cbabe3afd4663`; Plan 11.7 alone nominates the future binding integration candidate.
 - Only `merged`, `both-aligned`, and later `binding` rows may produce binding findings. `overlay` and `both-divergent` rows remain provisional.
@@ -43,7 +44,8 @@
 | `tools/plan1126_runtime_audit/__init__.py` | Stable exports for the non-production audit package. |
 | `tools/plan1126_runtime_audit/model.py` | Closed baseline, classification, live-status, gate-status, finding, and artifact types plus strict JSON validation. |
 | `tools/plan1126_runtime_audit/source.py` | Read-only source views for a worktree or immutable Git commit without checking out another branch. |
-| `tools/plan1126_runtime_audit/inventory.py` | Shared AST/token inventory framework for runtime sites, duplicate logic, and invariant comments/docstrings. |
+| `tools/plan1126_runtime_audit/inventory.py` | Shared AST/token inventory framework for runtime sites and invariant comments/docstrings. |
+| `tools/plan1126_runtime_audit/duplication.py` | Task 13 immutable-tree scope manifest, high-recall similarity clustering, closed candidate dispositions, ranking checks, and deterministic artifact verification/render input. |
 | `tools/plan1126_runtime_audit/provenance.py` | External build/install manifest and installed-artifact verification; rejects workspace-only provenance. |
 | `tools/plan1126_runtime_audit/checkpoints.py` | Atomic iteration records, resume cursor, and duplicate/conflict rejection. |
 | `tools/plan1126_runtime_audit/corpus.py` | Literal frozen-seed loading plus commit-derived seed calculation. |
@@ -51,13 +53,15 @@
 | `tools/plan1126_runtime_audit/repeatability.py` | Stable outcome fingerprints and `STABLE`/`FLAKY`/`HARNESS_UNSTABLE`/`HARNESS_INVALID` classification across repeated runs. |
 | `tools/plan1126_runtime_audit/clients.py` | Qualification and provenance checks for acpx, official TypeScript/Java clients, and an independently authored conformance-harness fallback; never implements ACP framing. |
 | `tools/plan1126_runtime_audit/render.py` | Deterministic content-free Markdown rendering from the canonical JSON artifact. |
-| `tools/run_plan1126_runtime_audit.py` | Thin CLI for static inventory, offline characterization, live gated rows, checkpoint resume, and final rendering. |
+| `tools/run_plan1126_runtime_audit.py` | Thin CLI for static inventory, offline characterization, live gated rows, checkpoint resume, Task 13 duplication discovery/verification/rendering, and final rendering. |
 | `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json` | Versioned closed schema used independently of Python dataclasses. |
+| `tests/fixtures/plan1126_runtime_audit/duplication-candidates.schema.json` | Closed schema for the mechanically generated Task 13 source universe, affirmative exclusions, and candidate clusters. |
+| `tests/fixtures/plan1126_runtime_audit/duplication-audit.schema.json` | Closed schema for Task 13 group dispositions, findings, rankings, and G7 custody. |
 | `tests/fixtures/plan1126_runtime_audit/frozen-regression-seeds.json` | Literal reviewed regression schedules, unchanged by binding-commit changes. |
 | `tests/fixtures/plan1126_runtime_audit/fixture_agent.py` | Minimal non-production fixture agent used only to qualify the independently authored comparison mechanism in Task 3. |
 | `tests/fixtures/plan1126_runtime_audit/typescript-client/` | Exact-lock official stable-v1 TypeScript SDK qualifier (`package.json`, `package-lock.json`, `tsconfig.json`, `src/client.ts`). |
 | `tests/fixtures/plan1126_runtime_audit/java-client/` | Exact-version official Java SDK fallback qualifier (`pom.xml`, `src/main/java/.../QualificationClient.java`). |
-| `tests/unit/tools/plan1126_runtime_audit/` | Unit tests for schema, source views, inventories, provenance, checkpoints, corpus, cost, repeatability, clients, and rendering. |
+| `tests/unit/tools/plan1126_runtime_audit/` | Unit tests for schema, source views, inventories, duplication, provenance, checkpoints, corpus, cost, repeatability, clients, and rendering. |
 | `tests/unit/acp/test_plan1126_delivery_contract.py` | Delivery-site AST coverage and 1,000-seed settlement characterization. |
 | `tests/unit/acp/test_plan1126_cancellation.py` | Derived cancellation-point schedule characterization. |
 | `tests/unit/acp/test_plan1126_shutdown.py` | Five terminal causes, 100 repeats, idempotent-close counts, and control-derived growth allowlist. |
@@ -67,13 +71,16 @@
 | `tests/unit/telemetry/test_plan1126_runtime_contract.py` | Derived runtime event vocabulary, redaction, correlation, and sink-failure containment. |
 | `tests/integration/acp/test_plan1126_runtime_live_redis.py` | Real TimeSeries-capable Redis owner/revision and health characterization. |
 | `tests/e2e/acp/test_plan1126_clients_live.py` | Real process rows driven by acpx or the qualified comparison client/harness, plus validation of the manual Zed observation bundle; no project ACP client. |
-| `reports/plan-11-26-baseline-intake.json` | Exact merged/overlay/binding refs, reconciliation state, and H1-H8 baseline scopes accepted at G0. |
+| `reports/plan-11-26-baseline-intake.json` | Exact merged/overlay/binding refs, reconciliation state, and H1-H10 baseline scopes accepted through G6. |
 | `reports/plan-11-26-prerequisite-intake.json` | Sanitized prerequisite decisions, authority state, and named scope-outs. |
 | `reports/plan-11-26-acp-runtime-audit.json` | Canonical machine-readable audit artifact. |
 | `reports/plan-11-26-acp-runtime-audit.md` | Deterministic reviewer-facing rendering of the JSON artifact. |
 | `reports/plan-11-26-client-qualification.json` | Exact client package/commit, build, fixture-run, and fallback decision evidence. |
 | `reports/plan-11-26-zed-manual-observations.json` | Five closed-vocabulary operator observations bound to Zed and installed Optimus artifact provenance. |
 | `reports/plan-11-26-terminal-characterization.md` | Per-tier commands, costs, statuses, checkpoints, invalid reasons, and authorized live results. |
+| `reports/plan-11-26-duplication-candidates.json` | Deterministic Task 13 candidate universe generated from the pinned Task 12 commit before human classification. |
+| `reports/plan-11-26-duplication-audit.json` | Canonical Task 13 reviewed group dispositions, confirmed findings, ranked custody candidates, and inventory digest. |
+| `reports/plan-11-26-duplication-audit.md` | Deterministic reviewer-facing rendering of the Task 13 inventory and reviewed disposition. |
 | `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md` | Sole live registry for Plan 11.26 status, owner, reviewed disposition, and later remediation gates. |
 | `tests/unit/docs/test_open_work_pool_hygiene.py` | Locks Plan 11.26 live-registry and backlog custody language. |
 
@@ -85,6 +92,9 @@
 | Launch/trust and durable-approval policy correctness outside lifecycle interfaces | Existing Plan 9.96/11.15 authority; any newly observed obligation enters the canonical backlog before Plan 11.26 disposition. |
 | Credential acquisition or rotation beyond ownership and redaction interfaces | `EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE` where applicable; otherwise a named canonical-backlog owner before deferral. |
 | Gateway and agent reasoning/business semantics | Their existing canonical backlog feature owners; Plan 11.26 inspects only ACP-facing lifecycle interfaces. |
+| All code below `tests/` in Task 13 | Affirmatively excluded: duplicated test scaffolding does not carry the production latent-defect risk that motivated this audit and would expand the surface without comparable value. |
+| Evidence Collector product in Task 13: `src/evidence_handoff/collector/`, `tools/evidence_gather.py`, and `tools/evidence_gather_support/` | `EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR`; exclude these paths before clustering because cross-product similarity is deliberate product separation, not core-agent duplication debt. |
+| A2A Ledger product in Task 13: `src/evidence_handoff/ledger/`, `src/evidence_handoff_runtime/`, `tools/evidence_handoff_live_support/`, and `tools/verify_evidence_handoff_live.py` | `EVIDENCE-HANDOFF-FEAT-A2A-LEDGER`; exclude these paths before clustering for the same product-separation reason. |
 | Production fixes for findings | Later independently numbered Plan 11 remediation candidates after review. |
 | Release, push, merge, evidence promotion, and working-agent sign-off | Existing release governance and archived Plan 9.6 sign-off authority. |
 
@@ -138,12 +148,20 @@ Every `unknown` prerequisite is resolved by Task 1 or Task 3 before a dependent 
 | `test_regression_corpus_replays_frozen_literal_seeds` | `tests/unit/tools/plan1126_runtime_audit/test_corpus.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_corpus.py::test_regression_corpus_replays_frozen_literal_seeds -q` |
 | `test_computed_cost_includes_cancellation_queue_sink_and_close_multipliers` | `tests/unit/tools/plan1126_runtime_audit/test_cost.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_cost.py::test_computed_cost_includes_cancellation_queue_sink_and_close_multipliers -q` |
 | `test_zed_manual_observation_bundle_is_complete` | `tests/e2e/acp/test_plan1126_clients_live.py` | `uv run --frozen pytest tests/e2e/acp/test_plan1126_clients_live.py::test_zed_manual_observation_bundle_is_complete -m "e2e and requires_zed" -v` |
+| `test_duplication_scope_excludes_products_before_ast_extraction` | `tests/unit/tools/plan1126_runtime_audit/test_duplication.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_scope_excludes_products_before_ast_extraction -q` |
+| `test_duplication_inventory_is_deterministic_and_reconciles_prior_seeds` | `tests/unit/tools/plan1126_runtime_audit/test_duplication.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_inventory_is_deterministic_and_reconciles_prior_seeds -q` |
+| `test_duplication_audit_partitions_every_member_and_ranks_confirmed_custody` | `tests/unit/tools/plan1126_runtime_audit/test_duplication.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_audit_partitions_every_member_and_ranks_confirmed_custody -q` |
+| `test_duplication_verifier_freezes_task12_and_render_is_deterministic` | `tests/unit/tools/plan1126_runtime_audit/test_duplication.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_verifier_freezes_task12_and_render_is_deterministic -q` |
 
-The first 18 rows are the approved design predicates for the audit mechanism. The 19th supplemental row gates the Task 11 manual Zed observation bundle. A predicate passes when the scheduled behavior is exhaustively observed and truthfully classified; it does not force the current runtime to exhibit a desired future behavior.
+The first 18 rows are the approved design predicates for the audit mechanism. The 19th supplemental
+row gates the Task 11 manual Zed observation bundle. Rows 20-23 gate the separately approved Task 13
+same-plan duplication extension. A predicate passes when the scheduled behavior is exhaustively
+observed and truthfully classified; it does not force the current runtime to exhibit a desired
+future behavior.
 
 ### Post-Step-4 predicate execution reconciliation (C21)
 
-All 19 predicate identities remain in custody; none is deleted or represented as passing when its
+All 19 original predicate identities remain in custody; none is deleted or represented as passing when its
 dependency is absent. Sixteen rows have implemented offline node IDs and are runnable under the
 standing audit grant. The provenance row above corrects a naming drift to the implemented superset
 test; it is runnable with fixture-local identities and does not require a nominated binding commit.
@@ -430,7 +448,7 @@ correctly; it is not a substitute pass for the missing binding predicate.
 - Create: `tools/plan1126_runtime_audit/delivery.py`
 - Create: `tools/plan1126_runtime_audit/delivery_characterization.py`
 - Modify: `tools/plan1126_runtime_audit/{__init__,inventory,model,render}.py`
-- Modify: `tools/run_plan1126_runtime_audit.py`
+- Modify under the standing audit-execution grant for offline orchestration only: `tools/run_plan1126_runtime_audit.py`
 - Modify: `tests/unit/tools/plan1126_runtime_audit/{test_artifact,test_render}.py`
 - Modify: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
 - Modify: `reports/plan-11-26-acp-runtime-audit.json`
@@ -934,6 +952,201 @@ H1/H2 dispositions, and mechanically rejects any registered/evidenced scope gap.
   movement, evidence promotion, release action, live execution, and production remediation remain
   unauthorized.
 
+### Task 13: Discover and classify core duplication without consolidating it
+
+**Execution stop:** This task text must receive independent review before any Task 13 checkbox is
+changed or any Task 13 tool, fixture, report, test, or backlog row is created or modified. The
+existing Plan 11.26 execution grant applies after that review; it does not waive G7 or authorize a
+Task 13 commit, push, PR, merge, evidence promotion, archive movement, live row, or production edit.
+
+**Files:**
+
+- Create: `tools/plan1126_runtime_audit/duplication.py`
+- Modify: `tools/run_plan1126_runtime_audit.py`
+- Create: `tests/fixtures/plan1126_runtime_audit/duplication-candidates.schema.json`
+- Create: `tests/fixtures/plan1126_runtime_audit/duplication-audit.schema.json`
+- Create: `tests/unit/tools/plan1126_runtime_audit/test_duplication.py`
+- Create: `reports/plan-11-26-duplication-candidates.json`
+- Create: `reports/plan-11-26-duplication-audit.json`
+- Create: `reports/plan-11-26-duplication-audit.md`
+- Modify after classification: `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md`
+- Modify after classification: `tests/unit/docs/test_open_work_pool_hygiene.py`
+- Modify for checkbox/gate recording only: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
+- Reviewer-owned only: `docs/superpowers/reviews/plan-11-26-review-checkpoints.md`
+- Frozen, do not modify: `reports/plan-11-26-baseline-intake.json`,
+  `reports/plan-11-26-acp-runtime-audit.json`, `reports/plan-11-26-acp-runtime-audit.md`, and
+  `reports/plan-11-26-terminal-characterization.md`
+
+The offline permission above is capability-scoped, not file-scoped. It does not authorize changes
+to `_ACCEPTED_AUTHORITY_DIGESTS` or to the `live-redis`, `acpx`, `sdk`, or `zed record` paths. Those
+live capabilities and their authority-report allowlist remain gated behind a fresh live grant.
+
+**Pinned source:** Discover against the immutable Task 12 commit
+`b62462f11abe858f58af12fa2d2f159eae09d832`, not the changing Task 13 worktree. The allowed roots
+are exactly `src/` and `tools/`. The historical 2026-08-29 observation of 78 structurally identical
+function groups covering 171 of 2,088 non-trivial functions is a high-recall upper bound to
+reconcile, not an expected count, pass condition, or finding count.
+
+**Interfaces:**
+
+- `discover_duplication_candidates(source: GitCommitSource, scope: ScopeManifest) -> DuplicationCandidateInventory`
+  reads immutable blobs, applies affirmative product/path exclusions before extracting functions or
+  constants, and emits stable source and cluster identities.
+- `verify_duplication_audit(inventory: DuplicationCandidateInventory, audit: DuplicationAudit) -> None`
+  fails closed on source drift, exclusion drift, missing/duplicate group dispositions, excluded
+  members, unknown vocabulary, unowned confirmed duplication, ranking drift, or a Task 12 artifact
+  digest change.
+- `render_duplication_markdown(inventory: DuplicationCandidateInventory, audit: DuplicationAudit) -> str`
+  renders sorted, content-free reviewer evidence; Markdown never becomes an independent authority.
+- CLI shape:
+  `duplication discover --source-commit ... --inventory ...`,
+  `duplication verify --inventory ... --artifact ...`, and
+  `duplication render --inventory ... --artifact ... --report ...`.
+
+**Closed Task 13 vocabulary:** Candidate kind is `CALLABLE_SHAPE`, `CONSTANT_NAME`,
+`CONSTANT_VALUE`, or `REGEX_VALUE`. Every generated group is covered by one or more non-overlapping
+reviewed partitions whose members exhaust that group exactly once. Each reviewed partition receives
+exactly one disposition: `CONFIRMED_DUPLICATION`, `INTENTIONAL_REPETITION`, or
+`STRUCTURAL_SIMILARITY_ONLY`; no excluded product path may enter this vocabulary. The existing
+`Classification` and `LiveStatus` enums in `model.py` remain unchanged. Only
+`CONFIRMED_DUPLICATION` partitions produce `DUPLICATED` findings and must map exactly once to a
+ranked custody candidate. `INTENTIONAL_REPETITION` records the local boundary that makes repetition
+deliberate; `STRUCTURAL_SIMILARITY_ONLY` records the semantic difference that made the high-recall
+cluster an over-report.
+
+- [x] **Step 1: Lock the source universe, exclusions, schemas, and RED tests.**
+
+  Add the four Task 13 predicate identities as rows 20-23 of the Planned Predicate Map, then write
+  `test_duplication.py` first. Require the full commit SHA, tree digest, exact allowed roots,
+  enumerated source files, source-universe counts, algorithm version, and canonical inventory digest.
+  Assert that all `tests/` paths are absent and carry the production-risk exclusion reason. Assert
+  that the Evidence Collector and A2A path sets above are removed before AST extraction and retain
+  their named product owners/reasons in the scope manifest. A fixture with an excluded function
+  identical to a core function must yield no cross-product cluster. A path under an allowed root that
+  matches no affirmative exclusion must remain in scope.
+
+  Independently validate both JSON documents against their closed JSON Schemas. Reject unknown
+  keys/statuses, malformed SHA-256 values, duplicate IDs, unsorted members, an empty rationale,
+  `UNCLASSIFIED`, missing or overlapping partition members, a confirmed partition without custody,
+  and a custody row without a confirmed partition.
+  Run the focused file and capture the expected RED result before implementing:
+
+  ```powershell
+  uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_duplication.py -q
+  ```
+
+- [x] **Step 2: Implement deterministic high-recall discovery, not defect declaration.**
+
+  Add the Task 13 module and nested CLI commands without changing `model.py`, `inventory.py`, or any
+  `src/` file. Enumerate Python functions/async functions and module/class constants from the pinned
+  Git tree. Exclude docstring-only/pass-only callables from the non-trivial universe under one tested
+  policy. Preserve path, qualified symbol, line span, async/sync kind, signature shape, original call
+  leaves, receiver/attribute roles, control-flow/exception/finally features, normalized token digest,
+  and AST-shape digest for reviewer classification.
+
+  Use AST-shape equality only as one high-recall seed. Add deterministic similarity edges from the
+  preserved structural/call features, take sorted connected components, and record why each member
+  joined. Names may help the reviewer locate a symbol but must not create or dismiss a cluster.
+  Therefore unrelated `__init__` methods may remain candidates until Step 3, while function-name
+  matching alone cannot prove absence. Constants are inventoried separately by repeated name and by
+  identical normalized value so callable counts cannot conceal declaration duplication.
+
+  Reconcile, but do not force, the prior seeds: the resolver pairs in
+  `tools/run_plan987_acpx_live_evidence.py` and `tools/run_plan988_fu4b_live_evidence.py`;
+  `_is_hex`/`_is_lower_hex`; the three shape-identical `_canonical_digest` helpers in
+  `cancellation.py`, `delivery_characterization.py`, and `shutdown.py`; the three shape-identical
+  `_symbol` helpers in `queue_policy.py`, `semantic_errors.py`, and `telemetry.py`;
+  `_KEYRING_SERVICE`; the two `claude-haiku` defaults; and the known equal directive-regex values.
+  Each seed is either rediscovered or receives a machine-readable `NOT_REDISCOVERED` explanation
+  tied to the current algorithm/source digest. Do not pre-classify any seed as a defect.
+
+  Generate the candidate inventory twice from the pinned commit and require byte identity:
+
+  ```powershell
+  uv run --frozen python tools/run_plan1126_runtime_audit.py duplication discover --source-commit b62462f11abe858f58af12fa2d2f159eae09d832 --inventory reports/plan-11-26-duplication-candidates.json
+  $task13FirstInventoryHash = (Get-FileHash -Algorithm SHA256 -LiteralPath reports/plan-11-26-duplication-candidates.json).Hash
+  uv run --frozen python tools/run_plan1126_runtime_audit.py duplication discover --source-commit b62462f11abe858f58af12fa2d2f159eae09d832 --inventory reports/plan-11-26-duplication-candidates.json
+  $task13SecondInventoryHash = (Get-FileHash -Algorithm SHA256 -LiteralPath reports/plan-11-26-duplication-candidates.json).Hash
+  if ($task13FirstInventoryHash -ne $task13SecondInventoryHash) { throw "Task 13 candidate inventory is not deterministic" }
+  uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_duplication.py -q
+  ```
+
+- [x] **Step 3: Review and classify every generated group.**
+
+  Inspect every candidate's original symbols and preserved semantic context. The 78-group historical
+  result and any new raw count remain unconfirmed upper bounds until this step is complete. Partition
+  each raw group by semantic responsibility when necessary, retain the raw candidate ID as parent
+  provenance, and record one closed disposition plus concrete rationale per reviewed partition. A
+  partition may not use a group-level verdict to hide a semantically different member. Rerun
+  verification so every generated member remains in custody exactly once across the partitions.
+
+  For each `CONFIRMED_DUPLICATION`, record the duplicated responsibility/contract, exact symbols,
+  evidence digest, impact, severity, and owner-to-be. Group confirmed findings into independently
+  schedulable remediation candidates without consolidating code. Each candidate declares `point-fix`
+  or `consolidation`, names its owner-to-be, and counts its confirmed member symbols and modules.
+  Compute `latent_surface_closed` as the number of confirmed member symbols mapped to that candidate;
+  rank descending by that value, then by severity (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`), then by stable
+  candidate ID. This ranking is custody priority, not a claim that lines were removed or a bug fixed.
+
+- [x] **Step 4: Verify and render the separate Task 13 artifacts.**
+
+  The verifier reopens the pinned Git tree, recomputes the allowed/excluded universe and raw candidate
+  inventory, and rejects any mismatch with the committed candidate JSON. It then requires every
+  candidate/member and every prior seed to be reconciled, every confirmed finding to have exactly one
+  candidate, every candidate to have a shape/owner/next gate, and the ranking formula to reproduce.
+  It also verifies the four frozen Task 12 artifact digests captured in the Task 13 audit so Task 13
+  cannot silently reopen G6 evidence.
+
+  Render twice and require one digest plus byte identity with the committed Markdown. The report must
+  show the affirmative exclusions before any cluster tables, separate raw candidate counts from
+  confirmed duplication counts, and label the historical 78 as prior high-recall evidence only.
+  Run:
+
+  ```powershell
+  uv run --frozen python tools/run_plan1126_runtime_audit.py duplication verify --inventory reports/plan-11-26-duplication-candidates.json --artifact reports/plan-11-26-duplication-audit.json
+  uv run --frozen python tools/run_plan1126_runtime_audit.py duplication render --inventory reports/plan-11-26-duplication-candidates.json --artifact reports/plan-11-26-duplication-audit.json --report reports/plan-11-26-duplication-audit.md
+  $task13FirstReportHash = (Get-FileHash -Algorithm SHA256 -LiteralPath reports/plan-11-26-duplication-audit.md).Hash
+  uv run --frozen python tools/run_plan1126_runtime_audit.py duplication render --inventory reports/plan-11-26-duplication-candidates.json --artifact reports/plan-11-26-duplication-audit.json --report reports/plan-11-26-duplication-audit.md
+  $task13SecondReportHash = (Get-FileHash -Algorithm SHA256 -LiteralPath reports/plan-11-26-duplication-audit.md).Hash
+  if ($task13FirstReportHash -ne $task13SecondReportHash) { throw "Task 13 Markdown render is not deterministic" }
+  uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_duplication.py -q
+  ```
+
+- [x] **Step 5: Append Task 13 custody without mutating Task 12 custody.**
+
+  Add a distinct “Task 13 reviewed duplication disposition” table immediately beneath the existing
+  Plan 11.26 Task 12 custody table. Do not edit, reorder, re-rank, or reinterpret the five accepted
+  Task 12 candidates or the three blocked obligations. The Task 13 table carries only confirmed
+  duplication candidates, their mechanically reproduced rank, shape, surface, severity,
+  `ACCEPTED_OPEN` disposition, owner-to-be, and next gate. If no group is confirmed, append an explicit
+  reviewed zero-finding disposition rather than inventing a candidate or omitting the task.
+
+  Extend `test_open_work_pool_hygiene.py` to lock the separation between the frozen G6 table and the
+  new G7 table, the links to all three Task 13 artifacts, the plan's terminal state, and the rule that
+  neither table claims consolidation or a historical flake fix. G7 acceptance keeps every named
+  remediation owner and blocked obligation open outside this terminal audit plan.
+
+- [x] **Step 6: Run the Task 13 fitness gate and obtain G7.**
+
+  Run the duplication verifier and render check, the complete Plan 11.26 audit-tool suite, the full
+  documentation suite, Ruff, whitespace validation, and both production-boundary diffs:
+
+  ```powershell
+  uv run --frozen python tools/run_plan1126_runtime_audit.py duplication verify --inventory reports/plan-11-26-duplication-candidates.json --artifact reports/plan-11-26-duplication-audit.json
+  uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit -q
+  uv run --frozen pytest tests/unit/docs -q
+  uv run --frozen ruff check .
+  git diff --check
+  git diff -- src
+  git diff --cached -- src
+  ```
+
+  Submit the raw/confirmed counts, exclusion manifest, every group disposition, ranked custody, exact
+  commands, deterministic digests, and unchanged Task 12 hashes at G7. G7 accepted the reviewed
+  Task 13 disposition as `ACCEPTED_OPEN` and separately authorized both the Task 13 commit and the
+  terminal archive transition. Push, PR, merge, evidence promotion, live work, consolidation, and
+  production remediation remain unauthorized.
+
 ## Review Gates
 
 | Gate | Required acceptance |
@@ -945,6 +1158,7 @@ H1/H2 dispositions, and mechanically rejects any registered/evidenced scope gap.
 | G4 — Per-group evidence | Each group completes its named predicates/repeats or records a valid owned scope-out. |
 | G5 — Terminal characterization | Applicable authorized matrix completes with computed cost, checkpoints, and installed-artifact provenance. |
 | G6 — Disposition | Reviewer accepts findings, scope-outs, current-state docs, and each canonical remediation candidate. |
+| G7 — Duplication disposition | Reviewer accepts the pre-clustering exclusions, immutable source universe, every raw-group disposition, confirmed-duplication ranking/custody, deterministic artifacts, frozen Task 12 hashes, and zero production/consolidation changes. |
 
 ## Definition of Done and Evidence Map
 
@@ -957,23 +1171,23 @@ H1/H2 dispositions, and mechanically rejects any registered/evidenced scope gap.
 | The audit uses an additional independent client or conformance harness without displacing acpx. | G3 report, exact package/source/build provenance, fixture result, and G5 real-comparison rows only when separately authorized. |
 | Evidence cannot confuse workspace state with running code. | `test_running_artifact_provenance_matches_binding_commit_and_expected_identity` and per-live-row external manifests. |
 | Randomized evidence is reproducible without losing prior failures. | Literal corpus predicate, commit-derived seed records, atomic checkpoints, and rerun logs. |
-| Repeated-run instability and duplicated/non-obvious logic are audited consistently. | Repeatability fingerprints, duplicate-site inventory, and invariant comment/docstring coverage recorded per baseline. |
+| Repeated-run instability and duplicated/non-obvious logic are audited consistently. | Repeatability fingerprints and invariant comment/docstring coverage recorded per baseline, plus the Task 13 immutable-snapshot candidate inventory, complete group dispositions, and G7-reviewed confirmed-duplication custody. |
 | Matrix cost is computed rather than guessed. | Cost predicate, discovered multipliers, p50/p95 measurements, and terminal cost approval. |
 | Live claims use real named dependencies. | `requires_redis`, `requires_acpx`, `requires_gateway`, the qualified independent comparison mechanism, and Zed evidence with `UNRUN`/`INVALID` fail-closed states. |
-| Findings have durable custody without premature fixes. | G6 reports and canonical backlog owner/next-gate rows; no `src/` diff and no production-remediation code. |
-| Plan 11.26 does not overclaim closure. | Backlog keeps `P11-FEAT-ACP-RUNTIME-HARDENING` open and preserves Plan 11.7/live/release limitations. |
+| Findings have durable custody without premature fixes. | Frozen G6 reports and Task 12 rows plus separate G7 duplication artifacts/custody; no `src/` diff, consolidation, or production-remediation code. |
+| Plan 11.26 does not overclaim closure. | Backlog keeps `P11-FEAT-ACP-RUNTIME-HARDENING` open through G7 and preserves Plan 11.7/live/release limitations. |
 
-Plan 11.26 may complete as `PASS_WITH_FINDINGS`. It does not claim Plan 11.7 closure, formal evidence, release, push, merge, Phase 1 working-agent status, graceful Zed shutdown, acpx replay visibility, immediate session reopen, or acceptance of current runtime behavior as the desired production contract.
+After G7, Plan 11.26 may complete as `PASS_WITH_FINDINGS`. It does not claim Plan 11.7 closure, formal evidence, release, push, merge, Phase 1 working-agent status, graceful Zed shutdown, acpx replay visibility, immediate session reopen, duplicate-code consolidation, historical-flake repair, or acceptance of current runtime behavior as the desired production contract.
 
 ## Plan Self-Review
 
-- **Spec coverage:** Tasks 0-12 map one-for-one to the approved sequence. The file map covers shared schema/inventory/provenance/checkpoint/corpus/cost infrastructure, all vertical runtime segments, all horizontal contracts, independent comparison qualification, tiered evidence, and canonical disposition.
+- **Spec coverage:** Tasks 0-12 map one-for-one to the approved sequence; Task 13 is the separately approved same-plan duplication extension. The file map covers shared schema/inventory/provenance/checkpoint/corpus/cost infrastructure, all vertical runtime segments, all horizontal contracts, independent comparison qualification, tiered evidence, frozen G6 disposition, and separate G7 duplication custody.
 - **Cross-cutting centralization:** Common vocabularies and mechanics live in one audit package; concern-specific rules/tests plug into it without creating competing artifact, baseline, classification, seed, provenance, or checkpoint approaches.
-- **Code-quality coverage:** Shared AST/token inventory covers duplicate logic and reviewer-facing invariant comments/docstrings; repeated tiers classify flaky outcomes with one common fingerprinting model.
-- **Predicate coverage:** The Planned Predicate Map preserves all 18 approved identities exactly once plus the supplemental Zed-bundle gate. Sixteen resolve to implemented offline node IDs; the three blocked rows remain explicit planned obligations with distinct owners and unblock paths, and none is shown as passing.
+- **Code-quality coverage:** Shared AST/token inventory covers reviewer-facing invariant comments/docstrings; Task 13 separately inventories high-recall duplication candidates and requires semantic review before `DUPLICATED`; repeated tiers classify flaky outcomes with one common fingerprinting model.
+- **Predicate coverage:** The Planned Predicate Map preserves all 18 approved identities exactly once plus the supplemental Zed-bundle gate and four Task 13 duplication gates. Sixteen original rows resolve to implemented offline node IDs; the three original blocked rows remain explicit planned obligations with distinct owners and unblock paths, and none is shown as passing. Task 13 rows become executable only through Steps 1-4.
 - **Prerequisite coverage:** All `unknown` rows resolve in Task 1 or Task 3 before dependents. Binding/lease/resume evidence is Plan 11.7-owned; unauthorized live rows remain operator-owned and dormant.
-- **Production boundary:** No task modifies `src/`. Characterization can pass with findings, and remediation is deferred to later independently numbered plans.
-- **Custody:** The canonical backlog is the only live registry. Task 0 claims execution; Task 12 records disposition and candidate next gates while keeping the feature open.
+- **Production boundary:** No task modifies `src/`. Characterization and duplication classification can pass with findings, and remediation/consolidation is deferred to later independently numbered plans.
+- **Custody:** The canonical backlog is the only live registry. Task 0 claims execution; Task 12's accepted G6 table stays frozen; Task 13 appends a distinct G7 disposition while keeping the feature open until review rules otherwise.
 - **C3:** The implementation-plan table correctly records acpx `0.12.0` as command-derived and retains execution-time re-recording.
-- **Type consistency:** The shared types and function names in Tasks 2-12 match the File Map and Interfaces blocks; later tasks consume only names produced earlier.
+- **Type consistency:** The shared types and function names in Tasks 2-12 match the File Map and Interfaces blocks. Task 13 uses separate closed candidate/disposition schemas and does not widen Task 12's `Classification` or `LiveStatus` enums.
 - **No-placeholder review:** Every task names concrete files, interfaces, commands, counts, status semantics, stop conditions, and owners. Conditional Java/live/binding branches have explicit same-task behavior and evidence outcomes.

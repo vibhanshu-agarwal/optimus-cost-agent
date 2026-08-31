@@ -27,6 +27,11 @@ if str(ROOT) not in sys.path:
 from tools.plan1126_runtime_audit.checkpoints import CheckpointStore  # noqa: E402
 from tools.plan1126_runtime_audit.corpus import literal_seeds  # noqa: E402
 from tools.plan1126_runtime_audit.cost import compute_cost  # noqa: E402
+from tools.plan1126_runtime_audit.duplication import (  # noqa: E402
+    discover_duplication_candidates,
+    render_duplication_markdown,
+    verify_duplication_audit,
+)
 from tools.plan1126_runtime_audit.inventory import discover_sites  # noqa: E402
 from tools.plan1126_runtime_audit.model import AuditArtifact, PrerequisiteStatus  # noqa: E402
 from tools.plan1126_runtime_audit.provenance import ExpectedArtifactIdentity, verify_running_artifact  # noqa: E402
@@ -35,6 +40,12 @@ from tools.plan1126_runtime_audit.repeatability import RepeatabilityStatus, clas
 from tools.plan1126_runtime_audit.source import GitCommitSource, SourceTree  # noqa: E402
 
 _SCHEMA_PATH = ROOT / "tests" / "fixtures" / "plan1126_runtime_audit" / "audit-artifact.schema.json"
+_DUPLICATION_CANDIDATES_SCHEMA_PATH = (
+    ROOT / "tests" / "fixtures" / "plan1126_runtime_audit" / "duplication-candidates.schema.json"
+)
+_DUPLICATION_AUDIT_SCHEMA_PATH = (
+    ROOT / "tests" / "fixtures" / "plan1126_runtime_audit" / "duplication-audit.schema.json"
+)
 _AUTHORITY_KEYS = {
     "live-redis": "redis_mutation",
     "acpx": "acpx_live",
@@ -117,7 +128,7 @@ def _authority_anchor(
 
 def _write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="\n") as handle:
+    with path.open("w", encoding="utf-8", newline="") as handle:
         handle.write(text)
 
 
@@ -232,6 +243,18 @@ def build_parser() -> argparse.ArgumentParser:
     session_lease = subparsers.add_parser("session-lease")
     session_lease.add_argument("--artifact", required=True)
     session_lease.add_argument("--report", required=True)
+    duplication = subparsers.add_parser("duplication")
+    duplication_subparsers = duplication.add_subparsers(dest="duplication_command", required=True)
+    duplication_discover = duplication_subparsers.add_parser("discover")
+    duplication_discover.add_argument("--source-commit", required=True)
+    duplication_discover.add_argument("--inventory", required=True)
+    duplication_verify = duplication_subparsers.add_parser("verify")
+    duplication_verify.add_argument("--inventory", required=True)
+    duplication_verify.add_argument("--artifact", required=True)
+    duplication_render = duplication_subparsers.add_parser("render")
+    duplication_render.add_argument("--inventory", required=True)
+    duplication_render.add_argument("--artifact", required=True)
+    duplication_render.add_argument("--report", required=True)
     return parser
 
 
@@ -532,6 +555,47 @@ def _verify_artifact(path: str) -> AuditArtifact:
         if actual_findings != (_h10_finding(expected_h10).to_dict(),):
             raise ValueError("H10 finding does not match binding-gate rebuild")
     return artifact
+
+
+def _validate_json_schema(payload: Mapping[str, Any], schema_path: Path) -> None:
+    schema = _read_json(schema_path)
+    errors = sorted(
+        Draft202012Validator(schema).iter_errors(payload),
+        key=lambda error: list(error.path),
+    )
+    if errors:
+        raise ValueError("; ".join(error.message for error in errors))
+
+
+def _run_duplication(args: argparse.Namespace) -> int:
+    try:
+        if args.duplication_command == "discover":
+            inventory = discover_duplication_candidates(GitCommitSource(args.source_commit, ROOT))
+            _validate_json_schema(inventory, _DUPLICATION_CANDIDATES_SCHEMA_PATH)
+            _atomic_json(Path(args.inventory), inventory)
+            _emit("PASS")
+            return 0
+
+        inventory = _read_json(args.inventory)
+        audit = _read_json(args.artifact)
+        _validate_json_schema(inventory, _DUPLICATION_CANDIDATES_SCHEMA_PATH)
+        _validate_json_schema(audit, _DUPLICATION_AUDIT_SCHEMA_PATH)
+        frozen_artifact_bytes = {
+            item["path"]: Path(item["path"]).read_bytes()
+            for item in audit["frozen_task12_artifacts"]
+        }
+        verify_duplication_audit(
+            inventory,
+            audit,
+            frozen_artifact_bytes=frozen_artifact_bytes,
+        )
+        if args.duplication_command == "render":
+            _write_text(Path(args.report), render_duplication_markdown(inventory, audit))
+        _emit("PASS")
+        return 0
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        _emit("INVALID", (str(exc),))
+        return 1
 
 
 def _run_semantic(args: argparse.Namespace) -> int:
@@ -1603,6 +1667,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_queue_policy(args)
     if args.command == "session-lease":
         return _run_session_lease(args)
+    if args.command == "duplication":
+        return _run_duplication(args)
     if args.command == "offline":
         return _run_offline(args)
     if args.command in {"live-redis", "acpx", "sdk"}:

@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "exclusion": {
+      "additionalProperties": false,
+      "properties": {
+        "exclusion_id": {"minLength": 1, "type": "string"},
+        "matched_paths": {"items": {"minLength": 1, "type": "string"}, "type": "array", "uniqueItems": true},
+        "owner": {"minLength": 1, "type": "string"},
+        "path_prefixes": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
+        "reason": {"minLength": 1, "type": "string"}
+      },
+      "required": ["exclusion_id", "owner", "reason", "path_prefixes", "matched_paths"],
+      "type": "object"
+    },
+    "group": {
+      "additionalProperties": false,
+      "properties": {
+        "group_id": {"minLength": 1, "type": "string"},
+        "join_reasons": {"items": {"enum": ["AST_SHAPE_EQUAL", "FEATURE_SIMILARITY", "REPEATED_NAME", "NORMALIZED_VALUE_EQUAL"]}, "minItems": 1, "type": "array", "uniqueItems": true},
+        "kind": {"enum": ["CALLABLE_SHAPE", "CONSTANT_NAME", "CONSTANT_VALUE", "REGEX_VALUE"]},
+        "members": {"items": {"$ref": "#/$defs/member"}, "minItems": 2, "type": "array"}
+      },
+      "required": ["group_id", "kind", "join_reasons", "members"],
+      "type": "object"
+    },
+    "member": {
+      "additionalProperties": false,
+      "properties": {
+        "async_kind": {"enum": ["ASYNC", "SYNC", "N/A"]},
+        "call_leaves": {"items": {"type": "string"}, "type": "array"},
+        "control_flow": {"items": {"type": "string"}, "type": "array", "uniqueItems": true},
+        "line_end": {"minimum": 1, "type": "integer"},
+        "line_start": {"minimum": 1, "type": "integer"},
+        "member_id": {"minLength": 1, "type": "string"},
+        "node_count": {"minimum": 1, "type": "integer"},
+        "path": {"minLength": 1, "type": "string"},
+        "receiver_roles": {"items": {"type": "string"}, "type": "array"},
+        "shape_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "signature_shape": {"minLength": 1, "type": "string"},
+        "symbol": {"minLength": 1, "type": "string"},
+        "token_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}
+      },
+      "required": ["member_id", "path", "symbol", "line_start", "line_end", "async_kind", "signature_shape", "shape_digest", "token_digest", "call_leaves", "receiver_roles", "control_flow", "node_count"],
+      "type": "object"
+    },
+    "seed": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_group_ids": {"items": {"type": "string"}, "type": "array", "uniqueItems": true},
+        "explanation": {"minLength": 1, "type": "string"},
+        "seed_id": {"minLength": 1, "type": "string"},
+        "status": {"enum": ["REDISCOVERED", "NOT_REDISCOVERED"]}
+      },
+      "required": ["seed_id", "status", "candidate_group_ids", "explanation"],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "algorithm_version": {"const": "plan1126-duplication-v1"},
+    "allowed_roots": {"items": {"type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
+    "callable_universe_count": {"minimum": 0, "type": "integer"},
+    "candidate_groups": {"items": {"$ref": "#/$defs/group"}, "type": "array"},
+    "declaration_universe_count": {"minimum": 0, "type": "integer"},
+    "excluded_file_count": {"minimum": 0, "type": "integer"},
+    "inventory_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "prior_seed_reconciliation": {"items": {"$ref": "#/$defs/seed"}, "type": "array"},
+    "schema_version": {"const": "plan-11-26-duplication-candidates-v1"},
+    "scope_exclusions": {"items": {"$ref": "#/$defs/exclusion"}, "minItems": 3, "type": "array"},
+    "source_commit": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+    "source_file_count": {"minimum": 0, "type": "integer"},
+    "source_files": {"items": {"type": "string"}, "type": "array", "uniqueItems": true},
+    "source_tree_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}
+  },
+  "required": ["schema_version", "algorithm_version", "source_commit", "source_tree_digest", "allowed_roots", "scope_exclusions", "source_files", "source_file_count", "excluded_file_count", "callable_universe_count", "declaration_universe_count", "candidate_groups", "prior_seed_reconciliation", "inventory_digest"],
+  "type": "object"
+}

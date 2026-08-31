@@ -26,6 +26,9 @@ PLAN_119 = REPO_ROOT / "docs/superpowers/plans/archive/2026-08-08-plan-11-9-p11-
 PLAN_1126_BASELINE_INTAKE = REPO_ROOT / "reports/plan-11-26-baseline-intake.json"
 PLAN_1126_AUDIT = REPO_ROOT / "reports/plan-11-26-acp-runtime-audit.json"
 PLAN_1126_TERMINAL = REPO_ROOT / "reports/plan-11-26-terminal-characterization.md"
+PLAN_1126_DUPLICATION_CANDIDATES = REPO_ROOT / "reports/plan-11-26-duplication-candidates.json"
+PLAN_1126_DUPLICATION_AUDIT = REPO_ROOT / "reports/plan-11-26-duplication-audit.json"
+PLAN_1126_DUPLICATION_REPORT = REPO_ROOT / "reports/plan-11-26-duplication-audit.md"
 PHASE_1_ROADMAP = REPO_ROOT / "docs/superpowers/plans/2026-07-01-phase-1-roadmap.md"
 PLAN_11_CHARTER = REPO_ROOT / "docs/superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md"
 AGENTS_FILE = REPO_ROOT / "AGENTS.md"
@@ -204,6 +207,7 @@ EXPECTED_POOL_TABLE_IDENTITIES = (
     ("Live implementation plan registry", 0),
     ("Feature slices", 0),
     ("Plan 11.26 reviewed disposition and remediation custody", 0),
+    ("Plan 11.26 Task 13 reviewed duplication disposition", 0),
     ("Follow-up status index", 0),
     ("Evidence and handoff feature registry", 0),
     ("A2A ledger audit obligations", 0),
@@ -220,6 +224,7 @@ EXPECTED_NON_MEDIUM_PRIORITIES = {
     "P11-FU-11": "HIGH",
     "P11.7-FU-1": "HIGH",
     "P11.5-FU-2": "HIGH",
+    "P11-FU-30": "HIGH",
 }
 EXPECTED_FEATURE_STATUS = {
     "P11-FEAT-GATEWAY-CORE": "Closed",
@@ -255,7 +260,7 @@ EXPECTED_FEATURE_SCOPE_TOKENS = {
         "plan-11-25-multi-turn-release-review.md",
     ),
     "P11-FEAT-ACP-RUNTIME-HARDENING": (
-        "Plan 11.26 Task 12 accepted at G6; Task 13 duplication audit is next",
+        "Plan 11.26 Tasks 0-12 accepted through G6; Task 13 accepted at G7",
         "plan-11-26-acp-runtime-hardening-audit-design.md",
         "plan-11-26-acp-runtime-hardening-audit-implementation.md",
         "concurrency",
@@ -1418,9 +1423,8 @@ def test_plan_11_26_runtime_audit_has_single_live_custody() -> None:
     plan_row = plan_rows[0]
     assert plan_row["State"] == "`Active`"
     assert plan_row["Backlog owner"] == "`P11-FEAT-ACP-RUNTIME-HARDENING`"
-    assert "Task 13" in plan_row["Next gate"]
-    assert "duplication audit" in plan_row["Next gate"]
-    assert "archive" not in plan_row["Next gate"].casefold()
+    assert "G7 accepted" in plan_row["Next gate"]
+    assert "archive movement" in plan_row["Next gate"]
 
     feature_row = _feature_row(pool, "P11-FEAT-ACP-RUNTIME-HARDENING")
     assert "Plan 11.26" in feature_row
@@ -1550,6 +1554,39 @@ def test_plan_11_26_candidates_are_ranked_and_unrun_owners_remain_distinct() -> 
     assert "plan-11-26-terminal-characterization.md" in feature_row
     assert "Task 13 is the operator-directed duplication audit" in feature_row
     assert "evidence collector and A2A are separate products" in feature_row
+
+
+def test_plan_11_26_task13_custody_is_separate_accepted_and_reproducible() -> None:
+    pool = _read(OPTIMUS_POOL)
+    tables = {identity: rows for identity, _header, rows in _markdown_tables(pool)}
+    rows = tables[("Plan 11.26 Task 13 reviewed duplication disposition", 0)]
+    audit = json.loads(PLAN_1126_DUPLICATION_AUDIT.read_text(encoding="utf-8"))
+
+    expected = audit["remediation_candidates"]
+    assert [row["Identity"].strip("`") for row in rows] == [
+        candidate["candidate_id"] for candidate in expected
+    ]
+    assert [int(row["Rank"]) for row in rows] == [candidate["rank"] for candidate in expected]
+    assert [int(row["Surface"]) for row in rows] == [
+        candidate["latent_surface_closed"] for candidate in expected
+    ]
+    assert all(row["Disposition"] == "`ACCEPTED_OPEN`" for row in rows)
+    assert all(row["Owner-to-be"] for row in rows)
+    assert all(row["Next gate"] for row in rows)
+
+    feature_row = _feature_row(pool, "P11-FEAT-ACP-RUNTIME-HARDENING")
+    for artifact in (
+        PLAN_1126_DUPLICATION_CANDIDATES,
+        PLAN_1126_DUPLICATION_AUDIT,
+        PLAN_1126_DUPLICATION_REPORT,
+    ):
+        assert artifact.name in feature_row
+    assert "Task 13 accepted at G7" in feature_row
+
+    task13 = pool.split("## Plan 11.26 Task 13 reviewed duplication disposition", 1)[1]
+    task13 = task13.split("\n## ", 1)[0]
+    assert "No row claims consolidation complete" in task13
+    assert "no historical flake is claimed fixed" in task13
 
 
 def test_zed_session_load_seal_remains_historical_throughout_the_living_pool() -> None:
