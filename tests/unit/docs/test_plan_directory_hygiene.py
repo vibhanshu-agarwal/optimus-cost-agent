@@ -277,6 +277,17 @@ FROZEN_REFERENCE_EXEMPTIONS = {
 }
 
 
+def _tracked_repository_files() -> tuple[Path, ...]:
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split("\0")
+    return tuple(REPO_ROOT / relative_path for relative_path in tracked if relative_path)
+
+
 def _live_registry_rows() -> list[re.Match[str]]:
     text = BACKLOG.read_text(encoding="utf-8")
     section = re.search(
@@ -336,8 +347,8 @@ def test_markdown_link_regex_still_matches_after_backtick_stripping_empties_the_
 
 def test_relative_markdown_links_resolve_except_registered_stale_links() -> None:
     used_exemptions: set[tuple[str, str]] = set()
-    for document in REPO_ROOT.rglob("*.md"):
-        if ".venv" in document.parts:
+    for document in _tracked_repository_files():
+        if document.suffix != ".md":
             continue
         text = document.read_text(encoding="utf-8")
         text = re.sub(r"```.*?```|~~~.*?~~~", "", text, flags=re.DOTALL)
@@ -376,18 +387,8 @@ def test_repository_relative_plan_paths_are_repaired_except_in_frozen_provenance
     # granularity is a separate, much larger effort than the 4-document /
     # 12-link repair this PR's document-repair lane is scoped to, and is
     # intentionally left out of scope here pending an explicit ruling.
-    tracked = subprocess.run(
-        ["git", "ls-files", "-z"],
-        cwd=REPO_ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.split("\0")
     used_exemptions: set[tuple[str, str]] = set()
-    for relative_path in tracked:
-        if not relative_path:
-            continue
-        document = REPO_ROOT / relative_path
+    for document in _tracked_repository_files():
         if (
             not document.is_file()
             or ARCHIVE_ROOT in document.parents
