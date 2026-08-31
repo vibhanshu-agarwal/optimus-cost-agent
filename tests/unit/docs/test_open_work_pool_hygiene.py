@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import subprocess
 from collections import Counter
@@ -22,6 +23,9 @@ PLAN_987 = REPO_ROOT / "docs/superpowers/plans/archive/2026-07-12-plan-9-87-mode
 PLAN_999 = REPO_ROOT / "docs/superpowers/plans/archive/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md"
 PLAN_114 = REPO_ROOT / "docs/superpowers/plans/archive/2026-07-28-plan-11-4-gateway-core-migration.md"
 PLAN_119 = REPO_ROOT / "docs/superpowers/plans/archive/2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-implementation.md"
+PLAN_1126_BASELINE_INTAKE = REPO_ROOT / "reports/plan-11-26-baseline-intake.json"
+PLAN_1126_AUDIT = REPO_ROOT / "reports/plan-11-26-acp-runtime-audit.json"
+PLAN_1126_TERMINAL = REPO_ROOT / "reports/plan-11-26-terminal-characterization.md"
 PHASE_1_ROADMAP = REPO_ROOT / "docs/superpowers/plans/2026-07-01-phase-1-roadmap.md"
 PLAN_11_CHARTER = REPO_ROOT / "docs/superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md"
 AGENTS_FILE = REPO_ROOT / "AGENTS.md"
@@ -199,6 +203,7 @@ EXPECTED_SETTLED_STATUSES = {
 EXPECTED_POOL_TABLE_IDENTITIES = (
     ("Live implementation plan registry", 0),
     ("Feature slices", 0),
+    ("Plan 11.26 reviewed disposition and remediation custody", 0),
     ("Follow-up status index", 0),
     ("Evidence and handoff feature registry", 0),
     ("A2A ledger audit obligations", 0),
@@ -250,7 +255,7 @@ EXPECTED_FEATURE_SCOPE_TOKENS = {
         "plan-11-25-multi-turn-release-review.md",
     ),
     "P11-FEAT-ACP-RUNTIME-HARDENING": (
-        "Plan 11.26 audit execution active; Task 0 / G0 in progress",
+        "Plan 11.26 Task 12 accepted at G6; Task 13 duplication audit is next",
         "plan-11-26-acp-runtime-hardening-audit-design.md",
         "plan-11-26-acp-runtime-hardening-audit-implementation.md",
         "concurrency",
@@ -1413,13 +1418,138 @@ def test_plan_11_26_runtime_audit_has_single_live_custody() -> None:
     plan_row = plan_rows[0]
     assert plan_row["State"] == "`Active`"
     assert plan_row["Backlog owner"] == "`P11-FEAT-ACP-RUNTIME-HARDENING`"
-    assert "Task 0" in plan_row["Next gate"]
-    assert "G0" in plan_row["Next gate"]
+    assert "Task 13" in plan_row["Next gate"]
+    assert "duplication audit" in plan_row["Next gate"]
+    assert "archive" not in plan_row["Next gate"].casefold()
 
     feature_row = _feature_row(pool, "P11-FEAT-ACP-RUNTIME-HARDENING")
     assert "Plan 11.26" in feature_row
     assert "audit-and-contract only" in feature_row
     assert "does not authorize production fixes" in feature_row
+
+
+def test_plan_11_26_hypothesis_scope_authority_and_dispositions_cover_h1_through_h10() -> None:
+    baseline = json.loads(PLAN_1126_BASELINE_INTAKE.read_text(encoding="utf-8"))
+    audit = json.loads(PLAN_1126_AUDIT.read_text(encoding="utf-8"))
+
+    registered = baseline["hypotheses"]
+    assert registered == {
+        "H1": "both-divergent",
+        "H2": "overlay",
+        "H3": "both-aligned",
+        "H4": "both-aligned",
+        "H5": "both-divergent",
+        "H6": "merged",
+        "H7": "merged",
+        "H8": "merged",
+        "H9": "merged",
+        "H10": "overlay",
+    }
+
+    records = {record["hypothesis_id"]: record for record in audit["evidence_records"]}
+    for hypothesis_id, record in records.items():
+        assert record["baseline_scope"] == registered[hypothesis_id]
+
+    dispositions = {
+        finding["finding_id"].split("-", 1)[0]: finding
+        for finding in audit["findings"]
+        if finding["finding_id"].startswith(("H1-", "H2-"))
+    }
+    assert set(records) | set(dispositions) == set(registered)
+    assert dispositions["H1"]["classification"] == "SUPERSEDED"
+    assert dispositions["H1"]["baseline_scope"] == registered["H1"]
+    assert dispositions["H2"]["classification"] == "SUPERSEDED"
+    assert dispositions["H2"]["baseline_scope"] == registered["H2"]
+    assert dispositions["H2"]["owner"] == "P11-FEAT-ZED-RESUME"
+    expected_intake_digest = hashlib.sha256(
+        json.dumps(baseline, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    assert records["H10"]["binding_presence"]["intake_digest"] == expected_intake_digest
+    assert dispositions["H2"]["evidence"] == records["H10"]["content_free_evidence"]
+
+
+def test_plan_11_26_telemetry_precision_findings_do_not_widen_observation_values() -> None:
+    audit = json.loads(PLAN_1126_AUDIT.read_text(encoding="utf-8"))
+    findings = {finding["finding_id"]: finding for finding in audit["findings"]}
+
+    sink_class = findings["C15-MISSING-REDACTION-SINK-CLASS-merged"]
+    assert sink_class["classification"] == "MISSING"
+    assert "external egress" in sink_class["ruling"]
+    assert "local retention" in sink_class["ruling"]
+
+    clean_semantics = findings["C15-MISSING-CLEAN-DISPOSITION-merged"]
+    assert clean_semantics["classification"] == "MISSING"
+    assert "CLEAN_REDACTED" in clean_semantics["ruling"]
+    assert "CLEAN_NOT_STORED" in clean_semantics["ruling"]
+
+    telemetry = next(record for record in audit["evidence_records"] if record["hypothesis_id"] == "H8")
+    observed_results = {
+        observation["overall_result"]
+        for observation in telemetry["redaction_observations"]["rows"]
+    }
+    assert observed_results == {"CLEAN", "LEAKED"}
+
+
+def test_plan_11_26_terminal_report_preserves_timeout_attribution_and_authority() -> None:
+    terminal = PLAN_1126_TERMINAL.read_text(encoding="utf-8")
+    terminal_compact = " ".join(terminal.split())
+
+    assert "10" in terminal_compact and "HARNESS" in terminal_compact
+    assert "4" in terminal_compact and "UNRESOLVED" in terminal_compact
+    assert "test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register" in terminal_compact
+    assert "test_shutdown_causes_repeat_100_with_control_allowlist" in terminal_compact
+    assert "25-repeat" in terminal_compact
+    assert "single green terminal row" in terminal_compact
+    assert "not a health signal" in terminal_compact
+    assert "product-or-harness indeterminate" in terminal_compact
+    assert "excluded from remediation ranking evidence" in terminal_compact
+    assert "task5_cancellation_group" in terminal_compact
+    assert "FLAKY remains open" in terminal_compact
+
+
+def test_plan_11_26_candidates_are_ranked_and_unrun_owners_remain_distinct() -> None:
+    pool = _read(OPTIMUS_POOL)
+    tables = {identity: rows for identity, _header, rows in _markdown_tables(pool)}
+    rows = tables[("Plan 11.26 reviewed disposition and remediation custody", 0)]
+    by_identity = {row["Identity"].strip("`"): row for row in rows}
+
+    candidate_ids = (
+        "P11.26-CAND-1-RESOURCE-LIFETIME",
+        "P11.26-CAND-2-TELEMETRY-CONTRACT",
+        "P11.26-CAND-3-SEMANTIC-ERROR-SELECTION",
+        "P11.26-CAND-4-QUEUE-BACKPRESSURE",
+        "P11.26-CAND-5-REPEATABILITY-ATTRIBUTION",
+    )
+    assert tuple(
+        identity
+        for identity, row in by_identity.items()
+        if row["Kind"] == "Candidate"
+    ) == candidate_ids
+    assert tuple(by_identity[identity]["Rank"] for identity in candidate_ids) == (
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+    )
+    assert all(by_identity[identity]["Owner-to-be"] for identity in candidate_ids)
+    assert all(by_identity[identity]["Next gate"] for identity in candidate_ids)
+    assert all(by_identity[identity]["Disposition"] == "`ACCEPTED_OPEN`" for identity in candidate_ids)
+
+    assert by_identity["P11.26-UNRUN-BINDING"]["Disposition"] == "`UNRUN_BINDING`"
+    assert by_identity["P11.26-UNRUN-BINDING"]["Owner-to-be"] == "`P11-FEAT-ZED-RESUME`"
+    assert by_identity["P11.26-UNRUN-REDIS"]["Disposition"] == "`UNRUN`"
+    assert by_identity["P11.26-UNRUN-REDIS"]["Owner-to-be"] == "operator"
+    assert by_identity["P11.26-UNRUN-ZED"]["Disposition"] == "`UNRUN`"
+    assert by_identity["P11.26-UNRUN-ZED"]["Owner-to-be"] == "operator"
+
+    feature_row = _feature_row(pool, "P11-FEAT-ACP-RUNTIME-HARDENING")
+    assert "Open" in feature_row
+    assert "plan-11-26-acp-runtime-audit.json" in feature_row
+    assert "plan-11-26-acp-runtime-audit.md" in feature_row
+    assert "plan-11-26-terminal-characterization.md" in feature_row
+    assert "Task 13 is the operator-directed duplication audit" in feature_row
+    assert "evidence collector and A2A are separate products" in feature_row
 
 
 def test_zed_session_load_seal_remains_historical_throughout_the_living_pool() -> None:

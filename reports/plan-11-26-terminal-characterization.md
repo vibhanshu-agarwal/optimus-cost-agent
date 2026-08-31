@@ -57,4 +57,32 @@ Harness-timeout p95 contribution: 59041.571 ms (8.8% of the including-timeouts p
 
 The Linux half remains scoped out because distro-native Redis/TimeSeries is not installed; installation is an operator authorization decision. No host-forwarded Windows Redis is treated as Linux evidence.
 
-Terminal execution is not authorized by this report. Operator cost approval is required before Step 4.
+## Shutdown authority and timeout attribution
+
+The authoritative shutdown repeatability characterization is the 25-repeat
+`task6_shutdown_group` tier: 15 passes, 10 timeouts, aggregate disposition
+`HARNESS_UNSTABLE`. The single green terminal row is execution evidence only; it is not a health
+signal and must not be cited as proof that the shutdown scenario is stable.
+
+Across the selected narrow and group generations, the 14 shutdown timeouts retain their per-row
+subjects rather than inheriting only the scenario-wide label:
+
+| Tier | Timeout | Subject | Last test node ID |
+| --- | ---: | --- | --- |
+| narrow | 2 | HARNESS | `test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register` |
+| narrow | 2 | UNRESOLVED | `test_shutdown_causes_repeat_100_with_control_allowlist` |
+| group | 8 | HARNESS | `test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register` |
+| group | 2 | UNRESOLVED | `test_shutdown_causes_repeat_100_with_control_allowlist` |
+| combined | 10 | HARNESS | audit-artifact derivation node |
+| combined | 4 | UNRESOLVED | production-close-probe node |
+
+The four `UNRESOLVED` rows remain product-or-harness indeterminate and are excluded from
+remediation ranking evidence. They do not prevent deterministic H5 source findings from being
+ranked on their independent source evidence. Scenario-level `HARNESS_UNSTABLE` precedence does not
+erase this per-row uncertainty and must not mask a future co-occurring `FLAKY` product result.
+
+`task5_cancellation_group` remains 24 pass / 1 fail and `FLAKY remains open`; this report does not
+claim that historical flake, or any other historical flake, is fixed.
+
+The authorized offline terminal pass completed in Task 11. Live execution remains unauthorized and
+all live rows remain `UNRUN`.

@@ -32,11 +32,11 @@ This report is deterministically regenerated from the canonical JSON artifact.
 | `CANONICAL_BYPASSED` | 4 |
 | `DUPLICATED` | 0 |
 | `CONTRADICTORY` | 4 |
-| `MISSING` | 8 |
+| `MISSING` | 10 |
 | `INTENTIONALLY_EXCEPTIONAL` | 1 |
 | `PROVISIONAL_OVERLAY` | 3 |
 | `NOT_PRESENT` | 1 |
-| `SUPERSEDED` | 0 |
+| `SUPERSEDED` | 2 |
 | `UNCLASSIFIED` | 0 |
 
 ## Discovered multipliers
@@ -465,7 +465,7 @@ Deferred work that becomes reachable after binding nomination:
 
 Observed Plan 11.7 head identities: `128af65c851bd9f6eeffe54b01484a7a5650163f`, `6208177b55237132c4087652de87c78f21159fb2`, `79cd37cf37b2740f7580b2ed3859c0401a47f6a4`, `9467df26603a88a4adce1057dea7725f925441f6`, `c26928673cf03759c509c982e1e7a355ee6e9f46`, `f6bd17069b906c74e7d6ba28ecd319354b5123b6`, `f8e7e06c9c59f3adf50527f757f2c58b9b83795f`, `fc80403060f578986c287686c27d935a8043dc5a`
 
-Task 0 intake digest: `3117b2cdbf2f88ec27cb40b2aa5d2464438f8510f804da566cb4a82cf3feba24`
+Task 0 intake digest: `5621e06caaa274c49887b53e63d48dcd5dd1cd94380c869b455ab86ba6e4b0cf`
 
 Ruling: Plan 11.7 has not nominated a binding integration candidate. The durable path is visible only in the accepted overlay, so H10 is PROVISIONAL_OVERLAY and stops before constant derivation, boundary schedules, Redis mutation, owner/revision races, and wall-clock recovery.
 
@@ -496,7 +496,11 @@ Ruling: Plan 11.7 has not nominated a binding integration candidate. The durable
 
 | ID | Classification | Baseline | Owner |
 |---|---|---|---|
+| `C15-MISSING-CLEAN-DISPOSITION-merged` | `MISSING` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |
+| `C15-MISSING-REDACTION-SINK-CLASS-merged` | `MISSING` | `merged` | P11-FEAT-ACP-RUNTIME-HARDENING |
+| `H1-SUPERSEDED-DECOMPOSED-LIFETIME-both-divergent` | `SUPERSEDED` | `both-divergent` | P11-FEAT-ACP-RUNTIME-HARDENING |
 | `H10-PROVISIONAL-DURABLE-SESSION-overlay` | `PROVISIONAL_OVERLAY` | `overlay` | P11-FEAT-ZED-RESUME |
+| `H2-SUPERSEDED-BY-H10-BINDING-GATE-overlay` | `SUPERSEDED` | `overlay` | P11-FEAT-ZED-RESUME |
 | `H3-TASK-ESCAPED_CHILD-both-aligned` | `CANONICAL_BYPASSED` | `both-aligned` | P11-FEAT-ACP-RUNTIME-HARDENING |
 | `H3-TASK-OWNED-both-aligned` | `CANONICAL` | `both-aligned` | P11-FEAT-ACP-RUNTIME-HARDENING |
 | `H3-TURN-CONTROL-both-aligned` | `CANONICAL` | `both-aligned` | P11-FEAT-ACP-RUNTIME-HARDENING |

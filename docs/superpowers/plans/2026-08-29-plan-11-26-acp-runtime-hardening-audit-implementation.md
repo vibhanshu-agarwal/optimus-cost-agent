@@ -872,6 +872,7 @@ accepted authority input; offline orchestration reads it but never rewrites it.
 - Modify: `reports/plan-11-26-acp-runtime-audit.json`
 - Modify: `reports/plan-11-26-acp-runtime-audit.md`
 - Modify: `reports/plan-11-26-terminal-characterization.md`
+- Modify: `reports/plan-11-26-baseline-intake.json`
 - Modify: `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md`
 - Modify: `tests/unit/docs/test_open_work_pool_hygiene.py`
 - Reviewer-owned only: `docs/superpowers/reviews/plan-11-26-review-checkpoints.md`
@@ -890,23 +891,31 @@ a health signal). It also preserves the operator-directed duplication audit as t
 sequenced after Task 12, including the evidence-collector/A2A product-separation exclusion; Task 12
 does not start that audit early.
 
-- [ ] **Step 1: Freeze the reviewed finding set.**
+**C22 correction:** The Task 0 register originally covered H1-H8 while the evidence-record set
+covered H3-H10. Task 12 extends the baseline-scope authority register to H1-H10, records explicit
+H1/H2 dispositions, and mechanically rejects any registered/evidenced scope gap. H9 remains
+`merged`; H10 remains `overlay`. The baseline intake is therefore an explicit Task 12 input/output.
+
+- [x] **Step 1: Freeze the reviewed finding set.**
 
   Every binding finding names classification, baseline, exact symbols, evidence IDs, impact, owner, and next gate. Every provisional/scope-out row names Plan 11.7 or another canonical owner. No finding contains proposed production code.
 
-- [ ] **Step 2: Group only independently schedulable remediation candidates.**
+- [x] **Step 2: Group only independently schedulable remediation candidates.**
 
   Separate candidates by contract and merge boundary. Assign no plan number until the backlog conflict check at actual pickup. Do not combine unrelated findings merely because this audit observed them together.
 
-- [ ] **Step 3: Write RED canonical-disposition tests.**
+- [x] **Step 3: Write RED canonical-disposition tests.**
 
   Extend `test_open_work_pool_hygiene.py` to require Plan 11.26's reviewed disposition, report links, open `P11-FEAT-ACP-RUNTIME-HARDENING` status, and one named owner/next gate per accepted candidate. Require no second open-work pool and no amendment file.
 
-- [ ] **Step 4: Update the canonical backlog only after reviewer rulings.**
+- [x] **Step 4: Record the accepted Task 12 custody without closing Plan 11.26.**
 
-  Change Plan 11.26 registry state to the reviewer-approved terminal state and archive gate, link the canonical JSON/Markdown/terminal reports, and add candidate custody beneath the existing feature entry. Keep `P11-FEAT-ACP-RUNTIME-HARDENING` open until all later remediations separately complete.
+  G6 accepted the Task 12 disposition and candidate custody. Keep the registry `Active`, point its
+  next gate at the additional same-plan Task 13 duplication audit, and do not mark Plan 11.26
+  terminal or archive-ready. Keep `P11-FEAT-ACP-RUNTIME-HARDENING` open until all later
+  remediations separately complete.
 
-- [ ] **Step 5: Run documentation freshness and full fitness review.**
+- [x] **Step 5: Run documentation freshness and full fitness review.**
 
   The reviewing agent audits backlog, roadmap, README, and every document whose current-state claims may have changed. Then run:
 
@@ -918,9 +927,12 @@ does not start that audit early.
   git diff --check
   ```
 
-- [ ] **Step 6: Obtain G6 disposition and separate commit authorization.**
+- [x] **Step 6: Obtain G6 disposition and separate commit authorization.**
 
-  The reviewer accepts or rejects each finding, scope-out, and candidate. A closing commit, push, PR, merge, archive move, evidence promotion, release action, or production-remediation plan each requires its own applicable authorization; none is implied by G6.
+  G6 accepted every Task 12 finding, scope-out, and candidate and separately authorized the Task 12
+  commit. Task 12 remains frozen while Task 13 proceeds under its own G7. Push, PR, merge, archive
+  movement, evidence promotion, release action, live execution, and production remediation remain
+  unauthorized.
 
 ## Review Gates
 
@@ -939,7 +951,7 @@ does not start that audit early.
 | Claim | Required evidence |
 |---|---|
 | Every applicable cross-cutting site is baseline-scoped and classified. | G1 inventory artifact, `test_derived_inventory_has_no_unclassified_sites`, and per-group inventories with `UNCLASSIFIED == 0`. |
-| Hypotheses are evidence-backed rather than invented canon. | H1-H8 records with exact symbols, contradicting paths, tests, baseline scope, and reviewer ruling; H4 is the accepted worked example. |
+| Hypotheses are evidence-backed rather than invented canon. | The authoritative H1-H10 scope register, H3-H10 evidence records, explicit H1/H2 dispositions, and their mechanical union check; H4 remains the accepted worked example. |
 | Plan 11.18 and delivery authority remain protected. | Green `tests/unit/acp/test_error_code_registry.py`, delivery predicates, and unchanged production files. |
 | Unknown prerequisites are resolved early or dependent evidence is truthfully scoped out. | Task 1 prerequisite report plus Task 3 qualification report and named owners. |
 | The audit uses an additional independent client or conformance harness without displacing acpx. | G3 report, exact package/source/build provenance, fixture result, and G5 real-comparison rows only when separately authorized. |

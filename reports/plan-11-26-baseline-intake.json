@@ -102,7 +102,9 @@
     "H5": "both-divergent",
     "H6": "merged",
     "H7": "merged",
-    "H8": "merged"
+    "H8": "merged",
+    "H9": "merged",
+    "H10": "overlay"
   },
   "binding_scope_out": {
     "owner": "P11-FEAT-ZED-RESUME",
