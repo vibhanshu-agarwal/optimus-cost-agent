@@ -81,7 +81,12 @@ def _git(root: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
 
 
-def _secret_scan_repository(tmp_path: Path, *, report_only: bool) -> Path:
+def _secret_scan_repository(
+    tmp_path: Path,
+    *,
+    report_only: bool,
+    utf8_only: bool = False,
+) -> Path:
     root = tmp_path / "repository"
     root.mkdir()
     _git(root, "init", "-q")
@@ -96,7 +101,8 @@ def _secret_scan_repository(tmp_path: Path, *, report_only: bool) -> Path:
     candidate = root / relative
     candidate.parent.mkdir(parents=True)
     canary = "AKIA" + "ABCDEFGHIJKLMNOP"
-    candidate.write_text(f"credential={canary}\n", encoding="utf-8")
+    prefix = "location=Łódź\n" if utf8_only else ""
+    candidate.write_text(f"{prefix}credential={canary}\n", encoding="utf-8")
     _git(root, "add", ".")
     return root
 
@@ -177,6 +183,20 @@ def test_detect_secrets_baseline_has_active_detectors_and_audited_entries():
     assert baseline["results"]
 
 
+def test_detect_secrets_baseline_is_repository_relative_and_posix_normalized() -> None:
+    baseline = json.loads((ROOT / ".secrets.baseline").read_text(encoding="utf-8"))
+    baseline_filter = next(
+        item
+        for item in baseline["filters_used"]
+        if item["path"] == "detect_secrets.filters.common.is_baseline_file"
+    )
+
+    assert baseline_filter["filename"] == ".secrets.baseline"
+    for path, findings in baseline["results"].items():
+        assert "\\" not in path
+        assert all(finding["filename"] == path for finding in findings)
+
+
 def test_secret_baseline_reconciles_to_reviewed_categories_and_high_signal_sites() -> None:
     baseline = json.loads((ROOT / ".secrets.baseline").read_text(encoding="utf-8"))
     dispositions = json.loads(SECRET_DISPOSITIONS.read_text(encoding="utf-8"))
@@ -193,7 +213,7 @@ def test_secret_baseline_reconciles_to_reviewed_categories_and_high_signal_sites
     detector_counts = Counter(row["detector"] for row in rows)
 
     assert dispositions["schema_version"] == "hardening-secret-scan-dispositions-v1"
-    assert dispositions["finding_count"] == len(rows) == 855
+    assert dispositions["finding_count"] == len(rows) == 863
     assert dispositions["baseline_file_exclusions"] == []
     assert {
         item["area"]: item["count"] for item in dispositions["categories"]
@@ -236,7 +256,11 @@ def test_secret_scan_hook_and_ci_use_distinct_fail_closed_venues() -> None:
     ci_hook = _local_hook("optimus-secret-scan-ci")
 
     assert shlex.split(str(hook["entry"])) == [
-        "detect-secrets-hook",
+        "python",
+        "-X",
+        "utf8",
+        "-m",
+        "detect_secrets.pre_commit_hook",
         "--baseline",
         ".secrets.baseline",
     ]
@@ -290,6 +314,18 @@ def test_ci_secret_scan_contract_rejects_scope_or_requiredness_degradation(
 
 def test_nonreport_canary_fails_closed_in_hook_and_ci(tmp_path: Path) -> None:
     root = _secret_scan_repository(tmp_path, report_only=False)
+
+    hook_result = _run_secret_hook(root, "optimus-secret-scan")
+    ci_result = _run_secret_hook(root, "optimus-secret-scan-ci")
+
+    assert hook_result.returncode != 0
+    assert "Secret Type:" in hook_result.stdout + hook_result.stderr
+    assert ci_result.returncode != 0
+    assert "Secret Type:" in ci_result.stdout + ci_result.stderr
+
+
+def test_secret_scan_reads_utf8_text_independently_of_platform_default(tmp_path: Path) -> None:
+    root = _secret_scan_repository(tmp_path, report_only=False, utf8_only=True)
 
     hook_result = _run_secret_hook(root, "optimus-secret-scan")
     ci_result = _run_secret_hook(root, "optimus-secret-scan-ci")

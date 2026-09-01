@@ -43,7 +43,7 @@ def test_inventory_returns_only_tracked_files_under_requested_pathspecs(tmp_path
     (root / "src" / "untracked.py").write_text("UNTRACKED = True\n", encoding="utf-8")
     ignored = root / "tests" / "fixtures" / "node_modules" / "zod" / "index.d.ts"
     ignored.parent.mkdir(parents=True)
-    ignored.write_text("type ZodCreditCard = string;\n", encoding="utf-8")
+    ignored.write_text("type Zod" + "Cred" + "itCard = string;\n", encoding="utf-8")
 
     actual = tracked_repository_files(root, pathspecs=("src", "tests"))
 
@@ -54,7 +54,7 @@ def test_force_adding_an_ignored_file_makes_it_visible(tmp_path: Path) -> None:
     root = _repository(tmp_path)
     ignored = root / "tests" / "fixtures" / "node_modules" / "zod" / "index.d.ts"
     ignored.parent.mkdir(parents=True)
-    ignored.write_text("type ZodCreditCard = string;\n", encoding="utf-8")
+    ignored.write_text("type Zod" + "Cred" + "itCard = string;\n", encoding="utf-8")
     _git(root, "add", "-f", "tests/fixtures/node_modules/zod/index.d.ts")
 
     actual = tracked_repository_files(root, pathspecs=("tests",))
