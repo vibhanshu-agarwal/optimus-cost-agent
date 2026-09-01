@@ -255,7 +255,7 @@ status hub from publishing dangling links to working documents.
 |---|---|---|---|---|
 | `HARDENING-TRACK-RUFF-LINT` | `hardening-ruff-lint-ratchet-implementation.md` | `Not drafted` | `HARDENING-ITEM-RUFF-LINT-RATCHET` | independently reviewed child plan |
 | `HARDENING-TRACK-RUFF-FORMAT` | `hardening-ruff-format-migration.md` | `Not drafted` | `HARDENING-ITEM-RUFF-FORMAT-MIGRATION` | independently reviewed child plan and branch-coordination window |
-| `HARDENING-TRACK-CI-GUARDRAILS` | [hardening-ci-guardrail-truthfulness-implementation.md](hardening-ci-guardrail-truthfulness-implementation.md) | `Active` | `HARDENING-ITEM-COVERAGE-SOURCE-SCOPE`, `HARDENING-ITEM-LOCKFILE-CI-ENFORCEMENT`, `HARDENING-ITEM-SECRET-SCAN-SCOPE`, and `HARDENING-ITEM-BANDIT-B310` | Task 1 review and operator authorization |
+| `HARDENING-TRACK-CI-GUARDRAILS` | [hardening-ci-guardrail-truthfulness-implementation.md](hardening-ci-guardrail-truthfulness-implementation.md) | `Active` | `HARDENING-ITEM-COVERAGE-SOURCE-SCOPE`, `HARDENING-ITEM-LOCKFILE-CI-ENFORCEMENT`, `HARDENING-ITEM-SECRET-SCAN-SCOPE`, and `HARDENING-ITEM-BANDIT-B310` | Task 2 review and operator authorization |
 | `HARDENING-TRACK-DEPENDENCY-WORKFLOW` | `hardening-dependency-workflow-security-implementation.md` | `Not drafted` | `HARDENING-ITEM-DEPENDENCY-CVE-SCAN` and `HARDENING-ITEM-WORKFLOW-LINT-SECURITY` | independently reviewed child plan |
 | `HARDENING-TRACK-TEST-DOUBLES` | `hardening-test-double-contracts-implementation.md` | `Not drafted` | `HARDENING-ITEM-AUTOSPEC-BOUNDARIES` | independently reviewed child plan |
 | `HARDENING-TRACK-STATIC-TYPING` | `hardening-static-type-checking-implementation.md` | `Not drafted` | `HARDENING-ITEM-MYPY-SRC-RATCHET` | independently reviewed child plan after targeted test-double contracts |
@@ -278,7 +278,7 @@ grant execution authority, and a child plan never edits its own row.
 |---|---|---|
 | Canonical Plan 11.26 runtime and duplication evidence | yes | accepted audit evidence and historical dispositions only; it authorizes no remediation |
 | Hardening sequencing and custody map | yes | this masterplan is the status authority for its 15 child plans through the promoted backlog row and hygiene tests |
-| CI guardrail child implementation plan | yes | Task 0 baseline is reviewer-accepted at `1ff7761`; Task 1 and every later task retain separate review, execution, and commit gates |
+| CI guardrail child implementation plan | yes | Task 0 baseline is reviewer-accepted at `1ff7761`; Task 1 locked synchronization is accepted at `82798bd`; Tasks 2-6 retain separate review, execution, and commit gates |
 | Other hardening child implementation plans | no | the remaining fourteen reserved child filenames are untracked and `Not drafted` |
 | Required CI and repository-wide secret scanning | yes | `clean-environment-recheck` and `verify` are required on `main`; CI scans all tracked text and local scanning excludes only the measured `reports/` venue |
 | New lint, type, dependency, five-package coverage, or B310 gate | no | those child tasks remain open and separately authorized; current CI still reports the existing narrow coverage command until the coverage task lands |

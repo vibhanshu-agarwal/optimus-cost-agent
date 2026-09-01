@@ -7,9 +7,9 @@
 
 > **Custody:** The hardening runtime-quality masterplan owns this child plan's
 > parent-level status; this plan owns only its task checkboxes and evidence gates.
-> Promotion grants no blanket implementation authority. Task 0 has its separately
-> recorded execution grant; Tasks 1-6 and every behavior-bearing commit retain their
-> own review and operator gates.
+> Promotion grants no blanket implementation authority. Task 0 and Task 1 have their
+> separately recorded execution and acceptance evidence; Tasks 2-6 and every remaining
+> behavior-bearing commit retain their own review and operator gates.
 
 **Goal:** Make four existing CI guardrails describe and enforce their real scope:
 locked dependency synchronization, all-production-package coverage with a monotonic
@@ -111,10 +111,10 @@ those remain separate operator decisions.
 | Governance | `HARDENING-FEAT-RUNTIME-QUALITY` and `HARDENING-TRACK-CI-GUARDRAILS` exist in their promoted authorities | yes | consolidated backlog and hardening masterplan | satisfied; no disposition required |
 | Scope | The four item identities above remain assigned only to this child filename | yes | hardening masterplan | satisfied; stop on any conflicting successor or duplicate custody |
 | Review | An independent reviewer accepts this complete child plan | yes | reviewer | satisfied; review checkpoints C-CG1 through C-CG9 are accepted, while later task gates remain independent |
-| Promotion | A promotion-only change creates the tracked child plan, changes the parent row from plain inline code to a valid relative link, and records the operator-authorized pickup | yes | masterplan owner and operator | satisfied by the paired parent-owned promotion; Task 0 is reviewer-accepted and later task checkboxes remain open |
+| Promotion | A promotion-only change creates the tracked child plan, changes the parent row from plain inline code to a valid relative link, and records the operator-authorized pickup | yes | masterplan owner and operator | satisfied by the paired parent-owned promotion; Task 0 and Task 1 are reviewer-accepted, while Tasks 2-6 remain open |
 | Measurement execution | The operator explicitly authorizes review-time Task 0 evidence collection without tracked-file changes | yes | operator | accepted at `1ff7761`; the independently rerun full unit suite matched at 3,649 passed and 27 skipped |
 | Production authority | Task 5 may change all five URL-opening paths through one shared scheme predicate | no | operator | merely unauthorized: C-CG1 covers only the first three production files; `src/optimus_gateway/tool_provider_http.py`, `src/optimus_security/url_schemes.py`, Task 5 execution, and its commit require new grants |
-| Task and commit execution | The operator separately authorizes each behavior-bearing task and each commit | yes | operator | C-CG2 through C-CG9 and Task 0 measurement have bounded grants only; Tasks 1-6, Task 5 production execution, their commits, merge, and live rows remain unauthorized |
+| Task and commit execution | The operator separately authorizes each behavior-bearing task and each commit | yes | operator | C-CG2 through C-CG9, Task 0 measurement, and Task 1 commit `82798bd` have bounded grants and accepted evidence; Tasks 2-6, Task 5 production execution, their commits, merge, and live rows remain unauthorized |
 | C-CG2 repair | The checked-in full unit suite passes after the logging-manifest and tracked-file-walker regressions are repaired | yes | prerequisite repair worker and reviewer | accepted in `6dd5a54`; subsequent local and CI full-suite gates are green |
 | Baseline | A clean all-five-package coverage run completes and its exact branch-aware totals are reviewer-accepted | yes | Task 0 worker and reviewer | accepted at `1ff7761`: observed `optimus 86.42`, `optimus_gateway 87.82`, `optimus_security 96.95`, `evidence_handoff 78.44`, `evidence_handoff_runtime 57.39`, aggregate `82.10`; initial floors are `80.00`, `87.82`, `96.95`, `78.44`, `57.39`, and aggregate `80.00` |
 | Lock | `uv lock --check` succeeds at the pickup commit | yes | repository dependency owner | satisfied at draft time; re-run at every pickup |
@@ -279,7 +279,7 @@ task changes no `src/` file.
 - Consumes: callers filter the returned tracked paths by suffix or owning subtree;
   callers never add ignored or untracked filesystem entries back into the inventory.
 
-- [ ] **Step 1: Reproduce both inherited failures without changing files**
+- [x] **Step 1: Reproduce both inherited failures without changing files**
 
 Run:
 
@@ -294,7 +294,7 @@ reports exactly
 `UNCLASSIFIED_SINK: tools.plan1126_runtime_audit.cancellation:_canonical_digest:json_serialization`.
 If either identity differs, stop and amend the plan from the new evidence.
 
-- [ ] **Step 2: Write RED tests for tracked-file enumeration**
+- [x] **Step 2: Write RED tests for tracked-file enumeration**
 
 In a temporary Git repository, test all of these two-sided cases:
 
@@ -309,14 +309,14 @@ In a temporary Git repository, test all of these two-sided cases:
 
 Run the new test module before implementation. Expected: import/contract failure.
 
-- [ ] **Step 3: Implement the minimum shared tracked-file enumerator**
+- [x] **Step 3: Implement the minimum shared tracked-file enumerator**
 
 Create only the interface above. Decode the NUL-delimited result explicitly, normalize
 separators to POSIX repository-relative names, prove every resolved path remains under
 `project_root`, and return deterministic sorted paths. Do not add an option that
 includes `--others`, bypasses Git, or accepts a caller-supplied fallback inventory.
 
-- [ ] **Step 4: Close the measured C29 class, not only the Zod instance**
+- [x] **Step 4: Close the measured C29 class, not only the Zod instance**
 
 Replace repository-truth `rglob()`/`glob()` scans in the files listed above with the
 shared tracked inventory. Preserve each existing subtree and suffix scope.
@@ -337,7 +337,7 @@ The deliberate Plan-root `glob("*.md")` checks in
 an untracked child-plan file and fail before it can be committed. Any new or
 unclassified recursive walker fails the inventory test.
 
-- [ ] **Step 5: Register the digest-only surface instead of excluding audit tooling**
+- [x] **Step 5: Register the digest-only surface instead of excluding audit tooling**
 
 Add exactly this manifest classification:
 
@@ -357,7 +357,7 @@ value changes the digest, and the helper returns only the digest. Do not scope
 `tools/plan1126_runtime_audit` out of discovery: the existing manifest already governs
 tool sinks, and a package exclusion would hide future real writes or exports.
 
-- [ ] **Step 6: Run focused GREEN and the walker mutation proof**
+- [x] **Step 6: Run focused GREEN and the walker mutation proof**
 
 Run the helper tests, scanner-inventory tests, the two previously failing nodes, the
 logging-surface verifier module, the cancellation digest test, and the offline harness
@@ -365,7 +365,7 @@ fingerprint tests. Then create an ignored Zod-like canary only inside a temporar
 fixture: it must be invisible before `git add -f` and visible afterwards. Never create
 the canary in the shared worktree.
 
-- [ ] **Step 7: Run the mandatory full unit gate**
+- [x] **Step 7: Run the mandatory full unit gate**
 
 Run:
 
@@ -377,7 +377,7 @@ Expected: exit zero with no failed or error count. Record the full pass/skip cou
 duration in the ignored checkpoint log. A focused selector is supplementary evidence
 only. Also prove `git diff --name-only 3eff64b...HEAD -- src` is empty.
 
-- [ ] **Step 8: Review and separately authorized prerequisite commit**
+- [x] **Step 8: Review and separately authorized prerequisite commit**
 
 The reviewer checks the complete walker inventory and every exception rationale, the
 manifest classification, full-suite output, tracked file list, and empty `src/` diff.
@@ -496,7 +496,7 @@ authorized documentation reconciliation.
 - Consumes: the existing `uv.lock` and `pyproject.toml`
 - Produces: the exact CI argv `uv sync --locked --all-extras`
 
-- [ ] **Step 1: Add the failing workflow contract test**
+- [x] **Step 1: Add the failing workflow contract test**
 
 Parse the workflow with `yaml.safe_load`, locate the unique step named
 `Install dependencies`, and assert its tokenized command is exactly:
@@ -508,7 +508,7 @@ assert shlex.split(step["run"]) == ["uv", "sync", "--locked", "--all-extras"]
 Also assert there is exactly one dependency-install step so a second permissive sync
 cannot coexist with the locked one.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run:
 
@@ -518,7 +518,7 @@ uv run --frozen pytest tests/unit/guardrails/test_ci_parity.py::test_ci_dependen
 
 Expected: FAIL because `--locked` is absent.
 
-- [ ] **Step 3: Apply the minimum workflow change**
+- [x] **Step 3: Apply the minimum workflow change**
 
 Change only the command to:
 
@@ -527,7 +527,7 @@ Change only the command to:
   run: uv sync --locked --all-extras
 ```
 
-- [ ] **Step 4: Verify green and the real current lock**
+- [x] **Step 4: Verify green and the real current lock**
 
 Run:
 
@@ -541,7 +541,7 @@ git diff --check
 
 Expected: all commands exit zero and neither `pyproject.toml` nor `uv.lock` changes.
 
-- [ ] **Step 5: Review and separately authorized commit**
+- [x] **Step 5: Review and separately authorized commit**
 
 Run `uv run --frozen pytest tests/unit -q` and state its full pass/skip counts and
 duration in the gate report; the focused output above cannot substitute for it. Relay
