@@ -14,7 +14,8 @@
 **Goal:** Make four existing CI guardrails describe and enforce their real scope:
 locked dependency synchronization, all-production-package coverage with a monotonic
 path to 80%, repository-wide tracked-text secret scanning, and scheme-safe handling at
-all three production `urlopen()` sites.
+all five reachable production `urlopen()` paths, including the two default-callable
+paths outside Bandit's syntactic detection.
 
 **Architecture:** Keep one detector configuration and one audited baseline for secret
 scanning, with separate fail-closed venue inventories: pre-commit scans tracked text
@@ -23,8 +24,11 @@ Coverage is a
 compound gate: one run measures all five configured production packages, a
 standard-library verifier preserves the existing 80% `optimus` floor, and accepted
 transitional floors for the four newly measured packages and the aggregate may only
-rise until all reach 80%. URL scheme policy stays at each existing ownership boundary;
-this plan does not pre-empt the separately accepted domain-policy duplication work.
+rise until all reach 80%. One minimal shared predicate supplies scheme proof at all
+five URL-opening boundaries, while each owner retains its existing raise-or-false
+behavior. A separate exact inventory detects direct calls and default-callable
+indirection. The helper does not add host/domain policy or pre-empt the separately
+accepted domain-policy duplication work.
 
 **Tech Stack:** Python 3.14, uv and `uv.lock`, GitHub Actions, pre-commit,
 pytest/pytest-cov/coverage.py branch coverage, stdlib `json`, `tomllib`, `decimal`,
@@ -50,6 +54,13 @@ validate the two-venue secret-scan baseline, remove platform-dependent scanner d
 declare the 37 binding-dependent tests as owner-attributed `UNRUN` only when their Git
 object is unavailable, and require both CI jobs on `main`. These are child-plan
 prerequisites and evidence, not second backlog features or new masterplan status rows.
+
+`C-CG10` corrects the security inventory without falsifying Bandit's result: B310 still
+reports exactly three direct-call sites, but two reachable production paths call the
+real stdlib opener through default `urlopen_fn` parameters. The accepted Task 5 design
+therefore covers all five paths through one shared scheme predicate plus a non-Bandit
+inventory test. This design correction grants no production or Task 5 execution
+authority.
 
 It does not implement dependency CVE scanning, Dependabot, actionlint, zizmor, Ruff
 rule widening, Ruff formatting, Mypy, audit-tool typing, general URL-policy
@@ -78,6 +89,13 @@ port, normalization, retry, timeout, exception-selection, or refactoring. Existi
 loopback and provider-boundary checks remain in force but are not widened by this
 child.
 
+C-CG10 widens the **planned** Task 5 boundary to two additional reachable calls in
+`src/optimus_gateway/tool_provider_http.py` and to one minimal shared scheme predicate
+owned by `src/optimus_security/url_schemes.py`. Neither file is covered by C-CG1. The
+four-file production allowlist above remains binding until the operator separately
+authorizes both added files and the exact shared-predicate semantics. Task 5 may not
+start, and no production diff may include either file, under the current grants.
+
 At every gate, the worker records `git diff --name-only 3eff64b...HEAD -- src` and
 reviews `git diff 3eff64b...HEAD --` for the four allowed files. The name set must be a
 subset of the allowlist. A production hunk must be either the accepted C-CG4 drain or
@@ -93,16 +111,16 @@ those remain separate operator decisions.
 | Governance | `HARDENING-FEAT-RUNTIME-QUALITY` and `HARDENING-TRACK-CI-GUARDRAILS` exist in their promoted authorities | yes | consolidated backlog and hardening masterplan | satisfied; no disposition required |
 | Scope | The four item identities above remain assigned only to this child filename | yes | hardening masterplan | satisfied; stop on any conflicting successor or duplicate custody |
 | Review | An independent reviewer accepts this complete child plan | yes | reviewer | satisfied; review checkpoints C-CG1 through C-CG9 are accepted, while later task gates remain independent |
-| Promotion | A promotion-only change creates the tracked child plan, changes the parent row from plain inline code to a valid relative link, and records the operator-authorized pickup | yes | masterplan owner and operator | satisfied by the paired parent-owned promotion; task checkboxes remain open for reviewer closure |
-| Measurement execution | The operator explicitly authorizes review-time Task 0 evidence collection without tracked-file changes | yes | operator | satisfied; evidence remains provisional until it is rerun at the promoted `Active` pickup |
-| Production authority | Production edits are limited to the accepted C-CG4 request-body drain and disallowed-scheme rejection before `urlopen()` in the three C-CG1 files | yes | operator | C-CG4 is accepted at `e3c52f1`; C-CG1 remains only a file-and-meaning scope grant and does not authorize Task 5 execution |
+| Promotion | A promotion-only change creates the tracked child plan, changes the parent row from plain inline code to a valid relative link, and records the operator-authorized pickup | yes | masterplan owner and operator | satisfied by the paired parent-owned promotion; Task 0 is reviewer-accepted and later task checkboxes remain open |
+| Measurement execution | The operator explicitly authorizes review-time Task 0 evidence collection without tracked-file changes | yes | operator | accepted at `1ff7761`; the independently rerun full unit suite matched at 3,649 passed and 27 skipped |
+| Production authority | Task 5 may change all five URL-opening paths through one shared scheme predicate | no | operator | merely unauthorized: C-CG1 covers only the first three production files; `src/optimus_gateway/tool_provider_http.py`, `src/optimus_security/url_schemes.py`, Task 5 execution, and its commit require new grants |
 | Task and commit execution | The operator separately authorizes each behavior-bearing task and each commit | yes | operator | C-CG2 through C-CG9 and Task 0 measurement have bounded grants only; Tasks 1-6, Task 5 production execution, their commits, merge, and live rows remain unauthorized |
 | C-CG2 repair | The checked-in full unit suite passes after the logging-manifest and tracked-file-walker regressions are repaired | yes | prerequisite repair worker and reviewer | accepted in `6dd5a54`; subsequent local and CI full-suite gates are green |
-| Baseline | A clean all-five-package coverage run completes and its exact branch-aware totals are reviewer-accepted | yes | Task 0 worker and reviewer | accepted provisional values are `optimus 86.53`, `optimus_gateway 87.82`, `optimus_security 96.95`, `evidence_handoff 78.44`, `evidence_handoff_runtime 57.39`, and aggregate `82.18`; Task 0 freezes them only after the post-promotion rerun |
+| Baseline | A clean all-five-package coverage run completes and its exact branch-aware totals are reviewer-accepted | yes | Task 0 worker and reviewer | accepted at `1ff7761`: observed `optimus 86.42`, `optimus_gateway 87.82`, `optimus_security 96.95`, `evidence_handoff 78.44`, `evidence_handoff_runtime 57.39`, aggregate `82.10`; initial floors are `80.00`, `87.82`, `96.95`, `78.44`, `57.39`, and aggregate `80.00` |
 | Lock | `uv lock --check` succeeds at the pickup commit | yes | repository dependency owner | satisfied at draft time; re-run at every pickup |
 | Secret scope | The all-tracked-text scan completes within the accepted CI time budget and has no unaudited finding | yes | Task 0 worker and security reviewer | 863 exact baseline entries are dispositioned with zero wildcard exclusions; local excludes only `reports/`, CI includes it, and Linux CI is green |
 | Required CI | Both merge-gating contexts execute on every pull request and are required on `main` | yes | repository administrator | branch protection independently reads back `clean-environment-recheck` and `verify`, `strict: false`, with no path filter or review lockout |
-| Security | The B310 inventory still contains exactly the three production sites named below | yes | Task 0 worker and security reviewer | satisfied at draft time; any added or removed site requires a reviewed plan amendment |
+| Security | The Bandit B310 inventory still contains exactly the three direct-call production sites named below; it is not the complete runtime `urlopen` inventory | yes | Task 0 worker and security reviewer | accepted at Task 0; C-CG10 separately proves five reachable paths because two default-`urlopen_fn` calls are invisible to Bandit, and Task 5 is widened without gaining execution authority |
 | Live systems | Redis, Zed, Gateway/provider calls, paid calls, OS credentials, and evidence promotion are unnecessary | yes | plan boundary | satisfied; this plan is offline-only |
 
 ## Global constraints
@@ -115,13 +133,14 @@ those remain separate operator decisions.
   `uv run --frozen pytest tests/unit -q` with no node-id, module, package, or keyword
   selector. The gate report states the full pass/fail/skip counts and exact command.
   Focused tests may run first for diagnosis, but never substitute for this command.
-- A review-time Task 0 run may collect provisional evidence only because the operator
-  authorized it explicitly. It changes no tracked file, closes no checkbox, and does
-  not satisfy parent-state prerequisites. Before Task 0 evidence is accepted as the
-  frozen implementation baseline, the masterplan owner records the separately
-  authorized pickup and the worker reruns every Task 0 command against that tree. If
-  an external gate blocks progress, only the parent owner changes the parent row;
-  this child plan never edits or self-declares its own parent-owned state.
+- Task 0 measurement changes no tracked file and produces no implementation or
+  evidence commit. Its accepted task-status checkboxes close only in this separately
+  authorized documentation reconciliation after the reviewer rerun. Before Task 0
+  evidence is accepted as the frozen implementation baseline, the masterplan owner
+  records the separately authorized pickup and the worker reruns every Task 0 command
+  against that tree. If an external gate blocks progress, only the parent owner
+  changes the parent row; this child plan never edits or self-declares its own
+  parent-owned state.
 - Before every task commit run the task's focused tests, Ruff on changed Python,
   `git diff --check`, and `git status --short`. Stage only the files named by that task.
 - Never reduce `[tool.coverage.report] fail_under = 80`, remove branch coverage, or
@@ -160,16 +179,19 @@ those remain separate operator decisions.
   baseline entry blocks the task until the security reviewer dispositions it.
 - Re-enable B310 globally by removing only `B310` from `[tool.bandit].skips`. Preserve
   the existing dispositions of B101, B105, B404, and B603.
-- Each production `urlopen()` site must have a local supported-scheme proof before a
-  site-local `# nosec B310` rationale. A suppression without the adjacent negative
-  test is forbidden.
+- Every reachable production URL-opening path, including calls through a default
+  `urlopen_fn`, must invoke the shared supported-scheme predicate before I/O. Each of
+  the three Bandit-visible direct calls also requires a site-local `# nosec B310`
+  rationale. A suppression or indirection without the adjacent negative test is
+  forbidden.
 - Gateway-to-provider traffic requires the `https` scheme. The local
   Optimus-to-Gateway and Phoenix-health paths permit only the `http` and `https`
   schemes. `file`, `ftp`, and schemeless values fail before `urlopen`. Existing host
   policy is preserved but is outside this plan's production-change authority.
-- Do not introduce a new shared URL-policy module in this plan. The accepted
-  `T13-CAND-DOMAIN-HTTPS` work owns later consolidation; this task adds only the local
-  proof needed to make B310 truthful now.
+- C-CG10 supersedes the earlier no-shared-helper restriction only for a minimal pure
+  scheme predicate in `optimus_security`. It must not normalize URLs or decide host,
+  userinfo, path, port, domain, retry, or authorization policy. The accepted
+  `T13-CAND-DOMAIN-HTTPS` work retains ownership of broader policy consolidation.
 - No task may change product protocol schemas, retry behavior, timeouts, provider
   selection, authorization semantics, telemetry, dependencies, or `uv.lock`.
 - No task may push, open a PR, merge, delete worktrees/branches, or rewrite history.
@@ -205,9 +227,13 @@ those remain separate operator decisions.
 | `src/optimus/gateway/client.py` | Existing local Optimus-to-Gateway URL boundary and B310 site at `UrllibGatewayTransport.post_json` |
 | `src/optimus_gateway/upstream_client.py` | HTTPS validation at the provider-client construction boundary and B310 site in `_urlopen_json` |
 | `src/optimus/acp/local_infra.py` | Loopback HTTP(S) validation for Phoenix health and its B310 site |
+| `src/optimus_gateway/tool_provider_http.py` | Two reachable provider HTTP paths that call the stdlib opener through default `urlopen_fn` parameters and are invisible to B310 |
+| `src/optimus_security/url_schemes.py` | Proposed minimal shared scheme predicate for all five URL-opening paths; requires a new production grant before creation |
 | `tests/unit/gateway/test_client.py` | Local Gateway scheme/host rejection before transport I/O |
 | `tests/unit/optimus_gateway/test_upstream_retry.py` | Provider-base scheme rejection without altering retry behavior |
+| `tests/unit/optimus_gateway/test_tool_providers.py` | Negative scheme cases for both callable-indirection provider paths without weakening retry or error sanitization |
 | `tests/unit/acp/test_local_infra.py` | Phoenix disallowed-scheme rejection before the existing health request |
+| `tests/unit/optimus_security/test_url_schemes.py` | Shared predicate truth table without host, normalization, or network behavior |
 | `reports/hardening-ci-guardrail-truthfulness-release.md` | Sanitized final command evidence, accepted floors, timings, and remaining gap to 80% |
 
 ### Prerequisite Task C-CG2: Restore full-suite truth before Task 0
@@ -366,14 +392,15 @@ tree and separately authorizes its post-repair baseline run.
 
 ### Task 0: Freeze pickup baselines without changing tracked files
 
-Task 0 changes no tracked file and has no commit. It establishes the exact inputs that
-the later coverage and secret-scan tasks consume. The review-time measurements remain
-provisional: leave all Task 0 checkboxes open until the reviewer accepts the complete
-post-promotion rerun. The frozen rerun requires the accepted prerequisite commits, a
-green full `tests/unit` gate, both required CI contexts green, and the parent-owned
-pickup recorded in the masterplan.
+Task 0 measurement changes no tracked file and creates no implementation or evidence
+commit. It establishes the exact inputs that the later coverage and secret-scan tasks
+consume. After the complete post-promotion rerun is independently accepted, its
+checkboxes close only through a separately authorized documentation reconciliation.
+The frozen rerun requires the accepted prerequisite commits, a green full
+`tests/unit` gate, both required CI contexts green, and the parent-owned pickup
+recorded in the masterplan.
 
-- [ ] **Step 1: Prove branch, authority, and scope before measurement**
+- [x] **Step 1: Prove branch, authority, and scope before measurement**
 
 Run:
 
@@ -387,8 +414,8 @@ rg -n "urlopen" src/optimus src/optimus_gateway src/optimus_security src/evidenc
 ```
 
 Expected at the promoted pickup: the parent row links this tracked child plan, the four
-items occur only under this track, the lock is current, and production B310 scope is
-exactly:
+items occur only under this track, the lock is current, and Bandit's production B310
+inventory is exactly:
 
 ```text
 src/optimus/gateway/client.py: UrllibGatewayTransport.post_json
@@ -396,10 +423,14 @@ src/optimus_gateway/upstream_client.py: _urlopen_json
 src/optimus/acp/local_infra.py: _phoenix_health_ready
 ```
 
-The parent-owned row must name Task 0 post-promotion baseline acceptance as its next
-gate. The child plan contains no plan-level status declaration of its own.
+These are the three direct calls Bandit can detect, not the complete runtime inventory.
+C-CG10 separately records two reachable calls through default `urlopen_fn` parameters.
+At pickup, the parent-owned row names Task 0 post-promotion baseline acceptance as its
+next gate. After reviewer acceptance, the parent-owned next gate becomes Task 1 review
+and operator authorization. The child plan contains no plan-level status declaration
+of its own.
 
-- [ ] **Step 2: Prove the full unit suite is green, then measure coverage on a green suite**
+- [x] **Step 2: Prove the full unit suite is green, then measure coverage on a green suite**
 
 Run from a clean worktree:
 
@@ -415,7 +446,7 @@ failure is rejected even when the JSON is readable. A timeout, interruption, mis
 package, partial progress bar, or red suite is not a baseline and blocks the coverage
 tasks.
 
-- [ ] **Step 3: Derive floors independently and record them only in the ignored checkpoint**
+- [x] **Step 3: Derive floors independently and record them only in the ignored checkpoint**
 
 For each package and the aggregate, compute the branch-aware percentage with
 `Decimal`, then round down to two decimal places. The accepted initial floors are:
@@ -429,23 +460,29 @@ plan cannot preserve it by policy alone. If the aggregate is already at least
 `80.00`, set every aggregate target/floor to `80.00`; do not create unnecessary
 transition machinery.
 
-- [ ] **Step 4: Measure all-tracked-text secret scanning after removing duplicate `src` input in a temporary copy**
+- [x] **Step 4: Measure both tracked-text secret-scan venues from an isolated configuration**
 
-Copy `.pre-commit-config.yaml` to an isolated temporary directory, remove the trailing
-`src` positional argument from only the `optimus-secret-scan` entry, and run that
-temporary configuration with `--all-files`. Record elapsed time, selected file count,
-and finding count. Do not edit or stage the repository configuration in Task 0.
+Copy `.pre-commit-config.yaml` to an isolated same-drive temporary directory and prove
+it is byte-identical. C-CG6 already removed the obsolete trailing `src` argument; do
+not recreate a fake mutation. Run both `optimus-secret-scan --all-files` and the manual
+`optimus-secret-scan-ci --all-files --hook-stage manual` from the temporary
+configuration. Record elapsed time, selected file count, finding count, and the exact
+CI-minus-local `reports/` delta. Do not edit or stage repository configuration in
+Task 0.
 
 Expected: zero unaudited findings. A finding blocks Task 2 for security disposition.
 The reviewer must also accept the measured time budget before Task 2 begins.
 
-- [ ] **Step 5: Obtain reviewer acceptance of the Task 0 checkpoint**
+- [x] **Step 5: Obtain reviewer acceptance of the Task 0 checkpoint**
 
 Record the pickup commit, exact full-unit and coverage-run test counts, confirmation
 that both runs were green, five package totals, aggregate total, derived floors,
-secret-scan duration/scope, the three B310 sites, and `uv lock --check` result in the
+secret-scan duration/scope, the three Bandit-visible B310 sites, the C-CG10 five-path
+correction, and `uv lock --check` result in the
 ignored checkpoint. The reviewer reruns `uv run --frozen pytest tests/unit -q` rather
-than a selector before accepting the baseline. Stop. There is no Task 0 commit.
+than a selector before accepting the baseline. Stop. There is no Task 0 implementation
+or evidence commit; accepted checkbox closure occurs only through the separately
+authorized documentation reconciliation.
 
 ### Task 1: Make dependency synchronization fail on lock drift
 
@@ -878,65 +915,114 @@ coverage tranches derived from the accepted Task 4 report. No executor may inven
 open-ended “add tests until green” work from this document, and the parent cannot mark
 this child `Complete` merely because the truthful ratchet is installed.
 
-### Task 5: Re-enable B310 with local scheme proofs at all three sites
+### Task 5: Re-enable B310 and guard all five reachable URL-opening paths
+
+C-CG10 expands the reviewed **design scope**, not authority. Task 5 remains
+unauthorized. Before any step begins, the operator must separately authorize Task 5
+execution and extend the production file-and-meaning grant to
+`src/optimus_gateway/tool_provider_http.py` and
+`src/optimus_security/url_schemes.py`. The existing C-CG1 grant reaches only the first
+three production files below.
 
 **Files:**
 
 - Modify: `pyproject.toml`
+- Create: `src/optimus_security/url_schemes.py`
 - Modify: `src/optimus/gateway/client.py`
 - Modify: `src/optimus_gateway/upstream_client.py`
 - Modify: `src/optimus/acp/local_infra.py`
+- Modify: `src/optimus_gateway/tool_provider_http.py`
+- Create: `tests/unit/optimus_security/test_url_schemes.py`
 - Modify: `tests/unit/gateway/test_client.py`
 - Modify: `tests/unit/optimus_gateway/test_upstream_retry.py`
 - Modify: `tests/unit/acp/test_local_infra.py`
+- Modify: `tests/unit/optimus_gateway/test_tool_providers.py`
 - Modify: `tests/unit/guardrails/test_ci_parity.py`
 
 **Interfaces:**
 
-- Consumes: existing boundary validation, `UrllibOpenAICompatibleClient`
-  construction, `_phoenix_health_ready`, and Bandit
-- Produces: scheme rejection before every production `urlopen()` plus exactly three
-  reviewed local `# nosec B310` rationales
+- Produces the pure shared predicate
+  `url_uses_allowed_scheme(value: str, *, allowed_schemes: frozenset[str]) -> bool`.
+  It parses only the scheme and performs no I/O, normalization, host, userinfo, path,
+  port, domain, retry, or authorization decision.
+- Consumes: `GatewayRequest.url`, `UrllibOpenAICompatibleClient` construction,
+  `Request.full_url` in `_urlopen_json`, `_phoenix_health_ready`, `Request.full_url`
+  in `request_json` and `request_bytes`, and Bandit.
+- Produces: scheme rejection before all five reachable production opening paths,
+  exactly three reviewed direct-call `# nosec B310` rationales, and an independent
+  exact inventory covering both direct calls and default-callable indirection.
 
-- [ ] **Step 1: Add failing agent-to-Gateway tests**
+- [ ] **Step 1: Add a failing five-path inventory contract**
+
+Extend the guardrail tests with an AST inventory whose stable keys are
+`relative module:function:opener`. It must discover exactly:
+
+1. `optimus.gateway.client:UrllibGatewayTransport.post_json:urlopen`;
+2. `optimus_gateway.upstream_client:_urlopen_json:urlopen`;
+3. `optimus.acp.local_infra:_phoenix_health_ready:urllib.request.urlopen`;
+4. `optimus_gateway.tool_provider_http:request_json:urlopen_fn`; and
+5. `optimus_gateway.tool_provider_http:request_bytes:urlopen_fn`.
+
+Discovery must resolve parameters whose default is the imported stdlib `urlopen`; a
+receiver-name-only match is forbidden. Assert that every discovered owner invokes the
+shared scheme predicate before its opener. Before implementation, discovery already
+finds five but the guard assertion fails. Adding, removing, renaming, or bypassing one
+path must fail the inventory.
+
+- [ ] **Step 2: Add failing shared-predicate and direct-boundary tests**
+
+Add a truth table for the shared predicate: `http` and `https` are selectable by the
+caller; `file`, `ftp`, empty, and schemeless values are rejected; case handling follows
+`urllib.parse` without normalizing or rewriting the original URL.
 
 Add a parameterized test proving `file://`, `ftp://`, and schemeless
 `GatewayRequest.url` values are rejected by `UrllibGatewayTransport.post_json` before
 the monkeypatched `urlopen` is called. Existing HTTP and HTTPS requests retain their
 current behavior; do not add host or userinfo rejection in this task.
 
-- [ ] **Step 2: Add failing provider-base tests**
-
 Construct `UrllibOpenAICompatibleClient` with `file://`, `ftp://`, `http://`, and
 schemeless base URLs. Each must raise `ValueError` at construction.
 `https://openrouter.ai/api/v1` remains accepted, and existing retry tests must observe
 unchanged attempt counts and exception types. Do not add host or userinfo rejection.
-
-- [ ] **Step 3: Add failing Phoenix-health tests**
+Also call `_urlopen_json` with unsafe `Request.full_url` values and prove its
+monkeypatched opener is not reached; constructor validation alone is not the
+mechanical call-site proof.
 
 Call `_phoenix_health_ready` with `file://`, `ftp://`, and schemeless URLs. Each
 returns `False` without calling the monkeypatched `urllib.request.urlopen`. Existing
 HTTP(S) behavior remains unchanged; do not widen host or userinfo policy here.
 
+- [ ] **Step 3: Add failing callable-indirection tests**
+
+Call both `request_json` and `request_bytes` with `Request` objects using `file://`,
+`ftp://`, `http://`, and schemeless URLs. Each path rejects before the injected opener
+is called; Gateway-to-provider traffic accepts only `https`. Existing HTTPS parsing,
+retry counts, error sanitization, and return values remain unchanged.
+
 - [ ] **Step 4: Run RED**
 
-Run the new tests individually. Expected: each unsafe direct-boundary case currently
-reaches the `urlopen` double or constructs successfully, demonstrating the missing
-local proof.
+Run the new tests individually. Expected: the shared-predicate import/contract and
+five-path guard assertion fail; every unsafe boundary either reaches its opener double
+or constructs successfully. Confirm the failure identities before implementation.
 
-- [ ] **Step 5: Add the minimum local validators**
+- [ ] **Step 5: Add the minimum shared scheme predicate and route all five paths through it**
 
-- In `UrllibGatewayTransport.post_json`, parse `request.url` and require the `http` or
-  `https` scheme before constructing/opening the request. Raise `ValueError` before
-  I/O for any other or missing scheme.
+Create only the pure predicate above in `optimus_security`. Use it at all five owners:
+
+- In `UrllibGatewayTransport.post_json`, require the `http` or `https` scheme before
+  constructing/opening the request. Raise `ValueError` before I/O for any other or
+  missing scheme.
 - In `UrllibOpenAICompatibleClient.__init__`, require the `https` scheme before
   storing the existing stripped base URL. Do not add normalization or change retry
-  code.
+  code. `_urlopen_json` also checks `request.full_url` immediately before I/O so the
+  opener-owning function is mechanically guarded rather than relying only on object
+  provenance.
 - In `_phoenix_health_ready`, require the `http` or `https` scheme and return `False`
   before I/O for any other or missing scheme.
+- In `request_json` and `request_bytes`, require `https` from `request.full_url`
+  before invoking `urlopen_fn`. Preserve injection as the test seam.
 
-Use local private helpers in the owning modules. Do not create a shared URL-policy
-module or alter tool-provider URL policy.
+Do not duplicate parsing helpers or add any broader URL policy.
 
 - [ ] **Step 6: Add exactly three local Bandit dispositions and enable B310**
 
@@ -948,26 +1034,28 @@ skips = ["B101", "B105", "B404", "B603"]
 ```
 
 Add a guardrail test that parses this list and asserts B310 is absent while those four
-existing skips remain exactly present. Add an AST/text inventory assertion that the
-three production `urlopen` sites are the only B310 suppressions and every one contains
-the local rationale marker.
+existing skips remain exactly present. The five-path inventory asserts that the three
+direct-call sites are the only B310 suppressions, every suppression contains the local
+rationale marker, and both default-callable sites remain guarded despite being
+invisible to Bandit.
 
 - [ ] **Step 7: Verify Bandit and behavior**
 
 Run:
 
 ```text
-uv run --frozen pytest tests/unit/gateway/test_client.py tests/unit/optimus_gateway/test_upstream_retry.py tests/unit/acp/test_local_infra.py tests/unit/guardrails/test_ci_parity.py -q
+uv run --frozen pytest tests/unit/optimus_security/test_url_schemes.py tests/unit/gateway/test_client.py tests/unit/optimus_gateway/test_upstream_retry.py tests/unit/acp/test_local_infra.py tests/unit/optimus_gateway/test_tool_providers.py tests/unit/guardrails/test_ci_parity.py -q
 uv run --frozen bandit -q -r src -c pyproject.toml
-uv run --frozen ruff check src/optimus/gateway/client.py src/optimus_gateway/upstream_client.py src/optimus/acp/local_infra.py tests/unit/gateway/test_client.py tests/unit/optimus_gateway/test_upstream_retry.py tests/unit/acp/test_local_infra.py tests/unit/guardrails/test_ci_parity.py
+uv run --frozen ruff check src/optimus_security/url_schemes.py src/optimus/gateway/client.py src/optimus_gateway/upstream_client.py src/optimus/acp/local_infra.py src/optimus_gateway/tool_provider_http.py tests/unit/optimus_security/test_url_schemes.py tests/unit/gateway/test_client.py tests/unit/optimus_gateway/test_upstream_retry.py tests/unit/acp/test_local_infra.py tests/unit/optimus_gateway/test_tool_providers.py tests/unit/guardrails/test_ci_parity.py
 git diff --check
 ```
 
 Expected: Bandit exits zero with B310 globally active, invalid schemes never reach
-I/O, valid local/provider flows preserve their current results, and
-`git diff --name-only 3eff64b...HEAD -- src` is a subset of the three-file C-CG1
-allowlist. Review the production hunks and reject any change that is not scheme
-validation or its adjacent B310 rationale.
+I/O across all five paths, valid local/provider flows preserve their current results,
+and the exact inventory rejects any unguarded direct or default-callable path. Review
+the production diff against the separately approved expanded allowlist; reject any
+hunk that is not the pure shared predicate, its five call sites, or an adjacent B310
+rationale.
 
 - [ ] **Step 8: Review and separately authorized commit**
 
@@ -1030,7 +1118,8 @@ Prove at least these mutations exit nonzero:
 4. lower one floor relative to a temporary previous-policy fixture;
 5. omit one coverage package;
 6. provide coverage below one accepted floor; and
-7. pass `file://` to each of the three URL boundaries.
+7. pass `file://` to each of the five URL-opening boundaries, including both
+   default-callable paths.
 
 Do not mutate tracked repository files for this step.
 
@@ -1038,7 +1127,8 @@ Do not mutate tracked repository files for this step.
 
 Record commit IDs, exact commands and exits, test counts, timings, five package
 percentages, aggregate percentage and remaining gap to 80%, secret-scan selected-file
-count, the four retained Bandit skip rationales, and all three B310 local proofs. Do
+count, the four retained Bandit skip rationales, all five scheme proofs, the exact
+five-path inventory, and the three direct-call B310 suppressions. Do
 not include absolute user paths, environment values, credentials, raw canaries, or
 full exception text.
 
@@ -1098,8 +1188,10 @@ child plan through the parent update checklist before any later task proceeds.
   at least 80% before terminal evidence or parent closure.
 - The policy verifier cannot write or accept its own baseline and fails on missing,
   unknown, malformed, below-floor, or cross-revision floor-decrease input.
-- B310 is globally enabled, all three production sites have local scheme guards,
-  exactly three narrow suppressions remain, and invalid schemes fail before I/O.
+- B310 is globally enabled, all five reachable production paths use the shared scheme
+  predicate, the separate inventory detects direct and default-callable paths,
+  exactly three narrow direct-call suppressions remain, and invalid schemes fail
+  before I/O.
 - The full offline guardrails, focused mutations, Ruff, documentation tests, diff
   hygiene, and release evidence pass at the accepted commits.
 - No dependency, protocol, telemetry, live-service, push, PR, or merge authority was
