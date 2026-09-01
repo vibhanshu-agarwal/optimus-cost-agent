@@ -40,6 +40,9 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
         elif self.path in TOOL_ROUTE_PATHS and self.tool_dependencies is not None:
             tool_mode = True
         else:
+            content_length = int(self.headers.get("Content-Length", "0"))
+            if content_length:
+                self.rfile.read(content_length)
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
 
