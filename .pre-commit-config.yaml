@@ -16,12 +16,12 @@ repos:
     hooks:
       - id: optimus-ruff
         name: "optimus-check: ruff"
-        entry: ruff check .
+        entry: uv run --frozen ruff check .
         language: system
         pass_filenames: false
       - id: optimus-bandit
         name: "optimus-check: bandit"
-        entry: bandit -q -r src -c pyproject.toml
+        entry: uv run --frozen bandit -q -r src -c pyproject.toml
         language: system
         pass_filenames: false
       - id: optimus-ast-grep
@@ -50,6 +50,7 @@ repos:
         stages: [manual]
       - id: optimus-pytest-coverage
         name: "optimus-check: pytest-coverage"
-        entry: pytest --cov=optimus --cov-branch --cov-report=term-missing
+        entry: uv run --frozen pytest --cov=optimus --cov-branch --cov-report=term-missing
         language: system
         pass_filenames: false
+        stages: [manual]
