@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import re
 import shlex
@@ -24,6 +25,92 @@ SECRET_DISPOSITIONS = (
     / "reviews"
     / "hardening-secret-scan-dispositions.json"
 )
+ACCEPTED_SECRET_FINDING_IDENTITY_DIGEST = (
+    "c14f767294e31660cecdada7f56ec4748ba6e8eeaaeb3069fa890a1cb5805ee8"
+)
+ACCEPTED_BASELINE_FILTERS = frozenset(
+    {
+        "detect_secrets.filters.allowlist.is_line_allowlisted",
+        "detect_secrets.filters.common.is_baseline_file",
+        "detect_secrets.filters.common.is_ignored_due_to_verification_policies",
+        "detect_secrets.filters.heuristic.is_indirect_reference",
+        "detect_secrets.filters.heuristic.is_likely_id_string",
+        "detect_secrets.filters.heuristic.is_lock_file",
+        "detect_secrets.filters.heuristic.is_not_alphanumeric_string",
+        "detect_secrets.filters.heuristic.is_potential_uuid",
+        "detect_secrets.filters.heuristic.is_prefixed_with_dollar_sign",
+        "detect_secrets.filters.heuristic.is_sequential_string",
+        "detect_secrets.filters.heuristic.is_swagger_file",
+        "detect_secrets.filters.heuristic.is_templated_secret",
+    }
+)
+ACCEPTED_BASIC_AUTH_IDENTITIES = frozenset(
+    {
+        (
+            "docs/superpowers/plans/archive/2026-07-03-permission-engine-pre-tool-guard-shell-safety.md",
+            1431,
+        ),
+        (
+            "docs/superpowers/plans/archive/2026-07-07-plan-9-5-working-acp-agent-completion.md",
+            488,
+        ),
+        (
+            "docs/superpowers/plans/archive/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md",
+            77,
+        ),
+        (
+            "docs/superpowers/plans/archive/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md",
+            234,
+        ),
+        (
+            "docs/superpowers/plans/archive/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md",
+            235,
+        ),
+        (
+            "docs/superpowers/plans/archive/2026-07-28-plan-11-4-gateway-core-migration.md",
+            130,
+        ),
+        ("docs/superpowers/reviews/2026-07-03-plan-5-security-review.md", 64),
+        (
+            "docs/superpowers/specs/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization-design.md",
+            84,
+        ),
+        ("src/optimus/acp/launch_policy.py", 227),
+        ("tests/integration/acp/test_launch_trust_flow.py", 469),
+        ("tests/integration/acp/test_server_stream.py", 420),
+        ("tests/unit/acp/test_debug_trace.py", 91),
+        ("tests/unit/acp/test_launch_approval_cli.py", 1188),
+        ("tests/unit/acp/test_launch_gate.py", 256),
+        ("tests/unit/acp/test_launch_policy.py", 259),
+        ("tests/unit/acp/test_preflight.py", 72),
+        ("tests/unit/agent/test_state_store.py", 74),
+        ("tests/unit/config/test_gateway_settings.py", 37),
+        ("tests/unit/guardrails/test_pre_tool_guard.py", 183),
+        ("tests/unit/loops/test_ledger.py", 73),
+        ("tests/unit/mcp/test_client_config.py", 315),
+        ("tests/unit/optimus_gateway/test_responses.py", 178),
+        ("tests/unit/release/test_runner.py", 58),
+        ("tests/unit/security/test_sanitization.py", 76),
+        ("tests/unit/security/test_sanitization.py", 84),
+        ("tests/unit/security/test_sanitization.py", 93),
+        ("tests/unit/telemetry/test_jsonl.py", 68),
+        ("tests/unit/tools/test_run_plan117_custody_feasibility.py", 1642),
+    }
+)
+ACCEPTED_PRODUCTION_FINDING_IDENTITIES = frozenset(
+    {
+        ("src/evidence_handoff_runtime/migrations.py", 19, "Hex High Entropy String"),
+        ("src/evidence_handoff_runtime/migrations.py", 23, "Hex High Entropy String"),
+        ("src/evidence_handoff_runtime/migrations.py", 27, "Hex High Entropy String"),
+        ("src/optimus_gateway/observability.py", 43, "Secret Keyword"),
+        ("src/optimus_gateway/observability.py", 46, "Secret Keyword"),
+        ("src/optimus_gateway/observability.py", 47, "Secret Keyword"),
+        ("src/optimus/acp/launch_policy.py", 28, "Secret Keyword"),
+        ("src/optimus/acp/launch_policy.py", 227, "Basic Auth Credentials"),
+        ("src/optimus/acp/local_gateway_secrets.py", 18, "Secret Keyword"),
+        ("src/optimus/acp/local_gateway_secrets.py", 19, "Secret Keyword"),
+    }
+)
 
 
 def _pre_commit_payload() -> dict[str, object]:
@@ -38,14 +125,28 @@ def _local_hook(hook_id: str) -> dict[str, object]:
     return matches[0]
 
 
-def _workflow_secret_step(payload: dict[str, object] | None = None) -> dict[str, object]:
-    workflow = payload or yaml.safe_load(
+def _guardrails_workflow_payload() -> dict[str, object]:
+    return yaml.safe_load(
         (ROOT / ".github" / "workflows" / "guardrails.yml").read_text(encoding="utf-8")
     )
-    steps = workflow["jobs"]["clean-environment-recheck"]["steps"]
-    matches = [step for step in steps if step.get("name") == "optimus-check: secret-scan"]
+
+
+def _workflow_secret_job_and_step(
+    payload: dict[str, object] | None = None,
+) -> tuple[str, dict[str, object], dict[str, object]]:
+    workflow = payload or _guardrails_workflow_payload()
+    matches: list[tuple[str, dict[str, object], dict[str, object]]] = []
+    for job_name, job in workflow["jobs"].items():
+        for step in job.get("steps", []):
+            argv = shlex.split(str(step.get("run", "")))
+            if "optimus-secret-scan-ci" in argv:
+                matches.append((job_name, job, step))
     assert len(matches) == 1
     return matches[0]
+
+
+def _workflow_secret_step(payload: dict[str, object] | None = None) -> dict[str, object]:
+    return _workflow_secret_job_and_step(payload)[2]
 
 
 def _assert_required_ci_secret_step(step: dict[str, object]) -> None:
@@ -219,6 +320,51 @@ def test_detect_secrets_baseline_is_repository_relative_and_posix_normalized() -
         assert all(finding["filename"] == path for finding in findings)
 
 
+def test_secret_baseline_has_only_accepted_non_file_exclusion_filters() -> None:
+    baseline = json.loads((ROOT / ".secrets.baseline").read_text(encoding="utf-8"))
+    filters = baseline["filters_used"]
+    filters_by_path = {str(item["path"]): item for item in filters}
+
+    assert len(filters_by_path) == len(filters)
+    assert frozenset(filters_by_path) == ACCEPTED_BASELINE_FILTERS
+    assert filters_by_path["detect_secrets.filters.common.is_baseline_file"] == {
+        "path": "detect_secrets.filters.common.is_baseline_file",
+        "filename": ".secrets.baseline",
+    }
+    assert filters_by_path["detect_secrets.filters.common.is_ignored_due_to_verification_policies"] == {
+        "path": "detect_secrets.filters.common.is_ignored_due_to_verification_policies",
+        "min_level": 2,
+    }
+    for path, definition in filters_by_path.items():
+        if path not in {
+            "detect_secrets.filters.common.is_baseline_file",
+            "detect_secrets.filters.common.is_ignored_due_to_verification_policies",
+        }:
+            assert definition == {"path": path}
+
+
+def test_secret_baseline_matches_accepted_exact_finding_identities() -> None:
+    baseline = json.loads((ROOT / ".secrets.baseline").read_text(encoding="utf-8"))
+    identities = sorted(
+        (
+            path.replace("\\", "/"),
+            int(finding["line_number"]),
+            str(finding["type"]),
+            str(finding["hashed_secret"]),
+        )
+        for path, findings in baseline["results"].items()
+        for finding in findings
+    )
+    canonical = json.dumps(
+        identities,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+    assert len(identities) == 863
+    assert hashlib.sha256(canonical).hexdigest() == ACCEPTED_SECRET_FINDING_IDENTITY_DIGEST
+
+
 def test_secret_baseline_reconciles_to_reviewed_categories_and_high_signal_sites() -> None:
     baseline = json.loads((ROOT / ".secrets.baseline").read_text(encoding="utf-8"))
     dispositions = json.loads(SECRET_DISPOSITIONS.read_text(encoding="utf-8"))
@@ -249,28 +395,31 @@ def test_secret_baseline_reconciles_to_reviewed_categories_and_high_signal_sites
         for row in rows
         if row["detector"] == "Basic Auth Credentials"
     }
-    reviewed_basic_auth = {
-        (item["path"], item["line"])
-        for item in dispositions["basic_auth_dispositions"]
-        if item["disposition"] == "false-positive"
-        and item["reason"]
-    }
+    basic_auth_dispositions = dispositions["basic_auth_dispositions"]
+    reviewed_basic_auth = {(item["path"], item["line"]) for item in basic_auth_dispositions}
     assert reviewed_basic_auth == basic_auth
-    assert len(reviewed_basic_auth) == 28
+    assert reviewed_basic_auth == ACCEPTED_BASIC_AUTH_IDENTITIES
+    assert len(basic_auth_dispositions) == len(reviewed_basic_auth) == 28
+    assert all(item["disposition"] == "false-positive" for item in basic_auth_dispositions)
+    basic_auth_reasons = [item["reason"] for item in basic_auth_dispositions]
+    assert all(basic_auth_reasons)
+    assert len(set(basic_auth_reasons)) == 28
 
     production = {
         (row["path"], row["line"], row["detector"])
         for row in rows
         if row["path"].startswith("src/")
     }
+    production_dispositions = dispositions["production_dispositions"]
     reviewed_production = {
         (item["path"], item["line"], item["detector"])
-        for item in dispositions["production_dispositions"]
-        if item["disposition"] == "false-positive"
-        and item["reason"]
+        for item in production_dispositions
     }
     assert reviewed_production == production
-    assert len(reviewed_production) == 10
+    assert reviewed_production == ACCEPTED_PRODUCTION_FINDING_IDENTITIES
+    assert len(production_dispositions) == len(reviewed_production) == 10
+    assert all(item["disposition"] == "false-positive" for item in production_dispositions)
+    assert all(item["reason"] for item in production_dispositions)
 
 
 def test_secret_scan_hook_and_ci_use_distinct_fail_closed_venues() -> None:
@@ -295,6 +444,25 @@ def test_secret_scan_hook_and_ci_use_distinct_fail_closed_venues() -> None:
     assert ci_hook.get("pass_filenames", True) is True
     assert ci_hook["stages"] == ["manual"]
     _assert_required_ci_secret_step(_workflow_secret_step())
+
+
+def test_ci_secret_scan_job_is_required_and_unfiltered() -> None:
+    workflow = _guardrails_workflow_payload()
+    triggers = workflow.get("on", workflow.get(True))
+    assert "pull_request" in triggers
+    pull_request = triggers["pull_request"] or {}
+    assert not {
+        "paths",
+        "paths-ignore",
+        "branches",
+        "branches-ignore",
+    } & set(pull_request)
+
+    job_name, job, step = _workflow_secret_job_and_step(workflow)
+    assert job_name == "clean-environment-recheck"
+    assert "if" not in job
+    assert job.get("continue-on-error", False) is False
+    _assert_required_ci_secret_step(step)
 
 
 def test_secret_scan_inventories_are_exact_tracked_text_sets() -> None:
