@@ -38,9 +38,16 @@ repos:
         pass_filenames: false
       - id: optimus-secret-scan
         name: "optimus-check: secret-scan"
-        entry: detect-secrets-hook --baseline .secrets.baseline src
+        entry: detect-secrets-hook --baseline .secrets.baseline
         language: system
         types: [text]
+        exclude: ^reports/
+      - id: optimus-secret-scan-ci
+        name: "optimus-check: secret-scan CI full inventory"
+        entry: detect-secrets-hook --baseline .secrets.baseline
+        language: system
+        types: [text]
+        stages: [manual]
       - id: optimus-pytest-coverage
         name: "optimus-check: pytest-coverage"
         entry: pytest --cov=optimus --cov-branch --cov-report=term-missing
