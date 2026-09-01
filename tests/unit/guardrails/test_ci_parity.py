@@ -6,6 +6,7 @@ import json
 import re
 import shlex
 import subprocess
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -534,6 +535,71 @@ def test_secret_scan_reads_utf8_text_independently_of_platform_default(tmp_path:
     assert "Secret Type:" in hook_result.stdout + hook_result.stderr
     assert ci_result.returncode != 0
     assert "Secret Type:" in ci_result.stdout + ci_result.stderr
+
+
+def test_detect_secrets_hook_preserves_exact_baseline_and_signals_phantom_identity(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repository"
+    root.mkdir()
+    _git(root, "init", "-q")
+    source = root / "fixture.txt"
+    canary = "AKIA" + "ABCDEFGHIJKLMNOP"
+    source.write_text(f"credential={canary}\n", encoding="utf-8")
+    scan_result = subprocess.run(
+        [sys.executable, "-m", "detect_secrets", "scan", source.name],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    baseline_path = root / ".secrets.baseline"
+    baseline_path.write_text(scan_result.stdout, encoding="utf-8")
+    _git(root, "add", ".")
+
+    baseline_bytes = baseline_path.read_bytes()
+    exact_result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "detect_secrets.pre_commit_hook",
+            "--baseline",
+            baseline_path.name,
+            source.name,
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert exact_result.returncode == 0
+    assert baseline_path.read_bytes() == baseline_bytes
+
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    phantom = copy.deepcopy(baseline["results"][source.name][0])
+    phantom["hashed_secret"] = "0" * 40
+    baseline["results"][source.name].append(phantom)
+    baseline_path.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+    _git(root, "add", baseline_path.name)
+
+    phantom_result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "detect_secrets.pre_commit_hook",
+            "--baseline",
+            baseline_path.name,
+            source.name,
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert phantom_result.returncode == 3
+    assert "The baseline file was updated." in phantom_result.stdout + phantom_result.stderr
 
 
 def test_ci_reports_scan_is_independent_of_hook_exclusion(tmp_path: Path) -> None:
