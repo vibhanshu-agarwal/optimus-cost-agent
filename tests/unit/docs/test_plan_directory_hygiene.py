@@ -26,6 +26,7 @@ LIVE_REGISTRY_ROW = re.compile(
     r"\| `(?P<state>Active|Blocked)` \| `(?P<owner>[^`]+)` \| (?P<next_gate>.+) \|$"
 )
 MARKDOWN_LINK = re.compile(r"\[[^]]*\]\((?P<target>[^)]+)\)")
+PLAN_LEVEL_STATUS = re.compile(r"(?mi)^\*\*Status:\*\*|^Status:")
 # Exact (document, raw link text) pairs allowed to stay broken. Every entry
 # here must be a real, individually justified case -- never a directory- or
 # document-wide bypass.
@@ -383,11 +384,24 @@ def test_hardening_masterplan_owns_exactly_fifteen_child_plan_statuses() -> None
     assert len(rows) == 15
     assert len({row["track"] for row in rows}) == 15
     assert len({row["filename"] for row in rows}) == 15
-    assert {row["status"] for row in rows} == {"Not drafted"}
-    assert all(row["link_target"] is None for row in rows)
+    active_rows = [row for row in rows if row["status"] == "Active"]
+    assert {row["track"] for row in active_rows} == {"HARDENING-TRACK-CI-GUARDRAILS"}
+    assert all(row["link_target"] == row["filename"] for row in active_rows)
+    not_drafted_rows = [row for row in rows if row["status"] == "Not drafted"]
+    assert len(not_drafted_rows) == 14
+    assert all(row["link_target"] is None for row in not_drafted_rows)
 
     text = HARDENING_MASTERPLAN.read_text(encoding="utf-8")
-    assert re.search(r"(?mi)^\*\*Status:\*\*|^Status:", text) is None
+    assert PLAN_LEVEL_STATUS.search(text) is None
+
+    for row in rows:
+        link_target = row["link_target"]
+        if link_target is None:
+            continue
+        child_text = (PLANS_ROOT / str(link_target)).read_text(encoding="utf-8")
+        assert PLAN_LEVEL_STATUS.search(child_text) is None, (
+            f"hardening child plan {row['track']} must not declare its own status"
+        )
 
 
 def test_plan_archive_is_flat_and_contains_no_registered_live_plan() -> None:
