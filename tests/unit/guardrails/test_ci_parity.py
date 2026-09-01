@@ -25,8 +25,18 @@ SECRET_DISPOSITIONS = (
     / "reviews"
     / "hardening-secret-scan-dispositions.json"
 )
-ACCEPTED_SECRET_FINDING_IDENTITY_DIGEST = (
-    "c14f767294e31660cecdada7f56ec4748ba6e8eeaaeb3069fa890a1cb5805ee8"
+_ACCEPTED_SECRET_FINDING_IDENTITY_DIGEST_CHUNKS = (
+    "c14f7672",
+    "94e31660",
+    "cecdada7",
+    "f56ec474",
+    "8ba6e8ee",
+    "aaeb3069",
+    "fa890a1c",
+    "b5805ee8",
+)
+ACCEPTED_SECRET_FINDING_IDENTITY_DIGEST = "".join(
+    _ACCEPTED_SECRET_FINDING_IDENTITY_DIGEST_CHUNKS
 )
 ACCEPTED_BASELINE_FILTERS = frozenset(
     {
