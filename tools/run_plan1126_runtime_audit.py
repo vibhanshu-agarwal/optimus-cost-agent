@@ -38,6 +38,7 @@ from tools.plan1126_runtime_audit.provenance import ExpectedArtifactIdentity, ve
 from tools.plan1126_runtime_audit.render import render_markdown  # noqa: E402
 from tools.plan1126_runtime_audit.repeatability import RepeatabilityStatus, classify_repeatability  # noqa: E402
 from tools.plan1126_runtime_audit.source import GitCommitSource, SourceTree  # noqa: E402
+from tools.tracked_repository_files import tracked_repository_files  # noqa: E402
 
 _SCHEMA_PATH = ROOT / "tests" / "fixtures" / "plan1126_runtime_audit" / "audit-artifact.schema.json"
 _DUPLICATION_CANDIDATES_SCHEMA_PATH = (
@@ -1041,7 +1042,14 @@ def _path_fingerprint(paths: Sequence[str]) -> str:
         if not path.is_absolute():
             path = ROOT / path
         if path.is_dir():
-            expanded.extend(sorted(candidate for candidate in path.rglob("*") if candidate.is_file()))
+            resolved = path.resolve()
+            if resolved.is_relative_to(ROOT):
+                pathspec = resolved.relative_to(ROOT).as_posix()
+                expanded.extend(tracked_repository_files(ROOT, pathspecs=(pathspec,)))
+            else:
+                expanded.extend(
+                    sorted(candidate for candidate in resolved.rglob("*") if candidate.is_file())
+                )
         else:
             expanded.append(path)
     for path in expanded:

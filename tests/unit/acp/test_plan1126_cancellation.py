@@ -12,6 +12,7 @@ from jsonschema import Draft202012Validator
 
 from tools.plan1126_runtime_audit.cancellation import (
     H3_SOURCE_PATHS,
+    _canonical_digest,
     cancellation_schedule_observations,
     discover_task_supervision,
 )
@@ -24,6 +25,14 @@ from tools.plan1126_runtime_audit.source import GitCommitSource, SourceTree
 _MERGED = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"
 _OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"
 _SCHEMA_PATH = Path("tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json")
+
+
+def test_canonical_digest_is_deterministic_and_content_only() -> None:
+    first = _canonical_digest({"b": 2, "a": 1})
+
+    assert first == _canonical_digest({"a": 1, "b": 2})
+    assert first != _canonical_digest({"a": 1, "b": 3})
+    assert re.fullmatch(r"[0-9a-f]{64}", first)
 
 
 def _immutable_source(commit: str) -> SourceTree:

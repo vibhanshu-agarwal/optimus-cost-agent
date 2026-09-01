@@ -15,27 +15,17 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from tools.tracked_repository_files import tracked_repository_files
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _TOKEN_PATTERN = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
 _RETIRED_SUBSTRING = "cred" + "it"
 _ALLOWLISTED_TOKEN = "tavily_" + _RETIRED_SUBSTRING + "s"
 _SCAN_ROOTS = ("src", "tests")
-_SKIPPED_DIR_NAMES = {"__pycache__", ".pytest_cache"}
 
 
 def _iter_scanned_files() -> "list[Path]":
-    files: list[Path] = []
-    for root_name in _SCAN_ROOTS:
-        root = _REPO_ROOT / root_name
-        if not root.exists():
-            continue
-        for path in root.rglob("*"):
-            if not path.is_file():
-                continue
-            if any(part in _SKIPPED_DIR_NAMES for part in path.parts):
-                continue
-            files.append(path)
-    return files
+    return list(tracked_repository_files(_REPO_ROOT, pathspecs=_SCAN_ROOTS))
 
 
 def _violations() -> dict[str, int]:

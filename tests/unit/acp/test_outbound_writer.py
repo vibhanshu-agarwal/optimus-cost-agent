@@ -20,6 +20,9 @@ from optimus.acp.outbound_writer import (
 from optimus.acp.server import StdioNdjsonLineReader, StdioNdjsonLineWriter
 from optimus.acp.settlement import SendOutcome, SendState
 from tests.integration.acp.test_server_stream import configured_test_agent_server
+from tools.tracked_repository_files import tracked_repository_files
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class ControllableTransport:
@@ -214,10 +217,11 @@ def test_close_and_join_is_idempotent_and_non_daemon() -> None:
 
 
 def test_no_direct_ndjson_physical_write_outside_writer_and_adapter() -> None:
-    root = Path("src/optimus/acp")
     allowed_names = {"outbound_writer.py", "server.py"}
     offenders: list[str] = []
-    for path in root.rglob("*.py"):
+    for path in tracked_repository_files(REPO_ROOT, pathspecs=("src/optimus/acp",)):
+        if path.suffix != ".py":
+            continue
         if path.name in allowed_names:
             continue
         text = path.read_text(encoding="utf-8")

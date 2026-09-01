@@ -19,6 +19,7 @@ from optimus.acp.errors import (
     REQUEST_CANCELLED,
     RESOURCE_NOT_FOUND,
 )
+from tools.tracked_repository_files import tracked_repository_files
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ACP_SCHEMA_PATH = REPO_ROOT / "tests/fixtures/acp/acp-v1-schema.json"
@@ -158,7 +159,10 @@ class _ErrorCodeLiteralVisitor(ast.NodeVisitor):
 
 def find_non_registry_error_code_literals(source_root: Path) -> frozenset[tuple[str, str]]:
     sites: set[tuple[str, str]] = set()
-    for path in source_root.rglob("*.py"):
+    pathspec = source_root.relative_to(REPO_ROOT).as_posix()
+    for path in tracked_repository_files(REPO_ROOT, pathspecs=(pathspec,)):
+        if path.suffix != ".py":
+            continue
         relative = path.relative_to(REPO_ROOT).as_posix()
         if relative == REGISTRY_RELATIVE:
             continue

@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from tools.tracked_repository_files import tracked_repository_files
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EVIDENCE_ROOT = REPO_ROOT / "src" / "evidence_handoff"
 COLLECTOR_ROOT = EVIDENCE_ROOT / "collector"
@@ -22,6 +24,12 @@ FEATURE_ID_RE = re.compile(r"(?<![A-Z0-9-])(?:[A-Z][A-Z0-9]*-)*FEAT-[A-Z0-9]+(?:
 PLAN_NUMBER_RE = re.compile(r"\bPlan [0-9]|\bplan-[0-9]")
 
 
+def _tracked_files(root: Path, *, suffix: str | None = None) -> list[Path]:
+    pathspec = root.relative_to(REPO_ROOT).as_posix()
+    paths = tracked_repository_files(REPO_ROOT, pathspecs=(pathspec,))
+    return [path for path in paths if suffix is None or path.suffix == suffix]
+
+
 def _scan_paths(paths: list[Path]) -> list[str]:
     hits: list[str] = []
     for path in paths:
@@ -34,7 +42,7 @@ def _scan_paths(paths: list[Path]) -> list[str]:
 
 
 def test_evidence_handoff_source_has_no_feature_id_or_scheduling_numbers() -> None:
-    paths = sorted(EVIDENCE_ROOT.rglob("*.py"))
+    paths = _tracked_files(EVIDENCE_ROOT, suffix=".py")
     assert paths, "portable package source must exist"
     assert _scan_paths(paths) == []
 
@@ -51,16 +59,16 @@ def test_package_and_module_names_are_descriptive() -> None:
     assert (COLLECTOR_ROOT / "__init__.py").is_file()
     assert (COLLECTOR_ROOT / "models.py").is_file()
     assert (COLLECTOR_ROOT / "scenarios.py").is_file()
-    names = [path.name for path in EVIDENCE_ROOT.rglob("*.py")]
+    names = [path.name for path in _tracked_files(EVIDENCE_ROOT, suffix=".py")]
     assert all("plan-" not in name for name in names)
     assert all("feat_" not in name for name in names)
     assert all(FEATURE_ID_RE.search(name) is None for name in names)
 
 
 def test_collector_scenarios_and_artifacts_have_no_feature_id_or_scheduling_numbers() -> None:
-    paths = sorted(COLLECTOR_ROOT.rglob("*.py"))
+    paths = _tracked_files(COLLECTOR_ROOT, suffix=".py")
     assert paths, "collector package source must exist"
-    fixture_paths = sorted(SCENARIO_FIXTURES.glob("*"))
+    fixture_paths = _tracked_files(SCENARIO_FIXTURES)
     assert fixture_paths, "scenario fixtures must exist"
     assert _scan_paths(paths + fixture_paths) == []
 

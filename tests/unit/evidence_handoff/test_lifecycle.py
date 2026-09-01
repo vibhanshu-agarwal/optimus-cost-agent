@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from tools.tracked_repository_files import tracked_repository_files
+
 
 def _abs(tmp_path: Path, name: str) -> Path:
     path = (tmp_path / name).resolve()
@@ -419,7 +421,12 @@ def test_runtime_source_has_neither_wslc_backend_nor_wslc_backend_id() -> None:
     """Regression: Task 2 must remove WslcPostgresBackend and every wslc backend_id option."""
     runtime_root = Path(__file__).resolve().parents[3] / "src" / "evidence_handoff_runtime"
     hits: list[str] = []
-    for path in sorted(runtime_root.rglob("*.py")):
+    repo_root = Path(__file__).resolve().parents[3]
+    for path in tracked_repository_files(
+        repo_root, pathspecs=(runtime_root.relative_to(repo_root).as_posix(),)
+    ):
+        if path.suffix != ".py":
+            continue
         text = path.read_text(encoding="utf-8")
         rel = path.relative_to(runtime_root).as_posix()
         if "WslcPostgresBackend" in text:

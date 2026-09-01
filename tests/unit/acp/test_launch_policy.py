@@ -30,8 +30,10 @@ from optimus.acp.launch_policy import (
 )
 from optimus.acp.local_infra import RETIRED_AGENT_ENVIRON_KEYS
 from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES
+from tools.tracked_repository_files import tracked_repository_files
 
-_SRC_ROOT = Path(__file__).resolve().parents[3] / "src"
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_SRC_ROOT = _REPO_ROOT / "src"
 
 # --- AST inventory helpers ---
 
@@ -40,7 +42,10 @@ def _extract_optimus_string_literals(source_root: Path) -> set[str]:
     """Walk all .py files under source_root and extract string literals matching OPTIMUS_*."""
     pattern = re.compile(r"^OPTIMUS_[A-Z][A-Z0-9_]*$")
     found: set[str] = set()
-    for py_file in source_root.rglob("*.py"):
+    pathspec = source_root.relative_to(_REPO_ROOT).as_posix()
+    for py_file in tracked_repository_files(_REPO_ROOT, pathspecs=(pathspec,)):
+        if py_file.suffix != ".py":
+            continue
         try:
             tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
         except SyntaxError:

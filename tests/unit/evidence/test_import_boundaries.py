@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from tools.tracked_repository_files import tracked_repository_files
+
 ALLOWED_EVIDENCE_IMPORT_ROOTS = frozenset({"PIL", "optimus_security"})
 FORBIDDEN_EVIDENCE_IMPORT_ROOTS = frozenset({"optimus", "optimus_gateway", "tools"})
 ALLOWED_RUNTIME_IMPORT_ROOTS = frozenset(
@@ -30,7 +32,12 @@ SECURITY_ROOT = REPO_ROOT / "src" / "optimus_security"
 
 
 def _python_files(root: Path) -> list[Path]:
-    return sorted(path for path in root.rglob("*.py") if path.is_file())
+    pathspec = root.relative_to(REPO_ROOT).as_posix()
+    return [
+        path
+        for path in tracked_repository_files(REPO_ROOT, pathspecs=(pathspec,))
+        if path.suffix == ".py"
+    ]
 
 
 def _module_root(name: str | None) -> str | None:

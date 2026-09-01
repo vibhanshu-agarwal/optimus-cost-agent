@@ -10,11 +10,21 @@ from pathlib import Path
 
 import pytest
 
+from tools.tracked_repository_files import tracked_repository_files
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ENTRY = REPO_ROOT / "tools" / "evidence_gather.py"
 SUPPORT = REPO_ROOT / "tools" / "evidence_gather_support"
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "evidence" / "scenarios" / "zed-session.toml"
 PROMPT_INJECTION_RE = re.compile(r"prompt[_-]?inject", re.IGNORECASE)
+
+
+def _tracked_python_files(pathspec: str) -> tuple[Path, ...]:
+    return tuple(
+        path
+        for path in tracked_repository_files(REPO_ROOT, pathspecs=(pathspec,))
+        if path.suffix == ".py"
+    )
 
 
 def _gather():
@@ -82,7 +92,7 @@ def test_support_package_has_no_main_or_prompt_injection_ids() -> None:
     assert SUPPORT.is_dir()
     assert not (SUPPORT / "__main__.py").exists()
     offenders: list[str] = []
-    for path in SUPPORT.rglob("*.py"):
+    for path in _tracked_python_files("tools/evidence_gather_support"):
         text = path.read_text(encoding="utf-8")
         if PROMPT_INJECTION_RE.search(text):
             offenders.append(path.relative_to(REPO_ROOT).as_posix())
@@ -92,7 +102,7 @@ def test_support_package_has_no_main_or_prompt_injection_ids() -> None:
 def test_only_entry_point_imports_support_from_outside() -> None:
     allowed = {ENTRY.resolve()}
     offenders: list[str] = []
-    for path in (REPO_ROOT / "src").rglob("*.py"):
+    for path in _tracked_python_files("src"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith(
@@ -103,7 +113,7 @@ def test_only_entry_point_imports_support_from_outside() -> None:
                 for alias in node.names:
                     if alias.name.startswith("tools.evidence_gather_support"):
                         offenders.append(path.relative_to(REPO_ROOT).as_posix())
-    for path in (REPO_ROOT / "tools").rglob("*.py"):
+    for path in _tracked_python_files("tools"):
         if path.resolve() in allowed:
             continue
         if SUPPORT in path.parents or path.parent == SUPPORT:
@@ -2135,7 +2145,7 @@ def _redact_argv(
 def test_only_redact_imports_redaction_orchestration() -> None:
     offenders: list[str] = []
     allowed_reports = REPO_ROOT / "tools" / "evidence_gather_support" / "reports.py"
-    for path in (REPO_ROOT / "tools").rglob("*.py"):
+    for path in _tracked_python_files("tools"):
         if path.name == "redaction.py" and path.parent.name == "evidence_gather_support":
             continue
         if path.resolve() == allowed_reports.resolve():

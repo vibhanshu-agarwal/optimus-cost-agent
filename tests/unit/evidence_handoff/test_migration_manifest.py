@@ -26,7 +26,7 @@ def test_migration_manifest_detects_tampered_sql(tmp_path: Path, monkeypatch: py
 
     real_root = migrations_mod.MIGRATIONS_ROOT
     assert real_root.is_dir()
-    src = sorted(real_root.glob("*.sql"))[0]
+    src = real_root / MigrationManifest.load().entries[0].filename
     dest_root = tmp_path / "migrations"
     dest_root.mkdir()
     dest = dest_root / src.name
