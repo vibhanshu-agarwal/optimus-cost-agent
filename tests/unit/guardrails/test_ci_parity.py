@@ -150,6 +150,28 @@ def test_pre_commit_and_ci_name_the_same_guardrail_checks():
     assert pre_commit & expected == ci & expected == expected
 
 
+def test_ci_dependency_sync_is_locked() -> None:
+    workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "guardrails.yml").read_text(encoding="utf-8")
+    )
+    steps = workflow["jobs"]["clean-environment-recheck"]["steps"]
+    named_steps = [step for step in steps if step.get("name") == "Install dependencies"]
+    sync_steps = [
+        step
+        for step in steps
+        if shlex.split(str(step.get("run", "")))[:2] == ["uv", "sync"]
+    ]
+
+    assert len(named_steps) == 1
+    assert sync_steps == named_steps
+    assert shlex.split(str(named_steps[0]["run"])) == [
+        "uv",
+        "sync",
+        "--locked",
+        "--all-extras",
+    ]
+
+
 def test_default_agent_config_paths_include_nested_agents_cursor_rules_and_root_mcp(tmp_path):
     nested = tmp_path / "packages" / "api"
     nested.mkdir(parents=True)
