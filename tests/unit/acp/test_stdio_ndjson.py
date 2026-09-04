@@ -156,21 +156,62 @@ async def test_serve_ndjson_sanitizes_request_processing_response_and_stderr(tmp
         raise RuntimeError("OPTIMUS_API_KEY=top-secret-canary")
 
     monkeypatch.setattr(server.AcpDuplexAdapter, "handle_client_request", failing_handle_client_request)
-    reader = StdioNdjsonLineReader(io.BytesIO(b'{"jsonrpc":"2.0","id":1,"method":"session/prompt"}\n'))
-    writer = _CapturingNdjsonWriter()
 
-    await configured.server.serve_ndjson(reader, writer)
+    from tests.integration.acp.test_server_stream import InteractiveLineReader, MemoryLineWriter
 
-    response = writer.messages[0]
+    async def request_error(request_id):
+        reader, writer = InteractiveLineReader(), MemoryLineWriter()
+        serving = None
+        primary_error = None
+        try:
+            serving = asyncio.create_task(configured.server.serve_ndjson(reader, writer))
+            await reader.send({"jsonrpc": "2.0", "id": request_id, "method": "session/prompt"})
+            return await asyncio.wait_for(writer.wait_for_response(request_id), timeout=2)
+        except BaseException as exc:
+            primary_error = exc
+            raise
+        finally:
+            try:
+                try:
+                    reader.close()
+                finally:
+                    if serving is not None:
+                        try:
+                            done, _ = await asyncio.wait({serving}, timeout=2)
+                            if done:
+                                assert serving.result() is None
+                        finally:
+                            if not serving.done():
+                                serving.cancel()
+                                try:
+                                    await asyncio.wait({serving}, timeout=2)
+                                finally:
+                                    cause = None
+                                    if serving.done():
+                                        state = "settled after cancellation"
+                                        if not serving.cancelled():
+                                            cause = serving.exception()
+                                    else:
+                                        state = "still pending after cancellation"
+                                        serving.add_done_callback(
+                                            lambda task: None if task.cancelled() else task.exception()
+                                        )
+                                    failure = AssertionError(f"serve_ndjson missed EOF deadline; {state}")
+                                    if cause is None:
+                                        raise failure
+                                    raise failure from cause
+            except BaseException as cleanup_error:
+                if primary_error is None:
+                    raise
+                primary_error.add_note(f"EOF cleanup also failed: {type(cleanup_error).__name__}")
+
+    response = await request_error(1)
     assert response["error"]["message"]
     assert "top-secret-canary" not in json.dumps(response)
     assert "top-secret-canary" not in capsys.readouterr().err
 
     monkeypatch.setattr(errors, "sanitize_for_persistence", lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("failure")))
-    failed_reader = StdioNdjsonLineReader(io.BytesIO(b'{"jsonrpc":"2.0","id":2,"method":"session/prompt"}\n'))
-    failed_writer = _CapturingNdjsonWriter()
-    await configured.server.serve_ndjson(failed_reader, failed_writer)
-    failed_response = failed_writer.messages[0]
+    failed_response = await request_error(2)
     assert failed_response["error"]["message"] == "internal error"
     assert "top-secret-canary" not in json.dumps(failed_response)
     assert "top-secret-canary" not in capsys.readouterr().err
