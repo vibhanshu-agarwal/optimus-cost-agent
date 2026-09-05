@@ -25,7 +25,7 @@ from optimus_security.sanitization import mask_uri_userinfo
 class LaunchVariableTier(StrEnum):
     """Classification tier for launch environment variables."""
 
-    SECRET = "secret"
+    SECRET = "secret"  # pragma: allowlist secret - enum classification label, not a credential
     SECURITY = "security"
     MONOTONIC_LIMIT = "monotonic_limit"
     OPERATIONAL = "operational"
@@ -212,21 +212,23 @@ _MODEL_USERINFO_RE = re.compile(r"^[^/\s@]+:[^/\s@]+@")
 
 
 def _model_value_has_userinfo(value: str) -> bool:
-    """Detect a userinfo/credential-shaped segment in a model value.
-
-    Two independent checks, because neither alone covers both shapes:
-
-    1. `_MODEL_USERINFO_RE` catches the SCHEMELESS leading form
-       ("user:pass@host", no "scheme://" prefix) — this is the shape
-       urlparse() cannot detect at all (with no scheme, urlparse treats the
-       whole string as an opaque path and never populates
-       .username/.password), and it's exactly the shape the existing
-       optimus_security.sanitization._URL_USERINFO_RE would miss too (that
-       regex requires a scheme-colon-slash-slash prefix).
-    2. `urlparse(value).username/.password` catches the SCHEMED form
-       ("scheme://user:pass@host") — the regex above deliberately excludes
-       "/" from both sides of the ":", so it does not match past a "://".
-    """
+    (
+        'Detect a userinfo/credential-shaped segment in a model value.\n'
+        '\n'
+        '    Two independent checks, because neither alone covers both shapes:\n'
+        '\n'
+        '    1. `_MODEL_USERINFO_RE` catches the SCHEMELESS leading form\n'
+        '       ("user:pass@host", no "scheme://" prefix) — this is the shape\n'
+        '       urlparse() cannot detect at all (with no scheme, urlparse treats the\n'
+        '       whole string as an opaque path and never populates\n'
+        "       .username/.password), and it's exactly the shape the existing\n"
+        '       optimus_security.sanitization._URL_USERINFO_RE would miss too (that\n'
+        '       regex requires a scheme-colon-slash-slash prefix).\n'
+        '    2. `urlparse(value).username/.password` catches the SCHEMED form\n'
+        '       ("scheme://user:pass@host") — the regex above deliberately excludes\n'  # pragma: allowlist secret - synthetic URI example, not a credential
+        '       "/" from both sides of the ":", so it does not match past a "://".\n'
+        '    '
+    )
     if _MODEL_USERINFO_RE.match(value):
         return True
     parsed = urlparse(value)

@@ -40,12 +40,12 @@ _CONTENT_EVENT_FIELD_NAMES = frozenset({"prompt", "response", "result_summary", 
 # reason string recorded on the span (never the raw rule-count metadata).
 _REASON_BY_RULE: dict[str, str] = {
     "dict_key_redaction": "secret",
-    "exact_secret_replacement": "secret",
+    "exact_secret_replacement": "secret",  # pragma: allowlist secret - redaction reason label, not a credential
     "bearer_token_redaction": "bearer_token",
     "env_assignment_redaction": "env_assignment",
-    "generic_secret_redaction": "generic_secret",
-    "api_key_header_redaction": "api_key_header",
-    "x_api_key_header_redaction": "api_key_header",
+    "generic_secret_redaction": "generic_secret",  # pragma: allowlist secret - redaction reason label, not a credential
+    "api_key_header_redaction": "api_key_header",  # pragma: allowlist secret - redaction reason label, not a credential
+    "x_api_key_header_redaction": "api_key_header",  # pragma: allowlist secret - redaction reason label, not a credential
     "uri_userinfo_masking": "uri_userinfo",
     "unsupported_object_type_metadata": "unsupported_type",
 }
