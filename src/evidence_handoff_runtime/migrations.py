@@ -16,15 +16,15 @@ MIGRATIONS_ROOT = REPO_ROOT / "migrations" / "evidence_handoff"
 _PINNED: tuple[tuple[str, str], ...] = (
     (
         "001_ledger_v1.sql",
-        "beea88b48f628a0ce736a3a37ea94e0b340ebaa2c7e16ba97ccfb68d99a5736a",
+        "beea88b48f628a0ce736a3a37ea94e0b340ebaa2c7e16ba97ccfb68d99a5736a",  # pragma: allowlist secret - SQL migration integrity hash, not a credential
     ),
     (
         "002_sequence_unique_per_instance.sql",
-        "ebacad0524aa02420eafbdcc0c9f640ad90bed65f72745064520360ffa695489",
+        "ebacad0524aa02420eafbdcc0c9f640ad90bed65f72745064520360ffa695489",  # pragma: allowlist secret - SQL migration integrity hash, not a credential
     ),
     (
         "003_reader_capabilities.sql",
-        "1391bf0370e50ed00a8162fb9c4f092061e1f83cb7a0cad294f16b0b7d1c168c",
+        "1391bf0370e50ed00a8162fb9c4f092061e1f83cb7a0cad294f16b0b7d1c168c",  # pragma: allowlist secret - SQL migration integrity hash, not a credential
     ),
 )
 

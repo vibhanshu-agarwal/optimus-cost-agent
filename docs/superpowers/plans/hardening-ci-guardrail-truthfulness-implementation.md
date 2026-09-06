@@ -37,6 +37,16 @@ pytest.
 
 **Spec:** `docs/superpowers/plans/hardening-runtime-quality-masterplan.md`
 
+## 2026-09-06 reconciliation disposition
+
+This current disposition governs PR #194's reconciliation with main at `32f32ef4`. Earlier checkpoint statements and commands below record their historical scope; they do not authorize reinstating superseded behavior. Local reconciliation is under an approved 120-minute commission with independent assembly, rehearsal and delivery checkpoints. Publication, remote merge, installation and rollout remain separate.
+
+Retain main's production-only tracked-text CI secret scan, its local hook and commit-time pytest/coverage. The selected baseline contains the original three frozen-v9 identities plus exactly 31 individually reviewed identities in five unchanged Plan 11.26 JSON reports. The adjacent disposition record is `docs/superpowers/reviews/2026-09-06-baseline-report-exceptions.json`. This narrow operator-approved exception supersedes the previous no-expansion constraint only for those paths and identities. It does not approve the historical 863-entry baseline, a report-directory exclusion, a full-inventory CI replacement or a manual-only local coverage hook. Frozen v10 remains unchanged as historical policy evidence.
+
+The C-CG4 unbounded drain at `e3c52f1` is superseded by PR #195's bounded rejected-POST correction. Preserve `src/optimus_gateway/server.py` exactly as on main at `32f32ef4`; no new Gateway production hunk is owned by this reconciliation. Preserve the other inherited main production changes as well: the reconciliation's final `src/` diff against that main commit must be empty. Historical comparisons against `3eff64b` explain earlier grants and do not justify undoing subsequently accepted main contents. Future B310 scheme work and its existing production-authorization requirements remain separate.
+
+Locked dependency sync is retained in the proposed reconciliation and awaits validation of the final tree. The local-hook UTF-8 decoding repair remains with `P11-FEAT-ACP-RUNTIME-HARDENING`; a wider scan venue requires a separately reviewed policy. Task 2's venue-split design and instructions below are deferred proposals and are not executable under this commission. Tasks 3-6 also gain no execution authority from this reconciliation. Historical coverage numbers remain measurements of their original inputs and must not be substituted for the reconciled tree's results.
+
 ## Custody boundary
 
 This plan implements exactly these masterplan items:
@@ -46,14 +56,7 @@ This plan implements exactly these masterplan items:
 - `HARDENING-ITEM-SECRET-SCAN-SCOPE`; and
 - `HARDENING-ITEM-BANDIT-B310`.
 
-It also records the accepted prerequisite repairs `C-CG2` through `C-CG9`: restore a
-green full unit suite by classifying the Plan 11.26 digest-only logging-surface
-overmatch, close the recurring C29 filesystem-walker class, drain rejected request
-bodies before the Gateway 404, classify the complete sink inventory, install and
-validate the two-venue secret-scan baseline, remove platform-dependent scanner drift,
-declare the 37 binding-dependent tests as owner-attributed `UNRUN` only when their Git
-object is unavailable, and require both CI jobs on `main`. These are child-plan
-prerequisites and evidence, not second backlog features or new masterplan status rows.
+It also preserves the historical prerequisite reviews C-CG2 through C-CG9: logging-surface classification, tracked-file discovery, Gateway rejection, sink inventories, scanner venues and encoding, binding-dependent UNRUN custody, and required CI contexts. Their historical evidence remains attributable to its original tree. Current scanner, coverage and Gateway behavior is governed by the 2026-09-06 reconciliation disposition above; earlier acceptance does not restore the superseded C-CG4 drain or the rejected full-inventory baseline.
 
 `C-CG10` corrects the security inventory without falsifying Bandit's result: B310 still
 reports exactly three direct-call sites, but two reachable production paths call the
@@ -70,7 +73,7 @@ only its task checkboxes. This document contains no plan-level status declaratio
 
 ## First-production-change disclosure (C-CG1 and C-CG4)
 
-Plan 11.26 proved an empty `src/` diff at each of its eight gates. This child plan is
+Historical grant record; current reconciliation scope is defined above. Plan 11.26 proved an empty `src/` diff at each of its eight gates. This child plan is
 the first approved retirement of that invariant. The replacement is narrower and must
 be stated honestly: from anchor commit `3eff64b`, every gate must prove that any
 `src/` diff is a subset of exactly these four files:
@@ -80,14 +83,7 @@ be stated honestly: from anchor commit `3eff64b`, every gate must prove that any
 - `src/optimus/acp/local_infra.py`; and
 - `src/optimus_gateway/server.py`.
 
-The C-CG1 production grant permits only rejection of disallowed URL schemes before the
-existing `urlopen()` calls in the first three files so B310 can be enabled. The C-CG4
-grant permitted only draining the request body before the existing unavailable-route
-404 in `src/optimus_gateway/server.py`; that three-line fix is accepted at `e3c52f1`
-and does not widen Task 5 authority. Neither grant covers new host, userinfo, path,
-port, normalization, retry, timeout, exception-selection, or refactoring. Existing
-loopback and provider-boundary checks remain in force but are not widened by this
-child.
+The historical C-CG1 production grant permitted rejection of disallowed URL schemes before the existing `urlopen()` calls in the first three files. The historical C-CG4 grant produced the drain at `e3c52f1`; PR #195 later superseded it with the bounded correction now on main. The earlier four-file allowlist and anchor comparisons are historical custody records for those grants. This reconciliation preserves main's production bytes and grants no new Task 5 production authority. Existing loopback and provider-boundary checks remain in force.
 
 C-CG10 widens the **planned** Task 5 boundary to two additional reachable calls in
 `src/optimus_gateway/tool_provider_http.py` and to one minimal shared scheme predicate
@@ -96,13 +92,7 @@ four-file production allowlist above remains binding until the operator separate
 authorizes both added files and the exact shared-predicate semantics. Task 5 may not
 start, and no production diff may include either file, under the current grants.
 
-At every gate, the worker records `git diff --name-only 3eff64b...HEAD -- src` and
-reviews `git diff 3eff64b...HEAD --` for the four allowed files. The name set must be a
-subset of the allowlist. A production hunk must be either the accepted C-CG4 drain or
-scheme validation and its adjacent reviewed B310 rationale. A `# nosec B310` without
-the local validator, negative scheme test, and written rationale fails the gate. The
-C-CG1 scope grant still does not authorize Task 5 to start or authorize its commit;
-those remain separate operator decisions.
+For this reconciliation, record the complete production diff against main at `32f32ef4` and require it to be empty. Preserve historical anchor-based evidence separately. Any future Task 5 work requires its own reviewed production scope, local validator, negative scheme tests and written B310 rationale; a suppression alone cannot satisfy that gate. The historical C-CG1 grant does not authorize Task 5 execution or its commit here.
 
 ## Prerequisites
 
@@ -118,8 +108,8 @@ those remain separate operator decisions.
 | C-CG2 repair | The checked-in full unit suite passes after the logging-manifest and tracked-file-walker regressions are repaired | yes | prerequisite repair worker and reviewer | accepted in `6dd5a54`; subsequent local and CI full-suite gates are green |
 | Baseline | A clean all-five-package coverage run completes and its exact branch-aware totals are reviewer-accepted | yes | Task 0 worker and reviewer | accepted at `1ff7761`: observed `optimus 86.42`, `optimus_gateway 87.82`, `optimus_security 96.95`, `evidence_handoff 78.44`, `evidence_handoff_runtime 57.39`, aggregate `82.10`; initial floors are `80.00`, `87.82`, `96.95`, `78.44`, `57.39`, and aggregate `80.00` |
 | Lock | `uv lock --check` succeeds at the pickup commit | yes | repository dependency owner | satisfied at draft time; re-run at every pickup |
-| Secret scope | The all-tracked-text scan completes within the accepted CI time budget and has no unaudited finding | yes | Task 0 worker and security reviewer | 863 exact baseline entries are dispositioned with zero wildcard exclusions; local excludes only `reports/`, CI includes it, and Linux CI is green |
-| Required CI | Both merge-gating contexts execute on every pull request and are required on `main` | yes | repository administrator | branch protection independently reads back `clean-environment-recheck` and `verify`, `strict: false`, with no path filter or review lockout |
+| Secret scope | The selected production CI scope and exact local baseline exception set are preserved | no | reconciliation executor and independent reviewer | genuinely absent final-tree validation evidence, producible within the approved local commission: retain the original three v9 entries plus 31 approved report identities; the historical 863-entry venue is superseded. The successful assembly scan is recorded separately; final per-commit preflights and full-hook rehearsal remain required. |
+| Required CI | Both meaningful PR jobs must pass for the final published reconciliation | no | repository administrator and reconciliation reviewer | merely unauthorized publication of this reconciliation: protection requires `clean-environment-recheck` and `verify`, and #194 contains the masterplan producer. After separate publication authorization, both jobs must pass for the reviewed contents. Local declaration validation does not establish GitHub success; no protection change is commissioned. |
 | Security | The Bandit B310 inventory still contains exactly the three direct-call production sites named below; it is not the complete runtime `urlopen` inventory | yes | Task 0 worker and security reviewer | accepted at Task 0; C-CG10 separately proves five reachable paths because two default-`urlopen_fn` calls are invisible to Bandit, and Task 5 is widened without gaining execution authority |
 | Live systems | Redis, Zed, Gateway/provider calls, paid calls, OS credentials, and evidence promotion are unnecessary | yes | plan boundary | satisfied; this plan is offline-only |
 
@@ -223,7 +213,7 @@ those remain separate operator decisions.
 | `tests/plan1126_unrun_binding.json` | Exact 37-node `P11.26-UNRUN-BINDING` scope with `P11-FEAT-ZED-RESUME` custody |
 | `tools/plan1126_unrun_binding.py` | Fail-closed manifest validation, Git-object predicate, skip reason, and non-verification summary |
 | `tests/unit/tools/test_plan1126_unrun_binding.py` | Count, identity, mutation, two-sided predicate, attribution, and no-laundering contracts |
-| `src/optimus_gateway/server.py` | Accepted C-CG4 request-body drain before the unavailable-route 404; no further change owned here |
+| `src/optimus_gateway/server.py` | Inherited PR #195 bounded rejected-POST correction, preserved exactly from main at `32f32ef4`; the historical C-CG4 drain is superseded and no new production hunk is owned here |
 | `src/optimus/gateway/client.py` | Existing local Optimus-to-Gateway URL boundary and B310 site at `UrllibGatewayTransport.post_json` |
 | `src/optimus_gateway/upstream_client.py` | HTTPS validation at the provider-client construction boundary and B310 site in `_urlopen_json` |
 | `src/optimus/acp/local_infra.py` | Loopback HTTP(S) validation for Phoenix health and its B310 site |
@@ -556,6 +546,8 @@ ci: require locked dependency sync
 Stop after the commit.
 
 ### Task 2: Scan tracked text through venue-specific, fail-closed secret hooks
+
+**Deferred design, not current execution instructions.** The venue split described below is superseded for this reconciliation by the 2026-09-06 disposition. Preserve it as a proposal requiring fresh policy review; do not execute its two-hook installation, report exclusion or full-inventory baseline steps under the current commission. The current baseline/disposition artifacts and production CI scope are named above.
 
 **Files:**
 

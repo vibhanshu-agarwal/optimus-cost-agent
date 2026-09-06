@@ -21,8 +21,8 @@ from tools.plan1126_runtime_audit.model import (
 )
 
 _SCHEMA_PATH = Path(__file__).parents[3] / "fixtures" / "plan1126_runtime_audit" / "audit-artifact.schema.json"
-_MERGED = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"
-_OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"
+_MERGED = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"  # pragma: allowlist secret - Historical commit-identity pin in _MERGED;
+_OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"  # pragma: allowlist secret - Historical commit-identity pin in _OVERLAY;
 
 
 def _finding(**overrides: object) -> Finding:

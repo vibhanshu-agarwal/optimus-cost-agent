@@ -10,7 +10,7 @@ import pytest
 
 from tools.plan1126_runtime_audit.clients import ClientQualification, qualify_client
 
-_INTEGRITY = "sha512-/eufudw+aFY1LKLolT6yFE6UMmYRl7fMJ/DEONSIyR6wI3slHWITBsANRGqXEY8FRzqUxwh7QEaGiZHcJPVThg=="
+_INTEGRITY = "sha512-/eufudw+aFY1LKLolT6yFE6UMmYRl7fMJ/DEONSIyR6wI3slHWITBsANRGqXEY8FRzqUxwh7QEaGiZHcJPVThg=="  # pragma: allowlist secret - Pinned SDK 1.4.0 package-integrity string used for lockfile identity comparison or its test fixture;
 _TARBALL = "https://registry.npmjs.org/@agentclientprotocol/sdk/-/sdk-1.4.0.tgz"
 _REPOSITORY = "https://github.com/agentclientprotocol/typescript-sdk"
 _METHODS = ["initialize:success", "session/new:success", "session/prompt:success", "session/close:success"]

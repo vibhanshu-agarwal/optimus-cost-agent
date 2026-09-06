@@ -12,7 +12,7 @@ from typing import Any, Mapping
 _SDK = "@agentclientprotocol/sdk"
 _VERSION = "1.4.0"
 _TARBALL = "https://registry.npmjs.org/@agentclientprotocol/sdk/-/sdk-1.4.0.tgz"
-_INTEGRITY = "sha512-/eufudw+aFY1LKLolT6yFE6UMmYRl7fMJ/DEONSIyR6wI3slHWITBsANRGqXEY8FRzqUxwh7QEaGiZHcJPVThg=="
+_INTEGRITY = "sha512-/eufudw+aFY1LKLolT6yFE6UMmYRl7fMJ/DEONSIyR6wI3slHWITBsANRGqXEY8FRzqUxwh7QEaGiZHcJPVThg=="  # pragma: allowlist secret - Pinned SDK 1.4.0 package-integrity string used for lockfile identity comparison or its test fixture;
 _REPOSITORY = "https://github.com/agentclientprotocol/typescript-sdk"
 _SOURCES = {"package.json", "tsconfig.json", "src/client.ts", "fixture_agent.py"}
 _METHODS = ("initialize:success", "session/new:success", "session/prompt:success", "session/close:success")

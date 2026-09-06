@@ -40,6 +40,18 @@ provider keys, and accepts strict loopback Gateway URLs only. The gateway client
 posts model requests to `/v1/responses` using the Responses API `input` shape and
 parses the GatewayUsage envelope before returning generated text.
 
+**Rejected POST routes are bounded (P11-FU-6).** For POSTs to unknown routes and to tool routes
+without configured dependencies, the Gateway consumes a correctly framed request body of at most
+64 KiB within a 2-second total deadline before returning the existing `404 {"error":"not found"}`,
+and writes that response under a separate 2-second budget. A complete, validly framed body within
+that limit and deadline still receives the real 404. For malformed framing (conflicting or
+duplicate `Content-Length`, non-decimal values), `Transfer-Encoding`, any `Expect` header,
+oversized declarations, incomplete bodies and body timeouts the server selects `400`/`501`/`417`/
+`413`/`400`/`408`, makes one bounded best-effort attempt to write that JSON error, and closes the
+connection; receipt of the error body is not guaranteed for an undrained or disconnected peer.
+These limits apply only to that rejection path; recognized routes are unchanged and are not
+hardened by this change.
+
 ### Phase 1 Tool Policy and Evidence Foundation
 
 Tool calls are authorized by `ToolInvocationPolicy` before execution and are
@@ -90,6 +102,16 @@ cloned repositories and are not Gateway-brokered. Local pre-commit configuration
 checks so skipped hooks and clean-checkout drift are caught by CI; a generated
 detect-secrets baseline keeps the real secret scan separate from the
 config-trust scan.
+
+The required CI secret-scan step enumerates Git-tracked text files under every
+`src/` package and runs the scanner over that inventory. It rejects an empty
+inventory rather than reporting success, so a selection that matches nothing
+fails the job instead of passing silently. Passing a directory argument to the
+scanner is not a production scan: it exits 0 without examining any file, and
+that exit is not treated as a clean result. The scan covers tracked text under
+`src/`; it is not a repository-wide cleanliness claim. The existing local
+commit hook is unchanged and still receives staged filenames. The
+detect-secrets baseline and all detector and filter settings are unchanged.
 
 ### Phase 1 Plan 6.5 Guardrail Hardening
 

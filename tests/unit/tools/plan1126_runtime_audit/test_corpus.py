@@ -14,7 +14,7 @@ def test_regression_corpus_replays_frozen_literal_seeds() -> None:
 
 
 def test_fresh_seed_is_first_64_bits_of_binding_commit_scenario_and_index() -> None:
-    commit = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"
+    commit = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"  # pragma: allowlist secret - Historical commit-identity pin in test_fresh_seed_is_first_64_bits_of_binding_commit_scenario_and_index;
     expected = int.from_bytes(hashlib.sha256(f"{commit}delivery7".encode()).digest()[:8], "big")
     assert derived_seed(commit, "delivery", 7) == expected
     assert derived_seed(commit, "delivery", 7) != derived_seed(commit, "delivery", 8)

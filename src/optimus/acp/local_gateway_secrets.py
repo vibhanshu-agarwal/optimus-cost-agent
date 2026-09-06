@@ -15,8 +15,8 @@ from optimus_security.launch_manifest import resolve_effective_base_url
 
 _KEYRING_SERVICE = "optimus-cost-agent"
 _KEY_MODEL_PROVIDER = "model_provider"
-_KEY_MODEL_PROVIDER_API_KEY = "model_provider_api_key"
-_KEY_SHARED_SECRET = "local_gateway_shared_secret"
+_KEY_MODEL_PROVIDER_API_KEY = "model_provider_api_key"  # pragma: allowlist secret - keyring lookup name, not a retrieved credential
+_KEY_SHARED_SECRET = "local_gateway_shared_secret"  # pragma: allowlist secret - keyring lookup name, not a retrieved credential
 
 _SUPPORTED_PROVIDERS = ("openrouter",)
 SUPPORTED_GATEWAY_PROVIDERS = frozenset(_SUPPORTED_PROVIDERS)

@@ -22,7 +22,7 @@ from tools.plan1126_runtime_audit.source import GitCommitSource, SourceTree
 from tools.run_plan1126_runtime_audit import main as audit_cli_main
 
 _ROOT = Path(__file__).resolve().parents[4]
-_PINNED_COMMIT = "b62462f11abe858f58af12fa2d2f159eae09d832"
+_PINNED_COMMIT = "b62462f11abe858f58af12fa2d2f159eae09d832"  # pragma: allowlist secret - Historical commit-identity pin in _PINNED_COMMIT;
 _SCHEMA_DIR = _ROOT / "tests" / "fixtures" / "plan1126_runtime_audit"
 
 

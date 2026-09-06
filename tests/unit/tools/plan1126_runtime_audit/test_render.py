@@ -17,9 +17,9 @@ from tools.plan1126_runtime_audit.model import AuditArtifact, GateStatus, LiveSt
 from tools.plan1126_runtime_audit.render import render_markdown
 from tools.run_plan1126_runtime_audit import _live_gate, _record_zed, main
 
-_COMMIT = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"
-_OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"
-_TASK_0_COMMIT = "55fcd1fe4fd2d10c17776946d8f19d8d5f420a67"
+_COMMIT = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"  # pragma: allowlist secret - Historical commit-identity pin in _COMMIT;
+_OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"  # pragma: allowlist secret - Historical commit-identity pin in _OVERLAY;
+_TASK_0_COMMIT = "55fcd1fe4fd2d10c17776946d8f19d8d5f420a67"  # pragma: allowlist secret - Historical commit-identity pin in _TASK_0_COMMIT;
 
 
 def _artifact(**overrides: object) -> AuditArtifact:

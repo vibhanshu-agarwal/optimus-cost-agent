@@ -60,7 +60,20 @@ jobs:
         run: uv run python -m optimus.guardrails.prompt_injection
 
       - name: "optimus-check: secret-scan"
-        run: uv run pre-commit run optimus-secret-scan-ci --all-files --hook-stage manual
+        run: |
+          uv run python -X utf8 - <<'PY'
+          import os
+          import subprocess
+          from identify.identify import tags_from_path
+
+          raw = subprocess.check_output(["git", "ls-files", "-z", "--", "src/"])
+          paths = [os.fsdecode(path) for path in raw.split(b"\0") if path]
+          text_paths = [path for path in paths if "text" in tags_from_path(path)]
+          if not text_paths:
+              raise SystemExit("No tracked production text files under src/")
+          print(f"Tracked production text files: {len(text_paths)}")
+          PY
+          uv run pre-commit run optimus-secret-scan-ci-production --all-files --hook-stage manual
 
       - name: "optimus-check: pytest-coverage"
         run: uv run pytest --cov=optimus --cov-branch --cov-report=term-missing -v

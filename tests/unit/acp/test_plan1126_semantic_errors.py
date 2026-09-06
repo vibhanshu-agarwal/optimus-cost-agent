@@ -21,8 +21,8 @@ from tools.plan1126_runtime_audit.shutdown import H5_SOURCE_PATHS
 from tools.plan1126_runtime_audit.source import GitCommitSource, SourceTree
 from tools.run_plan1126_runtime_audit import main
 
-_MERGED = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"
-_OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"
+_MERGED = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"  # pragma: allowlist secret - Historical commit-identity pin in _MERGED;
+_OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"  # pragma: allowlist secret - Historical commit-identity pin in _OVERLAY;
 _SCHEMA_PATH = Path("tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json")
 
 

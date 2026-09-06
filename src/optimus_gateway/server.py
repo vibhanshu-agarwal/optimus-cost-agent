@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -16,6 +17,76 @@ from optimus_gateway.providers import build_tool_dependencies, build_upstream_cl
 from optimus_gateway.responses import handle_responses_request
 from optimus_gateway.tool_handlers import TOOL_ROUTE_PATHS, GatewayToolDependencies, handle_tool_request
 from optimus_gateway.upstream_client import UpstreamClient
+
+# P11-FU-6: limits for POSTs to routes this handler rejects with 404 (unknown routes and tool routes
+# without configured dependencies). The early 404 used to be written, and the connection closed,
+# before the request body was consumed; that unread-body-before-close behavior was shown to be
+# causally involved in intermittent client-side WinError 10053 failures on the tested Windows host
+# (the exact wire-level mechanism was not established). These bounds apply ONLY to that rejection
+# path; recognized routes keep their existing behavior. Values are private design choices, not
+# configuration.
+_REJECTED_POST_MAX_BYTES = 65_536
+_REJECTED_POST_BODY_SECONDS = 2.0
+_REJECTED_POST_WRITE_SECONDS = 2.0
+_REJECTED_POST_READ_CHUNK = 8192
+_MAX_LENGTH_DIGITS = len(str(_REJECTED_POST_MAX_BYTES))
+_monotonic = time.monotonic
+
+
+class _RejectedPostError(Exception):
+    """A framing or limit rejection on the early-404 path: fixed status and label only."""
+
+    def __init__(self, status: HTTPStatus, error: str) -> None:
+        super().__init__(error)
+        self.status = status
+        self.error = error
+
+
+def _rejected_post_length(headers: Any) -> int:
+    """Classify request framing for a rejected route and return the declared body length (may be 0)."""
+    lengths = headers.get_all("Content-Length", [])
+    encodings = headers.get_all("Transfer-Encoding", [])
+    if lengths and encodings:
+        raise _RejectedPostError(HTTPStatus.BAD_REQUEST, "invalid request framing")
+    if len(lengths) > 1:
+        raise _RejectedPostError(HTTPStatus.BAD_REQUEST, "invalid request framing")
+    if encodings:
+        raise _RejectedPostError(HTTPStatus.NOT_IMPLEMENTED, "transfer encoding not supported")
+    significant = ""
+    if lengths:
+        value = lengths[0].strip(" \t")
+        if not value or not value.isascii() or not value.isdigit():
+            raise _RejectedPostError(HTTPStatus.BAD_REQUEST, "invalid request framing")
+        significant = value.lstrip("0")
+    if headers.get_all("Expect", []):
+        raise _RejectedPostError(HTTPStatus.EXPECTATION_FAILED, "expectation failed")
+    if not significant:
+        return 0
+    if len(significant) > _MAX_LENGTH_DIGITS:
+        raise _RejectedPostError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request body too large")
+    length = int(significant)
+    if length > _REJECTED_POST_MAX_BYTES:
+        raise _RejectedPostError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request body too large")
+    return length
+
+
+def _discard_rejected_post_body(stream: Any, connection: Any, length: int, deadline: float) -> None:
+    """Consume exactly ``length`` bytes from the buffered stream under one total monotonic deadline."""
+    remaining = length
+    while remaining:
+        budget = deadline - _monotonic()
+        if budget <= 0:
+            raise _RejectedPostError(HTTPStatus.REQUEST_TIMEOUT, "request body timeout")
+        connection.settimeout(budget)
+        try:
+            chunk = stream.read1(min(_REJECTED_POST_READ_CHUNK, remaining))
+        except TimeoutError:
+            raise _RejectedPostError(HTTPStatus.REQUEST_TIMEOUT, "request body timeout") from None
+        if not chunk:
+            raise _RejectedPostError(HTTPStatus.BAD_REQUEST, "incomplete request body")
+        remaining -= len(chunk)
+        if _monotonic() >= deadline:
+            raise _RejectedPostError(HTTPStatus.REQUEST_TIMEOUT, "request body timeout")
 
 
 class OptimusGatewayHandler(BaseHTTPRequestHandler):
@@ -40,10 +111,7 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
         elif self.path in TOOL_ROUTE_PATHS and self.tool_dependencies is not None:
             tool_mode = True
         else:
-            content_length = int(self.headers.get("Content-Length", "0"))
-            if content_length:
-                self.rfile.read(content_length)
-            self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+            self._reject_unhandled_post()
             return
 
         content_length = int(self.headers.get("Content-Length", "0"))
@@ -82,13 +150,37 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
             )
         self._send_json(HTTPStatus(status), body)
 
-    def _send_json(self, status: HTTPStatus | int, body: dict[str, Any]) -> None:
+    def _reject_unhandled_post(self) -> None:
+        """Terminal handling for the early-404 branch: consume a bounded, well-framed body first."""
+        self.close_connection = True
+        deadline = _monotonic() + _REJECTED_POST_BODY_SECONDS
+        try:
+            length = _rejected_post_length(self.headers)
+            if length:
+                _discard_rejected_post_body(self.rfile, self.connection, length, deadline)
+        except _RejectedPostError as rejection:
+            status, body = rejection.status, {"error": rejection.error}
+        else:
+            status, body = HTTPStatus.NOT_FOUND, {"error": "not found"}
+        self._send_json(status, body, write_deadline=_monotonic() + _REJECTED_POST_WRITE_SECONDS)
+
+    def _arm_write_deadline(self, deadline: float) -> None:
+        remaining = deadline - _monotonic()
+        if remaining <= 0:
+            raise TimeoutError("response write deadline expired")
+        self.connection.settimeout(remaining)
+
+    def _send_json(self, status: HTTPStatus | int, body: dict[str, Any], *, write_deadline: float | None = None) -> None:
         payload = json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8")
         code = int(status)
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
+        if write_deadline is not None:
+            self._arm_write_deadline(write_deadline)
         self.end_headers()
+        if write_deadline is not None:
+            self._arm_write_deadline(write_deadline)
         self.wfile.write(payload)
 
 
@@ -100,9 +192,7 @@ def serve_gateway(
     trace_exporter: TraceExporter | None = None,
 ) -> ThreadingHTTPServer:
     client = upstream_client or build_upstream_client(config)
-    resolved_tool_dependencies = (
-        tool_dependencies if tool_dependencies is not None else build_tool_dependencies(config)
-    )
+    resolved_tool_dependencies = tool_dependencies if tool_dependencies is not None else build_tool_dependencies(config)
     # Plan 11.5, Task 4: config carries the Gateway-only OTLP endpoint
     # (`config.otlp_endpoint`, read from `OTEL_EXPORTER_OTLP_ENDPOINT`); the
     # default exporter is built from it here so every `serve_gateway(config=...)`

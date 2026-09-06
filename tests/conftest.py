@@ -56,6 +56,32 @@ def pytest_terminal_summary(
     if skipped_count:
         terminalreporter.write_sep("=", format_terminal_summary(skipped_count))
 
+_INHERITED_GIT_ENV: dict[str, str] = {}
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Neutralise hook-inherited `GIT_*` for the whole session, before collection.
+
+    Git exports `GIT_DIR`, `GIT_INDEX_FILE`, `GIT_WORK_TREE` and friends to the hooks it
+    runs. Any test or helper that shells out to git then operates on the SURROUNDING
+    repository no matter what `cwd` says -- on 2026-09-02 that marked the real repository
+    bare and wrote a fixture identity into its shared config, breaking `git status` in the
+    main checkout and every worktree.
+
+    This is deliberately a session hook rather than a fixture: a fixture only runs once a
+    test asks for it, which is after collection, and conftest/collection-time code can
+    shell out to git too. Restored in `pytest_sessionfinish` so the calling process is
+    left exactly as it was found. See HARDENING-ITEM-GIT-ENV-TEST-IMMUNITY.
+    """
+    for key in [name for name in os.environ if name.startswith("GIT_")]:
+        _INHERITED_GIT_ENV[key] = os.environ.pop(key)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Restore whatever `pytest_sessionstart` removed; leave no trace in the parent."""
+    os.environ.update(_INHERITED_GIT_ENV)
+    _INHERITED_GIT_ENV.clear()
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _shutdown_redis_bridge_after_session() -> None:

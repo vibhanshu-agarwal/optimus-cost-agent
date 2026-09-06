@@ -54,9 +54,9 @@ _AUTHORITY_KEYS = {
     "zed": "zed_live",
 }
 _ZED_OUTCOMES = frozenset({"OBSERVED", "NOT_OBSERVED", "NOT_APPLICABLE", "INVALID"})
-_ACCEPTED_MERGED_COMMIT = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"
-_ACCEPTED_OVERLAY_COMMIT = "fac32284888850bacde93815265cbabe3afd4663"
-_TASK_0_INTAKE_COMMIT = "55fcd1fe4fd2d10c17776946d8f19d8d5f420a67"
+_ACCEPTED_MERGED_COMMIT = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"  # pragma: allowlist secret - Historical commit-identity pin in _ACCEPTED_MERGED_COMMIT;
+_ACCEPTED_OVERLAY_COMMIT = "fac32284888850bacde93815265cbabe3afd4663"  # pragma: allowlist secret - Historical commit-identity pin in _ACCEPTED_OVERLAY_COMMIT;
+_TASK_0_INTAKE_COMMIT = "55fcd1fe4fd2d10c17776946d8f19d8d5f420a67"  # pragma: allowlist secret - Historical commit-identity pin in _TASK_0_INTAKE_COMMIT;
 _TASK_1_REPORT = "reports/plan-11-26-prerequisite-intake.json"
 _FROZEN_LITERAL_SEEDS = (0, 1, 42, 18446744073709551615)
 # Trust roots are code-owned: accepting a successor requires separately reviewing

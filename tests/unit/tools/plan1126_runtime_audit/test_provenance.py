@@ -8,7 +8,7 @@ from pathlib import Path
 
 from tools.plan1126_runtime_audit.provenance import ExpectedArtifactIdentity, verify_running_artifact
 
-_COMMIT = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"
+_COMMIT = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"  # pragma: allowlist secret - Historical commit-identity pin in _COMMIT;
 _EXPECTED = ExpectedArtifactIdentity(
     package_name="optimus-cost-agent", package_version="0.1.0", client_name="acpx", client_version="0.12.0"
 )
@@ -96,7 +96,7 @@ def test_running_artifact_provenance_rejects_build_commit_and_environment_tamper
     manifest = _valid_manifest(tmp_path)
     Path(manifest["embedded_commit_path"]).write_text("1" * 40 + "\n", encoding="ascii")
     environment_path = Path(manifest["environment_manifest_path"])
-    environment_path.write_text('{"secret":"must-not-be-read-as-environment-facts"}', encoding="utf-8")
+    environment_path.write_text('{"secret":"must-not-be-read-as-environment-facts"}', encoding="utf-8")  # pragma: allowlist secret - Deliberately invalid environment-manifest marker written under tmp_path;
     manifest["embedded_commit_sha256"] = _sha256(Path(manifest["embedded_commit_path"]))
     manifest["environment_fingerprint"] = _sha256(environment_path)
     result = verify_running_artifact(manifest, binding_commit=_COMMIT, expected_identity=_EXPECTED)

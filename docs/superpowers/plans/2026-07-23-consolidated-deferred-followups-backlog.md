@@ -55,10 +55,216 @@ in this table.
 
 | Plan | State | Backlog owner | Next gate |
 |---|---|---|---|
+| [Plan 11.27 v12 — integrate accepted correction and deliver locally](2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v12.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Integration plan commissioned; execution/120-minute box and disposition of the verified local-hook encoding limitation pending. Review exact combined tree, then obtain hit-bound P1 and full Windows rehearsal/actual-commit gates. No staging or delivery released. |
+| [P11-FU-6 — bounded early POST rejection corrective plan v2](2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | `Blocked` | `P11-FU-6` | Correction technically accepted, uncommitted; finish approved custody closeout, then await a separately approved integration plan, exact-hit P1 and complete delivery gates. No staging, commit or revalidation released. |
 | [Plan 11.7 v3 — Zed Resume](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | `Blocked` | `P11-FEAT-ZED-RESUME` | Task 0 evidence authority remains unaccepted; resume only after a reviewed forward-only v4 and explicit operator authorization. |
 | [Plan 11.24 v6 — guided session-load probe](2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md) | `Blocked` | `P11-FEAT-ZED-RESUME` | Offline repair is merged; the separately authorized Task-13 prerequisite drive and later two-Zed gate remain dormant. |
 | [Plan 11.23 — client-MCP runtime composition](2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | `Blocked` | `P11-FU-20` | Tasks 1–4 satisfy production composition; Task 6 still requires independently authored ACP/write-server evidence, live Redis/TimeSeries, Gateway authority, TTY ceremony, and paid-call authorization. |
 | [Evidence collector](evidence-handoff-evidence-collector-implementation.md) | `Blocked` | `EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR` | Determinate rendered outcomes require the unscheduled Zed render-observation producer; no merge is authorized. |
+| [Plan 11.27 v2 — conditionally reviewed predecessor](2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v2.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Non-executable predecessor retained byte-exact pending the required mechanical archival path proof; v7 execution is stopped; v8 recovery awaits approval. |
+| [Plan 11.27 v3 — Git test immunity and production CI secret scan](2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v3.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Original go and Task 1 portability stop remain historical records. Non-executable predecessor retained byte-exact pending mechanical archival custody; approved v7 execution is stopped; v8 recovery awaits approval. |
+| [Plan 11.27 v4 — portable Git-immunity oracle and CI resumption](2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v4.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Historical non-executable predecessor. V5 adopted its existing correction without retroactively approving v4; v7 owns the stopped execution; v8 recovery awaits approval. Frozen v4 stays byte-exact pending mechanically proven archival custody. |
+| [Plan 11.27 v5 — history-preserving rehearsals and external evidence](2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v5.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Non-executable predecessor after local Slice A commit `c1989985` and complete Task 1 evidence. Approved tree, actual Windows hook, externally sealed 86.23% coverage, clean candidate and no FU-6 hit; all 35 custody-manifest entries match. V5's original cap is exhausted and cannot reset. V7 is stopped; v8 recovery awaits approval. |
+| [Plan 11.27 v6 — production CI secret scan remaining work](2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v6.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Frozen non-executable predecessor: Task 2 accepted at bff2b1a... with 34 evidence hashes; budget STOP before Task 3 preserved. Transitional root custody pending mechanical relocation proof. Operator-approved v7 owns Tasks 3/4 under a separate 75-minute box; v6 is not reset. |
+| [Plan 11.27 v7 — production CI secret scan final delivery](2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v7.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Historical interrupted execution retained. Recovery and Task 3 technically accepted at b54da0a4... with 55 verified evidence hashes. Task 4 now scheduled under v9; operator directly confirmed prior Option 1 approval and custody is closed. No final commit/publication claim. |
+| [Plan 11.27 v8 — bounded environment recovery and final delivery](2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v8.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Unrevised proposal d41d6ba0... preserved. Operator directly confirmed prior Option 1 approval for recovery/Task 3/stop; work accepted and approval custody closed. Direct instruction governed the narrowed scope; preserve unrevised proposal and additive disposition. Task 4 now belongs to the separately approved v9 40-minute box; v8 remains non-executable history. |
+| [Plan 11.27 v9 — final review, rehearsal and local delivery](2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v9.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | STOPPED after full Windows rehearsal: local secret scan rejected F1 workflow label and three frozen-v9 integrity values. At that stop no Slice B commit existed. Failed rehearsal tree 9f2de4ec... and 86.15% coverage preserved; this is not actual commit coverage. Frozen v9 remains byte-exact. Approved v10 owns the narrow baseline-policy exception and remaining delivery gates. |
+| [Plan 11.27 v10 — exact baseline exception and local delivery](2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v10.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Operator approved exactly three frozen-v9 non-credential baseline entries and exact-policy controls, preserving all detectors/filters and frozen bytes. New 75 combined-agent-minute box entered 2026-09-05 08:17:36 UTC; reserve 40 before final delivery. Gate 2 accepted with exact-policy and real-scanner controls on both platforms. A full Windows rehearsal passed after four individually reviewed test-constant annotations; failed attempts remain preserved. Local delivery requires final package freshness, matching reviewed/rehearsed/staged trees, Codex concurrence and the actual commit's own full hook and evidence. No publication or fresh FU-6 authority; broader baseline migration stays deferred. The v10 delivery attempt stopped on FU-6; its box and historical P1 are spent. V12 is the pending successor, not an inherited execution grant. |
+
+**Plan 11.27 scheduling custody (2026-09-04):** the bounded pickup under
+`P11-FEAT-ACP-RUNTIME-HARDENING` covers central Git-test immunity, the explicitly scoped
+sanitization-test response-before-EOF port, and required CI scanning of every tracked production
+text file. It targets an independent main-based clone on C:, not the never-merged sandbox or
+the preserved, dirty linked CI worktree. Its first proposed commit has three prerequisite test
+files; its second has seven scanner files and bounded documentation. Main's baseline and
+local-hook coverage remain unchanged. The parent hardening entry remains Open: this approved plan is
+not a promotion or closure of the entire architecture-audit obligation.
+
+Claude conditionally approved v2, requiring post-cancel task settlement (F1) and explicit Git-blob
+hash domains (F3). The complete v3 also protects cleanup when reader close fails and preserves
+the primary response error (F2). It retains the 180-minute cap, with a stop during Task 2 or 3
+the conservative scheduling assumption, never a reason to skip a gate. V3 received execution
+authority and is now stopped at the portability finding below. V2's reviewed bytes remain at their original location pending the required mechanical
+archival path proof; this custody step must not alter frozen prose or leave broken links.
+
+**Technical approval recorded:** Claude approved v3 at SHA-256
+`dec4163fb294bfe56805ee6b1d245d25c1904b8424c2e567b90e94bb84168800`, closing F1/F2/F3
+with no remaining findings. Claude's independently repeated helper probes are attributed to
+Claude; they validate the proposed helper's control flow, not the real server port or the future
+implementation. Task 1 still owes that real acceptance evidence. Technical approval alone did
+not start implementation, spend the execution box, or authorize publication.
+
+**Operator go recorded, 2026-09-04 15:48:39 UTC:** Vibhanshu's direct instruction was,
+"Whose approval? If my approval is needed, I approve". This grants the requested independent
+clone, isolated locked Windows/WSL tool downloads, and two local commits after their required
+reviews and actual full Windows hooks. No repeat confirmation of that original grant is needed.
+The 180 combined agent-minute execution budget is authorized from this go: count all work
+under it, including setup and review, and record actual pickup time/attribution without resetting
+the allowance at handoff. Waiting for an agent to pick up is not agent work; elapsed time is
+recorded separately as the plan requires. Claude implements; Codex reviews. The approval itself
+did not certify execution; the subsequent stopped run is recorded below.
+Push, PR publication, merge, installation and fresh FU-6 revalidation remain withheld. All
+pre-decided stop conditions stand; no re-asking is needed for the already authorized actions.
+
+**Prior Task 1 stop / v4 proposal, 2026-09-04:** Claude started at 15:52:54 UTC and reports
+16 minutes spent. The independent candidate remains at the bound base with exactly three
+Slice A files and no commit. The bound 112-line test's `bare = true` assertion fails with
+Linux Git even though identity contamination occurs. Codex reproduced this in Linux-native
+temporary files. V4 proposes only replacing that assertion with explicit config-hash inequality;
+full protected-state equality and the `Probe` assertion remain unchanged. The corrected file
+hash is `ba5a5329dcf5936fe004fed8dbb3a6addb196a4ac0f420dc165261df4b764619`.
+In Codex's disposable complete exports, all five corrected cases pass on each OS; removing
+protection and replacing the injected identity each fail their intended assertions on each OS.
+This is proposal evidence, not a completed Slice A/full-hook claim. All post-go review work
+counts against the same cap; Claude's quoted 164 minutes is not the combined remaining balance.
+The v4 approval request is solely the exception to v3's exact source binding and its resume
+contract, as required by plan-fidelity rules. Existing clone/setup/local-commit approval stands.
+Claude's original candidate, failed output and v2/v3 bytes are unchanged. V4 explicitly resumes
+the existing owned clone after live checks; no re-clone, clock reset, gate waiver or new FU-6
+grant is implied. Actual affected-file Windows/WSL gates, rehearsal, review and commit remain.
+
+**Current Slice A review / v5 proposal, 2026-09-04:** Codex verified the corrected candidate
+against independent rehearsal commit `192fe1d3ae87eebffc1b89bc26673a401d1f6a5e`, parent
+`5ea8f8f71548eb05a8562a10e98667e3d2061c4d`, tree `258406df199720d19dbdd1f2640567f4f9aca4a8`.
+The candidate itself has no later commit and exactly three Slice A paths. Codex independently
+ran the actual two files on Windows and WSL (17 passed each), Ruff, six actual-helper failure
+controls and a real-server acknowledged barrier proving response-before-EOF in both sanitizer
+modes. The successful rehearsal log has eight applicable hooks passed and two skipped; its
+retained coverage database reports 86.08026323520771%, distinct from the failed rehearsal's
+86.16%. Codex did not rerun the full hook or infer a passing test count from the failed suite.
+
+The two plan defects are confirmed: a historyless rehearsal lacks historical objects required
+by doc gates, and raw evidence under ignored `tmp/` is still scanned by those gates. V5 replaces
+only the full-hook rehearsal construction with a complete independent clone at the exact parent
+and requires raw custody outside tested trees. Its scope also adopts the existing v4 one-line
+correction; no operator approval of that specific exception has yet appeared in the review
+conversation, so Claude's technical concurrence is not recorded as such approval. The reviewed
+evidence folder lacks the actual runner's exit-7 control and a separate original PATH-failure
+record. Claude must locate/seal retained originals and relocation hashes, or disclose unavailable
+bytes for an explicit disposition; no historical re-execution or blanket preservation claim.
+No new implementation defect was found, but commit concurrence remains held for the v5 decision,
+evidence seal and actual commit hook. Original go, file scope and combined 180-minute cap stand.
+
+**Prior custody review, 2026-09-04:** Claude disclosed that retrying overwrote the first
+PATH-failure log. Codex recommends accepting this one irrecoverable setup-log gap explicitly,
+with the historical diagnosis remaining Claude-attributed; no recreation, substituted artifact,
+complete-preservation claim or additional recovery search is needed. This recommendation is not
+the operator's disposition. V5 already defines that decision path and remains byte-unchanged.
+The new 32-entry manifest matches every current file, and all 28 files hashed in Codex's prior
+review are unchanged. Recovered WSL controls fail their intended assertions.
+
+The new commit-control claim is unsupported: `runner-negative-control-commit.log` contains only
+pre-commit's unstaged-configuration error, and the disposable control still has its config
+unstaged. The injected exit-7 hook never ran in that commit attempt. The standalone hook log
+does show exit 7, but does not itself record the caller command or parent exit. Seal the actual
+required-runner invocation and its propagated nonzero exit; no optional full-suite commit
+negative control is required by v5. If retaining that extra claim, correct its fixture setup
+and obtain evidence that reaches the intended hook. Keep the rejected control as failed evidence.
+
+**Current runner review, 2026-09-04:** The corrected commit-control log now contains the injected
+hook's exit 7; the disposable control's config is staged and has `fail_fast: true`, and HEAD
+remains `192fe1d3...`. The log stops before the full suite. Parent exit 1 is attributed to
+Claude's recorded execution; Codex inspected the artifacts/state without rerunning the control.
+The current 32-entry manifest matches all files. The retry reused the earlier control filename,
+but Codex recovered that earlier log and manifest from its prior captured output, reproducing
+their previously recorded SHA-256 values exactly. Both versions now survive under external
+review custody (`runner-control-custody-r2`), so this introduces no second missing-log gap.
+The causal runner finding is closed.
+
+**Operator approval recorded, 2026-09-04 17:52 UTC:** the direct reply "yes approved"
+approves complete v5 (`f71006d3...`) and accepts the single irrecoverable original
+PATH-setup log gap as disclosed. The historical diagnosis remains Claude-attributed;
+this is neither recovered evidence nor a complete-preservation claim. V5 and all three
+reviewed candidate file hashes remain unchanged; the candidate is still uncommitted
+at the bound base. Claude may run its actual required full Windows commit hook,
+without another optional rehearsal, code review or approval request. Reconcile the
+remaining combined 180-minute balance first; no reset or expansion is authorized.
+A new failure or drift invokes the existing STOP rules. Push, PR, merge, installation
+and any fresh FU-6 revalidation remain withheld. Frozen predecessors remain byte-exact
+pending their already-recorded mechanical archival custody; no plan bytes were edited.
+
+**Slice A commit review, 2026-09-04 18:15 UTC:** candidate HEAD
+`c1989985171c3054916732f1306d5ffc85d5b094` has the bound parent and tree
+`258406df199720d19dbdd1f2640567f4f9aca4a8`, equal to the approved rehearsal.
+Exactly the three reviewed paths changed; the candidate is clean and untagged. The
+actual commit log records eight applicable hooks Passed and YAML/TOML Skipped; all
+33 current external-manifest entries match. The hook-created `.coverage` database,
+SHA-256 `da133c6b12c6780bbdc4a768a25c635ac8aa921110c67627d19e540f4d469a4e`,
+remains only in the candidate and is absent from external custody. V5 requires that
+database/report to be preserved when passing-hook stdout is suppressed. Claude must
+seal those existing bytes under a fresh external name and update its manifest before
+another hook can overwrite them; no suite rerun is needed. The shared-ledger derived
+header is also stale and remains Claude-owned. Until those custody items are closed,
+record the commit as landed without a formal Task 1 completion claim. The budget STOP
+before unstarted Slice B is correct; Tasks 2-4 require a separately scheduled bounded
+box. Push, PR, merge, installation and fresh FU-6 revalidation remain withheld.
+
+**Slice A custody closure, 2026-09-04 18:25 UTC:** external
+`a-commit-coverage.data` is byte-identical to the candidate's hook-created `.coverage`,
+SHA-256 `da133c6b12c6780bbdc4a768a25c635ac8aa921110c67627d19e540f4d469a4e`.
+Codex independently read the sealed copy without rerunning tests and confirmed TOTAL
+13497 / 1456 missed / 3522 branches / 609 partial / 86.23%. The external report hashes
+to `b25b579584acee5ffffd3fd6693c5d0b91dca78efeb514d0de5a4a55d7c9f76f`;
+all 35 entries in manifest `6522ecf5...` match. The separate 86.08% figure belongs to
+the successful rehearsal run, so both figures remain correctly attributed. Candidate
+is clean and the shared-ledger header is current. Task 1 evidence is complete.
+
+**Slice B Task 0 review, 2026-09-05 03:54 UTC:** v6 execution began at
+03:34:53 UTC under the separately approved 120 combined-agent-minute box. Candidate,
+isolation, canary, pins, toolchains and external custody substantively pass; Task 2 is
+released. The immutable Task 0 log mislabels proposal digest `0ba9...` as approved:
+final digest `83a8...` was approved after the required JUnit clarification. Preserve
+the log and add a freshly named correction artifact to the external manifest; update
+shared `CURRENT.md`. No rerun or v7 is required. Windows Git 2.55 and WSL Git 2.43
+are accepted per-platform identities, and invocation-scoped MSYS path-conversion
+suppression is accepted with exact command/script evidence. The reported 107.2-minute
+balance precedes Codex's review charge. Recalculate at each boundary; Task 4 must not
+start unless all 40 minutes can fit. Publication and any fresh FU-6 revalidation
+remain withheld.
+
+**Slice B Task 2 review, 2026-09-05 04:16 UTC:** the current three-file diff
+matches sealed patch `4d3cdf8d...`; all 14 external manifest entries match, and the
+recorded Windows/WSL results are 13 passed on each platform. Task 2 remains open.
+The timeout helper kills only its shell then re-enters unbounded `communicate()`, the
+required per-binding fixture mutants are absent, and the selection fixture stages the
+files it calls untracked while providing no ignored control or representatives for
+all actual source packages. Correct these three requirements with targeted controls
+before Task 3. Add a fresh custody correction for the two `T035500Z` MSYS filenames,
+whose content records the actual rerun at 03:58:29Z; preserve all earlier bytes.
+WSL uv 0.11.31 is accepted as observed platform state. The 85.6-minute balance was
+measured before Codex review; recompute after Task 2 closes and stop before any later
+mandatory task that cannot fit whole.
+
+**Slice B corrected Task 2 review, 2026-09-05 04:38:57 UTC:** live patch d5df1171... matches the sealed bytes; all 22 manifest entries match. Selection controls and additive MSYS timestamp correction are accepted. Task 2 remains open: bound tasklist/failure teardown and ensure fallback reap if tree-kill fails; reject job-level continue-on-error and pin the full approved hook entry/settings with independent mutants; verify both fixture Git directories before writes. Platform logs record 22 passed each; Codex inspected logs without rerunning tests. Prior post-go Codex active turns total approximately 15.2564 minutes, plus this review beginning 04:34:37 UTC. Claude's elapsed-since-go figure does not distinguish relay idle; active intervals requested before the Task 3/4 budget decision. Task 3 remains held; no publication or fresh FU-6 authority.
+
+**Slice B second corrected Task 2 review, 2026-09-05 04:48:12 UTC:** 0b9d2e6c... matches live bytes; 27 manifest hashes verified; Claude logs record 26 passed on each OS. Binding accepted. Timeout-control teardown still begins after the invocation/expectation, poll does not establish bounded reap, and the requested common-directory escape control remains absent. Correct those existing requirements with targeted controls. Task 3 held. Claude's 68.8 upper bound ends before final reporting; conservatively charge 70.7667 through relay receipt at 04:45:39, plus subsequent active work. Prior Codex turns total 20.0532 minutes; current review starts 04:45:39. Recompute before entry and stop if the complete 25-minute Task 3 cannot fit; Task 4 still needs 40. Frozen v6 and publication/FU-6 boundaries unchanged.
+
+**Slice B Task 2 acceptance and STOP, 2026-09-05 06:30:52 UTC:** final live patch bff2b1a... equals sealed bytes; all 34 manifest hashes match. Remaining timeout/containment findings closed from code and Claude's Windows/WSL 29-passed logs; prior WSL injected-failure log retained. Codex did not rerun tests/Ruff. Slice B stops before Task 3: about 21.7 conservative minutes remained before reporting/review, below the complete 25-minute gate. Relay idle is excluded; this is a gate stop, not an exact exhaustion claim. Three-file delta is accepted but unstaged/uncommitted at c1989985. Tasks 3/4, production dispositions/evidence, README, final audit/custody/rehearsal and enforced local commit remain owned here. Await operator scheduling; frozen v6 is unchanged and cannot silently reset. No publication or fresh FU-6 authority.
+
+**V7 execution release, 2026-09-05 06:55:22 UTC:** operator approved execution and the recommended new 75-minute box (10 successor/pickup, 25 Task 3, 40 Task 4), beginning with Codex turn 06:48:50. Complete v7 sealed at 9e05956c971310cbf9f6b31600c054e6172bdc4f29d98ddc0c63b2eb70d22b1b; Task 3 is byte-exact to v6, frozen v6 unchanged, 57 plan/registry checks pass. Accepted Task 2 patch/custody and baseline/lock/shared-config pins verify. Claude completes Task 0 pickup then Task 3 if its whole gate fits; Task 4 needs all 40 minutes and final reviewer concurrence. No old-box reset, publication or fresh FU-6 grant.
+
+**V7 environment incident, 2026-09-05 07:16:18 UTC:** live candidate .venv is Linux after WSL uv replacement; WSL production step exited 1. Codex independently verified four annotation ASTs/docstring, three SQL hashes, 47 evidence hashes, exact partial patch 012f1e99..., accepted Task 2 subdiff and baseline/lock/canary invariants. Partial source accepted; Task 3 incomplete and Task 4 blocked. V8 proposal d41d6ba0... requests only preservation, one offline locked Windows rebuild and pinned no-sync WSL retry under the existing 75-minute box; no repair executed or authorized. Full 40-minute Task 4 gate and publication/FU-6 restrictions remain. Await operator approval.
+
+**Recovery and Task 3 review, 2026-09-05 07:31:54 UTC:** exact b54da0a4... final patch and 55 hashes verified; AST/docstring/SQL and Task 2/invariant pins unchanged. Windows environment restored, Linux replacement preserved externally, WSL retry exit 0 with pinned no-sync environment; logged inventory sets equal at 200. Recovered Windows records 144 passed; Codex inspected without rerunning. Task 3 technically accepted; Task 4 held. Operator Option 1 approval is quoted in Claude's ledger but original message absent from this conversation. Preserve unrevised v8; do not backdate a revision or treat removal of its 40-minute reservation as mere subset execution. Resolve actual approval custody separately from technical acceptance.
+
+**Option 1 approval confirmation, 2026-09-05 07:35:07 UTC:** operator directly confirms he relayed approval after Codex recommended Option 1. Recovery and Task 3 execution were authorized; approval-record issue closed without repeated approval or backdated v8 editing. Task 4 remains separately gated and deferred.
+
+**Task 4 execution release, 2026-09-05 07:43:17 UTC:** operator approved the separate 40-minute box; entry at 07:36:45 with Codex final-document/contract preparation counted inside Task 4. V9 sealed at 823f269c05f9251b6594635a4881c23edb74ded3382469655f788c3b50cfb3dd; 57 plan/registry checks pass, candidate b54da0a4... and 55 evidence hashes unchanged. Claude continues the same box for final custody/rehearsal, with Codex concurrence before actual full-hook local commit. No second 40-minute allowance, old-box reset, publication or fresh FU-6 grant.
+
+The [original stopped Plan 11.27 scratch draft](archive/2026-09-03-plan-11-27-git-test-immunity-and-production-secret-scan.md)
+is superseded as a proposal by the complete successor series; its archived copy preserves SHA-256
+`4900776b5332a061a148b3ad35db9fa2cfe539504c458eb7b5bca48d5a603751`. Historical execution
+authority and failed evidence are not rewritten. A new FU-6 hit stops and needs a new recorded
+per-hit P1; the previous grant is spent. `P11-FU-6` and `P11-FU-7` retain their existing
+statuses and separate closure gates. The EOF port does not claim either closure.
+
+After this CI package, the next bounded static-analysis proposal remains focused production
+S110 enforcement under `P11-FEAT-ACP-RUNTIME-HARDENING`. Both outbound-writer dispositions
+must preserve future settlement and worker survival; no broad Ruff selection is enabled here.
+That same parent owns broader scanner/baseline migration, PR #194 collision, guardrail tension,
+unexplained watchdog-assertion disposition and shared-cache repair. `P11-FEAT-ZED-RESUME`
+continues to own WP-27 runtime/live evidence. Publication, main CI activation, merge and
+installation remain separate operator gates; local delivery alone will not close them.
 
 **Current Zed Resume position (accepted runtime lane, 2026-08-28):** runtime commit
 `fac32284888850bacde93815265cbabe3afd4663` and its independent R9/V2 reviews are accepted. Real
@@ -139,8 +345,8 @@ open-work inventory.
 | ~~`P11-FEAT-GATEWAY-MCP`~~      | ~~Retired~~           | ~~MEDIUM~~ | ~~Retired by Plan 11.12. [Plan 11.8](archive/2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md) and [Plan 11.11](archive/2026-08-13-plan-11-11-p11-feat-gateway-mcp-2026-07-28-http-compatibility.md) are historical precursor work; their frozen design and merged implementation records are not rewritten. Plan 11.13 published HLD v2.18, LLD v2.41, Guardrails v1.3, and Test Strategy v1.7 through the sibling reversal package; immutable amendment inputs remain historical. Client-owned MCP remains live and separate. This completed publication remains a pre-`P11-FEAT-REGISTRY` / v1.0 dependency. [Evidence](../reports/2026-08-15-plan-11-13-authoritative-document-reversal-evidence.md). [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering)~~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `P11-FEAT-ZED-RESUME`           | Partially implemented | MEDIUM     | Partially implemented; blocked. Frozen Task 0 Steps 1-4 sealed (`session/load` unreachable on historical Zed 1.13.1); frozen Plan 11.7 Tasks 0 Steps 5-7 and Tasks 1-11 remain blocked. Standalone feasibility amendment approved (`79F3C92A…C06E6`, 2026-08-02); origin-A fixture v2 amendment approved and merged (`5BB327D8…9A4D` / PR #108, 2026-08-02). Corrected `origin-a-3` executed and sealed as Option B process-invalid (`next_corr=4` / `next_prompt=3` unclaimed; DoD success false). Retry-preflight amendment (`P11-FU-11`, PR #110) implemented through Task 5 **Path A** fail-closed terminal stop (2026-08-05): real CLI fail-closed at acquire; offline `unavailable_proof`; no corr-4 / no settings mutation / no Zed launch; accepted live retry not obtained. Parent Task 5 remains blocked; clean relaunch needs a budget-expansion amendment. Re-probe on 2026-08-15 at `71cb9ed` observed Zed `1.15.0 e17dc4f…`, independent acpx `0.12.0`, and live Redis. Its live `agentCapabilities` omitted `loadSession` and `sessionCapabilities.resume`; the resulting **INDETERMINATE / INTERNAL_CAPABILITY_UNAVAILABLE** establishes the Optimus agent gate only, not Zed support. Acpx made no forced `session/load` call, Zed was not launched, and no origin-A launch occurred. The current repository cannot independently compare the historical 1.13.1 run because its three named Task 0 artifacts are absent from `origin/main`; the [custody note](../../../reports/p11-feat-zed-resume-task0-evidence-custody-note.md) does not classify that absence as loss or invalidate the seal. The real-Zed temporary-advertisement re-probe is separately scoped and must commit its sanitized evidence. See [the re-probe](../../../reports/p11-feat-zed-resume-session-load-reprobe.md). Does not claim server-side custody feasible or an origin-A/amendment disposition. Its unimplemented error-code subset is now completed by `P11-FU-10` / Plan 11.18; frozen Plan 11.7 remains blocked and this transfer does not unblock `session/load`. Carries owned `P11-FU-1`, `P9.8-FU-5`, and `P11-FU-11`; coordinates, but does not own, `P11-FU-4`. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume); [feasibility amendment](archive/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md); [origin-A fixture v2 amendment](archive/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md); [retry-preflight amendment](archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md). Dependency: `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` in this backlog supplies its sanitized-evidence gate. |
 | `P11-FEAT-MULTI-TURN-CONVERSATION` | Closed | MEDIUM | Plan 11.25 Slice 1 — same-process in-memory multi-turn conversation on ACP `session/prompt` (canonical history, byte-budget admission/commitment, settlement, dedicated NDJSON writer), merged through PR #188 and follow-up PR #189. Does **not** include persistence, `session/resume`/`session/load`, compression/summarization/pruning/eviction (Plan 12), or non-AGENT-mode carriage; `MT-FU-1` and `MT-FU-2` remain separately open below. Evidence: [baseline](../../../reports/plan-11-25-multi-turn-baseline.md), [contract evidence](../../../reports/plan-11-25-multi-turn-contract-evidence.md), [release review](../../../reports/plan-11-25-multi-turn-release-review.md); [archived implementation plan](archive/2026-08-21-plan-11-25-multi-turn-conversation-implementation.md). |
-| `P11-FEAT-ACP-RUNTIME-HARDENING` | Open | HIGH | **Plan 11.26 Tasks 0-12 accepted through G6; Task 13 accepted at G7.** The [approved design](../specs/2026-08-29-plan-11-26-acp-runtime-hardening-audit-design.md) and [archived implementation plan](archive/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md) remain the governing audit documents. Canonical Task 12 outputs: [machine-readable audit](../../../reports/plan-11-26-acp-runtime-audit.json), [deterministic audit report](../../../reports/plan-11-26-acp-runtime-audit.md), and [terminal characterization](../../../reports/plan-11-26-terminal-characterization.md). Separate Task 13 outputs: [candidate inventory](../../../reports/plan-11-26-duplication-candidates.json), [reviewed duplication audit](../../../reports/plan-11-26-duplication-audit.json), and [deterministic duplication report](../../../reports/plan-11-26-duplication-audit.md). The terminal artifact remains honestly `INCOMPLETE`: 16 offline predicates passed and three blocked predicates retain distinct binding/Redis/Zed owners; every live row remains `UNRUN`. The audit covers concurrency, task ownership and cancellation; stdio and Redis connection lifecycle under orderly EOF, cancellation, and abrupt client termination; idempotent close, lease release/recovery, backpressure, connection health and pooling; semantic exception taxonomy and runtime-to-wire mapping; duplicated lifecycle/protocol logic and flaky tests; redacted structured telemetry and logging with stable correlation fields; reviewer-facing comments and docstrings that explain invariants and non-obvious decisions; and comparison using at least one independently authored ACP client or conformance harness. Plan 11.26 is audit-and-contract only and does not authorize production fixes. The ranked custody table below records the accepted Task 12 structural-prevention candidates and keeps this feature `Open` until later remediation plans separately complete. Task 13 is the operator-directed duplication audit; evidence collector and A2A are separate products and are affirmatively excluded from core duplication clustering before classification. Zed, acpx, SDK/harness, Redis mutation, Gateway/model calls, paid calls, evidence promotion, push, PR, and merge remain separately unauthorized. Archiving the audit plan does not close any remediation owner or live obligation. **HIGH justification:** these cross-cutting lifecycle and observability weaknesses increase defect-escape risk and make failures materially harder to reproduce, diagnose, and review. |
-| `HARDENING-FEAT-RUNTIME-QUALITY` | Open | HIGH | The [hardening runtime-quality masterplan](hardening-runtime-quality-masterplan.md) sequences 16 new items, 17 existing candidates, and 3 existing obligations. The backlog row owns this masterplan's status; the masterplan owns its 15 child-plan statuses. The G6/G7 custody tables are historical acceptance records. This charter grants no implementation authority except through separately reviewed and authorized child tasks; live child status and task gates remain solely in the masterplan and owning child plans. |
+| `P11-FEAT-ACP-RUNTIME-HARDENING` | Open | HIGH | **Plan 11.26 Tasks 0-12 accepted through G6; Task 13 accepted at G7.** The [approved design](../specs/2026-08-29-plan-11-26-acp-runtime-hardening-audit-design.md) and [archived implementation plan](archive/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md) remain the governing audit documents. Canonical Task 12 outputs: [machine-readable audit](../../../reports/plan-11-26-acp-runtime-audit.json), [deterministic audit report](../../../reports/plan-11-26-acp-runtime-audit.md), and [terminal characterization](../../../reports/plan-11-26-terminal-characterization.md). Separate Task 13 outputs: [candidate inventory](../../../reports/plan-11-26-duplication-candidates.json), [reviewed duplication audit](../../../reports/plan-11-26-duplication-audit.json), and [deterministic duplication report](../../../reports/plan-11-26-duplication-audit.md). The terminal artifact remains honestly `INCOMPLETE`: 16 offline predicates passed and three blocked predicates retain distinct binding/Redis/Zed owners; every live row remains `UNRUN`. The audit covers concurrency, task ownership and cancellation; stdio and Redis connection lifecycle under orderly EOF, cancellation, and abrupt client termination; idempotent close, lease release/recovery, backpressure, connection health and pooling; semantic exception taxonomy and runtime-to-wire mapping; duplicated lifecycle/protocol logic and flaky tests; redacted structured telemetry and logging with stable correlation fields; reviewer-facing comments and docstrings that explain invariants and non-obvious decisions; and comparison using at least one independently authored ACP client or conformance harness. Plan 11.26 is audit-and-contract only and does not authorize production fixes. The ranked custody table below records the accepted Task 12 structural-prevention candidates and keeps this feature `Open` until later remediation plans separately complete. Task 13 is the operator-directed duplication audit; evidence collector and A2A are separate products and are affirmatively excluded from core duplication clustering before classification. Zed, acpx, SDK/harness, Redis mutation, Gateway/model calls, paid calls, evidence promotion, push, PR, and merge remain separately unauthorized. Archiving the audit plan does not close any remediation owner or live obligation. **HIGH justification:** these cross-cutting lifecycle and observability weaknesses increase defect-escape risk and make failures materially harder to reproduce, diagnose, and review. **2026-09-06 current disposition:** PR #195 delivered the central Git-test immunity, production-only CI secret scan and bounded FU-6 rejected-POST correction on main at `32f32ef4`. That specific publication was authorized and accepted; the earlier audit boundary above does not revoke it. PR #194 reconciliation is authorized for isolated implementation and reviewed local delivery, with its publication still pending. The local-hook UTF-8 decoding repair, broader FU-6 closure and existing live/binding obligations remain open with their current owners. No installation or rollout is established by either record. |
+| `HARDENING-FEAT-RUNTIME-QUALITY` | Open | HIGH | The [hardening runtime-quality masterplan](hardening-runtime-quality-masterplan.md) sequences 16 new items, 17 existing candidates, and 3 existing obligations. The backlog row owns this masterplan's status; the masterplan owns its 15 child-plan statuses. The G6/G7 custody tables are historical acceptance records. This charter grants no implementation authority except through separately reviewed and authorized child tasks; live child status and task gates remain solely in the masterplan and owning child plans. **2026-09-06 reconciliation:** the CI guardrail child retains main's production scan and commit-time coverage, carries locked dependency sync, and adopts only the original three baseline entries plus 31 reviewed report identities. Independent final-tree validation and local-delivery acceptance remain gates; publication and later child tasks require their own decisions. The masterplan's CI-GUARDRAILS row owns this reconciliation's next gate. |
 | `P11-FEAT-REGISTRY`             | Open                  | LOW        | Ratified, unscheduled, and held as the last primary Plan 11 slice. The ACP registry has a public authoritative repository, schema, submission guide, and stabilized live process; pickup begins by pinning and executing against the then-current validator/CI behavior, not by searching for an unknown source. Reassess 11.x-last versus a 13.x split for outward publication once this consolidated pool closes. The v1.0 release-version contract and excluded-capability inventory remain in Plan 11. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut). Verified local finding carried to pickup: package and ACP versions are both `0.1.0`, and ACP currently returns `authMethods: []`. The registry guide's Agent/Terminal Auth admission rule is an external claim to verify by live execution before implementation scope is frozen.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `P11-FEAT-IDE`                  | Open                  | LOW        | Conditional — opens only through an explicitly approved complete versioned charter successor if REGISTRY surfaces an unmet multi-IDE expectation. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `Plan 12`                       | Open                  | LOW        | Post-v1.0 context-window and intelligent-selection lane; outside the v1.0 cut. [Charter boundary](2026-07-25-plan-11-v1-milestone-charter.md#explicit-exclusions-and-unresolved-inputs)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -253,7 +459,7 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | ~~`P11-FU-3`~~ | ~~MCP Route/Typed-Contract Publication Gate~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-GATEWAY-MCP`~~ | ~~PR #112; PR #113 / `edd1f04`~~ |
 | `P11-FU-4` | Re-pin FU-4A/FU-5 Live Evidence | Open | MEDIUM     | Coordinated with `P11-FEAT-ZED-RESUME` | Acceptance criteria in entry |
 | `P11-FU-5` | Windows Subprocess Handle-Duplication Flake (WinError 6/50) | Open | LOW        | Future Windows subprocess-lifecycle evidence lane | [Plan 11.17 disposition](../../../reports/plan-11-17-p11-fu-5-windows-disposition.md); retains distinct FU-29 custody |
-| `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | LOW        | Future Windows Gateway lifecycle-evidence lane | [Plan 11.17 root-cause record](../../../reports/plan-11-17-p11-fu-6-root-cause.md); recurrence retained; 59-clean bound inapplicable |
+| `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | LOW | Bounded rejected-POST correction merged through PR #195; broader Windows lifecycle reliability closure remains separately owned | [Plan 11.17 root-cause record](../../../reports/plan-11-17-p11-fu-6-root-cause.md); main `32f32ef4` carries the accepted correction; historical recurrence remains recorded, the 59-clean bound remains inapplicable, and no universal or packet-level mechanism is claimed |
 | `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Partially implemented | MEDIUM     | Future Windows coverage-flake closure lane; Plan 11.16 is a terminal partial outcome | [Windows residual](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md); Plan 11.17 recorded FU-6 open disposition |
 | `P11.5-FU-1` | Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics | Closed | MEDIUM     | `P11-FEAT-GATEWAY-COST-OBS` | [phoenix evidence](../../../reports/plan-11-21-p11-5-fu-1-phoenix-evidence.md); [release](../../../reports/plan-11-21-p11-5-fu-1-release.md); Task 8 watch remains Plan 11.5 Task 8 |
 | `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Open | LOW        | Future Gateway migration design | Acceptance criteria in entry |
@@ -736,6 +942,56 @@ inherited-trust limitation. Windows CLI unavailable cases print retry/repair and
 Not closed by `P11-FU-18` topology evidence and not closed by a `P11-FU-5` handle-flake rerun.
 
 ### P11-FU-6: Gateway `test_server` Full-Suite Port/Teardown Flake
+
+**2026-09-05 integration plan commissioned — delivery remains pending.**
+Plan 11.27 v12 combines the preserved Slice B package with the accepted correction on the
+bound Slice A parent in a new independent clone. It proposes a new 120-minute box and requires
+an exact-tree, exact-hit P1 before integrated Gateway execution, staging and the full Windows
+rehearsal/actual-commit gates. At this package snapshot no integration commit or delivery
+acceptance exists. Outcomes belong to the later external run/commit receipt; publication and
+broader FU-6 closure remain withheld. This paragraph supersedes no historical evidence.
+
+Authoring exposed a separate local-hook limitation: the same frozen documents pass the
+unchanged Windows local scanner in the host's default CP1252 mode only because eight plan
+documents (v2-v8 and FU-6 v2) are skipped entirely on decoding errors. UTF-8 scanning finds
+25 non-credential integrity/example values in v2-v8; FU-6 v2 is clean under UTF-8. The production CI hook already uses UTF-8 and remains required. Existing
+local-hook decoding/completeness belongs to `P11-FEAT-ACP-RUNTIME-HARDENING`; v12 execution
+needs an explicit disposition, with no baseline expansion, frozen-document edit or encoding
+workaround inferred. A default local pass is not a repository-wide cleanliness guarantee.
+
+**2026-09-05 superseding disposition — Correction accepted; FU-6 remains Open.**
+Codex closed the four Task 4 review findings on the pinned uncommitted correction.
+Final Windows and WSL focused runs each show 79 passed; the five mutant oracles hold.
+The sealed static checks report seven passes and two no-applicable-file skips, all exit 0.
+The external stalled-client watchdog and its forced-hang control, shutdown/close error
+controls, and server-side Expect/no-100 oracle are accepted for the scoped correction.
+An evidence overwrite deviation remains recorded. Codex reconstructed the prior test,
+patch and end marker to their exact old hashes; 29 of 31 prior artifacts have matching
+bytes located. Two derived JSON summaries remain lost; their original raw log survives.
+Only approved prose/custody closeout remains in this correction phase. No delivery or
+broad reliability claim follows. Integration needs a separate final-tree plan, exact-hit
+P1 and complete Windows rehearsal/commit gates. The earlier review hold below is historical.
+
+**2026-09-05 correction review — Open; uncommitted and acceptance pending.**
+The independent investigation established causal involvement of unread-body-before-close
+behavior on the tested Windows host. The exact packet/reset/discard chain and universality
+across hosts remain unproven. The older suspected-cause discussion below is historical.
+Under the approved v2 correction-only box, Fable implemented bounded rejected-POST handling
+in an independent checkout. The old-source ordering RED is accepted; focused final-byte
+Windows and WSL logs each show 75 passed, and five mutants exercise named failure oracles.
+Codex verified all 31 executor manifest entries. This is not full-suite or delivery evidence.
+
+Codex's Task 4 review requires the external stalled-client watchdog and guaranteed failure
+cleanup, shutdown-worker exception propagation, server-side Expect/no-100 oracles, narrowed
+source/README claims, and a sealed final static-check pass before correction acceptance.
+The approved limits remain 64 KiB, one two-second total body deadline and a separate
+two-second shared response-write budget, applying only to already-rejected POST routes.
+Recognized-route unbounded body reads and malformed Content-Length handling, request-header
+deadlines, and global connection/thread admission remain deferred to the existing owner
+`P11-FEAT-ACP-RUNTIME-HARDENING`; this correction does not schedule or claim those fixes.
+Fable owns corrections and evidence; Codex owns independent review. The v2 registry remains
+Active. Slice B remains stopped; integration and delivery revalidation require their own
+exact-hit approval and final-tree gates. No staging, commit, publication or FU-6 closure.
 
 **Raised:** 2026-07-26 during Plan 11.1 Task 7 final sign-off (PR #85 / `P11-FEAT-GATEWAY-CORE`).
 

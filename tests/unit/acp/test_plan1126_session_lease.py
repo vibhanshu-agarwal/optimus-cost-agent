@@ -19,19 +19,19 @@ from tools.plan1126_runtime_audit.source import GitCommitSource, SourceTree
 from tools.plan1126_runtime_audit.telemetry import H8_SOURCE_PATHS
 from tools.run_plan1126_runtime_audit import main
 
-_MERGED = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"
-_OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"
+_MERGED = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"  # pragma: allowlist secret - Historical commit-identity pin in _MERGED;
+_OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"  # pragma: allowlist secret - Historical commit-identity pin in _OVERLAY;
 _INTAKE_PATH = Path("reports/plan-11-26-baseline-intake.json")
 _SCHEMA_PATH = Path("tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json")
 _EXPECTED_HEADS = (
-    "128af65c851bd9f6eeffe54b01484a7a5650163f",
-    "6208177b55237132c4087652de87c78f21159fb2",
-    "79cd37cf37b2740f7580b2ed3859c0401a47f6a4",
-    "9467df26603a88a4adce1057dea7725f925441f6",
-    "c26928673cf03759c509c982e1e7a355ee6e9f46",
-    "f6bd17069b906c74e7d6ba28ecd319354b5123b6",
-    "f8e7e06c9c59f3adf50527f757f2c58b9b83795f",
-    "fc80403060f578986c287686c27d935a8043dc5a",
+    "128af65c851bd9f6eeffe54b01484a7a5650163f",  # pragma: allowlist secret - Historical commit-identity pin in _EXPECTED_HEADS;
+    "6208177b55237132c4087652de87c78f21159fb2",  # pragma: allowlist secret - Historical commit-identity pin in _EXPECTED_HEADS;
+    "79cd37cf37b2740f7580b2ed3859c0401a47f6a4",  # pragma: allowlist secret - Historical commit-identity pin in _EXPECTED_HEADS;
+    "9467df26603a88a4adce1057dea7725f925441f6",  # pragma: allowlist secret - Historical commit-identity pin in _EXPECTED_HEADS;
+    "c26928673cf03759c509c982e1e7a355ee6e9f46",  # pragma: allowlist secret - Historical commit-identity pin in _EXPECTED_HEADS;
+    "f6bd17069b906c74e7d6ba28ecd319354b5123b6",  # pragma: allowlist secret - Historical commit-identity pin in _EXPECTED_HEADS;
+    "f8e7e06c9c59f3adf50527f757f2c58b9b83795f",  # pragma: allowlist secret - Historical commit-identity pin in _EXPECTED_HEADS;
+    "fc80403060f578986c287686c27d935a8043dc5a",  # pragma: allowlist secret - Historical commit-identity pin in _EXPECTED_HEADS;
 )
 _EXPECTED_DEFERRED = {
     "derive_session_lease_and_retention_constants": 0,
