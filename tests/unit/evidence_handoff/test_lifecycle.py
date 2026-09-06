@@ -91,7 +91,7 @@ def test_disabled_start_does_not_spawn_and_names_operator_relay(tmp_path: Path) 
 def test_enabled_start_uses_spawn_seam_without_projecting_credentials(tmp_path: Path) -> None:
     from evidence_handoff_runtime.lifecycle import LifecycleManager
 
-    password = "admin-secret-canary"
+    password = "admin-secret-canary"  # pragma: allowlist secret - Synthetic admin-password canary supplied to a recording runner;
     runner = _RecordingRunner()
     manager = LifecycleManager(
         _enabled_config(),
@@ -148,7 +148,7 @@ def test_stop_and_status_are_idempotent_and_content_free(tmp_path: Path) -> None
     from evidence_handoff_runtime.config import Availability
     from evidence_handoff_runtime.lifecycle import LifecycleManager
 
-    password = "admin-secret-canary"
+    password = "admin-secret-canary"  # pragma: allowlist secret - same finding value as S094: Synthetic admin-password canary supplied to a recording runner;
     runner = _RecordingRunner()
     manager = LifecycleManager(
         _enabled_config(),
@@ -314,7 +314,7 @@ def test_build_store_backend_unknown_identifier_is_unsupported(tmp_path: Path) -
 def test_docker_run_argv_is_credential_safe_loopback_env_file(tmp_path: Path) -> None:
     from evidence_handoff_runtime.backends import DockerPostgresBackend
 
-    password = "admin-secret-canary"
+    password = "admin-secret-canary"  # pragma: allowlist secret - same finding value as S094: Synthetic admin-password canary supplied to a recording runner;
     config = _enabled_config(backend_id="docker")
     backend = DockerPostgresBackend(
         config=config,
@@ -357,7 +357,7 @@ def test_docker_backend_rejects_non_loopback_bind(tmp_path: Path) -> None:
 def test_enabled_start_reports_docker_backend_id(tmp_path: Path) -> None:
     from evidence_handoff_runtime.lifecycle import LifecycleManager
 
-    password = "admin-secret-canary"
+    password = "admin-secret-canary"  # pragma: allowlist secret - same finding value as S094: Synthetic admin-password canary supplied to a recording runner;
     runner = _RecordingRunner()
     manager = LifecycleManager(
         _enabled_config(backend_id="docker"),

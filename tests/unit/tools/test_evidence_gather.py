@@ -858,8 +858,8 @@ def test_host_process_env_excludes_optimus_secrets() -> None:
     env = acp_mod.host_process_env(
         {
             "PATH": "C:\\Windows\\System32",
-            "OPTIMUS_API_KEY": "secret-must-not-pass",
-            "OPENAI_API_KEY": "also-secret",
+            "OPTIMUS_API_KEY": "secret-must-not-pass",  # pragma: allowlist secret - Synthetic OPTIMUS key canary verifies the subprocess environment does not receive private values
+            "OPENAI_API_KEY": "also-secret",  # pragma: allowlist secret - Synthetic OPENAI key canary verifies the subprocess environment does not receive private values
             "SYSTEMROOT": "C:\\Windows",
         }
     )
@@ -1957,7 +1957,7 @@ from tests.unit.acp.conftest import FakeKeyring
 def _launch_env() -> dict[str, str]:
     return {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-        "OPTIMUS_API_KEY": "collector-redact-unit-key-xxxxxxxx",
+        "OPTIMUS_API_KEY": "collector-redact-unit-key-xxxxxxxx",  # pragma: allowlist secret - Synthetic collector key tests redaction of captured evidence
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
     }
 
@@ -2346,7 +2346,7 @@ def test_redact_launch_environment_captured_exactly_once(
     assert authorized.approval_mode == "durable"
     # Ambient mutation after the explicit environ capture must not be reread.
     mutated = dict(env)
-    mutated["OPTIMUS_API_KEY"] = "mutated-after-capture-should-not-apply"
+    mutated["OPTIMUS_API_KEY"] = "mutated-after-capture-should-not-apply"  # pragma: allowlist secret - Synthetic mutation marker tests isolation from changes after environment capture
     with pytest.raises(HostError) as mismatch:
         redaction_mod.authorize_redaction_launch(
             workspace_root=workspace,
@@ -2430,7 +2430,7 @@ def test_redact_authorization_snapshot_mismatch_maps_stable_code(
     fake = FakeKeyring()
     _seed_durable_approval(workspace=workspace, env=env, fake=fake)
     drifted = dict(env)
-    drifted["OPTIMUS_API_KEY"] = "drifted-key-value-should-mismatch"
+    drifted["OPTIMUS_API_KEY"] = "drifted-key-value-should-mismatch"  # pragma: allowlist secret - Synthetic drift marker tests detection of a changed captured environment
     from tools.evidence_gather_support import redaction as redaction_mod
 
     real_authorize = redaction_mod.authorize_redaction_launch
@@ -2469,7 +2469,7 @@ def test_redact_promotes_text_and_writes_report_then_inspect_is_body_free(
 ) -> None:
     gather = _gather()
     capture, workspace, run_dir, context, _ = _prepare_run(tmp_path)
-    secret = "collector-redact-unit-key-xxxxxxxx"
+    secret = "collector-redact-unit-key-xxxxxxxx"  # pragma: allowlist secret - same finding value as S109: Synthetic collector key tests redaction of captured evidence
     _write_text_bundle(context, run_dir, body=f"note with {secret}\n")
     provisional_before = json.loads((run_dir / "provisional-result.json").read_text(encoding="utf-8"))
     user_data = (tmp_path / "user-data").resolve()

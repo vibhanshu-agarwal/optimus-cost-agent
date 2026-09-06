@@ -251,24 +251,26 @@ class TestMonotonicAndModelDecisions:
             "user:token@evil.example",
             "user:s3cr3t-token@evil.example/model",
             "redis://u:p@h",
-            "http://user:pass@host/path",
+            "http://user:pass@host/path",  # pragma: allowlist secret - Synthetic user:pass URL input exercises rejection of embedded user information
             "x:y@z/model",
             "admin:hunter2@internal-gateway.example.com",
         ],
     )
     def test_model_parser_rejects_credential_shaped_values(self, credential_shaped_value: str) -> None:
-        """Frozen contract, Tier 4 condition 4 (bounded-model exception):
-        'The model value is logged only as non-secret configuration and
-        cannot contain URI user information or credentials.' _parse_model
-        must fail closed on a userinfo-shaped model string BEFORE it is
-        ever displayed (_display_literal echoes it verbatim) or stored in
-        model_observation/the approval record/the audit event — a value
-        rejected at parse time never reaches those sinks. Covers both the
-        schemed form (scheme://user:pass@host) AND the schemeless form
-        (user:pass@host) deliberately: the sanitizer's existing
-        _URL_USERINFO_RE requires a `\\w+://` scheme prefix and would MISS
-        the schemeless case entirely, so this parser cannot simply reuse
-        that regex as-is."""
+        (
+            'Frozen contract, Tier 4 condition 4 (bounded-model exception):\n'
+            "        'The model value is logged only as non-secret configuration and\n"
+            "        cannot contain URI user information or credentials.' _parse_model\n"
+            '        must fail closed on a userinfo-shaped model string BEFORE it is\n'
+            '        ever displayed (_display_literal echoes it verbatim) or stored in\n'
+            '        model_observation/the approval record/the audit event — a value\n'
+            '        rejected at parse time never reaches those sinks. Covers both the\n'
+            '        schemed form (scheme://user:pass@host) AND the schemeless form\n'  # pragma: allowlist secret - same finding value as S032: synthetic userinfo example in a docstring, not a credential
+            "        (user:pass@host) deliberately: the sanitizer's existing\n"
+            '        _URL_USERINFO_RE requires a `\\w+://` scheme prefix and would MISS\n'
+            '        the schemeless case entirely, so this parser cannot simply reuse\n'
+            '        that regex as-is.'
+        )
         policy = LAUNCH_VARIABLE_POLICIES["OPTIMUS_AGENT_MODEL"]
         with pytest.raises(ValueError):
             policy.parser(credential_shaped_value)
@@ -302,14 +304,14 @@ class TestImmutableSnapshot:
     """LaunchEnvironmentSnapshot captures once and is immutable."""
 
     def test_capture_freezes_values(self) -> None:
-        env = {"OPTIMUS_API_KEY": "secret", "PATH": "/usr/bin", "OTHER": "val"}
+        env = {"OPTIMUS_API_KEY": "secret", "PATH": "/usr/bin", "OTHER": "val"}  # pragma: allowlist secret - Synthetic API-key value tests that launch policy snapshots the supplied environment
         snapshot = LaunchEnvironmentSnapshot.capture(env)
         # The captured values are immutable — modifying the source dict has no effect.
-        env["OPTIMUS_API_KEY"] = "changed"
-        assert snapshot.values["OPTIMUS_API_KEY"] == "secret"
+        env["OPTIMUS_API_KEY"] = "changed"  # pragma: allowlist secret - Synthetic changed value tests that a later environment mutation cannot alter the captured policy
+        assert snapshot.values["OPTIMUS_API_KEY"] == "secret"  # pragma: allowlist secret - same finding value as S033: Synthetic API-key value tests that launch policy snapshots the supplied environment
 
     def test_snapshot_values_are_readonly(self) -> None:
-        env = {"OPTIMUS_API_KEY": "secret"}
+        env = {"OPTIMUS_API_KEY": "secret"}  # pragma: allowlist secret - same finding value as S033: Synthetic API-key value tests that launch policy snapshots the supplied environment
         snapshot = LaunchEnvironmentSnapshot.capture(env)
         with pytest.raises(TypeError):
             snapshot.values["new_key"] = "value"  # type: ignore[index]
@@ -347,21 +349,21 @@ class TestGatewayToolChildProjection:
     def test_project_gateway_tool_child_env_forwards_present_tool_vars_only(self) -> None:
         projected = project_gateway_tool_child_env(
             {
-                "TAVILY_API_KEY": "tvly-test",
+                "TAVILY_API_KEY": "tvly-test",  # pragma: allowlist secret - Synthetic Tavily API-key fixture;
                 "OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS": "python.org,pypi.org",
                 "OPTIMUS_GATEWAY_TOOL_REDIS_URL": "redis://127.0.0.1:6379/0",
-                "OPTIMUS_GATEWAY_OSV_API_KEY": "osv-secret",
-                "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "must-not-appear",
-                "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "must-not-appear",
-                "OPENROUTER_API_KEY": "must-not-appear",
+                "OPTIMUS_GATEWAY_OSV_API_KEY": "osv-secret",  # pragma: allowlist secret - Synthetic OSV API-key fixture;
+                "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "must-not-appear",  # pragma: allowlist secret - Synthetic shared-secret canary that the test requires to be excluded from the Gateway tool-child environment
+                "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "must-not-appear",  # pragma: allowlist secret - same finding value as S037: synthetic provider API-key canary that the test requires to be excluded from the Gateway tool-child environment
+                "OPENROUTER_API_KEY": "must-not-appear",  # pragma: allowlist secret - same finding value as S037: synthetic OpenRouter API-key canary that the test requires to be excluded from the Gateway tool-child environment
                 "OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS_UNUSED": "must-not-appear",
             }
         )
         assert projected == {
-            "TAVILY_API_KEY": "tvly-test",
+            "TAVILY_API_KEY": "tvly-test",  # pragma: allowlist secret - same finding value as S035: Synthetic Tavily API-key fixture;
             "OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS": "python.org,pypi.org",
             "OPTIMUS_GATEWAY_TOOL_REDIS_URL": "redis://127.0.0.1:6379/0",
-            "OPTIMUS_GATEWAY_OSV_API_KEY": "osv-secret",
+            "OPTIMUS_GATEWAY_OSV_API_KEY": "osv-secret",  # pragma: allowlist secret - same finding value as S036: Synthetic OSV API-key fixture;
         }
 
     def test_project_gateway_tool_child_env_skips_blank_values(self) -> None:

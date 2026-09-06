@@ -28,7 +28,7 @@ AGENTS_FILE = REPO_ROOT / "AGENTS.md"
 GUARDRAILS_WORKFLOW = REPO_ROOT / ".github/workflows/guardrails.yml"
 OPTIMUS_POOL_LINK_TARGET = "2026-07-23-consolidated-deferred-followups-backlog.md"
 PREREQUISITES_AMENDMENT_DATE = "2026-08-18"
-PREREQUISITES_AMENDMENT_COMMIT = "087560a8b2e6b2893004d768a81f55a4a5ea1c35"
+PREREQUISITES_AMENDMENT_COMMIT = "087560a8b2e6b2893004d768a81f55a4a5ea1c35"  # pragma: allowlist secret - Historical commit-identity pin in PREREQUISITES_AMENDMENT_COMMIT;
 PREREQUISITE_TABLE_COLUMNS = (
     "Satisfied today?",
     "Owner",
@@ -49,25 +49,25 @@ HISTORICAL_PLAN_117_AMENDMENTS = (
 
 HISTORICAL_NUMBERING_PROVENANCE = {
     "docs/superpowers/plans/archive/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md": (
-        "FA35912C3E5AC343A1092E7B5A88CA93C0E1293061CB53D5810BB1BA3C1002F8",
+        "FA35912C3E5AC343A1092E7B5A88CA93C0E1293061CB53D5810BB1BA3C1002F8",  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
         "in-scope",
         "editable",
         "not digest-pinned",
         "deliberately unchanged",
     ),
     "docs/superpowers/specs/2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-design.md": (
-        "5608AD5520B8960E070A4A4F32C992D152A2CA19F21C177B44AC9805F371F3AA",
+        "5608AD5520B8960E070A4A4F32C992D152A2CA19F21C177B44AC9805F371F3AA",  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
         "pinned elsewhere",
         "outside the covered set",
         "never edit",
     ),
     "docs/superpowers/specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md": (
-        "AC48C0AEF1778D6EBE93005BC3993AE204F81A1C59CDC8DB17CFB7EDB6A040F8",
+        "AC48C0AEF1778D6EBE93005BC3993AE204F81A1C59CDC8DB17CFB7EDB6A040F8",  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
         "one of the 13 immutable",
         "never edit",
     ),
     "docs/superpowers/specs/2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-design.md": (
-        "BBB033051B8238A50E72D20F6C59A79BF94A0EBE19A43428CCB440EAF8B37F73",
+        "BBB033051B8238A50E72D20F6C59A79BF94A0EBE19A43428CCB440EAF8B37F73",  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
         "not digest-pinned",
         "outside the covered set",
         "deliberately unchanged",
@@ -77,61 +77,61 @@ HISTORICAL_NUMBERING_PROVENANCE = {
 FROZEN_AUTHORITY_MARKER = "Frozen approval bytes — live status is owned by the consolidated open-work pool."
 PROTECTED_BLOB_SHA256 = {
     "docs/superpowers/plans/archive/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md": (
-        "4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771"
+        "4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md": (
-        "E66ECA48C588E7DB618D4850FDF0CEE901B4966BC0AB405E21C857AE6BE24F32"
+        "E66ECA48C588E7DB618D4850FDF0CEE901B4966BC0AB405E21C857AE6BE24F32"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md": (
-        "254A6ACC56511BBCCEB8FC101B190F213FD65450327145C88979077D845D6D3E"
+        "254A6ACC56511BBCCEB8FC101B190F213FD65450327145C88979077D845D6D3E"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md": (
-        "8C96C9BFA67FB87F4A90FAE37169D27B437C5FD0CEE3AB2E6AB399E67B2874E5"
+        "8C96C9BFA67FB87F4A90FAE37169D27B437C5FD0CEE3AB2E6AB399E67B2874E5"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md": (
-        "0BAC146974984EA663B7A59802A1B5ED74F90EB682F855C0E05AAAB5B9A2C396"
+        "0BAC146974984EA663B7A59802A1B5ED74F90EB682F855C0E05AAAB5B9A2C396"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md": (
-        "F52AD9A5A85DC50B0DFD3206B6BD09FD8FF0AE79B1A6049DF1017F978B1C462D"
+        "F52AD9A5A85DC50B0DFD3206B6BD09FD8FF0AE79B1A6049DF1017F978B1C462D"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md": (
-        "79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6"
+        "79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md": (
-        "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D"
+        "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md": (
-        "0AA1007309C26B072A37310F01B65B38E874A88625B9DF1215C0C61EA7620B2B"
+        "0AA1007309C26B072A37310F01B65B38E874A88625B9DF1215C0C61EA7620B2B"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe.md": (
-        "BA1372E1D638AC2F12A4852E304DCE02196C26C78017F3AE1CA566F4A08DD017"
+        "BA1372E1D638AC2F12A4852E304DCE02196C26C78017F3AE1CA566F4A08DD017"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v2.md": (
-        "BA67D5021FF767D9574BA452E39ECB2E642999C0CAEFBD6431D82E93D3842E05"
+        "BA67D5021FF767D9574BA452E39ECB2E642999C0CAEFBD6431D82E93D3842E05"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v3.md": (
-        "C76121F5A35A698183ADEB1B028AEE6E7C0FE26621ED798586F5AF9081CB81F4"
+        "C76121F5A35A698183ADEB1B028AEE6E7C0FE26621ED798586F5AF9081CB81F4"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v4.md": (
-        "1CFBB6E0BEDD8FBB3A111DE5C9AEA11F96F36D742A1469B50EEC03EB3116B13C"
+        "1CFBB6E0BEDD8FBB3A111DE5C9AEA11F96F36D742A1469B50EEC03EB3116B13C"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v5.md": (
-        "26B8A69BE2A3CD4E5A021CB21A507C27D0C880D5322EF22B9A59D4257ECC96A8"
+        "26B8A69BE2A3CD4E5A021CB21A507C27D0C880D5322EF22B9A59D4257ECC96A8"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md": (
-        "8B67FC187B92F0B66A9932AAAD9A013C476C19C165A1044F57F338245A01786C"
+        "8B67FC187B92F0B66A9932AAAD9A013C476C19C165A1044F57F338245A01786C"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/specs/2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md": (
-        "2E679F105A250C7DF9F3757F72C43810B92810DD080EC6A4A985B778D163BFEC"
+        "2E679F105A250C7DF9F3757F72C43810B92810DD080EC6A4A985B778D163BFEC"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md": (
-        "3D4FBA5BE86399F4FD7CABB319847A847A06394BE2CEEB5D795952C2901EB90E"
+        "3D4FBA5BE86399F4FD7CABB319847A847A06394BE2CEEB5D795952C2901EB90E"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md": (
-        "AC48C0AEF1778D6EBE93005BC3993AE204F81A1C59CDC8DB17CFB7EDB6A040F8"
+        "AC48C0AEF1778D6EBE93005BC3993AE204F81A1C59CDC8DB17CFB7EDB6A040F8"  # pragma: allowlist secret - same finding value as S061: Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/specs/2026-08-15-p11-fu-18-29-durable-approval-workspace-identity-design.md": (
-        "B445693AFB9B110E61D860F1B63D8836FF0EA651E0AC327BABA1CC906C84543B"
+        "B445693AFB9B110E61D860F1B63D8836FF0EA651E0AC327BABA1CC906C84543B"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
 }
 
