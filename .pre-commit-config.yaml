@@ -38,7 +38,7 @@ repos:
         pass_filenames: false
       - id: optimus-secret-scan
         name: "optimus-check: secret-scan"
-        entry: detect-secrets-hook --baseline .secrets.baseline src
+        entry: python -X utf8 tools/local_secret_scan.py --baseline .secrets.baseline src
         language: system
         types: [text]
       - id: optimus-secret-scan-ci-production
