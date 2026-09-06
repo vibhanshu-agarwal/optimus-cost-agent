@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from tools.tracked_repository_files import tracked_repository_files
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 COLLECTOR_ROOT = REPO_ROOT / "src" / "evidence_handoff" / "collector"
 SCENARIO_FIXTURES = REPO_ROOT / "tests" / "fixtures" / "evidence" / "scenarios"
@@ -29,7 +31,21 @@ MODEL_LITERAL_RE = re.compile(
 
 
 def _python_files(root: Path) -> list[Path]:
-    return sorted(path for path in root.rglob("*.py") if path.is_file())
+    pathspec = root.relative_to(REPO_ROOT).as_posix()
+    return [
+        path
+        for path in tracked_repository_files(REPO_ROOT, pathspecs=(pathspec,))
+        if path.suffix == ".py"
+    ]
+
+
+def _scenario_fixture_files() -> list[Path]:
+    return list(
+        tracked_repository_files(
+            REPO_ROOT,
+            pathspecs=(SCENARIO_FIXTURES.relative_to(REPO_ROOT).as_posix(),),
+        )
+    )
 
 
 def _module_root(name: str | None) -> str | None:
@@ -73,7 +89,7 @@ def test_collector_source_has_no_prompt_injection_capability() -> None:
         text = path.read_text(encoding="utf-8")
         if PROMPT_INJECTION_RE.search(text):
             offenders.append(path.relative_to(REPO_ROOT).as_posix())
-    for path in sorted(SCENARIO_FIXTURES.glob("*")):
+    for path in _scenario_fixture_files():
         if PROMPT_INJECTION_RE.search(path.read_text(encoding="utf-8")):
             offenders.append(path.relative_to(REPO_ROOT).as_posix())
     assert offenders == []
@@ -81,7 +97,7 @@ def test_collector_source_has_no_prompt_injection_capability() -> None:
 
 def test_collector_and_fixtures_have_no_model_literals_or_defaults() -> None:
     offenders: list[str] = []
-    scan_paths = _python_files(COLLECTOR_ROOT) + sorted(SCENARIO_FIXTURES.glob("*"))
+    scan_paths = _python_files(COLLECTOR_ROOT) + _scenario_fixture_files()
     for path in scan_paths:
         text = path.read_text(encoding="utf-8")
         if MODEL_LITERAL_RE.search(text):

@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from tools.tracked_repository_files import tracked_repository_files
+
 
 def _abs(tmp_path: Path, name: str) -> Path:
     path = (tmp_path / name).resolve()
@@ -91,7 +93,7 @@ def test_disabled_start_does_not_spawn_and_names_operator_relay(tmp_path: Path) 
 def test_enabled_start_uses_spawn_seam_without_projecting_credentials(tmp_path: Path) -> None:
     from evidence_handoff_runtime.lifecycle import LifecycleManager
 
-    password = "admin-secret-canary"
+    password = "admin-secret-canary"  # pragma: allowlist secret - Synthetic admin-password canary supplied to a recording runner;
     runner = _RecordingRunner()
     manager = LifecycleManager(
         _enabled_config(),
@@ -148,7 +150,7 @@ def test_stop_and_status_are_idempotent_and_content_free(tmp_path: Path) -> None
     from evidence_handoff_runtime.config import Availability
     from evidence_handoff_runtime.lifecycle import LifecycleManager
 
-    password = "admin-secret-canary"
+    password = "admin-secret-canary"  # pragma: allowlist secret - same finding value as S094: Synthetic admin-password canary supplied to a recording runner;
     runner = _RecordingRunner()
     manager = LifecycleManager(
         _enabled_config(),
@@ -314,7 +316,7 @@ def test_build_store_backend_unknown_identifier_is_unsupported(tmp_path: Path) -
 def test_docker_run_argv_is_credential_safe_loopback_env_file(tmp_path: Path) -> None:
     from evidence_handoff_runtime.backends import DockerPostgresBackend
 
-    password = "admin-secret-canary"
+    password = "admin-secret-canary"  # pragma: allowlist secret - same finding value as S094: Synthetic admin-password canary supplied to a recording runner;
     config = _enabled_config(backend_id="docker")
     backend = DockerPostgresBackend(
         config=config,
@@ -357,7 +359,7 @@ def test_docker_backend_rejects_non_loopback_bind(tmp_path: Path) -> None:
 def test_enabled_start_reports_docker_backend_id(tmp_path: Path) -> None:
     from evidence_handoff_runtime.lifecycle import LifecycleManager
 
-    password = "admin-secret-canary"
+    password = "admin-secret-canary"  # pragma: allowlist secret - same finding value as S094: Synthetic admin-password canary supplied to a recording runner;
     runner = _RecordingRunner()
     manager = LifecycleManager(
         _enabled_config(backend_id="docker"),
@@ -419,7 +421,12 @@ def test_runtime_source_has_neither_wslc_backend_nor_wslc_backend_id() -> None:
     """Regression: Task 2 must remove WslcPostgresBackend and every wslc backend_id option."""
     runtime_root = Path(__file__).resolve().parents[3] / "src" / "evidence_handoff_runtime"
     hits: list[str] = []
-    for path in sorted(runtime_root.rglob("*.py")):
+    repo_root = Path(__file__).resolve().parents[3]
+    for path in tracked_repository_files(
+        repo_root, pathspecs=(runtime_root.relative_to(repo_root).as_posix(),)
+    ):
+        if path.suffix != ".py":
+            continue
         text = path.read_text(encoding="utf-8")
         rel = path.relative_to(runtime_root).as_posix()
         if "WslcPostgresBackend" in text:

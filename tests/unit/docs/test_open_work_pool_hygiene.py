@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import subprocess
 from collections import Counter
@@ -22,13 +23,23 @@ PLAN_987 = REPO_ROOT / "docs/superpowers/plans/archive/2026-07-12-plan-9-87-mode
 PLAN_999 = REPO_ROOT / "docs/superpowers/plans/archive/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md"
 PLAN_114 = REPO_ROOT / "docs/superpowers/plans/archive/2026-07-28-plan-11-4-gateway-core-migration.md"
 PLAN_119 = REPO_ROOT / "docs/superpowers/plans/archive/2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-implementation.md"
+PLAN_1126_BASELINE_INTAKE = REPO_ROOT / "reports/plan-11-26-baseline-intake.json"
+PLAN_1126_AUDIT = REPO_ROOT / "reports/plan-11-26-acp-runtime-audit.json"
+PLAN_1126_TERMINAL = REPO_ROOT / "reports/plan-11-26-terminal-characterization.md"
+PLAN_1126_DUPLICATION_CANDIDATES = REPO_ROOT / "reports/plan-11-26-duplication-candidates.json"
+PLAN_1126_DUPLICATION_AUDIT = REPO_ROOT / "reports/plan-11-26-duplication-audit.json"
+PLAN_1126_DUPLICATION_REPORT = REPO_ROOT / "reports/plan-11-26-duplication-audit.md"
+HARDENING_MASTERPLAN = PLANS_ROOT / "hardening-runtime-quality-masterplan.md"
+PLAN_1126_IMPLEMENTATION_LINK = (
+    "archive/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md"
+)
 PHASE_1_ROADMAP = REPO_ROOT / "docs/superpowers/plans/2026-07-01-phase-1-roadmap.md"
 PLAN_11_CHARTER = REPO_ROOT / "docs/superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md"
 AGENTS_FILE = REPO_ROOT / "AGENTS.md"
 GUARDRAILS_WORKFLOW = REPO_ROOT / ".github/workflows/guardrails.yml"
 OPTIMUS_POOL_LINK_TARGET = "2026-07-23-consolidated-deferred-followups-backlog.md"
 PREREQUISITES_AMENDMENT_DATE = "2026-08-18"
-PREREQUISITES_AMENDMENT_COMMIT = "087560a8b2e6b2893004d768a81f55a4a5ea1c35"
+PREREQUISITES_AMENDMENT_COMMIT = "087560a8b2e6b2893004d768a81f55a4a5ea1c35"  # pragma: allowlist secret - Historical commit-identity pin in PREREQUISITES_AMENDMENT_COMMIT;
 PREREQUISITE_TABLE_COLUMNS = (
     "Satisfied today?",
     "Owner",
@@ -39,6 +50,7 @@ PLAN_DIRECTORY_GOVERNANCE_FILES = {
     "2026-07-01-phase-1-roadmap.md",
     "2026-07-23-consolidated-deferred-followups-backlog.md",
     "2026-07-25-plan-11-v1-milestone-charter.md",
+    "hardening-runtime-quality-masterplan.md",
 }
 
 HISTORICAL_PLAN_117_AMENDMENTS = (
@@ -49,25 +61,25 @@ HISTORICAL_PLAN_117_AMENDMENTS = (
 
 HISTORICAL_NUMBERING_PROVENANCE = {
     "docs/superpowers/plans/archive/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md": (
-        "FA35912C3E5AC343A1092E7B5A88CA93C0E1293061CB53D5810BB1BA3C1002F8",
+        "FA35912C3E5AC343A1092E7B5A88CA93C0E1293061CB53D5810BB1BA3C1002F8",  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
         "in-scope",
         "editable",
         "not digest-pinned",
         "deliberately unchanged",
     ),
     "docs/superpowers/specs/2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-design.md": (
-        "5608AD5520B8960E070A4A4F32C992D152A2CA19F21C177B44AC9805F371F3AA",
+        "5608AD5520B8960E070A4A4F32C992D152A2CA19F21C177B44AC9805F371F3AA",  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
         "pinned elsewhere",
         "outside the covered set",
         "never edit",
     ),
     "docs/superpowers/specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md": (
-        "AC48C0AEF1778D6EBE93005BC3993AE204F81A1C59CDC8DB17CFB7EDB6A040F8",
+        "AC48C0AEF1778D6EBE93005BC3993AE204F81A1C59CDC8DB17CFB7EDB6A040F8",  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
         "one of the 13 immutable",
         "never edit",
     ),
     "docs/superpowers/specs/2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-design.md": (
-        "BBB033051B8238A50E72D20F6C59A79BF94A0EBE19A43428CCB440EAF8B37F73",
+        "BBB033051B8238A50E72D20F6C59A79BF94A0EBE19A43428CCB440EAF8B37F73",  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
         "not digest-pinned",
         "outside the covered set",
         "deliberately unchanged",
@@ -77,61 +89,61 @@ HISTORICAL_NUMBERING_PROVENANCE = {
 FROZEN_AUTHORITY_MARKER = "Frozen approval bytes — live status is owned by the consolidated open-work pool."
 PROTECTED_BLOB_SHA256 = {
     "docs/superpowers/plans/archive/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md": (
-        "4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771"
+        "4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md": (
-        "E66ECA48C588E7DB618D4850FDF0CEE901B4966BC0AB405E21C857AE6BE24F32"
+        "E66ECA48C588E7DB618D4850FDF0CEE901B4966BC0AB405E21C857AE6BE24F32"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md": (
-        "254A6ACC56511BBCCEB8FC101B190F213FD65450327145C88979077D845D6D3E"
+        "254A6ACC56511BBCCEB8FC101B190F213FD65450327145C88979077D845D6D3E"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md": (
-        "8C96C9BFA67FB87F4A90FAE37169D27B437C5FD0CEE3AB2E6AB399E67B2874E5"
+        "8C96C9BFA67FB87F4A90FAE37169D27B437C5FD0CEE3AB2E6AB399E67B2874E5"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md": (
-        "0BAC146974984EA663B7A59802A1B5ED74F90EB682F855C0E05AAAB5B9A2C396"
+        "0BAC146974984EA663B7A59802A1B5ED74F90EB682F855C0E05AAAB5B9A2C396"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md": (
-        "F52AD9A5A85DC50B0DFD3206B6BD09FD8FF0AE79B1A6049DF1017F978B1C462D"
+        "F52AD9A5A85DC50B0DFD3206B6BD09FD8FF0AE79B1A6049DF1017F978B1C462D"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md": (
-        "79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6"
+        "79F3C92A852CB7EAA6108D8F0757F6612A0C908FE032CE7CFAB58B46721C06E6"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md": (
-        "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D"
+        "5BB327D88761AE329869B90866839D03F61EFF6AF0E5AE47F8D3D7551F849A4D"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md": (
-        "0AA1007309C26B072A37310F01B65B38E874A88625B9DF1215C0C61EA7620B2B"
+        "0AA1007309C26B072A37310F01B65B38E874A88625B9DF1215C0C61EA7620B2B"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe.md": (
-        "BA1372E1D638AC2F12A4852E304DCE02196C26C78017F3AE1CA566F4A08DD017"
+        "BA1372E1D638AC2F12A4852E304DCE02196C26C78017F3AE1CA566F4A08DD017"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v2.md": (
-        "BA67D5021FF767D9574BA452E39ECB2E642999C0CAEFBD6431D82E93D3842E05"
+        "BA67D5021FF767D9574BA452E39ECB2E642999C0CAEFBD6431D82E93D3842E05"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v3.md": (
-        "C76121F5A35A698183ADEB1B028AEE6E7C0FE26621ED798586F5AF9081CB81F4"
+        "C76121F5A35A698183ADEB1B028AEE6E7C0FE26621ED798586F5AF9081CB81F4"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v4.md": (
-        "1CFBB6E0BEDD8FBB3A111DE5C9AEA11F96F36D742A1469B50EEC03EB3116B13C"
+        "1CFBB6E0BEDD8FBB3A111DE5C9AEA11F96F36D742A1469B50EEC03EB3116B13C"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/plans/archive/2026-08-18-plan-11-24-zed-guided-session-load-probe_v5.md": (
-        "26B8A69BE2A3CD4E5A021CB21A507C27D0C880D5322EF22B9A59D4257ECC96A8"
+        "26B8A69BE2A3CD4E5A021CB21A507C27D0C880D5322EF22B9A59D4257ECC96A8"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md": (
-        "8B67FC187B92F0B66A9932AAAD9A013C476C19C165A1044F57F338245A01786C"
+        "8B67FC187B92F0B66A9932AAAD9A013C476C19C165A1044F57F338245A01786C"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/specs/2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md": (
-        "2E679F105A250C7DF9F3757F72C43810B92810DD080EC6A4A985B778D163BFEC"
+        "2E679F105A250C7DF9F3757F72C43810B92810DD080EC6A4A985B778D163BFEC"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md": (
-        "3D4FBA5BE86399F4FD7CABB319847A847A06394BE2CEEB5D795952C2901EB90E"
+        "3D4FBA5BE86399F4FD7CABB319847A847A06394BE2CEEB5D795952C2901EB90E"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md": (
-        "AC48C0AEF1778D6EBE93005BC3993AE204F81A1C59CDC8DB17CFB7EDB6A040F8"
+        "AC48C0AEF1778D6EBE93005BC3993AE204F81A1C59CDC8DB17CFB7EDB6A040F8"  # pragma: allowlist secret - same finding value as S061: Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
     "docs/superpowers/specs/2026-08-15-p11-fu-18-29-durable-approval-workspace-identity-design.md": (
-        "B445693AFB9B110E61D860F1B63D8836FF0EA651E0AC327BABA1CC906C84543B"
+        "B445693AFB9B110E61D860F1B63D8836FF0EA651E0AC327BABA1CC906C84543B"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
 }
 
@@ -199,6 +211,8 @@ EXPECTED_SETTLED_STATUSES = {
 EXPECTED_POOL_TABLE_IDENTITIES = (
     ("Live implementation plan registry", 0),
     ("Feature slices", 0),
+    ("Plan 11.26 reviewed disposition and remediation custody", 0),
+    ("Plan 11.26 Task 13 reviewed duplication disposition", 0),
     ("Follow-up status index", 0),
     ("Evidence and handoff feature registry", 0),
     ("A2A ledger audit obligations", 0),
@@ -215,6 +229,7 @@ EXPECTED_NON_MEDIUM_PRIORITIES = {
     "P11-FU-11": "HIGH",
     "P11.7-FU-1": "HIGH",
     "P11.5-FU-2": "HIGH",
+    "P11-FU-30": "HIGH",
 }
 EXPECTED_FEATURE_STATUS = {
     "P11-FEAT-GATEWAY-CORE": "Closed",
@@ -224,6 +239,7 @@ EXPECTED_FEATURE_STATUS = {
     "P11-FEAT-ZED-RESUME": "Partially implemented",
     "P11-FEAT-MULTI-TURN-CONVERSATION": "Closed",
     "P11-FEAT-ACP-RUNTIME-HARDENING": "Open",
+    "HARDENING-FEAT-RUNTIME-QUALITY": "Open",
     "P11-FEAT-REGISTRY": "Open",
     "P11-FEAT-IDE": "Open",
     "Plan 12": "Open",
@@ -250,14 +266,26 @@ EXPECTED_FEATURE_SCOPE_TOKENS = {
         "plan-11-25-multi-turn-release-review.md",
     ),
     "P11-FEAT-ACP-RUNTIME-HARDENING": (
-        "Next priority; backlog custody only",
+        "Plan 11.26 Tasks 0-12 accepted through G6; Task 13 accepted at G7",
+        "plan-11-26-acp-runtime-hardening-audit-design.md",
+        "plan-11-26-acp-runtime-hardening-audit-implementation.md",
         "concurrency",
         "abrupt client termination",
         "exception taxonomy",
         "structured telemetry and logging",
-        "independently authored ACP client",
-        "does not authorize implementation",
+        "independently authored ACP client or conformance harness",
+        "does not authorize production fixes",
         "HIGH justification",
+    ),
+    "HARDENING-FEAT-RUNTIME-QUALITY": (
+        "hardening-runtime-quality-masterplan.md",
+        "backlog row owns this masterplan's status",
+        "masterplan owns its 15 child-plan statuses",
+        "16 new items",
+        "17 existing candidates",
+        "3 existing obligations",
+        "G6/G7 custody tables are historical acceptance records",
+        "no implementation authority",
     ),
     "P11-FEAT-REGISTRY": ("Ratified, unscheduled", "package and ACP versions are both `0.1.0`"),
     "P11-FEAT-IDE": ("Conditional",),
@@ -1356,7 +1384,10 @@ def test_priority_seed_preserves_only_approved_non_medium_values() -> None:
         row["Identity"].strip("`"): row["Priority"]
         for row in feature_rows
         if row["Priority"] == "HIGH"
-    } == {"P11-FEAT-ACP-RUNTIME-HARDENING": "HIGH"}
+    } == {
+        "P11-FEAT-ACP-RUNTIME-HARDENING": "HIGH",
+        "HARDENING-FEAT-RUNTIME-QUALITY": "HIGH",
+    }
     assert all(
         row["Priority"] in {"MEDIUM", "LOW"}
         for identity, (header, rows) in tables.items()
@@ -1394,6 +1425,210 @@ def test_feature_status_is_canonical_and_state_prose_lives_in_scope_detail() -> 
     assert scopes.keys() == EXPECTED_FEATURE_SCOPE_TOKENS.keys()
     for identity, expected_tokens in EXPECTED_FEATURE_SCOPE_TOKENS.items():
         assert all(token in scopes[identity] for token in expected_tokens)
+
+
+def test_plan_11_26_runtime_audit_is_archived_while_remediation_custody_stays_open() -> None:
+    pool = _read(OPTIMUS_POOL)
+    tables = {identity: rows for identity, _header, rows in _markdown_tables(pool)}
+    registry_rows = tables[("Live implementation plan registry", 0)]
+    plan_rows = [
+        row
+        for row in registry_rows
+        if Path(PLAN_1126_IMPLEMENTATION_LINK).name in row["Plan"]
+    ]
+
+    assert plan_rows == []
+
+    feature_row = _feature_row(pool, "P11-FEAT-ACP-RUNTIME-HARDENING")
+    assert PLAN_1126_IMPLEMENTATION_LINK in feature_row
+    assert "Open" in feature_row
+    assert "Plan 11.26" in feature_row
+    assert "audit-and-contract only" in feature_row
+    assert "does not authorize production fixes" in feature_row
+
+
+def test_hardening_masterplan_status_is_parent_owned_and_candidate_tables_are_historical() -> None:
+    pool = _read(OPTIMUS_POOL)
+    tables = {identity: rows for identity, _header, rows in _markdown_tables(pool)}
+    feature_rows = [
+        row
+        for row in tables[("Feature slices", 0)]
+        if row["Identity"].strip("`") == "HARDENING-FEAT-RUNTIME-QUALITY"
+    ]
+
+    assert len(feature_rows) == 1
+    assert feature_rows[0]["Status"] == "Open"
+    assert feature_rows[0]["Priority"] == "HIGH"
+    assert "hardening-runtime-quality-masterplan.md" in feature_rows[0]["Scope detail"]
+    assert "backlog row owns this masterplan's status" in feature_rows[0]["Scope detail"]
+
+    registry_rows = tables[("Live implementation plan registry", 0)]
+    assert not [row for row in registry_rows if "hardening-" in row["Plan"]]
+
+    historical_note = "historical acceptance record, not live remediation-plan status"
+    assert pool.count(historical_note) == 2
+
+    masterplan = _read(HARDENING_MASTERPLAN)
+    assert "`ACCEPTED_OPEN`" not in masterplan
+    assert "Owner-to-be" not in masterplan
+    assert re.search(r"(?mi)^\*\*Status:\*\*|^Status:", masterplan) is None
+
+
+def test_plan_11_26_hypothesis_scope_authority_and_dispositions_cover_h1_through_h10() -> None:
+    baseline = json.loads(PLAN_1126_BASELINE_INTAKE.read_text(encoding="utf-8"))
+    audit = json.loads(PLAN_1126_AUDIT.read_text(encoding="utf-8"))
+
+    registered = baseline["hypotheses"]
+    assert registered == {
+        "H1": "both-divergent",
+        "H2": "overlay",
+        "H3": "both-aligned",
+        "H4": "both-aligned",
+        "H5": "both-divergent",
+        "H6": "merged",
+        "H7": "merged",
+        "H8": "merged",
+        "H9": "merged",
+        "H10": "overlay",
+    }
+
+    records = {record["hypothesis_id"]: record for record in audit["evidence_records"]}
+    for hypothesis_id, record in records.items():
+        assert record["baseline_scope"] == registered[hypothesis_id]
+
+    dispositions = {
+        finding["finding_id"].split("-", 1)[0]: finding
+        for finding in audit["findings"]
+        if finding["finding_id"].startswith(("H1-", "H2-"))
+    }
+    assert set(records) | set(dispositions) == set(registered)
+    assert dispositions["H1"]["classification"] == "SUPERSEDED"
+    assert dispositions["H1"]["baseline_scope"] == registered["H1"]
+    assert dispositions["H2"]["classification"] == "SUPERSEDED"
+    assert dispositions["H2"]["baseline_scope"] == registered["H2"]
+    assert dispositions["H2"]["owner"] == "P11-FEAT-ZED-RESUME"
+    expected_intake_digest = hashlib.sha256(
+        json.dumps(baseline, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    assert records["H10"]["binding_presence"]["intake_digest"] == expected_intake_digest
+    assert dispositions["H2"]["evidence"] == records["H10"]["content_free_evidence"]
+
+
+def test_plan_11_26_telemetry_precision_findings_do_not_widen_observation_values() -> None:
+    audit = json.loads(PLAN_1126_AUDIT.read_text(encoding="utf-8"))
+    findings = {finding["finding_id"]: finding for finding in audit["findings"]}
+
+    sink_class = findings["C15-MISSING-REDACTION-SINK-CLASS-merged"]
+    assert sink_class["classification"] == "MISSING"
+    assert "external egress" in sink_class["ruling"]
+    assert "local retention" in sink_class["ruling"]
+
+    clean_semantics = findings["C15-MISSING-CLEAN-DISPOSITION-merged"]
+    assert clean_semantics["classification"] == "MISSING"
+    assert "CLEAN_REDACTED" in clean_semantics["ruling"]
+    assert "CLEAN_NOT_STORED" in clean_semantics["ruling"]
+
+    telemetry = next(record for record in audit["evidence_records"] if record["hypothesis_id"] == "H8")
+    observed_results = {
+        observation["overall_result"]
+        for observation in telemetry["redaction_observations"]["rows"]
+    }
+    assert observed_results == {"CLEAN", "LEAKED"}
+
+
+def test_plan_11_26_terminal_report_preserves_timeout_attribution_and_authority() -> None:
+    terminal = PLAN_1126_TERMINAL.read_text(encoding="utf-8")
+    terminal_compact = " ".join(terminal.split())
+
+    assert "10" in terminal_compact and "HARNESS" in terminal_compact
+    assert "4" in terminal_compact and "UNRESOLVED" in terminal_compact
+    assert "test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register" in terminal_compact
+    assert "test_shutdown_causes_repeat_100_with_control_allowlist" in terminal_compact
+    assert "25-repeat" in terminal_compact
+    assert "single green terminal row" in terminal_compact
+    assert "not a health signal" in terminal_compact
+    assert "product-or-harness indeterminate" in terminal_compact
+    assert "excluded from remediation ranking evidence" in terminal_compact
+    assert "task5_cancellation_group" in terminal_compact
+    assert "FLAKY remains open" in terminal_compact
+
+
+def test_plan_11_26_candidates_are_ranked_and_unrun_owners_remain_distinct() -> None:
+    pool = _read(OPTIMUS_POOL)
+    tables = {identity: rows for identity, _header, rows in _markdown_tables(pool)}
+    rows = tables[("Plan 11.26 reviewed disposition and remediation custody", 0)]
+    by_identity = {row["Identity"].strip("`"): row for row in rows}
+
+    candidate_ids = (
+        "P11.26-CAND-1-RESOURCE-LIFETIME",
+        "P11.26-CAND-2-TELEMETRY-CONTRACT",
+        "P11.26-CAND-3-SEMANTIC-ERROR-SELECTION",
+        "P11.26-CAND-4-QUEUE-BACKPRESSURE",
+        "P11.26-CAND-5-REPEATABILITY-ATTRIBUTION",
+    )
+    assert tuple(
+        identity
+        for identity, row in by_identity.items()
+        if row["Kind"] == "Candidate"
+    ) == candidate_ids
+    assert tuple(by_identity[identity]["Rank"] for identity in candidate_ids) == (
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+    )
+    assert all(by_identity[identity]["Owner-to-be"] for identity in candidate_ids)
+    assert all(by_identity[identity]["Next gate"] for identity in candidate_ids)
+    assert all(by_identity[identity]["Disposition"] == "`ACCEPTED_OPEN`" for identity in candidate_ids)
+
+    assert by_identity["P11.26-UNRUN-BINDING"]["Disposition"] == "`UNRUN_BINDING`"
+    assert by_identity["P11.26-UNRUN-BINDING"]["Owner-to-be"] == "`P11-FEAT-ZED-RESUME`"
+    assert by_identity["P11.26-UNRUN-REDIS"]["Disposition"] == "`UNRUN`"
+    assert by_identity["P11.26-UNRUN-REDIS"]["Owner-to-be"] == "operator"
+    assert by_identity["P11.26-UNRUN-ZED"]["Disposition"] == "`UNRUN`"
+    assert by_identity["P11.26-UNRUN-ZED"]["Owner-to-be"] == "operator"
+
+    feature_row = _feature_row(pool, "P11-FEAT-ACP-RUNTIME-HARDENING")
+    assert "Open" in feature_row
+    assert "plan-11-26-acp-runtime-audit.json" in feature_row
+    assert "plan-11-26-acp-runtime-audit.md" in feature_row
+    assert "plan-11-26-terminal-characterization.md" in feature_row
+    assert "Task 13 is the operator-directed duplication audit" in feature_row
+    assert "evidence collector and A2A are separate products" in feature_row
+
+
+def test_plan_11_26_task13_custody_is_separate_accepted_and_reproducible() -> None:
+    pool = _read(OPTIMUS_POOL)
+    tables = {identity: rows for identity, _header, rows in _markdown_tables(pool)}
+    rows = tables[("Plan 11.26 Task 13 reviewed duplication disposition", 0)]
+    audit = json.loads(PLAN_1126_DUPLICATION_AUDIT.read_text(encoding="utf-8"))
+
+    expected = audit["remediation_candidates"]
+    assert [row["Identity"].strip("`") for row in rows] == [
+        candidate["candidate_id"] for candidate in expected
+    ]
+    assert [int(row["Rank"]) for row in rows] == [candidate["rank"] for candidate in expected]
+    assert [int(row["Surface"]) for row in rows] == [
+        candidate["latent_surface_closed"] for candidate in expected
+    ]
+    assert all(row["Disposition"] == "`ACCEPTED_OPEN`" for row in rows)
+    assert all(row["Owner-to-be"] for row in rows)
+    assert all(row["Next gate"] for row in rows)
+
+    feature_row = _feature_row(pool, "P11-FEAT-ACP-RUNTIME-HARDENING")
+    for artifact in (
+        PLAN_1126_DUPLICATION_CANDIDATES,
+        PLAN_1126_DUPLICATION_AUDIT,
+        PLAN_1126_DUPLICATION_REPORT,
+    ):
+        assert artifact.name in feature_row
+    assert "Task 13 accepted at G7" in feature_row
+
+    task13 = pool.split("## Plan 11.26 Task 13 reviewed duplication disposition", 1)[1]
+    task13 = task13.split("\n## ", 1)[0]
+    assert "No row claims consolidation complete" in task13
+    assert "no historical flake is claimed fixed" in task13
 
 
 def test_zed_session_load_seal_remains_historical_throughout_the_living_pool() -> None:

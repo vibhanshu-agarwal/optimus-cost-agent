@@ -10,11 +10,21 @@ from pathlib import Path
 
 import pytest
 
+from tools.tracked_repository_files import tracked_repository_files
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ENTRY = REPO_ROOT / "tools" / "evidence_gather.py"
 SUPPORT = REPO_ROOT / "tools" / "evidence_gather_support"
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "evidence" / "scenarios" / "zed-session.toml"
 PROMPT_INJECTION_RE = re.compile(r"prompt[_-]?inject", re.IGNORECASE)
+
+
+def _tracked_python_files(pathspec: str) -> tuple[Path, ...]:
+    return tuple(
+        path
+        for path in tracked_repository_files(REPO_ROOT, pathspecs=(pathspec,))
+        if path.suffix == ".py"
+    )
 
 
 def _gather():
@@ -82,7 +92,7 @@ def test_support_package_has_no_main_or_prompt_injection_ids() -> None:
     assert SUPPORT.is_dir()
     assert not (SUPPORT / "__main__.py").exists()
     offenders: list[str] = []
-    for path in SUPPORT.rglob("*.py"):
+    for path in _tracked_python_files("tools/evidence_gather_support"):
         text = path.read_text(encoding="utf-8")
         if PROMPT_INJECTION_RE.search(text):
             offenders.append(path.relative_to(REPO_ROOT).as_posix())
@@ -92,7 +102,7 @@ def test_support_package_has_no_main_or_prompt_injection_ids() -> None:
 def test_only_entry_point_imports_support_from_outside() -> None:
     allowed = {ENTRY.resolve()}
     offenders: list[str] = []
-    for path in (REPO_ROOT / "src").rglob("*.py"):
+    for path in _tracked_python_files("src"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith(
@@ -103,7 +113,7 @@ def test_only_entry_point_imports_support_from_outside() -> None:
                 for alias in node.names:
                     if alias.name.startswith("tools.evidence_gather_support"):
                         offenders.append(path.relative_to(REPO_ROOT).as_posix())
-    for path in (REPO_ROOT / "tools").rglob("*.py"):
+    for path in _tracked_python_files("tools"):
         if path.resolve() in allowed:
             continue
         if SUPPORT in path.parents or path.parent == SUPPORT:
@@ -858,8 +868,8 @@ def test_host_process_env_excludes_optimus_secrets() -> None:
     env = acp_mod.host_process_env(
         {
             "PATH": "C:\\Windows\\System32",
-            "OPTIMUS_API_KEY": "secret-must-not-pass",
-            "OPENAI_API_KEY": "also-secret",
+            "OPTIMUS_API_KEY": "secret-must-not-pass",  # pragma: allowlist secret - Synthetic OPTIMUS key canary verifies the subprocess environment does not receive private values
+            "OPENAI_API_KEY": "also-secret",  # pragma: allowlist secret - Synthetic OPENAI key canary verifies the subprocess environment does not receive private values
             "SYSTEMROOT": "C:\\Windows",
         }
     )
@@ -1957,7 +1967,7 @@ from tests.unit.acp.conftest import FakeKeyring
 def _launch_env() -> dict[str, str]:
     return {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-        "OPTIMUS_API_KEY": "collector-redact-unit-key-xxxxxxxx",
+        "OPTIMUS_API_KEY": "collector-redact-unit-key-xxxxxxxx",  # pragma: allowlist secret - Synthetic collector key tests redaction of captured evidence
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
     }
 
@@ -2135,7 +2145,7 @@ def _redact_argv(
 def test_only_redact_imports_redaction_orchestration() -> None:
     offenders: list[str] = []
     allowed_reports = REPO_ROOT / "tools" / "evidence_gather_support" / "reports.py"
-    for path in (REPO_ROOT / "tools").rglob("*.py"):
+    for path in _tracked_python_files("tools"):
         if path.name == "redaction.py" and path.parent.name == "evidence_gather_support":
             continue
         if path.resolve() == allowed_reports.resolve():
@@ -2346,7 +2356,7 @@ def test_redact_launch_environment_captured_exactly_once(
     assert authorized.approval_mode == "durable"
     # Ambient mutation after the explicit environ capture must not be reread.
     mutated = dict(env)
-    mutated["OPTIMUS_API_KEY"] = "mutated-after-capture-should-not-apply"
+    mutated["OPTIMUS_API_KEY"] = "mutated-after-capture-should-not-apply"  # pragma: allowlist secret - Synthetic mutation marker tests isolation from changes after environment capture
     with pytest.raises(HostError) as mismatch:
         redaction_mod.authorize_redaction_launch(
             workspace_root=workspace,
@@ -2430,7 +2440,7 @@ def test_redact_authorization_snapshot_mismatch_maps_stable_code(
     fake = FakeKeyring()
     _seed_durable_approval(workspace=workspace, env=env, fake=fake)
     drifted = dict(env)
-    drifted["OPTIMUS_API_KEY"] = "drifted-key-value-should-mismatch"
+    drifted["OPTIMUS_API_KEY"] = "drifted-key-value-should-mismatch"  # pragma: allowlist secret - Synthetic drift marker tests detection of a changed captured environment
     from tools.evidence_gather_support import redaction as redaction_mod
 
     real_authorize = redaction_mod.authorize_redaction_launch
@@ -2469,7 +2479,7 @@ def test_redact_promotes_text_and_writes_report_then_inspect_is_body_free(
 ) -> None:
     gather = _gather()
     capture, workspace, run_dir, context, _ = _prepare_run(tmp_path)
-    secret = "collector-redact-unit-key-xxxxxxxx"
+    secret = "collector-redact-unit-key-xxxxxxxx"  # pragma: allowlist secret - same finding value as S109: Synthetic collector key tests redaction of captured evidence
     _write_text_bundle(context, run_dir, body=f"note with {secret}\n")
     provisional_before = json.loads((run_dir / "provisional-result.json").read_text(encoding="utf-8"))
     user_data = (tmp_path / "user-data").resolve()

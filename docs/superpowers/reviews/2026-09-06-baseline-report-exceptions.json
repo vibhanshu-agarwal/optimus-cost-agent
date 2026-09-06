@@ -1,0 +1,256 @@
+{
+  "schema_version": "baseline-report-exceptions-v2",
+  "approved": "2026-09-06 operator decision D2 (narrow report exception); per-site review by Codex, baseline115-site-acceptance.json, verified against its manifest before assembly",
+  "policy": "Exact path, detector and finding-hash identities only; the five report files are frozen evidence pinned by SHA-256 in tests/unit/guardrails/test_ci_parity.py; no directory exclusion; any changed hash, new finding or different semantic use returns for disposition. Finding values live only in .secrets.baseline; this record identifies each entry by path, baseline position, detector and reviewed line so that the record itself introduces no scannable value.",
+  "exception_count": 31,
+  "exceptions": [
+    {
+      "id": "S001",
+      "path": "reports/plan-11-26-acp-runtime-audit.json",
+      "baseline_position": 0,
+      "line": 1,
+      "detector": "Hex High Entropy String",
+      "rationale": "Content-integrity evidence digest in /evidence_records/*/content_free_evidence/*/digest; /findings/*/evidence/*/digest. The report records content identities; this finding does not convey a password, API key or bearer capability."
+    },
+    {
+      "id": "S002",
+      "path": "reports/plan-11-26-acp-runtime-audit.json",
+      "baseline_position": 1,
+      "line": 1,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /evidence_records/*/baseline_anchor_commit; /evidence_records/*/schedule_observations/derived_seed_anchor_commit; /evidence_records/*/schedule_observations/observations/*/anchor_commit; /merged_commit. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    },
+    {
+      "id": "S003",
+      "path": "reports/plan-11-26-baseline-intake.json",
+      "baseline_position": 0,
+      "line": 25,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /plan_line/head_commit. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    },
+    {
+      "id": "S004",
+      "path": "reports/plan-11-26-baseline-intake.json",
+      "baseline_position": 1,
+      "line": 26,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /plan_line/design_commit. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    },
+    {
+      "id": "S005",
+      "path": "reports/plan-11-26-baseline-intake.json",
+      "baseline_position": 2,
+      "line": 27,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /plan_line/fork_commit; /merged_baseline/commit. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    },
+    {
+      "id": "S006",
+      "path": "reports/plan-11-26-baseline-intake.json",
+      "baseline_position": 3,
+      "line": 37,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /runtime_overlay/accepted_runtime_commit. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    },
+    {
+      "id": "S007",
+      "path": "reports/plan-11-26-baseline-intake.json",
+      "baseline_position": 4,
+      "line": 41,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /runtime_overlay/containing_ref_tip; /observed_plan_11_7_refs/*/tip. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    },
+    {
+      "id": "S008",
+      "path": "reports/plan-11-26-baseline-intake.json",
+      "baseline_position": 5,
+      "line": 48,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /observed_plan_11_7_refs/*/tip. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    },
+    {
+      "id": "S009",
+      "path": "reports/plan-11-26-baseline-intake.json",
+      "baseline_position": 6,
+      "line": 52,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /observed_plan_11_7_refs/*/tip. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    },
+    {
+      "id": "S010",
+      "path": "reports/plan-11-26-baseline-intake.json",
+      "baseline_position": 7,
+      "line": 60,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /observed_plan_11_7_refs/*/tip. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    },
+    {
+      "id": "S011",
+      "path": "reports/plan-11-26-baseline-intake.json",
+      "baseline_position": 8,
+      "line": 64,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /observed_plan_11_7_refs/*/tip. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    },
+    {
+      "id": "S012",
+      "path": "reports/plan-11-26-baseline-intake.json",
+      "baseline_position": 9,
+      "line": 68,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /observed_plan_11_7_refs/*/tip. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    },
+    {
+      "id": "S013",
+      "path": "reports/plan-11-26-baseline-intake.json",
+      "baseline_position": 10,
+      "line": 72,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /observed_plan_11_7_refs/*/tip. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    },
+    {
+      "id": "S014",
+      "path": "reports/plan-11-26-baseline-intake.json",
+      "baseline_position": 11,
+      "line": 76,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /observed_plan_11_7_refs/*/tip. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    },
+    {
+      "id": "S015",
+      "path": "reports/plan-11-26-baseline-intake.json",
+      "baseline_position": 12,
+      "line": 122,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /task_1_prerequisite_intake/source_task_0_commit. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    },
+    {
+      "id": "S016",
+      "path": "reports/plan-11-26-client-qualification.json",
+      "baseline_position": 0,
+      "line": 3,
+      "detector": "Hex High Entropy String",
+      "rationale": "Content-integrity evidence digest in /client_qualification/harness_source_sha256. The report records content identities; this finding does not convey a password, API key or bearer capability."
+    },
+    {
+      "id": "S017",
+      "path": "reports/plan-11-26-client-qualification.json",
+      "baseline_position": 1,
+      "line": 3,
+      "detector": "Hex High Entropy String",
+      "rationale": "Content-integrity evidence digest in /client_qualification/lockfile_sha256. The report records content identities; this finding does not convey a password, API key or bearer capability."
+    },
+    {
+      "id": "S018",
+      "path": "reports/plan-11-26-client-qualification.json",
+      "baseline_position": 2,
+      "line": 4,
+      "detector": "Hex High Entropy String",
+      "rationale": "Content-integrity evidence digest in /command_evidence/acpx_version/output_sha256. The report records content identities; this finding does not convey a password, API key or bearer capability."
+    },
+    {
+      "id": "S019",
+      "path": "reports/plan-11-26-client-qualification.json",
+      "baseline_position": 3,
+      "line": 4,
+      "detector": "Hex High Entropy String",
+      "rationale": "Content-integrity evidence digest in /command_evidence/npm_lock_only/output_sha256. The report records content identities; this finding does not convey a password, API key or bearer capability."
+    },
+    {
+      "id": "S020",
+      "path": "reports/plan-11-26-client-qualification.json",
+      "baseline_position": 4,
+      "line": 4,
+      "detector": "Hex High Entropy String",
+      "rationale": "Content-integrity evidence digest in /command_evidence/npm_ci/output_sha256. The report records content identities; this finding does not convey a password, API key or bearer capability."
+    },
+    {
+      "id": "S021",
+      "path": "reports/plan-11-26-client-qualification.json",
+      "baseline_position": 5,
+      "line": 4,
+      "detector": "Hex High Entropy String",
+      "rationale": "Content-integrity evidence digest in /command_evidence/qualify/output_sha256. The report records content identities; this finding does not convey a password, API key or bearer capability."
+    },
+    {
+      "id": "S022",
+      "path": "reports/plan-11-26-client-qualification.json",
+      "baseline_position": 6,
+      "line": 4,
+      "detector": "Hex High Entropy String",
+      "rationale": "Content-integrity evidence digest in /command_evidence/npm_view/output_sha256. The report records content identities; this finding does not convey a password, API key or bearer capability."
+    },
+    {
+      "id": "S023",
+      "path": "reports/plan-11-26-client-qualification.json",
+      "baseline_position": 7,
+      "line": 4,
+      "detector": "Hex High Entropy String",
+      "rationale": "Content-integrity evidence digest in /command_evidence/build/output_sha256. The report records content identities; this finding does not convey a password, API key or bearer capability."
+    },
+    {
+      "id": "S024",
+      "path": "reports/plan-11-26-client-qualification.json",
+      "baseline_position": 8,
+      "line": 5,
+      "detector": "Base64 High Entropy String",
+      "rationale": "SDK package integrity value, matching the constant checked against the npm lockfile by clients._lock_reason; it is an integrity comparison input, not an authentication value."
+    },
+    {
+      "id": "S025",
+      "path": "reports/plan-11-26-duplication-audit.json",
+      "baseline_position": 0,
+      "line": 1,
+      "detector": "Hex High Entropy String",
+      "rationale": "Content-integrity evidence digest in /frozen_task12_artifacts/*/sha256. The report records content identities; this finding does not convey a password, API key or bearer capability."
+    },
+    {
+      "id": "S026",
+      "path": "reports/plan-11-26-duplication-audit.json",
+      "baseline_position": 1,
+      "line": 1,
+      "detector": "Hex High Entropy String",
+      "rationale": "Content-integrity evidence digest in /frozen_task12_artifacts/*/sha256. The report records content identities; this finding does not convey a password, API key or bearer capability."
+    },
+    {
+      "id": "S027",
+      "path": "reports/plan-11-26-duplication-audit.json",
+      "baseline_position": 2,
+      "line": 1,
+      "detector": "Hex High Entropy String",
+      "rationale": "Content-integrity evidence digest in /frozen_task12_artifacts/*/sha256. The report records content identities; this finding does not convey a password, API key or bearer capability."
+    },
+    {
+      "id": "S028",
+      "path": "reports/plan-11-26-duplication-audit.json",
+      "baseline_position": 3,
+      "line": 1,
+      "detector": "Hex High Entropy String",
+      "rationale": "Content-integrity evidence digest in /inventory_digest. The report records content identities; this finding does not convey a password, API key or bearer capability."
+    },
+    {
+      "id": "S029",
+      "path": "reports/plan-11-26-duplication-audit.json",
+      "baseline_position": 4,
+      "line": 1,
+      "detector": "Hex High Entropy String",
+      "rationale": "Content-integrity evidence digest in /frozen_task12_artifacts/*/sha256. The report records content identities; this finding does not convey a password, API key or bearer capability."
+    },
+    {
+      "id": "S030",
+      "path": "reports/plan-11-26-duplication-audit.json",
+      "baseline_position": 5,
+      "line": 1,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /source_commit. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    },
+    {
+      "id": "S031",
+      "path": "reports/plan-11-26-prerequisite-intake.json",
+      "baseline_position": 0,
+      "line": 5,
+      "detector": "Hex High Entropy String",
+      "rationale": "Historical Git object identity in /source_task_0_commit. Retain it as historical audit provenance; do not replace it with the reconciliation HEAD."
+    }
+  ]
+}

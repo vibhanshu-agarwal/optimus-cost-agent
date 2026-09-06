@@ -2545,6 +2545,334 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan1126_runtime_audit.cancellation:_canonical_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Canonicalizes an in-memory, source-derived audit value solely to compute SHA-256; the encoded JSON bytes are not persisted, logged, or exported by this helper.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_plan1126_cancellation.py::test_canonical_digest_is_deterministic_and_content_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.cancellation:_run_observation:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: scanner overmatch on cancellation-state vocabulary; _run_observation constructs and returns an in-memory CancellationObservation and performs no Redis write or diagnostic export.",
+      "sanitizer": "AST overmatch; no sink and no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_plan1126_cancellation.py::test_turn_cancellation_races_256_seed_matrix",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.checkpoints:CheckpointStore._exclusive_lock:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: creates only a sibling exclusivity lock file under the caller-selected checkpoint directory; the lock contains no observation payload.",
+      "sanitizer": "fixed lock metadata only; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_checkpoints.py::test_checkpoint_store_allows_only_one_concurrent_expected_revision_writer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.checkpoints:CheckpointStore._exclusive_lock:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the current process identifier as ASCII into the short-lived lock file; no checkpoint entry or subprocess output reaches this write.",
+      "sanitizer": "fixed process-id metadata only; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_checkpoints.py::test_checkpoint_store_allows_only_one_concurrent_expected_revision_writer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.checkpoints:CheckpointStore.append:json_serialization",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Closed Plan 11.26 checkpoint persistence can include bounded raw stdout/stderr tails for timeout diagnosis; it is excluded from qualified diagnostic-sink evidence and this classification is not a sanitization success.",
+      "sanitizer": "exclusion only: closed audit checkpoint may retain bounded raw timeout diagnostics",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_tier_captures_timeout_diagnostics_and_attributes_harness_instability",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.checkpoints:CheckpointStore.append:text_write",
+      "policy": "frozen-nonqualifying",
+      "rationale": "The atomic checkpoint write persists the same closed-audit payload that may contain bounded raw timeout tails; exclusion records the residual diagnostic surface without claiming it is sanitized.",
+      "sanitizer": "exclusion only: closed audit checkpoint may retain bounded raw timeout diagnostics",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_tier_captures_timeout_diagnostics_and_attributes_harness_instability",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.delivery_characterization:_canonical_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Canonicalizes source-derived delivery observations only to compute a SHA-256 digest; the intermediate JSON is neither retained nor exported.",
+      "sanitizer": "in-memory digest path; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_contract_model_1000_seed_schedule",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.duplication:_constant_value:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Serializes AST literal constants in memory solely to derive a stable duplication-comparison value; no source body or diagnostic text is written or exported.",
+      "sanitizer": "in-memory AST comparison path; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_discovery_ignores_trivial_accessors_and_enum_members",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.duplication:canonical_json_bytes:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Produces deterministic bytes for the closed duplication inventory and verifier; source is represented by symbols, structural hashes, and reviewed metadata rather than raw diagnostic capture.",
+      "sanitizer": "schema-limited audit evidence; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_inventory_is_deterministic_and_reconciles_prior_seeds",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.model:_canonical_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Canonicalizes validated audit-model fields only to compute stable evidence digests; the encoded bytes do not leave the digest helper.",
+      "sanitizer": "validated model digest path; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_artifact.py::test_to_dict_canonicalizes_finding_and_mapping_order",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.provenance:_file_sha256:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Reads the independently identified artifact only to compute a SHA-256 provenance digest; file bytes are not placed in evidence or diagnostics.",
+      "sanitizer": "streaming digest only; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_provenance.py::test_running_artifact_provenance_matches_binding_commit_and_expected_identity",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.queue_policy:_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Canonicalizes source-derived queue-policy records in memory solely for SHA-256 identity; the JSON text is not persisted or exported.",
+      "sanitizer": "in-memory digest path; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_plan1126_queue_policy.py::test_h9_artifact_recomputes_cost_coverage_and_findings",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.repeatability:_fingerprint:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Normalizes an already bounded outcome mapping solely to a stable repeatability fingerprint; the serialization is not retained or exported.",
+      "sanitizer": "in-memory fingerprint path; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_repeatability.py::test_repeatability_normalizes_mapping_order_for_stable_outcomes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.semantic_errors:_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Canonicalizes schema-limited semantic observation fields only for a SHA-256 digest; the intermediate JSON is not an output sink.",
+      "sanitizer": "in-memory digest path; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_plan1126_semantic_errors.py::test_eight_categories_execute_100_real_sanitizer_cases_each",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.semantic_errors:semantic_selection_observations:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Intentionally serializes exact synthetic JSON-RPC error responses in memory to characterize whether the protocol boundary leaks the injected canary; pre-sanitizing this wire would invalidate the observation.",
+      "sanitizer": "functional JSON-RPC serializer under characterization; exact wire shape required",
+      "test_node": "tests/unit/acp/test_plan1126_semantic_errors.py::test_eight_categories_execute_100_real_sanitizer_cases_each",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.session_lease:_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Canonicalizes source-derived lease and binding-gate facts only to compute evidence identity; no intermediate content is persisted or exported.",
+      "sanitizer": "in-memory digest path; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_plan1126_session_lease.py::test_h10_artifact_is_scoped_out_without_runtime_or_live_evidence",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.shutdown:_canonical_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Canonicalizes source-derived shutdown observations only for deterministic SHA-256 evidence identity; the JSON bytes are not retained or exported.",
+      "sanitizer": "in-memory digest path; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_plan1126_shutdown.py::test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.source:GitCommitSource._load_archive:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Opens an in-memory tar archive from an immutable Git commit to build a read-only source map; it does not persist archive members or export their contents.",
+      "sanitizer": "immutable in-memory source reader; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_source.py::test_git_commit_source_reads_multiple_blobs_from_one_bounded_archive",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.telemetry:_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Canonicalizes schema-limited telemetry observation metadata solely to compute a SHA-256 digest; event payload text is not retained by this helper.",
+      "sanitizer": "in-memory digest path; no raw diagnostic retention",
+      "test_node": "tests/unit/telemetry/test_plan1126_runtime_contract.py::test_runtime_event_schema_generated_10000_cases",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.telemetry:_ordinary_event:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Scanner overmatch: _ordinary_event constructs an in-memory TelemetryEvent with fixed probe vocabulary and a fixed 'contained diagnostic' message; it performs no logger export.",
+      "sanitizer": "AST overmatch and fixed synthetic fields; no export at this site",
+      "test_node": "tests/unit/telemetry/test_plan1126_runtime_contract.py::test_telemetry_sink_failures_are_contained",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.telemetry:runtime_redaction_observations:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Reads temporary JSONL and debug-trace outputs only after synthetic canaries have traversed the production event/debug redaction boundaries, then deletes those files; the test fails if any raw canary survives.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence via telemetry event and debug-trace boundaries",
+      "test_node": "tests/unit/telemetry/test_plan1126_runtime_contract.py::test_runtime_redaction_generated_1000_cases",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.telemetry:runtime_redaction_observations:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Serializes the captured gateway payload only after TelemetryEvent serialization has delegated nested content through the shared persistence sanitizer; the synthetic-canary assertion verifies the boundary end to end.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence via TelemetryEvent serialization",
+      "test_node": "tests/unit/telemetry/test_plan1126_runtime_contract.py::test_runtime_redaction_generated_1000_cases",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_atomic_json:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Serializes validated Plan 11.26 artifact, inventory, checkpoint-summary, or content-free status documents before atomic publication; callers do not use it for raw diagnostic streams.",
+      "sanitizer": "schema-limited closed-audit artifacts; no raw diagnostic stream",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_inventory_and_offline_subcommands_perform_offline_work",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_atomic_json:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Writes only the canonical bytes produced for validated closed-audit documents to a temporary sibling before atomic replace; partial files cannot become accepted artifacts.",
+      "sanitizer": "schema-limited closed-audit artifacts with atomic publication",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_inventory_and_offline_subcommands_perform_offline_work",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_emit:json_serialization",
+      "policy": "frozen-nonqualifying",
+      "rationale": "The closed Plan 11.26 status emitter accepts caller-supplied reason strings, including raw validation exceptions on two paths; it is excluded from qualified diagnostic-sink evidence rather than credited as sanitized.",
+      "sanitizer": "exclusion only: closed audit status emitter accepts unsanitized reason strings",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_cli_verify_and_render_use_json_as_authority",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_emit:stdout_export",
+      "policy": "frozen-nonqualifying",
+      "rationale": "Prints the same closed-audit status document whose reason list can receive raw exception text; exclusion records that residual stdout surface and makes no sanitization claim.",
+      "sanitizer": "exclusion only: closed audit stdout may contain unsanitized reason strings",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_cli_verify_and_render_use_json_as_authority",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_offline_artifact_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Canonicalizes a validated artifact with volatile duration maps removed solely to compute the offline evidence identity; the intermediate bytes are not exported.",
+      "sanitizer": "validated in-memory digest path; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_tier_runner_checkpoints_real_repeats_and_resumes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_read_accepted_authority:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Canonicalizes the closed prerequisite authority document only to compare its SHA-256 against code-owned accepted digests; the encoded authority is not persisted or exported.",
+      "sanitizer": "code-owned authority digest verification; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_production_cli_rejects_unreviewed_authority_before_other_inputs",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_run_cost_proposal:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Writes a fixed-template terminal cost proposal containing counts, timings, controlled statuses, reviewed owner/gate metadata, and digests; it does not include captured subprocess output.",
+      "sanitizer": "fixed-template, schema-limited cost evidence; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_cost_proposal_updates_measurements_and_keeps_live_rows_unrun",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_run_duplication:exception_export",
+      "policy": "frozen-nonqualifying",
+      "rationale": "The closed duplication command forwards str(exc) to the status emitter on invalid input; this residual raw-exception path is excluded from qualified diagnostic evidence and is not called sanitized.",
+      "sanitizer": "exclusion only: closed audit command may export raw validation exception text",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_cli_verifies_and_renders_reviewed_artifacts",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_run_duplication:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Writes deterministic Markdown derived from schema-validated duplication inventory and reviewed audit partitions; it does not capture runtime diagnostics or source bodies.",
+      "sanitizer": "schema-limited reviewed duplication evidence; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_cli_verifies_and_renders_reviewed_artifacts",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_run_queue_policy:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Persists deterministic, metadata-only Markdown from a schema-validated H9 artifact; renderer escaping and fixed vocabularies prevent raw observation content from becoming report text.",
+      "sanitizer": "metadata-only audit renderer with bounded vocabularies",
+      "test_node": "tests/unit/acp/test_plan1126_queue_policy.py::test_h9_artifact_recomputes_cost_coverage_and_findings",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_run_semantic:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Persists deterministic, metadata-only Markdown from the validated H7 artifact; synthetic protocol canaries remain represented only by digests and leakage outcomes.",
+      "sanitizer": "metadata-only audit renderer; synthetic payloads represented by digests",
+      "test_node": "tests/unit/acp/test_plan1126_semantic_errors.py::test_h6_h7_artifact_recomputes_coverage_findings_and_scope_out_debt",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_run_session_lease:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Persists deterministic, metadata-only Markdown from the validated H10 artifact; the report contains binding statuses, citations, counts, and reviewed scope-out metadata rather than session content.",
+      "sanitizer": "metadata-only audit renderer with bounded vocabularies",
+      "test_node": "tests/unit/acp/test_plan1126_session_lease.py::test_h10_artifact_is_scoped_out_without_runtime_or_live_evidence",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_run_task5_group_repeats:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Canonicalizes the validated audit artifact solely to bind group-repeat checkpoints to its SHA-256; raw subprocess streams are not serialized on this path.",
+      "sanitizer": "validated artifact digest path; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_tier_runner_checkpoints_real_repeats_and_resumes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_run_telemetry:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Persists deterministic, metadata-only Markdown from the validated H8 artifact; redaction canaries are reduced to result vocabularies and digests before rendering.",
+      "sanitizer": "metadata-only audit renderer; canary content reduced to outcomes and digests",
+      "test_node": "tests/unit/telemetry/test_plan1126_runtime_contract.py::test_h8_artifact_recomputes_s2_cost_coverage_and_findings",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_task5_provenance_fingerprint:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Serializes only executable path, platform description, and Python version to compute a local provenance fingerprint; the intermediate JSON is not retained or exported.",
+      "sanitizer": "closed provenance field set; in-memory digest only",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_tier_runner_checkpoints_real_repeats_and_resumes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_write_text:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Opens only caller-selected report paths for deterministic Plan 11.26 renderers whose inputs are validated audit artifacts or fixed-template cost evidence; it is not a raw capture helper.",
+      "sanitizer": "validated audit renderer outputs only; no raw diagnostic stream",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_render_is_deterministic_regeneration_from_canonical_json_and_content_free",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_write_text:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Writes only deterministic rendered audit text supplied by validated, content-free render paths; no subprocess stdout/stderr is routed through this helper.",
+      "sanitizer": "validated audit renderer outputs only; no raw diagnostic stream",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_render_is_deterministic_regeneration_from_canonical_json_and_content_free",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:main:exception_export",
+      "policy": "frozen-nonqualifying",
+      "rationale": "The closed verify/render command forwards str(exc) to the status emitter when artifact validation fails; this raw-exception route is excluded from qualified diagnostic evidence without a sanitization claim.",
+      "sanitizer": "exclusion only: closed audit command may export raw validation exception text",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_cli_verify_and_render_use_json_as_authority",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:main:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "The render branch writes deterministic metadata-only Markdown produced from a validated AuditArtifact; source observations and runtime streams are not emitted into the report.",
+      "sanitizer": "validated content-free audit renderer",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_cli_verify_and_render_use_json_as_authority",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.probe_p11_zed_session_load:classify_indeterminate_context:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: serializes the supplied evidence only in memory to classify bounded Redis-unreachable text; it neither persists nor exports that intermediate string.",
@@ -2998,6 +3326,22 @@
       "rationale": "Inspection: verify_evidence_handoff_live main prints only controlled structured verification/inspect JSON to stdout.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_verify_evidence_handoff_live.py::test_verifier_entrypoints_exist",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_masterplan_impact:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints only a fixed prefix and validation error derived from PR governance metadata; it does not process runtime secrets or production payloads.",
+      "sanitizer": "governance-only inputs and fixed validation vocabulary",
+      "test_node": "tests/unit/tools/test_verify_masterplan_impact.py::test_invalid_declarations_fail_closed",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_masterplan_impact:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints one fixed success sentence after the declaration and changed-file contract validates.",
+      "sanitizer": "fixed success string",
+      "test_node": "tests/unit/tools/test_verify_masterplan_impact.py::test_updated_declaration_accepts_known_track_with_masterplan_change",
       "evidence_tier": "unit"
     },
     {

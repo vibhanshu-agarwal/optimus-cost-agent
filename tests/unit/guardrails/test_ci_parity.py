@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -43,6 +44,28 @@ def test_pre_commit_and_ci_name_the_same_guardrail_checks():
     assert pre_commit & expected == ci & expected == expected
 
 
+def test_ci_dependency_sync_is_locked() -> None:
+    workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "guardrails.yml").read_text(encoding="utf-8")
+    )
+    steps = workflow["jobs"]["clean-environment-recheck"]["steps"]
+    named_steps = [step for step in steps if step.get("name") == "Install dependencies"]
+    sync_steps = [
+        step
+        for step in steps
+        if shlex.split(str(step.get("run", "")))[:2] == ["uv", "sync"]
+    ]
+
+    assert len(named_steps) == 1
+    assert sync_steps == named_steps
+    assert shlex.split(str(named_steps[0]["run"])) == [
+        "uv",
+        "sync",
+        "--locked",
+        "--all-extras",
+    ]
+
+
 def test_default_agent_config_paths_include_nested_agents_cursor_rules_and_root_mcp(tmp_path):
     nested = tmp_path / "packages" / "api"
     nested.mkdir(parents=True)
@@ -72,20 +95,73 @@ def test_scan_paths_blocks_missing_explicit_path(tmp_path):
 # --- Baseline policy (Plan 11.27 v10) -------------------------------------
 #
 # The empty-results invariant is superseded by an operator-approved, exact
-# three-entry exception covering the frozen v9 plan document's integrity
-# hashes. Every expectation below is stated literally so it is independent of
+# exception set: three entries covering the frozen v9 plan document's integrity
+# hashes (v10) plus thirty-one exact report identities approved 2026-09-06 (D2). Every expectation below is stated literally so it is independent of
 # the file under test; deriving it from the baseline would make the test
 # vacuous.
 
 FROZEN_V9_RELPATH = "docs/superpowers/plans/2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v9.md"
 FROZEN_V9_SHA256 = "823f269c05f9251b6594635a4881c23edb74ded3382469655f788c3b50cfb3dd"  # pragma: allowlist secret - custody digest
 
-# Ordered, with line numbers. A set would collapse duplicates and lose the
-# hash-to-line binding, so the comparison uses an exact ordered structure.
+# Approved baseline exception set (Plan 11.27 v10 three v9 entries + the 2026-09-06
+# operator-approved D2 widening: exactly 31 report identities across five frozen
+# Plan 11.26 audit reports). Ordered (path, line, detector, value hash); a set would
+# collapse duplicates and lose the hash-to-line binding, so the comparison uses an
+# exact ordered structure. Every expectation is stated literally so it is independent
+# of the file under test.
+REPORT_EXCEPTION_RELPATHS = (
+    "reports/plan-11-26-acp-runtime-audit.json",
+    "reports/plan-11-26-baseline-intake.json",
+    "reports/plan-11-26-client-qualification.json",
+    "reports/plan-11-26-duplication-audit.json",
+    "reports/plan-11-26-prerequisite-intake.json",
+)
+APPROVED_BASELINE_RELPATHS = (FROZEN_V9_RELPATH, *REPORT_EXCEPTION_RELPATHS)
+
+# The five report files are frozen evidence; their bytes are pinned like the v9 document.
+REPORT_EXCEPTION_SHA256 = {
+    "reports/plan-11-26-acp-runtime-audit.json": "8dc32bf425c501c1a2ec8282b0c68754839c1662dbf38f36fc109b3b4b7815df",  # pragma: allowlist secret - custody digest
+    "reports/plan-11-26-baseline-intake.json": "7027d5be9522e320e1b2a0e3e2839479f39875bf395d94603d25386cff2552d2",  # pragma: allowlist secret - custody digest
+    "reports/plan-11-26-client-qualification.json": "53a0a21ca765949224f4fc38fa97447c07a91702174b151efcc9dd81d4937ab7",  # pragma: allowlist secret - custody digest
+    "reports/plan-11-26-duplication-audit.json": "14e8fd8a69032c3ee6a832c9af78350e6721e14e668929b1dc8e9b87f5c4c07c",  # pragma: allowlist secret - custody digest
+    "reports/plan-11-26-prerequisite-intake.json": "7dc5ee81ffe7b1a81c0b1fd62192969806faec44cf51fa1a6d84d255d5c04e7b",  # pragma: allowlist secret - custody digest
+}
+
 EXPECTED_BASELINE_ENTRIES = [
-    (51, "Hex High Entropy String", "fe0cb7d0520c32a9541036d91d14e031c3b78580"),  # pragma: allowlist secret - one-way value hash
-    (53, "Hex High Entropy String", "64930e6006e5f8d3ffe66d522b3e9ff0071bc77e"),  # pragma: allowlist secret - one-way value hash
-    (54, "Hex High Entropy String", "0403fd38ba560b5623bb067d208062ba7aa1b6ee"),  # pragma: allowlist secret - one-way value hash
+    (FROZEN_V9_RELPATH, 51, "Hex High Entropy String", "fe0cb7d0520c32a9541036d91d14e031c3b78580"),  # pragma: allowlist secret - one-way value hash
+    (FROZEN_V9_RELPATH, 53, "Hex High Entropy String", "64930e6006e5f8d3ffe66d522b3e9ff0071bc77e"),  # pragma: allowlist secret - one-way value hash
+    (FROZEN_V9_RELPATH, 54, "Hex High Entropy String", "0403fd38ba560b5623bb067d208062ba7aa1b6ee"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-acp-runtime-audit.json", 1, "Hex High Entropy String", "0636969988bd07ab875ed36827aaf25f26deb11f"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-acp-runtime-audit.json", 1, "Hex High Entropy String", "fe0cb7d0520c32a9541036d91d14e031c3b78580"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-baseline-intake.json", 25, "Hex High Entropy String", "97ecf39250f1f8a5db4269de10155443bcd668f8"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-baseline-intake.json", 26, "Hex High Entropy String", "ca4fa9cffd2ab400b86adabe108b114354b27bd0"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-baseline-intake.json", 27, "Hex High Entropy String", "fe0cb7d0520c32a9541036d91d14e031c3b78580"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-baseline-intake.json", 37, "Hex High Entropy String", "063bd102fb558beb00db9a4bbf2af4d82e51d1a5"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-baseline-intake.json", 41, "Hex High Entropy String", "be4bf49850daa66345fe70c55c434a7cbaae7b7a"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-baseline-intake.json", 48, "Hex High Entropy String", "b7188ded128bdfe5bf286932a14e9ce5747de417"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-baseline-intake.json", 52, "Hex High Entropy String", "d3701d64bdae36b3fef349c2ec3f835199650d8a"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-baseline-intake.json", 60, "Hex High Entropy String", "37306214ade0cafd0f4a4b598971e57d024e6b8a"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-baseline-intake.json", 64, "Hex High Entropy String", "9eb32e3f22d67bca3992e9265a75a2a5a4ac82ae"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-baseline-intake.json", 68, "Hex High Entropy String", "9732f50f0e9bc125f4c065bd81c7114d9dbed8f5"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-baseline-intake.json", 72, "Hex High Entropy String", "0a56802bdab32389baf93d8ab0c429723dbc1108"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-baseline-intake.json", 76, "Hex High Entropy String", "53ccc51f0b5780a1359c6bfe7c96cb9a5ad905bb"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-baseline-intake.json", 122, "Hex High Entropy String", "c81be5a39e5d6853ea193821054220346e7ab5e9"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-client-qualification.json", 3, "Hex High Entropy String", "14efb0439b285e945323bfc12391d46a1bc34e87"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-client-qualification.json", 3, "Hex High Entropy String", "364764e82e81afc21ae0077b3ed932c3ec744431"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-client-qualification.json", 4, "Hex High Entropy String", "06322d539a135a6679519665b8c9635469063dcd"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-client-qualification.json", 4, "Hex High Entropy String", "0ab6c6ec3c60dbe08df0dc5f2b7233c55979c905"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-client-qualification.json", 4, "Hex High Entropy String", "55e0e67370ad068a749dd05bb38359ce691f3df6"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-client-qualification.json", 4, "Hex High Entropy String", "72ed894cd3b8c040407e2514db7435c329678626"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-client-qualification.json", 4, "Hex High Entropy String", "af8f0dc25a951cbb8fe9929a48bc0892ba38eabb"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-client-qualification.json", 4, "Hex High Entropy String", "d52ea1ab4601cc20d0726808f4e6325e947b462c"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-client-qualification.json", 5, "Base64 High Entropy String", "00de58afbf0d75a6b0ee628e1d6b7adc7e5d779c"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-duplication-audit.json", 1, "Hex High Entropy String", "0a6bd7d9dbc27d62955e1af8b051d38a330721c6"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-duplication-audit.json", 1, "Hex High Entropy String", "0a8c592c15619864a61e7700642d5a7519e9b6b5"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-duplication-audit.json", 1, "Hex High Entropy String", "357013e775b5cdc2ba9c3ee21c7780bcfadcb870"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-duplication-audit.json", 1, "Hex High Entropy String", "4999f8803741a20dcac270e29d6bfec6dbfaed7e"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-duplication-audit.json", 1, "Hex High Entropy String", "d5c33f1e6383561156f83cb2828192bc97e385f7"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-duplication-audit.json", 1, "Hex High Entropy String", "dc68a3964378ca31f4ed28e5577fb2b951e18fe5"),  # pragma: allowlist secret - one-way value hash
+    ("reports/plan-11-26-prerequisite-intake.json", 5, "Hex High Entropy String", "c81be5a39e5d6853ea193821054220346e7ab5e9"),  # pragma: allowlist secret - one-way value hash
 ]
 
 # COMPLETE detector settings, not names. A name-only comparison accepts a
@@ -141,14 +217,14 @@ def _canonical(value: str) -> str:
     return value.replace("\\", "/")
 
 
-def _baseline_entry_structure(baseline: dict) -> list[tuple[int, str, str]]:
-    """Ordered (line, detector type, value hash) triples across all entries.
+def _baseline_entry_structure(baseline: dict) -> list[tuple[str, int, str, str]]:
+    """Ordered (path, line, detector type, value hash) tuples across all entries.
 
     A list, not a set: duplicated entries must remain visible.
     """
     return [
-        (entry["line_number"], entry["type"], entry["hashed_secret"])
-        for _, entries in sorted(baseline["results"].items())
+        (_canonical(path), entry["line_number"], entry["type"], entry["hashed_secret"])
+        for path, entries in sorted(baseline["results"].items())
         for entry in entries
     ]
 
@@ -157,19 +233,21 @@ def _assert_baseline_policy(baseline: dict) -> None:
     """The exact approved exception — nothing wider, nothing narrower."""
     # Path binding first, so a relocated entry trips the assertion it targets
     # rather than the broader structural comparison.
-    assert len(baseline["results"]) == 1, "exactly one allowlisted document is approved"
+    assert len(baseline["results"]) == len(APPROVED_BASELINE_RELPATHS), (
+        "exactly the six approved documents may carry baseline entries"
+    )
     for path, entries in baseline["results"].items():
-        assert _canonical(path) == FROZEN_V9_RELPATH, (
-            f"only the frozen v9 document may carry baseline entries; found {path}"
+        assert _canonical(path) in APPROVED_BASELINE_RELPATHS, (
+            f"only the approved documents may carry baseline entries; found {path}"
         )
         for entry in entries:
-            assert _canonical(entry["filename"]) == FROZEN_V9_RELPATH, (
+            assert _canonical(entry["filename"]) == _canonical(path), (
                 f"each entry's embedded filename must match the allowlisted path; found {entry['filename']}"
             )
             assert entry["is_secret"] is False, "each entry must be classified is_secret: false"
             assert entry["is_verified"] is False, "each entry must be classified is_verified: false"
     assert _baseline_entry_structure(baseline) == EXPECTED_BASELINE_ENTRIES, (
-        "baseline results must be exactly the approved three-entry exception"
+        "baseline results must be exactly the approved 34-entry exception set"
     )
     # Sorted by identity so serialization order is irrelevant, but each entry is
     # compared whole: a changed threshold or option must not slip through.
@@ -181,7 +259,7 @@ def _assert_baseline_policy(baseline: dict) -> None:
     ), "filter configuration must be unchanged, including every threshold and option"
 
 
-def test_detect_secrets_baseline_matches_the_approved_three_entry_exception():
+def test_detect_secrets_baseline_matches_the_approved_exception_set():
     baseline = json.loads((ROOT / ".secrets.baseline").read_text(encoding="utf-8"))
 
     _assert_baseline_policy(baseline)
@@ -192,6 +270,14 @@ def test_frozen_v9_document_digest_is_unchanged():
     digest = hashlib.sha256((ROOT / FROZEN_V9_RELPATH).read_bytes()).hexdigest()
 
     assert digest == FROZEN_V9_SHA256, "frozen v9 document bytes changed; the exception no longer applies"
+
+
+@pytest.mark.parametrize("relpath", sorted(REPORT_EXCEPTION_SHA256))
+def test_report_exception_document_digest_is_unchanged(relpath: str):
+    """Each report carrying baseline exceptions is frozen evidence; its bytes are pinned."""
+    digest = hashlib.sha256((ROOT / relpath).read_bytes()).hexdigest()
+
+    assert digest == REPORT_EXCEPTION_SHA256[relpath], f"{relpath} bytes changed; its exceptions no longer apply"
 
 
 def _approved_baseline() -> dict:
@@ -205,11 +291,13 @@ def _approved_baseline() -> dict:
         "plugins_used": copy.deepcopy(EXPECTED_DETECTORS),
         "filters_used": copy.deepcopy(EXPECTED_FILTERS),
         "results": {
-            FROZEN_V9_RELPATH: [
-                {"type": detector, "filename": FROZEN_V9_RELPATH, "hashed_secret": digest,
+            path: [
+                {"type": detector, "filename": path, "hashed_secret": digest,
                  "is_verified": False, "is_secret": False, "line_number": line}
-                for line, detector, digest in EXPECTED_BASELINE_ENTRIES
+                for entry_path, line, detector, digest in EXPECTED_BASELINE_ENTRIES
+                if entry_path == path
             ]
+            for path in APPROVED_BASELINE_RELPATHS
         },
     }
 
@@ -275,6 +363,25 @@ def _mutate_embedded_filename(baseline: dict) -> None:
     baseline["results"][FROZEN_V9_RELPATH][0]["filename"] = "docs/elsewhere.md"
 
 
+def _mutate_unapproved_report_path(baseline: dict) -> None:
+    """Same document count, but one approved report relocated to an unapproved sibling path."""
+    baseline["results"]["reports/plan-11-26-terminal-characterization.md"] = baseline["results"].pop(
+        REPORT_EXCEPTION_RELPATHS[0]
+    )
+
+
+def _mutate_extra_report_document(baseline: dict) -> None:
+    """A seventh document under the same directory must fail the exact document-count binding."""
+    baseline["results"]["reports/plan-11-26-terminal-characterization.md"] = [
+        {"type": "Hex High Entropy String", "filename": "reports/plan-11-26-terminal-characterization.md",
+         "hashed_secret": "2" * 40, "is_verified": False, "is_secret": False, "line_number": 1}]
+
+
+def _mutate_report_changed_hash(baseline: dict) -> None:
+    """A drifted report identity must not be accepted."""
+    baseline["results"][REPORT_EXCEPTION_RELPATHS[0]][0]["hashed_secret"] = "3" * 40
+
+
 def _mutate_swapped_line_binding(baseline: dict) -> None:
     """Same three hashes, wrong hash-to-line mapping."""
     entries = baseline["results"][FROZEN_V9_RELPATH]
@@ -284,19 +391,22 @@ def _mutate_swapped_line_binding(baseline: dict) -> None:
 
 
 BASELINE_POLICY_MUTANTS = {
-    "extra_entry": (_mutate_extra_entry, "exactly the approved three-entry exception"),
-    "missing_entry": (_mutate_missing_entry, "exactly the approved three-entry exception"),
-    "changed_hash": (_mutate_changed_hash, "exactly the approved three-entry exception"),
-    "changed_path": (_mutate_changed_path, "only the frozen v9 document"),
-    "changed_type": (_mutate_changed_type, "exactly the approved three-entry exception"),
+    "extra_entry": (_mutate_extra_entry, "exactly the approved 34-entry exception set"),
+    "missing_entry": (_mutate_missing_entry, "exactly the approved 34-entry exception set"),
+    "changed_hash": (_mutate_changed_hash, "exactly the approved 34-entry exception set"),
+    "changed_path": (_mutate_changed_path, "only the approved documents"),
+    "changed_type": (_mutate_changed_type, "exactly the approved 34-entry exception set"),
     "changed_classification": (_mutate_changed_classification, "is_secret: false"),
     "dropped_detector": (_mutate_dropped_detector, "detector configuration must be unchanged"),
     "dropped_filter": (_mutate_dropped_filter, "filter configuration must be unchanged"),
     "entropy_threshold": (_mutate_entropy_threshold, "including every threshold and option"),
     "filter_threshold": (_mutate_filter_threshold, "including every threshold and option"),
-    "duplicate_entry": (_mutate_duplicate_entry, "exactly the approved three-entry exception"),
+    "duplicate_entry": (_mutate_duplicate_entry, "exactly the approved 34-entry exception set"),
     "embedded_filename": (_mutate_embedded_filename, "embedded filename must match the allowlisted path"),
-    "swapped_line_binding": (_mutate_swapped_line_binding, "exactly the approved three-entry exception"),
+    "swapped_line_binding": (_mutate_swapped_line_binding, "exactly the approved 34-entry exception set"),
+    "unapproved_report_path": (_mutate_unapproved_report_path, "only the approved documents"),
+    "extra_report_document": (_mutate_extra_report_document, "exactly the six approved documents"),
+    "report_changed_hash": (_mutate_report_changed_hash, "exactly the approved 34-entry exception set"),
 }
 
 

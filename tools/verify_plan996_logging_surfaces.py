@@ -9,6 +9,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from tools.tracked_repository_files import tracked_repository_files
+
 _VALID_POLICIES = frozenset(
     {"shared-sanitize", "safe-by-construction", "protocol-only", "frozen-nonqualifying"}
 )
@@ -50,16 +52,14 @@ def load_manifest(manifest_path: Path) -> list[Mapping[str, str]]:
 def discover_surfaces(project_root: Path) -> set[str]:
     """Return stable keys for persistence, export, and protocol sink calls."""
     surfaces: set[str] = set()
-    for source_path in sorted((project_root / "src").rglob("*.py")):
+    source_paths = tracked_repository_files(project_root, pathspecs=("src", "tools"))
+    for source_path in source_paths:
         module = _module_name(project_root, source_path)
-        surfaces.update(_discover_python_surfaces(module, source_path.read_text(encoding="utf-8")))
-    tools_root = project_root / "tools"
-    for source_path in sorted(tools_root.rglob("*.py")):
-        module = _module_name(project_root, source_path)
-        surfaces.update(_discover_python_surfaces(module, source_path.read_text(encoding="utf-8")))
-    for source_path in sorted((*tools_root.rglob("*.sh"), *tools_root.rglob("*.ps1"))):
-        module = _module_name(project_root, source_path)
-        surfaces.update(_discover_script_surfaces(module, source_path.read_text(encoding="utf-8")))
+        source = source_path.read_text(encoding="utf-8")
+        if source_path.suffix == ".py":
+            surfaces.update(_discover_python_surfaces(module, source))
+        elif source_path.suffix in {".ps1", ".sh"}:
+            surfaces.update(_discover_script_surfaces(module, source))
     return surfaces
 
 

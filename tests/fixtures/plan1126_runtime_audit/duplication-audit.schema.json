@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "candidate": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {"minLength": 1, "type": "string"},
+        "confirmed_member_symbols": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
+        "finding_ids": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
+        "latent_surface_closed": {"minimum": 1, "type": "integer"},
+        "module_count": {"minimum": 1, "type": "integer"},
+        "next_gate": {"minLength": 1, "type": "string"},
+        "owner_to_be": {"minLength": 1, "type": "string"},
+        "rank": {"minimum": 1, "type": "integer"},
+        "severity": {"enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]},
+        "shape": {"enum": ["point-fix", "consolidation"]}
+      },
+      "required": ["candidate_id", "rank", "shape", "latent_surface_closed", "confirmed_member_symbols", "module_count", "severity", "owner_to_be", "next_gate", "finding_ids"],
+      "type": "object"
+    },
+    "finding": {
+      "additionalProperties": false,
+      "properties": {
+        "classification": {"const": "DUPLICATED"},
+        "evidence_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "finding_id": {"minLength": 1, "type": "string"},
+        "impact": {"minLength": 1, "type": "string"},
+        "owner": {"minLength": 1, "type": "string"},
+        "severity": {"enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]},
+        "subject": {"minLength": 1, "type": "string"},
+        "symbols": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true}
+      },
+      "required": ["finding_id", "subject", "classification", "symbols", "evidence_digest", "impact", "severity", "owner"],
+      "type": "object"
+    },
+    "frozen": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {"minLength": 1, "type": "string"},
+        "sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"}
+      },
+      "required": ["path", "sha256"],
+      "type": "object"
+    },
+    "partition": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {"type": ["string", "null"]},
+        "disposition": {"enum": ["CONFIRMED_DUPLICATION", "INTENTIONAL_REPETITION", "STRUCTURAL_SIMILARITY_ONLY"]},
+        "finding_id": {"type": ["string", "null"]},
+        "member_ids": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
+        "partition_id": {"minLength": 1, "type": "string"},
+        "rationale": {"minLength": 1, "type": "string"},
+        "raw_group_id": {"minLength": 1, "type": "string"}
+      },
+      "required": ["partition_id", "raw_group_id", "member_ids", "disposition", "rationale", "finding_id", "candidate_id"],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "counts": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmed_findings": {"minimum": 0, "type": "integer"},
+        "confirmed_partitions": {"minimum": 0, "type": "integer"},
+        "intentional_partitions": {"minimum": 0, "type": "integer"},
+        "raw_groups": {"minimum": 0, "type": "integer"},
+        "remediation_candidates": {"minimum": 0, "type": "integer"},
+        "reviewed_partitions": {"minimum": 0, "type": "integer"},
+        "similarity_only_partitions": {"minimum": 0, "type": "integer"}
+      },
+      "required": ["raw_groups", "reviewed_partitions", "confirmed_partitions", "intentional_partitions", "similarity_only_partitions", "confirmed_findings", "remediation_candidates"],
+      "type": "object"
+    },
+    "findings": {"items": {"$ref": "#/$defs/finding"}, "type": "array"},
+    "frozen_task12_artifacts": {"items": {"$ref": "#/$defs/frozen"}, "minItems": 1, "type": "array"},
+    "gate_status": {"enum": ["PENDING_G7", "ACCEPTED_OPEN", "ACCEPTED_ZERO"]},
+    "inventory_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "remediation_candidates": {"items": {"$ref": "#/$defs/candidate"}, "type": "array"},
+    "reviewed_partitions": {"items": {"$ref": "#/$defs/partition"}, "type": "array"},
+    "schema_version": {"const": "plan-11-26-duplication-audit-v1"},
+    "source_commit": {"pattern": "^[0-9a-f]{40}$", "type": "string"}
+  },
+  "required": ["schema_version", "source_commit", "inventory_digest", "frozen_task12_artifacts", "reviewed_partitions", "findings", "remediation_candidates", "counts", "gate_status"],
+  "type": "object"
+}

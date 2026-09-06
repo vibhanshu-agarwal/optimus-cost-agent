@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
-from tools.verify_plan996_logging_surfaces import SurfaceAuditError, discover_surfaces, load_manifest, main, validate_manifest
+from tools.verify_plan996_logging_surfaces import (
+    SurfaceAuditError,
+    discover_surfaces,
+    load_manifest,
+    main,
+    validate_manifest,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 MANIFEST_PATH = PROJECT_ROOT / "docs" / "superpowers" / "reviews" / "2026-07-15-plan-9-96-logging-surface-audit.json"
@@ -24,6 +31,11 @@ def _manifest_entry(key: str) -> dict[str, str]:
         "test_node": KNOWN_TEST_NODE,
         "evidence_tier": "unit",
     }
+
+
+def _track_repository_files(project_root: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=project_root, check=True)
+    subprocess.run(["git", "add", "-f", "."], cwd=project_root, check=True)
 
 
 def test_checked_in_manifest_covers_current_surface_inventory() -> None:
@@ -52,6 +64,7 @@ def test_main_validates_a_complete_manifest(tmp_path) -> None:
         ),
         encoding="utf-8",
     )
+    _track_repository_files(project_root)
 
     assert main(["--project-root", str(project_root), "--manifest", str(manifest_path)]) == 0
 
@@ -95,6 +108,7 @@ def test_discovers_unexpected_python_and_shell_sink_kinds(tmp_path) -> None:
     script_path = tmp_path / "tools" / "capture.sh"
     script_path.parent.mkdir()
     script_path.write_text("acpx run > transcript.jsonl\n", encoding="utf-8")
+    _track_repository_files(tmp_path)
 
     discovered = discover_surfaces(tmp_path)
 

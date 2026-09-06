@@ -4,6 +4,7 @@ import os
 import uuid
 from collections.abc import Iterator
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -14,6 +15,46 @@ from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.redis.async_bridge import shutdown_background_loop
 from optimus.redis.runtime import RedisRuntime
 from optimus.telemetry.redis_adapter import RedisTelemetryAdapter
+from tools.plan1126_unrun_binding import (
+    binding_commit_available,
+    format_terminal_summary,
+    load_scopeout_manifest,
+    scopeout_nodeids,
+    scopeout_reason,
+)
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_PLAN1126_UNRUN_COUNT: pytest.StashKey[int] = pytest.StashKey()
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.stash[_PLAN1126_UNRUN_COUNT] = 0
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    manifest = load_scopeout_manifest(_REPO_ROOT)
+    selected = scopeout_nodeids(
+        manifest,
+        tuple(item.nodeid for item in items),
+        binding_available=binding_commit_available(_REPO_ROOT, manifest.binding_commit),
+    )
+    selected_set = set(selected)
+    marker = pytest.mark.skip(reason=scopeout_reason())
+    for item in items:
+        if item.nodeid in selected_set:
+            item.add_marker(marker)
+    config.stash[_PLAN1126_UNRUN_COUNT] = len(selected)
+
+
+def pytest_terminal_summary(
+    terminalreporter: pytest.TerminalReporter,
+    exitstatus: int,
+    config: pytest.Config,
+) -> None:
+    del exitstatus
+    skipped_count = config.stash[_PLAN1126_UNRUN_COUNT]
+    if skipped_count:
+        terminalreporter.write_sep("=", format_terminal_summary(skipped_count))
 
 _INHERITED_GIT_ENV: dict[str, str] = {}
 

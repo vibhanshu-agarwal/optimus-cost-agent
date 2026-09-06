@@ -1,0 +1,1193 @@
+# Plan 11.26 ACP Runtime Hardening Audit Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Status:** Complete. Tasks 0-12 are accepted through G6; Task 13 is accepted at G7 as `ACCEPTED_OPEN`. Plan 11.26 is terminal, while its named remediation candidates and three blocked obligations remain open under their separate owners.
+
+**Goal:** Produce a baseline-scoped, machine-checkable audit of ACP runtime cross-cutting contracts and evidence-backed remediation candidates without changing production runtime behavior.
+
+**Architecture:** A non-production `tools.plan1126_runtime_audit` package supplies one shared artifact schema, baseline vocabulary, AST inventory framework, running-artifact provenance verifier, seed corpus, checkpoint protocol, and computed-cost model. Concern-specific tests and probes use that common approach to characterize delivery, task ownership, cancellation, resource lifetime, semantic error selection, telemetry, queues, and optional durable-session behavior; findings are recorded rather than repaired. Task 13 adds a separate immutable-snapshot duplication inventory and reviewed classification artifact so the G6-accepted Task 12 evidence remains frozen. Live rows use real named dependencies only after fresh authorization, while overlay-dependent claims remain Plan 11.7-owned scope-outs until a binding integration candidate exists.
+
+**Tech Stack:** Python 3.14, uv 0.11.29, pytest/pytest-asyncio, Ruff, Python AST, JSON/NDJSON, Git blob reads, live TimeSeries-capable Redis when authorized, independently authored acpx 0.12.0, official `@agentclientprotocol/sdk` stable-v1 API with Node v26.5.0/npm 11.17.0, official Java ACP SDK fallback with Java 25.0.3 LTS/Maven 3.9.6, and real Zed 1.17.2 only under a separate live grant.
+
+**Spec:** `docs/superpowers/specs/2026-08-29-plan-11-26-acp-runtime-hardening-audit-design.md`
+
+## Global Constraints
+
+- Plan 11.26 is audit-and-contract work only. Do not change any file under `src/`; production remediation receives a later linear Plan 11 number after separate review.
+- Task 12's G6 disposition and its baseline, audit, render, and terminal artifacts are frozen at `b62462f11abe858f58af12fa2d2f159eae09d832`. Task 13 adds separate artifacts and custody; it does not reopen or regenerate Task 12.
+- Begin execution only after an independent reviewer approves this complete plan and the operator explicitly authorizes execution. Plan authoring approval is not execution approval.
+- The merged audit baseline is `main@5ea8f8f71548eb05a8562a10e98667e3d2061c4d`; the provisional runtime overlay contains `fac32284888850bacde93815265cbabe3afd4663`; Plan 11.7 alone nominates the future binding integration candidate.
+- Only `merged`, `both-aligned`, and later `binding` rows may produce binding findings. `overlay` and `both-divergent` rows remain provisional.
+- Preserve Plan 11.18 authority: `src/optimus/acp/errors.py` remains the sole production owner of JSON-RPC, ACP, and Optimus error-code values, protected by `tests/unit/acp/test_error_code_registry.py`.
+- Preserve the settled delivery vocabulary: `SendState`, `SendOutcome`, `Settlement`, `FinalDelivery`, `RpcResponseDelivery`, `ConversationCommit`, and `EffectState`.
+- Preserve `ACP_TURN_SETTLEMENT` as the worked telemetry standard: exact content-free payload keys, enum-backed vocabulary, strict missing/extra-field rejection, redaction, and contained sink delivery.
+- `acpx` remains the independently authored ACP integration/live driver required by `AGENTS.md`; the official TypeScript SDK, same-task Java fallback, or independently authored conformance-harness fallback is additional comparison evidence and never a substitute.
+- Client behavior is never the oracle: record divergence rather than investigate it during this audit, name each finding's subject as Optimus, client/harness, observer/tooling, environment, or inconclusive, and retain mandatory acpx authority regardless of SDK agreement or disagreement.
+- A project-authored ACP client or conformance harness cannot satisfy an ACP protocol integration or live-evidence row. The project-authored fixture agent in Task 3 exists only to qualify the independently authored comparison mechanism.
+- Workspace `git_sha` is not installed running-artifact provenance. Every live row must independently bind executable/package bytes to the binding commit or be marked `INVALID`.
+- Derive inventories and matrix multipliers mechanically. A hand-maintained complete-site list cannot satisfy an inventory gate.
+- Audit reviewer-facing comments/docstrings with the same baseline-scoped inventory: require invariant, ownership, ordering, and intentional-exception rationale where behavior is non-obvious, but record missing/contradictory documentation as findings rather than editing production prose.
+- Keep literal frozen regression seeds independent of commit-derived seeds. Never regenerate the frozen corpus solely because the binding commit changes.
+- Derive the ownership lease from `SESSION_LOAD_LEASE_SECONDS` on the applicable tree and session retention from `DEFAULT_ACP_SESSION_TTL_SECONDS`; never substitute one for the other.
+- Live Zed, acpx, SDK-client, Redis mutation, Gateway/model, paid-call, evidence-promotion, push, merge, and release actions each require fresh explicit authorization at their own gate.
+- Checkpoint every repeated batch atomically. An interrupted batch resumes at the next unexecuted iteration; it never discards or cherry-picks completed results.
+- A completed characterization run may end `PASS_WITH_FINDINGS`. Only malformed, provenance-invalid, or incomplete evidence makes the audit mechanism fail.
+- Do not edit frozen plans, approval records, evidence seals, custody records, release reports, or historical reviews. Stale historical path text remains evidence.
+- `docs/superpowers/reviews/plan-11-26-review-checkpoints.md` is reviewer-owned, gitignored handoff state. Read it on pickup and never stage it.
+- Before every commit, run the task's narrow checks, `uv run --frozen ruff check .`, and `git diff --check`. Commit only with explicit operator authorization.
+
+## File Map
+
+| Path | Responsibility |
+|---|---|
+| `tools/plan1126_runtime_audit/__init__.py` | Stable exports for the non-production audit package. |
+| `tools/plan1126_runtime_audit/model.py` | Closed baseline, classification, live-status, gate-status, finding, and artifact types plus strict JSON validation. |
+| `tools/plan1126_runtime_audit/source.py` | Read-only source views for a worktree or immutable Git commit without checking out another branch. |
+| `tools/plan1126_runtime_audit/inventory.py` | Shared AST/token inventory framework for runtime sites and invariant comments/docstrings. |
+| `tools/plan1126_runtime_audit/duplication.py` | Task 13 immutable-tree scope manifest, high-recall similarity clustering, closed candidate dispositions, ranking checks, and deterministic artifact verification/render input. |
+| `tools/plan1126_runtime_audit/provenance.py` | External build/install manifest and installed-artifact verification; rejects workspace-only provenance. |
+| `tools/plan1126_runtime_audit/checkpoints.py` | Atomic iteration records, resume cursor, and duplicate/conflict rejection. |
+| `tools/plan1126_runtime_audit/corpus.py` | Literal frozen-seed loading plus commit-derived seed calculation. |
+| `tools/plan1126_runtime_audit/cost.py` | Discovered multipliers, exact run-count formulas, and measured p50/p95 wall-time estimates. |
+| `tools/plan1126_runtime_audit/repeatability.py` | Stable outcome fingerprints and `STABLE`/`FLAKY`/`HARNESS_UNSTABLE`/`HARNESS_INVALID` classification across repeated runs. |
+| `tools/plan1126_runtime_audit/clients.py` | Qualification and provenance checks for acpx, official TypeScript/Java clients, and an independently authored conformance-harness fallback; never implements ACP framing. |
+| `tools/plan1126_runtime_audit/render.py` | Deterministic content-free Markdown rendering from the canonical JSON artifact. |
+| `tools/run_plan1126_runtime_audit.py` | Thin CLI for static inventory, offline characterization, live gated rows, checkpoint resume, Task 13 duplication discovery/verification/rendering, and final rendering. |
+| `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json` | Versioned closed schema used independently of Python dataclasses. |
+| `tests/fixtures/plan1126_runtime_audit/duplication-candidates.schema.json` | Closed schema for the mechanically generated Task 13 source universe, affirmative exclusions, and candidate clusters. |
+| `tests/fixtures/plan1126_runtime_audit/duplication-audit.schema.json` | Closed schema for Task 13 group dispositions, findings, rankings, and G7 custody. |
+| `tests/fixtures/plan1126_runtime_audit/frozen-regression-seeds.json` | Literal reviewed regression schedules, unchanged by binding-commit changes. |
+| `tests/fixtures/plan1126_runtime_audit/fixture_agent.py` | Minimal non-production fixture agent used only to qualify the independently authored comparison mechanism in Task 3. |
+| `tests/fixtures/plan1126_runtime_audit/typescript-client/` | Exact-lock official stable-v1 TypeScript SDK qualifier (`package.json`, `package-lock.json`, `tsconfig.json`, `src/client.ts`). |
+| `tests/fixtures/plan1126_runtime_audit/java-client/` | Exact-version official Java SDK fallback qualifier (`pom.xml`, `src/main/java/.../QualificationClient.java`). |
+| `tests/unit/tools/plan1126_runtime_audit/` | Unit tests for schema, source views, inventories, duplication, provenance, checkpoints, corpus, cost, repeatability, clients, and rendering. |
+| `tests/unit/acp/test_plan1126_delivery_contract.py` | Delivery-site AST coverage and 1,000-seed settlement characterization. |
+| `tests/unit/acp/test_plan1126_cancellation.py` | Derived cancellation-point schedule characterization. |
+| `tests/unit/acp/test_plan1126_shutdown.py` | Five terminal causes, 100 repeats, idempotent-close counts, and control-derived growth allowlist. |
+| `tests/unit/acp/test_plan1126_queue_policy.py` | Queue construction/admission cross-check and bounded 10,000-attempt probes. |
+| `tests/unit/acp/test_plan1126_session_lease.py` | Binding-code lease/retention separation and derived boundary schedules. |
+| `tests/unit/acp/test_plan1126_semantic_errors.py` | Exhaustive semantic-outcome-to-wire selection inventory while preserving Plan 11.18. |
+| `tests/unit/telemetry/test_plan1126_runtime_contract.py` | Derived runtime event vocabulary, redaction, correlation, and sink-failure containment. |
+| `tests/integration/acp/test_plan1126_runtime_live_redis.py` | Real TimeSeries-capable Redis owner/revision and health characterization. |
+| `tests/e2e/acp/test_plan1126_clients_live.py` | Real process rows driven by acpx or the qualified comparison client/harness, plus validation of the manual Zed observation bundle; no project ACP client. |
+| `reports/plan-11-26-baseline-intake.json` | Exact merged/overlay/binding refs, reconciliation state, and H1-H10 baseline scopes accepted through G6. |
+| `reports/plan-11-26-prerequisite-intake.json` | Sanitized prerequisite decisions, authority state, and named scope-outs. |
+| `reports/plan-11-26-acp-runtime-audit.json` | Canonical machine-readable audit artifact. |
+| `reports/plan-11-26-acp-runtime-audit.md` | Deterministic reviewer-facing rendering of the JSON artifact. |
+| `reports/plan-11-26-client-qualification.json` | Exact client package/commit, build, fixture-run, and fallback decision evidence. |
+| `reports/plan-11-26-zed-manual-observations.json` | Five closed-vocabulary operator observations bound to Zed and installed Optimus artifact provenance. |
+| `reports/plan-11-26-terminal-characterization.md` | Per-tier commands, costs, statuses, checkpoints, invalid reasons, and authorized live results. |
+| `reports/plan-11-26-duplication-candidates.json` | Deterministic Task 13 candidate universe generated from the pinned Task 12 commit before human classification. |
+| `reports/plan-11-26-duplication-audit.json` | Canonical Task 13 reviewed group dispositions, confirmed findings, ranked custody candidates, and inventory digest. |
+| `reports/plan-11-26-duplication-audit.md` | Deterministic reviewer-facing rendering of the Task 13 inventory and reviewed disposition. |
+| `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md` | Sole live registry for Plan 11.26 status, owner, reviewed disposition, and later remediation gates. |
+| `tests/unit/docs/test_open_work_pool_hygiene.py` | Locks Plan 11.26 live-registry and backlog custody language. |
+
+## Explicit Exceptions and Custody
+
+| Excluded work | Named owner |
+|---|---|
+| Plan 11.7 branch reconciliation, Task 0 evidence, formal evidence, and closure | `P11-FEAT-ZED-RESUME` |
+| Launch/trust and durable-approval policy correctness outside lifecycle interfaces | Existing Plan 9.96/11.15 authority; any newly observed obligation enters the canonical backlog before Plan 11.26 disposition. |
+| Credential acquisition or rotation beyond ownership and redaction interfaces | `EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE` where applicable; otherwise a named canonical-backlog owner before deferral. |
+| Gateway and agent reasoning/business semantics | Their existing canonical backlog feature owners; Plan 11.26 inspects only ACP-facing lifecycle interfaces. |
+| All code below `tests/` in Task 13 | Affirmatively excluded: duplicated test scaffolding does not carry the production latent-defect risk that motivated this audit and would expand the surface without comparable value. |
+| Evidence Collector product in Task 13: `src/evidence_handoff/collector/`, `tools/evidence_gather.py`, and `tools/evidence_gather_support/` | `EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR`; exclude these paths before clustering because cross-product similarity is deliberate product separation, not core-agent duplication debt. |
+| A2A Ledger product in Task 13: `src/evidence_handoff/ledger/`, `src/evidence_handoff_runtime/`, `tools/evidence_handoff_live_support/`, and `tools/verify_evidence_handoff_live.py` | `EVIDENCE-HANDOFF-FEAT-A2A-LEDGER`; exclude these paths before clustering for the same product-separation reason. |
+| Production fixes for findings | Later independently numbered Plan 11 remediation candidates after review. |
+| Release, push, merge, evidence promotion, and working-agent sign-off | Existing release governance and archived Plan 9.6 sign-off authority. |
+
+## Prerequisites
+
+The table below carries the approved design table forward with the reviewer-mandated C3 correction: acpx `0.12.0` was established by review-time command output, not operator narration. Header, lowercase status vocabulary, ownership, dispositions, and every other row remain unchanged.
+
+| Category | Prerequisite | Satisfied today? | Owner | If unsatisfied: genuinely hard, or merely unauthorized? |
+|---|---|---|---|---|
+| code/state | Merged audit baseline is `main@5ea8f8f71548eb05a8562a10e98667e3d2061c4d`. | yes | reviewing architect | merely unauthorized — not applicable while satisfied |
+| code/state | Plan 11.7 nominates a binding integration candidate and reconciles or formally supersedes competing runtime deltas. | no | Plan 11.7 / `P11-FEAT-ZED-RESUME` | genuinely hard — external prerequisite; binding-baseline evidence is scoped out of Plan 11.26 until satisfied |
+| tooling/binaries | Plan 11.26 branch/worktree is isolated from latest main and Plan 11.26 is unclaimed. | yes | operator | merely unauthorized — not applicable while satisfied |
+| tooling/binaries | uv `0.11.29` is present. | yes | operator | merely unauthorized — not applicable while satisfied |
+| tooling/binaries | Node `v26.5.0` and npm `11.17.0` are present for the TypeScript candidate. | yes | operator | merely unauthorized — not applicable while satisfied |
+| tooling/binaries | Java `25.0.3 LTS` and Maven `3.9.6` are present for the Java fallback. | yes | operator | merely unauthorized — not applicable while satisfied |
+| tooling/binaries | TypeScript SDK package version/commit is pinned, installed, compiled, and fixture-executed. | unknown | operator | merely unauthorized — establish in early Task 3 before dependent client work |
+| tooling/binaries | Java SDK fallback version/commit is pinned and fixture-executed if the primary fails qualification. | unknown | operator | merely unauthorized — establish in early Task 3 before declaring the client gate blocked |
+| tooling/binaries | acpx `0.12.0` launcher and version were established by review-time command output; the version must be re-recorded by the execution environment. | yes | operator | merely unauthorized — not applicable while satisfied |
+| tooling/binaries | Zed `1.17.2` (`c8e44cfa7bda9b2e22c8d6934d78969352e7f61a`) is installed at `C:\Users\pc\AppData\Local\Programs\Zed\Zed.exe`. | yes | operator | merely unauthorized — not applicable while satisfied |
+| platforms | Windows execution environment is present. | yes | operator | merely unauthorized — not applicable while satisfied |
+| platforms | WSL2 environment and distro-native Redis/TimeSeries availability are established. | unknown | operator | genuinely hard — establish in early Task 1 before WSL-dependent evidence |
+| services | Windows live Redis/TimeSeries availability, port ownership, and isolation are established. | unknown | operator | merely unauthorized — establish in early Task 1 before live-Redis evidence |
+| credentials/authority | Optimus Gateway credentials and paid-call authority are available for any live prompt scenario. | unknown | operator | merely unauthorized — establish capability only in early Task 1; do not print or persist secrets |
+| credentials/authority | Fresh authorization exists for Zed, acpx, additional client, Redis mutation, Gateway/model calls, and paid calls. | no | operator | merely unauthorized — live tasks remain dormant until granted |
+| human interaction | Trusted Zed workspace and operator availability for five GUI runs are established. | unknown | operator | merely unauthorized — establish in early Task 1 before scheduling Zed evidence |
+| cost/time | Paid-call budget and the authorized wall-clock lease-expiry window are accepted. | no | operator | merely unauthorized — derive duration from binding code and authorize before live scheduling |
+| evidence/tooling | Installed running-artifact provenance can be proved independently of workspace `git_sha`. | no | Plan 11.26 Task 2 | genuinely absent — build the external manifest/verifier before any live row can be valid |
+
+Every `unknown` prerequisite is resolved by Task 1 or Task 3 before a dependent task. Binding, overlay-dependent, lease, and live-resume evidence remains explicitly scoped out with Plan 11.7 as owner until it nominates the binding integration candidate. The prerequisite hygiene command in Task 0 must run against this plan artifact.
+
+## Planned Predicate Map
+
+| Predicate | Exact file | Exact command |
+|---|---|---|
+| `test_audit_artifact_requires_baseline_scope_and_classification` | `tests/unit/tools/plan1126_runtime_audit/test_artifact.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_artifact.py::test_audit_artifact_requires_baseline_scope_and_classification -q` |
+| `test_audit_artifact_live_status_is_machine_checkable` | `tests/unit/tools/plan1126_runtime_audit/test_artifact.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_artifact.py::test_audit_artifact_live_status_is_machine_checkable -q` |
+| `test_running_artifact_provenance_matches_binding_commit_and_expected_identity` | `tests/unit/tools/plan1126_runtime_audit/test_provenance.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_provenance.py::test_running_artifact_provenance_matches_binding_commit_and_expected_identity -q` |
+| `test_derived_inventory_has_no_unclassified_sites` | `tests/unit/tools/plan1126_runtime_audit/test_inventory.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_inventory.py::test_derived_inventory_has_no_unclassified_sites -q` |
+| `test_delivery_contract_ast_covers_all_send_sites` | `tests/unit/acp/test_plan1126_delivery_contract.py` | `uv run --frozen pytest tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_contract_ast_covers_all_send_sites -q` |
+| `test_delivery_contract_model_1000_seed_schedule` | `tests/unit/acp/test_plan1126_delivery_contract.py` | `uv run --frozen pytest tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_contract_model_1000_seed_schedule -q` |
+| `test_turn_cancellation_races_256_seed_matrix` | `tests/unit/acp/test_plan1126_cancellation.py` | `uv run --frozen pytest tests/unit/acp/test_plan1126_cancellation.py::test_turn_cancellation_races_256_seed_matrix -q` |
+| `test_shutdown_causes_repeat_100_with_control_allowlist` | `tests/unit/acp/test_plan1126_shutdown.py` | `uv run --frozen pytest tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist -q` |
+| `test_close_is_idempotent_across_discovered_paths` | `tests/unit/acp/test_plan1126_shutdown.py` | `uv run --frozen pytest tests/unit/acp/test_plan1126_shutdown.py::test_close_is_idempotent_across_discovered_paths -q` |
+| `test_queue_policy_cross_checks_constructor_and_10000_admissions` | `tests/unit/acp/test_plan1126_queue_policy.py` | `uv run --frozen pytest tests/unit/acp/test_plan1126_queue_policy.py::test_queue_policy_cross_checks_constructor_and_10000_admissions -q` |
+| `test_session_lease_boundary_uses_binding_runtime_constant` | `tests/unit/acp/test_plan1126_session_lease.py` | `uv run --frozen pytest tests/unit/acp/test_plan1126_session_lease.py::test_session_lease_boundary_uses_binding_runtime_constant -q` |
+| `test_live_redis_owner_revision_races` | `tests/integration/acp/test_plan1126_runtime_live_redis.py` | `uv run --frozen pytest tests/integration/acp/test_plan1126_runtime_live_redis.py::test_live_redis_owner_revision_races -m requires_redis -v` |
+| `test_runtime_event_schema_generated_10000_cases` | `tests/unit/telemetry/test_plan1126_runtime_contract.py` | `uv run --frozen pytest tests/unit/telemetry/test_plan1126_runtime_contract.py::test_runtime_event_schema_generated_10000_cases -q` |
+| `test_runtime_redaction_generated_1000_cases` | `tests/unit/telemetry/test_plan1126_runtime_contract.py` | `uv run --frozen pytest tests/unit/telemetry/test_plan1126_runtime_contract.py::test_runtime_redaction_generated_1000_cases -q` |
+| `test_runtime_correlation_chain_is_complete` | `tests/unit/telemetry/test_plan1126_runtime_contract.py` | `uv run --frozen pytest tests/unit/telemetry/test_plan1126_runtime_contract.py::test_runtime_correlation_chain_is_complete -q` |
+| `test_telemetry_sink_failures_are_contained` | `tests/unit/telemetry/test_plan1126_runtime_contract.py` | `uv run --frozen pytest tests/unit/telemetry/test_plan1126_runtime_contract.py::test_telemetry_sink_failures_are_contained -q` |
+| `test_regression_corpus_replays_frozen_literal_seeds` | `tests/unit/tools/plan1126_runtime_audit/test_corpus.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_corpus.py::test_regression_corpus_replays_frozen_literal_seeds -q` |
+| `test_computed_cost_includes_cancellation_queue_sink_and_close_multipliers` | `tests/unit/tools/plan1126_runtime_audit/test_cost.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_cost.py::test_computed_cost_includes_cancellation_queue_sink_and_close_multipliers -q` |
+| `test_zed_manual_observation_bundle_is_complete` | `tests/e2e/acp/test_plan1126_clients_live.py` | `uv run --frozen pytest tests/e2e/acp/test_plan1126_clients_live.py::test_zed_manual_observation_bundle_is_complete -m "e2e and requires_zed" -v` |
+| `test_duplication_scope_excludes_products_before_ast_extraction` | `tests/unit/tools/plan1126_runtime_audit/test_duplication.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_scope_excludes_products_before_ast_extraction -q` |
+| `test_duplication_inventory_is_deterministic_and_reconciles_prior_seeds` | `tests/unit/tools/plan1126_runtime_audit/test_duplication.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_inventory_is_deterministic_and_reconciles_prior_seeds -q` |
+| `test_duplication_audit_partitions_every_member_and_ranks_confirmed_custody` | `tests/unit/tools/plan1126_runtime_audit/test_duplication.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_audit_partitions_every_member_and_ranks_confirmed_custody -q` |
+| `test_duplication_verifier_freezes_task12_and_render_is_deterministic` | `tests/unit/tools/plan1126_runtime_audit/test_duplication.py` | `uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_verifier_freezes_task12_and_render_is_deterministic -q` |
+
+The first 18 rows are the approved design predicates for the audit mechanism. The 19th supplemental
+row gates the Task 11 manual Zed observation bundle. Rows 20-23 gate the separately approved Task 13
+same-plan duplication extension. A predicate passes when the scheduled behavior is exhaustively
+observed and truthfully classified; it does not force the current runtime to exhibit a desired
+future behavior.
+
+### Post-Step-4 predicate execution reconciliation (C21)
+
+All 19 original predicate identities remain in custody; none is deleted or represented as passing when its
+dependency is absent. Sixteen rows have implemented offline node IDs and are runnable under the
+standing audit grant. The provenance row above corrects a naming drift to the implemented superset
+test; it is runnable with fixture-local identities and does not require a nominated binding commit.
+
+Three rows are planned obligations rather than executable node IDs in the current tree:
+
+| Predicate | Current disposition | Owner | Unblock path |
+|---|---|---|---|
+| `test_session_lease_boundary_uses_binding_runtime_constant` | `UNRUN_BINDING`; Task 10 correctly stopped before implementing the node because `binding_commit` is null. | Plan 11.7 / `P11-FEAT-ZED-RESUME` | Reconcile the runtime branches, nominate the binding commit, then implement and run the binding predicate. |
+| `test_live_redis_owner_revision_races` | `UNRUN`; the integration file is absent and no live Redis grant exists. | operator | Grant the real Redis row after its binding/provenance prerequisites are satisfied. |
+| `test_zed_manual_observation_bundle_is_complete` | `UNRUN`; the E2E file and manual observation bundle are absent and no Zed grant exists. | operator | Grant the five manual Zed rows after trusted-workspace and installed-artifact provenance prerequisites are satisfied. |
+
+Task 10's implemented five-test suite is the offline corroboration for the first scope-out:
+
+```powershell
+uv run --frozen pytest tests/unit/acp/test_plan1126_session_lease.py -q
+```
+
+It must prove `PROVISIONAL_OVERLAY`, binding-identity validation, complete deferred-obligation
+custody, and the absence of runtime/live evidence. It is evidence that the stop was applied
+correctly; it is not a substitute pass for the missing binding predicate.
+
+---
+
+### Task 0: Claim canonical custody and pin the review intake
+
+**Files:**
+
+- Modify: `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md`
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
+- Modify: `tests/unit/docs/test_open_work_pool_hygiene.py`
+- Create: `reports/plan-11-26-baseline-intake.json`
+- Read only: `docs/superpowers/reviews/plan-11-26-review-checkpoints.md`
+
+**Interfaces:**
+
+- Consumes: explicit execution authorization; clean branch `agent/codex/plan-11-26-acp-runtime-hardening-audit`; approved spec commit `d4ac57887df3bcf078cdceebea68143120679cda`; checkpoint rulings C1-C3.
+- Produces: canonical `Active` Plan 11.26 registry custody and a sanitized baseline record containing `merged_commit`, `overlay_commit`, `binding_commit`, `baseline_reconciliation_status`, and per-hypothesis scope.
+
+- [x] **Step 1: Verify approval, checkpoint, branch, and immutable baseline facts.**
+
+  Read the checkpoint Current State first. Then run:
+
+  ```powershell
+  git status --short --branch
+  git rev-parse HEAD
+  git rev-parse main
+  git merge-base --is-ancestor 5ea8f8f71548eb05a8562a10e98667e3d2061c4d HEAD
+  git merge-base --is-ancestor fac32284888850bacde93815265cbabe3afd4663 main
+  git branch --contains fac32284888850bacde93815265cbabe3afd4663
+  ```
+
+  Expected: clean Plan 11.26 branch; `d4ac5788` is an ancestor of the current plan-line HEAD; merged base is an ancestor; `fac32284` is not on `main` and is present only on the recorded runtime-overlay line. Stop if Git facts, backlog, or checkpoint disagree.
+
+- [x] **Step 2: Write the RED custody assertions.**
+
+  Add `test_plan_11_26_runtime_audit_has_single_live_custody` to `tests/unit/docs/test_open_work_pool_hygiene.py`. It must require one live-registry row linking this plan, state `Active`, owner `P11-FEAT-ACP-RUNTIME-HARDENING`, and a next gate naming Task 0/G0. It must also require the feature row to name Plan 11.26, audit-only scope, and the prohibition on production fixes.
+
+- [x] **Step 3: Prove the custody test is RED for the pre-execution `Blocked` state.**
+
+  Run:
+
+  ```powershell
+  uv run --frozen pytest tests/unit/docs/test_open_work_pool_hygiene.py::test_plan_11_26_runtime_audit_has_single_live_custody -q
+  ```
+
+  Expected: FAIL because plan authoring registered the plan as `Blocked` pending review/execution authority, not because the plan is missing or duplicated.
+
+- [x] **Step 4: Claim the lane and record the baseline intake.**
+
+  Change the one registry row to `Active`; set its next gate to G0 baseline/review intake. Update the feature row to state that Plan 11.26 owns audit execution but not production remediation. Create `reports/plan-11-26-baseline-intake.json` with exact Git refs, `binding_commit: null`, reconciliation status `UNRESOLVED`, and H1-H8 baseline scopes copied from the approved spec.
+
+- [x] **Step 5: Run the complete plan-hygiene gate.**
+
+  ```powershell
+  uv run --frozen pytest tests/unit/docs -q
+  ```
+
+  Expected: PASS, including this plan's prerequisites table and single live-registry custody.
+
+- [x] **Step 6: Obtain G0 reviewer acceptance and commit only with authorization.**
+
+  The reviewer verifies checkpoint alignment, all scope-outs, and the baseline JSON. Then run `uv run --frozen ruff check .` and `git diff --check`. With explicit commit approval only:
+
+  ```powershell
+  git add docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md tests/unit/docs/test_open_work_pool_hygiene.py reports/plan-11-26-baseline-intake.json
+  git commit -m "docs(plan-11.26): claim runtime audit custody"
+  ```
+
+### Task 1: Resolve every machine, service, authority, and human unknown
+
+**Files:**
+
+- Modify: `.gitignore`
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
+- Create: `reports/plan-11-26-prerequisite-intake.json`
+- Modify: `reports/plan-11-26-baseline-intake.json`
+
+**Interfaces:**
+
+- Consumes: Task 0 accepted baseline; operator answers for authority/cost/human availability.
+- Produces: one sanitized row per prerequisite with `observed_status`, `method`, `owner`, `authorized`, `dependent_rows`, and `scope_out`; no secret value, service mutation, client launch, or paid call.
+
+- [x] **Step 1: Record read-only platform and binary observations.**
+
+  Run version/status commands only: `uv --version`, `node --version`, `npm --version`, `java --version`, `mvn --version`, `acpx --version`, `wsl --status`, and Zed file `VersionInfo`. Record stdout-derived versions and command exit codes; do not launch any ACP client or Zed.
+
+- [x] **Step 2: Establish Redis/TimeSeries availability without mutation.**
+
+  Identify Windows port ownership and WSL distro availability. If a service is already running, use only a health/capability read approved by the operator; otherwise record `UNAVAILABLE` or `UNAUTHORIZED`. Do not start a container, daemon, or Redis process and do not write a key.
+
+- [x] **Step 3: Establish authority and credential capability without disclosure.**
+
+  Record only booleans for `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` presence. Record separate operator decisions for Gateway/model calls, paid calls, Redis mutation, acpx, SDK/conformance-harness comparison, Zed, and the wall-clock lease window. Never serialize values, prefixes, lengths, hashes, or environment dumps.
+
+- [x] **Step 4: Establish trusted-workspace and operator availability.**
+
+  Record whether the named workspace is trusted and whether an operator can perform five Zed GUI runs. Do not open Zed or change settings.
+
+- [x] **Step 5: Publish prerequisite decisions and scope-outs.**
+
+  Each unresolved/negative row must list every dependent matrix row and its named owner. WSL-dependent evidence is Plan 11.26/operator-owned; binding/lease/resume evidence remains Plan 11.7-owned; unauthorized live rows remain dormant under the operator.
+
+- [x] **Step 6: Validate sanitization and obtain reviewer acceptance.**
+
+  Run a content scan for forbidden credential names followed by `=` and for values supplied through the current environment. The reviewer accepts each status or rejects the report. Commit only after `uv run --frozen ruff check .`, `git diff --check`, and explicit authorization.
+
+### Task 2: Build the shared audit schema, inventories, provenance, checkpoints, corpus, and cost model
+
+**Files:**
+
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
+- Create: `tools/plan1126_runtime_audit/{__init__,model,source,inventory,provenance,checkpoints,corpus,cost,repeatability,render}.py`
+- Create: `tools/run_plan1126_runtime_audit.py`
+- Create: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
+- Create: `tests/fixtures/plan1126_runtime_audit/frozen-regression-seeds.json`
+- Create: `tests/unit/tools/plan1126_runtime_audit/test_{artifact,source,inventory,provenance,checkpoints,corpus,cost,repeatability,render}.py`
+
+**Interfaces:**
+
+- Produces: `BaselineScope`, `Classification`, `LiveStatus`, `GateStatus`, `PrerequisiteStatus`, `InventoryKind`, `DiscoveredSite`, `Finding`, `AuditArtifact`, `SourceTree`, `GitCommitSource`, `discover_sites`, `verify_running_artifact`, `CheckpointStore`, `literal_seeds`, `derived_seed`, `compute_cost`, and `classify_repeatability`.
+- Consumes: immutable Git blobs, Python source, the external JSON schema, literal corpus, and Task 0/1 reports. It does not import or modify runtime behavior.
+
+- [x] **Step 1: Write RED closed-vocabulary and artifact-schema tests.**
+
+  Define the required public shapes in tests before implementation:
+
+  ```python
+  class BaselineScope(StrEnum):
+      MERGED = "merged"
+      OVERLAY = "overlay"
+      BOTH_ALIGNED = "both-aligned"
+      BOTH_DIVERGENT = "both-divergent"
+      BINDING = "binding"
+
+  class LiveStatus(StrEnum):
+      UNRUN = "UNRUN"
+      PARTIAL = "PARTIAL"
+      INVALID = "INVALID"
+      COMPLETE = "COMPLETE"
+  ```
+
+  Require all ten approved classifications, exact top-level artifact fields, per-record baseline scope, no unknown keys, `UNCLASSIFIED == 0` at G1, and machine-checkable live status. Run the first two exact predicate commands from the predicate map and expect missing-module failures.
+
+- [x] **Step 2: Implement the model and independent JSON-schema agreement.**
+
+  `model.py` owns Python types and deterministic `to_dict`; the fixture schema independently constrains the same fields/enums. Tests must reject rendered prose in place of status, a workspace-only `git_sha`, a binding finding on overlay scope, missing owner/evidence, and count mismatches.
+
+- [x] **Step 3: Write RED source-view and inventory tests.**
+
+  Require `GitCommitSource(commit).read_text(path)` to use immutable blob reads and reject dirty-worktree substitution. Require `discover_sites` to emit sorted unique sites for task creation/cancellation, queues, resource construction/transfer/close, broad catches, semantic wire selections, Redis clients/pools, telemetry/debug/stderr/redaction/sinks, and delivery start/publication/settlement.
+
+- [x] **Step 4: Implement the shared AST inventory framework.**
+
+  Each concern is a small `InventoryRule` using the same `DiscoveredSite(path, symbol, line, kind, baseline_scope, evidence_digest)` record. Use `tokenize` as well as AST to associate invariant comments/docstrings with ownership, ordering, intentional-exception, and state-transition sites. The framework must retain discovered-but-unclassified sites, compare merged/overlay symbol sets, and never treat a copied expected-site list as discovery.
+
+- [x] **Step 5: Write RED provenance, checkpoint, corpus, and cost tests.**
+
+  Require executable SHA-256, package/version, build-manifest digest, embedded commit/equivalent immutable provenance, launcher digest, client provenance, and environment fingerprint. Require atomic checkpoint resume/conflict rejection. Require literal seeds to survive binding-commit changes while fresh seeds equal `first_64_bits(SHA256(binding_commit + scenario_id + n))`. Require:
+
+  ```text
+  cancellation_concurrency_levels = (2, 4, 8)
+  cancellation_schedules = N_cancellation_points * len(cancellation_concurrency_levels) * seed_count
+  cancellation_control_schedules = N_cancellation_points * seed_count
+  queue_admissions = N_queues * admission_probe_count
+  sink_failure_runs = N_sinks * sink_failure_count
+  idempotent_close_invocations = N_close_paths * 3 * 5
+  ```
+
+- [x] **Step 6: Implement provenance, checkpoints, corpus, cost, and repeatability without runtime mutation.**
+
+  `verify_running_artifact` returns a typed valid/invalid result with reasons; it never infers provenance from the checkout. `CheckpointStore` writes a temporary sibling, fsyncs, and atomically replaces the target. `compute_cost` includes measured per-scenario p50/p95 and every discovered multiplier. Level `1` is the cancellation control family and is counted only by `cancellation_control_schedules`; levels `2`, `4`, and `8` are the race family counted by `cancellation_schedules`. At the 256-seed group tier this yields 768 race schedules plus 256 control schedules, exactly 1,024 per discovered cancellation point. `classify_repeatability` fingerprints normalized outcomes across repeated identical schedules. Classification precedence is `HARNESS_INVALID` for changing harness/provenance fingerprints, then `HARNESS_UNSTABLE` when captured behavioral evidence attributes instability to the audit harness, then `FLAKY` for remaining inconsistent product outcomes under stable fingerprints/provenance with no harness attribution, otherwise `STABLE`.
+
+- [x] **Step 7: Implement deterministic rendering and the thin CLI.**
+
+  JSON is canonical; Markdown is regenerated and content-free. CLI subcommands are `inventory`, `offline`, `live-redis`, `acpx`, `sdk`, `zed record`, `render`, and `verify`. `zed record` never launches Zed: it verifies current Zed/Optimus file identities, prompts the operator for one closed-vocabulary scenario outcome and attestation, and appends an atomic content-free record. Live subcommands require an explicit authority-record path and provenance manifest; missing authority returns `UNRUN`, bad provenance returns `INVALID`, and neither starts a dependency. The authority report is itself accepted only when its canonical digest appears in the closed, code-owned reviewed allowlist. A future live grant therefore requires both a separately reviewed successor report and a reviewed audit-tool change admitting that digest; caller input cannot extend or replace the allowlist.
+
+- [x] **Step 8: Run G1 foundation verification and seek review.**
+
+  ```powershell
+  uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit -q
+  uv run --frozen pytest tests/unit/acp/test_error_code_registry.py -q
+  uv run --frozen ruff check .
+  git diff --check
+  ```
+
+  Expected: all foundation tests and Plan 11.18 oracles pass. Reviewer verifies `UNCLASSIFIED == 0` only for the foundation's own fixture corpus; production inventory classification occurs in Tasks 4-10.
+
+### Task 3: Qualify the additional independent comparison mechanism, SDK first
+
+**Files:**
+
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
+- Create: `tools/plan1126_runtime_audit/clients.py`
+- Create: `tests/unit/tools/plan1126_runtime_audit/test_clients.py`
+- Create: `tests/fixtures/plan1126_runtime_audit/fixture_agent.py`
+- Create: `tests/fixtures/plan1126_runtime_audit/typescript-client/{package.json,package-lock.json,tsconfig.json,src/client.ts}`
+- Create only if primary qualification fails: `tests/fixtures/plan1126_runtime_audit/java-client/{pom.xml,src/main/java/plan1126/QualificationClient.java}`
+- Create: `reports/plan-11-26-client-qualification.json`
+
+**Interfaces:**
+
+- Consumes: official stable-v1 TypeScript `client({name}).connectWith(stream, workflow)` API; official Java `com.agentclientprotocol:acp-core:0.14.0` `AcpClient`/`StdioAcpClientTransport` fallback; Task 1 authority record.
+- Produces: `ClientQualification` with package/harness name, exact version or immutable commit, registry/repository identity, lock/source digest, build command, fixture command, observed method sequence, result, and fallback reason.
+
+- [x] **Step 1: Write RED qualification/provenance tests.**
+
+  Tests reject version ranges, absent lockfiles, experimental-v2 imports, a project ACP client import, shell-string execution, missing package-repository identity, missing `initialize -> session/new -> session/prompt` observation, or claiming that the SDK replaces acpx.
+
+- [x] **Step 2: Resolve and review the exact TypeScript package identity.**
+
+  With package-registry access authorized, run:
+
+  ```powershell
+  npm view @agentclientprotocol/sdk version dist.tarball dist.integrity repository.url --json
+  ```
+
+  Record the returned exact stable release and integrity, then set that exact version without `^` or `~`. The reviewer compares repository identity to `https://github.com/agentclientprotocol/typescript-sdk` before installation.
+
+- [x] **Step 3: Build the fixture-only official TypeScript client.**
+
+  `src/client.ts` imports only `@agentclientprotocol/sdk` plus Node standard libraries, spawns `fixture_agent.py`, records ordered method/result categories without prompt bodies, and exits nonzero unless initialize/new/prompt/close complete. Generate and commit the exact lock with scripts disabled during install.
+
+- [x] **Step 4: Compile and execute the primary qualifier.**
+
+  ```powershell
+  npm ci --ignore-scripts --prefix tests/fixtures/plan1126_runtime_audit/typescript-client
+  npm run build --prefix tests/fixtures/plan1126_runtime_audit/typescript-client
+  npm run qualify --prefix tests/fixtures/plan1126_runtime_audit/typescript-client
+  ```
+
+  Expected: stable-v1 client API drives the fixture and produces the reviewed ordered summary. This is fixture qualification, not Optimus protocol evidence.
+
+- [x] **Step 5: Exercise ordered fallbacks in the same task only after the preceding candidate fails.**
+
+  Record the primary failure first. Pin `com.agentclientprotocol:acp-core:0.14.0`, use `StdioAcpClientTransport` and `AcpClient.sync`, and run:
+
+  ```powershell
+  mvn -B -ntp -f tests/fixtures/plan1126_runtime_audit/java-client/pom.xml verify
+  ```
+
+  Do not create or run the Java fallback merely to accumulate evidence after a passing primary. If Java also fails, a reviewer may approve an independently authored ACP conformance harness in this same task only after its external repository, immutable release/commit, ACP-v1 coverage, license, install/build digest, and exact non-project-authored invocation are recorded in the qualification report. Run that recorded invocation against `fixture_agent.py`; reject a project-authored harness or a harness that cannot expose ordered initialize/new/prompt results. If no harness qualifies, retain `BLOCKED` with the failed candidates and next selection gate.
+
+- [x] **Step 6: Publish the client qualification and preserve acpx authority.**
+
+  Record one of `TYPESCRIPT_QUALIFIED`, `JAVA_FALLBACK_QUALIFIED`, `CONFORMANCE_HARNESS_QUALIFIED`, or `BLOCKED`, with exact command output digests and no transcript bodies. Re-record `acpx --version` as command-derived evidence and state that acpx remains mandatory.
+
+- [x] **Step 7: Run G3 checks and obtain reviewer acceptance.**
+
+  ```powershell
+  uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_clients.py -q
+  uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit -q
+  uv run --frozen ruff check .
+  git diff --check
+  ```
+
+  Dependent SDK matrix rows remain blocked until the reviewer accepts the report.
+
+### Task 4: Establish delivery settlement as the worked audit example
+
+**Files:**
+
+- Create: `tests/unit/acp/test_plan1126_delivery_contract.py`
+- Create: `tools/plan1126_runtime_audit/delivery.py`
+- Create: `tools/plan1126_runtime_audit/delivery_characterization.py`
+- Modify: `tools/plan1126_runtime_audit/{__init__,inventory,model,render}.py`
+- Modify under the standing audit-execution grant for offline orchestration only: `tools/run_plan1126_runtime_audit.py`
+- Modify: `tests/unit/tools/plan1126_runtime_audit/{test_artifact,test_render}.py`
+- Modify: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Generate: `reports/plan-11-26-acp-runtime-audit.md`
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
+- Read only: `src/optimus/acp/{outbound_writer,lifecycle,settlement,conversation,spec,server}.py`
+
+**Interfaces:**
+
+- Consumes: Task 2 inventories/corpus/checkpoints and the settled delivery vocabulary.
+- Produces: H4 record with every delivery start/publication/settlement consumer, symbol citation, baseline scope, contradiction search, 1,000-seed observations, reviewer ruling, and the evidence-record template used by Tasks 5-10.
+
+- [x] **Step 1: Write the RED delivery-site coverage predicate.**
+
+  Derive every send/write/enqueue, publication, flush, final-response, conversation-commit, and effect-settlement site from AST/call references. Assert that each discovered site has exactly one `DiscoveredSite` record and a delivery phase; do not seed expected file/line lists into the scanner.
+
+- [x] **Step 2: Run the exact AST predicate and verify RED.**
+
+  ```powershell
+  uv run --frozen pytest tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_contract_ast_covers_all_send_sites -q
+  ```
+
+  Expected: FAIL because H4 classifications and the delivery-specific inventory rule do not exist.
+
+- [x] **Step 3: Classify delivery sites against both available baselines.**
+
+  Preserve the seven settled types exactly. Classify each site as canonical, bypassed, duplicated, contradictory, intentionally exceptional, provisional, not present, superseded, or unclassified. A new vocabulary is a finding, not an automatic replacement.
+
+- [x] **Step 4: Write and run the 1,000-seed schedule predicate.**
+
+  Generate schedules for queue admission, publication, write success/failure, flush ambiguity, cancellation, final-response delivery, conversation commit, and effect certainty. Replay literal frozen seeds first, then exactly 1,000 commit-derived seeds anchored to the immutable merged baseline. Record the overlay identity and `both-aligned` scope separately; never label the merged anchor as binding. The test passes when every schedule yields a complete classified record, including observed contradictions.
+
+  ```powershell
+  uv run --frozen pytest tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_contract_model_1000_seed_schedule -q
+  ```
+
+- [x] **Step 5: Publish H4 and render the report.**
+
+  Update the canonical JSON and run:
+
+  ```powershell
+  uv run --frozen python tools/run_plan1126_runtime_audit.py render --artifact reports/plan-11-26-acp-runtime-audit.json --report reports/plan-11-26-acp-runtime-audit.md
+  uv run --frozen python tools/run_plan1126_runtime_audit.py verify --artifact reports/plan-11-26-acp-runtime-audit.json
+  ```
+
+- [x] **Step 6: Obtain G2 worked-example acceptance.**
+
+  The reviewer confirms symbol citations, contradiction search, test commands, baseline scope, and ruling. Tasks 5-10 may use the record structure only after acceptance.
+
+### Task 5: Audit task supervision and cancellation
+
+**Files:**
+
+- Create: `tests/unit/acp/test_plan1126_cancellation.py`
+- Create: `tools/plan1126_runtime_audit/cancellation.py`
+- Modify: `tools/plan1126_runtime_audit/{__init__,model,render}.py`
+- Modify: `tools/run_plan1126_runtime_audit.py`
+- Modify: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.md`
+- Read only: `src/optimus/acp/{server,spec,lifecycle,outbound_writer}.py`
+
+**Interfaces:**
+
+- Consumes: derived `TASK_CREATE` and `CANCELLATION_POINT` sites plus H3/Task 4 record format.
+- Produces: `N_cancellation_points`, owned/escaped-child classifications, and per-point schedules across pre-start, running, delivery, settlement, and teardown phases.
+
+- [x] **Step 1: Derive task and cancellation ownership.**
+
+  Inventory `asyncio.create_task`, task groups, callbacks, thread/future submissions, timeout contexts, cancellation catches, joins, and task-set mutations. Each created unit records creator, owner, registration point, cancellation source, join/settlement point, and escape path.
+
+- [x] **Step 2: Write the 256-seed race predicate.**
+
+  For each discovered cancellation point, run level `1` as a separate control and concurrency levels `2`, `4`, and `8` as the race family. Replay the frozen corpus plus 256 derived schedules in each family. Require one terminal observation for request task, child work, delivery, conversation, and effect state. Preserve `asyncio.CancelledError` as cancellation rather than a generic internal failure. Record 768 concurrent plus 256 control schedules per point at this tier.
+
+- [x] **Step 3: Run the exact predicate.**
+
+  ```powershell
+  uv run --frozen pytest tests/unit/acp/test_plan1126_cancellation.py::test_turn_cancellation_races_256_seed_matrix -q
+  ```
+
+  Expected: PASS only when every discovered point is scheduled and classified; runtime races may produce findings.
+
+- [x] **Step 4: Publish H3 and supervision findings.**
+
+  State whether `TurnControl` is canonical, bypassed, or incomplete on each baseline. Do not prescribe a new supervisor implementation. Add every newly failing schedule to the literal corpus without removing the commit-derived seed record.
+
+- [x] **Step 5: Run the task-group tier and checkpoint it.**
+
+  ```powershell
+  uv run --frozen pytest tests/unit/acp/test_plan1126_cancellation.py tests/unit/acp/test_lifecycle.py tests/unit/acp/test_stdio_ndjson.py -q
+  ```
+
+  Record 25 repeated group runs per authorized platform through the CLI checkpoint store; measured duration updates computed cost.
+
+### Task 6: Audit resource ownership, shutdown, and idempotent close
+
+**Files:**
+
+- Create: `tests/unit/acp/test_plan1126_shutdown.py`
+- Create: `tools/plan1126_runtime_audit/shutdown.py`
+- Modify: `tools/plan1126_runtime_audit/{__init__,model,render}.py`
+- Modify: `tools/run_plan1126_runtime_audit.py`
+- Modify: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.md`
+- Read only: `src/optimus/acp/{__main__,bootstrap,server,spec,preflight,outbound_writer,launch_approvals,launch_gate,launch_policy,launch_audit,trusted_paths,local_infra,local_gateway_secrets,operator_paths,operator_verify}.py`
+- Read only: `src/optimus/redis/{runtime,async_bridge}.py`
+- Read only: `src/optimus/telemetry/{redis_adapter,redis_sink}.py`
+- Read only: `src/optimus/mcp/{runtime,client_disposition,client_sdk,client_supervisor,local_ipc}.py`
+
+**Interfaces:**
+
+- Consumes: resource constructor/transfer/close inventories and carried seed S1.
+- Produces: `N_close_paths`, construction-to-owner graph, dependency close ordering, five-cause repeat matrix, idempotence counts, and a ruling on merged serving `RedisRuntime` custody.
+
+- [x] **Step 1: Derive the resource ownership graph.**
+
+  Cover Redis clients/pools, outbound writer, adapter/session resources, client-MCP resources, executor/thread ownership, and partial-construction paths. Boundary-audit launch, trust, approval, local-infrastructure, credential-resolution, and operator modules only for construction, transfer, background work, timeout/cancellation, failure propagation, and close/release. A resource is classified only when constructor, owner transfer, normal close, cancellation close, partial-failure close, and repeated-close behavior are accounted for or explicitly absent.
+
+- [x] **Step 2: Write the five-cause/100-repeat predicate.**
+
+  Causes are orderly EOF, request cancellation, transport failure, server cancellation, and partial startup failure. For each applicable cause, run 100 schedules. Build the persistent thread/task allowlist from a no-server control and report only growth beyond that control.
+
+- [x] **Step 3: Write the discovered-path idempotence predicate.**
+
+  For every close path, invoke close three times under each cause, measure underlying close/release count, and classify repeat latency above 100 ms. Do not hide double-close or timeout outcomes by weakening the assertion; record them as findings while requiring complete evidence.
+
+- [x] **Step 4: Run both exact predicates.**
+
+  ```powershell
+  uv run --frozen pytest tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist -q
+  uv run --frozen pytest tests/unit/acp/test_plan1126_shutdown.py::test_close_is_idempotent_across_discovered_paths -q
+  ```
+
+- [x] **Step 5: Rule on S1 without preclassifying a leak.**
+
+  Compare merged serving construction at `bootstrap.py`, preflight close paths, process-lifetime shape, and overlay shutdown changes. Decide ownership/orderly-shutdown status and baseline scope; process exit reclamation is evidence, not proof of orderly close.
+
+- [x] **Step 6: Run and checkpoint the resource group.**
+
+  ```powershell
+  uv run --frozen pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -q
+  ```
+
+### Task 7: Audit semantic error selection while preserving Plan 11.18 authority
+
+**Files:**
+
+- Create: `tests/unit/acp/test_plan1126_semantic_errors.py`
+- Create: `tools/plan1126_runtime_audit/semantic_errors.py`
+- Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.md`
+- Modify: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
+- Modify: `tests/unit/acp/test_plan1126_shutdown.py`
+- Modify: `tools/plan1126_runtime_audit/{__init__,model,render,shutdown}.py`
+- Modify: `tools/run_plan1126_runtime_audit.py`
+- Read only: `src/optimus/acp/{errors,dispatcher,spec,server,lifecycle,request_ids}.py`
+- Read only: `tests/unit/acp/test_error_code_registry.py`
+
+**Interfaces:**
+
+- Consumes: Plan 11.18 schema/AST oracles and semantic outcome/exception-to-wire selection sites.
+- Produces: exhaustive selection rows for protocol/input, cancellation/deadline, ownership/concurrency, dependency availability, integrity, delivery, resource lifecycle, and invariant/programming categories.
+
+- [x] **Step 1: Prove Plan 11.18 remains green before extending the audit.**
+
+  ```powershell
+  uv run --frozen pytest tests/unit/acp/test_error_code_registry.py tests/unit/acp/test_errors.py -q
+  ```
+
+  Any failure is a stop condition outside Plan 11.26; do not repair production authority here.
+
+- [x] **Step 2: Derive every semantic selection site.**
+
+  Inventory named error constants, `JsonRpcError` construction, exception/result catches, retry decisions, safe message/data selection, effect certainty, telemetry disposition, and cleanup obligation. Raw code ownership is not reopened.
+
+- [x] **Step 3: Write exhaustive selection characterization.**
+
+  Require every discovered selection to name one of the eight categories, retryability, certainty, public output, telemetry, cleanup, and baseline scope. Require `asyncio.CancelledError` to remain distinct. Seed S3's two sanitizer broad catches as `INTENTIONALLY_EXCEPTIONAL` unless contrary evidence is cited.
+
+- [x] **Step 4: Run the semantic group.**
+
+  ```powershell
+  uv run --frozen pytest tests/unit/acp/test_plan1126_semantic_errors.py tests/unit/acp/test_error_code_registry.py tests/unit/acp/test_dispatcher.py tests/unit/acp/test_errors.py -q
+  ```
+
+- [x] **Step 5: Publish the H6/H7 rulings.**
+
+  H6 must remain accepted canon if the two existing mechanical oracles pass. H7 records selection gaps and intentional exceptions; no code-number or runtime mapping change occurs in this plan.
+
+### Task 8: Audit telemetry, logging, redaction, correlation, and sink containment
+
+**Files:**
+
+- Create: `tests/unit/telemetry/test_plan1126_runtime_contract.py`
+- Create: `tools/plan1126_runtime_audit/telemetry.py`
+- Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.md`
+- Modify: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
+- Modify: `tools/plan1126_runtime_audit/{__init__,model,render}.py`
+- Modify: `tools/run_plan1126_runtime_audit.py`
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
+- Read only: `src/optimus/telemetry/{events,fanout,redaction,serialization,jsonl,observability,redis_adapter,redis_sink}.py`
+- Read only: `src/optimus/acp/{bootstrap,debug_trace,dispatcher,spec,server,settlement}.py`
+- Read only: `src/optimus/agent/planning_loop.py`
+
+**Interfaces:**
+
+- Consumes: derived event/trace/stderr/redaction/sink sites, `ACP_TURN_SETTLEMENT`, and carried seed S2.
+- Produces: `N_sinks`, reviewed runtime-event vocabulary, required correlation fields, redaction observations, sink containment results, and scalar/plural Gateway-ID ruling.
+
+- [x] **Step 1: Derive event and sink inventories.**
+
+  Discover event construction, direct stderr/debug trace, fanout, serialization, redaction, Redis/JSONL/export sinks, and fallback diagnostics. Each call site records semantic event, correlation fields, content class, redaction path, and sink-failure behavior.
+
+- [x] **Step 2: Write the 10,000-case event-schema predicate.**
+
+  Generate valid and missing/extra/invalid-field cases across the derived vocabulary. Compare every proposed runtime event to `ACP_TURN_SETTLEMENT`; do not assume connection/turn/operation/client fields are required until the inventory and reviewer establish them.
+
+- [x] **Step 3: Write the 1,000-case redaction predicate.**
+
+  Generate nested mappings/sequences/exceptions containing credential, prompt, response, path, and request-body canaries. Require prohibited values to be absent from every authorized sink and fallback diagnostic while preserving safe field names/reasons.
+
+- [x] **Step 4: Write correlation and sink-failure predicates.**
+
+  Correlation requires 100% presence only for fields the reviewed schema marks required and deterministic joins among wire error, lifecycle event, and settlement. For each discovered sink, inject 100 failures and compare runtime/wire outcome with the no-failure control.
+
+- [x] **Step 5: Run all four exact predicates.**
+
+  ```powershell
+  uv run --frozen pytest tests/unit/telemetry/test_plan1126_runtime_contract.py::test_runtime_event_schema_generated_10000_cases -q
+  uv run --frozen pytest tests/unit/telemetry/test_plan1126_runtime_contract.py::test_runtime_redaction_generated_1000_cases -q
+  uv run --frozen pytest tests/unit/telemetry/test_plan1126_runtime_contract.py::test_runtime_correlation_chain_is_complete -q
+  uv run --frozen pytest tests/unit/telemetry/test_plan1126_runtime_contract.py::test_telemetry_sink_failures_are_contained -q
+  ```
+
+- [x] **Step 6: Rule on S2 and publish H8.**
+
+  Decide whether scalar `gateway_request_id` and plural `gateway_request_ids` encode a documented one-to-many relationship or contradictory correlation. Publish symbol citations and baseline scope; do not rename fields in this plan.
+
+### Task 9: Audit queues, backpressure, and connection health
+
+**Files:**
+
+- Create: `tests/unit/acp/test_plan1126_queue_policy.py`
+- Create: `tools/plan1126_runtime_audit/queue_policy.py`
+- Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.md`
+- Modify: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
+- Modify: `tools/plan1126_runtime_audit/{__init__,model,render}.py`
+- Modify: `tools/run_plan1126_runtime_audit.py`
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
+- Read only: `src/optimus/acp/{outbound_writer,server,spec,ndjson_subprocess_session}.py`
+- Read only: `src/optimus/redis/{runtime,async_bridge}.py`
+
+**Interfaces:**
+
+- Consumes: derived queue/producer/consumer/constructor-bound and health-probe inventories.
+- Produces: `N_queues`, declared/effective bounds, overload disposition, blocking observations, and connection-health/pool ownership classifications.
+
+- [x] **Step 1: Derive every queue and connection-health site.**
+
+  Record constructor bound, producer, consumer, admission API, stop behavior, overflow result, timeout, connection health probe, pool constructor, and pool close path. Missing policy remains a classified finding.
+
+- [x] **Step 2: Write the 10,000-admission predicate.**
+
+  Stop the consumer and attempt 10,000 admissions per discovered queue. Cross-check behavior with the construction-site bound. Label acceptance of all attempts only as `NO_OBSERVED_BOUND_BELOW_10000` unless the constructor independently declares unbounded behavior. Waiting beyond 100 ms without an explicit outcome is `BLOCKING_WITHOUT_POLICY`.
+
+- [x] **Step 3: Run the exact predicate.**
+
+  ```powershell
+  uv run --frozen pytest tests/unit/acp/test_plan1126_queue_policy.py::test_queue_policy_cross_checks_constructor_and_10000_admissions -q
+  ```
+
+- [x] **Step 4: Publish queue/backpressure/health findings and checkpoint the group.**
+
+  ```powershell
+  uv run --frozen pytest tests/unit/acp/test_plan1126_queue_policy.py tests/unit/acp/test_outbound_writer.py tests/unit/acp/test_ndjson_subprocess_session.py tests/unit/redis/test_runtime.py -q
+  ```
+
+  Record every queue and health site; `UNCLASSIFIED` must be zero for this group.
+
+### Task 10: Audit durable session, lease, retention, and live Redis only when applicable
+
+**Files:**
+
+- Create: `tests/unit/acp/test_plan1126_session_lease.py`
+- Create: `tools/plan1126_runtime_audit/session_lease.py`
+- Conditionally create after a binding nomination: `tests/integration/acp/test_plan1126_runtime_live_redis.py` (not created under the Step 1 stop)
+- Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.md`
+- Modify: `tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json`
+- Modify: `tools/plan1126_runtime_audit/{__init__,model,render}.py`
+- Modify: `tools/run_plan1126_runtime_audit.py`
+- Modify: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
+- Read only: binding-candidate session/store/model files nominated by Plan 11.7
+
+**Interfaces:**
+
+- Consumes: Task 0 reconciliation status, binding code when available, Task 1 Redis authority, Task 2 provenance, and checkpoint/corpus support.
+- Produces: either `NOT_PRESENT`/`PROVISIONAL_OVERLAY` with Plan 11.7 scope-out, or binding lease/retention constants plus boundary and real-Redis owner/revision characterization.
+
+- [x] **Step 1: Apply the binding-presence gate.**
+
+  If Plan 11.7 has not nominated a binding integration candidate containing or superseding the durable path, emit `PROVISIONAL_OVERLAY` or `NOT_PRESENT`, name `P11-FEAT-ZED-RESUME`, and stop this task before runtime/live predicates. Never copy the overlay into the audit branch.
+
+  Gate result: `PROVISIONAL_OVERLAY`. Plan 11.7 has no nominated binding commit; Steps 2–6 remain unexecuted by design, with their exact deferred obligations recorded in H10.
+
+- [ ] **Step 2: Derive lease and retention constants independently when binding exists.**
+
+  Resolve the ownership lease from the binding tree's `SESSION_LOAD_LEASE_SECONDS` and retention from `DEFAULT_ACP_SESSION_TTL_SECONDS` plus its monotonic configuration limit. Reject absent, aliased, or workspace-substituted values.
+
+- [ ] **Step 3: Write and run the boundary predicate.**
+
+  Test one scheduler tick before expiry, exact expiry, and 1,000 derived seeds around the boundary. Assert the expected owner transition uses the lease constant and that retention is never used as the ownership boundary.
+
+  ```powershell
+  uv run --frozen pytest tests/unit/acp/test_plan1126_session_lease.py::test_session_lease_boundary_uses_binding_runtime_constant -q
+  ```
+
+- [ ] **Step 4: Gate the real Redis predicate on dependency and provenance.**
+
+  Require a real TimeSeries-capable Redis, isolated key prefix/database, explicit Redis-mutation authority, installed-artifact provenance matching the binding commit, and five-second operation timeouts. Missing requirements yield `UNRUN` or `INVALID`, never a fake-based pass.
+
+- [ ] **Step 5: Run owner/revision characterization only under fresh authorization.**
+
+  Execute 50 accelerated create/acquire/mutate/release cycles and 100 owner/revision races:
+
+  ```powershell
+  uv run --frozen pytest tests/integration/acp/test_plan1126_runtime_live_redis.py::test_live_redis_owner_revision_races -m requires_redis -v
+  ```
+
+- [ ] **Step 6: Run the one wall-clock recovery row only under its separate grant.**
+
+  Prove no recovery before the derived lease duration and recovery within the reviewed scheduler tolerance after expiry. Record elapsed monotonic time and constant provenance. Never shorten the production lease or use retention TTL to make the run convenient.
+
+### Task 11: Execute tiered characterization and separately gated real-client rows
+
+**Files:**
+
+- Create: `tests/e2e/acp/test_plan1126_clients_live.py`
+- Create: `reports/plan-11-26-zed-manual-observations.json`
+- Create: `reports/plan-11-26-terminal-characterization.md`
+- Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify under the standing audit-execution grant for offline orchestration only: `tools/run_plan1126_runtime_audit.py`
+- Modify under the standing audit-execution grant for offline test coverage only: `tests/unit/tools/plan1126_runtime_audit/test_render.py`
+- Modify only after a fresh live grant: `reports/plan-11-26-prerequisite-intake.json`
+
+The offline permission above is capability-scoped, not file-scoped. It does not authorize changes to
+`_ACCEPTED_AUTHORITY_DIGESTS` or to the `live-redis`, `acpx`, `sdk`, or `zed record` paths. Those live
+capabilities and their authority-report allowlist remain gated behind a fresh live grant. The
+prerequisite intake remains immutable under the audit-only grant because its canonical digest is an
+accepted authority input; offline orchestration reads it but never rewrites it.
+
+**Interfaces:**
+
+- Consumes: accepted Tasks 2-10 groups, client qualification, authority record, running-artifact provenance, computed cost, and checkpoints.
+- Produces: per-task, per-group, and terminal statuses; authorized acpx/comparison/Zed observations; invalid/unrun reasons; terminal `PASS`, `PASS_WITH_FINDINGS`, or `INCOMPLETE` disposition.
+
+- [x] **Step 1: Run every per-task narrow command and literal regression corpus.**
+
+  Each task runs its named predicate(s), affected existing tests, frozen corpus, 32 fresh seeds per affected scenario, and 10 repeats. Failed behavior becomes a finding only if the evidence record remains complete and schema-valid.
+
+- [x] **Step 2: Run every per-task-group tier.**
+
+  Use 256 seeds per affected scenario and 25 repeats per applicable authorized platform. Feed normalized outcomes into `classify_repeatability` with this precedence: changing harness/provenance fingerprints make the batch `HARNESS_INVALID`; stable fingerprints plus captured evidence that the active node is audit-harness-owned make it `HARNESS_UNSTABLE`; only remaining inconsistent product outcomes with no harness attribution are `FLAKY`; otherwise the batch is `STABLE`. WSL2 uses distro-native Redis from a native ext4 clone; do not use a host-forwarded Windows Redis as Linux evidence.
+
+- [x] **Step 3: Recompute terminal cost and obtain cost/authority approval.**
+
+  Update discovered `N_cancellation_points`, `N_queues`, `N_sinks`, and `N_close_paths`; include measured p50/p95. Present the exact offline and live run counts before starting the terminal batch.
+
+  Before any live row can be approved, the reviewer must accept a successor authority report and the same separately authorized pre-live gate commit must update the closed `_ACCEPTED_AUTHORITY_DIGESTS` allowlist plus its tests with that report's canonical digest. Until both artifacts are reviewed and committed together, every newly granted live command must fail `INVALID`; caller input cannot admit the new digest.
+
+- [x] **Step 4: Run the full offline terminal characterization once.**
+
+  ```powershell
+  uv run --frozen python tools/run_plan1126_runtime_audit.py offline --artifact reports/plan-11-26-acp-runtime-audit.json --checkpoint .superpowers/sdd/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation/task-11-checkpoint-direct.json
+  ```
+
+  `task-11-checkpoint-direct.json` is the canonical Task 11 checkpoint. The plain and `-resumed`
+  checkpoints retain abandoned harness diagnostics only and are never inputs to cost or terminal
+  characterization. The canonical checkpoint remains working evidence until the batch completes;
+  the final content-free summary enters the terminal report.
+
+- [ ] **Step 5: Run real acpx and qualified SDK rows only under fresh client/Gateway authority.**
+
+  The E2E tests must invoke the independently authored binaries/packages and the installed Optimus artifact, never a project ACP client:
+
+  ```powershell
+  uv run --frozen pytest tests/e2e/acp/test_plan1126_clients_live.py -m "e2e and requires_acpx and requires_redis and requires_gateway" -v
+  ```
+
+  Run 25 valid supported-matrix acpx rounds and 25 valid rounds with the qualified SDK or conformance harness. Then run the multi-client matrix: 50 same-session rounds at each concurrency level `2`, `4`, and `8`, plus 50 distinct-session rounds. Apply the Global Constraints client-attribution rule to every acpx/SDK divergence; neither client is authoritative. Skipped, deselected, wrong-artifact, fake-dependency, or missing-provenance rows are `UNRUN`/`INVALID`, never passing evidence.
+
+- [ ] **Step 6: Run five real Zed GUI rows only under a separate Zed grant.**
+
+  These are operator-manual rows; pytest does not launch or control Zed. Immediately before each row, `zed record` verifies the Zed executable path/version/SHA-256, installed Optimus executable/package SHA-256 and build-manifest binding commit, trusted workspace identity, authority-report digest, and environment fingerprint. The operator performs the named GUI action, then the recorder accepts only a closed outcome enum, monotonic timestamps, safe correlation IDs, and an attestation that no prompt/response body or secret was retained. Run exactly:
+
+  ```powershell
+  uv run --frozen python tools/run_plan1126_runtime_audit.py zed record --scenario initialize --artifact reports/plan-11-26-acp-runtime-audit.json --authority-report reports/plan-11-26-prerequisite-intake.json --observations reports/plan-11-26-zed-manual-observations.json
+  uv run --frozen python tools/run_plan1126_runtime_audit.py zed record --scenario session-new --artifact reports/plan-11-26-acp-runtime-audit.json --authority-report reports/plan-11-26-prerequisite-intake.json --observations reports/plan-11-26-zed-manual-observations.json
+  uv run --frozen python tools/run_plan1126_runtime_audit.py zed record --scenario session-load-resume --artifact reports/plan-11-26-acp-runtime-audit.json --authority-report reports/plan-11-26-prerequisite-intake.json --observations reports/plan-11-26-zed-manual-observations.json
+  uv run --frozen python tools/run_plan1126_runtime_audit.py zed record --scenario continued-prompt --artifact reports/plan-11-26-acp-runtime-audit.json --authority-report reports/plan-11-26-prerequisite-intake.json --observations reports/plan-11-26-zed-manual-observations.json
+  uv run --frozen python tools/run_plan1126_runtime_audit.py zed record --scenario normal-close --artifact reports/plan-11-26-acp-runtime-audit.json --authority-report reports/plan-11-26-prerequisite-intake.json --observations reports/plan-11-26-zed-manual-observations.json
+  uv run --frozen pytest tests/e2e/acp/test_plan1126_clients_live.py::test_zed_manual_observation_bundle_is_complete -m "e2e and requires_zed" -v
+  ```
+
+  `session-load-resume` records a Plan 11.7-owned `NOT_APPLICABLE` scope-out without launching Zed when no binding durable path exists. Classify current normal close as abrupt termination if observed. Any provenance drift, duplicate/missing scenario, unordered timestamp, unregistered outcome, or secret/content field makes the bundle `INVALID`. Preserve the known acpx replay-visibility limitation and never claim graceful shutdown or immediate reopen.
+
+- [x] **Step 7: Verify the 16 runnable offline predicates, corroborate the binding scope-out, and render terminal evidence.**
+
+  Run the 16 implemented offline predicate node IDs. Do not invoke, deselect, or represent as
+  passing the three C21-blocked rows. Run the five Task 10 scope-out tests separately, then validate
+  that `binding_commit` remains null, all five live statuses remain `UNRUN`, and the artifact remains
+  terminal `INCOMPLETE`. Finally run:
+
+  ```powershell
+  uv run --frozen python tools/run_plan1126_runtime_audit.py verify --artifact reports/plan-11-26-acp-runtime-audit.json
+  uv run --frozen python tools/run_plan1126_runtime_audit.py render --artifact reports/plan-11-26-acp-runtime-audit.json --report reports/plan-11-26-acp-runtime-audit.md
+  uv run --frozen ruff check .
+  uv run --frozen pytest tests/unit/docs -q
+  git diff --check
+  ```
+
+- [x] **Step 8: Obtain G4/G5 reviewer acceptance.**
+
+  The reviewer may accept Task 11 as offline-complete with terminal `INCOMPLETE` only after checking
+  checkpoint continuity, computed cost, the 16 runnable predicates, Task 10 scope-out corroboration,
+  and the three C21 rows with their distinct owners. This acceptance explicitly withholds binding,
+  Redis, acpx/SDK/Gateway, and Zed evidence; Steps 5-6 remain unchecked, their rows remain `UNRUN`,
+  and no installed-artifact or live-dependency acceptance is implied. Do not promote evidence or
+  claim production acceptance.
+
+### Task 12: Synthesize contracts, findings, and canonical remediation custody
+
+**Files:**
+
+- Modify: `reports/plan-11-26-acp-runtime-audit.json`
+- Modify: `reports/plan-11-26-acp-runtime-audit.md`
+- Modify: `reports/plan-11-26-terminal-characterization.md`
+- Modify: `reports/plan-11-26-baseline-intake.json`
+- Modify: `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md`
+- Modify: `tests/unit/docs/test_open_work_pool_hygiene.py`
+- Reviewer-owned only: `docs/superpowers/reviews/plan-11-26-review-checkpoints.md`
+
+**Interfaces:**
+
+- Consumes: G0-G5 accepted artifacts and reviewer rulings.
+- Produces: accepted cross-cutting canon, bypasses, contradictions, missing contracts, intentional exceptions, provisional/scope-out rows, rejected hypotheses, and named backlog custody for each independently schedulable remediation candidate.
+
+**Reviewer-carried obligations:** Task 12 must resolve or preserve explicit custody for C15
+(telemetry sink-class and redacted-versus-not-stored precision), C16 (H1/H2 dispositions plus a
+mechanical cross-check), C19 (the 10 harness-attributed / 4 unresolved shutdown-timeout split and
+scenario-wide precedence masking), and C20 (the 25-repeat `HARNESS_UNSTABLE` group result is the
+authoritative shutdown characterization; the single green terminal row is execution evidence, not
+a health signal). It also preserves the operator-directed duplication audit as the additional task
+sequenced after Task 12, including the evidence-collector/A2A product-separation exclusion; Task 12
+does not start that audit early.
+
+**C22 correction:** The Task 0 register originally covered H1-H8 while the evidence-record set
+covered H3-H10. Task 12 extends the baseline-scope authority register to H1-H10, records explicit
+H1/H2 dispositions, and mechanically rejects any registered/evidenced scope gap. H9 remains
+`merged`; H10 remains `overlay`. The baseline intake is therefore an explicit Task 12 input/output.
+
+- [x] **Step 1: Freeze the reviewed finding set.**
+
+  Every binding finding names classification, baseline, exact symbols, evidence IDs, impact, owner, and next gate. Every provisional/scope-out row names Plan 11.7 or another canonical owner. No finding contains proposed production code.
+
+- [x] **Step 2: Group only independently schedulable remediation candidates.**
+
+  Separate candidates by contract and merge boundary. Assign no plan number until the backlog conflict check at actual pickup. Do not combine unrelated findings merely because this audit observed them together.
+
+- [x] **Step 3: Write RED canonical-disposition tests.**
+
+  Extend `test_open_work_pool_hygiene.py` to require Plan 11.26's reviewed disposition, report links, open `P11-FEAT-ACP-RUNTIME-HARDENING` status, and one named owner/next gate per accepted candidate. Require no second open-work pool and no amendment file.
+
+- [x] **Step 4: Record the accepted Task 12 custody without closing Plan 11.26.**
+
+  G6 accepted the Task 12 disposition and candidate custody. Keep the registry `Active`, point its
+  next gate at the additional same-plan Task 13 duplication audit, and do not mark Plan 11.26
+  terminal or archive-ready. Keep `P11-FEAT-ACP-RUNTIME-HARDENING` open until all later
+  remediations separately complete.
+
+- [x] **Step 5: Run documentation freshness and full fitness review.**
+
+  The reviewing agent audits backlog, roadmap, README, and every document whose current-state claims may have changed. Then run:
+
+  ```powershell
+  uv run --frozen pytest tests/unit/docs -q
+  uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit tests/unit/acp/test_plan1126_delivery_contract.py tests/unit/acp/test_plan1126_cancellation.py tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_plan1126_queue_policy.py tests/unit/acp/test_plan1126_session_lease.py tests/unit/acp/test_plan1126_semantic_errors.py tests/unit/telemetry/test_plan1126_runtime_contract.py -q
+  uv run --frozen pytest tests/unit/acp/test_error_code_registry.py -q
+  uv run --frozen ruff check .
+  git diff --check
+  ```
+
+- [x] **Step 6: Obtain G6 disposition and separate commit authorization.**
+
+  G6 accepted every Task 12 finding, scope-out, and candidate and separately authorized the Task 12
+  commit. Task 12 remains frozen while Task 13 proceeds under its own G7. Push, PR, merge, archive
+  movement, evidence promotion, release action, live execution, and production remediation remain
+  unauthorized.
+
+### Task 13: Discover and classify core duplication without consolidating it
+
+**Execution stop:** This task text must receive independent review before any Task 13 checkbox is
+changed or any Task 13 tool, fixture, report, test, or backlog row is created or modified. The
+existing Plan 11.26 execution grant applies after that review; it does not waive G7 or authorize a
+Task 13 commit, push, PR, merge, evidence promotion, archive movement, live row, or production edit.
+
+**Files:**
+
+- Create: `tools/plan1126_runtime_audit/duplication.py`
+- Modify: `tools/run_plan1126_runtime_audit.py`
+- Create: `tests/fixtures/plan1126_runtime_audit/duplication-candidates.schema.json`
+- Create: `tests/fixtures/plan1126_runtime_audit/duplication-audit.schema.json`
+- Create: `tests/unit/tools/plan1126_runtime_audit/test_duplication.py`
+- Create: `reports/plan-11-26-duplication-candidates.json`
+- Create: `reports/plan-11-26-duplication-audit.json`
+- Create: `reports/plan-11-26-duplication-audit.md`
+- Modify after classification: `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md`
+- Modify after classification: `tests/unit/docs/test_open_work_pool_hygiene.py`
+- Modify for checkbox/gate recording only: `docs/superpowers/plans/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md`
+- Reviewer-owned only: `docs/superpowers/reviews/plan-11-26-review-checkpoints.md`
+- Frozen, do not modify: `reports/plan-11-26-baseline-intake.json`,
+  `reports/plan-11-26-acp-runtime-audit.json`, `reports/plan-11-26-acp-runtime-audit.md`, and
+  `reports/plan-11-26-terminal-characterization.md`
+
+The offline permission above is capability-scoped, not file-scoped. It does not authorize changes
+to `_ACCEPTED_AUTHORITY_DIGESTS` or to the `live-redis`, `acpx`, `sdk`, or `zed record` paths. Those
+live capabilities and their authority-report allowlist remain gated behind a fresh live grant.
+
+**Pinned source:** Discover against the immutable Task 12 commit
+`b62462f11abe858f58af12fa2d2f159eae09d832`, not the changing Task 13 worktree. The allowed roots
+are exactly `src/` and `tools/`. The historical 2026-08-29 observation of 78 structurally identical
+function groups covering 171 of 2,088 non-trivial functions is a high-recall upper bound to
+reconcile, not an expected count, pass condition, or finding count.
+
+**Interfaces:**
+
+- `discover_duplication_candidates(source: GitCommitSource, scope: ScopeManifest) -> DuplicationCandidateInventory`
+  reads immutable blobs, applies affirmative product/path exclusions before extracting functions or
+  constants, and emits stable source and cluster identities.
+- `verify_duplication_audit(inventory: DuplicationCandidateInventory, audit: DuplicationAudit) -> None`
+  fails closed on source drift, exclusion drift, missing/duplicate group dispositions, excluded
+  members, unknown vocabulary, unowned confirmed duplication, ranking drift, or a Task 12 artifact
+  digest change.
+- `render_duplication_markdown(inventory: DuplicationCandidateInventory, audit: DuplicationAudit) -> str`
+  renders sorted, content-free reviewer evidence; Markdown never becomes an independent authority.
+- CLI shape:
+  `duplication discover --source-commit ... --inventory ...`,
+  `duplication verify --inventory ... --artifact ...`, and
+  `duplication render --inventory ... --artifact ... --report ...`.
+
+**Closed Task 13 vocabulary:** Candidate kind is `CALLABLE_SHAPE`, `CONSTANT_NAME`,
+`CONSTANT_VALUE`, or `REGEX_VALUE`. Every generated group is covered by one or more non-overlapping
+reviewed partitions whose members exhaust that group exactly once. Each reviewed partition receives
+exactly one disposition: `CONFIRMED_DUPLICATION`, `INTENTIONAL_REPETITION`, or
+`STRUCTURAL_SIMILARITY_ONLY`; no excluded product path may enter this vocabulary. The existing
+`Classification` and `LiveStatus` enums in `model.py` remain unchanged. Only
+`CONFIRMED_DUPLICATION` partitions produce `DUPLICATED` findings and must map exactly once to a
+ranked custody candidate. `INTENTIONAL_REPETITION` records the local boundary that makes repetition
+deliberate; `STRUCTURAL_SIMILARITY_ONLY` records the semantic difference that made the high-recall
+cluster an over-report.
+
+- [x] **Step 1: Lock the source universe, exclusions, schemas, and RED tests.**
+
+  Add the four Task 13 predicate identities as rows 20-23 of the Planned Predicate Map, then write
+  `test_duplication.py` first. Require the full commit SHA, tree digest, exact allowed roots,
+  enumerated source files, source-universe counts, algorithm version, and canonical inventory digest.
+  Assert that all `tests/` paths are absent and carry the production-risk exclusion reason. Assert
+  that the Evidence Collector and A2A path sets above are removed before AST extraction and retain
+  their named product owners/reasons in the scope manifest. A fixture with an excluded function
+  identical to a core function must yield no cross-product cluster. A path under an allowed root that
+  matches no affirmative exclusion must remain in scope.
+
+  Independently validate both JSON documents against their closed JSON Schemas. Reject unknown
+  keys/statuses, malformed SHA-256 values, duplicate IDs, unsorted members, an empty rationale,
+  `UNCLASSIFIED`, missing or overlapping partition members, a confirmed partition without custody,
+  and a custody row without a confirmed partition.
+  Run the focused file and capture the expected RED result before implementing:
+
+  ```powershell
+  uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_duplication.py -q
+  ```
+
+- [x] **Step 2: Implement deterministic high-recall discovery, not defect declaration.**
+
+  Add the Task 13 module and nested CLI commands without changing `model.py`, `inventory.py`, or any
+  `src/` file. Enumerate Python functions/async functions and module/class constants from the pinned
+  Git tree. Exclude docstring-only/pass-only callables from the non-trivial universe under one tested
+  policy. Preserve path, qualified symbol, line span, async/sync kind, signature shape, original call
+  leaves, receiver/attribute roles, control-flow/exception/finally features, normalized token digest,
+  and AST-shape digest for reviewer classification.
+
+  Use AST-shape equality only as one high-recall seed. Add deterministic similarity edges from the
+  preserved structural/call features, take sorted connected components, and record why each member
+  joined. Names may help the reviewer locate a symbol but must not create or dismiss a cluster.
+  Therefore unrelated `__init__` methods may remain candidates until Step 3, while function-name
+  matching alone cannot prove absence. Constants are inventoried separately by repeated name and by
+  identical normalized value so callable counts cannot conceal declaration duplication.
+
+  Reconcile, but do not force, the prior seeds: the resolver pairs in
+  `tools/run_plan987_acpx_live_evidence.py` and `tools/run_plan988_fu4b_live_evidence.py`;
+  `_is_hex`/`_is_lower_hex`; the three shape-identical `_canonical_digest` helpers in
+  `cancellation.py`, `delivery_characterization.py`, and `shutdown.py`; the three shape-identical
+  `_symbol` helpers in `queue_policy.py`, `semantic_errors.py`, and `telemetry.py`;
+  `_KEYRING_SERVICE`; the two `claude-haiku` defaults; and the known equal directive-regex values.
+  Each seed is either rediscovered or receives a machine-readable `NOT_REDISCOVERED` explanation
+  tied to the current algorithm/source digest. Do not pre-classify any seed as a defect.
+
+  Generate the candidate inventory twice from the pinned commit and require byte identity:
+
+  ```powershell
+  uv run --frozen python tools/run_plan1126_runtime_audit.py duplication discover --source-commit b62462f11abe858f58af12fa2d2f159eae09d832 --inventory reports/plan-11-26-duplication-candidates.json
+  $task13FirstInventoryHash = (Get-FileHash -Algorithm SHA256 -LiteralPath reports/plan-11-26-duplication-candidates.json).Hash
+  uv run --frozen python tools/run_plan1126_runtime_audit.py duplication discover --source-commit b62462f11abe858f58af12fa2d2f159eae09d832 --inventory reports/plan-11-26-duplication-candidates.json
+  $task13SecondInventoryHash = (Get-FileHash -Algorithm SHA256 -LiteralPath reports/plan-11-26-duplication-candidates.json).Hash
+  if ($task13FirstInventoryHash -ne $task13SecondInventoryHash) { throw "Task 13 candidate inventory is not deterministic" }
+  uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_duplication.py -q
+  ```
+
+- [x] **Step 3: Review and classify every generated group.**
+
+  Inspect every candidate's original symbols and preserved semantic context. The 78-group historical
+  result and any new raw count remain unconfirmed upper bounds until this step is complete. Partition
+  each raw group by semantic responsibility when necessary, retain the raw candidate ID as parent
+  provenance, and record one closed disposition plus concrete rationale per reviewed partition. A
+  partition may not use a group-level verdict to hide a semantically different member. Rerun
+  verification so every generated member remains in custody exactly once across the partitions.
+
+  For each `CONFIRMED_DUPLICATION`, record the duplicated responsibility/contract, exact symbols,
+  evidence digest, impact, severity, and owner-to-be. Group confirmed findings into independently
+  schedulable remediation candidates without consolidating code. Each candidate declares `point-fix`
+  or `consolidation`, names its owner-to-be, and counts its confirmed member symbols and modules.
+  Compute `latent_surface_closed` as the number of confirmed member symbols mapped to that candidate;
+  rank descending by that value, then by severity (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`), then by stable
+  candidate ID. This ranking is custody priority, not a claim that lines were removed or a bug fixed.
+
+- [x] **Step 4: Verify and render the separate Task 13 artifacts.**
+
+  The verifier reopens the pinned Git tree, recomputes the allowed/excluded universe and raw candidate
+  inventory, and rejects any mismatch with the committed candidate JSON. It then requires every
+  candidate/member and every prior seed to be reconciled, every confirmed finding to have exactly one
+  candidate, every candidate to have a shape/owner/next gate, and the ranking formula to reproduce.
+  It also verifies the four frozen Task 12 artifact digests captured in the Task 13 audit so Task 13
+  cannot silently reopen G6 evidence.
+
+  Render twice and require one digest plus byte identity with the committed Markdown. The report must
+  show the affirmative exclusions before any cluster tables, separate raw candidate counts from
+  confirmed duplication counts, and label the historical 78 as prior high-recall evidence only.
+  Run:
+
+  ```powershell
+  uv run --frozen python tools/run_plan1126_runtime_audit.py duplication verify --inventory reports/plan-11-26-duplication-candidates.json --artifact reports/plan-11-26-duplication-audit.json
+  uv run --frozen python tools/run_plan1126_runtime_audit.py duplication render --inventory reports/plan-11-26-duplication-candidates.json --artifact reports/plan-11-26-duplication-audit.json --report reports/plan-11-26-duplication-audit.md
+  $task13FirstReportHash = (Get-FileHash -Algorithm SHA256 -LiteralPath reports/plan-11-26-duplication-audit.md).Hash
+  uv run --frozen python tools/run_plan1126_runtime_audit.py duplication render --inventory reports/plan-11-26-duplication-candidates.json --artifact reports/plan-11-26-duplication-audit.json --report reports/plan-11-26-duplication-audit.md
+  $task13SecondReportHash = (Get-FileHash -Algorithm SHA256 -LiteralPath reports/plan-11-26-duplication-audit.md).Hash
+  if ($task13FirstReportHash -ne $task13SecondReportHash) { throw "Task 13 Markdown render is not deterministic" }
+  uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit/test_duplication.py -q
+  ```
+
+- [x] **Step 5: Append Task 13 custody without mutating Task 12 custody.**
+
+  Add a distinct “Task 13 reviewed duplication disposition” table immediately beneath the existing
+  Plan 11.26 Task 12 custody table. Do not edit, reorder, re-rank, or reinterpret the five accepted
+  Task 12 candidates or the three blocked obligations. The Task 13 table carries only confirmed
+  duplication candidates, their mechanically reproduced rank, shape, surface, severity,
+  `ACCEPTED_OPEN` disposition, owner-to-be, and next gate. If no group is confirmed, append an explicit
+  reviewed zero-finding disposition rather than inventing a candidate or omitting the task.
+
+  Extend `test_open_work_pool_hygiene.py` to lock the separation between the frozen G6 table and the
+  new G7 table, the links to all three Task 13 artifacts, the plan's terminal state, and the rule that
+  neither table claims consolidation or a historical flake fix. G7 acceptance keeps every named
+  remediation owner and blocked obligation open outside this terminal audit plan.
+
+- [x] **Step 6: Run the Task 13 fitness gate and obtain G7.**
+
+  Run the duplication verifier and render check, the complete Plan 11.26 audit-tool suite, the full
+  documentation suite, Ruff, whitespace validation, and both production-boundary diffs:
+
+  ```powershell
+  uv run --frozen python tools/run_plan1126_runtime_audit.py duplication verify --inventory reports/plan-11-26-duplication-candidates.json --artifact reports/plan-11-26-duplication-audit.json
+  uv run --frozen pytest tests/unit/tools/plan1126_runtime_audit -q
+  uv run --frozen pytest tests/unit/docs -q
+  uv run --frozen ruff check .
+  git diff --check
+  git diff -- src
+  git diff --cached -- src
+  ```
+
+  Submit the raw/confirmed counts, exclusion manifest, every group disposition, ranked custody, exact
+  commands, deterministic digests, and unchanged Task 12 hashes at G7. G7 accepted the reviewed
+  Task 13 disposition as `ACCEPTED_OPEN` and separately authorized both the Task 13 commit and the
+  terminal archive transition. Push, PR, merge, evidence promotion, live work, consolidation, and
+  production remediation remain unauthorized.
+
+## Review Gates
+
+| Gate | Required acceptance |
+|---|---|
+| G0 — Intake | Execution authority, canonical custody, exact baseline scope, Plan 11.7 scope-outs, and checkpoint agreement. |
+| G1 — Inventory | Shared schema/provenance/checkpoint/corpus/cost mechanisms pass; every applicable discovered site is classified. |
+| G2 — Contract review | H4 worked example and every later hypothesis record meet the same symbol/evidence/ruling standard. |
+| G3 — Client qualification | Official TypeScript primary, same-task Java fallback, or reviewed independently authored conformance-harness fallback is fixture-qualified; acpx remains mandatory. |
+| G4 — Per-group evidence | Each group completes its named predicates/repeats or records a valid owned scope-out. |
+| G5 — Terminal characterization | Applicable authorized matrix completes with computed cost, checkpoints, and installed-artifact provenance. |
+| G6 — Disposition | Reviewer accepts findings, scope-outs, current-state docs, and each canonical remediation candidate. |
+| G7 — Duplication disposition | Reviewer accepts the pre-clustering exclusions, immutable source universe, every raw-group disposition, confirmed-duplication ranking/custody, deterministic artifacts, frozen Task 12 hashes, and zero production/consolidation changes. |
+
+## Definition of Done and Evidence Map
+
+| Claim | Required evidence |
+|---|---|
+| Every applicable cross-cutting site is baseline-scoped and classified. | G1 inventory artifact, `test_derived_inventory_has_no_unclassified_sites`, and per-group inventories with `UNCLASSIFIED == 0`. |
+| Hypotheses are evidence-backed rather than invented canon. | The authoritative H1-H10 scope register, H3-H10 evidence records, explicit H1/H2 dispositions, and their mechanical union check; H4 remains the accepted worked example. |
+| Plan 11.18 and delivery authority remain protected. | Green `tests/unit/acp/test_error_code_registry.py`, delivery predicates, and unchanged production files. |
+| Unknown prerequisites are resolved early or dependent evidence is truthfully scoped out. | Task 1 prerequisite report plus Task 3 qualification report and named owners. |
+| The audit uses an additional independent client or conformance harness without displacing acpx. | G3 report, exact package/source/build provenance, fixture result, and G5 real-comparison rows only when separately authorized. |
+| Evidence cannot confuse workspace state with running code. | `test_running_artifact_provenance_matches_binding_commit_and_expected_identity` and per-live-row external manifests. |
+| Randomized evidence is reproducible without losing prior failures. | Literal corpus predicate, commit-derived seed records, atomic checkpoints, and rerun logs. |
+| Repeated-run instability and duplicated/non-obvious logic are audited consistently. | Repeatability fingerprints and invariant comment/docstring coverage recorded per baseline, plus the Task 13 immutable-snapshot candidate inventory, complete group dispositions, and G7-reviewed confirmed-duplication custody. |
+| Matrix cost is computed rather than guessed. | Cost predicate, discovered multipliers, p50/p95 measurements, and terminal cost approval. |
+| Live claims use real named dependencies. | `requires_redis`, `requires_acpx`, `requires_gateway`, the qualified independent comparison mechanism, and Zed evidence with `UNRUN`/`INVALID` fail-closed states. |
+| Findings have durable custody without premature fixes. | Frozen G6 reports and Task 12 rows plus separate G7 duplication artifacts/custody; no `src/` diff, consolidation, or production-remediation code. |
+| Plan 11.26 does not overclaim closure. | Backlog keeps `P11-FEAT-ACP-RUNTIME-HARDENING` open through G7 and preserves Plan 11.7/live/release limitations. |
+
+After G7, Plan 11.26 may complete as `PASS_WITH_FINDINGS`. It does not claim Plan 11.7 closure, formal evidence, release, push, merge, Phase 1 working-agent status, graceful Zed shutdown, acpx replay visibility, immediate session reopen, duplicate-code consolidation, historical-flake repair, or acceptance of current runtime behavior as the desired production contract.
+
+## Plan Self-Review
+
+- **Spec coverage:** Tasks 0-12 map one-for-one to the approved sequence; Task 13 is the separately approved same-plan duplication extension. The file map covers shared schema/inventory/provenance/checkpoint/corpus/cost infrastructure, all vertical runtime segments, all horizontal contracts, independent comparison qualification, tiered evidence, frozen G6 disposition, and separate G7 duplication custody.
+- **Cross-cutting centralization:** Common vocabularies and mechanics live in one audit package; concern-specific rules/tests plug into it without creating competing artifact, baseline, classification, seed, provenance, or checkpoint approaches.
+- **Code-quality coverage:** Shared AST/token inventory covers reviewer-facing invariant comments/docstrings; Task 13 separately inventories high-recall duplication candidates and requires semantic review before `DUPLICATED`; repeated tiers classify flaky outcomes with one common fingerprinting model.
+- **Predicate coverage:** The Planned Predicate Map preserves all 18 approved identities exactly once plus the supplemental Zed-bundle gate and four Task 13 duplication gates. Sixteen original rows resolve to implemented offline node IDs; the three original blocked rows remain explicit planned obligations with distinct owners and unblock paths, and none is shown as passing. Task 13 rows become executable only through Steps 1-4.
+- **Prerequisite coverage:** All `unknown` rows resolve in Task 1 or Task 3 before dependents. Binding/lease/resume evidence is Plan 11.7-owned; unauthorized live rows remain operator-owned and dormant.
+- **Production boundary:** No task modifies `src/`. Characterization and duplication classification can pass with findings, and remediation/consolidation is deferred to later independently numbered plans.
+- **Custody:** The canonical backlog is the only live registry. Task 0 claims execution; Task 12's accepted G6 table stays frozen; Task 13 appends a distinct G7 disposition while keeping the feature open until review rules otherwise.
+- **C3:** The implementation-plan table correctly records acpx `0.12.0` as command-derived and retains execution-time re-recording.
+- **Type consistency:** The shared types and function names in Tasks 2-12 match the File Map and Interfaces blocks. Task 13 uses separate closed candidate/disposition schemas and does not widen Task 12's `Classification` or `LiveStatus` enums.
+- **No-placeholder review:** Every task names concrete files, interfaces, commands, counts, status semantics, stop conditions, and owners. Conditional Java/live/binding branches have explicit same-task behavior and evidence outcomes.

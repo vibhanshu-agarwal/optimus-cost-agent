@@ -1,0 +1,17 @@
+{
+  "name": "plan1126-official-typescript-sdk-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "qualify": "node dist/client.js"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "1.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.0",
+    "typescript": "7.0.2"
+  }
+}

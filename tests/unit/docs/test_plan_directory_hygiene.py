@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -10,12 +11,14 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 PLANS_ROOT = REPO_ROOT / "docs/superpowers/plans"
 ARCHIVE_ROOT = PLANS_ROOT / "archive"
 BACKLOG = PLANS_ROOT / "2026-07-23-consolidated-deferred-followups-backlog.md"
+HARDENING_MASTERPLAN = PLANS_ROOT / "hardening-runtime-quality-masterplan.md"
 
 ROOT_GOVERNANCE_DOCUMENTS = {
     "README.md",
     "2026-07-01-phase-1-roadmap.md",
     "2026-07-23-consolidated-deferred-followups-backlog.md",
     "2026-07-25-plan-11-v1-milestone-charter.md",
+    "hardening-runtime-quality-masterplan.md",
 }
 
 LIVE_REGISTRY_ROW = re.compile(
@@ -23,6 +26,7 @@ LIVE_REGISTRY_ROW = re.compile(
     r"\| `(?P<state>Active|Blocked)` \| `(?P<owner>[^`]+)` \| (?P<next_gate>.+) \|$"
 )
 MARKDOWN_LINK = re.compile(r"\[[^]]*\]\((?P<target>[^)]+)\)")
+PLAN_LEVEL_STATUS = re.compile(r"(?mi)^\*\*Status:\*\*|^Status:")
 # Exact (document, raw link text) pairs allowed to stay broken. Every entry
 # here must be a real, individually justified case -- never a directory- or
 # document-wide bypass.
@@ -276,6 +280,17 @@ FROZEN_REFERENCE_EXEMPTIONS = {
 }
 
 
+def _tracked_repository_files() -> tuple[Path, ...]:
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split("\0")
+    return tuple(REPO_ROOT / relative_path for relative_path in tracked if relative_path)
+
+
 def _live_registry_rows() -> list[re.Match[str]]:
     text = BACKLOG.read_text(encoding="utf-8")
     section = re.search(
@@ -293,13 +308,100 @@ def _live_registry_rows() -> list[re.Match[str]]:
     return rows
 
 
+def _hardening_child_plan_rows() -> list[dict[str, str | None]]:
+    text = HARDENING_MASTERPLAN.read_text(encoding="utf-8")
+    section = re.search(
+        r"^## Child-plan status board\n(?P<body>.*?)(?=^## )",
+        text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    assert section is not None, "the hardening masterplan must own a child-plan status board"
+
+    rows: list[dict[str, str | None]] = []
+    allowed_statuses = {"Not drafted", "In review", "Ready", "Active", "Blocked", "Complete"}
+    plain_plan = re.compile(r"^`(?P<filename>hardening-[a-z0-9-]+(?:_v[0-9]+)?\.md)`$")
+    linked_plan = re.compile(
+        r"^\[[^]]+\]\((?P<target>(?:archive/)?hardening-[a-z0-9-]+(?:_v[0-9]+)?\.md)\)$"
+    )
+    for line in section.group("body").splitlines():
+        if not line.startswith("| `HARDENING-TRACK-"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        assert len(cells) == 5, f"malformed hardening child-plan row: {line}"
+        track = cells[0].strip("`")
+        status = cells[2].strip("`")
+        assert status in allowed_statuses, f"unknown hardening child-plan status: {status}"
+
+        plain_match = plain_plan.fullmatch(cells[1])
+        link_match = linked_plan.fullmatch(cells[1])
+        assert (plain_match is None) != (link_match is None), f"invalid hardening plan cell: {cells[1]}"
+        filename = plain_match.group("filename") if plain_match else Path(link_match.group("target")).name
+        link_target = link_match.group("target") if link_match else None
+        if status == "Not drafted":
+            assert link_target is None, "untracked hardening child plans must not be links"
+        elif status == "Complete":
+            assert link_target is not None and link_target.startswith("archive/")
+        else:
+            assert link_target == filename, "live hardening child plans must link to the plan root"
+        rows.append(
+            {
+                "track": track,
+                "filename": filename,
+                "status": status,
+                "link_target": link_target,
+            }
+        )
+    return rows
+
+
 def test_plan_root_contains_only_governance_and_registered_live_plans() -> None:
     registry_paths = [match.group("path") for match in _live_registry_rows()]
     assert len(registry_paths) == len(set(registry_paths)), "live plans must be registered exactly once"
     assert all("/" not in path and "\\" not in path for path in registry_paths)
 
+    hardening_rows = _hardening_child_plan_rows()
+    hardening_root_paths = {
+        str(row["filename"])
+        for row in hardening_rows
+        if row["status"] in {"In review", "Ready", "Active", "Blocked"}
+    }
+    assert hardening_root_paths.isdisjoint(registry_paths), (
+        "hardening child-plan status belongs to the masterplan, not the backlog registry"
+    )
+
     actual_root_files = {path.name for path in PLANS_ROOT.glob("*.md")}
-    assert actual_root_files == ROOT_GOVERNANCE_DOCUMENTS | set(registry_paths)
+    expected_root_files = ROOT_GOVERNANCE_DOCUMENTS | set(registry_paths) | hardening_root_paths
+    assert actual_root_files == expected_root_files, (
+        "unowned root plan file(s): "
+        f"extra={sorted(actual_root_files - expected_root_files)!r} "
+        f"missing={sorted(expected_root_files - actual_root_files)!r}"
+    )
+
+
+def test_hardening_masterplan_owns_exactly_fifteen_child_plan_statuses() -> None:
+    rows = _hardening_child_plan_rows()
+
+    assert len(rows) == 15
+    assert len({row["track"] for row in rows}) == 15
+    assert len({row["filename"] for row in rows}) == 15
+    active_rows = [row for row in rows if row["status"] == "Active"]
+    assert {row["track"] for row in active_rows} == {"HARDENING-TRACK-CI-GUARDRAILS"}
+    assert all(row["link_target"] == row["filename"] for row in active_rows)
+    not_drafted_rows = [row for row in rows if row["status"] == "Not drafted"]
+    assert len(not_drafted_rows) == 14
+    assert all(row["link_target"] is None for row in not_drafted_rows)
+
+    text = HARDENING_MASTERPLAN.read_text(encoding="utf-8")
+    assert PLAN_LEVEL_STATUS.search(text) is None
+
+    for row in rows:
+        link_target = row["link_target"]
+        if link_target is None:
+            continue
+        child_text = (PLANS_ROOT / str(link_target)).read_text(encoding="utf-8")
+        assert PLAN_LEVEL_STATUS.search(child_text) is None, (
+            f"hardening child plan {row['track']} must not declare its own status"
+        )
 
 
 def test_plan_archive_is_flat_and_contains_no_registered_live_plan() -> None:
@@ -310,6 +412,12 @@ def test_plan_archive_is_flat_and_contains_no_registered_live_plan() -> None:
     archived_names = {path.name for path in ARCHIVE_ROOT.glob("*.md")}
     assert archived_names
     assert archived_names.isdisjoint(registry_paths)
+    completed_hardening = {
+        str(row["filename"])
+        for row in _hardening_child_plan_rows()
+        if row["status"] == "Complete"
+    }
+    assert completed_hardening <= archived_names
 
 
 def test_separately_named_amendments_cannot_be_live_root_plans() -> None:
@@ -335,8 +443,8 @@ def test_markdown_link_regex_still_matches_after_backtick_stripping_empties_the_
 
 def test_relative_markdown_links_resolve_except_registered_stale_links() -> None:
     used_exemptions: set[tuple[str, str]] = set()
-    for document in REPO_ROOT.rglob("*.md"):
-        if ".venv" in document.parts:
+    for document in _tracked_repository_files():
+        if document.suffix != ".md":
             continue
         text = document.read_text(encoding="utf-8")
         text = re.sub(r"```.*?```|~~~.*?~~~", "", text, flags=re.DOTALL)
@@ -376,7 +484,7 @@ def test_repository_relative_plan_paths_are_repaired_except_in_frozen_provenance
     # 12-link repair this PR's document-repair lane is scoped to, and is
     # intentionally left out of scope here pending an explicit ruling.
     used_exemptions: set[tuple[str, str]] = set()
-    for document in REPO_ROOT.rglob("*"):
+    for document in _tracked_repository_files():
         if (
             not document.is_file()
             or ARCHIVE_ROOT in document.parents
