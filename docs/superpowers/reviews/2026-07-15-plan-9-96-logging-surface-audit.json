@@ -3479,6 +3479,22 @@
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_parse_live_output_requires_end_turn_and_permission_evidence",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.local_secret_scan:_validate_utf8_file:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.local_secret_scan:_validate_utf8_file:file_open opens the approved baseline and each pre-commit-selected filename read-only in binary mode solely to strictly decode it as UTF-8 before the scanner runs; no bytes are retained, logged or exported, and its diagnostic names only the path, byte offset and decoder reason.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_rejects_invalid_utf8_before_delegation",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.local_secret_scan:run:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.local_secret_scan:run:stdout_export writes a fixed-vocabulary validation diagnostic (program name, argument error or path, byte offset and decoder reason) to the hook's stderr; selected-file contents are never echoed and nothing is persisted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_refuses_to_run_outside_utf8_mode",
+      "evidence_tier": "unit"
     }
   ]
 }

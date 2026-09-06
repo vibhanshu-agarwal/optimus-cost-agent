@@ -109,12 +109,12 @@ inventory rather than reporting success, so a selection that matches nothing
 fails the job instead of passing silently. Passing a directory argument to the
 scanner is not a production scan: it exits 0 without examining any file, and
 that exit is not treated as a clean result. The scan covers tracked text under
-`src/`; it is not a repository-wide cleanliness claim. The existing local
-commit hook is unchanged and still receives staged filenames. The
-detector and filter settings are unchanged. The baseline permits exactly three
+`src/`; it is not a repository-wide cleanliness claim. The local commit hook receives pre-commit's selected text filenames and invokes a UTF-8 adapter. The adapter strictly decodes the baseline and each selected file before delegating to detect-secrets; unreadable or non-UTF-8 selected text rejects with a path/reason diagnostic. It does not enumerate the compatibility directory argument or expand filename selection. Detector and filter settings are unchanged. The baseline permits exactly three
 reviewed identities in the frozen Plan 11.27 v9 document and 31 reviewed
 identities in five frozen Plan 11.26 JSON reports. Exact identity and document
 digest checks bind these 34 exceptions; no directory exclusion is implied.
+
+This selected-file repair does not establish repository-wide cleanliness. The 50 frozen Plan 11.7 UTF-16 custody transcripts remain byte-exact and are rejected if selected as text, including by explicit all-file hook runs. Existing scanner findings retain their own review and disposition; neither the encoding repair nor historical custody authorizes new baseline entries or directory exclusions.
 
 ### Phase 1 Plan 6.5 Guardrail Hardening
 
