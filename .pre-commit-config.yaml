@@ -41,6 +41,14 @@ repos:
         entry: detect-secrets-hook --baseline .secrets.baseline src
         language: system
         types: [text]
+      - id: optimus-secret-scan-ci-production
+        name: "optimus-check: secret-scan CI production-only tracked text"
+        entry: python -X utf8 -m detect_secrets.pre_commit_hook --baseline .secrets.baseline
+        language: system
+        types: [text]
+        files: ^src/
+        stages: [manual]
+        pass_filenames: true
       - id: optimus-pytest-coverage
         name: "optimus-check: pytest-coverage"
         entry: pytest --cov=optimus --cov-branch --cov-report=term-missing
