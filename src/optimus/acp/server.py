@@ -487,6 +487,20 @@ class AcpStreamServer:
                 return
             report_request_task_failure(operation_id, request_method)
 
+        def report_reader_incomplete() -> None:
+            # One content-free attempt to record that the reader wrapper had not completed at
+            # the ownership decision. Contained like the request-task reporter above: this runs
+            # inside `finally`, where a raise would replace the cancellation or exception that
+            # initiated teardown. It does not claim a physical thread was proven blocked.
+            try:
+                acp_debug_log(
+                    location="server.py:serve_ndjson:reader_incomplete",
+                    message="reader wrapper had not completed at the ownership decision",
+                    data={"reader_state": "incomplete"},
+                )
+            except Exception:
+                return
+
         async def process_request(message: dict[str, Any], operation_id: str) -> None:
             request_id = message.get("id")
             method = message.get("method")
@@ -618,4 +632,18 @@ class AcpStreamServer:
                 self._client_mcp_runtime.close()
             if dedicated is not None and owned_dedicated and join_dedicated_writer:
                 dedicated.close_and_join()
-            await reader_task
+            # Reader ownership at teardown. The cooperative path is EOF: `read_lines` put its
+            # sentinel and returned, so `reader_task` is already done -- await it (immediate,
+            # surfacing any reader error) and complete the full shutdown. But when teardown is
+            # driven by cancellation or an exception, the wrapper may not have completed and a
+            # physical `readline` can still be running inside the default executor. Awaiting it
+            # would park teardown on input that may never arrive, so instead stop the async
+            # reader and record that it had not completed. The blocking read stays owned by the
+            # executor until it returns on its own (e.g. when the client closes stdin): we do
+            # not close shared stdin, do not reclassify incomplete input as EOF, and do not
+            # claim a bounded process exit -- only that this await no longer stalls teardown.
+            if reader_task.done():
+                await reader_task
+            else:
+                reader_task.cancel()
+                report_reader_incomplete()
