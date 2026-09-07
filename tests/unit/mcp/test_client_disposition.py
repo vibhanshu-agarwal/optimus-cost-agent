@@ -27,10 +27,12 @@ from optimus.mcp.client_config import ClientMcpConfigError, ClientMcpConfigNorma
 from optimus.mcp.client_disposition import (
     AcpMcpPermissionBroker,
     ClientMcpDisposition,
+    ClientMcpRuntime,
     ClientMcpSessionState,
+    ClientMcpShutdownOutcome,
 )
 from optimus.mcp.client_sdk import ClientMcpSdkAdapter
-from optimus.mcp.client_supervisor import MCPAsyncSupervisor
+from optimus.mcp.client_supervisor import MCPAsyncSupervisor, MCPSupervisorState
 from optimus.mcp.client_trust import (
     ClientMcpDurableRecord,
     ClientMcpDurableStore,
@@ -1089,3 +1091,185 @@ async def test_two_sessions_and_two_servers_do_not_cross_consume(tmp_path: Path)
     hold_out, hold = state_a.tool_service.call_tool("tools", "delete_resource", args)
     assert hold.authorization_outcome != "ALLOW"
     assert "dispatched:" not in hold_out.text
+
+
+# --- Seam 5: ClientMcpRuntime.close aggregate outcome (frozen matrix v3, R1) ---
+
+
+class _RecordingAdapter:
+    def __init__(self, calls: list[str], *, raise_on_close: bool = False) -> None:
+        self._calls = calls
+        self._raise_on_close = raise_on_close
+
+    def close_all(self) -> None:
+        self._calls.append("sdk")
+        if self._raise_on_close:
+            raise RuntimeError("sdk close failed")
+
+
+class _RecordingEndpoint:
+    def __init__(self, calls: list[str], *, raise_on_close: bool = False) -> None:
+        self._calls = calls
+        self._raise_on_close = raise_on_close
+
+    def close(self) -> None:
+        self._calls.append("endpoint")
+        if self._raise_on_close:
+            raise RuntimeError("endpoint close failed")
+
+
+class _RecordingSupervisor:
+    def __init__(
+        self,
+        calls: list[str],
+        *,
+        state: MCPSupervisorState = MCPSupervisorState.DEAD,
+        raise_on_close: bool = False,
+        state_after: MCPSupervisorState | None = None,
+    ) -> None:
+        self._calls = calls
+        self._state = state
+        self._raise_on_close = raise_on_close
+        self._state_after = state_after
+
+    @property
+    def state(self) -> MCPSupervisorState:
+        return self._state
+
+    def close(self) -> None:
+        self._calls.append("supervisor")
+        if self._state_after is not None:
+            self._state = self._state_after
+        if self._raise_on_close:
+            raise RuntimeError("supervisor close failed")
+
+
+def _runtime(calls: list[str], *, adapter, supervisor, endpoint) -> ClientMcpRuntime:
+    return ClientMcpRuntime(
+        disposition=object(),
+        supervisor=supervisor,
+        sdk_adapter=adapter,
+        candidate_endpoint=endpoint,
+    )
+
+
+def test_runtime_close_attempts_all_stages_in_order() -> None:
+    # Row 4d: ordered attempts SDK -> endpoint -> supervisor despite injected failures.
+    for sdk_fail, ep_fail in [(True, False), (False, True), (True, True)]:
+        calls: list[str] = []
+        outcome = _runtime(
+            calls,
+            adapter=_RecordingAdapter(calls, raise_on_close=sdk_fail),
+            supervisor=_RecordingSupervisor(calls, state=MCPSupervisorState.DEAD),
+            endpoint=_RecordingEndpoint(calls, raise_on_close=ep_fail),
+        ).close()
+        assert calls == ["sdk", "endpoint", "supervisor"]
+        assert isinstance(outcome, ClientMcpShutdownOutcome)
+        assert outcome.complete is False
+
+
+def test_runtime_close_without_endpoint_skips_endpoint_stage() -> None:
+    calls: list[str] = []
+    runtime = ClientMcpRuntime(
+        disposition=object(),
+        supervisor=_RecordingSupervisor(calls, state=MCPSupervisorState.DEAD),
+        sdk_adapter=_RecordingAdapter(calls),
+        candidate_endpoint=None,
+    )
+    outcome = runtime.close()
+    assert calls == ["sdk", "supervisor"]
+    assert outcome.endpoint_closed is True
+    assert outcome.complete is True
+
+
+def test_supervisor_close_raise_after_dead_is_non_clean() -> None:
+    # Row 4a: supervisor reaches DEAD then close() raises -> aggregate non-clean.
+    calls: list[str] = []
+    runtime = _runtime(
+        calls,
+        adapter=_RecordingAdapter(calls),
+        supervisor=_RecordingSupervisor(
+            calls, state=MCPSupervisorState.DEAD, raise_on_close=True
+        ),
+        endpoint=_RecordingEndpoint(calls),
+    )
+    outcome = runtime.close()
+    assert outcome.sdk_closed is True
+    assert outcome.endpoint_closed is True
+    assert outcome.supervisor_closed is False
+    assert outcome.supervisor_state is MCPSupervisorState.DEAD
+    assert outcome.complete is False
+
+
+def test_stage_failure_persists_across_repeated_close() -> None:
+    # Row 4b: a recorded stage failure is sticky across repeated runtime.close().
+    calls: list[str] = []
+    adapter = _RecordingAdapter(calls, raise_on_close=True)
+    supervisor = _RecordingSupervisor(calls, state=MCPSupervisorState.DEAD)
+    runtime = _runtime(calls, adapter=adapter, supervisor=supervisor, endpoint=_RecordingEndpoint(calls))
+
+    first = runtime.close()
+    assert first.sdk_closed is False
+    assert first.complete is False
+
+    # Second call: every stage now returns normally, supervisor DEAD.
+    adapter._raise_on_close = False
+    second = runtime.close()
+    assert second.sdk_closed is True
+    assert second.supervisor_state is MCPSupervisorState.DEAD
+    assert second.complete is False  # prior failure retained -> no invented success
+
+
+def test_pending_supervisor_then_dead_completes() -> None:
+    """Row 4c with a REAL supervisor: a still-STOPPING supervisor (no stage exception)
+    is pending, not a failure, and completes on a later close once its real cleanup
+    has actually finished -- no double's state is mutated to manufacture the result."""
+    import threading
+
+    from optimus.mcp.client_supervisor import MCPSupervisorError
+
+    started = threading.Event()
+    cleanup_entered = threading.Event()
+    release = threading.Event()
+    sup = MCPAsyncSupervisor(close_join_timeout_seconds=0.05)
+    sup.start()
+    owner = sup._thread  # noqa: SLF001
+    assert owner is not None
+
+    async def op() -> None:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cleanup_entered.set()
+            release.wait(timeout=30)
+            raise
+
+    def worker() -> None:
+        try:
+            sup.submit(op(), timeout_seconds=0.05)  # timeout initiates cancellation
+        except MCPSupervisorError:
+            pass
+
+    w = threading.Thread(target=worker, name="row4c-submit")
+    w.start()
+    calls: list[str] = []
+    runtime = ClientMcpRuntime(
+        disposition=object(), supervisor=sup, sdk_adapter=_RecordingAdapter(calls)
+    )
+    try:
+        assert started.wait(2)
+        assert cleanup_entered.wait(2)  # cleanup held -> real pending shutdown
+        first = runtime.close()
+        assert first.supervisor_state is MCPSupervisorState.STOPPING
+        assert first.supervisor_closed is True  # no exception: pending, not a failure
+        assert first.complete is False
+    finally:
+        release.set()
+        w.join(5)
+        owner.join(5)
+
+    assert not owner.is_alive()  # the real cleanup actually finished
+    second = runtime.close()
+    assert second.supervisor_state is MCPSupervisorState.DEAD
+    assert second.complete is True
