@@ -2,9 +2,10 @@
 
 > **For agentic workers:** This is a sequencing and custody charter, not an
 > implementation plan. Do not change code, dependencies, configuration, evidence,
-> or live services directly from this document. Each implementation slice requires
-> its own reviewed `hardening-*-implementation.md` child plan. No item is authorized
-> merely because it is listed here.
+> or live services directly from this document. Implementation requires an approved
+> scope and independent review. Under the operator's 2026-09-06 direction, small
+> sandbox ports may use a concise shared work record instead of a detailed child
+> plan for each category. No item is authorized merely because it is listed here.
 
 **Goal:** Sequence the accepted Plan 11.26 runtime and duplication remediation
 program together with the newly measured hardening work, while preserving one
@@ -251,6 +252,15 @@ relative Markdown link only in the same change that creates the tracked child pl
 completion rewrites that link to the same filename under `archive/`. This prevents the
 status hub from publishing dangling links to working documents.
 
+For the operator-approved sandbox port lane, the status column continues to describe
+the reserved child-plan document; `Not drafted` does not deny a separately reviewed
+small delivery recorded in that row's next gate. A short work record carries its
+scope, provenance, fault tests, results and independent acceptance. The sandbox stays
+an independent parallel lane, with known-good annotated tags retained as evidence;
+accepted fixes are adapted onto current main in small slices, not by merging the
+sandbox branch. This exception replaces the per-category detailed-plan requirement
+for those slices without changing ownership or declaring a whole track complete.
+
 | Track | Child plan | Status | Scope owned by that plan | Next status gate |
 |---|---|---|---|---|
 | `HARDENING-TRACK-RUFF-LINT` | `hardening-ruff-lint-ratchet-implementation.md` | `Not drafted` | `HARDENING-ITEM-RUFF-LINT-RATCHET` | independently reviewed child plan |
@@ -261,8 +271,8 @@ status hub from publishing dangling links to working documents.
 | `HARDENING-TRACK-STATIC-TYPING` | `hardening-static-type-checking-implementation.md` | `Not drafted` | `HARDENING-ITEM-MYPY-SRC-RATCHET` | independently reviewed child plan after targeted test-double contracts |
 | `HARDENING-TRACK-AUDIT-TOOLING` | `hardening-audit-tool-integrity-and-typing-implementation.md` | `Not drafted` | `HARDENING-ITEM-AUDIT-INVENTORY-REDERIVATION` and `HARDENING-ITEM-AUDIT-TOOL-TYPING` | independently reviewed child plan whose first task is the re-derivation guard |
 | `HARDENING-TRACK-ANALYSIS-ORACLE` | `hardening-analysis-oracle-evaluation.md` | `Not drafted` | `HARDENING-ITEM-PYSCN-EVALUATION` | independently reviewed time-boxed evaluation plan |
-| `HARDENING-TRACK-LIFECYCLE-SIGNALS` | `hardening-resource-lifetime-and-signals-implementation.md` | `Not drafted` | `P11.26-CAND-1-RESOURCE-LIFETIME` plus `HARDENING-ITEM-SIGNAL-ADAPTER` | independently reviewed child plan |
-| `HARDENING-TRACK-LOGGING-TELEMETRY` | `hardening-logging-and-telemetry-implementation.md` | `Not drafted` | `P11.26-CAND-2-TELEMETRY-CONTRACT` and existing `P11-FU-30` | lifecycle contract and independently reviewed child plan |
+| `HARDENING-TRACK-LIFECYCLE-SIGNALS` | `hardening-resource-lifetime-and-signals-implementation.md` | `Not drafted` | `P11.26-CAND-1-RESOURCE-LIFETIME` plus `HARDENING-ITEM-SIGNAL-ADAPTER` | Seam 4 A is locally accepted at `12cc5638` on main `3b3093d3`: escaped request-task exceptions are observed without changing settlement or reader teardown. Publication is authorized; this PR records CI and any later merge decision. Next implementation slice: seam 4 B reader ownership, then seam 5 after its dependencies are settled. No track, signal-adapter or FU-6 closure is claimed. |
+| `HARDENING-TRACK-LOGGING-TELEMETRY` | `hardening-logging-and-telemetry-implementation.md` | `Not drafted` | `P11.26-CAND-2-TELEMETRY-CONTRACT` and existing `P11-FU-30` | Seam 4 A at `12cc5638` adds content-free reporting for escaped request-task failures and two logging-audit classifications, under the lifecycle slice's shared work record. Other diagnostics, telemetry contracts and P11-FU-30 remain open; no lazy trace API, watchdog or buffered sink is introduced. |
 | `HARDENING-TRACK-SEMANTIC-ERRORS` | `hardening-semantic-error-selection-implementation.md` | `Not drafted` | `P11.26-CAND-3-SEMANTIC-ERROR-SELECTION` plus `HARDENING-ITEM-EXCEPTION-SITE-DISPOSITION` | independently reviewed child plan |
 | `HARDENING-TRACK-QUEUE-BACKPRESSURE` | `hardening-queue-backpressure-implementation.md` | `Not drafted` | `P11.26-CAND-4-QUEUE-BACKPRESSURE` | independently reviewed child plan |
 | `HARDENING-TRACK-REPEATABILITY` | `hardening-repeatability-attribution-implementation.md` | `Not drafted` | `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION` | independently reviewed child plan |
@@ -281,10 +291,11 @@ grant execution authority, and a child plan never edits its own row.
 | Canonical Plan 11.26 runtime and duplication evidence | yes | accepted audit evidence and historical dispositions only; it authorizes no remediation |
 | Hardening sequencing and custody map | yes | this masterplan is the status authority for its 15 child plans through the promoted backlog row and hygiene tests |
 | CI guardrail child implementation plan | yes | Task 0 baseline is reviewer-accepted at `1ff7761`; Task 1 locked synchronization is accepted at `82798bd`; Tasks 2-6 retain separate review, execution, and commit gates |
-| Other hardening child implementation plans | no | the remaining fourteen reserved child filenames are untracked and `Not drafted` |
+| Other hardening child implementation plans | no | the remaining fourteen reserved child filenames are untracked and `Not drafted`; small sandbox ports use the approved work-record exception above |
 | Required CI and production-only secret scanning | yes | `clean-environment-recheck` and `verify` remain required on main; CI scans tracked text under `src/` and rejects an empty inventory. PR #196's accepted local hook strictly validates selected text as UTF-8 before delegating, without a report-directory exclusion or expanded selection. The baseline remains exactly three frozen-v9 identities plus 31 approved report identities. Local delivery and Windows/WSL platform evidence are accepted, and the first PR checks passed; any successor head must pass its own required checks. Historical UTF-16 transcripts reject if selected, and existing findings are not closed. |
 | New lint, type, dependency, five-package coverage, or B310 gate | no | those child tasks remain open and separately authorized; current CI still reports the existing narrow coverage command until the coverage task lands |
-| New lifecycle, logging, error, queue, repeatability, or duplication behavior | no | no production implementation is authorized or claimed |
+| Escaped request-task failure observation (seam 4 A) | yes | locally accepted at `12cc5638`, ported from `sandbox-seam4` commit `0c718486`; the local-delivery receipt is SHA-256 `2b3d1b70662b5b5f04ba69f26c93264b58f56aec7ccbc49420397a03992bb04c`. Named target faults, five killed mutations, Windows/WSL focused tests and the full local hook support this narrow claim. This PR supplies GitHub evidence; publication is not installation or rollout. The observer makes one content-free reporting attempt, and cannot guarantee persistence when its sink fails. |
+| Remaining lifecycle, logging, error, queue, repeatability, or duplication behavior | no | reader ownership, MCP shutdown outcomes and broader track obligations are not delivered by seam 4 A; the wider sandbox queue remains open |
 
 ## Existing obligation sequence
 

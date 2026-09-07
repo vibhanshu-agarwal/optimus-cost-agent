@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import functools
 import json
 import sys
+import uuid
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Protocol
 
-from optimus.acp.debug_trace import acp_debug_log, log_provenance_once
+from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled, log_provenance_once
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.errors import (
     INTERNAL_ERROR,
@@ -447,7 +449,45 @@ class AcpStreamServer:
                 print(f"optimus.acp: ndjson reader failed: {sanitize_protocol_error_message(str(exc))}", file=sys.stderr)
                 await message_queue.put(None)
 
-        async def process_request(message: dict[str, Any]) -> None:
+        def approved_method_category(method: object) -> str:
+            # Never copy arbitrary client content into a diagnostic: an unapproved method
+            # collapses to "unknown" rather than being echoed.
+            return method if method in ("initialize", "session/new", "session/load", "session/prompt") else "unknown"
+
+        def report_request_task_failure(operation_id: str, request_method: str) -> None:
+            # One content-free diagnostic per escaped request-task failure. This runs from a
+            # done-callback: it must never raise into the loop, deliver a response, retry work,
+            # or alter settlement -- so it is fully contained and writes nothing but the
+            # operation id and the approved method category.
+            try:
+                acp_debug_log(
+                    location="server.py:serve_ndjson:request_task_failed",
+                    message="request task failed",
+                    data={"operation_id": operation_id, "request_method": request_method},
+                )
+                if not debug_trace_enabled():
+                    # With trace off the failure would otherwise be silently lost; surface a
+                    # content-free line so it is still observable.
+                    print(
+                        f"optimus.acp: request task failed operation_id={operation_id} method={request_method}",
+                        file=sys.stderr,
+                    )
+            except Exception:
+                return
+
+        def on_request_task_done(task: asyncio.Task[Any], *, operation_id: str, request_method: str) -> None:
+            # Both schedules pass through here: a task that fails while serving, and one whose
+            # cancellation cleanup raises at shutdown. Retrieving the exception here also keeps
+            # a "never retrieved" warning from escaping. Successful completion and ordinary
+            # cancellation are not failures.
+            request_tasks.discard(task)
+            if task.cancelled():
+                return
+            if task.exception() is None:
+                return
+            report_request_task_failure(operation_id, request_method)
+
+        async def process_request(message: dict[str, Any], operation_id: str) -> None:
             request_id = message.get("id")
             method = message.get("method")
             pending_permission_id = outbound.last_outbound_request_id
@@ -457,7 +497,12 @@ class AcpStreamServer:
                 acp_debug_log(
                     location="server.py:process_request:entry",
                     message="handling client request",
-                    data={"request_id": request_id, "method": method, "pending_permission_id": pending_permission_id},
+                    data={
+                        "request_id": request_id,
+                        "method": method,
+                        "pending_permission_id": pending_permission_id,
+                        "operation_id": operation_id,
+                    },
                     hypothesis_id="H4",
                 )
                 # endregion
@@ -547,9 +592,18 @@ class AcpStreamServer:
                     outbound.deliver_client_response(message)
                     continue
                 if "method" in message and "id" in message:
-                    task = asyncio.create_task(process_request(message))
+                    # Mint the operation id once here, before the task exists, so the same id
+                    # can be bound into the completion observer without a late-bound loop
+                    # variable, and threaded into process_request for its own diagnostics.
+                    operation_id = uuid.uuid4().hex
+                    request_method = approved_method_category(message.get("method"))
+                    task = asyncio.create_task(process_request(message, operation_id))
                     request_tasks.add(task)
-                    task.add_done_callback(request_tasks.discard)
+                    task.add_done_callback(
+                        functools.partial(
+                            on_request_task_done, operation_id=operation_id, request_method=request_method
+                        )
+                    )
         finally:
             # Transport-loss ordering: abandon notices before cancelling request tasks.
             notice.mark_transport_abandoned()
