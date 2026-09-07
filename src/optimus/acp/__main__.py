@@ -11,7 +11,7 @@ from pathlib import Path
 
 import keyring
 
-from optimus.acp.bootstrap import StartupConfigurationError, build_configured_server
+from optimus.acp.bootstrap import StartupConfigurationError, build_configured_server, resolve_ephemeral_hmac_flag
 from optimus.acp.debug_trace import (
     configure_debug_trace,
     log_authorized_launch_comparison,
@@ -33,6 +33,7 @@ from optimus.acp.local_infra import (
 from optimus.acp.operator_paths import OperatorPathConfigurationError, resolve_authorized_operator_paths
 from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.acp.server import StdioByteReader, StdioByteWriter, StdioNdjsonLineReader, StdioNdjsonLineWriter
+from optimus.acp.subprocess_env import system_environ_view
 from optimus.acp.trusted_paths import (
     TrustedPathError,
     format_trusted_path_operator_message,
@@ -582,8 +583,16 @@ def main(argv: list[str] | None = None) -> int:
     # other exception — stops it exactly once.
     try:
         try:
+            # Seam 3: MCP construction reads PATH/PATHEXT/SystemRoot and the
+            # ephemeral-HMAC request from the ORIGINAL launch snapshot, projected to
+            # allowlisted system names only. agent_environ is the registry
+            # projection -- it has already lost the system keys and legitimately
+            # carries the Gateway credential, which must not cross the narrower MCP
+            # subprocess boundary. Both views are derived from the one capture.
             build_server_kwargs: dict[str, object] = {
                 "environ": agent_environ,
+                "system_environ": system_environ_view(snapshot.values),
+                "ephemeral_hmac": resolve_ephemeral_hmac_flag(snapshot.values),
                 "workspace_root": workspace_root,
                 "model": args.model,
             }

@@ -180,7 +180,7 @@ def test_acpx_evidence_keeps_protocol_records_but_redacts_secret_aliases_and_fre
         returncode=1,
         stdout=(
             '{"jsonrpc":"2.0","result":{"agentCapabilities":'
-            '{"loadSession":false,"apiKey":"json-secret","credential":"credential-secret"}}}'
+            '{"loadSession":false,"apiKey":"json-secret","credential":"credential-secret"}}}'  # pragma: allowlist secret
         ),
         stderr="OPTIMUS_API_KEY=env-secret Bearer bearer-secret",
     )
@@ -940,12 +940,12 @@ def test_seed_hermetic_settings_targets_custom_data_dir_config(tmp_path: Path) -
     assert not (tmp_path / "AppData").exists()
 
 
-COMMIT = "cfaffbebf184cd7e08f15749ce5aaff414991ec1"
+COMMIT = "cfaffbebf184cd7e08f15749ce5aaff414991ec1"  # pragma: allowlist secret
 SHA_A = "a" * 64
 SHA_B = "b" * 64
 SHA_C = "c" * 64
 RAW_CAPTURE_CANARY = b"RAW_CAPTURE_CANARY=sk-live-not-for-disk"
-RELAY_CHILD_STDERR_CANARY = "OPTIMUS_API_KEY=sk-child-stderr-canary-not-for-disk"
+RELAY_CHILD_STDERR_CANARY = "OPTIMUS_API_KEY=sk-child-stderr-canary-not-for-disk"  # pragma: allowlist secret
 RELAY_CHILD_STDERR_RAW_SCRATCH_PATH = "C:/raw-scratch/relay-child-stderr.txt"
 PLAN_1124_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe"
 PLAN_1124_V3_REPORT_NAME = "plan-11-24-zed-guided-session-load-probe-v3"
@@ -1028,7 +1028,7 @@ def reachable_result() -> dict[str, object]:
         "origin_a_launches": 0,
         "zed_launches": 1,
         "_sanitized_relay_zed": b"should-not-be-serialized",
-        "_secret_sidecar_key": "must-not-reach-disk",
+        "_secret_sidecar_key": "must-not-reach-disk",  # pragma: allowlist secret
     }
 
 
@@ -3489,7 +3489,7 @@ def test_materialization_failure_records_sanitized_reason_without_changing_findi
         tmp_path, monkeypatch, write_capture=True
     )
     leaky_path = str((hermetic / "settings.json").resolve())
-    secret = "OPTIMUS_API_KEY=sk-live-not-for-disk"
+    secret = "OPTIMUS_API_KEY=sk-live-not-for-disk"  # pragma: allowlist secret
     thrown: list[OSError] = []
 
     def boom(**_kwargs: object) -> Path:
@@ -3580,9 +3580,9 @@ def test_relay_child_stderr_excerpt_sanitizes_before_truncating_to_prevent_secre
     run_dir.mkdir(parents=True)
 
     limit = 4000
-    secret_full = "OPTIMUS_API_KEY=sk-live-not-for-disk"
+    secret_full = "OPTIMUS_API_KEY=sk-live-not-for-disk"  # pragma: allowlist secret
     leaked_fragment = "live-not-for-disk"
-    secret_prefix = "OPTIMUS_API_KEY=sk-"
+    secret_prefix = "OPTIMUS_API_KEY=sk-"  # pragma: allowlist secret
     offset_in_secret = len(secret_prefix)
     filler_after_len = limit + offset_in_secret - len(secret_full)
     assert filler_after_len >= 0
@@ -3939,13 +3939,28 @@ def test_establishing_applicability_rejects_dirty_execution_surface(tmp_path: Pa
 
 
 def test_establishing_import_closure_equals_explicit_module_path_subset() -> None:
-    """baseline-green preservation: live AST closure matches the explicit module-path subset."""
+    """baseline-green preservation: live AST closure matches the explicit module-path subset.
+
+    Seam 3 adds exactly one module, ``optimus.acp.subprocess_env``, which
+    ``__main__`` now imports to derive the captured system view; its own imports
+    (``launch_policy``, ``config.gateway``) were already in the closure. The
+    closure is computed from committed HEAD blobs, so the expectation is keyed on
+    whether HEAD's ``__main__`` carries that import: committed predecessors keep
+    their exact 133-path closure, and the seam 3 commit pins 134. Either way the
+    count is pinned so the closure cannot grow silently.
+    """
     import tools.probe_p11_zed_session_load as probe
 
     closure = probe.compute_establishing_import_closure(REPO_ROOT)
     expected = frozenset(path for path in probe.ESTABLISHING_EXECUTION_GIT_PATHS if path.endswith(".py"))
+    seam3_path = "src/optimus/acp/subprocess_env.py"
+    head_main = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/acp/__main__.py")
+    seam3_committed = b"from optimus.acp.subprocess_env import" in head_main
+    if not seam3_committed:
+        expected -= {seam3_path}
     assert closure == expected
-    assert len(closure) == 133
+    assert (seam3_path in closure) is seam3_committed
+    assert len(closure) == (134 if seam3_committed else 133)
 
 
 def test_establishing_import_closure_traverses_package_init_reexports(tmp_path: Path) -> None:
