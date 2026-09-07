@@ -9,6 +9,7 @@ from optimus.acp.debug_trace import log_planning_replan_event, log_workspace_con
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.server import AcpStreamServer
 from optimus.acp.spec import resolve_max_planning_turns
+from optimus.acp.subprocess_env import system_environ_view
 from optimus.agent.defaults import resolve_agent_model
 from optimus.agent.runner import AgentRunner
 from optimus.config.gateway import OptimusGatewaySettings
@@ -30,6 +31,23 @@ class StartupConfigurationError(Exception):
 
 def _missing_env_names(environ: Mapping[str, str], names: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(name for name in names if not environ.get(name, "").strip())
+
+
+_EPHEMERAL_HMAC_FLAG = "OPTIMUS_CLIENT_MCP_EPHEMERAL_HMAC"
+
+
+def resolve_ephemeral_hmac_flag(environ: Mapping[str, str]) -> bool:
+    """Interpret the ephemeral-HMAC request from a CAPTURED mapping, never os.environ.
+
+    Seam 3 binds the choice to captured input; the interpretation itself is
+    preserved from the former ambient ``os.environ.get(...)`` truthiness: any
+    non-empty value (whitespace included) requests an ephemeral key, while unset
+    or empty means the keyring-backed approval store. The launch gate rejects
+    any inherited value whose stripped form is non-empty
+    (``INTERNAL_ONLY_INHERITED``), so through the optimus-agent entry point only
+    unset, empty or whitespace values can reach this helper.
+    """
+    return bool(environ.get(_EPHEMERAL_HMAC_FLAG, ""))
 
 
 def _build_gateway_client(*, settings, timeout_seconds):
@@ -107,6 +125,8 @@ def build_agent_runner_for_harness(
 def build_configured_server(
     *,
     environ: Mapping[str, str],
+    system_environ: Mapping[str, str] | None = None,
+    ephemeral_hmac: bool = False,
     workspace_root: Path | None = None,
     model: str | None = None,
     gateway_timeout_seconds: float | None = None,
@@ -117,7 +137,21 @@ def build_configured_server(
     the agent runner, gateway client, and dispatcher required for the server.
 
     :param environ: A mapping of environment variables to be used for configuration.
+        This is the agent child's authorized projection; it legitimately carries the
+        Gateway credential and is never handed to MCP construction.
     :type environ: Mapping[str, str]
+
+    :param system_environ: The captured launch environment (or its system-only
+        view) from which the MCP subprocess boundary reads PATH, PATHEXT and
+        SystemRoot. It is reduced to the allowlisted system names here; ``None``
+        or an empty mapping means an empty view -- never a fallback to
+        ``os.environ``.
+    :type system_environ: Mapping[str, str] | None
+
+    :param ephemeral_hmac: Explicit request for a process-lifetime approval-store
+        HMAC key, bound by the caller to captured input (see
+        ``resolve_ephemeral_hmac_flag``). Defaults to the keyring-backed store.
+    :type ephemeral_hmac: bool
 
     :param workspace_root: The root path of the workspace. If not provided, defaults
         to the current directory.
@@ -150,7 +184,16 @@ def build_configured_server(
     # authorized/sanitized) agent environ passed into this function, rather
     # than read from os.environ per-request deep inside AcpDuplexAdapter.
     max_planning_turns = resolve_max_planning_turns(environ)
-    client_mcp_runtime = build_client_mcp_runtime(workspace_root=resolved_workspace)
+    # Seam 3: the same rule as resolve_max_planning_turns above, and the invariant
+    # __main__ documents -- every downstream helper reads captured input, never
+    # os.environ. The MCP path was the one that still escaped it. The system view
+    # is re-derived here so that only allowlisted system names can reach MCP
+    # construction even if a caller misroutes a wider mapping.
+    client_mcp_runtime = build_client_mcp_runtime(
+        workspace_root=resolved_workspace,
+        system_environ=system_environ_view({} if system_environ is None else system_environ),
+        ephemeral_hmac=ephemeral_hmac,
+    )
     from optimus.acp.conversation import build_conversation_sanitizer_inputs
 
     conversation_sanitizer_inputs = build_conversation_sanitizer_inputs(
@@ -165,13 +208,22 @@ def build_configured_server(
     )
 
 
-def build_client_mcp_runtime(*, workspace_root: Path) -> Any:
+def build_client_mcp_runtime(
+    *,
+    workspace_root: Path,
+    system_environ: Mapping[str, str],
+    ephemeral_hmac: bool = False,
+) -> Any:
     """Build one process-lifetime client-MCP runtime (supervisor + disposition seam).
 
     HTTP/SSE capability flags stay false until adapters and verification exist.
     Runtime capabilities are never inserted into Pydantic dumps or dispatcher payloads.
+
+    ``system_environ`` is the captured system-only view (PATH, PATHEXT,
+    SystemRoot, ...); it is copied once here and never reread from ``os.environ``.
+    ``ephemeral_hmac`` is the explicit, already-interpreted request for a
+    process-lifetime approval-store key.
     """
-    import os
     import secrets
     import sys
 
@@ -202,11 +254,12 @@ def build_client_mcp_runtime(*, workspace_root: Path) -> Any:
             timeout=httpx2.Timeout(30.0, read=60.0),
         )
 
+    captured_system = dict(system_environ)
     roots = resolve_trusted_operator_roots(platform_name=sys.platform)
     approval_store = KeyringApprovalStore(
         keyring_backend=keyring,
         runtime_root=roots.approval_runtime_root,
-        hmac_key=secrets.token_bytes(32) if os.environ.get("OPTIMUS_CLIENT_MCP_EPHEMERAL_HMAC") else None,
+        hmac_key=secrets.token_bytes(32) if ephemeral_hmac else None,
     )
     hmac_key = approval_store.hmac_key
     workspace_identity = resolve_workspace_identity(workspace_root)
@@ -226,10 +279,10 @@ def build_client_mcp_runtime(*, workspace_root: Path) -> Any:
     )
     candidate_endpoint = PendingClientMcpCandidateEndpoint(authkey=derive_ipc_auth_key(hmac_key))
     disposition = ClientMcpDisposition(
-        normalizer=ClientMcpConfigNormalizer(),
+        normalizer=ClientMcpConfigNormalizer(system_environ=captured_system),
         lease_authority=ClientMcpLeaseAuthority(store=durable),
         hmac_key=hmac_key,
-        controlled_path=os.environ.get("PATH", ""),
+        controlled_path=captured_system.get("PATH", ""),
         workspace_digest=workspace_identity.digest,
         candidate_endpoint=candidate_endpoint,
     )

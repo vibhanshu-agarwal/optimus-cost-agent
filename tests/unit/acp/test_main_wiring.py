@@ -16,7 +16,7 @@ from tests.unit.acp.conftest import FakeKeyring, authorize_workspace_for_test
 def _base_env(*, gateway_url: str = "http://127.0.0.1:8765") -> dict[str, str]:
     return {
         "OPTIMUS_GATEWAY_URL": gateway_url,
-        "OPTIMUS_API_KEY": "test-key",
+        "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
     }
 
@@ -337,7 +337,7 @@ def test_no_auto_start_skips_redis_in_check_config_branch(monkeypatch, tmp_path)
 
 def test_check_config_passes_sanitized_environ_to_preflight(monkeypatch, tmp_path) -> None:
     env = _base_env()
-    env["ANTHROPIC_API_KEY"] = "sk-ant-real"
+    env["ANTHROPIC_API_KEY"] = "sk-ant-real"  # pragma: allowlist secret
     _authorize(monkeypatch, tmp_path, env)
     preflight_environ_seen: dict[str, str] = {}
 
@@ -350,7 +350,7 @@ def test_check_config_passes_sanitized_environ_to_preflight(monkeypatch, tmp_pat
     exit_code = acp_main.main(["--check-config", "--workspace-root", str(tmp_path)])
 
     assert exit_code == 0
-    assert preflight_environ_seen["OPTIMUS_API_KEY"] == "test-key"
+    assert preflight_environ_seen["OPTIMUS_API_KEY"] == "test-key"  # pragma: allowlist secret
     assert "ANTHROPIC_API_KEY" not in preflight_environ_seen
 
 
@@ -473,7 +473,7 @@ def test_real_serve_path_calls_helpers_in_expected_order(monkeypatch, tmp_path) 
 def test_anthropic_provider_selection_fails_before_agent_or_gateway_start(monkeypatch, tmp_path, capsys) -> None:
     env = _base_env()
     env["OPTIMUS_LOCAL_GATEWAY_PROVIDER"] = "anthropic"
-    env["ANTHROPIC_API_KEY"] = "sk-ant-real"
+    env["ANTHROPIC_API_KEY"] = "sk-ant-real"  # pragma: allowlist secret
     # Isolate KeyringApprovalStore from the host OS keyring (Linux CI has none).
     monkeypatch.setattr(acp_main, "keyring", FakeKeyring())
     for name, value in env.items():
@@ -486,7 +486,7 @@ def test_anthropic_provider_selection_fails_before_agent_or_gateway_start(monkey
         gateway_call_seen["provider_credentials"] = provider_credentials
         return None
 
-    def fake_build_configured_server(*, environ, workspace_root, model):
+    def fake_build_configured_server(*, environ, workspace_root, model, system_environ, ephemeral_hmac):
         agent_environ_seen.update(environ)
 
         class FakeServer:
@@ -515,8 +515,8 @@ def test_anthropic_provider_selection_fails_before_agent_or_gateway_start(monkey
 def test_openrouter_provider_key_reaches_gateway_child_but_not_agent_settings(monkeypatch, tmp_path) -> None:
     env = _base_env()
     env["OPTIMUS_LOCAL_GATEWAY_PROVIDER"] = "openrouter"
-    env["OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"] = "sk-or-real"
-    env["OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"] = "shared-secret"
+    env["OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"] = "sk-or-real"  # pragma: allowlist secret
+    env["OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"] = "shared-secret"  # pragma: allowlist secret
     _authorize(monkeypatch, tmp_path, env)
 
     gateway_call_seen: dict[str, object] = {}
@@ -527,7 +527,7 @@ def test_openrouter_provider_key_reaches_gateway_child_but_not_agent_settings(mo
         gateway_call_seen["shared_secret"] = shared_secret
         return None
 
-    def fake_build_configured_server(*, environ, workspace_root, model):
+    def fake_build_configured_server(*, environ, workspace_root, model, system_environ, ephemeral_hmac):
         agent_environ_seen.update(environ)
 
         class FakeServer:
@@ -548,7 +548,7 @@ def test_openrouter_provider_key_reaches_gateway_child_but_not_agent_settings(mo
     exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
 
     assert exit_code == 0
-    assert gateway_call_seen["provider_credentials"].secrets.model_provider_api_key == "sk-or-real"
+    assert gateway_call_seen["provider_credentials"].secrets.model_provider_api_key == "sk-or-real"  # pragma: allowlist secret
     assert "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY" not in agent_environ_seen
     assert "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET" not in agent_environ_seen
 
@@ -813,8 +813,8 @@ def test_gateway_child_construction_ignores_os_environ_mutated_after_capture(mon
     """
     env = _base_env()
     env["OPTIMUS_LOCAL_GATEWAY_PROVIDER"] = "openrouter"
-    env["OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"] = "sk-or-original"
-    env["OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"] = "shared-secret-original"
+    env["OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"] = "sk-or-original"  # pragma: allowlist secret
+    env["OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"] = "shared-secret-original"  # pragma: allowlist secret
     _authorize(monkeypatch, tmp_path, env)
 
     gateway_call_seen: dict[str, object] = {}
@@ -827,8 +827,8 @@ def test_gateway_child_construction_ignores_os_environ_mutated_after_capture(mon
         # earliest hookable point -- before ensure_local_gateway ever runs.
         import os as os_module
 
-        os_module.environ["OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"] = "sk-or-ATTACKER-INJECTED"
-        os_module.environ["OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"] = "shared-secret-ATTACKER-INJECTED"
+        os_module.environ["OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"] = "sk-or-ATTACKER-INJECTED"  # pragma: allowlist secret
+        os_module.environ["OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"] = "shared-secret-ATTACKER-INJECTED"  # pragma: allowlist secret
         return result
 
     def fake_ensure_local_gateway(*, provider_credentials, shared_secret, **_k):
@@ -843,8 +843,8 @@ def test_gateway_child_construction_ignores_os_environ_mutated_after_capture(mon
     exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
 
     assert exit_code == 0
-    assert gateway_call_seen["provider_credentials"].secrets.model_provider_api_key == "sk-or-original"
-    assert gateway_call_seen["shared_secret"] == "shared-secret-original"
+    assert gateway_call_seen["provider_credentials"].secrets.model_provider_api_key == "sk-or-original"  # pragma: allowlist secret
+    assert gateway_call_seen["shared_secret"] == "shared-secret-original"  # pragma: allowlist secret
 
 
 def test_no_gated_helper_reads_os_environ_after_capture(monkeypatch, tmp_path) -> None:
@@ -871,10 +871,10 @@ def test_no_gated_helper_reads_os_environ_after_capture(monkeypatch, tmp_path) -
         # candidate.agent_environ, this mutation would be observed in the
         # environ build_configured_server receives.
         result = original_append_audit(*a, **k)
-        os_module.environ["OPTIMUS_API_KEY"] = "attacker-injected-key"
+        os_module.environ["OPTIMUS_API_KEY"] = "attacker-injected-key"  # pragma: allowlist secret
         return result
 
-    def fake_build_configured_server(*, environ, workspace_root, model):
+    def fake_build_configured_server(*, environ, workspace_root, model, system_environ, ephemeral_hmac):
         agent_environ_seen.update(environ)
 
         class FakeServer:
@@ -896,7 +896,7 @@ def test_no_gated_helper_reads_os_environ_after_capture(monkeypatch, tmp_path) -
     exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
 
     assert exit_code == 0
-    assert agent_environ_seen["OPTIMUS_API_KEY"] == "test-key"
+    assert agent_environ_seen["OPTIMUS_API_KEY"] == "test-key"  # pragma: allowlist secret
 
 
 def test_main_exits_2_on_redis_port_conflict_before_gateway(monkeypatch, tmp_path, capsys) -> None:
@@ -1016,7 +1016,7 @@ def test_main_omits_gateway_timeout_override_when_flag_absent(monkeypatch, tmp_p
     _authorize(monkeypatch, tmp_path, env)
     captured_kwargs: dict[str, object] = {}
 
-    def capturing_build(*, environ, workspace_root, model):
+    def capturing_build(*, environ, workspace_root, model, system_environ, ephemeral_hmac):
         captured_kwargs.update(
             {"environ": environ, "workspace_root": workspace_root, "model": model}
         )
@@ -1119,7 +1119,7 @@ def test_serve_with_phoenix_passes_otlp_endpoint_only_to_gateway(monkeypatch, tm
         gateway_kwargs.update(kwargs)
         return None
 
-    def fake_server(*, environ, workspace_root, model):
+    def fake_server(*, environ, workspace_root, model, system_environ, ephemeral_hmac):
         agent_environ_seen.update(environ)
 
         class FakeServer:
@@ -2053,3 +2053,176 @@ def test_revalidation_failure_audit_append_unavailable_still_stops_startup(
     assert sinks["redis"] == []
     assert sinks["gateway"] == []
     assert sinks["server"] == []
+
+
+# --- seam 3: the entrypoint supplies a captured system view, never the agent environ ---
+
+
+class _SeamThreeServer:
+    def serve_ndjson(self, *_a, **_k):
+        async def _noop() -> None:
+            return None
+
+        return _noop()
+
+
+class _SeamThreeGatewayProcess:
+    def stop(self) -> None:
+        return None
+
+
+def test_main_supplies_a_captured_system_view_and_not_the_agent_environ(monkeypatch, tmp_path):
+    """Link 1 of the seam-3 wiring: does STARTUP supply the right view?
+
+    The bootstrap-level test proves bootstrap honours the argument it is given. It
+    cannot prove main() gives it the right one -- and that was exactly the defect:
+    a view derived from `agent_environ`, the registry projection, has already lost
+    PATH/PATHEXT/SystemRoot and carries only the Gateway credential.
+
+    This fails if the entrypoint omits the argument, if it derives the view from
+    `agent_environ` (an empty view, so the PATH assertion goes red), and if the
+    view were a live read of os.environ: ambient PATH is changed after capture in
+    the gateway callback, before the factory's arguments are constructed.
+    """
+    env = _base_env()
+    env["PATH"] = "/captured/bin"
+    env["PATHEXT"] = ".EXE"
+    env["SYSTEMROOT"] = r"C:\Windows"
+    _authorize(monkeypatch, tmp_path, env)
+    monkeypatch.delenv("OPTIMUS_CLIENT_MCP_EPHEMERAL_HMAC", raising=False)
+
+    captured: dict[str, object] = {}
+
+    def _factory(**kwargs):
+        captured.update(kwargs)
+        return _SeamThreeServer()
+
+    def _gateway(**_k):
+        # Runs after the snapshot is captured and BEFORE build_configured_server's
+        # arguments are constructed. Mutating ambient inside the receiving factory
+        # would be too late to catch a live os.environ read.
+        monkeypatch.setenv("PATH", "/ambient/changed/after/capture")
+        monkeypatch.setenv("PATHEXT", ".CMD")
+        # A live read of the flag after capture would flip this to True; the
+        # captured snapshot has it unset, so the bound value must stay False.
+        monkeypatch.setenv("OPTIMUS_CLIENT_MCP_EPHEMERAL_HMAC", "1")
+        return _SeamThreeGatewayProcess()
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", _gateway)
+    _patch_common(monkeypatch, server_factory=_factory)
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
+
+    assert exit_code == 0
+    assert set(captured) == {"environ", "workspace_root", "model", "system_environ", "ephemeral_hmac"}, sorted(captured)
+    view = captured["system_environ"]
+    assert view.get("PATH") == "/captured/bin", "must derive from the snapshot, not from agent_environ or os.environ"
+    assert view.get("PATHEXT") == ".EXE"
+    assert view.get("SYSTEMROOT") == r"C:\Windows"
+    assert "OPTIMUS_API_KEY" not in view, "the Gateway credential must not cross in the system view"
+    assert "test-key" not in repr(view)
+    assert captured["environ"] is not view, "agent environ and system view must remain separate objects"
+    assert captured["environ"]["OPTIMUS_API_KEY"] == "test-key", "the agent child keeps its own credential"  # pragma: allowlist secret
+    assert captured["ephemeral_hmac"] is False
+
+
+def test_main_cannot_inherit_the_ephemeral_hmac_flag_through_the_launch_gate(monkeypatch, tmp_path, capsys):
+    """Existing launch policy, pinned so seam 3's explicit boolean is understood
+    correctly: OPTIMUS_CLIENT_MCP_EPHEMERAL_HMAC is INTERNAL_ONLY / reject_inherited,
+    so a real launch that carries a value whose STRIPPED form is non-empty stops at
+    the gate before any side effect. The gate does not reject a whitespace-only
+    value, and the preserved truthiness rule treats any non-empty string as True,
+    so through optimus-agent the flag arrives as False for unset/empty input and
+    as True for whitespace-only input (see the parametrized test below)."""
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+    monkeypatch.setenv("OPTIMUS_CLIENT_MCP_EPHEMERAL_HMAC", "1")
+    sinks = _side_effect_sinks(monkeypatch)
+    _patch_common(monkeypatch, server_factory=lambda **k: sinks["server"].append(k) or _SeamThreeServer())
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
+
+    assert exit_code == 2
+    assert "INTERNAL_ONLY_INHERITED" in capsys.readouterr().err
+    assert sinks["redis"] == []
+    assert sinks["gateway"] == []
+    assert sinks["server"] == []
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(None, False), ("", False), ("   ", True)],
+    ids=["unset", "empty", "whitespace-only-passes-the-gate-and-binds-True"],
+)
+def test_main_binds_the_ephemeral_hmac_flag_from_the_snapshot_through_the_real_entrypoint(
+    monkeypatch, tmp_path, value, expected
+):
+    """Seam 3 R2 (reporting correction): the real entry point with the existing
+    authorization fixtures. Unset and empty bind False; whitespace-only passes the
+    launch gate and binds True under the preserved truthiness rule. In every case
+    a LATER ambient mutation to "1" (after capture, before the factory's arguments
+    are built) must not change the bound value. Keyring access stays on the fake
+    backend installed by _authorize; the fake factory never builds the MCP runtime."""
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+    if value is None:
+        monkeypatch.delenv("OPTIMUS_CLIENT_MCP_EPHEMERAL_HMAC", raising=False)
+    else:
+        monkeypatch.setenv("OPTIMUS_CLIENT_MCP_EPHEMERAL_HMAC", value)
+
+    captured: dict[str, object] = {}
+
+    def _factory(**kwargs):
+        captured.update(kwargs)
+        return _SeamThreeServer()
+
+    def _gateway(**_k):
+        monkeypatch.setenv("OPTIMUS_CLIENT_MCP_EPHEMERAL_HMAC", "1")
+        return _SeamThreeGatewayProcess()
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", _gateway)
+    _patch_common(monkeypatch, server_factory=_factory)
+
+    exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
+
+    assert exit_code == 0
+    assert captured, "the server factory must have been reached"
+    assert captured["ephemeral_hmac"] is expected
+
+
+def test_main_preserves_an_explicitly_empty_pathext_and_keeps_an_absent_one_absent(monkeypatch, tmp_path):
+    """Seam 3 R1 at the entry boundary: an explicitly empty PATHEXT in the launch
+    snapshot must reach bootstrap as "" (bare-name-only resolution), a missing one
+    must stay missing, and ambient PATHEXT set after capture must fill neither."""
+    env = _base_env()
+    env["PATH"] = "/captured/bin"
+    _authorize(monkeypatch, tmp_path, env)
+
+    captured: dict[str, object] = {}
+
+    def _factory(**kwargs):
+        captured.update(kwargs)
+        return _SeamThreeServer()
+
+    def _gateway(**_k):
+        monkeypatch.setenv("PATHEXT", ".CMD")
+        return _SeamThreeGatewayProcess()
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", _gateway)
+    _patch_common(monkeypatch, server_factory=_factory)
+
+    # The real snapshot also carries the host's own system names (SystemRoot,
+    # COMSPEC, ... on Windows), so assert the two keys under test, not the whole view.
+    monkeypatch.setenv("PATHEXT", "")
+    assert acp_main.main(["--workspace-root", str(tmp_path)]) == 0
+    assert captured["system_environ"]["PATH"] == "/captured/bin"
+    assert captured["system_environ"]["PATHEXT"] == ""
+
+    captured.clear()
+    monkeypatch.delenv("PATHEXT", raising=False)
+    assert acp_main.main(["--workspace-root", str(tmp_path)]) == 0
+    assert captured["system_environ"]["PATH"] == "/captured/bin"
+    assert "PATHEXT" not in captured["system_environ"]

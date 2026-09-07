@@ -69,7 +69,7 @@ class ClientMcpSafeView:
 class ClientMcpRuntimeCapability:
     """Opaque slot-backed holder for transient client MCP credentials."""
 
-    __slots__ = ("_safe_identity", "_safe_view", "_header_values", "_env_values")
+    __slots__ = ("_safe_identity", "_safe_view", "_header_values", "_env_values", "_system_root")
 
     def __init__(
         self,
@@ -78,11 +78,15 @@ class ClientMcpRuntimeCapability:
         safe_view: ClientMcpSafeView,
         header_values: Mapping[str, str],
         env_values: Mapping[str, str],
+        system_root: str | None = None,
     ) -> None:
         object.__setattr__(self, "_safe_identity", safe_identity)
         object.__setattr__(self, "_safe_view", safe_view)
         object.__setattr__(self, "_header_values", dict(header_values))
         object.__setattr__(self, "_env_values", dict(env_values))
+        # Seam 3: the Windows child baseline is fixed at normalization time from
+        # the captured system view; it is never reread from os.environ.
+        object.__setattr__(self, "_system_root", system_root)
 
     def __setattr__(self, name: str, value: object) -> None:
         raise TypeError("client mcp runtime capability is immutable")
@@ -105,7 +109,7 @@ class ClientMcpRuntimeCapability:
     def constructed_child_environ(self) -> dict[str, str]:
         baseline: dict[str, str] = {}
         if os.name == "nt":
-            system_root = os.environ.get("SystemRoot") or os.environ.get("SYSTEMROOT")
+            system_root: str | None = object.__getattribute__(self, "_system_root")
             if system_root:
                 baseline["SystemRoot"] = system_root
         env_values: dict[str, str] = object.__getattribute__(self, "_env_values")
@@ -144,9 +148,30 @@ class ClientMcpRuntimeCapability:
         raise TypeError("client mcp runtime capability is not serializable")
 
 
+_DEFAULT_WINDOWS_PATHEXT = ".COM;.EXE;.BAT;.CMD"
+
+
 class ClientMcpConfigNormalizer:
-    def __init__(self, *, scanner: ConfigTrustScanner | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        scanner: ConfigTrustScanner | None = None,
+        system_environ: Mapping[str, str] | None = None,
+    ) -> None:
         self._scanner = scanner or ConfigTrustScanner()
+        # Seam 3: bootstrap supplies the canonical system-only projection of the
+        # launch snapshot (allowlist spelling, as derived by
+        # optimus.acp.subprocess_env.system_environ_view). Only the two values
+        # needed here are copied -- never the whole mapping and never the agent
+        # environment -- so later mutation of the source cannot change an
+        # already-constructed normalizer. Missing (None) or explicitly empty
+        # context is empty: it must not reopen ambient access. A missing PATHEXT
+        # keeps the deterministic default order; an explicitly empty PATHEXT
+        # means no extensions, exactly as the former ambient read behaved.
+        captured = {} if system_environ is None else dict(system_environ)
+        system_root = captured.get("SYSTEMROOT", "")
+        self._system_root: str | None = system_root if system_root else None
+        self._pathext: str = captured.get("PATHEXT", _DEFAULT_WINDOWS_PATHEXT)
 
     def normalize(
         self,
@@ -213,7 +238,7 @@ class ClientMcpConfigNormalizer:
                 fingerprints.append(
                     _fingerprint(hmac_key, kind="env", name=env_name, index=env_index, value=env_value)
                 )
-            canonical_target = _resolve_stdio_command(command, controlled_path=controlled_path)
+            canonical_target = _resolve_stdio_command(command, controlled_path=controlled_path, pathext=self._pathext)
             scan_chunks.extend([command, *arguments, *credential_names])
         else:
             url = _require_str(entry.get("url"), rule_id="client_mcp.invalid_url")
@@ -276,6 +301,7 @@ class ClientMcpConfigNormalizer:
             safe_view=view,
             header_values=header_values,
             env_values=env_values,
+            system_root=self._system_root,
         )
 
 
@@ -335,7 +361,7 @@ def _fingerprint(hmac_key: bytes, *, kind: str, name: str, index: int, value: st
     return hmac.new(hmac_key, msg, hashlib.sha256).hexdigest()
 
 
-def _resolve_stdio_command(command: str, *, controlled_path: str) -> str:
+def _resolve_stdio_command(command: str, *, controlled_path: str, pathext: str) -> str:
     path = Path(command)
     if path.is_absolute() or os.path.isabs(command):
         resolved = path.resolve()
@@ -353,7 +379,7 @@ def _resolve_stdio_command(command: str, *, controlled_path: str) -> str:
 
     extensions = [""]
     if os.name == "nt":
-        pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD")
+        # Seam 3: the captured PATHEXT, never a live os.environ read.
         extensions = [""] + [ext for ext in pathext.split(os.pathsep) if ext]
 
     for directory in controlled_path.split(os.pathsep):

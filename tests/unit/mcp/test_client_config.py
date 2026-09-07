@@ -188,12 +188,12 @@ def test_posix_case_distinct_env_names_are_not_duplicates(tmp_path: Path) -> Non
 
 def test_meta_is_ignored_and_never_enters_identity(tmp_path: Path) -> None:
     first = _normalize(
-        [_stdio_entry(meta={"origin": "repo-local", "secret": "must-not-leak"})],
+        [_stdio_entry(meta={"origin": "repo-local", "secret": "must-not-leak"})],  # pragma: allowlist secret
         workspace_root=tmp_path,
         controlled_path=str(tmp_path),
     )
     second = _normalize(
-        [_stdio_entry(meta={"origin": "user-global", "secret": "other"})],
+        [_stdio_entry(meta={"origin": "user-global", "secret": "other"})],  # pragma: allowlist secret
         workspace_root=tmp_path,
         controlled_path=str(tmp_path),
     )
@@ -312,7 +312,7 @@ def test_canonical_url_normalization_and_query_fingerprint_display(tmp_path: Pat
 def test_url_userinfo_and_fragment_are_rejected(tmp_path: Path) -> None:
     with pytest.raises(ClientMcpConfigError) as userinfo:
         _normalize(
-            [_http_entry(url="https://user:pass@mcp.example.com/v1")],
+            [_http_entry(url="https://user:pass@mcp.example.com/v1")],  # pragma: allowlist secret
             workspace_root=tmp_path,
             controlled_path=str(tmp_path),
         )
@@ -422,3 +422,240 @@ def test_safe_identity_key_tuple_is_complete(tmp_path: Path) -> None:
     assert identity.arguments == ("--flag",)
     assert identity.credential_name_fingerprints
     assert "secret" not in repr(identity.credential_name_fingerprints)
+
+
+# --- seam 3: captured system inputs, never ambient operator state -------------
+# Keep the real normalizer/capability and real path resolution; no child is run.
+# The normalizer consumes the CANONICAL system view (allowlist spelling, exactly
+# as bootstrap derives it through system_environ_view); it never folds casing.
+
+
+@pytest.mark.skipif(os.name != "nt", reason="SystemRoot child baseline is Windows-specific")
+def test_mcp_default_normalizer_does_not_inherit_ambient_systemroot(tmp_path: Path, monkeypatch) -> None:
+    """Missing injected context is empty, not permission to consult the process."""
+    monkeypatch.setenv("SystemRoot", str(tmp_path / "ambient-root"))
+    capability = _normalize([_stdio_entry()], workspace_root=tmp_path, controlled_path="")[0]
+
+    assert capability.constructed_child_environ() == {}
+
+
+@pytest.mark.skipif(os.name != "nt", reason="SystemRoot child baseline is Windows-specific")
+def test_mcp_capability_environment_does_not_change_with_ambient_systemroot(tmp_path: Path, monkeypatch) -> None:
+    """A live environment reread must not change an already-normalized capability."""
+    monkeypatch.setenv("SystemRoot", str(tmp_path / "first-root"))
+    capability = _normalize([_stdio_entry()], workspace_root=tmp_path, controlled_path="")[0]
+    before = capability.constructed_child_environ()
+
+    monkeypatch.setenv("SystemRoot", str(tmp_path / "later-root"))
+
+    assert capability.constructed_child_environ() == before
+
+
+@pytest.mark.skipif(os.name != "nt", reason="PATHEXT command resolution is Windows-specific")
+def test_mcp_command_identity_does_not_change_with_ambient_pathext(tmp_path: Path, monkeypatch) -> None:
+    """One normalizer and controlled PATH cannot choose a different ambient extension."""
+    bin_dir = _make_bin(tmp_path, "captured-tool.exe", "captured-tool.cmd")
+    normalizer = ClientMcpConfigNormalizer()
+    monkeypatch.setenv("PATHEXT", ".EXE")
+    before = normalizer.normalize(
+        [_stdio_entry(command="captured-tool")],
+        workspace_root=tmp_path,
+        controlled_path=str(bin_dir),
+        hmac_key=HMAC_KEY,
+    )[0].safe_identity
+    assert before.canonical_target == os.path.normcase(str((bin_dir / "captured-tool.exe").resolve()))
+
+    monkeypatch.setenv("PATHEXT", ".CMD")
+    after = normalizer.normalize(
+        [_stdio_entry(command="captured-tool")],
+        workspace_root=tmp_path,
+        controlled_path=str(bin_dir),
+        hmac_key=HMAC_KEY,
+    )[0].safe_identity
+
+    assert after == before
+
+
+def test_mcp_normalizer_copies_system_view_before_normalization(tmp_path: Path, monkeypatch) -> None:
+    """Retaining the supplied mapping or forwarding all system fields breaks this boundary."""
+    captured_root = str(tmp_path / "captured-root")
+    system_view = {
+        "SYSTEMROOT": captured_root,
+        "SYSTEMDRIVE": "C:",
+        "WINDIR": captured_root,
+        "COMSPEC": str(tmp_path / "unused-shell"),
+        "PATHEXT": ".CMD",
+        "PATH": str(tmp_path),
+        "TEMP": str(tmp_path / "unused-temp"),
+        "TMP": str(tmp_path / "unused-tmp"),
+    }
+    normalizer = ClientMcpConfigNormalizer(system_environ=system_view)
+    controlled_path = system_view["PATH"]
+    system_view["SYSTEMROOT"] = str(tmp_path / "mutated-source-root")
+    system_view["PATHEXT"] = ".EXE"
+    monkeypatch.setenv("SystemRoot", str(tmp_path / "ambient-root"))
+    monkeypatch.setenv("PATHEXT", ".EXE")
+    capability = normalizer.normalize(
+        [_stdio_entry(env=[{"name": "CLIENT_TOKEN", "value": "explicit-client-value"}])],
+        workspace_root=tmp_path,
+        controlled_path=controlled_path,
+        hmac_key=HMAC_KEY,
+    )[0]
+    expected = {"CLIENT_TOKEN": "explicit-client-value"}
+    if os.name == "nt":
+        expected["SystemRoot"] = captured_root
+
+    assert capability.constructed_child_environ() == expected
+    returned = capability.constructed_child_environ()
+    returned["CLIENT_TOKEN"] = "caller-modification"
+    assert capability.constructed_child_environ() == expected
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Captured PATHEXT command resolution is Windows-specific")
+def test_mcp_pathext_comes_from_copied_system_view(tmp_path: Path, monkeypatch) -> None:
+    """Ignoring the injected PATHEXT or reading its mutated source selects the wrong file."""
+    bin_dir = _make_bin(tmp_path, "captured-tool.cmd", "captured-tool.exe")
+    system_view = {"PATHEXT": ".CMD", "PATH": str(bin_dir)}
+    normalizer = ClientMcpConfigNormalizer(system_environ=system_view)
+    system_view["PATHEXT"] = ".EXE"
+    monkeypatch.setenv("PATHEXT", ".EXE")
+    capability = normalizer.normalize(
+        [_stdio_entry(command="captured-tool")],
+        workspace_root=tmp_path,
+        controlled_path=system_view["PATH"],
+        hmac_key=HMAC_KEY,
+    )[0]
+
+    assert capability.safe_identity.canonical_target == os.path.normcase(str((bin_dir / "captured-tool.cmd").resolve()))
+
+
+@pytest.mark.skipif(os.name != "nt", reason="PATHEXT command resolution is Windows-specific")
+def test_mcp_missing_pathext_defaults_deterministically_but_explicit_empty_means_no_extensions(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Missing and explicitly empty are different inputs: the first keeps the
+    deterministic default order, the second searches the bare name only."""
+    bin_dir = _make_bin(tmp_path, "captured-tool.exe")
+    monkeypatch.setenv("PATHEXT", ".CMD")  # ambient must be irrelevant either way
+    entry = [_stdio_entry(command="captured-tool")]
+
+    missing = ClientMcpConfigNormalizer(system_environ={}).normalize(
+        entry, workspace_root=tmp_path, controlled_path=str(bin_dir), hmac_key=HMAC_KEY
+    )[0]
+    assert missing.safe_identity.canonical_target == os.path.normcase(str((bin_dir / "captured-tool.exe").resolve()))
+
+    with pytest.raises(ClientMcpConfigError, match="client_mcp.command_not_found"):
+        ClientMcpConfigNormalizer(system_environ={"PATHEXT": ""}).normalize(
+            entry, workspace_root=tmp_path, controlled_path=str(bin_dir), hmac_key=HMAC_KEY
+        )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX resolves the exact filename only")
+def test_mcp_posix_ignores_injected_pathext_and_systemroot_and_resolves_the_exact_filename(tmp_path: Path) -> None:
+    """Platform semantics stay deliberate: injected Windows-only values change nothing on POSIX."""
+    bin_dir = _make_bin(tmp_path, "captured-tool.exe")
+    normalizer = ClientMcpConfigNormalizer(system_environ={"PATHEXT": ".EXE", "SYSTEMROOT": "/captured-root"})
+    entry = [_stdio_entry(command="captured-tool")]
+
+    with pytest.raises(ClientMcpConfigError, match="client_mcp.command_not_found"):
+        normalizer.normalize(entry, workspace_root=tmp_path, controlled_path=str(bin_dir), hmac_key=HMAC_KEY)
+
+    exact = bin_dir / "captured-tool"
+    exact.write_bytes(b"#!fake\n")
+    exact.chmod(0o755)
+    capability = normalizer.normalize(entry, workspace_root=tmp_path, controlled_path=str(bin_dir), hmac_key=HMAC_KEY)[0]
+
+    assert capability.safe_identity.canonical_target == str(exact.resolve())
+    assert capability.constructed_child_environ() == {}
+
+
+def test_mcp_explicit_empty_system_view_does_not_inherit_process_environment(tmp_path: Path, monkeypatch) -> None:
+    """An empty context must not fall back to operator process state."""
+    monkeypatch.setenv("SystemRoot", str(tmp_path / "ambient-root"))
+    monkeypatch.setenv("OPTIMUS_API_KEY", "operator-gateway-sentinel")
+    capability = ClientMcpConfigNormalizer(system_environ={}).normalize(
+        [_stdio_entry()],
+        workspace_root=tmp_path,
+        controlled_path="",
+        hmac_key=HMAC_KEY,
+    )[0]
+
+    assert capability.constructed_child_environ() == {}
+
+
+@pytest.mark.parametrize("use_injected_view", [False, True])
+@pytest.mark.parametrize("client_supplies_same_name", [False, True])
+def test_mcp_never_inherits_operator_optimus_api_key(
+    tmp_path: Path,
+    monkeypatch,
+    client_supplies_same_name: bool,
+    use_injected_view: bool,
+) -> None:
+    """OPTIMUS_API_KEY is the operator's Gateway credential, not a provider key.
+
+    Prevent ambient forwarding, not a client's explicit choice of the same
+    variable name: a blanket name ban would narrow the existing MCP contract.
+    """
+    operator_value = "operator-gateway-sentinel"
+    client_value = "explicit-client-sentinel"
+    monkeypatch.setenv("OPTIMUS_API_KEY", operator_value)
+    client_env = [{"name": "OPTIMUS_API_KEY", "value": client_value}] if client_supplies_same_name else []
+    # Defense in depth: a misrouted agent projection must not become the MCP
+    # child's baseline. This does not replace testing bootstrap's actual handoff.
+    normalizer = (
+        ClientMcpConfigNormalizer(system_environ={"OPTIMUS_API_KEY": operator_value})
+        if use_injected_view
+        else ClientMcpConfigNormalizer()
+    )
+    capability = normalizer.normalize(
+        [_stdio_entry(env=client_env)],
+        workspace_root=tmp_path,
+        controlled_path="",
+        hmac_key=HMAC_KEY,
+    )[0]
+    child_env = capability.constructed_child_environ()
+
+    if client_supplies_same_name:
+        assert child_env["OPTIMUS_API_KEY"] == client_value
+    else:
+        assert "OPTIMUS_API_KEY" not in child_env
+    assert operator_value not in child_env.values()
+
+
+# --- seam 3 R1: the projection composed with the normalizer, real competing filenames ---
+
+
+@pytest.mark.skipif(os.name != "nt", reason="executable-extension resolution is Windows-specific")
+def test_projected_explicit_empty_pathext_searches_the_bare_name_only(tmp_path: Path, monkeypatch) -> None:
+    """Composed projection -> normalizer: missing PATHEXT permits the deterministic
+    default; explicitly empty PATHEXT searches only the bare name; ambient PATHEXT
+    can override neither. No file is executed."""
+    from optimus.acp.subprocess_env import system_environ_view
+
+    exe_only = _make_bin(tmp_path, "captured-tool.exe")
+    monkeypatch.setenv("PATHEXT", ".EXE")
+    entry = [_stdio_entry(command="captured-tool")]
+
+    empty_view = system_environ_view({"PATH": str(exe_only), "PATHEXT": ""})
+    assert empty_view == {"PATH": str(exe_only), "PATHEXT": ""}
+    with pytest.raises(ClientMcpConfigError, match="client_mcp.command_not_found"):
+        ClientMcpConfigNormalizer(system_environ=empty_view).normalize(
+            entry, workspace_root=tmp_path, controlled_path=empty_view["PATH"], hmac_key=HMAC_KEY
+        )
+
+    missing_view = system_environ_view({"PATH": str(exe_only)})
+    assert "PATHEXT" not in missing_view
+    resolved = ClientMcpConfigNormalizer(system_environ=missing_view).normalize(
+        entry, workspace_root=tmp_path, controlled_path=missing_view["PATH"], hmac_key=HMAC_KEY
+    )[0]
+    assert resolved.safe_identity.canonical_target == os.path.normcase(str((exe_only / "captured-tool.exe").resolve()))
+
+    competing = tmp_path / "competing-bin"
+    competing.mkdir()
+    (competing / "captured-tool").write_bytes(b"#!fake\n")
+    (competing / "captured-tool.exe").write_bytes(b"#!fake\n")
+    bare_view = system_environ_view({"PATH": str(competing), "PATHEXT": ""})
+    bare = ClientMcpConfigNormalizer(system_environ=bare_view).normalize(
+        entry, workspace_root=tmp_path, controlled_path=bare_view["PATH"], hmac_key=HMAC_KEY
+    )[0]
+    assert bare.safe_identity.canonical_target == os.path.normcase(str((competing / "captured-tool").resolve()))
