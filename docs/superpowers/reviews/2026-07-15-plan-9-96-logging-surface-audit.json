@@ -3495,6 +3495,22 @@
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_refuses_to_run_outside_utf8_mode",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:AcpStreamServer.report_request_task_failure:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Content-free by construction: emits only the server-generated operation id and the allowlisted method category (initialize/session/new/session/load/session/prompt, else 'unknown') for an escaped request-task failure; no runtime-controlled diagnostic body is retained or exported.",
+      "sanitizer": "content-free by construction: generated operation id and allowlisted method category only; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_stdio_ndjson.py::test_seam4_a2_escape_surfaces_content_free_stderr_when_trace_disabled",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:AcpStreamServer.on_request_task_done:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch on a completion callback that retrieves the finished task's outcome and delegates to the content-free reporter; the callback itself retains and exports no diagnostic body.",
+      "sanitizer": "content-free by construction / AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_stdio_ndjson.py::test_seam4_a1_delivery_failure_is_reported_once_before_shutdown",
+      "evidence_tier": "unit"
     }
   ]
 }
