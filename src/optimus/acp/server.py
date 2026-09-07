@@ -32,6 +32,8 @@ from optimus.acp.lifecycle import (
 from optimus.acp.outbound_writer import DedicatedOutboundWriter, OutboundQueueItem
 from optimus.acp.settlement import SendOutcome, SettlementInvariantError
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore
+from optimus.mcp.client_disposition import ClientMcpShutdownOutcome
+from optimus.mcp.client_supervisor import MCPSupervisorState
 
 
 # A Protocol describes a shape ("anything with async read(size) -> bytes") without
@@ -501,6 +503,53 @@ class AcpStreamServer:
             except Exception:
                 return
 
+        def classify_mcp_cleanup(outcome: object) -> str:
+            # "clean" | "incomplete" | "invalid". Only a genuine outcome instance whose
+            # `complete` is exactly True is clean. None and a foreign object (even one that
+            # declares itself complete) are invalid; a genuine non-complete outcome is
+            # incomplete; an ABSENT runtime is handled by the caller instead. Reading
+            # `complete` on a genuine instance is part of the diagnostic boundary: an
+            # ordinary failure there is contained and classified as invalid, so the report
+            # and the remaining teardown still run. BaseException is never absorbed.
+            try:
+                if not isinstance(outcome, ClientMcpShutdownOutcome):
+                    return "invalid"
+                return "clean" if outcome.complete is True else "incomplete"
+            except Exception:
+                return "invalid"
+
+        def report_mcp_cleanup_incomplete(outcome: object, status: str) -> None:
+            # One content-free attempt to record that client-MCP cleanup did not complete.
+            # Contained like the reporters above -- this runs inside `finally`, where a raise
+            # would replace the cancellation or exception that initiated teardown -- and the
+            # payload is built INSIDE the containment so a failing field access is contained
+            # too. Only the three stage booleans and a real MCPSupervisorState value are ever
+            # echoed; an invalid or foreign result degrades to fixed sentinels so no arbitrary
+            # content can reach the diagnostic. The outcome is never changed by logging.
+            try:
+                if status == "incomplete":
+                    state = outcome.supervisor_state
+                    payload = {
+                        "sdk_closed": outcome.sdk_closed is True,
+                        "endpoint_closed": outcome.endpoint_closed is True,
+                        "supervisor_closed": outcome.supervisor_closed is True,
+                        "supervisor_state": state.value if isinstance(state, MCPSupervisorState) else "unknown",
+                    }
+                else:
+                    payload = {
+                        "sdk_closed": False,
+                        "endpoint_closed": False,
+                        "supervisor_closed": False,
+                        "supervisor_state": "unknown",
+                    }
+                acp_debug_log(
+                    location="server.py:serve_ndjson:mcp_cleanup_incomplete",
+                    message="client MCP cleanup incomplete at teardown",
+                    data=payload,
+                )
+            except Exception:
+                return
+
         async def process_request(message: dict[str, Any], operation_id: str) -> None:
             request_id = message.get("id")
             method = message.get("method")
@@ -628,8 +677,17 @@ class AcpStreamServer:
             if request_tasks:
                 await asyncio.gather(*request_tasks, return_exceptions=True)
             adapter.close_all()
+            # Client-MCP cleanup outcome. The runtime attempts every stage and returns an
+            # aggregate result; consuming it here means an incomplete-but-non-raising cleanup
+            # (a supervisor still draining, a contained stage failure) is reported instead of
+            # passing silently. Only an absent runtime is an implicit clean/no-resource case.
+            # The report is made right here, before the later stages, so it is attempted
+            # whenever the runtime returned; later stages keep their existing order.
             if self._client_mcp_runtime is not None:
-                self._client_mcp_runtime.close()
+                mcp_outcome = self._client_mcp_runtime.close()
+                mcp_status = classify_mcp_cleanup(mcp_outcome)
+                if mcp_status != "clean":
+                    report_mcp_cleanup_incomplete(mcp_outcome, mcp_status)
             if dedicated is not None and owned_dedicated and join_dedicated_writer:
                 dedicated.close_and_join()
             # Reader ownership at teardown. The cooperative path is EOF: `read_lines` put its

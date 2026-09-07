@@ -31,7 +31,7 @@ from optimus.mcp.client_config import (
     ClientMcpSafeIdentity,
 )
 from optimus.mcp.client_sdk import ClientMcpConnection, ClientMcpSdkAdapter
-from optimus.mcp.client_supervisor import MCPAsyncSupervisor
+from optimus.mcp.client_supervisor import MCPAsyncSupervisor, MCPSupervisorState
 from optimus.mcp.client_trust import (
     ClientMcpDurableRecord,
     ClientMcpLeaseAuthority,
@@ -134,6 +134,26 @@ class _ServerEntry:
     identity_fingerprint: str | None = None
 
 
+@dataclass(frozen=True)
+class ClientMcpShutdownOutcome:
+    """Aggregate result of ``ClientMcpRuntime.close()``.
+
+    ``sdk_closed``, ``endpoint_closed`` and ``supervisor_closed`` record whether the
+    respective stage calls returned normally; an absent endpoint counts as success.
+    They do not independently prove that every connection or operating-system
+    resource has closed. In particular, ``supervisor_closed=True`` can coexist with
+    ``STOPPING``. ``complete`` additionally requires terminal ``DEAD`` and no ordinary
+    stage failure recorded by this or any earlier close. Pending supervision without a
+    stage exception is not a sticky failure and may complete on a later close.
+    """
+
+    sdk_closed: bool
+    endpoint_closed: bool
+    supervisor_closed: bool
+    supervisor_state: MCPSupervisorState
+    complete: bool
+
+
 @dataclass
 class ClientMcpRuntime:
     """Process-lifetime client-MCP wiring owned by bootstrap / AcpStreamServer."""
@@ -144,16 +164,55 @@ class ClientMcpRuntime:
     mcp_http_enabled: bool = False
     mcp_sse_enabled: bool = False
     candidate_endpoint: PendingClientMcpCandidateEndpoint | None = None
+    # Sticky record: once any close stage raises, this runtime can never again
+    # report a clean shutdown without independently established recovery (which
+    # this package does not provide). A still-pending supervisor does NOT set it.
+    _stage_failure_recorded: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.sdk_adapter is None:
             raise ValueError("sdk_adapter is required")
 
-    def close(self) -> None:
-        self.sdk_adapter.close_all()
+    def close(self) -> ClientMcpShutdownOutcome:
+        """Attempt every cleanup stage in order despite ordinary failures.
+
+        Stages run SDK -> endpoint (when present) -> supervisor; each ordinary
+        (`Exception`) failure is contained and recorded, and later stages are still
+        attempted. Control-flow / BaseException still propagate. Returns an aggregate
+        outcome that retains any failure across repeated calls.
+        """
+        sdk_closed = True
+        try:
+            self.sdk_adapter.close_all()
+        except Exception:
+            sdk_closed = False
+
+        endpoint_closed = True
         if self.candidate_endpoint is not None:
-            self.candidate_endpoint.close()
-        self.supervisor.close()
+            try:
+                self.candidate_endpoint.close()
+            except Exception:
+                endpoint_closed = False
+
+        supervisor_closed = True
+        try:
+            self.supervisor.close()
+        except Exception:
+            supervisor_closed = False
+        supervisor_state = self.supervisor.state
+
+        if not (sdk_closed and endpoint_closed and supervisor_closed):
+            self._stage_failure_recorded = True
+        complete = (not self._stage_failure_recorded) and (
+            supervisor_state is MCPSupervisorState.DEAD
+        )
+        return ClientMcpShutdownOutcome(
+            sdk_closed=sdk_closed,
+            endpoint_closed=endpoint_closed,
+            supervisor_closed=supervisor_closed,
+            supervisor_state=supervisor_state,
+            complete=complete,
+        )
 
 
 class ClientMcpDisposition:
@@ -494,5 +553,6 @@ __all__ = [
     "ClientMcpDisposition",
     "ClientMcpRuntime",
     "ClientMcpSessionState",
+    "ClientMcpShutdownOutcome",
     "ClientMcpConfigError",
 ]
