@@ -407,9 +407,12 @@ ceremony, not an implicit `optimus-agent` discovery path.
 the loopback local gateway owns `<that-workspace>/.optimus/local-gateway.log`. If a
 gateway is already reachable on the configured loopback port, later `optimus-agent`
 invocations from other workspaces reuse that process and do **not** create their own
-gateway log. Debug tracing (`--debug-trace`) always writes to the current
+gateway log. Debug tracing (`--debug-trace`) targets the current
 workspace's own `<workspace>/.optimus/debug-acp.ndjson`, regardless of gateway
-ownership.
+ownership. Diagnostic payload work is deferred until tracing is enabled. Ordinary
+payload, redaction and file-write failures are contained so they do not disrupt
+requests; records remain best effort, and cancellation/control-flow exceptions
+are not swallowed. Debug tracing never writes to the ACP stdout channel.
 
 **Required after `pip install --user` on Windows:** Python installs scripts to
 `%APPDATA%\Python\Python<version>\Scripts` (for example
