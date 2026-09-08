@@ -178,12 +178,13 @@ class NdjsonOutboundChannel:
 
     async def notify(self, method: str, params: dict[str, Any]) -> None:
         # region agent log
-        acp_debug_log(
-            location="server.py:NdjsonOutboundChannel.notify",
-            message="outbound notification",
-            data={"method": method, "param_keys": sorted(params.keys())},
-            hypothesis_id="H2",
-        )
+        if debug_trace_enabled():
+            acp_debug_log(
+                location="server.py:NdjsonOutboundChannel.notify",
+                message="outbound notification",
+                data=lambda: {"method": method, "param_keys": sorted(params.keys())},
+                hypothesis_id="H2",
+            )
         # endregion
         await self._submit_payload(
             {"jsonrpc": "2.0", "method": method, "params": params},
@@ -196,17 +197,18 @@ class NdjsonOutboundChannel:
         future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
         self._futures[request_id] = future
         # region agent log
-        acp_debug_log(
-            location="server.py:NdjsonOutboundChannel.request",
-            message="outbound request sent",
-            data={
-                "request_id": request_id,
-                "method": method,
-                "param_keys": sorted(params.keys()),
-                "has_toolCall": "toolCall" in params,
-            },
-            hypothesis_id="H2",
-        )
+        if debug_trace_enabled():
+            acp_debug_log(
+                location="server.py:NdjsonOutboundChannel.request",
+                message="outbound request sent",
+                data=lambda: {
+                    "request_id": request_id,
+                    "method": method,
+                    "param_keys": sorted(params.keys()),
+                    "has_toolCall": "toolCall" in params,
+                },
+                hypothesis_id="H2",
+            )
         # endregion
         await self._submit_payload(
             {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params},
@@ -222,19 +224,20 @@ class NdjsonOutboundChannel:
     def deliver_client_response(self, message: dict[str, Any]) -> None:
         request_id = message.get("id")
         # region agent log
-        acp_debug_log(
-            location="server.py:NdjsonOutboundChannel.deliver_client_response",
-            message="client response delivered (post-mapping)",
-            data={
-                "request_id": request_id,
-                "has_result": "result" in message,
-                "has_error": "error" in message,
-                "mapped_to_cancelled": False,
-                "propagated_error": "error" in message,
-                "result_keys": sorted(message.get("result", {}).keys()) if isinstance(message.get("result"), dict) else [],
-            },
-            hypothesis_id="H1",
-        )
+        if debug_trace_enabled():
+            acp_debug_log(
+                location="server.py:NdjsonOutboundChannel.deliver_client_response",
+                message="client response delivered (post-mapping)",
+                data=lambda: {
+                    "request_id": request_id,
+                    "has_result": "result" in message,
+                    "has_error": "error" in message,
+                    "mapped_to_cancelled": False,
+                    "propagated_error": "error" in message,
+                    "result_keys": sorted(message.get("result", {}).keys()) if isinstance(message.get("result"), dict) else [],
+                },
+                hypothesis_id="H1",
+            )
         # endregion
         if request_id is None:
             return
@@ -521,27 +524,31 @@ class AcpStreamServer:
         def report_mcp_cleanup_incomplete(outcome: object, status: str) -> None:
             # One content-free attempt to record that client-MCP cleanup did not complete.
             # Contained like the reporters above -- this runs inside `finally`, where a raise
-            # would replace the cancellation or exception that initiated teardown -- and the
-            # payload is built INSIDE the containment so a failing field access is contained
-            # too. Only the three stage booleans and a real MCPSupervisorState value are ever
-            # echoed; an invalid or foreign result degrades to fixed sentinels so no arbitrary
-            # content can reach the diagnostic. The outcome is never changed by logging.
-            try:
+            # would replace the cancellation or exception that initiated teardown. The stage
+            # fields are read lazily, by the sink, only with tracing enabled and inside its
+            # failure boundary, so a failing field access is contained too and no field is
+            # read at all with tracing off. Classification happened at the caller and is not
+            # deferred. Only the three stage booleans and a real MCPSupervisorState value are
+            # ever echoed; an invalid or foreign result degrades to fixed sentinels so no
+            # arbitrary content can reach the diagnostic. The outcome is never changed by
+            # logging.
+            def payload() -> dict[str, Any]:
                 if status == "incomplete":
                     state = outcome.supervisor_state
-                    payload = {
+                    return {
                         "sdk_closed": outcome.sdk_closed is True,
                         "endpoint_closed": outcome.endpoint_closed is True,
                         "supervisor_closed": outcome.supervisor_closed is True,
                         "supervisor_state": state.value if isinstance(state, MCPSupervisorState) else "unknown",
                     }
-                else:
-                    payload = {
-                        "sdk_closed": False,
-                        "endpoint_closed": False,
-                        "supervisor_closed": False,
-                        "supervisor_state": "unknown",
-                    }
+                return {
+                    "sdk_closed": False,
+                    "endpoint_closed": False,
+                    "supervisor_closed": False,
+                    "supervisor_state": "unknown",
+                }
+
+            try:
                 acp_debug_log(
                     location="server.py:serve_ndjson:mcp_cleanup_incomplete",
                     message="client MCP cleanup incomplete at teardown",
@@ -557,34 +564,36 @@ class AcpStreamServer:
             ownership_slot = ResponseOwnershipSlot()
             try:
                 # region agent log
-                acp_debug_log(
-                    location="server.py:process_request:entry",
-                    message="handling client request",
-                    data={
-                        "request_id": request_id,
-                        "method": method,
-                        "pending_permission_id": pending_permission_id,
-                        "operation_id": operation_id,
-                    },
-                    hypothesis_id="H4",
-                )
+                if debug_trace_enabled():
+                    acp_debug_log(
+                        location="server.py:process_request:entry",
+                        message="handling client request",
+                        data=lambda: {
+                            "request_id": request_id,
+                            "method": method,
+                            "pending_permission_id": pending_permission_id,
+                            "operation_id": operation_id,
+                        },
+                        hypothesis_id="H4",
+                    )
                 # endregion
                 envelope = await adapter.handle_client_request(message, ownership_slot=ownership_slot)
                 wire = envelope.response
                 # region agent log
-                acp_debug_log(
-                    location="server.py:process_request:exit",
-                    message="client request handled",
-                    data={
-                        "request_id": request_id,
-                        "method": method,
-                        "has_error": "error" in wire,
-                        "stop_reason": wire.get("result", {}).get("stopReason")
-                        if isinstance(wire.get("result"), dict)
-                        else None,
-                    },
-                    hypothesis_id="H4",
-                )
+                if debug_trace_enabled():
+                    acp_debug_log(
+                        location="server.py:process_request:exit",
+                        message="client request handled",
+                        data=lambda: {
+                            "request_id": request_id,
+                            "method": method,
+                            "has_error": "error" in wire,
+                            "stop_reason": wire.get("result", {}).get("stopReason")
+                            if isinstance(wire.get("result"), dict)
+                            else None,
+                        },
+                        hypothesis_id="H4",
+                    )
                 # endregion
                 await deliver_envelope(envelope, ownership_slot)
             except asyncio.CancelledError:
@@ -602,14 +611,17 @@ class AcpStreamServer:
                     await submit_via_notice(error_payload)
             except Exception as exc:
                 # region agent log
+                # Literal message; the exception text is deferred into the redacted payload.
+                # The protocol/stderr formatting of the same exception below is separate.
                 acp_debug_log(
                     location="server.py:process_request:exception",
-                    message=str(exc),
-                    data={
+                    message="client request failed",
+                    data=lambda exc=exc: {
                         "request_id": request_id,
                         "method": method,
                         "pending_permission_id": pending_permission_id,
                         "exception_type": type(exc).__name__,
+                        "exception_message": str(exc),
                     },
                     hypothesis_id="H4",
                 )
@@ -639,18 +651,19 @@ class AcpStreamServer:
                     continue
                 if "id" in message and ("result" in message or "error" in message) and "method" not in message:
                     # region agent log
-                    acp_debug_log(
-                        location="server.py:serve_ndjson:inbound_client_response_raw",
-                        message="raw inbound id-bearing client response before deliver_client_response",
-                        data={
-                            "id": message.get("id"),
-                            "has_result": "result" in message,
-                            "has_error": "error" in message,
-                            "error": message.get("error") if "error" in message else None,
-                            "result": message.get("result") if "result" in message else None,
-                        },
-                        hypothesis_id="H2-REPLY",
-                    )
+                    if debug_trace_enabled():
+                        acp_debug_log(
+                            location="server.py:serve_ndjson:inbound_client_response_raw",
+                            message="raw inbound id-bearing client response before deliver_client_response",
+                            data=lambda message=message: {
+                                "id": message.get("id"),
+                                "has_result": "result" in message,
+                                "has_error": "error" in message,
+                                "error": message.get("error") if "error" in message else None,
+                                "result": message.get("result") if "result" in message else None,
+                            },
+                            hypothesis_id="H2-REPLY",
+                        )
                     # endregion
                     outbound.deliver_client_response(message)
                     continue

@@ -1,0 +1,48 @@
+id: literal-debug-trace-message
+language: Python
+message: Use a literal diagnostic message; put computed detail in a lazy data supplier.
+severity: error
+files:
+  - src/**/*.py
+rule:
+  all:
+    - kind: keyword_argument
+    - pattern:
+        context: acp_debug_log(message=$MESSAGE)
+        selector: keyword_argument
+    - inside:
+        kind: argument_list
+        inside:
+          any:
+            - pattern: acp_debug_log($$$ARGS)
+            - pattern: $MODULE.acp_debug_log($$$ARGS)
+constraints:
+  MESSAGE:
+    not:
+      all:
+        - any:
+            - kind: string
+            - kind: concatenated_string
+            - kind: parenthesized_expression
+        - not:
+            has:
+              # Parentheses/implicit concatenation are safe only if every
+              # descendant is still literal syntax. No expressions or f-strings.
+              not:
+                any:
+                  - kind: string
+                  - kind: concatenated_string
+                  - kind: parenthesized_expression
+                  - kind: string_start
+                  - kind: string_content
+                  - kind: string_end
+                  - kind: escape_sequence
+                  - kind: comment
+                  # Relational traversal includes anonymous punctuation nodes.
+                  - regex: '^[()]$'
+              stopBy: end
+        - not:
+            has:
+              kind: string_start
+              regex: '(?i)[bft]'
+              stopBy: end
