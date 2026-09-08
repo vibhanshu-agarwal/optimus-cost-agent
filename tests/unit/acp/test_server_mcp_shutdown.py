@@ -189,6 +189,55 @@ def _clean_runtime() -> ClientMcpRuntime:
 # --------------------------------------------------------------------------------------
 
 
+_UNEVALUATED = object()
+
+
+class _Attempt:
+    """One reporting attempt, observed transparently.
+
+    Seam 1 made the reporter's field reads lazy: the sink receives a zero-argument supplier
+    and evaluates it inside its own failure boundary, only with tracing enabled. The spy
+    must not evaluate that supplier itself (that would add an evaluation outside the sink's
+    enabled check and boundary). Instead it forwards an INSTRUMENTED supplier: when -- and
+    only when -- the real sink invokes it, the value or the failure is recorded here, the
+    same value is returned, and every exception propagates unchanged. A disabled attempt
+    therefore stays unevaluated, which is itself asserted below.
+    """
+
+    def __init__(self, kwargs: dict) -> None:
+        self.kwargs = kwargs
+        self.evaluations = 0
+        self.value = _UNEVALUATED
+        self.failure: BaseException | None = None
+
+    def instrumented(self):
+        original = self.kwargs.get("data")
+        if not callable(original):
+            return original
+
+        def supplier():
+            self.evaluations += 1
+            try:
+                value = original()
+            except BaseException as failure:
+                self.failure = failure
+                raise
+            self.value = value
+            return value
+
+        return supplier
+
+    @property
+    def unevaluated(self) -> bool:
+        return self.evaluations == 0
+
+    @property
+    def payload(self):
+        assert self.evaluations == 1, f"expected exactly one supplier evaluation, saw {self.evaluations}"
+        assert self.failure is None, f"the supplier failed: {self.failure!r}"
+        return self.value
+
+
 class _Observed:
     """Records the real teardown sequence and every diagnostic ATTEMPT (not just disk)."""
 
@@ -211,8 +260,10 @@ class _Observed:
             location = kwargs.get("location")
             if location == MCP_INCOMPLETE_LOCATION:
                 self.sequence.append("mcp_incomplete")
-                self.mcp_attempts.append(kwargs)
-            elif location == READER_INCOMPLETE_LOCATION:
+                attempt = _Attempt(kwargs)
+                self.mcp_attempts.append(attempt)
+                return real_debug_log(**{**kwargs, "data": attempt.instrumented()})
+            if location == READER_INCOMPLETE_LOCATION:
                 self.sequence.append("reader_incomplete")
             return real_debug_log(**kwargs)
 
@@ -469,7 +520,7 @@ async def test_eof_with_pending_runtime_reports_incomplete_once_with_stage_paylo
         assert outcome.complete is False
         assert outcome.supervisor_closed is True, "no stage exception: pending, not a failure"
         assert len(observed.mcp_attempts) == 1
-        assert observed.mcp_attempts[0]["data"] == {
+        assert observed.mcp_attempts[0].payload == {
             "sdk_closed": True,
             "endpoint_closed": True,
             "supervisor_closed": True,
@@ -477,7 +528,7 @@ async def test_eof_with_pending_runtime_reports_incomplete_once_with_stage_paylo
         }
         records = _mcp_records(mcp_trace)
         assert len(records) == 1, records
-        assert records[0]["data"] == observed.mcp_attempts[0]["data"]
+        assert records[0]["data"] == observed.mcp_attempts[0].payload
         assert _reader_records(mcp_trace) == [], "a completed reader must not be blamed"
     finally:
         held.finish()
@@ -500,7 +551,7 @@ async def test_eof_with_failed_stage_reports_incomplete_with_dead_supervisor(tmp
     assert outcome.supervisor_state is MCPSupervisorState.DEAD
     assert outcome.complete is False
     assert len(observed.mcp_attempts) == 1
-    assert observed.mcp_attempts[0]["data"] == {
+    assert observed.mcp_attempts[0].payload == {
         "sdk_closed": False,
         "endpoint_closed": True,
         "supervisor_closed": True,
@@ -545,7 +596,7 @@ async def test_reader_incomplete_with_pending_runtime_reports_both_and_preserves
             observed.sequence
         )
         assert len(observed.mcp_attempts) == 1
-        assert observed.mcp_attempts[0]["data"]["supervisor_state"] == "STOPPING"
+        assert observed.mcp_attempts[0].payload["supervisor_state"] == "STOPPING"
         assert len(_mcp_records(mcp_trace)) == 1
         assert len(_reader_records(mcp_trace)) == 1
     finally:
@@ -584,7 +635,7 @@ async def test_present_runtime_returning_none_is_not_clean_and_teardown_continue
     assert observed.returned_outcomes == [None]
     assert observed.sequence == ["close_all", "mcp_close", "mcp_incomplete", "writer"], observed.sequence
     assert len(observed.mcp_attempts) == 1
-    assert observed.mcp_attempts[0]["data"] == SENTINEL_PAYLOAD
+    assert observed.mcp_attempts[0].payload == SENTINEL_PAYLOAD
     records = _mcp_records(mcp_trace)
     assert len(records) == 1 and records[0]["data"] == SENTINEL_PAYLOAD
 
@@ -598,7 +649,7 @@ async def test_foreign_outcome_is_not_clean_and_cannot_inject_state_into_the_dia
     await _drive_eof(srv)
     assert observed.sequence == ["close_all", "mcp_close", "mcp_incomplete"], observed.sequence
     assert len(observed.mcp_attempts) == 1
-    assert observed.mcp_attempts[0]["data"] == SENTINEL_PAYLOAD
+    assert observed.mcp_attempts[0].payload == SENTINEL_PAYLOAD
     records = _mcp_records(mcp_trace)
     assert len(records) == 1 and records[0]["data"] == SENTINEL_PAYLOAD
     assert _ForeignOutcome.supervisor_state not in mcp_trace.read_text(encoding="utf-8")
@@ -622,7 +673,7 @@ async def test_real_outcome_with_a_non_state_value_degrades_to_the_sentinel_stat
     srv = _server(tmp_path, observed.wrap_runtime(_PoisonedRuntime()))
     await _drive_eof(srv)
     assert len(observed.mcp_attempts) == 1
-    assert observed.mcp_attempts[0]["data"] == {
+    assert observed.mcp_attempts[0].payload == {
         "sdk_closed": True,
         "endpoint_closed": True,
         "supervisor_closed": True,
@@ -651,7 +702,7 @@ async def test_a_self_declared_complete_outcome_that_is_not_dead_is_still_report
     srv = _server(tmp_path, observed.wrap_runtime(_TruthyRuntime()))
     await _drive_eof(srv)
     assert len(observed.mcp_attempts) == 1
-    assert observed.mcp_attempts[0]["data"]["supervisor_state"] == "STOPPING"
+    assert observed.mcp_attempts[0].payload["supervisor_state"] == "STOPPING"
 
 
 # --------------------------------------------------------------------------------------
@@ -664,8 +715,69 @@ async def test_trace_off_still_attempts_exactly_once_and_writes_nothing(tmp_path
     srv = _server(tmp_path, observed.wrap_runtime(_NoneRuntime()))
     await _drive_eof(srv)
     assert len(observed.mcp_attempts) == 1, "the attempt is made regardless of tracing"
-    assert observed.mcp_attempts[0]["data"] == SENTINEL_PAYLOAD
+    assert observed.mcp_attempts[0].unevaluated, "with tracing off the sink must not evaluate the payload"
     assert not mcp_trace_off.exists(), "no trace file may be written while trace is disabled"
+
+
+async def test_observer_is_transparent_stateful_supplier_evaluated_by_the_sink_alone(tmp_path, monkeypatch):
+    """Mirror of the reviewer's probe: through the real spy and the real sink, a stateful
+    supplier is evaluated zero times with tracing off and exactly once with tracing on, and
+    the recorded payload IS the evaluation the sink wrote."""
+    def probe(enabled: bool) -> None:
+        path = tmp_path / ("stateful-on.ndjson" if enabled else "stateful-off.ndjson")
+        configure_debug_trace(enabled=enabled, log_path=path)
+        calls: list[int] = []
+
+        def supplier():
+            calls.append(1)
+            return {"attempt": len(calls)}
+
+        with pytest.MonkeyPatch.context() as inner:
+            observed = _Observed(inner)
+            server.acp_debug_log(location=MCP_INCOMPLETE_LOCATION, message="probe", data=supplier)
+        assert len(observed.mcp_attempts) == 1
+        assert len(calls) == int(enabled)
+        if enabled:
+            assert observed.mcp_attempts[0].payload == {"attempt": 1}
+            assert _mcp_records(path)[0]["data"] == {"attempt": 1}
+        else:
+            assert observed.mcp_attempts[0].unevaluated
+            assert not path.exists()
+        reset_debug_trace_context()
+
+    probe(False)
+    probe(True)
+
+
+async def test_observer_records_a_fail_once_supplier_without_retry_or_swallowing(tmp_path, monkeypatch):
+    path = tmp_path / "fail-once.ndjson"
+    configure_debug_trace(enabled=True, log_path=path)
+    calls: list[int] = []
+
+    def fail_once():
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("first evaluation fails")
+        return {"attempt": len(calls)}
+
+    with pytest.MonkeyPatch.context() as inner:
+        observed = _Observed(inner)
+        server.acp_debug_log(location=MCP_INCOMPLETE_LOCATION, message="probe", data=fail_once)  # contained by the sink
+    assert calls == [1], "the sink must not retry a failing supplier"
+    assert isinstance(observed.mcp_attempts[0].failure, RuntimeError)
+    assert not path.exists()
+
+    class _Interrupt(BaseException):
+        pass
+
+    def interrupting():
+        raise _Interrupt()
+
+    with pytest.MonkeyPatch.context() as inner:
+        observed = _Observed(inner)
+        with pytest.raises(_Interrupt):
+            server.acp_debug_log(location=MCP_INCOMPLETE_LOCATION, message="probe", data=interrupting)
+    assert isinstance(observed.mcp_attempts[0].failure, _Interrupt), "control flow keeps its identity through the observer"
 
 
 async def test_diagnostic_sink_failure_cannot_mask_the_initiating_cancellation(tmp_path, monkeypatch, mcp_trace):
@@ -752,9 +864,13 @@ async def test_payload_construction_failure_is_contained(tmp_path, monkeypatch, 
     srv = _server(tmp_path, observed.wrap_runtime(_ExplodingRuntime()))
     outcome = await _drive_reader_incomplete(srv)
     assert outcome == "cancelled", f"a payload-construction failure replaced the cancellation: {outcome!r}"
-    # The attempt never reached the sink, so nothing is recorded -- and teardown still continued.
-    assert observed.mcp_attempts == []
-    assert observed.sequence == ["close_all", "mcp_close", "reader_incomplete"], observed.sequence
+    # Seam 1: the reporter reaches the sink with a lazy payload; the field read fails INSIDE
+    # the sink's boundary, so the attempt is observed, nothing is recorded on disk, and
+    # teardown still continues to the reader decision.
+    assert len(observed.mcp_attempts) == 1
+    assert isinstance(observed.mcp_attempts[0].failure, RuntimeError)
+    assert observed.sequence == ["close_all", "mcp_close", "mcp_incomplete", "reader_incomplete"], observed.sequence
+    assert _mcp_records(mcp_trace) == []
     assert "payload construction boom" not in (mcp_trace.read_text(encoding="utf-8") if mcp_trace.exists() else "")
 
 
@@ -823,7 +939,7 @@ async def test_completion_read_failure_is_contained_and_reported_under_cancellat
         observed.sequence
     )
     assert len(observed.mcp_attempts) == 1
-    assert observed.mcp_attempts[0]["data"] == SENTINEL_PAYLOAD
+    assert observed.mcp_attempts[0].payload == SENTINEL_PAYLOAD
     records = _mcp_records(mcp_trace)
     assert len(records) == 1 and records[0]["data"] == SENTINEL_PAYLOAD
     assert "completion read boom" not in mcp_trace.read_text(encoding="utf-8")
@@ -863,7 +979,7 @@ async def test_completion_read_failure_preserves_an_ordinary_serving_exception_i
     assert observed.sequence[:4] == ["close_all", "mcp_close", "mcp_incomplete", "writer"], observed.sequence
     assert observed.sequence[4:] in ([], ["reader_incomplete"]), observed.sequence
     assert len(observed.mcp_attempts) == 1
-    assert observed.mcp_attempts[0]["data"] == SENTINEL_PAYLOAD
+    assert observed.mcp_attempts[0].payload == SENTINEL_PAYLOAD
     assert "completion read boom" not in mcp_trace.read_text(encoding="utf-8")
 
 
@@ -891,11 +1007,16 @@ async def test_classification_containment_does_not_absorb_base_exception(tmp_pat
 
 async def test_stage_field_read_failure_after_classification_is_still_contained(tmp_path, monkeypatch, mcp_trace):
     """Retained behaviour: a failure reading a STAGE field (after `complete` classified the outcome
-    as non-clean) is contained inside the reporter; the attempt never reaches the sink."""
+    as non-clean) is contained. Seam 1 moved the stage reads into the sink's lazy supplier, so
+    the attempt now reaches the sink and fails inside its boundary: observed, unrecorded, and
+    teardown continues to the reader decision."""
     boom = _CompletionReadFailure("stage read boom")
     observed = _Observed(monkeypatch)
     srv = _server(tmp_path, observed.wrap_runtime(_FailingFieldRuntime("endpoint_closed", boom)))
     outcome = await _drive_reader_incomplete(srv)
     assert outcome == "cancelled", outcome
-    assert observed.mcp_attempts == []
-    assert observed.sequence == ["close_all", "mcp_close", "reader_incomplete"], observed.sequence
+    assert len(observed.mcp_attempts) == 1
+    assert observed.mcp_attempts[0].failure is boom
+    assert _mcp_records(mcp_trace) == []
+    assert "stage read boom" not in (mcp_trace.read_text(encoding="utf-8") if mcp_trace.exists() else "")
+    assert observed.sequence == ["close_all", "mcp_close", "mcp_incomplete", "reader_incomplete"], observed.sequence

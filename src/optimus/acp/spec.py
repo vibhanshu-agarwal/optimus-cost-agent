@@ -16,7 +16,7 @@ from optimus.acp.conversation import (
     ConversationSanitizerInputs,
     ConversationState,
 )
-from optimus.acp.debug_trace import acp_debug_log
+from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
 from optimus.acp.errors import (
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
@@ -400,7 +400,7 @@ class AcpDuplexAdapter:
         acp_debug_log(
             location="spec.py:handle_client_notification:session_cancel",
             message="session/cancel notification received",
-            data={"session_id": notification.get("params", {}).get("sessionId") if isinstance(notification.get("params"), dict) else None},
+            data=lambda: {"session_id": notification.get("params", {}).get("sessionId") if isinstance(notification.get("params"), dict) else None},
             hypothesis_id="H1",
         )
         # endregion
@@ -585,7 +585,7 @@ class AcpDuplexAdapter:
         acp_debug_log(
             location="spec.py:_handle_session_prompt:entry",
             message="session/prompt started",
-            data={"session_id": session_id, "request_id": request.get("id"), "run_id": run_id, "turn_seq": turn_seq},
+            data=lambda: {"session_id": session_id, "request_id": request.get("id"), "run_id": run_id, "turn_seq": turn_seq},
             hypothesis_id="H1",
         )
         # endregion
@@ -639,7 +639,7 @@ class AcpDuplexAdapter:
             acp_debug_log(
                 location="spec.py:_handle_session_prompt:planning_done",
                 message="planning completed",
-                data={
+                data=lambda: {
                     "run_id": run_id,
                     "status": planning_result.status.value,
                     "plan_hash": planning_result.plan_hash,
@@ -697,7 +697,7 @@ class AcpDuplexAdapter:
             acp_debug_log(
                 location="spec.py:_handle_session_prompt:permission_done",
                 message="permission response received",
-                data={
+                data=lambda: {
                     "run_id": run_id,
                     "outcome": permission_result.get("outcome"),
                     "has_metadata": isinstance(permission_result.get("metadata"), dict),
@@ -746,7 +746,7 @@ class AcpDuplexAdapter:
             acp_debug_log(
                 location="spec.py:_handle_session_prompt:approved_done",
                 message="approved execution completed",
-                data={
+                data=lambda: {
                     "run_id": run_id,
                     "status": approved_result.status.value,
                     "mutation_count": approved_result.mutation_count,
@@ -776,7 +776,7 @@ class AcpDuplexAdapter:
             acp_debug_log(
                 location="spec.py:_handle_session_prompt:outbound_error",
                 message="client rejected outbound ACP request",
-                data={"run_id": run_id, "code": exc.code, "message": exc.message},
+                data=lambda exc=exc: {"run_id": run_id, "code": exc.code, "message": exc.message},
                 hypothesis_id="H1",
             )
             # endregion
@@ -855,7 +855,7 @@ class AcpDuplexAdapter:
         acp_debug_log(
             location="spec.py:_request_permission:pre_send",
             message="sending session/request_permission",
-            data={
+            data=lambda: {
                 "session_id": turn.session_id,
                 "run_id": result.run_id,
                 "param_keys": sorted(params.keys()),
@@ -943,7 +943,7 @@ class AcpDuplexAdapter:
             acp_debug_log(
                 location="spec.py:_emit_result_updates:plan",
                 message="emitting plan session/update",
-                data={
+                data=lambda: {
                     "session_id": session_id,
                     "update_keys": sorted(update_payload["update"].keys()),
                     "has_entries": "entries" in update_payload["update"],
@@ -963,19 +963,20 @@ class AcpDuplexAdapter:
                 kind=tool_kind_for_name(tool_call.tool_name),
             )
             # region agent log
-            acp_debug_log(
-                location="spec.py:_emit_result_updates:tool_call",
-                message="emitting tool_call session/update",
-                data={
-                    "session_id": session_id,
-                    "tool_call_id": tool_call_id,
-                    "session_update": payload["update"]["sessionUpdate"],
-                    "tool_name": tool_call.tool_name,
-                    "status": payload["update"]["status"],
-                },
-                hypothesis_id="H5",
-                run_id="post-fix",
-            )
+            if debug_trace_enabled():
+                acp_debug_log(
+                    location="spec.py:_emit_result_updates:tool_call",
+                    message="emitting tool_call session/update",
+                    data=lambda tool_call=tool_call, tool_call_id=tool_call_id, payload=payload: {
+                        "session_id": session_id,
+                        "tool_call_id": tool_call_id,
+                        "session_update": payload["update"]["sessionUpdate"],
+                        "tool_name": tool_call.tool_name,
+                        "status": payload["update"]["status"],
+                    },
+                    hypothesis_id="H5",
+                    run_id="post-fix",
+                )
             # endregion
             await self._outbound.notify("session/update", payload)
 
@@ -1007,7 +1008,7 @@ class AcpDuplexAdapter:
         acp_debug_log(
             location="spec.py:_emit_completion_message",
             message="emitting completion updates",
-            data={
+            data=lambda: {
                 "session_id": session_id,
                 "plan_entry_count": len(completed_plan["update"]["entries"]),
                 "message_preview": message[:120],

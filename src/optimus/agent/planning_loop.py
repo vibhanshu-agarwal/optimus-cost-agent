@@ -1037,21 +1037,22 @@ class _PlanningIterationRunner:
                 # Unexpected non-Gateway exception — treat as unknown cost.
                 self._cost_complete = False
                 self._unknown_cost_attempt_count += 1
-                from optimus.acp.debug_trace import acp_debug_log
+                from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
 
-                acp_debug_log(
-                    location="planning_loop.py:_invoke_planning_gateway",
-                    message="planning attempt cost unknown",
-                    data={
-                        "run_id": self._run_id,
-                        "session_id": self._session_id,
-                        "planning_turn": planning_turn,
-                        "wire_attempt": wire_attempt,
-                        "error_type": type(exc).__name__,
-                    },
-                    hypothesis_id="P9.95-USAGE-UNKNOWN",
-                    run_id=self._run_id,
-                )
+                if debug_trace_enabled():
+                    acp_debug_log(
+                        location="planning_loop.py:_invoke_planning_gateway",
+                        message="planning attempt cost unknown",
+                        data=lambda exc=exc: {
+                            "run_id": self._run_id,
+                            "session_id": self._session_id,
+                            "planning_turn": planning_turn,
+                            "wire_attempt": wire_attempt,
+                            "error_type": type(exc).__name__,
+                        },
+                        hypothesis_id="P9.95-USAGE-UNKNOWN",
+                        run_id=self._run_id,
+                    )
                 from optimus.retry.policy import PermanentGatewayError as _PermanentStop
 
                 raise _PermanentStop("unknown transport cost") from exc
@@ -1185,22 +1186,23 @@ class _PlanningIterationRunner:
                     cost_usd=attempt_cost,
                 )
             except PlanningReadError as exc:
-                from optimus.acp.debug_trace import acp_debug_log
+                from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
 
-                acp_debug_log(
-                    location="planning_loop.py:execute_iteration",
-                    message="planning read rejected",
-                    data={
-                        "run_id": self._run_id,
-                        "session_id": self._session_id,
-                        "stop_reason": exc.code,
-                        "rejected_path": request.path,
-                        "start_byte": request.start_byte,
-                        "end_byte": request.end_byte,
-                    },
-                    hypothesis_id="P9.87-READ-REJECT",
-                    run_id=self._run_id,
-                )
+                if debug_trace_enabled():
+                    acp_debug_log(
+                        location="planning_loop.py:execute_iteration",
+                        message="planning read rejected",
+                        data=lambda exc=exc: {
+                            "run_id": self._run_id,
+                            "session_id": self._session_id,
+                            "stop_reason": exc.code,
+                            "rejected_path": request.path,
+                            "start_byte": request.start_byte,
+                            "end_byte": request.end_byte,
+                        },
+                        hypothesis_id="P9.87-READ-REJECT",
+                        run_id=self._run_id,
+                    )
                 return self._typed_planning_failure(
                     stop_reason=exc.code,
                     summary=str(exc),
