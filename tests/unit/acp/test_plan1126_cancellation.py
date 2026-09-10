@@ -27,6 +27,19 @@ _OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"  # pragma: allowlist secre
 _SCHEMA_PATH = Path("tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json")
 
 
+def _sealed_replay():
+    """Every family's sealed observations. The builders replay these; they measure nothing."""
+    import json as _json
+
+    from tools.plan1126_runtime_audit.replay import SealedObservations
+
+    root = Path(__file__).resolve().parents[3]
+    payload = _json.loads(
+        (root / "reports" / "plan-11-26-acp-runtime-audit.json").read_text(encoding="utf-8")
+    )
+    return SealedObservations.from_sealed(payload)
+
+
 def test_canonical_digest_is_deterministic_and_content_only() -> None:
     first = _canonical_digest({"b": 2, "a": 1})
 
@@ -240,6 +253,7 @@ def test_h3_artifact_derives_cost_and_coverage_from_raw_observations(tmp_path: P
     assert build is not None, "H3 evidence builder does not exist"
 
     artifact = build(
+        replay=_sealed_replay(),
         merged=_cumulative_source(_MERGED),
         overlay=_cumulative_source(_OVERLAY),
         merged_commit=_MERGED,

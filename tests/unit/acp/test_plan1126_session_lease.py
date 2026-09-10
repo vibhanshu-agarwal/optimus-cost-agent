@@ -42,6 +42,19 @@ _EXPECTED_DEFERRED = {
 }
 
 
+def _sealed_replay():
+    """Every family's sealed observations. The builders replay these; they measure nothing."""
+    import json as _json
+
+    from tools.plan1126_runtime_audit.replay import SealedObservations
+
+    root = Path(__file__).resolve().parents[3]
+    payload = _json.loads(
+        (root / "reports" / "plan-11-26-acp-runtime-audit.json").read_text(encoding="utf-8")
+    )
+    return SealedObservations.from_sealed(payload)
+
+
 def _session_module():
     try:
         return importlib.import_module("tools.plan1126_runtime_audit.session_lease")
@@ -80,6 +93,33 @@ def _lexical_symbol_oracle(source: SourceTree) -> set[tuple[str, int, str]]:
         for line_number, line in enumerate(source.read_text(path).splitlines(), start=1)
         if (match := pattern.search(line)) is not None
     }
+
+
+def _sealed_payload():
+    return json.loads(
+        (Path(__file__).resolve().parents[3] / "reports" / "plan-11-26-acp-runtime-audit.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def _sealed_observations():
+    from tools.plan1126_runtime_audit.shutdown import replayed_shutdown_observations
+
+    return replayed_shutdown_observations(_sealed_payload())
+
+
+def _sealed_admission_observations():
+    """Sealed H9 admission rows: the historical record replays them, never re-runs them."""
+    from tools.plan1126_runtime_audit.queue_policy import replayed_admission_observations
+
+    return replayed_admission_observations(_sealed_payload())
+
+
+def _sealed_health_observations():
+    from tools.plan1126_runtime_audit.queue_policy import replayed_health_observations
+
+    return replayed_health_observations(_sealed_payload())
 
 
 def test_binding_presence_gate_derives_provisional_overlay_and_stops() -> None:
@@ -158,7 +198,7 @@ def test_binding_gate_rejects_intake_with_mismatched_baseline_identity() -> None
 
 def test_h10_artifact_is_scoped_out_without_runtime_or_live_evidence(tmp_path: Path) -> None:
     module = _session_module()
-    artifact = module.build_h10_audit_artifact(
+    artifact = module.build_h10_audit_artifact(replay=_sealed_replay(),
         merged=_cumulative_source(_MERGED, module.H10_SOURCE_PATHS),
         overlay=_cumulative_source(_OVERLAY, module.H10_SOURCE_PATHS),
         intake=_intake(),

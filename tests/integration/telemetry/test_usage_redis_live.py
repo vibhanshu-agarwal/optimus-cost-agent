@@ -89,7 +89,9 @@ def test_live_redis_provider_usage_persistence_matches_response_and_ledger(
 ) -> None:
     client, run_id = live_usage_redis
     adapter = RedisTelemetryAdapter(client=client)
-    accounting = UsageAccountingService(event_sink=RedisTelemetryEventSink(adapter))
+    # Seam 2 B: this fixture owns its own client (not a runtime); it keeps its existing
+    # shared-tool-loop submission explicitly rather than falling back to it silently.
+    accounting = UsageAccountingService(event_sink=RedisTelemetryEventSink(adapter, submit=lambda operation: sync_await(operation())))
     occurred_at = datetime(2026, 7, 28, tzinfo=UTC)
 
     response = _gateway_usage("gw-live-1", "0.0025", 10)

@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .replay import SealedObservations
+
 import ast
 import asyncio
 import hashlib
@@ -717,6 +722,10 @@ class _CaptureGatewayClient:
         }
 
 
+def _unused_submit(operation):  # pragma: no cover - the probe never submits
+    raise AssertionError("the H8 redaction probe must not submit Redis work")
+
+
 class _UnusedRedisAdapter:
     """A tool-call event must be discarded before any adapter operation."""
 
@@ -755,7 +764,9 @@ def runtime_redaction_observations(
     jsonl_path = root / "task8-redaction.jsonl"
     debug_path = root / "task8-debug.ndjson"
     writer = JsonlTelemetryWriter(jsonl_path)
-    redis_sink = RedisTelemetryEventSink(_UnusedRedisAdapter())  # type: ignore[arg-type]
+    # Seam 2, checkpoint B: the sink requires its owner submission seam. This probe never
+    # routes an event to Redis, so the seam refuses rather than reaching any loop.
+    redis_sink = RedisTelemetryEventSink(_UnusedRedisAdapter(), submit=_unused_submit)  # type: ignore[arg-type]
     capture_client = _CaptureGatewayClient()
     exporter = object.__new__(GatewayObservabilityExporter)
     exporter._client = capture_client  # type: ignore[attr-defined]
@@ -1419,14 +1430,20 @@ class TelemetryEvidenceRecord:
 
 
 def _telemetry_record(
-    source: SourceTree, merged_commit: str, overlay_commit: str, workspace: str | Path,
+    source: SourceTree, merged_commit: str, overlay_commit: str, replay: "SealedObservations",
 ) -> TelemetryEvidenceRecord:
+    """Rebuild the historical H8 record from SEALED rows for all four families. Runs NO probe.
+
+    `workspace` left with the probes that used it: two of the four wrote into a directory,
+    and once their rows are replayed nothing here needs one. A required parameter nothing
+    reads would only suggest this function still does work it no longer does.
+    """
     scoped = SourceTree({path: source.read_text(path) for path in H8_SOURCE_PATHS})
     inventory = discover_telemetry_inventory(scoped)
-    schema_rows = runtime_event_schema_observations(inventory=inventory)
-    redaction_rows = runtime_redaction_observations(inventory=inventory, workspace=workspace)
-    correlation_rows = runtime_correlation_observations(inventory=inventory)
-    sink_rows = telemetry_sink_failure_observations(inventory=inventory, workspace=workspace)
+    schema_rows = replay.schema
+    redaction_rows = replay.redaction
+    correlation_rows = replay.correlation
+    sink_rows = replay.sink_failure
     schema = _summary(schema_rows, (
         ("event_kind", "TelemetryEventKind", tuple(sorted(inventory.event_schemas))),
         ("case_kind", "SchemaCaseKind", tuple(item.value for item in SchemaCaseKind)),
@@ -1552,16 +1569,17 @@ def _h8_findings(record: TelemetryEvidenceRecord) -> tuple[Finding, ...]:
 
 def build_h8_audit_artifact(
     *, merged: SourceTree, overlay: SourceTree, merged_commit: str, overlay_commit: str,
-    workspace: str | Path,
+    replay: "SealedObservations",
 ) -> AuditArtifact:
     """Build the cumulative H3-H8 artifact without changing production source."""
 
     from .semantic_errors import build_h7_audit_artifact
 
     base = build_h7_audit_artifact(
+        replay=replay,
         merged=merged, overlay=overlay, merged_commit=merged_commit, overlay_commit=overlay_commit,
     )
-    h8 = _telemetry_record(merged, merged_commit, overlay_commit, workspace)
+    h8 = _telemetry_record(merged, merged_commit, overlay_commit, replay)
     multipliers = dict(base.discovered_multipliers)
     multipliers["sinks"] = h8.inventory.sink_count
     cost = dict(base.computed_run_cost)

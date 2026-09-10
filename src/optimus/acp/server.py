@@ -254,6 +254,58 @@ class NdjsonOutboundChannel:
                 future.set_exception(AcpOutboundError(code=code, message=msg, data=data_dict))
 
 
+#: Per-call observation budget for the serving process's Redis teardown stage. Test-injectable.
+REDIS_SHUTDOWN_OBSERVATION_SECONDS = 10.0
+
+
+def redis_cleanup_payload(runtime: Any) -> dict[str, Any]:
+    """The only fields the Redis diagnostic may carry: lifecycle state and stage outcomes.
+
+    Read lazily by the sink; a runtime that cannot answer degrades to fixed sentinels so no
+    arbitrary content reaches the diagnostic.
+    """
+    try:
+        record = runtime.teardown_record
+        state = runtime.state
+        return {
+            "state": state.value if hasattr(state, "value") else "unknown",
+            "outcome": "unknown",
+            "client": record.client.value if record is not None else "unknown",
+            "pool": record.pool.value if record is not None else "unknown",
+            "owner_terminated": bool(record.owner_terminated) if record is not None else False,
+            "admitted_work_settled": bool(record.admitted_work_settled) if record is not None else False,
+        }
+    except Exception:  # noqa: BLE001 - diagnostic boundary; sentinels, never content
+        return {
+            "state": "unknown",
+            "outcome": "unknown",
+            "client": "unknown",
+            "pool": "unknown",
+            "owner_terminated": False,
+            "admitted_work_settled": False,
+        }
+
+
+def report_redis_cleanup_incomplete(runtime: Any, outcome: str) -> None:
+    """One content-free attempt to record that the Redis teardown did not complete cleanly.
+
+    Contained like the MCP reporter: this runs inside ``finally``, where a raise would
+    replace the cancellation or exception that initiated teardown.
+    """
+
+    def payload() -> dict[str, Any]:
+        return {**redis_cleanup_payload(runtime), "outcome": outcome}
+
+    try:
+        acp_debug_log(
+            location="server.py:serve_ndjson:redis_cleanup_incomplete",
+            message="redis runtime cleanup incomplete at teardown",
+            data=payload,
+        )
+    except Exception:
+        return
+
+
 class AcpStreamServer:
     """
     Handles Advanced Control Protocol (ACP) stream server functionality, allowing
@@ -277,6 +329,7 @@ class AcpStreamServer:
         max_planning_turns: int | None = None,
         client_mcp_runtime: Any | None = None,
         conversation_sanitizer_inputs: Any | None = None,
+        redis_runtime: Any | None = None,
     ) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
         # Plan 9.96, Task 5 Step 2: resolved once by build_configured_server()
@@ -285,11 +338,54 @@ class AcpStreamServer:
         self._max_planning_turns = max_planning_turns
         self._client_mcp_runtime = client_mcp_runtime
         self._conversation_sanitizer_inputs = conversation_sanitizer_inputs
+        # Seam 2, checkpoint B: the serving process retains the Redis runtime the
+        # bootstrap built, and closes it LAST in its own teardown. Before this seam the
+        # runtime was reachable only through the runner's store and sink, with no close
+        # handle anywhere in the serving graph (Plan 11.26 S1: MISSING on merged).
+        self._redis_runtime = redis_runtime
         self._request_tasks: set[asyncio.Task[Any]] = set()
 
     @property
     def client_mcp_runtime(self) -> Any | None:
         return self._client_mcp_runtime
+
+    @property
+    def redis_runtime(self) -> Any | None:
+        return self._redis_runtime
+
+    async def _close_redis_runtime_stage(self) -> None:
+        """The LAST teardown stage: observe the retained runtime's single teardown.
+
+        Observed asynchronously through ``close_async`` so the ACP event loop is never
+        blocked on a thread join; the observation is bounded by
+        ``REDIS_SHUTDOWN_OBSERVATION_SECONDS`` and an expired budget leaves the runtime
+        CLOSING with ownership retained. The outcome is CONSUMED, like the client-MCP
+        outcome above it: a clean record reports nothing, and an incomplete or failed
+        teardown produces exactly one content-free diagnostic. Nothing raises out of
+        this stage -- it runs inside ``finally``, where a raise would replace the
+        cancellation or exception that initiated teardown -- but BaseException is never
+        absorbed.
+        """
+        runtime = self._redis_runtime
+        if runtime is None:
+            return
+        from optimus.redis.runtime import RedisRuntimeShutdownIncomplete
+
+        outcome = "clean"
+        try:
+            record = await runtime.close_async(timeout=REDIS_SHUTDOWN_OBSERVATION_SECONDS)
+            if not record.is_clean:
+                outcome = "failed"
+        except RedisRuntimeShutdownIncomplete:
+            # The observation budget expired; the teardown and its owner are retained.
+            # Deliberately not `except TimeoutError`: a resource stage that failed WITH a
+            # TimeoutError is republished by close_async as that error and is a
+            # completed-but-failed teardown, not an incomplete one.
+            outcome = "incomplete"
+        except Exception:  # noqa: BLE001 - a resource-stage failure republished by close_async
+            outcome = "failed"
+        if outcome != "clean":
+            report_redis_cleanup_incomplete(runtime, outcome)
 
     @property
     def conversation_sanitizer_inputs(self) -> Any | None:
@@ -309,6 +405,15 @@ class AcpStreamServer:
         await writer.drain()
 
     async def serve(self, reader: AsyncByteReader, writer: AsyncByteWriter) -> None:
+        # Seam 2, checkpoint B (round 2, R1): custody protection begins the moment this
+        # server is entered. Nothing runs outside this try, so a failure anywhere --
+        # setup, serving or an earlier cleanup -- still reaches the Redis stage below.
+        try:
+            await self._serve_framed(reader, writer)
+        finally:
+            await self._close_redis_runtime_stage()
+
+    async def _serve_framed(self, reader: AsyncByteReader, writer: AsyncByteWriter) -> None:
         while True:
             try:
                 request = await read_message(reader)
@@ -334,6 +439,34 @@ class AcpStreamServer:
         dedicated_writer: DedicatedOutboundWriter | None = None,
         notice_control: NoticeControl | None = None,
         join_dedicated_writer: bool = True,
+    ) -> None:
+        # Seam 2, checkpoint B (round 2, R1): the retained Redis runtime is closed by THIS
+        # finally, which encloses setup, serving and every earlier teardown stage. The
+        # previous placement -- last statement inside the serving finally -- was skipped
+        # whenever adapter construction or an earlier cleanup stage raised, stranding a
+        # live owner with no teardown record. The stage order is unchanged on the normal
+        # path (adapter, MCP runtime, owned writer, reader decision, then Redis); on a
+        # failing path the earlier stages keep their own outcomes and the failure they
+        # raised, and Redis is still closed afterwards -- never before them.
+        try:
+            await self._serve_ndjson(
+                reader,
+                writer,
+                dedicated_writer=dedicated_writer,
+                notice_control=notice_control,
+                join_dedicated_writer=join_dedicated_writer,
+            )
+        finally:
+            await self._close_redis_runtime_stage()
+
+    async def _serve_ndjson(
+        self,
+        reader: NdjsonLineReader,
+        writer: NdjsonLineWriter,
+        *,
+        dedicated_writer: DedicatedOutboundWriter | None,
+        notice_control: NoticeControl | None,
+        join_dedicated_writer: bool,
     ) -> None:
         log_provenance_once()
         agent_runner = self._dispatcher.agent_runner
@@ -718,3 +851,6 @@ class AcpStreamServer:
             else:
                 reader_task.cancel()
                 report_reader_incomplete()
+            # Seam 2, checkpoint B: the Redis runtime is closed LAST by the enclosing
+            # `serve_ndjson` finally, after every stage above that may still submit work
+            # to it -- and still closed when one of those stages raises.

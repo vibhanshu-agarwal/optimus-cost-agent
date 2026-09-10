@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .replay import SealedObservations
+
 import ast
 import hashlib
 import json
@@ -532,10 +537,12 @@ def _finding(record: SessionLeaseEvidenceRecord) -> Finding:
 def build_h10_audit_artifact(
     *, merged: SourceTree, overlay: SourceTree, intake: Mapping[str, Any],
     merged_commit: str, overlay_commit: str,
+    replay: "SealedObservations",
 ) -> AuditArtifact:
     from .queue_policy import build_h9_audit_artifact
 
     base = build_h9_audit_artifact(
+        replay=replay,
         merged=merged,
         overlay=overlay,
         merged_commit=merged_commit,

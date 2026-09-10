@@ -26,6 +26,19 @@ _OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"  # pragma: allowlist secre
 _SCHEMA_PATH = Path("tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json")
 
 
+def _sealed_replay():
+    """Every family's sealed observations. The builders replay these; they measure nothing."""
+    import json as _json
+
+    from tools.plan1126_runtime_audit.replay import SealedObservations
+
+    root = Path(__file__).resolve().parents[3]
+    payload = _json.loads(
+        (root / "reports" / "plan-11-26-acp-runtime-audit.json").read_text(encoding="utf-8")
+    )
+    return SealedObservations.from_sealed(payload)
+
+
 def _telemetry_module():
     try:
         return importlib.import_module("tools.plan1126_runtime_audit.telemetry")
@@ -113,6 +126,26 @@ def _lexical_inventory_oracle(source: SourceTree) -> set[_LexicalSite]:
             if _SINK_DEFINITION.match(stripped):
                 sites.add(_LexicalSite(path, line_number, "SINK"))
     return sites
+
+
+def _sealed_payload():
+    return json.loads(
+        (Path(__file__).resolve().parents[3] / "reports" / "plan-11-26-acp-runtime-audit.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def _sealed_observations():
+    from tools.plan1126_runtime_audit.shutdown import replayed_shutdown_observations
+
+    return replayed_shutdown_observations(_sealed_payload())
+
+
+def _sealed_health_observations():
+    from tools.plan1126_runtime_audit.queue_policy import replayed_health_observations
+
+    return replayed_health_observations(_sealed_payload())
 
 
 def test_telemetry_inventory_is_independent_complete_and_not_seeded() -> None:
@@ -229,12 +262,11 @@ def test_telemetry_sink_failures_are_contained(tmp_path: Path) -> None:
 
 def test_h8_artifact_recomputes_s2_cost_coverage_and_findings(tmp_path: Path) -> None:
     module = _telemetry_module()
-    artifact = module.build_h8_audit_artifact(
+    artifact = module.build_h8_audit_artifact(replay=_sealed_replay(),
         merged=_cumulative_source(_MERGED, module.H8_SOURCE_PATHS),
         overlay=_cumulative_source(_OVERLAY, module.H8_SOURCE_PATHS),
         merged_commit=_MERGED,
         overlay_commit=_OVERLAY,
-        workspace=tmp_path,
     )
     payload = artifact.to_dict()
     assert AuditArtifact.from_dict(payload).to_dict() == payload

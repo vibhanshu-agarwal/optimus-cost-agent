@@ -69,10 +69,18 @@ class FakeRedis:
         return True
 
 
+def _submit(operation):
+    """Seam 2 B: the sink requires an owner submission seam; tests run the factory inline."""
+    import asyncio
+
+    return asyncio.run(operation())
+
+
+
 def _sink() -> tuple[FakeRedis, UsageAccountingService]:
     redis = FakeRedis()
     adapter = RedisTelemetryAdapter(client=redis)
-    accounting = UsageAccountingService(event_sink=RedisTelemetryEventSink(adapter))
+    accounting = UsageAccountingService(event_sink=RedisTelemetryEventSink(adapter, submit=_submit))
     return redis, accounting
 
 

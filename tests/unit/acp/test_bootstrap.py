@@ -5,7 +5,7 @@ import pytest
 from optimus.acp import bootstrap as bootstrap_module
 from optimus.acp.bootstrap import (
     StartupConfigurationError,
-    build_agent_runner_for_harness,
+    build_agent_harness_runtime,
     build_client_mcp_runtime,
     build_configured_server,
 )
@@ -88,6 +88,14 @@ def test_bootstrap_builds_agent_configured_server(tmp_path, monkeypatch):
         def telemetry_adapter(self):
             return object()
 
+        def run_sync(self, operation, *, timeout=None):
+            import asyncio
+
+            return asyncio.run(operation())
+
+        def close(self, *, timeout=None):
+            return None
+
     class FakeClientRuntime:
         disposition = object()
         supervisor = object()
@@ -139,6 +147,14 @@ def test_bootstrap_gateway_timeout_defaults_to_thirty_seconds(tmp_path, monkeypa
 
         def telemetry_adapter(self):
             return object()
+
+        def run_sync(self, operation, *, timeout=None):
+            import asyncio
+
+            return asyncio.run(operation())
+
+        def close(self, *, timeout=None):
+            return None
 
     class FakeClientRuntime:
         disposition = object()
@@ -216,6 +232,14 @@ def test_bootstrap_wires_workspace_context_observer(monkeypatch, tmp_path):
         def telemetry_adapter(self):
             return object()
 
+        def run_sync(self, operation, *, timeout=None):
+            import asyncio
+
+            return asyncio.run(operation())
+
+        def close(self, *, timeout=None):
+            return None
+
     monkeypatch.setattr("optimus.acp.bootstrap.AgentRunner", CapturingAgentRunner)
     monkeypatch.setattr(
         "optimus.acp.preflight.run_preflight",
@@ -223,7 +247,7 @@ def test_bootstrap_wires_workspace_context_observer(monkeypatch, tmp_path):
     )
     monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: FakeRuntime())
 
-    build_agent_runner_for_harness(
+    build_agent_harness_runtime(
         environ={
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
             "OPTIMUS_API_KEY": "opt-test",  # pragma: allowlist secret
@@ -264,6 +288,14 @@ def test_bootstrap_wires_one_telemetry_fanout_with_jsonl_redis_and_gateway_expor
         def telemetry_adapter(self):
             return object()
 
+        def run_sync(self, operation, *, timeout=None):
+            import asyncio
+
+            return asyncio.run(operation())
+
+        def close(self, *, timeout=None):
+            return None
+
     monkeypatch.setattr("optimus.acp.bootstrap.AgentRunner", CapturingAgentRunner)
     monkeypatch.setattr(
         "optimus.acp.preflight.run_preflight",
@@ -271,7 +303,7 @@ def test_bootstrap_wires_one_telemetry_fanout_with_jsonl_redis_and_gateway_expor
     )
     monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: FakeRuntime())
 
-    build_agent_runner_for_harness(
+    build_agent_harness_runtime(
         environ={
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
             "OPTIMUS_API_KEY": "opt-test",  # pragma: allowlist secret
@@ -303,6 +335,14 @@ def test_bootstrap_builds_process_lifetime_client_mcp_runtime(tmp_path, monkeypa
 
         def telemetry_adapter(self):
             return object()
+
+        def run_sync(self, operation, *, timeout=None):
+            import asyncio
+
+            return asyncio.run(operation())
+
+        def close(self, *, timeout=None):
+            return None
 
     from optimus.mcp.client_config import ClientMcpConfigNormalizer
     from optimus.mcp.client_disposition import ClientMcpDisposition, ClientMcpRuntime
@@ -443,6 +483,14 @@ def _patch_preflighted_runtime(monkeypatch) -> None:
 
         def telemetry_adapter(self):
             return object()
+
+        def run_sync(self, operation, *, timeout=None):
+            import asyncio
+
+            return asyncio.run(operation())
+
+        def close(self, *, timeout=None):
+            return None
 
     monkeypatch.setattr(
         "optimus.acp.preflight.run_preflight",
@@ -691,3 +739,211 @@ def test_build_client_mcp_runtime_binds_explicit_empty_versus_missing_pathext(tm
     finally:
         missing.close()
     assert recorder.calls == []
+
+
+# --- Seam 2, checkpoint B: the serving lifetime retains and closes the Redis runtime ---
+
+
+class _LifetimeRuntime:
+    """A fake runtime with real lifecycle state, for custody assertions."""
+
+    def __init__(self) -> None:
+        self.closed = 0
+        self.timeouts: list[object] = []
+
+    def ping(self):
+        return None
+
+    def sync_state_store(self):
+        class _Store:
+            def ping(self):
+                return None
+
+        return _Store()
+
+    def telemetry_adapter(self):
+        return object()
+
+    def run_sync(self, operation, *, timeout=None):
+        import asyncio
+
+        return asyncio.run(operation())
+
+    def close(self, *, timeout=None):
+        self.closed += 1
+        self.timeouts.append(timeout)
+        return "record"
+
+
+def _lifetime_runtime(monkeypatch) -> _LifetimeRuntime:
+    runtime = _LifetimeRuntime()
+    monkeypatch.setattr(
+        "optimus.acp.preflight.run_preflight",
+        lambda environ, **kwargs: "redis://localhost:6379/0",
+    )
+    monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: runtime)
+    return runtime
+
+
+def test_the_harness_runtime_retains_the_redis_runtime_and_closes_it_once(monkeypatch, tmp_path):
+    """MUTATION: the retained close handle is dropped (S1 serving custody)."""
+    runtime = _lifetime_runtime(monkeypatch)
+
+    harness = build_agent_harness_runtime(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+
+    assert isinstance(harness.agent_runner, AgentRunner)
+    assert harness.redis_runtime is runtime
+    assert runtime.closed == 0, "construction must not close the runtime it hands over"
+    assert harness.close(timeout=1.5) == "record"
+    assert runtime.closed == 1 and runtime.timeouts == [1.5]
+
+
+def test_the_configured_server_holds_the_same_redis_runtime_the_harness_built(monkeypatch, tmp_path):
+    runtime = _lifetime_runtime(monkeypatch)
+    monkeypatch.setattr("optimus.acp.bootstrap.build_client_mcp_runtime", lambda **kwargs: _fake_client_runtime())
+
+    server = build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+
+    assert server.redis_runtime is runtime
+    assert runtime.closed == 0
+
+
+def test_the_telemetry_sink_submits_through_the_retained_runtime(monkeypatch, tmp_path):
+    """The sink must be bound to THIS runtime's owner, never to the shared tool loop."""
+    from optimus.telemetry.redis_sink import RedisTelemetryEventSink
+
+    runtime = _lifetime_runtime(monkeypatch)
+    captured: dict = {}
+
+    class CapturingAgentRunner(AgentRunner):
+        def __init__(self, **kwargs) -> None:
+            captured.update(kwargs)
+            super().__init__(**kwargs)
+
+    monkeypatch.setattr("optimus.acp.bootstrap.AgentRunner", CapturingAgentRunner)
+    build_agent_harness_runtime(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+    sink = captured["event_sink"].redis_sink
+    assert isinstance(sink, RedisTelemetryEventSink)
+    assert sink.submit == runtime.run_sync
+
+
+def test_a_failure_after_the_runtime_exists_rolls_it_back_and_preserves_the_error(monkeypatch, tmp_path):
+    """MUTATION: startup rollback leak at the composition layer."""
+    runtime = _lifetime_runtime(monkeypatch)
+
+    def _boom(**kwargs):
+        raise RuntimeError("guard construction failed")
+
+    monkeypatch.setattr("optimus.acp.bootstrap.PreToolGuard.for_workspace", _boom)
+
+    with pytest.raises(RuntimeError, match="guard construction failed"):
+        build_agent_harness_runtime(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+    assert runtime.closed == 1
+
+
+def test_a_rollback_failure_is_attached_to_the_original_error_not_substituted(monkeypatch, tmp_path):
+    runtime = _lifetime_runtime(monkeypatch)
+
+    def _close_fails(*, timeout=None):
+        runtime.closed += 1
+        raise TimeoutError("teardown incomplete")
+
+    runtime.close = _close_fails  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        "optimus.acp.bootstrap.PreToolGuard.for_workspace",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("guard construction failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="guard construction failed") as exc_info:
+        build_agent_harness_runtime(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+    assert runtime.closed == 1
+    assert any("rollback" in note and "teardown incomplete" in note for note in getattr(exc_info.value, "__notes__", []))
+
+
+def test_a_server_composition_failure_closes_the_harness_and_the_mcp_runtime(monkeypatch, tmp_path):
+    runtime = _lifetime_runtime(monkeypatch)
+    mcp_closes: list[int] = []
+
+    class _McpRuntime:
+        disposition = object()
+        supervisor = object()
+        mcp_http_enabled = False
+        mcp_sse_enabled = False
+
+        def close(self):
+            mcp_closes.append(1)
+            return None
+
+    monkeypatch.setattr("optimus.acp.bootstrap.build_client_mcp_runtime", lambda **kwargs: _McpRuntime())
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("sanitizer inputs failed")
+
+    monkeypatch.setattr("optimus.acp.conversation.build_conversation_sanitizer_inputs", _boom)
+
+    with pytest.raises(RuntimeError, match="sanitizer inputs failed"):
+        build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+    assert runtime.closed == 1
+    assert mcp_closes == [1]
+
+
+# --- R4: secondary-failure notes are safe for frozen exception types ---------------
+
+
+def test_a_rollback_failure_behind_a_frozen_startup_error_keeps_that_error(monkeypatch, tmp_path):
+    """R4 MUTATION: add_note on a frozen dataclass exception replaced the startup failure."""
+    from optimus.acp.subprocess_env import SubprocessEnvConfigurationError
+
+    runtime = _lifetime_runtime(monkeypatch)
+
+    def _close_fails(*, timeout=None):
+        runtime.closed += 1
+        raise OSError("offline cleanup fault")
+
+    runtime.close = _close_fails  # type: ignore[method-assign]
+    original = SubprocessEnvConfigurationError("conflicting Windows PATH spellings")
+    monkeypatch.setattr(
+        "optimus.acp.bootstrap.PreToolGuard.for_workspace",
+        lambda **kwargs: (_ for _ in ()).throw(original),
+    )
+    with pytest.raises(SubprocessEnvConfigurationError) as exc_info:
+        build_agent_harness_runtime(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+    assert exc_info.value is original
+    assert runtime.closed == 1
+    assert any("offline cleanup fault" in note for note in getattr(exc_info.value, "__notes__", []))
+
+
+def test_a_frozen_composition_error_with_failing_mcp_and_redis_cleanup_keeps_its_identity(monkeypatch, tmp_path):
+    from optimus.acp.subprocess_env import SubprocessEnvConfigurationError
+
+    runtime = _lifetime_runtime(monkeypatch)
+
+    def _close_fails(*, timeout=None):
+        runtime.closed += 1
+        raise OSError("redis cleanup fault")
+
+    runtime.close = _close_fails  # type: ignore[method-assign]
+    mcp_closes: list[int] = []
+
+    class _McpRuntime:
+        disposition = object()
+        supervisor = object()
+        mcp_http_enabled = False
+        mcp_sse_enabled = False
+
+        def close(self):
+            mcp_closes.append(1)
+            raise OSError("mcp cleanup fault")
+
+    monkeypatch.setattr("optimus.acp.bootstrap.build_client_mcp_runtime", lambda **kwargs: _McpRuntime())
+    original = SubprocessEnvConfigurationError("frozen composition failure")
+    monkeypatch.setattr(
+        "optimus.acp.conversation.build_conversation_sanitizer_inputs",
+        lambda *args, **kwargs: (_ for _ in ()).throw(original),
+    )
+    with pytest.raises(SubprocessEnvConfigurationError) as exc_info:
+        build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+    assert exc_info.value is original
+    assert mcp_closes == [1] and runtime.closed == 1, "a failing note must not skip the remaining cleanup"
+    notes = getattr(exc_info.value, "__notes__", [])
+    assert any("mcp cleanup fault" in note for note in notes) and any("redis cleanup fault" in note for note in notes)

@@ -26,6 +26,19 @@ _OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"  # pragma: allowlist secre
 _SCHEMA_PATH = Path("tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json")
 
 
+def _sealed_replay():
+    """Every family's sealed observations. The builders replay these; they measure nothing."""
+    import json as _json
+
+    from tools.plan1126_runtime_audit.replay import SealedObservations
+
+    root = Path(__file__).resolve().parents[3]
+    payload = _json.loads(
+        (root / "reports" / "plan-11-26-acp-runtime-audit.json").read_text(encoding="utf-8")
+    )
+    return SealedObservations.from_sealed(payload)
+
+
 def _semantic_module():
     try:
         return importlib.import_module("tools.plan1126_runtime_audit.semantic_errors")
@@ -72,6 +85,26 @@ def _lexical_semantic_oracle(source: SourceTree) -> set[_LexicalSemanticSite]:
             if path.endswith("errors.py") and _ERROR_RESPONSE_DEFINITION.match(line):
                 sites.add(_LexicalSemanticSite(path, line_number, "PUBLIC_OUTPUT_BUILDER"))
     return sites
+
+
+def _sealed_payload():
+    return json.loads(
+        (Path(__file__).resolve().parents[3] / "reports" / "plan-11-26-acp-runtime-audit.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def _sealed_observations():
+    from tools.plan1126_runtime_audit.shutdown import replayed_shutdown_observations
+
+    return replayed_shutdown_observations(_sealed_payload())
+
+
+def _sealed_health_observations():
+    from tools.plan1126_runtime_audit.queue_policy import replayed_health_observations
+
+    return replayed_health_observations(_sealed_payload())
 
 
 def test_semantic_inventory_is_independent_complete_and_not_seeded() -> None:
@@ -142,7 +175,7 @@ def test_eight_categories_execute_100_real_sanitizer_cases_each() -> None:
 
 def test_h6_h7_artifact_recomputes_coverage_findings_and_scope_out_debt(tmp_path: Path) -> None:
     module = _semantic_module()
-    artifact = module.build_h7_audit_artifact(
+    artifact = module.build_h7_audit_artifact(replay=_sealed_replay(),
         merged=_cumulative_source(_MERGED, module.H7_SOURCE_PATHS),
         overlay=_cumulative_source(_OVERLAY, module.H7_SOURCE_PATHS),
         merged_commit=_MERGED,

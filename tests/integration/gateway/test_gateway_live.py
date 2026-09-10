@@ -16,10 +16,8 @@ from optimus.agent.runner import AgentRunner
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.client import GatewayClient
 from optimus.guardrails.pre_tool import PreToolGuard
-from optimus.redis.async_bridge import sync_await
 from optimus.redis.runtime import RedisRuntime
 from optimus.runtime.modes import ExecutionMode
-from optimus.telemetry.redis_sink import RedisTelemetryEventSink
 from tests.integration.agent.test_multi_turn_planning_flow import _write_oversized_required_file
 
 pytestmark = pytest.mark.requires_gateway
@@ -63,13 +61,14 @@ def _assert_cost_within_cap(cost_usd: Decimal) -> None:
 
 
 def _delete_plan_keys(runtime: RedisRuntime, run_id: str) -> None:
-    client = runtime.sync_state_store().redis_client
+    client = runtime.client
 
     async def _delete() -> None:
         async for key in client.scan_iter(match=f"agent:plan:{run_id}*"):
             await client.delete(key)
 
-    sync_await(_delete())
+    # Seam 2, checkpoint B: submitted to the runtime's own owner, never a second loop.
+    runtime.run_sync(_delete)
 
 
 def _require_gateway_client() -> GatewayClient:
@@ -95,7 +94,7 @@ def _build_live_agent_runner(
         model=model,
         guard=guard,
         state_store=runtime.sync_state_store(),
-        event_sink=RedisTelemetryEventSink(runtime.telemetry_adapter()),
+        event_sink=runtime.telemetry_sink(),  # Seam 2 B: bound to the runtime's own owner
     )
     return runner, runtime
 

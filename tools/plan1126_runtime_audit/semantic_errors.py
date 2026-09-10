@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .replay import SealedObservations
+
 import ast
 import hashlib
 import json
@@ -783,10 +788,10 @@ def _authority_record(source: SourceTree, merged_commit: str, overlay_commit: st
 
 
 def _semantic_record(
-    source: SourceTree, merged_commit: str, overlay_commit: str,
+    source: SourceTree, merged_commit: str, overlay_commit: str, rows,
 ) -> SemanticEvidenceRecord:
+    """Rebuild the historical H7 record from SEALED selection rows. Runs NO probe."""
     inventory = discover_semantic_inventory(SourceTree({path: source.read_text(path) for path in _PYTHON_PATHS}))
-    rows = semantic_selection_observations(inventory=inventory)
     assessments = _coverage(rows)
     summary = SemanticObservationSummary(
         cases_per_category=100, total_observation_count=len(rows),
@@ -845,16 +850,18 @@ def _h7_findings(record: SemanticEvidenceRecord) -> tuple[Finding, ...]:
 
 def build_h7_audit_artifact(
     *, merged: SourceTree, overlay: SourceTree, merged_commit: str, overlay_commit: str,
+    replay: "SealedObservations",
 ) -> AuditArtifact:
     """Build the cumulative H3-H7 artifact without changing production source."""
 
     from .shutdown import build_h5_audit_artifact
 
     base = build_h5_audit_artifact(
+        replay=replay,
         merged=merged, overlay=overlay, merged_commit=merged_commit, overlay_commit=overlay_commit,
     )
     h6 = _authority_record(merged, merged_commit, overlay_commit)
-    h7 = _semantic_record(merged, merged_commit, overlay_commit)
+    h7 = _semantic_record(merged, merged_commit, overlay_commit, replay.semantic)
     return AuditArtifact(
         schema_version=base.schema_version, merged_commit=base.merged_commit, overlay_commit=base.overlay_commit,
         binding_commit=base.binding_commit, baseline_reconciliation_status=base.baseline_reconciliation_status,

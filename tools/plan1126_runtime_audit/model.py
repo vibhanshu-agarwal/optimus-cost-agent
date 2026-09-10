@@ -190,6 +190,100 @@ def _canonical_digest(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+CURRENT_MEASUREMENT_SCHEMA_VERSION = "plan-11-26-current-measurement-v1"
+#: The v1 envelope is frozen: it forbids additional properties and knows nothing about
+#: fresh measurements. Artifacts that carry them declare the successor envelope instead,
+#: so old readers keep validating old artifacts unchanged and dispatch stays explicit.
+AUDIT_ARTIFACT_SCHEMA_V1 = "plan-11-26-runtime-audit-v1"
+AUDIT_ARTIFACT_SCHEMA_V2 = "plan-11-26-runtime-audit-v2"
+
+
+@dataclass(frozen=True, slots=True)
+class CurrentMeasurementRecord:
+    """A fresh measurement, carrying its OWN identity instead of a historical record's.
+
+    The historical evidence records in this artifact are bound to immutable baseline
+    commits. A dynamic probe cannot be: it executes the installed package in whatever
+    interpreter is running, so its result is evidence about THAT, and filing it under a
+    historical anchor is the masquerade this record type exists to prevent.
+
+    It is a separate, separately versioned record. Historical records keep their exact
+    bytes, their invariants and their schema; nothing here loosens them, and an artifact
+    with no current measurements serializes exactly as it did before this type existed.
+    """
+
+    record_id: str
+    hypothesis_id: str
+    subject: str
+    schema_version: str
+    measurement_binding: Mapping[str, Any]
+    observation_digest: str
+    #: A resolvable pointer to the sealed inventory and observations this digest is over.
+    #: Without it the digest names something that exists nowhere, which is unfalsifiable
+    #: rather than verified.
+    retained_evidence: Mapping[str, Any]
+    ruling: str
+
+    def __post_init__(self) -> None:
+        if self.schema_version != CURRENT_MEASUREMENT_SCHEMA_VERSION:
+            raise ValueError("current measurement schema_version is invalid")
+        if not self.record_id or not self.hypothesis_id or not self.subject or not self.ruling:
+            raise ValueError("current measurement record identity is incomplete")
+        if not _is_hex(self.observation_digest, 64):
+            raise ValueError("current measurement observation digest is invalid")
+        # Validate the binding itself, not merely that the field names are present: the
+        # record is the persisted claim about what was measured, and an unvalidated claim
+        # is indistinguishable from a fabricated one.
+        from .evidence_store import RetainedEvidenceReference
+        from .measurement import EnvironmentBinding
+
+        try:
+            EnvironmentBinding.from_dict(self.measurement_binding)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"current measurement binding is invalid: {exc}") from exc
+        try:
+            reference = RetainedEvidenceReference.from_dict(self.retained_evidence)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"current measurement retained evidence is invalid: {exc}") from exc
+        if reference.observation_digest != self.observation_digest:
+            raise ValueError(
+                "current measurement retained evidence is invalid: the reference binds a different "
+                "observation digest than the record"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "record_id": self.record_id,
+            "hypothesis_id": self.hypothesis_id,
+            "subject": self.subject,
+            "schema_version": self.schema_version,
+            "measurement_binding": _canonical(self.measurement_binding),
+            "observation_digest": self.observation_digest,
+            "retained_evidence": _canonical(self.retained_evidence),
+            "ruling": self.ruling,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CurrentMeasurementRecord":
+        payload = _json_object(payload, "current measurement record")
+        expected = {
+            "record_id", "hypothesis_id", "subject", "schema_version",
+            "measurement_binding", "observation_digest", "retained_evidence", "ruling",
+        }
+        if set(payload) != expected:
+            raise ValueError("current measurement fields do not match the canonical schema")
+        return cls(
+            record_id=payload["record_id"],
+            hypothesis_id=payload["hypothesis_id"],
+            subject=payload["subject"],
+            schema_version=payload["schema_version"],
+            measurement_binding=_json_object(payload["measurement_binding"], "measurement_binding"),
+            observation_digest=payload["observation_digest"],
+            retained_evidence=_json_object(payload["retained_evidence"], "retained_evidence"),
+            ruling=payload["ruling"],
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class EvidenceReference:
     evidence_id: str
@@ -1199,11 +1293,23 @@ class AuditArtifact:
     computed_run_cost: Mapping[str, Any]
     gate_status: GateStatus
     evidence_records: tuple[EvidenceRecord, ...] = ()
+    #: Fresh measurements, each carrying its own binding. Optional and omitted
+    #: from `to_dict` when empty, so every historical artifact serializes to the
+    #: exact bytes it did before this field existed.
+    current_measurement_records: tuple[CurrentMeasurementRecord, ...] = ()
     scope_out_register: tuple[ScopeOutRegisterEntry, ...] | None = None
 
     def __post_init__(self) -> None:
-        if self.schema_version != "plan-11-26-runtime-audit-v1":
+        if self.schema_version not in (AUDIT_ARTIFACT_SCHEMA_V1, AUDIT_ARTIFACT_SCHEMA_V2):
             raise ValueError("schema_version is invalid")
+        if self.current_measurement_records and self.schema_version != AUDIT_ARTIFACT_SCHEMA_V2:
+            raise ValueError("fresh measurements require the successor envelope schema version")
+        if self.schema_version == AUDIT_ARTIFACT_SCHEMA_V2 and not self.current_measurement_records:
+            raise ValueError("the successor envelope requires at least one current measurement record")
+        if len({record.record_id for record in self.current_measurement_records}) != len(
+            self.current_measurement_records
+        ):
+            raise ValueError("current measurement record ids must be unique")
         if not _is_hex(self.merged_commit, 40) or not _is_hex(self.overlay_commit, 40):
             raise ValueError("merged_commit and overlay_commit must be lowercase 40-hex commits")
         if self.binding_commit is not None and not _is_hex(self.binding_commit, 40):
@@ -1442,6 +1548,16 @@ class AuditArtifact:
                     key=lambda item: (item.hypothesis_id, item.field_name),
                 )
             ],
+            **(
+                {
+                    "current_measurement_records": [
+                        record.to_dict()
+                        for record in sorted(self.current_measurement_records, key=lambda item: item.record_id)
+                    ]
+                }
+                if self.current_measurement_records
+                else {}
+            ),
         }
 
     @classmethod
@@ -1454,7 +1570,13 @@ class AuditArtifact:
             "unclassified_finding_count", "finding_counts_by_classification", "findings", "discovered_multipliers",
             "computed_run_cost", "gate_status", "evidence_records", "scope_out_register",
         }
-        if set(payload) != expected:
+        # Optional and additive: an artifact without fresh measurements must round-trip
+        # exactly as it always did, so the key is absent rather than empty.
+        current_measurements = tuple(
+            CurrentMeasurementRecord.from_dict(item)
+            for item in _json_array(payload.get("current_measurement_records", []), "current measurement records")
+        )
+        if set(payload) - {"current_measurement_records"} != expected:
             raise ValueError("artifact fields do not match the canonical schema")
         counts = payload["finding_counts_by_classification"]
         if (
@@ -1513,6 +1635,7 @@ class AuditArtifact:
             discovered_multipliers=payload["discovered_multipliers"], computed_run_cost=payload["computed_run_cost"], gate_status=payload["gate_status"],
             evidence_records=tuple(parsed_records),
             scope_out_register=tuple(ScopeOutRegisterEntry.from_dict(item) for item in scope_out_register),
+            current_measurement_records=current_measurements,
         )
         if payload["unclassified_finding_count"] != artifact.unclassified_finding_count:
             raise ValueError("unclassified_finding_count mismatch")

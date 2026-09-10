@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
-from typing import Protocol
+from typing import Any, Protocol
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
@@ -135,18 +135,68 @@ class RedisAgentStateStore:
         client: object | None = None,
         async_store: "AsyncRedisAgentStateStore | None" = None,
         ttl_seconds: int = DEFAULT_PLAN_TTL_SECONDS,
+        submit: "Callable[[Callable[[], Awaitable[Any]]], Any] | None" = None,
+        owned_runtime: object | None = None,
     ) -> None:
+        """
+        ``submit`` is the owner submission seam an async-backed store runs on (Seam 2,
+        checkpoint B). It takes a zero-argument operation factory and runs it on the ONE
+        loop that owns the client -- ``RedisRuntime.run_sync`` in production. It is
+        required whenever ``async_store`` is given: a store that fell back to the
+        process-wide shared tool loop would drive the runtime's client from a second
+        owner, which is the lifetime defect this seam removes. The synchronous
+        ``client`` path needs no owner and is unchanged.
+
+        ``owned_runtime`` is set only by :meth:`from_url`, whose convenience lifetime this
+        store then carries and closes; a store handed a runtime's seam by that runtime
+        owns nothing and cannot close it.
+        """
         if async_store is not None and client is not None:
             raise ValueError("Specify either async_store or client, not both")
+        if async_store is not None and submit is None:
+            raise TypeError(
+                "an async-backed RedisAgentStateStore requires the owner submission seam "
+                "(submit=runtime.run_sync); it never falls back to the shared tool loop"
+            )
         self._async_store = async_store
         self._client = client
         self._ttl_seconds = ttl_seconds
+        self._submit = submit
+        self._owned_runtime = owned_runtime
 
     @classmethod
     def from_url(cls, url: str, ttl_seconds: int = DEFAULT_PLAN_TTL_SECONDS) -> "RedisAgentStateStore":
+        """Build a runtime AND keep custody of it.
+
+        Before Seam 2 this discarded the runtime it built, leaving a live loop owner with
+        no close handle. The returned store now retains that runtime as
+        :attr:`owned_runtime`, submits through its owner, and closes it in :meth:`close`.
+        """
         from optimus.redis.runtime import RedisRuntime
 
-        return RedisRuntime.from_url(url, ttl_seconds=ttl_seconds).sync_state_store()
+        runtime = RedisRuntime.from_url(url, ttl_seconds=ttl_seconds)
+        async_store = AsyncRedisAgentStateStore(client=runtime.client, ttl_seconds=ttl_seconds)
+        return cls(async_store=async_store, ttl_seconds=ttl_seconds, submit=runtime.run_sync, owned_runtime=runtime)
+
+    @property
+    def owned_runtime(self) -> object | None:
+        return self._owned_runtime
+
+    def submit(self, operation: "Callable[[], Awaitable[Any]]") -> Any:
+        """Run an operation factory on the owner that drives this store's client.
+
+        Tools that need raw client access (key scans, cleanup) use this instead of a
+        loop of their own, so the client is never driven from a second owner.
+        """
+        if self._submit is None:
+            raise RuntimeError("this store has no owner submission seam; it wraps a synchronous client")
+        return self._submit(operation)
+
+    def close(self, *, timeout: float | None = None):
+        """Close the runtime this store owns. Only a :meth:`from_url` store owns one."""
+        if self._owned_runtime is None:
+            raise RuntimeError("this store owns no runtime; close the runtime that built it instead")
+        return self._owned_runtime.close(timeout=timeout)
 
     @property
     def redis_client(self) -> object:
@@ -158,9 +208,7 @@ class RedisAgentStateStore:
 
     def save_plan(self, record: AgentPlanRecord) -> None:
         if self._async_store is not None:
-            from optimus.redis.async_bridge import sync_await
-
-            sync_await(self._async_store.save_plan(record))
+            self._submit(lambda: self._async_store.save_plan(record))
             return
         key = _plan_key(run_id=record.run_id, plan_hash=record.plan_hash)
         mapping = _record_to_mapping(record)
@@ -218,9 +266,7 @@ class RedisAgentStateStore:
 
     def load_plan(self, *, run_id: str, plan_hash: str) -> AgentPlanRecord:
         if self._async_store is not None:
-            from optimus.redis.async_bridge import sync_await
-
-            return sync_await(self._async_store.load_plan(run_id=run_id, plan_hash=plan_hash))
+            return self._submit(lambda: self._async_store.load_plan(run_id=run_id, plan_hash=plan_hash))
         key = _plan_key(run_id=run_id, plan_hash=plan_hash)
         raw = self._client.hgetall(key)
         if not raw:
@@ -229,9 +275,7 @@ class RedisAgentStateStore:
 
     def latest_plan_for_run(self, *, run_id: str) -> AgentPlanRecord | None:
         if self._async_store is not None:
-            from optimus.redis.async_bridge import sync_await
-
-            return sync_await(self._async_store.latest_plan_for_run(run_id=run_id))
+            return self._submit(lambda: self._async_store.latest_plan_for_run(run_id=run_id))
         raw = self._client.hgetall(_latest_plan_key(run_id=run_id))
         if not raw:
             return None
@@ -246,9 +290,7 @@ class RedisAgentStateStore:
 
     def ping(self) -> None:
         if self._async_store is not None:
-            from optimus.redis.async_bridge import sync_await
-
-            sync_await(self._async_store.ping())
+            self._submit(lambda: self._async_store.ping())
             return
         try:
             self._client.ping()

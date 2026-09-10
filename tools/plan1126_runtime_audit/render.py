@@ -632,6 +632,62 @@ def render_markdown(payload: Mapping[str, Any]) -> str:
             f"- `{item['evidence_id']}` (`{item['baseline_scope']}`): `{item['digest']}`"
             for item in record["content_free_evidence"]
         )
+    # Emitted only when the successor envelope actually carries current records, so a v1
+    # artifact renders exactly as it always did.
+    current_records = canonical.get("current_measurement_records") or []
+    if current_records:
+        lines.extend([
+            "",
+            "## Current measurements (NOT historical evidence)",
+            "",
+            "These records were measured on the CURRENT source in a fresh child interpreter under a "
+            "verified execution context. They are evidence about the revision named by each binding "
+            "below and about nothing else: they are not anchored to a baseline commit, they do not "
+            "supersede or amend any evidence record above, and they carry their own retained "
+            "inventory and observations.",
+            "",
+        ])
+        for record in sorted(current_records, key=lambda item: item["record_id"]):
+            binding = record["measurement_binding"]
+            retained = record["retained_evidence"]
+            lines.extend([
+                f"### `{record['record_id']}` ({_safe_markdown(record['hypothesis_id'])})",
+                "",
+                f"{_safe_markdown(record['subject'])}",
+                "",
+                "| Field | Value |",
+                "|---|---|",
+                f"| Record schema | `{record['schema_version']}` |",
+                f"| Interpreter | `{_safe_markdown(binding['interpreter_executable'])}` |",
+                f"| Interpreter version | {_safe_markdown(binding['interpreter_version'])} |",
+                f"| Interpreter prefix | `{_safe_markdown(binding['prefix'])}` |",
+                f"| Measured source fingerprint | `{binding['source_fingerprint']}` |",
+                f"| Bound modules | {len(binding['module_origins'])} |",
+                f"| Bound dependencies | {len(binding['dependency_files'])} |",
+                f"| Observation digest | `{record['observation_digest']}` |",
+                f"| Retained evidence | `{_safe_markdown(retained['location'])}` (`{retained['kind']}`) |",
+                f"| Retained file digest | `{retained['file_digest']}` |",
+                f"| Retained inventory digest | `{retained['inventory_digest']}` |",
+                f"| Retained observations | {retained['observation_count']} |",
+                "",
+                "Bound executing modules:",
+                "",
+            ])
+            lines.extend(
+                f"- `{_safe_markdown(row[0])}` -> `{row[2]}`" for row in binding["module_origins"]
+            )
+            lines.extend([
+                "",
+                "Bound dependency content:",
+                "",
+            ])
+            if binding["dependency_files"]:
+                lines.extend(
+                    f"- `{_safe_markdown(row[0])}`: `{row[1]}`" for row in binding["dependency_files"]
+                )
+            else:
+                lines.append("- none declared")
+            lines.extend(["", f"Ruling: {_safe_markdown(record['ruling'])}", ""])
     lines.extend([
         "",
         "## Running scope-out register",

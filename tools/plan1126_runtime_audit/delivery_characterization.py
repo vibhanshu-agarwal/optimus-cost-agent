@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .replay import SealedObservations
+
 import ast
 import concurrent.futures
 import hashlib
@@ -724,18 +729,20 @@ def _constant_metadata_notes() -> tuple[ConstantMetadataNote, ...]:
 
 def build_h4_audit_artifact(
     *, merged: SourceTree, overlay: SourceTree, merged_commit: str, overlay_commit: str,
+    replay: "SealedObservations",
 ) -> AuditArtifact:
+    """Rebuild the historical H4 record from SEALED delivery rows. Runs NO probe.
+
+    This is the route a reviewer caught executing a current probe during verification of the
+    accepted artifact: the schedule was regenerated rather than replayed. The vocabulary,
+    transition authority and discovered sites below are still derived from immutable source,
+    which is replay; regenerating the observations was not.
+    """
     vocabulary = derive_delivery_vocabulary(merged, overlay)
-    transition_authority = derive_transition_authority(merged, overlay)
+    # `derive_transition_authority` fed the schedule probe alone; with the rows replayed it
+    # has no reader here, and keeping the call would only look like work being done.
     sites = discover_delivery_sites(merged, overlay=overlay)
-    observations = delivery_schedule_observations(
-        anchor_commit=merged_commit,
-        literal=literal_seeds(),
-        derived_count=1_000,
-        discovered_sites=sites,
-        vocabulary=vocabulary,
-        transition_authority=transition_authority,
-    )
+    observations = replay.delivery
     citations = tuple(sorted(_citation(site) for site in sites))
     contradictory_citations = tuple(sorted(
         _citation(site) for site in sites if site.classification is Classification.CONTRADICTORY

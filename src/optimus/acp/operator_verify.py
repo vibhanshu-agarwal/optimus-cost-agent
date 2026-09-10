@@ -30,6 +30,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from optimus.acp.e2e_transcript import PLAN_9_6_LIVE_AGENT_TRANSCRIPT_PATH, E2eAcpTranscriptWriter
+from optimus.acp.failure_notes import attach_failure_note
 from optimus.acp.local_infra import apply_local_defaults
 from optimus.acp.ndjson_subprocess_session import LiveSessionError, NdjsonSubprocessSession
 from optimus.acp.preflight import (
@@ -43,7 +44,6 @@ from optimus.agent.defaults import resolve_agent_model
 from optimus.agent.directives import AgentDirectiveParseError, parse_agent_plan
 from optimus.agent.prompts import AGENT_PLANNER_PROMPT_VERSION
 from optimus.agent.state_store import RedisAgentStateStore
-from optimus.redis.async_bridge import sync_await
 
 DEFAULT_VERIFY_TASK = (
     "Add a module docstring to `example.py` describing its function. "
@@ -254,14 +254,29 @@ def run_operator_live_session(
         resolved_shared_secret=None,
     )
     redis_url = parent_environ["OPTIMUS_REDIS_URL"].strip()
+    # Seam 2, checkpoint B: the convenience factory now RETAINS the runtime it builds;
+    # this verifier closes it in the finally below, and every raw-client operation it
+    # needs (key scans, cleanup) is submitted through that runtime's own owner.
     redis_store = RedisAgentStateStore.from_url(redis_url)
-    subprocess_env = build_acp_subprocess_env(operator_environ=environ)
+    if redis_store.owned_runtime is None:
+        # Fail closed. The factory contract is an OWNING store; a store that merely borrows
+        # a runtime's seam cannot be closed by this verifier, and running on it would leave
+        # a lifetime nobody here holds. Refuse before anything is launched.
+        raise RuntimeError(
+            "run_operator_live_session requires the owning store RedisAgentStateStore.from_url returns; "
+            "a store that borrows a runtime's submission seam owns no lifetime this verifier could close"
+        )
     deadline = time.monotonic() + config.wall_clock_timeout_seconds
     run_ids: set[str] = set()
     process: subprocess.Popen[str] | None = None
     session: NdjsonSubprocessSession | None = None
 
+    # Round 2, R1: custody protection starts HERE, immediately after the runtime exists.
+    # Building the subprocess environment used to sit outside the try, and its real
+    # Windows projection can refuse conflicting PATH spellings -- leaving the runtime
+    # OPEN with no teardown record and no subprocess ever launched.
     try:
+        subprocess_env = build_acp_subprocess_env(operator_environ=environ)
         process = subprocess.Popen(
             [
                 sys.executable,
@@ -382,14 +397,60 @@ def run_operator_live_session(
             run_id=run_id,
         )
     finally:
+        _finish_verifier_lifetime(redis_store, session=session, process=process, run_ids=run_ids)
+
+
+def _finish_verifier_lifetime(
+    store: RedisAgentStateStore,
+    *,
+    session: NdjsonSubprocessSession | None,
+    process: subprocess.Popen[str] | None,
+    run_ids: set[str],
+) -> None:
+    """Run every cleanup stage, close the store's runtime LAST, and never mask a failure.
+
+    Round 2, R1/R4; round 3, R8. EVERY operation in this finalizer -- including the
+    process-status query and the decisions that depend on it -- runs inside a protected
+    stage, and the runtime close sits in an outer ``finally`` so it is reached even if
+    something a stage cannot catch (a ``BaseException``) unwinds through the earlier
+    stages. When a primary exception is already propagating, cleanup failures are attached
+    to it as notes (frozen-safe) rather than replacing it; when nothing is propagating,
+    the first cleanup failure is raised after the runtime has been closed.
+    """
+    primary = sys.exc_info()[1]
+    failures: list[BaseException] = []
+
+    def _stage(action, *, fallback=None):
+        """Run one cleanup action; a failure is recorded and ``fallback`` is returned."""
+        try:
+            return action()
+        except Exception as exc:  # noqa: BLE001 - recorded, never allowed to skip later stages
+            failures.append(exc)
+            return fallback
+
+    try:
         if session is not None:
-            session.close_stdin()
-            session.terminate()
-        if process is not None and process.poll() is None:
-            process.kill()
-            process.wait(timeout=5)
+            _stage(lambda: session.close_stdin())
+            _stage(lambda: session.terminate())
+        if process is not None:
+            # R8: the status query is itself a cleanup operation that can fail. Its
+            # failure must neither skip the runtime close nor replace the primary error;
+            # when it cannot be answered the child is assumed to still be running.
+            still_running = _stage(lambda: process.poll() is None, fallback=True)
+            if still_running:
+                _stage(lambda: process.kill())
+                _stage(lambda: process.wait(timeout=5))
         for tracked_run_id in run_ids:
-            _delete_plan_keys(redis_store.redis_client, tracked_run_id)
+            _stage(lambda run_id=tracked_run_id: _delete_plan_keys(store, run_id))
+    finally:
+        # Reached on every path: the owning runtime's close is the last stage.
+        _stage(lambda: _close_verifier_store(store))
+    if primary is not None:
+        for failure in failures:
+            attach_failure_note(primary, f"operator verifier cleanup also failed: {failure!r}")
+        return
+    if failures:
+        raise failures[0]
 
 
 def format_session_summary(result: OperatorLiveSessionResult) -> str:
@@ -548,7 +609,7 @@ def _run_prompt_turn(
     run_id = str(params_meta.get("runId", run_id))
     plan_text = latest_plan_text_from_transcript(transcript)
 
-    plan_keys = _plan_keys_for_run(redis_store.redis_client, run_id)
+    plan_keys = _plan_keys_for_run(redis_store, run_id)
     if not plan_keys:
         raise LiveSessionError(f"expected Redis plan keys for run_id={run_id!r}, found none")
 
@@ -649,22 +710,34 @@ def _approval_id_from_transcript(transcript: E2eAcpTranscriptWriter) -> str | No
     return None
 
 
-def _plan_keys_for_run(client: object, run_id: str) -> set[str]:
+def _plan_keys_for_run(store: RedisAgentStateStore, run_id: str) -> set[str]:
+    client = store.redis_client
+
     async def _collect() -> set[str]:
         keys: set[str] = set()
         async for key in client.scan_iter(match=f"agent:plan:{run_id}*"):
             keys.add(key)
         return keys
 
-    return sync_await(_collect())
+    return store.submit(_collect)
 
 
-def _delete_plan_keys(client: object, run_id: str) -> None:
+def _delete_plan_keys(store: RedisAgentStateStore, run_id: str) -> None:
+    client = store.redis_client
+
     async def _delete() -> None:
         async for key in client.scan_iter(match=f"agent:plan:{run_id}*"):
             await client.delete(key)
 
-    sync_await(_delete())
+    store.submit(_delete)
+
+
+def _close_verifier_store(store: RedisAgentStateStore) -> None:
+    """Close the runtime the verifier's store owns; a fake store without one is fine."""
+    close = getattr(store, "close", None)
+    if close is None or getattr(store, "owned_runtime", None) is None:
+        return
+    close()
 
 
 def _operator_action_message(check: PreflightCheckResult) -> str:

@@ -41,6 +41,14 @@ from tools.plan1126_runtime_audit.source import GitCommitSource, SourceTree  # n
 from tools.tracked_repository_files import tracked_repository_files  # noqa: E402
 
 _SCHEMA_PATH = ROOT / "tests" / "fixtures" / "plan1126_runtime_audit" / "audit-artifact.schema.json"
+_SCHEMA_V2_PATH = ROOT / "tests" / "fixtures" / "plan1126_runtime_audit" / "audit-artifact-v2.schema.json"
+#: Explicit, closed dispatch. The v1 envelope is frozen and knows nothing about fresh
+#: measurements; validating a successor against it reported the successor as malformed
+#: rather than as a newer envelope, which is exactly backwards.
+_SCHEMA_PATHS_BY_ENVELOPE = {
+    "plan-11-26-runtime-audit-v1": _SCHEMA_PATH,
+    "plan-11-26-runtime-audit-v2": _SCHEMA_V2_PATH,
+}
 _DUPLICATION_CANDIDATES_SCHEMA_PATH = (
     ROOT / "tests" / "fixtures" / "plan1126_runtime_audit" / "duplication-candidates.schema.json"
 )
@@ -128,9 +136,24 @@ def _authority_anchor(
 
 
 def _write_text(path: Path, text: str) -> None:
+    """Write atomically: opening for "w" truncates before anything is written.
+
+    A crash between the truncate and the last byte left a SHORTER file where a complete
+    one had been, which reads as a report rather than as a failure. Staged in a sibling
+    and moved into place, so the destination only ever holds a whole document.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        handle.write(text)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -244,6 +267,21 @@ def build_parser() -> argparse.ArgumentParser:
     session_lease = subparsers.add_parser("session-lease")
     session_lease.add_argument("--artifact", required=True)
     session_lease.add_argument("--report", required=True)
+    current = subparsers.add_parser("current-measurement")
+    current_subparsers = current.add_subparsers(dest="current_command", required=True)
+    current_measure = current_subparsers.add_parser("measure")
+    current_measure.add_argument("--sealed", required=True)
+    current_measure.add_argument("--artifact", required=True)
+    current_measure.add_argument("--evidence-dir", required=True)
+    current_measure.add_argument("--entry", action="append", default=None)
+    current_measure.add_argument("--repeats", type=int, default=1)
+    current_verify = current_subparsers.add_parser("verify")
+    current_verify.add_argument("--artifact", required=True)
+    current_verify.add_argument("--evidence-dir", required=True)
+    current_render = current_subparsers.add_parser("render")
+    current_render.add_argument("--artifact", required=True)
+    current_render.add_argument("--evidence-dir", required=True)
+    current_render.add_argument("--report", required=True)
     duplication = subparsers.add_parser("duplication")
     duplication_subparsers = duplication.add_subparsers(dest="duplication_command", required=True)
     duplication_discover = duplication_subparsers.add_parser("discover")
@@ -259,13 +297,25 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _verify_artifact(path: str) -> AuditArtifact:
+def _verify_artifact(path: str, evidence_directory: str | Path | None = None) -> AuditArtifact:
     payload = _read_json(path)
-    schema = _read_json(_SCHEMA_PATH)
+    envelope = payload.get("schema_version")
+    schema_path = _SCHEMA_PATHS_BY_ENVELOPE.get(envelope)
+    if schema_path is None:
+        raise ValueError(f"unknown audit artifact envelope {envelope!r}")
+    schema = _read_json(schema_path)
     errors = sorted(Draft202012Validator(schema).iter_errors(payload), key=lambda error: list(error.path))
     if errors:
         raise ValueError("; ".join(error.message for error in errors))
     artifact = AuditArtifact.from_dict(payload)
+    if artifact.current_measurement_records:
+        # A current record's digest is only a claim until the evidence it points at is
+        # found and rehashed. Verification resolves the sidecars beside the artifact
+        # unless the caller names another directory.
+        from tools.plan1126_runtime_audit.current_envelope import verify_current_records
+
+        base = Path(evidence_directory) if evidence_directory else Path(path).resolve().parent
+        verify_current_records(artifact, base)
     h4_records = tuple(record for record in artifact.evidence_records if record.hypothesis_id == "H4")
     if h4_records:
         from tools.plan1126_runtime_audit.delivery_characterization import (
@@ -282,6 +332,7 @@ def _verify_artifact(path: str) -> AuditArtifact:
             overlay=overlay,
             merged_commit=artifact.merged_commit,
             overlay_commit=artifact.overlay_commit,
+            replay=_sealed_replay(),
         )
         mechanical_record_fields = {
             "record_id", "hypothesis_id", "subject", "baseline_scope", "baseline_anchor_commit",
@@ -327,6 +378,7 @@ def _verify_artifact(path: str) -> AuditArtifact:
             overlay=overlay,
             merged_commit=artifact.merged_commit,
             overlay_commit=artifact.overlay_commit,
+            replay=_sealed_replay(),
         )
         expected_h3 = next(record for record in rebuilt.evidence_records if record.hypothesis_id == "H3")
         actual_record = h3_records[0].to_dict()
@@ -440,7 +492,9 @@ def _verify_artifact(path: str) -> AuditArtifact:
         merged_source = GitCommitSource(artifact.merged_commit, repository=ROOT)
         semantic_source = SourceTree({path: merged_source.read_text(path) for path in H7_SOURCE_PATHS})
         expected_h6 = _authority_record(semantic_source, artifact.merged_commit, artifact.overlay_commit)
-        expected_h7 = _semantic_record(semantic_source, artifact.merged_commit, artifact.overlay_commit)
+        expected_h7 = _semantic_record(
+            semantic_source, artifact.merged_commit, artifact.overlay_commit, _sealed_replay().semantic
+        )
         for actual, expected, label in (
             (h6_records[0].to_dict(), expected_h6.to_dict(), "H6"),
             (h7_records[0].to_dict(), expected_h7.to_dict(), "H7"),
@@ -470,10 +524,9 @@ def _verify_artifact(path: str) -> AuditArtifact:
             raise ValueError("H8 must be present exactly once")
         merged_source = GitCommitSource(artifact.merged_commit, repository=ROOT)
         telemetry_source = SourceTree({path: merged_source.read_text(path) for path in H8_SOURCE_PATHS})
-        with tempfile.TemporaryDirectory(prefix="plan1126-h8-verify-") as workspace:
-            expected_h8 = _telemetry_record(
-                telemetry_source, artifact.merged_commit, artifact.overlay_commit, workspace,
-            )
+        expected_h8 = _telemetry_record(
+            telemetry_source, artifact.merged_commit, artifact.overlay_commit, _sealed_replay()
+        )
         actual = h8_records[0].to_dict()
         expected = expected_h8.to_dict()
         fields = set(expected) - {"ruling", "reviewer_status"}
@@ -507,7 +560,10 @@ def _verify_artifact(path: str) -> AuditArtifact:
             raise ValueError("H9 must be present exactly once")
         merged_source = GitCommitSource(artifact.merged_commit, repository=ROOT)
         queue_source = SourceTree({path: merged_source.read_text(path) for path in H9_SOURCE_PATHS})
-        expected_h9 = _queue_record(queue_source, artifact.merged_commit, artifact.overlay_commit)
+        expected_h9 = _queue_record(
+            queue_source, artifact.merged_commit, artifact.overlay_commit,
+            _sealed_health_observations(), _sealed_admission_observations(),
+        )
         actual = h9_records[0].to_dict()
         expected = expected_h9.to_dict()
         fields = set(expected) - {"ruling", "reviewer_status"}
@@ -521,7 +577,10 @@ def _verify_artifact(path: str) -> AuditArtifact:
             )
         )
         expected_findings = tuple(
-            item.to_dict() for item in sorted(_h9_findings(expected_h9), key=lambda item: item.finding_id)
+            # Citations resolve against the HISTORICAL tree this replay is validating,
+            # so stored historical evidence keeps historical blob-matched citations.
+            item.to_dict()
+            for item in sorted(_h9_findings(expected_h9, source=queue_source), key=lambda item: item.finding_id)
         )
         if actual_findings != expected_findings:
             raise ValueError("H9 findings do not match immutable-source rebuild")
@@ -611,6 +670,7 @@ def _run_semantic(args: argparse.Namespace) -> int:
     merged = SourceTree({path: merged_source.read_text(path) for path in paths})
     overlay = SourceTree({path: overlay_source.read_text(path) for path in paths})
     artifact = build_h7_audit_artifact(
+        replay=_sealed_replay(),
         merged=merged, overlay=overlay,
         merged_commit=merged_source.commit, overlay_commit=overlay_source.commit,
     )
@@ -640,12 +700,11 @@ def _run_telemetry(args: argparse.Namespace) -> int:
     ))
     merged = SourceTree({path: merged_source.read_text(path) for path in paths})
     overlay = SourceTree({path: overlay_source.read_text(path) for path in paths})
-    with tempfile.TemporaryDirectory(prefix="plan1126-h8-build-") as workspace:
-        artifact = build_h8_audit_artifact(
-            merged=merged, overlay=overlay,
-            merged_commit=merged_source.commit, overlay_commit=overlay_source.commit,
-            workspace=workspace,
-        )
+    artifact = build_h8_audit_artifact(
+        replay=_sealed_replay(),
+        merged=merged, overlay=overlay,
+        merged_commit=merged_source.commit, overlay_commit=overlay_source.commit,
+    )
     payload = artifact.to_dict()
     schema = _read_json(_SCHEMA_PATH)
     errors = list(Draft202012Validator(schema).iter_errors(payload))
@@ -674,6 +733,7 @@ def _run_queue_policy(args: argparse.Namespace) -> int:
     merged = SourceTree({path: merged_source.read_text(path) for path in paths})
     overlay = SourceTree({path: overlay_source.read_text(path) for path in paths})
     artifact = build_h9_audit_artifact(
+        replay=_sealed_replay(),
         merged=merged, overlay=overlay,
         merged_commit=merged_source.commit, overlay_commit=overlay_source.commit,
     )
@@ -707,6 +767,7 @@ def _run_session_lease(args: argparse.Namespace) -> int:
     merged = SourceTree({path: merged_source.read_text(path) for path in paths})
     overlay = SourceTree({path: overlay_source.read_text(path) for path in paths})
     artifact = build_h10_audit_artifact(
+        replay=_sealed_replay(),
         merged=merged,
         overlay=overlay,
         intake=_read_json(ROOT / "reports" / "plan-11-26-baseline-intake.json"),
@@ -1663,6 +1724,111 @@ def _run_offline(args: argparse.Namespace) -> int:
     return 0
 
 
+SEALED_AUDIT_REPORT = ROOT / "reports" / "plan-11-26-acp-runtime-audit.json"
+
+
+def _sealed_payload() -> dict:
+    """The sealed, accepted artifact. Replay reads THIS; it never measures."""
+    return json.loads(SEALED_AUDIT_REPORT.read_text(encoding="utf-8"))
+
+
+def _sealed_replay():
+    """Every family's stored observations, read once. Runs NO probe.
+
+    Historical verification and the cumulative artifact commands all rebuild the same chain
+    of records, so they all need the same evidence. Reading it in one place is what makes
+    "this path executes nothing" a property of the path rather than of each call site
+    remembering to pass the right keyword.
+    """
+    from tools.plan1126_runtime_audit.replay import SealedObservations
+
+    return SealedObservations.from_sealed(_sealed_payload())
+
+
+def _sealed_observations():
+    from tools.plan1126_runtime_audit.shutdown import replayed_shutdown_observations
+
+    return replayed_shutdown_observations(_sealed_payload())
+
+
+def _sealed_health_observations():
+    from tools.plan1126_runtime_audit.queue_policy import replayed_health_observations
+
+    return replayed_health_observations(_sealed_payload())
+
+
+def _sealed_admission_observations():
+    from tools.plan1126_runtime_audit.queue_policy import replayed_admission_observations
+
+    return replayed_admission_observations(_sealed_payload())
+
+
+def _refuse_to_replace(path: Path, payload: Mapping[str, Any]) -> None:
+    """Refuse to overwrite an accepted artifact with different content.
+
+    An identical rewrite is idempotent and allowed; a different one is somebody's verified
+    output and is not this command's to replace.
+    """
+    if not path.exists():
+        return
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    if path.read_bytes() == encoded:
+        return
+    raise ValueError(
+        f"{path} already holds a different artifact; refusing to replace it. Write the successor "
+        "to a new path, or remove the existing one deliberately."
+    )
+
+
+def _run_current_measurement(args) -> int:
+    """Measure the current source, seal the evidence, and verify or render the successor.
+
+    Deliberately a separate command from `verify`/`render`: historical replay must stay
+    non-executing, and a measurement operation hidden inside a verification path is how a
+    current probe ends up running as a side effect of reading an old artifact.
+    """
+    from tools.plan1126_runtime_audit.current_envelope import (
+        build_successor_artifact,
+        default_measurement_plan,
+        measure_current,
+        replay_sealed_artifact,
+        verify_current_records,
+    )
+
+
+    try:
+        if args.current_command == "measure":
+            entries = tuple(args.entry or ("h5.shutdown_schedule", "h9.connection_health", "s1.serving_custody"))
+            plans = default_measurement_plan(
+                repository_root=ROOT, entries=entries, options={"repeats": args.repeats}
+            )
+            records = measure_current(
+                plans=plans, repository_root=ROOT, evidence_directory=args.evidence_dir
+            )
+            successor = build_successor_artifact(replay_sealed_artifact(args.sealed), records)
+            payload = successor.to_dict()
+            _validate_json_schema(payload, _SCHEMA_V2_PATH)
+            _refuse_to_replace(Path(args.artifact), payload)
+            _atomic_json(Path(args.artifact), payload)
+            # Reconstructed from the written bytes, after the measuring children exited.
+            verify_current_records(successor, args.evidence_dir)
+            _emit("PASS", tuple(record.record_id for record in records))
+            return 0
+        # `_verify_artifact` already reconstructs and checks every current record's
+        # retained evidence against this directory; repeating it here would only look
+        # like a second, independent check.
+        artifact = _verify_artifact(args.artifact, args.evidence_dir)
+        if not artifact.current_measurement_records:
+            raise ValueError("this artifact carries no current measurement records")
+        if args.current_command == "render":
+            _write_text(Path(args.report), render_markdown(artifact.to_dict()))
+        _emit("PASS", tuple(record.record_id for record in artifact.current_measurement_records))
+        return 0
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+        _emit("INVALID", (str(exc),))
+        return 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "inventory":
@@ -1677,6 +1843,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_session_lease(args)
     if args.command == "duplication":
         return _run_duplication(args)
+    if args.command == "current-measurement":
+        return _run_current_measurement(args)
     if args.command == "offline":
         return _run_offline(args)
     if args.command in {"live-redis", "acpx", "sdk"}:
@@ -1691,7 +1859,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             _write_text(Path(args.report), render_markdown(artifact.to_dict()))
         _emit("PASS")
         return 0
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+        # RuntimeError included deliberately: RetainedEvidenceError is one, and a record
+        # whose evidence cannot be reconstructed is an INVALID artifact, not a crash.
         _emit("INVALID", (str(exc),))
         return 1
 

@@ -7,7 +7,6 @@ import pytest
 
 from optimus.acp.bootstrap import StartupConfigurationError, build_configured_server
 from optimus.agent.state_store import RedisAgentStateStore
-from optimus.redis.async_bridge import sync_await
 
 pytestmark = pytest.mark.requires_redis
 
@@ -18,7 +17,7 @@ _UNREACHABLE_CONNECT_BUDGET_SECONDS = 5.0
 def _bootstrap_env(redis_url: str) -> dict[str, str]:
     return {
         "OPTIMUS_GATEWAY_URL": "https://gateway.optimus.ai",
-        "OPTIMUS_API_KEY": "opt-live-test",
+        "OPTIMUS_API_KEY": "opt-live-test",  # pragma: allowlist secret - synthetic test fixture, not a real credential
         "OPTIMUS_REDIS_URL": redis_url,
     }
 
@@ -39,6 +38,10 @@ def test_live_bootstrap_builds_server_with_real_redis_ping(tmp_path, live_redis_
 
     runner_store = server._dispatcher.agent_runner._state_store
     assert isinstance(runner_store, RedisAgentStateStore)
+    # Seam 2, checkpoint B: the server retains the runtime the bootstrap built, and the
+    # store's client is driven only through that runtime's owner -- never a second loop.
+    assert server.redis_runtime is not None
+    assert runner_store.redis_client is server.redis_runtime.client
 
     async def _sentinel_roundtrip() -> None:
         client = runner_store.redis_client
@@ -46,7 +49,11 @@ def test_live_bootstrap_builds_server_with_real_redis_ping(tmp_path, live_redis_
         assert await client.get(sentinel_key) == "ping-ok"
         await client.delete(sentinel_key)
 
-    sync_await(_sentinel_roundtrip())
+    try:
+        runner_store.submit(_sentinel_roundtrip)
+    finally:
+        record = server.redis_runtime.close(timeout=10.0)
+    assert record.is_clean
 
 
 def test_live_bootstrap_fails_fast_when_redis_unreachable(tmp_path):
