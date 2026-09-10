@@ -277,7 +277,12 @@ def test_run_operator_live_session_surfaces_no_approval_remediation(tmp_path, mo
     monkeypatch.setattr(operator_verify_module.subprocess, "Popen", fake_popen)
 
     class _FakeRedisStore:
+        # Seam 2 B round 2: the verifier requires the OWNING store the factory contract returns.
         redis_client = None
+        owned_runtime = object()
+
+        def close(self, *, timeout=None):
+            return None
 
         def latest_plan_for_run(self, *, run_id):
             return None
@@ -296,7 +301,7 @@ def test_run_operator_live_session_surfaces_no_approval_remediation(tmp_path, mo
     )
     environ = {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-        "OPTIMUS_API_KEY": "test-key",
+        "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture, not a real credential
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
     }
     transcript = operator_verify_module.E2eAcpTranscriptWriter()
@@ -368,7 +373,12 @@ def test_run_operator_live_session_surfaces_config_root_rejection_cleanly(tmp_pa
     monkeypatch.setattr(operator_verify_module.subprocess, "Popen", fake_popen)
 
     class _FakeRedisStore:
+        # Seam 2 B round 2: the verifier requires the OWNING store the factory contract returns.
         redis_client = None
+        owned_runtime = object()
+
+        def close(self, *, timeout=None):
+            return None
 
         def latest_plan_for_run(self, *, run_id):
             return None
@@ -387,7 +397,7 @@ def test_run_operator_live_session_surfaces_config_root_rejection_cleanly(tmp_pa
     )
     environ = {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-        "OPTIMUS_API_KEY": "test-key",
+        "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture, not a real credential
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
     }
     transcript = operator_verify_module.E2eAcpTranscriptWriter()
@@ -437,7 +447,12 @@ def test_run_operator_live_session_resolves_redis_default_for_parent_only(tmp_pa
     monkeypatch.setattr(operator_verify_module.subprocess, "Popen", fake_popen)
 
     class _FakeRedisStore:
+        # Seam 2 B round 2: the verifier requires the OWNING store the factory contract returns.
         redis_client = None
+        owned_runtime = object()
+
+        def close(self, *, timeout=None):
+            return None
 
         def latest_plan_for_run(self, *, run_id):
             return None

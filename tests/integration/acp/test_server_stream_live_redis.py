@@ -10,7 +10,6 @@ from optimus.acp.server import AcpStreamServer
 from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import RedisAgentStateStore
 from optimus.guardrails.pre_tool import PreToolGuard
-from optimus.redis.async_bridge import sync_await
 from tests.conftest import FakeGatewayClient
 from tests.integration.acp.test_server_stream import (
     InteractiveLineReader,
@@ -56,12 +55,15 @@ async def _roundtrip(server: AcpStreamServer, request: dict) -> dict:
     return decode_framed_response(bytes(writer.data))
 
 
-def _delete_plan_keys(client: object, run_id: str) -> None:
+def _delete_plan_keys(store: RedisAgentStateStore, run_id: str) -> None:
+    client = store.redis_client
+
     async def _delete() -> None:
         async for key in client.scan_iter(match=f"agent:plan:{run_id}*"):
             await client.delete(key)
 
-    sync_await(_delete())
+    # Seam 2, checkpoint B: submitted through the store's own owner, never a second loop.
+    store.submit(_delete)
 
 
 @pytest.fixture
@@ -72,7 +74,7 @@ def live_redis_acp_server(tmp_path, live_redis_store):
     tracked_run_ids: set[str] = set()
     yield server, gateway, tmp_path, store, tracked_run_ids
     for run_id in tracked_run_ids:
-        _delete_plan_keys(store.redis_client, run_id)
+        _delete_plan_keys(store, run_id)
 
 
 async def test_live_ndjson_session_prompt_permission_flow_persists_plan_to_redis(live_redis_acp_server):

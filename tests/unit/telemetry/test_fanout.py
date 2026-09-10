@@ -88,6 +88,14 @@ class RaisingExporter:
         raise self._exc
 
 
+def _submit(operation):
+    """Seam 2 B: the sink requires an owner submission seam; tests run the factory inline."""
+    import asyncio
+
+    return asyncio.run(operation())
+
+
+
 def _model_call_event(*, run_id: str = "run-1", request_id: str = "req-1") -> TelemetryEvent:
     return TelemetryEvent.model_call(
         run_id=run_id,
@@ -181,7 +189,7 @@ def _agent_run_event(*, run_id: str = "run-1") -> TelemetryEvent:
 
 def _fanout(tmp_path, exporter, *, batch_size: int = 10) -> tuple[TelemetryFanout, JsonlTelemetryWriter, RedisTelemetryEventSink]:
     writer = JsonlTelemetryWriter(tmp_path / "telemetry.jsonl")
-    redis_sink = RedisTelemetryEventSink(RedisTelemetryAdapter(client=FakeRedisTelemetryClient()))
+    redis_sink = RedisTelemetryEventSink(RedisTelemetryAdapter(client=FakeRedisTelemetryClient()), submit=_submit)
     fanout = TelemetryFanout(
         jsonl_writer=writer,
         redis_sink=redis_sink,
@@ -193,7 +201,7 @@ def _fanout(tmp_path, exporter, *, batch_size: int = 10) -> tuple[TelemetryFanou
 
 def test_fanout_batches_gateway_export_at_configured_size(tmp_path):
     writer = JsonlTelemetryWriter(tmp_path / "telemetry.jsonl")
-    redis_sink = RedisTelemetryEventSink(RedisTelemetryAdapter(client=FakeRedisTelemetryClient()))
+    redis_sink = RedisTelemetryEventSink(RedisTelemetryAdapter(client=FakeRedisTelemetryClient()), submit=_submit)
     recording_exporter = RecordingExporter()
     event_one = _model_call_event(request_id="req-1")
     event_two = _model_call_event(request_id="req-2")
@@ -224,7 +232,7 @@ def test_fanout_flush_is_a_noop_when_no_events_are_buffered(tmp_path):
 
 def test_fanout_writes_every_event_kind_to_local_sinks_exactly_once(tmp_path):
     writer = JsonlTelemetryWriter(tmp_path / "telemetry.jsonl")
-    real_redis_sink = RedisTelemetryEventSink(RedisTelemetryAdapter(client=FakeRedisTelemetryClient()))
+    real_redis_sink = RedisTelemetryEventSink(RedisTelemetryAdapter(client=FakeRedisTelemetryClient()), submit=_submit)
     redis_spy = RecordingRedisSinkSpy(real_redis_sink)
     fanout = TelemetryFanout(
         jsonl_writer=writer,
@@ -302,7 +310,7 @@ def test_fanout_treats_a_malformed_gateway_response_as_a_failed_delivery(tmp_pat
 
 def test_fanout_rejects_non_positive_batch_size(tmp_path):
     writer = JsonlTelemetryWriter(tmp_path / "telemetry.jsonl")
-    redis_sink = RedisTelemetryEventSink(RedisTelemetryAdapter(client=FakeRedisTelemetryClient()))
+    redis_sink = RedisTelemetryEventSink(RedisTelemetryAdapter(client=FakeRedisTelemetryClient()), submit=_submit)
 
     with pytest.raises(ValueError):
         TelemetryFanout(

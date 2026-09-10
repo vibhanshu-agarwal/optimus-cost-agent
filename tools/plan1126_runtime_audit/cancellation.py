@@ -6,6 +6,11 @@ expected-site manifest: the immutable source trees are the discovery input.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .replay import SealedObservations
+
 import ast
 import asyncio
 import concurrent.futures
@@ -1461,9 +1466,14 @@ def build_h3_audit_artifact(
     overlay: SourceTree,
     merged_commit: str,
     overlay_commit: str,
+    replay: "SealedObservations",
     scenario_durations_ms: Mapping[str, tuple[float, ...]] | None = None,
 ) -> AuditArtifact:
-    """Build the cumulative H3+H4 artifact from immutable source and real schedules."""
+    """Build the cumulative H3+H4 artifact from immutable source and SEALED schedules.
+
+    Both halves replay: H4's rows arrive with the same carrier, so verifying a historical
+    artifact executes nothing in either family.
+    """
 
     from .delivery_characterization import build_h4_audit_artifact
 
@@ -1472,14 +1482,10 @@ def build_h3_audit_artifact(
         overlay=overlay,
         merged_commit=merged_commit,
         overlay_commit=overlay_commit,
+        replay=replay,
     )
     inventory = discover_task_supervision(merged, overlay=overlay)
-    observations = cancellation_schedule_observations(
-        anchor_commit=merged_commit,
-        inventory=inventory,
-        literal=(0, 1, 42, 18446744073709551615),
-        derived_count=256,
-    )
+    observations = replay.cancellation
     record = _build_h3_record(
         inventory=inventory,
         observations=observations,

@@ -3958,9 +3958,59 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     seam3_committed = b"from optimus.acp.subprocess_env import" in head_main
     if not seam3_committed:
         expected -= {seam3_path}
+    # Seam 2 (checkpoint B) adds exactly two modules that bootstrap imports: the harness bundle and the
+    # frozen-safe failure notes. The expectation is keyed on whether HEAD's bootstrap carries that
+    # import, so committed predecessors keep their exact 134-path closure and seam 2 pins 136.
+    seam2_paths = frozenset({"src/optimus/acp/harness_runtime.py", "src/optimus/acp/failure_notes.py"})
+    head_bootstrap = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/acp/bootstrap.py")
+    seam2_committed = b"from optimus.acp.harness_runtime import" in head_bootstrap
+    if not seam2_committed:
+        expected -= seam2_paths
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
-    assert len(closure) == (134 if seam3_committed else 133)
+    assert (seam2_paths <= closure) is seam2_committed
+    assert len(closure) == (136 if seam2_committed else 134 if seam3_committed else 133)
+
+
+_SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base
+
+
+def _seam2_full_allowlist() -> frozenset[str]:
+    import tools.probe_p11_zed_session_load as probe
+
+    return frozenset(path for path in probe.ESTABLISHING_EXECUTION_GIT_PATHS if path.endswith(".py"))
+
+
+def test_establishing_import_closure_predecessor_keeps_134_with_the_seam2_list() -> None:
+    """R16-A: the published predecessor (main at seam 2's base) still closes to exactly 134 paths
+    under the 136-path list -- listing a module never adds it to a tree that does not import it."""
+    import tools.probe_p11_zed_session_load as probe
+
+    closure = probe.compute_establishing_import_closure(REPO_ROOT, _SEAM2_PREDECESSOR, allowed_py_paths=_seam2_full_allowlist())
+    assert len(closure) == 134
+    assert not closure & {"src/optimus/acp/harness_runtime.py", "src/optimus/acp/failure_notes.py"}
+
+
+@pytest.mark.parametrize("omitted", ["src/optimus/acp/harness_runtime.py", "src/optimus/acp/failure_notes.py"])
+def test_establishing_import_closure_refuses_each_seam2_module_when_unlisted(omitted: str) -> None:
+    """R16-A MUTATION (the published failure): omitting either new module from the allowlist makes the
+    committed seam-2 closure refuse that exact module instead of silently shrinking."""
+    import tools.probe_p11_zed_session_load as probe
+
+    head_bootstrap = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/acp/bootstrap.py")
+    if b"from optimus.acp.harness_runtime import" not in head_bootstrap:
+        pytest.skip("HEAD predates seam 2; the omission control applies to the committed seam-2 tree")
+    # The probe names the first candidate spelling (the package form ".../<module>/__init__.py").
+    with pytest.raises(probe.ProbeError, match="unlisted module path: " + omitted.removesuffix(".py")):
+        probe.compute_establishing_import_closure(REPO_ROOT, allowed_py_paths=_seam2_full_allowlist() - {omitted})
+
+
+def test_establishing_import_closure_refuses_a_genuinely_unlisted_reachable_module() -> None:
+    """A reachable, tracked project module that is absent from the explicit list is refused, never inferred."""
+    import tools.probe_p11_zed_session_load as probe
+
+    with pytest.raises(probe.ProbeError, match="unlisted module path: src/optimus/acp/bootstrap"):
+        probe.compute_establishing_import_closure(REPO_ROOT, allowed_py_paths=_seam2_full_allowlist() - {"src/optimus/acp/bootstrap.py"})
 
 
 def test_establishing_import_closure_traverses_package_init_reexports(tmp_path: Path) -> None:

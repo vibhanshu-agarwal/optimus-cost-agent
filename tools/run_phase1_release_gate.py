@@ -5,7 +5,8 @@ import os
 import sys
 from pathlib import Path
 
-from optimus.acp.bootstrap import StartupConfigurationError, build_agent_runner_for_harness
+from optimus.acp.bootstrap import StartupConfigurationError, build_agent_harness_runtime
+from optimus.acp.failure_notes import attach_failure_note
 from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.agent.golden import AgentGoldenTaskHarness
 from optimus.golden.json_harness import JsonGoldenTaskHarness
@@ -62,13 +63,16 @@ def main() -> int:
     golden_harness = None
     golden_task_ids = None
     transcript_recorder: SmokeTranscriptRecorder | None = None
+    # Seam 2, checkpoint B: this harness entry point holds the Redis lifetime it builds and
+    # closes it after the gates ran; before this seam the runtime it created was never closed.
+    harness_runtime = None
     if args.golden_results is not None:
         golden_harness = JsonGoldenTaskHarness.from_path(args.golden_results)
     elif args.agent_harness:
         workspace_root = Path(".").resolve()
         try:
             run_preflight(os.environ, workspace_root=workspace_root, require_timeseries=True)
-            base_runner = build_agent_runner_for_harness(
+            harness_runtime = build_agent_harness_runtime(
                 environ=os.environ,
                 workspace_root=workspace_root,
                 model=args.agent_model,
@@ -79,25 +83,50 @@ def main() -> int:
         except StartupConfigurationError as exc:
             print(exc.user_message, file=sys.stderr)
             return exc.exit_code
-        transcript_recorder = SmokeTranscriptRecorder(model=args.agent_model)
-        recording_runner = RecordingAgentRunner(base_runner, recorder=transcript_recorder)
-        harness = AgentGoldenTaskHarness(runner=recording_runner, workspace_root=workspace_root)
-        golden_harness = _TranscriptGoldenHarness(harness=harness, recording_runner=recording_runner)
-        golden_task_ids = tuple(args.task_id or PLAN_9_5_REAL_AGENT_TASK_IDS)
-    gates = build_phase1_release_gates(
-        python_executable=args.python_executable,
-        golden_harness=golden_harness,
-        golden_task_ids=golden_task_ids,
-        include_command_gates=not args.skip_command_gates_for_test,
-        credential_scan_root=args.credential_scan_root,
-        command_timeout_seconds=args.command_timeout_seconds,
-    )
-    report = ReleaseGateRunner(gates=gates).run()
+    # Round 2, R1: everything after the runtime exists -- wrapper construction, gate
+    # construction, the run -- sits inside this try, so a failure at any of those points
+    # still closes the lifetime. Custody used to begin only once the gates were built.
+    try:
+        if harness_runtime is not None:
+            base_runner = harness_runtime.agent_runner
+            transcript_recorder = SmokeTranscriptRecorder(model=args.agent_model)
+            recording_runner = RecordingAgentRunner(base_runner, recorder=transcript_recorder)
+            harness = AgentGoldenTaskHarness(runner=recording_runner, workspace_root=workspace_root)
+            golden_harness = _TranscriptGoldenHarness(harness=harness, recording_runner=recording_runner)
+            golden_task_ids = tuple(args.task_id or PLAN_9_5_REAL_AGENT_TASK_IDS)
+        gates = build_phase1_release_gates(
+            python_executable=args.python_executable,
+            golden_harness=golden_harness,
+            golden_task_ids=golden_task_ids,
+            include_command_gates=not args.skip_command_gates_for_test,
+            credential_scan_root=args.credential_scan_root,
+            command_timeout_seconds=args.command_timeout_seconds,
+        )
+        report = ReleaseGateRunner(gates=gates).run()
+    finally:
+        if harness_runtime is not None:
+            _close_harness_lifetime(harness_runtime)
     if transcript_recorder is not None:
         # reports/plan-9-5-working-agent-smoke-transcript.json
         transcript_recorder.write(PLAN_9_5_SMOKE_TRANSCRIPT_PATH)
     print(report.to_json())
     return 0 if report.passed else 1
+
+
+def _close_harness_lifetime(harness_runtime) -> None:
+    """Close the harness lifetime WITHOUT masking the error that is already propagating.
+
+    Round 3, R8. A cleanup failure while a primary error unwinds is attached to that
+    error as a note (frozen-safe, never raises); with nothing propagating, the cleanup
+    failure is the failure and is raised. Either way the close itself was attempted.
+    """
+    primary = sys.exc_info()[1]
+    try:
+        harness_runtime.close()
+    except Exception as exc:  # noqa: BLE001 - reported, never allowed to replace the primary error
+        if primary is None:
+            raise
+        attach_failure_note(primary, f"release harness cleanup also failed: {exc!r}")
 
 
 if __name__ == "__main__":

@@ -921,7 +921,7 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.server:AcpStreamServer.serve:exception_export",
+      "key": "optimus.acp.server:AcpStreamServer._serve_framed:exception_export",
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.server:AcpStreamServer.serve:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
@@ -929,7 +929,7 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.server:AcpStreamServer.serve:text_write",
+      "key": "optimus.acp.server:AcpStreamServer._serve_framed:text_write",
       "policy": "protocol-only",
       "rationale": "Functional protocol serialization at optimus.acp.server:AcpStreamServer.serve:text_write sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
       "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
@@ -2785,6 +2785,30 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.run_plan1126_runtime_audit:_run_current_measurement:exception_export",
+      "policy": "frozen-nonqualifying",
+      "rationale": "The closed current-measurement command forwards str(exc) to the status emitter when measurement input, retained evidence, or the successor envelope fails validation; this residual raw-exception path is excluded from qualified diagnostic evidence and is not called sanitized.",
+      "sanitizer": "exclusion only: closed audit command may export raw validation exception text",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_cli_current_measurement_reports_invalid_input_without_raising",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_refuse_to_replace:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Serializes the already schema-validated successor artifact solely to compare its canonical bytes with an existing file before refusing to replace it; the result is discarded and never written or printed, so no diagnostic content reaches a sink.",
+      "sanitizer": "schema-limited closed-audit artifacts; comparison only, never published",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_cli_refuses_to_replace_an_existing_artifact",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.run_plan1126_runtime_audit:_run_current_measurement:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "The render branch writes deterministic metadata-only Markdown produced from a validated successor AuditArtifact; current measurement records contribute identities and digests -- interpreter, prefix, module origins, dependency and evidence digests -- and never observation bodies or source text.",
+      "sanitizer": "validated content-free audit renderer",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_renderer_distinguishes_current_records_from_historical_ones",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.run_plan1126_runtime_audit:_run_duplication:text_file_write",
       "policy": "safe-by-construction",
       "rationale": "Writes deterministic Markdown derived from schema-validated duplication inventory and reviewed audit partitions; it does not capture runtime diagnostics or source bodies.",
@@ -2838,14 +2862,6 @@
       "rationale": "Serializes only executable path, platform description, and Python version to compute a local provenance fingerprint; the intermediate JSON is not retained or exported.",
       "sanitizer": "closed provenance field set; in-memory digest only",
       "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_tier_runner_checkpoints_real_repeats_and_resumes",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.run_plan1126_runtime_audit:_write_text:file_open",
-      "policy": "safe-by-construction",
-      "rationale": "Opens only caller-selected report paths for deterministic Plan 11.26 renderers whose inputs are validated audit artifacts or fixed-template cost evidence; it is not a raw capture helper.",
-      "sanitizer": "validated audit renderer outputs only; no raw diagnostic stream",
-      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_render_is_deterministic_regeneration_from_canonical_json_and_content_free",
       "evidence_tier": "unit"
     },
     {
@@ -3510,6 +3526,78 @@
       "rationale": "AST overmatch on a completion callback that retrieves the finished task's outcome and delegates to the content-free reporter; the callback itself retains and exports no diagnostic body.",
       "sanitizer": "content-free by construction / AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/acp/test_stdio_ndjson.py::test_seam4_a1_delivery_failure_is_reported_once_before_shutdown",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.evidence_store:canonical_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Canonicalizes an in-memory audit value (inventory block or observation list) solely to compute SHA-256 for a retained-evidence reference; the encoded JSON bytes are not persisted, logged or exported by this helper. A digest is not redaction: the same values reach disk only through write_evidence_sidecar, classified separately.",
+      "sanitizer": "digest-only functional path; no raw diagnostic retention by this helper",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_canonical_digest_is_content_only_and_writes_nothing",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.evidence_store:build_evidence_payload:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Encodes the canonical sidecar payload -- schema version, record id, entry name, the measurement binding (interpreter path/version/prefix, source fingerprint, module origins, dependency file digests), the source-derived inventory rows and identifiers, and the probe observations -- and RETURNS those bytes; it writes nothing itself, but the bytes are subsequently persisted verbatim by write_evidence_sidecar. Fixed outer keys, digests and immutability do NOT bound nested string content: that bound comes from the observation producers. Round 7 (R15): the serving-custody probes retain only booleans, counts, enum/state values, fixed stage names, a fixed task-outcome vocabulary, an allowlisted error category and a fixed refusal vocabulary -- no exception text or repr -- which the referenced control proves through the real observation-to-sidecar path.",
+      "sanitizer": "schema-limited outer payload; nested observation strings bounded by the producers' fixed vocabularies (R15 control); persisted downstream by write_evidence_sidecar",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_failing_serving_task_persists_a_content_free_failure_never_its_text",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.evidence_store:write_evidence_sidecar:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Persists the exact canonical bytes from build_evidence_payload as a content-addressed, immutable evidence sidecar beside the audit artifact: written to a temporary sibling, fsynced and os.replace'd; an existing path with identical bytes is reused, one with different bytes is refused. Destination is the caller-supplied evidence directory. Content safety is not established by the writer itself but by the observation producers' fixed vocabularies (Round 7, R15); the referenced control persists a failed serving-custody observation carrying a long synthetic marker through this writer and proves the marker is absent from the sealed bytes while the failure remains distinguishable.",
+      "sanitizer": "atomic content-addressed persistence of producer-bounded observations; no raw diagnostic retention (R15 control)",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_failing_serving_task_persists_a_content_free_failure_never_its_text",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.measurement:EnvironmentBinding.digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Canonicalizes the binding's own fields (interpreter executable path, version, prefix, source fingerprint, module origins, dependency file digests) solely to compute the binding digest; the encoded bytes are not persisted, logged or exported by this property. The binding itself reaches disk only inside the evidence payload, classified above.",
+      "sanitizer": "digest-only functional path; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_environment_binding_digest_is_content_only_and_writes_nothing",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.measurement:run_fresh_measurement:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Serializes the measurement request sent on stdin to a fresh child interpreter: the specification, the bound repository source text (product and probe modules) the child must execute, the entry name, options and the repository root path. Destination is the child process only; the parent parses the child's stdout and, on failure, surfaces the LAST stderr line inside a typed ExecutingSourceMismatch. This entry describes the request contract; the referenced test proves executing-source freshness of that request, not a general content-safety property of arbitrary request payloads.",
+      "sanitizer": "schema-limited request to an in-process-owned child; no persistence or logging of the request; failure detail bounded to one stderr line in a typed exception",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_fresh_child_executes_verified_source_not_stale_bytecode",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.serving_custody:_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Canonicalizes in-memory scenario facts (with default=str for enum/path values) solely to compute a SHA-256 identifier for a custody observation; the encoded bytes are not persisted, logged or exported by this helper. The facts themselves are retained in the observation rows and reach disk only through the evidence payload, classified above.",
+      "sanitizer": "digest-only functional path; no raw diagnostic retention by this helper",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_custody_digest_is_content_only_and_writes_nothing",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.serving_custody:_drive:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch on task.exception() inside the cancellation probe; there is no logger call. Round 7 (R15): the probe retains ONLY a fixed task-outcome vocabulary ('pending' | 'cancelled' | 'returned') and, for 'returned', an allowlisted error category derived from the exception's TYPE by isinstance (never its name, message or repr). The exception text can therefore never reach facts, the observation detail or the persisted evidence sidecar, while a failed scenario stays visible as NOT_DEMONSTRATED with its category. Demonstrated outcome on the measured tree: 'cancelled'.",
+      "sanitizer": "structural: fixed outcome vocabulary + allowlisted error category by type; exception text never retained",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_failing_serving_task_persists_a_content_free_failure_never_its_text",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.serving_custody:_probe_prior_stage_failure:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "str(exc) is compared against the FIXED message the probe itself injected ('plan1126-s1-prior-stage-fault'); only the boolean facts['earlier_failure_preserved'] is retained and the exception text is neither stored nor exported. Arbitrary exception strings are not sanitized here and do not need to be: the comparison is against a controlled constant and the resolving test drives exactly that injected failure.",
+      "sanitizer": "controlled constant comparison; boolean retention only; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_failing_earlier_stage_still_demonstrates_custody_on_this_tree",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.serving_custody:_probe_startup_rollback:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "str(exc) is compared against the FIXED message the probe itself injected ('plan1126-s1-rollback-probe'); only the boolean facts['original_error_preserved'] is retained and the exception text is neither stored nor exported. The comparison is against a controlled constant and the resolving test drives exactly that injected failure; no claim is made about arbitrary exception strings.",
+      "sanitizer": "controlled constant comparison; boolean retention only; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_rollback_probe_records_the_product_disposition_before_fallback_cleanup",
       "evidence_tier": "unit"
     }
   ]

@@ -78,6 +78,14 @@ class FakeRedis:
         return True
 
 
+def _submit(operation):
+    """Seam 2 B: the sink requires an owner submission seam; this test runs the factory inline."""
+    import asyncio
+
+    return asyncio.run(operation())
+
+
+
 def test_usage_event_is_written_to_jsonl_and_exported_to_gateway(tmp_path, monkeypatch):
     for key in LOCAL_PROVIDER_KEY_NAMES:
         monkeypatch.delenv(key, raising=False)
@@ -122,7 +130,7 @@ def test_gateway_usage_event_flows_to_jsonl_redis_and_gateway_export(tmp_path, m
         monkeypatch.delenv(key, raising=False)
     writer = JsonlTelemetryWriter(tmp_path / "telemetry.jsonl")
     fake_redis = FakeRedis()
-    redis_sink = RedisTelemetryEventSink(RedisTelemetryAdapter(client=fake_redis))
+    redis_sink = RedisTelemetryEventSink(RedisTelemetryAdapter(client=fake_redis), submit=_submit)
     transport = TraceRecordingTransport()
     exporter = GatewayObservabilityExporter(settings=gateway_settings(), transport=transport)
     fanout = TelemetryFanout(jsonl_writer=writer, redis_sink=redis_sink, gateway_exporter=exporter, batch_size=10)

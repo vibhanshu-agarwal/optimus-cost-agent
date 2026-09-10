@@ -1,27 +1,42 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from decimal import Decimal
+from typing import Any
 
-from optimus.redis.async_bridge import sync_await
 from optimus.telemetry.events import TelemetryEvent, TelemetryEventKind
 from optimus.telemetry.redis_adapter import RedisTelemetryAdapter, RunMetadata
 
 
 class RedisTelemetryEventSink:
-    """Sync event sink that persists agent telemetry through RedisTelemetryAdapter."""
+    """Sync event sink that persists agent telemetry through RedisTelemetryAdapter.
 
-    def __init__(self, adapter: RedisTelemetryAdapter) -> None:
+    Seam 2, checkpoint B: every Redis operation is submitted through ``submit`` -- the
+    owner seam of the runtime whose client the adapter wraps (``RedisRuntime.run_sync``
+    in production). The seam is required: a sink that fell back to the process-wide
+    shared tool loop would drive that client from a second owner. Late events after
+    the runtime closed its admission receive the runtime's stable closed error; nothing
+    is reopened.
+    """
+
+    def __init__(
+        self,
+        adapter: RedisTelemetryAdapter,
+        *,
+        submit: Callable[[Callable[[], Awaitable[Any]]], Any],
+    ) -> None:
         self._adapter = adapter
+        self.submit = submit
 
     def __call__(self, event: TelemetryEvent) -> None:
         if event.kind is TelemetryEventKind.MODEL_CALL:
-            sync_await(self._handle_model_call(event))
+            self.submit(lambda: self._handle_model_call(event))
             return
         if event.kind is TelemetryEventKind.AGENT_RUN:
-            sync_await(self._handle_agent_run(event))
+            self.submit(lambda: self._handle_agent_run(event))
             return
         if event.kind is TelemetryEventKind.GATEWAY_USAGE:
-            sync_await(self._handle_gateway_usage(event))
+            self.submit(lambda: self._handle_gateway_usage(event))
 
     async def _handle_gateway_usage(self, event: TelemetryEvent) -> None:
         payload = event.payload

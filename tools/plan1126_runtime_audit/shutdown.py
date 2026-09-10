@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import contextlib
 import hashlib
 import json
 import threading
@@ -18,10 +19,20 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Mapping
 
-from .source import SourceTree
+from .measurement import VerifiedExecution
+from .source import (
+    ExecutingSourceMismatch,
+    SourceTree,
+    source_fingerprint,
+    verify_executing_module,
+)
 
 if TYPE_CHECKING:
     from .model import AuditArtifact
+    from .replay import SealedObservations
+
+#: The allowlisted measurement entry whose context authorizes this hypothesis's probes.
+H5_MEASUREMENT_ENTRY = "h5.shutdown_schedule"
 
 H5_SOURCE_PATHS = (
     "src/optimus/acp/__main__.py",
@@ -39,6 +50,7 @@ H5_SOURCE_PATHS = (
     "src/optimus/acp/server.py",
     "src/optimus/acp/spec.py",
     "src/optimus/acp/trusted_paths.py",
+    "src/optimus/agent/state_store.py",
     "src/optimus/mcp/client_disposition.py",
     "src/optimus/mcp/client_sdk.py",
     "src/optimus/mcp/client_supervisor.py",
@@ -50,11 +62,18 @@ H5_SOURCE_PATHS = (
     "src/optimus/telemetry/redis_sink.py",
 )
 
+#: The CURRENT measurement's discovery paths (Seam 2, checkpoint B round 2, R3): the
+#: historical list above is bound to the historical baselines and must not gain paths
+#: those commits do not contain; the leaf bundle module exists only on current source,
+#: so the fresh `h5.shutdown_schedule` entry discovers from this list instead.
+H5_CURRENT_SOURCE_PATHS = (*H5_SOURCE_PATHS, "src/optimus/acp/harness_runtime.py")
+
 _CLOSE_DEFINITION_NAMES = {
     "close",
     "aclose",
     "close_all",
     "close_and_join",
+    "close_async",
     "stop",
     "shutdown_background_loop",
 }
@@ -191,6 +210,10 @@ class ResourceOwnershipRecord:
 class ShutdownInventory:
     close_sites: tuple[CloseSite, ...]
     resources: tuple[ResourceOwnershipRecord, ...]
+    #: Fingerprint of the tree this inventory was DISCOVERED from. A measurement whose
+    #: binding does not carry the same fingerprint is describing different code, and the
+    #: schedule refuses it rather than filing the result against this contract.
+    source_fingerprint: str | None = None
 
     @property
     def close_definitions(self) -> tuple[CloseSite, ...]:
@@ -348,6 +371,9 @@ def discover_shutdown_inventory(
 ) -> ShutdownInventory:
     """Derive close definitions/calls and one ownership row per close contract."""
 
+    # Over the paths this tree ACTUALLY holds: a fixture tree is a legitimate input
+    # and must not be forced to carry the full production path list.
+    discovered_from = source_fingerprint(merged, merged.paths())
     sites = list(_scan(merged, "merged"))
     if overlay is not None:
         sites.extend(_scan(overlay, "overlay"))
@@ -392,7 +418,9 @@ def discover_shutdown_inventory(
                 schedule_applicable="merged" in baselines,
             )
         )
-    return ShutdownInventory(close_sites=ordered, resources=tuple(resources))
+    return ShutdownInventory(
+        close_sites=ordered, resources=tuple(resources), source_fingerprint=discovered_from
+    )
 
 
 _TERMINAL_CAUSES = (
@@ -523,6 +551,21 @@ class _CountingComponent:
     def close_all(self) -> None:
         self.close()
 
+    @property
+    def state(self):
+        """The real supervisor's post-close state, read from the production enum.
+
+        ``ClientMcpRuntime.close`` reads ``self.supervisor.state`` and compares it with
+        ``MCPSupervisorState.DEAD``. This fake had no such attribute, so the probe raised
+        ``AttributeError`` and the schedule recorded ``probe_error`` instead of an
+        outcome -- a gap that stayed invisible while the overlay-bound test was UNRUN.
+        The value comes from the production enum rather than being invented, and a real
+        ``MCPAsyncSupervisor`` is DEAD both before start and after close.
+        """
+        from optimus.mcp.client_supervisor import MCPSupervisorState
+
+        return MCPSupervisorState.DEAD
+
 
 class _ProbeProcess:
     def __init__(self, *, already_stopped: bool) -> None:
@@ -553,27 +596,152 @@ def _repeat_actual_close(close: Callable[[], None], count: Callable[[], int]) ->
     return count()
 
 
-def _probe_resource(record: ResourceOwnershipRecord, terminal_cause: str) -> tuple[int, str]:
-    """Invoke the discovered production close contract three times on offline fakes."""
+
+def installed_source(paths: tuple[str, ...]) -> SourceTree:
+    """The tree the INSTALLED package -- the one dynamic probes import -- runs from.
+
+    Derived here, where the measurement happens, rather than accepted from a caller.
+    A dynamic probe imports the installed modules by construction, so this is a
+    statement of what is being measured, not a default standing in for a binding the
+    caller should have supplied. It is deliberately NOT the historical tree a record's
+    static inventory may be bound to; keeping the two apart is what stops a fresh
+    measurement being filed as historical evidence.
+    """
+    import optimus
+
+    root = Path(optimus.__file__).resolve().parents[2]
+    return SourceTree({path: (root / path).read_text(encoding="utf-8") for path in paths})
+
+
+_REDIS_PROBE_MODULE_PATHS = (
+    "src/optimus/redis/async_bridge.py",
+    "src/optimus/redis/runtime.py",
+)
+
+
+def _probe_resource(
+    record: ResourceOwnershipRecord,
+    terminal_cause: str,
+    *,
+    source: SourceTree,
+) -> tuple[int, str]:
+    """Invoke the discovered production close contract three times on offline fakes.
+
+    ``source`` is the tree the record is bound to. Every Redis branch below verifies
+    that the module it is about to import and execute IS that source before taking any
+    measurement: these probes read immutable trees but import the installed package, and
+    without the check a measurement of today's runtime could be filed against a revision
+    it was never taken from. A mismatch raises; it is never skipped or downgraded.
+    """
 
     resource = record.resource_type
     method = record.close_method
     cause_effect = f"{terminal_cause}:prepared"
 
+    if resource == "RedisLoopOwner":
+        # New owner code must be measurable, not merely discovered. Without a probe
+        # branch the schedule would record `probe_error` for it, which is a gap in the
+        # audit dressed up as an observation.
+        from optimus.redis.async_bridge import RedisLoopOwner, RedisLoopOwnerState
+
+        owner = RedisLoopOwner(name="plan1126-owner-probe")
+        transitions = 0
+        try:
+            for _ in range(3):
+                was_open = owner.state is RedisLoopOwnerState.OPEN
+                owner.close(timeout=10.0)
+                if was_open:
+                    transitions += 1
+        finally:
+            with contextlib.suppress(Exception):
+                owner.close(timeout=10.0)
+        if not owner.is_terminated:
+            raise RuntimeError("the RedisLoopOwner probe left its own loop alive")
+        return transitions, cause_effect
+
     if resource == "RedisRuntime":
-        from optimus.redis.async_bridge import shutdown_background_loop
+        from optimus.redis import async_bridge as _bridge_module
+        from optimus.redis import runtime as _runtime_module
+        from optimus.redis.async_bridge import RedisLoopOwner
+        from optimus.redis.runtime import RedisRuntime
+
+        verify_executing_module(source, "src/optimus/redis/runtime.py", _runtime_module)
+        verify_executing_module(source, "src/optimus/redis/async_bridge.py", _bridge_module)
+
+        client = _CountedAsyncClose()
+        pool = _CountedAsyncClose()
+        # Owned fixture lifetime: this probe constructs the owner it measures and
+        # tears down that owner -- never the process-wide shared tool owner, which is
+        # a different lifetime and whose teardown would prove nothing about this one.
+        owner = RedisLoopOwner(name="plan1126-shutdown-probe")
+        runtime = RedisRuntime(pool=pool, client=client, owner=owner)
+        try:
+            # Two public close paths share ONE teardown (Seam 2, checkpoint B): the
+            # blocking `close` and the awaited `close_async`. The discovered method is
+            # the one exercised; repeat calls must not repeat the resource close.
+            if method == "close_async":
+                _repeat_actual_close(
+                    lambda: asyncio.run(runtime.close_async(timeout=10.0)),
+                    lambda: max(client.count, pool.count),
+                )
+            else:
+                _repeat_actual_close(runtime.close, lambda: max(client.count, pool.count))
+        finally:
+            with contextlib.suppress(Exception):
+                owner.close(timeout=10.0)
+        if not owner.is_terminated:
+            raise RuntimeError("the RedisRuntime probe left its own loop owner alive")
+        return max(client.count, pool.count), cause_effect
+
+    if resource == "AgentHarnessRuntime":
+        # Seam 2, checkpoint B: the bundle bootstrap returns. Its close IS the runtime's
+        # single teardown, so three bundle closes must reach the resources once. Imported
+        # from its leaf module (round 2, R3) so this probe binds the bundle, not the whole
+        # serving composition bootstrap imports.
+        from optimus.acp.harness_runtime import AgentHarnessRuntime
+        from optimus.redis import runtime as _runtime_module
+        from optimus.redis.async_bridge import RedisLoopOwner
+        from optimus.redis.runtime import RedisRuntime
+
+        verify_executing_module(source, "src/optimus/redis/runtime.py", _runtime_module)
+        client = _CountedAsyncClose()
+        pool = _CountedAsyncClose()
+        owner = RedisLoopOwner(name="plan1126-harness-probe")
+        bundle = AgentHarnessRuntime(
+            agent_runner=object(),  # type: ignore[arg-type]
+            redis_runtime=RedisRuntime(pool=pool, client=client, owner=owner),
+        )
+        try:
+            _repeat_actual_close(bundle.close, lambda: max(client.count, pool.count))
+        finally:
+            with contextlib.suppress(Exception):
+                owner.close(timeout=10.0)
+        if not owner.is_terminated:
+            raise RuntimeError("the AgentHarnessRuntime probe left its runtime owner alive")
+        return max(client.count, pool.count), cause_effect
+
+    if resource == "RedisAgentStateStore":
+        # Seam 2, checkpoint B: the convenience-factory store owns the runtime it built.
+        from optimus.agent.state_store import AsyncRedisAgentStateStore, RedisAgentStateStore
+        from optimus.redis.async_bridge import RedisLoopOwner
         from optimus.redis.runtime import RedisRuntime
 
         client = _CountedAsyncClose()
         pool = _CountedAsyncClose()
-        runtime = RedisRuntime(pool=pool, client=client)
+        owner = RedisLoopOwner(name="plan1126-store-probe")
+        owned = RedisRuntime(pool=pool, client=client, owner=owner)
+        store = RedisAgentStateStore(
+            async_store=AsyncRedisAgentStateStore(client=client),
+            submit=owned.run_sync,
+            owned_runtime=owned,
+        )
         try:
-            if method == "aclose":
-                asyncio.run(_repeat_async_close(runtime.aclose))
-            else:
-                _repeat_actual_close(runtime.close, lambda: max(client.count, pool.count))
+            _repeat_actual_close(store.close, lambda: max(client.count, pool.count))
         finally:
-            shutdown_background_loop()
+            with contextlib.suppress(Exception):
+                owner.close(timeout=10.0)
+        if not owner.is_terminated:
+            raise RuntimeError("the RedisAgentStateStore probe left its runtime owner alive")
         return max(client.count, pool.count), cause_effect
 
     if resource == "DedicatedOutboundWriter":
@@ -707,12 +875,20 @@ def _probe_resource(record: ResourceOwnershipRecord, terminal_cause: str) -> tup
         ), f"{terminal_cause}:{'no_child_started' if already_stopped else 'child_terminated'}"
 
     if resource == "async_bridge":
-        from optimus.redis.async_bridge import shutdown_background_loop, sync_await
+        from optimus.redis import async_bridge as _bridge_module
+        from optimus.redis.async_bridge import _acquire_shared_tool_owner, shutdown_background_loop, sync_await
 
+        verify_executing_module(source, "src/optimus/redis/async_bridge.py", _bridge_module)
         sync_await(_return_none())
+        # Observe THE owner this probe is about to close, by identity: its own loop
+        # closed and its own thread dead. The previous oracle asked whether any thread
+        # in the process still carried a given name, which a second owner -- or any
+        # unrelated thread sharing that name -- could answer wrongly in either
+        # direction, and which said nothing about loop closure at all.
+        observed = _acquire_shared_tool_owner()
         return _repeat_actual_close(
             shutdown_background_loop,
-            lambda: int(not any(thread.name == "optimus-redis-async" for thread in threading.enumerate())),
+            lambda: int(observed.is_terminated),
         ), f"{terminal_cause}:bridge_loop_stopped"
 
     raise ValueError(f"no offline close probe for {resource}.{method}")
@@ -731,21 +907,78 @@ def shutdown_schedule_observations(
     *,
     inventory: ShutdownInventory,
     repeats: int,
+    source: SourceTree,
+    execution: VerifiedExecution,
 ) -> tuple[ShutdownScheduleObservation, ...]:
     """Run every merged close contract under each terminal cause, three closes each."""
 
     if repeats < 1:
         raise ValueError("repeats must be >= 1")
+    # A VERIFIED EXECUTION ISSUED FOR THIS ENTRY, not a binding and not a generic
+    # capability. Both weaker forms were tried and both worked: a fabricated binding bought
+    # 65 probe calls, and so did a *genuine* context issued from a caller-chosen
+    # specification that bound one unrelated module, no dependencies and no fresh child.
+    # `authorizes` re-checks the entry it was issued for, the modules and dependencies that
+    # entry executes, the private bytecode cache, and that the issuing measurement is still
+    # open -- before any probe runs, and outside the try/except that would otherwise record
+    # the refusal as a `probe_error` observation.
+    if not isinstance(execution, VerifiedExecution):
+        raise ExecutingSourceMismatch(
+            "shutdown_schedule_observations requires a verified execution context obtained from "
+            "establish_verified_execution(); a supplied environment binding is a claim, not provenance"
+        )
+    execution.authorizes(H5_MEASUREMENT_ENTRY)
+    binding = execution.binding
+    # Guard at the operation entry, OUTSIDE the per-probe try below. That try converts
+    # a probe exception into a recorded `probe_error` observation, which for a binding
+    # mismatch would be precisely the downgrade the audit-scope ruling forbids: the
+    # schedule would still be produced, carrying a measurement of code the record is
+    # not bound to. Failing here refuses to produce the schedule at all.
+    # Bind inventory, source, executing runtime and dependencies together BEFORE any
+    # measurement. Verifying module content against a caller-chosen source proves only
+    # that those two agree; if the inventory describing the contract came from a
+    # different tree, the result would still be filed against code it never measured.
+    # A verified environment binding is REQUIRED: there is no unbound path, and a
+    # missing or mismatched one is a hard failure before any probe runs. Inventory,
+    # measured source and executing environment must all be the same thing, or the
+    # observations would describe code this contract never covered.
+    if inventory.source_fingerprint is None or inventory.source_fingerprint != binding.source_fingerprint:
+        raise ExecutingSourceMismatch(
+            "the shutdown inventory was discovered from a different tree than this measurement is "
+            "bound to; historical replay reads sealed observations instead, and a fresh historical "
+            "execution needs its own matching interpreter and source environment"
+        )
+    if source_fingerprint(source, source.paths()) != binding.source_fingerprint:
+        raise ExecutingSourceMismatch("the supplied source does not match the environment binding")
+    # No separate module-content re-check here: the binding was captured by verifying each
+    # executing module AGAINST this same source, and the fingerprint check above ties the
+    # supplied source to that binding. A third comparison of the same two things could not
+    # fail independently -- it would only advertise coverage that does not exist.
     observations: list[ShutdownScheduleObservation] = []
     applicable = [record for record in inventory.resources if record.schedule_applicable]
     control_thread_names = tuple(sorted(thread.name for thread in threading.enumerate()))
     control_counts = Counter(control_thread_names)
+    # Round 2, R3: the probes below run under the execution-closure recorder; anything a
+    # branch executes outside this entry's binding refuses the schedule after the loop.
+    from .measurement import ExecutionClosureRecorder, verify_execution_closure
+
+    recorder = ExecutionClosureRecorder(Path(__file__).resolve().parents[2])
+    recorder.__enter__()
+    try:
+        _run_schedule(observations, applicable, repeats, source, control_thread_names, control_counts)
+    finally:
+        recorder.__exit__(None, None, None)
+    verify_execution_closure(recorder, binding)
+    return tuple(observations)
+
+
+def _run_schedule(observations, applicable, repeats, source, control_thread_names, control_counts) -> None:
     for record in applicable:
         for cause in _TERMINAL_CAUSES:
             for _ in range(repeats):
                 started = time.perf_counter()
                 try:
-                    underlying_count, cause_effect = _probe_resource(record, cause)
+                    underlying_count, cause_effect = _probe_resource(record, cause, source=source)
                     complete = True
                     outcome = (
                         "IDEMPOTENT_NOOP"
@@ -754,6 +987,12 @@ def shutdown_schedule_observations(
                         if underlying_count == 1
                         else "DOUBLE_CLOSE_OBSERVED"
                     )
+                except ExecutingSourceMismatch:
+                    # NEVER downgraded. `_probe_resource` verifies each module it is about
+                    # to execute against the bound source, and the handler below would turn
+                    # that refusal into a `probe_error` row -- producing a schedule that
+                    # looks measured while recording that the measurement was refused.
+                    raise
                 except Exception as exc:  # pragma: no cover - preserved as audit evidence
                     underlying_count = 0
                     cause_effect = f"{cause}:probe_error:{type(exc).__name__}"
@@ -777,7 +1016,6 @@ def shutdown_schedule_observations(
                         cause_effect=cause_effect,
                     )
                 )
-    return tuple(observations)
 
 
 def characterize_shutdown_inventory(
@@ -803,7 +1041,11 @@ def characterize_shutdown_inventory(
                 f"REPEAT_LATENCY:{latency}"
             )
         resources.append(replace(record, repeated_close=repeated_close))
-    return ShutdownInventory(close_sites=inventory.close_sites, resources=tuple(resources))
+    return ShutdownInventory(
+        close_sites=inventory.close_sites,
+        resources=tuple(resources),
+        source_fingerprint=inventory.source_fingerprint,
+    )
 
 
 _H5_OWNER = "P11-FEAT-ACP-RUNTIME-HARDENING"
@@ -1273,14 +1515,44 @@ def _build_h5_record(
     )
 
 
+def replayed_shutdown_observations(sealed: Mapping[str, Any]) -> tuple[ShutdownScheduleObservation, ...]:
+    """Read sealed H5 observations for replay. Runs NO probe.
+
+    Replay validates stored evidence; it makes no new execution claim, so it needs
+    neither the historical runtime nor a matching environment. If the sealed
+    observations are absent, that prerequisite is reported rather than satisfied by
+    measuring today's code.
+    """
+    records = [record for record in sealed.get("evidence_records", []) if record.get("hypothesis_id") == "H5"]
+    if len(records) != 1:
+        raise ValueError("sealed evidence must contain exactly one H5 record to replay")
+    observations = records[0].get("schedule_observations", {}).get("observations")
+    if not observations:
+        raise ValueError(
+            "the sealed H5 record carries no schedule observations; this prerequisite is missing and "
+            "must not be satisfied by measuring current code"
+        )
+    return tuple(ShutdownScheduleObservation.from_dict(item) for item in observations)
+
+
 def build_h5_audit_artifact(
     *,
     merged: SourceTree,
     overlay: SourceTree,
     merged_commit: str,
     overlay_commit: str,
+    replay: "SealedObservations",
 ) -> AuditArtifact:
-    """Build the cumulative H3/H4/H5 artifact without mutating production source."""
+    """Build the cumulative H3/H4/H5 artifact without mutating production source.
+
+    ``merged`` and ``overlay`` bind the STATIC discovery and its historical findings.
+    ``measured_source`` binds the DYNAMIC schedule, which imports the installed package
+    and is therefore evidence about whatever source that package is running from. The
+    two were previously the same argument, which silently filed a fresh measurement
+    against a historical revision whenever they diverged; naming them separately forces
+    the caller to say which source it is actually measuring. It does not by itself make
+    a current measurement into historical evidence -- nothing can.
+    """
 
     from .cancellation import H3_SOURCE_PATHS, build_h3_audit_artifact
     from .cost import compute_cost
@@ -1301,14 +1573,24 @@ def build_h5_audit_artifact(
     base_overlay = SourceTree({path: overlay.read_text(path) for path in base_paths})
     shutdown_merged = SourceTree({path: merged.read_text(path) for path in H5_SOURCE_PATHS})
     shutdown_overlay = SourceTree({path: overlay.read_text(path) for path in H5_SOURCE_PATHS})
+    observations = replay.shutdown
     base = build_h3_audit_artifact(
         merged=base_merged,
         overlay=base_overlay,
         merged_commit=merged_commit,
         overlay_commit=overlay_commit,
+        replay=replay,
     )
     inventory = discover_shutdown_inventory(shutdown_merged, overlay=shutdown_overlay)
-    observations = shutdown_schedule_observations(inventory=inventory, repeats=100)
+    # The static inventory above is bound to the historical baselines. The dynamic
+    # schedule is a FRESH measurement, so it is discovered from and bound to the tree the
+    # caller says it is measuring -- never the historical one. The schedule refuses the
+    # pair outright if those disagree.
+    # Replay only. The historical record is rebuilt from SEALED observations supplied by
+    # the caller; no current probe runs here, so nothing measured today can enter a
+    # record bound to a historical baseline. Fresh measurement lives in
+    # `current_envelope.measure_current`, which binds its own environment and produces
+    # its own separately versioned record.
     inventory = characterize_shutdown_inventory(inventory, observations)
     record = _build_h5_record(
         inventory=inventory,

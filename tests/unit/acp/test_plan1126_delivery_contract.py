@@ -179,6 +179,19 @@ class _Candidate:
     fingerprint: str
 
 
+def _sealed_replay():
+    """Every family's sealed observations. The builders replay these; they measure nothing."""
+    import json as _json
+
+    from tools.plan1126_runtime_audit.replay import SealedObservations
+
+    root = Path(__file__).resolve().parents[3]
+    payload = _json.loads(
+        (root / "reports" / "plan-11-26-acp-runtime-audit.json").read_text(encoding="utf-8")
+    )
+    return SealedObservations.from_sealed(payload)
+
+
 def _call_name(node: ast.expr) -> tuple[str, str]:
     parts: list[str] = []
     current = node
@@ -368,7 +381,7 @@ def test_delivery_inventory_has_one_phase_per_conceptual_site() -> None:
 
 def test_h4_model_and_schema_reject_duplicate_conceptual_sites() -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
-    payload = delivery_module.build_h4_audit_artifact(
+    payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
@@ -492,6 +505,7 @@ def test_h4_record_uses_canonical_evidence_template_and_separate_baseline_identi
     assert build is not None, "canonical H4 evidence-record builder does not exist"
 
     artifact = build(
+        replay=_sealed_replay(),
         merged=_baseline(_MERGED),
         overlay=_baseline(_OVERLAY),
         merged_commit=_MERGED,
@@ -542,7 +556,7 @@ def test_h4_record_uses_canonical_evidence_template_and_separate_baseline_identi
 
 def test_h4_separates_structural_closure_from_owned_settled_vocabulary_coverage() -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
-    payload = delivery_module.build_h4_audit_artifact(
+    payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
@@ -569,7 +583,7 @@ def test_h4_model_schema_and_public_verify_reject_coverage_metadata_mutations(
     tmp_path: Path,
 ) -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
-    payload = delivery_module.build_h4_audit_artifact(
+    payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
@@ -630,7 +644,7 @@ def test_h4_model_schema_and_public_verify_reject_coverage_metadata_mutations(
 
 def test_h4_render_surfaces_worked_example_evidence_without_payload_content() -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
-    artifact = delivery_module.build_h4_audit_artifact(
+    artifact = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=_baseline(_MERGED),
         overlay=_baseline(_OVERLAY),
         merged_commit=_MERGED,
@@ -670,7 +684,7 @@ def test_h4_render_surfaces_worked_example_evidence_without_payload_content() ->
 
 def test_evidence_template_pins_h4_seed_count_without_pinning_later_hypotheses() -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
-    payload = delivery_module.build_h4_audit_artifact(
+    payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=_baseline(_MERGED),
         overlay=_baseline(_OVERLAY),
         merged_commit=_MERGED,
@@ -794,7 +808,7 @@ async def send(writer: LineWriter, owner, unrelated_owner):
 
 def test_h4_persists_source_derived_transition_records_not_a_seed_formatter() -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
-    artifact = delivery_module.build_h4_audit_artifact(
+    artifact = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=_baseline(_MERGED),
         overlay=_baseline(_OVERLAY),
         merged_commit=_MERGED,
@@ -866,7 +880,7 @@ def test_h4_execution_emits_only_citations_for_behaviors_it_runs() -> None:
         operation.citation for operation in execution.operations
     } <= authority.executed_definition_citations
 
-    payload = delivery_module.build_h4_audit_artifact(
+    payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=merged, overlay=overlay, merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
     observations = payload["evidence_records"][0]["schedule_observations"]["observations"]
@@ -954,7 +968,7 @@ def test_h4_behavioral_mutations_change_or_invalidate_primary_observation() -> N
 
 def test_h4_persists_primary_scenario_coherence_and_rejects_tamper(tmp_path: Path) -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
-    payload = delivery_module.build_h4_audit_artifact(
+    payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
@@ -1027,7 +1041,7 @@ def test_h4_model_schema_and_public_verify_fail_closed_on_cross_field_mutations(
     tmp_path: Path,
 ) -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
-    payload = delivery_module.build_h4_audit_artifact(
+    payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
@@ -1076,7 +1090,7 @@ def test_h4_model_schema_and_public_verify_fail_closed_on_cross_field_mutations(
 
 def test_h4_global_status_and_findings_retain_truthful_partial_lineage() -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
-    payload = delivery_module.build_h4_audit_artifact(
+    payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
@@ -1103,7 +1117,7 @@ def test_public_verify_allows_external_g2_acceptance_without_mechanical_evidence
     tmp_path: Path,
 ) -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
-    payload = delivery_module.build_h4_audit_artifact(
+    payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
@@ -1127,7 +1141,7 @@ def test_public_verify_rejects_mutable_or_secret_bearing_h4_metadata(
     tmp_path: Path,
 ) -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
-    payload = delivery_module.build_h4_audit_artifact(
+    payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
@@ -1147,7 +1161,7 @@ def test_public_verify_rejects_mutable_or_secret_bearing_h4_metadata(
 
 def test_h4_render_escapes_content_free_markdown_metadata() -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
-    payload = delivery_module.build_h4_audit_artifact(
+    payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()

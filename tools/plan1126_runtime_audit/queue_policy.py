@@ -2,19 +2,25 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .replay import SealedObservations
+
 import ast
 import asyncio
 import hashlib
 import json
 import queue as sync_queue
-import tempfile
 import time
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Mapping
 
+from optimus.redis.async_bridge import RedisLoopOwner
 from optimus.redis.runtime import RedisRuntime
 
+from .measurement import EnvironmentBinding, VerifiedExecution
 from .model import (
     AuditArtifact,
     BaselineScope,
@@ -29,7 +35,16 @@ from .model import (
     VocabularyCoverageAssessment,
     VocabularyCoverageStatus,
 )
-from .source import SourceTree
+from .source import (
+    ExecutingSourceMismatch,
+    SourceTree,
+    source_fingerprint,
+    verify_executing_module,
+    verify_symbol_citation,
+)
+
+#: The allowlisted measurement entry whose context authorizes this hypothesis's probes.
+H9_MEASUREMENT_ENTRY = "h9.connection_health"
 
 H9_SOURCE_PATHS = (
     "src/optimus/acp/ndjson_subprocess_session.py",
@@ -330,9 +345,25 @@ class _QueueVisitor(ast.NodeVisitor):
         }.get(name)
         if health is not None:
             self._add(node, health, None)
-        if method == "result" and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Call):
-            if _attribute_name(node.func.value.func) == "asyncio.run_coroutine_threadsafe":
+        if method == "result" and isinstance(node.func, ast.Attribute):
+            # The original shape: `asyncio.run_coroutine_threadsafe(...).result()`.
+            if isinstance(node.func.value, ast.Call) and _attribute_name(node.func.value.func) == (
+                "asyncio.run_coroutine_threadsafe"
+            ):
                 self._add(node, QueueSiteKind.BRIDGE_WAIT, None)
+            # Seam 2: submission and the blocking wait are no longer one chained
+            # expression -- the owner holds the future and callers wait on it as
+            # `<handle>.future.result(...)`. Discovery follows the site to its new home
+            # rather than losing it, which would silently drop the bridge wait from the
+            # inventory the moment ownership moved.
+            else:
+                chain = _attribute_name(node.func)
+                # `handle.future.result(...)` resolves the whole chain; when the base is
+                # itself a call -- `owner.submit(...).future.result(...)` -- the walk
+                # stops at the call and yields the bare `future.result`. Both are the
+                # same site, so both are recognised.
+                if chain == "future.result" or chain.endswith(".future.result"):
+                    self._add(node, QueueSiteKind.BRIDGE_WAIT, None)
         self.generic_visit(node)
 
 
@@ -503,8 +534,88 @@ class _HealthClient:
             raise self.error
         return True
 
+    async def aclose(self) -> None:
+        """Part of the owned fixture lifetime: the probe closes what it constructed."""
+        return None
 
-def connection_health_observations(*, inventory: QueueInventory) -> tuple[HealthObservation, ...]:
+
+class _HealthPool:
+    async def aclose(self) -> None:
+        return None
+
+
+_RUNTIME_PATH = "src/optimus/redis/runtime.py"
+_REDIS_PROBE_MODULE_PATHS = (
+    "src/optimus/redis/async_bridge.py",
+    _RUNTIME_PATH,
+)
+
+
+def verify_h9_probe_bindings(
+    *, inventory: QueueInventory, source: SourceTree, binding: EnvironmentBinding
+) -> None:
+    """Bind inventory, bound source and executing modules together before measuring.
+
+    The H5 shutdown schedule gained the executing-module half of this gate first; H9
+    executes the very same runtime and needs it too. Module identity alone is not
+    enough, though: a caller could pass modules that match the supplied source while the
+    *inventory* describes a different tree entirely, and the measurement would then be
+    recorded against a contract it was never taken from. Re-deriving the inventory from
+    the supplied source is what ties the three together.
+    """
+    from optimus.redis import async_bridge as bridge_module
+    from optimus.redis import runtime as runtime_module
+
+    if source_fingerprint(source, source.paths()) != binding.source_fingerprint:
+        raise ExecutingSourceMismatch("the supplied source does not match the environment binding")
+    if discover_queue_inventory(source).to_dict() != inventory.to_dict():
+        raise ExecutingSourceMismatch(
+            "the queue inventory was not discovered from the source this measurement is bound to; "
+            "re-discover it from the measured source, or measure the source it was discovered from"
+        )
+    for path, module in zip(
+        _REDIS_PROBE_MODULE_PATHS, (bridge_module, runtime_module), strict=True
+    ):
+        if path in source.paths():
+            verify_executing_module(source, path, module)
+
+
+def health_probe_surface(inventory: QueueInventory) -> str:
+    """The discovered health-probe sites this measurement actually drives.
+
+    Used as the identifier every health observation is filed under, so a replayed row can
+    be checked against the inventory it claims to come from. An inventory discovered from
+    a different tree names different lines, so its identifiers will not match -- which is
+    the point: an observation whose identifier is absent from the inventory is not
+    evidence about that inventory.
+    """
+    sites = sorted(
+        f"{site.path}:{site.line}:{site.symbol}"
+        for site in inventory.sites
+        if site.site_kind is QueueSiteKind.HEALTH_PROBE and site.path == _RUNTIME_PATH
+    )
+    if not sites:
+        raise ValueError(
+            "the measured source declares no health probe in "
+            f"{_RUNTIME_PATH}, so a health measurement taken here could not be attributed to it"
+        )
+    return "+".join(sites)
+
+
+def connection_health_observations(
+    *, inventory: QueueInventory, source: SourceTree, execution: VerifiedExecution
+) -> tuple[HealthObservation, ...]:
+    # A VERIFIED EXECUTION ISSUED FOR THIS ENTRY is required here too: H9 executes the
+    # very same runtime as H5, so a context scoped to something else -- including a genuine
+    # one -- must not authorize it either.
+    if not isinstance(execution, VerifiedExecution):
+        raise ExecutingSourceMismatch(
+            "connection_health_observations requires a verified execution context obtained from "
+            "establish_verified_execution(); a supplied environment binding is a claim, not provenance"
+        )
+    execution.authorizes(H9_MEASUREMENT_ENTRY)
+    binding = execution.binding
+    verify_h9_probe_bindings(inventory=inventory, source=source, binding=binding)
     kinds = {site.site_kind for site in inventory.sites}
     required = {
         QueueSiteKind.POOL_CONSTRUCTOR, QueueSiteKind.CLIENT_CONSTRUCTOR, QueueSiteKind.HEALTH_PROBE,
@@ -521,15 +632,27 @@ def connection_health_observations(*, inventory: QueueInventory) -> tuple[Health
     )
     rows: list[HealthObservation] = []
     for scenario, error in cases:
-        runtime = RedisRuntime(pool=object(), client=_HealthClient(error))
+        # Owned fixture lifetime. The probe drives health through the runtime's own
+        # submission seam -- the path production uses -- rather than running the
+        # private coroutine on a loop the probe made for itself, and it closes the
+        # runtime it constructed on every path. The normalization being measured
+        # (OSError and redis TimeoutError become ConnectionError; anything else
+        # propagates) is unchanged; only where it executes has changed.
+        runtime = RedisRuntime(
+            pool=_HealthPool(),
+            client=_HealthClient(error),
+            owner=RedisLoopOwner(name="plan1126-health-probe"),
+        )
         try:
-            asyncio.run(runtime._ping_async())
+            runtime.ping()
         except ConnectionError:
             outcome = HealthOutcome.CONNECTION_FAILURE
         except ValueError:
             outcome = HealthOutcome.UNEXPECTED_PROPAGATED
         else:
             outcome = HealthOutcome.HEALTHY
+        finally:
+            runtime.close(timeout=10.0)
         rows.append(HealthObservation(
             scenario=scenario, outcome=outcome,
             deadline_policy=HealthDeadlinePolicy.CONNECT_ONLY,
@@ -707,16 +830,56 @@ class QueueEvidenceRecord:
         )
 
 
-def _record(source: SourceTree, merged_commit: str, overlay_commit: str) -> QueueEvidenceRecord:
+def replayed_health_observations(sealed: Mapping[str, Any]) -> tuple[HealthObservation, ...]:
+    """Read sealed H9 health observations for replay. Runs NO probe."""
+    records = [record for record in sealed.get("evidence_records", []) if record.get("hypothesis_id") == "H9"]
+    if len(records) != 1:
+        raise ValueError("sealed evidence must contain exactly one H9 record to replay")
+    # The sealed H9 summary stores its rows under "rows".
+    observations = records[0].get("health_observations", {}).get("rows")
+    if not observations:
+        raise ValueError(
+            "the sealed H9 record carries no health observations; this prerequisite is missing and "
+            "must not be satisfied by measuring current code"
+        )
+    return tuple(HealthObservation.from_dict(item) for item in observations)
+
+
+def replayed_admission_observations(sealed: Mapping[str, Any]) -> tuple[QueueAdmissionObservation, ...]:
+    """Read sealed H9 admission observations for replay. Runs NO probe."""
+    records = [record for record in sealed.get("evidence_records", []) if record.get("hypothesis_id") == "H9"]
+    if len(records) != 1:
+        raise ValueError("sealed evidence must contain exactly one H9 record to replay")
+    observations = records[0].get("admission_observations", {}).get("rows")
+    if not observations:
+        raise ValueError(
+            "the sealed H9 record carries no admission observations; this prerequisite is missing "
+            "and must not be satisfied by measuring current code"
+        )
+    return tuple(QueueAdmissionObservation.from_dict(item) for item in observations)
+
+
+def _record(
+    source: SourceTree,
+    merged_commit: str,
+    overlay_commit: str,
+    health_observations: tuple[HealthObservation, ...],
+    admission_observations: tuple[QueueAdmissionObservation, ...],
+) -> QueueEvidenceRecord:
+    # Replay only, and now actually so. This said "replay only" while re-executing 30,000
+    # queue admissions on the next line -- so every `verify` of the accepted artifact ran
+    # live probes to rebuild a historical record. BOTH halves are supplied by the caller
+    # from sealed rows; a fresh measurement of either is a different claim and lives in the
+    # successor envelope with its own environment binding.
     scoped = SourceTree({path: source.read_text(path) for path in H9_SOURCE_PATHS})
     inventory = discover_queue_inventory(scoped)
-    admissions = _summary(queue_admission_observations(inventory=inventory), (
+    admissions = _summary(admission_observations, (
         ("constructor_policy", "ConstructorPolicy", tuple(item.value for item in ConstructorPolicy)),
         ("observed_outcome", "AdmissionOutcome", tuple(item.value for item in AdmissionOutcome)),
         ("inference", "QueueInference", tuple(item.value for item in QueueInference)),
         ("elapsed_class", "ElapsedClass", tuple(item.value for item in ElapsedClass)),
     ))
-    health = _summary(connection_health_observations(inventory=inventory), (
+    health = _summary(health_observations, (
         ("scenario", "HealthScenario", tuple(item.value for item in HealthScenario)),
         ("outcome", "HealthOutcome", tuple(item.value for item in HealthOutcome)),
         ("deadline_policy", "HealthDeadlinePolicy", tuple(item.value for item in HealthDeadlinePolicy)),
@@ -744,7 +907,19 @@ def _record(source: SourceTree, merged_commit: str, overlay_commit: str) -> Queu
     )
 
 
-def _findings(record: QueueEvidenceRecord) -> tuple[Finding, ...]:
+#: The exact lines that DEMONSTRATE the missing deadline, not the definitions containing
+#: them: the connect timeout that bounds only connection setup, the un-deadlined
+#: `client.ping` await, and the un-deadlined bridge `Future.result`. Each is checked
+#: against the bound source by :func:`verify_symbol_citation`, so a moved definition
+#: fails loudly instead of quietly pointing at unrelated code.
+_H9_HEALTH_DEADLINE_CITATIONS = (
+    "src/optimus/redis/runtime.py:28:RedisRuntime.from_url",
+    "src/optimus/redis/runtime.py:44:RedisRuntime._ping_async",
+    "src/optimus/redis/async_bridge.py:47:sync_await",
+)
+
+
+def _findings(record: QueueEvidenceRecord, *, source: SourceTree) -> tuple[Finding, ...]:
     return (
         Finding(
             finding_id="H9-MISSING-QUEUE-BACKPRESSURE-merged",
@@ -759,10 +934,13 @@ def _findings(record: QueueEvidenceRecord) -> tuple[Finding, ...]:
             finding_id="H9-MISSING-HEALTH-DEADLINE-merged",
             subject="Redis health probing has a connect timeout but no complete command/read deadline",
             classification=Classification.MISSING, baseline_scope=BaselineScope.MERGED,
-            symbols=(
-                "src/optimus/redis/runtime.py:28:RedisRuntime.from_url",
-                "src/optimus/redis/runtime.py:44:RedisRuntime._ping_async",
-                "src/optimus/redis/async_bridge.py:47:sync_await",
+            # Verified against the bound source, not re-derived from it. Re-resolving
+            # these to their definition lines would throw away the evidence: the finding
+            # is about `socket_connect_timeout=2`, the bare `await client.ping()` and the
+            # bare `Future.result()` -- specific lines inside those definitions.
+            symbols=tuple(
+                verify_symbol_citation(source, citation)
+                for citation in _H9_HEALTH_DEADLINE_CITATIONS
             ),
             evidence=(EvidenceReference("H9-HEALTH", BaselineScope.MERGED, record.health_observations.digest),),
             owner=_OWNER,
@@ -773,15 +951,18 @@ def _findings(record: QueueEvidenceRecord) -> tuple[Finding, ...]:
 
 def build_h9_audit_artifact(
     *, merged: SourceTree, overlay: SourceTree, merged_commit: str, overlay_commit: str,
+    replay: "SealedObservations",
 ) -> AuditArtifact:
     from .telemetry import build_h8_audit_artifact
 
-    with tempfile.TemporaryDirectory(prefix="plan1126-h9-") as workspace:
-        base = build_h8_audit_artifact(
-            merged=merged, overlay=overlay, merged_commit=merged_commit,
-            overlay_commit=overlay_commit, workspace=workspace,
-        )
-    record = _record(merged, merged_commit, overlay_commit)
+    base = build_h8_audit_artifact(
+        replay=replay,
+        merged=merged, overlay=overlay, merged_commit=merged_commit,
+        overlay_commit=overlay_commit,
+    )
+    record = _record(
+        merged, merged_commit, overlay_commit, replay.health, replay.admission
+    )
     multipliers = dict(base.discovered_multipliers)
     multipliers["queues"] = record.inventory.queue_count
     cost = dict(base.computed_run_cost)
@@ -794,7 +975,9 @@ def build_h9_audit_artifact(
         live_redis_status=base.live_redis_status, acpx_status=base.acpx_status,
         additional_client_status=base.additional_client_status, zed_status=base.zed_status,
         live_interoperability_status=base.live_interoperability_status,
-        findings=tuple(base.findings) + _findings(record), discovered_multipliers=multipliers,
+        findings=tuple(base.findings) + _findings(
+            record, source=SourceTree({path: merged.read_text(path) for path in H9_SOURCE_PATHS})
+        ), discovered_multipliers=multipliers,
         computed_run_cost=cost, gate_status=GateStatus.INCOMPLETE,
         evidence_records=tuple(base.evidence_records) + (record,),
     )

@@ -77,6 +77,9 @@ COLD = (
     "server.py:serve_ndjson:reader_incomplete",
 )
 MCP_REPORTER = "server.py:serve_ndjson:mcp_cleanup_incomplete"
+# Seam 2, checkpoint B: the Redis teardown reporter follows the MCP reporter's contract --
+# a lazily evaluated, fixed-field payload built only when the sink is enabled.
+REDIS_REPORTER = "server.py:serve_ndjson:redis_cleanup_incomplete"
 
 
 def _source_tree(location):
@@ -110,7 +113,7 @@ def test_call_inventory_is_exactly_the_classified_sites():
                 ]
                 assert location not in found, f"duplicate location {location}"
                 found.add(location)
-    assert found == set(HOT) | set(WARM) | set(COLD) | {MCP_REPORTER}
+    assert found == set(HOT) | set(WARM) | set(COLD) | {MCP_REPORTER, REDIS_REPORTER}
 
 
 def _diagnostic_statement(location):
@@ -294,6 +297,33 @@ def test_disabled_hot_path_does_not_even_call_sink(location, tmp_path):
         exec(_diagnostic_statement(location), _opaque_namespace(unexpected_sink))
     except _DiagnosticInputRead as read:
         pytest.fail(f"{location}: disabled trace evaluated a diagnostic input: {read}")
+
+
+def _redis_reporter():
+    path, tree = _source_tree(REDIS_REPORTER)
+    [function] = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "report_redis_cleanup_incomplete"
+    ]
+    module = ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[]))
+    return compile(module, str(path), "exec")
+
+
+def test_disabled_redis_reporter_reads_no_runtime_fields(tmp_path):
+    """Seam 2 B: the Redis reporter mirrors the MCP contract -- disabled, it inspects nothing."""
+    configure_debug_trace(enabled=False, log_path=tmp_path / "redis.ndjson")
+
+    def payload_must_not_run(runtime):
+        raise _DiagnosticInputRead("redis_cleanup_payload was evaluated with tracing disabled")
+
+    namespace = {"acp_debug_log": debug_trace.acp_debug_log, "redis_cleanup_payload": payload_must_not_run}
+    exec(_redis_reporter(), namespace)
+    try:
+        namespace["report_redis_cleanup_incomplete"](_Opaque(), "incomplete")
+    except _DiagnosticInputRead as read:
+        pytest.fail(f"disabled trace read a Redis runtime field: {read}")
+    assert not (tmp_path / "redis.ndjson").exists()
 
 
 def test_disabled_mcp_reporter_builds_no_fields(tmp_path):

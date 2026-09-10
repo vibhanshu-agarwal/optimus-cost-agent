@@ -7,6 +7,8 @@ from typing import Any
 
 from optimus.acp.debug_trace import log_planning_replan_event, log_workspace_context_result
 from optimus.acp.dispatcher import JsonRpcDispatcher
+from optimus.acp.failure_notes import attach_failure_note
+from optimus.acp.harness_runtime import AgentHarnessRuntime
 from optimus.acp.server import AcpStreamServer
 from optimus.acp.spec import resolve_max_planning_turns
 from optimus.acp.subprocess_env import system_environ_view
@@ -56,20 +58,38 @@ def _build_gateway_client(*, settings, timeout_seconds):
     return GatewayClient(settings=settings, timeout_seconds=timeout_seconds)
 
 
-def build_agent_runner_for_harness(
+def _rollback_redis_runtime(redis_runtime: RedisRuntime, failure: BaseException) -> None:
+    """Close a runtime whose composition failed after it was built; never mask the failure.
+
+    Round 2, R4: the note is attached through the frozen-safe helper. ``add_note`` on a
+    frozen-dataclass failure (``SubprocessEnvConfigurationError`` arises on this very path)
+    raised ``FrozenInstanceError`` and replaced the startup failure with it.
+    """
+    try:
+        redis_runtime.close()
+    except Exception as exc:  # noqa: BLE001 - attached to the real failure, never substituted for it
+        attach_failure_note(failure, f"redis runtime startup rollback also failed: {exc!r}")
+
+
+def build_agent_harness_runtime(
     *,
     environ: Mapping[str, str],
     workspace_root: Path,
     model: str | None = None,
     gateway_timeout_seconds: float | None = None,
-) -> AgentRunner:
+) -> AgentHarnessRuntime:
     """
-    Builds and initializes an AgentRunner instance configured for use with a harness.
+    Builds an AgentRunner and the Redis runtime it runs on, as ONE owned lifetime.
 
     This function sets up the necessary runtime environment by performing preflight
     checks, initializing required runtime components such as Redis, and resolving
     the provided workspace settings and model. It ensures that all dependencies
-    and configurations are in place before returning the configured AgentRunner.
+    and configurations are in place before returning the configured harness runtime.
+
+    Seam 2, checkpoint B: the Redis runtime is retained in the returned
+    :class:`AgentHarnessRuntime` rather than dropped, its store and sink submit
+    through its own owner, and any failure after the runtime exists rolls it back
+    through the runtime's single close path while preserving the original error.
 
     :param environ: A mapping of environment variables as key-value pairs used for
         configuration and runtime behavior.
@@ -80,8 +100,8 @@ def build_agent_runner_for_harness(
     :param model: Optional argument to specify the model to be used by the AgentRunner.
         Defaults to None, which means the model will be resolved from the environment.
     :type model: str | None
-    :return: A fully configured AgentRunner instance ready for execution.
-    :rtype: AgentRunner
+    :return: The configured runner and the Redis runtime that owns its persistence.
+    :rtype: AgentHarnessRuntime
     :raises StartupConfigurationError: Raised when a preflight failure occurs, such
         as missing or misconfigured runtime dependencies.
     """
@@ -92,34 +112,40 @@ def build_agent_runner_for_harness(
     except PreflightFailure as exc:
         raise StartupConfigurationError(exit_code=exc.exit_code, user_message=exc.user_message) from exc
     redis_runtime = RedisRuntime.from_url(redis_url)
-    settings = OptimusGatewaySettings.from_env(environ)
-    resolved_workspace = workspace_root.resolve()
-    guard = PreToolGuard.for_workspace(workspace_root=resolved_workspace, allowed_network_hosts=())
-    gateway_client = _build_gateway_client(settings=settings, timeout_seconds=gateway_timeout_seconds)
-    state_store = redis_runtime.sync_state_store()
-    # Plan 11.5, Task 5: one fanout writes every telemetry event to the local
-    # append-only JSONL log and the existing Redis sink unconditionally, and
-    # batches redacted events to the Gateway trace-ingress exporter. No
-    # Phoenix/OTLP endpoint or LangSmith credential is read or forwarded here --
-    # `GatewayObservabilityExporter` only ever talks to the one-key Gateway.
-    # Plan 11.25 Task 9: the same fanout is the non-debug ACP_TURN_SETTLEMENT sink
-    # (threaded via AgentRunner.event_sink → AcpDuplexAdapter.settlement_sink).
-    telemetry_sink = TelemetryFanout(
-        jsonl_writer=JsonlTelemetryWriter.for_workspace(resolved_workspace),
-        redis_sink=RedisTelemetryEventSink(redis_runtime.telemetry_adapter()),
-        gateway_exporter=GatewayObservabilityExporter(settings=settings),
-    )
+    try:
+        settings = OptimusGatewaySettings.from_env(environ)
+        resolved_workspace = workspace_root.resolve()
+        guard = PreToolGuard.for_workspace(workspace_root=resolved_workspace, allowed_network_hosts=())
+        gateway_client = _build_gateway_client(settings=settings, timeout_seconds=gateway_timeout_seconds)
+        state_store = redis_runtime.sync_state_store()
+        # Plan 11.5, Task 5: one fanout writes every telemetry event to the local
+        # append-only JSONL log and the existing Redis sink unconditionally, and
+        # batches redacted events to the Gateway trace-ingress exporter. No
+        # Phoenix/OTLP endpoint or LangSmith credential is read or forwarded here --
+        # `GatewayObservabilityExporter` only ever talks to the one-key Gateway.
+        # Plan 11.25 Task 9: the same fanout is the non-debug ACP_TURN_SETTLEMENT sink
+        # (threaded via AgentRunner.event_sink → AcpDuplexAdapter.settlement_sink).
+        # Seam 2, checkpoint B: the Redis sink submits through THIS runtime's owner.
+        telemetry_sink = TelemetryFanout(
+            jsonl_writer=JsonlTelemetryWriter.for_workspace(resolved_workspace),
+            redis_sink=RedisTelemetryEventSink(redis_runtime.telemetry_adapter(), submit=redis_runtime.run_sync),
+            gateway_exporter=GatewayObservabilityExporter(settings=settings),
+        )
 
-    agent_model = resolve_agent_model(environ, cli_model=model)
-    return AgentRunner(
-        gateway_client=gateway_client,
-        model=agent_model,
-        guard=guard,
-        state_store=state_store,
-        event_sink=telemetry_sink,
-        workspace_context_observer=log_workspace_context_result,
-        planning_progress_observer=log_planning_replan_event,
-    )
+        agent_model = resolve_agent_model(environ, cli_model=model)
+        agent_runner = AgentRunner(
+            gateway_client=gateway_client,
+            model=agent_model,
+            guard=guard,
+            state_store=state_store,
+            event_sink=telemetry_sink,
+            workspace_context_observer=log_workspace_context_result,
+            planning_progress_observer=log_planning_replan_event,
+        )
+    except BaseException as exc:
+        _rollback_redis_runtime(redis_runtime, exc)
+        raise
+    return AgentHarnessRuntime(agent_runner=agent_runner, redis_runtime=redis_runtime)
 
 
 def build_configured_server(
@@ -164,48 +190,63 @@ def build_configured_server(
     :return: A fully configured instance of `AcpStreamServer`.
     :rtype: AcpStreamServer
     """
-    agent_runner = build_agent_runner_for_harness(
+    harness = build_agent_harness_runtime(
         environ=environ,
         workspace_root=Path(workspace_root or "."),
         model=model,
         gateway_timeout_seconds=gateway_timeout_seconds,
     )
-    resolved_workspace = Path(workspace_root or ".").resolve()
-    settings = OptimusGatewaySettings.from_env(environ)
-    gateway_client = _build_gateway_client(settings=settings, timeout_seconds=gateway_timeout_seconds)
-    guard = PreToolGuard.for_workspace(workspace_root=resolved_workspace, allowed_network_hosts=())
-    dispatcher = JsonRpcDispatcher(
-        gateway_client=gateway_client,
-        agent_runner=agent_runner,
-        pre_tool_guard=guard,
-        workspace_root=resolved_workspace,
-    )
-    # Plan 9.96, Task 5 Step 2: resolved once here from the (already
-    # authorized/sanitized) agent environ passed into this function, rather
-    # than read from os.environ per-request deep inside AcpDuplexAdapter.
-    max_planning_turns = resolve_max_planning_turns(environ)
-    # Seam 3: the same rule as resolve_max_planning_turns above, and the invariant
-    # __main__ documents -- every downstream helper reads captured input, never
-    # os.environ. The MCP path was the one that still escaped it. The system view
-    # is re-derived here so that only allowlisted system names can reach MCP
-    # construction even if a caller misroutes a wider mapping.
-    client_mcp_runtime = build_client_mcp_runtime(
-        workspace_root=resolved_workspace,
-        system_environ=system_environ_view({} if system_environ is None else system_environ),
-        ephemeral_hmac=ephemeral_hmac,
-    )
-    from optimus.acp.conversation import build_conversation_sanitizer_inputs
+    client_mcp_runtime = None
+    try:
+        resolved_workspace = Path(workspace_root or ".").resolve()
+        settings = OptimusGatewaySettings.from_env(environ)
+        gateway_client = _build_gateway_client(settings=settings, timeout_seconds=gateway_timeout_seconds)
+        guard = PreToolGuard.for_workspace(workspace_root=resolved_workspace, allowed_network_hosts=())
+        dispatcher = JsonRpcDispatcher(
+            gateway_client=gateway_client,
+            agent_runner=harness.agent_runner,
+            pre_tool_guard=guard,
+            workspace_root=resolved_workspace,
+        )
+        # Plan 9.96, Task 5 Step 2: resolved once here from the (already
+        # authorized/sanitized) agent environ passed into this function, rather
+        # than read from os.environ per-request deep inside AcpDuplexAdapter.
+        max_planning_turns = resolve_max_planning_turns(environ)
+        # Seam 3: the same rule as resolve_max_planning_turns above, and the invariant
+        # __main__ documents -- every downstream helper reads captured input, never
+        # os.environ. The MCP path was the one that still escaped it. The system view
+        # is re-derived here so that only allowlisted system names can reach MCP
+        # construction even if a caller misroutes a wider mapping.
+        client_mcp_runtime = build_client_mcp_runtime(
+            workspace_root=resolved_workspace,
+            system_environ=system_environ_view({} if system_environ is None else system_environ),
+            ephemeral_hmac=ephemeral_hmac,
+        )
+        from optimus.acp.conversation import build_conversation_sanitizer_inputs
 
-    conversation_sanitizer_inputs = build_conversation_sanitizer_inputs(
-        environ,
-        workspace_root=resolved_workspace,
-    )
-    return AcpStreamServer(
-        dispatcher=dispatcher,
-        max_planning_turns=max_planning_turns,
-        client_mcp_runtime=client_mcp_runtime,
-        conversation_sanitizer_inputs=conversation_sanitizer_inputs,
-    )
+        conversation_sanitizer_inputs = build_conversation_sanitizer_inputs(
+            environ,
+            workspace_root=resolved_workspace,
+        )
+        # Seam 2, checkpoint B: the server takes custody of the Redis runtime and closes
+        # it as the last stage of its own teardown.
+        return AcpStreamServer(
+            dispatcher=dispatcher,
+            max_planning_turns=max_planning_turns,
+            client_mcp_runtime=client_mcp_runtime,
+            conversation_sanitizer_inputs=conversation_sanitizer_inputs,
+            redis_runtime=harness.redis_runtime,
+        )
+    except BaseException as exc:
+        # Composition failed after the harness (and possibly the client-MCP runtime)
+        # existed: roll both back through their own close paths, keep the original error.
+        if client_mcp_runtime is not None:
+            try:
+                client_mcp_runtime.close()
+            except Exception as mcp_exc:  # noqa: BLE001 - attached, never substituted
+                attach_failure_note(exc, f"client MCP runtime startup rollback also failed: {mcp_exc!r}")
+        _rollback_redis_runtime(harness.redis_runtime, exc)
+        raise
 
 
 def build_client_mcp_runtime(

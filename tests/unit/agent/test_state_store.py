@@ -71,7 +71,7 @@ def test_in_memory_store_rejects_missing_plan_hash():
 
 def test_validate_redis_url_rejects_passwords():
     with pytest.raises(ValueError, match="must not contain username or password"):
-        validate_redis_url("redis://user:secret@localhost:6379/0")
+        validate_redis_url("redis://user:secret@localhost:6379/0")  # pragma: allowlist secret - synthetic test fixture, not a real credential
 
 
 def test_validate_redis_url_accepts_redis_and_rediss_without_credentials():
@@ -189,3 +189,154 @@ def test_persist_plan_partial_when_pointer_write_fails():
     assert result.outcome is PlanPersistenceOutcome.PERSISTENCE_PARTIAL
     assert "primary" in result.completed_substeps
     assert result.authorizing is False
+
+
+# --- Seam 2, checkpoint B: async-backed stores submit through an injected owner ---------
+
+
+class FakeAsyncRedis:
+    """Async fake client: records which thread each operation ran on."""
+
+    def __init__(self) -> None:
+        import threading
+
+        self.hsets: list[tuple[str, dict[str, str]]] = []
+        self.hgetalls: dict[str, dict[str, str]] = {}
+        self.threads: list[int] = []
+        self._threading = threading
+
+    async def hset(self, key: str, mapping: dict[str, str]):
+        self.threads.append(self._threading.get_ident())
+        self.hsets.append((key, mapping))
+        self.hgetalls[key] = mapping
+        return len(mapping)
+
+    async def hgetall(self, key: str):
+        self.threads.append(self._threading.get_ident())
+        return self.hgetalls.get(key, {})
+
+    async def expire(self, key: str, ttl_seconds: int):
+        return True
+
+    async def ping(self):
+        return True
+
+    async def aclose(self):
+        return None
+
+
+class _Pool:
+    async def aclose(self):
+        return None
+
+
+def _async_store(client: FakeAsyncRedis):
+    from optimus.agent.state_store import AsyncRedisAgentStateStore
+
+    return AsyncRedisAgentStateStore(client=client, ttl_seconds=60)
+
+
+def test_an_async_backed_store_requires_an_injected_submission_seam():
+    """MUTATION: a serving store that silently falls back to the shared tool owner."""
+    with pytest.raises(TypeError, match="submit"):
+        RedisAgentStateStore(async_store=_async_store(FakeAsyncRedis()))
+
+
+def test_an_async_backed_store_submits_every_operation_through_the_injected_seam():
+    import asyncio
+
+    client = FakeAsyncRedis()
+    submissions: list[str] = []
+
+    def submit(operation):
+        submissions.append(type(operation).__name__)
+        return asyncio.run(operation())
+
+    store = RedisAgentStateStore(async_store=_async_store(client), submit=submit)
+    store.save_plan(plan_record())
+    loaded = store.load_plan(run_id="run-1", plan_hash="hash-1")
+    latest = store.latest_plan_for_run(run_id="run-1")
+    store.ping()
+
+    assert loaded.plan_hash == "hash-1"
+    assert latest is not None and latest.plan_hash == "hash-1"
+    assert len(submissions) == 4, submissions  # save, load, latest, ping
+    assert all(name == "function" for name in submissions)
+
+
+def test_a_runtime_built_store_runs_on_the_runtime_owner_loop_not_a_shared_one():
+    """MUTATION: cleanup on the caller's loop -- here, operations on a second owner."""
+    from optimus.redis import async_bridge
+    from optimus.redis.async_bridge import RedisLoopOwner
+    from optimus.redis.runtime import RedisRuntime
+
+    client = FakeAsyncRedis()
+    owner = RedisLoopOwner(name="seam2b-store-owner")
+    runtime = RedisRuntime(pool=_Pool(), client=client, owner=owner)
+    try:
+        store = runtime.sync_state_store()
+        store.save_plan(plan_record())
+        assert store.load_plan(run_id="run-1", plan_hash="hash-1").plan_hash == "hash-1"
+    finally:
+        record = runtime.close(timeout=5.0)
+    assert set(client.threads) == {owner.thread.ident}
+    assert async_bridge._shared_tool_owner is None, "a serving store reached the shared tool owner"
+    assert record.owner_terminated
+
+
+def test_a_late_submission_after_close_receives_a_stable_closed_error_and_reopens_nothing():
+    """MUTATION: replacement owner after admission closes."""
+    from optimus.redis import async_bridge
+    from optimus.redis.async_bridge import RedisLoopOwner, RedisLoopOwnerClosed
+    from optimus.redis.runtime import RedisRuntime
+
+    client = FakeAsyncRedis()
+    owner = RedisLoopOwner(name="seam2b-late-owner")
+    runtime = RedisRuntime(pool=_Pool(), client=client, owner=owner)
+    store = runtime.sync_state_store()
+    runtime.close(timeout=5.0)
+
+    result = store.persist_plan(plan_record())
+    assert result.outcome.value == "persistence_failed"
+    with pytest.raises(RedisLoopOwnerClosed):
+        store.load_plan(run_id="run-1", plan_hash="hash-1")
+    assert runtime.owner is owner and owner.is_terminated
+    assert async_bridge._shared_tool_owner is None
+    assert client.threads == []
+
+
+def test_the_convenience_factory_retains_the_runtime_it_builds(monkeypatch):
+    """The discarded convenience-factory handle was a real custody gap (architecture v2)."""
+    from optimus.redis.async_bridge import RedisLoopOwner
+    from optimus.redis.runtime import RedisRuntime
+
+    client = FakeAsyncRedis()
+    built: list[RedisRuntime] = []
+
+    def fake_from_url(url, *, ttl_seconds):
+        runtime = RedisRuntime(
+            pool=_Pool(), client=client, owner=RedisLoopOwner(name="seam2b-factory"), ttl_seconds=ttl_seconds
+        )
+        built.append(runtime)
+        return runtime
+
+    monkeypatch.setattr(RedisRuntime, "from_url", staticmethod(fake_from_url))
+    store = RedisAgentStateStore.from_url("redis://127.0.0.1:6379/0", ttl_seconds=60)
+    assert store.owned_runtime is built[0]
+    store.save_plan(plan_record())
+    keys = store.submit(lambda: _collect_keys(client))
+    assert keys == {"agent:plan:run-1:hash-1", "agent:plan:run-1:latest"}
+    record = store.close(timeout=5.0)
+    assert record.owner_terminated
+    assert built[0].state.value == "CLOSED"
+
+
+async def _collect_keys(client: FakeAsyncRedis) -> set[str]:
+    return set(client.hgetalls)
+
+
+def test_a_store_that_owns_no_runtime_cannot_be_closed():
+    store = RedisAgentStateStore(client=FakeRedis())
+    assert store.owned_runtime is None
+    with pytest.raises(RuntimeError, match="owns no runtime"):
+        store.close()

@@ -24,11 +24,35 @@ _OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"  # pragma: allowlist secre
 _SCHEMA_PATH = Path("tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json")
 
 
+def _sealed_replay():
+    """Every family's sealed observations. The builders replay these; they measure nothing."""
+    import json as _json
+
+    from tools.plan1126_runtime_audit.replay import SealedObservations
+
+    root = Path(__file__).resolve().parents[3]
+    payload = _json.loads(
+        (root / "reports" / "plan-11-26-acp-runtime-audit.json").read_text(encoding="utf-8")
+    )
+    return SealedObservations.from_sealed(payload)
+
+
 def _queue_module():
     try:
         return importlib.import_module("tools.plan1126_runtime_audit.queue_policy")
     except ModuleNotFoundError:
         pytest.fail("Task 9 queue-policy audit module does not exist")
+
+
+def _current_source(paths: tuple[str, ...]) -> SourceTree:
+    """The tree the installed package is actually running from.
+
+    Dynamic probes import the installed modules, so a fresh measurement is evidence
+    about THIS source; `_immutable_source` remains the binding for static discovery of
+    historical baselines.
+    """
+    root = Path(__file__).resolve().parents[3]
+    return SourceTree({path: (root / path).read_text(encoding="utf-8") for path in paths})
 
 
 def _immutable_source(commit: str, paths: tuple[str, ...]) -> SourceTree:
@@ -96,6 +120,115 @@ def _lexical_inventory_oracle(source: SourceTree) -> set[_LexicalSite]:
                 if pattern.search(line):
                     sites.add(_LexicalSite(path, line_number, site_kind))
     return sites
+
+
+def _measurement_binding():
+    """The identity these tests state their fresh measurements are taken against."""
+    from tools.plan1126_runtime_audit.shutdown import H5_SOURCE_PATHS, installed_source
+    from tools.plan1126_runtime_audit.source import capture_measurement_binding
+
+    return capture_measurement_binding(
+        installed_source(H5_SOURCE_PATHS), H5_SOURCE_PATHS, dependencies=("redis",)
+    )
+
+
+def _measured_h9():
+    """The measured H9 tree, its specification and a captured ENVIRONMENT BINDING.
+
+    A binding, not an execution context: contexts authorize probes and are issued only
+    inside a measurement child. The controls using this helper are about the binding.
+    """
+    from tools.plan1126_runtime_audit.measurement import (
+        MeasurementSpecification,
+        capture_environment_binding,
+    )
+    from tools.plan1126_runtime_audit.source import SourceTree, source_fingerprint
+
+    module = _queue_module()
+    root = Path(__file__).resolve().parents[3]
+    source = _current_source(module.H9_SOURCE_PATHS)
+    bound = (
+        "src/optimus/redis/async_bridge.py",
+        "src/optimus/redis/runtime.py",
+        "tools/plan1126_runtime_audit/measurement.py",
+        "tools/plan1126_runtime_audit/queue_policy.py",
+    )
+    held = set(source.paths())
+    identity = SourceTree({
+        path: (source.read_text(path) if path in held else (root / path).read_text(encoding="utf-8"))
+        for path in held | set(bound)
+    })
+    spec = MeasurementSpecification(
+        paths=bound,
+        import_roots=(str(root / "src"), str(root)),
+        dependencies=("redis",),
+        source_fingerprint=source_fingerprint(source, source.paths()),
+    )
+    return source, spec, capture_environment_binding(
+        measured=source, identity=identity, spec=spec, cache_prefix=None
+    )
+
+
+#: Controls that must run inside a real measurement child live here; the pytest process
+#: cannot issue an authorizing context, which is the whole point of the correction.
+_CHILD_CASES = (
+    Path(__file__).resolve().parents[3]
+    / "tests" / "unit" / "tools" / "plan1126_runtime_audit" / "measurement_child_cases.py"
+)
+
+
+def _child_case(case: str) -> dict:
+    """Run one control inside a measurement child and return its single JSON result."""
+    import json
+    import subprocess
+    import sys
+    import tempfile
+
+    from tools.plan1126_runtime_audit.measurement import fresh_child_environment
+
+    root = Path(__file__).resolve().parents[3]
+    with tempfile.TemporaryDirectory(prefix="plan1126-control-cache-") as cache:
+        completed = subprocess.run(
+            [sys.executable, str(_CHILD_CASES), str(root), case],
+            cwd=str(root), capture_output=True, text=True, timeout=1800,
+            env=fresh_child_environment(cache),
+        )
+    assert completed.returncode == 0, f"{case}: {completed.stderr[-2000:]}"
+    return json.loads(completed.stdout.strip().splitlines()[-1])
+
+
+def _measure_entry(entry: str, **options) -> tuple[dict, list[dict]]:
+    """Drive the REAL public measurement path and return (inventory, observations)."""
+    from tools.plan1126_runtime_audit.current_envelope import default_measurement_plan
+    from tools.plan1126_runtime_audit.measurement import run_fresh_measurement
+
+    root = Path(__file__).resolve().parents[3]
+    plan = default_measurement_plan(repository_root=root, entries=(entry,), options=options)[0]
+    _binding, result = run_fresh_measurement(
+        source=plan.source, spec=plan.spec, entry=entry,
+        options=plan.options, repository_root=root,
+    )
+    return result["inventory"], result["observations"]
+
+
+def _sealed_admission_observations():
+    module = _queue_module()
+    payload = json.loads(
+        (Path(__file__).resolve().parents[3] / "reports" / "plan-11-26-acp-runtime-audit.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    return module.replayed_admission_observations(payload)
+
+
+def _sealed_health_observations():
+    module = _queue_module()
+    payload = json.loads(
+        (Path(__file__).resolve().parents[3] / "reports" / "plan-11-26-acp-runtime-audit.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    return module.replayed_health_observations(payload)
 
 
 def test_queue_inventory_is_independent_complete_and_not_seeded() -> None:
@@ -194,29 +327,31 @@ def test_queue_policy_cross_checks_constructor_and_10000_admissions() -> None:
 
 
 def test_connection_health_probe_and_pool_ownership_are_classified() -> None:
-    module = _queue_module()
-    inventory = module.discover_queue_inventory(
-        _immutable_source(_MERGED, module.H9_SOURCE_PATHS)
-    )
-    observations = module.connection_health_observations(inventory=inventory)
+    # Through the REAL public path. A dynamic health measurement imports the INSTALLED
+    # runtime, so it is evidence about the current tree; the entry discovers its inventory
+    # from the same tree the binding names, which is what keeps it from being filed
+    # against a historical revision.
+    _inventory, observations = _measure_entry("h9.connection_health")
 
-    assert {row.scenario.value for row in observations} == {
+    assert {row["scenario"] for row in observations} == {
         "HEALTHY", "OS_ERROR", "REDIS_TIMEOUT", "UNEXPECTED_ERROR"
     }
-    assert {row.outcome.value for row in observations} == {
+    assert {row["outcome"] for row in observations} == {
         "HEALTHY", "CONNECTION_FAILURE", "UNEXPECTED_PROPAGATED"
     }
-    assert all(row.deadline_policy.value == "CONNECT_ONLY" for row in observations)
-    assert all(row.pool_ownership.value == "RUNTIME_OWNED_CLIENT_THEN_POOL" for row in observations)
-    assert all(row.complete for row in observations)
+    assert all(row["deadline_policy"] == "CONNECT_ONLY" for row in observations)
+    assert all(row["pool_ownership"] == "RUNTIME_OWNED_CLIENT_THEN_POOL" for row in observations)
+    assert all(row["complete"] for row in observations)
 
 
 def test_health_deadline_scope_out_has_health_specific_reason_and_gate() -> None:
     module = _queue_module()
     record = module._record(
-        _immutable_source(_MERGED, module.H9_SOURCE_PATHS),
+        _current_source(module.H9_SOURCE_PATHS),
         _MERGED,
         _OVERLAY,
+        _sealed_health_observations(),
+        _sealed_admission_observations(),
     )
     assessment = next(
         item for item in record.health_observations.coverage_assessments
@@ -237,7 +372,7 @@ def test_health_deadline_scope_out_has_health_specific_reason_and_gate() -> None
 
 def test_h9_artifact_recomputes_cost_coverage_and_findings(tmp_path: Path) -> None:
     module = _queue_module()
-    artifact = module.build_h9_audit_artifact(
+    artifact = module.build_h9_audit_artifact(replay=_sealed_replay(),
         merged=_cumulative_source(_MERGED, module.H9_SOURCE_PATHS),
         overlay=_cumulative_source(_OVERLAY, module.H9_SOURCE_PATHS),
         merged_commit=_MERGED,
@@ -285,3 +420,109 @@ def test_h9_artifact_recomputes_cost_coverage_and_findings(tmp_path: Path) -> No
     changed_h9["inventory"]["expected_queue_count"] = 1
     artifact_path.write_text(json.dumps(changed, sort_keys=True, separators=(",", ":")), encoding="utf-8")
     assert main(["verify", "--artifact", str(artifact_path)]) == 1
+
+
+# --- Review round 1: R5 audit-binding controls -----------------------------------
+
+
+def test_h9_refuses_an_inventory_discovered_from_a_different_source() -> None:
+    """MUTATION: wrong inventory/source pairing.
+
+    Verifying that the executing modules match the supplied source is not enough on its
+    own: the inventory describing the contract can still come from somewhere else, and
+    the measurement would then be recorded against a contract it was never taken from.
+    """
+    outcome = _child_case("h9_foreign_inventory")
+    assert outcome["probe_calls"] == 0, "a probe ran against a contract discovered elsewhere"
+    assert "not discovered from the source" in outcome["refusal"]
+
+
+def test_h9_refuses_to_measure_a_source_it_is_not_executing() -> None:
+    """MUTATION: H9 measured against a source binding it is not executing."""
+    outcome = _child_case("h9_tampered_source")
+    assert outcome["probe_calls"] == 0, "a probe ran against a source the binding does not name"
+    assert "does not match the environment binding" in outcome["refusal"]
+
+
+def test_health_deadline_citations_keep_the_evidence_line_and_are_checked_against_it() -> None:
+    """The citation must name the line that SHOWS the defect, and still land in its symbol.
+
+    Round 3 re-resolved these to their definition lines by symbol identity. That looked
+    like a correction and was a regression: the finding is about `socket_connect_timeout=2`,
+    the bare `await client.ping()` and the bare `Future.result()` -- specific lines *inside*
+    those definitions -- so moving each citation to the enclosing `def` discarded exactly
+    the evidence being cited, and stopped the sealed artifact reproducing. These citations
+    are bound to the MERGED baseline, where the code they name has not moved.
+    """
+    module = _queue_module()
+    merged = _immutable_source(_MERGED, module.H9_SOURCE_PATHS)
+    record = module._record(  # noqa: SLF001
+        merged, _MERGED, _OVERLAY, _sealed_health_observations(), _sealed_admission_observations()
+    )
+    finding = next(
+        item
+        for item in module._findings(record, source=merged)  # noqa: SLF001
+        if item.finding_id == "H9-MISSING-HEALTH-DEADLINE-merged"
+    )
+
+    assert finding.symbols == (
+        "src/optimus/redis/runtime.py:28:RedisRuntime.from_url",
+        "src/optimus/redis/runtime.py:44:RedisRuntime._ping_async",
+        "src/optimus/redis/async_bridge.py:47:sync_await",
+    )
+    for citation, token in zip(
+        finding.symbols, ("socket_connect_timeout", "client.ping", ".result("), strict=True
+    ):
+        path, line, _ = citation.split(":", 2)
+        source_line = merged.read_text(path).splitlines()[int(line) - 1]
+        assert token in source_line, f"citation {citation} no longer shows {token}"
+
+
+def test_a_citation_that_leaves_its_symbol_fails_rather_than_keeping_a_stale_line() -> None:
+    """MUTATION: a citation kept while the code it named moved away from that line."""
+    from tools.plan1126_runtime_audit.source import (
+        SourceTree,
+        SymbolCitationError,
+        resolve_symbol_citation,
+        verify_symbol_citation,
+    )
+
+    inside = SourceTree({"a.py": "def wanted():\n    return 1\n"})
+    assert verify_symbol_citation(inside, "a.py:2:wanted") == "a.py:2:wanted"
+
+    shifted = SourceTree({"a.py": "x = 0\n\n\ndef wanted():\n    return 1\n"})
+    with pytest.raises(SymbolCitationError, match="outside that symbol"):
+        verify_symbol_citation(shifted, "a.py:2:wanted")
+
+    missing = SourceTree({"a.py": "def other():\n    return None\n"})
+    with pytest.raises(SymbolCitationError, match="not defined"):
+        verify_symbol_citation(missing, "a.py:1:wanted")
+    with pytest.raises(SymbolCitationError, match="not defined"):
+        resolve_symbol_citation(missing, "a.py", "wanted")
+
+    ambiguous = SourceTree({"a.py": "def wanted():\n    return 1\n\n\ndef wanted():\n    return 2\n"})
+    with pytest.raises(SymbolCitationError, match="defined 2 times"):
+        verify_symbol_citation(ambiguous, "a.py:1:wanted")
+    with pytest.raises(SymbolCitationError, match="defined 2 times"):
+        resolve_symbol_citation(ambiguous, "a.py", "wanted")
+
+
+def test_the_bridge_wait_is_still_discovered_after_ownership_moved_it() -> None:
+    """Owner code must not drop out of the declared corpus when the path moves."""
+    module = _queue_module()
+    inventory = module.discover_queue_inventory(_current_source(module.H9_SOURCE_PATHS))
+    kinds = {site.site_kind.value for site in inventory.sites}
+    assert "BRIDGE_WAIT" in kinds, "the bridge wait vanished from discovery when it moved"
+    waits = [site for site in inventory.sites if site.site_kind.value == "BRIDGE_WAIT"]
+    assert any(site.path == "src/optimus/redis/async_bridge.py" for site in waits)
+
+
+def _sealed_shutdown_observations():
+    from tools.plan1126_runtime_audit.shutdown import replayed_shutdown_observations
+
+    payload = json.loads(
+        (Path(__file__).resolve().parents[3] / "reports" / "plan-11-26-acp-runtime-audit.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    return replayed_shutdown_observations(payload)

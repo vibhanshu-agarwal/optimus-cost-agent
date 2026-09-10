@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+import hashlib
 import io
 import os
 import subprocess
@@ -86,3 +88,160 @@ class GitCommitSource:
         relative = _validate_relative_path(path)
         text = self._load_archive()[relative].decode("utf-8")
         return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+class ExecutingSourceMismatch(RuntimeError):
+    """The module a probe is about to execute is not the source the record is bound to.
+
+    Raised, never downgraded to a skip or a success. A fresh dynamic measurement taken
+    against today's installed module is evidence about *today's* source; recording it
+    under a record bound to a different revision would file a current measurement as
+    historical evidence.
+    """
+
+
+class SymbolCitationError(RuntimeError):
+    """A citation could not be resolved to exactly one symbol in the bound source.
+
+    Raised for a missing symbol and for an ambiguous one. A citation that silently kept
+    a stale line number would be worse than either: it would keep pointing somewhere,
+    just not at the thing it names.
+    """
+
+
+def _normalize(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def source_fingerprint(source: "SourceTree | GitCommitSource", paths: tuple[str, ...]) -> str:
+    """A stable digest of exactly the paths an inventory was built from.
+
+    Pairing this with an inventory is what stops a caller from discovering a contract
+    from one tree and then measuring a different one: identity of the executing modules
+    alone does not establish that the inventory describes them.
+    """
+    digest = hashlib.sha256()
+    for path in sorted(paths):
+        digest.update(path.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(_normalize(source.read_text(path)).encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def resolve_symbol_citation(
+    source: "SourceTree | GitCommitSource",
+    path: str,
+    symbol: str,
+) -> str:
+    """Resolve ``symbol`` to ``path:line:symbol`` in the BOUND source, by identity.
+
+    ``symbol`` is a dotted name relative to the module, e.g. ``RedisRuntime.from_url``
+    or ``sync_await``. A moved definition yields a moved citation; a definition that no
+    longer exists, or one that exists more than once, raises rather than leaving a
+    literal line number that now points at unrelated code.
+    """
+    tree = ast.parse(_normalize(source.read_text(path)))
+    wanted = symbol.split(".")
+    matches: list[int] = []
+
+    def _walk(nodes, prefix: list[str]) -> None:
+        for node in nodes:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            qualified = [*prefix, node.name]
+            if qualified == wanted:
+                matches.append(node.lineno)
+            if isinstance(node, ast.ClassDef):
+                _walk(node.body, qualified)
+
+    _walk(tree.body, [])
+    if not matches:
+        raise SymbolCitationError(f"{path}: symbol {symbol!r} is not defined in the bound source")
+    if len(matches) > 1:
+        raise SymbolCitationError(f"{path}: symbol {symbol!r} is defined {len(matches)} times in the bound source")
+    return f"{path}:{matches[0]}:{symbol}"
+
+
+def _symbol_span(source: "SourceTree | GitCommitSource", path: str, symbol: str) -> tuple[int, int]:
+    tree = ast.parse(_normalize(source.read_text(path)))
+    wanted = symbol.split(".")
+    matches: list[tuple[int, int]] = []
+
+    def _walk(nodes, prefix: list[str]) -> None:
+        for node in nodes:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            qualified = [*prefix, node.name]
+            if qualified == wanted:
+                matches.append((node.lineno, node.end_lineno or node.lineno))
+            if isinstance(node, ast.ClassDef):
+                _walk(node.body, qualified)
+
+    _walk(tree.body, [])
+    if not matches:
+        raise SymbolCitationError(f"{path}: symbol {symbol!r} is not defined in the bound source")
+    if len(matches) > 1:
+        raise SymbolCitationError(f"{path}: symbol {symbol!r} is defined {len(matches)} times in the bound source")
+    return matches[0]
+
+
+def verify_symbol_citation(source: "SourceTree | GitCommitSource", citation: str) -> str:
+    """Check that ``path:line:symbol`` still lands inside ``symbol`` in the BOUND source.
+
+    A finding often cites a specific line *within* a definition -- the one that shows the
+    defect, such as the connect timeout that bounds only connection setup -- rather than
+    the ``def`` line. Re-resolving such a citation to the definition would silently
+    discard the evidence it was pointing at, which is how a correct citation gets
+    "repaired" into a useless one.
+
+    So the line is preserved and CHECKED: it must fall within the span of the named
+    symbol in the source this record is bound to. A moved or deleted definition makes the
+    check fail loudly, which is the only outcome worse than neither -- a stale line
+    number quietly pointing at unrelated code -- was meant to prevent.
+    """
+    path, _, remainder = citation.partition(":")
+    line_text, _, symbol = remainder.partition(":")
+    if not path or not line_text.isdigit() or not symbol:
+        raise SymbolCitationError(f"{citation!r} is not a path:line:symbol citation")
+    line = int(line_text)
+    start, end = _symbol_span(source, path, symbol)
+    if not start <= line <= end:
+        raise SymbolCitationError(
+            f"{path}: citation line {line} for {symbol!r} is outside that symbol, which spans "
+            f"lines {start}-{end} in the bound source; the cited evidence has moved"
+        )
+    return citation
+
+
+def executing_module_digest(module: object) -> str:
+    """Digest the file the module is loaded from, normalized for line endings."""
+    executing_file = getattr(module, "__file__", None)
+    if executing_file is None:
+        raise ExecutingSourceMismatch("the executing module exposes no __file__, so its identity cannot be verified")
+    return hashlib.sha256(_normalize(Path(executing_file).read_text(encoding="utf-8")).encode("utf-8")).hexdigest()
+
+
+def verify_executing_module(source: "SourceTree | GitCommitSource", path: str, module: object) -> None:
+    """Verify that ``module`` is loaded from exactly the bound source for ``path``.
+
+    Both operands are normalized for line endings only -- a Windows checkout and a
+    Git blob must not disagree for that reason alone. Nothing else is normalized: a
+    real difference in the executing code is exactly what this exists to catch.
+    """
+    executing_file = getattr(module, "__file__", None)
+    if executing_file is None:
+        raise ExecutingSourceMismatch(
+            f"{path}: the executing module exposes no __file__, so its identity cannot be verified"
+        )
+    try:
+        bound_text = source.read_text(path)
+    except KeyError as exc:
+        raise ExecutingSourceMismatch(f"{path}: the bound source does not contain this path") from exc
+    executing_text = Path(executing_file).read_text(encoding="utf-8")
+    if _normalize(executing_text) != _normalize(bound_text):
+        raise ExecutingSourceMismatch(
+            f"{path}: the executing module at {executing_file} does not match the bound source. "
+            "A fresh measurement here would be recorded against a revision it was not taken from; "
+            "re-execute in an isolated checkout of the bound revision instead."
+        )

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from optimus.acp.local_infra import DEFAULT_REDIS_URL
 from optimus.agent.state_store import validate_redis_url
-from optimus.redis.runtime import RedisRuntime
+from optimus.redis.runtime import RedisRuntime, RedisRuntimeShutdownIncomplete
 
 DEFAULT_REDIS_URL_HINT = DEFAULT_REDIS_URL
 _LOCAL_STARTUP_RUNBOOK = (
@@ -51,9 +51,54 @@ def run_preflight(
             _require_gateway_auth(env)
         if workspace_root is not None:
             _require_workspace_root(workspace_root)
-        return redis_url
-    finally:
+    except BaseException as exc:
+        # The probe runtime is an OWNED lifetime: it is closed on every path. A close
+        # failure here must never replace the preflight failure the operator needs to
+        # see, so it travels as a note on that failure instead.
+        _close_probe_runtime_after_failure(runtime, exc)
+        raise
+    _close_probe_runtime(runtime)
+    return redis_url
+
+
+def _close_probe_runtime(runtime: RedisRuntime) -> None:
+    """Close the probe runtime on the success path; an unfinished teardown fails preflight.
+
+    Seam 2, checkpoint B: ``close`` observes the runtime's single teardown under its
+    shutdown budget. A runtime that cannot reach terminal disposition is a Redis
+    problem the operator should know about before serving starts, so it is reported as
+    a preflight failure rather than leaked as a live owner thread.
+    """
+    try:
         runtime.close()
+    except RedisRuntimeShutdownIncomplete as exc:
+        raise PreflightFailure(
+            exit_code=2,
+            user_message=f"The Redis preflight probe did not shut down within its budget. ({exc})",
+        ) from exc
+
+
+def _close_probe_runtime_after_failure(runtime: RedisRuntime, failure: BaseException) -> None:
+    """Best-effort close behind a failure that is already propagating; never mask it."""
+    try:
+        runtime.close()
+    except Exception as exc:  # noqa: BLE001 - attached, never substituted for the real failure
+        _attach_note(failure, f"redis preflight probe runtime close also failed: {exc!r}")
+
+
+def _attach_note(failure: BaseException, note: str) -> None:
+    """``add_note`` for any exception, including a frozen-dataclass one.
+
+    ``PreflightFailure`` is a frozen dataclass, whose ``__setattr__`` refuses the
+    ``__notes__`` attribute ``add_note`` creates on first use. The note is attached
+    through the base-class setattr instead, exactly where ``add_note`` would put it.
+    """
+    try:
+        failure.add_note(note)
+    except AttributeError:
+        notes = list(getattr(failure, "__notes__", None) or ())
+        notes.append(note)
+        object.__setattr__(failure, "__notes__", notes)
 
 
 def _require_gateway_credentials(environ: Mapping[str, str]) -> None:
@@ -272,7 +317,18 @@ def collect_preflight_checks(
                         )
                     )
         finally:
-            runtime.close()
+            # Seam 2, checkpoint B: the probe runtime is closed on every path, and a
+            # teardown that does not finish is a reported check, not a silent leak.
+            try:
+                runtime.close()
+            except RedisRuntimeShutdownIncomplete as exc:
+                results.append(
+                    PreflightCheckResult(
+                        name="redis probe shutdown",
+                        passed=False,
+                        detail=f"The Redis preflight probe did not shut down within its budget. ({exc})",
+                    )
+                )
 
     if strict and not missing_gateway:
         try:
@@ -324,10 +380,16 @@ def first_preflight_failure(checks: Sequence[PreflightCheckResult]) -> Preflight
 
 
 def _probe_redis_timeseries(runtime: RedisRuntime) -> None:
-    from optimus.redis.async_bridge import sync_await
+    """Exercise TS.ADD on the runtime's OWN owner loop.
+
+    Seam 2, checkpoint B: the probe used to run this coroutine on the process-global
+    bridge loop while the client belonged to the runtime's loop -- two owners on one
+    client. It now submits an operation factory to the runtime, like every other
+    consumer.
+    """
 
     async def _probe() -> None:
         await runtime.client.execute_command("TS.ADD", _REDIS_TS_PROBE_KEY, "*", 1)
         await runtime.client.delete(_REDIS_TS_PROBE_KEY)
 
-    sync_await(_probe())
+    runtime.run_sync(_probe)
