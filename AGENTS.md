@@ -20,6 +20,7 @@
 ## Git And Safety
 - Always read a file before editing it.
 - Do not mutate files, repos, services, or state outside the project context without explicit approval.
+- Follow the [Evidence and Local Artifact Policy](docs/governance/evidence-and-local-artifact-policy.md): repository-visible records are authoritative; private or raw workstation artifacts are archival provenance, never project dependencies.
 - Before pushing a remote branch, first update the current branch from `main` and resolve drift intentionally.
 - Never use `--no-verify` unless the user explicitly approves the exact command and reason.
 - Check `git status` before edits and before final response; do not overwrite user changes.
