@@ -1,0 +1,175 @@
+{
+ "files": {
+  "src/optimus/acp/__main__.py": {
+   "mode": "100644",
+   "size": 25990
+  },
+  "src/optimus/acp/bootstrap.py": {
+   "mode": "100644",
+   "size": 16517
+  },
+  "src/optimus/acp/conversation.py": {
+   "mode": "100644",
+   "size": 15214
+  },
+  "src/optimus/acp/debug_trace.py": {
+   "mode": "100644",
+   "size": 10266
+  },
+  "src/optimus/acp/dispatcher.py": {
+   "mode": "100644",
+   "size": 20570
+  },
+  "src/optimus/acp/errors.py": {
+   "mode": "100644",
+   "size": 3414
+  },
+  "src/optimus/acp/launch_approvals.py": {
+   "mode": "100644",
+   "size": 38550
+  },
+  "src/optimus/acp/launch_audit.py": {
+   "mode": "100644",
+   "size": 8834
+  },
+  "src/optimus/acp/launch_gate.py": {
+   "mode": "100644",
+   "size": 37646
+  },
+  "src/optimus/acp/launch_policy.py": {
+   "mode": "100644",
+   "size": 24257
+  },
+  "src/optimus/acp/lifecycle.py": {
+   "mode": "100644",
+   "size": 43667
+  },
+  "src/optimus/acp/local_gateway_secrets.py": {
+   "mode": "100644",
+   "size": 11077
+  },
+  "src/optimus/acp/local_infra.py": {
+   "mode": "100644",
+   "size": 21979
+  },
+  "src/optimus/acp/ndjson_subprocess_session.py": {
+   "mode": "100644",
+   "size": 9818
+  },
+  "src/optimus/acp/operator_paths.py": {
+   "mode": "100644",
+   "size": 11326
+  },
+  "src/optimus/acp/operator_verify.py": {
+   "mode": "100644",
+   "size": 27629
+  },
+  "src/optimus/acp/outbound_writer.py": {
+   "mode": "100644",
+   "size": 9165
+  },
+  "src/optimus/acp/preflight.py": {
+   "mode": "100644",
+   "size": 15025
+  },
+  "src/optimus/acp/request_ids.py": {
+   "mode": "100644",
+   "size": 597
+  },
+  "src/optimus/acp/server.py": {
+   "mode": "100644",
+   "size": 29069
+  },
+  "src/optimus/acp/settlement.py": {
+   "mode": "100644",
+   "size": 17141
+  },
+  "src/optimus/acp/spec.py": {
+   "mode": "100644",
+   "size": 130477
+  },
+  "src/optimus/acp/trusted_paths.py": {
+   "mode": "100644",
+   "size": 35055
+  },
+  "src/optimus/agent/planning_loop.py": {
+   "mode": "100644",
+   "size": 59616
+  },
+  "src/optimus/agent/state_store.py": {
+   "mode": "100644",
+   "size": 15713
+  },
+  "src/optimus/mcp/client_disposition.py": {
+   "mode": "100644",
+   "size": 19431
+  },
+  "src/optimus/mcp/client_sdk.py": {
+   "mode": "100644",
+   "size": 17284
+  },
+  "src/optimus/mcp/client_supervisor.py": {
+   "mode": "100644",
+   "size": 4482
+  },
+  "src/optimus/mcp/local_ipc.py": {
+   "mode": "100644",
+   "size": 10054
+  },
+  "src/optimus/mcp/runtime.py": {
+   "mode": "100644",
+   "size": 5000
+  },
+  "src/optimus/redis/async_bridge.py": {
+   "mode": "100644",
+   "size": 14081
+  },
+  "src/optimus/redis/runtime.py": {
+   "mode": "100644",
+   "size": 4941
+  },
+  "src/optimus/telemetry/events.py": {
+   "mode": "100644",
+   "size": 22254
+  },
+  "src/optimus/telemetry/fanout.py": {
+   "mode": "100644",
+   "size": 9325
+  },
+  "src/optimus/telemetry/jsonl.py": {
+   "mode": "100644",
+   "size": 939
+  },
+  "src/optimus/telemetry/observability.py": {
+   "mode": "100644",
+   "size": 3120
+  },
+  "src/optimus/telemetry/redaction.py": {
+   "mode": "100644",
+   "size": 1040
+  },
+  "src/optimus/telemetry/redis_adapter.py": {
+   "mode": "100644",
+   "size": 5886
+  },
+  "src/optimus/telemetry/redis_sink.py": {
+   "mode": "100644",
+   "size": 3389
+  },
+  "src/optimus/telemetry/serialization.py": {
+   "mode": "100644",
+   "size": 389
+  },
+  "tests/fixtures/acp/acp-v1-schema.json": {
+   "mode": "100644",
+   "size": 198609
+  },
+  "tests/unit/acp/test_error_code_registry.py": {
+   "mode": "100644",
+   "size": 7140
+  }
+ },
+ "object_count": 56,
+ "schema": "plan1126-historical-source-snapshot/2",
+ "scope": "exactly the historical source paths the Plan 11.26 replay routes read from the overlay commit; identity (commit, tree, manifest and content digests) is pinned in tools/plan1126_runtime_audit/historical_source.py, and every blob id is derived from the verified tree chain"
+}

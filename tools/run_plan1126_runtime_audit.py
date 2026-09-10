@@ -32,6 +32,7 @@ from tools.plan1126_runtime_audit.duplication import (  # noqa: E402
     render_duplication_markdown,
     verify_duplication_audit,
 )
+from tools.plan1126_runtime_audit.historical_source import historical_source  # noqa: E402
 from tools.plan1126_runtime_audit.inventory import discover_sites  # noqa: E402
 from tools.plan1126_runtime_audit.model import AuditArtifact, PrerequisiteStatus  # noqa: E402
 from tools.plan1126_runtime_audit.provenance import ExpectedArtifactIdentity, verify_running_artifact  # noqa: E402
@@ -63,6 +64,8 @@ _AUTHORITY_KEYS = {
 }
 _ZED_OUTCOMES = frozenset({"OBSERVED", "NOT_OBSERVED", "NOT_APPLICABLE", "INVALID"})
 _ACCEPTED_MERGED_COMMIT = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"  # pragma: allowlist secret - Historical commit-identity pin in _ACCEPTED_MERGED_COMMIT;
+#: Round 16-B: this commit is not on any published branch; its declared source paths are
+#: served from the authenticated snapshot in tools/plan1126_runtime_audit/historical_source.py.
 _ACCEPTED_OVERLAY_COMMIT = "fac32284888850bacde93815265cbabe3afd4663"  # pragma: allowlist secret - Historical commit-identity pin in _ACCEPTED_OVERLAY_COMMIT;
 _TASK_0_INTAKE_COMMIT = "55fcd1fe4fd2d10c17776946d8f19d8d5f420a67"  # pragma: allowlist secret - Historical commit-identity pin in _TASK_0_INTAKE_COMMIT;
 _TASK_1_REPORT = "reports/plan-11-26-prerequisite-intake.json"
@@ -324,7 +327,7 @@ def _verify_artifact(path: str, evidence_directory: str | Path | None = None) ->
         )
 
         merged_source = GitCommitSource(artifact.merged_commit, repository=ROOT)
-        overlay_source = GitCommitSource(artifact.overlay_commit, repository=ROOT)
+        overlay_source = historical_source(artifact.overlay_commit, repository=ROOT)
         merged = SourceTree({path: merged_source.read_text(path) for path in H4_SOURCE_PATHS})
         overlay = SourceTree({path: overlay_source.read_text(path) for path in H4_SOURCE_PATHS})
         rebuilt = build_h4_audit_artifact(
@@ -369,7 +372,7 @@ def _verify_artifact(path: str, evidence_directory: str | Path | None = None) ->
         from tools.plan1126_runtime_audit.delivery_characterization import H4_SOURCE_PATHS
 
         merged_source = GitCommitSource(artifact.merged_commit, repository=ROOT)
-        overlay_source = GitCommitSource(artifact.overlay_commit, repository=ROOT)
+        overlay_source = historical_source(artifact.overlay_commit, repository=ROOT)
         paths = tuple(sorted(set(H3_SOURCE_PATHS) | set(H4_SOURCE_PATHS)))
         merged = SourceTree({path: merged_source.read_text(path) for path in paths})
         overlay = SourceTree({path: overlay_source.read_text(path) for path in paths})
@@ -419,7 +422,7 @@ def _verify_artifact(path: str, evidence_directory: str | Path | None = None) ->
         )
 
         merged_source = GitCommitSource(artifact.merged_commit, repository=ROOT)
-        overlay_source = GitCommitSource(artifact.overlay_commit, repository=ROOT)
+        overlay_source = historical_source(artifact.overlay_commit, repository=ROOT)
         paths = tuple(sorted(set(H3_SOURCE_PATHS) | set(H4_SOURCE_PATHS) | set(H5_SOURCE_PATHS)))
         merged = SourceTree({path: merged_source.read_text(path) for path in paths})
         overlay = SourceTree({path: overlay_source.read_text(path) for path in paths})
@@ -592,7 +595,7 @@ def _verify_artifact(path: str, evidence_directory: str | Path | None = None) ->
         if len(h10_records) != 1:
             raise ValueError("H10 must be present exactly once")
         merged_source = GitCommitSource(artifact.merged_commit, repository=ROOT)
-        overlay_source = GitCommitSource(artifact.overlay_commit, repository=ROOT)
+        overlay_source = historical_source(artifact.overlay_commit, repository=ROOT)
         merged = SourceTree({path: merged_source.read_text(path) for path in H10_SOURCE_PATHS})
         overlay = SourceTree({path: overlay_source.read_text(path) for path in H10_SOURCE_PATHS})
         expected_h10 = session_lease_gate_record(
@@ -665,7 +668,7 @@ def _run_semantic(args: argparse.Namespace) -> int:
     from tools.plan1126_runtime_audit.shutdown import H5_SOURCE_PATHS
 
     merged_source = GitCommitSource(_ACCEPTED_MERGED_COMMIT, repository=ROOT)
-    overlay_source = GitCommitSource(_ACCEPTED_OVERLAY_COMMIT, repository=ROOT)
+    overlay_source = historical_source(_ACCEPTED_OVERLAY_COMMIT, repository=ROOT)
     paths = tuple(sorted(set(H3_SOURCE_PATHS) | set(H4_SOURCE_PATHS) | set(H5_SOURCE_PATHS) | set(H7_SOURCE_PATHS)))
     merged = SourceTree({path: merged_source.read_text(path) for path in paths})
     overlay = SourceTree({path: overlay_source.read_text(path) for path in paths})
@@ -693,7 +696,7 @@ def _run_telemetry(args: argparse.Namespace) -> int:
     from tools.plan1126_runtime_audit.telemetry import H8_SOURCE_PATHS, build_h8_audit_artifact
 
     merged_source = GitCommitSource(_ACCEPTED_MERGED_COMMIT, repository=ROOT)
-    overlay_source = GitCommitSource(_ACCEPTED_OVERLAY_COMMIT, repository=ROOT)
+    overlay_source = historical_source(_ACCEPTED_OVERLAY_COMMIT, repository=ROOT)
     paths = tuple(sorted(
         set(H3_SOURCE_PATHS) | set(H4_SOURCE_PATHS) | set(H5_SOURCE_PATHS)
         | set(H7_SOURCE_PATHS) | set(H8_SOURCE_PATHS)
@@ -725,7 +728,7 @@ def _run_queue_policy(args: argparse.Namespace) -> int:
     from tools.plan1126_runtime_audit.telemetry import H8_SOURCE_PATHS
 
     merged_source = GitCommitSource(_ACCEPTED_MERGED_COMMIT, repository=ROOT)
-    overlay_source = GitCommitSource(_ACCEPTED_OVERLAY_COMMIT, repository=ROOT)
+    overlay_source = historical_source(_ACCEPTED_OVERLAY_COMMIT, repository=ROOT)
     paths = tuple(sorted(
         set(H3_SOURCE_PATHS) | set(H4_SOURCE_PATHS) | set(H5_SOURCE_PATHS)
         | set(H7_SOURCE_PATHS) | set(H8_SOURCE_PATHS) | set(H9_SOURCE_PATHS)
@@ -758,7 +761,7 @@ def _run_session_lease(args: argparse.Namespace) -> int:
     from tools.plan1126_runtime_audit.telemetry import H8_SOURCE_PATHS
 
     merged_source = GitCommitSource(_ACCEPTED_MERGED_COMMIT, repository=ROOT)
-    overlay_source = GitCommitSource(_ACCEPTED_OVERLAY_COMMIT, repository=ROOT)
+    overlay_source = historical_source(_ACCEPTED_OVERLAY_COMMIT, repository=ROOT)
     paths = tuple(sorted(
         set(H3_SOURCE_PATHS) | set(H4_SOURCE_PATHS) | set(H5_SOURCE_PATHS)
         | set(H7_SOURCE_PATHS) | set(H8_SOURCE_PATHS) | set(H9_SOURCE_PATHS)
