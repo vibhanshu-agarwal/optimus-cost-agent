@@ -12,12 +12,14 @@ import re
 from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 from jsonschema import Draft202012Validator
 
 from tools.plan1126_runtime_audit import inventory as inventory_module
 from tools.plan1126_runtime_audit.corpus import derived_seed, literal_seeds
+from tools.plan1126_runtime_audit.historical_source import historical_source
 from tools.plan1126_runtime_audit.model import AuditArtifact, BaselineScope, Classification, DeliveryPhase
 from tools.plan1126_runtime_audit.render import render_markdown
 from tools.plan1126_runtime_audit.source import GitCommitSource, SourceTree
@@ -192,6 +194,23 @@ def _sealed_replay():
     return SealedObservations.from_sealed(payload)
 
 
+def _resync_finding_counters(payload: dict[str, Any]) -> None:
+    """Recompute the denormalized finding counters after a population mutation.
+
+    Mandatory for every finding mutation: `AuditArtifact.from_dict` rejects stale counters
+    before the H4 comparison is reached, so without this a control asserts against the
+    envelope self-consistency guard instead of the contract under test.
+    """
+    findings = payload["findings"]
+    assert isinstance(findings, list)
+    counts = Counter(finding["classification"] for finding in findings)
+    payload["finding_counts_by_classification"] = {
+        classification.value: counts[classification.value]
+        for classification in Classification
+    }
+    payload["unclassified_finding_count"] = counts[Classification.UNCLASSIFIED.value]
+
+
 def _call_name(node: ast.expr) -> tuple[str, str]:
     parts: list[str] = []
     current = node
@@ -260,6 +279,18 @@ class _IndependentDeliveryOracle(ast.NodeVisitor):
 
 def _baseline(commit: str) -> SourceTree:
     source = GitCommitSource(commit)
+    return SourceTree({path: source.read_text(path) for path in _DELIVERY_PATHS})
+
+
+def _overlay_baseline() -> SourceTree:
+    """The overlay tree as production reads it: the R16 authenticated snapshot, not a Git object.
+
+    The overlay commit is reachable from no published ref, so `GitCommitSource` fails with
+    `git rev-parse` exit 128 in a fresh clone -- CI's included. `_verify_artifact` dispatches
+    through `historical_source`, which serves this pinned identity from the authenticated
+    snapshot, so these controls must read the same way to execute in either Git state.
+    """
+    source = historical_source(_OVERLAY)
     return SourceTree({path: source.read_text(path) for path in _DELIVERY_PATHS})
 
 
@@ -1176,3 +1207,124 @@ def test_h4_render_escapes_content_free_markdown_metadata() -> None:
     assert "<script>" not in report
     assert "&lt;script&gt;x&lt;/script&gt;" in report
     assert "unsafe &#124; row # heading &#96;tick&#96;" in report
+
+
+def test_h4_record_projection_excludes_only_human_review_fields() -> None:
+    delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
+    cli = importlib.import_module("tools.run_plan1126_runtime_audit")
+    record = delivery_module.build_h4_audit_artifact(
+        replay=_sealed_replay(),
+        merged=_baseline(_MERGED),
+        overlay=_overlay_baseline(),
+        merged_commit=_MERGED,
+        overlay_commit=_OVERLAY,
+    ).evidence_records[0].to_dict()
+
+    projected = cli._h4_mechanical_record(record)
+
+    assert set(projected) == set(record) - {"ruling", "reviewer_status"}
+    future_actual = {**record, "future_mechanical_field": "actual"}
+    future_expected = {**record, "future_mechanical_field": "expected"}
+    assert cli._h4_mechanical_record(future_actual) != cli._h4_mechanical_record(future_expected)
+
+
+def test_h4_verifier_preserves_record_level_human_review_fields(tmp_path: Path) -> None:
+    delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
+    payload = delivery_module.build_h4_audit_artifact(
+        replay=_sealed_replay(),
+        merged=_baseline(_MERGED),
+        overlay=_overlay_baseline(),
+        merged_commit=_MERGED,
+        overlay_commit=_OVERLAY,
+    ).to_dict()
+    payload["evidence_records"][0]["reviewer_status"] = "ACCEPTED"
+    payload["evidence_records"][0]["ruling"] = (
+        "External G2 accepted the mechanically unchanged H4 evidence."
+    )
+    artifact_path = tmp_path / "h4-human-review.json"
+    artifact_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    cli = importlib.import_module("tools.run_plan1126_runtime_audit")
+    verified = cli._verify_artifact(str(artifact_path))
+
+    assert verified.evidence_records[0].reviewer_status.value == "ACCEPTED"
+
+
+def test_h4_verifier_rejects_generated_finding_ruling_drift(tmp_path: Path) -> None:
+    delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
+    payload = delivery_module.build_h4_audit_artifact(
+        replay=_sealed_replay(),
+        merged=_baseline(_MERGED),
+        overlay=_overlay_baseline(),
+        merged_commit=_MERGED,
+        overlay_commit=_OVERLAY,
+    ).to_dict()
+    payload["findings"][0]["ruling"] = "Production repair was performed."
+    _resync_finding_counters(payload)
+    artifact_path = tmp_path / "h4-mutated-ruling.json"
+    artifact_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    cli = importlib.import_module("tools.run_plan1126_runtime_audit")
+    with pytest.raises(ValueError, match="H4 findings do not match immutable-source rebuild"):
+        cli._verify_artifact(str(artifact_path))
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "permuted", "owner"])
+def test_h4_verifier_rejects_finding_population_order_and_field_drift(
+    mutation: str,
+    tmp_path: Path,
+) -> None:
+    delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
+    payload = delivery_module.build_h4_audit_artifact(
+        replay=_sealed_replay(),
+        merged=_baseline(_MERGED),
+        overlay=_overlay_baseline(),
+        merged_commit=_MERGED,
+        overlay_commit=_OVERLAY,
+    ).to_dict()
+    findings = payload["findings"]
+    if mutation == "missing":
+        findings.pop()
+    elif mutation == "duplicate":
+        findings.append(copy.deepcopy(findings[0]))
+    elif mutation == "permuted":
+        findings[:] = reversed(findings)
+    else:
+        findings[0]["owner"] = "P11-FEAT-ACP-RUNTIME-HARDENING / mutated owner"
+    _resync_finding_counters(payload)
+    artifact_path = tmp_path / f"h4-{mutation}.json"
+    artifact_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    cli = importlib.import_module("tools.run_plan1126_runtime_audit")
+    expected = (
+        "H4 findings contain duplicate finding_id"
+        if mutation == "duplicate"
+        else "H4 findings do not match immutable-source rebuild"
+    )
+    with pytest.raises(ValueError, match=expected):
+        cli._verify_artifact(str(artifact_path))
+
+
+def test_h4_verifier_filters_unrelated_findings_symmetrically(tmp_path: Path) -> None:
+    delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
+    payload = delivery_module.build_h4_audit_artifact(
+        replay=_sealed_replay(),
+        merged=_baseline(_MERGED),
+        overlay=_overlay_baseline(),
+        merged_commit=_MERGED,
+        overlay_commit=_OVERLAY,
+    ).to_dict()
+    unrelated = copy.deepcopy(payload["findings"][0])
+    unrelated["finding_id"] = "NON-H4-UNRELATED-CONTROL"
+    payload["findings"].append(unrelated)
+    _resync_finding_counters(payload)
+    artifact_path = tmp_path / "h4-unrelated-finding.json"
+    artifact_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    cli = importlib.import_module("tools.run_plan1126_runtime_audit")
+    verified = cli._verify_artifact(str(artifact_path))
+
+    assert any(
+        finding.finding_id == "NON-H4-UNRELATED-CONTROL"
+        for finding in verified.findings
+    )

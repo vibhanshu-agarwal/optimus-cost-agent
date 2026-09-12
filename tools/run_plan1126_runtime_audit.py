@@ -34,7 +34,7 @@ from tools.plan1126_runtime_audit.duplication import (  # noqa: E402
 )
 from tools.plan1126_runtime_audit.historical_source import historical_source  # noqa: E402
 from tools.plan1126_runtime_audit.inventory import discover_sites  # noqa: E402
-from tools.plan1126_runtime_audit.model import AuditArtifact, PrerequisiteStatus  # noqa: E402
+from tools.plan1126_runtime_audit.model import AuditArtifact, Finding, PrerequisiteStatus  # noqa: E402
 from tools.plan1126_runtime_audit.provenance import ExpectedArtifactIdentity, verify_running_artifact  # noqa: E402
 from tools.plan1126_runtime_audit.render import render_markdown  # noqa: E402
 from tools.plan1126_runtime_audit.repeatability import RepeatabilityStatus, classify_repeatability  # noqa: E402
@@ -300,6 +300,44 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+#: The only H4 record fields a human owns. Everything else `to_dict` emits is mechanical and
+#: is compared, so a field added later fails closed until a reviewer classifies it here.
+_H4_RECORD_HUMAN_REVIEW_FIELDS = frozenset({"ruling", "reviewer_status"})
+
+
+def _h4_mechanical_record(record: Mapping[str, Any]) -> dict[str, Any]:
+    """Project an H4 record down to its mechanical fields by explicit exclusion."""
+    missing_review_fields = _H4_RECORD_HUMAN_REVIEW_FIELDS - set(record)
+    if missing_review_fields:
+        raise ValueError("H4 evidence record is missing human-review fields")
+    return {
+        field: value
+        for field, value in record.items()
+        if field not in _H4_RECORD_HUMAN_REVIEW_FIELDS
+    }
+
+
+def _h4_mechanical_findings(
+    findings: Sequence[Finding],
+) -> tuple[dict[str, Any], ...]:
+    """Select the H4 findings, in order, with every canonical field compared.
+
+    The same predicate runs over both the caller-supplied and rebuilt populations, so a
+    non-H4 finding cannot make one side longer than the other. Order is contractual and is
+    preserved; duplicate H4 identities are rejected by name rather than surfacing as a
+    generic mismatch.
+    """
+    selected = tuple(
+        finding.to_dict()
+        for finding in findings
+        if finding.finding_id.startswith("H4-")
+    )
+    finding_ids = tuple(finding["finding_id"] for finding in selected)
+    if len(finding_ids) != len(set(finding_ids)):
+        raise ValueError("H4 findings contain duplicate finding_id")
+    return selected
+
+
 def _verify_artifact(path: str, evidence_directory: str | Path | None = None) -> AuditArtifact:
     payload = _read_json(path)
     envelope = payload.get("schema_version")
@@ -337,30 +375,12 @@ def _verify_artifact(path: str, evidence_directory: str | Path | None = None) ->
             overlay_commit=artifact.overlay_commit,
             replay=_sealed_replay(),
         )
-        mechanical_record_fields = {
-            "record_id", "hypothesis_id", "subject", "baseline_scope", "baseline_anchor_commit",
-            "overlay_commit", "binding_commit", "vocabulary_names", "symbol_citations",
-            "discovered_sites", "contradiction_search", "schedule_observations",
-            "commands", "content_free_evidence",
-        }
-        actual_record = h4_records[0].to_dict()
-        expected_record = rebuilt.evidence_records[0].to_dict()
-        if {
-            field: actual_record[field] for field in mechanical_record_fields
-        } != {
-            field: expected_record[field] for field in mechanical_record_fields
-        }:
+        actual_record = _h4_mechanical_record(h4_records[0].to_dict())
+        expected_record = _h4_mechanical_record(rebuilt.evidence_records[0].to_dict())
+        if actual_record != expected_record:
             raise ValueError("H4 evidence record does not match immutable-source rebuild")
-        mechanical_finding_fields = {
-            "finding_id", "subject", "classification", "baseline_scope", "symbols", "evidence",
-            "owner",
-        }
-        actual_findings = tuple({
-            field: finding.to_dict()[field] for field in mechanical_finding_fields
-        } for finding in artifact.findings if finding.finding_id.startswith("H4-"))
-        expected_findings = tuple({
-            field: finding.to_dict()[field] for field in mechanical_finding_fields
-        } for finding in rebuilt.findings)
+        actual_findings = _h4_mechanical_findings(artifact.findings)
+        expected_findings = _h4_mechanical_findings(rebuilt.findings)
         if actual_findings != expected_findings:
             raise ValueError("H4 findings do not match immutable-source rebuild")
     h3_records = tuple(record for record in artifact.evidence_records if record.hypothesis_id == "H3")
