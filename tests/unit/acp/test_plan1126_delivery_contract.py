@@ -19,6 +19,7 @@ from jsonschema import Draft202012Validator
 
 from tools.plan1126_runtime_audit import inventory as inventory_module
 from tools.plan1126_runtime_audit.corpus import derived_seed, literal_seeds
+from tools.plan1126_runtime_audit.historical_source import historical_source
 from tools.plan1126_runtime_audit.model import AuditArtifact, BaselineScope, Classification, DeliveryPhase
 from tools.plan1126_runtime_audit.render import render_markdown
 from tools.plan1126_runtime_audit.source import GitCommitSource, SourceTree
@@ -278,6 +279,18 @@ class _IndependentDeliveryOracle(ast.NodeVisitor):
 
 def _baseline(commit: str) -> SourceTree:
     source = GitCommitSource(commit)
+    return SourceTree({path: source.read_text(path) for path in _DELIVERY_PATHS})
+
+
+def _overlay_baseline() -> SourceTree:
+    """The overlay tree as production reads it: the R16 authenticated snapshot, not a Git object.
+
+    The overlay commit is reachable from no published ref, so `GitCommitSource` fails with
+    `git rev-parse` exit 128 in a fresh clone -- CI's included. `_verify_artifact` dispatches
+    through `historical_source`, which serves this pinned identity from the authenticated
+    snapshot, so these controls must read the same way to execute in either Git state.
+    """
+    source = historical_source(_OVERLAY)
     return SourceTree({path: source.read_text(path) for path in _DELIVERY_PATHS})
 
 
@@ -1202,7 +1215,7 @@ def test_h4_record_projection_excludes_only_human_review_fields() -> None:
     record = delivery_module.build_h4_audit_artifact(
         replay=_sealed_replay(),
         merged=_baseline(_MERGED),
-        overlay=_baseline(_OVERLAY),
+        overlay=_overlay_baseline(),
         merged_commit=_MERGED,
         overlay_commit=_OVERLAY,
     ).evidence_records[0].to_dict()
@@ -1220,7 +1233,7 @@ def test_h4_verifier_preserves_record_level_human_review_fields(tmp_path: Path) 
     payload = delivery_module.build_h4_audit_artifact(
         replay=_sealed_replay(),
         merged=_baseline(_MERGED),
-        overlay=_baseline(_OVERLAY),
+        overlay=_overlay_baseline(),
         merged_commit=_MERGED,
         overlay_commit=_OVERLAY,
     ).to_dict()
@@ -1242,7 +1255,7 @@ def test_h4_verifier_rejects_generated_finding_ruling_drift(tmp_path: Path) -> N
     payload = delivery_module.build_h4_audit_artifact(
         replay=_sealed_replay(),
         merged=_baseline(_MERGED),
-        overlay=_baseline(_OVERLAY),
+        overlay=_overlay_baseline(),
         merged_commit=_MERGED,
         overlay_commit=_OVERLAY,
     ).to_dict()
@@ -1265,7 +1278,7 @@ def test_h4_verifier_rejects_finding_population_order_and_field_drift(
     payload = delivery_module.build_h4_audit_artifact(
         replay=_sealed_replay(),
         merged=_baseline(_MERGED),
-        overlay=_baseline(_OVERLAY),
+        overlay=_overlay_baseline(),
         merged_commit=_MERGED,
         overlay_commit=_OVERLAY,
     ).to_dict()
@@ -1297,7 +1310,7 @@ def test_h4_verifier_filters_unrelated_findings_symmetrically(tmp_path: Path) ->
     payload = delivery_module.build_h4_audit_artifact(
         replay=_sealed_replay(),
         merged=_baseline(_MERGED),
-        overlay=_baseline(_OVERLAY),
+        overlay=_overlay_baseline(),
         merged_commit=_MERGED,
         overlay_commit=_OVERLAY,
     ).to_dict()
