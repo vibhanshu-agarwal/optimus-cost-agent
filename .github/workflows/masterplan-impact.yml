@@ -30,12 +30,20 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: git diff --name-only --diff-filter=ACMRD "$BASE_SHA"...HEAD > "$RUNNER_TEMP/masterplan-changed-files.txt"
 
+      - name: Record backlog diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: >-
+          git diff --unified=0 "$BASE_SHA"...HEAD
+          -- docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md > "$RUNNER_TEMP/masterplan-backlog.diff"
+
       - name: Verify masterplan declaration
         run: >-
           uv run --frozen python tools/verify_masterplan_impact.py
           --event-file "$GITHUB_EVENT_PATH"
           --changed-files-file "$RUNNER_TEMP/masterplan-changed-files.txt"
           --masterplan docs/superpowers/plans/hardening-runtime-quality-masterplan.md
+          --backlog-diff-file "$RUNNER_TEMP/masterplan-backlog.diff"
 
       - name: Test the verifier
         run: uv run --frozen pytest tests/unit/tools/test_verify_masterplan_impact.py -q
