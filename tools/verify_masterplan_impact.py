@@ -17,6 +17,11 @@ BOARD_ROW = re.compile(
     r"\| (?P<plan>`|\[[^]]+\]\()(?:archive/)?"
     r"(?P<filename>hardening-[a-z0-9-]+(?:_v[0-9]+)?\.md)"
 )
+MASTERPLAN_PATH = "docs/superpowers/plans/hardening-runtime-quality-masterplan.md"
+OWNING_BACKLOG_PATH = "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md"
+# Hardening status authority inside the shared backlog: `HARDENING-*` identifiers and
+# references to hardening documents (child plans and the masterplan itself).
+HARDENING_BACKLOG_CONTENT = re.compile(r"HARDENING-|hardening-")
 
 
 def _parse_args() -> argparse.Namespace:
@@ -26,6 +31,11 @@ def _parse_args() -> argparse.Namespace:
     body_source.add_argument("--event-file", type=Path)
     parser.add_argument("--changed-files-file", required=True, type=Path)
     parser.add_argument("--masterplan", required=True, type=Path)
+    parser.add_argument(
+        "--backlog-diff-file",
+        type=Path,
+        help="unified diff of the consolidated backlog between the PR base and head",
+    )
     return parser.parse_args()
 
 
@@ -62,13 +72,45 @@ def _declaration(body: str) -> str:
     return declarations[0].removeprefix(DECLARATION_PREFIX).strip()
 
 
-def verify(*, body: str, changed_files: set[str], masterplan: Path) -> None:
+def _changed_diff_lines(diff: str) -> list[str]:
+    """Return added/removed content lines, excluding file headers, hunk headers, and context."""
+    changed: list[str] = []
+    for line in diff.splitlines():
+        if line.startswith(("+++", "---")):
+            continue
+        if line.startswith(("+", "-")):
+            changed.append(line[1:])
+    return changed
+
+
+def _reject_hardening_backlog_changes(backlog_diff: str | None) -> None:
+    """A `none` declaration may edit the shared backlog only outside hardening rows."""
+    if backlog_diff is None:
+        raise ValueError(
+            "backlog diff is required to verify a none declaration that changes the backlog"
+        )
+    changed_lines = _changed_diff_lines(backlog_diff)
+    if not changed_lines:
+        raise ValueError("backlog is listed as changed but its diff has no changed lines")
+    touched = [line for line in changed_lines if HARDENING_BACKLOG_CONTENT.search(line)]
+    if touched:
+        raise ValueError(
+            "none conflicts with changes to hardening status authority in "
+            f"{OWNING_BACKLOG_PATH} ({len(touched)} changed line(s) reference hardening content)"
+        )
+
+
+def verify(
+    *,
+    body: str,
+    changed_files: set[str],
+    masterplan: Path,
+    backlog_diff: str | None = None,
+) -> None:
     known_tracks, child_plans = _board(masterplan)
     declaration = _declaration(body)
-    masterplan_path = "docs/superpowers/plans/hardening-runtime-quality-masterplan.md"
-    owning_backlog_path = (
-        "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md"
-    )
+    masterplan_path = MASTERPLAN_PATH
+    owning_backlog_path = OWNING_BACKLOG_PATH
 
     if declaration.startswith(UPDATED_PREFIX):
         raw_tracks = declaration.removeprefix(UPDATED_PREFIX)
@@ -86,12 +128,10 @@ def verify(*, body: str, changed_files: set[str], masterplan: Path) -> None:
         rationale = declaration.removeprefix(NONE_PREFIX).strip()
         if not rationale:
             raise ValueError("malformed none declaration: concrete rationale is required")
-        owning_changes = changed_files & {masterplan_path, owning_backlog_path}
-        if owning_changes:
-            raise ValueError(
-                "none conflicts with changes to status authority: "
-                f"{', '.join(sorted(owning_changes))}"
-            )
+        if masterplan_path in changed_files:
+            raise ValueError(f"none conflicts with changes to status authority: {masterplan_path}")
+        if owning_backlog_path in changed_files:
+            _reject_hardening_backlog_changes(backlog_diff)
         for changed_file in changed_files:
             normalized = changed_file.replace("\\", "/")
             if not normalized.startswith("docs/superpowers/plans/"):
@@ -112,7 +152,17 @@ def main() -> int:
             for line in args.changed_files_file.read_text(encoding="utf-8").splitlines()
             if line.strip()
         }
-        verify(body=body, changed_files=changed_files, masterplan=args.masterplan)
+        backlog_diff = (
+            args.backlog_diff_file.read_text(encoding="utf-8")
+            if args.backlog_diff_file is not None
+            else None
+        )
+        verify(
+            body=body,
+            changed_files=changed_files,
+            masterplan=args.masterplan,
+            backlog_diff=backlog_diff,
+        )
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"masterplan-impact: {exc}", file=sys.stderr)
         return 1
