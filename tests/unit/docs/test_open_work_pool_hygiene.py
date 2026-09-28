@@ -16,6 +16,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 OPTIMUS_POOL = REPO_ROOT / "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md"
 PRODUCT_POOL = REPO_ROOT / "docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md"
 A2A_LEDGER_DESIGN = REPO_ROOT / "docs/superpowers/specs/evidence-handoff-a2a-ledger-design.md"
+A2A_LEDGER_DESIGN_V2 = REPO_ROOT / "docs/superpowers/specs/evidence-handoff-a2a-ledger-design_v2.md"
+A2A_LEDGER_DESIGNS = (A2A_LEDGER_DESIGN, A2A_LEDGER_DESIGN_V2)
 A2A_LEDGER_IMPLEMENTATION_PLAN = REPO_ROOT / "docs/superpowers/plans/archive/evidence-handoff-risk-bearing-slice-implementation.md"
 PLANS_ROOT = REPO_ROOT / "docs/superpowers/plans"
 PLAN_985 = REPO_ROOT / "docs/superpowers/plans/archive/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md"
@@ -88,6 +90,9 @@ HISTORICAL_NUMBERING_PROVENANCE = {
 
 FROZEN_AUTHORITY_MARKER = "Frozen approval bytes — live status is owned by the consolidated open-work pool."
 PROTECTED_BLOB_SHA256 = {
+    "docs/superpowers/specs/evidence-handoff-a2a-ledger-design.md": (
+        "2AA21D8A5569A6427C2E34C9B785467AD7CD934D708AE16D5A43D52C2F9A71A1"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
+    ),
     "docs/superpowers/plans/archive/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md": (
         "4303D6AD5C44ED62A85A0509C8C87366505D4D470DD7BC4E0B4309BBE6E3C771"  # pragma: allowlist secret - Expected frozen-document SHA-256 in the plan-hygiene identity table;
     ),
@@ -1224,8 +1229,9 @@ def test_a2a_ledger_plan_freezes_ordered_risk_slice_scope() -> None:
     assert PLAN_NUMBER_RE.search(plan) is None
 
 
-def test_a2a_ledger_freezes_recipient_visibility_in_the_first_slice() -> None:
-    design = _read(A2A_LEDGER_DESIGN)
+@pytest.mark.parametrize("design_path", A2A_LEDGER_DESIGNS, ids=("v1", "v2"))
+def test_a2a_ledger_freezes_recipient_visibility_in_the_first_slice(design_path: Path) -> None:
+    design = _read(design_path)
     normalized = " ".join(design.split())
     first_slice = design.split("### Risk-bearing vertical slice", 1)[1].split("\n### ", 1)[0]
     protocol_completion = design.split("### Ledger protocol completion", 1)[1].split("\n### ", 1)[0]
@@ -1238,8 +1244,9 @@ def test_a2a_ledger_freezes_recipient_visibility_in_the_first_slice() -> None:
     assert "recipient visibility" not in protocol_completion
 
 
-def test_a2a_ledger_integrity_detection_is_a_first_slice_contract() -> None:
-    design = _read(A2A_LEDGER_DESIGN)
+@pytest.mark.parametrize("design_path", A2A_LEDGER_DESIGNS, ids=("v1", "v2"))
+def test_a2a_ledger_integrity_detection_is_a_first_slice_contract(design_path: Path) -> None:
+    design = _read(design_path)
     normalized = " ".join(design.split())
     first_slice = design.split("### Risk-bearing vertical slice", 1)[1].split("\n### ", 1)[0]
 
@@ -1253,8 +1260,9 @@ def test_a2a_ledger_integrity_detection_is_a_first_slice_contract() -> None:
     assert "Continuous integrity verification" in first_slice
 
 
-def test_a2a_ledger_integrity_failure_is_loud_latched_and_non_retryable() -> None:
-    design = _read(A2A_LEDGER_DESIGN)
+@pytest.mark.parametrize("design_path", A2A_LEDGER_DESIGNS, ids=("v1", "v2"))
+def test_a2a_ledger_integrity_failure_is_loud_latched_and_non_retryable(design_path: Path) -> None:
+    design = _read(design_path)
     normalized = " ".join(design.split())
     first_slice = design.split("### Risk-bearing vertical slice", 1)[1].split("\n### ", 1)[0]
 
@@ -1277,8 +1285,9 @@ def test_a2a_ledger_integrity_failure_is_loud_latched_and_non_retryable() -> Non
         assert cause in normalized
 
 
-def test_a2a_ledger_chain_break_recovery_and_rollback_residual_are_explicit() -> None:
-    design = _read(A2A_LEDGER_DESIGN)
+@pytest.mark.parametrize("design_path", A2A_LEDGER_DESIGNS, ids=("v1", "v2"))
+def test_a2a_ledger_chain_break_recovery_and_rollback_residual_are_explicit(design_path: Path) -> None:
+    design = _read(design_path)
     normalized = " ".join(design.split())
     accepted_residuals = design.split("### Accepted residuals", 1)[1].split("\n## ", 1)[0]
     first_slice = design.split("### Risk-bearing vertical slice", 1)[1].split("\n### ", 1)[0]
@@ -1967,3 +1976,37 @@ def test_p11_fu_20_is_partial_and_owned_by_live_blocked_plan_1123() -> None:
     assert "disposition_for_new_session" in body
     assert "test_spec_mcp_broker_issue_fails_closed_until_catalog_authorizer_attached" in body
     assert "issue` → `None`" in body or "issue` -> `None`" in body or "fails closed" in body.casefold()
+
+
+def test_a2a_ledger_design_v2_is_the_live_successor_and_owns_the_channel() -> None:
+    design = _read(A2A_LEDGER_DESIGN_V2)
+    normalized = " ".join(design.split())
+    pool = _read(OPTIMUS_POOL)
+
+    assert "## What changed from v1" in design
+    assert "### Conversations and thread pairing (v2)" in design
+    assert "### Unattended-exchange budget (v2)" in design
+    assert "### Tier 1b — scheduled poll (v2)" in design
+    assert "## Normative corrections from the independent audit" in design
+    assert "## Prerequisites for the channel implementation plan" in design
+    assert "exactly two seats" in normalized
+    assert "never used for routing, visibility, or authorization" in normalized
+    assert "the ledger never launches, resumes, injects into, or signals an agent process" in normalized
+    assert "`conversation_paused_for_human`" in design
+    assert "wslc is removed from the ladder" in normalized
+    assert "Protocol-version admission is **Option A**" in normalized
+    assert "Implementation is **deferred**" in normalized
+    for finding in ("C1", "C2", "C3", "H4", "H5", "H6", "H7", "H8", "H9", "H13", "M14", "M15", "M16"):
+        assert f"| {finding} |" in design
+    assert PLAN_NUMBER_RE.search(design) is None
+
+    refresh_row = _feature_row(pool, "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER-DESIGN-REFRESH")
+    assert "| Closed |" in refresh_row
+    assert "(../specs/evidence-handoff-a2a-ledger-design_v2.md)" in refresh_row
+    channel_row = _feature_row(pool, "EVIDENCE-HANDOFF-FEAT-A2A-CHANNEL")
+    assert "| Open |" in channel_row
+    assert "Deferred 2026-09-28" in channel_row
+    assert "(../specs/evidence-handoff-a2a-ledger-design_v2.md)" in channel_row
+    ledger_row = _feature_row(pool, "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER")
+    assert "[design v2](../specs/evidence-handoff-a2a-ledger-design_v2.md)" in ledger_row
+    assert _feature_rows(pool)["EVIDENCE-HANDOFF-FEAT-A2A-CHANNEL"] == 1
