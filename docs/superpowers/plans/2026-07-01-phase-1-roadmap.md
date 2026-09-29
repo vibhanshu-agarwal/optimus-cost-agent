@@ -61,6 +61,8 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 - `ExecutionMode`, generation scope classification, lifecycle states, transition validator, `AwaitingApproval`, `MutationGuard`, and `assert_mutation_allowed()`.
 - Tests proving Plan/Chat cannot mutate, Agent mode must pass through approval, invalid transitions fail closed, and mutation tools check the primitive before I/O.
 
+**Scope boundary (2026-09-29):** Plan 2's scope was the enforcement half of HLD §7 Plan/Chat mode (the deliverables above), and that half is delivered. The user-facing advisory-answer half (selecting the mode from an ACP client, answering read-only questions in prose, and non-AGENT conversation) was never in Plan 2's scope. It is tracked as `P12-FU-1` in the [Consolidated Deferred Follow-Ups backlog](2026-07-23-consolidated-deferred-followups-backlog.md), designated to Plan 12. This does not reopen Plan 2.
+
 ## Plan 3: Gateway-Only Configuration and Gateway Client
 
 **User story:** As a developer, I run locally with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY`; all provider credentials stay gateway-side.
@@ -1167,6 +1169,12 @@ orchestration, and the real golden harness, since selection policy depends on th
 evidence, trust, freshness, loop/skill, and agent-run signals those plans establish. Do not start
 this plan early just because it is architecturally core - its inputs need to exist first.
 
+**2026-09-29 operator direction:** Plan 12 work has started in parallel in the sandbox lane, ahead of
+the v1.0 gate described above. This does not make any Plan 12 item a v1.0 requirement. The Plan/Chat
+advisory-answer residual (`P12-FU-1`) was ruled out of v1.0 and carried into Plan 12. When the
+implementation-plan file named above is created is not yet ruled, and no such file exists yet. The
+pool's `Plan 12` row owns live status.
+
 **Source anchors:**
 - `docs/context-window-optimization-strategy.md` - Context Type x Mechanism Matrix, Selection Pipeline, Selection Model, Freshness and Dependency Precedence, Prompt Packing and Cost Controls, Compaction, Offline Promotion Gates, Online Guardrails, Context Regret, Baseline and Ablation Plan, Calibration Items.
 - Depends on: Plan 7's cost-attribution ledger, Plan 4's evidence/tool-output trust, Plans 5/6/6.5's guardrail and MCP/config/runtime trust signals, Plan 9's loop/skill state.
@@ -1178,8 +1186,11 @@ this plan early just because it is architecturally core - its inputs need to exi
   summarization with measured quality/cost trade-offs.
 - `P9.85-FU-1` — intelligent observation compression replacing fixed fail-closed carryover.
 - `P9.85-FU-2` — dynamic planning-evidence partition replacing the fixed 4 KiB/12 KiB split.
+- `P11.25-FU-1` — non-AGENT conversation carriage (designated 2026-09-29).
+- `P12-FU-1` — Plan/Chat advisory-answer capability, the residual of HLD §7 outside Plan 2's scope
+  (designated 2026-09-29). It depends on `P11.25-FU-1` and reuses Plan 2's enforcement unchanged.
 
-Full acceptance criteria for all four live in the
+Full acceptance criteria for all six live in the
 [Consolidated Deferred Follow-Ups backlog](2026-07-23-consolidated-deferred-followups-backlog.md);
 this list is a pointer, not a duplicate.
 
