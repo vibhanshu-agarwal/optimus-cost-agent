@@ -567,3 +567,90 @@ def test_adapter_process_without_utf8_flag_refuses(tmp_path: Path):
         cwd=str(repo), capture_output=True, text=True, encoding="utf-8",
     )
     assert result.returncode == 2 and "-X utf8" in result.stderr, (result.returncode, result.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Byte-identical moves (docs archive cleanup, 2026-09-29)
+# ---------------------------------------------------------------------------
+#
+# Moving a committed file into archive/ stages it under a new path, and the hook then rescans
+# content the repository already held; frozen documents cannot take inline allowlist pragmas, so
+# such a move could never be committed. A staged rename whose index blob equals its HEAD blob adds
+# no new content and is not rescanned. Any changed byte, and any copy, is scanned as before.
+
+
+def _commit_all(repo: Path) -> None:
+    parity.stage_fixture_files(repo)
+    result = parity._run(["git", "commit", "-q", "-m", "seed"], repo)
+    assert result.returncode == 0, f"fixture commit failed: {result.stderr}"
+
+
+def _git_mv(repo: Path, source: str, destination: str) -> Path:
+    (repo / destination).parent.mkdir(parents=True, exist_ok=True)
+    result = parity._run(["git", "mv", source, destination], repo)
+    assert result.returncode == 0, f"fixture move failed: {result.stderr}"
+    return repo / destination
+
+
+def test_byte_identical_move_of_committed_content_is_not_rescanned(tmp_path: Path):
+    repo = _make_hook_repo(tmp_path, "identical-move")
+    _write(repo / "src" / "frozen.py", CANARY_LINE)
+    _commit_all(repo)
+    moved = _git_mv(repo, "src/frozen.py", "src/archive/frozen.py")
+    before = _baseline_bytes(repo)
+    result = _run_local_hook(repo, [moved], utf8_mode=True, stage=False)
+    assert result.returncode == 0, f"byte-identical move was rescanned: {result.stdout}\n{result.stderr}"
+    assert _baseline_bytes(repo) == before
+
+
+def test_move_with_changed_bytes_is_scanned(tmp_path: Path):
+    repo = _make_hook_repo(tmp_path, "edited-move")
+    _write(repo / "src" / "frozen.py", CANARY_LINE)
+    _commit_all(repo)
+    moved = _git_mv(repo, "src/frozen.py", "src/archive/frozen.py")
+    _write(moved, CANARY_LINE + CLEAN_ASCII_LINE)
+    result = _run_local_hook(repo, [moved], utf8_mode=True)
+    _assert_detected(result, "src/archive/frozen.py")
+
+
+def test_copy_of_committed_content_is_scanned(tmp_path: Path):
+    repo = _make_hook_repo(tmp_path, "copy")
+    _write(repo / "src" / "frozen.py", CANARY_LINE)
+    _commit_all(repo)
+    copied = _write(repo / "src" / "archive" / "frozen.py", CANARY_LINE)
+    result = _run_local_hook(repo, [copied], utf8_mode=True)
+    _assert_detected(result, "src/archive/frozen.py")
+
+
+def test_adapter_drops_only_byte_identical_moves_from_the_delegated_argv(adapter, tmp_path: Path, monkeypatch):
+    repo = _make_hook_repo(tmp_path, "adapter-move")
+    _write(repo / "src" / "frozen.py", CLEAN_ASCII_LINE)
+    _write(repo / "src" / "edited.py", CLEAN_ASCII_LINE)
+    _commit_all(repo)
+    _git_mv(repo, "src/frozen.py", "src/archive/frozen.py")
+    _git_mv(repo, "src/edited.py", "src/archive/edited.py")
+    _write(repo / "src" / "archive" / "edited.py", CLEAN_ASCII_LINE + CLEAN_UNICODE_LINE)
+    # Distinct bytes: Git pairs a deleted file with any one identical staged file, so identical
+    # new content would make which path counts as "the move" ambiguous (one copy is still scanned).
+    _write(repo / "src" / "new.py", CLEAN_UNICODE_LINE)
+    parity.stage_fixture_files(repo)
+    delegate = _Delegate(0)
+    argv = [
+        "--baseline", ".secrets.baseline", "src",
+        "src/archive/frozen.py", "src/archive/edited.py", "src/new.py",
+    ]
+    status, err = _run_adapter(adapter, repo, argv, delegate=delegate, monkeypatch=monkeypatch)
+    assert status == 0, err
+    assert delegate.calls == [["--baseline", ".secrets.baseline", "src", "src/archive/edited.py", "src/new.py"]]
+
+
+def test_move_plus_identical_copy_still_scans_one_copy(tmp_path: Path):
+    """Git pairs the deleted path with only one identical destination; the other is scanned."""
+    repo = _make_hook_repo(tmp_path, "move-and-copy")
+    _write(repo / "src" / "frozen.py", CANARY_LINE)
+    _commit_all(repo)
+    moved = _git_mv(repo, "src/frozen.py", "src/archive/frozen.py")
+    copied = _write(repo / "src" / "copy.py", CANARY_LINE)
+    result = _run_local_hook(repo, [moved, copied], utf8_mode=True)
+    out = result.stdout + result.stderr
+    assert result.returncode == 1 and f"Secret Type: {CANARY_DETECTOR}" in out, out
