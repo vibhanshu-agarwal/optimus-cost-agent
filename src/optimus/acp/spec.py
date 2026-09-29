@@ -44,10 +44,17 @@ from optimus.acp.settlement import (
     TurnSettlementSnapshot,
 )
 from optimus.acp.shapes import (
+    AGENT_MODE_ID,
+    CHAT_MODE_ID,
+    MODE_CONFIG_ID,
     build_agent_message_chunk_notification,
+    build_config_option_update_notification,
+    build_current_mode_update_notification,
+    build_mode_config_options,
     build_plan_session_update,
     build_planning_progress_notification,
     build_request_permission_params,
+    build_session_mode_state,
     build_tool_call_notification,
     new_approval_id,
     new_tool_call_id,
@@ -61,6 +68,14 @@ from optimus.mcp.client_disposition import AcpMcpPermissionBroker, ClientMcpRunt
 from optimus.runtime.modes import ExecutionMode
 
 ACP_PROTOCOL_VERSION = 1
+
+# Plan 12.1: ACP mode IDs <-> the canonical per-session ExecutionMode. Internal
+# ExecutionMode.PLAN is deliberately not selectable from ACP.
+_MODE_BY_ID: dict[str, ExecutionMode] = {AGENT_MODE_ID: ExecutionMode.AGENT, CHAT_MODE_ID: ExecutionMode.CHAT}
+_ID_BY_MODE: dict[ExecutionMode, str] = {mode: mode_id for mode_id, mode in _MODE_BY_ID.items()}
+_MODE_SETTER_METHODS = frozenset({"session/set_mode", "session/set_config_option"})
+_CHAT_CANCELLED_TEXT = "Chat answer cancelled before it was shown."
+_CHAT_FAILURE_FALLBACK_TEXT = "Chat could not answer this prompt. Please try again."
 
 
 def resolve_max_planning_turns(environ: Mapping[str, str]) -> int | None:
@@ -114,6 +129,8 @@ class AcpPromptTurn:
     session_id: str
     turn_seq: int
     turn_control: TurnControl
+    # Captured at admission; the turn never re-reads the session's mode (Plan 12.1).
+    execution_mode: ExecutionMode = ExecutionMode.AGENT
     pending_permission_request_id: str | int | None = None
     permission_tool_call_id: str | None = None
     permission_handle: Any | None = None
@@ -292,10 +309,22 @@ class AcpDuplexAdapter:
     def _new_conversation(self) -> ConversationState:
         return ConversationState(ConversationSanitizer(self._sanitizer_inputs))
 
-    def _planner_task(self, conversation: ConversationState, sanitized_prompt: str) -> str:
-        if not conversation.records:
-            return sanitized_prompt
-        return f"{conversation.planner_envelope()}\n{sanitized_prompt}"
+    def _planner_inputs(
+        self,
+        conversation: ConversationState,
+        sanitized_prompt: str,
+        mode: ExecutionMode,
+    ) -> tuple[str, str]:
+        """The single history source for both ACP modes: returns ``(task, conversation_envelope)``.
+
+        Agent keeps receiving the envelope inside ``task``. Chat (Plan 12.1 /
+        P11.25-FU-1) receives the same envelope separately, with ``task`` holding
+        only the current prompt.
+        """
+        envelope = conversation.planner_envelope() if conversation.records else ""
+        if mode is ExecutionMode.CHAT:
+            return sanitized_prompt, envelope
+        return (f"{envelope}\n{sanitized_prompt}" if envelope else sanitized_prompt), ""
 
     def _placeholder_settlement(self, turn: AcpPromptTurn) -> TurnSettlementSnapshot:
         fields = turn.turn_control.current_settlement_fields()
@@ -366,6 +395,8 @@ class AcpDuplexAdapter:
             return self._non_turn(await self._handle_session_new(request), ownership_slot)
         if method == "session/prompt":
             return await self._handle_session_prompt(request, ownership_slot=ownership_slot)
+        if method in _MODE_SETTER_METHODS:
+            return self._non_turn(await self._handle_mode_change(request, method=method), ownership_slot)
         if method in {"session/update", "session/request_permission"}:
             return self._non_turn(
                 error_response(request_id, JsonRpcError(code=METHOD_NOT_FOUND, message=f"method not found: {method}")),
@@ -446,6 +477,68 @@ class AcpDuplexAdapter:
             },
         )
 
+    def _session_new_result(self, session: AcpSpecSession) -> dict[str, Any]:
+        mode_id = _ID_BY_MODE[session.execution_mode]
+        return {
+            "sessionId": session.session_id,
+            "modes": build_session_mode_state(current_mode_id=mode_id),
+            "configOptions": build_mode_config_options(current_mode_id=mode_id),
+        }
+
+    async def _handle_mode_change(self, request: dict[str, Any], *, method: str) -> dict[str, Any]:
+        """One validation-and-update path for ``session/set_mode`` and ``session/set_config_option``.
+
+        Answered without waiting for an in-flight turn: an admitted turn keeps the
+        mode it captured, so a change only affects the next prompt. Invalid
+        requests leave the canonical mode and both projections untouched.
+        """
+        request_id = request.get("id")
+
+        def invalid(message: str) -> dict[str, Any]:
+            return error_response(request_id, JsonRpcError(code=INVALID_REQUEST, message=message))
+
+        params = request.get("params")
+        if not isinstance(params, dict) or not isinstance(params.get("sessionId"), str):
+            return invalid("invalid request")
+        if method == "session/set_mode":
+            mode_id = params.get("modeId")
+        else:
+            config_id = params.get("configId")
+            if not isinstance(config_id, str):
+                return invalid("invalid request")
+            if config_id != MODE_CONFIG_ID:
+                return invalid("unknown config option")
+            if params.get("type") == "boolean":
+                return invalid("config option value type mismatch")
+            mode_id = params.get("value")
+        if not isinstance(mode_id, str) or mode_id not in _MODE_BY_ID:
+            return invalid("unsupported mode")
+        session = self._sessions.get(params["sessionId"])
+        if session is None:
+            return invalid("unknown session")
+
+        await self._apply_session_mode(session, _MODE_BY_ID[mode_id])
+        if method == "session/set_mode":
+            return success_response(request_id=request_id, result={})
+        return success_response(
+            request_id=request_id,
+            result={"configOptions": build_mode_config_options(current_mode_id=_ID_BY_MODE[session.execution_mode])},
+        )
+
+    async def _apply_session_mode(self, session: AcpSpecSession, mode: ExecutionMode) -> None:
+        if session.execution_mode is mode:
+            return
+        session.execution_mode = mode
+        mode_id = _ID_BY_MODE[mode]
+        await self._outbound.notify(
+            "session/update",
+            build_current_mode_update_notification(session_id=session.session_id, current_mode_id=mode_id),
+        )
+        await self._outbound.notify(
+            "session/update",
+            build_config_option_update_notification(session_id=session.session_id, current_mode_id=mode_id),
+        )
+
     async def _handle_session_new(self, request: dict[str, Any]) -> dict[str, Any]:
         params = request.get("params")
         if not isinstance(params, dict) or not isinstance(params.get("cwd"), str):
@@ -468,7 +561,7 @@ class AcpDuplexAdapter:
         session.client_mcp_state = empty_state
 
         if len(mcp_servers) == 0:
-            return success_response(request_id=request.get("id"), result={"sessionId": session.session_id})
+            return success_response(request_id=request.get("id"), result=self._session_new_result(session))
 
         runtime = self._client_mcp_runtime
         if runtime is None:
@@ -506,7 +599,7 @@ class AcpDuplexAdapter:
 
         assert state is not None
         session.client_mcp_state = state
-        return success_response(request_id=request.get("id"), result={"sessionId": session.session_id})
+        return success_response(request_id=request.get("id"), result=self._session_new_result(session))
 
     async def _handle_session_prompt(
         self,
@@ -572,7 +665,12 @@ class AcpDuplexAdapter:
             conversation._next_turn_seq = turn_seq + 1  # noqa: SLF001
 
         turn_control = TurnControl(session_id=session_id, turn_seq=turn_seq)
-        turn = AcpPromptTurn(session_id=session_id, turn_seq=turn_seq, turn_control=turn_control)
+        turn = AcpPromptTurn(
+            session_id=session_id,
+            turn_seq=turn_seq,
+            turn_control=turn_control,
+            execution_mode=session.execution_mode,
+        )
         turn_control.set_finalization_hooks(
             active_map_remover=self._remove_active_turn,
             settlement_callback=self._settlement_evidence_callback(turn),
@@ -594,13 +692,16 @@ class AcpDuplexAdapter:
                 if conversation.note_warning_threshold_for_attempt(admission.projected_bytes):
                     self._notice_control.allocate_warning_sequence()
 
-            planner_task = self._planner_task(conversation, admission.sanitized_user_prompt)
+            planner_task, conversation_envelope = self._planner_inputs(
+                conversation, admission.sanitized_user_prompt, turn.execution_mode
+            )
             planning_fields: dict[str, object] = {
                 "run_id": run_id,
                 "session_id": session_id,
                 "task": planner_task,
-                "execution_mode": session.execution_mode,
+                "execution_mode": turn.execution_mode,
                 "workspace_root": session.cwd,
+                "conversation_envelope": conversation_envelope,
             }
             if self._max_planning_turns is not None:
                 planning_fields["max_planning_turns"] = self._max_planning_turns
@@ -648,6 +749,16 @@ class AcpDuplexAdapter:
                 hypothesis_id="H3",
             )
             # endregion
+            if turn.execution_mode is ExecutionMode.CHAT:
+                return await self._finish_chat_turn(
+                    request_id=request.get("id"),
+                    session_id=session_id,
+                    conversation=conversation,
+                    turn=turn,
+                    sanitized_user_prompt=admission.sanitized_user_prompt,
+                    result=planning_result,
+                    ownership_slot=ownership_slot,
+                )
             await self._emit_result_updates(session_id=session_id, result=planning_result, planning=True, turn=turn)
             if turn.turn_control.halt_requested():
                 await self._commit_turn(
@@ -819,6 +930,71 @@ class AcpDuplexAdapter:
             ownership_slot,
         )
 
+    async def _finish_chat_turn(
+        self,
+        *,
+        request_id: str | int | None,
+        session_id: str,
+        conversation: ConversationState,
+        turn: AcpPromptTurn,
+        sanitized_user_prompt: str,
+        result: AgentRunResult,
+        ownership_slot: ResponseOwnershipSlot | None,
+    ) -> TurnResponseEnvelope:
+        """Plan 12.1: settle a Chat turn. It never sends a plan card or asks for permission.
+
+        A nonblank completed answer is the turn's final text. Any terminal
+        failure shows the runner's corrective text, records a non-success
+        outcome and ends the turn normally (``end_turn``) rather than with
+        ``refusal``; a cancelled turn returns ``cancelled``.
+        """
+        if turn.turn_control.halt_requested():
+            await self._commit_turn(
+                conversation=conversation,
+                turn=turn,
+                sanitized_user_prompt=sanitized_user_prompt,
+                result=result,
+                outcome=ConversationOutcome.CANCELLED,
+                completion_text=_CHAT_CANCELLED_TEXT,
+            )
+            return self._turn(
+                success_response(request_id=request_id, result={"stopReason": "cancelled"}),
+                turn.turn_control,
+                ownership_slot,
+            )
+        answer = _chat_answer_text(result)
+        if answer:
+            text, outcome = answer, ConversationOutcome.COMPLETED
+        else:
+            text = result.output_text.strip() or _CHAT_FAILURE_FALLBACK_TEXT
+            outcome = _conversation_outcome(result)
+            if outcome is ConversationOutcome.COMPLETED:
+                outcome = ConversationOutcome.FAILED
+        await self._emit_final_text(session_id=session_id, text=text, turn=turn)
+        await self._commit_turn(
+            conversation=conversation,
+            turn=turn,
+            sanitized_user_prompt=sanitized_user_prompt,
+            result=result,
+            outcome=outcome,
+            completion_text=text,
+        )
+        return self._turn(
+            success_response(request_id=request_id, result={"stopReason": "end_turn"}),
+            turn.turn_control,
+            ownership_slot,
+        )
+
+    async def _emit_final_text(self, *, session_id: str, text: str, turn: AcpPromptTurn) -> None:
+        turn.turn_control.seal_final_delivery()
+        lease = turn.turn_control.start_terminal_message("final_text")
+        if not lease.granted:
+            return
+        await self._outbound.notify(
+            "session/update",
+            build_agent_message_chunk_notification(session_id=session_id, text=text),
+        )
+
     async def _commit_turn(
         self,
         *,
@@ -827,10 +1003,13 @@ class AcpDuplexAdapter:
         sanitized_user_prompt: str,
         result: AgentRunResult,
         outcome: ConversationOutcome,
+        completion_text: str | None = None,
     ) -> None:
         raw_plan = result.candidate_plan_text or ""
         plan_text = conversation.sanitize_text(raw_plan) if raw_plan else ""
-        completion = conversation.sanitize_text(_completion_message(result))
+        completion = conversation.sanitize_text(
+            completion_text if completion_text is not None else _completion_message(result)
+        )
         decision = conversation.prepare_commit(
             turn.turn_seq,
             sanitized_user_prompt=sanitized_user_prompt,
@@ -1087,6 +1266,13 @@ def _completion_message(result: AgentRunResult) -> str:
     if result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
         return result.output_text
     return "Turn completed."
+
+
+def _chat_answer_text(result: AgentRunResult) -> str:
+    """The answer a Chat turn may show: a completed, nonblank model response."""
+    if result.status is not AgentRunStatus.COMPLETED:
+        return ""
+    return result.output_text.strip()
 
 
 def _client_mcp_service(session: AcpSpecSession) -> object | None:

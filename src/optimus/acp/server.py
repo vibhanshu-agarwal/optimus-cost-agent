@@ -257,6 +257,19 @@ class NdjsonOutboundChannel:
 #: Per-call observation budget for the serving process's Redis teardown stage. Test-injectable.
 REDIS_SHUTDOWN_OBSERVATION_SECONDS = 10.0
 
+# Client methods whose name may appear in a content-free diagnostic; anything else
+# collapses to "unknown" so arbitrary client content is never echoed.
+APPROVED_METHOD_CATEGORIES = frozenset(
+    {
+        "initialize",
+        "session/new",
+        "session/load",
+        "session/prompt",
+        "session/set_mode",
+        "session/set_config_option",
+    }
+)
+
 
 def redis_cleanup_payload(runtime: Any) -> dict[str, Any]:
     """The only fields the Redis diagnostic may carry: lifecycle state and stage outcomes.
@@ -590,7 +603,7 @@ class AcpStreamServer:
         def approved_method_category(method: object) -> str:
             # Never copy arbitrary client content into a diagnostic: an unapproved method
             # collapses to "unknown" rather than being echoed.
-            return method if method in ("initialize", "session/new", "session/load", "session/prompt") else "unknown"
+            return method if isinstance(method, str) and method in APPROVED_METHOD_CATEGORIES else "unknown"
 
         def report_request_task_failure(operation_id: str, request_method: str) -> None:
             # One content-free diagnostic per escaped request-task failure. This runs from a

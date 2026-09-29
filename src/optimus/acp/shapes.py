@@ -43,6 +43,62 @@ def build_agent_message_chunk_notification(*, session_id: str, text: str) -> dic
     }
 
 
+MODE_CONFIG_ID = "mode"
+AGENT_MODE_ID = "agent"
+CHAT_MODE_ID = "chat"
+
+# Plan 12.1: the Agent/Chat choice, advertised in order. One canonical session
+# mode is projected through both ACP surfaces below; neither holds state.
+SESSION_MODE_CHOICES: tuple[tuple[str, str, str], ...] = (
+    (AGENT_MODE_ID, "Agent", "Plans workspace changes and applies them only after your approval."),
+    (CHAT_MODE_ID, "Chat", "Answers questions from the workspace context without changing any files."),
+)
+
+
+def build_session_mode_state(*, current_mode_id: str) -> dict[str, Any]:
+    return {
+        "currentModeId": current_mode_id,
+        "availableModes": [
+            {"id": mode_id, "name": name, "description": description}
+            for mode_id, name, description in SESSION_MODE_CHOICES
+        ],
+    }
+
+
+def build_mode_config_options(*, current_mode_id: str) -> list[dict[str, Any]]:
+    """The full ``configOptions`` set: exactly one select option for the mode."""
+    return [
+        {
+            "id": MODE_CONFIG_ID,
+            "name": "Mode",
+            "category": "mode",
+            "type": "select",
+            "currentValue": current_mode_id,
+            "options": [
+                {"value": mode_id, "name": name, "description": description}
+                for mode_id, name, description in SESSION_MODE_CHOICES
+            ],
+        }
+    ]
+
+
+def build_current_mode_update_notification(*, session_id: str, current_mode_id: str) -> dict[str, Any]:
+    return {
+        "sessionId": session_id,
+        "update": {"sessionUpdate": "current_mode_update", "currentModeId": current_mode_id},
+    }
+
+
+def build_config_option_update_notification(*, session_id: str, current_mode_id: str) -> dict[str, Any]:
+    return {
+        "sessionId": session_id,
+        "update": {
+            "sessionUpdate": "config_option_update",
+            "configOptions": build_mode_config_options(current_mode_id=current_mode_id),
+        },
+    }
+
+
 def build_planning_progress_message(*, settled_turn: int, max_planning_turns: int, read_request_count: int) -> str:
     if read_request_count:
         range_label = "range" if read_request_count == 1 else "ranges"

@@ -20,6 +20,7 @@ from optimus.agent.state_store import (
 from optimus.agent.tools import AgentToolbox
 from optimus.agent.workspace_context import WorkspaceContextResult, assemble_workspace_context_for_prompt
 from optimus.gateway.client import GatewayClient
+from optimus.gateway.errors import GatewayError
 from optimus.gateway.models import GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.loops.completion import DeterministicCompletionEvaluator
@@ -38,6 +39,18 @@ if TYPE_CHECKING:
 
 WorkspaceContextObserver = Callable[[AgentRunRequest, WorkspaceContextResult], None]
 _OVERSIZED_REQUIRED_CONTEXT_TRIGGER = "REQUIRED_WORKSPACE_FILE_TOO_LARGE"
+
+# Plan 12.1: visible corrective text for Chat's single-call terminal failures.
+CHAT_FAILURE_MESSAGES: dict[str, str] = {
+    "CHAT_EMPTY_ANSWER": "Chat received an empty answer from the model. Please rephrase the question or try again.",
+    "CHAT_GATEWAY_FAILURE": "Chat could not get an answer: the model gateway reported a failure. Please try again.",
+    "CHAT_GATEWAY_COST_UNKNOWN": (
+        "Chat stopped because the model gateway failed without reporting the call's cost. Please try again."
+    ),
+    "BUDGET_EXHAUSTED": (
+        "Chat's answer exceeded this prompt's cost limit, so it is not shown. Try a narrower question."
+    ),
+}
 
 
 class _AgentLoopIterationRunner:
@@ -275,6 +288,8 @@ class AgentRunner:
             )
 
         context = self._transition(context, AgentState.PLANNING)
+        if request.execution_mode is ExecutionMode.CHAT:
+            return self._run_chat_answer(request=request, context=context)
         workspace_context = assemble_workspace_context_for_prompt(
             request.workspace_root,
             task=request.task,
@@ -899,6 +914,99 @@ class AgentRunner:
         if path.is_absolute():
             return False
         return ".." not in path.parts
+
+    def _run_chat_answer(self, *, request: AgentRunRequest, context: RuntimeContext) -> AgentRunResult:
+        """Plan 12.1 Chat: one Gateway call, a prose answer, no directive execution.
+
+        Workspace-file selection sees the prior conversation plus the current
+        prompt (as Agent's does), while the model input carries the current
+        prompt only once. Every terminal failure returns corrective text in
+        ``output_text`` and a non-success status; nothing here retries.
+        """
+        selection_text = (
+            f"{request.conversation_envelope}\n{request.task}" if request.conversation_envelope else request.task
+        )
+        workspace_context = assemble_workspace_context_for_prompt(request.workspace_root, task=selection_text)
+        if self._workspace_context_observer is not None:
+            self._workspace_context_observer(request, workspace_context)
+        if workspace_context.blocking_stop_reason is not None:
+            return self._chat_failure(
+                request,
+                stop_reason=workspace_context.blocking_stop_reason,
+                output_text=workspace_context.blocking_message or "Workspace context could not be assembled.",
+            )
+        chat_input = build_agent_planner_input(
+            request.task,
+            workspace_context=workspace_context.text,
+            conversation_envelope=request.conversation_envelope,
+            advisory=True,
+        )
+        try:
+            response = self._gateway_client.create_response(
+                model=self._model,
+                input_text=chat_input,
+                metadata={
+                    "run_id": request.run_id,
+                    "session_id": request.session_id,
+                    "purpose": "advisory_answer",
+                    "task": request.task,
+                },
+            )
+        except GatewayError as exc:
+            usage = getattr(exc, "gateway_usage", None)
+            if usage is None:
+                return self._chat_failure(request, stop_reason="CHAT_GATEWAY_COST_UNKNOWN", cost_complete=False)
+            self._record_gateway_usage(request, gateway_usage=usage, settled_turn=1, wire_attempt=1)
+            return self._chat_failure(request, stop_reason="CHAT_GATEWAY_FAILURE", total_cost_usd=usage.cost_usd)
+        except Exception:
+            # Same rule as the planning loop: an unexpected transport failure has unknown cost.
+            return self._chat_failure(request, stop_reason="CHAT_GATEWAY_COST_UNKNOWN", cost_complete=False)
+
+        self._record_gateway_usage(request, gateway_usage=response.gateway_usage, settled_turn=1, wire_attempt=1)
+        total_cost_usd = response.gateway_usage.cost_usd
+        if total_cost_usd > request.max_cost_usd:
+            return self._chat_failure(
+                request,
+                stop_reason="BUDGET_EXHAUSTED",
+                status=AgentRunStatus.TERMINATED,
+                total_cost_usd=total_cost_usd,
+            )
+        answer = response.output_text.strip()
+        if not answer:
+            return self._chat_failure(request, stop_reason="CHAT_EMPTY_ANSWER", total_cost_usd=total_cost_usd)
+        # Plan 2's validated path for a non-AGENT result: PLANNING -> PLAN_READY -> CHAT_ONLY.
+        context = self._transition(context, AgentState.PLAN_READY)
+        self._transition(context, AgentState.CHAT_ONLY)
+        return self._build_result(
+            request=request,
+            status=AgentRunStatus.COMPLETED,
+            final_state="CHAT_ONLY",
+            output_text=answer,
+            tool_calls=(),
+            total_cost_usd=total_cost_usd,
+        )
+
+    def _chat_failure(
+        self,
+        request: AgentRunRequest,
+        *,
+        stop_reason: str,
+        output_text: str | None = None,
+        status: AgentRunStatus = AgentRunStatus.FAILED,
+        total_cost_usd: Decimal = Decimal("0"),
+        cost_complete: bool = True,
+    ) -> AgentRunResult:
+        return self._build_result(
+            request=request,
+            status=status,
+            final_state=status.value.upper(),
+            output_text=output_text or CHAT_FAILURE_MESSAGES[stop_reason],
+            tool_calls=(),
+            total_cost_usd=total_cost_usd,
+            stop_reason=stop_reason,
+            cost_complete=cost_complete,
+            unknown_cost_attempt_count=0 if cost_complete else 1,
+        )
 
     @staticmethod
     def _build_result(

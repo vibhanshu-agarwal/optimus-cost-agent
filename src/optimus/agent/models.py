@@ -100,6 +100,9 @@ class AgentRunRequest(BaseModel):
     planning_wall_clock_minutes: int = Field(default=30, ge=1)
     skill_paths: tuple[Path, ...] = ()
     completion_condition: str | None = None
+    # Plan 12.1 / P11.25-FU-1: prior conversation for the Chat path, rendered
+    # separately from ``task`` (which then holds only the current prompt).
+    conversation_envelope: str = ""
 
     @field_validator("execution_mode", mode="before")
     @classmethod
