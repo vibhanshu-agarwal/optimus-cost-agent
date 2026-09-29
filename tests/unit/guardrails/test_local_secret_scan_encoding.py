@@ -570,18 +570,21 @@ def test_adapter_process_without_utf8_flag_refuses(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Byte-identical moves (docs archive cleanup, 2026-09-29)
+# Byte-identical archive moves (docs archive convention, 2026-09-29)
 # ---------------------------------------------------------------------------
 #
-# Moving a committed file into archive/ stages it under a new path, and the hook then rescans
-# content the repository already held; frozen documents cannot take inline allowlist pragmas, so
-# such a move could never be committed. A staged rename whose index blob equals its HEAD blob adds
-# no new content and is not rescanned. Any changed byte, and any copy, is scanned as before.
+# Archiving a frozen document moves it from a docs/ folder into the archive/ beside it. The hook
+# would rescan bytes the repository already holds, and frozen documents cannot take inline
+# allowlist pragmas, so such a move could never be committed. Exactly that move is not rescanned:
+# a staged rename (R100, identical blob ids) whose destination is its source path with one
+# "archive" folder inserted, below docs/. Every other move, any changed byte and any copy is
+# scanned as before (Codex post-merge review of cc78573: the first version skipped every
+# byte-identical move, which also skipped first scans of content outside the archive convention).
 
 
 def _commit_all(repo: Path) -> None:
     parity.stage_fixture_files(repo)
-    result = parity._run(["git", "commit", "-q", "-m", "seed"], repo)
+    result = parity._run(["git", "commit", "-q", "--no-verify", "-m", "seed"], repo)
     assert result.returncode == 0, f"fixture commit failed: {result.stderr}"
 
 
@@ -592,65 +595,228 @@ def _git_mv(repo: Path, source: str, destination: str) -> Path:
     return repo / destination
 
 
-def test_byte_identical_move_of_committed_content_is_not_rescanned(tmp_path: Path):
-    repo = _make_hook_repo(tmp_path, "identical-move")
-    _write(repo / "src" / "frozen.py", CANARY_LINE)
+def _seed_committed(repo: Path, relpath: str, content: str = CANARY_LINE) -> None:
+    _write(repo / relpath, content)
     _commit_all(repo)
-    moved = _git_mv(repo, "src/frozen.py", "src/archive/frozen.py")
+
+
+def test_byte_identical_archive_move_under_docs_is_not_rescanned(tmp_path: Path):
+    repo = _make_hook_repo(tmp_path, "archive-move")
+    _seed_committed(repo, "docs/specs/frozen.md")
+    moved = _git_mv(repo, "docs/specs/frozen.md", "docs/specs/archive/frozen.md")
     before = _baseline_bytes(repo)
     result = _run_local_hook(repo, [moved], utf8_mode=True, stage=False)
-    assert result.returncode == 0, f"byte-identical move was rescanned: {result.stdout}\n{result.stderr}"
+    assert result.returncode == 0, f"archive move was rescanned: {result.stdout}\n{result.stderr}"
     assert _baseline_bytes(repo) == before
 
 
-def test_move_with_changed_bytes_is_scanned(tmp_path: Path):
+def test_byte_identical_folder_move_into_archive_is_not_rescanned(tmp_path: Path):
+    """A whole bundle moves as a folder: docs/sources/X/f -> docs/sources/archive/X/f."""
+    repo = _make_hook_repo(tmp_path, "archive-folder-move")
+    _seed_committed(repo, "docs/sources/bundle/manifest.md")
+    moved = _git_mv(repo, "docs/sources/bundle", "docs/sources/archive/bundle") / "manifest.md"
+    result = _run_local_hook(repo, [moved], utf8_mode=True, stage=False)
+    assert result.returncode == 0, f"archive folder move was rescanned: {result.stdout}\n{result.stderr}"
+
+
+@pytest.mark.parametrize(
+    ("source", "destination"),
+    [
+        ("src/frozen.py", "src/archive/frozen.py"),  # archive move outside docs/
+        ("docs/specs/frozen.md", "docs/other/frozen.md"),  # docs move, not into archive/
+        ("docs/specs/archive/frozen.md", "docs/specs/frozen.md"),  # out of archive/
+        ("docs/specs/frozen.md", "docs/specs/archive/renamed.md"),  # into archive/ under a new name
+    ],
+    ids=["outside-docs", "not-into-archive", "out-of-archive", "renamed"],
+)
+def test_any_other_byte_identical_move_is_scanned(tmp_path: Path, source: str, destination: str):
+    repo = _make_hook_repo(tmp_path, "other-move")
+    _seed_committed(repo, source)
+    moved = _git_mv(repo, source, destination)
+    result = _run_local_hook(repo, [moved], utf8_mode=True, stage=False)
+    _assert_detected(result, destination)
+
+
+def test_archive_move_with_changed_bytes_is_scanned(tmp_path: Path):
     repo = _make_hook_repo(tmp_path, "edited-move")
-    _write(repo / "src" / "frozen.py", CANARY_LINE)
-    _commit_all(repo)
-    moved = _git_mv(repo, "src/frozen.py", "src/archive/frozen.py")
+    _seed_committed(repo, "docs/specs/frozen.md")
+    moved = _git_mv(repo, "docs/specs/frozen.md", "docs/specs/archive/frozen.md")
     _write(moved, CANARY_LINE + CLEAN_ASCII_LINE)
     result = _run_local_hook(repo, [moved], utf8_mode=True)
-    _assert_detected(result, "src/archive/frozen.py")
+    _assert_detected(result, "docs/specs/archive/frozen.md")
 
 
-def test_copy_of_committed_content_is_scanned(tmp_path: Path):
+def test_copy_into_archive_is_scanned(tmp_path: Path):
     repo = _make_hook_repo(tmp_path, "copy")
-    _write(repo / "src" / "frozen.py", CANARY_LINE)
-    _commit_all(repo)
-    copied = _write(repo / "src" / "archive" / "frozen.py", CANARY_LINE)
+    _seed_committed(repo, "docs/specs/frozen.md")
+    copied = _write(repo / "docs" / "specs" / "archive" / "frozen.md", CANARY_LINE)
     result = _run_local_hook(repo, [copied], utf8_mode=True)
-    _assert_detected(result, "src/archive/frozen.py")
+    _assert_detected(result, "docs/specs/archive/frozen.md")
 
 
-def test_adapter_drops_only_byte_identical_moves_from_the_delegated_argv(adapter, tmp_path: Path, monkeypatch):
+def test_archive_move_plus_identical_copy_still_scans_one_copy(tmp_path: Path):
+    """Git pairs the deleted path with only one identical destination; the other is scanned."""
+    repo = _make_hook_repo(tmp_path, "move-and-copy")
+    _seed_committed(repo, "docs/specs/frozen.md")
+    moved = _git_mv(repo, "docs/specs/frozen.md", "docs/specs/archive/frozen.md")
+    copied = _write(repo / "docs" / "specs" / "copy.md", CANARY_LINE)
+    result = _run_local_hook(repo, [moved, copied], utf8_mode=True)
+    out = result.stdout + result.stderr
+    assert result.returncode == 1 and f"Secret Type: {CANARY_DETECTOR}" in out, out
+
+
+def test_real_commit_skips_an_archive_move_but_blocks_an_edited_one(tmp_path: Path):
+    """Through the installed hook and a real `git commit`, where pre-commit stashes unstaged edits."""
+    repo = _make_hook_repo(tmp_path, "real-commit")
+    _seed_committed(repo, "docs/specs/frozen.md")
+    install = parity._run([str(parity._venv_scripts_dir() / ("pre-commit.exe" if os.name == "nt" else "pre-commit")), "install"], repo)
+    assert install.returncode == 0, install.stderr
+
+    moved = _git_mv(repo, "docs/specs/frozen.md", "docs/specs/archive/frozen.md")
+    _write(moved, CANARY_LINE + CLEAN_ASCII_LINE)  # unstaged edit: stashed, never committed
+    committed = parity._run(["git", "commit", "-q", "-m", "archive frozen.md"], repo)
+    assert committed.returncode == 0, f"archive move rejected: {committed.stdout}\n{committed.stderr}"
+    blob = parity._run(["git", "show", "HEAD:docs/specs/archive/frozen.md"], repo)
+    assert blob.stdout == CANARY_LINE, "the committed blob must be the original bytes"
+
+    parity.stage_fixture_files(repo)  # now stage the edit
+    blocked = parity._run(["git", "commit", "-q", "-m", "edit archived file"], repo)
+    assert blocked.returncode != 0 and f"Secret Type: {CANARY_DETECTOR}" in blocked.stdout + blocked.stderr
+
+
+def test_adapter_drops_only_byte_identical_archive_moves(adapter, tmp_path: Path, monkeypatch):
     repo = _make_hook_repo(tmp_path, "adapter-move")
+    for name in ("frozen.md", "edited.md"):
+        _write(repo / "docs" / "specs" / name, f"# {name}\n")
     _write(repo / "src" / "frozen.py", CLEAN_ASCII_LINE)
-    _write(repo / "src" / "edited.py", CLEAN_ASCII_LINE)
     _commit_all(repo)
+    _git_mv(repo, "docs/specs/frozen.md", "docs/specs/archive/frozen.md")
+    _git_mv(repo, "docs/specs/edited.md", "docs/specs/archive/edited.md")
+    _write(repo / "docs" / "specs" / "archive" / "edited.md", "# edited.md\n" + CLEAN_UNICODE_LINE)
     _git_mv(repo, "src/frozen.py", "src/archive/frozen.py")
-    _git_mv(repo, "src/edited.py", "src/archive/edited.py")
-    _write(repo / "src" / "archive" / "edited.py", CLEAN_ASCII_LINE + CLEAN_UNICODE_LINE)
-    # Distinct bytes: Git pairs a deleted file with any one identical staged file, so identical
-    # new content would make which path counts as "the move" ambiguous (one copy is still scanned).
-    _write(repo / "src" / "new.py", CLEAN_UNICODE_LINE)
     parity.stage_fixture_files(repo)
     delegate = _Delegate(0)
     argv = [
         "--baseline", ".secrets.baseline", "src",
-        "src/archive/frozen.py", "src/archive/edited.py", "src/new.py",
+        "docs/specs/archive/frozen.md", "docs/specs/archive/edited.md", "src/archive/frozen.py",
     ]
     status, err = _run_adapter(adapter, repo, argv, delegate=delegate, monkeypatch=monkeypatch)
     assert status == 0, err
-    assert delegate.calls == [["--baseline", ".secrets.baseline", "src", "src/archive/edited.py", "src/new.py"]]
+    assert delegate.calls == [[
+        "--baseline", ".secrets.baseline", "src", "docs/specs/archive/edited.md", "src/archive/frozen.py",
+    ]]
 
 
-def test_move_plus_identical_copy_still_scans_one_copy(tmp_path: Path):
-    """Git pairs the deleted path with only one identical destination; the other is scanned."""
-    repo = _make_hook_repo(tmp_path, "move-and-copy")
-    _write(repo / "src" / "frozen.py", CANARY_LINE)
-    _commit_all(repo)
-    moved = _git_mv(repo, "src/frozen.py", "src/archive/frozen.py")
-    copied = _write(repo / "src" / "copy.py", CANARY_LINE)
-    result = _run_local_hook(repo, [moved, copied], utf8_mode=True)
-    out = result.stdout + result.stderr
-    assert result.returncode == 1 and f"Secret Type: {CANARY_DETECTOR}" in out, out
+SHA1_BLOB = "1" * 40
+
+
+def _archive_move_record(
+    old: str = "docs/a.md",
+    new: str = "docs/archive/a.md",
+    *,
+    old_mode: str = "100644",
+    new_mode: str = "100644",
+    old_blob: str = SHA1_BLOB,
+    new_blob: str = SHA1_BLOB,
+    status: str = "R100",
+) -> bytes:
+    return f":{old_mode} {new_mode} {old_blob} {new_blob} {status}\0{old}\0{new}\0".encode()
+
+
+def _fake_git(adapter, monkeypatch, diff_stdout: bytes, *, object_format: bytes = b"sha1\n") -> None:
+    """Answer the adapter's two git queries: the object format, then the raw staged diff."""
+
+    def run(argv, **_kwargs):
+        stdout = object_format if argv[1:3] == ["rev-parse", "--show-object-format"] else diff_stdout
+        return subprocess.CompletedProcess(args=argv, returncode=0, stdout=stdout)
+
+    monkeypatch.setattr(adapter.subprocess, "run", run)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        OSError("git missing"),
+        subprocess.TimeoutExpired(cmd="git", timeout=60),
+        subprocess.CalledProcessError(returncode=128, cmd="git"),
+    ],
+    ids=["missing-git", "timeout", "nonzero-exit"],
+)
+def test_git_failure_drops_nothing(adapter, monkeypatch, failure):
+    def fail(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(adapter.subprocess, "run", fail)
+    assert adapter._byte_identical_archive_moves() == frozenset()
+
+
+VALID = _archive_move_record()
+VALID_SECOND = _archive_move_record("docs/b.md", "docs/archive/b.md")
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        VALID.replace(b"a.md", b"\xff.md"),  # path bytes that are not UTF-8
+        b"garbage without separators",
+        VALID[:-20],  # truncated record
+        VALID[:-1],  # missing only its final NUL
+        VALID + VALID_SECOND[:30],  # valid record followed by a partial record
+        VALID + b"trailing garbage\0",  # valid record followed by a stray field
+        _archive_move_record(old_blob="short", new_blob="short") + VALID,  # malformed record, then valid
+        b"no-colon 100644 " + VALID[16:],  # header without its leading colon
+        _archive_move_record(status="X100") + VALID,  # not a rename status, then valid
+        _archive_move_record(old_mode="10064x") + VALID,  # non-octal mode, then valid
+        _archive_move_record(old_blob="1" * 64, new_blob="1" * 64),  # sha256-length id in a sha1 repo
+    ],
+    ids=[
+        "undecodable-path", "garbage", "truncated", "missing-final-nul", "valid-then-partial",
+        "valid-then-stray-field", "malformed-then-valid", "no-colon", "bad-status-then-valid",
+        "bad-mode-then-valid", "wrong-id-length",
+    ],
+)
+def test_malformed_git_output_drops_nothing(adapter, monkeypatch, stdout):
+    _fake_git(adapter, monkeypatch, stdout)
+    assert adapter._byte_identical_archive_moves() == frozenset()
+
+
+def test_unknown_object_format_drops_nothing(adapter, monkeypatch):
+    _fake_git(adapter, monkeypatch, VALID, object_format=b"blake3\n")
+    assert adapter._byte_identical_archive_moves() == frozenset()
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        _archive_move_record(old_mode="100644", new_mode="100755"),  # mode changed with the move
+        _archive_move_record(old_mode="120000", new_mode="120000"),  # symlink, not a regular file
+        _archive_move_record(old_blob="2" * 40),  # different blobs
+        _archive_move_record(old_blob="0" * 40, new_blob="0" * 40),  # null blob
+        _archive_move_record(status="R099"),  # not identical
+        _archive_move_record("docs/../src/x.md", "docs/../src/archive/x.md"),  # leaves docs/
+        _archive_move_record("docs/./a.md", "docs/./archive/a.md"),  # dot component
+        _archive_move_record("docs/archive/a.md", "docs/archive/archive/a.md"),  # already archived
+        _archive_move_record("Docs/a.md", "Docs/archive/a.md"),  # case differs from docs/
+        _archive_move_record("docs/a.md", "docs/Archive/a.md"),  # case differs from archive
+    ],
+    ids=[
+        "mode-change", "symlink", "different-blobs", "null-blob", "not-100", "dotdot",
+        "dot", "already-archived", "Docs", "Archive",
+    ],
+)
+def test_well_formed_record_outside_the_rule_is_not_exempt(adapter, monkeypatch, record):
+    _fake_git(adapter, monkeypatch, record + VALID_SECOND)
+    assert adapter._byte_identical_archive_moves() == frozenset({"docs/archive/b.md"})
+
+
+def test_well_formed_archive_records_are_recognised(adapter, monkeypatch):
+    """Controls for the cases above: the same parser accepts well-formed archive records."""
+    _fake_git(adapter, monkeypatch, VALID + VALID_SECOND)
+    assert adapter._byte_identical_archive_moves() == frozenset({"docs/archive/a.md", "docs/archive/b.md"})
+
+    sha256 = "a" * 64
+    _fake_git(adapter, monkeypatch, _archive_move_record(old_blob=sha256, new_blob=sha256), object_format=b"sha256\n")
+    assert adapter._byte_identical_archive_moves() == frozenset({"docs/archive/a.md"})
+
+    _fake_git(adapter, monkeypatch, b"")  # no staged renames at all
+    assert adapter._byte_identical_archive_moves() == frozenset()
