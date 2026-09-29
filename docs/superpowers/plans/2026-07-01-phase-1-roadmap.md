@@ -1157,17 +1157,19 @@ expectation.
 
 **Design source:** `docs/context-window-optimization-strategy.md` (standalone canonical design note; no HLD/LLD/Test Strategy anchors yet - see the Cross-Cutting section above)
 
-**Future implementation plan:** The planned file is `docs/superpowers/plans/YYYY-MM-DD-context-window-optimization-intelligent-selection.md`. The original sequence deferred its creation until after the v1.0 gate and stable prerequisites. The 2026-09-29 operator direction below leaves its creation date undecided; no such file exists yet.
+**Context/intelligence implementation plan:** The planned file is `docs/superpowers/plans/YYYY-MM-DD-context-window-optimization-intelligent-selection.md`. The original sequence deferred its creation until after the v1.0 gate and stable prerequisites. The 2026-09-29 operator direction below leaves its creation date undecided; no such context/intelligence file exists yet. The separate first slice, [Plan 12.1 Plan/Chat advisory answers](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md), now has an implementation plan.
 
 **User story:** As the agent runtime, I select, pack, summarize, invalidate, evict, and measure context under a cost- and freshness-aware policy, so the agent gets smarter while fully-loaded cost goes down, without ever silently dropping required evidence to fit a budget.
 
-**Status:** Post-v1.0 v1.x delivery; sandbox work started in parallel under the 2026-09-29 operator direction below. The original sequence deferred all Plan 12 work until after Plan 11's v1.0 gates and the prerequisite agent and evidence work. That start restriction is superseded for sandbox work. Each intelligent-selection slice must still assess the cost, evidence, trust, freshness, loop/skill, and agent-run inputs it needs.
+**Status:** Post-v1.0 v1.x delivery; work started in parallel under the 2026-09-29 operator direction below. The original sequence deferred all Plan 12 work until after Plan 11's v1.0 gates and the prerequisite agent and evidence work. That start restriction is superseded for parallel Plan 12 work. Each intelligent-selection slice must still assess the cost, evidence, trust, freshness, loop/skill, and agent-run inputs it needs.
 
-**2026-09-29 operator direction:** Plan 12 work has started in parallel in the sandbox lane, ahead of
-the v1.0 gate described above. This does not make any Plan 12 item a v1.0 requirement. The Plan/Chat
-advisory-answer residual (`P12-FU-1`) was ruled out of v1.0 and carried into Plan 12. When the
-implementation-plan file named above is created is not yet ruled, and no such file exists yet. The
-pool's `Plan 12` row owns live status.
+**2026-09-29 operator direction:** Plan 12 work started in parallel ahead of the v1.0 gate described
+above. This does not make any Plan 12 item a v1.0 requirement. The Plan/Chat advisory-answer
+residual (`P12-FU-1`) was ruled out of v1.0 and carried into Plan 12. It and its separately owned
+non-AGENT conversation dependency (`P11.25-FU-1`) are scheduled first in
+[Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md), on a separate branch
+from `main`, not in the Optimus sandbox. The timing of the broader context/intelligence plan file
+named above remains undecided. The pool's `Plan 12` row owns live status.
 
 **Source anchors:**
 - `docs/context-window-optimization-strategy.md` - Context Type x Mechanism Matrix, Selection Pipeline, Selection Model, Freshness and Dependency Precedence, Prompt Packing and Cost Controls, Compaction, Offline Promotion Gates, Online Guardrails, Context Regret, Baseline and Ablation Plan, Calibration Items.
