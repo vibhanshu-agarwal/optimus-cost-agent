@@ -13,11 +13,12 @@ depends on the decoding mode), so the hook can pass a file it never read. This a
 4. otherwise delegates the original arguments to ``detect_secrets.pre_commit_hook.main``, in their
    original order, and returns its status (0 clean, 1 findings, 3 baseline maintenance) as-is.
 
-The one argument it drops is a byte-identical staged move (docs archive cleanup, 2026-09-29): a
-file ``git mv``-ed without changing a byte (its index blob equals its HEAD blob) adds no content the
-repository did not already hold, and frozen documents moved into ``archive/`` cannot take inline
-allowlist pragmas. A move with any changed byte, and any copy, is scanned as before. If Git cannot
-list the staged moves, nothing is dropped.
+The one argument it drops is a byte-identical archive move (docs archive convention, 2026-09-29):
+a file moved from a ``docs/`` folder into the ``archive/`` beside it (the destination is the source
+path with one ``archive`` folder inserted) without changing a byte, which Git reports as a staged
+R100 rename with identical blob ids. Frozen documents cannot take inline allowlist pragmas, so
+without this they could never be archived. Every other move, any changed byte and any copy is
+scanned as before. If Git fails, or its output cannot be parsed exactly, nothing is dropped.
 
 It does not enumerate directories, convert encodings, or decode with replacement characters. The
 literal ``src`` argument that the configured entry carries is a compatibility marker for the
@@ -32,7 +33,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
-from pathlib import Path, PurePath
+from pathlib import Path, PurePath, PurePosixPath
 
 CHUNK_BYTES = 64 * 1024
 STATUS_VALIDATION_FAILED = 2
@@ -123,8 +124,40 @@ def _validate_utf8_file(path: str) -> None:
         raise ValidationError(f"cannot read {path}: {exc.strerror or exc}") from None
 
 
-def _byte_identical_moves() -> frozenset[str]:
-    """Destination paths of staged renames whose bytes are unchanged; empty if Git cannot say."""
+ARCHIVE_ROOT = "docs"
+ARCHIVE_DIRNAME = "archive"
+_HEX = frozenset("0123456789abcdef")
+_OCTAL = frozenset("01234567")
+
+
+def _is_archive_move(old: str, new: str) -> bool:
+    """``new`` is ``old`` with exactly one ``archive`` folder inserted, below ``docs/``."""
+    old_parts, new_parts = PurePosixPath(old).parts, PurePosixPath(new).parts
+    if len(new_parts) != len(old_parts) + 1 or not old_parts or old_parts[0] != ARCHIVE_ROOT:
+        return False
+    return any(
+        new_parts[index] == ARCHIVE_DIRNAME
+        and new_parts[:index] == old_parts[:index]
+        and new_parts[index + 1 :] == old_parts[index:]
+        for index in range(1, len(old_parts))
+    )
+
+
+def _is_identical_rename(meta: bytes) -> bool:
+    """``:<mode> <mode> <blob> <blob> R100`` with two equal, non-null, full-length blob ids."""
+    if not meta.startswith(b":"):
+        return False
+    fields = meta[1:].decode("ascii", errors="replace").split(" ")
+    if len(fields) != 5 or fields[4] != "R100":
+        return False
+    old_mode, new_mode, old_blob, new_blob, _status = fields
+    modes_ok = all(len(mode) == 6 and set(mode) <= _OCTAL for mode in (old_mode, new_mode))
+    blob_ok = len(new_blob) in (40, 64) and set(new_blob) <= _HEX and set(new_blob) != {"0"}
+    return modes_ok and blob_ok and old_blob == new_blob
+
+
+def _byte_identical_archive_moves() -> frozenset[str]:
+    """Destination paths of staged byte-identical archive moves; empty unless Git says so exactly."""
     try:
         result = subprocess.run(
             ["git", "diff", "--cached", "--raw", "-z", "--no-abbrev", "-M100%", "--diff-filter=R"],
@@ -135,18 +168,24 @@ def _byte_identical_moves() -> frozenset[str]:
     except (OSError, subprocess.SubprocessError):
         return frozenset()
     fields = result.stdout.split(b"\0")
+    if fields and fields[-1] == b"":
+        fields.pop()
+    if len(fields) % 3:
+        return frozenset()  # not whole records: parse nothing rather than guess
     moves: set[str] = set()
-    # Each record is ":<old mode> <new mode> <old blob> <new blob> R<score>", old path, new path.
-    for index in range(0, len(fields) - 2, 3):
-        meta = fields[index].decode("ascii", errors="replace").lstrip(":").split()
-        if len(meta) != 5 or meta[4] != "R100" or meta[2] != meta[3] or set(meta[3]) == {"0"}:
-            continue
-        moves.add(fields[index + 2].decode("utf-8", errors="strict"))
+    for index in range(0, len(fields), 3):
+        meta, old_raw, new_raw = fields[index : index + 3]
+        try:
+            old, new = old_raw.decode("utf-8"), new_raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return frozenset()
+        if _is_identical_rename(meta) and _is_archive_move(old, new):
+            moves.add(new)
     return frozenset(moves)
 
 
 def _without_identical_moves(argv: Sequence[str], candidates: Sequence[str]) -> list[str]:
-    moves = _byte_identical_moves()
+    moves = _byte_identical_archive_moves()
     dropped = {
         candidate
         for candidate in candidates
