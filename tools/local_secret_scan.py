@@ -14,11 +14,12 @@ depends on the decoding mode), so the hook can pass a file it never read. This a
    original order, and returns its status (0 clean, 1 findings, 3 baseline maintenance) as-is.
 
 The one argument it drops is a byte-identical archive move (docs archive convention, 2026-09-29):
-a file moved from a ``docs/`` folder into the ``archive/`` beside it (the destination is the source
-path with one ``archive`` folder inserted) without changing a byte, which Git reports as a staged
-R100 rename with identical blob ids. Frozen documents cannot take inline allowlist pragmas, so
-without this they could never be archived. Every other move, any changed byte and any copy is
-scanned as before. If Git fails, or its output cannot be parsed exactly, nothing is dropped.
+a regular file moved from a ``docs/`` folder into the ``archive/`` beside it (the destination is
+the not-yet-archived source path with one ``archive`` folder inserted) without changing a byte or
+its mode, which Git reports as a staged R100 rename with identical blob ids. Frozen documents
+cannot take inline allowlist pragmas, so without this they could never be archived. Every other
+move, any changed byte and any copy is scanned as before. If Git fails, or any part of its output
+is not exactly what these flags produce, nothing is dropped.
 
 It does not enumerate directories, convert encodings, or decode with replacement characters. The
 literal ``src`` argument that the configured entry carries is a compatibility marker for the
@@ -33,7 +34,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
-from pathlib import Path, PurePath, PurePosixPath
+from pathlib import Path, PurePath
 
 CHUNK_BYTES = 64 * 1024
 STATUS_VALIDATION_FAILED = 2
@@ -127,13 +128,24 @@ def _validate_utf8_file(path: str) -> None:
 ARCHIVE_ROOT = "docs"
 ARCHIVE_DIRNAME = "archive"
 _HEX = frozenset("0123456789abcdef")
-_OCTAL = frozenset("01234567")
+_OBJECT_ID_LENGTH = {"sha1": 40, "sha256": 64}
+_REGULAR_FILE_MODES = frozenset({"100644", "100755"})
+
+
+class _UnparseableGitOutput(Exception):
+    """Git's output is not exactly what these flags produce; nothing may be exempted."""
 
 
 def _is_archive_move(old: str, new: str) -> bool:
-    """``new`` is ``old`` with exactly one ``archive`` folder inserted, below ``docs/``."""
-    old_parts, new_parts = PurePosixPath(old).parts, PurePosixPath(new).parts
-    if len(new_parts) != len(old_parts) + 1 or not old_parts or old_parts[0] != ARCHIVE_ROOT:
+    """``new`` is ``old`` with exactly one ``archive`` folder inserted, below ``docs/``.
+
+    The source must not already be archived, and every component must be an ordinary name
+    (no ``.``, ``..`` or empty component), so the destination provably stays below ``docs/``.
+    """
+    old_parts, new_parts = old.split("/"), new.split("/")
+    if any(part in {"", ".", ".."} for part in (*old_parts, *new_parts)):
+        return False
+    if old_parts[0] != ARCHIVE_ROOT or ARCHIVE_DIRNAME in old_parts or len(new_parts) != len(old_parts) + 1:
         return False
     return any(
         new_parts[index] == ARCHIVE_DIRNAME
@@ -143,44 +155,69 @@ def _is_archive_move(old: str, new: str) -> bool:
     )
 
 
-def _is_identical_rename(meta: bytes) -> bool:
-    """``:<mode> <mode> <blob> <blob> R100`` with two equal, non-null, full-length blob ids."""
+def _identical_regular_file_rename(meta: bytes, object_id_length: int) -> bool:
+    """Parse one ``:<mode> <mode> <blob> <blob> R<score>`` header.
+
+    True for an identical regular-file rename (same regular mode, same full-length non-null blob,
+    score 100). Raises ``_UnparseableGitOutput`` for anything that is not a well-formed rename
+    header, so one malformed record disables every exemption in the invocation.
+    """
     if not meta.startswith(b":"):
-        return False
-    fields = meta[1:].decode("ascii", errors="replace").split(" ")
-    if len(fields) != 5 or fields[4] != "R100":
-        return False
-    old_mode, new_mode, old_blob, new_blob, _status = fields
-    modes_ok = all(len(mode) == 6 and set(mode) <= _OCTAL for mode in (old_mode, new_mode))
-    blob_ok = len(new_blob) in (40, 64) and set(new_blob) <= _HEX and set(new_blob) != {"0"}
-    return modes_ok and blob_ok and old_blob == new_blob
+        raise _UnparseableGitOutput
+    try:
+        fields = meta[1:].decode("ascii").split(" ")
+    except UnicodeDecodeError:
+        raise _UnparseableGitOutput from None
+    if len(fields) != 5:
+        raise _UnparseableGitOutput
+    old_mode, new_mode, old_blob, new_blob, status = fields
+    for mode in (old_mode, new_mode):
+        if len(mode) != 6 or not mode.isdigit() or set(mode) - set("01234567"):
+            raise _UnparseableGitOutput
+    for blob in (old_blob, new_blob):
+        if len(blob) != object_id_length or set(blob) - _HEX:
+            raise _UnparseableGitOutput
+    if not (status.startswith("R") and status[1:].isdigit()):
+        raise _UnparseableGitOutput
+    return (
+        status == "R100"
+        and old_mode == new_mode
+        and new_mode in _REGULAR_FILE_MODES
+        and old_blob == new_blob
+        and set(new_blob) != {"0"}
+    )
+
+
+def _git(*args: str) -> bytes:
+    return subprocess.run(["git", *args], capture_output=True, check=True, timeout=60).stdout
 
 
 def _byte_identical_archive_moves() -> frozenset[str]:
     """Destination paths of staged byte-identical archive moves; empty unless Git says so exactly."""
     try:
-        result = subprocess.run(
-            ["git", "diff", "--cached", "--raw", "-z", "--no-abbrev", "-M100%", "--diff-filter=R"],
-            capture_output=True,
-            check=True,
-            timeout=60,
-        )
-    except (OSError, subprocess.SubprocessError):
+        object_format = _git("rev-parse", "--show-object-format").decode("ascii").strip()
+        output = _git("diff", "--cached", "--raw", "-z", "--no-abbrev", "-M100%", "--diff-filter=R")
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError):
         return frozenset()
-    fields = result.stdout.split(b"\0")
-    if fields and fields[-1] == b"":
-        fields.pop()
+    object_id_length = _OBJECT_ID_LENGTH.get(object_format)
+    if object_id_length is None or (output and not output.endswith(b"\0")):
+        return frozenset()
+    fields = output.split(b"\0")[:-1] if output else []
     if len(fields) % 3:
         return frozenset()  # not whole records: parse nothing rather than guess
     moves: set[str] = set()
-    for index in range(0, len(fields), 3):
-        meta, old_raw, new_raw = fields[index : index + 3]
-        try:
-            old, new = old_raw.decode("utf-8"), new_raw.decode("utf-8")
-        except UnicodeDecodeError:
-            return frozenset()
-        if _is_identical_rename(meta) and _is_archive_move(old, new):
-            moves.add(new)
+    try:
+        for index in range(0, len(fields), 3):
+            meta, old_raw, new_raw = fields[index : index + 3]
+            identical = _identical_regular_file_rename(meta, object_id_length)
+            try:
+                old, new = old_raw.decode("utf-8"), new_raw.decode("utf-8")
+            except UnicodeDecodeError:
+                raise _UnparseableGitOutput from None
+            if identical and _is_archive_move(old, new):
+                moves.add(new)
+    except _UnparseableGitOutput:
+        return frozenset()
     return frozenset(moves)
 
 

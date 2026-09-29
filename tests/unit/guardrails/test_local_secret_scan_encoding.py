@@ -707,9 +707,30 @@ def test_adapter_drops_only_byte_identical_archive_moves(adapter, tmp_path: Path
     ]]
 
 
-def _archive_move_record(old: str = "docs/a.md", new: str = "docs/archive/a.md") -> bytes:
-    blob = "1" * 40
-    return f":100644 100644 {blob} {blob} R100\0{old}\0{new}\0".encode()
+SHA1_BLOB = "1" * 40
+
+
+def _archive_move_record(
+    old: str = "docs/a.md",
+    new: str = "docs/archive/a.md",
+    *,
+    old_mode: str = "100644",
+    new_mode: str = "100644",
+    old_blob: str = SHA1_BLOB,
+    new_blob: str = SHA1_BLOB,
+    status: str = "R100",
+) -> bytes:
+    return f":{old_mode} {new_mode} {old_blob} {new_blob} {status}\0{old}\0{new}\0".encode()
+
+
+def _fake_git(adapter, monkeypatch, diff_stdout: bytes, *, object_format: bytes = b"sha1\n") -> None:
+    """Answer the adapter's two git queries: the object format, then the raw staged diff."""
+
+    def run(argv, **_kwargs):
+        stdout = object_format if argv[1:3] == ["rev-parse", "--show-object-format"] else diff_stdout
+        return subprocess.CompletedProcess(args=argv, returncode=0, stdout=stdout)
+
+    monkeypatch.setattr(adapter.subprocess, "run", run)
 
 
 @pytest.mark.parametrize(
@@ -729,28 +750,73 @@ def test_git_failure_drops_nothing(adapter, monkeypatch, failure):
     assert adapter._byte_identical_archive_moves() == frozenset()
 
 
+VALID = _archive_move_record()
+VALID_SECOND = _archive_move_record("docs/b.md", "docs/archive/b.md")
+
+
 @pytest.mark.parametrize(
     "stdout",
     [
-        b":100644 100644 " + b"1" * 40 + b" " + b"1" * 40 + b" R100\0docs/\xff.md\0docs/archive/\xff.md\0",
+        VALID.replace(b"a.md", b"\xff.md"),  # path bytes that are not UTF-8
         b"garbage without separators",
-        _archive_move_record()[:-20],  # truncated record
-        b":100644 100644 short short R100\0docs/a.md\0docs/archive/a.md\0",  # malformed blob ids
+        VALID[:-20],  # truncated record
+        VALID[:-1],  # missing only its final NUL
+        VALID + VALID_SECOND[:30],  # valid record followed by a partial record
+        VALID + b"trailing garbage\0",  # valid record followed by a stray field
+        _archive_move_record(old_blob="short", new_blob="short") + VALID,  # malformed record, then valid
+        b"no-colon 100644 " + VALID[16:],  # header without its leading colon
+        _archive_move_record(status="X100") + VALID,  # not a rename status, then valid
+        _archive_move_record(old_mode="10064x") + VALID,  # non-octal mode, then valid
+        _archive_move_record(old_blob="1" * 64, new_blob="1" * 64),  # sha256-length id in a sha1 repo
     ],
-    ids=["undecodable-path", "garbage", "truncated", "malformed-ids"],
+    ids=[
+        "undecodable-path", "garbage", "truncated", "missing-final-nul", "valid-then-partial",
+        "valid-then-stray-field", "malformed-then-valid", "no-colon", "bad-status-then-valid",
+        "bad-mode-then-valid", "wrong-id-length",
+    ],
 )
-def test_undecodable_or_malformed_git_output_drops_nothing_it_cannot_prove(adapter, monkeypatch, stdout):
-    monkeypatch.setattr(
-        adapter.subprocess, "run", lambda *_a, **_k: subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout)
-    )
+def test_malformed_git_output_drops_nothing(adapter, monkeypatch, stdout):
+    _fake_git(adapter, monkeypatch, stdout)
     assert adapter._byte_identical_archive_moves() == frozenset()
 
 
-def test_well_formed_archive_record_is_recognised(adapter, monkeypatch):
-    """Control for the malformed-output cases: the same parser accepts a well-formed record."""
-    monkeypatch.setattr(
-        adapter.subprocess,
-        "run",
-        lambda *_a, **_k: subprocess.CompletedProcess(args=[], returncode=0, stdout=_archive_move_record()),
-    )
+def test_unknown_object_format_drops_nothing(adapter, monkeypatch):
+    _fake_git(adapter, monkeypatch, VALID, object_format=b"blake3\n")
+    assert adapter._byte_identical_archive_moves() == frozenset()
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        _archive_move_record(old_mode="100644", new_mode="100755"),  # mode changed with the move
+        _archive_move_record(old_mode="120000", new_mode="120000"),  # symlink, not a regular file
+        _archive_move_record(old_blob="2" * 40),  # different blobs
+        _archive_move_record(old_blob="0" * 40, new_blob="0" * 40),  # null blob
+        _archive_move_record(status="R099"),  # not identical
+        _archive_move_record("docs/../src/x.md", "docs/../src/archive/x.md"),  # leaves docs/
+        _archive_move_record("docs/./a.md", "docs/./archive/a.md"),  # dot component
+        _archive_move_record("docs/archive/a.md", "docs/archive/archive/a.md"),  # already archived
+        _archive_move_record("Docs/a.md", "Docs/archive/a.md"),  # case differs from docs/
+        _archive_move_record("docs/a.md", "docs/Archive/a.md"),  # case differs from archive
+    ],
+    ids=[
+        "mode-change", "symlink", "different-blobs", "null-blob", "not-100", "dotdot",
+        "dot", "already-archived", "Docs", "Archive",
+    ],
+)
+def test_well_formed_record_outside_the_rule_is_not_exempt(adapter, monkeypatch, record):
+    _fake_git(adapter, monkeypatch, record + VALID_SECOND)
+    assert adapter._byte_identical_archive_moves() == frozenset({"docs/archive/b.md"})
+
+
+def test_well_formed_archive_records_are_recognised(adapter, monkeypatch):
+    """Controls for the cases above: the same parser accepts well-formed archive records."""
+    _fake_git(adapter, monkeypatch, VALID + VALID_SECOND)
+    assert adapter._byte_identical_archive_moves() == frozenset({"docs/archive/a.md", "docs/archive/b.md"})
+
+    sha256 = "a" * 64
+    _fake_git(adapter, monkeypatch, _archive_move_record(old_blob=sha256, new_blob=sha256), object_format=b"sha256\n")
     assert adapter._byte_identical_archive_moves() == frozenset({"docs/archive/a.md"})
+
+    _fake_git(adapter, monkeypatch, b"")  # no staged renames at all
+    assert adapter._byte_identical_archive_moves() == frozenset()
