@@ -100,7 +100,7 @@ def test_scan_paths_blocks_missing_explicit_path(tmp_path):
 # the file under test; deriving it from the baseline would make the test
 # vacuous.
 
-FROZEN_V9_RELPATH = "docs/superpowers/plans/2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v9.md"
+FROZEN_V9_RELPATH = "docs/superpowers/plans/archive/2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v9.md"
 FROZEN_V9_SHA256 = "823f269c05f9251b6594635a4881c23edb74ded3382469655f788c3b50cfb3dd"  # pragma: allowlist secret - custody digest
 
 # Approved baseline exception set (Plan 11.27 v10 three v9 entries + the 2026-09-06

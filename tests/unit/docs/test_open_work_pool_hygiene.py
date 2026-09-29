@@ -12,19 +12,21 @@ from urllib.parse import urlsplit
 
 import pytest
 
+from tools.doc_paths import doc_path, link_resolves, repo_relative
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
-OPTIMUS_POOL = REPO_ROOT / "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md"
-PRODUCT_POOL = REPO_ROOT / "docs/superpowers/plans/archive/evidence-handoff-open-work-pool.md"
-A2A_LEDGER_DESIGN = REPO_ROOT / "docs/superpowers/specs/evidence-handoff-a2a-ledger-design.md"
-A2A_LEDGER_DESIGN_V2 = REPO_ROOT / "docs/superpowers/specs/evidence-handoff-a2a-ledger-design_v2.md"
+OPTIMUS_POOL = doc_path("2026-07-23-consolidated-deferred-followups-backlog.md")
+PRODUCT_POOL = doc_path("evidence-handoff-open-work-pool.md")
+A2A_LEDGER_DESIGN = doc_path("evidence-handoff-a2a-ledger-design.md")
+A2A_LEDGER_DESIGN_V2 = doc_path("evidence-handoff-a2a-ledger-design_v2.md")
 A2A_LEDGER_DESIGNS = (A2A_LEDGER_DESIGN, A2A_LEDGER_DESIGN_V2)
-A2A_LEDGER_IMPLEMENTATION_PLAN = REPO_ROOT / "docs/superpowers/plans/archive/evidence-handoff-risk-bearing-slice-implementation.md"
+A2A_LEDGER_IMPLEMENTATION_PLAN = doc_path("evidence-handoff-risk-bearing-slice-implementation.md")
 PLANS_ROOT = REPO_ROOT / "docs/superpowers/plans"
-PLAN_985 = REPO_ROOT / "docs/superpowers/plans/archive/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md"
-PLAN_987 = REPO_ROOT / "docs/superpowers/plans/archive/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md"
-PLAN_999 = REPO_ROOT / "docs/superpowers/plans/archive/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md"
-PLAN_114 = REPO_ROOT / "docs/superpowers/plans/archive/2026-07-28-plan-11-4-gateway-core-migration.md"
-PLAN_119 = REPO_ROOT / "docs/superpowers/plans/archive/2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-implementation.md"
+PLAN_985 = doc_path("2026-07-11-plan-9-85-multi-turn-read-observe-replan.md")
+PLAN_987 = doc_path("2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md")
+PLAN_999 = doc_path("2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md")
+PLAN_114 = doc_path("2026-07-28-plan-11-4-gateway-core-migration.md")
+PLAN_119 = doc_path("2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-implementation.md")
 PLAN_1126_BASELINE_INTAKE = REPO_ROOT / "reports/plan-11-26-baseline-intake.json"
 PLAN_1126_AUDIT = REPO_ROOT / "reports/plan-11-26-acp-runtime-audit.json"
 PLAN_1126_TERMINAL = REPO_ROOT / "reports/plan-11-26-terminal-characterization.md"
@@ -35,8 +37,8 @@ HARDENING_MASTERPLAN = PLANS_ROOT / "hardening-runtime-quality-masterplan.md"
 PLAN_1126_IMPLEMENTATION_LINK = (
     "archive/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md"
 )
-PHASE_1_ROADMAP = REPO_ROOT / "docs/superpowers/plans/2026-07-01-phase-1-roadmap.md"
-PLAN_11_CHARTER = REPO_ROOT / "docs/superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md"
+PHASE_1_ROADMAP = doc_path("2026-07-01-phase-1-roadmap.md")
+PLAN_11_CHARTER = doc_path("2026-07-25-plan-11-v1-milestone-charter.md")
 AGENTS_FILE = REPO_ROOT / "AGENTS.md"
 GUARDRAILS_WORKFLOW = REPO_ROOT / ".github/workflows/guardrails.yml"
 OPTIMUS_POOL_LINK_TARGET = "2026-07-23-consolidated-deferred-followups-backlog.md"
@@ -752,7 +754,12 @@ def _plan_11_snapshot_rows(text: str) -> dict[str, tuple[str, str]]:
 
 
 def test_immutable_documents_match_approved_digests_after_archival() -> None:
-    actual = {path: _head_blob_sha256(path) for path in PROTECTED_BLOB_SHA256}
+    # Looked up by file name and read from the index (the committed blob once committed), so a
+    # later move into archive/ keeps the pin; the bytes themselves must never change.
+    actual = {
+        path: _head_blob_sha256(repo_relative(doc_path(path)), revision="")
+        for path in PROTECTED_BLOB_SHA256
+    }
 
     assert actual == PROTECTED_BLOB_SHA256
 
@@ -1683,7 +1690,7 @@ def test_every_relative_optimus_pool_link_resolves() -> None:
 
     assert targets
     for target in targets:
-        assert (OPTIMUS_POOL.parent / target).resolve().exists(), target
+        assert link_resolves(OPTIMUS_POOL, target), target
 
 
 def test_promoted_targets_resolve_inside_plan_directory() -> None:
@@ -1772,7 +1779,7 @@ def test_gateway_mcp_retirement_custody_is_current() -> None:
 
 
 def test_plan_118_status_matches_its_checked_task_boundary() -> None:
-    plan = _read(REPO_ROOT / "docs/superpowers/plans/archive/2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md")
+    plan = _read(doc_path("2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md"))
     normalized = re.sub(r"\s+", " ", plan)
     checked = len(re.findall(r"^- \[x\]", plan, re.MULTILINE))
     unchecked = len(re.findall(r"^- \[ \]", plan, re.MULTILINE))
@@ -1799,7 +1806,7 @@ def test_archived_product_pool_retains_its_historical_document_inventory() -> No
     }
 
     assert listed_docs == expected_historical_docs
-    assert all((REPO_ROOT / path).is_file() for path in PRODUCT_OWNED_DOCS)
+    assert all(doc_path(path).is_file() for path in PRODUCT_OWNED_DOCS)
 
 
 def test_optimus_dependencies_resolve_inside_the_canonical_backlog() -> None:
@@ -1917,7 +1924,7 @@ def test_plan_1118_current_docs_close_p11_fu_10() -> None:
     p11_fu_10_entry = entries["P11-FU-10: Complete ACP Error-Code Registry Audit"]
     p11_fu_10_status = _status_token(p11_fu_10_entry)
     frozen_plan_117_text = _read(
-        REPO_ROOT / "docs/superpowers/plans/archive/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md"
+        doc_path("2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md")
     )
 
     assert "ACP callers receive JSON-RPC code `-32910`" in readme

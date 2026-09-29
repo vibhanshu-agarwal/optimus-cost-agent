@@ -30,5 +30,9 @@ Do not infer current status from a plan's checkboxes or prose.
 6. When work reaches a terminal disposition, update the backlog first, remove the live-registry row,
    and move the plan to `archive/` in the same PR.
 
+All docs folders follow the same root/`archive/` rule, and [the docs index](../../README.md) lists every
+current document. Tests find documents by file name (`tools/doc_paths.py`), so moving a plan into
+`archive/` needs no test change.
+
 The documentation hygiene tests enforce the root/registry/archive relationship. A plan whose state
 is uncertain remains at the root as `Blocked` until the backlog records a reviewed disposition.
