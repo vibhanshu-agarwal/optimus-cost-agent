@@ -344,9 +344,9 @@ open-work inventory.
 | `P11-FEAT-MULTI-TURN-CONVERSATION` | Closed | MEDIUM | Plan 11.25 Slice 1 — same-process in-memory multi-turn conversation on ACP `session/prompt` (canonical history, byte-budget admission/commitment, settlement, dedicated NDJSON writer), merged through PR #188 and follow-up PR #189. Does **not** include persistence, `session/resume`/`session/load`, compression/summarization/pruning/eviction (Plan 12), or non-AGENT-mode carriage; `MT-FU-1` and `MT-FU-2` remain separately open below. Evidence: [baseline](../../../reports/plan-11-25-multi-turn-baseline.md), [contract evidence](../../../reports/plan-11-25-multi-turn-contract-evidence.md), [release review](../../../reports/plan-11-25-multi-turn-release-review.md); [archived implementation plan](archive/2026-08-21-plan-11-25-multi-turn-conversation-implementation.md). |
 | `P11-FEAT-ACP-RUNTIME-HARDENING` | Open | HIGH | **Plan 11.26 Tasks 0-12 accepted through G6; Task 13 accepted at G7.** The [approved design](../specs/2026-08-29-plan-11-26-acp-runtime-hardening-audit-design.md) and [archived implementation plan](archive/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md) remain the governing audit documents. Canonical Task 12 outputs: [machine-readable audit](../../../reports/plan-11-26-acp-runtime-audit.json), [deterministic audit report](../../../reports/plan-11-26-acp-runtime-audit.md), and [terminal characterization](../../../reports/plan-11-26-terminal-characterization.md). Separate Task 13 outputs: [candidate inventory](../../../reports/plan-11-26-duplication-candidates.json), [reviewed duplication audit](../../../reports/plan-11-26-duplication-audit.json), and [deterministic duplication report](../../../reports/plan-11-26-duplication-audit.md). The terminal artifact remains honestly `INCOMPLETE`: 16 offline predicates passed and three blocked predicates retain distinct binding/Redis/Zed owners; every live row remains `UNRUN`. The audit covers concurrency, task ownership and cancellation; stdio and Redis connection lifecycle under orderly EOF, cancellation, and abrupt client termination; idempotent close, lease release/recovery, backpressure, connection health and pooling; semantic exception taxonomy and runtime-to-wire mapping; duplicated lifecycle/protocol logic and flaky tests; redacted structured telemetry and logging with stable correlation fields; reviewer-facing comments and docstrings that explain invariants and non-obvious decisions; and comparison using at least one independently authored ACP client or conformance harness. Plan 11.26 is audit-and-contract only and does not authorize production fixes. The ranked custody table below records the accepted Task 12 structural-prevention candidates and keeps this feature `Open` until later remediation plans separately complete. Task 13 is the operator-directed duplication audit; evidence collector and A2A are separate products and are affirmatively excluded from core duplication clustering before classification. Zed, acpx, SDK/harness, Redis mutation, Gateway/model calls, paid calls, evidence promotion, push, PR, and merge remain separately unauthorized. Archiving the audit plan does not close any remediation owner or live obligation. **HIGH justification:** these cross-cutting lifecycle and observability weaknesses increase defect-escape risk and make failures materially harder to reproduce, diagnose, and review. **2026-09-06 current disposition:** PR #195 delivered Git-test immunity, production-only CI scanning and the bounded FU-6 rejected-POST correction. PR #194 subsequently merged at `0ec91225` with the accepted H/M/D history, a documentation correction, both required PR checks and post-merge guardrails passed. The separately approved [local-hook UTF-8 repair](2026-09-06-local-hook-utf8-repair.md) was independently accepted at local commit `c9745898` and merged through PR #196 at `3b3093d3`. Seam 4 A and B subsequently merged through PR #197 and #198; seam 5 merged through PR #199 at `1be9e056`. **2026-09-08 narrow port disposition:** seam 3, independently accepted at `672d842b`, merged through PR #200 at `5ad8ef4f` with required PR checks and first post-merge guardrails passed. Its captured subprocess inputs preserve empty-versus-missing semantics and a separate MCP system view. Seam 1 is independently accepted locally at `185bddc7`, adding lazy, failure-contained debug tracing while preserving redaction, control flow and the merged lifecycle contracts. Publication with governance updates and GitHub CI is authorized; seam-1 merge remains a separate decision. The [masterplan](hardening-runtime-quality-masterplan.md) records the evidence and boundaries; its repeatability, lifecycle and other track obligations remain open. The executor commission is complete. Existing findings and the 50 frozen UTF-16 transcripts retain separate disposition; strict rejection when selected does not alter their custody. Broader FU-6 closure and live/binding obligations remain Open. Installation and rollout of this repair are not established. **2026-09-10 H4 filing:** [Deferred H4 verifier follow-ups](#plan-1126-h4-verifier-follow-ups-from-seam-2-checkpoint-a) remain Open under this feature after seam 2 merged through PR #202; filing does not commission verifier implementation or close historical/live obligations. |
 | `HARDENING-FEAT-RUNTIME-QUALITY` | Open | HIGH | The [hardening runtime-quality masterplan](hardening-runtime-quality-masterplan.md) sequences 16 new items, 17 existing candidates, and 3 existing obligations. The backlog row owns this masterplan's status; the masterplan owns its 15 child-plan statuses. The G6/G7 custody tables are historical acceptance records. This charter grants no implementation authority except through separately reviewed and authorized child tasks; live child status and task gates remain solely in the masterplan and owning child plans. **2026-09-06 reconciliation:** the CI guardrail child retains main's production scan and commit-time coverage, carries locked dependency sync, and adopts only the original three baseline entries plus 31 reviewed report identities. PR #194 merged at `0ec91225`, preserving accepted local delivery `cd4a3805`; both required PR checks and post-merge guardrails passed. The separately accepted decoding repair is published to PR #196 under conditional normal-merge authority. Later child tasks still require their own decisions. The masterplan's CI-GUARDRAILS row owns this reconciliation's next gate. |
-| `P11-FEAT-REGISTRY`             | Open                  | LOW        | Ratified, unscheduled, and held as the last primary Plan 11 slice. The ACP registry has a public authoritative repository, schema, submission guide, and stabilized live process; pickup begins by pinning and executing against the then-current validator/CI behavior, not by searching for an unknown source. Reassess 11.x-last versus a 13.x split for outward publication once this consolidated pool closes. The v1.0 release-version contract and excluded-capability inventory remain in Plan 11. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut). Verified local finding carried to pickup: package and ACP versions are both `0.1.0`, and ACP currently returns `authMethods: []`. The registry guide's Agent/Terminal Auth admission rule is an external claim to verify by live execution before implementation scope is frozen.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `P11-FEAT-REGISTRY`             | Open                  | LOW        | Ratified, unscheduled, and held as the last primary Plan 11 slice. The ACP registry has a public authoritative repository, schema, submission guide, and stabilized live process; pickup begins by pinning and executing against the then-current validator/CI behavior, not by searching for an unknown source. Reassess 11.x-last versus a 13.x split for outward publication once this consolidated pool closes. The v1.0 release-version contract and excluded-capability inventory remain in Plan 11. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut). Verified local finding carried to pickup: package and ACP versions are both `0.1.0`, and ACP currently returns `authMethods: []`. The registry guide's Agent/Terminal Auth admission rule is an external claim to verify by live execution before implementation scope is frozen. Carried to pickup (2026-09-29): the excluded-capability inventory must name `P12-FU-1`, the Plan/Chat advisory-answer capability ruled out of v1.0 and carried into Plan 12.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `P11-FEAT-IDE`                  | Open                  | LOW        | Conditional — opens only through an explicitly approved complete versioned charter successor if REGISTRY surfaces an unmet multi-IDE expectation. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `Plan 12`                       | Open                  | LOW        | Post-v1.0 context-window and intelligent-selection lane; outside the v1.0 cut. [Charter boundary](2026-07-25-plan-11-v1-milestone-charter.md#explicit-exclusions-and-unresolved-inputs)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `Plan 12`                       | Open                  | LOW        | Post-v1.0 context-window and intelligent-selection lane; outside the v1.0 cut. [Charter boundary](2026-07-25-plan-11-v1-milestone-charter.md#explicit-exclusions-and-unresolved-inputs). **2026-09-29:** sandbox work started in parallel by operator direction. This does not make any Plan 12 item a v1.0 requirement, and no Plan 12 implementation-plan file exists yet. Designated follow-ups in the index: `P9.8-FU-2`, `P9.8-FU-3`, `P9.85-FU-1`, `P9.85-FU-2`, `P11.25-FU-1` and `P12-FU-1` (the Plan/Chat advisory-answer residual of HLD §7, carried out of v1.0; Plan 2 keeps the delivered enforcement half). |
 
 ## Plan 11.26 reviewed disposition and remediation custody
 
@@ -503,8 +503,9 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Partially implemented | MEDIUM     | Live blocked Plan 11.23 Task 6 | [interim release](../../../reports/plan-11-23-p11-fu-20-runtime-release.md); production composition is wired; independently authored live one-call tier unrun |
 | ~~`P11-FU-21`~~ | ~~Custody Relay Broken-Pipe Exit-Code Propagation Defect~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.14~~ | ~~Plan 11.14; `reports/plan-11-14-p11-fu-21-custody-relay-exit-code-evidence.md`~~ |
 | ~~`P11.5-FU-2`~~ | ~~Consistent local env / Redis / Phoenix / Gateway startup for live runs~~ | ~~Closed~~ | ~~HIGH~~   | ~~Plan 11.6~~ | ~~PR #97 / `dc9a080`; [operator runbook](../../runbooks/local-live-dependencies.md)~~ |
-| `P11.25-FU-1` | Non-AGENT-mode conversation carriage (contract term: MT-FU-1) | Open | MEDIUM     | Future post-11.x follow-up | Acceptance criteria in entry |
+| `P11.25-FU-1` | Non-AGENT-mode conversation carriage (contract term: MT-FU-1) | Open | MEDIUM     | Plan 12 (operator ruling 2026-09-29) | Acceptance criteria in entry |
 | `P11.25-FU-2` | Structured ACP stop-reason metadata (contract term: MT-FU-2) | Open | MEDIUM     | Future post-11.x follow-up | Acceptance criteria in entry |
+| `P12-FU-1` | Plan/Chat advisory-answer capability (residual of HLD §7) | Open | MEDIUM     | Plan 12 (operator ruling 2026-09-29) | Acceptance criteria in entry; depends on `P11.25-FU-1` |
 
 ## Evidence and handoff feature registry
 
@@ -2115,7 +2116,8 @@ Retain this entry for history; do not reopen without a new deferred-follow-up ID
 defect. Slice 1 merged to `main` 2026-08-22
 ([implementation plan](archive/2026-08-21-plan-11-25-multi-turn-conversation-implementation.md), PR #188).
 
-**Designated future plan:** None yet named — post-11.x follow-up, plan number assigned at pickup.
+**Designated future plan:** Plan 12, by operator ruling on 2026-09-29. Before that ruling: none yet
+named (post-11.x follow-up, plan number assigned at pickup).
 
 **Root cause:** Slice 1 carries conversation only on the `ExecutionMode.AGENT` path — the ACP session
 default (`spec.py:107`) and the only path Zed exercises. The non-AGENT path uses a separate prompt
@@ -2127,7 +2129,10 @@ Slice 1's `ConversationState` already produces, with its call site updated to su
 parameter/section addition plus the call-site change plus tests, provided Slice 1's conversation record
 continues to exist (it does). Not blocked on anything external.
 
-**Status:** Open. Not yet scheduled.
+**Status:** Open. Designated to Plan 12 on 2026-09-29, but not yet named by any Plan 12
+implementation-plan file; it becomes `Promoted -> ...` only when such a file names this work. This
+entry remains the sole owner of non-AGENT conversation carriage. `P12-FU-1` depends on it and does
+not absorb it.
 
 ### P11.25-FU-2: Structured ACP stop-reason metadata (contract term: MT-FU-2)
 
@@ -2150,6 +2155,76 @@ from a completed one without parsing prose. This is a production change to `spec
 own applicability surface, which is why Slice 1 routes around it rather than absorbing it.
 
 **Status:** Open. Not yet scheduled.
+
+### P12-FU-1: Plan/Chat advisory-answer capability (residual of HLD §7)
+
+**Raised:** 2026-09-29, from the operator's live Zed check of Plan 12 sandbox work. In an ACP thread,
+Optimus could not answer read-only questions such as "What files are in this folder?" or "Hi". It
+replied only that no actionable workspace change was specified.
+
+**Classification:** Capability gap, not a defect in delivered scope. This is the unscheduled
+residual of HLD §7 (Architecture v2.18, "Agent Operating Modes & Trust Framework"), which describes
+Plan/Chat as an advisory mode that may inspect context and discuss requirements.
+
+**Scope boundary with Plan 2 (one owner per half).** HLD §7 Plan/Chat mode has two halves.
+- **Enforcement half: owned by Plan 2 and delivered.** Plan 2 is not reopened by this entry.
+  Phase 1 roadmap, Plan 2 user story: "As a user, I can trust Plan/Chat mode to be advisory-only and
+  Agent mode to mutate only after approval." Its expected deliverables, quoted in full:
+  "`ExecutionMode`, generation scope classification, lifecycle states, transition validator,
+  `AwaitingApproval`, `MutationGuard`, and `assert_mutation_allowed()`" and "Tests proving Plan/Chat
+  cannot mutate, Agent mode must pass through approval, invalid transitions fail closed, and mutation
+  tools check the primitive before I/O."
+- **Advisory-answer half: owned by this entry.** It was never in Plan 2's scope and was never
+  scheduled by any plan.
+- **Historical shorthand.** The archived
+  [authoritative-document section map](../reports/archive/2026-07-25-plan-11-authoritative-doc-section-map.md)
+  records "HLD v2.16 §7 … Implemented by Plan 2". Read that row as shorthand for the enforcement half
+  only, not as evidence that answering was delivered. The row stays unedited.
+
+**Current state (at `58759fb`):** Plan 2 delivered Plan/Chat mode enforcement. The direct non-AGENT
+runner can return prose, but ACP mode selection, an advisory-answer prompt contract, and non-AGENT
+conversation carriage are not delivered.
+- **Prose path, but a directive-only prompt.** The non-AGENT path (`agent/runner.py:326`, result
+  `CHAT_ONLY` at `:517-522`) is the "direct prose-capable" path that the Plan 9.87 design names.
+  However, its prompt ends with `_DIRECTIVE_GRAMMAR` (`agent/prompts.py:34-35`, "Respond using only
+  the directive grammar below. Do not emit prose before the directives.").
+- **No mode selection from an ACP client.** ACP sessions default to `ExecutionMode.AGENT`
+  (`acp/spec.py:107`), and no ACP session modes are advertised or switchable.
+- **No non-AGENT conversation carriage.** That is `P11.25-FU-1`.
+
+**Designated future plan:** Plan 12, by operator ruling on 2026-09-29, as a residual carried out of
+v1.0. It is not a v1.0 requirement.
+
+**v1.0 exclusion:** This capability is not Plan 12 context/intelligence work. The
+[Plan 11 charter](2026-07-25-plan-11-v1-milestone-charter.md) requires every excluded capability to be
+named rather than implied. `P11-FEAT-REGISTRY`'s excluded-capability inventory must therefore list it
+with:
+- rationale: operator ruling 2026-09-29, a residual carried into Plan 12;
+- custody: this entry;
+- destination: Plan 12.
+
+**Acceptance criteria:**
+- An ACP client can select Plan/Chat or Agent mode for a session. Session creation advertises the
+  selected mode, and mode changes are reflected during the session. If `session/load` becomes
+  available under `P11-FU-1`, loading restores and advertises the selected mode. The default mode is
+  an explicit recorded decision. This entry does not implement or advertise `session/load`.
+- In Plan/Chat mode, a prompt gets a reliable read-only prose answer. No directive grammar is
+  required, and the answer is grounded in workspace context.
+- Plan 2's enforcement (`ExecutionMode`, `assert_mutation_allowed()`, and the permission layer's
+  Plan/Chat denials) is **reused unchanged**, with no second enforcement path. Tests prove that
+  Plan/Chat still cannot mutate.
+- Live evidence from an independent ACP client shows a read-only question answered in Plan/Chat mode.
+- Whether answers may request further guarded reads is a scope decision for the Plan 12
+  implementation-plan file.
+
+**Dependencies:**
+- `P11.25-FU-1`, the sole owner of non-AGENT conversation carriage. It is not absorbed here.
+- `P11.25-FU-2` (structured stop-reason metadata) and `P9.8-FU-5` (Zed refusal rendering) remain
+  separate and are not closed by this entry.
+
+**Status:** Open. Designated to Plan 12 as its next substantive sandbox slice, but not yet named by
+any Plan 12 implementation-plan file; it becomes `Promoted -> ...` only when such a file names this
+work and states that it reuses, and does not re-implement, Plan 2's enforcement.
 
 ### P11-FU-30: No log-level categorization; stdlib `logging` is absent project-wide
 

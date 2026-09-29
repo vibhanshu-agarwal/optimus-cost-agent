@@ -61,6 +61,8 @@ Context Window Optimization - with Intelligent Selection as the primary control 
 - `ExecutionMode`, generation scope classification, lifecycle states, transition validator, `AwaitingApproval`, `MutationGuard`, and `assert_mutation_allowed()`.
 - Tests proving Plan/Chat cannot mutate, Agent mode must pass through approval, invalid transitions fail closed, and mutation tools check the primitive before I/O.
 
+**Scope boundary (2026-09-29):** Plan 2's scope was the enforcement half of HLD §7 Plan/Chat mode (the deliverables above), and that half is delivered. The user-facing advisory-answer half (selecting the mode from an ACP client, answering read-only questions in prose, and non-AGENT conversation) was never in Plan 2's scope. It is tracked as `P12-FU-1` in the [Consolidated Deferred Follow-Ups backlog](2026-07-23-consolidated-deferred-followups-backlog.md), designated to Plan 12. This does not reopen Plan 2.
+
 ## Plan 3: Gateway-Only Configuration and Gateway Client
 
 **User story:** As a developer, I run locally with only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY`; all provider credentials stay gateway-side.
@@ -1155,17 +1157,17 @@ expectation.
 
 **Design source:** `docs/context-window-optimization-strategy.md` (standalone canonical design note; no HLD/LLD/Test Strategy anchors yet - see the Cross-Cutting section above)
 
-**Future implementation plan:** create `docs/superpowers/plans/YYYY-MM-DD-context-window-optimization-intelligent-selection.md`
-after Plan 11 has reached the v1.0 completion gate and the prerequisite plans (7, 8, 8.5, and the
-input-supplying Plans 4, 5, 6, 6.5, 9) are stable.
+**Future implementation plan:** The planned file is `docs/superpowers/plans/YYYY-MM-DD-context-window-optimization-intelligent-selection.md`. The original sequence deferred its creation until after the v1.0 gate and stable prerequisites. The 2026-09-29 operator direction below leaves its creation date undecided; no such file exists yet.
 
 **User story:** As the agent runtime, I select, pack, summarize, invalidate, evict, and measure context under a cost- and freshness-aware policy, so the agent gets smarter while fully-loaded cost goes down, without ever silently dropping required evidence to fit a budget.
 
-**Status:** Explicitly the post-v1.0 v1.x phase; tracked, not yet scheduled. This plan comes after
-Plan 11's v1.0 feature and backlog-closure gates, as well as Plan 9.8, Plan 9.5 task-level agent
-orchestration, and the real golden harness, since selection policy depends on the cost-attribution,
-evidence, trust, freshness, loop/skill, and agent-run signals those plans establish. Do not start
-this plan early just because it is architecturally core - its inputs need to exist first.
+**Status:** Post-v1.0 v1.x delivery; sandbox work started in parallel under the 2026-09-29 operator direction below. The original sequence deferred all Plan 12 work until after Plan 11's v1.0 gates and the prerequisite agent and evidence work. That start restriction is superseded for sandbox work. Each intelligent-selection slice must still assess the cost, evidence, trust, freshness, loop/skill, and agent-run inputs it needs.
+
+**2026-09-29 operator direction:** Plan 12 work has started in parallel in the sandbox lane, ahead of
+the v1.0 gate described above. This does not make any Plan 12 item a v1.0 requirement. The Plan/Chat
+advisory-answer residual (`P12-FU-1`) was ruled out of v1.0 and carried into Plan 12. When the
+implementation-plan file named above is created is not yet ruled, and no such file exists yet. The
+pool's `Plan 12` row owns live status.
 
 **Source anchors:**
 - `docs/context-window-optimization-strategy.md` - Context Type x Mechanism Matrix, Selection Pipeline, Selection Model, Freshness and Dependency Precedence, Prompt Packing and Cost Controls, Compaction, Offline Promotion Gates, Online Guardrails, Context Regret, Baseline and Ablation Plan, Calibration Items.
@@ -1178,8 +1180,11 @@ this plan early just because it is architecturally core - its inputs need to exi
   summarization with measured quality/cost trade-offs.
 - `P9.85-FU-1` — intelligent observation compression replacing fixed fail-closed carryover.
 - `P9.85-FU-2` — dynamic planning-evidence partition replacing the fixed 4 KiB/12 KiB split.
+- `P11.25-FU-1` — non-AGENT conversation carriage (designated 2026-09-29).
+- `P12-FU-1` — Plan/Chat advisory-answer capability, the residual of HLD §7 outside Plan 2's scope
+  (designated 2026-09-29). It depends on `P11.25-FU-1` and reuses Plan 2's enforcement unchanged.
 
-Full acceptance criteria for all four live in the
+Full acceptance criteria for all six live in the
 [Consolidated Deferred Follow-Ups backlog](2026-07-23-consolidated-deferred-followups-backlog.md);
 this list is a pointer, not a duplicate.
 
@@ -1254,10 +1259,12 @@ consolidated backlog document, not owned by Plan 12.
     REGISTRY is the last primary 11.x holding position, with outward publication reassessed for a
     possible 13.x split after the consolidated pool closes.
 26. Plan 12: Context window optimization and intelligent selection — explicit **post-v1.0 v1.x**
-    phase; starts only after Plan 11's feature and backlog-closure gates, Plan 9.8, Plan 9.5
-    task-level agent orchestration, and the real golden harness are stable.
+    phase. The original sequence started it only after Plan 11's feature and backlog-closure gates,
+    Plan 9.8, Plan 9.5 task-level agent orchestration, and the real golden harness were stable
+    (superseded for parallel sandbox work by the 2026-09-29 operator direction in the Plan 12
+    section).
 
-The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, zero-upstream-credential scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 9.5 composes the Phase 1 primitives into a working local-first coding agent; Plan 9.8 establishes the specific task-aware context correctness floor before Plan 12 adds context-window intelligence. Plan 12 stays last regardless: it depends on Plan 9.8 and inputs from Plans 4, 5, 6, 6.5, 7, 9, and 9.5, and its PDF fold-in is explicitly deferred until calibration is accepted.
+The recommended sequence builds the executable release skeleton while ensuring the higher-risk guardrail surface is stable before Plan 7 starts recording guardrail and MCP audit events. Plan 8.5 closes PR #21 review gaps in shadow promotion fidelity, zero-upstream-credential scan coverage, golden-harness CLI wiring, command timeouts, shadow copy cost, and fitness-gate telemetry cost before Sprint 1 sign-off is treated as complete. Plan 9.5 composes the Phase 1 primitives into a working local-first coding agent; Plan 9.8 establishes the specific task-aware context correctness floor before Plan 12 adds context-window intelligence. The original sequence placed Plan 12 last because it depends on Plan 9.8 and inputs from Plans 4, 5, 6, 6.5, 7, 9, and 9.5. The 2026-09-29 operator direction supersedes that start order for parallel sandbox work; its PDF fold-in remains deferred until calibration is accepted.
 
 Plan 9.9 follows Plan 9.8 as a separate operator-runtime hardening lane. It owns the two deferred
 Plan 9.7 packaging/credential diagnostics and does not expand Plan 9.8's context-selection scope.
@@ -1274,4 +1281,4 @@ and closed Plan 9.87 (Outcome B accepted-open) before Plan 9.9 in the sequence a
 and Plan 9.88 are closed; Plan 9.9 is now itself implemented and live-verified (implementation SHA
 `f120a5afde39e3b3a8a405211ae71653b6e75665`).
 
-Plans 9.6 and 9.7 sit alongside each other, not in a strict dependency order: Plan 9.6 owns the Phase 1 working-agent sign-off gate (live Redis/Gateway/e2e proof plus the real-IDE HITL artifact) and Plan 12 does not start until it passes; Plan 9.7 only changes how an operator's local Redis/Gateway dependencies get started before a session and does not touch what Plan 9.6 proves or gate. Plan 9.7 merged independently of Plan 9.6's remaining open HITL item. **Plan 9.75** follows Plan 9.7 in the recommended sequence: it fixes the open Zed HITL / `toolCall` permission payload and closes Plan 9.7's deferred planning-bar DoD using the Plan 9.7 operator PATH install for manual verification. Plan 11 is tracked separately as the v1.0 milestone and is not yet scheduled; do not fold its gateway-capability-broker scope into 9.6, 9.7, or 9.75 when picking up either.
+Plans 9.6 and 9.7 sit alongside each other, not in a strict dependency order: Plan 9.6 owns the Phase 1 working-agent sign-off gate (live Redis/Gateway/e2e proof plus the real-IDE HITL artifact) and the original sequence deferred Plan 12 until it passed (superseded for parallel sandbox work by the 2026-09-29 operator direction above); Plan 9.7 only changes how an operator's local Redis/Gateway dependencies get started before a session and does not touch what Plan 9.6 proves or gate. Plan 9.7 merged independently of Plan 9.6's remaining open HITL item. **Plan 9.75** follows Plan 9.7 in the recommended sequence: it fixes the open Zed HITL / `toolCall` permission payload and closes Plan 9.7's deferred planning-bar DoD using the Plan 9.7 operator PATH install for manual verification. Plan 11 is tracked separately as the v1.0 milestone and is not yet scheduled; do not fold its gateway-capability-broker scope into 9.6, 9.7, or 9.75 when picking up either.
