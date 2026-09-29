@@ -10,8 +10,14 @@ depends on the decoding mode), so the hook can pass a file it never read. This a
 2. strictly decodes the baseline and every selected file as UTF-8, whole file, in chunks,
 3. rejects with status 2 and a path/offset/reason diagnostic before the scanner is imported or the
    baseline can be touched, and
-4. otherwise delegates the *original* arguments, unchanged, to ``detect_secrets.pre_commit_hook.main``
-   and returns its status (0 clean, 1 findings, 3 baseline maintenance) as-is.
+4. otherwise delegates the original arguments to ``detect_secrets.pre_commit_hook.main``, in their
+   original order, and returns its status (0 clean, 1 findings, 3 baseline maintenance) as-is.
+
+The one argument it drops is a byte-identical staged move (docs archive cleanup, 2026-09-29): a
+file ``git mv``-ed without changing a byte (its index blob equals its HEAD blob) adds no content the
+repository did not already hold, and frozen documents moved into ``archive/`` cannot take inline
+allowlist pragmas. A move with any changed byte, and any copy, is scanned as before. If Git cannot
+list the staged moves, nothing is dropped.
 
 It does not enumerate directories, convert encodings, or decode with replacement characters. The
 literal ``src`` argument that the configured entry carries is a compatibility marker for the
@@ -23,9 +29,10 @@ from __future__ import annotations
 
 import codecs
 import os
+import subprocess
 import sys
 from collections.abc import Callable, Sequence
-from pathlib import Path
+from pathlib import Path, PurePath
 
 CHUNK_BYTES = 64 * 1024
 STATUS_VALIDATION_FAILED = 2
@@ -116,6 +123,38 @@ def _validate_utf8_file(path: str) -> None:
         raise ValidationError(f"cannot read {path}: {exc.strerror or exc}") from None
 
 
+def _byte_identical_moves() -> frozenset[str]:
+    """Destination paths of staged renames whose bytes are unchanged; empty if Git cannot say."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--raw", "-z", "--no-abbrev", "-M100%", "--diff-filter=R"],
+            capture_output=True,
+            check=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return frozenset()
+    fields = result.stdout.split(b"\0")
+    moves: set[str] = set()
+    # Each record is ":<old mode> <new mode> <old blob> <new blob> R<score>", old path, new path.
+    for index in range(0, len(fields) - 2, 3):
+        meta = fields[index].decode("ascii", errors="replace").lstrip(":").split()
+        if len(meta) != 5 or meta[4] != "R100" or meta[2] != meta[3] or set(meta[3]) == {"0"}:
+            continue
+        moves.add(fields[index + 2].decode("utf-8", errors="strict"))
+    return frozenset(moves)
+
+
+def _without_identical_moves(argv: Sequence[str], candidates: Sequence[str]) -> list[str]:
+    moves = _byte_identical_moves()
+    dropped = {
+        candidate
+        for candidate in candidates
+        if candidate != DIRECTORY_MARKER and PurePath(candidate).as_posix() in moves
+    }
+    return [token for token in argv if token not in dropped]
+
+
 def _validate(baseline: str, candidates: Sequence[str]) -> None:
     _validate_utf8_file(baseline)
     for candidate in candidates:
@@ -140,7 +179,7 @@ def run(argv: Sequence[str], *, delegate: Callable[[list[str]], int] = _delegate
     except ValidationError as exc:
         print(f"{PROGRAM}: {exc}", file=err)
         return STATUS_VALIDATION_FAILED
-    return delegate(list(argv))
+    return delegate(_without_identical_moves(argv, candidates))
 
 
 def main(argv: list[str] | None = None) -> int:

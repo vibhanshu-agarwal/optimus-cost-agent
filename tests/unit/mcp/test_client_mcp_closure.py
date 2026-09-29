@@ -6,16 +6,12 @@ import hashlib
 import re
 from pathlib import Path
 
+from tools.doc_paths import doc_path
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLOSURE_EVIDENCE = REPO_ROOT / "reports" / "p11-fu-9-client-mcp-closure-evidence.md"
-DESIGN_SPEC = (
-    REPO_ROOT
-    / "docs"
-    / "superpowers"
-    / "specs"
-    / "2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md"
-)
-APPROVED_DESIGN_DIGEST = "66606036b37ddc59cf9f2f4c8a713156a1f839fb771679a16937a5263c9ca4a2"
+DESIGN_SPEC = doc_path("2026-08-06-p11-fu-9-client-supplied-acp-mcp-servers-design.md")
+APPROVED_DESIGN_DIGEST = "66606036b37ddc59cf9f2f4c8a713156a1f839fb771679a16937a5263c9ca4a2"  # pragma: allowlist secret - approved design-body SHA-256, not a secret
 TERRAFORM_IMAGE_DIGEST = (
     "sha256:bd095e2b442a2cb61255fe4db52f9e824f35d307a2044784c95d37a93f18d324"
 )

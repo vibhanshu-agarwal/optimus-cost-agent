@@ -9,7 +9,7 @@ import pytest
 
 MODULE_PATH = (
     Path(__file__).resolve().parents[3]
-    / "docs/sources/local-gateway-architecture-v3/tools/validate_publication.py"
+    / "docs/sources/archive/local-gateway-architecture-v3/tools/validate_publication.py"
 )
 # The focused inventory tests do not exercise SVG font measurement. Keep the
 # validator importable in the minimal docs-test environment without changing

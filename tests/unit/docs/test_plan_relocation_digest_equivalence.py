@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
+
+from tools.doc_paths import doc_path, repo_relative
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -36,7 +38,8 @@ class RelocationEquivalence:
     `source_commit`/`original_path` name the git blob that carried the
     originally approved bytes (`approved_original_sha256`). Applying
     `replacements`, in order, must reproduce `expected_new_sha256` and must
-    byte-for-byte equal the committed blob at `destination_path` on HEAD.
+    byte-for-byte equal the staged (index) blob at `destination_path`, which is the
+    committed blob once committed.
     """
 
     source_commit: str
@@ -173,8 +176,10 @@ RELOCATION_EQUIVALENCES: tuple[RelocationEquivalence, ...] = (
 
 
 def test_registered_relocations_are_pure_path_repairs() -> None:
+    # The destination is looked up by file name: a later move into archive/ keeps the proof.
     for entry in RELOCATION_EQUIVALENCES:
-        _assert_relocation_equivalence(entry)
+        current = repo_relative(doc_path(entry.destination_path))
+        _assert_relocation_equivalence(replace(entry, destination_path=current))
 
 
 def _git_blob(commit: str, relative_path: str, *, repo_root: Path = REPO_ROOT) -> bytes:
@@ -216,7 +221,7 @@ def _assert_relocation_equivalence(entry: RelocationEquivalence, *, repo_root: P
         f"reproduce the expected new digest for {entry.destination_path}"
     )
 
-    destination = _git_blob("HEAD", entry.destination_path, repo_root=repo_root)
+    destination = _git_blob("", entry.destination_path, repo_root=repo_root)
     assert destination == repaired, (
         f"{entry.destination_path} differs from its approved original by more than "
         "the registered path replacements"
