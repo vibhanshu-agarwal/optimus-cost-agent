@@ -6,7 +6,7 @@ import inspect
 import itertools
 import uuid
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -122,6 +122,10 @@ class AcpSpecSession:
     execution_mode: ExecutionMode = ExecutionMode.AGENT
     client_mcp_state: ClientMcpSessionState | None = None
     conversation: ConversationState | None = None
+    # Plan 12.1: serializes mode setters for this session; prompts never take it.
+    mode_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False, compare=False)
+    # True while a committed mode change has not yet sent both of its paired updates.
+    mode_updates_pending: bool = False
 
 
 @dataclass
@@ -517,18 +521,28 @@ class AcpDuplexAdapter:
         if session is None:
             return invalid("unknown session")
 
-        await self._apply_session_mode(session, _MODE_BY_ID[mode_id])
-        if method == "session/set_mode":
-            return success_response(request_id=request_id, result={})
-        return success_response(
-            request_id=request_id,
-            result={"configOptions": build_mode_config_options(current_mode_id=_ID_BY_MODE[session.execution_mode])},
-        )
+        # Serialized per session: the state change, both paired updates and the
+        # response value belong to this request alone. The prompt path never
+        # takes this lock, so an admitted or admitting turn is not held up.
+        async with session.mode_lock:
+            await self._apply_session_mode(session, _MODE_BY_ID[mode_id])
+            if method == "session/set_mode":
+                return success_response(request_id=request_id, result={})
+            return success_response(
+                request_id=request_id,
+                result={"configOptions": build_mode_config_options(current_mode_id=mode_id)},
+            )
 
     async def _apply_session_mode(self, session: AcpSpecSession, mode: ExecutionMode) -> None:
-        if session.execution_mode is mode:
+        """Commit ``mode`` once, then send both paired updates. Caller holds ``session.mode_lock``.
+
+        If either update fails, the change stays committed but marked pending, so
+        the next setter re-sends both updates even when it repeats the same mode.
+        """
+        if session.execution_mode is mode and not session.mode_updates_pending:
             return
         session.execution_mode = mode
+        session.mode_updates_pending = True
         mode_id = _ID_BY_MODE[mode]
         await self._outbound.notify(
             "session/update",
@@ -538,6 +552,7 @@ class AcpDuplexAdapter:
             "session/update",
             build_config_option_update_notification(session_id=session.session_id, current_mode_id=mode_id),
         )
+        session.mode_updates_pending = False
 
     async def _handle_session_new(self, request: dict[str, Any]) -> dict[str, Any]:
         params = request.get("params")

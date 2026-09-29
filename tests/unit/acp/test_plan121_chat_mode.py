@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
-from optimus.acp.errors import INVALID_REQUEST
+from optimus.acp.errors import INTERNAL_ERROR, INVALID_REQUEST, AcpOutboundError
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus, AgentToolCall
 from optimus.runtime.modes import ExecutionMode
@@ -99,8 +99,11 @@ class _ModeRunner:
         )
 
 
-def _adapter(tmp_path: Path, runner: Any | None = None) -> tuple[AcpDuplexAdapter, RecordingOutboundChannel, Any]:
-    outbound = RecordingOutboundChannel()
+def _adapter(
+    tmp_path: Path, runner: Any | None = None, *, outbound: RecordingOutboundChannel | None = None
+) -> tuple[AcpDuplexAdapter, RecordingOutboundChannel, Any]:
+    if outbound is None:
+        outbound = RecordingOutboundChannel()
     runner = runner or _ModeRunner()
     adapter = AcpDuplexAdapter(
         runner=runner,
@@ -152,6 +155,12 @@ def _mode_option(config_options: list[dict[str, Any]]) -> dict[str, Any]:
     matching = [option for option in config_options if option["id"] == "mode"]
     assert len(matching) == 1, config_options
     return matching[0]
+
+
+def _update_mode(update: dict[str, Any]) -> str:
+    if update["sessionUpdate"] == "current_mode_update":
+        return update["currentModeId"]
+    return _mode_option(update["configOptions"])["currentValue"]
 
 
 # --- advertised projections -------------------------------------------------
@@ -254,6 +263,114 @@ async def test_invalid_mode_changes_are_atomic(tmp_path, method, params):
     assert response["error"]["code"] == INVALID_REQUEST, response
     assert _mode_updates(outbound) == []
     assert adapter._sessions.get(session_id).execution_mode is ExecutionMode.AGENT  # noqa: SLF001
+
+
+# --- concurrency: setters are serialized per session --------------------------
+
+
+class _GatedOutbound(RecordingOutboundChannel):
+    """Pauses the first ``current_mode_update`` until released, or fails one mode update."""
+
+    def __init__(self, *, pause: bool = False, fail_update: str | None = None) -> None:
+        super().__init__()
+        self.paused = asyncio.Event()
+        self.release = asyncio.Event()
+        self._pause = pause
+        self._fail_update = fail_update
+
+    async def notify(self, method: str, params: dict[str, Any]) -> None:
+        kind = params.get("update", {}).get("sessionUpdate")
+        if self._pause and kind == "current_mode_update":
+            self._pause = False
+            self.paused.set()
+            await self.release.wait()
+        if kind == self._fail_update:
+            self._fail_update = None
+            raise AcpOutboundError(code=INTERNAL_ERROR, message="outbound delivery failed")
+        await super().notify(method, params)
+
+
+@pytest.mark.parametrize(
+    ("first_via", "second_via"),
+    [("set_config_option", "set_mode"), ("set_mode", "set_config_option"), ("set_config_option", "set_config_option")],
+)
+async def test_concurrent_setters_are_serialized_per_session(tmp_path, first_via, second_via):
+    outbound = _GatedOutbound(pause=True)
+    adapter, _, _ = _adapter(tmp_path, outbound=outbound)
+    session_id = (await _new_session(adapter, tmp_path))["sessionId"]
+
+    first = asyncio.create_task(_rpc(adapter, _set_mode_request(session_id, "chat", via=first_via, request_id="first")))
+    await asyncio.wait_for(outbound.paused.wait(), timeout=2)
+    second = asyncio.create_task(
+        _rpc(adapter, _set_mode_request(session_id, "agent", via=second_via, request_id="second"))
+    )
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert not second.done(), "the second setter must wait for the first setter's paired updates"
+    assert _mode_updates(outbound) == []
+
+    outbound.release.set()
+    first_response, second_response = await asyncio.wait_for(asyncio.gather(first, second), timeout=2)
+
+    assert [(u["sessionUpdate"], _update_mode(u)) for u in _mode_updates(outbound)] == [
+        ("current_mode_update", "chat"),
+        ("config_option_update", "chat"),
+        ("current_mode_update", "agent"),
+        ("config_option_update", "agent"),
+    ]
+    for response, expected, via in ((first_response, "chat", first_via), (second_response, "agent", second_via)):
+        assert "error" not in response, response
+        if via == "set_mode":
+            assert response["result"] == {}
+        else:
+            assert _mode_option(response["result"]["configOptions"])["currentValue"] == expected
+    assert adapter._sessions.get(session_id).execution_mode is ExecutionMode.AGENT  # noqa: SLF001
+
+
+async def test_a_prompt_is_not_blocked_by_a_setter_mid_update(tmp_path):
+    outbound = _GatedOutbound(pause=True)
+    adapter, _, runner = _adapter(tmp_path, outbound=outbound)
+    session_id = (await _new_session(adapter, tmp_path))["sessionId"]
+    setter = asyncio.create_task(
+        _rpc(adapter, _set_mode_request(session_id, "chat", via="set_config_option", request_id="to-chat"))
+    )
+    await asyncio.wait_for(outbound.paused.wait(), timeout=2)
+
+    response = await asyncio.wait_for(_rpc(adapter, _prompt_request(session_id, "What does calc.py do?", "p1")), timeout=5)
+
+    assert response["result"]["stopReason"] == "end_turn"
+    # The change is committed before its updates go out, so the prompt admits as Chat.
+    assert runner.requests[0].execution_mode is ExecutionMode.CHAT
+    assert not setter.done()
+    outbound.release.set()
+    assert "error" not in await asyncio.wait_for(setter, timeout=2)
+
+
+@pytest.mark.parametrize("failing_update", ["current_mode_update", "config_option_update"])
+@pytest.mark.parametrize("retry_via", ["set_mode", "set_config_option"])
+async def test_a_retry_resynchronizes_the_client_after_a_failed_mode_update(tmp_path, failing_update, retry_via):
+    outbound = _GatedOutbound(fail_update=failing_update)
+    adapter, _, _ = _adapter(tmp_path, outbound=outbound)
+    session_id = (await _new_session(adapter, tmp_path))["sessionId"]
+
+    with pytest.raises(AcpOutboundError):
+        await _rpc(adapter, _set_mode_request(session_id, "chat", via="set_config_option", request_id="first"))
+    assert adapter._sessions.get(session_id).execution_mode is ExecutionMode.CHAT  # noqa: SLF001
+    outbound.notifications.clear()
+
+    retry = await asyncio.wait_for(
+        _rpc(adapter, _set_mode_request(session_id, "chat", via=retry_via, request_id="retry")), timeout=2
+    )
+
+    assert "error" not in retry, retry
+    assert [(u["sessionUpdate"], _update_mode(u)) for u in _mode_updates(outbound)] == [
+        ("current_mode_update", "chat"),
+        ("config_option_update", "chat"),
+    ]
+    outbound.notifications.clear()
+    again = await _rpc(adapter, _set_mode_request(session_id, "chat", via=retry_via, request_id="again"))
+    assert "error" not in again, again
+    assert _mode_updates(outbound) == [], "once synchronized, repeating the mode is idempotent again"
 
 
 # --- concurrency: snapshot at admission ---------------------------------------
