@@ -47,7 +47,7 @@ Claude should challenge the one-state/two-projection ACP contract, schema shapes
 
 **Acceptance:** A dated repository-safe evidence artifact records the exact Zed build and Optimus trace finding, observed controls, reference-agent response shape, live-proof prerequisites, paid-call disposition, and the accepted dual-surface decision. Unknown live prerequisites become yes/no with an owner and next action.
 
-- [ ] Task 0 records the accepted picker finding and settles the remaining live-proof prerequisites without secrets.
+- [x] Task 0 records the accepted picker finding and settles the remaining live-proof prerequisites without secrets. Evidence: [Task 0 report](../../../reports/plan-12-1-task0-picker-and-live-proof-prerequisites.md).
 
 ## Task 1 — ACP session mode contract
 
