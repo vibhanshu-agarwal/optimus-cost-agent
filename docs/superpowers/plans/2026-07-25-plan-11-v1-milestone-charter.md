@@ -299,3 +299,10 @@ The v1.0 Definition of Done is therefore:
   v1.0 gates.
 - ACP registry requirements have a public authoritative source, but their exact live enforcement
   remains a pickup-time validation input; this charter does not authorize external publication.
+- **2026-09-29 operator scope amendment:** the feature-completeness wording in the milestone
+  objective and the Definition of Done above predates the ruling on `P12-FU-1`.
+  - For that advisory-answer capability, the ruling adds an explicit v1.0 exclusion and designates
+    Plan 12 as its destination.
+  - Plan 2's enforcement remains delivered and is not reopened.
+  - `P11-FEAT-REGISTRY` must name `P12-FU-1`, its rationale, custody, and destination in the
+    excluded-capability inventory.
