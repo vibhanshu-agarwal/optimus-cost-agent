@@ -53,6 +53,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
+| [Plan 12.1: Plan/Chat advisory answers](superpowers/plans/2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | Selectable read-only Chat with conversation carriage |
 | [Plan 11.7 v3: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | Resume an ACP session in Zed |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |
 | [Plan 11.24 v6: guided session-load probe](superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md) | Probe of Zed's `session/load` |
@@ -65,6 +66,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Document | What it is |
 |---|---|
+| [Plan 12.1 advisory-answer design](superpowers/specs/2026-09-29-plan-12-1-plan-chat-advisory-answer-design.md) | ACP Agent/Chat mode, prose-answer and history contract |
 | [ACP runtime hardening audit design](superpowers/specs/2026-08-29-plan-11-26-acp-runtime-hardening-audit-design.md) | Governing audit for ACP runtime hardening |
 | [A2A ledger design v2](superpowers/specs/evidence-handoff-a2a-ledger-design_v2.md) | Agent-to-agent ledger and channel |
 | [A2A ledger remediation scoping](superpowers/specs/evidence-handoff-a2a-ledger-remediation-scoping.md) | Scope of the open ledger remediation slices |
