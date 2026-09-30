@@ -41,9 +41,9 @@ Claude should challenge the one-state/two-projection ACP contract, schema shapes
 
 ## Task 0 — Establish external proof and picker behavior
 
-**Files:** evidence report under `reports/` chosen with the reviewer; no product code. The 2026-09-29 operator-owned Zed observation settled the picker mechanism: Zed 1.21.0 rendered the independently authored `claude-acp` agent's separate Mode, Model, Effort and Fast controls, and the probe showed that the agent advertised both classic `modes` and `configOptions`. Zed's single Mode picker came from the mode-category config option; classic-modes-only rendering was not established. The Optimus `Loading...` trace was a separate `session/load`/MCP-permission wait, so later proof uses a new thread. This plan therefore mirrors Agent/Chat through both protocol surfaces as specified in the design.
+**Files:** evidence report under `reports/` chosen with the reviewer; no product code. The 2026-09-29 Zed observation, made by Claude through computer use at the operator's direction, settled the picker mechanism: Zed 1.21.0 rendered the independently authored `claude-acp` agent's separate Mode, Model, Effort and Fast controls, and the probe showed that the agent advertised both classic `modes` and `configOptions`. Zed's single Mode picker came from the mode-category config option; classic-modes-only rendering was not established. The Optimus `Loading...` trace was a separate `session/load`/MCP-permission wait, so later proof uses a new thread. This plan therefore mirrors Agent/Chat through both protocol surfaces as specified in the design.
 
-**Remaining before paid live proof:** record the repository-safe evidence summary, Gateway/Redis readiness, credentials and paid-call authority, trusted-workspace action, and the two guarded-lane predicates. Do not copy private paths, credentials, or raw operator artifacts into the repository. Typing into Zed and selecting its controls remain operator-only. Task 4 still requires the implemented Optimus agent and independent `acpx`; the reference-agent picker observation alone is not Definition-of-Done evidence. If the revised dual-surface contract is unusable in installed Zed, stop and ask Codex to revise the design rather than silently reducing it to one mechanism.
+**Remaining before paid live proof:** record the repository-safe evidence summary, Gateway/Redis readiness, credentials and paid-call authority, trusted-workspace action, and the two guarded-lane predicates. Do not copy private paths, credentials, or raw operator artifacts into the repository. Typing into Zed remains operator-only: computer use holds Zed at click-only access. Claude may launch Zed and select its controls by click. Task 4 still requires the implemented Optimus agent and independent `acpx`; the reference-agent picker observation alone is not Definition-of-Done evidence. If the revised dual-surface contract is unusable in installed Zed, stop and ask Codex to revise the design rather than silently reducing it to one mechanism.
 
 **Acceptance:** A dated repository-safe evidence artifact records the exact Zed build and Optimus trace finding, observed controls, reference-agent response shape, live-proof prerequisites, paid-call disposition, and the accepted dual-surface decision. Unknown live prerequisites become yes/no with an owner and next action.
 
@@ -59,7 +59,7 @@ Claude should challenge the one-state/two-projection ACP contract, schema shapes
 
 **Acceptance:** An ACP client can select and observe Chat through either protocol surface without waiting for or changing an already admitted turn; both advertised projections remain synchronized; paired updates precede either setter response in the specified order; invalid requests are atomic.
 
-- [ ] Task 1 red and green commands, schema examples, and mode-snapshot proof are recorded.
+- [x] Task 1 red and green commands, schema examples, and mode-snapshot proof are recorded. Evidence: [implementation and live evidence](../../../reports/plan-12-1-implementation-and-live-evidence.md), section 2.
 
 ## Task 2 — Non-AGENT history and advisory prompt
 
@@ -71,7 +71,7 @@ Claude should challenge the one-state/two-projection ACP contract, schema shapes
 
 **Acceptance:** The Chat prompt can answer ordinary questions and greetings in prose based on available workspace context; its history is the same canonical bounded history as Agent; it cannot turn a model-produced `READ`/write/shell string into an executed tool call. Internal `PLAN` remains directive/read compatible.
 
-- [ ] Task 2 red and green commands and the exact prompt/history assertions are recorded.
+- [x] Task 2 red and green commands and the exact prompt/history assertions are recorded. Evidence: [implementation and live evidence](../../../reports/plan-12-1-implementation-and-live-evidence.md), section 2.
 
 ## Task 3 — Answer delivery, settlement, and safety
 
@@ -83,7 +83,7 @@ Claude should challenge the one-state/two-projection ACP contract, schema shapes
 
 **Acceptance:** The user sees the model's answer in Chat and never a plan card for that turn; a hostile Chat request cannot mutate; Agent remains default and guarded.
 
-- [ ] Task 3 red and green commands, wire transcript, record assertion, and guardrail regression results are recorded.
+- [x] Task 3 red and green commands, wire transcript, record assertion, and guardrail regression results are recorded. Evidence: [implementation and live evidence](../../../reports/plan-12-1-implementation-and-live-evidence.md), sections 2 and 3.1.
 
 ## Task 4 — Independent ACP and live Zed evidence
 
@@ -95,7 +95,7 @@ Claude should challenge the one-state/two-projection ACP contract, schema shapes
 
 **Acceptance:** The real independent client and Zed both demonstrate selectable Chat and a useful read-only answer. If a prerequisite is unavailable, mark this task unrun/blocked with its named owner; do not substitute a fake or claim Definition of Done.
 
-- [ ] Task 4 includes independently authored `acpx` and installed-Zed artifacts tied to the same implementation commit.
+- [x] Task 4 includes independently authored `acpx` and installed-Zed artifacts tied to the same implementation commit. Evidence: [implementation and live evidence](../../../reports/plan-12-1-implementation-and-live-evidence.md), section 3 (`8b7d51e`).
 
 ## Task 5 — Validation, document freshness, and review
 

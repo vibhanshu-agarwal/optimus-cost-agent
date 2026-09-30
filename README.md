@@ -8,7 +8,7 @@ Local-first Python ACP (Agent Client Protocol) server for building **cost-aware 
 
 - **Gateway-only credential runtime** — only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` are required locally; no upstream provider credential is resolved in the agent process
 - **Gateway-native usage and cost** — parse billing from gateway responses, not post-hoc estimates
-- **Plan and Agent modes** — advisory planning vs. gated mutations with approval workflows
+- **Agent and Chat modes** — selectable per session from the ACP client: Agent (the default) plans workspace changes and applies them only after approval; Chat answers read-only questions from workspace context without changing files
 - **Structured telemetry** — JSON Lines logging tied by `session_id` / `run_id`
 - **Spec-driven development** — HLD, LLD, and Test Strategy in `docs/` are authoritative
 
