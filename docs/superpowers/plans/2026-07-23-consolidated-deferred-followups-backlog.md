@@ -507,6 +507,7 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P11.25-FU-1` | Non-AGENT-mode conversation carriage (contract term: MT-FU-1) | Promoted -> [Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | MEDIUM     | Plan 12.1 (operator ruling 2026-09-29) | Acceptance criteria in entry; remains sole owner of carriage |
 | `P11.25-FU-2` | Structured ACP stop-reason metadata (contract term: MT-FU-2) | Open | MEDIUM     | Future post-11.x follow-up | Acceptance criteria in entry |
 | `P12-FU-1` | Plan/Chat advisory-answer capability (residual of HLD §7) | Promoted -> [Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | MEDIUM     | Plan 12.1 (operator ruling 2026-09-29) | Acceptance criteria in entry; depends on `P11.25-FU-1`; reuses Plan 2 enforcement |
+| `P12.1-FU-1` | Local Gateway missed the agent's startup readiness deadline | Open | MEDIUM     | Future local-startup follow-up | Acceptance criteria in entry; cause not yet diagnosed |
 
 ## Evidence and handoff feature registry
 
@@ -2226,6 +2227,45 @@ with:
 Plan 12.1 reuses, and does not re-implement, Plan 2's enforcement.
 This is Plan 12's first substantive slice on a separate main-based branch; promotion does not claim
 delivery or change the v1.0 exclusion.
+
+### P12.1-FU-1: Local Gateway missed the agent's startup readiness deadline
+
+**Raised:** 2026-09-30, during the Plan 12.1 Task 4 live Zed proof.
+
+**Classification:** Observed local-startup reliability defect with an undiagnosed cause. It is not
+a Plan 12.1 defect; the deadline predates Plan 12.1.
+
+**Observation:**
+- **Timeline.** Zed launched `optimus-agent` for a new thread at 12:44:06 IST. The agent started
+  the local Gateway child at 12:44:08. At 12:44:18 it logged "local gateway did not become ready in
+  time", after its 10-second deadline (`_GATEWAY_READY_TIMEOUT_SECONDS` in
+  `src/optimus/acp/local_infra.py`).
+- **After the miss.** The agent kept serving without a Gateway. Both Chat prompts in that thread
+  failed with `CHAT_GATEWAY_COST_UNKNOWN`, and the reported cost was $0.
+- **The Gateway process.** The Gateway log recorded a "listening" line for that launch. Afterwards,
+  however, no Gateway process remained and nothing listened on `127.0.0.1:8765`.
+- **Earlier launches.** Launches of the same installed build earlier that day became ready in time.
+
+**Not established:** why readiness took longer than 10 seconds, for example a cold start after the
+tool reinstall or host load from parallel test runs. It is also not established whether the
+late-starting Gateway was stopped by the agent or exited on its own.
+
+**Evidence:** operator handoff kit, folder `plan12-1-task4-20260930/zed/attempt1-0eeabc4`: Zed log
+excerpt, Gateway log, telemetry and screenshot. Kept outside the repository because it contains
+private paths.
+
+**Acceptance criteria:**
+- Measure on Windows why local Gateway readiness exceeded the deadline.
+- Decide the deadline and the behaviour after a miss (fail the launch visibly, retry, or keep
+  serving). If the agent keeps serving, each prompt must say that the local Gateway is not running,
+  rather than reporting a Gateway failure with unknown cost.
+- Prove the chosen behaviour with a live launch under the condition that caused the miss, or under a
+  reproducible substitute.
+
+**Related:** `P11.5-FU-2` (closed, Plan 11.6) made local startup consistent. It did not address this
+deadline and is not reopened.
+
+**Status:** Open.
 
 ### P11-FU-30: No log-level categorization; stdlib `logging` is absent project-wide
 
