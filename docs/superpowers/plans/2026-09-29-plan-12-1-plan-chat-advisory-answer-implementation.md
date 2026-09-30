@@ -107,7 +107,7 @@ Claude should challenge the one-state/two-projection ACP contract, schema shapes
 
 **Acceptance:** Each Definition-of-Done claim below maps to a real named artifact and reviewer finding. No test is described as passed if skipped or unrun.
 
-- [ ] Task 5 records focused validation, Ruff, full-suite lane/CI result, doc freshness audit, and Codex review before any delivery claim.
+- [x] Task 5 records focused validation, Ruff, full-suite lane/CI result, doc freshness audit, and Codex review before any delivery claim. Evidence: [implementation and live evidence](../../../reports/plan-12-1-implementation-and-live-evidence.md), sections 1–2 (validation, coverage, CI), 4 (findings), 5 (Codex review record) and 6 (Definition-of-Done map); doc freshness in `d846b5d` (plan wording, README) and the pool entries `P12.1-FU-1` and `P12.1-FU-2`.
 
 ## Definition of Done and evidence map
 

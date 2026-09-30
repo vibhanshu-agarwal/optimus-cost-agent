@@ -18,11 +18,26 @@
 | `b563bb6` | Pool: file `P12.1-FU-1` (docs only) | cancelled, superseded by `8b7d51e` |
 | `8b7d51e` | Pool: correct `P12.1-FU-1` (docs only) | [success](https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/36686844641) |
 | `d846b5d` | This report, checkboxes, plan wording and README (docs only) | [success](https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/36692001280) |
-| `1cc1cbd` | Final-review fix: refuse Chat with a `completion_condition` before any call | PR CI on the final head |
+| `1cc1cbd` | Final-review fix: refuse Chat with a `completion_condition` before any call | pushed with `1c797b9`; covered by that run |
+| `1c797b9` | Report update for `1cc1cbd` (docs only); last head with product-code changes | [success](https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/36695370522): 4516 passed, 60 skipped, 111 deselected |
+
+**Coverage from the `1c797b9` CI full suite** (statement coverage per changed module; the run uses `--cov=optimus --cov-branch`):
+
+| Module | Coverage |
+|---|---|
+| `acp/spec.py` | 84% |
+| `acp/server.py` | 90% |
+| `acp/shapes.py` | 95% |
+| `agent/runner.py` | 83% |
+| `agent/prompts.py` | 96% |
+| `agent/models.py` | 90% |
+| Whole package | 87% |
+
+In the same run, all Plan 12.1 test nodes passed with none skipped, and the golden-harness real-runner tests passed, including the internal `PLAN` "explain small function" scenario.
 
 **Applicability of the live evidence to `1cc1cbd`.**
 - **What the fix changes:** `1cc1cbd` changes only `AgentRunner.run`'s handling of a Chat request that carries a `completion_condition`. Before the fix, such a request entered the goal loop, which bypassed the Chat halt and directive gates.
-- **Why the ACP evidence still stands:** ACP never supplies `completion_condition`. The Task 4 live evidence on `8b7d51e` therefore covers the ACP path unchanged, and no further paid calls were made.
+- **Why the ACP evidence still stands:** standard ACP `session/prompt` never supplies `completion_condition`; only the legacy `optimus.agent.run` method can reach the goal loop. The Task 4 live evidence on `8b7d51e` therefore covers the `session/prompt` path unchanged, and no further paid calls were made.
 - **How the corrected route is verified:** by regression tests (section 2) and the PR CI full suite.
 
 **Hook disclosure:**
@@ -166,7 +181,39 @@ Six of six calls were used, for $0.002753325 in total. No paid Agent prompt was 
 - **MCP permission requests at `session/new`.** Zed passes its configured MCP servers, and Optimus sent five `session/request_permission` requests during `session/new`. Zed answered them with errors, and the session proceeded. This is the known Zed live-check finding #6, outside Plan 12.1.
 - **Zed saves the picked mode.** Zed persists the last picked mode as `agent_servers.optimus.default_config_options` in its settings and applies it to new threads. The temporary settings were restored byte-identical after the evidence runs.
 - **Fixed in this PR (`1cc1cbd`).** A Chat request with a `completion_condition` entered the goal loop. That repeated an unknown-cost failure five times and bypassed cancellation. It is now refused before any call.
-- **Goal loop and turn control (observation outside Plan 12.1).** The goal loop's iteration runner calls `_run_once` without the turn's halt check or directive control, for Agent and internal `PLAN` requests too. This predates Plan 12.1, and ACP cannot reach it, because ACP never supplies `completion_condition`. No pool entry was found for it, and none is filed here.
+- **Goal loop and turn control (observation outside Plan 12.1).** The goal loop's iteration runner calls `_run_once` without the turn's halt check or directive control, for Agent and internal `PLAN` requests too. This predates Plan 12.1. Standard ACP `session/prompt` never supplies `completion_condition`; the legacy `optimus.agent.run` method can reach the goal loop. Filed as `P12.1-FU-2`.
 - **Settlement `conversation_commit`.** It reports `not_committed` for every turn, Agent and Chat alike. This predates Plan 12.1 and is not changed here.
 - **Screenshot capture.** After a Windows update on 2026-09-30, computer-use screenshots show the Zed window blank. The Zed screenshots are the operator's own.
 - **Plan wording.** Computer use holds Zed at click-only access, so typing in Zed stays operator-only.
+
+## 5. Codex review record
+
+Codex reviewed read-only. For the final P1 it also ran its own fake-Gateway probe; it made no paid calls and no edits.
+
+| Reviewed head | Finding | Resolution |
+|---|---|---|
+| `8e936fc` | Changes requested: two concurrent mode setters could interleave between notification awaits | `59f3698` per-session setter lock and retry resynchronization |
+| `59f3698` | An `AMBIGUOUS` send was treated as delivered, so a same-mode retry could not resynchronize | `0eeabc4` confirmed-flush requirement for mode updates |
+| `0eeabc4` | Interim review approved; full-suite CI green on the exact head | Install hold lifted for Task 4 |
+| `13f7c15` | Code review approved (Chat call under the turn directive lifecycle) | — |
+| `P12.1-FU-1` draft | Wording corrected to the failed TCP readiness probe and the agent's `stop()` call | `8b7d51e` |
+| Task 4 evidence | Successful answers accepted; unpaid mode-switch evidence requested | Provided on `8b7d51e` (section 3) |
+| `d846b5d` | P1: Chat with a `completion_condition` entered the goal loop | `1cc1cbd` refusal before any call |
+| `1c797b9` | Implementation review passes. Zero-call rejection independently verified, including a pre-cancelled turn; ordinary Chat still makes one attempt and keeps the unknown-cost result. Reachability wording corrected; `P12.1-FU-2` requested | This report and the pool |
+
+**Codex's other final-review conclusions:**
+- Plan 2 enforcement and internal `PLAN` behaviour are preserved.
+- The evidence supports the ACP capability.
+- The sandbox context floor remains a separate port. That port must reconcile final-text delivery and conversation commit with this slice.
+
+## 6. Definition of Done: claim → evidence → review
+
+| Claim (plan) | Evidence | Review |
+|---|---|---|
+| One canonical ACP mode, both projections synchronized, Agent default, snapshot-safe under concurrency | Section 2 Task 1 tests (pinned-schema validation of both setters, responses and updates; admission snapshot; serialized setters; retry resynchronization); section 3.1 `acpx` transcript and unpaid switches; section 3.2 Zed; Task 0 report | Codex: `0eeabc4` approved, `1c797b9` passes |
+| Chat gives grounded prose without directive grammar or plan updates | Section 2 Task 2 prompt tests; ACP tests asserting no `plan` update; section 3.2 Zed README answer matching the file; section 3.1 `calc.py` answer | Codex: live evidence accepted |
+| Internal `PLAN` keeps its directive prompt and read behaviour | `test_plan_mode_keeps_directive_prompt_and_read_behaviour`; golden-harness real-runner tests in the `1c797b9` CI run | Codex: preserved |
+| Non-AGENT history uses the existing cap and record | `test_chat_turns_share_the_canonical_history_with_agent_turns` (canonical order and records); `test_chat_prompt_renders_prior_history_once_before_the_current_question` (no duplicate current turn); `test_multi_turn_conversation` e2e. Admission and commit use the shared path that precedes the mode branch. No Chat-specific cap-refusal test was added; the existing cap tests cover that shared path. | Codex: `1c797b9` passes |
+| Chat cannot mutate; Agent guard unchanged | `test_chat_never_executes_model_produced_directives`, `test_chat_cannot_mutate_from_hostile_prompt_workspace_or_model_text`; Plan 2 and guardrail suites in CI; live telemetry `mutation_count: 0` on every Chat turn | Codex: Plan 2 enforcement preserved |
+| `$0.05` per-prompt cost and terminal results truthful and attributable to Chat | `test_chat_gateway_call_is_attributed_as_an_advisory_answer` (purpose, cost); budget, unknown-cost, Gateway-failure and blank-answer tests; directive-lifecycle and goal-loop refusal tests; `test_mode_setters_are_approved_diagnostic_method_categories`; section 3.3 ledger. Limitation: `gateway_request_id` is `None` on the ACP path, so live request IDs cannot be reported. | Codex: ledger verified |
+| Delivery reviewable without disturbing sandbox tests | Guarded-lane check before every local run and hook commit; focused runs with before/after real-root snapshots; Ruff; PR CI full suite on each head (section 1); Codex reviews (section 5) | Codex: `1c797b9` passes |

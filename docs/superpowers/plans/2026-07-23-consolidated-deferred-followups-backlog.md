@@ -55,7 +55,7 @@ in this table.
 
 | Plan | State | Backlog owner | Next gate |
 |---|---|---|---|
-| [Plan 12.1 — Plan/Chat advisory answer](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | `Blocked` | `P12-FU-1` | Dependency `P11.25-FU-1` retains sole ownership of non-AGENT conversation carriage. Claude reviews the design and plan; Task 0 establishes installed-Zed picker behavior and live-proof prerequisites. Claude then implements under the operator's Plan 12.x role direction; the operator decides PR and merge. |
+| [Plan 12.1 — Plan/Chat advisory answer](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | `Blocked` | `P12-FU-1` | Dependency `P11.25-FU-1` retains sole ownership of non-AGENT conversation carriage. Tasks 0–5 are complete on draft PR #212: Codex's implementation review passed at `1c797b9`, and the full-suite CI there is green. The evidence is in `reports/plan-12-1-implementation-and-live-evidence.md`. Next gate: the operator's PR-readiness and merge decision. `P12-FU-1` and `P11.25-FU-1` stay promoted until merge and acceptance. |
 | [Local-hook UTF-8 decoding repair](2026-09-06-local-hook-utf8-repair.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Local delivery at `c9745898` is independently accepted and published to PR #196 with both first-execution checks passed. The operator authorized documentation review and normal merge conditional on the final head passing required checks; PR #196 records the result. Retained under transitional custody pending separate archival disposition; no further implementation or inherited budget is released. Preserve baseline identities, frozen documents and CI scope. |
 | [Plan 11.27 v12 — integrate accepted correction and deliver locally](2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v12.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Delivery and publication complete: local integration `2bd316bc`, merged via PR #195 at `32f32ef4`, with independent local/CI acceptance and restored protection. Retained at the root under transitional custody; the remaining gate is the separate archival/custody disposition. No further v12 execution or inherited budget is available. Scanner decoding repair remains with the backlog owner. |
 | [P11-FU-6 — bounded early POST rejection corrective plan v2](2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | `Blocked` | `P11-FU-6` | The bounded early-POST correction is delivered and merged through PR #195 at `32f32ef4`. The corrective plan remains frozen under transitional custody pending archival disposition; `P11-FU-6` remains Open for separately defined broader reliability closure. No additional product behavior, installation or rollout is authorized by this status update. |
@@ -508,6 +508,7 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P11.25-FU-2` | Structured ACP stop-reason metadata (contract term: MT-FU-2) | Open | MEDIUM     | Future post-11.x follow-up | Acceptance criteria in entry |
 | `P12-FU-1` | Plan/Chat advisory-answer capability (residual of HLD §7) | Promoted -> [Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | MEDIUM     | Plan 12.1 (operator ruling 2026-09-29) | Acceptance criteria in entry; depends on `P11.25-FU-1`; reuses Plan 2 enforcement |
 | `P12.1-FU-1` | Local Gateway missed the agent's startup readiness deadline | Open | MEDIUM     | Future local-startup follow-up | Acceptance criteria in entry; cause not yet diagnosed |
+| `P12.1-FU-2` | Goal-loop iterations bypass turn cancellation and directive tracking | Open | MEDIUM     | Future goal-loop follow-up | Acceptance criteria in entry; pre-existing, not introduced by Plan 12.1 |
 
 ## Evidence and handoff feature registry
 
@@ -2268,6 +2269,43 @@ private paths.
 
 **Related:** `P11.5-FU-2` (closed, Plan 11.6) made local startup consistent. It did not address this
 deadline and is not reopened.
+
+**Status:** Open.
+
+### P12.1-FU-2: Goal-loop iterations bypass turn cancellation and directive tracking
+
+**Raised:** 2026-09-30, by Codex's final implementation review of Plan 12.1 (PR #212).
+
+**Classification:** Pre-existing defect, not introduced by Plan 12.1.
+
+**Observation:**
+- **Entry.** `AgentRunner.run` sends any request with `completion_condition` into
+  `_run_bounded_loop` (`src/optimus/agent/runner.py`).
+- **The gap.** Its iteration runner, `_AgentLoopIterationRunner.run_iteration`, calls
+  `_run_once(request)` without the caller's `halt_requested` or `operation_control`. Each iteration
+  of an Agent or internal `PLAN` request therefore runs outside the turn's halt check and GATEWAY
+  directive lifecycle.
+- **Consequences.** A cancelled turn can still start Gateway calls, and the turn settlement does not
+  record those calls' cost completeness. The loop allows up to five iterations
+  (`LoopBudgetPolicy(max_iterations=5)`). The returned result carries the loop's stop reason, which
+  replaces the iteration's own stop reason.
+
+**Reachability:** standard ACP `session/prompt` never supplies `completion_condition`. The legacy
+`optimus.agent.run` method (`src/optimus/acp/dispatcher.py`) validates an `AgentRunRequest` from its
+params and can reach the goal loop. Chat requests with a completion condition have been refused
+before any call since `1cc1cbd`.
+
+**Acceptance criteria:**
+- Goal-loop iterations honour the caller's halt check and turn directive control. No Gateway call
+  starts after cancellation, and each call's terminal state (succeeded, failed or cost_unknown)
+  reaches the turn settlement.
+- Decide and test how an unknown-cost iteration ends the loop, consistent with the planning loop's
+  rule that unknown cost is terminal. The returned result keeps the iteration's own stop reason.
+- Regression tests use the real `TurnControl` for Agent and internal `PLAN` requests through the
+  goal loop.
+
+**Related:** Plan 12.1 closed the Chat route only (`1cc1cbd`). This entry owns the Agent and `PLAN`
+routes.
 
 **Status:** Open.
 
