@@ -17,6 +17,13 @@
 | `13f7c15` | Task 4 finding fix: Chat Gateway call under the turn directive lifecycle | [success](https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/36683277342) |
 | `b563bb6` | Pool: file `P12.1-FU-1` (docs only) | cancelled, superseded by `8b7d51e` |
 | `8b7d51e` | Pool: correct `P12.1-FU-1` (docs only) | [success](https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/36686844641) |
+| `d846b5d` | This report, checkboxes, plan wording and README (docs only) | [success](https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/36692001280) |
+| `1cc1cbd` | Final-review fix: refuse Chat with a `completion_condition` before any call | PR CI on the final head |
+
+**Applicability of the live evidence to `1cc1cbd`.**
+- **What the fix changes:** `1cc1cbd` changes only `AgentRunner.run`'s handling of a Chat request that carries a `completion_condition`. Before the fix, such a request entered the goal loop, which bypassed the Chat halt and directive gates.
+- **Why the ACP evidence still stands:** ACP never supplies `completion_condition`. The Task 4 live evidence on `8b7d51e` therefore covers the ACP path unchanged, and no further paid calls were made.
+- **How the corrected route is verified:** by regression tests (section 2) and the PR CI full suite.
 
 **Hook disclosure:**
 - Every commit skipped only `optimus-pytest-coverage` and ran every other hook.
@@ -39,6 +46,8 @@ All local runs followed a clear guarded-lane check. Commands used the worktree's
 | Red, ambiguous send (`0eeabc4`) | 4 failed, 1 passed |
 | Red, Chat directive lifecycle (`13f7c15`) | 4 failed, 5 passed |
 | Green, focused set at `13f7c15` | 549 passed |
+| Red, Chat with a completion condition (`1cc1cbd`) | 2 failed: 5 Gateway calls on unknown cost; a call despite a pre-cancelled turn |
+| Green, focused set plus `tests/unit/loops` and the goal-loop integration test at `1cc1cbd` | 591 passed, 1 skipped |
 | Ruff | clean at every commit |
 
 **Focused set at `13f7c15`:**
@@ -70,6 +79,7 @@ Test names below are in `tests/unit/acp/test_plan121_chat_mode.py` (ACP), `tests
   - No mutation: `test_chat_never_executes_model_produced_directives` and `test_chat_cannot_mutate_from_hostile_prompt_workspace_or_model_text`.
   - Single-call failures: `test_chat_blank_answer_is_a_visible_failure_not_a_success`, `test_chat_gateway_error_with_reported_usage_is_a_known_cost_failure`, `test_chat_gateway_error_without_usage_is_an_unknown_cost_failure` and `test_chat_over_budget_answer_is_terminated_as_budget_exhausted`.
   - Turn directive lifecycle: the four `TurnControl` tests added in `13f7c15`.
+  - No goal loop for Chat: `test_chat_with_a_completion_condition_is_rejected_without_a_gateway_call` and `test_cancelled_chat_with_a_completion_condition_makes_no_gateway_call` (`1cc1cbd`).
   - Guardrail regression: Plan 2's existing enforcement and guardrail suites are unchanged and pass in the CI full suite on every head in section 1.
 
 **Disclosure:** the one directory-wide run (1343 passed) wrote four empty lock files to the real root. Four more came from an isolation probe. All eight are left untouched, pending a separate cleanup decision.
@@ -155,6 +165,8 @@ Six of six calls were used, for $0.002753325 in total. No paid Agent prompt was 
 - **`gateway_request_id` is `None` on the ACP path.** Request IDs cannot be recorded. The closest existing owner is `P11.26-CAND-2-TELEMETRY-CONTRACT`.
 - **MCP permission requests at `session/new`.** Zed passes its configured MCP servers, and Optimus sent five `session/request_permission` requests during `session/new`. Zed answered them with errors, and the session proceeded. This is the known Zed live-check finding #6, outside Plan 12.1.
 - **Zed saves the picked mode.** Zed persists the last picked mode as `agent_servers.optimus.default_config_options` in its settings and applies it to new threads. The temporary settings were restored byte-identical after the evidence runs.
+- **Fixed in this PR (`1cc1cbd`).** A Chat request with a `completion_condition` entered the goal loop. That repeated an unknown-cost failure five times and bypassed cancellation. It is now refused before any call.
+- **Goal loop and turn control (observation outside Plan 12.1).** The goal loop's iteration runner calls `_run_once` without the turn's halt check or directive control, for Agent and internal `PLAN` requests too. This predates Plan 12.1, and ACP cannot reach it, because ACP never supplies `completion_condition`. No pool entry was found for it, and none is filed here.
 - **Settlement `conversation_commit`.** It reports `not_committed` for every turn, Agent and Chat alike. This predates Plan 12.1 and is not changed here.
 - **Screenshot capture.** After a Windows update on 2026-09-30, computer-use screenshots show the Zed window blank. The Zed screenshots are the operator's own.
 - **Plan wording.** Computer use holds Zed at click-only access, so typing in Zed stays operator-only.
