@@ -9,6 +9,7 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 
+from optimus.acp.lifecycle import TurnControl
 from optimus.agent.models import AgentRunRequest, AgentRunStatus
 from optimus.agent.runner import AgentRunner
 from optimus.gateway.errors import GatewayHttpError
@@ -187,3 +188,62 @@ def test_chat_over_budget_answer_is_terminated_as_budget_exhausted(tmp_path):
     assert result.status is AgentRunStatus.TERMINATED
     assert result.stop_reason == "BUDGET_EXHAUSTED"
     assert result.total_cost_usd == Decimal("0.06")
+
+
+# --- the Chat Gateway call runs under the turn's directive lifecycle (real TurnControl) ---
+
+
+def _run_with_turn_control(tmp_path: Path, gateway: _Gateway, control: TurnControl):
+    return AgentRunner(gateway_client=gateway, model="m").run(
+        _chat_request(_workspace(tmp_path)),
+        halt_requested=control.halt_requested,
+        operation_control=control,
+    )
+
+
+def test_chat_answer_records_a_started_gateway_attempt_with_known_cost(tmp_path):
+    control = TurnControl(session_id="session-1", turn_seq=2)
+
+    result = _run_with_turn_control(tmp_path, _Gateway(), control)
+
+    assert result.status is AgentRunStatus.COMPLETED
+    fields = control.current_settlement_fields()
+    assert fields["provider_attempt_started"] is True
+    assert fields["cost_complete"] is True
+
+
+def test_chat_unknown_cost_marks_the_turn_cost_incomplete(tmp_path):
+    control = TurnControl(session_id="session-1", turn_seq=2)
+
+    result = _run_with_turn_control(tmp_path, _Gateway(error=RuntimeError("socket closed")), control)
+
+    assert result.stop_reason == "CHAT_GATEWAY_COST_UNKNOWN"
+    fields = control.current_settlement_fields()
+    assert fields["provider_attempt_started"] is True
+    assert fields["cost_complete"] is False
+
+
+def test_chat_gateway_error_with_reported_usage_keeps_the_turn_cost_complete(tmp_path):
+    control = TurnControl(session_id="session-1", turn_seq=2)
+    error = GatewayHttpError(502, "upstream failed", gateway_usage=_usage("0.0004"))
+
+    result = _run_with_turn_control(tmp_path, _Gateway(error=error), control)
+
+    assert result.stop_reason == "CHAT_GATEWAY_FAILURE"
+    fields = control.current_settlement_fields()
+    assert fields["provider_attempt_started"] is True
+    assert fields["cost_complete"] is True
+
+
+def test_chat_makes_no_gateway_call_once_the_turn_is_cancelled(tmp_path):
+    control = TurnControl(session_id="session-1", turn_seq=2)
+    control.request_session_cancel()
+    gateway = _Gateway()
+
+    result = _run_with_turn_control(tmp_path, gateway, control)
+
+    assert gateway.calls == [], "a cancelled turn must not start a paid Chat call"
+    assert result.status is not AgentRunStatus.COMPLETED
+    assert result.stop_reason == "CHAT_HALTED"
+    assert result.output_text.strip()
+    assert control.current_settlement_fields()["provider_attempt_started"] is False

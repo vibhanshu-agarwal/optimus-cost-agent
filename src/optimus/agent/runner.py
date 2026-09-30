@@ -50,6 +50,7 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
     "BUDGET_EXHAUSTED": (
         "Chat's answer exceeded this prompt's cost limit, so it is not shown. Try a narrower question."
     ),
+    "CHAT_HALTED": "Chat answer cancelled before it was shown.",
 }
 
 
@@ -289,7 +290,12 @@ class AgentRunner:
 
         context = self._transition(context, AgentState.PLANNING)
         if request.execution_mode is ExecutionMode.CHAT:
-            return self._run_chat_answer(request=request, context=context)
+            return self._run_chat_answer(
+                request=request,
+                context=context,
+                halt_requested=halt_requested,
+                operation_control=operation_control,
+            )
         workspace_context = assemble_workspace_context_for_prompt(
             request.workspace_root,
             task=request.task,
@@ -915,13 +921,24 @@ class AgentRunner:
             return False
         return ".." not in path.parts
 
-    def _run_chat_answer(self, *, request: AgentRunRequest, context: RuntimeContext) -> AgentRunResult:
+    def _run_chat_answer(
+        self,
+        *,
+        request: AgentRunRequest,
+        context: RuntimeContext,
+        halt_requested: Callable[[], bool] | None = None,
+        operation_control: TurnOperationControl | None = None,
+    ) -> AgentRunResult:
         """Plan 12.1 Chat: one Gateway call, a prose answer, no directive execution.
 
         Workspace-file selection sees the prior conversation plus the current
         prompt (as Agent's does), while the model input carries the current
         prompt only once. Every terminal failure returns corrective text in
         ``output_text`` and a non-success status; nothing here retries.
+
+        The Gateway call runs under the turn's GATEWAY directive lifecycle, as a
+        planning call does: it is not started once the turn is halted, and its
+        terminal state feeds the turn settlement's cost completeness.
         """
         selection_text = (
             f"{request.conversation_envelope}\n{request.task}" if request.conversation_envelope else request.task
@@ -941,6 +958,20 @@ class AgentRunner:
             conversation_envelope=request.conversation_envelope,
             advisory=True,
         )
+        if halt_requested is not None and halt_requested():
+            return self._chat_failure(request, stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
+        from optimus.acp.lifecycle import DirectiveKind
+
+        op_id = "gateway:1:1"
+        if operation_control is not None:
+            operation_control.register_operations([(DirectiveKind.GATEWAY, op_id)])
+            if not operation_control.try_start(DirectiveKind.GATEWAY, op_id).granted:
+                return self._chat_failure(request, stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
+
+        def complete(terminal_state: str) -> None:
+            if operation_control is not None:
+                operation_control.complete_directive(DirectiveKind.GATEWAY, op_id, terminal_state)
+
         try:
             response = self._gateway_client.create_response(
                 model=self._model,
@@ -955,13 +986,17 @@ class AgentRunner:
         except GatewayError as exc:
             usage = getattr(exc, "gateway_usage", None)
             if usage is None:
+                complete("cost_unknown")
                 return self._chat_failure(request, stop_reason="CHAT_GATEWAY_COST_UNKNOWN", cost_complete=False)
+            complete("failed")
             self._record_gateway_usage(request, gateway_usage=usage, settled_turn=1, wire_attempt=1)
             return self._chat_failure(request, stop_reason="CHAT_GATEWAY_FAILURE", total_cost_usd=usage.cost_usd)
         except Exception:
             # Same rule as the planning loop: an unexpected transport failure has unknown cost.
+            complete("cost_unknown")
             return self._chat_failure(request, stop_reason="CHAT_GATEWAY_COST_UNKNOWN", cost_complete=False)
 
+        complete("succeeded")
         self._record_gateway_usage(request, gateway_usage=response.gateway_usage, settled_turn=1, wire_attempt=1)
         total_cost_usd = response.gateway_usage.cost_usd
         if total_cost_usd > request.max_cost_usd:
