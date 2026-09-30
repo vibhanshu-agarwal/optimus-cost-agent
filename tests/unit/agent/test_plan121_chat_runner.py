@@ -247,3 +247,38 @@ def test_chat_makes_no_gateway_call_once_the_turn_is_cancelled(tmp_path):
     assert result.stop_reason == "CHAT_HALTED"
     assert result.output_text.strip()
     assert control.current_settlement_fields()["provider_attempt_started"] is False
+
+
+# --- Chat never enters the goal loop (a completion condition is rejected before any call) ---
+
+
+def _chat_request_with_condition(tmp_path: Path) -> AgentRunRequest:
+    return _chat_request(_workspace(tmp_path)).model_copy(update={"completion_condition": "calc.py is explained"})
+
+
+def test_chat_with_a_completion_condition_is_rejected_without_a_gateway_call(tmp_path):
+    gateway = _Gateway(error=RuntimeError("socket closed"))
+
+    result = AgentRunner(gateway_client=gateway, model="m").run(_chat_request_with_condition(tmp_path))
+
+    assert gateway.calls == [], "Chat must not enter the goal loop or retry"
+    assert result.status is AgentRunStatus.FAILED
+    assert result.stop_reason == "CHAT_COMPLETION_CONDITION_UNSUPPORTED"
+    assert result.output_text.strip()
+    assert result.total_cost_usd == Decimal("0")
+
+
+def test_cancelled_chat_with_a_completion_condition_makes_no_gateway_call(tmp_path):
+    control = TurnControl(session_id="session-1", turn_seq=2)
+    control.request_session_cancel()
+    gateway = _Gateway()
+
+    result = AgentRunner(gateway_client=gateway, model="m").run(
+        _chat_request_with_condition(tmp_path),
+        halt_requested=control.halt_requested,
+        operation_control=control,
+    )
+
+    assert gateway.calls == []
+    assert result.status is not AgentRunStatus.COMPLETED
+    assert control.current_settlement_fields()["provider_attempt_started"] is False

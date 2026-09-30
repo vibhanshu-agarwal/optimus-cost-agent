@@ -51,6 +51,9 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
         "Chat's answer exceeded this prompt's cost limit, so it is not shown. Try a narrower question."
     ),
     "CHAT_HALTED": "Chat answer cancelled before it was shown.",
+    "CHAT_COMPLETION_CONDITION_UNSUPPORTED": (
+        "Chat answers a single question and cannot run toward a completion condition. Use Agent mode for goal loops."
+    ),
 }
 
 
@@ -168,7 +171,11 @@ class AgentRunner:
         matched_skills = self._match_skills(request)
         self._active_operation_control = operation_control
         try:
-            if request.completion_condition:
+            if request.completion_condition and request.execution_mode is ExecutionMode.CHAT:
+                # Chat is one Gateway call. The goal loop would repeat it outside the
+                # turn's halt and directive gates, so the combination is refused up front.
+                result = self._chat_failure(request, stop_reason="CHAT_COMPLETION_CONDITION_UNSUPPORTED")
+            elif request.completion_condition:
                 result = self._run_bounded_loop(request, matched_skills=matched_skills)
             else:
                 result = self._run_once(
