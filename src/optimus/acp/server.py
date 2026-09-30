@@ -150,10 +150,11 @@ class NdjsonOutboundChannel:
             params=params,
         )
 
-    async def _submit_payload(self, message: Mapping[str, Any], *, kind: str) -> None:
+    async def _submit_payload(self, message: Mapping[str, Any], *, kind: str) -> SendOutcome | None:
+        """Returns the dedicated writer's outcome; ``None`` on the direct path, which raises on failure."""
         if self._dedicated_writer is None:
             await self._writer.write_line(message)
-            return
+            return None
         from optimus.acp.outbound_writer import (
             EphemeralSendOwner,
             OutboundQueueItem,
@@ -175,8 +176,9 @@ class NdjsonOutboundChannel:
         completion = await asyncio.shield(asyncio.wrap_future(source, loop=loop))
         if completion.outcome is SendOutcome.CONCLUSIVE_FAILURE:
             raise AcpOutboundError(code=INTERNAL_ERROR, message="outbound delivery failed")
+        return completion.outcome
 
-    async def notify(self, method: str, params: dict[str, Any]) -> None:
+    async def notify(self, method: str, params: dict[str, Any], *, require_flushed: bool = False) -> None:
         # region agent log
         if debug_trace_enabled():
             acp_debug_log(
@@ -186,10 +188,15 @@ class NdjsonOutboundChannel:
                 hypothesis_id="H2",
             )
         # endregion
-        await self._submit_payload(
+        outcome = await self._submit_payload(
             {"jsonrpc": "2.0", "method": method, "params": params},
             kind="notify",
         )
+        # Plan 12.1 mode updates pass require_flushed: an ambiguous or suppressed send
+        # is not success, so the setter keeps its pending flag for a retry. Other
+        # callers keep treating every outcome except a conclusive failure as sent.
+        if require_flushed and outcome is not None and outcome is not SendOutcome.FLUSHED:
+            raise AcpOutboundError(code=INTERNAL_ERROR, message="outbound delivery unconfirmed")
 
     async def request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         request_id = next(self._agent_request_ids)

@@ -19,6 +19,8 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from optimus.acp.errors import INTERNAL_ERROR, INVALID_REQUEST, AcpOutboundError
+from optimus.acp.outbound_writer import DedicatedOutboundWriter
+from optimus.acp.server import NdjsonOutboundChannel
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus, AgentToolCall
 from optimus.runtime.modes import ExecutionMode
@@ -278,7 +280,7 @@ class _GatedOutbound(RecordingOutboundChannel):
         self._pause = pause
         self._fail_update = fail_update
 
-    async def notify(self, method: str, params: dict[str, Any]) -> None:
+    async def notify(self, method: str, params: dict[str, Any], *, require_flushed: bool = False) -> None:
         kind = params.get("update", {}).get("sessionUpdate")
         if self._pause and kind == "current_mode_update":
             self._pause = False
@@ -287,7 +289,7 @@ class _GatedOutbound(RecordingOutboundChannel):
         if kind == self._fail_update:
             self._fail_update = None
             raise AcpOutboundError(code=INTERNAL_ERROR, message="outbound delivery failed")
-        await super().notify(method, params)
+        await super().notify(method, params, require_flushed=require_flushed)
 
 
 @pytest.mark.parametrize(
@@ -371,6 +373,99 @@ async def test_a_retry_resynchronizes_the_client_after_a_failed_mode_update(tmp_
     again = await _rpc(adapter, _set_mode_request(session_id, "chat", via=retry_via, request_id="again"))
     assert "error" not in again, again
     assert _mode_updates(outbound) == [], "once synchronized, repeating the mode is idempotent again"
+
+
+class _FlushFailsOnceTransport:
+    """Physical NDJSON transport: the write lands, then flush fails once for one update kind.
+
+    A failed flush after a started write is an ambiguous send: the client may or
+    may not have received it.
+    """
+
+    def __init__(self, fail_update: str | None) -> None:
+        self.messages: list[dict[str, Any]] = []
+        self._fail_update = fail_update
+        self._lock = threading.Lock()
+
+    def write_bytes(self, data: bytes) -> None:
+        with self._lock:
+            self.messages.extend(json.loads(line) for line in data.splitlines() if line.strip())
+
+    def flush(self) -> None:
+        with self._lock:
+            last = self.messages[-1] if self.messages else {}
+        params = last.get("params")
+        kind = params.get("update", {}).get("sessionUpdate") if isinstance(params, dict) else None
+        if kind is not None and kind == self._fail_update:
+            self._fail_update = None
+            raise OSError("flush failed after the write")
+
+    def mode_updates(self) -> list[tuple[str, str]]:
+        with self._lock:
+            messages = list(self.messages)
+        updates = [m["params"]["update"] for m in messages if m.get("method") == "session/update"]
+        return [
+            (u["sessionUpdate"], _update_mode(u))
+            for u in updates
+            if u["sessionUpdate"] in {"current_mode_update", "config_option_update"}
+        ]
+
+
+class _UnusedLineWriter:
+    async def write_line(self, message):
+        raise AssertionError("the dedicated writer owns every physical write")
+
+
+@pytest.mark.parametrize("ambiguous_update", ["current_mode_update", "config_option_update"])
+@pytest.mark.parametrize("retry_via", ["set_mode", "set_config_option"])
+async def test_an_ambiguous_mode_update_is_not_success_and_a_same_mode_retry_resends_both(
+    tmp_path, ambiguous_update, retry_via
+):
+    transport = _FlushFailsOnceTransport(fail_update=ambiguous_update)
+    dedicated = DedicatedOutboundWriter(transport)
+    dedicated.start()
+    try:
+        adapter = AcpDuplexAdapter(
+            runner=_ModeRunner(),
+            workspace_root=tmp_path,
+            sessions=InMemoryAcpSpecSessionStore(),
+            outbound=NdjsonOutboundChannel(_UnusedLineWriter(), dedicated_writer=dedicated),
+        )
+        session_id = (await _new_session(adapter, tmp_path))["sessionId"]
+
+        with pytest.raises(AcpOutboundError):
+            await _rpc(adapter, _set_mode_request(session_id, "chat", via="set_config_option", request_id="first"))
+        assert adapter._sessions.get(session_id).execution_mode is ExecutionMode.CHAT  # noqa: SLF001
+        before_retry = len(transport.mode_updates())
+
+        retry = await asyncio.wait_for(
+            _rpc(adapter, _set_mode_request(session_id, "chat", via=retry_via, request_id="retry")), timeout=5
+        )
+
+        assert "error" not in retry, retry
+        assert transport.mode_updates()[before_retry:] == [
+            ("current_mode_update", "chat"),
+            ("config_option_update", "chat"),
+        ]
+        before_repeat = len(transport.mode_updates())
+        again = await _rpc(adapter, _set_mode_request(session_id, "chat", via=retry_via, request_id="again"))
+        assert "error" not in again, again
+        assert transport.mode_updates()[before_repeat:] == []
+    finally:
+        dedicated.close_and_join()
+
+
+async def test_plain_notify_still_treats_an_ambiguous_send_as_sent():
+    """Only mode updates require a confirmed flush; other notify callers keep their behavior."""
+    transport = _FlushFailsOnceTransport(fail_update="agent_message_chunk")
+    dedicated = DedicatedOutboundWriter(transport)
+    dedicated.start()
+    try:
+        channel = NdjsonOutboundChannel(_UnusedLineWriter(), dedicated_writer=dedicated)
+        update = {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "hi"}}
+        await channel.notify("session/update", {"sessionId": "s", "update": update})
+    finally:
+        dedicated.close_and_join()
 
 
 # --- concurrency: snapshot at admission ---------------------------------------

@@ -105,7 +105,8 @@ def resolve_max_planning_turns(environ: Mapping[str, str]) -> int | None:
 
 
 class AcpOutboundChannel(Protocol):
-    async def notify(self, method: str, params: dict[str, Any]) -> None:
+    async def notify(self, method: str, params: dict[str, Any], *, require_flushed: bool = False) -> None:
+        """Send a notification. With ``require_flushed``, anything short of a confirmed flush raises."""
         ...
 
     async def request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -203,7 +204,8 @@ class RecordingOutboundChannel:
         self._request_event = asyncio.Event()
         self._futures: dict[str | int, asyncio.Future[dict[str, Any]]] = {}
 
-    async def notify(self, method: str, params: dict[str, Any]) -> None:
+    async def notify(self, method: str, params: dict[str, Any], *, require_flushed: bool = False) -> None:
+        del require_flushed  # a recorded notification is always delivered
         self.notifications.append({"jsonrpc": "2.0", "method": method, "params": params})
 
     async def request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -536,8 +538,9 @@ class AcpDuplexAdapter:
     async def _apply_session_mode(self, session: AcpSpecSession, mode: ExecutionMode) -> None:
         """Commit ``mode`` once, then send both paired updates. Caller holds ``session.mode_lock``.
 
-        If either update fails, the change stays committed but marked pending, so
-        the next setter re-sends both updates even when it repeats the same mode.
+        Each update must be confirmed as flushed. If either fails, is ambiguous or is
+        suppressed, the change stays committed but marked pending, so the next
+        setter re-sends both updates even when it repeats the same mode.
         """
         if session.execution_mode is mode and not session.mode_updates_pending:
             return
@@ -547,10 +550,12 @@ class AcpDuplexAdapter:
         await self._outbound.notify(
             "session/update",
             build_current_mode_update_notification(session_id=session.session_id, current_mode_id=mode_id),
+            require_flushed=True,
         )
         await self._outbound.notify(
             "session/update",
             build_config_option_update_notification(session_id=session.session_id, current_mode_id=mode_id),
+            require_flushed=True,
         )
         session.mode_updates_pending = False
 
