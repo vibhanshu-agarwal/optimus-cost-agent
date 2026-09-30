@@ -12,6 +12,7 @@ MARKDOWN_LINK = re.compile(r"\[[^]]*\]\((?P<target>[^)#]+)(?:#[^)]*)?\)")
 # Folders whose root holds current documents; each keeps its history in an archive/ beside them.
 DOCUMENT_FOLDERS = (
     DOCS_ROOT,
+    DOCS_ROOT / "decisions",
     DOCS_ROOT / "governance",
     DOCS_ROOT / "runbooks",
     DOCS_ROOT / "superpowers" / "plans",
@@ -20,7 +21,7 @@ DOCUMENT_FOLDERS = (
     DOCS_ROOT / "superpowers" / "reports",
 )
 # Folders that only group other folders, and publication bundles, which are listed as a whole.
-GROUPING_FOLDERS = {DOCS_ROOT / name for name in ("governance", "runbooks", "sources", "superpowers")} | {
+GROUPING_FOLDERS = {DOCS_ROOT / name for name in ("decisions", "governance", "runbooks", "sources", "superpowers")} | {
     DOCS_ROOT / "superpowers" / name for name in ("plans", "specs", "reviews", "reports")
 }
 BUNDLE_FOLDERS = (DOCS_ROOT / "sources",)
@@ -62,6 +63,6 @@ def test_index_lists_nothing_archived_or_missing() -> None:
 
 def test_every_document_folder_has_an_archive() -> None:
     for folder in (*DOCUMENT_FOLDERS, *BUNDLE_FOLDERS):
-        if folder in {DOCS_ROOT / "governance"}:
+        if folder in {DOCS_ROOT / "decisions", DOCS_ROOT / "governance"}:
             continue  # nothing has been retired from it yet
         assert (folder / ARCHIVE_DIRNAME).is_dir(), f"{folder} has no archive/ folder"
