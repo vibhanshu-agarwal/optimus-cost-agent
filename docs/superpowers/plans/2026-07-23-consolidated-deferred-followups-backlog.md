@@ -2238,24 +2238,28 @@ a Plan 12.1 defect; the deadline predates Plan 12.1.
 **Observation:**
 - **Timeline.** Zed launched `optimus-agent` for a new thread at 12:44:06 IST. The agent started
   the local Gateway child at 12:44:08. At 12:44:18 it logged "local gateway did not become ready in
-  time", after its 10-second deadline (`_GATEWAY_READY_TIMEOUT_SECONDS` in
-  `src/optimus/acp/local_infra.py`).
-- **After the miss.** The agent kept serving without a Gateway. Both Chat prompts in that thread
-  failed with `CHAT_GATEWAY_COST_UNKNOWN`, and the reported cost was $0.
-- **The Gateway process.** The Gateway log recorded a "listening" line for that launch. Afterwards,
-  however, no Gateway process remained and nothing listened on `127.0.0.1:8765`.
+  time": its TCP readiness probe (`_tcp_reachable`) had not succeeded within the 10-second deadline
+  (`_GATEWAY_READY_TIMEOUT_SECONDS` in `src/optimus/acp/local_infra.py`).
+- **At the deadline.** `ensure_local_gateway` calls `LocalGatewayProcess.stop()` on the child when
+  the deadline expires. The agent then kept serving without a Gateway. Both Chat prompts in that
+  thread failed with `CHAT_GATEWAY_COST_UNKNOWN`, and the reported cost was $0.
+- **The Gateway process.** The child's log recorded a "listening" line for that launch. Afterwards,
+  no Gateway process remained and nothing listened on `127.0.0.1:8765`.
 - **Earlier launches.** Launches of the same installed build earlier that day became ready in time.
 
-**Not established:** why readiness took longer than 10 seconds, for example a cold start after the
-tool reinstall or host load from parallel test runs. It is also not established whether the
-late-starting Gateway was stopped by the agent or exited on its own.
+**Not established:** why the agent's TCP readiness probe did not succeed within 10 seconds, despite
+the child log's "listening" line. Slow startup is therefore not presumed. It is also not established
+whether the child had already exited when `stop()` ran. The listening line carries no timestamp or
+PID, so it cannot yet be correlated with the probe.
 
 **Evidence:** operator handoff kit, folder `plan12-1-task4-20260930/zed/attempt1-0eeabc4`: Zed log
 excerpt, Gateway log, telemetry and screenshot. Kept outside the repository because it contains
 private paths.
 
 **Acceptance criteria:**
-- Measure on Windows why local Gateway readiness exceeded the deadline.
+- Investigate on Windows why the agent's TCP readiness probe failed within the deadline despite the
+  child's "listening" line. Correlate the listening line with the probe by time, PID, host and port,
+  and do not presume slow startup.
 - Decide the deadline and the behaviour after a miss (fail the launch visibly, retry, or keep
   serving). If the agent keeps serving, each prompt must say that the local Gateway is not running,
   rather than reporting a Gateway failure with unknown cost.
