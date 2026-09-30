@@ -507,6 +507,7 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P11.25-FU-1` | Non-AGENT-mode conversation carriage (contract term: MT-FU-1) | Promoted -> [Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | MEDIUM     | Plan 12.1 (operator ruling 2026-09-29) | Acceptance criteria in entry; remains sole owner of carriage |
 | `P11.25-FU-2` | Structured ACP stop-reason metadata (contract term: MT-FU-2) | Open | MEDIUM     | Future post-11.x follow-up | Acceptance criteria in entry |
 | `P12-FU-1` | Plan/Chat advisory-answer capability (residual of HLD §7) | Promoted -> [Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | MEDIUM     | Plan 12.1 (operator ruling 2026-09-29) | Acceptance criteria in entry; depends on `P11.25-FU-1`; reuses Plan 2 enforcement |
+| `P12-FU-2` | User-facing net cost-savings report | Open | MEDIUM | Plan 12; slice unscheduled | Requirement accepted in ADR-012; design and delivery surface pending; depends on P11.26-CAND-2-TELEMETRY-CONTRACT; paid evaluation requires separate authority |
 | `P12.1-FU-1` | Local Gateway missed the agent's startup readiness deadline | Open | MEDIUM     | Future local-startup follow-up | Acceptance criteria in entry; cause not yet diagnosed |
 | `P12.1-FU-2` | Goal-loop iterations bypass turn cancellation and directive tracking | Open | MEDIUM     | Future goal-loop follow-up | Acceptance criteria in entry; pre-existing, not introduced by Plan 12.1 |
 
@@ -2228,6 +2229,40 @@ with:
 Plan 12.1 reuses, and does not re-implement, Plan 2's enforcement.
 This is Plan 12's first substantive slice on a separate main-based branch; promotion does not claim
 delivery or change the v1.0 exclusion.
+
+### P12-FU-2: User-facing net cost-savings report
+
+**Raised:** 2026-09-30, operator requirement recorded in
+[ADR-012](../../decisions/ADR-012-cost-savings-report.md).
+
+**Designated lane:** Plan 12, unscheduled.
+
+**Scope:** show users the basis and net effect of Optimus's optimization costs against explicitly
+selected reference baselines. Keep this report distinct from internal context-selection promotion gates
+and the placeholder 15% target.
+
+**Acceptance criteria:**
+- Display actual fully loaded provider-reported cost, with complete/incomplete coverage and
+  model/provider/strategy/stage/request/run/session provenance. Reuse the reconciled ledger; no parallel
+  accounting authority.
+- Clearly distinguish B1 premium token-price substitution and B2 no-optimization counterfactual
+  estimates from matched B3 measured comparisons; use external B4 results only as labelled context.
+- Compute comparable baseline cost minus fully loaded actual cost once. Include summarization,
+  classification, review, retries, fallback and escalation costs without double subtraction. Preserve
+  negative savings and abstain from definitive totals/percentages when the accounting or baseline is
+  incomplete.
+- Record baseline model/route/pricing date, task/harness/strategy revisions, caching assumptions and
+  measurement coverage. Matched measured comparisons meet stated outcome/quality criteria; no
+  uncalibrated saving percentage is a delivery gate.
+- Operator approves surface, aggregation boundaries/reference baseline and any paid comparison authority
+  before those actions. Deterministic accounting fixtures verify arithmetic and incomplete/negative cases.
+
+**Dependencies/ownership:** P11.26-CAND-2-TELEMETRY-CONTRACT owns attribution completion; ADR-004 owns
+registry design direction, not a competing work pool; Plan 8 golden tasks and the July context strategy
+document provide inputs. P9.85-FU-3 retains spend-policy custody. No session/load or persistence work is
+implicitly absorbed. Filing this entry does not promote or close those owners.
+
+**Status:** Open.
 
 ### P12.1-FU-1: Local Gateway missed the agent's startup readiness deadline
 

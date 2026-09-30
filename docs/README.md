@@ -21,6 +21,28 @@ it and remove its line below. A test checks that this index lists every current 
 | [Architecture Roadmap v10](Optimus-Architecture-Roadmap-v10.pdf) | Long-range roadmap |
 | [Publication sources for the current PDFs](sources/gateway-mcp-authoritative-document-reversal/) | Sources the HLD v2.18, LLD v2.41, Guardrails v1.3 and Test Strategy v1.7 were built from |
 
+## Decision records (ADRs)
+
+Operator decisions with their verbatim context, the options considered and the trade-offs. Read the
+relevant records before proposing a change in their area.
+
+| Document | What it is |
+|---|---|
+| [Decision log guide and index](decisions/README.md) | Rules for recording decisions, and the index of records |
+| [ADR-001: Context Engine as a separate product](decisions/ADR-001-context-engine-separate-product.md) | Loose coupling; the Optimus floor stays |
+| [ADR-002: History strategies and picker](decisions/ADR-002-history-strategies-and-picker.md) | Compaction (default), hybrid, sliding window; IDE picker |
+| [ADR-003: Context ceiling and history limits](decisions/ADR-003-context-ceiling-and-history-limits.md) | About 256K for all models; history past 512 KiB while the engine is attached; Haiku removed |
+| [ADR-004: Curated model registry](decisions/ADR-004-curated-model-registry.md) | YAML tiers, origin rule, per-token selection among eligible models |
+| [ADR-005: Cost alerts, not limits](decisions/ADR-005-cost-alerts-not-limits.md) | No Optimus cost stops; alerts at thresholds |
+| [ADR-006: Summarizer model](decisions/ADR-006-summarizer-model.md) | From the ultra-cheap tier, behind a quality gate |
+| [ADR-007: Auto mode tier routing](decisions/ADR-007-auto-mode-tier-routing.md) | Classifying each request into a tier |
+| [ADR-008: Final review step and modes](decisions/ADR-008-final-review-step-and-modes.md) | Standard and Thorough |
+| [ADR-009: Loop control](decisions/ADR-009-loop-control-without-stopping-the-user.md) | Never open-ended, never a silent stop |
+| [ADR-010: Data handling on Chinese-model routes](decisions/ADR-010-data-handling-for-chinese-model-routes.md) | No restriction now (deferred) |
+| [ADR-011: How decisions are recorded](decisions/ADR-011-how-decisions-are-recorded.md) | This log, in the repository |
+| [ADR-012: Cost-savings report](decisions/ADR-012-cost-savings-report.md) | A Plan 12 feature: net savings, with a stated baseline |
+| [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
+
 ## Research (input for Plan 12)
 
 | Document | What it is |
