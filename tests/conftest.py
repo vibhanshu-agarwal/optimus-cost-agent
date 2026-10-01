@@ -5,6 +5,7 @@ import uuid
 from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -98,6 +99,49 @@ def _reset_debug_trace_context_between_tests() -> Iterator[None]:
     reset_debug_trace_context()
     yield
     reset_debug_trace_context()
+
+
+@pytest.fixture
+def isolated_windows_known_folders(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give launch/path tests explicit temporary OS folder inputs, never real roots.
+
+    Product entry points import the resolver in several modules. Patch those
+    aliases to the same wrapper so authoring and launching see identical roots.
+    The guarded real adapter itself remains untouched and fail-closed.
+    """
+    import sys
+
+    from optimus.acp import __main__ as acp_main
+    from optimus.acp import launch_approval_cli, operator_paths, trusted_paths
+
+    if sys.platform != "win32":
+        return
+    # Test workspaces often use tmp_path itself. Keep OS roots in a sibling,
+    # preserving the production rule that config/approval roots are external.
+    known_root = tmp_path.parent / f"{tmp_path.name}-known-folders"
+    roaming = known_root / "Roaming"
+    local = known_root / "Local"
+    roaming.mkdir(parents=True)
+    local.mkdir()
+    folders = SimpleNamespace(roaming_appdata=roaming, local_appdata=local)
+    original = trusted_paths.resolve_trusted_operator_roots
+
+    def resolve_with_test_folders(*, platform_name: str, windows_known_folders=None, posix_home=None):
+        selected_folders = windows_known_folders
+        if platform_name == "win32" and selected_folders is None:
+            selected_folders = folders
+        return original(
+            platform_name=platform_name,
+            windows_known_folders=selected_folders,
+            posix_home=posix_home,
+        )
+
+    imported_capture_tool = sys.modules.get("tools.run_plan996_acpx_security_evidence")
+    modules = [trusted_paths, operator_paths, acp_main, launch_approval_cli]
+    if imported_capture_tool is not None:
+        modules.append(imported_capture_tool)
+    for module in modules:
+        monkeypatch.setattr(module, "resolve_trusted_operator_roots", resolve_with_test_folders)
 
 
 @pytest.fixture

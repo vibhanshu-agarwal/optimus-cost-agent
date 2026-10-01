@@ -1,12 +1,16 @@
+import pytest
+
 from optimus.acp import __main__ as acp_main
 from optimus.acp.preflight import PreflightFailure
 from tests.unit.acp.conftest import FakeKeyring, authorize_workspace_for_test
+
+pytestmark = pytest.mark.usefixtures("isolated_windows_known_folders")
 
 
 def _base_env(tmp_path) -> dict[str, str]:
     return {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-        "OPTIMUS_API_KEY": "test-key",
+        "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
     }
 
