@@ -245,6 +245,7 @@ _S1_PROBE_EXECUTES = (
     "src/optimus/telemetry/observability.py",
     "src/optimus/telemetry/redis_adapter.py",
     "src/optimus/telemetry/redis_sink.py",
+    "src/optimus_model_policy/binding.py",
     "src/optimus_security/launch_manifest.py",
 )
 
