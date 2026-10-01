@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from optimus.gateway.errors import GatewayResponseError
+
+if TYPE_CHECKING:
+    from optimus_model_policy.binding import RouteBinding
 
 
 class GatewayUsage(BaseModel):
@@ -67,6 +70,13 @@ class GatewayResponse(BaseModel):
     output_text: str
     gateway_usage: GatewayUsage
     raw: dict[str, Any]
+    finish_reason: str | None = None
+    """The provider's finish status as the Gateway reported it (``stop``, ``length``, ...), or
+    ``None`` when none was reported. ``length`` means the reply hit its output limit (Plan 12.2)."""
+
+    @property
+    def length_limited(self) -> bool:
+        return self.finish_reason == "length"
 
 
 def build_responses_payload(
@@ -74,10 +84,13 @@ def build_responses_payload(
     model: str,
     input_text: str,
     metadata: dict[str, Any] | None = None,
+    route_binding: RouteBinding | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {"model": model, "input": input_text}
     if metadata:
         payload["metadata"] = metadata
+    if route_binding is not None:
+        payload["route_binding"] = route_binding.to_wire()
     return payload
 
 
@@ -149,11 +162,16 @@ def parse_gateway_response(body: dict[str, Any]) -> GatewayResponse:
     if response_id is not None and not isinstance(response_id, str):
         raise GatewayResponseError("id must be a string when present", gateway_usage=usage)
 
+    finish_reason = body.get("finish_reason")
+    if finish_reason is not None and (not isinstance(finish_reason, str) or not finish_reason):
+        raise GatewayResponseError("finish_reason must be a non-empty string when present", gateway_usage=usage)
+
     return GatewayResponse(
         response_id=response_id,
         output_text=output_text,
         gateway_usage=usage,
         raw=body,
+        finish_reason=finish_reason.casefold() if finish_reason is not None else None,
     )
 
 

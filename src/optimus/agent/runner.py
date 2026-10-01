@@ -53,6 +53,7 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
         "Chat's answer exceeded this prompt's cost limit, so it is not shown. Try a narrower question."
     ),
     "CHAT_HALTED": "Chat answer cancelled before it was shown.",
+    "CHAT_OUTPUT_TRUNCATED": "This answer is incomplete: it reached the model's output limit.",
     "CHAT_COMPLETION_CONDITION_UNSUPPORTED": (
         "Chat answers a single question and cannot run toward a completion condition. Use Agent mode for goal loops."
     ),
@@ -443,6 +444,19 @@ class AgentRunner:
             wire_attempt=1,
         )
         total_cost_usd = response.gateway_usage.cost_usd
+        if response.length_limited:
+            # A plan cut off at the output limit is never a candidate (Plan 12.2 Task 5).
+            from optimus.agent.planning_loop import planning_corrective_text
+
+            return self._build_result(
+                request=request,
+                status=AgentRunStatus.TERMINATED,
+                final_state="TERMINATED",
+                output_text=planning_corrective_text("PLANNING_OUTPUT_TRUNCATED"),
+                tool_calls=(),
+                total_cost_usd=total_cost_usd,
+                stop_reason="PLANNING_OUTPUT_TRUNCATED",
+            )
         output_text = response.output_text
         return self._finish_agent_planning(
             request=request,
@@ -1207,6 +1221,15 @@ class AgentRunner:
                 total_cost_usd=total_cost_usd,
             )
         answer = response.output_text.strip()
+        if response.length_limited:
+            # Shown, but never reported as a complete successful answer (Plan 12.2 Task 5).
+            notice = CHAT_FAILURE_MESSAGES["CHAT_OUTPUT_TRUNCATED"]
+            return self._chat_failure(
+                request,
+                stop_reason="CHAT_OUTPUT_TRUNCATED",
+                output_text=f"{answer}\n\n{notice}" if answer else notice,
+                total_cost_usd=total_cost_usd,
+            )
         if not answer:
             return self._chat_failure(request, stop_reason="CHAT_EMPTY_ANSWER", total_cost_usd=total_cost_usd)
         # Plan 2's validated path for a non-AGENT result: PLANNING -> PLAN_READY -> CHAT_ONLY.

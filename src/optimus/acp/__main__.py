@@ -42,6 +42,7 @@ from optimus.acp.trusted_paths import (
     revalidate_workspace_security_state,
 )
 from optimus.gateway.client import DEFAULT_GATEWAY_TIMEOUT_SECONDS, validate_gateway_timeout_seconds
+from optimus_model_policy.binding import APPROVAL_LITERAL_NAME
 
 
 def _print_log(message: str) -> None:
@@ -537,6 +538,8 @@ def main(argv: list[str] | None = None) -> int:
             config_root=candidate.operator_paths.config_root,
             otlp_endpoint=otlp_endpoint,
             log=_print_log,
+            # Plan 12.2 Task 5: the registry literal the operator approved, or None while inactive.
+            model_registry=candidate.security_literals.get(APPROVAL_LITERAL_NAME),
         )
 
     if args.check_config:

@@ -66,6 +66,7 @@ from optimus.mcp.client_trust import (
     write_client_mcp_durable_from_fingerprint,
 )
 from optimus.mcp.local_ipc import PendingClientMcpCandidateEndpoint, SafeCandidateSnapshot
+from optimus_model_policy.binding import trusted_approval_literal
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 from optimus_security.sanitization import mask_uri_userinfo
 
@@ -943,6 +944,8 @@ def _cmd_run_gateway(
         shared_secret=shared_secret,
         hmac_key=hmac_key_source.hmac_key,
         policy_version=LAUNCH_POLICY_COMPATIBILITY,
+        # Plan 12.2 Task 5: the Gateway refuses to start unless this matches its own registry.
+        model_registry=trusted_approval_literal(),
     )
     serialized_manifest = serialize_gateway_child_manifest(manifest)
 

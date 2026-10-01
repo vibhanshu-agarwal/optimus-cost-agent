@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal, Protocol, TypeVar
@@ -43,11 +43,24 @@ class ProviderMessageResult:
     cached_tokens: int | None = None
     reasoning_tokens: int | None = None
     cache_age_seconds: int | None = None
+    finish_reason: str | None = None
+    """The provider's own finish status, lower-cased (``stop``, ``length``, ...); ``None`` when the
+    provider reported none. Never synthesized (Plan 12.2 Task 5)."""
 
 
 class UpstreamClient(Protocol):
-    def create_message(self, *, model: str, input_text: str) -> ProviderMessageResult:
-        """Call an upstream LLM API and return normalized text + usage."""
+    def create_message(
+        self,
+        *,
+        model: str,
+        input_text: str,
+        max_tokens: int | None = None,
+        provider_controls: Mapping[str, Any] | None = None,
+    ) -> ProviderMessageResult:
+        """Call an upstream LLM API and return normalized text + usage.
+
+        ``max_tokens`` and ``provider_controls`` are sent only under an enforced model policy
+        (Plan 12.2 Task 5); today's routing calls with ``model`` and ``input_text`` alone."""
 
 
 class RetryableUpstreamError(Exception):
@@ -126,11 +139,24 @@ class UrllibOpenAICompatibleClient:
         self._sleep = sleep
         self._on_retry = on_retry
 
-    def create_message(self, *, model: str, input_text: str) -> ProviderMessageResult:
-        payload = {
+    def create_message(
+        self,
+        *,
+        model: str,
+        input_text: str,
+        max_tokens: int | None = None,
+        provider_controls: Mapping[str, Any] | None = None,
+    ) -> ProviderMessageResult:
+        payload: dict[str, Any] = {
             "model": model,
             "messages": [{"role": "user", "content": input_text}],
         }
+        # Route-binding wire mapping v1 (Plan 12.2 Task 5): the output cap travels as OpenRouter's
+        # ``max_tokens`` and the approved endpoint allow-set as its ``provider`` routing object.
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+        if provider_controls is not None:
+            payload["provider"] = json.loads(json.dumps(dict(provider_controls)))
         request = Request(
             f"{self._base_url}/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
@@ -223,6 +249,11 @@ def parse_openai_chat_completion(
     output_text = message.get("content")
     if not isinstance(output_text, str):
         raise RuntimeError("upstream response missing message content")
+    finish_reason = first.get("finish_reason")
+    if finish_reason is not None:
+        if not isinstance(finish_reason, str) or not finish_reason:
+            raise RuntimeError("upstream response has malformed finish reason")
+        finish_reason = finish_reason.casefold()
 
     usage = body.get("usage")
     if not isinstance(usage, dict):
@@ -279,6 +310,7 @@ def parse_openai_chat_completion(
         cached_tokens=cached_tokens,
         reasoning_tokens=reasoning_tokens,
         cache_age_seconds=cache_age_seconds,
+        finish_reason=finish_reason,
     )
 
 

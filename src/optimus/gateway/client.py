@@ -4,7 +4,7 @@ import json
 import math
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -17,6 +17,9 @@ from optimus.gateway.models import (
     parse_gateway_response,
     parse_gateway_usage,
 )
+
+if TYPE_CHECKING:
+    from optimus_model_policy.binding import RouteBinding
 
 DEFAULT_GATEWAY_TIMEOUT_SECONDS = 30.0
 
@@ -119,14 +122,19 @@ class GatewayClient:
         model: str,
         input_text: str,
         metadata: dict[str, Any] | None = None,
+        route_binding: RouteBinding | None = None,
     ) -> GatewayResponse:
+        """``route_binding`` binds the trusted model registry, request identity, output cap and any
+        Contributor disclosure (Plan 12.2 Task 5); it is sent only once registry enforcement is active."""
         self._settings.validate_trusted_gateway()
         body = self._transport.post_json(
             GatewayRequest(
                 method="POST",
                 url=self._url("/v1/responses"),
                 headers=self._json_headers(),
-                payload=build_responses_payload(model=model, input_text=input_text, metadata=metadata),
+                payload=build_responses_payload(
+                    model=model, input_text=input_text, metadata=metadata, route_binding=route_binding
+                ),
                 timeout_seconds=self._timeout_seconds,
             )
         )

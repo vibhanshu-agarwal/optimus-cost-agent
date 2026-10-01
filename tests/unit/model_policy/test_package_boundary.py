@@ -10,15 +10,17 @@ import ast
 from importlib import resources
 from pathlib import Path
 
-import optimus_model_policy
+from tools.tracked_repository_files import tracked_repository_files
 
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _FORBIDDEN = ("optimus", "optimus_gateway", "optimus_security", "evidence_handoff", "evidence_handoff_runtime")
 
 
 def test_the_package_imports_no_host_gateway_or_security_module() -> None:
-    package_dir = Path(optimus_model_policy.__file__).parent
     offenders: list[str] = []
-    for source in sorted(package_dir.glob("*.py")):
+    sources = tracked_repository_files(_REPO_ROOT, pathspecs=("src/optimus_model_policy",))
+    assert sources, "the package must have tracked sources"
+    for source in sorted(path for path in sources if path.suffix == ".py"):
         tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
         for node in ast.walk(tree):
             names: list[str] = []

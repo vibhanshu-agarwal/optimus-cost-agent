@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import os
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
 from optimus_security.launch_manifest import resolve_effective_base_url
+
+if TYPE_CHECKING:
+    from optimus_gateway.model_policy import GatewayModelPolicy
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 _GATEWAY_PROVIDER = "openrouter"
@@ -32,6 +35,9 @@ class GatewayServiceConfig:
     maven_base_url: str | None = None
     tool_max_calls_per_tool: int = 5
     otlp_endpoint: str | None = None
+    # Plan 12.2 Task 5: the trusted model registry this Gateway enforces, composed at startup from a
+    # verified manifest; None (today's routing) while registry enforcement is inactive.
+    model_policy: GatewayModelPolicy | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if self.bind_host.lower() not in _LOOPBACK_HOSTS:

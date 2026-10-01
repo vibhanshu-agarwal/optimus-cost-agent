@@ -726,6 +726,10 @@ def planning_corrective_text(
         "PLANNING_UNPARSEABLE_RESPONSE": (
             "Planning stopped after repeated responses that did not match the required directive grammar."
         ),
+        "PLANNING_OUTPUT_TRUNCATED": (
+            "Planning stopped because the model's reply reached its output limit before the plan was "
+            "complete. Nothing was stored, offered for approval or changed."
+        ),
         "PLANNING_BUDGET_EXHAUSTED": "Planning stopped because the run budget was exhausted.",
         "PLANNING_WALL_CLOCK_EXHAUSTED": "Planning stopped because the wall-clock limit was reached.",
         "PLANNING_TURN_LIMIT_EXHAUSTED": "Planning stopped before a final plan could be settled.",
@@ -1148,6 +1152,16 @@ class _PlanningIterationRunner:
             )
         # Success path — cost already recorded inside _invoke_planning_gateway via
         # _record_reported_gateway_usage; do NOT append/add again here.
+
+        # A reply cut off at its output limit is never a candidate, even if its prefix parses as a
+        # valid plan: stop before parsing, storing, approval or execution (Plan 12.2 Task 5).
+        if getattr(response, "length_limited", False):
+            self._last_non_progress_kind = "OUTPUT_TRUNCATED"
+            return self._typed_planning_failure(
+                stop_reason="PLANNING_OUTPUT_TRUNCATED",
+                summary="planning response was cut off at the model's output limit",
+                cost_usd=attempt_cost,
+            )
 
         try:
             decision = parse_planning_turn(response.output_text)

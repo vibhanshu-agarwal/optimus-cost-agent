@@ -58,6 +58,8 @@ from optimus.acp.trusted_paths import (
     WorkspaceIdentity,
     WorkspaceSecurityState,
 )
+from optimus_model_policy import RegistryError
+from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError, trusted_approval_literal
 from optimus_security.sanitization import canonicalize_credential_uri, validate_secret_length
 
 # Plan 9.96, Task 5 Batch 3 Step 5: the reviewed default each monotonic-tier
@@ -650,6 +652,17 @@ def resolve_launch_candidate(
             hmac_key=hmac_key,
         )
 
+    # 2d. Plan 12.2 Task 5: bind the trusted model registry's effective hash, so the operator
+    # approves that exact registry and any change to it requires re-approval. While registry
+    # enforcement is inactive there is no literal and the digest is unchanged, so existing
+    # approvals stay valid; activation adds it and those approvals then need re-approval.
+    try:
+        registry_literal = trusted_approval_literal()
+    except (BindingError, RegistryError) as exc:
+        raise LaunchGateError(code="MODEL_REGISTRY_INVALID", detail=exc.code) from exc
+    if registry_literal is not None:
+        security_literals[APPROVAL_LITERAL_NAME] = registry_literal
+
     # 3. Compute security snapshot digest using the SINGLE shared function
     # also used by build_approval_record(). This is required — using two
     # independent hash computations (even with equivalent inputs) produces
@@ -670,6 +683,16 @@ def resolve_launch_candidate(
         shared_secret=resolved_shared_secret,
         shared_secret_provenance=shared_secret_provenance,
     )
+    if registry_literal is not None:
+        display_rows.append(
+            LaunchDisplayRow(
+                name=APPROVAL_LITERAL_NAME,
+                tier=LaunchVariableTier.SECURITY,
+                source_class="trusted-composition",
+                display_value=registry_literal,
+                decision="requires exact approval",
+            )
+        )
 
     # 4. Project child environments from registry.
     gateway_environ = project_gateway_tool_child_env(snapshot.values)

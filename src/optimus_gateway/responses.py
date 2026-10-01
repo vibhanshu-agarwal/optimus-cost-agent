@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Any
 
 from optimus_gateway.model_mapping import resolve_model_id
+from optimus_gateway.model_policy import ModelPolicyRefusal, admit_request, check_finish_status, parse_route_binding
 from optimus_gateway.models import (
     GatewayServiceConfig,
     ModelRequestValidationError,
@@ -12,6 +13,7 @@ from optimus_gateway.models import (
     validate_responses_envelope,
 )
 from optimus_gateway.upstream_client import ProviderMessageResult, UpstreamClient
+from optimus_model_policy.binding import RouteBinding
 from optimus_security.sanitization import sanitize_for_persistence
 
 
@@ -29,6 +31,10 @@ def handle_responses_request(
         model, input_text, _metadata = validate_responses_envelope(request_body)
     except ModelRequestValidationError as exc:
         return 400, {"error": sanitize_error_message(str(exc))}
+    try:
+        route_binding = parse_route_binding(request_body, config.model_policy)
+    except ModelPolicyRefusal as exc:
+        return _policy_refusal(exc)
 
     return run_model_completion(
         model=model,
@@ -36,6 +42,7 @@ def handle_responses_request(
         config=config,
         upstream_client=upstream_client,
         build_success=_build_responses_success,
+        route_binding=route_binding,
     )
 
 
@@ -46,15 +53,42 @@ def run_model_completion(
     config: GatewayServiceConfig,
     upstream_client: UpstreamClient,
     build_success,
+    route_binding: RouteBinding | None = None,
 ) -> tuple[int, dict[str, Any]]:
-    """Shared auth-complete provider path for Responses and Chat Completions."""
-    try:
-        provider_model = resolve_model_id(provider=config.provider, model=model)
-    except ValueError as exc:
-        return 400, {"error": sanitize_error_message(str(exc))}
+    """Shared auth-complete provider path for Responses and Chat Completions.
+
+    With a model policy configured (Plan 12.2 Task 5) the request is admitted against the trusted
+    registry before any upstream call and sent with its route controls and output cap; without one,
+    today's alias/pass-through routing applies.
+    """
+    policy = config.model_policy
+    if policy is None:
+        try:
+            provider_model = resolve_model_id(provider=config.provider, model=model)
+        except ValueError as exc:
+            return 400, {"error": sanitize_error_message(str(exc))}
+
+        def call_upstream() -> ProviderMessageResult:
+            return upstream_client.create_message(model=provider_model, input_text=input_text)
+
+    else:
+        if route_binding is None:
+            return _policy_refusal(ModelPolicyRefusal("BINDING_REQUIRED"))
+        try:
+            admitted = admit_request(policy, model=model, input_text=input_text, binding=route_binding)
+        except ModelPolicyRefusal as exc:
+            return _policy_refusal(exc)
+
+        def call_upstream() -> ProviderMessageResult:
+            return upstream_client.create_message(
+                model=admitted.model_id,
+                input_text=admitted.input_text,
+                max_tokens=admitted.output_cap,
+                provider_controls=admitted.provider_controls,
+            )
 
     try:
-        provider_result = upstream_client.create_message(model=provider_model, input_text=input_text)
+        provider_result = call_upstream()
     except RuntimeError as exc:
         return 502, {"error": sanitize_error_message(str(exc))}
 
@@ -81,7 +115,18 @@ def run_model_completion(
     except ValueError as exc:
         return 502, {"error": sanitize_error_message(str(exc))}
     gateway_usage["cost_usd"] = format_cost_usd(provider_result.cost_usd)
+    if policy is not None:
+        try:
+            check_finish_status(getattr(provider_result, "finish_reason", None))
+        except ModelPolicyRefusal as exc:
+            # The call happened and was billed: the error keeps its usage so the host records it.
+            status, body = _policy_refusal(exc)
+            return status, {**body, "gateway_usage": gateway_usage}
     return 200, build_success(provider_result=provider_result, gateway_usage=gateway_usage)
+
+
+def _policy_refusal(exc: ModelPolicyRefusal) -> tuple[int, dict[str, Any]]:
+    return exc.status, {"error": sanitize_error_message(str(exc)), "code": exc.code}
 
 
 def assert_gateway_usage_contract(gateway_usage: dict[str, Any]) -> None:
@@ -116,6 +161,8 @@ def _build_responses_success(
     return {
         "id": f"resp-{uuid.uuid4().hex}",
         "output_text": provider_result.output_text,
+        # The provider's true finish status, or None when it reported none (Plan 12.2 Task 5).
+        "finish_reason": getattr(provider_result, "finish_reason", None),
         "gateway_usage": gateway_usage,
     }
 

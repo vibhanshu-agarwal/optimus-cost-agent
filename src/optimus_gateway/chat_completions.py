@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from optimus_gateway.model_policy import ModelPolicyRefusal, parse_route_binding
 from optimus_gateway.models import (
     GatewayServiceConfig,
     ModelRequestValidationError,
@@ -29,6 +30,10 @@ def handle_chat_completions_request(
         input_text = flatten_messages_to_input_text(messages)
     except ModelRequestValidationError as exc:
         return 400, {"error": sanitize_error_message(str(exc))}
+    try:
+        route_binding = parse_route_binding(request_body, config.model_policy)
+    except ModelPolicyRefusal as exc:
+        return exc.status, {"error": sanitize_error_message(str(exc)), "code": exc.code}
 
     return run_model_completion(
         model=model,
@@ -36,6 +41,7 @@ def handle_chat_completions_request(
         config=config,
         upstream_client=upstream_client,
         build_success=_build_chat_completions_success,
+        route_binding=route_binding,
     )
 
 
@@ -51,7 +57,8 @@ def _build_chat_completions_success(
             {
                 "index": 0,
                 "message": {"role": "assistant", "content": provider_result.output_text},
-                "finish_reason": "stop",
+                # The provider's true finish status, never a fabricated "stop" (Plan 12.2 Task 5).
+                "finish_reason": getattr(provider_result, "finish_reason", None),
             }
         ],
         "gateway_usage": gateway_usage,

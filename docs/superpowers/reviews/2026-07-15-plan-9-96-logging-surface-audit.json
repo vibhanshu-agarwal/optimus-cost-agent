@@ -3679,6 +3679,78 @@
       "sanitizer": "fixed spawn schema without raw arguments, environment, content or secrets",
       "test_node": "tests/unit/acp/test_main5_guard.py::test_guard_spawn_ledger_records_short_no_site_child_without_arguments",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.responses:_policy_refusal:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects the Plan 12.2 model-policy refusal text at optimus_gateway.responses:_policy_refusal:exception_export before it leaves the Gateway as an HTTP error body; the refusal carries a stable code and a fixed or field-name detail, and sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_model_policy.py::test_unsupported_binding_shapes_are_rejected_not_ignored",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.binding:_sha256_canonical:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _sha256_canonical serializes route and payload identities to canonical JSON only as SHA-256 hash input for the Plan 12.2 route binding; the JSON is never persisted or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_binding.py::test_payload_digest_covers_model_roles_content_and_cap",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.registry:_canonical_hash:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _canonical_hash serializes the validated, non-secret model registry to canonical JSON only as SHA-256 input for its effective hash; the JSON is never persisted or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_registry.py::test_the_effective_hash_ignores_formatting_but_tracks_content",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.registry:load_registry:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: load_registry wraps a schema validation failure of the curated, non-secret registry YAML in a typed RegistryError; production callers (launch gate, Gateway startup) export only its stable code, never the detail.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_gate_model_registry.py::test_an_untrustworthy_registry_blocks_launch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_model_registry_drift:_save_snapshot:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _save_snapshot re-serializes only the public OpenRouter catalog and endpoint responses, fetched without any credential, into the operator-chosen snapshot directory as drift evidence.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_model_registry_drift.py::test_a_fetched_snapshot_saves_only_the_public_responses",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_model_registry_drift:_save_snapshot:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _save_snapshot writes only the public, credential-free catalog and endpoint responses to the operator-chosen snapshot directory; no request header, key or local diagnostic reaches the files.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_model_registry_drift.py::test_a_fetched_snapshot_saves_only_the_public_responses",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_model_registry_drift:main:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch; the only matching call is argparse parser.error with a fixed usage message, not a logger.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_model_registry_drift.py::test_the_report_reads_saved_responses_and_never_edits_the_registry",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_model_registry_drift:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints only the exception type name to stderr when the catalog is unavailable; no exception text, URL body or credential is exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_model_registry_drift.py::test_an_unreadable_catalog_exits_2",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_model_registry_drift:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints the registry version, a hash prefix, the snapshot path and drift lines built from registry IDs and public catalog facts; no credential or local diagnostic is printed.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_model_registry_drift.py::test_the_report_reads_saved_responses_and_never_edits_the_registry",
+      "evidence_tier": "unit"
     }
   ]
 }

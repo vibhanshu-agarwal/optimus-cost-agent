@@ -145,3 +145,44 @@ def test_the_report_reads_saved_responses_and_never_edits_the_registry(registry:
 def test_an_unreadable_catalog_exits_2(registry: Path, tmp_path: Path) -> None:
     missing = tmp_path / "absent.json"
     assert main(["--registry", str(registry), "--catalog", str(missing), "--endpoints-dir", str(tmp_path)]) == 2
+
+
+def test_a_fetched_snapshot_saves_only_the_public_responses(
+    registry: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """--fetch sends no credential and saves exactly the public catalog and endpoint responses."""
+    import tools.check_model_registry_drift as drift
+
+    catalog, endpoints = _matching_catalog()
+    by_url = {CATALOG_URL: catalog} | {
+        f"https://openrouter.ai/api/v1/models/{model_id}/endpoints": payload for model_id, payload in endpoints.items()
+    }
+    headers_seen: list[dict[str, str]] = []
+
+    class _Response:
+        def __init__(self, body: object) -> None:
+            self._body = json.dumps(body).encode()
+
+        def read(self, *args: object) -> bytes:
+            return self._body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    def fake_urlopen(request, timeout: float = 0):
+        headers_seen.append({name.lower(): value for name, value in request.header_items()})
+        return _Response(by_url[request.full_url])
+
+    monkeypatch.setattr(drift.urllib.request, "urlopen", fake_urlopen)
+    assert main(["--registry", str(registry), "--fetch", "--snapshot-dir", str(tmp_path / "snaps")]) == 0
+
+    assert all("authorization" not in headers for headers in headers_seen)
+    [saved] = list((tmp_path / "snaps").iterdir())
+    assert json.loads((saved / "models.json").read_text(encoding="utf-8")) == catalog
+    for model_id, payload in endpoints.items():
+        assert json.loads((saved / f"endpoints-{model_id.replace('/', '__')}.json").read_text(encoding="utf-8")) == payload
+    assert sorted(path.name for path in saved.iterdir()) == ["endpoints-cn__alpha.json", "endpoints-us__beta.json", "models.json"]
+    assert "saved snapshot:" in capsys.readouterr().out

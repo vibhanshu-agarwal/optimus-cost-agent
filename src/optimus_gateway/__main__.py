@@ -3,11 +3,15 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from dataclasses import replace
 
 import keyring as _keyring_module
 
+from optimus_gateway.model_policy import GatewayModelPolicy
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.server import serve_gateway
+from optimus_model_policy import RegistryError
+from optimus_model_policy.binding import BindingError, approval_literal, trusted_snapshot
 from optimus_security.launch_manifest import (
     LaunchManifestError,
     read_manifest_hmac_key,
@@ -78,6 +82,14 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
+    # Plan 12.2 Task 5: compose the trusted model registry this install enforces (None while
+    # enforcement is inactive); the manifest must bind exactly its approval literal.
+    try:
+        registry = trusted_snapshot()
+    except (BindingError, RegistryError) as exc:
+        print(f"optimus-local-gateway: model registry is not trustworthy ({exc.code}); refusing to start.", file=sys.stderr)
+        return 2
+
     try:
         hmac_key = read_manifest_hmac_key(_keyring_module)
         verify_gateway_child_manifest(
@@ -89,10 +101,19 @@ def main(argv: list[str] | None = None) -> int:
             shared_secret=config.shared_secret,
             bind_host=config.bind_host,
             bind_port=config.bind_port,
+            model_registry=None if registry is None else approval_literal(registry),
         )
     except LaunchManifestError as exc:
         print(f"optimus-local-gateway: manifest validation failed ({exc.code}); refusing to start.", file=sys.stderr)
         return 2
+
+    if registry is not None:
+        config = replace(
+            config,
+            model_policy=GatewayModelPolicy.for_launch(
+                snapshot=registry, approved_hash=registry.effective_hash, shared_secret=config.shared_secret
+            ),
+        )
 
     server = serve_gateway(config=config)
     host, port = server.server_address
