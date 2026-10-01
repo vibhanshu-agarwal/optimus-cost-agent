@@ -32,6 +32,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("isolated_windows_known_folders")
+
 from optimus.acp.launch_approvals import (
     LAUNCH_POLICY_COMPATIBILITY,
     KeyringApprovalStore,
@@ -86,7 +88,7 @@ class FakeKeyring:
 def _base_env(*, workspace_root: Path) -> dict[str, str]:
     return {
         "OPTIMUS_GATEWAY_URL": LOOPBACK_GATEWAY_URL,
-        "OPTIMUS_API_KEY": "test-shared-key",
+        "OPTIMUS_API_KEY": "test-shared-key",  # pragma: allowlist secret - synthetic test fixture
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         # Exercises OPTIMUS_CONFIG_ROOT's own real containment validation
         # inside resolve_authorized_operator_paths -- an absolute path
@@ -466,7 +468,7 @@ def test_full_launch_trust_flow_authorizes_identical_credential_uri(tmp_path: Pa
     keyring = FakeKeyring()
     env = _base_env(workspace_root=workspace_root)
     env["OPTIMUS_REDIS_URL"] = (
-        f"redis://{_URI_TRUST_CANARY_OLD}:pass@127.0.0.1:6379/0"
+        f"redis://{_URI_TRUST_CANARY_OLD}:pass@127.0.0.1:6379/0"  # pragma: allowlist secret - synthetic test fixture
     )
 
     authoring_candidate, store = _real_launch_pipeline(
@@ -516,7 +518,7 @@ def test_full_launch_trust_flow_uri_userinfo_mutation_fails_closed(tmp_path: Pat
     keyring = FakeKeyring()
     env = _base_env(workspace_root=workspace_root)
     env["OPTIMUS_REDIS_URL"] = (
-        f"redis://{_URI_TRUST_CANARY_OLD}:pass@127.0.0.1:6379/0"
+        f"redis://{_URI_TRUST_CANARY_OLD}:pass@127.0.0.1:6379/0"  # pragma: allowlist secret - synthetic test fixture
     )
 
     authoring_candidate, store = _real_launch_pipeline(
@@ -540,7 +542,7 @@ def test_full_launch_trust_flow_uri_userinfo_mutation_fails_closed(tmp_path: Pat
 
     changed_env = dict(env)
     changed_env["OPTIMUS_REDIS_URL"] = (
-        f"redis://{_URI_TRUST_CANARY_NEW}:pass@127.0.0.1:6379/0"
+        f"redis://{_URI_TRUST_CANARY_NEW}:pass@127.0.0.1:6379/0"  # pragma: allowlist secret - synthetic test fixture
     )
     changed_candidate, changed_store = _real_launch_pipeline(
         env=changed_env, workspace_root=workspace_root, keyring=keyring, runtime_root=runtime_root

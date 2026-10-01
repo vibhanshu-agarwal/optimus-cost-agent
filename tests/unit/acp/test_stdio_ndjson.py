@@ -3,8 +3,12 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import os
 import re
+import subprocess
 import sys
+from contextlib import suppress
+from pathlib import Path
 
 import pytest
 
@@ -1045,3 +1049,60 @@ async def test_seam4_reporter_contains_a_failing_stderr_write(
             )
     finally:
         await _seam4_finally(reader, serve_task)
+
+
+# MAIN-5 process-tree plants are scored here; the guard self-tests stay in their isolated lane.
+def _main5_runner_probe(name: str) -> None:
+    if os.environ.get("MAIN5_RUNNER_PROBE") != name:
+        pytest.skip("runner-only process plant")
+
+
+def test_main5_runner_no_site_probe() -> None:
+    _main5_runner_probe("no_site")
+    subprocess.run([sys.executable, "-S", "-c", "pass"], check=True)
+
+
+def test_main5_runner_guarded_pair_probe() -> None:
+    _main5_runner_probe("guarded_pair")
+    subprocess.run([sys.executable, "-c", "pass"], check=True)
+
+
+def test_main5_runner_version_probe() -> None:
+    _main5_runner_probe("version")
+    subprocess.run([sys.executable, "--version"], check=True, capture_output=True)
+
+
+def test_main5_runner_guard_exit_86_probe() -> None:
+    _main5_runner_probe("guard_exit_86")
+    child = subprocess.run([sys.executable, "-c", "import os; os._exit(86)"], check=False)
+    assert child.returncode == 86
+
+
+def test_main5_runner_combined_no_site_probe() -> None:
+    _main5_runner_probe("combined_no_site")
+    subprocess.run([sys.executable, "-Sc", "pass"], check=True)
+
+
+def test_main5_runner_real_root_write_probe() -> None:
+    _main5_runner_probe("real_root_write")
+    target = Path(os.environ["LOCALAPPDATA"]) / "optimus-cost-agent" / f"main5-plant-{os.getpid()}"
+    with suppress(PermissionError):
+        target.write_text("synthetic", encoding="utf-8")
+    assert not target.exists()
+
+
+def test_main5_runner_base_interpreter_probe() -> None:
+    _main5_runner_probe("base_interpreter")
+    subprocess.run([sys._base_executable, "-c", "pass"], check=True)
+
+
+def test_main5_runner_bash_guarded_probe(tmp_path: Path) -> None:
+    from shutil import which
+
+    _main5_runner_probe("bash_guarded")
+    # Materialize basetemp for the runner custody archive.
+    assert tmp_path.is_dir()
+    bash = which("bash")
+    assert bash is not None
+    command = f'"{sys.executable}" -c pass & wait'
+    subprocess.run([bash, "-c", command], check=True)

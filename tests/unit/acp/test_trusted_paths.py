@@ -18,6 +18,7 @@ import pytest
 
 from optimus.acp.trusted_paths import (
     TrustedPathError,
+    _RealWindowsKnownFolders,
     resolve_trusted_operator_roots,
     resolve_workspace_identity,
     revalidate_workspace_identity,
@@ -362,39 +363,52 @@ class TestWindowsCaseNormalization:
 # --- Platform-guarded real adapter smoke tests ---
 
 
-class TestRealWindowsAdapter:
-    """Smoke test the real Windows Known Folder adapter on actual Windows."""
+class TestWindowsAdapterBoundary:
+    """Exercise real read-only lookup and injected root composition."""
 
     @pytest.mark.skipif(
         __import__("sys").platform != "win32",
-        reason="Windows-only: real SHGetKnownFolderPath",
+        reason="Windows-only: known-folder adapter boundary",
     )
-    def test_real_windows_known_folders_resolves(self) -> None:
-        """On a real Windows box, the ctypes GUID-based resolution must work."""
-        from optimus.acp.trusted_paths import _real_windows_known_folders
+    def test_real_windows_known_folders_match_independent_shell_lookup(self) -> None:
+        """Narrow read-only exemption: call the class, never the guarded resolver."""
+        import ctypes
 
-        folders = _real_windows_known_folders()
-        assert folders.roaming_appdata is not None, (
-            "SHGetKnownFolderPath failed for RoamingAppData"
-        )
-        assert folders.local_appdata is not None, (
-            "SHGetKnownFolderPath failed for LocalAppData"
-        )
-        # Both paths should be absolute and contain "AppData".
-        assert folders.roaming_appdata.is_absolute()
-        assert folders.local_appdata.is_absolute()
+        shell32 = ctypes.windll.shell32  # type: ignore[attr-defined]
+        shell32.SHGetFolderPathW.argtypes = [
+            ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_uint, ctypes.c_wchar_p,
+        ]
+        shell32.SHGetFolderPathW.restype = ctypes.c_long
+
+        def shell_path(csidl: int) -> Path:
+            buffer = ctypes.create_unicode_buffer(32768)
+            assert shell32.SHGetFolderPathW(None, csidl, None, 0, buffer) == 0
+            return Path(buffer.value).resolve()
+
+        # SHGetFolderPathW uses CSIDLs, independent of this adapter's GUIDs.
+        folders = _RealWindowsKnownFolders()
+        assert folders.roaming_appdata is not None
+        assert folders.local_appdata is not None
+        assert folders.roaming_appdata.is_absolute() and folders.roaming_appdata.is_dir()
+        assert folders.local_appdata.is_absolute() and folders.local_appdata.is_dir()
+        assert folders.roaming_appdata.resolve() == shell_path(0x001A)
+        assert folders.local_appdata.resolve() == shell_path(0x001C)
 
     @pytest.mark.skipif(
         __import__("sys").platform != "win32",
-        reason="Windows-only: real end-to-end root resolution",
+        reason="Windows-only: injected end-to-end root resolution",
     )
-    def test_real_windows_trusted_roots_end_to_end(self) -> None:
-        """Real root resolution produces valid paths on Windows."""
-        roots = resolve_trusted_operator_roots(platform_name="win32")
+    def test_windows_trusted_roots_end_to_end(self, tmp_path: Path) -> None:
+        """The Windows composition yields roots under the explicit adapter."""
+        folders = FakeWindowsKnownFolders(
+            roaming_appdata=tmp_path / "Roaming",
+            local_appdata=tmp_path / "Local",
+        )
+        roots = resolve_trusted_operator_roots(platform_name="win32", windows_known_folders=folders)
         assert roots.default_config_root.is_absolute()
         assert roots.approval_runtime_root.is_absolute()
-        assert "optimus-cost-agent" in str(roots.default_config_root)
-        assert "optimus-cost-agent" in str(roots.approval_runtime_root)
+        assert roots.default_config_root == folders.roaming_appdata / "optimus-cost-agent"
+        assert roots.approval_runtime_root == folders.local_appdata / "optimus-cost-agent"
 
 
 class TestRealPosixAdapter:
@@ -951,7 +965,7 @@ class TestWorkspaceIdentityV3:
             repository_root=None,
             git_common_dir=None,
         )
-        assert digest == "24cce4d45cd7207882167783cc65d2071f3724cd49a5c5b0550050e523d8b95c"
+        assert digest == "24cce4d45cd7207882167783cc65d2071f3724cd49a5c5b0550050e523d8b95c"  # pragma: allowlist secret - synthetic golden identity digest, not a credential
 
 
 class TestExclusionPolicyV1:

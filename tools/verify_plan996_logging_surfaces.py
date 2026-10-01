@@ -54,6 +54,8 @@ def discover_surfaces(project_root: Path) -> set[str]:
     surfaces: set[str] = set()
     source_paths = tracked_repository_files(project_root, pathspecs=("src", "tools"))
     for source_path in source_paths:
+        if source_path.parent != project_root and "tools" in source_path.relative_to(project_root).parts and (source_path.name.startswith("test_") or source_path.name == "conftest.py"):
+            continue
         module = _module_name(project_root, source_path)
         source = source_path.read_text(encoding="utf-8")
         if source_path.suffix == ".py":
@@ -91,7 +93,20 @@ def validate_manifest(
 
 def _discover_python_surfaces(module: str, source: str) -> set[str]:
     tree = ast.parse(source)
-    finder = _SurfaceFinder(module)
+    json_serializers = {"json.dump", "json.dumps"}
+    # Conservative module-wide alias set: imports may live in try blocks or
+    # function bodies, yet still feed a sink call elsewhere in the module.
+    for statement in ast.walk(tree):
+        if isinstance(statement, ast.Import):
+            for imported in statement.names:
+                if imported.name == "json":
+                    prefix = imported.asname or imported.name
+                    json_serializers.update({f"{prefix}.dump", f"{prefix}.dumps"})
+        elif isinstance(statement, ast.ImportFrom) and statement.module == "json":
+            for imported in statement.names:
+                if imported.name in {"dump", "dumps"}:
+                    json_serializers.add(imported.asname or imported.name)
+    finder = _SurfaceFinder(module, json_serializers)
     finder.visit(tree)
     return finder.surfaces
 
@@ -122,8 +137,9 @@ def _test_node_resolves(test_node: str, project_root: Path) -> bool:
 
 
 class _SurfaceFinder(ast.NodeVisitor):
-    def __init__(self, module: str) -> None:
+    def __init__(self, module: str, json_serializers: set[str]) -> None:
         self.module = module
+        self.json_serializers = json_serializers
         self.class_name = ""
         self.function_name = ""
         self.surfaces: set[str] = set()
@@ -168,7 +184,7 @@ class _SurfaceFinder(ast.NodeVisitor):
             self._add("text_file_write")
         elif call_name.endswith("write"):
             self._add("text_write")
-        elif call_name in {"json.dump", "json.dumps"}:
+        elif call_name in self.json_serializers:
             self._add("json_serialization")
         self.generic_visit(node)
 

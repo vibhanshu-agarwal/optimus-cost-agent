@@ -3599,6 +3599,78 @@
       "sanitizer": "controlled constant comparison; boolean retention only; no raw diagnostic retention",
       "test_node": "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_rollback_probe_records_the_product_disposition_before_fallback_cleanup",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.main5_startup.main5_guard_impl:_audit:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "MAIN-5 writes one censused audit event name per process and event to an attempt-local file; neither event arguments nor operator paths or contents enter this sink.",
+      "sanitizer": "event-name allowlist shape only; no raw arguments, paths, contents or secrets",
+      "test_node": "tests/unit/acp/test_main5_guard.py::test_guard_records_census_event_names_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.main5_startup.main5_guard_impl:_record:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "MAIN-5 test-only guard opens an attempt-local per-process log; its row schema contains only PID, fixed event code and pytest test ID, never a resolved operator path or content.",
+      "sanitizer": "fixed violation code and test identity only; no raw path, content or secret",
+      "test_node": "tests/unit/acp/test_main5_guard.py::test_real_known_folder_adapter_is_refused_and_recorded",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.main5_startup.main5_guard_impl:_record:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "MAIN-5 serializes only the fixed-schema violation row, without event arguments, raw operator paths or file content.",
+      "sanitizer": "fixed violation code and test identity only; no raw path, content or secret",
+      "test_node": "tests/unit/acp/test_main5_guard.py::test_real_known_folder_adapter_is_refused_and_recorded",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.main5_startup.main5_guard_impl:_record:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "MAIN-5 writes one fixed-schema violation row before refusing the real adapter or a protected-root write; swallowed exceptions cannot remove that row.",
+      "sanitizer": "fixed violation code and test identity only; no raw path, content or secret",
+      "test_node": "tests/unit/acp/test_main5_guard.py::test_suppressed_write_violation_is_recorded_without_writing",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.main5_startup.main5_guard_impl:_refuse:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "MAIN-5 opens an attempt-local refusal log for a fixed-schema row containing only a fixed refusal code, process identity and creation time; no raw argument, path or content enters the row.",
+      "sanitizer": "fixed refusal code, process identity and creation time only",
+      "test_node": "tests/unit/acp/test_main5_guard.py::test_guard_refusal_row_has_fixed_code_and_process_identity_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.main5_startup.main5_guard_impl:_refuse:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "MAIN-5 serializes a fixed refusal code, process identity and creation time; no raw argument, path or content enters the row.",
+      "sanitizer": "fixed refusal code, process identity and creation time only",
+      "test_node": "tests/unit/acp/test_main5_guard.py::test_guard_refusal_row_has_fixed_code_and_process_identity_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.main5_startup.main5_guard_impl:_refuse:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "MAIN-5 writes one fixed-schema refusal row containing only a fixed refusal code, process identity and creation time; no raw argument, path or content enters the row.",
+      "sanitizer": "fixed refusal code, process identity and creation time only",
+      "test_node": "tests/unit/acp/test_main5_guard.py::test_guard_refusal_row_has_fixed_code_and_process_identity_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.main5_startup.main5_guard_impl:_write_spawn:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "MAIN-5 serializes a fixed .spawn row schema: kind, process IDs and creation times, image path, -S/-I/-E flags, argument-shape enum, exit code and audit event name. It records no raw argument, environment, content or secret.",
+      "sanitizer": "fixed spawn schema without raw arguments, environment, content or secrets",
+      "test_node": "tests/unit/acp/test_main5_guard.py::test_guard_spawn_ledger_records_short_no_site_child_without_arguments",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.main5_startup.main5_guard_impl:_write_spawn:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "MAIN-5 writes the fixed .spawn row schema: kind, process IDs and creation times, image path, -S/-I/-E flags, argument-shape enum, exit code and audit event name. It records no raw argument, environment, content or secret.",
+      "sanitizer": "fixed spawn schema without raw arguments, environment, content or secrets",
+      "test_node": "tests/unit/acp/test_main5_guard.py::test_guard_spawn_ledger_records_short_no_site_child_without_arguments",
+      "evidence_tier": "unit"
     }
   ]
 }

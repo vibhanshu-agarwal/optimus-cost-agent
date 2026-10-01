@@ -10,6 +10,8 @@ from typing import get_type_hints
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("isolated_windows_known_folders")
+
 from optimus.acp.evidence_redaction_adapter import (
     EvidenceRedactionHostContext,
     assert_portable_runtime_inputs,
@@ -131,10 +133,10 @@ def test_adapter_includes_projected_secret_inventory_values(tmp_path: Path) -> N
     launch = _authorized_launch(
         tmp_path,
         env={
-            "OPTIMUS_API_KEY": "agent-env-secret-canary",
-            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "gateway-env-shared-canary",
+            "OPTIMUS_API_KEY": "agent-env-secret-canary",  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "gateway-env-shared-canary",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "openrouter",
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-env-provider-canary",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-env-provider-canary",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:9",
         },
     )
@@ -166,8 +168,8 @@ def test_adapter_injects_identity_pii_and_longest_root_aliases(tmp_path: Path) -
     launch = _authorized_launch(
         tmp_path,
         env={
-            "OPTIMUS_API_KEY": "alias-env-secret",
-            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "alias-shared",
+            "OPTIMUS_API_KEY": "alias-env-secret",  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "alias-shared",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:9",
         },
     )
@@ -187,8 +189,8 @@ def test_portable_result_contains_no_optimus_host_objects(tmp_path: Path) -> Non
     launch = _authorized_launch(
         tmp_path,
         env={
-            "OPTIMUS_API_KEY": "boundary-secret",
-            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "boundary-shared",
+            "OPTIMUS_API_KEY": "boundary-secret",  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "boundary-shared",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:9",
         },
     )
@@ -225,7 +227,7 @@ def test_client_mcp_audit_fields_redact_raw_values_and_forbid_gateway_label() ->
     from optimus.acp.evidence_redaction_adapter import build_client_mcp_audit_fields
     from optimus.mcp.client_config import ClientMcpSafeView
 
-    raw_secret = "sk-live-must-never-cross-evidence"
+    raw_secret = "sk-live-must-never-cross-evidence"  # pragma: allowlist secret - synthetic test fixture
     view = ClientMcpSafeView(
         provenance="client_supplied_acp",
         transport="http",
@@ -261,7 +263,7 @@ def test_client_mcp_audit_fields_from_runtime_capability_safe_view_only() -> Non
         ClientMcpSafeView,
     )
 
-    secret = "runtime-header-secret-value"
+    secret = "runtime-header-secret-value"  # pragma: allowlist secret - synthetic test fixture
     identity = ClientMcpSafeIdentity(
         transport="http",
         server_name="tools",
