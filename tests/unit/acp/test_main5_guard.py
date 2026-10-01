@@ -10,6 +10,11 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="MAIN-5 guard is Windows-only: it hooks _winapi and fails closed elsewhere",
+)
+
 _REPO = Path(__file__).resolve().parents[3]
 _STARTUP = _REPO / "tools" / "testing" / "main5_startup"
 
