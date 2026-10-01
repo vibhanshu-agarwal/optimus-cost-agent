@@ -17,6 +17,7 @@ dependencies = [
   "Pillow>=12.3,<13",
   "psycopg[binary]>=3.2,<4",
   "pydantic>=2.8",
+  "PyYAML>=6.0.2,<7",
   "redis>=5",
 ]
 
@@ -72,7 +73,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["src/optimus", "src/optimus_gateway", "src/optimus_security", "src/evidence_handoff", "src/evidence_handoff_runtime"]
+source = ["src/optimus", "src/optimus_gateway", "src/optimus_model_policy", "src/optimus_security", "src/evidence_handoff", "src/evidence_handoff_runtime"]
 
 [tool.coverage.report]
 show_missing = true
@@ -81,6 +82,9 @@ fail_under = 80
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+optimus_model_policy = ["defaults.yaml"]
 
 [tool.ruff]
 line-length = 140
