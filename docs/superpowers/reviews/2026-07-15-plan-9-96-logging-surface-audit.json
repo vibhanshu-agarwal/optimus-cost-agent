@@ -577,6 +577,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.conversation:render_model_conversation:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.conversation:render_model_conversation:json_serialization serializes the same already-sanitized five-field conversation records as render_conversation_envelope, in numeric turn order and declared field order, as the planner's history (Plan 12.2 Task 3, F3); it is not a diagnostic export, and the storage serializer alone measures the cap.",
+      "sanitizer": "conversation sanitizer applied before render; schema-limited five-field records only",
+      "test_node": "tests/unit/acp/test_conversation_model_order.py::test_model_turn_and_field_order",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.outbound_writer:DedicatedOutboundWriter._process_item:json_serialization",
       "policy": "protocol-only",
       "rationale": "Functional protocol serialization at optimus.acp.outbound_writer:DedicatedOutboundWriter._process_item:json_serialization encodes already-formed ACP NDJSON payloads for the dedicated writer transport; sanitizing would corrupt the protocol contract.",

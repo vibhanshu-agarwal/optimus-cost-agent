@@ -93,7 +93,7 @@ class PhysicalCapturingWriter:
 class DependentFollowUpRunner:
     """Turn 1 commits a fact; turn 2 answers only if that fact appears in task."""
 
-    SECRET_FACT = "ALPHA-42-DEPENDENT"
+    SECRET_FACT = "ALPHA-42-DEPENDENT"  # pragma: allowlist secret - synthetic test fixture
 
     def __init__(self) -> None:
         self.tasks: list[str] = []
@@ -334,7 +334,10 @@ async def test_cap_closed_refusal_is_explanatory_success(tmp_path: Path) -> None
         )
     ).response
     assert "error" not in refused
-    assert refused["result"]["stopReason"] == "refusal"
+    # Plan 12.2 Task 3: a full conversation ends the turn normally so a client shows the
+    # explanation; the CAP_CLOSED disposition, not the stop reason, records the refusal.
+    assert refused["result"]["stopReason"] == "end_turn"
+    assert session.conversation.disposition is ConversationDisposition.CAP_CLOSED
     assert session.conversation.records == before
     assert runner.run_ids == []
     assert any(
