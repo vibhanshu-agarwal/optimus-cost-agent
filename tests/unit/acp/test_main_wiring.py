@@ -9,6 +9,8 @@ from unittest.mock import Mock
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("isolated_windows_known_folders")
+
 from optimus.acp import __main__ as acp_main
 from tests.unit.acp.conftest import FakeKeyring, authorize_workspace_for_test
 

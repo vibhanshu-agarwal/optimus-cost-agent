@@ -147,6 +147,20 @@ ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
     "tools/run_redaction_gate_live_evidence.py:run_inspect:rglob:manifest.json": "Finds generated manifests in a live-evidence output tree.",
     "tools/run_redaction_gate_live_evidence.py:run_verify:rglob:*": "Verifies a generated live-evidence output tree.",
     "tools/verify_plan99_noneditable_install.py:select_wheel:glob:*.whl": "Selects a wheel generated in an isolated build directory.",
+    "tests/unit/acp/test_main5_guard.py:_guarded_probe:glob:*.jsonl": "Reads refusal rows written by this helper's guarded child in its tmp_path log directory.",
+    "tests/unit/acp/test_main5_guard.py:test_ambiguous_directory_descriptor_is_refused_and_recorded:glob:*.jsonl": "Reads the ambiguous-descriptor refusal ledger generated beneath this test's tmp_path.",
+    "tests/unit/acp/test_main5_guard.py:test_audit_guard_allows_pipe_file_descriptors:glob:*.jsonl": "Checks the fixture child's tmp_path guard ledgers for unexpected pipe-descriptor refusals.",
+    "tests/unit/acp/test_main5_guard.py:test_explicit_fake_known_folder_adapter_succeeds_without_violation:glob:*.jsonl": "Checks the fake known-folder child's tmp_path refusal ledgers for unintended violations.",
+    "tests/unit/acp/test_main5_guard.py:test_guard_records_census_event_names_only:glob:*.census": "Reads the child-generated tmp_path census ledger to verify sanitized audit event names.",
+    "tests/unit/acp/test_main5_guard.py:test_guard_refusal_row_has_fixed_code_and_process_identity_only:glob:*.jsonl": "Reads the tmp_path refusal ledger to assert its fixed code and process-identity-only schema.",
+    "tests/unit/acp/test_main5_guard.py:test_guard_spawn_ledger_classifies_python_argument_shape_without_text:glob:*.spawn": "Reads tmp_path spawn ledgers to verify argument-shape classifications without raw argument text.",
+    "tests/unit/acp/test_main5_guard.py:test_guard_spawn_ledger_joins_venv_launcher_to_guarded_runtime:glob:*.spawn": "Reads the fixture's tmp_path spawn ledgers to join launcher and guarded-runtime identities.",
+    "tests/unit/acp/test_main5_guard.py:test_guard_spawn_ledger_records_short_no_site_child_without_arguments:glob:*.spawn": "Reads tmp_path spawn ledgers to verify the short no-site child is recorded without arguments.",
+    "tests/unit/acp/test_main5_guard.py:test_real_known_folder_adapter_is_refused_and_recorded:glob:*.jsonl": "Reads the fixture-created refusal ledger to verify real known-folder adapter access is refused.",
+    "tests/unit/acp/test_main5_guard.py:test_suppressed_write_violation_is_recorded_without_writing:glob:*.jsonl": "Reads tmp_path refusal ledgers to verify a caught write violation remains recorded.",
+    "tools/testing/test_main5_runner.py:test_attempt_activation_is_unshadowable_idempotent_and_config_owned:glob:*.jsonl": "Reads refusal ledgers in the temporary activation fixture to verify configuration tampering is refused without disclosing content.",
+    "tools/testing/test_main5_runner.py:test_attempt_activation_is_unshadowable_idempotent_and_config_owned:glob:<dynamic>": "Reads only the fixture child PID's spawn ledger in its temporary attempt to verify activation is idempotent.",
+    "tools/testing/test_main5_runner.py:test_runner_uses_attempt_venv_not_shared_venv:glob:*.jsonl": "Reads the runner-under-test's temporary control and scored ledgers to verify control/scored separation.",
 }
 
 

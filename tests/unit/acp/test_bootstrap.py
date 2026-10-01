@@ -2,6 +2,8 @@ import inspect
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("isolated_windows_known_folders")
+
 from optimus.acp import bootstrap as bootstrap_module
 from optimus.acp.bootstrap import (
     StartupConfigurationError,

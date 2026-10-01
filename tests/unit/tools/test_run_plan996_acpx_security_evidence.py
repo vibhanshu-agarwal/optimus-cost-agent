@@ -17,6 +17,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("isolated_windows_known_folders")
+
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -65,7 +67,7 @@ class FakeKeyring:
 
 def _environment(config_root: Path) -> dict[str, str]:
     return {
-        "OPTIMUS_API_KEY": "test-authorized-api-key",
+        "OPTIMUS_API_KEY": "test-authorized-api-key",  # pragma: allowlist secret - synthetic test fixture
         "OPTIMUS_CONFIG_ROOT": str(config_root),
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
@@ -209,8 +211,8 @@ def test_nested_agent_snapshot_uses_clean_predefault_environment(tmp_path: Path)
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     keyring = _keyring_with_credentials(
-        shared_secret="nested-snapshot-shared-secret",
-        provider_api_key="nested-snapshot-provider-key",
+        shared_secret="nested-snapshot-shared-secret",  # pragma: allowlist secret - synthetic test fixture
+        provider_api_key="nested-snapshot-provider-key",  # pragma: allowlist secret - synthetic test fixture
     )
     approval_runtime_root = tmp_path / "approval-runtime"
     environment = _system_environment()
@@ -280,7 +282,7 @@ def test_capture_rejects_mismatched_durable_approval_before_audit_or_spawn(tmp_p
         keyring=keyring,
         approval_runtime_root=approval_runtime_root,
     )
-    changed_environment = {**approved_environment, "OPTIMUS_API_KEY": "different-api-key"}
+    changed_environment = {**approved_environment, "OPTIMUS_API_KEY": "different-api-key"}  # pragma: allowlist secret - synthetic test fixture
 
     with pytest.raises(LaunchGateError, match="SNAPSHOT_MISMATCH"):
         authorize_capture(
@@ -650,8 +652,8 @@ def test_known_secrets_folds_resolved_shared_secret_when_credentials_sourced_fro
     The env-sourced fixture (_environment) hides this by putting
     OPTIMUS_API_KEY in the env, exercising the path that already worked.
     """
-    shared_secret = "keyring-resolved-shared-secret"
-    provider_api_key = "keyring-resolved-provider-api-key"
+    shared_secret = "keyring-resolved-shared-secret"  # pragma: allowlist secret - synthetic test fixture
+    provider_api_key = "keyring-resolved-provider-api-key"  # pragma: allowlist secret - synthetic test fixture
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     config_root = tmp_path / "config"
@@ -1960,7 +1962,7 @@ def test_run_scoped_log_snapshot_accepts_elevated_allowlisted_nonempty_tags(
     runtime_root = tmp_path / ".optimus"
     allowed_tag = {
         "field_name": "OPTIMUS_API_KEY",
-        "tag": "0123456789abcdef0123456789abcdef",
+        "tag": "0123456789abcdef0123456789abcdef",  # pragma: allowlist secret - synthetic test fixture
     }
     _write_run_logs(
         runtime_root,
@@ -1997,7 +1999,7 @@ def test_run_scoped_log_snapshot_accepts_elevated_allowlisted_nonempty_tags(
                     [
                         {
                             "field_name": "UNRELATED_SENTINEL",
-                            "tag": "0123456789abcdef0123456789abcdef",
+                            "tag": "0123456789abcdef0123456789abcdef",  # pragma: allowlist secret - synthetic test fixture
                         }
                     ]
                 )
@@ -2112,11 +2114,22 @@ def test_nonzero_capture_result_blocks_manifest_promotion(
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Task 3's exercised tree-kill path is Windows taskkill")
-def test_capture_timeout_terminates_parent_and_descendant_in_an_isolated_probe(tmp_path: Path) -> None:
-    """Task 3 Step 4 RED: bounded capture must not orphan an acpx-style tree."""
+@pytest.mark.parametrize("parent_start_delay", [0.0, 3.0], ids=["normal-start", "delayed-start"])
+def test_capture_timeout_terminates_parent_and_descendant_in_an_isolated_probe(
+    tmp_path: Path, parent_start_delay: float,
+) -> None:
+    """Bounded capture must stop an already formed parent and descendant tree."""
+    _assert_capture_timeout_terminates_tree(tmp_path, parent_start_delay=parent_start_delay)
+
+
+def _assert_capture_timeout_terminates_tree(
+    tmp_path: Path, *, parent_start_delay: float = 0.0, wait_timeout_seconds: float = 1.0,
+) -> float:
     pids_path = tmp_path / "sleeping-pids.json"
     probe_path = tmp_path / "capture-probe.py"
     target_path = tmp_path / "sleeping-parent.py"
+    duration_path = tmp_path / "capture-duration.json"
+    tree_exit_path = tmp_path / "tree-exit.json"
     repo_root = Path(__file__).resolve().parents[3]
     target_path.write_text(
         textwrap.dedent(
@@ -2128,6 +2141,7 @@ def test_capture_timeout_terminates_parent_and_descendant_in_an_isolated_probe(t
             import time
             from pathlib import Path
 
+            time.sleep({parent_start_delay!r})
             descendant = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
             Path({str(pids_path)!r}).write_text(
                 json.dumps({{"parent": os.getpid(), "descendant": descendant.pid}}), encoding="utf-8"
@@ -2140,23 +2154,72 @@ def test_capture_timeout_terminates_parent_and_descendant_in_an_isolated_probe(t
     probe_path.write_text(
         textwrap.dedent(
             f"""
+            import ctypes
             import json
+            import os
             import subprocess
             import sys
+            import time
             from pathlib import Path
 
             import tools.run_plan996_acpx_security_evidence as tool
 
             pids_path = Path({str(pids_path)!r})
+            duration_path = Path({str(duration_path)!r})
+            tree_exit_path = Path({str(tree_exit_path)!r})
+            kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+            kernel.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+            kernel.OpenProcess.restype = ctypes.c_void_p
+            kernel.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+            kernel.WaitForSingleObject.restype = ctypes.c_uint32
+            kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+            kernel.CloseHandle.restype = ctypes.c_int
+            wait_timeout = 0x00000102
             target = subprocess.Popen([sys.executable, {str(target_path)!r}], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            handles = {{}}
 
-            class Audited:
-                capture = object()
+            try:
+                deadline = time.monotonic() + 30.0
+                while time.monotonic() < deadline:
+                    try:
+                        pids = json.loads(pids_path.read_text(encoding='utf-8'))
+                    except (FileNotFoundError, json.JSONDecodeError):
+                        if target.poll() is not None:
+                            raise RuntimeError('sleeping parent exited before the tree formed')
+                        time.sleep(0.05)
+                        continue
+                    for name in ('parent', 'descendant'):
+                        handle = kernel.OpenProcess(0x00100000, False, pids[name])
+                        if not handle:
+                            raise ctypes.WinError(ctypes.get_last_error())
+                        handles[name] = handle
+                        if kernel.WaitForSingleObject(handle, 0) != wait_timeout:
+                            raise RuntimeError(name + ' exited before capture began')
+                    break
+                else:
+                    raise TimeoutError('sleeping process tree did not form within 30 seconds')
 
-            tool.spawn_authorized_capture = lambda *_args, **_kwargs: target
-            tool._known_secrets = lambda _capture: ()
-            result = tool._capture_to_disk(Audited(), command=['acpx'], output_dir=Path({str(tmp_path / 'artifacts')!r}), drive_session=True, wait_timeout_seconds=1.0)
-            raise SystemExit(0 if result.exit_code != 0 else 1)
+                class Audited:
+                    capture = object()
+
+                tool.spawn_authorized_capture = lambda *_args, **_kwargs: target
+                tool._known_secrets = lambda _capture: ()
+                started = time.monotonic()
+                try:
+                    result = tool._capture_to_disk(Audited(), command=['acpx'], output_dir=Path({str(tmp_path / 'artifacts')!r}), drive_session=True, wait_timeout_seconds={wait_timeout_seconds!r})
+                finally:
+                    duration_path.write_text(json.dumps({{'capture_seconds': time.monotonic() - started}}), encoding='utf-8')
+                tree_exit_path.write_text(
+                    json.dumps({{name: kernel.WaitForSingleObject(handle, 5000) for name, handle in handles.items()}}),
+                    encoding='utf-8',
+                )
+                raise SystemExit(0 if result.exit_code != 0 else 1)
+            except BaseException:
+                subprocess.run(['taskkill', '/F', '/T', '/PID', str(target.pid)], capture_output=True, check=False)
+                raise
+            finally:
+                for handle in handles.values():
+                    kernel.CloseHandle(handle)
             """
         ),
         encoding="utf-8",
@@ -2170,18 +2233,19 @@ def test_capture_timeout_terminates_parent_and_descendant_in_an_isolated_probe(t
     pids: dict[str, int] = {}
     try:
         try:
-                assert probe.wait(timeout=4.5) == 0
+            assert probe.wait(timeout=90) == 0
         except subprocess.TimeoutExpired:
-            pytest.fail("capture timeout never reached because reader joins blocked first")
+            pytest.fail("capture probe exceeded its 90-second hang guard")
         assert pids_path.is_file(), "the sleeping parent must record its descendant PID"
         pids = json.loads(pids_path.read_text(encoding="utf-8"))
     finally:
         for pid in (probe.pid, *pids.values()):
             subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, check=False)
 
-    for pid in pids.values():
-        with pytest.raises(OSError):
-            os.kill(pid, 0)
+    assert json.loads(tree_exit_path.read_text(encoding="utf-8")) == {"parent": 0, "descendant": 0}
+    capture_seconds = json.loads(duration_path.read_text(encoding="utf-8"))["capture_seconds"]
+    assert capture_seconds < 10.0, f"capture exceeded its 10-second shutdown budget: {capture_seconds:.3f}s"
+    return capture_seconds
 
 
 def test_agent_invocation_session_fixture_constants_are_pinned() -> None:
@@ -2412,8 +2476,8 @@ def test_capture_launch_builds_system_only_acpx_client_environment(tmp_path: Pat
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     keyring = _keyring_with_credentials(
-        shared_secret="client-role-shared-secret",
-        provider_api_key="client-role-provider-key",
+        shared_secret="client-role-shared-secret",  # pragma: allowlist secret - synthetic test fixture
+        provider_api_key="client-role-provider-key",  # pragma: allowlist secret - synthetic test fixture
     )
     approval_runtime_root = tmp_path / "approval-runtime"
     environment = _system_environment()
@@ -2450,8 +2514,8 @@ def test_launch_audit_adds_acpx_client_role_without_changing_agent_child_manifes
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     keyring = _keyring_with_credentials(
-        shared_secret="audit-role-shared-secret",
-        provider_api_key="audit-role-provider-key",
+        shared_secret="audit-role-shared-secret",  # pragma: allowlist secret - synthetic test fixture
+        provider_api_key="audit-role-provider-key",  # pragma: allowlist secret - synthetic test fixture
     )
     approval_runtime_root = tmp_path / "approval-runtime"
     environment = _system_environment()
@@ -2511,8 +2575,8 @@ def test_drive_session_rejects_inherited_classified_launch_settings_before_audit
     )
     environment = {**_system_environment(), setting_name: dirty_value}
     keyring = _keyring_with_credentials(
-        shared_secret="dirty-boundary-shared-secret",
-        provider_api_key="dirty-boundary-provider-key",
+        shared_secret="dirty-boundary-shared-secret",  # pragma: allowlist secret - synthetic test fixture
+        provider_api_key="dirty-boundary-provider-key",  # pragma: allowlist secret - synthetic test fixture
     )
     approval_runtime_root = tmp_path / "approval-runtime"
     _write_durable_approval(

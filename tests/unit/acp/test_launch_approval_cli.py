@@ -15,6 +15,8 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("isolated_windows_known_folders")
+
 from optimus.acp.launch_approval_cli import CliError, _require_tty, main
 
 
@@ -79,7 +81,7 @@ class TestElevatedDebugGrantSigning:
         workspace_root.mkdir()
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         fake_keyring = FakeKeyring()
@@ -245,7 +247,7 @@ class TestApprovalTimeRuntimeBootstrap:
         config_root.mkdir()
         environment = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
             "OPTIMUS_CONFIG_ROOT": str(config_root),
         }
@@ -420,7 +422,7 @@ def _approval_cli_case(tmp_path, monkeypatch):
     config_root.mkdir()
     for name, value in {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-        "OPTIMUS_API_KEY": "test-key",
+        "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         "OPTIMUS_CONFIG_ROOT": str(config_root),
     }.items():
@@ -660,7 +662,7 @@ class TestConfigFilePermissionsWiredIntoResolution:
         config_root = tmp_path / "config"
         config_root.mkdir()
         env_gateway = config_root / ".env.gateway"
-        env_gateway.write_text("OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n", encoding="utf-8")
+        env_gateway.write_text("OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n", encoding="utf-8")  # pragma: allowlist secret - synthetic test fixture
         env_gateway.chmod(0o640)  # group-readable — must be rejected
 
         workspace = tmp_path / "workspace"
@@ -696,7 +698,7 @@ class TestConfigFilePermissionsWiredIntoResolution:
         config_root = tmp_path / "config"
         config_root.mkdir()
         env_gateway = config_root / ".env.gateway"
-        env_gateway.write_text("OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n", encoding="utf-8")
+        env_gateway.write_text("OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n", encoding="utf-8")  # pragma: allowlist secret - synthetic test fixture
         env_gateway.chmod(0o600)  # owner-only — must pass
 
         workspace = tmp_path / "workspace"
@@ -738,7 +740,7 @@ class TestConfigFilePermissionsWiredIntoResolution:
         config_root = tmp_path / "config"
         config_root.mkdir()
         env_gateway = config_root / ".env.gateway"
-        env_gateway.write_text("OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n", encoding="utf-8")
+        env_gateway.write_text("OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n", encoding="utf-8")  # pragma: allowlist secret - synthetic test fixture
 
         workspace = tmp_path / "workspace"
         workspace.mkdir()
@@ -846,9 +848,9 @@ class TestRunGatewayCommand:
 
         env_gateway = tmp_path / ".env.gateway"
         env_gateway.write_text(
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-test\n"
-            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=shared-secret\n",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-test\n"  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=shared-secret\n",  # pragma: allowlist secret - synthetic test fixture
             encoding="utf-8",
         )
         if _sys_platform_is_posix():
@@ -897,9 +899,9 @@ class TestRunGatewayCommand:
 
         env_gateway = tmp_path / ".env.gateway"
         env_gateway.write_text(
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-test\n"
-            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=shared-secret\n",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-test\n"  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=shared-secret\n",  # pragma: allowlist secret - synthetic test fixture
             encoding="utf-8",
         )
         if _sys_platform_is_posix():
@@ -996,9 +998,9 @@ class TestRunGatewayCommand:
 
         env_gateway = tmp_path / ".env.gateway"
         env_gateway.write_text(
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-should-never-be-read\n"
-            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=shared-secret-value\n",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-should-never-be-read\n"  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=shared-secret-value\n",  # pragma: allowlist secret - synthetic test fixture
             encoding="utf-8",
         )
         env_gateway.chmod(0o640)  # group-readable — must be rejected
@@ -1029,7 +1031,7 @@ class TestRunGatewayCommand:
         from optimus.acp.trusted_paths import TrustedOperatorRoots
 
         env_gateway = tmp_path / ".env.gateway"
-        env_gateway.write_text("OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n", encoding="utf-8")
+        env_gateway.write_text("OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n", encoding="utf-8")  # pragma: allowlist secret - synthetic test fixture
         if _sys_platform_is_posix():
             env_gateway.chmod(0o600)
 
@@ -1061,7 +1063,7 @@ class TestRunGatewayCommand:
 
         env_gateway = tmp_path / ".env.gateway"
         env_gateway.write_text(
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-CANARY-SECRET-VALUE\n"
             "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=CANARY-SHARED-SECRET\n",
             encoding="utf-8",
@@ -1127,13 +1129,13 @@ class TestRunGatewayCommand:
 
         env_gateway = tmp_path / ".env.gateway"
         env_gateway.write_text(
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-test\n"
-            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=shared-secret\n"
-            "TAVILY_API_KEY=tvly-forward-me\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-test\n"  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=shared-secret\n"  # pragma: allowlist secret - synthetic test fixture
+            "TAVILY_API_KEY=tvly-forward-me\n"  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS=python.org,pypi.org\n"
             "OPTIMUS_GATEWAY_TOOL_REDIS_URL=redis://127.0.0.1:6379/0\n"
-            "OPTIMUS_GATEWAY_OSV_API_KEY=osv-forward-me\n",
+            "OPTIMUS_GATEWAY_OSV_API_KEY=osv-forward-me\n",  # pragma: allowlist secret - synthetic test fixture
             encoding="utf-8",
         )
         if _sys_platform_is_posix():
@@ -1171,10 +1173,10 @@ class TestRunGatewayCommand:
         assert result == 0
         child_env = captured["env"]
         assert isinstance(child_env, dict)
-        assert child_env["TAVILY_API_KEY"] == "tvly-forward-me"
+        assert child_env["TAVILY_API_KEY"] == "tvly-forward-me"  # pragma: allowlist secret - synthetic test fixture
         assert child_env["OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS"] == "python.org,pypi.org"
         assert child_env["OPTIMUS_GATEWAY_TOOL_REDIS_URL"] == "redis://127.0.0.1:6379/0"
-        assert child_env["OPTIMUS_GATEWAY_OSV_API_KEY"] == "osv-forward-me"
+        assert child_env["OPTIMUS_GATEWAY_OSV_API_KEY"] == "osv-forward-me"  # pragma: allowlist secret - synthetic test fixture
 
     def test_run_gateway_masks_base_url_userinfo_in_display(self, tmp_path, monkeypatch) -> None:
         """Direct run-gateway stdout must redact URI userinfo while transport
@@ -1185,11 +1187,11 @@ class TestRunGatewayCommand:
         from optimus.acp.trusted_paths import TrustedOperatorRoots
 
         canary = "uri-display-canary-XYZ"
-        raw_base_url = f"https://{canary}:pass@api.example.com/v1"
+        raw_base_url = f"https://{canary}:pass@api.example.com/v1"  # pragma: allowlist secret - synthetic test fixture
 
         env_gateway = tmp_path / ".env.gateway"
         env_gateway.write_text(
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-CANARY-SECRET-VALUE\n"
             "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=CANARY-SHARED-SECRET\n"
             f"OPTIMUS_LOCAL_GATEWAY_BASE_URL={raw_base_url}\n",
@@ -1654,7 +1656,7 @@ class TestClientMcpReviewCeremonyTask7:
                 )
             )
             _kind, address = endpoint.endpoint_address
-            secret_value = "super-secret-header-value-must-not-print"
+            secret_value = "super-secret-header-value-must-not-print"  # pragma: allowlist secret - synthetic test fixture
             monkeypatch.setattr(
                 "optimus.acp.launch_approval_cli._client_mcp_credential_names_for_display",
                 lambda **_kwargs: ("api_key", "Authorization"),

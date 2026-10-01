@@ -122,6 +122,79 @@ def test_discovers_unexpected_python_and_shell_sink_kinds(tmp_path) -> None:
     assert "example.unexpected:render:exception_export" not in discovered
 
 
+def test_tool_test_modules_are_outside_surface_inventory(tmp_path: Path) -> None:
+    tools_dir = tmp_path / "tools" / "x"
+    tools_dir.mkdir(parents=True)
+    for name in ("test_fixture.py", "conftest.py", "mod.py"):
+        (tools_dir / name).write_text("def emit():\n    print('sink')\n", encoding="utf-8")
+
+    _track_repository_files(tmp_path)
+    discovered = discover_surfaces(tmp_path)
+
+    assert "tools.x.mod:emit:stdout_export" in discovered
+    assert "tools.x.test_fixture:emit:stdout_export" not in discovered
+    assert "tools.x.conftest:emit:stdout_export" not in discovered
+
+
+def test_discovers_json_serialization_through_module_aliases_only(tmp_path) -> None:
+    """Aliased stdlib JSON sinks stay classified; unrelated dumps do not."""
+    source_path = tmp_path / "tools" / "alias_sinks.py"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text(
+        "import json as j\n"
+        "from json import dump as write_json, dumps as encode_json\n"
+        "from unrelated import dumps as other_dumps\n"
+        "\n"
+        "def write_module_alias(value):\n"
+        "    j.dumps(value)\n"
+        "\n"
+        "def write_import_alias(value, stream):\n"
+        "    write_json(value, stream)\n"
+        "    encode_json(value)\n"
+        "\n"
+        "def write_other(value):\n"
+        "    other_dumps(value)\n",
+        encoding="utf-8",
+    )
+
+    _track_repository_files(tmp_path)
+    discovered = discover_surfaces(tmp_path)
+
+    assert "tools.alias_sinks:write_module_alias:json_serialization" in discovered
+    assert "tools.alias_sinks:write_import_alias:json_serialization" in discovered
+    assert "tools.alias_sinks:write_other:json_serialization" not in discovered
+
+
+def test_discovers_json_aliases_imported_inside_try_and_function(tmp_path) -> None:
+    source_path = tmp_path / "tools" / "nested_alias_sinks.py"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text(
+        "try:\n"
+        "    from json import dumps as guarded_dumps\n"
+        "except ImportError:\n"
+        "    guarded_dumps = None\n"
+        "\n"
+        "def write_try(value):\n"
+        "    guarded_dumps(value)\n"
+        "\n"
+        "def write_local(value):\n"
+        "    import json as local_json\n"
+        "    local_json.dumps(value)\n"
+        "\n"
+        "def write_unrelated(value):\n"
+        "    from unrelated import dumps as unrelated_dumps\n"
+        "    unrelated_dumps(value)\n",
+        encoding="utf-8",
+    )
+
+    _track_repository_files(tmp_path)
+    discovered = discover_surfaces(tmp_path)
+
+    assert "tools.nested_alias_sinks:write_try:json_serialization" in discovered
+    assert "tools.nested_alias_sinks:write_local:json_serialization" in discovered
+    assert "tools.nested_alias_sinks:write_unrelated:json_serialization" not in discovered
+
+
 def test_surface_audit_error_allows_pytest_traceback_attachment() -> None:
     error = SurfaceAuditError(code="TRACEBACK_CAPTURE")
 
