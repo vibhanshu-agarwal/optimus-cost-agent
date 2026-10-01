@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from tools.doc_paths import ARCHIVE_DIRNAME, DOCS_ROOT
 
@@ -25,6 +28,15 @@ GROUPING_FOLDERS = {DOCS_ROOT / name for name in ("decisions", "governance", "ru
     DOCS_ROOT / "superpowers" / name for name in ("plans", "specs", "reviews", "reports")
 }
 BUNDLE_FOLDERS = (DOCS_ROOT / "sources",)
+# AGENTS.md keeps each reviewed plan's reviewer checkpoint log beside the reviews. The logs are
+# gitignored working files, never published, so they are not current documents.
+REVIEWS_ROOT = DOCS_ROOT / "superpowers" / "reviews"
+REVIEWER_CHECKPOINT_SUFFIX = "-review-checkpoints.md"
+REVIEWER_CHECKPOINT_IGNORE_RULE = "docs/superpowers/reviews/*-review-checkpoints.md"
+
+
+def _is_reviewer_checkpoint_log(entry: Path) -> bool:
+    return entry.parent == REVIEWS_ROOT and entry.name.endswith(REVIEWER_CHECKPOINT_SUFFIX)
 
 
 def _current_documents() -> set[Path]:
@@ -32,6 +44,8 @@ def _current_documents() -> set[Path]:
     for folder in DOCUMENT_FOLDERS:
         for entry in folder.iterdir():
             if entry.name == ARCHIVE_DIRNAME or entry == INDEX or entry in GROUPING_FOLDERS:
+                continue
+            if _is_reviewer_checkpoint_log(entry):
                 continue
             assert entry.is_file(), f"unexpected folder at a docs folder root: {entry}"
             current.add(entry.resolve())
@@ -59,6 +73,34 @@ def test_index_lists_nothing_archived_or_missing() -> None:
     )
 
     assert not stale, f"docs/README.md links to documents that are not current: {stale}"
+
+
+def test_only_gitignored_reviewer_checkpoint_logs_are_excluded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    gitignore = (DOCS_ROOT.parent / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert REVIEWER_CHECKPOINT_IGNORE_RULE in gitignore, "the exclusion must cover only files git ignores"
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", REVIEWER_CHECKPOINT_IGNORE_RULE],
+        cwd=DOCS_ROOT.parent,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert tracked == "", f"a force-added checkpoint log would be a tracked document the index skips: {tracked}"
+    assert _is_reviewer_checkpoint_log(REVIEWS_ROOT / "plan-9-review-checkpoints.md")
+    assert not _is_reviewer_checkpoint_log(DOCS_ROOT / "superpowers" / "plans" / "plan-9-review-checkpoints.md")
+    assert not _is_reviewer_checkpoint_log(REVIEWS_ROOT / "2026-10-01-plan-9-review.md")
+    reviews = tmp_path / "reviews"
+    reviews.mkdir()
+    (reviews / "plan-9-review-checkpoints.md").write_text("log\n", encoding="utf-8")
+    (reviews / "2026-10-01-unindexed-review.md").write_text("review\n", encoding="utf-8")
+    monkeypatch.setitem(globals(), "REVIEWS_ROOT", reviews)
+    monkeypatch.setitem(globals(), "DOCUMENT_FOLDERS", (reviews,))
+    monkeypatch.setitem(globals(), "BUNDLE_FOLDERS", ())
+
+    current = _current_documents()
+
+    # The checkpoint log is skipped; an ordinary unindexed review still counts, so it would still fail.
+    assert current == {(reviews / "2026-10-01-unindexed-review.md").resolve()}
 
 
 def test_every_document_folder_has_an_archive() -> None:
