@@ -920,6 +920,9 @@ class AcpDuplexAdapter:
                 ownership_slot,
             )
         finally:
+            # Recompute after any cancellation so settlement telemetry is exact even for a turn that
+            # ends without a commit (Plan 12.2 Task 2). After transport teardown this is a no-op.
+            turn.turn_control.refresh_effect_state()
             turn.turn_control.finalize_once(self._placeholder_settlement(turn))
 
     async def _refuse_prompt(
@@ -1036,7 +1039,10 @@ class AcpDuplexAdapter:
             sanitized_plan_text=plan_text,
             sanitized_completion_text=completion,
             outcome=outcome,
-            effect_state=EffectState.NONE,
+            # The effect the turn's operations actually settled, recomputed after any cancellation
+            # (Plan 12.2 Task 2). A turn that started no WRITE or TEST, including every Chat turn,
+            # settles NONE.
+            effect_state=turn.turn_control.refresh_effect_state(),
         )
         conversation.commit_after_final_flush(decision)
 
