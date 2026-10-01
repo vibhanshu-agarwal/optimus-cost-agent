@@ -417,6 +417,86 @@ This G6 custody table is a historical acceptance record, not live remediation-pl
 | Obligation | `P11.26-UNRUN-REDIS` | — | Scope-out | Missing live Redis owner/revision predicate and no live Redis grant. | N/A | `UNRUN` | operator | Grant the real Redis row after binding and provenance prerequisites are satisfied. |
 | Obligation | `P11.26-UNRUN-ZED` | — | Scope-out | Missing Zed E2E predicate/manual observation bundle and no Zed grant. | N/A | `UNRUN` | operator | Grant the five manual Zed rows after trusted-workspace and installed-artifact provenance prerequisites are satisfied. |
 
+## MAIN-5 residuals under existing 11.x owners
+
+Raised 2026-10-02 from MAIN-5 local-delivery, telemetry, harness and guarded-runner review.
+The UNC1-UNC7 sandbox checkpoint at `f6b0b602291b933ac1f493f397cad2b6f53620bf`
+(`sandbox-main5-guarded-runner-y5`) is independently accepted. The original main
+port merged through PR #215 at `78c1f7c`; that merge does not include the y5 correction.
+These entries record custody and acceptance criteria only. They commission no
+implementation, assign no new numbered plan; priority stays at the default MEDIUM.
+They change no Plan 12 state.
+Associations without a dedicated existing ID remain proposed under the named owner.
+
+### P11-FU-31: MAIN-5 synthetic-fixture and complete-scan delivery debt
+
+**Status:** Open.
+**Origin:** Synthetic fixtures block touched-file commits; retained all-files scanner failures on frozen UTF-16 reports. Accepted MAIN-5 ruling-H fixture proofs remain historical evidence.
+**Designated future plan / owner:** `P11-FEAT-ACP-RUNTIME-HARDENING`, existing local-hook custody.
+**Trigger or acceptance criteria:** Inventory touched-file synthetic fixtures and the scanner
+fixpoint; verify synthetic provenance before any per-line pragma and prove Python AST
+equality. Preserve baseline/config protection and effective scanning. Keep the 50 frozen
+UTF-16 reports under separate disposition custody with unchanged identities; scanner
+failure is non-passing. This residual does not reopen the accepted local-hook delivery.
+
+### P11-FU-32: MAIN-5 Windows harness environment dependence
+
+**Status:** Open.
+**Origin:** Windows Bash selection, reserved test-venv semantics, measurement cache dependence, approval/bundle long paths and ast-grep cache dependence.
+**Designated future plan / owner:** `P11-FEAT-ACP-RUNTIME-HARDENING`, test tooling;
+measurement evidence belongs to `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION`.
+**Trigger or acceptance criteria:** Distinguish Git Bash from WSL launchers, inventory
+`OPTIMUS_TEST_VENV` consumers, and prove missing versus empty semantics before any rename.
+Prove ast-grep and measurement cache independence using isolated roots. Characterize
+approval long-path failures under test tooling and bundle failures under the evidence
+handoff owner. Short basetemp is mitigation, not product repair. Preserve Linux parity,
+environment contracts, protected-root checks and historical audit findings.
+
+### P11-FU-33: MAIN-5 shutdown repeatability evidence
+
+**Status:** Open.
+**Origin:** Retained shutdown repeat-100 failure records; distinct from FU-5/FU-6/FU-7.
+**Designated future plan / owner:** `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION`;
+escalate to `P11.26-CAND-1-RESOURCE-LIFETIME` only if causal evidence warrants.
+**Trigger or acceptance criteria:** Capture failed rows with timing, process ownership and
+quiescence evidence; classify harness, product or unresolved and retain the complete group
+outcome. A passing retry cannot erase a failure or close historical obligations.
+
+### P11-FU-34: MAIN-5 settlement telemetry truth
+
+**Status:** Open.
+**Origin:** Settlement telemetry emits a `not_committed` placeholder whose authority and timing need confirmation.
+**Designated future plan / owner:** `P11.26-CAND-2-TELEMETRY-CONTRACT`, typed telemetry boundary owner.
+**Trigger or acceptance criteria:** Establish authoritative delivery state and emission
+order; prove delivered, rejected and cancelled outcomes. Check Plan 12 overlap read-only
+before any implementation commission; do not duplicate effect-producer repair or amend
+the Plan 12 plan in this lane.
+
+### P11-FU-35: MAIN-5 y5 correction port
+
+**Status:** Open.
+**Origin:** UNC/device prevention gap, SQLite file-URI classification, PowerShell absent/empty idiom and UNC7 lane-ledger correction.
+**Designated future plan / owner:** `P11-FEAT-ACP-RUNTIME-HARDENING`, MAIN-5 safety and test tooling.
+**Trigger or acceptance criteria:** Port `sandbox-main5-guarded-runner-y5` to main in the
+reviewed four-file scope, preserving network/device alias prevention before and after
+resolution, strict SQLite file-URI classification, PowerShell 7/5.1 environment removal,
+blank-target/argument refusal and ordinal executed-versus-planned lane checks. Retain
+the independent audit-only self-test lane, whole runner-file integrations, process-tree
+signals, clean protected roots and stop/seal on CONFOUNDED. Sandbox acceptance resolves
+the fix there; main-side closure requires its separate port review and delivery approvals.
+
+### P11-FU-36: MAIN-5 remaining guarded-runner mechanics
+
+**Status:** Open.
+**Origin:** Guard startup overhead, environment-claimed `runner_direct_role`
+and plants in `test_stdio_ndjson.py`.
+**Designated future plan / owner:** `P11-FEAT-ACP-RUNTIME-HARDENING`, MAIN-5 test tooling;
+association proposed, without a new dedicated backlog ID.
+**Trigger or acceptance criteria:** Profile startup uncontended without weakening write
+prevention or supervisor signals. Separate origin evidence from child environment claims.
+If plants move, prove collection and lane partitions and retain the whole runner-file gate;
+no WP-27 port is implied.
+
 ## Plan 11.26 H4 verifier follow-ups from Seam 2 checkpoint A
 
 **Raised:** 2026-09-09. **Governance filing commissioned:** 2026-09-10.
@@ -544,6 +624,13 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P12-FU-2` | User-facing net cost-savings report | Open | MEDIUM | Plan 12; slice unscheduled | Requirement accepted in ADR-012; design and delivery surface pending; depends on P11.26-CAND-2-TELEMETRY-CONTRACT; paid evaluation requires separate authority |
 | `P12.1-FU-1` | Local Gateway missed the agent's startup readiness deadline | Open | MEDIUM     | Future local-startup follow-up | Acceptance criteria in entry; cause not yet diagnosed |
 | `P12.1-FU-2` | Goal-loop iterations bypass turn cancellation and directive tracking | Open | MEDIUM     | Future goal-loop follow-up | Acceptance criteria in entry; pre-existing, not introduced by Plan 12.1 |
+| `P11-FU-31` | MAIN-5 synthetic-fixture and complete-scan delivery debt | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
+| `P11-FU-32` | MAIN-5 Windows harness environment dependence | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
+| `P11-FU-33` | MAIN-5 shutdown repeatability evidence | Open | MEDIUM | `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION` | Acceptance criteria in entry |
+| `P11-FU-34` | MAIN-5 settlement telemetry truth | Open | MEDIUM | `P11.26-CAND-2-TELEMETRY-CONTRACT` | Acceptance criteria in entry |
+| `P11-FU-35` | MAIN-5 y5 correction port | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
+| `P11-FU-36` | MAIN-5 remaining guarded-runner mechanics | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
+| `P11-FU-37` | MAIN-5 Windows evidence-bundle promotion residual | Open | MEDIUM | `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` | Acceptance criteria in entry |
 
 ## Evidence and handoff feature registry
 
@@ -570,6 +657,20 @@ current state, priority, and the next schedulable gate.
 | `EVIDENCE-HANDOFF-FEAT-PEER-LIVENESS-SIGNAL` | Open | MEDIUM | Design-needed, unscheduled; requires an explicit heartbeat/session-health mechanism rather than inference from cursor activity. |
 | `EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE` | Open | HIGH | Design-needed OAuth/rotation/`kid`/JWKS/dynamic-registration work, including discovery and Bearer-challenge interoperability. |
 | `EVIDENCE-HANDOFF-FEAT-AT-REST-INTEGRITY` | Open | MEDIUM | Design-needed full-chain detector covering historical sequences behind confirmed cursors. |
+
+### P11-FU-37: MAIN-5 Windows evidence-bundle promotion residual
+
+**Raised:** 2026-10-02.
+**Status:** Open.
+**Origin:** Windows evidence-bundle directory-rename sharing violations, accepted ruling A/F
+and registered F1 unguarded reproduction; bundle/private-file long-path observations.
+**Designated future plan / owner:** Evidence-handoff redaction product owner, existing
+`EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` custody. This is a new residual under that owner;
+the existing feature remains Closed and is not reopened or declared unsound.
+**Trigger or acceptance criteria:** Characterize Windows sharing violations without the
+MAIN-5 guard; prove bounded promotion, integrity and failure custody, including applicable
+private-file promotion paths. The registered one-test flake exception is not general
+retry permission or a product fix. Short-path mitigation does not establish repair.
 
 ## A2A ledger audit obligations
 
