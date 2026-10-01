@@ -66,6 +66,10 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
         issue("ROUTE_UNVERIFIED", "every endpoint in the route allow-set must be verified")
     windows = [endpoint.context_window_tokens for endpoint in endpoints]
     outputs = [endpoint.max_output_tokens for endpoint in endpoints]
+    if any(endpoint.quantization is None for endpoint in endpoints):
+        # The Gateway constrains each request to the route's approved quantizations; an unrecorded
+        # one cannot be constrained, so the route is not usable for any role.
+        issue("ROUTE_QUANTIZATION_UNKNOWN", "every endpoint needs a recorded quantization")
     if any(value is None for value in windows + outputs):
         issue("ROUTE_FACT_UNKNOWN", "an endpoint has no recorded window or max output")
     else:

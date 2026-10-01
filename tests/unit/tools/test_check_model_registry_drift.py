@@ -186,3 +186,43 @@ def test_a_fetched_snapshot_saves_only_the_public_responses(
         assert json.loads((saved / f"endpoints-{model_id.replace('/', '__')}.json").read_text(encoding="utf-8")) == payload
     assert sorted(path.name for path in saved.iterdir()) == ["endpoints-cn__alpha.json", "endpoints-us__beta.json", "models.json"]
     assert "saved snapshot:" in capsys.readouterr().out
+
+
+def test_the_endpoint_with_the_recorded_quantization_is_the_one_compared(registry: Path) -> None:
+    """A provider listing several endpoints is compared on the one whose quantization matches."""
+    catalog, endpoints = _matching_catalog()
+    cheaper_bf16 = _endpoint("beta/bf16", "0.0000005", "0.000002", context=100000, max_out=8000, quant="bf16")
+    endpoints["us/beta"]["data"]["endpoints"].insert(0, cheaper_bf16)
+    assert compare(load_registry(registry, None), catalog, endpoints) == []
+
+
+def test_several_endpoints_with_nothing_to_tell_them_apart_are_ambiguous(registry: Path) -> None:
+    catalog, endpoints = _matching_catalog()
+    second = _endpoint("alpha", "0.00000015", "0.0000006", context=1048576, max_out=65536, quant="fp8")
+    endpoints["cn/alpha"]["data"]["endpoints"].append(second)
+    codes = [(d.model_id, d.code) for d in compare(load_registry(registry, None), catalog, endpoints)]
+    assert codes == [("cn/alpha", "ENDPOINT_AMBIGUOUS")]
+
+
+def test_snapshot_names_are_valid_on_every_platform() -> None:
+    from tools.check_model_registry_drift import _snapshot_name
+
+    assert _snapshot_name("cn/alpha") == "endpoints-cn__alpha.json"
+    assert _snapshot_name("vendor/model:free") == "endpoints-vendor__model_free.json"
+    assert _snapshot_name('a<b>c"d|e?f*g') == "endpoints-a_b_c_d_e_f_g.json"
+
+
+def test_a_snapshot_that_cannot_be_saved_is_reported_as_such(
+    registry: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    import tools.check_model_registry_drift as drift
+
+    catalog, endpoints = _matching_catalog()
+    monkeypatch.setattr(drift, "fetch", lambda snapshot, *, fetcher: (catalog, endpoints))
+
+    def refuse(*args: object) -> Path:
+        raise FileExistsError("same-second rerun")
+
+    monkeypatch.setattr(drift, "_save_snapshot", refuse)
+    assert main(["--registry", str(registry), "--fetch", "--snapshot-dir", str(tmp_path)]) == 2
+    assert "snapshot not saved: FileExistsError" in capsys.readouterr().err

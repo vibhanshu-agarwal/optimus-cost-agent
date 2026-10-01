@@ -126,10 +126,13 @@ def payload_digest(model_id: str, messages: Sequence[Message], output_cap: int) 
 
 @dataclass(frozen=True, slots=True)
 class DisclosureAuthorization:
-    """Proof that the Contributor notice was shown for this payload on this route.
+    """The host's binding of a Contributor notice to one request, route and payload.
 
-    One authorization covers identical-payload transport retries on the same route; a changed
-    payload, another route, maintenance or a fallback needs a new notice and a new authorization.
+    It is an integrity binding under the per-launch key the host and Gateway share, not independent
+    proof: anything holding the launch's bearer secret can mint one, so the guarantee is that the host
+    component delivering the notice issues it for exactly this payload. One authorization covers
+    identical-payload transport retries on the same route; a changed payload, another route,
+    maintenance or a fallback needs a new notice and a new authorization.
     """
 
     route_digest: str
@@ -143,9 +146,9 @@ def disclosure_key(shared_secret: str) -> bytes:
 
 
 def _disclosure_mac(key: bytes, *, request_id: str, model_id: str, route: str, payload: str) -> str:
-    message = b"\x00".join(
-        (_DISCLOSURE_MAC_DOMAIN, request_id.encode("utf-8"), model_id.encode("utf-8"), route.encode("ascii"), payload.encode("ascii"))
-    )
+    # Each field is length-prefixed, so no request or model text can shift a field boundary.
+    fields = (request_id.encode("utf-8"), model_id.encode("utf-8"), route.encode("ascii"), payload.encode("ascii"))
+    message = _DISCLOSURE_MAC_DOMAIN + b"".join(len(field).to_bytes(4, "big") + field for field in fields)
     return hmac.new(key, message, hashlib.sha256).hexdigest()
 
 

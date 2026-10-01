@@ -4,8 +4,9 @@ Reviewed defaults ship with the package; an optional operator override is combin
 declared keys (maps combine, lists replace). The YAML loader rejects every feature that could make
 two readers see different data: duplicate keys at any depth, anchors, aliases, ``<<`` merge keys
 (quoted or not), non-string keys and any tag outside plain str/int/float/bool/null/map/seq. The
-combined result is validated against a schema that forbids unknown fields, then hashed from its
-canonical JSON, so formatting alone never changes the effective snapshot.
+combined result is validated against a strict schema that forbids unknown fields and loose types
+(a quoted or boolean integer, a float count), then hashed from its canonical JSON with numbers in
+normalized form, so formatting alone (``0.10`` or ``0.1``) never changes the effective snapshot.
 
 This module is neutral: it imports nothing from ``optimus``, ``optimus_gateway`` or
 ``optimus_security``, so the host and the Gateway share one validator.
@@ -24,7 +25,16 @@ from types import MappingProxyType
 from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_serializer, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+    ValidationError,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 __all__ = [
     "Capabilities",
@@ -186,7 +196,16 @@ def _decimal_text(value: Any) -> Any:
     return value
 
 
-NonNegativeDecimal = Annotated[Decimal, Field(ge=0, allow_inf_nan=False)]
+def canonical_decimal(value: Decimal) -> str:
+    """One text per value: ``0.10``, ``0.1`` and ``1E-1`` all hash as ``0.1``."""
+    return format(value.normalize(), "f")
+
+
+_CanonicalJson = PlainSerializer(canonical_decimal, return_type=str, when_used="json")
+NonNegativeDecimal = Annotated[Decimal, Field(ge=0, allow_inf_nan=False), _CanonicalJson]
+StrictCount = Annotated[int, Field(ge=0, strict=True)]
+PositiveCount = Annotated[int, Field(gt=0, strict=True)]
+StrictFlag = Annotated[bool, Field(strict=True)]
 
 
 class Prices(BaseModel):
@@ -211,9 +230,9 @@ class DataUse(BaseModel):
 class Capabilities(BaseModel):
     model_config = _FROZEN
 
-    native_tools: bool
-    text_planning_grammar: bool
-    structured_output: bool
+    native_tools: StrictFlag
+    text_planning_grammar: StrictFlag
+    structured_output: StrictFlag
     reasoning_levels: tuple[str, ...]
 
 
@@ -222,9 +241,9 @@ class Endpoint(BaseModel):
 
     provider: Annotated[str, Field(min_length=1)]
     quantization: str | None
-    context_window_tokens: Annotated[int, Field(gt=0)] | None
-    max_output_tokens: Annotated[int, Field(gt=0)] | None
-    verified: bool
+    context_window_tokens: PositiveCount | None
+    max_output_tokens: PositiveCount | None
+    verified: StrictFlag
     observed_on: str | None = None
 
 
@@ -233,8 +252,8 @@ class Route(BaseModel):
 
     estimator: Annotated[str, Field(min_length=1)]
     endpoints: Annotated[tuple[Endpoint, ...], Field(min_length=1)]
-    allow_fallbacks: bool = False
-    require_parameters: bool = True
+    allow_fallbacks: StrictFlag = False
+    require_parameters: StrictFlag = True
 
     @property
     def providers(self) -> tuple[str, ...]:
@@ -257,10 +276,10 @@ class EstimatorProfile(BaseModel):
     model_config = _FROZEN
 
     method: Literal["utf8-bytes-ratio"]
-    tokens_per_byte: Annotated[Decimal, Field(gt=0, le=4, allow_inf_nan=False)]
-    per_message_tokens: Annotated[int, Field(ge=0)]
-    fixed_tokens: Annotated[int, Field(ge=0)]
-    verified: bool
+    tokens_per_byte: Annotated[Decimal, Field(gt=0, le=4, allow_inf_nan=False), _CanonicalJson]
+    per_message_tokens: StrictCount
+    fixed_tokens: StrictCount
+    verified: StrictFlag
 
     @field_validator("tokens_per_byte", mode="before")
     @classmethod
@@ -304,14 +323,21 @@ class Policy(BaseModel):
 
     schema_version: Literal[1]
     policy_version: Annotated[str, Field(min_length=1)]
-    fixture: bool
-    context_ceiling_tokens: Annotated[int, Field(gt=0, le=MAX_CONTEXT_CEILING_TOKENS)]
-    output_reserve_tokens: dict[ReserveClass, Annotated[int, Field(gt=0)]]
+    fixture: StrictFlag
+    context_ceiling_tokens: Annotated[int, Field(gt=0, le=MAX_CONTEXT_CEILING_TOKENS, strict=True)]
+    output_reserve_tokens: dict[ReserveClass, PositiveCount]
     estimators: dict[str, EstimatorProfile]
     role_price_blends: dict[Role, Annotated[Decimal, Field(ge=0, le=1, allow_inf_nan=False)]]
     alerts: Alerts
     models: dict[str, ModelEntry]
     roles: dict[Role, tuple[str, ...]]
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def integer_schema_version(cls, value: Any) -> Any:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError("schema_version must be the integer 1")
+        return value
 
     @field_validator("role_price_blends", mode="before")
     @classmethod
@@ -322,6 +348,8 @@ class Policy(BaseModel):
     def unambiguous_and_frozen(self) -> Policy:
         seen: dict[str, str] = {}
         for model_id in self.models:
+            if not model_id or any(character.isspace() for character in model_id):
+                raise ValueError(f"model id {model_id!r} must be non-empty with no whitespace")
             folded = model_id.casefold()
             if folded in seen:
                 raise ValueError(f"model ids {seen[folded]!r} and {model_id!r} differ only by case")
@@ -336,7 +364,7 @@ class Policy(BaseModel):
             if isinstance(item, BaseModel):
                 return item.model_dump(mode="json")
             if isinstance(item, Decimal):
-                return str(item)
+                return canonical_decimal(item)
             if isinstance(item, tuple):
                 return list(item)
             return item

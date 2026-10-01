@@ -1156,7 +1156,6 @@ class _PlanningIterationRunner:
         # A reply cut off at its output limit is never a candidate, even if its prefix parses as a
         # valid plan: stop before parsing, storing, approval or execution (Plan 12.2 Task 5).
         if getattr(response, "length_limited", False):
-            self._last_non_progress_kind = "OUTPUT_TRUNCATED"
             return self._typed_planning_failure(
                 stop_reason="PLANNING_OUTPUT_TRUNCATED",
                 summary="planning response was cut off at the model's output limit",

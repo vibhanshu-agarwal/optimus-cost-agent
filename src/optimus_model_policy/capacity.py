@@ -94,6 +94,8 @@ def guard_request(request: PackedModelRequest, snapshot: RegistrySnapshot, appro
         return _refuse("OUTPUT_RESERVE_INVALID", reserve=reserve, total=effective_total)
     if reserve > min(outputs):  # type: ignore[type-var]
         return _refuse("OUTPUT_RESERVE_EXCEEDS_ROUTE", reserve=reserve, total=effective_total)
+    if reserve > effective_total:
+        return _refuse("OUTPUT_RESERVE_EXCEEDS_TOTAL", reserve=reserve, total=effective_total)
     usable = effective_total - reserve
     estimate = estimate_complete_input(request, profile)
     if estimate.tokens > usable:

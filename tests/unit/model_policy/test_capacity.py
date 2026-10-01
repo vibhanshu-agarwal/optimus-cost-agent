@@ -139,6 +139,17 @@ def test_an_output_reserve_the_route_cannot_honour_is_refused(snapshot, cap: int
     assert (decision.allowed, decision.reason) == (False, reason)
 
 
+def test_a_reserve_larger_than_the_whole_window_is_its_own_refusal(tmp_path: Path) -> None:
+    """A route whose max output exceeds the effective total cannot reserve more than that total; the
+    refusal names the reserve rather than reporting a negative usable input (Fable CP1 review)."""
+    path = tmp_path / "small-ceiling.yaml"
+    path.write_text(_POLICY.replace("context_ceiling_tokens: 262144", "context_ceiling_tokens: 20000"), encoding="utf-8")
+    small = load_registry(path, None)
+    decision = guard_request(_request("x", output_cap=20001), small, small.effective_hash)
+    assert (decision.allowed, decision.reason, decision.usable_input) == (False, "OUTPUT_RESERVE_EXCEEDS_TOTAL", 0)
+    assert guard_request(_request("x", output_cap=19000), small, small.effective_hash).allowed is True
+
+
 def test_every_endpoint_in_the_allow_set_bounds_the_request(tmp_path: Path) -> None:
     anchor = "        - {provider: alpha-cloud, quantization: fp8, context_window_tokens: 300000, max_output_tokens: 32768, verified: true}\n"
     assert anchor in _POLICY, "fixture edit anchor not found"

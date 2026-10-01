@@ -12,7 +12,8 @@ admitted only if, before any upstream call:
 The admitted request goes upstream with the route's provider allow-set, its routing controls and
 the output cap. Its reply counts as complete only on a verified ``stop``; ``length`` passes through
 so the host can mark it incomplete, and any other or missing finish status fails with its usage
-kept. Without a policy the Gateway keeps today's routing and rejects any ``route_binding``.
+kept, as a permanent (non-retryable) failure. Without a policy the Gateway keeps today's routing
+and rejects any ``route_binding``.
 """
 
 from __future__ import annotations
@@ -140,9 +141,8 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
     if not decision.allowed:
         raise ModelPolicyRefusal(decision.reason or "CAPACITY_REFUSED")
 
+    # Eligibility already requires a verified window, max output and quantization on every endpoint.
     endpoints = entry.route.endpoints
-    if any(endpoint.quantization is None for endpoint in endpoints):
-        raise ModelPolicyRefusal("ROUTE_QUANTIZATION_UNKNOWN", "every endpoint needs a recorded quantization")
 
     if entry.data_use.disclosure == "contributor":
         authorization = binding.disclosure
@@ -175,6 +175,10 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
 
 
 def check_finish_status(finish_reason: str | None) -> None:
-    """Under the verified route contract only ``stop`` and ``length`` are passed to the host."""
+    """Under the verified route contract only ``stop`` and ``length`` are passed to the host.
+
+    The refusal is a permanent status (422): the call was made and billed, so the host must not
+    re-dispatch it as a transient failure (an unknown or unusable result is never retried).
+    """
     if finish_reason not in _PASSED_FINISH:
-        raise ModelPolicyRefusal("FINISH_STATUS_UNVERIFIED", f"provider finish status {finish_reason!r}", status=502)
+        raise ModelPolicyRefusal("FINISH_STATUS_UNVERIFIED", f"provider finish status {finish_reason!r}", status=422)

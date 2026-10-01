@@ -183,6 +183,16 @@ def test_an_authorization_must_state_exactly_what_it_covers(tmp_path: Path) -> N
         assert not verify_disclosure(key, misstated, request_id="req-1", model_id="cn/alpha", route=route, payload=payload)
 
 
+def test_moving_text_between_request_and_model_never_reuses_a_mac() -> None:
+    """Fields are length-prefixed: ("ab", "c/d") and ("a", "bc/d") are different authorizations."""
+    key = disclosure_key("launch-secret")
+    route, payload = "a" * 64, "b" * 64
+    first = issue_disclosure(key, request_id="ab", model_id="c/d", route=route, payload=payload)
+    shifted = issue_disclosure(key, request_id="a", model_id="bc/d", route=route, payload=payload)
+    assert first.mac != shifted.mac
+    assert not verify_disclosure(key, first, request_id="a", model_id="bc/d", route=route, payload=payload)
+
+
 def test_disclosure_key_is_domain_separated_from_the_shared_secret() -> None:
     key = disclosure_key("launch-secret")
     assert len(key) == 32

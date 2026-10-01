@@ -66,7 +66,8 @@ from optimus.mcp.client_trust import (
     write_client_mcp_durable_from_fingerprint,
 )
 from optimus.mcp.local_ipc import PendingClientMcpCandidateEndpoint, SafeCandidateSnapshot
-from optimus_model_policy.binding import trusted_approval_literal
+from optimus_model_policy import RegistryError
+from optimus_model_policy.binding import BindingError, trusted_approval_literal
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 from optimus_security.sanitization import mask_uri_userinfo
 
@@ -923,6 +924,14 @@ def _cmd_run_gateway(
     print(f"  Bind: {bind_host}:{bind_port}")
     print()
 
+    # Plan 12.2 Task 5: the Gateway refuses to start unless the manifest binds its own registry, so an
+    # untrustworthy registry stops here with a typed message (None while enforcement is inactive).
+    try:
+        model_registry = trusted_approval_literal()
+    except (BindingError, RegistryError) as exc:
+        print(f"optimus-trust run-gateway: model registry is not trustworthy ({exc.code}).", file=sys.stderr)
+        return 2
+
     workspace_identity = resolve_workspace_identity(workspace_root)
     hmac_key_source = KeyringApprovalStore(
         keyring_backend=credential_keyring_backend, runtime_root=trusted_roots.approval_runtime_root
@@ -945,7 +954,7 @@ def _cmd_run_gateway(
         hmac_key=hmac_key_source.hmac_key,
         policy_version=LAUNCH_POLICY_COMPATIBILITY,
         # Plan 12.2 Task 5: the Gateway refuses to start unless this matches its own registry.
-        model_registry=trusted_approval_literal(),
+        model_registry=model_registry,
     )
     serialized_manifest = serialize_gateway_child_manifest(manifest)
 

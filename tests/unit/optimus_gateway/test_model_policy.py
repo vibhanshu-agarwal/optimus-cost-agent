@@ -15,7 +15,9 @@ from typing import Any
 
 import pytest
 
+from optimus.gateway.errors import GatewayHttpError
 from optimus.gateway.models import parse_gateway_response, parse_gateway_usage
+from optimus.retry.policy import FailureKind, classify_failure
 from optimus_gateway.chat_completions import handle_chat_completions_request
 from optimus_gateway.model_policy import GatewayModelPolicy
 from optimus_gateway.responses import handle_responses_request
@@ -125,7 +127,9 @@ def test_registry_model_without_an_eligible_role_is_refused(route: str, snapshot
 
 
 @pytest.mark.parametrize("route", ROUTES)
-def test_unrecorded_quantization_cannot_be_constrained_and_is_refused(route: str, snapshot) -> None:
+def test_unrecorded_quantization_is_not_eligible_so_it_is_refused(route: str, snapshot) -> None:
+    """Host eligibility and Gateway admission agree: a route the Gateway cannot constrain to an
+    approved quantization is not eligible, so it is never the host's default either (Fable M1)."""
     upstream = RecordingUpstream()
     status, body = _send(
         route,
@@ -135,7 +139,7 @@ def test_unrecorded_quantization_cannot_be_constrained_and_is_refused(route: str
         text="hi",
         route_binding=binding(snapshot, model="cn/nullquant"),
     )
-    assert (status, body["code"]) == (400, "ROUTE_QUANTIZATION_UNKNOWN")
+    assert (status, body["code"]) == (400, "MODEL_NOT_ELIGIBLE")
     assert upstream.calls == []
 
 
@@ -321,11 +325,22 @@ def test_complete_and_length_limited_replies_reach_the_host(route: str, finish: 
 def test_missing_or_unknown_finish_status_fails_and_keeps_its_usage(route: str, finish, snapshot) -> None:
     upstream = RecordingUpstream(finish_reason=finish)
     status, body = _send(route, gateway_config(model_policy(snapshot)), upstream, model="cn/alpha", text="hi", route_binding=binding(snapshot, input_text="hi"))
-    assert (status, body["code"]) == (502, "FINISH_STATUS_UNVERIFIED")
+    assert (status, body["code"]) == (422, "FINISH_STATUS_UNVERIFIED")
     assert len(upstream.calls) == 1
     usage = parse_gateway_usage(body["gateway_usage"])  # the host keeps the billed receipt
     assert usage.cost_usd == Decimal("0.0002")
     assert "output_text" not in body and "choices" not in body
+
+
+def test_the_host_never_retries_a_billed_finish_refusal(snapshot) -> None:
+    """The refusal follows a made, billed call; the host's retry policy treats it as terminal, so
+    the planning loop does not re-dispatch the prompt (Fable M2)."""
+    upstream = RecordingUpstream(finish_reason="content_filter")
+    status, body = _send("responses", gateway_config(model_policy(snapshot)), upstream, model="cn/alpha", text="hi", route_binding=binding(snapshot, input_text="hi"))
+    error = GatewayHttpError(status, body["error"], gateway_usage=parse_gateway_usage(body["gateway_usage"]))
+    classification = classify_failure(error)
+    assert classification.retryable is False
+    assert classification.kind is FailureKind.PERMANENT
 
 
 def test_inactive_gateway_passes_any_finish_status_through() -> None:
@@ -333,4 +348,3 @@ def test_inactive_gateway_passes_any_finish_status_through() -> None:
     upstream = RecordingUpstream(finish_reason=None)
     status, _ = _send("responses", gateway_config(), upstream, model="claude-haiku", text="hi", omit=True)
     assert status == 200
-

@@ -9,7 +9,7 @@ Usage:
     python tools/check_model_registry_drift.py --fetch --snapshot-dir DIR
     python tools/check_model_registry_drift.py --catalog FILE --endpoints-dir DIR
 
-Exit status: 0 no drift, 1 drift reported, 2 the catalog could not be read.
+Exit status: 0 no drift, 1 drift reported, 2 the catalog could not be read or the snapshot saved.
 """
 
 from __future__ import annotations
@@ -72,7 +72,15 @@ def compare(snapshot: RegistrySnapshot, catalog: Mapping[str, Any], endpoints_by
             if not matches:
                 drifts.append(Drift(model_id, "ENDPOINT_NOT_FOUND", f"no listed endpoint for provider {registry_endpoint.provider!r}"))
                 continue
-            listed_endpoint = matches[0]
+            wanted = (registry_endpoint.quantization or "").casefold()
+            same_quantization = [e for e in matches if wanted and str(e.get("quantization") or "").casefold() == wanted]
+            if not same_quantization and len(matches) > 1:
+                # Several listed endpoints and nothing to tell them apart: comparing one would guess.
+                drifts.append(
+                    Drift(model_id, "ENDPOINT_AMBIGUOUS", f"{len(matches)} listed endpoints for {registry_endpoint.provider!r}; record the quantization")
+                )
+                continue
+            listed_endpoint = (same_quantization or matches)[0]
             pricing = listed_endpoint.get("pricing") or {}
             for field, registry_value in (
                 ("prompt", entry.prices.input_usd_per_million),
@@ -108,14 +116,19 @@ def fetch(snapshot: RegistrySnapshot, *, fetcher: Callable[[str], Any]) -> tuple
     return catalog, endpoints
 
 
+def _snapshot_name(model_id: str) -> str:
+    """A file name valid on every platform: ``/`` becomes ``__``, anything else unsafe ``_``."""
+    safe = model_id.replace("/", "__")
+    return "endpoints-" + "".join(c if c.isascii() and (c.isalnum() or c in "._-") else "_" for c in safe) + ".json"
+
+
 def _save_snapshot(directory: Path, catalog: Any, endpoints: Mapping[str, Any]) -> Path:
     stamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
     target = directory / f"openrouter-{stamp}"
     target.mkdir(parents=True, exist_ok=False)
     (target / "models.json").write_text(json.dumps(catalog, indent=1, sort_keys=True), encoding="utf-8")
     for model_id, payload in endpoints.items():
-        safe = model_id.replace("/", "__")
-        (target / f"endpoints-{safe}.json").write_text(json.dumps(payload, indent=1, sort_keys=True), encoding="utf-8")
+        (target / _snapshot_name(model_id)).write_text(json.dumps(payload, indent=1, sort_keys=True), encoding="utf-8")
     return target
 
 
@@ -123,7 +136,7 @@ def _load_saved(catalog_file: Path, endpoints_dir: Path, snapshot: RegistrySnaps
     catalog = json.loads(catalog_file.read_text(encoding="utf-8"))
     endpoints: dict[str, Any] = {}
     for model_id in snapshot.policy.models:
-        path = endpoints_dir / f"endpoints-{model_id.replace('/', '__')}.json"
+        path = endpoints_dir / _snapshot_name(model_id)
         if path.is_file():
             endpoints[model_id] = json.loads(path.read_text(encoding="utf-8"))
     return catalog, endpoints
@@ -149,8 +162,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.fetch:
             catalog, endpoints = fetch(snapshot, fetcher=lambda url: _fetch_json(url, args.timeout))
-            if args.snapshot_dir is not None:
-                print(f"saved snapshot: {_save_snapshot(args.snapshot_dir, catalog, endpoints)}")
         elif args.catalog is not None and args.endpoints_dir is not None:
             catalog, endpoints = _load_saved(args.catalog, args.endpoints_dir, snapshot)
         else:
@@ -158,6 +169,13 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError) as exc:
         print(f"catalog unavailable: {type(exc).__name__}", file=sys.stderr)
         return 2
+
+    if args.fetch and args.snapshot_dir is not None:
+        try:
+            print(f"saved snapshot: {_save_snapshot(args.snapshot_dir, catalog, endpoints)}")
+        except OSError as exc:
+            print(f"snapshot not saved: {type(exc).__name__}", file=sys.stderr)
+            return 2
 
     drifts = compare(snapshot, catalog, endpoints)
     print(f"registry {snapshot.policy.policy_version} (effective {snapshot.effective_hash[:12]}): {len(drifts)} discrepancies")

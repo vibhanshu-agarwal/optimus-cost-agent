@@ -249,11 +249,10 @@ def parse_openai_chat_completion(
     output_text = message.get("content")
     if not isinstance(output_text, str):
         raise RuntimeError("upstream response missing message content")
-    finish_reason = first.get("finish_reason")
-    if finish_reason is not None:
-        if not isinstance(finish_reason, str) or not finish_reason:
-            raise RuntimeError("upstream response has malformed finish reason")
-        finish_reason = finish_reason.casefold()
+    # A missing or malformed finish status reads as None ("not reported"): it is never trusted as
+    # complete, and the billed call keeps its usage either way (Plan 12.2 Task 5).
+    raw_finish = first.get("finish_reason")
+    finish_reason = raw_finish.strip().casefold() if isinstance(raw_finish, str) and raw_finish.strip() else None
 
     usage = body.get("usage")
     if not isinstance(usage, dict):

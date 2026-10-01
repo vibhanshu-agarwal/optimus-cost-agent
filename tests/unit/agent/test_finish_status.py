@@ -72,6 +72,27 @@ def test_length_limited_write_is_not_a_candidate(tmp_path: Path) -> None:
     assert "output limit" in result.output_text
 
 
+def test_single_shot_planning_refuses_a_cut_off_plan_too(tmp_path: Path) -> None:
+    """The single-shot PLAN path stops before its own plan handling, like the planning loop."""
+    (tmp_path / "example.py").write_text("old\n", encoding="utf-8")
+    gateway = _Gateway(WRITE_PLAN, "length")
+    runner, store = _runner(gateway)
+
+    result = runner.run(_request(tmp_path, ExecutionMode.PLAN))
+
+    assert result.status is AgentRunStatus.TERMINATED
+    assert result.stop_reason == "PLANNING_OUTPUT_TRUNCATED"
+    assert result.plan_hash is None
+    assert result.mutation_count == 0
+    assert store.latest_plan_for_run(run_id="run-1") is None
+    assert result.total_cost_usd == Decimal("0.001")
+    assert gateway.calls == 1
+    assert "output limit" in result.output_text
+    assert (tmp_path / "example.py").read_text(encoding="utf-8") == "old\n"
+    complete, _ = _runner(_Gateway(WRITE_PLAN, "stop"))
+    assert complete.run(_request(tmp_path, ExecutionMode.PLAN)).stop_reason != "PLANNING_OUTPUT_TRUNCATED"
+
+
 def test_a_complete_write_plan_is_still_a_candidate(tmp_path: Path) -> None:
     (tmp_path / "example.py").write_text("old\n", encoding="utf-8")
     for finish_reason in ("stop", None):

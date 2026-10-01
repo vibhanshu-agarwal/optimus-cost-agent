@@ -41,8 +41,10 @@ from optimus.acp.trusted_paths import (
     resolve_workspace_security_state,
     revalidate_workspace_security_state,
 )
+from optimus.agent.defaults import AgentModelError, resolve_agent_model
 from optimus.gateway.client import DEFAULT_GATEWAY_TIMEOUT_SECONDS, validate_gateway_timeout_seconds
-from optimus_model_policy.binding import APPROVAL_LITERAL_NAME
+from optimus_model_policy import RegistryError
+from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError
 
 
 def _print_log(message: str) -> None:
@@ -507,11 +509,21 @@ def main(argv: list[str] | None = None) -> int:
     # default-filling, but now operates on the already-authorized projection
     # (never os.environ) and receives the already-resolved shared secret from
     # the candidate rather than re-resolving it.
-    agent_environ = apply_local_defaults(
-        candidate.agent_environ,
-        config_root=candidate.operator_paths.config_root,
-        resolved_shared_secret=candidate.shared_secret,
-    )
+    try:
+        agent_environ = apply_local_defaults(
+            candidate.agent_environ,
+            config_root=candidate.operator_paths.config_root,
+            resolved_shared_secret=candidate.shared_secret,
+        )
+        # Plan 12.2 Task 5: under an enforced model registry an unusable model fails here with a
+        # typed message rather than inside the runtime composition. Inactive: today's rules.
+        resolve_agent_model(agent_environ, cli_model=args.model)
+    except AgentModelError as exc:
+        print(f"optimus-agent: AGENT_MODEL_INVALID: {exc}", file=sys.stderr)
+        return 2
+    except (BindingError, RegistryError) as exc:
+        print(f"optimus-agent: MODEL_REGISTRY_INVALID: {exc.code}", file=sys.stderr)
+        return 2
 
     def _start_local_dependencies() -> tuple[str | None, int | None]:
         """Start Redis (+ optional Phoenix). Returns (otlp_endpoint, error_exit)."""

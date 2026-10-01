@@ -67,7 +67,7 @@ _FIXTURE = textwrap.dedent(
         route:
           estimator: fixture-bytes
           endpoints:
-            - {provider: beta-ai, quantization: null, context_window_tokens: 262144, max_output_tokens: 65536, verified: true}
+            - {provider: beta-ai, quantization: bf16, context_window_tokens: 262144, max_output_tokens: 65536, verified: true}
     roles:
       medium: [us/beta, cn/alpha]
     """
@@ -148,8 +148,22 @@ def test_anchor_like_characters_inside_ordinary_text_are_fine(tmp_path: Path) ->
         ("    origin: china\n", "    origin: atlantis\n"),
         ("    data_use: {provider_may_train_on_inputs: \"no\", disclosure: none}\n", ""),
         ("      estimator: fixture-bytes\n      endpoints:\n        - {provider: alpha-cloud", "      endpoints:\n        - {provider: alpha-cloud"),
+        ("context_ceiling_tokens: 262144\n", "context_ceiling_tokens: true\n"),
+        ("context_ceiling_tokens: 262144\n", "context_ceiling_tokens: 262144.0\n"),
+        ("context_ceiling_tokens: 262144\n", 'context_ceiling_tokens: "262144"\n'),
+        ("per_message_tokens: 8\n", "per_message_tokens: 8.0\n"),
+        ("schema_version: 1\n", "schema_version: true\n"),
+        ("fixture: true\n", 'fixture: "true"\n'),
+        ("max_output_tokens: 32768, verified: true}", "max_output_tokens: 32768, verified: 1}"),
+        ("  us/beta:\n", '  "us/beta ":\n'),
+        ("max_output_tokens: 32768, verified: true}", "max_output_tokens: 32768.0, verified: true}"),
+        ("context_window_tokens: 300000,", 'context_window_tokens: "300000",'),
     ],
-    ids=["unknown-top-field", "unknown-model-field", "negative-price", "infinite-price", "nan-price", "unknown-origin", "missing-data-use", "missing-route-estimator"],
+    ids=[
+        "unknown-top-field", "unknown-model-field", "negative-price", "infinite-price", "nan-price", "unknown-origin",
+        "missing-data-use", "missing-route-estimator", "bool-count", "float-count", "quoted-count", "float-framing",
+        "bool-schema-version", "quoted-flag", "integer-flag", "whitespace-model-id", "float-max-output", "quoted-window",
+    ],
 )
 def test_the_schema_rejects_unknown_fields_bad_numbers_and_missing_facts(tmp_path: Path, old: str, new: str) -> None:
     with pytest.raises(RegistryError) as rejected:
@@ -200,6 +214,14 @@ def test_the_effective_hash_ignores_formatting_but_tracks_content(tmp_path: Path
     assert changed.effective_hash != first.effective_hash
 
 
+def test_numbers_hash_by_value_not_by_their_text(tmp_path: Path) -> None:
+    """``0.10``, ``0.1`` and ``1E-1`` are one price, so they are one effective snapshot."""
+    first = load_registry(_write(tmp_path, "a.yaml", _FIXTURE), None)
+    for index, text in enumerate(('"0.1"', '"1E-1"', '"0.100"')):
+        same = load_registry(_write(tmp_path, f"b{index}.yaml", _edited('"0.10"', text)), None)
+        assert same.effective_hash == first.effective_hash, text
+
+
 def test_an_override_is_validated_like_the_defaults(tmp_path: Path) -> None:
     defaults = _write(tmp_path, "defaults.yaml", _FIXTURE)
     override = _write(tmp_path, "override.yaml", "models:\n  cn/alpha:\n    tier: cheap\n    tier: review\n")
@@ -241,6 +263,14 @@ def test_unverified_routes_and_estimators_are_not_eligible(tmp_path: Path) -> No
     assert [i.model_id for i in _issues(a, "ROUTE_UNVERIFIED")] == ["cn/alpha"]
     assert {i.model_id for i in _issues(b, "ESTIMATOR_UNVERIFIED")} == {"cn/alpha", "us/beta"}
     assert select_eligible_models(b, Role.MEDIUM) == ()
+
+
+def test_an_endpoint_without_a_recorded_quantization_is_not_eligible(tmp_path: Path) -> None:
+    """The Gateway constrains requests to the approved quantizations, so the host must not select a
+    route it cannot constrain (Fable CP1 review, M1)."""
+    snapshot = load_registry(_write(tmp_path, "a.yaml", _edited("quantization: fp8", "quantization: null")), None)
+    assert [i.model_id for i in _issues(snapshot, "ROUTE_QUANTIZATION_UNKNOWN")] == ["cn/alpha"]
+    assert select_eligible_models(snapshot, Role.MEDIUM) == ("us/beta",)
 
 
 def test_unsupported_reasoning_is_reported(tmp_path: Path) -> None:

@@ -34,10 +34,10 @@ def test_the_upstream_parser_keeps_the_finish_reason(raw, parsed) -> None:
     assert parse_openai_chat_completion(body, {}, requested_model="cn/alpha").finish_reason == parsed
 
 
-@pytest.mark.parametrize("bad", [7, "", ["length"]])
-def test_a_malformed_finish_reason_is_rejected(bad) -> None:
-    with pytest.raises(RuntimeError, match="finish reason"):
-        parse_openai_chat_completion(_completion(finish_reason=bad), {}, requested_model="cn/alpha")
+@pytest.mark.parametrize("bad", [7, "", "  ", ["length"], True])
+def test_a_malformed_finish_reason_reads_as_not_reported(bad) -> None:
+    """Never trusted as complete, and never an error that would lose the billed call's usage."""
+    assert parse_openai_chat_completion(_completion(finish_reason=bad), {}, requested_model="cn/alpha").finish_reason is None
 
 
 class _Upstream:
