@@ -34,6 +34,16 @@ by this folder.
        `...-export.zip` (SHA-256 `87CB74E5…`), `...-export-2.zip` (`1BC23372…`) and `...-export-3.zip`
        (`063BC3AF…`).
      - Quotes given after an export was taken need a fresh export, which is recorded the same way.
+   - **Source S2.** Operator selections dated 2026-10-01 come from a later export of the same
+     Claude Code session, `4162c45b-36f9-4cec-adb6-722ec3b28cb2`.
+     - External raw transcript archive: `optimus-handoff\decisions-sources\2026-10-01-claude-session-context-engine-decisions-export.zip`.
+     - SHA-256: `8769D433CB869362305E91525273E8CA7A19EBC2807B1CA726F5DC9D4A81F5C2`.
+     - Covers Q1’s typed effort question and later Fold into Plan 12 selection; Q2’s guard/floor
+       clarification; Q3’s removal-after-accounting sequence; and the later Package A and Docs PR first
+       selections (`2026-10-01T06:09:37.747Z`). ADR-013–015 reproduce the decision evidence in tracked
+       text. Codex verified the archive checksum and the scope/filing question-tool answers; Claude
+       checked the exported selections. Raw S2 is archival provenance, not an operating/test/release input.
+     - S1 remains the cited provenance for the frozen 2026-09-30 records; S2 adds later selections.
 2. **Label the decider.** Each record says who decided: the operator, an agent (Claude or Codex), or an
    agent proposal still awaiting the operator. A value an agent chose must never read as an operator
    requirement.
@@ -91,21 +101,26 @@ by this folder.
 | ADR | Title | Status | Decider | Date |
 |---|---|---|---|---|
 | [001](ADR-001-context-engine-separate-product.md) | The Context Engine is a separate, loosely coupled product; the Optimus floor stays | Accepted | Operator; details agreed by Claude and Codex | 2026-09-28 to 09-30 |
-| [002](ADR-002-history-strategies-and-picker.md) | History strategies (compaction default, hybrid, sliding window) and the IDE picker | Accepted | Operator; definitions agreed by Claude and Codex | 2026-09-29 to 09-30 |
-| [003](ADR-003-context-ceiling-and-history-limits.md) | Context ceiling of about 256K for all models; history may exceed 512 KiB while the engine is attached; Haiku removed | Accepted-with-open-items | Operator | 2026-09-30 |
+| [002](ADR-002-history-strategies-and-picker.md) | History strategies (compaction default, hybrid, sliding window) and the IDE picker | Accepted; effect-repair placement clarified by [ADR-013](ADR-013-plan12-effect-producer-repair.md); repair evidence still owed | Operator; definitions agreed by Claude and Codex | 2026-09-29 to 09-30 |
+| [003](ADR-003-context-ceiling-and-history-limits.md) | Context ceiling of about 256K for all models; history may exceed 512 KiB while the engine is attached; Haiku removed | Accepted-with-open-items; D7 interpretation completed by [ADR-014](ADR-014-all-session-request-guard-floor-clarification.md); measurement obligations remain | Operator | 2026-09-30 |
 | [004](ADR-004-curated-model-registry.md) | Curated model registry (YAML), tiers, origin rule, per-token selection among eligible models | Accepted-with-open-items | Operator; mechanism proposed by Claude, reviewed by Codex | 2026-09-30 |
-| [005](ADR-005-cost-alerts-not-limits.md) | Cost policy: alerts and warnings, not limits | Accepted | Operator | 2026-09-30 |
+| [005](ADR-005-cost-alerts-not-limits.md) | Cost policy: alerts and warnings, not limits | Accepted; sequencing completed by [ADR-015](ADR-015-cost-stop-removal-sequencing.md); runtime migration still owed | Operator | 2026-09-30 |
 | [006](ADR-006-summarizer-model.md) | The summarizer comes from the ultra-cheap tier | Accepted-with-open-items | Operator | 2026-09-30 |
 | [007](ADR-007-auto-mode-tier-routing.md) | Auto mode: classify each request into a tier | Proposed | Operator direction; design by Claude, awaiting Codex | 2026-09-30 |
 | [008](ADR-008-final-review-step-and-modes.md) | A final review step, with Standard and Thorough modes | Proposed | Operator idea; design pending | 2026-09-30 |
-| [009](ADR-009-loop-control-without-stopping-the-user.md) | Loop control that is never open-ended and never silently stops the user | Proposed | Operator requirement; architecture by Claude, awaiting Codex | 2026-09-30 |
+| [009](ADR-009-loop-control-without-stopping-the-user.md) | Loop control that is never open-ended and never silently stops the user | Proposed; interim cost-removal dependency clarified by [ADR-015](ADR-015-cost-stop-removal-sequencing.md), without accepting the mechanism | Operator requirement; architecture by Claude, awaiting Codex | 2026-09-30 |
 | [010](ADR-010-data-handling-for-chinese-model-routes.md) | Data handling on Chinese-model routes: no restriction now | Deferred | Operator | 2026-09-30 |
 | [011](ADR-011-how-decisions-are-recorded.md) | How decisions are recorded | Accepted | Operator (requirement and repository home); mechanism agreed by Claude and Codex | 2026-09-30 |
 | [012](ADR-012-cost-savings-report.md) | A cost-savings report is a Plan 12 feature | Accepted-with-open-items (requirement accepted; design proposed) | Operator; design by Claude, awaiting Codex | 2026-09-30 |
+| [013](ADR-013-plan12-effect-producer-repair.md) | Effect/cancellation repair as Plan 12’s first code step; completes [ADR-002](ADR-002-history-strategies-and-picker.md) delivery prerequisite, relates to [ADR-001](ADR-001-context-engine-separate-product.md) | Accepted-with-open-items; repair evidence owed | Operator; narrow mechanisms agreed by Claude/Codex | 2026-10-01 |
+| [014](ADR-014-all-session-request-guard-floor-clarification.md) | All-session request guard and unchanged source floor; completes [ADR-003](ADR-003-context-ceiling-and-history-limits.md) D7 interpretation | Accepted-with-open-items; full-floor/estimator evidence owed | Operator | 2026-10-01 |
+| [015](ADR-015-cost-stop-removal-sequencing.md) | Cost-stop removal after accounting/D6; completes [ADR-005](ADR-005-cost-alerts-not-limits.md) sequencing, clarifies [ADR-009](ADR-009-loop-control-without-stopping-the-user.md) dependency | Accepted-with-open-items; D6 and migration owed | Operator | 2026-10-01 |
 
 **Evidence in the repository:** [industry practice and model catalog, 2026-09-30](2026-09-30-industry-context-cost-and-model-evidence.md).
 It holds the survey of how eight coding agents handle context and spend, the OpenRouter catalog snapshot
 of the tier models, and their sources.
+
+**Related filed contract:** [Plan 12.2 design](../superpowers/specs/2026-10-01-plan-12-2-context-engine-design.md), [implementation plan](../superpowers/plans/2026-10-01-plan-12-2-context-engine-implementation.md) and [Plan 11.25 correction note](../superpowers/reviews/2026-10-01-plan-11-25-effect-instrumentation-correction.md). The predecessors are only partially completed/clarified, so ADR-001–012 remain current and unchanged; none moves to archive.
 
 **Working papers outside the repository** (the operator's handoff folder,
 `optimus-handoff\plan-12-discovery\`). They are kept for provenance only; the records above are

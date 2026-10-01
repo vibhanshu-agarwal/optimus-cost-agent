@@ -41,6 +41,9 @@ relevant records before proposing a change in their area.
 | [ADR-010: Data handling on Chinese-model routes](decisions/ADR-010-data-handling-for-chinese-model-routes.md) | No restriction now (deferred) |
 | [ADR-011: How decisions are recorded](decisions/ADR-011-how-decisions-are-recorded.md) | This log, in the repository |
 | [ADR-012: Cost-savings report](decisions/ADR-012-cost-savings-report.md) | A Plan 12 feature: net savings, with a stated baseline |
+| [ADR-013: Plan 12 effect repair](decisions/ADR-013-plan12-effect-producer-repair.md) | First code step; real WRITE/TEST boundaries and cancellation; later Package A authority |
+| [ADR-014: Request guard and source floor](decisions/ADR-014-all-session-request-guard-floor-clarification.md) | ADR-003 clarification with full-floor route evidence required |
+| [ADR-015: Cost-stop removal sequencing](decisions/ADR-015-cost-stop-removal-sequencing.md) | After accounting/D6, without waiting for ADR-009 |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 
 ## Research (input for Plan 12)
@@ -75,6 +78,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
+| [Plan 12.2: Context Engine](superpowers/plans/2026-10-01-plan-12-2-context-engine-implementation.md) | Complete contract derived from reviewed revision 5; Package A only selected |
 | [Plan 12.1: Plan/Chat advisory answers](superpowers/plans/2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | Selectable read-only Chat with conversation carriage |
 | [Plan 11.7 v3: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | Resume an ACP session in Zed |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |
@@ -88,6 +92,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Document | What it is |
 |---|---|
+| [Plan 12.2 Context Engine design](superpowers/specs/2026-10-01-plan-12-2-context-engine-design.md) | Three history strategies, exact host facts, floor, registry and cost integration |
 | [Plan 12.1 advisory-answer design](superpowers/specs/2026-09-29-plan-12-1-plan-chat-advisory-answer-design.md) | ACP Agent/Chat mode, prose-answer and history contract |
 | [ACP runtime hardening audit design](superpowers/specs/2026-08-29-plan-11-26-acp-runtime-hardening-audit-design.md) | Governing audit for ACP runtime hardening |
 | [A2A ledger design v2](superpowers/specs/evidence-handoff-a2a-ledger-design_v2.md) | Agent-to-agent ledger and channel |
@@ -99,6 +104,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Document | What it is |
 |---|---|
+| [Plan 11.25 producer-instrumentation correction](superpowers/reviews/2026-10-01-plan-11-25-effect-instrumentation-correction.md) | Checked historical steps do not establish current runner instrumentation; Plan 12 owns the repair |
 | [A2A ledger independent audit](superpowers/reviews/evidence-handoff-a2a-ledger-independent-audit.md) | Findings the open ledger slices fix |
 | [CI baseline report exceptions](superpowers/reviews/2026-09-06-baseline-report-exceptions.json) | Live exception set for the CI guardrail track |
 | [Plan 9.96 logging-surface audit](superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json) | Historical, but stays here: Plan 11.7's custody tooling binds this exact path |
