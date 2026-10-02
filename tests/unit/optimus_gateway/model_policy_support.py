@@ -216,7 +216,8 @@ class RecordingUpstream:
 
 
 class Wire:
-    """Each stage fails with the given exception or succeeds: connecting, the TLS handshake, sending
+    """Each stage fails with the given exception or succeeds: connecting (every time, or only the first
+    ``connect_failures`` times), the TLS handshake, sending
     (after ``send_ok_calls`` successful sends, such as a proxy's CONNECT), and the reply (raw HTTP
     bytes, or an exception raised while reading it). ``replies``
     gives one reply per response read, in order (a proxy's CONNECT reply, then the request's). Every
@@ -227,6 +228,7 @@ class Wire:
         self,
         *,
         connect: BaseException | None = None,
+        connect_failures: int | None = None,
         handshake: BaseException | None = None,
         send: BaseException | None = None,
         send_ok_calls: int = 0,
@@ -235,6 +237,7 @@ class Wire:
         proxies: dict[str, str] | None = None,
     ) -> None:
         self.connect_error = connect
+        self.connect_failures = connect_failures
         self.handshake_error = handshake
         self.send_error = send
         self.send_ok_calls = send_ok_calls
@@ -257,7 +260,7 @@ class Wire:
 
         def create_connection(address: object, timeout: object = None, source_address: object = None, **_: object) -> _WireSocket:
             wire.connects += 1
-            if wire.connect_error is not None:
+            if wire.connect_error is not None and (wire.connect_failures is None or wire.connects <= wire.connect_failures):
                 raise wire.connect_error
             buffer = bytearray()
             wire.sent.append(buffer)

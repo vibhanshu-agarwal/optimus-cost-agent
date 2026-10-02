@@ -476,6 +476,47 @@ def test_a_wrapped_send_phase_tls_failure_is_one_uncertain_attempt_end_to_end(sn
     assert (len(gateway_calls), wire.connects) == (1, 1), "nothing re-sent, by the Gateway or the host"
 
 
+def test_one_client_reuses_its_opener_and_every_attempt_starts_unconnected(monkeypatch) -> None:
+    """The Gateway keeps one client, so every attempt after the first reuses its opener. The phase
+    belongs to each attempt: one that connected never makes the next look connected, or the reverse."""
+    client = _client()
+    Wire(reply=http_reply(200, ok_completion_body())).install(monkeypatch)
+    assert _once(client).cost_usd == Decimal("0.00001")
+    opener = client._attempt_opener  # noqa: SLF001
+
+    outcomes = []
+    for wire in (Wire(connect=ConnectionRefusedError(10061, "refused")), Wire(send=ssl.SSLError(1, "bad record mac")), Wire(connect=socket.gaierror(11001, "getaddrinfo failed"))):
+        wire.install(monkeypatch)
+        with pytest.raises(UpstreamAttemptFailure) as caught:
+            _once(client)
+        outcomes.append(caught.value.outcome)
+    assert outcomes == ["not_sent", "uncertain", "not_sent"]
+    assert client._attempt_opener is opener, "one opener, reused"  # noqa: SLF001
+
+
+@pytest.mark.parametrize(
+    ("second", "status", "code", "outcomes"),
+    [
+        (None, 200, None, ["not_sent", "completed"]),
+        (ssl.SSLError(1, "[SSL: BAD_RECORD_MAC] bad record mac"), 502, "UPSTREAM_ATTEMPT_UNCERTAIN", ["not_sent", "uncertain"]),
+    ],
+    ids=["recovered", "recovery-uncertain"],
+)
+def test_the_gateway_recovers_once_through_the_real_client_after_a_refused_connection(snapshot, monkeypatch, no_sleep, second, status, code, outcomes) -> None:
+    """The attempt contract's one recovery, through the real client rather than a recording fake: the
+    refused first connection certainly sent nothing, so the identical payload is sent once more."""
+    wire = Wire(connect=ConnectionRefusedError(10061, "refused"), connect_failures=1, send=second, reply=http_reply(200, ok_completion_body())).install(monkeypatch)
+    response_status, body = _enforced(snapshot, _client())
+    assert response_status == status
+    attempts = body["route_attempts"]
+    assert [(a["attempt"], a["outcome"]) for a in attempts] == list(enumerate(outcomes, start=1))
+    assert len({a["gateway_request_id"] for a in attempts}) == 2, "each attempt has its own receipt identity"
+    assert body.get("code") == code
+    assert wire.connects == 2 and no_sleep == [gateway_responses._RECOVERY_DELAY_SECONDS]  # noqa: SLF001
+    if status == 200:
+        assert body["gateway_usage"]["attempt"] == 2
+
+
 @pytest.mark.parametrize(
     ("detail", "expected"),
     [
