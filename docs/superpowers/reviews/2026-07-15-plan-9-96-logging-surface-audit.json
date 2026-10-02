@@ -3671,6 +3671,22 @@
       "sanitizer": "fixed spawn schema without raw arguments, environment, content or secrets",
       "test_node": "tests/unit/acp/test_main5_guard.py::test_guard_spawn_ledger_records_short_no_site_child_without_arguments",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_context_records:write_record:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "The pytest run context serializes one allowlisted record: run ID, worktree, branch, commit, process ID plus creation time, image name, job facts, counters and exit status. It never serializes a command line, an environment value, exception text or file content, and refuses a record above its size limit.",
+      "sanitizer": "fixed allowlisted record schema with a size limit; no command line, environment value, exception text or secret",
+      "test_node": "tests/unit/tools/test_run_context.py::test_records_hold_identifiers_only_and_are_bounded",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_context_records:write_record:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "The pytest run context writes that allowlisted record atomically to the worktree's ignored tmp/test-runs folder and to a temporary registry folder, both outside the protected application folders. This is the run context's only persistence sink.",
+      "sanitizer": "fixed allowlisted record schema with a size limit; no command line, environment value, exception text or secret",
+      "test_node": "tests/unit/tools/test_run_context.py::test_records_hold_identifiers_only_and_are_bounded",
+      "evidence_tier": "unit"
     }
   ]
 }
