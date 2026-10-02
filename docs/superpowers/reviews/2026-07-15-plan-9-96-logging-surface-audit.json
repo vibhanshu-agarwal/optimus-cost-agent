@@ -3783,6 +3783,22 @@
       "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
       "test_node": "tests/unit/agent/test_context_authority_projection.py::test_an_approval_fact_renders_exactly_and_canonically",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "context_engine.selection:render_ordinary_turn:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Inspection: render_ordinary_turn serializes one committed turn's already-sanitized ordinary text (the host adapter sanitizes before the engine sees it) as the functional unit the history estimator measures and that maintenance input carries to the host's injected summarizer call; the engine persists and logs nothing.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/context_engine/test_selection.py::test_an_ordinary_turn_renders_whole_in_its_real_field_order",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "context_engine.selection:render_protected_state:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Inspection: render_protected_state serializes one turn's exact host authority (outcome, effect state and host-rendered approval facts) so the history estimator can reserve its capacity first; it is never sent to maintenance, persisted or logged.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/context_engine/test_selection.py::test_protected_state_renders_every_fact_verbatim",
+      "evidence_tier": "unit"
     }
   ]
 }
