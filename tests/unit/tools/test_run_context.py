@@ -7,6 +7,8 @@ exist, so even a broken guard could not create it.
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import subprocess
 import sys
@@ -43,32 +45,33 @@ def _nested(*arguments: str) -> tuple[int, dict[str, str], str]:
     return completed.returncode, fields, output
 
 
-def _fake_config(*, markexpr: str, collectonly: bool = False, requested: str = "auto", default: str | None = "not slow"):
-    addopts = ["--strict-markers"] + (["-m", default] if default is not None else [])
-    return SimpleNamespace(
-        option=SimpleNamespace(markexpr=markexpr, collectonly=collectonly, test_run_context=requested),
-        getini=lambda name: addopts,
-    )
-
-
 def test_probe_noop() -> None:
     """A do-nothing target for the nested runs below."""
 
 
-@pytest.mark.parametrize(
-    ("config", "expected"),
-    [
-        (_fake_config(markexpr="not slow"), ("active", "default_selection")),
-        (_fake_config(markexpr="slow"), ("passive", "non_default_selection")),
-        (_fake_config(markexpr="not slow and not other"), ("passive", "non_default_selection")),
-        (_fake_config(markexpr=""), ("passive", "non_default_selection")),
-        (_fake_config(markexpr="not slow", collectonly=True), ("passive", "collection_only")),
-        (_fake_config(markexpr="not slow", requested="passive"), ("passive", "requested")),
-        (_fake_config(markexpr="", default=None), ("passive", "no_default_expression")),
-    ],
-)
-def test_only_the_unchanged_default_selection_is_active(config: SimpleNamespace, expected: tuple[str, str]) -> None:
-    assert run_context.classify(config) == expected
+def test_probe_sentinel(request: pytest.FixtureRequest) -> None:
+    """Synthetic target for the nested selection probes: reports what the session it ran in did.
+
+    It does nothing in an ordinary run. A probe names a sentinel file through the environment, and
+    may ask for a marker so that a non-default selection has something harmless to select.
+    """
+    sentinel = os.environ.get("OPTIMUS_TEST_RUN_CONTEXT_PROBE_SENTINEL")
+    if not sentinel:
+        return
+    from optimus.acp import trusted_paths
+
+    context = _context(request)
+    owner = run_context_windows.owner()
+    Path(sentinel).write_text(json.dumps({
+        "mode": context.mode, "reason": context.reason, "guard": run_context_guard.mode(),
+        "owns_job": owner is not None and owner.handle is not None,
+        "real_adapter_replaced": trusted_paths._real_windows_known_folders is run_context_guard._refuse_real_adapter,  # noqa: SLF001
+        "protected_roots": len(run_context_guard.protected_roots()),
+    }), encoding="utf-8")
+
+
+if os.environ.get("OPTIMUS_TEST_RUN_CONTEXT_PROBE_MARK"):
+    test_probe_sentinel = getattr(pytest.mark, os.environ["OPTIMUS_TEST_RUN_CONTEXT_PROBE_MARK"])(test_probe_sentinel)
 
 
 def test_this_default_session_is_active_and_recorded(request: pytest.FixtureRequest) -> None:
@@ -87,19 +90,23 @@ def test_records_hold_identifiers_only_and_are_bounded(request: pytest.FixtureRe
     assert record is not None
     allowed = {
         "schema", "checkpoint", "run_id", "mode", "reason", "session_index", "started_utc", "worktree", "branch",
-        "head", "declared_agent", "platform", "root", "root_parent", "parent_run", "native", "guard_mode",
-        "exit_status", "finished_utc", "accounting", "members",
+        "head", "declared_agent", "withheld", "platform", "root", "root_parent", "parent_run", "native",
+        "guard_mode", "exit_status", "finished_utc", "accounting", "members",
     }
     assert sorted(set(record) - allowed) == []
     for identity in (record["root"], record["root_parent"]):
-        assert sorted(set(identity) - {"pid", "creation_time", "image", "error"}) == []
+        assert sorted(set(identity) - {"pid", "creation_time", "image", "error", "live"}) == []
     # No command line, argument vector or environment value is ever a record field or value.
     leaked = [word for word in ("argv", "command_line", "environ", "--cov", "-m pytest", sys.argv[0]) if word and word in text]
     assert leaked == []
     assert len(text.encode("utf-8")) <= run_context_records.MAX_RECORD_BYTES
 
-    with pytest.raises(ValueError, match="TEST_RUN_CONTEXT_RECORD_TOO_LARGE"):
-        run_context_records.write_record(tmp_path / "big.json", {"padding": "x" * (run_context_records.MAX_RECORD_BYTES + 1)})
+    assert record["withheld"] == []
+    # A conforming record that is simply too big is refused as well, and nothing is left behind.
+    oversized = {name: value for name, value in record.items() if name != "schema"}
+    oversized["members"] = {"ok": True, "complete": True, "identities": [record["root"]] * run_context_records.MAX_MEMBERS}
+    with pytest.raises(ValueError, match=run_context_records.TOO_LARGE):
+        run_context_records.write_record(tmp_path / "big.json", oversized)
     assert not (tmp_path / "big.json").exists()
     (tmp_path / "foreign.json").write_text('{"schema": "something-else"}', encoding="utf-8")
     (tmp_path / "broken.json").write_text("{not json", encoding="utf-8")
@@ -112,8 +119,8 @@ def test_records_hold_identifiers_only_and_are_bounded(request: pytest.FixtureRe
 def test_the_pytest_process_owns_a_kill_on_close_job_without_breakaway(request: pytest.FixtureRequest) -> None:
     context = _context(request)
     native = context.native
-    assert native["enrolled"] is True and native["valid"] is True, native
-    assert native["name_already_existed"] is False
+    assert native["attempted"] is True and native["enrolled"] is True and native["valid"] is True, native
+    assert native["created"] is True and native["name_already_existed"] is False
     assert native["handle_inheritable"] is False
     assert (native["kill_on_close"], native["breakaway_ok"], native["silent_breakaway_ok"]) == (True, False, False)
     assert run_context_windows.is_member(run_context_windows.current_identity()) is True

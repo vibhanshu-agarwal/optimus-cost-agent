@@ -27,6 +27,18 @@ ACTIVE = "active"
 PASSIVE = "passive"
 UNKNOWN = "UNKNOWN"
 
+# The approved default selection, frozen here on purpose. A session's own configuration can be
+# replaced from the command line, the environment or another config file, so it is never the
+# comparator. A guardrail test keeps this list equal to the repository's pyproject.toml.
+EXCLUDED_BY_DEFAULT = (
+    "requires_redis", "requires_gateway", "requires_mcp_http", "requires_mcp_stdio", "e2e", "requires_live_gateway",
+    "requires_phoenix", "requires_os_keyring", "requires_os_keyring_write", "requires_acpx", "requires_zed",
+    "requires_windows_desktop", "evidence_investigation", "requires_evidence_handoff_postgres",
+    "requires_evidence_handoff_service", "requires_real_agents",
+)
+APPROVED_DEFAULT_MARKER_EXPRESSION = " and ".join(f"not {name}" for name in EXCLUDED_BY_DEFAULT)
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+
 
 @dataclass
 class RunContext:
@@ -50,35 +62,54 @@ class RunContext:
 _sessions_started = 0
 
 
-def default_marker_expression(config: object) -> str | None:
-    """The `-m` expression the project's own configuration supplies, or None when there is none."""
+def _uses_repository_configuration(config: object) -> bool:
+    """Whether the session was configured by this checkout's own pyproject.toml and nothing else."""
     try:
-        addopts = list(config.getini("addopts"))  # type: ignore[attr-defined]
-    except (ValueError, KeyError):
-        return None
-    for index, value in enumerate(addopts[:-1]):
-        if value == "-m":
-            return str(addopts[index + 1])
-    return None
+        inipath, rootpath = getattr(config, "inipath", None), getattr(config, "rootpath", None)
+        if inipath is None or rootpath is None:
+            return False
+        return (
+            Path(str(inipath)).resolve() == (_REPOSITORY_ROOT / "pyproject.toml").resolve()
+            and Path(str(rootpath)).resolve() == _REPOSITORY_ROOT
+        )
+    except OSError:
+        return False
 
 
 def classify(config: object) -> tuple[str, str]:
-    """ACTIVE only for the unchanged default selection; everything unrecognised is PASSIVE."""
+    """ACTIVE only for the approved default selection under the repository's own configuration.
+
+    The effective `-m` expression is compared with the frozen approved expression, as text. A file
+    or `-k` subset of the default selection stays ACTIVE. Anything else is PASSIVE: another
+    expression (even an equivalent one written differently), an overridden `addopts`, another
+    config file or root, a collection-only run, or an explicit request.
+    """
     option = config.option  # type: ignore[attr-defined]
     if getattr(option, OPTION_DEST, "auto") == "passive":
         return PASSIVE, "requested"
     if getattr(option, "collectonly", False):
         return PASSIVE, "collection_only"
-    default = default_marker_expression(config)
-    if default is None:
-        return PASSIVE, "no_default_expression"
-    if (getattr(option, "markexpr", "") or "") != default:
+    if not _uses_repository_configuration(config):
+        return PASSIVE, "foreign_configuration"
+    overrides = getattr(option, "override_ini", None) or ()
+    if any(str(entry).split("=", 1)[0].strip() == "addopts" for entry in overrides):
+        return PASSIVE, "overridden_addopts"
+    if (getattr(option, "markexpr", "") or "") != APPROVED_DEFAULT_MARKER_EXPRESSION:
         return PASSIVE, "non_default_selection"
     return ACTIVE, "default_selection"
 
 
 def _identity(identity: native.ProcessIdentity) -> dict[str, object]:
-    return {"pid": identity.pid, "creation_time": identity.creation_time, "image": identity.image, "error": identity.error}
+    image = identity.image if identity.image is not None and records.IMAGE.fullmatch(identity.image) else None
+    return {"pid": identity.pid, "creation_time": identity.creation_time, "image": image, "error": identity.error,
+            "live": identity.live}
+
+
+def _bounded(value: str | None, pattern: object) -> str | None:
+    """A value fit to persist, or None when it breaks its pattern or the shared sanitizer would change it."""
+    if value is None or pattern.fullmatch(value) is None:  # type: ignore[attr-defined]
+        return None
+    return value if records.unchanged_by_shared_sanitizer(value) else None
 
 
 def _git_identity(worktree: Path) -> tuple[str | None, str | None]:
@@ -125,27 +156,30 @@ def _discover_parent_run(run_id: str) -> dict[str, object]:
 
     A child cannot see its parent run's job: the Python venv launcher puts every interpreter it
     starts into a job of its own, so a process's immediate job holds only itself. The parent is
-    therefore found by ancestry: the nearest live ancestor whose PID and creation time match a
-    registered active root. Every hop is validated; a hop that cannot be opened makes the answer
-    UNKNOWN, never a guess. No job is opened and no command line is read.
+    therefore found by ancestry: the nearest running ancestor whose PID and creation time match a
+    registered active root. This names a relationship only; ownership and cleanup stay with each
+    run's own job. No job is opened and no command line is read.
+
+    The answer is `parent` when a match is found, `none` only when the whole chain was followed to
+    its end without one, `not_found` when the visible chain ended at an exited ancestor (earlier
+    ancestors cannot be seen, so absence is not established), and UNKNOWN when any query failed.
     """
+    method = "validated_process_ancestry"
     chain, stopped = native.ancestors()
-    if stopped == "snapshot_failed":
-        return {"status": UNKNOWN, "reason": stopped}
     roots: dict[tuple[int, int], str] = {}
     for entry in records.registry_entries(run_id):
         root = entry.get("root")
-        if entry.get("mode") != ACTIVE or not isinstance(root, dict) or not isinstance(entry.get("run_id"), str):
-            continue
-        if isinstance(root.get("pid"), int) and isinstance(root.get("creation_time"), int):
-            roots[(root["pid"], root["creation_time"])] = str(entry["run_id"])
+        if entry.get("mode") == ACTIVE and isinstance(root, dict) and isinstance(root.get("creation_time"), int):
+            roots[(int(root["pid"]), int(root["creation_time"]))] = str(entry["run_id"])
     for ancestor in chain:
-        found = roots.get((ancestor.pid, ancestor.creation_time or -1))
+        found = roots.get((ancestor.pid, ancestor.creation_time or -1)) if ancestor.live is True else None
         if found is not None:
-            return {"status": "parent", "run_id": found, "method": "validated_process_ancestry"}
-    if stopped in {"access_denied", "hop_limit"}:
-        return {"status": UNKNOWN, "reason": stopped}
-    return {"status": "none"}
+            return {"status": "parent", "run_id": found, "method": method}
+    if stopped == "root_reached":
+        return {"status": "none", "method": method}
+    if stopped == "ancestor_exited":
+        return {"status": "not_found", "reason": stopped, "method": method}
+    return {"status": UNKNOWN, "reason": stopped, "method": method}
 
 
 def start_run(config: object) -> RunContext:
@@ -157,7 +191,7 @@ def start_run(config: object) -> RunContext:
         import pytest
 
         raise pytest.UsageError(
-            "test-run-context: this interpreter already owns a default-run job; "
+            "test-run-context: this interpreter already started an active default run; "
             "start this selection in a separate interpreter"
         )
     _sessions_started += 1
@@ -175,13 +209,13 @@ def start_run(config: object) -> RunContext:
         context.parent_run = {"status": "same_interpreter"} if enrolled_before else _discover_parent_run(run_id)
         if mode == ACTIVE:
             owner = native.enroll(run_id)
-            context.native = {"supported": True, "enrolled": True, "valid": owner.valid, "job_name": owner.name,
+            context.native = {"supported": True, "attempted": True, "valid": owner.valid, "job_name": owner.name,
                               "reused_from_earlier_session": enrolled_before, **owner.facts}
         else:
-            context.native = {"supported": True, "enrolled": False}
+            context.native = {"supported": True, "attempted": False, "enrolled": False}
     else:
-        context.root = {"pid": os.getpid(), "creation_time": None, "image": os.path.basename(sys.executable), "error": None}
-        context.native = {"supported": False, "enrolled": False}
+        context.root = {"pid": os.getpid(), "creation_time": None, "image": None, "error": None, "live": True}
+        context.native = {"supported": False, "attempted": False, "enrolled": False}
         context.parent_run = {"status": "unsupported"}
     if mode == ACTIVE:
         context.guard_mode = guard.install()
@@ -192,13 +226,23 @@ def start_run(config: object) -> RunContext:
 
 
 def _payload(context: RunContext, *, checkpoint: str) -> dict[str, object]:
-    return {
-        "checkpoint": checkpoint, "run_id": context.run_id, "mode": context.mode, "reason": context.reason,
-        "session_index": context.session_index, "started_utc": context.started_utc, "worktree": context.worktree,
-        "branch": context.branch, "head": context.head, "declared_agent": context.declared_agent,
-        "platform": sys.platform, "root": context.root, "root_parent": context.root_parent,
-        "parent_run": context.parent_run, "native": context.native, "guard_mode": context.guard_mode,
+    """The record for one checkpoint. Checkout-derived text that is not fit to persist is withheld by name."""
+    text = {
+        "worktree": _bounded(context.worktree, records.WORKTREE), "branch": _bounded(context.branch, records.BRANCH),
+        "head": _bounded(context.head, records.COMMIT), "declared_agent": _bounded(context.declared_agent, records.AGENT),
     }
+    supplied = {"worktree": context.worktree, "branch": context.branch, "head": context.head,
+                "declared_agent": context.declared_agent}
+    payload: dict[str, object] = {
+        "checkpoint": checkpoint, "run_id": context.run_id, "mode": context.mode, "reason": context.reason,
+        "session_index": context.session_index, "started_utc": context.started_utc, **text,
+        "withheld": sorted(name for name, value in text.items() if value is None and supplied[name] is not None),
+        "platform": sys.platform, "root": context.root, "parent_run": context.parent_run, "native": context.native,
+        "guard_mode": context.guard_mode,
+    }
+    if context.root_parent:
+        payload["root_parent"] = context.root_parent
+    return payload
 
 
 def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
@@ -207,9 +251,11 @@ def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
     if context.native.get("enrolled"):
         final["accounting"] = native.accounting()
         identities, error = native.members()
+        # `complete` is True only when every listed member's identity was actually read.
         final["members"] = (
-            {"ok": True, "identities": [_identity(identity) for identity in identities]}
-            if identities is not None else {"ok": False, "error": error}
+            {"ok": True, "complete": all(identity.creation_time is not None for identity in identities),
+             "identities": [_identity(identity) for identity in identities]}
+            if identities is not None else {"ok": False, "complete": False, "error": error}
         )
     payload = {**_payload(context, checkpoint="terminal"), **final}
     records.write_record(context.record_dir / "run.json", payload)
@@ -224,6 +270,9 @@ def summary_line(context: RunContext, final: dict[str, object] | None) -> str:
         processes = accounting.get("total_processes") if isinstance(accounting, dict) and accounting.get("ok") else "QUERY_FAILED"
         parts += [f"native={'valid' if context.native.get('valid') else 'INVALID'}", f"job={context.native.get('job_name')}",
                   f"processes={processes}"]
+    elif context.native.get("attempted"):
+        # Enrolment was tried and did not hold: no job and no process count are claimed.
+        parts.append("native=INVALID")
     else:
         parts.append(f"native={'not_enrolled' if context.native.get('supported') else 'unsupported'}")
     status = context.parent_run.get("status")

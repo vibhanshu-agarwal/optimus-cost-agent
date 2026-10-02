@@ -19,7 +19,12 @@ _KILL_ON_JOB_CLOSE = 0x2000
 _BREAKAWAY_OK = 0x0800
 _SILENT_BREAKAWAY_OK = 0x1000
 _QUERY_LIMITED_INFORMATION = 0x1000
+_SNAPSHOT_PROCESSES = 0x00000002
+_ERROR_ACCESS_DENIED = 5
+_ERROR_NO_MORE_FILES = 18
+_ERROR_INVALID_PARAMETER = 87
 _ERROR_ALREADY_EXISTS = 183
+_STILL_ACTIVE = 259
 _EXTENDED_LIMIT_CLASS = 9
 _ACCOUNTING_AND_IO_CLASS = 8
 _PROCESS_ID_LIST_CLASS = 3
@@ -29,12 +34,18 @@ _IO_FIELDS = ("read_operations", "write_operations", "other_operations", "read_b
 
 @dataclass(frozen=True)
 class ProcessIdentity:
-    """One process: PID plus creation time. `error` is the native error when it could not be read."""
+    """One process: PID plus creation time. `error` is the native error when a query failed.
+
+    `live` is True or False only when the operating system answered the question; None means the
+    answer is not known. A process that exited with code 259 would read as live: the creation
+    time, read through the same handle, still rules out a reused PID.
+    """
 
     pid: int
     creation_time: int | None
     image: str | None = None
     error: int | None = None
+    live: bool | None = None
 
 
 @dataclass
@@ -80,10 +91,18 @@ def _kernel32():  # noqa: ANN202 - ctypes library object, Windows only
     api.CloseHandle.argtypes = [handle]
     api.GetProcessTimes.argtypes = [handle] + [ctypes.POINTER(wintypes.FILETIME)] * 4
     api.GetProcessTimes.restype = wintypes.BOOL
+    api.GetExitCodeProcess.argtypes = [handle, ctypes.POINTER(wintypes.DWORD)]
+    api.GetExitCodeProcess.restype = wintypes.BOOL
     api.GetHandleInformation.argtypes = [handle, ctypes.POINTER(wintypes.DWORD)]
     api.GetHandleInformation.restype = wintypes.BOOL
     api.QueryFullProcessImageNameW.argtypes = [handle, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
     api.QueryFullProcessImageNameW.restype = wintypes.BOOL
+    api.CreateToolhelp32Snapshot.restype = handle
+    api.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    api.Process32FirstW.argtypes = [handle, ctypes.c_void_p]
+    api.Process32FirstW.restype = wintypes.BOOL
+    api.Process32NextW.argtypes = [handle, ctypes.c_void_p]
+    api.Process32NextW.restype = wintypes.BOOL
     _api = api
     return api
 
@@ -137,8 +156,19 @@ def _creation_time(api: object, handle: object) -> tuple[int | None, int | None]
     return (created.dwHighDateTime << 32) | created.dwLowDateTime, None
 
 
+def _is_live(api: object, handle: object) -> tuple[bool | None, int | None]:
+    """Whether the process behind an open handle is still running, or None with the native error."""
+    import ctypes
+    from ctypes import wintypes
+
+    code = wintypes.DWORD()
+    if not api.GetExitCodeProcess(handle, ctypes.byref(code)):
+        return None, ctypes.get_last_error()
+    return code.value == _STILL_ACTIVE, None
+
+
 def process_identity(pid: int) -> ProcessIdentity:
-    """PID, creation time and image name of a live process, read through a short-lived handle."""
+    """PID, creation time, image name and live state of a process, read through one short-lived handle."""
     import ctypes
     from ctypes import wintypes
 
@@ -148,10 +178,13 @@ def process_identity(pid: int) -> ProcessIdentity:
         return ProcessIdentity(pid=pid, creation_time=None, error=ctypes.get_last_error())
     try:
         created, error = _creation_time(api, handle)
+        live, live_error = _is_live(api, handle)
         size = wintypes.DWORD(1024)
         buffer = ctypes.create_unicode_buffer(size.value)
         image = os.path.basename(buffer.value) if api.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)) else None
-        return ProcessIdentity(pid=pid, creation_time=created, image=image, error=error)
+        return ProcessIdentity(
+            pid=pid, creation_time=created, image=image, error=error if error is not None else live_error, live=live,
+        )
     finally:
         api.CloseHandle(handle)
 
@@ -159,7 +192,9 @@ def process_identity(pid: int) -> ProcessIdentity:
 def current_identity() -> ProcessIdentity:
     api = _kernel32()
     created, error = _creation_time(api, api.GetCurrentProcess())
-    return ProcessIdentity(pid=os.getpid(), creation_time=created, image=os.path.basename(sys.executable), error=error)
+    return ProcessIdentity(
+        pid=os.getpid(), creation_time=created, image=os.path.basename(sys.executable), error=error, live=True,
+    )
 
 
 def parent_identity() -> ProcessIdentity:
@@ -167,7 +202,7 @@ def parent_identity() -> ProcessIdentity:
     parent = process_identity(os.getppid())
     own = current_identity()
     if parent.creation_time is None or own.creation_time is None or parent.creation_time > own.creation_time:
-        return ProcessIdentity(pid=parent.pid, creation_time=None, error=parent.error)
+        return ProcessIdentity(pid=parent.pid, creation_time=None, error=parent.error, live=parent.live)
     return parent
 
 
@@ -183,13 +218,11 @@ def _member_pids(api: object, job: object) -> tuple[list[int] | None, int | None
     return [int(listing.Pids[index]) for index in range(listing.InList)], None
 
 
-def ancestors(max_hops: int = 32) -> tuple[list[ProcessIdentity], str]:
-    """This process's live ancestors, nearest first, each validated by PID plus creation time.
+def _parent_map(api: object) -> tuple[dict[int, int] | None, str | None]:
+    """Every process's parent PID from one snapshot, or None with why the snapshot is unusable.
 
-    A hop is accepted only when the parent can be opened and was created no later than its child,
-    which rules out a reused PID. The walk stops at the first hop that cannot be validated. The
-    second value says why: `ended` (the parent is gone or its PID was reused), `access_denied`,
-    `hop_limit` or `snapshot_failed`. This is process ancestry, not job membership.
+    The enumeration is complete only when it ends with ERROR_NO_MORE_FILES. Any other ending is
+    reported as incomplete: a partial list must never be read as "that process has no parent".
     """
     import ctypes
     from ctypes import wintypes
@@ -202,45 +235,75 @@ def ancestors(max_hops: int = 32) -> tuple[list[ProcessIdentity], str]:
             ("szExeFile", wintypes.WCHAR * 260),
         ]
 
-    api = _kernel32()
-    api.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
-    api.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
-    api.Process32FirstW.argtypes = [ctypes.c_void_p, ctypes.POINTER(ProcessEntry)]
-    api.Process32FirstW.restype = wintypes.BOOL
-    api.Process32NextW.argtypes = [ctypes.c_void_p, ctypes.POINTER(ProcessEntry)]
-    api.Process32NextW.restype = wintypes.BOOL
-    snapshot = api.CreateToolhelp32Snapshot(0x00000002, 0)
+    snapshot = api.CreateToolhelp32Snapshot(_SNAPSHOT_PROCESSES, 0)
     if not snapshot or snapshot == ctypes.c_void_p(-1).value:
-        return [], "snapshot_failed"
+        return None, "snapshot_failed"
     parents: dict[int, int] = {}
     try:
         entry = ProcessEntry()
         entry.dwSize = ctypes.sizeof(ProcessEntry)
-        more = api.Process32FirstW(snapshot, ctypes.byref(entry))
-        while more:
+        if not api.Process32FirstW(snapshot, ctypes.byref(entry)):
+            return None, "snapshot_incomplete"
+        while True:
             parents[int(entry.th32ProcessID)] = int(entry.th32ParentProcessID)
-            more = api.Process32NextW(snapshot, ctypes.byref(entry))
+            if not api.Process32NextW(snapshot, ctypes.byref(entry)):
+                if ctypes.get_last_error() != _ERROR_NO_MORE_FILES:
+                    return None, "snapshot_incomplete"
+                return parents, None
     finally:
         api.CloseHandle(snapshot)
 
+
+def ancestors(max_hops: int = 32) -> tuple[list[ProcessIdentity], str]:
+    """This process's ancestors that are running now, nearest first, and why the walk stopped.
+
+    A hop is accepted only when the parent could be opened, its creation time and live state were
+    both read, it is running, and it was created no later than its child (which rules out a reused
+    PID). The walk stops at the first hop that is not accepted. The second value says why:
+
+    - `root_reached`: the chain was followed to a process with no parent. Only this ending means
+      the list is every ancestor.
+    - `ancestor_exited`: the next parent has exited or its PID was reused. The chain above it
+      cannot be seen, so nothing is known about earlier ancestors.
+    - `access_denied`, `identity_failed`, `snapshot_failed`, `snapshot_incomplete`, `hop_limit`:
+      a query failed or was cut short. The result is unknown, not "no ancestor".
+
+    This is process ancestry, not job membership. A process can still exit between the query and
+    the caller's use of the answer; the answer describes the moment of the query.
+    """
+    parents, failure = _parent_map(_kernel32())
+    if parents is None:
+        return [], str(failure)
     chain: list[ProcessIdentity] = []
     current = current_identity()
+    if current.creation_time is None:
+        return chain, "identity_failed"
     for _ in range(max_hops):
-        parent_pid = parents.get(current.pid)
-        if not parent_pid or current.creation_time is None:
-            return chain, "ended"
+        if current.pid not in parents:
+            return chain, "snapshot_incomplete"
+        parent_pid = parents[current.pid]
+        if parent_pid == 0 or parent_pid == current.pid:
+            return chain, "root_reached"
         parent = process_identity(parent_pid)
-        if parent.creation_time is None:
-            return chain, "access_denied" if parent.error == 5 else "ended"
-        if parent.creation_time > current.creation_time:
-            return chain, "ended"
+        if parent.creation_time is None or parent.live is None:
+            if parent.error == _ERROR_INVALID_PARAMETER:
+                return chain, "ancestor_exited"
+            return chain, "access_denied" if parent.error == _ERROR_ACCESS_DENIED else "identity_failed"
+        if not parent.live or parent.creation_time > current.creation_time:
+            return chain, "ancestor_exited"
         chain.append(parent)
         current = parent
     return chain, "hop_limit"
 
 
 def enroll(run_id: str) -> JobOwner:
-    """Create a new kill-on-close job and put this process in it. Idempotent per interpreter."""
+    """Create a new kill-on-close job and put this process in it. Idempotent per interpreter.
+
+    A job that already exists under this run's name is someone else's: its handle is closed at
+    once and nothing about it is changed. Limits are set before the process is assigned, and a
+    job whose limits could not be set is closed without assigning. `enrolled` is True only when
+    the assignment succeeded and membership was read back.
+    """
     global _owner
     if _owner is not None:
         return _owner
@@ -251,14 +314,16 @@ def enroll(run_id: str) -> JobOwner:
     extended_limit, _, _ = _structures()
     me = api.GetCurrentProcess()
     name = f"optimus-test-run-{run_id}"
-    facts: dict[str, object] = {}
+    facts: dict[str, object] = {"enrolled": False}
     ctypes.set_last_error(0)
     job = api.CreateJobObjectW(None, name)
     created_error = ctypes.get_last_error()
-    facts["created"] = bool(job)
-    facts["create_error"] = created_error if not job else None
-    facts["name_already_existed"] = created_error == _ERROR_ALREADY_EXISTS
-    if not job:
+    facts["name_already_existed"] = bool(job) and created_error == _ERROR_ALREADY_EXISTS
+    facts["created"] = bool(job) and not facts["name_already_existed"]
+    facts["create_error"] = None if facts["created"] else created_error
+    if not facts["created"]:
+        if job:
+            api.CloseHandle(job)
         _owner = JobOwner(name=name, handle=None, valid=False, facts=facts)
         return _owner
 
@@ -269,12 +334,18 @@ def enroll(run_id: str) -> JobOwner:
     limits.Basic.LimitFlags = _KILL_ON_JOB_CLOSE
     facts["limits_set"] = bool(api.SetInformationJobObject(job, _EXTENDED_LIMIT_CLASS, ctypes.byref(limits), ctypes.sizeof(limits)))
     facts["limits_error"] = None if facts["limits_set"] else ctypes.get_last_error()
-
-    facts["assigned"] = bool(api.AssignProcessToJobObject(job, me))
-    facts["assign_error"] = None if facts["assigned"] else ctypes.get_last_error()
+    if facts["limits_set"]:
+        facts["assigned"] = bool(api.AssignProcessToJobObject(job, me))
+        facts["assign_error"] = None if facts["assigned"] else ctypes.get_last_error()
+    if not facts.get("assigned"):
+        # Nothing joined this job, so closing it ends nothing. No ownership is claimed.
+        api.CloseHandle(job)
+        _owner = JobOwner(name=name, handle=None, valid=False, facts=facts)
+        return _owner
 
     member = wintypes.BOOL()
     facts["self_is_member"] = bool(member.value) if api.IsProcessInJob(me, job, ctypes.byref(member)) else None
+    facts["enrolled"] = facts["self_is_member"] is True
 
     readback = extended_limit()
     returned = wintypes.DWORD()
@@ -287,10 +358,11 @@ def enroll(run_id: str) -> JobOwner:
         facts["flags_error"] = ctypes.get_last_error()
 
     valid = (
-        not facts["name_already_existed"] and facts["handle_inheritable"] is False and facts["limits_set"]
-        and facts["assigned"] and facts["self_is_member"] is True and facts.get("kill_on_close") is True
+        facts["enrolled"] and facts["handle_inheritable"] is False and facts.get("kill_on_close") is True
         and facts.get("breakaway_ok") is False and facts.get("silent_breakaway_ok") is False
     )
+    # The handle is kept even when a read-back failed: this process is in the job, and closing a
+    # kill-on-close job would end it.
     _owner = JobOwner(name=name, handle=job, valid=bool(valid), facts=facts)
     return _owner
 
