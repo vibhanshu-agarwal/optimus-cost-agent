@@ -188,20 +188,37 @@ def test_a_fetched_snapshot_saves_only_the_public_responses(
     assert "saved snapshot:" in capsys.readouterr().out
 
 
-def test_the_endpoint_with_the_recorded_quantization_is_the_one_compared(registry: Path) -> None:
-    """A provider listing several endpoints is compared on the one whose quantization matches."""
+def test_a_slug_that_reaches_several_endpoints_is_reported_and_compared_on_its_quantization(registry: Path) -> None:
+    """The registry's base slug "beta" would route to beta/bf16 as well as beta/fp8: it is not exact.
+    Its facts are still compared on the endpoint whose quantization matches the record."""
     catalog, endpoints = _matching_catalog()
     cheaper_bf16 = _endpoint("beta/bf16", "0.0000005", "0.000002", context=100000, max_out=8000, quant="bf16")
     endpoints["us/beta"]["data"]["endpoints"].insert(0, cheaper_bf16)
-    assert compare(load_registry(registry, None), catalog, endpoints) == []
+    drifts = compare(load_registry(registry, None), catalog, endpoints)
+    assert [(d.model_id, d.code) for d in drifts] == [("us/beta", "SLUG_NOT_EXACT")]
+    assert "beta/bf16" in drifts[0].detail and "beta/fp8" in drifts[0].detail
 
 
-def test_several_endpoints_with_nothing_to_tell_them_apart_are_ambiguous(registry: Path) -> None:
+def test_several_endpoints_with_nothing_to_tell_them_apart_are_not_compared(registry: Path) -> None:
+    """With no recorded quantization to pick one, comparing any listed endpoint would be a guess: a
+    dearer variant listed first must not produce a PRICE drift against the record."""
     catalog, endpoints = _matching_catalog()
-    second = _endpoint("alpha", "0.00000015", "0.0000006", context=1048576, max_out=65536, quant="fp8")
-    endpoints["cn/alpha"]["data"]["endpoints"].append(second)
+    dearer = _endpoint("alpha/fast", "0.00000030", "0.0000012", context=1048576, max_out=65536, quant="fp8")
+    endpoints["cn/alpha"]["data"]["endpoints"].insert(0, dearer)
     codes = [(d.model_id, d.code) for d in compare(load_registry(registry, None), catalog, endpoints)]
-    assert codes == [("cn/alpha", "ENDPOINT_AMBIGUOUS")]
+    assert codes == [("cn/alpha", "SLUG_NOT_EXACT")]
+
+
+def test_an_exact_variant_slug_matches_only_itself_and_what_lies_beneath_it(tmp_path: Path) -> None:
+    """An exact slug is compared with its own listing; a deeper listed variant would make it inexact."""
+    path = tmp_path / "exact.yaml"
+    path.write_text(_REGISTRY.replace("provider: beta,", "provider: beta/fp8,"), encoding="utf-8")
+    snapshot = load_registry(path, None)
+    catalog, endpoints = _matching_catalog()
+    endpoints["us/beta"]["data"]["endpoints"].insert(0, _endpoint("beta/bf16", "0.0000005", "0.000002", context=1, max_out=1, quant="bf16"))
+    assert compare(snapshot, catalog, endpoints) == [], "beta/bf16 is a sibling, not beneath beta/fp8"
+    endpoints["us/beta"]["data"]["endpoints"].append(_endpoint("beta/fp8/eu", "0.000001", "0.000005", context=200000, max_out=64000, quant="fp8"))
+    assert [d.code for d in compare(snapshot, catalog, endpoints)] == ["SLUG_NOT_EXACT"]
 
 
 def test_snapshot_names_are_valid_on_every_platform() -> None:
@@ -226,3 +243,23 @@ def test_a_snapshot_that_cannot_be_saved_is_reported_as_such(
     monkeypatch.setattr(drift, "_save_snapshot", refuse)
     assert main(["--registry", str(registry), "--fetch", "--snapshot-dir", str(tmp_path)]) == 2
     assert "snapshot not saved: FileExistsError" in capsys.readouterr().err
+
+
+def test_a_recorded_quantization_the_listing_does_not_confirm_is_drift(registry: Path) -> None:
+    """The recorded quantization becomes the request's filter, so an endpoint listed as "unknown" (or
+    with none) would be filtered out and every request refused."""
+    catalog, endpoints = _matching_catalog()
+    for listed in ("unknown", None):
+        endpoints["us/beta"]["data"]["endpoints"][0]["quantization"] = listed
+        codes = [(d.model_id, d.code) for d in compare(load_registry(registry, None), catalog, endpoints)]
+        assert codes == [("us/beta", "QUANTIZATION")], listed
+
+
+def test_an_endpoint_that_cannot_take_the_reasoning_level_is_drift(tmp_path: Path) -> None:
+    path = tmp_path / "reasoning.yaml"
+    path.write_text(_REGISTRY.replace("default_reasoning: null", "default_reasoning: high"), encoding="utf-8")
+    snapshot = load_registry(path, None)
+    catalog, endpoints = _matching_catalog()
+    endpoints["us/beta"]["data"]["endpoints"][0]["supported_parameters"] = ["max_tokens", "reasoning"]
+    codes = [(d.model_id, d.code) for d in compare(snapshot, catalog, endpoints)]
+    assert codes == [("cn/alpha", "REASONING_UNSUPPORTED")]

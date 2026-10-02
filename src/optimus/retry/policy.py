@@ -123,6 +123,10 @@ def classify_failure(error: BaseException) -> FailureClassification:
             cost_usd=error.cost_usd,
         )
     if isinstance(error, GatewayHttpError):
+        if getattr(error, "retryable", None) is False:
+            # Enforced routing (Plan 12.2 Task 5): the Gateway already applied the bounded attempt
+            # contract, and an uncertain attempt may have been billed, so the host never re-sends.
+            return _classification(FailureKind.PERMANENT, FailureSeverity.TERMINAL, error)
         if error.status_code in TRANSIENT_HTTP_STATUS_CODES:
             kind = FailureKind.RATE_LIMIT if error.status_code == 429 else FailureKind.TRANSIENT
             return _classification(kind, FailureSeverity.RETRYABLE, error)

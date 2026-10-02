@@ -13,7 +13,7 @@ from typing import Any
 
 from optimus_gateway.model_policy import GatewayModelPolicy
 from optimus_gateway.models import GatewayServiceConfig
-from optimus_gateway.upstream_client import ProviderMessageResult
+from optimus_gateway.upstream_client import ProviderMessageResult, UpstreamAttemptFailure
 from optimus_model_policy import Message, RegistrySnapshot, load_registry
 from optimus_model_policy.binding import RouteBinding, disclosure_key, issue_disclosure, payload_digest, route_digest
 
@@ -53,7 +53,7 @@ VERIFIED_POLICY = textwrap.dedent(
           estimator: half
           endpoints:
             - {provider: alpha-cloud/fp8, quantization: fp8, context_window_tokens: 300000, max_output_tokens: 32768, verified: true}
-            - {provider: alpha-backup, quantization: bf16, context_window_tokens: 400000, max_output_tokens: 20000, verified: true}
+            - {provider: alpha-backup/bf16, quantization: bf16, context_window_tokens: 400000, max_output_tokens: 20000, verified: true}
       us/contrib:
         origin: non-china
         tier: cheap
@@ -64,7 +64,7 @@ VERIFIED_POLICY = textwrap.dedent(
         route:
           estimator: half
           endpoints:
-            - {provider: contrib-ai, quantization: bf16, context_window_tokens: 300000, max_output_tokens: 32768, verified: true}
+            - {provider: contrib-ai/bf16, quantization: bf16, context_window_tokens: 300000, max_output_tokens: 32768, verified: true}
       cn/nullquant:
         origin: china
         tier: cheap
@@ -86,7 +86,7 @@ VERIFIED_POLICY = textwrap.dedent(
         route:
           estimator: half
           endpoints:
-            - {provider: idle-ai, quantization: fp8, context_window_tokens: 300000, max_output_tokens: 32768, verified: true}
+            - {provider: idle-ai/fp8, quantization: fp8, context_window_tokens: 300000, max_output_tokens: 32768, verified: true}
     roles:
       medium: [cn/alpha, us/contrib, cn/nullquant]
     """
@@ -139,7 +139,9 @@ def binding(
             request_id=request_id,
             model_id=model,
             route=route_digest(model, snapshot.policy.models[model]),
-            payload=payload_digest(model, (Message("user", input_text),), output_cap),
+            payload=payload_digest(
+                model, (Message("user", input_text),), output_cap, reasoning=snapshot.policy.models[model].default_reasoning
+            ),
         )
     return RouteBinding(
         registry_hash=snapshot.effective_hash, request_id=request_id, output_cap=output_cap, disclosure=disclosure
@@ -147,18 +149,40 @@ def binding(
 
 
 class RecordingUpstream:
-    """Records every upstream call with the full keyword set the real client accepts."""
+    """Records every upstream call with exactly the keywords the real client's methods accept.
 
-    def __init__(self, finish_reason: str | None = "stop") -> None:
+    ``create_message`` is today's routing; ``create_message_once`` is one enforced attempt, whose
+    results can be scripted: each ``attempts`` item is an ``UpstreamAttemptFailure`` to raise, or
+    None for a completed reply. With no script every attempt completes.
+    """
+
+    def __init__(self, finish_reason: str | None = "stop", attempts: list[UpstreamAttemptFailure | None] | None = None) -> None:
         self.calls: list[dict[str, Any]] = []
         self._finish_reason = finish_reason
+        self._attempts = list(attempts or [])
 
-    def create_message(
-        self, *, model: str, input_text: str, max_tokens: int | None = None, provider_controls: Any = None
+    def create_message(self, *, model: str, input_text: str) -> ProviderMessageResult:
+        self.calls.append({"legacy": True, "model": model, "input_text": input_text})
+        return self._result(model)
+
+    def create_message_once(
+        self, *, model: str, input_text: str, max_tokens: int, provider_controls: Any, reasoning: str | None
     ) -> ProviderMessageResult:
         self.calls.append(
-            {"model": model, "input_text": input_text, "max_tokens": max_tokens, "provider_controls": provider_controls}
+            {
+                "model": model,
+                "input_text": input_text,
+                "max_tokens": max_tokens,
+                "provider_controls": provider_controls,
+                "reasoning": reasoning,
+            }
         )
+        planned = self._attempts.pop(0) if self._attempts else None
+        if planned is not None:
+            raise planned
+        return self._result(model)
+
+    def _result(self, model: str) -> ProviderMessageResult:
         return ProviderMessageResult(
             message_id=f"gen-{len(self.calls)}",
             output_text="WRITE a.py\nx\nTEST pytest -q",

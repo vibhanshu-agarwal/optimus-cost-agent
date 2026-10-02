@@ -54,6 +54,9 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
     ),
     "CHAT_HALTED": "Chat answer cancelled before it was shown.",
     "CHAT_OUTPUT_TRUNCATED": "This answer is incomplete: it reached the model's output limit.",
+    "CHAT_OUTPUT_UNFINISHED": (
+        "A content filter or a provider error ended the model's answer before it finished, so it is not shown."
+    ),
     "CHAT_COMPLETION_CONDITION_UNSUPPORTED": (
         "Chat answers a single question and cannot run toward a completion condition. Use Agent mode for goal loops."
     ),
@@ -444,18 +447,24 @@ class AgentRunner:
             wire_attempt=1,
         )
         total_cost_usd = response.gateway_usage.cost_usd
+        unfinished_reason = None
         if response.length_limited:
             # A plan cut off at the output limit is never a candidate (Plan 12.2 Task 5).
+            unfinished_reason = "PLANNING_OUTPUT_TRUNCATED"
+        elif response.stopped_unfinished:
+            # Nor is one a content filter or provider error ended (operator decision 2026-10-02).
+            unfinished_reason = "PLANNING_OUTPUT_UNFINISHED"
+        if unfinished_reason is not None:
             from optimus.agent.planning_loop import planning_corrective_text
 
             return self._build_result(
                 request=request,
                 status=AgentRunStatus.TERMINATED,
                 final_state="TERMINATED",
-                output_text=planning_corrective_text("PLANNING_OUTPUT_TRUNCATED"),
+                output_text=planning_corrective_text(unfinished_reason),
                 tool_calls=(),
                 total_cost_usd=total_cost_usd,
-                stop_reason="PLANNING_OUTPUT_TRUNCATED",
+                stop_reason=unfinished_reason,
             )
         output_text = response.output_text
         return self._finish_agent_planning(
@@ -1230,6 +1239,10 @@ class AgentRunner:
                 output_text=f"{answer}\n\n{notice}" if answer else notice,
                 total_cost_usd=total_cost_usd,
             )
+        if response.stopped_unfinished:
+            # Ended by a content filter or provider error: not shown as an answer at all (operator
+            # decision 2026-10-02, Claude and Codex concurring). The receipt above is kept.
+            return self._chat_failure(request, stop_reason="CHAT_OUTPUT_UNFINISHED", total_cost_usd=total_cost_usd)
         if not answer:
             return self._chat_failure(request, stop_reason="CHAT_EMPTY_ANSWER", total_cost_usd=total_cost_usd)
         # Plan 2's validated path for a non-AGENT result: PLANNING -> PLAN_READY -> CHAT_ONLY.

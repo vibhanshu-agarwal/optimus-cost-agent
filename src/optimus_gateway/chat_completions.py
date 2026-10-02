@@ -11,7 +11,7 @@ from optimus_gateway.models import (
     flatten_messages_to_input_text,
     validate_chat_completions_envelope,
 )
-from optimus_gateway.responses import run_model_completion, sanitize_error_message
+from optimus_gateway.responses import policy_refusal, run_model_completion, sanitize_error_message
 from optimus_gateway.upstream_client import ProviderMessageResult, UpstreamClient
 
 
@@ -33,7 +33,7 @@ def handle_chat_completions_request(
     try:
         route_binding = parse_route_binding(request_body, config.model_policy)
     except ModelPolicyRefusal as exc:
-        return exc.status, {"error": sanitize_error_message(str(exc)), "code": exc.code}
+        return policy_refusal(exc)
 
     return run_model_completion(
         model=model,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import TYPE_CHECKING, Any, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -9,6 +9,8 @@ from optimus.gateway.errors import GatewayResponseError
 
 if TYPE_CHECKING:
     from optimus_model_policy.binding import RouteBinding
+
+_UNFINISHED_FINISH_REASONS = frozenset({"content_filter", "error"})
 
 
 class GatewayUsage(BaseModel):
@@ -47,6 +49,10 @@ class GatewayUsage(BaseModel):
     reasoning_tokens: int | None = Field(default=None, ge=0)
     cached_tokens: int | None = Field(default=None, ge=0)
     cache_age_seconds: int | None = Field(default=None, ge=0)
+    # Plan 12.2 Task 5, enforced routing only: the host request this attempt served, and which
+    # attempt it was. ``gateway_request_id`` is then that attempt's own receipt identity.
+    route_request_id: str | None = Field(default=None, min_length=1)
+    attempt: int | None = Field(default=None, ge=1, strict=True)
 
     @field_validator("billing_units", mode="before")
     @classmethod
@@ -63,6 +69,32 @@ class GatewayUsage(BaseModel):
         return value
 
 
+class GatewayRouteAttempt(BaseModel):
+    """One provider attempt the Gateway made for a host request under enforced routing.
+
+    ``outcome`` is ``completed``, ``not_sent`` (never left: nothing ran or was billed), ``rejected``
+    (refused before any model ran) or ``uncertain`` (may have run and been billed; cost unknown).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    attempt: int = Field(ge=1, strict=True)
+    gateway_request_id: str = Field(min_length=1)
+    outcome: Literal["completed", "not_sent", "rejected", "uncertain"]
+    http_status: int | None = Field(default=None, strict=True)
+    provider_request_id: str | None = None
+
+
+def parse_route_attempts(raw: object) -> tuple[GatewayRouteAttempt, ...]:
+    """Strictly parse a ``route_attempts`` list; raises ``ValueError`` on any malformed entry."""
+    if not isinstance(raw, list):
+        raise ValueError("route_attempts must be a list")
+    attempts = tuple(GatewayRouteAttempt.model_validate(item) for item in raw)
+    if [item.attempt for item in attempts] != list(range(1, len(attempts) + 1)):
+        raise ValueError("route_attempts must be numbered 1..n in order")
+    return attempts
+
+
 class GatewayResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -73,10 +105,19 @@ class GatewayResponse(BaseModel):
     finish_reason: str | None = None
     """The provider's finish status as the Gateway reported it (``stop``, ``length``, ...), or
     ``None`` when none was reported. ``length`` means the reply hit its output limit (Plan 12.2)."""
+    route_attempts: tuple[GatewayRouteAttempt, ...] = ()
+    """Every provider attempt for this request under enforced routing, in order; empty otherwise."""
 
     @property
     def length_limited(self) -> bool:
         return self.finish_reason == "length"
+
+    @property
+    def stopped_unfinished(self) -> bool:
+        """The provider stopped the reply before it finished: a content filter or a provider error.
+        Such a reply is never used as a plan or shown as an answer (operator decision 2026-10-02,
+        Claude and Codex concurring). A missing or other status is left to the activation contract."""
+        return self.finish_reason in _UNFINISHED_FINISH_REASONS
 
 
 def build_responses_payload(
@@ -166,12 +207,20 @@ def parse_gateway_response(body: dict[str, Any]) -> GatewayResponse:
     if finish_reason is not None and (not isinstance(finish_reason, str) or not finish_reason):
         raise GatewayResponseError("finish_reason must be a non-empty string when present", gateway_usage=usage)
 
+    route_attempts: tuple[GatewayRouteAttempt, ...] = ()
+    if "route_attempts" in body:
+        try:
+            route_attempts = parse_route_attempts(body["route_attempts"])
+        except (ValueError, ValidationError) as exc:
+            raise GatewayResponseError("route_attempts is malformed", gateway_usage=usage) from exc
+
     return GatewayResponse(
         response_id=response_id,
         output_text=output_text,
         gateway_usage=usage,
         raw=body,
         finish_reason=finish_reason.casefold() if finish_reason is not None else None,
+        route_attempts=route_attempts,
     )
 
 

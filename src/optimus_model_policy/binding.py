@@ -29,8 +29,16 @@ from optimus_model_policy.registry import ModelEntry, RegistrySnapshot, load_reg
 
 __all__ = [
     "APPROVAL_LITERAL_NAME",
+    "ATTEMPT_COMPLETED",
+    "ATTEMPT_NOT_SENT",
+    "ATTEMPT_OUTCOMES",
+    "ATTEMPT_REJECTED",
+    "ATTEMPT_UNCERTAIN",
     "ENFORCEMENT_ACTIVE",
+    "MAX_ROUTE_ATTEMPTS",
     "ROUTE_BINDING_VERSION",
+    "WIRE_QUANTIZATIONS",
+    "WIRE_REASONING_EFFORTS",
     "BindingError",
     "DisclosureAuthorization",
     "RouteBinding",
@@ -114,11 +122,45 @@ def route_digest(model_id: str, entry: ModelEntry) -> str:
     return _sha256_canonical({"model": model_id, "route": entry.route.model_dump(mode="json")})
 
 
-def payload_digest(model_id: str, messages: Sequence[Message], output_cap: int) -> str:
-    """Identity of the final upstream payload, after every host and Gateway transformation."""
+def payload_digest(model_id: str, messages: Sequence[Message], output_cap: int, *, reasoning: str | None) -> str:
+    """Identity of the final upstream payload, after every host and Gateway transformation: model,
+    messages, output cap and the approved reasoning setting it is sent with."""
     return _sha256_canonical(
-        {"model": model_id, "messages": [[message.role, message.content] for message in messages], "output_cap": output_cap}
+        {
+            "model": model_id,
+            "messages": [[message.role, message.content] for message in messages],
+            "output_cap": output_cap,
+            "reasoning": reasoning,
+        }
     )
+
+
+# --- Upstream wire mapping and attempts ------------------------------------------------------------
+
+WIRE_REASONING_EFFORTS: Final = frozenset({"max", "xhigh", "high", "medium", "low", "minimal", "none"})
+"""Reasoning levels OpenRouter's ``reasoning.effort`` request field expresses. A route's approved
+level must be one of these, or the request could not carry it."""
+
+WIRE_QUANTIZATIONS: Final = frozenset(
+    {"int4", "int8", "fp4", "mxfp4", "nvfp4", "fp6", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"}
+)
+"""Values OpenRouter's ``provider.quantizations`` filter accepts. A recorded quantization outside this
+set could not be expressed, so the route could never be constrained to it."""
+
+MAX_ROUTE_ATTEMPTS: Final = 2
+"""Provider attempts per host model request under enforcement: one primary attempt plus at most one
+identical-payload recovery attempt, and only after an attempt that certainly reached no model (Task 1
+contracts §4: a finite bound of 2; §6: an uncertain, possibly billed attempt is never re-sent)."""
+
+ATTEMPT_COMPLETED: Final = "completed"
+ATTEMPT_NOT_SENT: Final = "not_sent"
+ATTEMPT_REJECTED: Final = "rejected"
+ATTEMPT_UNCERTAIN: Final = "uncertain"
+ATTEMPT_OUTCOMES: Final = frozenset({ATTEMPT_COMPLETED, ATTEMPT_NOT_SENT, ATTEMPT_REJECTED, ATTEMPT_UNCERTAIN})
+"""How one provider attempt ended. ``not_sent``: the request never left (no model ran, nothing billed).
+``rejected``: the provider refused it before any model ran. ``uncertain``: it may have run and been
+billed (a timeout, a broken connection, a server error or an unreadable reply), so its cost is unknown.
+``completed``: a reply with verified usage."""
 
 
 # --- Contributor disclosure ------------------------------------------------------------------------

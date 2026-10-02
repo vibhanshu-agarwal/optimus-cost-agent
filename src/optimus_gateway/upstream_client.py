@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import errno
 import json
+import socket
+import ssl
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from http.client import HTTPException
 from typing import Any, Literal, Protocol, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+from optimus_model_policy.binding import ATTEMPT_NOT_SENT, ATTEMPT_REJECTED, ATTEMPT_UNCERTAIN
 
 T = TypeVar("T")
 
@@ -49,18 +55,19 @@ class ProviderMessageResult:
 
 
 class UpstreamClient(Protocol):
-    def create_message(
+    def create_message(self, *, model: str, input_text: str) -> ProviderMessageResult:
+        """Call an upstream LLM API and return normalized text + usage (today's routing)."""
+
+    def create_message_once(
         self,
         *,
         model: str,
         input_text: str,
-        max_tokens: int | None = None,
-        provider_controls: Mapping[str, Any] | None = None,
+        max_tokens: int,
+        provider_controls: Mapping[str, Any],
+        reasoning: str | None,
     ) -> ProviderMessageResult:
-        """Call an upstream LLM API and return normalized text + usage.
-
-        ``max_tokens`` and ``provider_controls`` are sent only under an enforced model policy
-        (Plan 12.2 Task 5); today's routing calls with ``model`` and ``input_text`` alone."""
+        """One provider attempt under an enforced model policy; raises UpstreamAttemptFailure."""
 
 
 class RetryableUpstreamError(Exception):
@@ -139,25 +146,8 @@ class UrllibOpenAICompatibleClient:
         self._sleep = sleep
         self._on_retry = on_retry
 
-    def create_message(
-        self,
-        *,
-        model: str,
-        input_text: str,
-        max_tokens: int | None = None,
-        provider_controls: Mapping[str, Any] | None = None,
-    ) -> ProviderMessageResult:
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": [{"role": "user", "content": input_text}],
-        }
-        # Route-binding wire mapping v1 (Plan 12.2 Task 5): the output cap travels as OpenRouter's
-        # ``max_tokens`` and the approved endpoint allow-set as its ``provider`` routing object.
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
-        if provider_controls is not None:
-            payload["provider"] = json.loads(json.dumps(dict(provider_controls)))
-        request = Request(
+    def _request(self, payload: Mapping[str, Any]) -> Request:
+        return Request(
             f"{self._base_url}/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
             headers={
@@ -167,6 +157,14 @@ class UrllibOpenAICompatibleClient:
             },
             method="POST",
         )
+
+    def create_message(self, *, model: str, input_text: str) -> ProviderMessageResult:
+        """Today's routing: one request with the legacy transient-fault retry loop."""
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": input_text}],
+        }
+        request = self._request(payload)
 
         def call() -> ProviderMessageResult:
             body, headers = _urlopen_json(
@@ -198,6 +196,83 @@ class UrllibOpenAICompatibleClient:
             sleep=self._sleep,
             on_attempt_failure=report_failure,
         )
+
+    def create_message_once(
+        self,
+        *,
+        model: str,
+        input_text: str,
+        max_tokens: int,
+        provider_controls: Mapping[str, Any],
+        reasoning: str | None,
+    ) -> ProviderMessageResult:
+        """Exactly one provider attempt under an enforced model policy (Plan 12.2 Task 5).
+
+        No retry happens here: the Gateway decides, per the attempt contract, whether a failed attempt
+        may be followed by one recovery attempt. A failure raises :class:`UpstreamAttemptFailure` saying
+        whether the request certainly never reached a model or may have run and been billed.
+
+        Wire mapping v1: the output cap is OpenRouter's ``max_tokens``, the approved endpoints are its
+        ``provider`` routing object, and the approved reasoning level is ``reasoning.effort``.
+        """
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "user", "content": input_text}],
+            "max_tokens": max_tokens,
+            "provider": json.loads(json.dumps(dict(provider_controls))),
+        }
+        if reasoning is not None:
+            payload["reasoning"] = {"effort": reasoning}
+        request = self._request(payload)
+        try:
+            with urlopen(request, timeout=self._timeout_seconds) as response:
+                raw = response.read()
+                headers = {str(name).casefold(): str(value) for name, value in getattr(response, "headers", {}).items()}
+        except HTTPError as exc:
+            # A 4xx (other than a request timeout) is the provider refusing the request before any
+            # model ran; a 408 or 5xx may follow a model run that was billed.
+            refused = 400 <= exc.code < 500 and exc.code != 408
+            raise UpstreamAttemptFailure(ATTEMPT_REJECTED if refused else ATTEMPT_UNCERTAIN, http_status=exc.code) from exc
+        except URLError as exc:
+            # urllib raises URLError only while connecting and sending. A refused connection, an
+            # unresolved or unreachable host, or a failed TLS handshake delivers no request, so no
+            # model ran. A timeout cannot be told apart from one after the request went out, so it
+            # stays uncertain (Fable CP1 correction review, m4).
+            raise UpstreamAttemptFailure(ATTEMPT_NOT_SENT if _never_sent(exc.reason) else ATTEMPT_UNCERTAIN) from exc
+        except (OSError, HTTPException) as exc:
+            # A timeout, reset or truncated body after sending: the model may have run.
+            raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN) from exc
+        try:
+            decoded = json.loads(raw.decode("utf-8"))
+            if not isinstance(decoded, dict):
+                raise RuntimeError("upstream response was not an object")
+            return parse_openai_chat_completion(decoded, headers, requested_model=model)
+        except (UnicodeError, ValueError, RuntimeError) as exc:
+            # A reply arrived but its usage cannot be verified: it may have been billed.
+            raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN) from exc
+
+
+_UNREACHABLE_ERRNOS = frozenset({errno.ENETUNREACH, errno.EHOSTUNREACH})
+
+
+def _never_sent(reason: object) -> bool:
+    if isinstance(reason, (ConnectionRefusedError, socket.gaierror, ssl.SSLError)):
+        return True
+    return isinstance(reason, OSError) and not isinstance(reason, TimeoutError) and reason.errno in _UNREACHABLE_ERRNOS
+
+
+class UpstreamAttemptFailure(Exception):
+    """One enforced provider attempt that did not complete, and what is known about it."""
+
+    def __init__(self, outcome: str, *, http_status: int | None = None) -> None:
+        self.outcome = outcome
+        self.http_status = http_status
+        super().__init__(f"upstream attempt {outcome}" + (f" ({http_status})" if http_status is not None else ""))
+
+    @property
+    def recoverable(self) -> bool:
+        """True only when the attempt certainly reached no model: never sent, or rate-limited (429)."""
+        return self.outcome == ATTEMPT_NOT_SENT or (self.outcome == ATTEMPT_REJECTED and self.http_status == 429)
 
 
 def _urlopen_json(

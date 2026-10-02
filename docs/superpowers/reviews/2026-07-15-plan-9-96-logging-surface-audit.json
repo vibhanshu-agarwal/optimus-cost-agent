@@ -1529,9 +1529,9 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_message:json_serialization",
+      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient._request:json_serialization",
       "policy": "protocol-only",
-      "rationale": "Functional protocol serialization at optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_message:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
+      "rationale": "Inspection: _request serializes the outbound chat-completions request body (model, messages and, under an enforced model policy, the output cap, route controls and reasoning level) for the provider call it builds; the JSON is sent upstream, never persisted or logged.",
       "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
       "evidence_tier": "unit"
@@ -3681,9 +3681,9 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus_gateway.responses:_policy_refusal:exception_export",
+      "key": "optimus_gateway.responses:policy_refusal:exception_export",
       "policy": "shared-sanitize",
-      "rationale": "Shared sanitizer protects the Plan 12.2 model-policy refusal text at optimus_gateway.responses:_policy_refusal:exception_export before it leaves the Gateway as an HTTP error body; the refusal carries a stable code and a fixed or field-name detail, and sanitizer failure has no raw fallback.",
+      "rationale": "Shared sanitizer protects the Plan 12.2 model-policy refusal text at optimus_gateway.responses:policy_refusal:exception_export before it leaves the Gateway as an HTTP error body; the refusal carries a stable code and a fixed or field-name detail, and sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/optimus_gateway/test_model_policy.py::test_unsupported_binding_shapes_are_rejected_not_ignored",
       "evidence_tier": "unit"
@@ -3693,7 +3693,7 @@
       "policy": "safe-by-construction",
       "rationale": "Inspection: _sha256_canonical serializes route and payload identities to canonical JSON only as SHA-256 hash input for the Plan 12.2 route binding; the JSON is never persisted or exported.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/model_policy/test_binding.py::test_payload_digest_covers_model_roles_content_and_cap",
+      "test_node": "tests/unit/model_policy/test_binding.py::test_payload_digest_covers_model_roles_content_cap_and_reasoning",
       "evidence_tier": "unit"
     },
     {
@@ -3750,6 +3750,14 @@
       "rationale": "Inspection: main prints the registry version, a hash prefix, the snapshot path and drift lines built from registry IDs and public catalog facts; no credential or local diagnostic is printed.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_check_model_registry_drift.py::test_the_report_reads_saved_responses_and_never_edits_the_registry",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_message_once:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: create_message_once round-trips the approved provider routing controls (endpoint slugs, quantizations and flags from the trusted registry) through JSON to copy them into the outbound request; nothing is persisted or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_route_attempts.py::test_the_real_client_sends_the_reasoning_level_and_returns_the_reply",
       "evidence_tier": "unit"
     }
   ]

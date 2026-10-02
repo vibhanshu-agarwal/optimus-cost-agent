@@ -730,6 +730,10 @@ def planning_corrective_text(
             "Planning stopped because the model's reply reached its output limit before the plan was "
             "complete. Nothing was stored, offered for approval or changed."
         ),
+        "PLANNING_OUTPUT_UNFINISHED": (
+            "Planning stopped because a content filter or a provider error ended the model's reply before "
+            "it finished. Nothing was stored, offered for approval or changed."
+        ),
         "PLANNING_BUDGET_EXHAUSTED": "Planning stopped because the run budget was exhausted.",
         "PLANNING_WALL_CLOCK_EXHAUSTED": "Planning stopped because the wall-clock limit was reached.",
         "PLANNING_TURN_LIMIT_EXHAUSTED": "Planning stopped before a final plan could be settled.",
@@ -1159,6 +1163,13 @@ class _PlanningIterationRunner:
             return self._typed_planning_failure(
                 stop_reason="PLANNING_OUTPUT_TRUNCATED",
                 summary="planning response was cut off at the model's output limit",
+                cost_usd=attempt_cost,
+            )
+        # Likewise a reply a content filter or provider error ended (operator decision 2026-10-02).
+        if getattr(response, "stopped_unfinished", False):
+            return self._typed_planning_failure(
+                stop_reason="PLANNING_OUTPUT_UNFINISHED",
+                summary="planning response was ended by a content filter or provider error",
                 cost_usd=attempt_cost,
             )
 

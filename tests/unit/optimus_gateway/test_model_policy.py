@@ -61,11 +61,11 @@ def snapshot(tmp_path: Path):
 @pytest.mark.parametrize("route", ROUTES)
 def test_inactive_gateway_keeps_todays_alias_routing_without_new_wire_fields(route: str) -> None:
     upstream = RecordingUpstream()
-    status, _ = _send(route, gateway_config(), upstream, model="claude-haiku", text="hi", omit=True)
+    status, body = _send(route, gateway_config(), upstream, model="claude-haiku", text="hi", omit=True)
     assert status == 200
-    assert upstream.calls == [
-        {"model": "anthropic/claude-haiku-4.5", "input_text": "hi", "max_tokens": None, "provider_controls": None}
-    ]
+    assert upstream.calls == [{"legacy": True, "model": "anthropic/claude-haiku-4.5", "input_text": "hi"}]
+    assert not {"route_attempts", "retryable", "route_request_id"} & set(body)
+    assert not {"route_request_id", "attempt"} & set(body["gateway_usage"])
 
 
 @pytest.mark.parametrize("route", ROUTES)
@@ -187,9 +187,11 @@ def test_admitted_request_carries_route_controls_and_output_cap(route: str, snap
     assert status == 200, body
     [call] = upstream.calls
     assert call["model"] == "cn/alpha"
+    assert "legacy" not in call, "enforced routing never enters the legacy retry loop"
     assert call["max_tokens"] == CAP
+    assert call["reasoning"] == "high", "the approved reasoning level travels with every request"
     assert dict(call["provider_controls"]) == {
-        "only": ["alpha-cloud/fp8", "alpha-backup"],
+        "only": ["alpha-cloud/fp8", "alpha-backup/bf16"],
         "quantizations": ["bf16", "fp8"],
         "allow_fallbacks": False,
         "require_parameters": True,
@@ -237,8 +239,9 @@ def test_route_controls_and_cap_reach_the_provider_wire_payload(monkeypatch: pyt
         "model": "cn/alpha",
         "messages": [{"role": "user", "content": "hi"}],
         "max_tokens": CAP,
+        "reasoning": {"effort": "high"},
         "provider": {
-            "only": ["alpha-cloud/fp8", "alpha-backup"],
+            "only": ["alpha-cloud/fp8", "alpha-backup/bf16"],
             "quantizations": ["bf16", "fp8"],
             "allow_fallbacks": False,
             "require_parameters": True,

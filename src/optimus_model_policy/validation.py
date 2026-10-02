@@ -5,9 +5,10 @@ for a role only when it is explicitly assigned to that role and every hard requi
 
 * implementer roles (easy/medium/complex/escalation): native tool support and the Optimus text
   planning grammar, which are distinct checks;
-* every active role: a verified route whose smallest window reaches the context ceiling and whose
-  smallest max output covers the role's reserve, a verified route estimator, a set reserve and a
-  supported default reasoning level;
+* every active role: a verified route of exact endpoint slugs with recorded quantizations, whose
+  smallest window reaches the context ceiling and whose smallest max output covers the role's
+  reserve; a verified route estimator; a set reserve; and an explicit, supported reasoning level that
+  the upstream request can express (none at all only when the route has no reasoning levels);
 * summarizer: a passing ``context-summary-v1`` receipt for this exact route and reasoning setting;
 * reviewer and classifier are dormant, so they are never eligible.
 
@@ -18,10 +19,12 @@ role blend; without one the role's ordering is unresolved and nothing is eligibl
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from functools import cmp_to_key
 
+from optimus_model_policy.binding import WIRE_QUANTIZATIONS, WIRE_REASONING_EFFORTS
 from optimus_model_policy.registry import (
     DORMANT_ROLES,
     IMPLEMENTER_ROLES,
@@ -34,6 +37,9 @@ from optimus_model_policy.registry import (
 )
 
 __all__ = ["ValidationIssue", "ordered_assignments", "select_eligible_models", "validate_registry"]
+
+_ENDPOINT_SLUG = re.compile(r"[a-z0-9][a-z0-9._-]*(?:/[a-z0-9][a-z0-9._-]*)*")
+"""An OpenRouter provider slug: lower-case segments joined by "/" (``deepinfra/fp8``)."""
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -64,6 +70,22 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
     endpoints = entry.route.endpoints
     if any(not endpoint.verified for endpoint in endpoints):
         issue("ROUTE_UNVERIFIED", "every endpoint in the route allow-set must be verified")
+    malformed = sorted({endpoint.provider for endpoint in endpoints if not _ENDPOINT_SLUG.fullmatch(endpoint.provider)})
+    if malformed:
+        issue("ROUTE_SLUG_MALFORMED", f"endpoint slugs {malformed} are not lower-case OpenRouter provider slugs")
+    inexpressible = sorted(
+        {endpoint.quantization for endpoint in endpoints if endpoint.quantization is not None and endpoint.quantization not in WIRE_QUANTIZATIONS}
+    )
+    if inexpressible:
+        issue("ROUTE_QUANTIZATION_NOT_EXPRESSIBLE", f"quantizations {inexpressible} have no upstream filter value")
+    base_slugs = sorted({endpoint.provider for endpoint in endpoints if "/" not in endpoint.provider})
+    if base_slugs:
+        # OpenRouter routes a base slug to every variant and region of that provider, so the request
+        # could not be held to the approved endpoint; only an exact variant slug is expressible.
+        issue("ROUTE_TARGET_NOT_EXACT", f"provider base slugs {base_slugs} also reach other variants; record exact endpoint slugs")
+    slugs = [endpoint.provider for endpoint in endpoints]
+    if len(set(slugs)) != len(slugs):
+        issue("ROUTE_ENDPOINT_DUPLICATE", "an endpoint slug is listed more than once in the route")
     windows = [endpoint.context_window_tokens for endpoint in endpoints]
     outputs = [endpoint.max_output_tokens for endpoint in endpoints]
     if any(endpoint.quantization is None for endpoint in endpoints):
@@ -87,6 +109,12 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
 
     if entry.default_reasoning is not None and entry.default_reasoning not in entry.capabilities.reasoning_levels:
         issue("UNSUPPORTED_REASONING", f"default reasoning {entry.default_reasoning!r} is not supported on this route")
+    if entry.default_reasoning is None and entry.capabilities.reasoning_levels:
+        # The provider's own default is not an approved setting: a model with reasoning controls must
+        # name the level every request will carry.
+        issue("REASONING_UNSET", "this route has reasoning levels, so the approved reasoning setting must be explicit")
+    if entry.default_reasoning is not None and entry.default_reasoning not in WIRE_REASONING_EFFORTS:
+        issue("REASONING_NOT_EXPRESSIBLE", f"reasoning {entry.default_reasoning!r} has no upstream request form")
 
     if role is Role.SUMMARIZER and not any(
         receipt.format == SUMMARY_FORMAT

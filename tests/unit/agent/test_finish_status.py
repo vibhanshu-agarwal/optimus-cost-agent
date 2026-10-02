@@ -114,9 +114,10 @@ def test_a_length_limited_chat_answer_is_shown_but_marked_incomplete(tmp_path: P
     assert result.total_cost_usd == Decimal("0.001")
 
 
-async def test_acp_never_asks_permission_for_a_cut_off_plan(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("finish_reason", "shown"), [("length", "output limit"), ("content_filter", "content filter"), ("error", "provider error")])
+async def test_acp_never_asks_permission_for_a_cut_off_plan(tmp_path: Path, finish_reason: str, shown: str) -> None:
     (tmp_path / "example.py").write_text("old\n", encoding="utf-8")
-    runner, _ = _runner(_Gateway(WRITE_PLAN, "length"))
+    runner, _ = _runner(_Gateway(WRITE_PLAN, finish_reason))
     outbound = RecordingOutboundChannel()
     adapter = AcpDuplexAdapter(runner=runner, workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound)
     created = (await adapter.handle_client_request(
@@ -139,16 +140,51 @@ async def test_acp_never_asks_permission_for_a_cut_off_plan(tmp_path: Path) -> N
         for n in outbound.notifications
         if n["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
     ]
-    assert any("output limit" in text for text in texts)
+    assert any(shown in text for text in texts)
     record = adapter._sessions.get(session_id).conversation.records[1]  # noqa: SLF001
     assert record.outcome.value == "failed"
     assert record.effect_state.value == "none"
 
 
 @pytest.mark.parametrize("finish_reason", ["content_filter", "error"])
-def test_other_non_complete_finishes_are_left_to_the_verified_route_contract(tmp_path: Path, finish_reason: str) -> None:
-    """Only the length limit is refused before registry activation; other statuses keep today's
-    behaviour until a verified route contract is active (missing or unknown status fails then)."""
+@pytest.mark.parametrize("mode", [ExecutionMode.AGENT, ExecutionMode.PLAN])
+def test_a_plan_a_filter_or_provider_error_ended_is_refused(tmp_path: Path, finish_reason: str, mode: ExecutionMode) -> None:
+    """Operator decision 2026-10-02 (Claude and Codex concurring): refused now, like ``length``, with
+    the receipt kept and nothing stored, offered, changed or re-asked."""
+    (tmp_path / "example.py").write_text("old\n", encoding="utf-8")
+    gateway = _Gateway(WRITE_PLAN, finish_reason)
+    runner, store = _runner(gateway)
+
+    result = runner.run(_request(tmp_path, mode))
+
+    assert result.status is AgentRunStatus.TERMINATED
+    assert result.stop_reason == "PLANNING_OUTPUT_UNFINISHED"
+    assert result.plan_hash is None
+    assert result.mutation_count == 0
+    assert store.latest_plan_for_run(run_id="run-1") is None
+    assert result.total_cost_usd == Decimal("0.001")
+    assert gateway.calls == 1
+    assert "content filter or a provider error" in result.output_text
+    assert (tmp_path / "example.py").read_text(encoding="utf-8") == "old\n"
+
+
+@pytest.mark.parametrize("finish_reason", ["content_filter", "error"])
+def test_a_chat_answer_a_filter_or_provider_error_ended_is_not_shown(tmp_path: Path, finish_reason: str) -> None:
+    runner, _ = _runner(_Gateway(ANSWER, finish_reason))
+
+    result = runner.run(_request(tmp_path, ExecutionMode.CHAT))
+
+    assert result.status is AgentRunStatus.FAILED
+    assert result.stop_reason == "CHAT_OUTPUT_UNFINISHED"
+    assert ANSWER not in result.output_text, "the partial answer is withheld"
+    assert "content filter or a provider error" in result.output_text
+    assert result.total_cost_usd == Decimal("0.001")
+
+
+@pytest.mark.parametrize("finish_reason", [None, "tool_calls", "stop "])
+def test_missing_or_unknown_status_stays_with_the_activation_contract(tmp_path: Path, finish_reason) -> None:
+    """The operator's decision covers content_filter and error only; a missing or unknown status keeps
+    today's behaviour until registry enforcement (which refuses it) is activated."""
     (tmp_path / "example.py").write_text("old\n", encoding="utf-8")
     runner, _ = _runner(_Gateway(WRITE_PLAN, finish_reason))
     assert runner.run(_request(tmp_path, ExecutionMode.AGENT)).status is AgentRunStatus.AWAITING_APPROVAL

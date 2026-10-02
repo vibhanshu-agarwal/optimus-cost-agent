@@ -7,10 +7,12 @@ admitted only if, before any upstream call:
 * the snapshot is the approved one and the caller bound that same snapshot;
 * the model is an exact registry ID eligible for an active role (no alias, no pass-through);
 * the final upstream request fits the verified route with the bound output cap counted once;
-* a Contributor route carries a disclosure authorization for this request, route and payload.
+* a Contributor route carries a disclosure authorization for this request, route and payload
+  (the payload identity includes the approved reasoning setting).
 
-The admitted request goes upstream with the route's provider allow-set, its routing controls and
-the output cap. Its reply counts as complete only on a verified ``stop``; ``length`` passes through
+The admitted request goes upstream with the route's exact endpoint slugs, its routing controls, the
+output cap and the approved reasoning level, under the bounded attempt contract (see
+``responses``). Its reply counts as complete only on a verified ``stop``; ``length`` passes through
 so the host can mark it incomplete, and any other or missing finish status fails with its usage
 kept, as a permanent (non-retryable) failure. Without a policy the Gateway keeps today's routing
 and rejects any ``route_binding``.
@@ -101,6 +103,8 @@ class AdmittedRequest:
     provider_controls: Mapping[str, Any]
     decision: CapacityDecision
     request_id: str
+    reasoning: str | None
+    """The route's approved reasoning level, sent as ``reasoning.effort`` (None: the route has none)."""
 
 
 def parse_route_binding(request_body: Mapping[str, Any], policy: GatewayModelPolicy | None) -> RouteBinding | None:
@@ -154,7 +158,7 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
             request_id=binding.request_id,
             model_id=model,
             route=route_digest(model, entry),
-            payload=payload_digest(model, messages, binding.output_cap),
+            payload=payload_digest(model, messages, binding.output_cap, reasoning=entry.default_reasoning),
         ):
             raise ModelPolicyRefusal("DISCLOSURE_INVALID", "the disclosure does not cover this request, route and payload")
 
@@ -171,6 +175,7 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
         provider_controls=MappingProxyType(controls),
         decision=decision,
         request_id=binding.request_id,
+        reasoning=entry.default_reasoning,
     )
 
 

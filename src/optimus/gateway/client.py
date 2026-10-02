@@ -12,10 +12,12 @@ from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.errors import GatewayHttpError
 from optimus.gateway.models import (
     GatewayResponse,
+    GatewayRouteAttempt,
     GatewayUsage,
     build_responses_payload,
     parse_gateway_response,
     parse_gateway_usage,
+    parse_route_attempts,
 )
 
 if TYPE_CHECKING:
@@ -78,8 +80,14 @@ class UrllibGatewayTransport:
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             gateway_usage = _try_parse_error_usage(detail)
+            gateway_code, retryable, route_attempts = _try_parse_error_correlation(detail)
             raise GatewayHttpError(
-                exc.code, detail or exc.reason, gateway_usage=gateway_usage
+                exc.code,
+                detail or exc.reason,
+                gateway_usage=gateway_usage,
+                gateway_code=gateway_code,
+                retryable=retryable,
+                route_attempts=route_attempts,
             ) from exc
         except URLError as exc:
             raise GatewayHttpError(0, str(exc.reason)) from exc
@@ -198,6 +206,27 @@ def _try_parse_error_usage(detail: str) -> GatewayUsage | None:
         return parse_gateway_usage(usage_body)
     except Exception:  # noqa: BLE001 — intentionally broad; invalid usage is not an error here
         return None
+
+
+def _try_parse_error_correlation(detail: str) -> tuple[str | None, bool | None, tuple[GatewayRouteAttempt, ...]]:
+    """The enforced-routing fields of an HTTP error body: its stable code, whether the host may
+    re-send, and the provider attempts made. A body without them (today's routing) yields
+    ``(None, None, ())``; malformed attempts are dropped without discarding ``retryable``."""
+    try:
+        decoded = json.loads(detail, parse_float=Decimal)
+    except (json.JSONDecodeError, ValueError):
+        return None, None, ()
+    if not isinstance(decoded, dict):
+        return None, None, ()
+    code = decoded.get("code") if isinstance(decoded.get("code"), str) else None
+    retryable = decoded.get("retryable") if isinstance(decoded.get("retryable"), bool) else None
+    attempts: tuple[GatewayRouteAttempt, ...] = ()
+    if "route_attempts" in decoded:
+        try:
+            attempts = parse_route_attempts(decoded["route_attempts"])
+        except Exception:  # noqa: BLE001 — a malformed record list is dropped, never fatal here
+            attempts = ()
+    return code, retryable, attempts
 
 
 def _decode_gateway_json(body: str) -> dict[str, Any]:

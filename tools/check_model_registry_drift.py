@@ -49,10 +49,11 @@ def _per_million(per_token: Any) -> Decimal | None:
 
 
 def _endpoint_matches(listed: Mapping[str, Any], provider: str) -> bool:
+    """Whether OpenRouter would route the registry slug to this listed endpoint: the slug itself or
+    any variant beneath it (a base slug reaches every variant and region of its provider)."""
     wanted = provider.casefold()
     tag = str(listed.get("tag") or "").casefold()
-    name = str(listed.get("provider_name") or "").casefold()
-    return tag == wanted or tag.split("/")[0] == wanted or name == wanted
+    return tag == wanted or tag.startswith(wanted + "/")
 
 
 def compare(snapshot: RegistrySnapshot, catalog: Mapping[str, Any], endpoints_by_model: Mapping[str, Any]) -> list[Drift]:
@@ -72,14 +73,15 @@ def compare(snapshot: RegistrySnapshot, catalog: Mapping[str, Any], endpoints_by
             if not matches:
                 drifts.append(Drift(model_id, "ENDPOINT_NOT_FOUND", f"no listed endpoint for provider {registry_endpoint.provider!r}"))
                 continue
+            if len(matches) > 1:
+                # The slug would route to every one of these, so it cannot hold a request to one
+                # approved endpoint; the route needs an exact variant slug.
+                tags = sorted(str(e.get("tag")) for e in matches)
+                drifts.append(Drift(model_id, "SLUG_NOT_EXACT", f"{registry_endpoint.provider!r} routes to {len(matches)} listed endpoints: {tags}"))
             wanted = (registry_endpoint.quantization or "").casefold()
             same_quantization = [e for e in matches if wanted and str(e.get("quantization") or "").casefold() == wanted]
             if not same_quantization and len(matches) > 1:
-                # Several listed endpoints and nothing to tell them apart: comparing one would guess.
-                drifts.append(
-                    Drift(model_id, "ENDPOINT_AMBIGUOUS", f"{len(matches)} listed endpoints for {registry_endpoint.provider!r}; record the quantization")
-                )
-                continue
+                continue  # nothing tells the listed endpoints apart; comparing one would guess
             listed_endpoint = (same_quantization or matches)[0]
             pricing = listed_endpoint.get("pricing") or {}
             for field, registry_value in (
@@ -97,8 +99,19 @@ def compare(snapshot: RegistrySnapshot, catalog: Mapping[str, Any], endpoints_by
                 if listed_value != registry_value:
                     drifts.append(Drift(model_id, "CAPACITY", f"{registry_endpoint.provider} {field}: registry {registry_value}, listed {listed_value}"))
             listed_quant = listed_endpoint.get("quantization")
-            if (listed_quant or None) != registry_endpoint.quantization and listed_quant not in (None, "unknown"):
-                drifts.append(Drift(model_id, "QUANTIZATION", f"{registry_endpoint.provider}: registry {registry_endpoint.quantization}, listed {listed_quant}"))
+            recorded_quant = registry_endpoint.quantization
+            if recorded_quant is not None:
+                # A recorded quantization becomes the request's filter: an endpoint listed with another
+                # value, or with none ("unknown"), would be filtered out and every request refused.
+                if str(listed_quant or "unknown").casefold() != recorded_quant.casefold():
+                    drifts.append(Drift(model_id, "QUANTIZATION", f"{registry_endpoint.provider}: registry {recorded_quant}, listed {listed_quant}"))
+            elif listed_quant not in (None, "unknown"):
+                drifts.append(Drift(model_id, "QUANTIZATION", f"{registry_endpoint.provider}: registry None, listed {listed_quant}"))
+            if entry.default_reasoning is not None and "reasoning" not in (listed_endpoint.get("supported_parameters") or ()):
+                # The approved reasoning level travels as `reasoning.effort`; an endpoint that does not
+                # list the parameter cannot honour it. (Whether the level itself is supported is not in
+                # the catalog; it needs live verification.)
+                drifts.append(Drift(model_id, "REASONING_UNSUPPORTED", f"{registry_endpoint.provider} does not list the reasoning parameter"))
     return drifts
 
 

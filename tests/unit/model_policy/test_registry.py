@@ -56,7 +56,7 @@ _FIXTURE = textwrap.dedent(
         route:
           estimator: fixture-bytes
           endpoints:
-            - {provider: alpha-cloud, quantization: fp8, context_window_tokens: 300000, max_output_tokens: 32768, verified: true}
+            - {provider: alpha-cloud/fp8, quantization: fp8, context_window_tokens: 300000, max_output_tokens: 32768, verified: true}
       us/beta:
         origin: non-china
         tier: cheap
@@ -67,7 +67,7 @@ _FIXTURE = textwrap.dedent(
         route:
           estimator: fixture-bytes
           endpoints:
-            - {provider: beta-ai, quantization: bf16, context_window_tokens: 262144, max_output_tokens: 65536, verified: true}
+            - {provider: beta-ai/bf16, quantization: bf16, context_window_tokens: 262144, max_output_tokens: 65536, verified: true}
     roles:
       medium: [us/beta, cn/alpha]
     """
@@ -270,6 +270,58 @@ def test_an_endpoint_without_a_recorded_quantization_is_not_eligible(tmp_path: P
     route it cannot constrain (Fable CP1 review, M1)."""
     snapshot = load_registry(_write(tmp_path, "a.yaml", _edited("quantization: fp8", "quantization: null")), None)
     assert [i.model_id for i in _issues(snapshot, "ROUTE_QUANTIZATION_UNKNOWN")] == ["cn/alpha"]
+    assert select_eligible_models(snapshot, Role.MEDIUM) == ("us/beta",)
+
+
+def test_a_provider_base_slug_cannot_hold_a_request_to_the_approved_endpoint(tmp_path: Path) -> None:
+    """OpenRouter routes a base slug ("alpha-cloud") to every variant of that provider, so approved
+    pairs such as alpha-cloud/fp8 and beta-ai/bf16 written as base slugs could admit alpha-cloud/bf16;
+    only exact variant slugs are expressible (Codex CP1 ruling, item 1)."""
+    text = _edited("- {provider: alpha-cloud/fp8,", "- {provider: alpha-cloud,")
+    snapshot = load_registry(_write(tmp_path, "a.yaml", text), None)
+    assert [i.model_id for i in _issues(snapshot, "ROUTE_TARGET_NOT_EXACT")] == ["cn/alpha"]
+    assert select_eligible_models(snapshot, Role.MEDIUM) == ("us/beta",)
+
+
+@pytest.mark.parametrize("slug", ["Alpha-Cloud/FP8", "alpha-cloud/", "/fp8", "alpha cloud/fp8", "alpha-cloud//fp8"])
+def test_a_slug_outside_the_provider_slug_grammar_is_not_eligible(tmp_path: Path, slug: str) -> None:
+    snapshot = load_registry(_write(tmp_path, "a.yaml", _edited("- {provider: alpha-cloud/fp8,", f'- {{provider: "{slug}",')), None)
+    assert [i.model_id for i in _issues(snapshot, "ROUTE_SLUG_MALFORMED")] == ["cn/alpha"]
+    assert select_eligible_models(snapshot, Role.MEDIUM) == ("us/beta",)
+
+
+def test_a_quantization_the_filter_cannot_express_is_not_eligible(tmp_path: Path) -> None:
+    snapshot = load_registry(_write(tmp_path, "a.yaml", _edited("quantization: fp8", "quantization: int3")), None)
+    assert [i.model_id for i in _issues(snapshot, "ROUTE_QUANTIZATION_NOT_EXPRESSIBLE")] == ["cn/alpha"]
+    assert select_eligible_models(snapshot, Role.MEDIUM) == ("us/beta",)
+
+
+def test_an_endpoint_listed_twice_in_a_route_is_not_eligible(tmp_path: Path) -> None:
+    line = "        - {provider: alpha-cloud/fp8, quantization: fp8, context_window_tokens: 300000, max_output_tokens: 32768, verified: true}\n"
+    text = _edited(line, line + line.replace("quantization: fp8", "quantization: bf16"))
+    snapshot = load_registry(_write(tmp_path, "a.yaml", text), None)
+    assert [i.model_id for i in _issues(snapshot, "ROUTE_ENDPOINT_DUPLICATE")] == ["cn/alpha"]
+    assert "cn/alpha" not in select_eligible_models(snapshot, Role.MEDIUM)
+
+
+def test_a_route_with_reasoning_levels_must_name_its_level(tmp_path: Path) -> None:
+    """The provider's own default is not an approved setting (Codex CP1 ruling, item 2)."""
+    snapshot = load_registry(_write(tmp_path, "a.yaml", _edited("default_reasoning: high", "default_reasoning: null")), None)
+    assert [i.model_id for i in _issues(snapshot, "REASONING_UNSET")] == ["cn/alpha"]
+    assert select_eligible_models(snapshot, Role.MEDIUM) == ("us/beta",)
+
+
+def test_a_route_without_reasoning_levels_needs_no_level(tmp_path: Path) -> None:
+    text = _edited("reasoning_levels: [low, high]}\n    default_reasoning: high", "reasoning_levels: []}\n    default_reasoning: null")
+    snapshot = load_registry(_write(tmp_path, "a.yaml", text), None)
+    assert _issues(snapshot, "REASONING_UNSET") == []
+    assert select_eligible_models(snapshot, Role.MEDIUM) == ("cn/alpha", "us/beta")
+
+
+def test_a_reasoning_level_the_request_cannot_express_is_not_eligible(tmp_path: Path) -> None:
+    text = _edited("reasoning_levels: [low, high]}\n    default_reasoning: high", "reasoning_levels: [low, turbo]}\n    default_reasoning: turbo")
+    snapshot = load_registry(_write(tmp_path, "a.yaml", text), None)
+    assert [i.model_id for i in _issues(snapshot, "REASONING_NOT_EXPRESSIBLE")] == ["cn/alpha"]
     assert select_eligible_models(snapshot, Role.MEDIUM) == ("us/beta",)
 
 

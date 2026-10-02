@@ -126,15 +126,16 @@ def _alpha(tmp_path: Path):
     return snapshot, snapshot.policy.models["cn/alpha"]
 
 
-def test_payload_digest_covers_model_roles_content_and_cap() -> None:
-    base = payload_digest("m", (Message("user", "hi"),), 10)
-    assert payload_digest("m", (Message("user", "hi"),), 10) == base
+def test_payload_digest_covers_model_roles_content_cap_and_reasoning() -> None:
+    base = payload_digest("m", (Message("user", "hi"),), 10, reasoning=None)
+    assert payload_digest("m", (Message("user", "hi"),), 10, reasoning=None) == base
     for changed in (
-        payload_digest("n", (Message("user", "hi"),), 10),
-        payload_digest("m", (Message("system", "hi"),), 10),
-        payload_digest("m", (Message("user", "hi "),), 10),
-        payload_digest("m", (Message("user", "hi"), Message("user", "")), 10),
-        payload_digest("m", (Message("user", "hi"),), 11),
+        payload_digest("n", (Message("user", "hi"),), 10, reasoning=None),
+        payload_digest("m", (Message("system", "hi"),), 10, reasoning=None),
+        payload_digest("m", (Message("user", "hi "),), 10, reasoning=None),
+        payload_digest("m", (Message("user", "hi"), Message("user", "")), 10, reasoning=None),
+        payload_digest("m", (Message("user", "hi"),), 11, reasoning=None),
+        payload_digest("m", (Message("user", "hi"),), 10, reasoning="high"),
     ):
         assert changed != base
 
@@ -151,11 +152,11 @@ def test_disclosure_verifies_only_for_its_request_route_payload_and_launch(tmp_p
     _, entry = _alpha(tmp_path)
     key = disclosure_key("launch-secret")
     route = route_digest("cn/alpha", entry)
-    payload = payload_digest("cn/alpha", (Message("user", "hi"),), 10)
+    payload = payload_digest("cn/alpha", (Message("user", "hi"),), 10, reasoning=None)
     authorization = issue_disclosure(key, request_id="req-1", model_id="cn/alpha", route=route, payload=payload)
     assert verify_disclosure(key, authorization, request_id="req-1", model_id="cn/alpha", route=route, payload=payload)
 
-    other_payload = payload_digest("cn/alpha", (Message("user", "hi!"),), 10)
+    other_payload = payload_digest("cn/alpha", (Message("user", "hi!"),), 10, reasoning=None)
     other_route = route_digest("cn/beta", entry)
     for kwargs in (
         {"request_id": "req-2", "model_id": "cn/alpha", "route": route, "payload": payload},
@@ -177,7 +178,7 @@ def test_an_authorization_must_state_exactly_what_it_covers(tmp_path: Path) -> N
     _, entry = _alpha(tmp_path)
     key = disclosure_key("launch-secret")
     route = route_digest("cn/alpha", entry)
-    payload = payload_digest("cn/alpha", (Message("user", "hi"),), 10)
+    payload = payload_digest("cn/alpha", (Message("user", "hi"),), 10, reasoning=None)
     authorization = issue_disclosure(key, request_id="req-1", model_id="cn/alpha", route=route, payload=payload)
     for misstated in (replace(authorization, payload_digest="0" * 64), replace(authorization, route_digest="0" * 64)):
         assert not verify_disclosure(key, misstated, request_id="req-1", model_id="cn/alpha", route=route, payload=payload)
