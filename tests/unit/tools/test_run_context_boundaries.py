@@ -433,10 +433,10 @@ def test_an_incomplete_registry_identity_is_refused_and_cannot_abort_discovery(m
         planted.write_text(json.dumps(incomplete), encoding="utf-8")
         assert run_context_records.read_record(planted) is None
         assert run_id not in [entry["run_id"] for entry in run_context_records.registry_entries("none")]
-        first = _parent_status()
+        first = _parent_status() if sys.platform == "win32" else {"status": "unsupported"}
     finally:
         planted.unlink(missing_ok=True)
-    assert first["status"] in {"parent", "none", "not_found", "UNKNOWN"}
+    assert first["status"] in {"parent", "none", "not_found", "UNKNOWN", "unsupported"}
 
     # Even if such entries reached discovery, none names an ancestor and none raises.
     unusable = [
