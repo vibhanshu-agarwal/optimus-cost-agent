@@ -542,6 +542,7 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P9.85-FU-2` | Dynamic planning-evidence partition | Open | MEDIUM     | Plan 12 | Acceptance criteria in entry |
 | `P9.85-FU-3` | Cross-Run/Session Spend Policy | Open | MEDIUM     | Future budget-governance plan | Acceptance criteria in entry |
 | `P9.87-FU-1` | Mechanical Current-Raw-Evidence Grounding Guard | Open | MEDIUM     | Future Plan 11 feature work | Acceptance criteria in entry |
+| `P9.96-FU-8` | Launch approval record capacity | Open | MEDIUM | Launch-approval/security follow-up lane | Maximum-configuration and bounded-successor proof in entry |
 | `P11-FU-1` | ACP Session Resume Capability | Promoted -> [Plan 11.7 v3](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | HIGH       | `P11-FEAT-ZED-RESUME` | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
 | ~~`P11-FU-2`~~ | ~~Package Lookup and Security Advisory Gateway Capability~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-GATEWAY-TOOLS` / Plan 11.2~~ | ~~PR #88 / `4590dbf`~~ |
 | ~~`P11-FU-3`~~ | ~~MCP Route/Typed-Contract Publication Gate~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-GATEWAY-MCP`~~ | ~~PR #112; PR #113 / `edd1f04`~~ |
@@ -2461,6 +2462,20 @@ separate diagnostic channel, or both. Recording the decision is part of the crit
 to avoid is a second uncoordinated observability mechanism.
 
 **Status:** Open. Not yet scheduled.
+
+### P9.96-FU-8: Launch approval record capacity
+
+**Raised:** Plan 12.2 CP1 review, 2026-10-02.
+
+**Status:** Open.
+
+**Owner:** Launch-approval/security follow-up lane; Codex architects/reviews, assigned implementer executes only separately accepted scope. Not scheduled; no new plan number allocated.
+
+The CP1 evidence at `280a0a1` reports serialized approval records of 1592 bytes inactive and 1703 registry-bound for a typical nine-variable launch, versus 2682 and 2793 bytes for all 23 classified variables. The production bound is 1800 bytes, so the latter launch fails with `RECORD_TOO_LARGE`. The source is `approval-record-size.txt` in the CP1 evidence manifest, artifact SHA-256 prefix `79db3688c1395c41`; the manifest SHA-256 is `dfe1be68ac961bef9c4dc4bf23fbd2b6fed50edcc0f46de5b27546eb718ae6e7`. Codex verified the 37 artifact hashes and inspected the bound in the earlier review; this review reverified their hashes without rerunning the measurement. External raw evidence is archival provenance, not a project dependency.
+
+Supported classified configurations already exceed the bound, and registry activation adds bytes. Production activation requires a reviewed capacity disposition; an offline package pass is not that disposition.
+
+**Next gate:** Reproduce the maximum supported encoded configuration and design a complete bounded approval successor with reviewed migration/re-approval treatment. Preserve frozen predecessor bytes, integrity binding and fail-closed behavior. Do not raise the limit ad hoc, omit security-bound fields or truncate records. Require exact-bound/over-bound tests, tamper checks and supported-configuration evidence before activation. Real keyring/service work retains separate authority. This entry grants no product repair, push, merge or activation authority.
 
 ## Accepted risks and warnings
 
