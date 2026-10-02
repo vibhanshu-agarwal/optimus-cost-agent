@@ -230,7 +230,9 @@ def test_the_host_transport_carries_the_enforced_error_fields(snapshot, monkeypa
     monkeypatch.setattr("optimus.gateway.client.urlopen", fake_urlopen)
     with pytest.raises(GatewayHttpError) as caught:
         UrllibGatewayTransport().post_json(
-            GatewayRequest(method="POST", url="http://127.0.0.1:8765/v1/responses", headers={}, payload={"model": "cn/alpha", "input": "hi"})
+            GatewayRequest(
+                method="POST", url="http://127.0.0.1:8765/v1/responses", headers={}, payload={"model": "cn/alpha", "input": "hi"}
+            )
         )
     error = caught.value
     assert (error.status_code, error.gateway_code, error.retryable) == (422, "FINISH_STATUS_UNVERIFIED", False)
@@ -306,8 +308,21 @@ def _http_error(code: int) -> HTTPError:
         (_http_error(503), "uncertain", 503, False),
     ],
     ids=[
-        "refused", "dns", "tls-handshake", "net-unreachable", "host-unreachable", "tls-after-send", "connect-timeout",
-        "reset-on-send", "read-timeout", "disconnected", "429", "400", "408", "500", "503",
+        "refused",
+        "dns",
+        "tls-handshake",
+        "net-unreachable",
+        "host-unreachable",
+        "tls-after-send",
+        "connect-timeout",
+        "reset-on-send",
+        "read-timeout",
+        "disconnected",
+        "429",
+        "400",
+        "408",
+        "500",
+        "503",
     ],
 )
 def test_the_real_client_classifies_each_failure_and_never_retries_itself(monkeypatch, raised, outcome, status, recoverable) -> None:
@@ -325,7 +340,9 @@ def test_the_real_client_classifies_each_failure_and_never_retries_itself(monkey
     assert len(calls) == 1, "one call per attempt; the Gateway owns the bound"
 
 
-@pytest.mark.parametrize("payload", [b"not json", b"[1, 2]", json.dumps({"id": "gen-1", "choices": []}).encode()], ids=["invalid", "array", "no-usage"])
+@pytest.mark.parametrize(
+    "payload", [b"not json", b"[1, 2]", json.dumps({"id": "gen-1", "choices": []}).encode()], ids=["invalid", "array", "no-usage"]
+)
 def test_an_unreadable_reply_is_an_uncertain_attempt(monkeypatch, payload) -> None:
     monkeypatch.setattr("optimus_gateway.upstream_client.urlopen", lambda request, timeout=0: _Response(payload))
     client = UrllibOpenAICompatibleClient(api_key="or-test", base_url="https://openrouter.ai/api/v1")
@@ -344,7 +361,58 @@ def test_the_real_client_sends_the_reasoning_level_and_returns_the_reply(monkeyp
     monkeypatch.setattr("optimus_gateway.upstream_client.urlopen", fake_urlopen)
     client = UrllibOpenAICompatibleClient(api_key="or-test", base_url="https://openrouter.ai/api/v1")
     for reasoning, expected in (("xhigh", {"effort": "xhigh"}), (None, None)):
-        result = client.create_message_once(model="cn/alpha", input_text="hi", max_tokens=8, provider_controls={"only": ["a/b"]}, reasoning=reasoning)
+        result = client.create_message_once(
+            model="cn/alpha", input_text="hi", max_tokens=8, provider_controls={"only": ["a/b"]}, reasoning=reasoning
+        )
         assert result.cost_usd == Decimal("0.00001")
         assert sent[-1].get("reasoning") == expected
     assert "reasoning" not in sent[-1], "no reasoning field when the route has no reasoning levels"
+
+
+@pytest.mark.parametrize(
+    ("detail", "expected"),
+    [
+        ("not json", (None, None, ())),
+        ("[1, 2]", (None, None, ())),
+        ('{"code": 7, "retryable": "no"}', (None, None, ())),
+        (
+            '{"code": "UPSTREAM_ATTEMPT_UNCERTAIN", "retryable": false, "route_attempts": [{"attempt": 3}]}',
+            ("UPSTREAM_ATTEMPT_UNCERTAIN", False, ()),
+        ),
+    ],
+    ids=["invalid-json", "not-an-object", "wrong-types", "malformed-attempts-keep-retryable"],
+)
+def test_error_correlation_parsing_never_raises_and_keeps_the_retry_flag(detail, expected) -> None:
+    assert _try_parse_error_correlation(detail) == expected
+
+
+def test_an_enforced_completion_without_a_binding_is_refused(snapshot) -> None:
+    """Defence in depth: the handlers parse the binding first, but the enforced path refuses on its own."""
+    upstream = RecordingUpstream()
+    status, body = gateway_responses.run_model_completion(
+        model="cn/alpha",
+        input_text="hi",
+        config=gateway_config(model_policy(snapshot)),
+        upstream_client=upstream,
+        build_success=lambda **_: {},
+        route_binding=None,
+    )
+    assert (status, body["code"], body["route_attempts"], body["retryable"]) == (400, "BINDING_REQUIRED", [], False)
+    assert upstream.calls == []
+
+
+def test_a_reply_whose_usage_fails_the_contract_is_an_uncertain_attempt(snapshot) -> None:
+    """Usage the Gateway cannot vouch for is never emitted as a success: the attempt is recorded as
+    uncertain (it may have been billed) and nothing is re-sent."""
+    from dataclasses import replace as replace_result
+
+    class _BadUsage(RecordingUpstream):
+        def _result(self, model: str):
+            return replace_result(super()._result(model), billing_units=-1)
+
+    upstream = _BadUsage()
+    status, body = _enforced(snapshot, upstream)
+    assert (status, body["code"], body["retryable"]) == (502, "UPSTREAM_ATTEMPT_UNCERTAIN", False)
+    assert [r["outcome"] for r in body["route_attempts"]] == ["uncertain"]
+    assert "gateway_usage" not in body
+    assert len(upstream.calls) == 1
