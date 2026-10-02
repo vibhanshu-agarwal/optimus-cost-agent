@@ -73,7 +73,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["src/optimus", "src/optimus_gateway", "src/optimus_model_policy", "src/optimus_security", "src/evidence_handoff", "src/evidence_handoff_runtime"]
+source = ["src/optimus", "src/optimus_gateway", "src/optimus_model_policy", "src/context_engine", "src/optimus_security", "src/evidence_handoff", "src/evidence_handoff_runtime"]
 
 [tool.coverage.report]
 show_missing = true

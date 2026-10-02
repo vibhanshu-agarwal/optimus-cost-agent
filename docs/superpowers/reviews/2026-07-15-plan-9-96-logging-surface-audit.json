@@ -3767,6 +3767,22 @@
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_route_attempts.py::test_a_wrapped_send_phase_tls_failure_is_one_uncertain_attempt_end_to_end",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "context_engine.contracts:StrategyParameters.digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: StrategyParameters.digest canonicalizes the strategy's integer allocations and its prompt/format version strings as a SHA-256 input and returns only the digest; no conversation text, credential or diagnostic content is serialized, persisted or logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_checkpoints.py::test_the_parameter_digest_is_deterministic_and_covers_every_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.adapter:ApprovalFact.render:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Inspection: ApprovalFact.render serializes one host-issued approval fact (turn number, plan artifact hash, granted/denied/cancelled decision and scope) into the exact canonical string the Context Engine carries in memory as protected turn state; it contains no prompt, plan or credential text and is never persisted or logged.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/agent/test_context_authority_projection.py::test_an_approval_fact_renders_exactly_and_canonically",
+      "evidence_tier": "unit"
     }
   ]
 }
