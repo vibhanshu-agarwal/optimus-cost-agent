@@ -8,7 +8,6 @@ its flattening. Contributor routes need a disclosure bound to request, route and
 
 from __future__ import annotations
 
-import json
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -25,12 +24,16 @@ from optimus_gateway.upstream_client import UrllibOpenAICompatibleClient
 from tests.unit.optimus_gateway.model_policy_support import (
     AUTH,
     CAP,
+    PROVIDER_KEY,
     SHARED_SECRET,
     VERIFIED_POLICY,
     RecordingUpstream,
+    Wire,
     binding,
     gateway_config,
+    http_reply,
     model_policy,
+    ok_completion_body,
     verified_snapshot,
 )
 
@@ -199,42 +202,17 @@ def test_admitted_request_carries_route_controls_and_output_cap(route: str, snap
 
 
 def test_route_controls_and_cap_reach_the_provider_wire_payload(monkeypatch: pytest.MonkeyPatch, snapshot) -> None:
-    """The real client's JSON, not a fake's kwargs: wire mapping v1 is OpenRouter ``max_tokens`` and
-    ``provider``; today's routing sends neither."""
-    sent: list[dict[str, Any]] = []
-
-    class _Response:
-        headers: dict[str, str] = {}
-
-        def read(self) -> bytes:
-            return json.dumps(
-                {
-                    "id": "gen-1",
-                    "model": "cn/alpha",
-                    "choices": [{"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
-                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2, "cost": "0.00001"},
-                }
-            ).encode()
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-    def fake_urlopen(request, timeout: float = 0):
-        sent.append(json.loads(request.data.decode("utf-8")))
-        return _Response()
-
-    monkeypatch.setattr("optimus_gateway.upstream_client.urlopen", fake_urlopen)
-    client = UrllibOpenAICompatibleClient(api_key="or-test", base_url="https://openrouter.ai/api/v1")
+    """The real client's JSON as http.client writes it to the connection, not a fake's kwargs: wire
+    mapping v1 is OpenRouter ``max_tokens`` and ``provider``; today's routing sends neither."""
+    wire = Wire(reply=http_reply(200, ok_completion_body())).install(monkeypatch)
+    client = UrllibOpenAICompatibleClient(api_key=PROVIDER_KEY, base_url="https://openrouter.ai/api/v1")
 
     status, _ = _send("chat", gateway_config(model_policy(snapshot)), client, model="cn/alpha", text="hi", route_binding=binding(snapshot, input_text="hi"))
     assert status == 200
     status, _ = _send("responses", gateway_config(), client, model="claude-haiku", text="hi", omit=True)
     assert status == 200
 
-    enforced, today = sent
+    enforced, today = wire.request_body(0), wire.request_body(1)
     assert enforced == {
         "model": "cn/alpha",
         "messages": [{"role": "user", "content": "hi"}],

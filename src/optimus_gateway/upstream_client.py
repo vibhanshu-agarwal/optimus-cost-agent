@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import errno
+import functools
+import http.client
 import json
-import socket
-import ssl
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -11,7 +10,17 @@ from decimal import Decimal, InvalidOperation
 from http.client import HTTPException
 from typing import Any, Literal, Protocol, TypeVar
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import (
+    HTTPDefaultErrorHandler,
+    HTTPErrorProcessor,
+    HTTPHandler,
+    HTTPSHandler,
+    OpenerDirector,
+    ProxyHandler,
+    Request,
+    UnknownHandler,
+    urlopen,
+)
 
 from optimus_model_policy.binding import ATTEMPT_NOT_SENT, ATTEMPT_REJECTED, ATTEMPT_UNCERTAIN
 
@@ -145,9 +154,10 @@ class UrllibOpenAICompatibleClient:
         self._max_attempts = max_attempts
         self._sleep = sleep
         self._on_retry = on_retry
+        self._attempt_opener: OpenerDirector | None = None
 
-    def _request(self, payload: Mapping[str, Any]) -> Request:
-        return Request(
+    def _request(self, payload: Mapping[str, Any], request_class: type[Request] = Request) -> Request:
+        return request_class(
             f"{self._base_url}/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
             headers={
@@ -223,25 +233,25 @@ class UrllibOpenAICompatibleClient:
         }
         if reasoning is not None:
             payload["reasoning"] = {"effort": reasoning}
-        request = self._request(payload)
+        request = _attempt_of(self._request(payload, request_class=_AttemptRequest))
+        if self._attempt_opener is None:
+            self._attempt_opener = _build_attempt_opener()
         try:
-            with urlopen(request, timeout=self._timeout_seconds) as response:
+            with self._attempt_opener.open(request, timeout=self._timeout_seconds) as response:
                 raw = response.read()
                 headers = {str(name).casefold(): str(value) for name, value in getattr(response, "headers", {}).items()}
         except HTTPError as exc:
             # A 4xx (other than a request timeout) is the provider refusing the request before any
-            # model ran; a 408 or 5xx may follow a model run that was billed.
+            # model ran; a 408, a 5xx or an unfollowed redirect may follow a model run that was billed.
             refused = 400 <= exc.code < 500 and exc.code != 408
             raise UpstreamAttemptFailure(ATTEMPT_REJECTED if refused else ATTEMPT_UNCERTAIN, http_status=exc.code) from exc
-        except URLError as exc:
-            # urllib raises URLError only while connecting and sending. A refused connection, an
-            # unresolved or unreachable host, or a failed TLS handshake delivers no request, so no
-            # model ran. A timeout cannot be told apart from one after the request went out, so it
-            # stays uncertain (Fable CP1 correction review, m4).
-            raise UpstreamAttemptFailure(ATTEMPT_NOT_SENT if _never_sent(exc.reason) else ATTEMPT_UNCERTAIN) from exc
         except (OSError, HTTPException) as exc:
-            # A timeout, reset or truncated body after sending: the model may have run.
-            raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN) from exc
+            # urllib wraps an OSError raised while connecting *or* while sending in the same URLError,
+            # so the exception's type cannot say whether the request left (an SSLError, a refusal or an
+            # unreachable host can each arise in either phase; Codex CP1 corrections review). The phase
+            # can: a failure before the connection was established delivered nothing, and any later
+            # failure may have reached a model that ran and was billed.
+            raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN if request.connected else ATTEMPT_NOT_SENT) from exc
         try:
             decoded = json.loads(raw.decode("utf-8"))
             if not isinstance(decoded, dict):
@@ -252,13 +262,71 @@ class UrllibOpenAICompatibleClient:
             raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN) from exc
 
 
-_UNREACHABLE_ERRNOS = frozenset({errno.ENETUNREACH, errno.EHOSTUNREACH})
+class _AttemptRequest(Request):
+    """One enforced attempt's request. ``connected`` turns true once its connection is established (the
+    TCP connect, any proxy tunnel and the TLS handshake have all completed): the earliest point at which
+    request bytes may leave. Until then a failure certainly delivered nothing."""
+
+    connected = False
 
 
-def _never_sent(reason: object) -> bool:
-    if isinstance(reason, (ConnectionRefusedError, socket.gaierror, ssl.SSLError)):
-        return True
-    return isinstance(reason, OSError) and not isinstance(reason, TimeoutError) and reason.errno in _UNREACHABLE_ERRNOS
+class _MarksAttemptConnected:
+    """Mixed into an http.client connection: marks the attempt connected when ``connect()`` returns.
+    http.client connects lazily from its first ``send()``, before writing any request byte."""
+
+    def __init__(self, *args: Any, attempt: _AttemptRequest, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._attempt = attempt
+
+    def connect(self) -> None:
+        super().connect()  # type: ignore[misc]
+        self._attempt.connected = True
+
+
+class _AttemptHTTPConnection(_MarksAttemptConnected, http.client.HTTPConnection):
+    pass
+
+
+class _AttemptHTTPSConnection(_MarksAttemptConnected, http.client.HTTPSConnection):
+    pass
+
+
+def _attempt_of(req: Request) -> _AttemptRequest:
+    if not isinstance(req, _AttemptRequest):
+        # Fail closed: an untracked request could only ever be classified "not sent".
+        raise TypeError("an enforced attempt must be an _AttemptRequest")
+    return req
+
+
+class _AttemptHTTPHandler(HTTPHandler):
+    def http_open(self, req: Request) -> http.client.HTTPResponse:
+        return self.do_open(functools.partial(_AttemptHTTPConnection, attempt=_attempt_of(req)), req)
+
+
+class _AttemptHTTPSHandler(HTTPSHandler):
+    def https_open(self, req: Request) -> http.client.HTTPResponse:
+        # As the standard handler does, with the TLS context it built.
+        return self.do_open(functools.partial(_AttemptHTTPSConnection, attempt=_attempt_of(req)), req, context=self._context)  # type: ignore[attr-defined]
+
+
+def _build_attempt_opener() -> OpenerDirector:
+    """``urlopen``'s default handlers (proxies, HTTP error handling) with three differences:
+    - HTTP and HTTPS connections record their attempt's phase;
+    - there is no redirect handler, because an attempt is one exchange; following a redirect would send
+      again, to another URL, so a 3xx surfaces as an HTTP error and is classified by its status;
+    - there are no FTP, file or data handlers, so no other scheme can open an untracked connection; it
+      fails as an unknown URL type before anything is sent."""
+    opener = OpenerDirector()
+    for handler in (
+        ProxyHandler(),
+        UnknownHandler(),
+        _AttemptHTTPHandler(),
+        _AttemptHTTPSHandler(),
+        HTTPDefaultErrorHandler(),
+        HTTPErrorProcessor(),
+    ):
+        opener.add_handler(handler)
+    return opener
 
 
 class UpstreamAttemptFailure(Exception):

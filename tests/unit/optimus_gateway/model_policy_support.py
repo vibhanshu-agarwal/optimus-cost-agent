@@ -6,10 +6,17 @@ so the enforcer's admit path can be exercised offline. It is test data, never a 
 
 from __future__ import annotations
 
+import io
+import json
+import socket
+import ssl
 import textwrap
+import urllib.request
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from optimus_gateway.model_policy import GatewayModelPolicy
 from optimus_gateway.models import GatewayServiceConfig
@@ -199,3 +206,131 @@ class RecordingUpstream:
             cache_hit=False,
             finish_reason=self._finish_reason,
         )
+
+
+# --- The network under the real upstream client ------------------------------------------------------
+#
+# Only the operating-system layer is replaced: `socket.create_connection` and `SSLContext.wrap_socket`.
+# Everything above it runs for real: urllib's opener and its URLError wrapping, and http.client's
+# connect, send and response parsing (Codex CP1 corrections review: test the wrapped error).
+
+
+class Wire:
+    """Each stage fails with the given exception or succeeds: connecting, the TLS handshake, sending
+    (after ``send_ok_calls`` successful sends, such as a proxy's CONNECT), and the reply (raw HTTP
+    bytes, or an exception raised while reading it). ``replies``
+    gives one reply per response read, in order (a proxy's CONNECT reply, then the request's). Every
+    established connection records the bytes sent on it. ``proxies`` replaces the process's proxy
+    configuration (none by default), so a proxied runner sees the same network."""
+
+    def __init__(
+        self,
+        *,
+        connect: BaseException | None = None,
+        handshake: BaseException | None = None,
+        send: BaseException | None = None,
+        send_ok_calls: int = 0,
+        reply: bytes | BaseException = b"",
+        replies: list[bytes | BaseException] | None = None,
+        proxies: dict[str, str] | None = None,
+    ) -> None:
+        self.connect_error = connect
+        self.handshake_error = handshake
+        self.send_error = send
+        self.send_ok_calls = send_ok_calls
+        self.send_calls = 0
+        self.reply = reply
+        self.replies = replies
+        self.proxies = proxies or {}
+        self.connects = 0
+        self.sent: list[bytearray] = []
+
+    def next_reply(self) -> bytes | BaseException:
+        return self.replies.pop(0) if self.replies is not None else self.reply
+
+    def install(self, monkeypatch: pytest.MonkeyPatch) -> Wire:
+        wire = self
+        # Proxies are read when an opener is built: the enforced client builds its own, and the legacy
+        # path's urlopen rebuilds the shared one once it is reset here.
+        monkeypatch.setattr(urllib.request, "getproxies", lambda: dict(wire.proxies))
+        monkeypatch.setattr(urllib.request, "_opener", None)
+
+        def create_connection(address: object, timeout: object = None, source_address: object = None, **_: object) -> _WireSocket:
+            wire.connects += 1
+            if wire.connect_error is not None:
+                raise wire.connect_error
+            buffer = bytearray()
+            wire.sent.append(buffer)
+            return _WireSocket(wire, buffer)
+
+        def wrap_socket(context: object, sock: _WireSocket, *args: object, **kwargs: object) -> _WireSocket:
+            if wire.handshake_error is not None:
+                raise wire.handshake_error
+            return sock
+
+        monkeypatch.setattr(socket, "create_connection", create_connection)
+        monkeypatch.setattr(ssl.SSLContext, "wrap_socket", wrap_socket)
+        return self
+
+    def bytes_sent(self) -> int:
+        return sum(len(buffer) for buffer in self.sent)
+
+    def request_body(self, index: int = -1) -> dict[str, Any]:
+        head, _, body = bytes(self.sent[index]).partition(b"\r\n\r\n")
+        assert head.startswith(b"POST /api/v1/chat/completions HTTP/1.1\r\n")
+        return json.loads(body)
+
+    def requests_sent(self) -> list[bytes]:
+        """The request lines sent, in order (a proxy's CONNECT, then the request's POST)."""
+        return [line for buffer in self.sent for line in bytes(buffer).split(b"\r\n") if line.startswith((b"CONNECT ", b"POST "))]
+
+
+class _WireSocket:
+    def __init__(self, wire: Wire, buffer: bytearray) -> None:
+        self._wire = wire
+        self._buffer = buffer
+
+    def setsockopt(self, *args: object) -> None:
+        return None
+
+    def sendall(self, data: bytes) -> None:
+        self._wire.send_calls += 1
+        if self._wire.send_error is not None and self._wire.send_calls > self._wire.send_ok_calls:
+            raise self._wire.send_error
+        self._buffer += data
+
+    def makefile(self, mode: str) -> io.BufferedReader:
+        # A real socket's makefile("rb") is a BufferedReader over a raw stream; so is this one.
+        reply = self._wire.next_reply()
+        raw = _FailingRaw(reply) if isinstance(reply, BaseException) else io.BytesIO(reply)
+        return io.BufferedReader(raw)  # type: ignore[arg-type]
+
+    def close(self) -> None:
+        return None
+
+
+class _FailingRaw(io.RawIOBase):
+    def __init__(self, error: BaseException) -> None:
+        self._error = error
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Any) -> int:
+        raise self._error
+
+
+def http_reply(status: int, body: bytes = b"{}", *, extra_headers: str = "") -> bytes:
+    head = f"HTTP/1.1 {status} Status\r\nContent-Type: application/json\r\nContent-Length: {len(body)}\r\n{extra_headers}\r\n"
+    return head.encode("ascii") + body
+
+
+def ok_completion_body() -> bytes:
+    return json.dumps(
+        {
+            "id": "gen-1",
+            "model": "cn/alpha",
+            "choices": [{"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2, "cost": "0.00001"},
+        }
+    ).encode()

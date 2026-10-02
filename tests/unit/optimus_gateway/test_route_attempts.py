@@ -15,7 +15,6 @@ import json
 import socket
 import ssl
 from decimal import Decimal
-from http.client import RemoteDisconnected
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -32,11 +31,15 @@ from optimus_gateway.upstream_client import UpstreamAttemptFailure, UrllibOpenAI
 from optimus_model_policy.binding import MAX_ROUTE_ATTEMPTS
 from tests.unit.optimus_gateway.model_policy_support import (
     AUTH,
+    PROVIDER_KEY,
     VERIFIED_POLICY,
     RecordingUpstream,
+    Wire,
     binding,
     gateway_config,
+    http_reply,
     model_policy,
+    ok_completion_body,
     verified_snapshot,
 )
 
@@ -255,118 +258,222 @@ def test_malformed_attempt_lists_are_rejected_by_the_host(snapshot) -> None:
             parse_gateway_response(dict(body, route_attempts=bad))
 
 
-# --- The real client: one attempt, classified ---------------------------------------------------------
+# --- The real client: one attempt, classified by transmission phase -----------------------------------
+#
+# These drive the real urllib opener, including its URLError wrapping, and the real http.client connect
+# and send. Only the operating-system layer underneath is replaced: `socket.create_connection` and
+# `SSLContext.wrap_socket` (Codex CP1 corrections review: test the wrapped error, not a bare one).
+
+_URL = "https://openrouter.ai/api/v1"
 
 
-class _Response:
-    def __init__(self, payload: bytes) -> None:
-        self._payload = payload
-        self.headers: dict[str, str] = {}
-
-    def read(self) -> bytes:
-        return self._payload
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args: object) -> None:
-        return None
+def _once(client: UrllibOpenAICompatibleClient, *, reasoning: str | None = None) -> Any:
+    return client.create_message_once(model="cn/alpha", input_text="hi", max_tokens=8, provider_controls={"only": ["a/b"]}, reasoning=reasoning)
 
 
-def _ok_body() -> bytes:
-    return json.dumps(
-        {
-            "id": "gen-1",
-            "model": "cn/alpha",
-            "choices": [{"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2, "cost": "0.00001"},
-        }
-    ).encode()
+def _client() -> UrllibOpenAICompatibleClient:
+    return UrllibOpenAICompatibleClient(api_key=PROVIDER_KEY, base_url=_URL, sleep=lambda _s: None)
 
 
-def _http_error(code: int) -> HTTPError:
-    return HTTPError("https://openrouter.ai/api/v1/chat/completions", code, "error", None, io.BytesIO(b"{}"))  # type: ignore[arg-type]
+_BEFORE_SENDING = {
+    "dns": lambda: Wire(connect=socket.gaierror(11001, "getaddrinfo failed")),
+    "refused": lambda: Wire(connect=ConnectionRefusedError(10061, "refused")),
+    "connect-timeout": lambda: Wire(connect=TimeoutError("timed out")),
+    "net-unreachable": lambda: Wire(connect=OSError(errno.ENETUNREACH, "network unreachable")),
+    "tls-handshake": lambda: Wire(handshake=ssl.SSLError(1, "[SSL: SSLV3_ALERT_HANDSHAKE_FAILURE] handshake failure")),
+    "tls-certificate": lambda: Wire(handshake=ssl.SSLCertVerificationError(1, "[SSL: CERTIFICATE_VERIFY_FAILED] verify failed")),
+}
+_AFTER_CONNECTING = {
+    "tls-while-sending": lambda: Wire(send=ssl.SSLError(1, "[SSL: BAD_RECORD_MAC] bad record mac")),
+    "tls-eof-while-sending": lambda: Wire(send=ssl.SSLEOFError(8, "EOF occurred in violation of protocol")),
+    "refused-while-sending": lambda: Wire(send=ConnectionRefusedError(10061, "refused")),
+    "host-unreachable-while-sending": lambda: Wire(send=OSError(errno.EHOSTUNREACH, "host unreachable")),
+    "reset-while-sending": lambda: Wire(send=ConnectionResetError(10054, "reset")),
+    "timeout-while-sending": lambda: Wire(send=TimeoutError("timed out")),
+    "read-timeout": lambda: Wire(reply=TimeoutError("read timed out")),
+    "disconnected": lambda: Wire(reply=b""),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_BEFORE_SENDING))
+def test_a_failure_before_the_connection_is_established_is_not_sent(monkeypatch, name) -> None:
+    """Resolving, connecting and the TLS handshake all precede the first request byte, so a failure in
+    any of them certainly delivered nothing: never sent, and one recovery attempt is allowed."""
+    wire = _BEFORE_SENDING[name]().install(monkeypatch)
+    with pytest.raises(UpstreamAttemptFailure) as caught:
+        _once(_client())
+    assert (caught.value.outcome, caught.value.http_status, caught.value.recoverable) == ("not_sent", None, True)
+    assert (wire.connects, wire.bytes_sent()) == (1, 0)
+
+
+@pytest.mark.parametrize("name", sorted(_AFTER_CONNECTING))
+def test_any_failure_once_connected_is_uncertain_whatever_its_type(monkeypatch, name) -> None:
+    """Once connected, request bytes may have left; the exception's type cannot say otherwise (a
+    refusal or an unreachable host raised while sending is no proof of anything). Uncertain, never
+    re-sent, one connection only."""
+    wire = _AFTER_CONNECTING[name]().install(monkeypatch)
+    with pytest.raises(UpstreamAttemptFailure) as caught:
+        _once(_client())
+    assert (caught.value.outcome, caught.value.http_status, caught.value.recoverable) == ("uncertain", None, False)
+    assert wire.connects == 1
 
 
 @pytest.mark.parametrize(
-    ("raised", "outcome", "status", "recoverable"),
-    [
-        (URLError(ConnectionRefusedError(10061, "refused")), "not_sent", None, True),
-        (URLError(socket.gaierror(11001, "getaddrinfo failed")), "not_sent", None, True),
-        (URLError(ssl.SSLError(1, "handshake failure")), "not_sent", None, True),
-        (URLError(OSError(errno.ENETUNREACH, "network unreachable")), "not_sent", None, True),
-        (URLError(OSError(errno.EHOSTUNREACH, "host unreachable")), "not_sent", None, True),
-        (ssl.SSLError(1, "bad record mac after send"), "uncertain", None, False),
-        (URLError(TimeoutError("timed out")), "uncertain", None, False),
-        (URLError(ConnectionResetError(10054, "reset")), "uncertain", None, False),
-        (TimeoutError("read timed out"), "uncertain", None, False),
-        (RemoteDisconnected("closed"), "uncertain", None, False),
-        (_http_error(429), "rejected", 429, True),
-        (_http_error(400), "rejected", 400, False),
-        (_http_error(408), "uncertain", 408, False),
-        (_http_error(500), "uncertain", 500, False),
-        (_http_error(503), "uncertain", 503, False),
-    ],
-    ids=[
-        "refused",
-        "dns",
-        "tls-handshake",
-        "net-unreachable",
-        "host-unreachable",
-        "tls-after-send",
-        "connect-timeout",
-        "reset-on-send",
-        "read-timeout",
-        "disconnected",
-        "429",
-        "400",
-        "408",
-        "500",
-        "503",
-    ],
+    ("make_wire", "outcome"),
+    [(lambda: Wire(connect=ConnectionRefusedError(10061, "refused")), "not_sent"), (lambda: Wire(send=ConnectionResetError(10054, "reset")), "uncertain")],
+    ids=["refused", "reset-while-sending"],
 )
-def test_the_real_client_classifies_each_failure_and_never_retries_itself(monkeypatch, raised, outcome, status, recoverable) -> None:
-    calls: list[object] = []
-
-    def fake_urlopen(request, timeout: float = 0):
-        calls.append(request)
-        raise raised
-
-    monkeypatch.setattr("optimus_gateway.upstream_client.urlopen", fake_urlopen)
-    client = UrllibOpenAICompatibleClient(api_key="or-test", base_url="https://openrouter.ai/api/v1", sleep=lambda _s: None)
+def test_a_plain_http_base_url_is_classified_by_phase_too(monkeypatch, make_wire, outcome) -> None:
+    wire = make_wire().install(monkeypatch)
+    client = UrllibOpenAICompatibleClient(api_key=PROVIDER_KEY, base_url="http://127.0.0.1:9/api/v1", sleep=lambda _s: None)
     with pytest.raises(UpstreamAttemptFailure) as caught:
-        client.create_message_once(model="cn/alpha", input_text="hi", max_tokens=8, provider_controls={"only": ["a/b"]}, reasoning=None)
+        _once(client)
+    assert caught.value.outcome == outcome
+    assert wire.connects == 1
+
+
+@pytest.mark.parametrize("base_url", ["ftp://127.0.0.1/api/v1", "file:///api/v1"])
+def test_another_scheme_fails_before_anything_is_sent(monkeypatch, base_url) -> None:
+    """The attempt opener has only HTTP and HTTPS handlers, so no other scheme can open a connection
+    whose phase goes unrecorded; it fails as an unknown URL type, certainly unsent."""
+    wire = Wire().install(monkeypatch)
+    client = UrllibOpenAICompatibleClient(api_key=PROVIDER_KEY, base_url=base_url, sleep=lambda _s: None)
+    with pytest.raises(UpstreamAttemptFailure) as caught:
+        _once(client)
+    assert caught.value.outcome == "not_sent"
+    assert "unknown url type" in str(caught.value.__cause__)
+    assert wire.connects == 0
+
+
+_PROXY = {"https": "http://proxy.example:3128"}
+
+
+def test_a_refused_proxy_tunnel_is_not_sent(monkeypatch) -> None:
+    """Through an HTTPS proxy, connecting includes the CONNECT tunnel. A refused tunnel happens before
+    the request's first byte: only the CONNECT line went out, and the attempt is certainly unsent."""
+    wire = Wire(replies=[http_reply(403)], proxies=_PROXY).install(monkeypatch)
+    with pytest.raises(UpstreamAttemptFailure) as caught:
+        _once(_client())
+    assert (caught.value.outcome, caught.value.recoverable) == ("not_sent", True)
+    assert wire.requests_sent() == [b"CONNECT openrouter.ai:443 HTTP/1.1"]
+
+
+def test_a_failure_after_the_proxy_tunnel_opens_is_uncertain(monkeypatch) -> None:
+    """The tunnel opens (its CONNECT is the first send), then sending the request itself fails: the
+    attempt had connected, so it is uncertain."""
+    wire = Wire(replies=[http_reply(200)], send=ssl.SSLError(1, "[SSL: BAD_RECORD_MAC] bad record mac"), send_ok_calls=1, proxies=_PROXY)
+    wire.install(monkeypatch)
+    with pytest.raises(UpstreamAttemptFailure) as caught:
+        _once(_client())
+    assert (caught.value.outcome, caught.value.recoverable) == ("uncertain", False)
+    assert wire.requests_sent() == [b"CONNECT openrouter.ai:443 HTTP/1.1"]
+    assert wire.connects == 1
+
+
+def test_an_untracked_request_is_refused_rather_than_presumed_unsent() -> None:
+    """Fail closed: a request without a phase record could only ever be classified "not sent"."""
+    from urllib.request import Request
+
+    from optimus_gateway.upstream_client import _AttemptHTTPHandler, _AttemptHTTPSHandler
+
+    for handler, url in ((_AttemptHTTPSHandler(), _URL), (_AttemptHTTPHandler(), "http://127.0.0.1:9/")):
+        with pytest.raises(TypeError, match="_AttemptRequest"):
+            (handler.https_open if url.startswith("https") else handler.http_open)(Request(url))  # type: ignore[union-attr]
+
+
+def test_a_tls_failure_while_sending_is_uncertain_though_urllib_wraps_it_like_a_handshake_failure(monkeypatch) -> None:
+    """The CP1 defect (Codex corrections review). urllib wraps an SSLError raised while sending in the
+    same URLError as one raised during the handshake, so the type cannot place it; the phase does."""
+    seen = []
+    for wire in (Wire(send=ssl.SSLError(1, "[SSL: BAD_RECORD_MAC] bad record mac")), Wire(handshake=ssl.SSLError(1, "handshake failure"))):
+        wire.install(monkeypatch)
+        with pytest.raises(UpstreamAttemptFailure) as caught:
+            _once(_client())
+        cause = caught.value.__cause__
+        assert type(cause) is URLError and type(cause.reason) is ssl.SSLError, "the wrapped form, exactly as urllib raises it"
+        seen.append((caught.value.outcome, caught.value.recoverable))
+    assert seen == [("uncertain", False), ("not_sent", True)]
+
+
+@pytest.mark.parametrize(
+    ("status", "outcome", "recoverable"),
+    [(429, "rejected", True), (400, "rejected", False), (408, "uncertain", False), (500, "uncertain", False), (503, "uncertain", False)],
+)
+def test_an_http_error_is_classified_by_its_status(monkeypatch, status, outcome, recoverable) -> None:
+    wire = Wire(reply=http_reply(status)).install(monkeypatch)
+    with pytest.raises(UpstreamAttemptFailure) as caught:
+        _once(_client())
     assert (caught.value.outcome, caught.value.http_status, caught.value.recoverable) == (outcome, status, recoverable)
-    assert len(calls) == 1, "one call per attempt; the Gateway owns the bound"
+    assert wire.connects == 1
+
+
+def test_a_redirect_is_not_followed(monkeypatch) -> None:
+    """Following it would send the request again, elsewhere; the attempt ends, uncertain."""
+    wire = Wire(reply=http_reply(302, extra_headers="Location: https://elsewhere.example/v1/chat/completions\r\n")).install(monkeypatch)
+    with pytest.raises(UpstreamAttemptFailure) as caught:
+        _once(_client())
+    assert (caught.value.outcome, caught.value.http_status, caught.value.recoverable) == ("uncertain", 302, False)
+    assert wire.connects == 1
 
 
 @pytest.mark.parametrize(
     "payload", [b"not json", b"[1, 2]", json.dumps({"id": "gen-1", "choices": []}).encode()], ids=["invalid", "array", "no-usage"]
 )
 def test_an_unreadable_reply_is_an_uncertain_attempt(monkeypatch, payload) -> None:
-    monkeypatch.setattr("optimus_gateway.upstream_client.urlopen", lambda request, timeout=0: _Response(payload))
-    client = UrllibOpenAICompatibleClient(api_key="or-test", base_url="https://openrouter.ai/api/v1")
+    Wire(reply=http_reply(200, payload)).install(monkeypatch)
     with pytest.raises(UpstreamAttemptFailure) as caught:
-        client.create_message_once(model="cn/alpha", input_text="hi", max_tokens=8, provider_controls={}, reasoning="high")
+        _once(_client(), reasoning="high")
     assert caught.value.outcome == "uncertain"
 
 
 def test_the_real_client_sends_the_reasoning_level_and_returns_the_reply(monkeypatch) -> None:
-    sent: list[dict[str, Any]] = []
-
-    def fake_urlopen(request, timeout: float = 0):
-        sent.append(json.loads(request.data.decode("utf-8")))
-        return _Response(_ok_body())
-
-    monkeypatch.setattr("optimus_gateway.upstream_client.urlopen", fake_urlopen)
-    client = UrllibOpenAICompatibleClient(api_key="or-test", base_url="https://openrouter.ai/api/v1")
+    """The serialized request as it leaves http.client, not the Request object handed to urllib."""
     for reasoning, expected in (("xhigh", {"effort": "xhigh"}), (None, None)):
-        result = client.create_message_once(
-            model="cn/alpha", input_text="hi", max_tokens=8, provider_controls={"only": ["a/b"]}, reasoning=reasoning
-        )
+        wire = Wire(reply=http_reply(200, ok_completion_body())).install(monkeypatch)
+        result = _once(_client(), reasoning=reasoning)
         assert result.cost_usd == Decimal("0.00001")
-        assert sent[-1].get("reasoning") == expected
-    assert "reasoning" not in sent[-1], "no reasoning field when the route has no reasoning levels"
+        body = wire.request_body()
+        assert body.get("reasoning") == expected
+        assert (body["max_tokens"], body["provider"]) == (8, {"only": ["a/b"]})
+        if expected is None:
+            assert "reasoning" not in body, "no reasoning field when the route has no reasoning levels"
+
+
+def test_a_wrapped_send_phase_tls_failure_is_one_uncertain_attempt_end_to_end(snapshot, monkeypatch) -> None:
+    """Codex CP1 corrections review, required negative evidence. Through the real client and urllib,
+    the Gateway reports exactly one uncertain attempt with retryable false, and the host's retry
+    controller sends nothing further: one Gateway call, one upstream connection."""
+    from optimus.gateway.client import GatewayRequest, UrllibGatewayTransport
+    from optimus.retry.policy import RetryController
+
+    wire = Wire(send=ssl.SSLError(1, "[SSL: BAD_RECORD_MAC] bad record mac")).install(monkeypatch)
+    upstream = _client()
+    gateway_calls: list[object] = []
+
+    def gateway(request: Any, timeout: float = 0) -> Any:
+        gateway_calls.append(request)
+        status, body = _enforced(snapshot, upstream)
+        raise HTTPError(request.full_url, status, "gateway error", None, io.BytesIO(json.dumps(body, default=str).encode()))  # type: ignore[arg-type]
+
+    monkeypatch.setattr("optimus.gateway.client.urlopen", gateway)
+    transport = UrllibGatewayTransport()
+    errors: list[GatewayHttpError] = []
+
+    def operation() -> Any:
+        try:
+            return transport.post_json(
+                GatewayRequest(method="POST", url="http://127.0.0.1:8765/v1/responses", headers={}, payload={"model": "cn/alpha", "input": "hi"})
+            )
+        except GatewayHttpError as error:
+            errors.append(error)
+            raise
+
+    result = RetryController(sleep_ms=lambda _ms: None).run(operation)
+    assert (result.value, result.attempts, result.retry_count) == (None, 1, 0)
+    [error] = errors
+    assert (error.status_code, error.gateway_code, error.retryable) == (502, "UPSTREAM_ATTEMPT_UNCERTAIN", False)
+    assert [(a.attempt, a.outcome) for a in error.route_attempts] == [(1, "uncertain")]
+    assert (len(gateway_calls), wire.connects) == (1, 1), "nothing re-sent, by the Gateway or the host"
 
 
 @pytest.mark.parametrize(
