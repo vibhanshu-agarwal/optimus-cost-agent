@@ -348,6 +348,8 @@ def _planted(folder: Path) -> dict[str, object]:
 @pytest.mark.parametrize("started_by", ["venv_launcher", "base_interpreter"])
 @pytest.mark.parametrize("how", ["normal_exit", "abrupt_exit"])
 def test_a_planted_run_takes_its_own_processes_with_it_and_leaves_another_run_alone(tmp_path: Path, how: str, started_by: str) -> None:
+    if started_by == "base_interpreter" and getattr(sys, "_main5_guard_activated", False):
+        pytest.skip("MAIN-5 requires every Python child to start through its attempt environment")
     survivor_process, planted_process = _plant(tmp_path / "survivor", started_by), _plant(tmp_path / "planted", started_by)
     fewest = 5 if started_by == "venv_launcher" else 3
     watched: list[observer.Watched] = []
