@@ -330,7 +330,7 @@
    "basis": "Nested pytest on the synthetic targets."
   },
   "tests/unit/tools/test_run_context_lifecycle.py::_plant#1": {
-   "mechanism": "python:nested_pytest",
+   "mechanism": "indirect",
    "disposition": "nested_pytest",
    "proof": "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
    "basis": "Planted nested default pytest."
