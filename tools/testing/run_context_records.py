@@ -161,7 +161,7 @@ _FIELDS = _Table({
     "protected_roots": _count, "protection": _one_of("full", "reduced", "none"),
     "selected": _count, "deselected": _count, "collection_errors": _count,
     "streams": {"nodes": _count, "phases": _count, "samples": _count, "truncated": _flag},
-    "recording_errors": _count, "last_sample_at": _seconds,
+    "recording_errors": _count, "deferred_appends": _count, "last_sample_at": _seconds,
     "completeness": _one_of("COMPLETE", "TRUNCATED", "INVALID"),
     "members": {"ok": _flag, "complete": _flag, "error": _optional(_count), "identities": [_IDENTITY]},
 }, required=("schema", "checkpoint", "run_id", "mode", "reason", "root"))

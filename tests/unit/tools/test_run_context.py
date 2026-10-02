@@ -93,7 +93,8 @@ def test_records_hold_identifiers_only_and_are_bounded(request: pytest.FixtureRe
         "head", "declared_agent", "withheld", "platform", "root", "root_parent", "parent_run", "native",
         "guard_mode", "exit_status", "finished_utc", "accounting", "members", "accounting_baseline", "python",
         "pytest", "lock_sha256", "config_sha256", "selection_sha256", "protected_roots", "protection", "selected",
-        "deselected", "collection_errors", "streams", "recording_errors", "last_sample_at", "completeness",
+        "deselected", "collection_errors", "streams", "recording_errors", "deferred_appends", "last_sample_at",
+        "completeness",
     }
     assert sorted(set(record) - allowed) == []
     # A platform without native identity records no parent process.

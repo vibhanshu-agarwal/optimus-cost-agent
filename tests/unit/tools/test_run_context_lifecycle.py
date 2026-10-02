@@ -167,6 +167,34 @@ def test_a_stream_stops_at_its_ceiling_and_says_so(tmp_path: Path) -> None:
     assert (tmp_path / "phases.jsonl").stat().st_size == size
 
 
+def test_an_append_that_fails_outside_the_entry_is_deferred_and_written_later(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Like tests/unit/acp/test_debug_trace.py: a test patches json.dumps to raise during its own call phase."""
+    scratch = _scratch_context(tmp_path)
+
+    def broken(*_arguments: object, **_options: object) -> str:
+        raise TypeError("serialization blew up")
+
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(json, "dumps", broken)
+        run_context.record_phase(scratch, _report(when="call"))
+    assert (scratch.counts["phases"], scratch.counts["deferred_appends"], scratch.counts["recording_errors"]) == (0, 1, 0)
+    assert not (tmp_path / "phases.jsonl").exists()
+    run_context.record_phase(scratch, _report(when="teardown"))
+    entries, refused = run_context_records.read_entries(tmp_path / "phases.jsonl", "phases")
+    assert [entry["when"] for entry in entries] == ["call", "teardown"] and refused == 0
+    assert (scratch.counts["phases"], scratch.pending["phases"]) == (2, [])
+    assert run_context.completeness(scratch) == "COMPLETE"
+    # Still failing at the end of the run: the last attempt fails and the record says INVALID.
+    monkeypatch.setattr(json, "dumps", broken)
+    run_context.record_phase(scratch, _report(when="setup"))
+    assert scratch.pending["phases"] and scratch.counts["deferred_appends"] == 2
+    monkeypatch.setattr(run_context_records, "append_entries", broken)
+    run_context._append(scratch, "phases", [])  # noqa: SLF001 - the final attempt finish_run makes
+    assert scratch.pending["phases"] and run_context.completeness(scratch) == "COMPLETE"
+    scratch.counts["recording_errors"] += 1 if scratch.pending["phases"] else 0  # what finish_run then records
+    assert run_context.completeness(scratch) == "INVALID"
+
+
 def test_a_recording_failure_is_counted_and_never_raised(tmp_path: Path) -> None:
     scratch = _scratch_context(tmp_path)
     run_context.record_phase(scratch, _report(outcome="not-an-outcome"))

@@ -44,6 +44,8 @@ _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 # Frozen ceilings on one run's streams. A stream that reaches its ceiling stops and the record says so.
 MAX_STREAM_RECORDS = {"nodes": 40_000, "phases": 60_000, "samples": 5_000}
+# Entries whose append failed for a reason outside the entry itself wait here for the next append.
+MAX_PENDING_ENTRIES = 2_000
 
 
 @dataclass
@@ -68,11 +70,12 @@ class RunContext:
     facts: dict[str, object] = field(default_factory=dict)
     counts: dict[str, int] = field(default_factory=lambda: {
         "nodes": 0, "phases": 0, "samples": 0, "selected": 0, "deselected": 0, "collection_errors": 0,
-        "recording_errors": 0,
+        "recording_errors": 0, "deferred_appends": 0,
     })
     truncated: bool = False
     last_sample: float = 0.0
     ceilings: dict[str, int] = field(default_factory=lambda: dict(MAX_STREAM_RECORDS))
+    pending: dict[str, list[dict[str, object]]] = field(default_factory=lambda: {"nodes": [], "phases": [], "samples": []})
     selection: object = field(default_factory=hashlib.sha256)
 
 
@@ -313,19 +316,33 @@ def _reason(text: object) -> str:
 
 
 def _append(context: RunContext, stream: str, entries: list[dict[str, object]]) -> None:
-    """Append to a stream within its ceiling. A refused or failed append is counted, never raised."""
-    if not entries:
+    """Append to a stream within its ceiling. Nothing here raises.
+
+    An entry the table refuses is a recording error. An append that fails for a reason outside the
+    entries (a test has patched the serializer, the file is briefly locked) is deferred: the batch
+    waits, in order, for the next append of that stream, and `finish_run` makes a last attempt.
+    """
+    pending = context.pending[stream]
+    batch = [*pending, *entries]
+    pending.clear()
+    if not batch:
         return
-    if context.counts[stream] + len(entries) > context.ceilings[stream]:
+    if context.counts[stream] + len(batch) > context.ceilings[stream]:
         context.truncated = True
         return
     try:
-        records.append_entries(context.record_dir / f"{stream}.jsonl", stream, entries)
-        context.counts[stream] += len(entries)
+        records.append_entries(context.record_dir / f"{stream}.jsonl", stream, batch)
+        context.counts[stream] += len(batch)
     except records.RecordTooLarge:
         context.truncated = True
-    except (ValueError, OSError):
+    except ValueError:
         context.counts["recording_errors"] += 1
+    except Exception:  # noqa: BLE001 - the cause is outside the entries; keep them for the next attempt
+        if len(batch) > MAX_PENDING_ENTRIES:
+            context.counts["recording_errors"] += 1
+        else:
+            pending.extend(batch)
+            context.counts["deferred_appends"] += 1
 
 
 def record_collection(context: RunContext, selected: list[str], deselected: list[str]) -> None:
@@ -461,6 +478,13 @@ def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
     """
     global _current
     sample_run(context, "terminal")
+    for stream in ("nodes", "phases", "samples"):
+        if context.pending[stream]:
+            _append(context, stream, [])
+        if context.pending[stream]:
+            # Still not written after the last attempt: the record is incomplete and says so.
+            context.counts["recording_errors"] += 1
+            context.pending[stream].clear()
     final: dict[str, object] = {"exit_status": int(exit_status), "finished_utc": datetime.now(timezone.utc).isoformat()}
     if context.native.get("enrolled"):
         final["accounting"] = native.accounting()
@@ -477,7 +501,7 @@ def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
         "selection_sha256": context.selection.hexdigest(),  # type: ignore[attr-defined]
         "streams": {"nodes": counts["nodes"], "phases": counts["phases"], "samples": counts["samples"],
                     "truncated": context.truncated},
-        "recording_errors": counts["recording_errors"],
+        "recording_errors": counts["recording_errors"], "deferred_appends": counts["deferred_appends"],
         "last_sample_at": round(max(0.0, context.last_sample - context.started_monotonic), 3),
         "completeness": completeness(context),
     })
