@@ -43,8 +43,8 @@ The full correction details and source lines are in `2026-10-02-codex-plan-11-28
 | Permanent test helper and complete child-launch proofs | no | Fable | Genuinely absent, buildable now within this plan; unsafe child sites block acceptance |
 | Dedicated main-based branch/worktree and frozen runtime | yes | Fable | Approved and created at `e9d6be0`; local slice `0d6c38a`, subject to checkpoint A corrections |
 | Local commits and temporary coverage-hook omission for preparatory commits | yes | Operator | Direct approval recorded above; preserve the narrow procedure and four-run schedule |
-| Windows native API access and unchanged MAIN-5 kit/runtime | demonstrated for focused checkpoint | Fable verifies | Keep the pinned kit/runner; full final acceptance is still owed |
-| WSL2 Ubuntu and its Linux frozen environment | demonstrated for focused checkpoint | Fable verifies | Actual native-clone execution at `0d6c38a`; final candidate validation is still owed |
+| Windows native API access and unchanged MAIN-5 kit/runtime | yes | Fable verifies | Available and demonstrated in focused checkpoint work; keep the pinned kit/runner. Native boundary corrections and full final acceptance are still owed |
+| WSL2 Ubuntu and its Linux frozen environment | yes | Fable verifies | Available and executed in a native clone, including `ec02c8a`; its current receipt fails the prerequisites gate. Final candidate validation is still owed |
 | Live services, provider credentials, GUI ceremony or paid calls | yes | Operator | Not required by this default-selection scope; no new authority requested |
 
 ## Selection and handle-lifetime contract
