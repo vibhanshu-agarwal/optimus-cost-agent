@@ -29,6 +29,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _PLAN1126_UNRUN_COUNT: pytest.StashKey[int] = pytest.StashKey()
 _RUN_CONTEXT: pytest.StashKey[run_context.RunContext] = pytest.StashKey()
 _RUN_CONTEXT_FINAL: pytest.StashKey[dict[str, object]] = pytest.StashKey()
+_RUN_CONTEXT_DESELECTED: list[str] = []
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -61,6 +62,29 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         if item.nodeid in selected_set:
             item.add_marker(marker)
     config.stash[_PLAN1126_UNRUN_COUNT] = len(selected)
+
+
+def pytest_deselected(items: list[pytest.Item]) -> None:
+    _RUN_CONTEXT_DESELECTED.extend(item.nodeid for item in items)
+
+
+def pytest_collection_finish(session: pytest.Session) -> None:
+    context = session.config.stash.get(_RUN_CONTEXT, None)
+    if context is not None:
+        run_context.record_collection(context, [item.nodeid for item in session.items], list(_RUN_CONTEXT_DESELECTED))
+    _RUN_CONTEXT_DESELECTED.clear()
+
+
+def pytest_collectreport(report: pytest.CollectReport) -> None:
+    context = run_context.current()
+    if context is not None and report.failed:
+        run_context.record_collection_error(context)
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    context = run_context.current()
+    if context is not None:
+        run_context.record_phase(context, report)
 
 
 def pytest_terminal_summary(

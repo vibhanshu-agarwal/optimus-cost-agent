@@ -11,9 +11,11 @@ opens another run's job.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import secrets
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,6 +42,10 @@ APPROVED_DEFAULT_MARKER_EXPRESSION = " and ".join(f"not {name}" for name in EXCL
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
+# Frozen ceilings on one run's streams. A stream that reaches its ceiling stops and the record says so.
+MAX_STREAM_RECORDS = {"nodes": 40_000, "phases": 60_000, "samples": 5_000}
+
+
 @dataclass
 class RunContext:
     run_id: str
@@ -57,9 +63,27 @@ class RunContext:
     native: dict[str, object] = field(default_factory=dict)
     guard_mode: str = "not_installed"
     session_index: int = 1
+    started_monotonic: float = 0.0
+    started_wall: float = 0.0
+    facts: dict[str, object] = field(default_factory=dict)
+    counts: dict[str, int] = field(default_factory=lambda: {
+        "nodes": 0, "phases": 0, "samples": 0, "selected": 0, "deselected": 0, "collection_errors": 0,
+        "recording_errors": 0,
+    })
+    truncated: bool = False
+    last_sample: float = 0.0
+    ceilings: dict[str, int] = field(default_factory=lambda: dict(MAX_STREAM_RECORDS))
+    selection: object = field(default_factory=hashlib.sha256)
 
 
 _sessions_started = 0
+_current: RunContext | None = None
+SAMPLE_INTERVAL_SECONDS = 5.0
+
+
+def current() -> RunContext | None:
+    """The context of the pytest session now running in this interpreter, if any."""
+    return _current
 
 
 def _uses_repository_configuration(config: object) -> bool:
@@ -227,10 +251,179 @@ def start_run(config: object) -> RunContext:
         context.parent_run = {"status": "unsupported"}
     if mode == ACTIVE:
         context.guard_mode = guard.install()
+    context.started_monotonic, context.started_wall = time.monotonic(), time.time()
+    context.facts = _session_facts(worktree)
+    if context.native.get("enrolled") and enrolled_before:
+        # A later session in the same interpreter shares the job: its own activity is the
+        # difference between the terminal totals and this baseline.
+        context.facts["accounting_baseline"] = native.accounting()
     payload = _payload(context, checkpoint="start")
     records.write_record(context.record_dir / "run.json", payload)
     records.write_record(records.registry_root() / f"{run_id}.json", payload)
+    global _current
+    _current = context
+    if context.parent_run.get("status") not in {"parent", "same_interpreter"}:
+        records.prune_run_folders(context.record_dir.parent, run_id)
+    sample_run(context, "start")
     return context
+
+
+def _file_digest(path: Path) -> str | None:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _session_facts(worktree: Path) -> dict[str, object]:
+    import pytest
+
+    return {
+        "python": ".".join(str(part) for part in sys.version_info[:3]), "pytest": _bounded_version(pytest.__version__),
+        "lock_sha256": _file_digest(worktree / "uv.lock"), "config_sha256": _file_digest(worktree / "pyproject.toml"),
+        "protected_roots": len(guard.protected_roots()), "protection": guard.protection(),
+    }
+
+
+def _bounded_version(value: str) -> str:
+    return "".join(char for char in value if char.isalnum() or char in ".+-")[:40] or "unknown"
+
+
+def _node(nodeid: str) -> str:
+    """The exact identity of a test: a digest of its raw node ID, so two tests never collapse into one."""
+    return hashlib.sha256(nodeid.encode("utf-8")).hexdigest()
+
+
+def _label(nodeid: str) -> str | None:
+    """A bounded display label for a node ID, or None when the shared sanitizer would change the ID.
+
+    The raw ID is checked first, before any character is replaced, so replacing characters can
+    never turn text the sanitizer recognises into text it does not.
+    """
+    if not records.unchanged_by_shared_sanitizer(nodeid):
+        return None
+    label = "".join(char if records.LABEL.fullmatch(char) else "_" for char in nodeid)[:200]
+    return label if label and records.unchanged_by_shared_sanitizer(label) else None
+
+
+def _reason(text: object) -> str:
+    """A skip reason as the shared sanitizer leaves it, printable and bounded."""
+    cleaned = "".join(char if " " <= char <= "~" else " " for char in str(text))[:200]
+    return "".join(char if " " <= char <= "~" else " " for char in records.sanitized_text(cleaned))[:200]
+
+
+def _append(context: RunContext, stream: str, entries: list[dict[str, object]]) -> None:
+    """Append to a stream within its ceiling. A refused or failed append is counted, never raised."""
+    if not entries:
+        return
+    if context.counts[stream] + len(entries) > context.ceilings[stream]:
+        context.truncated = True
+        return
+    try:
+        records.append_entries(context.record_dir / f"{stream}.jsonl", stream, entries)
+        context.counts[stream] += len(entries)
+    except records.RecordTooLarge:
+        context.truncated = True
+    except (ValueError, OSError):
+        context.counts["recording_errors"] += 1
+
+
+def record_collection(context: RunContext, selected: list[str], deselected: list[str]) -> None:
+    """Keep the identity of every collected test, selected or deselected, independently of its outcome."""
+    entries = []
+    for state, nodeids in (("selected", selected), ("deselected", deselected)):
+        for nodeid in nodeids:
+            entries.append({"node": _node(nodeid), "label": _label(nodeid), "state": state})
+        context.counts[state] += len(nodeids)
+    for nodeid in sorted(selected):
+        context.selection.update(_node(nodeid).encode("ascii"))  # type: ignore[attr-defined]
+    for start in range(0, len(entries), 2000):
+        _append(context, "nodes", entries[start:start + 2000])
+
+
+def record_collection_error(context: RunContext) -> None:
+    context.counts["collection_errors"] += 1
+
+
+def record_phase(context: RunContext, report: object) -> None:
+    """Keep one test phase, then take a sample if one is due. Runs synchronously; never raises."""
+    try:
+        entry: dict[str, object] = {
+            "node": _node(str(report.nodeid)), "when": str(report.when), "outcome": str(report.outcome),  # type: ignore[attr-defined]
+            "at": round(max(0.0, float(getattr(report, "start", context.started_wall)) - context.started_wall), 3),
+            "seconds": round(max(0.0, float(getattr(report, "duration", 0.0))), 3),
+        }
+        if entry["outcome"] == "skipped":
+            longrepr = getattr(report, "longrepr", None)
+            detail = longrepr[2] if isinstance(longrepr, tuple) and len(longrepr) == 3 else getattr(report, "wasxfail", "")
+            entry["reason"] = _reason(detail)
+        _append(context, "phases", [entry])
+        if time.monotonic() - context.last_sample >= SAMPLE_INTERVAL_SECONDS:
+            sample_run(context, "phase")
+    except Exception:  # noqa: BLE001 - recording must never change a test's outcome
+        context.counts["recording_errors"] += 1
+
+
+def other_runs(run_id: str) -> tuple[list[dict[str, object]], int, bool]:
+    """Other registered runs that are running now, how many more were not listed, and whether reading failed.
+
+    On Windows each is checked through a process handle (PID, creation time and live state) and
+    then against this run's own job: `own_job` or `outside`. Nothing is inferred from a registry
+    entry alone, and no other run's job is opened. Elsewhere the relation is `unverified`.
+    """
+    try:
+        entries = records.registry_entries(run_id)
+    except OSError:
+        return [], 0, True
+    listed: list[dict[str, object]] = []
+    extra = 0
+    for entry in entries:
+        root = entry.get("root")
+        pid, created = (root.get("pid"), root.get("creation_time")) if isinstance(root, dict) else (None, None)
+        if not _whole_number(pid):
+            continue
+        if native.supported():
+            if not _whole_number(created):
+                continue
+            identity = native.process_identity(pid)
+            if identity.creation_time != created or identity.live is not True:
+                continue
+            member = native.is_member(identity)
+            relation = "own_job" if member is True else "outside" if member is False else "unverified"
+        else:
+            if not Path(f"/proc/{pid}").exists():
+                continue
+            relation = "unverified"
+        if len(listed) >= records.MAX_OTHER_RUNS:
+            extra += 1
+            continue
+        listed.append({
+            "run_id": entry["run_id"], "relation": relation, "declared_agent": entry.get("declared_agent"),
+            "worktree": entry.get("worktree"),
+        })
+    return listed, extra, False
+
+
+def sample_run(context: RunContext, checkpoint: str) -> None:
+    """One synchronous observation: this run's job totals and the other runs alive right now.
+
+    Called at the start, at test-phase boundaries when the interval has passed, and at the end.
+    There is no timer or thread, so a long phase has no sample inside it; `gap` shows that.
+    """
+    try:
+        now = time.monotonic()
+        others, extra, failed = other_runs(context.run_id)
+        entry: dict[str, object] = {
+            "at": round(now - context.started_monotonic, 3),
+            "gap": round(now - (context.last_sample or context.started_monotonic), 3),
+            "checkpoint": checkpoint, "others": others, "others_not_listed": extra, "registry_error": failed,
+        }
+        if context.native.get("enrolled"):
+            entry["accounting"] = native.accounting()
+        context.last_sample = now
+        _append(context, "samples", [entry])
+    except Exception:  # noqa: BLE001 - recording must never change a test's outcome
+        context.counts["recording_errors"] += 1
 
 
 def _payload(context: RunContext, *, checkpoint: str) -> dict[str, object]:
@@ -246,15 +439,28 @@ def _payload(context: RunContext, *, checkpoint: str) -> dict[str, object]:
         "session_index": context.session_index, "started_utc": context.started_utc, **text,
         "withheld": sorted(name for name, value in text.items() if value is None and supplied[name] is not None),
         "platform": sys.platform, "root": context.root, "parent_run": context.parent_run, "native": context.native,
-        "guard_mode": context.guard_mode,
+        "guard_mode": context.guard_mode, **context.facts,
     }
     if context.root_parent:
         payload["root_parent"] = context.root_parent
     return payload
 
 
+def completeness(context: RunContext) -> str:
+    """INVALID after any recording failure, TRUNCATED when a ceiling stopped a stream, else COMPLETE."""
+    if context.counts["recording_errors"]:
+        return "INVALID"
+    return "TRUNCATED" if context.truncated else "COMPLETE"
+
+
 def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
-    """Write the terminal record. The job handle is deliberately kept until the interpreter exits."""
+    """Write the terminal record. The job handle is deliberately kept until the interpreter exits.
+
+    A recording failure never replaces pytest's own exit status: it makes the record INVALID,
+    and the summary line says so.
+    """
+    global _current
+    sample_run(context, "terminal")
     final: dict[str, object] = {"exit_status": int(exit_status), "finished_utc": datetime.now(timezone.utc).isoformat()}
     if context.native.get("enrolled"):
         final["accounting"] = native.accounting()
@@ -265,8 +471,23 @@ def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
              "identities": [_identity(identity) for identity in identities]}
             if identities is not None else {"ok": False, "complete": False, "error": error}
         )
+    counts = context.counts
+    final.update({
+        "selected": counts["selected"], "deselected": counts["deselected"], "collection_errors": counts["collection_errors"],
+        "selection_sha256": context.selection.hexdigest(),  # type: ignore[attr-defined]
+        "streams": {"nodes": counts["nodes"], "phases": counts["phases"], "samples": counts["samples"],
+                    "truncated": context.truncated},
+        "recording_errors": counts["recording_errors"],
+        "last_sample_at": round(max(0.0, context.last_sample - context.started_monotonic), 3),
+        "completeness": completeness(context),
+    })
     payload = {**_payload(context, checkpoint="terminal"), **final}
-    records.write_record(context.record_dir / "run.json", payload)
+    try:
+        records.write_record(context.record_dir / "run.json", payload)
+    except (OSError, ValueError):
+        final["completeness"] = "INVALID"
+    records.remove_own_registry_entry(context.run_id)
+    _current = None
     return final
 
 
@@ -286,4 +507,10 @@ def summary_line(context: RunContext, final: dict[str, object] | None) -> str:
     status = context.parent_run.get("status")
     parts.append(f"parent={context.parent_run.get('run_id') if status == 'parent' else status}")
     parts.append(f"guard={context.guard_mode}")
+    if context.guard_mode == "pytest_process_guard":
+        parts.append(f"protection={context.facts.get('protection')}")
+    if final is not None:
+        streams = final.get("streams") or {}
+        parts += [f"records={final.get('completeness')}", f"phases={streams.get('phases') if isinstance(streams, dict) else 0}",
+                  f"exit={final.get('exit_status')}"]
     return " ".join(str(part) for part in parts)

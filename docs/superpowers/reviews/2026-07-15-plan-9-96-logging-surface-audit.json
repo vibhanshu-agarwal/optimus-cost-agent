@@ -3673,6 +3673,30 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.testing.run_context_records:append_entries:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "append_entries opens one of a run's three stream files for append, in the worktree's ignored tmp/test-runs folder, only after every entry passed its stream's typed field table, the batch was left unchanged by the shared sanitizer and the file would stay under its byte ceiling.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed after the typed stream table in tools.testing.run_context_records",
+      "test_node": "tests/unit/tools/test_run_context_lifecycle.py::test_a_damaged_stream_yields_only_its_whole_conforming_lines",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_context_records:append_entries:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "append_entries serializes stream entries (collected test identities, test phases, overlap samples) only after each entry passed its stream's typed field table: an unlisted field, a missing required field, a malformed digest or text with control characters refuses the whole batch. Test identities are SHA-256 digests; labels and skip reasons are bounded, and a batch that the shared sanitizer would change is refused.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed after the typed stream table in tools.testing.run_context_records",
+      "test_node": "tests/unit/tools/test_run_context_lifecycle.py::test_a_damaged_stream_yields_only_its_whole_conforming_lines",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_context_records:append_entries:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "append_entries writes that checked batch as JSON lines. Free text reaches it only as a skip reason already passed through the shared sanitizer by the producer, or as a display label that the producer withholds when the sanitizer would change the node ID.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed after the typed stream table in tools.testing.run_context_records",
+      "test_node": "tests/unit/tools/test_run_context_lifecycle.py::test_a_damaged_stream_yields_only_its_whole_conforming_lines",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.testing.run_context_records:write_record:json_serialization",
       "policy": "shared-sanitize",
       "rationale": "write_record serializes a record only after checking it against one typed field table: a field that is not listed (at any depth), a caller-supplied schema, a malformed identifier or text with control characters is refused, and so is a record that the shared sanitizer would change or that exceeds the size limit. The table has no free-text field, so a command line, environment value or exception text has nowhere to be stored. Checkout-derived text that fails these checks is withheld by the producer and named in the record.",

@@ -52,6 +52,13 @@ def protected_roots() -> tuple[str, ...]:
     return _protected_names
 
 
+def protection() -> str:
+    """`full` when all four planned folders are protected, `reduced` when one is missing, else `none`."""
+    if _mode != "pytest_process_guard":
+        return "none"
+    return "full" if len(_protected_names) == 4 else "reduced"
+
+
 def _refuse_real_adapter() -> object:
     raise RuntimeError(REAL_ADAPTER_REFUSAL)
 
