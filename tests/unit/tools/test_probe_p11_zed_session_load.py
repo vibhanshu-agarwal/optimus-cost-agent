@@ -3970,10 +3970,19 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     seam2_committed = b"from optimus.acp.harness_runtime import" in head_bootstrap
     if not seam2_committed:
         expected -= seam2_paths
+    # The P11-FU-33 batch adds exactly one module, which the probe itself imports to kill a timed-out
+    # launch's whole process tree. Keyed on whether HEAD's probe carries that import: committed
+    # predecessors keep their closure, and the batch pins one more path.
+    tree_path = "tools/process_tree.py"
+    head_probe = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "tools/probe_p11_zed_session_load.py")
+    tree_committed = b"from tools import process_tree" in head_probe
+    if not tree_committed:
+        expected -= {tree_path}
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
-    assert len(closure) == (136 if seam2_committed else 134 if seam3_committed else 133)
+    assert (tree_path in closure) is tree_committed
+    assert len(closure) == (136 if seam2_committed else 134 if seam3_committed else 133) + tree_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

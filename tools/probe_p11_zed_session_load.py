@@ -346,6 +346,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "tools/plan117_custody_contract.py",
     "tools/plan117_custody_relay.py",
     "tools/probe_p11_zed_session_load.py",
+    "tools/process_tree.py",
     "tools/verify_plan1119_zed_reprobe_evidence.py",
     "uv.lock",
 )
