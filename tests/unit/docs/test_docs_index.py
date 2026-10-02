@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 from tools.doc_paths import ARCHIVE_DIRNAME, DOCS_ROOT
@@ -27,6 +28,39 @@ GROUPING_FOLDERS = {DOCS_ROOT / name for name in ("decisions", "governance", "ru
 BUNDLE_FOLDERS = (DOCS_ROOT / "sources",)
 
 
+# Reviewer checkpoint logs are local-only by AGENTS.md and .gitignore. They are never published, so
+# they are not current documents. The rule is exact: a file directly in the reviews folder with
+# this suffix. The tests at the end keep it from hiding a published or indexed file.
+LOCAL_ONLY_FOLDER = DOCS_ROOT / "superpowers" / "reviews"
+LOCAL_ONLY_SUFFIX = "-review-checkpoints.md"
+_LOCAL_ONLY_INDEX_PREFIX = "docs/superpowers/reviews/"
+
+
+def _is_local_only(entry: Path) -> bool:
+    return entry.parent == LOCAL_ONLY_FOLDER and entry.name.endswith(LOCAL_ONLY_SUFFIX)
+
+
+def _local_only_index_names(names: list[str]) -> list[str]:
+    """The Git index names that fall under the local-only rule, exactly as the index spells them."""
+    return sorted(
+        name for name in names
+        if name.startswith(_LOCAL_ONLY_INDEX_PREFIX)
+        and "/" not in name[len(_LOCAL_ONLY_INDEX_PREFIX):]
+        and name.endswith(LOCAL_ONLY_SUFFIX)
+    )
+
+
+def _tracked_document_names() -> list[str]:
+    """Every tracked name under docs, NUL-separated from the index. Fails if the inventory fails."""
+    completed = subprocess.run(
+        ["git", "ls-files", "-z", "--", "docs"],
+        cwd=DOCS_ROOT.parent, check=True, capture_output=True, text=True, encoding="utf-8",
+    )
+    names = [name for name in completed.stdout.split("\0") if name]
+    assert names, "the tracked-document inventory came back empty"
+    return names
+
+
 def _current_documents() -> set[Path]:
     current: set[Path] = set()
     for folder in DOCUMENT_FOLDERS:
@@ -34,6 +68,8 @@ def _current_documents() -> set[Path]:
             if entry.name == ARCHIVE_DIRNAME or entry == INDEX or entry in GROUPING_FOLDERS:
                 continue
             assert entry.is_file(), f"unexpected folder at a docs folder root: {entry}"
+            if _is_local_only(entry):
+                continue
             current.add(entry.resolve())
     for folder in BUNDLE_FOLDERS:
         current.update(entry.resolve() for entry in folder.iterdir() if entry.name != ARCHIVE_DIRNAME)
@@ -66,3 +102,30 @@ def test_every_document_folder_has_an_archive() -> None:
         if folder in {DOCS_ROOT / "decisions", DOCS_ROOT / "governance"}:
             continue  # nothing has been retired from it yet
         assert (folder / ARCHIVE_DIRNAME).is_dir(), f"{folder} has no archive/ folder"
+
+
+def test_local_only_logs_are_never_tracked() -> None:
+    """The exclusion cannot hide a published document: no tracked file falls under the rule."""
+    assert _local_only_index_names(_tracked_document_names()) == []
+
+
+def test_local_only_logs_are_never_indexed() -> None:
+    """The index never links to a file that a clean clone does not have."""
+    assert sorted(path.name for path in _indexed_documents() if _is_local_only(path)) == []
+
+
+def test_the_local_only_rule_covers_one_folder_and_one_suffix() -> None:
+    name = "plan-0-0-review-checkpoints.md"
+    assert _is_local_only(LOCAL_ONLY_FOLDER / name)
+    assert not _is_local_only(LOCAL_ONLY_FOLDER / "plan-0-0-review.md")
+    assert not _is_local_only(LOCAL_ONLY_FOLDER / ARCHIVE_DIRNAME / name)
+    assert not _is_local_only(DOCS_ROOT / "superpowers" / "plans" / name)
+    # A tracked or indexed path under the rule is caught; the same name elsewhere is an ordinary
+    # document and stays under the index-completeness test above.
+    names = [
+        f"docs/superpowers/reviews/{name}",
+        f"docs/superpowers/reviews/archive/{name}",
+        f"docs/superpowers/plans/{name}",
+        "docs/superpowers/reviews/plan-0-0-review.md",
+    ]
+    assert _local_only_index_names(names) == [f"docs/superpowers/reviews/{name}"]
