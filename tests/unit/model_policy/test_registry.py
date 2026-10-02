@@ -345,6 +345,7 @@ def _receipt(**changes: str) -> str:
     fields = {
         "format": "context-summary-v1",
         "providers": "[alpha-cloud/fp8]",
+        "quantizations": "[fp8]",
         "reasoning": "high",
         "fixture_digest": f'"{SUMMARY_FIXTURE_DIGEST}"',
         "prompt_digest": f'"{SUMMARY_PROMPT_DIGEST}"',
@@ -376,12 +377,15 @@ def test_a_receipt_bound_to_every_qualification_key_makes_the_summarizer_eligibl
     [
         {"format": "context-summary-v0"},
         {"providers": "[alpha-cloud/bf16]"},
+        # Same provider, another quantization: a receipt does not carry over (CP1 checklist (g)).
+        {"quantizations": "[bf16]"},
+        {"quantizations": "[null]"},
         {"reasoning": "low"},
         {"fixture_digest": '"' + "0" * 64 + '"'},
         {"prompt_digest": '"' + "0" * 64 + '"'},
         {"validator": "context-summary-validator-v0"},
     ],
-    ids=["format", "route", "reasoning", "fixture", "prompt", "validator"],
+    ids=["format", "route", "quantization", "quantization-unrecorded", "reasoning", "fixture", "prompt", "validator"],
 )
 def test_changing_any_qualification_key_withdraws_eligibility(tmp_path: Path, changes) -> None:
     snapshot = _with_receipt(tmp_path, _receipt(**changes))

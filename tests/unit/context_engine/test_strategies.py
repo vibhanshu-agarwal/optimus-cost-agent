@@ -455,6 +455,58 @@ def test_an_appended_turn_merges_only_the_new_range_into_the_prior_summary() -> 
     assert v.checkpoint is not None and v.checkpoint.revision == grown.revision
 
 
+def test_no_summarizer_output_capacity_is_unavailable_not_an_error() -> None:
+    v = view(make_snapshot([30, 30, 30]), "compaction", params(compaction_tail_input_tokens=cost(make_snapshot([30, 30, 30]), 3)), lim=limits(maintenance_output_tokens=0))
+    assert (v.available, v.reason) == (False, "maintenance unavailable")
+
+
+def test_a_reused_summary_too_long_to_sit_beside_the_next_turn_falls_back_to_source() -> None:
+    small, grown = make_snapshot([30, 30, 30, 30]), make_snapshot([30, 30, 30, 30, 30])
+    p = params(compaction_tail_input_tokens=cost(small, 4), summary_output_tokens=400)
+
+    class Long(FakeMaintenance):
+        def __call__(self, request: MaintenanceRequest) -> MaintenanceResult:
+            self.requests.append(request)
+            return MaintenanceResult(summary_text=summary_text("L", length=400), attempt_ids=("a",), status="completed", finish_status="stop")
+
+    prior = view(small, "compaction", p, lim=limits(maintenance_output_tokens=400), maintenance=Long()).checkpoint
+    assert prior is not None and prior.covered_turn_ids == (1, 2, 3)
+    # Four whole turns fit the input; the long prior summary plus turn 4 does not.
+    lim = limits(maintenance_input_tokens=cost(grown, 1, 2, 3, 4) + 3, maintenance_output_tokens=400)
+    assert len(PRIOR_SUMMARY_HEADER) + 400 + 1 + cost(grown, 4) > lim.maintenance_input_tokens
+    maintenance = FakeMaintenance()
+    v = view(grown, "compaction", p, lim=lim, checkpoint=prior, maintenance=maintenance)
+    assert v.available, v.reason
+    [request] = maintenance.requests
+    assert request.covered_turn_ids == (1, 2, 3, 4) and prior.summary_text not in request.input_text
+    assert render_ordinary_turn(grown.turns[0]) in request.input_text
+
+
+def test_a_checkpoint_covering_more_than_the_summarized_range_is_resummarized() -> None:
+    """A larger history budget can widen the exact tail, so an earlier checkpoint may cover turns
+    that are now exact. It is not a prefix of the range and is not reused."""
+    snap = make_snapshot([30, 30, 30, 30])
+    p = params(compaction_tail_input_tokens=cost(snap, 3, 4))
+    tight = view(snap, "compaction", p, lim=limits(history=authority(snap) + cost(snap, 4) + 200))
+    assert tight.checkpoint is not None and tight.checkpoint.covered_turn_ids == (1, 2, 3)
+    maintenance = FakeMaintenance()
+    v = view(snap, "compaction", p, checkpoint=tight.checkpoint, maintenance=maintenance)
+    assert v.covered_turn_ids == (1, 2) and [r.covered_turn_ids for r in maintenance.requests] == [(1, 2)]
+    assert tight.checkpoint.summary_text not in maintenance.requests[0].input_text
+
+
+def test_a_hybrid_checkpoint_made_while_the_first_turn_was_pinned_is_resummarized_when_it_is_not() -> None:
+    snap = make_snapshot([400, 30, 30, 30])
+    p = params(anchor_input_tokens=cost(snap, 1), hybrid_tail_input_tokens=cost(snap, 4))
+    pinned = view(snap, "hybrid", p)
+    assert pinned.head_turn_ids == (1,) and pinned.checkpoint is not None and pinned.checkpoint.covered_turn_ids == (2, 3)
+    maintenance = FakeMaintenance()
+    unpinned = view(snap, "hybrid", p, lim=limits(history=authority(snap) + cost(snap, 1) - 1), checkpoint=pinned.checkpoint, maintenance=maintenance)
+    assert unpinned.available and unpinned.head_turn_ids == () and unpinned.covered_turn_ids == (1, 2, 3)
+    [request] = maintenance.requests
+    assert render_ordinary_turn(snap.turns[0]) in request.input_text and pinned.checkpoint.summary_text not in request.input_text
+
+
 def test_a_stale_or_mismatched_checkpoint_is_resummarized_from_source() -> None:
     snap = make_snapshot([30, 30, 30, 30])
     other = make_snapshot([30, 30, 30, 30], session="s-other")

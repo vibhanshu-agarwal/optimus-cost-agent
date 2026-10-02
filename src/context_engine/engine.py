@@ -132,6 +132,9 @@ class ContextEngine:
         covered = ids[head_end:start]
         summary = None
         if covered:
+            if reserve < 1:
+                # No summarizer output capacity: a summary cannot be produced (Fable CP2 review).
+                raise _Unavailable("maintenance unavailable")
             summary = self._summarize(snapshot, covered, strategy, parameters, limits, checkpoint, maintenance, cancelled, reserve)
         return PreparedView(ids[:head_end], ids[start:], summary, snapshot.protected, covered, (), True, None)
 
@@ -157,8 +160,15 @@ class ContextEngine:
                 prior = reused
 
         by_seq = {turn.seq: turn for turn in snapshot.turns}
-        remaining = [by_seq[seq] for seq in covered[len(prior.covered_turn_ids) if prior else 0 :]]
-        chunks = self._plan(remaining, prior, limits, reserve)
+        try:
+            chunks = self._plan([by_seq[seq] for seq in covered[len(prior.covered_turn_ids) if prior else 0 :]], prior, limits, reserve)
+        except _Unavailable:
+            if prior is None:
+                raise
+            # A reused summary too long to sit beside the next turn: summarize from source instead
+            # (Fable CP2 review).
+            prior = None
+            chunks = self._plan([by_seq[seq] for seq in covered], None, limits, reserve)
         if len(chunks) > parameters.max_maintenance_calls:
             raise _Unavailable("maintenance allowance exceeded")
 

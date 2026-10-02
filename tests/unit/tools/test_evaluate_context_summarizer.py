@@ -19,6 +19,7 @@ import pytest
 from context_engine.summary import PROMPT_DIGEST, SECTIONS, SUMMARY_PROMPT, VALIDATOR_VERSION
 from optimus.context.maintenance import SummarizerAttempt, SummarizerResponse
 from optimus_model_policy import load_registry
+from optimus_model_policy.registry import SummaryReceipt
 from tools.evaluate_context_summarizer import (
     FIXTURE_PATH,
     Candidate,
@@ -145,6 +146,98 @@ def test_each_negative_control_fails_on_its_own_check(text, finish, expected) ->
     assert failing(rep) == expected
 
 
+@pytest.mark.parametrize(
+    "fact, old, new",
+    [
+        ("decimal", "Use Decimal for every amount. ", ""),  # the task line still says "decimal currency calculator"
+        ("public-api", "Keep the public API calculate(a, op, b). ", "The result is calculated. "),
+        ("no-eval", "Never use eval or exec. ", "Parse with evaluate() helpers. "),
+        ("no-network", "Make no network calls. ", ""),
+        ("negative-inputs", "Support negative inputs. ", ""),
+        ("half-even-current", "Rounding is now ROUND_HALF_EVEN to 2 places: ", "Rounding to 2 places: "),
+        ("example-2.345", "2.345 -> 2.34 and ", ""),
+        ("example-2.355", " and 2.355 -> 2.36", ""),
+    ],
+)
+def test_omitting_any_single_fact_fails_exactly_that_fact(fact, old, new) -> None:
+    """Bounded patterns, not bare words: a stray 'decimal', 'evaluate' or 'calculated' does not
+    count as stating the constraint (Fable CP2 review)."""
+    assert old in FINAL
+    assert failing(report(FINAL.replace(old, new))) == {fact}
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [
+        ("The plan was not approved.", "The plan wasn't approved."),
+        ("The plan was not approved.", "No approval was granted."),
+        (
+            "Rounding is now ROUND_HALF_EVEN to 2 places: 2.345 -> 2.34 and 2.355 -> 2.36. ROUND_HALF_UP was superseded by that correction.",
+            "Rounding is ROUND_HALF_EVEN (was ROUND_HALF_UP) to 2 places: 2.345 -> 2.34 and 2.355 -> 2.36.",
+        ),
+        (
+            "Rounding is now ROUND_HALF_EVEN to 2 places: 2.345 -> 2.34 and 2.355 -> 2.36. ROUND_HALF_UP was superseded by that correction.",
+            "Rounding: ROUND_HALF_UP; now ROUND_HALF_EVEN to 2 places: 2.345 -> 2.34 and 2.355 -> 2.36.",
+        ),
+        (
+            "Rounding is now ROUND_HALF_EVEN to 2 places: 2.345 -> 2.34 and 2.355 -> 2.36. ROUND_HALF_UP was superseded by that correction.",
+            "Rounding changed from ROUND_HALF_UP to ROUND_HALF_EVEN: 2.345 -> 2.34 and 2.355 -> 2.36.",
+        ),
+        (
+            "Rounding is now ROUND_HALF_EVEN to 2 places: 2.345 -> 2.34 and 2.355 -> 2.36. ROUND_HALF_UP was superseded by that correction.",
+            "Rounding: ROUND_HALF_UP -> ROUND_HALF_EVEN to 2 places: 2.34 for 2.345 and 2.36 for 2.355.",
+        ),
+        ("Use Decimal for every amount.", "Amounts are Decimal, not floating-point."),
+        ("Never use eval or exec. Make no network calls.", "Don't use eval or exec. Don't make network calls."),
+        ("Never use eval or exec. Make no network calls.", "eval and exec are forbidden. Network access is prohibited."),
+        ("Support negative inputs.", "Negatives are supported."),
+    ],
+    ids=[
+        "contraction",
+        "no-approval",
+        "parenthetical-was",
+        "semicolon-now",
+        "changed-from",
+        "arrow-and-reversed-examples",
+        "decimal-not-float",
+        "dont",
+        "rule-then-ban",
+        "negatives",
+    ],
+)
+def test_careful_phrasings_are_not_false_failures(old, new) -> None:
+    """A good summary must not fail on wording: a false failure would burn the no-rerun envelope."""
+    assert old in FINAL
+    rep = report(FINAL.replace(old, new))
+    assert rep.passed, failing(rep)
+
+
+@pytest.mark.parametrize(
+    "old, new, fact",
+    [
+        # "now" excuses the old rule only as "ROUND_HALF_UP; now ...", never as "ROUND_HALF_UP now applies".
+        ("ROUND_HALF_UP was superseded by that correction.", "ROUND_HALF_UP now applies to totals.", "half-up-superseded"),
+        # A negation in a neighbouring clause does not state the eval rule.
+        ("Never use eval or exec. Make no network calls.", "Make no network calls; eval is used for parsing.", "no-eval"),
+        ("Never use eval or exec. Make no network calls.", "Never use exec; network calls are fine. Avoid eval.", "no-network"),
+    ],
+    ids=["now-applies", "negation-next-clause-eval", "negation-next-clause-network"],
+)
+def test_wording_near_a_fact_does_not_state_it(old, new, fact) -> None:
+    assert old in FINAL
+    assert failing(report(FINAL.replace(old, new))) == {fact}
+
+
+@pytest.mark.parametrize("key, seq", [("correction_turn", 8), ("constraints_turn", 6)])
+def test_constraints_outside_step_one_or_a_correction_outside_step_two_is_refused(tmp_path: Path, key, seq) -> None:
+    raw = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+    raw["evaluation"][key] = seq
+    path = tmp_path / "moved.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    with pytest.raises(ValueError, match="constraints must lie in step 1 and the correction in step 2"):
+        load_fixture(path)
+
+
 def test_a_marker_elsewhere_on_the_line_cannot_excuse_a_stale_rule() -> None:
     stale = FINAL.replace("ROUND_HALF_UP was superseded by that correction.", "Round with ROUND_HALF_UP. Previous logging was verbose.")
     assert failing(report(stale)) == {"half-up-superseded"}
@@ -158,7 +251,7 @@ def test_the_report_serializes_every_check() -> None:
 # --- The two-step run -------------------------------------------------------------------------------------
 
 
-CANDIDATE = Candidate("qwen/qwen3.7-flash", ("alibaba",), None, Decimal("0.03"), Decimal("0.13"))
+CANDIDATE = Candidate("qwen/qwen3.7-flash", ("alibaba",), ("fp8",), None, Decimal("0.03"), Decimal("0.13"))
 
 
 class FakeSummarizer:
@@ -181,6 +274,7 @@ def test_a_passing_two_step_run_yields_a_receipt_bound_to_every_key() -> None:
         "model_id": "qwen/qwen3.7-flash",
         "format": "context-summary-v1",
         "providers": ["alibaba"],
+        "quantizations": ["fp8"],
         "reasoning": None,
         "fixture_digest": FIXTURE.digest,
         "prompt_digest": PROMPT_DIGEST,
@@ -190,6 +284,13 @@ def test_a_passing_two_step_run_yields_a_receipt_bound_to_every_key() -> None:
         "result": "pass",
     }
     assert result.reported_cost_usd == Decimal("0.0002")
+    # The receipt is exactly what the registry accepts, so a recorded pass needs no hand editing.
+    stored = SummaryReceipt.model_validate({key: value for key, value in result.receipt.items() if key != "model_id"})
+    assert (stored.providers, stored.quantizations) == (("alibaba",), ("fp8",))
+    assert [(r.attempt_id, r.outcome, r.covered_turn_ids, r.identity.model_id) for r in result.attempts] == [
+        ("gw-1", "completed", FIXTURE.step1, "qwen/qwen3.7-flash"),
+        ("gw-2", "completed", FIXTURE.step1 + FIXTURE.step2, "qwen/qwen3.7-flash"),
+    ]
 
 
 def test_step_two_merges_the_step_one_summary_with_only_the_newer_turns() -> None:
@@ -205,6 +306,18 @@ def test_a_failed_first_step_ends_the_run_without_a_retry_or_receipt() -> None:
     fake = FakeSummarizer(STEP1.replace("Never use eval or exec. ", ""), FINAL)
     result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"), recorded_on="2026-10-02")
     assert (result.passed, result.calls, result.final, result.receipt) == (False, 1, None, None)
+
+
+def test_text_from_a_response_without_a_completed_attempt_cannot_qualify() -> None:
+    """The run goes through the runtime's HostMaintenance, so an uncertain-only response yields no
+    usable text, exactly as at runtime (Fable CP2 review)."""
+
+    def uncertain(*, prompt: str, max_output_tokens: int) -> SummarizerResponse:
+        return SummarizerResponse(text=STEP1, finish_status="stop", attempts=(SummarizerAttempt("gw-1", "req-1", "uncertain", None),))
+
+    result = run_qualification(FIXTURE, CANDIDATE, uncertain, dollar_cap=Decimal("1"), recorded_on="2026-10-02")
+    assert (result.passed, result.calls, result.receipt, result.request_ids) == (False, 1, None, ("req-1",))
+    assert "format" in failing(result.step1)
 
 
 def test_a_failed_final_step_records_no_receipt() -> None:
@@ -264,6 +377,8 @@ def test_the_envelope_states_every_bound_before_any_call() -> None:
         assert (row["requests"], row["max_provider_attempts_per_request"], row["max_output_tokens"]) == (2, 2, 1200)
         assert Decimal(row["upper_cost_usd"]) > 0
         assert row["prompt_digest"] == PROMPT_DIGEST and row["fixture_digest"] == FIXTURE.digest
+        assert row["receipt_fields"] == ["model_id", *SummaryReceipt.model_fields]
+        assert len(row["quantizations"]) == len(row["providers"])
         # Unverified routes are not structurally eligible yet; CP4 verifies them before any call.
         assert row["structurally_eligible"] is False and row["blockers"]
 

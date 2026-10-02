@@ -83,6 +83,51 @@ def test_a_completed_call_returns_sanitized_text_and_records_its_receipt() -> No
     assert receipt.identity == IDENTITY and receipt.covered_turn_ids == (1, 2)
 
 
+def test_a_receipt_keeps_what_the_ledger_cannot_hold_for_an_unfinished_attempt() -> None:
+    """Time, provider request ID and HTTP status survive for attempts that never completed, which the
+    usage ledger refuses because their cost is unknown (Fable CP2 review; Task 11 consumes them)."""
+    from datetime import UTC, datetime
+
+    at = datetime(2026, 10, 2, 21, 0, tzinfo=UTC)
+    attempts = (SummarizerAttempt("gw-1", "req-1", "uncertain", None, provider_request_id="gen-9", http_status=502),)
+    receipts: list[MaintenanceReceipt] = []
+    callback = HostMaintenance(
+        call=FakeCall(SummarizerResponse(text=None, finish_status=None, attempts=attempts)),
+        sanitizer=SANITIZER,
+        identity=IDENTITY,
+        record_receipt=receipts.append,
+        cancelled=lambda: False,
+        clock=lambda: at,
+    )
+    callback(_request())
+    [receipt] = receipts
+    assert (receipt.recorded_at, receipt.provider_request_id, receipt.http_status, receipt.cost_usd) == (at, "gen-9", 502, None)
+
+
+def test_bounds_apply_after_sanitizing_so_a_lengthened_summary_is_refused() -> None:
+    """Redaction can lengthen text; the engine bounds the sanitized text the host returns."""
+    secret = "zq7Xk2Pw"  # pragma: allowlist secret - synthetic test fixture
+    sanitizer = ConversationSanitizer(ConversationSanitizerInputs(known_secrets=(secret,), path_aliases=()))
+    text = valid_summary(f"key {secret}")
+    assert len(sanitizer.sanitize(text)) > len(text), "precondition: redaction lengthens this text"
+    receipts: list[MaintenanceReceipt] = []
+    callback = HostMaintenance(call=FakeCall(ok(text)), sanitizer=sanitizer, identity=IDENTITY, record_receipt=receipts.append, cancelled=lambda: False)
+    records = {seq: ConversationTurn(f"request {seq} " + "x" * 60, "", f"reply {seq}", ConversationOutcome.COMPLETED, EffectState.NONE) for seq in range(1, 4)}
+    snapshot = make_history_snapshot(session_key="s", generation=3, records=records, approvals={}, sanitizer=SANITIZER)
+    tail = len('{"seq":3,"user_prompt":"","plan_text":"","completion_text":""}') + len(records[3].user_prompt) + len(records[3].completion_text)
+    view = ContextEngine().prepare_view(
+        snapshot,
+        strategy="compaction",
+        parameters=StrategyParameters(0, tail, 0, len(text), 2, PROMPT_VERSION, SUMMARY_FORMAT),
+        limits=ViewLimits(100_000, 10_000_000, 10_000_000, 100_000, len(text), len, "chars-v1"),
+        checkpoint=None,
+        maintenance=callback,
+        cancelled=lambda: False,
+    )
+    assert (view.available, view.reason) == (False, "summary exceeds bound")
+    assert len(receipts) == 1, "the call still cost what it cost"
+
+
 def test_every_attempt_is_recorded_even_when_the_result_fails() -> None:
     attempts = (SummarizerAttempt("gw-1", None, "not_sent", None), SummarizerAttempt("gw-2", "req-2", "uncertain", None))
     callback, receipts = host(FakeCall(SummarizerResponse(text=None, finish_status=None, attempts=attempts)))

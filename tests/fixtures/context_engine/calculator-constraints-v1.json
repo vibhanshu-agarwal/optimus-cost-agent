@@ -82,31 +82,37 @@
     "step1_turns": [1, 2, 3, 4, 5],
     "step2_turns": [6, 7],
     "exact_tail_turns": [8, 9],
+    "constraints_turn": 1,
+    "correction_turn": 7,
     "max_output_tokens": 1200
   },
   "step1_facts": [
-    {"id": "decimal", "all": ["decimal"]},
-    {"id": "public-api", "all": ["calculate"]},
-    {"id": "no-eval", "all": ["eval"]},
-    {"id": "no-network", "all": ["network"]},
-    {"id": "negative-inputs", "all": ["negative"]},
-    {"id": "half-up-current", "all": ["round_half_up"]}
+    {"id": "decimal", "pattern": "\\b(?:use|uses|using) decimal\\b|\\bdecimal\\.decimal\\b|\\bdecimal for (?:every|all|each) amounts?\\b|\\b(?:as|be|are|is) decimals?\\b|\\bdecimal[- ]only\\b|(?:\\b(?:never|no|not|without|avoid\\w*|forbid\\w*|prohibit\\w*)\\b|n't\\b)[^.;\\n]{0,15}\\bfloat(?:s|ing[- ]point)?\\b"},
+    {"id": "public-api", "pattern": "\\bcalculate\\(\\s*a\\s*,\\s*op\\s*,\\s*b\\s*\\)|\\bpublic (?:api|interface)\\b[^.;\\n]{0,40}\\bcalculate\\b"},
+    {"id": "no-eval", "pattern": "(?:\\b(?:never|no|not|without|avoid\\w*|forbid\\w*|prohibit\\w*|ban|bans|banned)\\b|n't\\b)[^.;\\n]{0,25}\\beval\\b|\\beval\\b[^.;\\n]{0,25}\\b(?:forbidden|prohibited|banned|disallowed|not allowed|never)\\b"},
+    {"id": "no-network", "pattern": "(?:\\b(?:never|no|not|without|avoid\\w*|forbid\\w*|prohibit\\w*|ban|bans|banned)\\b|n't\\b)[^.;\\n]{0,25}\\bnetwork\\b|\\bnetwork\\b[^.;\\n]{0,25}\\b(?:forbidden|prohibited|banned|disallowed|not allowed|never)\\b"},
+    {"id": "negative-inputs", "pattern": "\\bnegative (?:inputs?|numbers?|values?|amounts?|operands?)\\b|\\bnegatives\\b"},
+    {"id": "half-up-current", "pattern": "\\bround_half_up\\b"}
   ],
   "final_facts": [
-    {"id": "decimal", "all": ["decimal"]},
-    {"id": "public-api", "all": ["calculate"]},
-    {"id": "no-eval", "all": ["eval"]},
-    {"id": "no-network", "all": ["network"]},
-    {"id": "negative-inputs", "all": ["negative"]},
-    {"id": "half-even-current", "current": "round_half_even"},
+    {"id": "decimal", "pattern": "\\b(?:use|uses|using) decimal\\b|\\bdecimal\\.decimal\\b|\\bdecimal for (?:every|all|each) amounts?\\b|\\b(?:as|be|are|is) decimals?\\b|\\bdecimal[- ]only\\b|(?:\\b(?:never|no|not|without|avoid\\w*|forbid\\w*|prohibit\\w*)\\b|n't\\b)[^.;\\n]{0,15}\\bfloat(?:s|ing[- ]point)?\\b"},
+    {"id": "public-api", "pattern": "\\bcalculate\\(\\s*a\\s*,\\s*op\\s*,\\s*b\\s*\\)|\\bpublic (?:api|interface)\\b[^.;\\n]{0,40}\\bcalculate\\b"},
+    {"id": "no-eval", "pattern": "(?:\\b(?:never|no|not|without|avoid\\w*|forbid\\w*|prohibit\\w*|ban|bans|banned)\\b|n't\\b)[^.;\\n]{0,25}\\beval\\b|\\beval\\b[^.;\\n]{0,25}\\b(?:forbidden|prohibited|banned|disallowed|not allowed|never)\\b"},
+    {"id": "no-network", "pattern": "(?:\\b(?:never|no|not|without|avoid\\w*|forbid\\w*|prohibit\\w*|ban|bans|banned)\\b|n't\\b)[^.;\\n]{0,25}\\bnetwork\\b|\\bnetwork\\b[^.;\\n]{0,25}\\b(?:forbidden|prohibited|banned|disallowed|not allowed|never)\\b"},
+    {"id": "negative-inputs", "pattern": "\\bnegative (?:inputs?|numbers?|values?|amounts?|operands?)\\b|\\bnegatives\\b"},
+    {"id": "half-even-current", "pattern": "\\bround_half_even\\b"},
     {"id": "half-up-superseded", "superseded": "round_half_up"},
-    {"id": "example-2.345", "all": ["2.345", "2.34"]},
-    {"id": "example-2.355", "all": ["2.355", "2.36"]}
+    {"id": "example-2.345", "pattern": "\\b2\\.345\\b[^\\d\\n]{0,20}\\b2\\.34\\b|\\b2\\.34\\b[^\\d\\n]{0,20}\\b2\\.345\\b"},
+    {"id": "example-2.355", "pattern": "\\b2\\.355\\b[^\\d\\n]{0,20}\\b2\\.36\\b|\\b2\\.36\\b[^\\d\\n]{0,20}\\b2\\.355\\b"}
   ],
-  "supersession_markers": ["supersed", "replac", "no longer", "instead of", "previous", "earlier", "initial", "originally", "changed"],
+  "supersession_markers": [
+    "supersed", "replac", "\\bno longer\\b", "\\binstead of\\b", "\\bprevious", "\\bearlier\\b", "\\binitial", "\\boriginal",
+    "\\bchanged\\b", "\\bformerly\\b", "\\bold\\b", "\\bwas round_half_up\\b", "\\bfrom round_half_up\\b",
+    "\\bround_half_up\\s*[;,]\\s*now\\b", "\\bround_half_up\\s*(?:->|=>|→)\\s*round_half_even\\b"
+  ],
   "forbidden": [
     {"id": "no-invented-deletion", "pattern": "\\btests?(?: (?:directory|files?|folder|suite))? (?:were|was|have been|has been|got) (?:deleted|removed)\\b"},
-    {"id": "no-invented-approval", "pattern": "(?<!not )(?<!never )(?<!un)\\b(?:approved|granted)\\b"},
+    {"id": "no-invented-approval", "pattern": "\\b(?:approved|granted)\\b", "unless": "\\b(?:not|never|no|denied|rejected|refused|declined|without)\\b|n't\\b|\\bunapproved\\b"},
     {"id": "no-reversed-correction", "pattern": "(?:superseded|replaced) by round_half_up|round_half_even[^.\\n]{0,40}\\b(?:is|was|has been) (?:superseded|replaced)"}
   ]
 }

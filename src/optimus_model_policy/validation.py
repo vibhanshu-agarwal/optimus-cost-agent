@@ -122,6 +122,7 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
     if role is Role.SUMMARIZER and not any(
         receipt.format == SUMMARY_FORMAT
         and receipt.providers == entry.route.providers
+        and receipt.quantizations == entry.route.quantizations
         and receipt.reasoning == entry.default_reasoning
         and receipt.fixture_digest == SUMMARY_FIXTURE_DIGEST
         and receipt.prompt_digest == SUMMARY_PROMPT_DIGEST

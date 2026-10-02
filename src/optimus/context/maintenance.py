@@ -12,14 +12,17 @@ synchronous and runs off the ACP event loop. This host side:
 - never sends host authority: the engine's maintenance input carries only ordinary history.
 
 The injected call reports provider failures as attempts. An exception it raises is a defect and
-propagates, rather than silently losing attempts. Settling receipts into turn totals and alerts is
-Task 11's projection over the existing ledger.
+propagates, rather than silently losing attempts. Task 9's Gateway adapter must therefore turn any
+exception after dispatch into an `uncertain` attempt carrying what it knows. A receipt keeps what the
+ledger cannot hold for an attempt that never completed: its time, provider request ID and HTTP status.
+Settling receipts into turn totals and alerts is Task 11's projection over the existing ledger.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Protocol
 
@@ -38,6 +41,8 @@ class SummarizerAttempt:
     gateway_request_id: str | None
     outcome: str
     cost_usd: Decimal | None
+    provider_request_id: str | None = None
+    http_status: int | None = None
 
     def __post_init__(self) -> None:
         if not self.attempt_id or self.outcome not in ATTEMPT_OUTCOMES:
@@ -86,6 +91,13 @@ class MaintenanceReceipt:
     cost_usd: Decimal | None
     finish_status: str | None
     covered_turn_ids: tuple[int, ...]
+    recorded_at: datetime
+    provider_request_id: str | None
+    http_status: int | None
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 class HostMaintenance:
@@ -99,12 +111,14 @@ class HostMaintenance:
         identity: MaintenanceIdentity,
         record_receipt: Callable[[MaintenanceReceipt], None],
         cancelled: Callable[[], bool],
+        clock: Callable[[], datetime] = _utc_now,
     ) -> None:
         self._call = call
         self._sanitizer = sanitizer
         self._identity = identity
         self._record = record_receipt
         self._cancelled = cancelled
+        self._clock = clock
 
     def __call__(self, request: MaintenanceRequest) -> MaintenanceResult:
         if request.prompt_version != PROMPT_VERSION or request.format_version != SUMMARY_FORMAT:
@@ -123,6 +137,9 @@ class HostMaintenance:
                     cost_usd=attempt.cost_usd,
                     finish_status=response.finish_status if attempt.outcome == "completed" else None,
                     covered_turn_ids=request.covered_turn_ids,
+                    recorded_at=self._clock(),
+                    provider_request_id=attempt.provider_request_id,
+                    http_status=attempt.http_status,
                 )
             )
         attempt_ids = tuple(attempt.attempt_id for attempt in response.attempts)

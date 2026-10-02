@@ -67,7 +67,7 @@ SUMMARY_FORMAT = "context-summary-v1"
 # validator version and the fixture's canonical digest.
 SUMMARY_PROMPT_DIGEST = "6d1b4e77d77f1a7331932633dbc39ae4f1c3bf5c4a79acf8aed9873b410902db"  # pragma: allowlist secret - public prompt digest
 SUMMARY_VALIDATOR = "context-summary-validator-v1"
-SUMMARY_FIXTURE_DIGEST = "696203ab47ab68e474abbe9d28c31cb9fb32137764841236532f4ba243aeb271"  # pragma: allowlist secret - public fixture digest
+SUMMARY_FIXTURE_DIGEST = "35f9e953a7fa818a419746e217251e49ba779082c020062acd34c18d2d899c81"  # pragma: allowlist secret - public fixture digest
 
 
 class RegistryError(Exception):
@@ -268,16 +268,21 @@ class Route(BaseModel):
     def providers(self) -> tuple[str, ...]:
         return tuple(endpoint.provider for endpoint in self.endpoints)
 
+    @property
+    def quantizations(self) -> tuple[str | None, ...]:
+        return tuple(endpoint.quantization for endpoint in self.endpoints)
+
 
 class SummaryReceipt(BaseModel):
     """A reviewed passing summary-quality check for one route and setting (Plan 12.2 Task 8). It
-    binds the format, route, reasoning, fixture, prompt and validator; request IDs and date record
-    the run."""
+    binds the format, route (each endpoint's provider and quantization), reasoning, fixture, prompt
+    and validator; request IDs and date record the run."""
 
     model_config = _FROZEN
 
     format: str
     providers: tuple[str, ...]
+    quantizations: tuple[str | None, ...]
     reasoning: str | None
     fixture_digest: str
     prompt_digest: str

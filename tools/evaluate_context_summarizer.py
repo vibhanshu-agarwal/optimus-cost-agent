@@ -34,17 +34,28 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
-from context_engine import OrdinaryTurn
+from context_engine import MaintenanceRequest, OrdinaryTurn
 from context_engine.engine import maintenance_input
-from context_engine.summary import PROMPT_DIGEST, SUMMARY_FORMAT, VALIDATOR_VERSION, SummaryFormatError, build_summary_prompt, parse_summary
-from optimus.context.maintenance import SummarizerCall, SummarizerResponse
+from context_engine.summary import (
+    PROMPT_DIGEST,
+    PROMPT_VERSION,
+    SUMMARY_FORMAT,
+    VALIDATOR_VERSION,
+    SummaryFormatError,
+    build_summary_prompt,
+    parse_summary,
+)
+from optimus.acp.conversation import ConversationSanitizer, ConversationSanitizerInputs
+from optimus.context.maintenance import HostMaintenance, MaintenanceIdentity, MaintenanceReceipt, SummarizerCall, SummarizerResponse
 from optimus_model_policy import RegistrySnapshot, Role, load_registry, ordered_assignments, validate_registry
 from optimus_model_policy.binding import MAX_ROUTE_ATTEMPTS
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "context_engine" / "calculator-constraints-v1.json"
 MAX_FIXTURE_CALLS = 2
 _MILLION = Decimal(1_000_000)
-_SENTENCE = re.compile(r"(?<=[.;!?])\s+|\n")
+# Sentences end at . ! or ? followed by whitespace, or at a newline. A decimal point is not an end;
+# a semicolon joins clauses that belong together ("ROUND_HALF_UP; now ROUND_HALF_EVEN").
+_SENTENCE = re.compile(r"(?<=[.!?])\s+|\n")
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,8 +88,8 @@ def load_fixture(path: Path = FIXTURE_PATH) -> Fixture:
     ordered = tuple(sorted(turns))
     if step1 + step2 + tail != ordered:
         raise ValueError("the fixture's steps and tail must partition its turns in order")
-    if 1 not in step1 or not step2:
-        raise ValueError("the early constraints and the correction must both lie inside summarized ranges")
+    if ev["constraints_turn"] not in step1 or ev["correction_turn"] not in step2:
+        raise ValueError("the early constraints must lie in step 1 and the correction in step 2, both summarized")
     return Fixture(
         name=raw["fixture"],
         digest=fixture_digest(raw),
@@ -131,28 +142,32 @@ def evaluate_summary(
         return FactReport(tuple([*checks, FactCheck("format", False, str(exc))]))
     checks.append(FactCheck("format", True, SUMMARY_FORMAT))
     lower = (text or "").lower()
-    # Sentences, so a supersession marker elsewhere on a line cannot excuse a stale rule. A decimal
-    # point is not a sentence end: splitting needs whitespace after the punctuation.
+    # Sentences, so a marker or negation elsewhere on a line cannot excuse a stale rule or a claim.
     sentences = [part for part in _SENTENCE.split(lower) if part.strip()]
     for fact in facts:
-        if "all" in fact:
-            missing = [needle for needle in fact["all"] if needle not in lower]
-            checks.append(FactCheck(fact["id"], not missing, f"missing {missing}" if missing else "present"))
-        elif "current" in fact:
-            rule = fact["current"]
-            checks.append(FactCheck(fact["id"], rule in lower, "stated" if rule in lower else f"{rule} not stated"))
+        if "pattern" in fact:
+            # Bounded patterns that state the constraint itself: a bare word ("a decimal currency
+            # calculator", "evaluate", "calculated") does not count (Fable CP2 review).
+            found = re.search(fact["pattern"], lower)
+            checks.append(FactCheck(fact["id"], found is not None, f"stated: {found.group(0)!r}" if found else "not stated"))
         elif "superseded" in fact:
             rule = fact["superseded"]
             mentions = [sentence for sentence in sentences if rule in sentence]
-            stale = [sentence for sentence in mentions if not any(marker in sentence for marker in markers)]
+            stale = [sentence for sentence in mentions if not any(re.search(marker, sentence) for marker in markers)]
             passed = bool(mentions) and not stale
             detail = "stated as superseded" if passed else ("not mentioned" if not mentions else f"stated as current: {stale[0]!r}")
             checks.append(FactCheck(fact["id"], passed, detail))
         else:
             raise ValueError(f"unknown fact kind: {fact}")
     for rule in forbidden:
-        found = re.search(rule["pattern"], lower)
-        checks.append(FactCheck(rule["id"], found is None, f"found {found.group(0)!r}" if found else "absent"))
+        # A claim in a sentence that also negates it ("was not approved", "wasn't approved", "no
+        # approval was granted") is not the claim.
+        hits = [
+            sentence
+            for sentence in sentences
+            if re.search(rule["pattern"], sentence) and not ("unless" in rule and re.search(rule["unless"], sentence))
+        ]
+        checks.append(FactCheck(rule["id"], not hits, f"found in {hits[0]!r}" if hits else "absent"))
     return FactReport(tuple(checks))
 
 
@@ -163,6 +178,7 @@ def evaluate_summary(
 class Candidate:
     model_id: str
     providers: tuple[str, ...]
+    quantizations: tuple[str | None, ...]
     reasoning: str | None
     input_usd_per_million: Decimal
     output_usd_per_million: Decimal
@@ -172,12 +188,17 @@ class CapRefused(Exception):
     """A call whose upper cost bound would pass the authorized dollar cap is never made."""
 
 
-def request_upper_bound_usd(input_text: str, max_output_tokens: int, candidate: Candidate) -> Decimal:
-    """An upper bound for one request: input tokens bounded by UTF-8 bytes (no route estimator is
-    verified yet), the full output cap, and every provider attempt the route allows."""
-    prompt_tokens = len(build_summary_prompt(input_text).encode("utf-8"))
+def _prompt_upper_bound_usd(prompt: str, max_output_tokens: int, candidate: Candidate) -> Decimal:
+    prompt_tokens = len(prompt.encode("utf-8"))
     per_attempt = (prompt_tokens * candidate.input_usd_per_million + max_output_tokens * candidate.output_usd_per_million) / _MILLION
     return per_attempt * MAX_ROUTE_ATTEMPTS
+
+
+def request_upper_bound_usd(input_text: str, max_output_tokens: int, candidate: Candidate) -> Decimal:
+    """An upper bound for one request: input tokens bounded by UTF-8 bytes (no route estimator is
+    verified yet), the full output cap, and every provider attempt the route allows. It assumes the
+    output cap also bounds any reasoning tokens; CP4 confirms that per route."""
+    return _prompt_upper_bound_usd(build_summary_prompt(input_text), max_output_tokens, candidate)
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +210,8 @@ class QualificationResult:
     request_ids: tuple[str, ...]
     reported_cost_usd: Decimal | None
     receipt: dict[str, Any] | None
+    # One receipt per provider attempt, from the runtime's callback: the evidence a paid run keeps.
+    attempts: tuple[MaintenanceReceipt, ...] = ()
 
     @property
     def passed(self) -> bool:
@@ -199,39 +222,69 @@ def run_qualification(
     fixture: Fixture, candidate: Candidate, summarize: SummarizerCall, *, dollar_cap: Decimal, recorded_on: str
 ) -> QualificationResult:
     turns = fixture.turns
-    responses: list[SummarizerResponse] = []
+    calls = 0
     authorized = Decimal(0)
+    receipts: list[MaintenanceReceipt] = []
 
-    def call(input_text: str) -> SummarizerResponse:
-        nonlocal authorized
-        if len(responses) >= MAX_FIXTURE_CALLS:
+    def capped(*, prompt: str, max_output_tokens: int) -> SummarizerResponse:
+        """The candidate call, made only within the call and dollar caps."""
+        nonlocal authorized, calls
+        if calls >= MAX_FIXTURE_CALLS:
             raise CapRefused("the fixture allows two calls per candidate")
-        bound = request_upper_bound_usd(input_text, fixture.max_output_tokens, candidate)
+        bound = _prompt_upper_bound_usd(prompt, max_output_tokens, candidate)
         if authorized + bound > dollar_cap:
             raise CapRefused(f"upper bound {authorized + bound} USD exceeds the cap {dollar_cap} USD")
         authorized += bound
-        response = summarize(prompt=build_summary_prompt(input_text), max_output_tokens=fixture.max_output_tokens)
-        responses.append(response)
-        return response
+        calls += 1
+        return summarize(prompt=prompt, max_output_tokens=max_output_tokens)
 
-    first = call(maintenance_input(None, [turns[seq] for seq in fixture.step1]))
-    step1 = evaluate_summary(first.text, first.finish_status, fixture.step1_facts, markers=fixture.markers, forbidden=fixture.forbidden)
+    # The runtime's own callback: completed-attempt rule, re-sanitizing and a receipt per attempt
+    # (Fable CP2 review). The fixture is synthetic, so there are no secrets to supply.
+    host = HostMaintenance(
+        call=capped,
+        sanitizer=ConversationSanitizer(ConversationSanitizerInputs(known_secrets=(), path_aliases=())),
+        identity=MaintenanceIdentity(
+            session_id=f"qualification:{fixture.name}",
+            turn_seq=0,
+            model_id=candidate.model_id,
+            route=candidate.providers,
+            reasoning=candidate.reasoning,
+            strategy="compaction",
+            revision_digest=fixture.digest,
+        ),
+        record_receipt=receipts.append,
+        cancelled=lambda: False,
+    )
+
+    def step(input_text: str, covered: tuple[int, ...]):
+        return host(
+            MaintenanceRequest(
+                input_text=input_text,
+                covered_turn_ids=covered,
+                max_output_tokens=fixture.max_output_tokens,
+                prompt_version=PROMPT_VERSION,
+                format_version=SUMMARY_FORMAT,
+            )
+        )
+
+    first = step(maintenance_input(None, [turns[seq] for seq in fixture.step1]), fixture.step1)
+    step1 = evaluate_summary(first.summary_text, first.finish_status, fixture.step1_facts, markers=fixture.markers, forbidden=fixture.forbidden)
     final = None
     if step1.passed:
         # Merge the step 1 summary with the newer turns, as the runtime's incremental path does.
-        second = call(maintenance_input(first.text, [turns[seq] for seq in fixture.step2]))
-        final = evaluate_summary(second.text, second.finish_status, fixture.final_facts, markers=fixture.markers, forbidden=fixture.forbidden)
-    attempts = [attempt for response in responses for attempt in response.attempts]
-    request_ids = tuple(a.gateway_request_id for a in attempts if a.gateway_request_id)
-    costs = [a.cost_usd for a in attempts]
+        second = step(maintenance_input(first.summary_text, [turns[seq] for seq in fixture.step2]), fixture.step1 + fixture.step2)
+        final = evaluate_summary(second.summary_text, second.finish_status, fixture.final_facts, markers=fixture.markers, forbidden=fixture.forbidden)
+    request_ids = tuple(r.gateway_request_id for r in receipts if r.gateway_request_id)
+    costs = [r.cost_usd for r in receipts]
     reported = None if any(cost is None for cost in costs) else sum(costs, Decimal(0))  # type: ignore[arg-type]
-    result = QualificationResult(candidate, step1, final, len(responses), request_ids, reported, None)
+    result = QualificationResult(candidate, step1, final, calls, request_ids, reported, None, tuple(receipts))
     if not result.passed:
         return result
     receipt = {
         "model_id": candidate.model_id,
         "format": SUMMARY_FORMAT,
         "providers": list(candidate.providers),
+        "quantizations": list(candidate.quantizations),
         "reasoning": candidate.reasoning,
         "fixture_digest": fixture.digest,
         "prompt_digest": PROMPT_DIGEST,
@@ -240,7 +293,7 @@ def run_qualification(
         "recorded_on": recorded_on,
         "result": "pass",
     }
-    return QualificationResult(candidate, step1, final, len(responses), request_ids, reported, receipt)
+    return QualificationResult(candidate, step1, final, calls, request_ids, reported, receipt, tuple(receipts))
 
 
 # --- The paid envelope ---------------------------------------------------------------------------------
@@ -258,6 +311,7 @@ def paid_envelope(snapshot: RegistrySnapshot, fixture: Fixture) -> list[dict[str
         candidate = Candidate(
             model_id=model_id,
             providers=entry.route.providers,
+            quantizations=entry.route.quantizations,
             reasoning=entry.default_reasoning,
             input_usd_per_million=entry.prices.input_usd_per_million,
             output_usd_per_million=entry.prices.output_usd_per_million,
@@ -275,6 +329,7 @@ def paid_envelope(snapshot: RegistrySnapshot, fixture: Fixture) -> list[dict[str
             {
                 "model_id": model_id,
                 "providers": list(candidate.providers),
+                "quantizations": list(candidate.quantizations),
                 "reasoning": candidate.reasoning,
                 "structurally_eligible": not blockers,
                 "blockers": blockers,
@@ -289,7 +344,19 @@ def paid_envelope(snapshot: RegistrySnapshot, fixture: Fixture) -> list[dict[str
                 "fixture_digest": fixture.digest,
                 "prompt_digest": PROMPT_DIGEST,
                 "validator": VALIDATOR_VERSION,
-                "receipt_fields": ["model_id", "format", "providers", "reasoning", "fixture_digest", "prompt_digest", "validator", "request_ids", "recorded_on", "result"],
+                "receipt_fields": [
+                    "model_id",
+                    "format",
+                    "providers",
+                    "quantizations",
+                    "reasoning",
+                    "fixture_digest",
+                    "prompt_digest",
+                    "validator",
+                    "request_ids",
+                    "recorded_on",
+                    "result",
+                ],
             }
         )
     return envelope
