@@ -542,3 +542,139 @@ def test_audit_guard_allows_pipe_file_descriptors(tmp_path: Path) -> None:
     assert child.returncode == 0, child.stderr
     rows = [json.loads(line) for path in tmp_path.glob("*.jsonl") for line in path.read_text(encoding="utf-8").splitlines()]
     assert rows == []
+
+
+
+@pytest.mark.parametrize("event", ["open", "_winapi.CreateFile"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        r"\\127.0.0.2\share\blocked", r"\\127.1\share\blocked",
+        r"\\[::1]\share\blocked", r"\\localhost.\share\blocked",
+        r"\\host.local\share\blocked", r"\\192.0.2.1\share\blocked",
+        r"\\remote-host\share\blocked", r"\\?\UNC\remote-host\share\blocked",
+        r"\\?\unc\remote-host\share\blocked", "//remote-host/share/blocked",
+        r"\\.\C:\blocked", r"\\.\GLOBALROOT\Device\HarddiskVolume1\blocked",
+        r"\??\C:\blocked", r"\Device\HarddiskVolume1\blocked",
+        r"\DosDevices\C:\blocked", r"\GLOBAL??\C:\blocked",
+    ],
+)
+def test_guard_refuses_network_and_device_write_aliases_before_io(
+    tmp_path: Path, event: str, path: str,
+) -> None:
+    """Removing namespace refusal admits these audit-only writes without a ledger row."""
+    arguments = (path, "w", 0) if event == "open" else (path, 0x40000000, 0, 3, 0)
+    child, rows, protected = _guarded_probe(
+        tmp_path,
+        "import sys\n"
+        "try:\n"
+        f"    sys.audit({event!r}, *{arguments!r})\n"
+        "except PermissionError:\n"
+        "    pass\n"
+        "else:\n"
+        "    raise AssertionError('write alias was not refused')\n",
+    )
+    assert child.returncode == 0, child.stderr
+    assert [(row["code"], row["event"]) for row in rows] == [("MAIN5_WRITE", event)]
+    assert list(protected.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "resolved",
+    [r"\\remote-host\share\blocked", r"\\?\UNC\remote-host\share\blocked", r"\\.\C:\blocked"],
+)
+def test_guard_rechecks_namespace_after_drive_resolution(tmp_path: Path, resolved: str) -> None:
+    """A mapped-drive resolution must not bypass the pre-resolution path check."""
+    child, rows, protected = _guarded_probe(
+        tmp_path,
+        "import sys\nfrom pathlib import Path\n"
+        "original = Path.resolve\n"
+        f"Path.resolve = lambda self, **kw: Path({resolved!r}) if str(self) == r'Z:\\main5-alias' else original(self, **kw)\n"
+        "try:\n"
+        "    sys.audit('open', r'Z:\\main5-alias', 'w', 0)\n"
+        "except PermissionError:\n"
+        "    pass\n"
+        "else:\n"
+        "    raise AssertionError('resolved write alias was not refused')\n",
+    )
+    assert child.returncode == 0, child.stderr
+    assert [(row["code"], row["event"]) for row in rows] == [("MAIN5_WRITE", "open")]
+    assert list(protected.iterdir()) == []
+
+
+def test_guard_network_refusal_does_not_trust_computername(tmp_path: Path) -> None:
+    child, rows, protected = _guarded_probe(
+        tmp_path,
+        "import os, sys\n"
+        "os.environ['COMPUTERNAME'] = 'different-host'\n"
+        "try:\n"
+        "    sys.audit('open', r'\\\\original-host\\share\\blocked', 'w', 0)\n"
+        "except PermissionError:\n"
+        "    pass\n"
+        "else:\n"
+        "    raise AssertionError('host spoof bypassed write refusal')\n",
+    )
+    assert child.returncode == 0, child.stderr
+    assert [(row["code"], row["event"]) for row in rows] == [("MAIN5_WRITE", "open")]
+    assert list(protected.iterdir()) == []
+
+
+def test_guard_keeps_extended_local_scratch_write_allowed(tmp_path: Path) -> None:
+    """Local extended DOS paths still classify against the same protected roots."""
+    child, rows, protected = _guarded_probe(
+        tmp_path,
+        "import os\nfrom pathlib import Path\n"
+        "source = Path(os.environ['MAIN5_PROBE_SOURCE'])\n"
+        "with open('\\\\\\\\?\\\\' + str(source), 'w', encoding='utf-8') as stream:\n"
+        "    stream.write('safe-scratch')\n",
+    )
+    assert child.returncode == 0, child.stderr
+    assert rows == [] and list(protected.iterdir()) == []
+    assert (tmp_path / "outside" / "source.txt").read_text(encoding="utf-8") == "safe-scratch"
+
+
+
+@pytest.mark.parametrize(
+    ("shape", "refused"),
+    [
+        ("cache_ro", False), ("local", False), ("memory", False), ("uri_memory", False),
+        ("protected_rwc", True), ("protected_ro", True), ("remote_authority", True),
+        ("encoded_unc", True), ("encoded_device", True), ("slash_unc", True),
+        ("duplicate_mode", True), ("unknown_parameter", True), ("plain_unc", True),
+    ],
+)
+def test_guard_classifies_sqlite_uri_before_filesystem_paths(
+    tmp_path: Path, shape: str, refused: bool,
+) -> None:
+    """URI decoding must preserve root refusal, including SQLite's read-only sidecar risk."""
+    probe = (
+        "import os, sys\nfrom pathlib import Path\nfrom pre_commit.store import Store\n"
+        "cache = (Path(Store.get_default_directory()) / 'db.db').as_uri() + '?mode=ro'\n"
+        "protected = (Path(os.environ['MAIN5_CONTROL_PROTECTED_ROOT']) / 'blocked.db').as_uri()\n"
+        "databases = {\n"
+        "    'cache_ro': cache,\n"
+        "    'local': os.environ['MAIN5_PROBE_SOURCE'],\n"
+        "    'memory': ':memory:',\n"
+        "    'uri_memory': 'file:shared?mode=memory&cache=shared',\n"
+        "    'protected_rwc': protected + '?mode=rwc',\n"
+        "    'protected_ro': protected + '?mode=ro',\n"
+        "    'remote_authority': 'file://remote-host/C:/x.db',\n"
+        "    'encoded_unc': 'file:%5C%5Cremote%5Cshare%5Cx.db?mode=rwc',\n"
+        "    'encoded_device': 'file:%5C%5C.%5CC:%5Cx.db',\n"
+        "    'slash_unc': 'file:////remote/share/x.db',\n"
+        "    'duplicate_mode': cache + '&mode=rwc',\n"
+        "    'unknown_parameter': cache + '&vfs=unix',\n"
+        "    'plain_unc': r'\\\\remote\\share\\x.db',\n"
+        "}\n"
+        "was_refused = False\n"
+        "try:\n"
+        f"    sys.audit('sqlite3.connect', databases[{shape!r}])\n"
+        "except PermissionError:\n"
+        "    was_refused = True\n"
+        f"assert was_refused is {refused!r}, 'wrong SQLite database classification'\n"
+    )
+    child, rows, protected = _guarded_probe(tmp_path, probe)
+    assert child.returncode == 0, child.stderr
+    expected = [("MAIN5_WRITE", "sqlite3.connect")] if refused else []
+    assert [(row["code"], row["event"]) for row in rows] == expected
+    assert list(protected.iterdir()) == []

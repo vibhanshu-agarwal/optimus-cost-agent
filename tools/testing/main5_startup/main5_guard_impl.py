@@ -17,6 +17,7 @@ import uuid
 from ctypes import wintypes
 from json import dumps as _dumps
 from pathlib import Path
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 _config_path = Path(__file__).with_name("main5-config.json")
 _attempt_mode = _config_path.is_file()
@@ -303,27 +304,31 @@ if _control_root:
     _protected.append(Path(_control_root))
 
 
+def _local_path_name(value: str) -> str:
+    # Windows accepts slash aliases; classify them before any resolution or I/O.
+    value = value.replace("/", "\\")
+    if value.casefold().startswith("\\\\?\\"):
+        value = value[4:]
+        # Extended DOS disk paths are required for disk-handle classification.
+        if not (ntpath.isabs(value) and ntpath.splitdrive(value)[0].endswith(":")):
+            raise ValueError("MAIN5_UNCLASSIFIABLE_EXTENDED_PATH")
+    if value.startswith("\\\\") or value.casefold().startswith(
+        ("\\??\\", "\\device\\", "\\dosdevices\\", "\\global??\\")
+    ):
+        raise ValueError("MAIN5_NETWORK_OR_DEVICE_PATH")
+    if ntpath.splitdrive(value)[0] and not ntpath.isabs(value):
+        raise ValueError("MAIN5_DRIVE_RELATIVE_PATH")
+    return value
+
+
 def _normalized(path: object) -> str:
     value = os.fspath(path)
     if not isinstance(value, str):
         raise TypeError("MAIN5_UNCLASSIFIABLE_PATH")
-    if value.startswith("\\\\?\\UNC\\"):
-        value = "\\\\" + value[8:]
-    elif value.startswith("\\\\?\\"):
-        value = value[4:]
-        if not (ntpath.isabs(value) and ntpath.splitdrive(value)[0].endswith(":")):
-            raise ValueError("MAIN5_UNCLASSIFIABLE_EXTENDED_PATH")
-    if value.startswith("\\\\"):
-        parts = value[2:].split("\\", 2)
-        if len(parts) < 2 or not parts[0] or not parts[1]:
-            raise ValueError("MAIN5_UNCLASSIFIABLE_UNC")
-        host, share = parts[:2]
-        local_hosts = {".", "localhost", "127.0.0.1", os.environ.get("COMPUTERNAME", "").casefold()}
-        if host.casefold() in local_hosts or share.endswith("$"):
-            raise ValueError("MAIN5_LOCAL_OR_ADMIN_UNC")
-    if ntpath.splitdrive(value)[0] and not ntpath.isabs(value):
-        raise ValueError("MAIN5_DRIVE_RELATIVE_PATH")
-    return ntpath.normcase(str(Path(value).resolve(strict=False)))
+    value = _local_path_name(value)
+    # A mapped drive or reparse point can resolve from a local spelling to UNC.
+    resolved = _local_path_name(str(Path(value).resolve(strict=False)))
+    return ntpath.normcase(resolved)
 
 
 _protected_names = tuple(_normalized(root) for root in _protected)
@@ -369,6 +374,30 @@ def _is_protected(path: object) -> bool:
         except ValueError:
             continue
     return False
+
+
+def _sqlite_target(database: object) -> object | None:
+    if database == ":memory:":
+        return None
+    if not isinstance(database, str) or not database.casefold().startswith("file:"):
+        return database
+    parts = urlsplit(database)
+    if parts.scheme.casefold() != "file" or "#" in database:
+        raise ValueError("MAIN5_SQLITE_URI_MALFORMED")
+    if parts.netloc not in ("", "localhost"):
+        raise ValueError("MAIN5_SQLITE_URI_REMOTE_AUTHORITY")
+    query = parse_qsl(parts.query, keep_blank_values=True, strict_parsing=True, errors="strict")
+    keys = [key for key, _ in query]
+    if len(keys) != len(set(keys)) or not set(keys) <= {"mode", "cache"}:
+        raise ValueError("MAIN5_SQLITE_URI_PARAMS")
+    if dict(query).get("mode") == "memory":
+        return None
+    path = unquote(parts.path, errors="strict")
+    if re.match(r"^/[A-Za-z]:", path):
+        path = path[1:]
+    if not path:
+        raise ValueError("MAIN5_SQLITE_URI_EMPTY_PATH")
+    return path
 
 
 def _audit(event: str, args: tuple[object, ...]) -> None:
@@ -429,8 +458,14 @@ def _audit(event: str, args: tuple[object, ...]) -> None:
     elif event == "sqlite3.connect":
         if not args:
             ambiguous = True
-        elif args[0] != ":memory:":
-            paths = args[:1]
+        else:
+            try:
+                target = _sqlite_target(args[0])
+            except (TypeError, ValueError, OSError):
+                ambiguous = True
+            else:
+                if target is not None:
+                    paths = (target,)
     if not paths and not ambiguous:
         return
     try:
