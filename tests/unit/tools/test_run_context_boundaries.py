@@ -466,21 +466,31 @@ except BaseException as error:
 '''
 
 
-def _tripwire_child(tmp_path: Path, program: str) -> tuple[str, Path]:
-    """Launch a script file the way the two product sites do: this interpreter, a rebuilt PYTHONPATH."""
+def _tripwire_child(tmp_path: Path, program: str, *, hooked: bool = False) -> tuple[str, Path]:
+    """Launch a script file the way the product sites do: this interpreter, a rebuilt PYTHONPATH.
+
+    `hooked` loads the tripwire through the start-up hook instead of a prelude line in the program.
+    """
     script, record = tmp_path / "child.py", tmp_path / "tripwire.jsonl"
     script.write_text(program, encoding="utf-8")
     environment = {**os.environ, "PYTHONPATH": os.pathsep.join([str(_ROOT / "src"), str(_ROOT)])}
+    if hooked:
+        environment = child_tripwire.hooked_environment({**os.environ, "PYTHONPATH": str(_ROOT / "src")}, record)
+    else:
+        environment = child_tripwire.environment(environment, record)
     completed = subprocess.run(
-        [sys.executable, str(script)], cwd=_ROOT, env=child_tripwire.environment(environment, record),
-        capture_output=True, text=True, timeout=120, check=False,
+        [sys.executable, str(script)], cwd=_ROOT, env=environment, capture_output=True, text=True, timeout=120, check=False,
     )
     return completed.stdout + completed.stderr, record
 
 
 @pytest.mark.skipif(getattr(sys, "_main5_guard_activated", False), reason="the MAIN-5 guard owns the child's adapter there")
-def test_the_child_tripwire_records_and_refuses_a_real_adapter_request(tmp_path: Path) -> None:
-    output, record = _tripwire_child(tmp_path, child_tripwire.PRELUDE + _TRIPWIRE_PROGRAM)
+@pytest.mark.parametrize("loaded_by", ["prelude", "start_up_hook"])
+def test_the_child_tripwire_records_and_refuses_a_real_adapter_request(tmp_path: Path, loaded_by: str) -> None:
+    if loaded_by == "prelude":
+        output, record = _tripwire_child(tmp_path, child_tripwire.PRELUDE + _TRIPWIRE_PROGRAM)
+    else:
+        output, record = _tripwire_child(tmp_path, _TRIPWIRE_PROGRAM, hooked=True)
     assert "REFUSED=" in output and "RESOLVED" not in output, output
     assert child_tripwire.observed(record) == {
         "loaded": 1, "loaded_after_product_import": 0, "trusted_paths_imported": True, "real_adapter_calls": 1,

@@ -31,9 +31,9 @@
   },
   "tests/integration/release/test_phase1_release_gate_cli.py::_run_release_cli_subprocess#1": {
    "mechanism": "python:script_file",
-   "disposition": "census",
-   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
-   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+   "disposition": "tripwire_at_site",
+   "proof": "tests/integration/release/test_phase1_release_gate_cli.py::test_release_cli_accepts_golden_results_path",
+   "basis": "Tripwire loaded at start-up in the real release CLI child; zero real-adapter calls asserted."
   },
   "tests/unit/acp/test_main5_guard.py::_guarded_probe#1": {
    "mechanism": "python:inline_script",
@@ -193,9 +193,9 @@
   },
   "tests/unit/optimus_gateway/test_request_body_rejection.py::_run_child_with_watchdog#1": {
    "mechanism": "python:inline_script",
-   "disposition": "census",
-   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
-   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+   "disposition": "tripwire_at_site",
+   "proof": "tests/unit/optimus_gateway/test_request_body_rejection.py::test_stalled_client_with_production_defaults_completes_under_external_watchdog",
+   "basis": "Tripwire loaded at start-up in the gateway child, finished or killed; zero real-adapter calls asserted."
   },
   "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::_child_case#1": {
    "mechanism": "python:script_file",
@@ -319,9 +319,9 @@
   },
   "tests/unit/tools/test_run_context_child_sites.py::_census_child#1": {
    "mechanism": "python:inline_script",
-   "disposition": "census",
+   "disposition": "tripwire_at_site",
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
-   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+   "basis": "The census hook's own sensitivity children; the real adapter is replaced before any call."
   },
   "tests/unit/tools/test_run_context_lifecycle.py::_nested#1": {
    "mechanism": "python:nested_pytest",

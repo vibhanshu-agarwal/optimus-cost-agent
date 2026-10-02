@@ -5,6 +5,9 @@ Test support only. A test adds `PRELUDE` as the first line of the child's own pr
 import. It replaces the product's real Windows known-folder adapter, as soon as that module is
 imported, with a function that records the call and raises: the real folders are never resolved.
 
+A child that runs a script file or a module gets the same tripwire through
+`hooked_environment(...)`, which loads it at interpreter start-up instead.
+
 The parent reads the result with `observed()`. A result is trusted only if the child recorded that
 the tripwire loaded, and loaded before the trusted-path module was imported. Records hold event
 names and a process ID only.
@@ -26,6 +29,16 @@ _TARGET = "optimus.acp.trusted_paths"
 def environment(base: dict[str, str], record: Path) -> dict[str, str]:
     """The launch environment the test already built, plus where the child records."""
     return {**base, FILE_VARIABLE: str(record)}
+
+
+def hooked_environment(base: dict[str, str], record: Path) -> dict[str, str]:
+    """The same, for a child that runs a script file or a module: a start-up hook loads the tripwire.
+
+    The hook folder and the repository root go in front of whatever PYTHONPATH the test built.
+    """
+    root = Path(__file__).resolve().parents[2]
+    paths = [str(Path(__file__).resolve().parent / "child_tripwire_site"), str(root), base.get("PYTHONPATH", "")]
+    return {**base, FILE_VARIABLE: str(record), "PYTHONPATH": os.pathsep.join(path for path in paths if path)}
 
 
 def observed(record: Path) -> dict[str, object]:
