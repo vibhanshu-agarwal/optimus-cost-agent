@@ -16,6 +16,8 @@ import yaml
 
 from optimus.guardrails.ci_parity import GuardrailRuleSet, load_ci_check_names, load_pre_commit_check_names
 from optimus.guardrails.prompt_injection import TrustScanVerdict, default_agent_config_paths, scan_paths
+from tests.support.concurrency import DescendantRecorder, announce_pid_code, assert_descendants_killed
+from tools import process_tree
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -508,22 +510,12 @@ def _terminate_tree(process: subprocess.Popen) -> None:
     """
     try:
         # Best-effort by design: this is teardown, so no failure of the platform
-        # kill may escape and replace the caller's original error.
-        if os.name == "nt":
-            try:
-                subprocess.run(  # noqa: S603,S607 - fixture-owned PID, fixed argv
-                    ["taskkill", "/F", "/T", "/PID", str(process.pid)],
-                    capture_output=True,
-                    timeout=TREE_KILL_TIMEOUT_SECONDS,
-                    check=False,
-                )
-            except Exception:  # noqa: BLE001 - teardown must not mask the caller's error
-                pass
-        else:
-            try:
-                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-            except Exception:  # noqa: BLE001 - teardown must not mask the caller's error
-                pass
+        # kill may escape and replace the caller's original error. The tree kill
+        # reaches descendants whose parents have already exited (tools.process_tree).
+        try:
+            process_tree.kill_tree(process)
+        except Exception:  # noqa: BLE001 - teardown must not mask the caller's error
+            pass
     finally:
         # Runs even if the tree kill timed out or failed, so the direct child is
         # always signalled and reaped rather than left behind.
@@ -541,11 +533,8 @@ def _terminate_tree(process: subprocess.Popen) -> None:
 
 
 def _run(argv: list[str], repo: Path) -> subprocess.CompletedProcess[str]:
-    popen_kwargs: dict[str, object] = {}
-    if os.name != "nt":
-        # Own process group so the whole tree can be signalled at once.
-        popen_kwargs["start_new_session"] = True
-    process = subprocess.Popen(
+    # Started as a killable tree, so a timeout can end the whole tree at once.
+    process = process_tree.popen(
         argv,
         cwd=str(repo),
         env=_sanitized_env(repo),
@@ -554,7 +543,6 @@ def _run(argv: list[str], repo: Path) -> subprocess.CompletedProcess[str]:
         text=True,
         encoding="utf-8",
         errors="replace",
-        **popen_kwargs,
     )
     try:
         stdout, stderr = process.communicate(timeout=STEP_TIMEOUT_SECONDS)
@@ -823,28 +811,6 @@ def test_production_secret_scan_rejects_empty_inventory(tmp_path: Path, shape: s
     assert EMPTY_INVENTORY_MESSAGE in combined, combined
 
 
-def _pid_alive(pid: int) -> bool:
-    if os.name == "nt":
-        try:
-            listing = subprocess.run(  # noqa: S603,S607 - fixed argv, fixture-owned PID
-                ["tasklist", "/FI", f"PID eq {pid}"],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=TREE_KILL_TIMEOUT_SECONDS,
-            )
-        except (subprocess.TimeoutExpired, OSError):
-            # Liveness unknown. Report alive so the control fails loudly rather
-            # than reporting a clean reap it never observed.
-            return True
-        return str(pid) in listing.stdout
-    try:
-        os.kill(pid, 0)
-    except (ProcessLookupError, PermissionError):
-        return False
-    return True
-
-
 def _force_kill_pid(pid: int) -> None:
     """Best-effort teardown so a failed control never leaks a live process."""
     try:
@@ -870,40 +836,28 @@ def test_run_timeout_terminates_descendant_processes(tmp_path: Path, monkeypatch
     """
     repo = tmp_path / "timeout-fixture"
     repo.mkdir()
-    marker = repo / "grandchild.pid"
     grandchild = repo / "grandchild.py"
-    grandchild.write_text(
-        "import os, time\n"
-        f"open({str(marker)!r}, 'w').write(str(os.getpid()))\n"
-        "time.sleep(300)\n",
-        encoding="utf-8",
-    )
+    grandchild.write_text(announce_pid_code(repo, "grandchild") + "\nimport time\ntime.sleep(300)\n", encoding="utf-8")
     script = f'"{sys.executable}" "{grandchild}" & wait'
     monkeypatch.setattr(sys.modules[__name__], "STEP_TIMEOUT_SECONDS", 5)
 
     # Teardown encloses the invocation itself. If _run returns unexpectedly, or
     # raises something other than the AssertionError pytest.raises expects, the
     # grandchild is still reaped -- a finally opened after those calls would be
-    # bypassed on exactly those paths.
-    try:
-        started = time.monotonic()
-        with pytest.raises(AssertionError, match="exceeded"):
-            _run([_bash(), "-c", script], repo)
-        elapsed = time.monotonic() - started
-
-        assert marker.exists(), "grandchild never started; the control proves nothing"
-        assert elapsed < 120, f"timeout path itself blocked for {elapsed:.1f}s"
-        pid = int(marker.read_text().strip())
-        deadline = time.monotonic() + 30
-        while _pid_alive(pid) and time.monotonic() < deadline:
-            time.sleep(0.5)
-        assert not _pid_alive(pid), f"descendant {pid} survived the timeout cleanup"
-    finally:
-        if marker.exists():
-            try:
-                _force_kill_pid(int(marker.read_text().strip()))
-            except (ValueError, OSError):
-                pass
+    # bypassed on exactly those paths. The grandchild is pinned as it starts, so
+    # the verdict names it and a recycled pid is never mistaken for it.
+    with DescendantRecorder(repo, ["grandchild"]) as recorder:
+        try:
+            started = time.monotonic()
+            with pytest.raises(AssertionError, match="exceeded"):
+                _run([_bash(), "-c", script], repo)
+            assert_descendants_killed(
+                recorder, ["grandchild"], deadline=started + STEP_TIMEOUT_SECONDS + 15, what="timeout cleanup",
+            )
+        finally:
+            pid, _, gone_at = recorder.outcome("grandchild")
+            if pid is not None and gone_at is None:
+                _force_kill_pid(pid)
 
 
 def test_terminate_tree_reaps_even_when_tree_kill_fails(tmp_path: Path, monkeypatch):
@@ -915,7 +869,7 @@ def test_terminate_tree_reaps_even_when_tree_kill_fails(tmp_path: Path, monkeypa
     """
     repo = tmp_path / "reap-fixture"
     repo.mkdir()
-    process = subprocess.Popen(
+    process = process_tree.popen(
         [sys.executable, "-c", "import time; time.sleep(300)"],
         cwd=str(repo),
         stdout=subprocess.PIPE,
@@ -926,9 +880,7 @@ def test_terminate_tree_reaps_even_when_tree_kill_fails(tmp_path: Path, monkeypa
         raise subprocess.TimeoutExpired(cmd="tree-kill", timeout=1)
 
     try:
-        monkeypatch.setattr(subprocess, "run", _explode)
-        if os.name != "nt":
-            monkeypatch.setattr(os, "killpg", _explode)
+        monkeypatch.setattr(process_tree, "kill_tree", _explode)
 
         _terminate_tree(process)
 

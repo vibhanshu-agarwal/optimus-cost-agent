@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
 
+from tests.support.concurrency import DescendantRecorder, assert_descendants_killed
+from tests.support.fault_injection import descendant_tree
 from tools.probe_p11_zed_session_load import (
     ALLOWED_PROBE_SEMANTICS,
     PLAN1119_RUN_ID,
@@ -4433,3 +4437,23 @@ def test_establishing_report_freshness_rejects_stale_future_naive_minus_zero_and
             probe.validate_establishing_report_freshness(timestamp, now)
         else:
             probe.parse_aware_utc_timestamp(timestamp)
+
+
+@pytest.mark.parametrize("shape", ["parent-alive", "middle-exited"])
+def test_launch_timeout_kills_every_descendant_of_the_launched_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shape: str,
+) -> None:
+    """A Python stand-in, never Zed: the pytest launch guard is lifted only around this one call.
+    In "middle-exited" no walk of parent pids from the launched process reaches the grandchild."""
+    from tools.probe_p11_zed_session_load import _launch_zed_once
+
+    pids = tmp_path / "pids"
+    pids.mkdir()
+    code, roles = descendant_tree(pids, shape)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST")
+    timeout = 5.0
+    with DescendantRecorder(pids, roles) as recorder:
+        started = time.monotonic()
+        result = _launch_zed_once([sys.executable, "-c", code], env=dict(os.environ), cwd=tmp_path, timeout_s=timeout)
+        assert result["returncode"] != 0
+        assert_descendants_killed(recorder, roles, deadline=started + timeout + 10.0, what=f"launch timeout ({shape})")

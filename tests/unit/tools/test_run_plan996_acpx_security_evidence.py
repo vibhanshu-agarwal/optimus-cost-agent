@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 import textwrap
+import time
 from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path, PureWindowsPath
@@ -30,6 +31,8 @@ from optimus.acp.launch_gate import LaunchGateError, resolve_launch_candidate
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
 from optimus.acp.operator_paths import bootstrap_workspace_runtime_root, resolve_authorized_operator_paths
 from optimus.acp.trusted_paths import TrustedPathError, resolve_workspace_identity
+from tests.support.concurrency import DescendantRecorder, assert_descendants_killed
+from tests.support.fault_injection import descendant_tree
 from tools.run_plan996_acpx_security_evidence import (
     SESSION_TASK,
     CaptureResult,
@@ -2163,6 +2166,7 @@ def _assert_capture_timeout_terminates_tree(
             from pathlib import Path
 
             import tools.run_plan996_acpx_security_evidence as tool
+            from tools import process_tree
 
             pids_path = Path({str(pids_path)!r})
             duration_path = Path({str(duration_path)!r})
@@ -2175,7 +2179,8 @@ def _assert_capture_timeout_terminates_tree(
             kernel.CloseHandle.argtypes = [ctypes.c_void_p]
             kernel.CloseHandle.restype = ctypes.c_int
             wait_timeout = 0x00000102
-            target = subprocess.Popen([sys.executable, {str(target_path)!r}], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            # Started the way the drive-session spawn starts it, so the tree kill under test applies.
+            target = process_tree.popen([sys.executable, {str(target_path)!r}], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
             handles = {{}}
 
             try:
@@ -2215,7 +2220,7 @@ def _assert_capture_timeout_terminates_tree(
                 )
                 raise SystemExit(0 if result.exit_code != 0 else 1)
             except BaseException:
-                subprocess.run(['taskkill', '/F', '/T', '/PID', str(target.pid)], capture_output=True, check=False)
+                process_tree.kill_tree(target)
                 raise
             finally:
                 for handle in handles.values():
@@ -2246,6 +2251,34 @@ def _assert_capture_timeout_terminates_tree(
     capture_seconds = json.loads(duration_path.read_text(encoding="utf-8"))["capture_seconds"]
     assert capture_seconds < 10.0, f"capture exceeded its 10-second shutdown budget: {capture_seconds:.3f}s"
     return capture_seconds
+
+
+@pytest.mark.parametrize("shape", ["parent-alive", "middle-exited"])
+def test_drive_session_timeout_kills_every_descendant_of_the_capture_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shape: str,
+) -> None:
+    """The real spawn path; only the authorization walk is stubbed. In "middle-exited" no walk of
+    parent pids from the capture child reaches the grandchild, which `taskkill /T` therefore missed."""
+    pids = tmp_path / "pids"
+    pids.mkdir()
+    code, roles = descendant_tree(pids, shape)
+    monkeypatch.setattr(capture_tool, "revalidate_workspace_identity", lambda _identity: None)
+    monkeypatch.setattr(capture_tool, "_known_secrets", lambda _capture: ())
+    candidate = SimpleNamespace(workspace_identity=SimpleNamespace(canonical_path=str(tmp_path)))
+    audited = SimpleNamespace(
+        capture=SimpleNamespace(authorized=SimpleNamespace(candidate=candidate), acpx_client_environ=dict(os.environ)),
+    )
+    timeout = 5.0
+    with DescendantRecorder(pids, roles) as recorder:
+        started = time.monotonic()
+        result = capture_tool._capture_to_disk(
+            audited, command=[sys.executable, "-c", code], output_dir=tmp_path / "out",
+            drive_session=True, wait_timeout_seconds=timeout,
+        )
+        assert result.exit_code != 0
+        assert_descendants_killed(
+            recorder, roles, deadline=started + timeout + 10.0, what=f"drive-session timeout ({shape})",
+        )
 
 
 def test_agent_invocation_session_fixture_constants_are_pinned() -> None:

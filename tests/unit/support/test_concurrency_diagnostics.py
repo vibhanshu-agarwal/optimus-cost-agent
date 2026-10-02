@@ -11,10 +11,14 @@ import asyncio
 import subprocess
 import sys
 import threading
+import time
 
 import pytest
 
 from tests.support.concurrency import (
+    DescendantRecorder,
+    announce_pid_code,
+    assert_descendants_killed,
     assert_no_new_threads,
     assert_no_offending_rows,
     assert_processes_exited,
@@ -22,8 +26,10 @@ from tests.support.concurrency import (
     assert_tasks_done,
     assert_threads_alive,
     assert_threads_stopped,
+    describe_process,
     thread_baseline,
 )
+from tools.concurrency_capture import ProcessWatch
 
 
 def test_a_stuck_thread_is_named_with_its_target_and_stack():
@@ -116,6 +122,101 @@ def test_a_running_process_is_reported_by_pid_without_its_command_line():
     report = str(caught.value)
     assert f"pid={process.pid} state=running" in report
     assert marker not in report and sys.executable not in report
+
+
+def _announcing_child(directory, role: str, then: str) -> subprocess.Popen[bytes]:
+    code = announce_pid_code(directory, role) + "; " + then
+    return subprocess.Popen([sys.executable, "-c", code], stdin=subprocess.DEVNULL)
+
+
+def test_a_descendant_left_running_is_named_by_role_and_pid(tmp_path):
+    with DescendantRecorder(tmp_path, ["grandchild"]) as recorder:
+        process = _announcing_child(tmp_path, "grandchild", "import time; time.sleep(30)")
+        try:
+            assert recorder.wait_for(["grandchild"], timeout=30), "the control descendant never announced itself"
+            with pytest.raises(AssertionError) as caught:
+                assert_descendants_killed(recorder, ["grandchild"], deadline=time.monotonic(), what="timeout cleanup")
+        finally:
+            process.kill()
+            process.wait(10)
+    report = str(caught.value)
+    announced = recorder.outcome("grandchild")[0]  # the interpreter; process.pid may be a venv launcher
+    assert report.startswith("timeout cleanup: 1 of 1 descendant(s) not killed by the deadline\n")
+    assert f"grandchild pid={announced} state=running" in report
+
+
+def test_a_descendant_that_exits_only_after_the_deadline_is_named_with_how_late(tmp_path):
+    with DescendantRecorder(tmp_path, ["grandchild"]) as recorder:
+        deadline = time.monotonic()
+        process = _announcing_child(tmp_path, "grandchild", "import time; time.sleep(0.5)")
+        process.wait(30)
+        assert recorder.wait_for_exit(["grandchild"], timeout=30)
+        with pytest.raises(AssertionError) as caught:
+            assert_descendants_killed(recorder, ["grandchild"], deadline=deadline, what="timeout cleanup")
+    report = str(caught.value)
+    assert f"grandchild pid={recorder.outcome('grandchild')[0]} exited " in report
+    assert "s after the deadline (it was waited for, not killed)" in report
+
+
+def test_a_descendant_that_never_started_is_named_so_the_control_cannot_pass_vacuously(tmp_path):
+    with DescendantRecorder(tmp_path, ["grandchild"]) as recorder:
+        with pytest.raises(AssertionError) as caught:
+            assert_descendants_killed(recorder, ["grandchild"], deadline=time.monotonic(), what="timeout cleanup")
+    assert "grandchild never announced a pid, so the run proves nothing about it" in str(caught.value)
+
+
+def test_a_descendant_killed_before_the_deadline_passes(tmp_path):
+    with DescendantRecorder(tmp_path, ["grandchild"]) as recorder:
+        process = _announcing_child(tmp_path, "grandchild", "import time; time.sleep(30)")
+        assert recorder.wait_for(["grandchild"], timeout=30)
+        process.kill()
+        process.wait(10)
+        assert recorder.wait_for_exit(["grandchild"], timeout=30)
+        assert_descendants_killed(recorder, ["grandchild"], deadline=time.monotonic(), what="timeout cleanup")
+    with pytest.raises(RuntimeError, match="open recorder"):
+        assert_descendants_killed(recorder, ["grandchild"], deadline=time.monotonic(), what="after close")
+
+
+def test_a_recorder_that_stopped_watching_is_named_not_read_as_a_verdict(tmp_path, monkeypatch):
+    import tests.support.concurrency as support
+
+    def broken_watch(pid):
+        raise OSError(f"injected: cannot watch {pid}")
+
+    monkeypatch.setattr(support, "ProcessWatch", broken_watch)
+    with DescendantRecorder(tmp_path, ["grandchild"]) as recorder:
+        process = _announcing_child(tmp_path, "grandchild", "import time; time.sleep(30)")
+        try:
+            deadline = time.monotonic() + 30
+            while recorder.error is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            with pytest.raises(AssertionError) as caught:
+                assert_descendants_killed(recorder, ["grandchild"], deadline=time.monotonic(), what="timeout cleanup")
+        finally:
+            process.kill()
+            process.wait(10)
+    assert "timeout cleanup: the descendant recorder stopped watching: OSError('injected: cannot watch" in str(caught.value)
+
+
+def test_a_watched_process_is_pinned_and_reports_its_exit(tmp_path):
+    process = subprocess.Popen([sys.executable, "-c", "import sys, time; time.sleep(0.3); sys.exit(3)"])
+    watch = ProcessWatch(process.pid)
+    try:
+        assert watch.snapshot().running
+        process.wait(30)
+        snapshot = watch.snapshot()
+        description = describe_process(watch)
+    finally:
+        watch.close()
+    assert not snapshot.running
+    # Windows reads a non-child's exit code through its handle; a Linux pidfd only signals the exit.
+    expected = 3 if sys.platform == "win32" else None
+    assert snapshot.returncode == expected
+    assert description == (
+        f"process pid={process.pid} state=exited(3)" if expected == 3 else f"process pid={process.pid} state=exited"
+    )
+    with pytest.raises(ValueError, match="closed"):
+        watch.snapshot()
 
 
 def test_offending_rows_are_printed_with_their_index_and_chosen_fields():

@@ -37,7 +37,7 @@ import optimus_gateway.server as gw_server
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.server import OptimusGatewayHandler, serve_gateway
 from optimus_gateway.upstream_client import ProviderMessageResult
-from tests.support.concurrency import assert_some_row, assert_threads_stopped
+from tests.support.concurrency import assert_processes_exited, assert_some_row, assert_threads_stopped
 
 REJECTED_PATHS = (
     "/v1/tools/web/search",
@@ -791,7 +791,9 @@ print("STALLED-CLIENT-OK", flush=True)
 _HANG_CHILD_SCRIPT = "import threading; print('HANG-START', flush=True); threading.Event().wait()"
 
 
-def _run_child_with_watchdog(script: str, *, timeout: float) -> tuple[int | None, str, str, bool]:
+def _run_child_with_watchdog(
+    script: str, *, timeout: float,
+) -> tuple[int | None, str, str, bool, subprocess.Popen[str]]:
     """External process watchdog: run ``script`` in a child interpreter; kill it if ``timeout`` elapses.
 
     Output collection after a kill is bounded too, so a hung child can never hang the parent test.
@@ -816,12 +818,12 @@ def _run_child_with_watchdog(script: str, *, timeout: float) -> tuple[int | None
         timed_out = True
         proc.kill()
         out, err = proc.communicate(timeout=CHILD_KILL_COLLECT_SECONDS)
-    return proc.returncode, out, err, timed_out
+    return proc.returncode, out, err, timed_out, proc
 
 
 def test_stalled_client_with_production_defaults_completes_under_external_watchdog() -> None:
     """Production 2 s body + 2 s write budgets in a child process under an independent 10 s watchdog."""
-    returncode, out, err, timed_out = _run_child_with_watchdog(_STALLED_CHILD_SCRIPT, timeout=WATCHDOG_SECONDS)
+    returncode, out, err, timed_out, _ = _run_child_with_watchdog(_STALLED_CHILD_SCRIPT, timeout=WATCHDOG_SECONDS)
     assert not timed_out, f"external watchdog fired and killed the child; stdout={out!r} stderr={err[-2000:]!r}"
     assert returncode == 0, (returncode, out, err[-2000:])
     assert "STALLED-CLIENT-OK" in out, out
@@ -829,13 +831,12 @@ def test_stalled_client_with_production_defaults_completes_under_external_watchd
 
 def test_external_watchdog_fires_and_kills_hung_child() -> None:
     """Forced-hang control: the watchdog must fire, report failure and leave no owned child behind."""
-    started = time.monotonic()
-    returncode, out, err, timed_out = _run_child_with_watchdog(_HANG_CHILD_SCRIPT, timeout=1.0)
-    elapsed = time.monotonic() - started
+    _, out, _, timed_out, proc = _run_child_with_watchdog(_HANG_CHILD_SCRIPT, timeout=1.0)
     assert timed_out, "watchdog did not fire for a deliberately hung child"
-    assert returncode is not None, "hung child was not terminated"
+    # Collection after the kill is bounded by CHILD_KILL_COLLECT_SECONDS; what matters is that the
+    # child is gone, and if it is not, the report names it by pid and state.
+    assert_processes_exited([proc], "the watchdog's hung child")
     assert "HANG-START" in out, out
-    assert elapsed < 1.0 + CHILD_KILL_COLLECT_SECONDS + 5.0, f"termination and output collection took {elapsed:.1f}s"
 
 
 class _FakeClock:

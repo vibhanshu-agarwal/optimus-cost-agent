@@ -19,11 +19,15 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from tools.concurrency_capture import (
     FrameLocation,
+    ProcessSnapshot,
+    ProcessWatch,
     ThreadSnapshot,
     alive_after_bounded_join,
     snapshot_process,
@@ -116,11 +120,16 @@ def assert_tasks_done(tasks: Iterable[asyncio.Future[Any]], what: str) -> None:
         )
 
 
+def _process_state(snapshot: Any) -> str:
+    if snapshot.running:
+        return "running"
+    return "exited" if snapshot.returncode is None else f"exited({snapshot.returncode})"
+
+
 def describe_process(process: Any) -> str:
     """A child process: pid and exit state only -- never its command line."""
     snapshot = snapshot_process(process)
-    state = "running" if snapshot.running else f"exited({snapshot.returncode})"
-    return f"process pid={snapshot.pid} state={state}"
+    return f"process pid={snapshot.pid} state={_process_state(snapshot)}"
 
 
 def assert_processes_exited(processes: Iterable[Any], what: str) -> None:
@@ -129,6 +138,153 @@ def assert_processes_exited(processes: Iterable[Any], what: str) -> None:
         raise AssertionError(
             f"{what}: {len(running)} process(es) running at detection\n"
             + "\n".join(describe_process(process) for process in running)
+        )
+
+
+def announce_pid_code(directory: Path | str, role: str) -> str:
+    """Python statements a descendant runs first: publish its pid as ``<directory>/<role>.pid``."""
+    target = str(Path(directory) / f"{role}.pid")
+    return (
+        f"import os as _o; _t = {target!r}; open(_t + '.tmp', 'w').write(str(_o.getpid())); "
+        "_o.replace(_t + '.tmp', _t)"
+    )
+
+
+class DescendantRecorder:
+    """Watches ``directory`` for the pid files the named descendants announce (``announce_pid_code``).
+
+    Each descendant is pinned the moment its file appears (``ProcessWatch``), and the moment it
+    is first seen gone is recorded. A test can then tell a descendant that was killed from one
+    that only exited after the run under test waited for it -- which an elapsed-time check, or
+    a liveness check made after that wait, cannot.
+    """
+
+    def __init__(self, directory: Path | str, roles: Iterable[str], *, poll_seconds: float = 0.01) -> None:
+        self._directory = Path(directory)
+        self._roles = tuple(roles)
+        self._poll = poll_seconds
+        self._lock = threading.Lock()
+        self._watches: dict[str, ProcessWatch] = {}
+        self._pids: dict[str, int] = {}
+        self._exit_seen: dict[str, float] = {}
+        self._final: dict[str, ProcessSnapshot] = {}
+        self._closed = False
+        self._error: BaseException | None = None
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="descendant-recorder", daemon=True)
+
+    def __enter__(self) -> DescendantRecorder:
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._closed = True
+        self._stop.set()
+        self._thread.join(5)
+        if self._error is None:
+            self._scan()
+        with self._lock:
+            for role, watch in self._watches.items():
+                self._final[role] = watch.snapshot()
+                watch.close()
+
+    def _run(self) -> None:
+        try:
+            while not self._stop.wait(self._poll):
+                self._scan()
+        except Exception as exc:  # noqa: BLE001 - kept and reported by the verdict, never swallowed
+            self._error = exc
+
+    def _scan(self) -> None:
+        now = time.monotonic()
+        for role in self._roles:
+            if role in self._pids:
+                continue
+            try:
+                pid = int((self._directory / f"{role}.pid").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            with self._lock:
+                self._pids[role] = pid
+                try:
+                    self._watches[role] = ProcessWatch(pid)
+                except ProcessLookupError:
+                    self._exit_seen[role] = now  # gone before it could be pinned: exited by now at the latest
+        with self._lock:
+            for role, watch in self._watches.items():
+                if role not in self._exit_seen and not watch.snapshot().running:
+                    self._exit_seen[role] = now
+
+    def _wait(self, condition: Callable[[], bool], timeout: float) -> bool:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            with self._lock:
+                if condition():
+                    return True
+            time.sleep(self._poll)
+        with self._lock:
+            return condition()
+
+    def wait_for(self, roles: Iterable[str], *, timeout: float) -> bool:
+        """Wait until every role has announced itself."""
+        wanted = list(roles)
+        return self._wait(lambda: all(role in self._pids for role in wanted), timeout)
+
+    def wait_for_exit(self, roles: Iterable[str], *, timeout: float) -> bool:
+        """Wait until every role has been seen gone."""
+        wanted = list(roles)
+        return self._wait(lambda: all(role in self._exit_seen for role in wanted), timeout)
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    @property
+    def error(self) -> BaseException | None:
+        """Why the recorder stopped watching early, if it did."""
+        return self._error
+
+    def outcome(self, role: str) -> tuple[int | None, ProcessSnapshot | None, float | None]:
+        """(pid, latest snapshot, monotonic time first seen gone) -- Nones where unknown."""
+        with self._lock:
+            snapshot = self._final.get(role)
+            watch = self._watches.get(role)
+            if snapshot is None and watch is not None:
+                snapshot = watch.snapshot()
+            return self._pids.get(role), snapshot, self._exit_seen.get(role)
+
+
+def assert_descendants_killed(
+    recorder: DescendantRecorder, roles: Iterable[str], *, deadline: float, what: str
+) -> None:
+    """Every role announced itself, and was gone by ``deadline`` (a ``time.monotonic()`` value).
+
+    A kill takes effect asynchronously, so the verdict is taken at the deadline: this waits, at
+    most until then, for announced descendants to be seen gone. Call it inside the recorder's
+    ``with`` block, while it is still watching.
+    """
+    if recorder.closed:
+        raise RuntimeError("assert_descendants_killed() needs an open recorder: call it inside its with block")
+    if recorder.error is not None:
+        raise AssertionError(f"{what}: the descendant recorder stopped watching: {recorder.error!r}") from recorder.error
+    wanted = list(roles)
+    announced = [role for role in wanted if recorder.outcome(role)[0] is not None]
+    recorder.wait_for_exit(announced, timeout=max(0.0, deadline - time.monotonic()))
+    lines: list[str] = []
+    for role in wanted:
+        pid, snapshot, gone_at = recorder.outcome(role)
+        if pid is None:
+            lines.append(f"{role} never announced a pid, so the run proves nothing about it")
+        elif gone_at is None:
+            state = _process_state(snapshot) if snapshot is not None else "unknown"
+            lines.append(f"{role} pid={pid} state={state}")
+        elif gone_at > deadline:
+            lines.append(
+                f"{role} pid={pid} exited {gone_at - deadline:.2f}s after the deadline (it was waited for, not killed)"
+            )
+    if lines:
+        raise AssertionError(
+            f"{what}: {len(lines)} of {len(wanted)} descendant(s) not killed by the deadline\n" + "\n".join(lines)
         )
 
 

@@ -1,4 +1,4 @@
-"""Capture what a thread, asyncio task or child process is doing, for failure diagnostics.
+"""Capture what a thread, asyncio task, child or descendant process is doing, for failure diagnostics.
 
 The ONE owner of concurrency capture (P11-FU-33 batch; operator directive 2026-10-02: tests
 must never lose context). Callers format the snapshots for their own medium: the shared test
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import gc
+import os
 import sys
 import threading
 import traceback
@@ -135,5 +136,97 @@ def pending_tasks() -> list[asyncio.Task[Any]]:
 
 def snapshot_process(process: Any) -> ProcessSnapshot:
     """A child process by pid and exit state only -- never its command line."""
+    if isinstance(process, ProcessWatch):
+        return process.snapshot()
     returncode = process.poll() if hasattr(process, "poll") else getattr(process, "returncode", None)
     return ProcessSnapshot(pid=getattr(process, "pid", None), running=returncode is None, returncode=returncode)
+
+
+_SYNCHRONIZE = 0x00100000
+_QUERY_LIMITED_INFORMATION = 0x1000
+_WAIT_OBJECT_0 = 0
+_WAIT_TIMEOUT = 0x102
+
+
+class ProcessWatch:
+    """A process observed from outside by pid -- a descendant, not our own child.
+
+    It is pinned while it runs, so a recycled pid is never mistaken for it: Windows holds a
+    SYNCHRONIZE | QUERY_LIMITED_INFORMATION handle, Linux a pidfd. Elsewhere it falls back to an
+    unpinned signal-0 probe. (On Windows `os.kill(pid, 0)` is not a probe at all.) Watch a
+    process while it is known to be running; `ProcessLookupError` means it could not be opened.
+    The exit code is reported where the platform exposes it for a non-child (Windows), else None.
+    """
+
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+        self._handle: int | None = None
+        self._pidfd: int | None = None
+        self._closed = False
+        if sys.platform == "win32":
+            handle = _kernel32().OpenProcess(_SYNCHRONIZE | _QUERY_LIMITED_INFORMATION, False, pid)
+            if not handle:
+                raise ProcessLookupError(pid)
+            self._handle = handle
+        elif hasattr(os, "pidfd_open"):
+            self._pidfd = os.pidfd_open(pid)  # raises ProcessLookupError when the pid is gone
+
+    def snapshot(self) -> ProcessSnapshot:
+        if self._closed:
+            raise ValueError(f"the watch on pid {self.pid} is closed")
+        if self._handle is not None:
+            import ctypes
+
+            api = _kernel32()
+            waited = api.WaitForSingleObject(self._handle, 0)
+            if waited == _WAIT_TIMEOUT:
+                return ProcessSnapshot(pid=self.pid, running=True, returncode=None)
+            if waited != _WAIT_OBJECT_0:
+                raise ctypes.WinError(ctypes.get_last_error())
+            code = ctypes.c_ulong()
+            known = bool(api.GetExitCodeProcess(self._handle, ctypes.byref(code)))
+            return ProcessSnapshot(pid=self.pid, running=False, returncode=code.value if known else None)
+        if self._pidfd is not None:
+            import select
+
+            readable, _, _ = select.select([self._pidfd], [], [], 0)
+            return ProcessSnapshot(pid=self.pid, running=not readable, returncode=None)
+        try:
+            os.kill(self.pid, 0)
+        except ProcessLookupError:
+            return ProcessSnapshot(pid=self.pid, running=False, returncode=None)
+        except PermissionError:
+            pass
+        return ProcessSnapshot(pid=self.pid, running=True, returncode=None)
+
+    def close(self) -> None:
+        self._closed = True
+        if self._handle is not None:
+            _kernel32().CloseHandle(self._handle)
+            self._handle = None
+        if self._pidfd is not None:
+            os.close(self._pidfd)
+            self._pidfd = None
+
+
+_api: Any = None
+
+
+def _kernel32() -> Any:
+    """kernel32 bound lazily: importing this module must not load ctypes (the H5 child imports it)."""
+    global _api
+    if _api is None:
+        import ctypes
+        from ctypes import wintypes
+
+        api = ctypes.WinDLL("kernel32", use_last_error=True)
+        api.OpenProcess.restype = ctypes.c_void_p
+        api.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        api.WaitForSingleObject.restype = wintypes.DWORD
+        api.WaitForSingleObject.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+        api.GetExitCodeProcess.restype = wintypes.BOOL
+        api.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+        api.CloseHandle.restype = wintypes.BOOL
+        api.CloseHandle.argtypes = [ctypes.c_void_p]
+        _api = api
+    return _api
