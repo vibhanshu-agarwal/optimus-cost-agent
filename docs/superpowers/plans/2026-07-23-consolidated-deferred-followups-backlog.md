@@ -462,6 +462,15 @@ escalate to `P11.26-CAND-1-RESOURCE-LIFETIME` only if causal evidence warrants.
 quiescence evidence; classify harness, product or unresolved and retain the complete group
 outcome. A passing retry cannot erase a failure or close historical obligations.
 
+**Evidence (2026-10-02):** The repeat-100 `unexpected_persistent_threads` assertion
+failed in the port-Y guarded full run (pre-`-y5`) and the R4 unguarded manual run
+on `a219831`. The reviewed Windows full-suite record is 2 failures in 6 runs.
+Linux/WSL bundle and PR #217 CI runs skipped the test under `P11.26-UNRUN-BINDING`
+because binding commit `fac32284888850bacde93815265cbabe3afd4663` was missing;
+those runs prove nothing about this test. Root cause is not established.
+Public anchors: [PR #217 description](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/217)
+and [PR #217 CI](https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/36977760586).
+
 ### P11-FU-34: MAIN-5 settlement telemetry truth
 
 **Status:** Open.
@@ -474,7 +483,8 @@ the Plan 12 plan in this lane.
 
 ### P11-FU-35: MAIN-5 y5 correction port
 
-**Status:** Open.
+**Status:** Closed. Through [PR #217](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/217),
+merge `df703857a7304abd36beedce9fcb9737a24fcc46`; merged tree equals tested `a219831`.
 **Origin:** UNC/device prevention gap, SQLite file-URI classification, PowerShell absent/empty idiom and UNC7 lane-ledger correction.
 **Designated future plan / owner:** `P11-FEAT-ACP-RUNTIME-HARDENING`, MAIN-5 safety and test tooling.
 **Trigger or acceptance criteria:** Port `sandbox-main5-guarded-runner-y5` to main in the
@@ -628,7 +638,7 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P11-FU-32` | MAIN-5 Windows harness environment dependence | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
 | `P11-FU-33` | MAIN-5 shutdown repeatability evidence | Open | MEDIUM | `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION` | Acceptance criteria in entry |
 | `P11-FU-34` | MAIN-5 settlement telemetry truth | Open | MEDIUM | `P11.26-CAND-2-TELEMETRY-CONTRACT` | Acceptance criteria in entry |
-| `P11-FU-35` | MAIN-5 y5 correction port | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
+| ~~`P11-FU-35`~~ | ~~MAIN-5 y5 correction port~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-ACP-RUNTIME-HARDENING`~~ | ~~Through [PR #217](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/217), merge `df70385`; merged tree equals tested `a219831`~~ |
 | `P11-FU-36` | MAIN-5 remaining guarded-runner mechanics | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
 | `P11-FU-37` | MAIN-5 Windows evidence-bundle promotion residual | Open | MEDIUM | `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` | Acceptance criteria in entry |
 
