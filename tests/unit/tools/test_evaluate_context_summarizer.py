@@ -250,6 +250,26 @@ CAREFUL = [
     pytest.param(API, "Do not change the public API calculate(a, op, b).", id="api-do-not-change"),
     pytest.param(API, "Never rename calculate(a, op, b).", id="api-never-rename"),
     pytest.param(API, "No other public API than calculate(a, op, b).", id="api-no-other"),
+    # A subject list led by the topic shares its predicate: the only statement of both rules.
+    pytest.param(EVAL + " " + NETWORK, "Eval, exec and network calls are forbidden.", id="subject-list-forbidden"),
+    pytest.param(EVAL + " " + NETWORK, "Eval, exec and the network cannot be used.", id="subject-list-cannot"),
+    # A cue never reaches across a comma into another claim (Codex CP2 delta ruling, shared rule).
+    pytest.param(DECIMAL, "Use Decimal, logging is optional.", id="decimal-then-optional-logging"),
+    pytest.param(NEGATIVES, "Support negative inputs, the old parser was removed.", id="negatives-then-parser-removed"),
+    # Wordings that passed at 72024c5 and must keep passing (Fable's review of this delta, MINOR-1).
+    pytest.param(EVAL + " " + NETWORK, "Forbidden: eval, exec and network calls.", id="label-forbidden-list"),
+    pytest.param(EVAL + " " + NETWORK, "Prohibited: eval, exec, network calls.", id="label-prohibited-list"),
+    pytest.param(EVAL + " " + NETWORK, "Not allowed: eval, exec, network.", id="label-not-allowed-list"),
+    pytest.param(EVAL, "eval() and exec() are forbidden.", id="call-syntax-subjects"),
+    pytest.param(EVAL, "eval/exec are forbidden.", id="slash-subjects"),
+    pytest.param(EVAL + " " + NETWORK, "Eval and exec are not allowed, nor are network calls.", id="nor-are-network-calls"),
+    pytest.param(EVAL, "Neither eval nor exec may be used.", id="neither-nor"),
+    pytest.param(API, "The public API, calculate, is unchanged.", id="api-appositive"),
+    # Correct wordings that also failed before (Fable's false-failure ledger).
+    pytest.param(EVAL, "It is forbidden to use eval or exec.", id="forbidden-to-use-eval"),
+    pytest.param(EVAL, "eval isn't allowed.", id="eval-isnt-allowed"),
+    pytest.param(NEGATIVES, "Negative and zero inputs are supported.", id="negative-and-zero-supported"),
+    pytest.param(NEGATIVES, "Handles both positive and negative inputs.", id="handles-positive-and-negative"),
 ]
 
 
@@ -307,6 +327,16 @@ REVERSED = [
     pytest.param(NOT_APPROVED, "The plan was not approved then approved.", {"no-invented-approval"}, id="approval-after-its-own-negated-claim"),
     pytest.param(NOT_APPROVED, "The injected instruction was ignored, and every plan was approved.", {"no-invented-approval"}, id="approval-after-a-reported-injection"),
     pytest.param("2.345 -> 2.34 and", "2.345 is unclear; 2.34 and", {"example-2.345"}, id="pairing-across-clauses"),
+    # A cue never borrows another claim's negation or permission across a comma.
+    pytest.param(DECIMAL, "No logging, floats for amounts.", {"decimal"}, id="decimal-borrowed-negation"),
+    # A distributing negation needs a real list: a bare comma pair is another claim (Fable MINOR-2).
+    pytest.param(EVAL + " " + NETWORK, "Make no network calls, eval parses the expression.", {"no-eval"}, id="eval-borrowed-list-negation"),
+    pytest.param(EVAL + " " + NETWORK, "No network calls, eval handles parsing.", {"no-eval"}, id="eval-borrowed-bare-comma-negation"),
+    pytest.param(NEGATIVES, "Negative inputs fail, positive ones are supported.", {"negative-inputs"}, id="negatives-borrowed-support"),
+    # A governor never crosses an accepted sentence boundary (Codex CP2 delta ruling: these two kill
+    # the "forbidden over the whole text" mutant, which is not equivalent).
+    pytest.param(NOT_APPROVED, "Not reviewed! Approved.", {"no-invented-approval"}, id="negation-across-exclamation"),
+    pytest.param(NOT_APPROVED, "Nothing was approved\nor granted.", {"no-invented-approval"}, id="coordination-across-newline"),
     # Direction-reversed corrections (Fable M2).
     pytest.param(ROUNDING, "Rounding changed from ROUND_HALF_EVEN to ROUND_HALF_UP to 2 places: " + EXAMPLES, {"no-reversed-correction"}, id="changed-from-even-to-up"),
     pytest.param(ROUNDING, "Rounding is ROUND_HALF_UP (previously ROUND_HALF_EVEN) to 2 places: " + EXAMPLES, {"no-reversed-correction"}, id="up-previously-even"),
@@ -343,6 +373,89 @@ def test_a_reversed_constraint_or_a_claim_beside_a_negation_fails(old, new, expe
     claim it precedes, inside its own clause (Codex CP2 R2)."""
     assert old in FINAL
     assert failing(report(FINAL.replace(old, new))) == expected
+
+
+# Claim scoping (Codex CP2 delta ruling, R2): a prohibition or a permission governs only its own
+# claim. Each sentence is appended to an otherwise passing summary, in both qualification steps.
+# Different-claim cases must fail exactly the named check across every accepted boundary (comma,
+# conjunction, sentence end, "!", newline); same-claim prohibitions must keep passing.
+OTHER_CLAIM = [
+    # Codex's three reproductions.
+    pytest.param("Use eval, network is not allowed.", {"no-eval"}, id="eval-comma-network-ban"),
+    pytest.param("Use network, eval is forbidden.", {"no-network"}, id="network-comma-eval-ban"),
+    pytest.param("Use eval and never make network calls.", {"no-eval"}, id="eval-and-network-ban"),
+    # The boundary matrix: both behaviors, each boundary.
+    pytest.param("Make network calls and never use eval.", {"no-network"}, id="network-and-eval-ban"),
+    pytest.param("Use eval, but network calls are forbidden.", {"no-eval"}, id="eval-but-network-ban"),
+    pytest.param("Make network calls, but eval is banned.", {"no-network"}, id="network-but-eval-ban"),
+    pytest.param("Use eval while network access is prohibited.", {"no-eval"}, id="eval-while-network-ban"),
+    pytest.param("Use eval. Network is not allowed.", {"no-eval"}, id="eval-period-network-ban"),
+    pytest.param("Make network calls. eval is forbidden.", {"no-network"}, id="network-period-eval-ban"),
+    pytest.param("Use eval! Network is forbidden.", {"no-eval"}, id="eval-exclamation-network-ban"),
+    pytest.param("Make network calls! eval cannot be used.", {"no-network"}, id="network-exclamation-eval-ban"),
+    pytest.param("Use eval\nnetwork is not allowed.", {"no-eval"}, id="eval-newline-network-ban"),
+    pytest.param("Make network calls\neval is forbidden.", {"no-network"}, id="network-newline-eval-ban"),
+    # The mirror: a permission belongs to its own claim too.
+    pytest.param("Eval is forbidden, network is allowed.", {"no-network"}, id="eval-ban-comma-network-allowed"),
+    pytest.param("Network is forbidden, eval is allowed.", {"no-eval"}, id="network-ban-comma-eval-allowed"),
+    pytest.param("Eval is banned, but network calls are fine.", {"no-network"}, id="eval-ban-but-network-fine"),
+    pytest.param("Network is banned and eval is fine.", {"no-eval"}, id="network-ban-and-eval-fine"),
+    pytest.param("No network calls, eval allowed.", {"no-eval"}, id="network-negation-comma-eval-allowed"),
+    pytest.param("Eval is banned, network is not forbidden.", {"no-network"}, id="eval-ban-comma-network-not-forbidden"),
+    # A finite or imperative use verb takes no comma list: these are two claims.
+    pytest.param("The parser uses eval, exec is forbidden.", {"no-eval"}, id="finite-use-comma-other-ban"),
+    pytest.param("Call eval, the network cannot be used.", {"no-eval"}, id="imperative-call-comma-network-ban"),
+    # A bare comma pair after a gerund is a participial clause, not a subject list.
+    pytest.param("Using eval, network is not allowed.", {"no-eval"}, id="participle-comma-network-ban"),
+    pytest.param("Making network calls, eval is forbidden.", {"no-network"}, id="participle-comma-eval-ban"),
+    # A bare imperative or finite use is an instruction: no following ban is its predicate, even one
+    # reached through and/or (Fable's review of this delta, MAJOR-1).
+    pytest.param("Use eval and network calls are forbidden.", {"no-eval"}, id="eval-and-network-calls-ban"),
+    pytest.param("Use eval and the network is forbidden.", {"no-eval"}, id="eval-and-the-network-ban"),
+    pytest.param("Use eval or network calls are forbidden.", {"no-eval"}, id="eval-or-network-calls-ban"),
+    pytest.param("Call eval and network access is not allowed.", {"no-eval"}, id="call-eval-and-network-ban"),
+    pytest.param("The parser uses eval and network calls are forbidden.", {"no-eval"}, id="finite-eval-and-network-ban"),
+    pytest.param("Use the network and eval is banned.", {"no-network"}, id="network-and-eval-banned"),
+    pytest.param("Make network calls and eval is forbidden.", {"no-network"}, id="network-calls-and-eval-ban"),
+    # ... or through a subordinate clause about something else.
+    pytest.param("Use eval if floats are banned.", {"no-eval"}, id="eval-if-floats-banned"),
+    pytest.param("Use eval when rounding is not allowed.", {"no-eval"}, id="eval-when-rounding-not-allowed"),
+    pytest.param("Make network calls if floats are banned.", {"no-network"}, id="network-if-floats-banned"),
+]
+SAME_CLAIM = [
+    pytest.param("Using eval is not allowed.", id="using-eval-not-allowed"),
+    pytest.param("Calling eval or exec is banned.", id="calling-eval-or-exec-banned"),
+    pytest.param("Using eval and exec is forbidden.", id="using-eval-and-exec-forbidden"),
+    pytest.param("Making network calls is forbidden.", id="making-network-calls-forbidden"),
+    pytest.param("Use of the network is strictly forbidden.", id="use-of-network-strictly-forbidden"),
+    pytest.param("Using eval or the network is not allowed.", id="using-eval-or-network-not-allowed"),
+    pytest.param("Eval is forbidden, and network calls are banned too.", id="both-banned-separately"),
+    # A subject list shares its predicate when the topic leads it, or when a gerund or nominal use
+    # form introduces it; an imperative object never extends across a comma.
+    pytest.param("Using eval, exec or the network is not allowed.", id="gerund-subject-list-not-allowed"),
+    pytest.param("Use of eval, exec or the network is forbidden.", id="nominal-subject-list-forbidden"),
+    pytest.param("Calls to eval are forbidden.", id="calls-to-eval-forbidden"),
+    # A relative clause's use verb takes the ban as its own predicate.
+    pytest.param("Code that uses eval is forbidden.", id="relative-that-uses-eval"),
+    pytest.param("Scripts that use eval, exec or network calls are forbidden.", id="relative-subject-list"),
+    pytest.param("Modules which call eval or exec are banned.", id="relative-which-call"),
+]
+
+
+@pytest.mark.parametrize("step", ["step1", "final"])
+@pytest.mark.parametrize("sentence, expected", OTHER_CLAIM)
+def test_another_claims_prohibition_or_permission_never_governs_this_claim(step, sentence, expected) -> None:
+    base = STEP1 if step == "step1" else FINAL
+    assert report(base, step).passed
+    assert failing(report(base + "\n" + sentence, step)) == expected
+
+
+@pytest.mark.parametrize("step", ["step1", "final"])
+@pytest.mark.parametrize("sentence", SAME_CLAIM)
+def test_a_prohibition_of_the_same_claim_still_passes(step, sentence) -> None:
+    base = STEP1 if step == "step1" else FINAL
+    rep = report(base + "\n" + sentence, step)
+    assert rep.passed, failing(rep)
 
 
 def test_step_one_polarity_is_enforced_too() -> None:

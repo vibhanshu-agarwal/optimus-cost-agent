@@ -66,8 +66,8 @@ SUMMARY_FORMAT = "context-summary-v1"
 # need not import the engine; a cross-check test keeps them equal to the engine's prompt, its
 # validator version and the fixture's canonical digest.
 SUMMARY_PROMPT_DIGEST = "6d1b4e77d77f1a7331932633dbc39ae4f1c3bf5c4a79acf8aed9873b410902db"  # pragma: allowlist secret - public prompt digest
-SUMMARY_VALIDATOR = "context-summary-validator-v2"
-SUMMARY_FIXTURE_DIGEST = "a200739e931f11f58639e067f481b301f8e0630663ab6c2279fae17733aaa2a0"  # pragma: allowlist secret - public fixture digest
+SUMMARY_VALIDATOR = "context-summary-validator-v3"
+SUMMARY_FIXTURE_DIGEST = "0258c1cec863a95c6de1382cca061bd77afb864097f9a5a246474cd2496819c5"  # pragma: allowlist secret - public fixture digest
 
 
 class RegistryError(Exception):
