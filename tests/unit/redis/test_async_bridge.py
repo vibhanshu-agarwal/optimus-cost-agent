@@ -21,6 +21,8 @@ from optimus.redis.async_bridge import (
     RedisLoopOwnerShutdownIncomplete,
     RedisLoopOwnerState,
 )
+from tests.support.concurrency import assert_some_row, assert_threads_alive, assert_threads_stopped
+from tests.support.fault_injection import pause_thread_on_return
 
 
 @pytest.fixture
@@ -106,7 +108,7 @@ def test_admission_is_refused_while_the_owner_loop_is_still_alive(owner):
             owner.close(timeout=0.2)
 
         # The loop is STILL ALIVE, so any refusal below can only come from admission.
-        assert owner.thread_is_alive
+        assert_threads_alive([owner.thread], "the owner owner thread is not alive")
         assert not owner.loop_is_closed
         assert owner.state is RedisLoopOwnerState.CLOSING
 
@@ -248,7 +250,7 @@ def test_close_settles_callers_blocked_on_unfinished_work(owner):
     assert entered.wait(5)
     owner.close(timeout=5.0)
     caller.join(5)
-    assert not caller.is_alive(), "the blocked caller was stranded by close()"
+    assert_threads_stopped([caller], "the blocked caller was stranded by close()")
     # Either terminal state is honest: the work was cancelled, or the loop closed
     # under it. What must never happen is the caller waiting forever.
     assert isinstance(
@@ -284,7 +286,7 @@ def test_incomplete_shutdown_is_reported_and_the_owner_is_retained(owner):
         owner.close(timeout=0.2)
     # Retained, never replaced, and never reported terminated while alive.
     assert owner.thread is thread_before
-    assert owner.thread_is_alive
+    assert_threads_alive([owner.thread], "the owner owner thread is not alive")
     assert not owner.is_terminated
     assert owner.state is RedisLoopOwnerState.CLOSING
 
@@ -310,7 +312,7 @@ def test_is_terminated_is_owner_identity_not_a_process_wide_name(owner):
     )
     decoy.start()
     try:
-        assert owner.thread_is_alive
+        assert_threads_alive([owner.thread], "the owner owner thread is not alive")
         assert not owner.is_terminated
 
         owner.close(timeout=5.0)
@@ -319,9 +321,9 @@ def test_is_terminated_is_owner_identity_not_a_process_wide_name(owner):
         # still alive; and the decoy is not mistaken for the owner.
         assert owner.is_terminated
         assert owner.loop_is_closed
-        assert not owner.thread_is_alive
-        assert decoy.is_alive()
-        assert any(thread.name == owner.thread.name for thread in threading.enumerate())
+        assert_threads_stopped([owner.thread], "the owner owner thread is still alive")
+        assert_threads_alive([decoy], 'decoy is not alive')
+        assert_some_row(threading.enumerate(), lambda thread: thread.name == owner.thread.name, 'must hold for some: thread.name == owner.thread.name')
     finally:
         decoy_release.set()
         decoy.join(5)
@@ -394,7 +396,7 @@ def test_shared_tool_owner_is_retained_never_replaced_while_live():
         # The slot still holds the SAME live owner, and acquisition is refused rather
         # than silently handing out a replacement loop.
         assert async_bridge._shared_tool_owner is old  # noqa: SLF001
-        assert old.thread_is_alive
+        assert_threads_alive([old.thread], "the old owner thread is not alive")
         with pytest.raises(RedisLoopOwnerClosed):
             async_bridge._acquire_shared_tool_owner()  # noqa: SLF001
     finally:
@@ -437,7 +439,7 @@ def test_startup_timeout_hands_back_retained_custody(monkeypatch):
         assert retained.state is not RedisLoopOwnerState.OPEN
         # Retained custody is the point: the caller is handed a live owner it can
         # observe, rather than an unreferenced thread nobody holds.
-        assert retained.thread_is_alive
+        assert_threads_alive([retained.thread], "the retained owner thread is not alive")
         assert not retained.is_terminated
     finally:
         release.set()
@@ -445,7 +447,7 @@ def test_startup_timeout_hands_back_retained_custody(monkeypatch):
         # closes the loop it never ran, so a retained-then-released wedge leaves no
         # orphaned loop behind (round 2: an ordering-dependent unclosed-loop warning).
         terminated = retained.wait_terminated(10)
-    assert not retained.thread_is_alive
+    assert_threads_stopped([retained.thread], "the retained owner thread is still alive")
     assert terminated and retained.is_terminated and retained.loop_is_closed
 
 
@@ -529,14 +531,14 @@ def test_concurrent_observers_share_one_finalization_of_a_dead_thread(monkeypatc
         assert entered.wait(5), "the first observer never claimed finalization"
         second.start()
         second.join(0.3)
-        assert second.is_alive(), "the second observer returned while finalization was still pending"
+        assert_threads_alive([second], "the second observer returned while finalization was still pending")
         assert retained.state is not RedisLoopOwnerState.CLOSED, "CLOSED published before cleanup completed"
         assert not retained.loop_is_closed
     finally:
         release.set()
         first.join(10)
         second.join(10)
-    assert not first.is_alive() and not second.is_alive()
+    assert_threads_stopped([first, second], "both observers must have returned")
     assert entries == [1], "native loop cleanup ran more than once"
     for kind, outcome in ((kinds[0], first_outcome), (kinds[1], second_outcome)):
         assert "error" not in outcome, f"{kind} observer failed: {outcome.get('error')!r}"
@@ -568,7 +570,7 @@ def test_every_observer_respects_its_own_budget_while_finalization_is_pending(mo
         observer.start()
         assert entered.wait(5)
         observer.join(2.0)
-        assert not observer.is_alive(), "the bounded observer stayed blocked inside pending finalization"
+        assert_threads_stopped([observer], "the bounded observer stayed blocked inside pending finalization")
         assert outcome["result"] == "incomplete"
         assert retained.state is not RedisLoopOwnerState.CLOSED
         assert not retained.loop_is_closed and not retained.is_terminated
@@ -641,7 +643,7 @@ def test_success_is_not_reported_until_the_retained_finalization_completes(monke
         assert retained.state is not RedisLoopOwnerState.CLOSED
         concurrent.start()
         concurrent.join(0.2)
-        assert concurrent.is_alive(), "a concurrent observer returned while the outcome was pending"
+        assert_threads_alive([concurrent], "a concurrent observer returned while the outcome was pending")
     finally:
         release.set()
         concurrent.join(10)
@@ -695,7 +697,8 @@ def test_a_finalizer_launch_failure_is_published_to_every_observer(monkeypatch):
 def test_public_close_finalizes_a_dead_thread_that_left_its_loop_open(monkeypatch):
     """R9 MUTATION: `close` returned ordinary success with the loop open and state CLOSING."""
     retained = _dead_before_loop_owner(monkeypatch, "optimus-redis-owner-dead-public-close")
-    assert not retained.thread_is_alive and not retained.loop_is_closed
+    assert_threads_stopped([retained.thread], "precondition: the retained owner thread is dead")
+    assert not retained.loop_is_closed
     retained.close(timeout=1)
     assert retained.loop_is_closed
     assert retained.state is RedisLoopOwnerState.CLOSED
@@ -724,7 +727,7 @@ def test_public_close_of_a_still_alive_startup_wedge_reports_incomplete_and_does
     try:
         with pytest.raises(async_bridge.RedisLoopOwnerShutdownIncomplete):
             retained.close(timeout=0.2)
-        assert retained.thread_is_alive
+        assert_threads_alive([retained.thread], "the retained owner thread is not alive")
         assert not retained.loop_is_closed, "a running thread's loop was force-closed from outside"
         assert retained._finalization is None, "finalization was claimed for a LIVE thread"  # noqa: SLF001
         assert not retained.is_terminated
@@ -745,3 +748,28 @@ def test_a_thread_that_died_before_running_the_loop_leaves_no_orphaned_loop(monk
     retained = excinfo.value.owner
     assert retained.wait_terminated(5)
     assert retained.is_terminated and retained.loop_is_closed
+
+
+def test_public_close_returns_only_after_the_finalizer_thread_has_exited(monkeypatch):
+    """MUTATION (P11-FU-33 class): close() returned once the finalization Future was set, while
+    the finalizer thread that set it was still exiting -- the same signal-before-exit shape as
+    the runtime teardown thread."""
+    name = "optimus-redis-owner-finalizer-exit"
+    retained = _dead_before_loop_owner(monkeypatch, name)
+    with pause_thread_on_return(f"{name}-finalizer", "_run_finalization", 0.3) as paused:
+        retained.close(timeout=5)
+        assert paused, "the injected pause never fired, so this test proved nothing"
+        assert_threads_stopped(paused[:1], "close() returned before the finalizer thread exited")
+    assert retained.is_terminated
+
+
+def test_close_reports_incomplete_while_the_finalizer_thread_is_still_exiting(monkeypatch):
+    name = "optimus-redis-owner-finalizer-budget"
+    retained = _dead_before_loop_owner(monkeypatch, name)
+    with pause_thread_on_return(f"{name}-finalizer", "_run_finalization", 1.0) as paused:
+        with pytest.raises(RedisLoopOwnerShutdownIncomplete):
+            retained.close(timeout=0.3)
+        assert paused, "the injected pause never fired, so this test proved nothing"
+        retained.close(timeout=5)
+        assert_threads_stopped(paused[:1], "the later close returned before the finalizer thread exited")
+    assert retained.is_terminated

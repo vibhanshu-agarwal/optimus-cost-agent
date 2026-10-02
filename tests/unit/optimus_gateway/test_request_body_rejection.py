@@ -37,6 +37,7 @@ import optimus_gateway.server as gw_server
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.server import OptimusGatewayHandler, serve_gateway
 from optimus_gateway.upstream_client import ProviderMessageResult
+from tests.support.concurrency import assert_some_row, assert_threads_stopped
 
 REJECTED_PATHS = (
     "/v1/tools/web/search",
@@ -458,7 +459,7 @@ def test_harness_reports_lifecycle_failure_alongside_primary_failure(monkeypatch
     finally:
         release.set()
         stuck.join(JOIN_SECONDS)
-    assert not stuck.is_alive(), "the simulated stuck handler must have stopped after release"
+    assert_threads_stopped([stuck], "the simulated stuck handler must have stopped after release")
     message = str(excinfo.value)
     assert "primary scenario failure" in message
     assert "simulated-stuck-handler" in message
@@ -479,8 +480,8 @@ def test_teardown_reports_injected_shutdown_worker_exception(monkeypatch: pytest
 
     server.shutdown = shutdown_then_raise  # type: ignore[method-assign]
     problems = _teardown(None, server, thread, observer, join_seconds=JOIN_SECONDS)
-    assert any("injected shutdown worker exception" in problem for problem in problems), problems
-    assert not thread.is_alive(), "serve thread must have stopped"
+    assert_some_row(problems, lambda problem: "injected shutdown worker exception" in problem, problems)
+    assert_threads_stopped([thread], "serve thread must have stopped")
 
 
 def test_run_scenario_retains_primary_failure_when_server_close_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -955,4 +956,4 @@ def test_injected_response_write_error_is_not_reported_as_success(monkeypatch: p
     with pytest.raises(AssertionError) as excinfo:
         _run_scenario(observer, scenario)
     assert "injected response write failure" in str(excinfo.value)
-    assert not [t for t in observer.handler_threads if t.is_alive()], "cleanup must still complete"
+    assert_threads_stopped(observer.handler_threads, "cleanup must still complete")

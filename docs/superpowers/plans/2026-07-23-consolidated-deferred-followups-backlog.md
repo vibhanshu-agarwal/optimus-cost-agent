@@ -471,6 +471,23 @@ those runs prove nothing about this test. Root cause is not established.
 Public anchors: [PR #217 description](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/217)
 and [PR #217 CI](https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/36977760586).
 
+**Root cause and proposed closure (2026-10-02):** `RedisRuntime.close()` and
+`close_async()` returned once `record.completed` was set, but the
+`optimus-redis-runtime-teardown` thread sets it inside its own `finally` and only then
+exits, so the H5 schedule could enumerate that thread before it left. OS preemption in
+that window produced the failures. A deterministic reproduction pauses only that thread
+after it publishes completion: 200/200 failures, and 0/200 once the thread is joined.
+`RedisLoopOwner`'s finalizer thread had the same signal-before-exit shape. The fix joins
+each thread within the caller's existing observation budget and reports shutdown as
+incomplete, rather than complete, while it lives. The H5 schedule now records
+detection-time context (thread target and stack) and measures pending asyncio tasks
+from real state, and the concurrency tests name the offending thread, task, process or
+row instead of a bare assertion. Two bounded joins that return silently on timeout
+remain, outside the H5 schedule: `NdjsonSubprocessSession.terminate()` (5 s) and the
+client-MCP local IPC listener stop (2 s); custody `P11.26-CAND-1-RESOURCE-LIFETIME`.
+Proposed closure: Closed when the fix lands on `main`, citing the merge, with this entry
+escalated per its criteria to `P11.26-CAND-1-RESOURCE-LIFETIME`.
+
 ### P11-FU-34: MAIN-5 settlement telemetry truth
 
 **Status:** Open.
