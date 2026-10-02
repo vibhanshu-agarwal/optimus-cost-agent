@@ -120,7 +120,10 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
         issue("REASONING_NOT_EXPRESSIBLE", f"reasoning {entry.default_reasoning!r} has no upstream request form")
 
     if role is Role.SUMMARIZER and not any(
-        receipt.format == SUMMARY_FORMAT
+        # The exact registry key that owns the entry: a receipt never carries over to another model
+        # that shares its route and settings (Codex CP2 R3).
+        receipt.model_id == model_id
+        and receipt.format == SUMMARY_FORMAT
         and receipt.providers == entry.route.providers
         and receipt.quantizations == entry.route.quantizations
         and receipt.reasoning == entry.default_reasoning
@@ -131,7 +134,7 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
     ):
         issue(
             "SUMMARIZER_UNQUALIFIED",
-            f"no passing {SUMMARY_FORMAT} receipt for this route, reasoning setting, fixture, prompt and validator",
+            f"no passing {SUMMARY_FORMAT} receipt for this model, route, reasoning setting, fixture, prompt and validator",
         )
     return issues
 

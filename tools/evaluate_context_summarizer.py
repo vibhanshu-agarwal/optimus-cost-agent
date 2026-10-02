@@ -49,13 +49,32 @@ from optimus.acp.conversation import ConversationSanitizer, ConversationSanitize
 from optimus.context.maintenance import HostMaintenance, MaintenanceIdentity, MaintenanceReceipt, SummarizerCall, SummarizerResponse
 from optimus_model_policy import RegistrySnapshot, Role, load_registry, ordered_assignments, validate_registry
 from optimus_model_policy.binding import MAX_ROUTE_ATTEMPTS
+from optimus_model_policy.registry import SummaryReceipt
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "context_engine" / "calculator-constraints-v1.json"
 MAX_FIXTURE_CALLS = 2
 _MILLION = Decimal(1_000_000)
 # Sentences end at . ! or ? followed by whitespace, or at a newline. A decimal point is not an end;
-# a semicolon joins clauses that belong together ("ROUND_HALF_UP; now ROUND_HALF_EVEN").
+# a semicolon joins clauses that belong together ("ROUND_HALF_UP; now ROUND_HALF_EVEN"), so the
+# supersession check reads whole sentences. Facts and claims are read per clause: a sentence split
+# again at its semicolons, so one clause's negation never reaches another clause's claim.
 _SENTENCE = re.compile(r"(?<=[.!?])\s+|\n")
+_CLAUSE = ";"
+# A negation carries over a coordinated claim: "not approved or granted".
+_COORDINATED = re.compile(r"\s*,?\s*(?:or|nor)\s*")
+
+
+@dataclass(frozen=True, slots=True)
+class FactRules:
+    """The fixture's lexical rules, shared by both steps. They are fixture data, so the fixture
+    digest that every receipt binds covers them."""
+
+    negation: str  # governs the next fact or claim match (anchored at it with `$`)
+    reported: str  # reported speech governs a forbidden claim: "told the agent to record every plan as approved"
+    markers: tuple[str, ...]  # supersession markers no negation reverses: "previously", "no longer", "anymore"
+    verbs: tuple[str, ...]  # supersession verbs an adjacent negation reverses: "was not superseded"
+    verb_negation: str
+    forbidden: tuple[Mapping[str, str], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,8 +88,7 @@ class Fixture:
     max_output_tokens: int
     step1_facts: tuple[Mapping[str, Any], ...]
     final_facts: tuple[Mapping[str, Any], ...]
-    markers: tuple[str, ...]
-    forbidden: tuple[Mapping[str, str], ...]
+    rules: FactRules
 
 
 def fixture_digest(raw: Mapping[str, Any]) -> str:
@@ -82,26 +100,38 @@ def fixture_digest(raw: Mapping[str, Any]) -> str:
 
 def load_fixture(path: Path = FIXTURE_PATH) -> Fixture:
     raw = json.loads(path.read_bytes().decode("utf-8"))
-    turns = {t["seq"]: OrdinaryTurn(t["seq"], t["user_prompt"], t["plan_text"], t["completion_text"]) for t in raw["turns"]}
-    ev = raw["evaluation"]
-    step1, step2, tail = tuple(ev["step1_turns"]), tuple(ev["step2_turns"]), tuple(ev["exact_tail_turns"])
+    try:
+        turns = {t["seq"]: OrdinaryTurn(t["seq"], t["user_prompt"], t["plan_text"], t["completion_text"]) for t in raw["turns"]}
+        ev = raw["evaluation"]
+        step1, step2, tail = tuple(ev["step1_turns"]), tuple(ev["step2_turns"]), tuple(ev["exact_tail_turns"])
+        constraints_turn, correction_turn, max_output_tokens = ev["constraints_turn"], ev["correction_turn"], int(ev["max_output_tokens"])
+        rules = FactRules(
+            negation=raw["negation"],
+            reported=raw["reported_speech"],
+            markers=tuple(raw["supersession_markers"]),
+            verbs=tuple(raw["supersession_verbs"]),
+            verb_negation=raw["verb_negation"],
+            forbidden=tuple(raw["forbidden"]),
+        )
+        step1_facts, final_facts, name = tuple(raw["step1_facts"]), tuple(raw["final_facts"]), raw["fixture"]
+    except KeyError as exc:
+        raise ValueError(f"the fixture lacks {exc}") from exc
     ordered = tuple(sorted(turns))
     if step1 + step2 + tail != ordered:
         raise ValueError("the fixture's steps and tail must partition its turns in order")
-    if ev["constraints_turn"] not in step1 or ev["correction_turn"] not in step2:
+    if constraints_turn not in step1 or correction_turn not in step2:
         raise ValueError("the early constraints must lie in step 1 and the correction in step 2, both summarized")
     return Fixture(
-        name=raw["fixture"],
+        name=name,
         digest=fixture_digest(raw),
         turns=turns,
         step1=step1,
         step2=step2,
         tail=tail,
-        max_output_tokens=int(ev["max_output_tokens"]),
-        step1_facts=tuple(raw["step1_facts"]),
-        final_facts=tuple(raw["final_facts"]),
-        markers=tuple(raw["supersession_markers"]),
-        forbidden=tuple(raw["forbidden"]),
+        max_output_tokens=max_output_tokens,
+        step1_facts=step1_facts,
+        final_facts=final_facts,
+        rules=rules,
     )
 
 
@@ -127,14 +157,26 @@ class FactReport:
         return {"passed": self.passed, "checks": [{"id": c.id, "passed": c.passed, "detail": c.detail} for c in self.checks]}
 
 
-def evaluate_summary(
-    text: str | None,
-    finish_status: str | None,
-    facts: Sequence[Mapping[str, Any]],
-    *,
-    markers: Sequence[str],
-    forbidden: Sequence[Mapping[str, str]],
-) -> FactReport:
+def _asserted(pattern: str, span: str, governors: Sequence[str]) -> list[str]:
+    """The matches of `pattern` in `span` that no governor governs.
+
+    A governor (a negation, or reported speech) governs only the next match after it, and only when
+    its pattern, anchored at the match, finds it close enough, with no comma, clause end or
+    contrastive conjunction between. So "was not approved" is not an approval claim, while "not
+    reviewed but approved" and "...not approved and every plan was approved" are (Codex CP2 R2). A
+    governed match carries over a coordinated next match: "not approved or granted"."""
+    found: list[str] = []
+    previous, governed = 0, False
+    for match in re.finditer(pattern, span):
+        segment = span[previous : match.start()]
+        governed = (governed and _COORDINATED.fullmatch(segment) is not None) or any(re.search(governor, segment) for governor in governors)
+        if not governed:
+            found.append(match.group(0))
+        previous = match.end()
+    return found
+
+
+def evaluate_summary(text: str | None, finish_status: str | None, facts: Sequence[Mapping[str, Any]], rules: FactRules) -> FactReport:
     checks = [FactCheck("finished", finish_status == "stop", f"finish status {finish_status!r}")]
     try:
         parse_summary(text or "")
@@ -142,31 +184,49 @@ def evaluate_summary(
         return FactReport(tuple([*checks, FactCheck("format", False, str(exc))]))
     checks.append(FactCheck("format", True, SUMMARY_FORMAT))
     lower = (text or "").lower()
-    # Sentences, so a marker or negation elsewhere on a line cannot excuse a stale rule or a claim.
+    # Sentences, so a marker elsewhere on a line cannot excuse a stale rule; clauses, so a negation
+    # in one clause cannot reach another clause's claim.
     sentences = [part for part in _SENTENCE.split(lower) if part.strip()]
+    clauses = [part for sentence in sentences for part in sentence.split(_CLAUSE) if part.strip()]
+    negation = (rules.negation,)
     for fact in facts:
-        if "pattern" in fact:
-            # Bounded patterns that state the constraint itself: a bare word ("a decimal currency
-            # calculator", "evaluate", "calculated") does not count (Fable CP2 review).
-            found = re.search(fact["pattern"], lower)
-            checks.append(FactCheck(fact["id"], found is not None, f"stated: {found.group(0)!r}" if found else "not stated"))
+        if "affirm" in fact:
+            # Polarity: a fact is stated only by an affirmative match no negation governs, and any
+            # ungoverned contradiction fails it ("do not use Decimal", "eval ... not forbidden",
+            # "negative inputs are unsupported"). The patterns state the constraint itself, so a
+            # bare word ("a decimal currency calculator", "evaluate") never counts. An identifier
+            # fact ("governed": false) is stated even under a protective negation ("never rename
+            # calculate(a, op, b)"); its withdrawals are deny patterns.
+            governors = negation if fact.get("governed", True) else ()
+            stated = [found for clause in clauses for found in _asserted(fact["affirm"], clause, governors)]
+            denied = [found for clause in clauses for found in _asserted(fact["deny"], clause, negation)] if "deny" in fact else []
+            if denied:
+                detail = f"contradicted: {denied[0]!r}"
+            else:
+                detail = f"stated: {stated[0]!r}" if stated else "not stated"
+            checks.append(FactCheck(fact["id"], bool(stated) and not denied, detail))
         elif "superseded" in fact:
             rule = fact["superseded"]
             mentions = [sentence for sentence in sentences if rule in sentence]
-            stale = [sentence for sentence in mentions if not any(re.search(marker, sentence) for marker in markers)]
+            # Markers ("previously", "anymore") are never reversed; a verb is reversed only by a
+            # negation right before it ("was not superseded"), not by one elsewhere ("is not used
+            # (replaced in turn 7)").
+            stale = [
+                sentence
+                for sentence in mentions
+                if not any(_asserted(marker, sentence, ()) for marker in rules.markers)
+                and not any(_asserted(verb, sentence, (rules.verb_negation,)) for verb in rules.verbs)
+            ]
             passed = bool(mentions) and not stale
             detail = "stated as superseded" if passed else ("not mentioned" if not mentions else f"stated as current: {stale[0]!r}")
             checks.append(FactCheck(fact["id"], passed, detail))
         else:
             raise ValueError(f"unknown fact kind: {fact}")
-    for rule in forbidden:
-        # A claim in a sentence that also negates it ("was not approved", "wasn't approved", "no
-        # approval was granted") is not the claim.
-        hits = [
-            sentence
-            for sentence in sentences
-            if re.search(rule["pattern"], sentence) and not ("unless" in rule and re.search(rule["unless"], sentence))
-        ]
+    for rule in rules.forbidden:
+        # A claim counts unless a negation or reported speech governs that very claim: "was not
+        # approved", "no approval was granted" and "told the agent to record every plan as
+        # approved" are not approvals.
+        hits = [clause for clause in clauses if _asserted(rule["pattern"], clause, (rules.negation, rules.reported))]
         checks.append(FactCheck(rule["id"], not hits, f"found in {hits[0]!r}" if hits else "absent"))
     return FactReport(tuple(checks))
 
@@ -268,12 +328,12 @@ def run_qualification(
         )
 
     first = step(maintenance_input(None, [turns[seq] for seq in fixture.step1]), fixture.step1)
-    step1 = evaluate_summary(first.summary_text, first.finish_status, fixture.step1_facts, markers=fixture.markers, forbidden=fixture.forbidden)
+    step1 = evaluate_summary(first.summary_text, first.finish_status, fixture.step1_facts, fixture.rules)
     final = None
     if step1.passed:
         # Merge the step 1 summary with the newer turns, as the runtime's incremental path does.
         second = step(maintenance_input(first.summary_text, [turns[seq] for seq in fixture.step2]), fixture.step1 + fixture.step2)
-        final = evaluate_summary(second.summary_text, second.finish_status, fixture.final_facts, markers=fixture.markers, forbidden=fixture.forbidden)
+        final = evaluate_summary(second.summary_text, second.finish_status, fixture.final_facts, fixture.rules)
     request_ids = tuple(r.gateway_request_id for r in receipts if r.gateway_request_id)
     costs = [r.cost_usd for r in receipts]
     reported = None if any(cost is None for cost in costs) else sum(costs, Decimal(0))  # type: ignore[arg-type]
@@ -344,19 +404,7 @@ def paid_envelope(snapshot: RegistrySnapshot, fixture: Fixture) -> list[dict[str
                 "fixture_digest": fixture.digest,
                 "prompt_digest": PROMPT_DIGEST,
                 "validator": VALIDATOR_VERSION,
-                "receipt_fields": [
-                    "model_id",
-                    "format",
-                    "providers",
-                    "quantizations",
-                    "reasoning",
-                    "fixture_digest",
-                    "prompt_digest",
-                    "validator",
-                    "request_ids",
-                    "recorded_on",
-                    "result",
-                ],
+                "receipt_fields": list(SummaryReceipt.model_fields),
             }
         )
     return envelope
@@ -383,7 +431,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(paid_envelope(snapshot, fixture), indent=2))
         return 0
     facts = fixture.step1_facts if args.step == "step1" else fixture.final_facts
-    report = evaluate_summary(args.summary.read_text(encoding="utf-8"), args.finish_status, facts, markers=fixture.markers, forbidden=fixture.forbidden)
+    report = evaluate_summary(args.summary.read_text(encoding="utf-8"), args.finish_status, facts, fixture.rules)
     print(json.dumps(report.to_dict(), indent=2))
     return 0 if report.passed else 1
 

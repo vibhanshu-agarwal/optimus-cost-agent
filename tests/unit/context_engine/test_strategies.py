@@ -429,6 +429,25 @@ def test_cancellation_between_chunks_stops_further_calls() -> None:
 # --- Checkpoint reuse ---------------------------------------------------------------------------------
 
 
+class FixedSummary(FakeMaintenance):
+    """Returns the same valid summary text for every request."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__()
+        self._fixed = text
+
+    def __call__(self, request: MaintenanceRequest) -> MaintenanceResult:
+        self.requests.append(request)
+        return MaintenanceResult(summary_text=self._fixed, attempt_ids=(f"attempt-{len(self.requests)}",), status="completed", finish_status="stop")
+
+
+def history_used(v, snapshot: HistorySnapshot, estimate=chars) -> int:
+    """What the view puts in the history budget: exact authority, exact turns and the summary."""
+    exact = v.head_turn_ids + v.tail_turn_ids
+    summary = estimate(v.checkpoint.summary_text) if v.checkpoint is not None else 0
+    return sum(estimate(render_protected_state(s)) for s in snapshot.protected) + sum(estimate(render_ordinary_turn(t)) for t in snapshot.turns if t.seq in exact) + summary
+
+
 def test_a_valid_checkpoint_covering_the_whole_range_is_reused_without_a_call() -> None:
     snap = make_snapshot([30, 30, 30, 30])
     p = params(compaction_tail_input_tokens=cost(snap, 4))
@@ -436,6 +455,94 @@ def test_a_valid_checkpoint_covering_the_whole_range_is_reused_without_a_call() 
     maintenance = FakeMaintenance()
     again = view(snap, "compaction", p, checkpoint=first.checkpoint, maintenance=maintenance)
     assert again.checkpoint == first.checkpoint and maintenance.requests == []
+    assert history_used(again, snap) <= limits().history_input_tokens
+
+
+def test_a_reused_summary_over_the_current_output_bound_is_rebuilt_from_source() -> None:
+    """Codex CP2 R1: a 400-token checkpoint reused under a 200-token cap overfilled history."""
+    snap = make_snapshot([30, 30, 30, 30])
+    p = params(compaction_tail_input_tokens=cost(snap, 4), summary_output_tokens=400)
+    first = view(snap, "compaction", p, lim=limits(maintenance_output_tokens=400), maintenance=FixedSummary(summary_text("L", length=400)))
+    assert first.checkpoint is not None and len(first.checkpoint.summary_text) == 400
+    reduced = limits(history=authority(snap) + cost(snap, 4) + 200, maintenance_output_tokens=200)
+    maintenance = FakeMaintenance()
+    v = view(snap, "compaction", p, lim=reduced, checkpoint=first.checkpoint, maintenance=maintenance)
+    assert v.available, v.reason
+    assert [r.covered_turn_ids for r in maintenance.requests] == [(1, 2, 3)]
+    assert first.checkpoint.summary_text not in maintenance.requests[0].input_text
+    assert history_used(v, snap) <= reduced.history_input_tokens
+
+
+def test_a_hybrid_reused_summary_over_the_current_output_bound_is_rebuilt_from_source() -> None:
+    snap = make_snapshot([30, 30, 30, 30, 30])
+    p = params(anchor_input_tokens=cost(snap, 1), hybrid_tail_input_tokens=cost(snap, 5), summary_output_tokens=400)
+    first = view(snap, "hybrid", p, lim=limits(maintenance_output_tokens=400), maintenance=FixedSummary(summary_text("L", length=400)))
+    assert first.head_turn_ids == (1,) and first.checkpoint is not None and first.checkpoint.covered_turn_ids == (2, 3, 4)
+    reduced = limits(history=authority(snap) + cost(snap, 1, 5) + 200, maintenance_output_tokens=200)
+    maintenance = FakeMaintenance()
+    v = view(snap, "hybrid", p, lim=reduced, checkpoint=first.checkpoint, maintenance=maintenance)
+    assert v.available and v.head_turn_ids == (1,) and v.tail_turn_ids == (5,)
+    assert [r.covered_turn_ids for r in maintenance.requests] == [(2, 3, 4)]
+    assert first.checkpoint.summary_text not in maintenance.requests[0].input_text
+    assert history_used(v, snap) <= reduced.history_input_tokens
+
+
+def test_a_reused_summary_is_measured_with_the_current_estimator() -> None:
+    """The checkpoint's parameter digest does not cover the estimator: the same partitions under a
+    heavier estimator must re-measure the cached text, not trust it."""
+    snap = make_snapshot([30, 30, 30, 30])
+    p = params(compaction_tail_input_tokens=cost(snap, 4), summary_output_tokens=400)
+    cached = summary_text("Z")
+    cached += "z" * (300 - len(cached))
+    first = view(snap, "compaction", p, lim=limits(maintenance_output_tokens=400), maintenance=FixedSummary(cached))
+    assert first.checkpoint is not None and first.checkpoint.summary_text == cached
+
+    def heavier(text: str) -> int:
+        return len(text) + 3 * text.count("z")
+
+    assert all(heavier(render_ordinary_turn(t)) == len(render_ordinary_turn(t)) for t in snap.turns), "turn costs unchanged"
+    lim = limits(maintenance_output_tokens=400, estimate_history=heavier, estimator_id="chars-plus-z")
+    maintenance = FakeMaintenance()
+    v = view(snap, "compaction", p, lim=lim, checkpoint=first.checkpoint, maintenance=maintenance)
+    assert v.available and v.covered_turn_ids == first.covered_turn_ids
+    assert [r.covered_turn_ids for r in maintenance.requests] == [(1, 2, 3)] and cached not in maintenance.requests[0].input_text
+    assert heavier(v.checkpoint.summary_text) <= 400
+
+
+def test_a_cached_summary_that_no_longer_parses_is_rebuilt_from_source() -> None:
+    snap = make_snapshot([30, 30, 30, 30])
+    p = params(compaction_tail_input_tokens=cost(snap, 4))
+    first = view(snap, "compaction", p)
+    corrupt = dataclasses.replace(first.checkpoint, summary_text="## Task context\nonly one section")
+    maintenance = FakeMaintenance()
+    v = view(snap, "compaction", p, checkpoint=corrupt, maintenance=maintenance)
+    assert v.available and [r.covered_turn_ids for r in maintenance.requests] == [(1, 2, 3)]
+    assert v.checkpoint is not None and v.checkpoint.summary_text != corrupt.summary_text
+
+
+def test_a_rebuild_that_needs_more_calls_than_allowed_is_unavailable_with_zero_calls() -> None:
+    snap = make_snapshot([300, 300, 300, 300])
+    p = params(compaction_tail_input_tokens=cost(snap, 4), summary_output_tokens=400, max_maintenance_calls=1)
+    first = view(snap, "compaction", p, lim=limits(maintenance_output_tokens=400), maintenance=FixedSummary(summary_text("L", length=400)))
+    assert first.checkpoint is not None
+    # The input holds one turn beside a maximal prior summary, never two turns: rebuilding turns 1-3
+    # from source needs three calls, and one is allowed.
+    reduced = limits(maintenance_output_tokens=200, maintenance_input_tokens=len(PRIOR_SUMMARY_HEADER) + 200 + 1 + cost(snap, 1))
+    assert cost(snap, 1, 2) + 1 > reduced.maintenance_input_tokens
+    maintenance = FakeMaintenance()
+    v = view(snap, "compaction", p, lim=reduced, checkpoint=first.checkpoint, maintenance=maintenance)
+    assert (v.available, v.reason, maintenance.requests) == (False, "maintenance allowance exceeded", [])
+
+
+def test_a_prefix_checkpoint_over_the_current_bound_is_not_merged() -> None:
+    small, grown = make_snapshot([30, 30, 30, 30]), make_snapshot([30, 30, 30, 30, 30])
+    p = params(compaction_tail_input_tokens=cost(small, 4), summary_output_tokens=400)
+    prior = view(small, "compaction", p, lim=limits(maintenance_output_tokens=400), maintenance=FixedSummary(summary_text("L", length=400))).checkpoint
+    assert prior is not None and prior.covered_turn_ids == (1, 2, 3)
+    maintenance = FakeMaintenance()
+    v = view(grown, "compaction", p, lim=limits(maintenance_output_tokens=200), checkpoint=prior, maintenance=maintenance)
+    assert v.available and [r.covered_turn_ids for r in maintenance.requests] == [(1, 2, 3, 4)]
+    assert prior.summary_text not in maintenance.requests[0].input_text
 
 
 def test_an_appended_turn_merges_only_the_new_range_into_the_prior_summary() -> None:
@@ -463,13 +570,7 @@ def test_no_summarizer_output_capacity_is_unavailable_not_an_error() -> None:
 def test_a_reused_summary_too_long_to_sit_beside_the_next_turn_falls_back_to_source() -> None:
     small, grown = make_snapshot([30, 30, 30, 30]), make_snapshot([30, 30, 30, 30, 30])
     p = params(compaction_tail_input_tokens=cost(small, 4), summary_output_tokens=400)
-
-    class Long(FakeMaintenance):
-        def __call__(self, request: MaintenanceRequest) -> MaintenanceResult:
-            self.requests.append(request)
-            return MaintenanceResult(summary_text=summary_text("L", length=400), attempt_ids=("a",), status="completed", finish_status="stop")
-
-    prior = view(small, "compaction", p, lim=limits(maintenance_output_tokens=400), maintenance=Long()).checkpoint
+    prior = view(small, "compaction", p, lim=limits(maintenance_output_tokens=400), maintenance=FixedSummary(summary_text("L", length=400))).checkpoint
     assert prior is not None and prior.covered_turn_ids == (1, 2, 3)
     # Four whole turns fit the input; the long prior summary plus turn 4 does not.
     lim = limits(maintenance_input_tokens=cost(grown, 1, 2, 3, 4) + 3, maintenance_output_tokens=400)

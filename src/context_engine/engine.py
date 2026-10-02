@@ -14,8 +14,9 @@ view is unavailable and no maintenance runs. Then:
 Maintenance is planned in whole-turn chunks before any call. A later chunk's prior summary is
 counted at its maximum length, so every planned input fits. A plan that needs more calls than allowed,
 or a single turn larger than the maintenance input, is unavailable with zero calls. A valid checkpoint
-is reused, or merged incrementally with only the turns it does not yet cover. The engine writes
-nothing; it returns a candidate the host may publish.
+is reused, or merged incrementally with only the turns it does not yet cover, only while its text
+still passes the current summary bound, estimator and format; otherwise the range is rebuilt from
+source within the same limits. The engine writes nothing; it returns a candidate the host may publish.
 """
 
 from __future__ import annotations
@@ -155,8 +156,15 @@ class ContextEngine:
         if checkpoint is not None:
             reused = reuse_checkpoint(checkpoint, snapshot, strategy=strategy, parameters=parameters).checkpoint
             # A checkpoint covering the whole range needs no call; one covering a prefix is merged
-            # with only the turns it does not yet cover.
-            if reused is not None and covered[: len(reused.covered_turn_ids)] == reused.covered_turn_ids:
+            # with only the turns it does not yet cover. Either way its text must pass today's
+            # acceptance: the parameter digest covers neither the limits nor the estimator, so a
+            # summary accepted under a larger cap or a lighter estimator is rebuilt from source
+            # (Codex CP2 R1).
+            if (
+                reused is not None
+                and covered[: len(reused.covered_turn_ids)] == reused.covered_turn_ids
+                and self._text_rejection(reused.summary_text, estimate, reserve) is None
+            ):
                 prior = reused
 
         by_seq = {turn.seq: turn for turn in snapshot.turns}
@@ -240,10 +248,20 @@ class ContextEngine:
             or not result.summary_text
         ):
             raise _Unavailable("maintenance failed")
-        if estimate(result.summary_text) > reserve:
-            raise _Unavailable("summary exceeds bound")
-        try:
-            parse_summary(result.summary_text)
-        except SummaryFormatError as exc:
-            raise _Unavailable("summary malformed") from exc
+        rejection = ContextEngine._text_rejection(result.summary_text, estimate, reserve)
+        if rejection is not None:
+            raise _Unavailable(rejection)
         return result.summary_text
+
+    @staticmethod
+    def _text_rejection(text: str, estimate: Callable[[str], int], reserve: int) -> str | None:
+        """Why summary text is not acceptable now, or None. The one test for fresh output and for
+        a cached checkpoint alike, so the two cannot drift apart (Codex CP2 R1): within the current
+        reserve under the current estimator, and well formed."""
+        if estimate(text) > reserve:
+            return "summary exceeds bound"
+        try:
+            parse_summary(text)
+        except SummaryFormatError:
+            return "summary malformed"
+        return None

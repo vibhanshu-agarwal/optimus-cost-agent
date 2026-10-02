@@ -343,6 +343,7 @@ def _receipt(**changes: str) -> str:
     from optimus_model_policy.registry import SUMMARY_FIXTURE_DIGEST, SUMMARY_PROMPT_DIGEST, SUMMARY_VALIDATOR
 
     fields = {
+        "model_id": "cn/alpha",
         "format": "context-summary-v1",
         "providers": "[alpha-cloud/fp8]",
         "quantizations": "[fp8]",
@@ -366,6 +367,15 @@ def _with_receipt(tmp_path: Path, receipt: str):
     return load_registry(_write(tmp_path, "defaults.yaml", text.replace(anchor, anchor + receipt, 1)), None)
 
 
+def test_a_receipt_without_its_model_is_refused_at_load(tmp_path: Path) -> None:
+    """The pre-R3 receipt shape names no model, so it cannot load (Codex CP2 R3)."""
+    receipt = _receipt()
+    assert "model_id: cn/alpha, " in receipt
+    with pytest.raises(RegistryError) as rejected:
+        _with_receipt(tmp_path, receipt.replace("model_id: cn/alpha, ", ""))
+    assert rejected.value.code == "SCHEMA_INVALID" and "model_id" in str(rejected.value)
+
+
 def test_a_receipt_bound_to_every_qualification_key_makes_the_summarizer_eligible(tmp_path: Path) -> None:
     snapshot = _with_receipt(tmp_path, _receipt())
     assert _issues(snapshot, "SUMMARIZER_UNQUALIFIED") == []
@@ -375,6 +385,8 @@ def test_a_receipt_bound_to_every_qualification_key_makes_the_summarizer_eligibl
 @pytest.mark.parametrize(
     "changes",
     [
+        # Another model sharing every other key: a receipt never carries over (Codex CP2 R3).
+        {"model_id": "us/beta"},
         {"format": "context-summary-v0"},
         {"providers": "[alpha-cloud/bf16]"},
         # Same provider, another quantization: a receipt does not carry over (CP1 checklist (g)).
@@ -385,7 +397,7 @@ def test_a_receipt_bound_to_every_qualification_key_makes_the_summarizer_eligibl
         {"prompt_digest": '"' + "0" * 64 + '"'},
         {"validator": "context-summary-validator-v0"},
     ],
-    ids=["format", "route", "quantization", "quantization-unrecorded", "reasoning", "fixture", "prompt", "validator"],
+    ids=["model", "format", "route", "quantization", "quantization-unrecorded", "reasoning", "fixture", "prompt", "validator"],
 )
 def test_changing_any_qualification_key_withdraws_eligibility(tmp_path: Path, changes) -> None:
     snapshot = _with_receipt(tmp_path, _receipt(**changes))
